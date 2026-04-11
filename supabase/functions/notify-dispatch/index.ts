@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendPush } from "../_shared/push-utils.ts";
+import { getTranslatedNotification } from "../_shared/push-translations.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -229,7 +230,7 @@ serve(async (req) => {
     // ── Quiet hours check ───────────────────────────────────────────────────
     const { data: userProfile } = await adminClient
       .from("profiles")
-      .select("timezone")
+      .select("timezone, preferred_language")
       .eq("id", userId)
       .maybeSingle();
 
@@ -276,6 +277,20 @@ serve(async (req) => {
     }
     if (pushOverrides?.threadId) {
       pushPayload.threadId = pushOverrides.threadId;
+    }
+
+    // ── Translate push for non-English users ──────────────────────────────
+    const userLanguage = userProfile?.preferred_language || "en";
+    if (userLanguage !== "en") {
+      const translated = getTranslatedNotification(
+        type,
+        userLanguage,
+        (data ?? {}) as Record<string, string>,
+      );
+      if (translated) {
+        pushPayload.title = translated.title;
+        pushPayload.body = translated.body;
+      }
     }
 
     // iOS badge increment — every push adds 1 to the app icon badge (Block 3 Pass 2 — hardened 2026-03-21)
