@@ -447,6 +447,7 @@ export default function ConnectionsPageRefactored({
         const inviteLink = `https://mingla.app/invite/${user?.id || ""}`;
         Clipboard.setString(inviteLink);
         Alert.alert("", t('connections:invite_link_copied'));
+        mixpanelService.trackReferralLinkShared({ method: 'copy' });
       } catch (e) {
         console.error("Error copying invite link:", e);
       }

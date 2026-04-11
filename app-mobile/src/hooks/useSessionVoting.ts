@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import { supabase } from '../services/supabase';
 import { realtimeService } from '../services/realtimeService';
 import { getDisplayName } from '../utils/getDisplayName';
+import { mixpanelService } from '../services/mixpanelService';
 
 export interface VoteCounts {
   [cardId: string]: {
@@ -293,6 +294,12 @@ export function useSessionVoting(
             );
 
           if (error) throw error;
+
+          mixpanelService.trackBoardCardVoted({
+            session_id: sessionId,
+            card_id: savedCardId,
+            vote: voteType as 'up' | 'down',
+          });
 
           // Notify card saver about the vote (fire-and-forget, only for positive votes)
           if (voteType === 'up') {

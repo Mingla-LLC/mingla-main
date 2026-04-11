@@ -1640,6 +1640,11 @@ const SavedTab = ({
         card.source,
         card.sessionId || undefined
       );
+      mixpanelService.trackExperienceUnsaved({
+        card_id: card.id,
+        card_title: card.title ?? '',
+        category: card.category ?? '',
+      });
 
       // Invalidate savedCards query to trigger a refetch (for solo mode)
       queryClient.invalidateQueries({ queryKey: savedCardKeys.list(user.id) });

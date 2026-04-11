@@ -724,6 +724,21 @@ export default function SwipeableCards({
     (s: any) => s?.id === currentRec.id || s === currentRec.id
   ) : false;
 
+  // Track card viewed when the current card changes
+  const lastViewedCardIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (currentRec && currentRec.id !== lastViewedCardIdRef.current) {
+      lastViewedCardIdRef.current = currentRec.id;
+      mixpanelService.trackCardViewed({
+        card_id: currentRec.id,
+        card_title: currentRec.title,
+        category: currentRec.category,
+        position_in_deck: currentCardIndex,
+        is_curated: (currentRec as any).cardType === 'curated',
+      });
+    }
+  }, [currentRec?.id, currentCardIndex]);
+
   // Trigger card content entrance animations when current card changes
   useEffect(() => {
     if (currentRec) {
@@ -1514,6 +1529,16 @@ export default function SwipeableCards({
 
     case 'EMPTY':
     case 'EXHAUSTED':
+      // Fire deck exhausted once per deck load
+      if (lastViewedCardIdRef.current !== '__deck_exhausted__') {
+        mixpanelService.trackDeckExhausted({
+          cards_seen: currentCardIndex,
+          cards_saved: savedCards.length,
+          cards_dismissed: Math.max(0, currentCardIndex - savedCards.length),
+          session_mode: 'solo',
+        });
+        lastViewedCardIdRef.current = '__deck_exhausted__';
+      }
       return (
         <>
           <View style={styles.emptyDeckContainer}>

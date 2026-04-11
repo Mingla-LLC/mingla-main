@@ -1,6 +1,7 @@
 import { Mixpanel } from "mixpanel-react-native";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const MIXPANEL_TOKEN = process.env.EXPO_PUBLIC_MIXPANEL_TOKEN;
 
@@ -106,6 +107,21 @@ class MixpanelService {
   setUserPropertyOnce(properties: Record<string, unknown>): void {
     if (!this.initialized || !this.mixpanel) return;
     this.mixpanel.getPeople().setOnce(properties);
+  }
+
+  /**
+   * Fire a milestone event ONCE per user lifetime. Uses AsyncStorage to persist
+   * the "already fired" flag across sessions. Fire-and-forget — never blocks UI.
+   */
+  private checkAndFireMilestone(key: string, eventName: string, property: string): void {
+    AsyncStorage.getItem(`mp_milestone_${key}`)
+      .then((fired) => {
+        if (fired) return;
+        this.track(eventName);
+        this.setUserPropertyOnce({ [property]: new Date().toISOString() });
+        AsyncStorage.setItem(`mp_milestone_${key}`, "1").catch(() => {});
+      })
+      .catch(() => {}); // Silently skip — milestone tracking is non-critical
   }
 
   // ─── Convenience helpers ────────────────────────────────────────────
@@ -324,6 +340,8 @@ class MixpanelService {
       session_name: props.sessionName,
       invited_friends_count: props.invitedFriendsCount,
     });
+    this.incrementUserProperty("sessions_count");
+    this.checkAndFireMilestone("first_session", "First Session Created", "first_session_at");
   }
 
   /**
@@ -426,6 +444,8 @@ class MixpanelService {
       request_id: props.requestId,
       sender_name: props.senderName,
     });
+    this.incrementUserProperty("friends_count");
+    this.checkAndFireMilestone("first_friend", "First Friend Added", "first_friend_at");
   }
 
   /**
@@ -488,6 +508,8 @@ class MixpanelService {
       source: props.source,
       scheduled_date: props.scheduledDate,
     });
+    this.incrementUserProperty("total_scheduled");
+    this.checkAndFireMilestone("first_schedule", "First Experience Scheduled", "first_schedule_at");
   }
 
   /**
@@ -559,6 +581,7 @@ class MixpanelService {
       category: props.category,
       source: props.source,
     });
+    this.checkAndFireMilestone("first_expand", "First Card Expanded", "first_expand_at");
   }
 
   // ─── Tab view helpers ─────────────────────────────────────────────
@@ -589,6 +612,7 @@ class MixpanelService {
       experience_title: props.experienceTitle,
       method: props.method,
     });
+    this.checkAndFireMilestone("first_share", "First Share", "first_share_at");
   }
 
   // ─── Session switch helpers ───────────────────────────────────────
@@ -646,6 +670,8 @@ class MixpanelService {
   }): void {
     this.track("Card Saved", props);
     this.incrementUserProperty("total_saves");
+    this.timeEvent("Experience Scheduled");
+    this.checkAndFireMilestone("first_save", "First Card Saved", "first_save_at");
   }
 
   trackCardDismissed(props: {
@@ -710,6 +736,7 @@ class MixpanelService {
 
   trackPairRequestAccepted(props: { sender_name?: string }): void {
     this.track("Pair Request Accepted", props);
+    this.checkAndFireMilestone("first_pair", "First Pair Formed", "first_pair_at");
   }
 
   // ─── Coach mark helpers ──────────────────────────────────────────────
@@ -729,6 +756,29 @@ class MixpanelService {
   trackCoachTourCompleted(): void {
     this.track("Coach Tour Completed");
     this.setUserProperties({ coach_tour_completed: true, coach_tour_completed_at: new Date().toISOString() });
+  }
+
+  // ─── P1 social + engagement helpers ──────────────────────────────────
+
+  trackCollaborationSessionJoined(props: { session_id: string; session_name: string; inviter_name?: string }): void {
+    this.track("Collaboration Session Joined", props);
+    this.incrementUserProperty("total_sessions_participated");
+  }
+
+  trackBoardCardVoted(props: { session_id: string; card_id: string; vote: "up" | "down" }): void {
+    this.track("Board Card Voted", props);
+  }
+
+  trackPairRequestDeclined(props: { sender_name?: string }): void {
+    this.track("Pair Request Declined", props);
+  }
+
+  trackReferralLinkShared(props: { method: string }): void {
+    this.track("Referral Link Shared", props);
+  }
+
+  trackExperienceUnsaved(props: { card_id: string; card_title: string; category: string }): void {
+    this.track("Experience Unsaved", props);
   }
 
 }

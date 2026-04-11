@@ -231,6 +231,7 @@ export function useDeclinePairRequest() {
       }
     },
     onSuccess: (_data, requestId) => {
+      mixpanelService.trackPairRequestDeclined({});
       // Clear the corresponding notification (fire-and-forget — DB trigger also handles this)
       if (userId) {
         dismissNotificationByEntity(userId, queryClient, {

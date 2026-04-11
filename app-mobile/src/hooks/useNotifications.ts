@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient, useMutation, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
 import * as Haptics from 'expo-haptics';
+import { mixpanelService } from '../services/mixpanelService';
 import { clearNotificationBadge } from '../services/oneSignalService';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -606,6 +607,11 @@ export function useNotifications(
           await deleteNotification(notificationId);
           return;
         }
+
+        mixpanelService.trackCollaborationSessionJoined({
+          session_id: result.sessionId ?? inviteId,
+          session_name: result.sessionName ?? '',
+        });
 
         // Invalidate all session-related caches so the pill bar and board views refresh
         queryClient.invalidateQueries({ queryKey: ['collaboration'] });
