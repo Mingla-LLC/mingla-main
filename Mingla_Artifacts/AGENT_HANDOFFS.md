@@ -1,18 +1,21 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-11
-> Total: 1 active | 77 completed
+> Total: 0 active | 81 completed
 
 ## Active Dispatches
 
 | ID | Issue | Agent Role | Dispatched | Prompt File | Status |
 |----|-------|-----------|------------|-------------|--------|
-| AH-070 | ORCH-0386 Phase 2 | Implementor | 2026-04-11 | ORCH-0386_IMPLEMENT_I18N_PHASE2.md | Awaiting dispatch |
+| — | — | — | — | — | — |
 
 ## Completed Dispatches
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-075 | ORCH-0392 | Implementor | 2026-04-11 | flexWrap added to travelModesGrid | APPROVED — visually verified on-device |
+| AH-074 | ORCH-0392 | Investigator (forensics) | 2026-04-11 | INVESTIGATION_TRAVEL_MODE_PILL_BLEED_REPORT.md | APPROVED — root cause proven |
+| AH-073 | ORCH-0386 Phase 2 | Implementor | 2026-04-11 | Commit 9e82190f (translate ~61 remaining strings) | APPROVED — introduced ORCH-0392 regression |
 | AH-072 | ORCH-0390 | Tester | 2026-04-11 | QA_ORCH-0390_DEAD_CODE_ELIMINATION_REPORT.md | PASS (0 P0, 1 P3, 2 P4) |
 | AH-071 | ORCH-0390 | Implementor (chat) | 2026-04-11 | 17 files deleted, 4 exports removed, 4 edge functions deleted, 1 migration | APPROVED |
 | AH-069 | ORCH-0386 Phase 2 | Investigator | 2026-04-11 | INVESTIGATION_ORCH-0386_I18N_PHASE2_REPORT.md | APPROVED |

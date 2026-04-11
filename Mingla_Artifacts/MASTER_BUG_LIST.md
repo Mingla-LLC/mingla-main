@@ -1,9 +1,10 @@
 # Master Bug List
 
 > Last updated: 2026-04-11
-> Total: 311 | Open: 131 | Closed: 109 | Verified (B grade): 21 | Partial: 1 | Deferred: 1
+> Total: 312 | Open: 131 | Closed: 110 | Verified (B grade): 21 | Partial: 1 | Deferred: 1
 >
-> Recently closed: ORCH-0390 (dead code elimination — QA PASS, partial close)
+> Recently closed: ORCH-0392 (travel mode pill bleed — flexWrap fix, visually verified on-device)
+> Previously closed: ORCH-0390 (dead code elimination — QA PASS, partial close)
 
 ## Summary by Status
 
@@ -96,6 +97,12 @@
 | ORCH-0236 | App state manager — duplicate useForegroundRefresh hook causes double disconnect/connect | Lifecycle | bug | INV-009 (upgraded from unaudited) |
 | ORCH-0238 | Notification system provider | Lifecycle | unaudited | Tracker |
 | ORCH-0242 | AppsFlyer integration | Analytics | unaudited | Tracker |
+
+### Regressions from Active Work
+
+| ID | Title | Surface | Severity | Classification | Source |
+|----|-------|---------|----------|---------------|--------|
+| ORCH-0392 | Travel mode pills overflow section — "Driving" bleeds right edge after i18n label change | Discovery | S2 | regression | **CLOSED** — flexWrap added, visually verified on-device EN+ES |
 
 ### Admin Panel (Place Pool Management)
 

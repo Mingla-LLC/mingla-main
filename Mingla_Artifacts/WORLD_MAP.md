@@ -175,6 +175,8 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0273 | place_pool → card_pool data drift (13+ fields stale) | Discovery | S1 | architecture-flaw | closed | A | 2026-04-02 | QA_PLACE_POOL_CARD_POOL_SYNC_REPORT.md — Unified sync trigger, 16 fields + curated composites. Old website trigger replaced. 10/10 PASS. P3: redundant city/country trigger (cleanup). |
 | ORCH-0274 | Photo backfill pipeline broken — no city filter, timeouts, no job tracking | Discovery | S1 | architecture-flaw | closed | A | 2026-04-02 | QA_PHOTO_BACKFILL_PHASE1_BACKEND_REPORT.md + QA_PHOTO_BACKFILL_PHASE2_ADMIN_UI_REPORT.md — Full job system: 2 tables, 9 actions, city-scoped batches, auto-advance, persist across reloads. P1 13/13 + P2 10/10 PASS. |
 
+| ORCH-0392 | Travel mode pills overflow section container — "Driving" bleeds right edge after i18n label change | Discovery | S2 | regression | closed | A | 2026-04-11 | flexWrap: "wrap" added to travelModesGrid. Visually verified EN + ES on-device. Parent: ORCH-0386. |
+
 ### Section 4: Collaboration Sessions
 
 | ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |

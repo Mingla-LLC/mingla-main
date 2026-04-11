@@ -707,6 +707,7 @@ const styles = StyleSheet.create({
   },
   travelModesGrid: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 6,
   },
   travelModeCard: {

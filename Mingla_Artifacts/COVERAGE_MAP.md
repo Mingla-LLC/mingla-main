@@ -8,7 +8,7 @@
 |---------|-------|---|---|---|---|---|-------------|---------|------------|
 | Auth & Session | 7 | 2 | 4 | 1 | 0 | 0 | 0% | 0% | Partial |
 | Onboarding | 11 | 2 | 0 | 0 | 0 | 9 | 82% | 0% | Weak |
-| Discovery / Explore | 55 | 38 | 7 | 0 | 0 | 10 | 18% | 0% | Strong |
+| Discovery / Explore | 55 | 39 | 7 | 0 | 0 | 9 | 16% | 0% | Strong |
 | Collaboration Sessions | 7 | 3 | 0 | 0 | 0 | 4 | 57% | 0% | Weak |
 | Social / Friends | 7 | 1 | 1 | 0 | 0 | 5 | 71% | 0% | Weak |
 | Notifications | 11 | 6 | 2 | 0 | 0 | 3 | 27% | 0% | Partial |
@@ -35,7 +35,7 @@
 | Analytics & Tracking | 11 | 1 | 0 | 2 | 2 | 6 | 55% | 0% | Weak |
 | Weather & External | 6 | 0 | 0 | 0 | 0 | 6 | 100% | 0% | Unaudited |
 | UI Components | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
-| **TOTAL** | **292** | **91** | **24** | **4** | **4** | **169** | **58%** | **0%** | **Weak** |
+| **TOTAL** | **292** | **92** | **24** | **4** | **4** | **168** | **58%** | **0%** | **Weak** |
 
 ## Heatmap Summary
 
