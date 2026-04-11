@@ -1,11 +1,11 @@
 import type { CustomerInfo } from 'react-native-purchases'
-import { hasProEntitlement, hasEliteEntitlement } from '../services/revenueCatService'
+import { hasMinglaPlus } from '../services/revenueCatService'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tier system
+// Tier system (2-tier: free / mingla_plus)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type SubscriptionTier = 'free' | 'pro' | 'elite'
+export type SubscriptionTier = 'free' | 'mingla_plus'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Supabase subscription record
@@ -21,7 +21,6 @@ export interface Subscription {
   currentPeriodEnd: string | null
   trialEndsAt: string | null
   referralBonusMonths: number
-  referralBonusUsedMonths: number
   referralBonusStartedAt: string | null
   isActive: boolean
   cancelledAt: string | null
@@ -44,19 +43,11 @@ export interface ReferralCredit {
 
 /**
  * Determine the effective tier from RevenueCat CustomerInfo alone.
- *
- * Priority:
- *   1. Active "Mingla Elite" entitlement → 'elite'
- *   2. Active "Mingla Pro" entitlement  → 'pro'
- *   3. Otherwise → 'free'
- *
- * Trial and referral-bonus access is checked separately via getEffectiveTierFromSupabase.
- * The unified hook (useEffectiveTier) combines both sources.
+ * Checks the new "Mingla Plus" entitlement plus legacy Pro/Elite for backward compat.
  */
 export function getEffectiveTierFromRC(customerInfo: CustomerInfo | null): SubscriptionTier {
   if (!customerInfo) return 'free'
-  if (hasEliteEntitlement(customerInfo)) return 'elite'
-  if (hasProEntitlement(customerInfo)) return 'pro'
+  if (hasMinglaPlus(customerInfo)) return 'mingla_plus'
   return 'free'
 }
 
@@ -64,35 +55,23 @@ export function getEffectiveTierFromRC(customerInfo: CustomerInfo | null): Subsc
  * Determine the effective tier from Supabase subscription data alone.
  *
  * Priority:
- *   1. Active trial (7-day clock ticking) → 'elite'
- *   2. Onboarding trial (trial_ends_at NULL + not yet onboarded) → 'elite'
- *   3. Unused referral bonus months → 'elite'
+ *   1. Active trial (backward compat — no new trials are granted) → 'mingla_plus'
+ *   2. Referral bonus (date-based, 30 days per referral) → 'mingla_plus'
+ *   3. Legacy paid subscription (tier column) → return as-is
  *   4. Otherwise → 'free'
  *
- * Note: Paid subscription status is now owned by RevenueCat (getEffectiveTierFromRC).
- * The Supabase tier column is only checked here for legacy records; new paid
- * subscriptions must appear in RevenueCat to be honoured.
- *
- * @param hasCompletedOnboarding — from profiles.has_completed_onboarding.
- *   When the subscription row exists but trial_ends_at is NULL and the user
- *   hasn't finished onboarding, they get Elite access (the 7-day clock hasn't
- *   started yet). Must match the SQL get_effective_tier() logic exactly.
+ * Note: The onboarding trial branch (NULL trial_ends_at + not onboarded = elevated access)
+ * has been removed. New users are free during onboarding.
  */
 export function getEffectiveTierFromSupabase(
   sub: Subscription | null,
-  hasCompletedOnboarding?: boolean,
+  _hasCompletedOnboarding?: boolean,
 ): SubscriptionTier {
   if (!sub) return 'free'
 
-  // Active trial (7-day clock is ticking)
+  // Active trial (backward compat — existing users only, no new trials granted)
   if (sub.trialEndsAt && new Date(sub.trialEndsAt) > new Date()) {
-    return 'elite'
-  }
-
-  // Onboarding trial: subscription exists but trial not yet started
-  // User is still in onboarding → grant Elite access
-  if (!sub.trialEndsAt && !hasCompletedOnboarding) {
-    return 'elite'
+    return 'mingla_plus'
   }
 
   // Referral bonus (date-based: 30 days per referral from start date)
@@ -103,16 +82,10 @@ export function getEffectiveTierFromSupabase(
       + sub.referralBonusMonths * 30 * 24 * 60 * 60 * 1000
       > Date.now()
   ) {
-    return 'elite'
+    return 'mingla_plus'
   }
 
   // Manual override / legacy paid record: honour the tier column directly.
-  // This covers two cases:
-  //   1. Developer/QA manually sets tier in Supabase for testing
-  //   2. Legacy paid subscriptions where syncSubscriptionFromRC wrote tier + is_active
-  //      but RevenueCat is unavailable (test key, offline, SDK error)
-  // Guard: only trust the column when is_active is true AND (no expiry set OR expiry
-  // is in the future). This prevents honouring stale rows from cancelled subs.
   if (
     sub.tier !== 'free' &&
     sub.isActive &&
@@ -127,18 +100,12 @@ export function getEffectiveTierFromSupabase(
 /**
  * Unified tier resolution combining RevenueCat (paid) and Supabase (trial/referral).
  *
- * Hierarchy (highest to lowest):
- *   'elite' > 'pro' > 'free'
+ * Hierarchy: mingla_plus > free
  *
  * Resolution order:
- *   1. RC reports active entitlement → return highest RC tier (Elite checked first)
- *   2. Supabase reports active trial or referral bonus → 'elite'
+ *   1. RC reports active entitlement → 'mingla_plus'
+ *   2. Supabase reports active trial or referral bonus → 'mingla_plus'
  *   3. Otherwise → 'free'
- *
- * Elite is the top tier — purchasable, earnable via trial (7 days at signup),
- * and earnable via referral bonuses (1 month per referred friend).
- * Pro is the mid-tier paid plan. Both grant elevated access over Free.
- * Use `hasElevatedAccess(tier)` to gate features available to any paid/earned tier.
  */
 export function getEffectiveTier(
   customerInfo: CustomerInfo | null,
@@ -164,11 +131,6 @@ export function getTrialDaysRemaining(sub: Subscription | null): number {
 /**
  * Returns the total trial duration in days, derived from the difference between
  * trial_ends_at and the subscription's created_at.
- *
- * Uses createdAt (immutable) instead of updatedAt because the subscriptions table
- * has an auto-update trigger that overwrites updated_at on every row modification
- * (referral credits, tier changes, etc.), which would shrink the calculated duration.
- *
  * Falls back to 7 if dates are missing or invalid.
  */
 export function getTrialTotalDays(sub: Subscription | null): number {
@@ -189,9 +151,8 @@ export function getReferralDaysRemaining(sub: Subscription | null): number {
 }
 
 /**
- * Returns true if the user has any form of paid / elevated access.
- * Use this for feature gates instead of comparing tier strings directly.
+ * Returns true if the user has Mingla+ access (paid, trial, or referral).
  */
 export function hasElevatedAccess(tier: SubscriptionTier): boolean {
-  return tier === 'pro' || tier === 'elite'
+  return tier === 'mingla_plus'
 }

@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import { Subscription, ReferralCredit } from '../types/subscription'
 import type { CustomerInfo } from 'react-native-purchases'
-import { hasProEntitlement, hasEliteEntitlement, getProExpirationDate, getEliteExpirationDate } from './revenueCatService'
+import { hasMinglaPlus, getMinglaExpirationDate } from './revenueCatService'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DB row shapes (snake_case → camelCase mapping)
@@ -17,7 +17,6 @@ interface SubscriptionRow {
   current_period_end: string | null
   trial_ends_at: string | null
   referral_bonus_months: number
-  referral_bonus_used_months: number
   referral_bonus_started_at: string | null
   is_active: boolean
   cancelled_at: string | null
@@ -45,7 +44,6 @@ function mapSubscription(row: SubscriptionRow): Subscription {
     currentPeriodEnd: row.current_period_end,
     trialEndsAt: row.trial_ends_at,
     referralBonusMonths: row.referral_bonus_months,
-    referralBonusUsedMonths: row.referral_bonus_used_months,
     referralBonusStartedAt: row.referral_bonus_started_at,
     isActive: row.is_active,
     cancelledAt: row.cancelled_at,
@@ -129,8 +127,8 @@ export async function getReferralStats(userId: string): Promise<{ total: number;
  * (edge functions, RLS) stay consistent with what RevenueCat reports.
  *
  * Maps:
- *   - Active "Mingla Pro" entitlement → tier='pro', is_active=true, current_period_end=expirationDate
- *   - No active entitlement          → tier='free', is_active=false (trial/referral logic unchanged)
+ *   - Active Mingla+ entitlement (or legacy Pro/Elite) → tier='mingla_plus', is_active=true
+ *   - No active entitlement → tier='free', is_active=false (trial/referral logic unchanged)
  *
  * This is a best-effort sync — it does not block the UI. Errors are logged but
  * not surfaced to the user; RC remains the authoritative source.
@@ -140,16 +138,11 @@ export async function syncSubscriptionFromRC(
   customerInfo: CustomerInfo,
 ): Promise<void> {
   try {
-    const isElite = hasEliteEntitlement(customerInfo)
-    const isPro = hasProEntitlement(customerInfo)
-    const isActive = isElite || isPro
-
-    const expirationDate = isElite
-      ? getEliteExpirationDate(customerInfo)
-      : getProExpirationDate(customerInfo)
+    const isActive = hasMinglaPlus(customerInfo)
+    const expirationDate = getMinglaExpirationDate(customerInfo)
 
     const updates: Partial<SubscriptionRow> = {
-      tier: isElite ? 'elite' : isPro ? 'pro' : 'free',
+      tier: isActive ? 'mingla_plus' : 'free',
       is_active: isActive,
       current_period_end: expirationDate ? expirationDate.toISOString() : null,
       updated_at: new Date().toISOString(),

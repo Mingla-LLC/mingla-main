@@ -2022,6 +2022,11 @@ function AppContent() {
                           <ViewFriendProfileScreen
                             userId={viewingFriendProfileId}
                             onBack={() => setViewingFriendProfileId(null)}
+                            onMessage={(userId) => {
+                              setViewingFriendProfileId(null);
+                              setPendingOpenDmUserId(userId);
+                              setCurrentPage("connections");
+                            }}
                           />
                         ) : showPaywall && user?.id ? (
                           <PaywallScreen

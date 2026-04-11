@@ -12,8 +12,7 @@ export type GatedFeature =
   | 'curated_cards'
   | 'custom_starting_point'
   | 'pairing'
-  | 'session_creation'
-  | 'unlimited_swipes';
+  | 'session_creation';
 
 export interface FeatureGateResult {
   tier: SubscriptionTier;
@@ -28,11 +27,10 @@ export interface FeatureGateResult {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const FEATURE_TIER_MAP: Record<GatedFeature, SubscriptionTier> = {
-  curated_cards: 'pro',
-  custom_starting_point: 'pro',
-  pairing: 'elite',
-  session_creation: 'free',
-  unlimited_swipes: 'pro',
+  curated_cards: 'mingla_plus',
+  custom_starting_point: 'mingla_plus',
+  pairing: 'free',           // everyone can pair; count limit is server-side
+  session_creation: 'free',   // everyone can create; count limit is server-side
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,7 +42,9 @@ const FEATURE_TIER_MAP: Record<GatedFeature, SubscriptionTier> = {
  *
  * Usage:
  *   const { canAccess, requiredTier } = useFeatureGate();
- *   if (!canAccess('curated_cards')) showPaywall(requiredTier('curated_cards'));
+ *   if (!canAccess('curated_cards')) showPaywall();
+ *
+ * Note: canAccess('curated_cards') means "can SAVE curated cards" — all users can view them.
  */
 export function useFeatureGate(): FeatureGateResult {
   const { user } = useAppStore();
@@ -59,16 +59,14 @@ export function useFeatureGate(): FeatureGateResult {
         case 'custom_starting_point':
           return limits.customStartingPoint;
         case 'pairing':
-          return tier === 'elite';
-        case 'unlimited_swipes':
-          return limits.dailySwipes === -1;
+          return true; // access is universal; limit checked by check_pairing_allowed RPC
         case 'session_creation':
           return true;
         default:
           return false;
       }
     },
-    [tier, limits],
+    [limits],
   );
 
   const requiredTier = useCallback(

@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { Icon } from '../ui/Icon';
-import { getCategoryIcon, getCategoryColor, getCategorySlug } from '../../utils/categoryUtils';
+import { getCategoryIcon, getCategoryColor, getCategorySlug, getReadableCategoryName } from '../../utils/categoryUtils';
 import { Recommendation } from '../../types/recommendation';
 
 // Direct slug → icon map matching preferences sheet exactly
@@ -48,10 +48,11 @@ export const PlacePinContent = React.memo(function PlacePinContent({
   const categoryIcon = CATEGORY_ICON_MAP[slug] || getCategoryIcon(card.category) || 'compass-outline';
   const tierColor = TIER_BORDER_COLORS[card.priceTier ?? 'chill'] || '#10B981';
   const isCurated = !!card.strollData;
+  const categoryName = getReadableCategoryName(card.category);
+  const placeName = card.title || '';
   const pinLabel = isCurated
-    ? (card.strollData?.anchor?.name?.split(/[→–—]/)[0]?.trim() || card.title?.split(/[→–—]/)[0]?.trim() || '')
-    : (card.title || '');
-  const truncatedLabel = pinLabel.length > 15 ? pinLabel.slice(0, 14) + '…' : pinLabel;
+    ? placeName
+    : (categoryName && placeName ? `${categoryName} · ${placeName}` : placeName || categoryName);
 
   return (
     <View style={isCurated ? styles.wrapperLarge : styles.wrapper}>
@@ -75,8 +76,10 @@ export const PlacePinContent = React.memo(function PlacePinContent({
           <Icon name="calendar" size={8} color="#3b82f6" />
         </View>
       )}
-      {truncatedLabel ? (
-        <Text style={styles.pinLabel} numberOfLines={1}>{truncatedLabel}</Text>
+      {pinLabel ? (
+        <View style={isCurated ? styles.labelPillLarge : styles.labelPill}>
+          <Text style={styles.labelText} numberOfLines={1}>{pinLabel}</Text>
+        </View>
       ) : null}
     </View>
   );
@@ -99,9 +102,10 @@ export function PlacePin({ card, isSaved, isPairedSaved = false, isScheduled, on
 
 const styles = StyleSheet.create({
   wrapper: {
-    width: 52,
-    height: 48,
+    width: 80,
+    height: 56,
     alignItems: 'center',
+    overflow: 'visible',
   },
   pinOuter: {
     width: 32,
@@ -121,9 +125,10 @@ const styles = StyleSheet.create({
   },
   // Curated cards — larger pins
   wrapperLarge: {
-    width: 64,
-    height: 62,
+    width: 90,
+    height: 68,
     alignItems: 'center',
+    overflow: 'visible',
   },
   pinOuterLarge: {
     width: 46,
@@ -166,12 +171,39 @@ const styles = StyleSheet.create({
     right: -2,
     top: 20,
   },
-  pinLabel: {
-    fontSize: 8,
+  labelPill: {
+    backgroundColor: 'rgba(235, 120, 37, 0.85)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 2,
+    alignSelf: 'center',
+    maxWidth: 120,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  labelPillLarge: {
+    backgroundColor: 'rgba(235, 120, 37, 0.85)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 2,
+    alignSelf: 'center',
+    maxWidth: 140,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  labelText: {
+    fontSize: 10,
     fontWeight: '600',
-    color: '#374151',
+    color: '#FFFFFF',
     textAlign: 'center',
-    maxWidth: 60,
-    marginTop: 1,
+    letterSpacing: 0.2,
   },
 });

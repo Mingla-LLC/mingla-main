@@ -1844,6 +1844,7 @@ export default function ConnectionsPageRefactored({
             currentUserName={currentUserDisplayName}
             broadcastSeenIds={broadcastSeenIds}
             isOffline={isOffline}
+            onViewProfile={onNavigateToFriendProfile}
           />
         </View>
 

@@ -1663,37 +1663,7 @@ const SavedTab = ({
     const stops = (card as any).stops as CuratedStop[];
     const isRemoving = removingCardIds.has(card.id);
 
-    // Locked curated card — show blurred teaser
-    if (!canAccess('curated_cards')) {
-      const categoryLabel = (card as any).categoryLabel || (card as any).experienceType || 'Curated';
-      const teaserText = (card as any).teaserText || `A ${categoryLabel.toLowerCase()} experience with ${stops?.length ?? 0} curated stops`;
-      return (
-        <View style={[curatedSavedStyles.card, curatedSavedStyles.lockedCardOverflow]}>
-          <View style={curatedSavedStyles.lockedBody}>
-            <Icon name="lock-closed" size={32} color="rgba(255,255,255,0.5)" />
-            <Text style={curatedSavedStyles.lockedTeaserText} numberOfLines={2}>
-              {teaserText}
-            </Text>
-            <Text style={curatedSavedStyles.lockedSubtext}>
-              {stops?.length ?? 0} stops · Curated experience
-            </Text>
-            <TouchableOpacity
-              onPress={() => { setPaywallFeature('curated_cards'); setShowPaywall(true); }}
-              style={curatedSavedStyles.lockedUpgradeButton}
-            >
-              <Text style={curatedSavedStyles.lockedUpgradeText}>Unlock with Pro</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => handleRemoveSaved(card)}
-              style={curatedSavedStyles.lockedRemoveButton}
-              disabled={isRemoving}
-            >
-              <Text style={curatedSavedStyles.lockedRemoveText}>{isRemoving ? 'Removing...' : 'Remove'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      );
-    }
+    // Curated cards are viewable by all tiers — save-gating is handled at save time
 
     const isScheduled = scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id);
 
@@ -2170,7 +2140,6 @@ const SavedTab = ({
         onClose={() => setShowPaywall(false)}
         userId={user?.id ?? ''}
         feature={paywallFeature}
-        initialTier="pro"
       />
     </View>
   );

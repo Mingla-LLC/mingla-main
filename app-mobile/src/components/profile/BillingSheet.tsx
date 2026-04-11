@@ -44,46 +44,35 @@ const TIERS: Record<SubscriptionTier, TierConfig> = {
     icon: "person-outline",
     description: "The essentials to start exploring.",
     perks: [
-      "20 swipes per day",
-      "1 board session (up to 5 people)",
-      "Basic experience discovery",
-    ],
-  },
-  pro: {
-    name: "Pro Plan",
-    icon: "flash",
-    description: "More sessions, curated picks, your starting point.",
-    perks: [
       "Unlimited swipes",
-      "3 board sessions (up to 5 people)",
-      "Curated cards picked for you",
-      "Set your own starting point",
+      "1 active pairing",
+      "1 board session",
+      "View curated experiences",
     ],
   },
-  elite: {
-    name: "Elite Plan",
+  mingla_plus: {
+    name: "Mingla+",
     icon: "diamond",
     description: "Everything unlocked. No limits.",
     perks: [
       "Unlimited swipes",
-      "Unlimited board sessions (up to 15 people)",
       "Unlimited pairings",
-      "Curated cards picked for you",
+      "Unlimited board sessions",
+      "Save curated experiences",
       "Set your own starting point",
     ],
   },
 };
 
-const TIER_ORDER: SubscriptionTier[] = ["free", "pro", "elite"];
+const TIER_ORDER: SubscriptionTier[] = ["free", "mingla_plus"];
 
-const TIER_RANK: Record<SubscriptionTier, number> = { free: 0, pro: 1, elite: 2 };
+const TIER_RANK: Record<SubscriptionTier, number> = { free: 0, mingla_plus: 1 };
 
 // --- CTA helpers ---
 
-function getCtaLabel(tier: SubscriptionTier, isUpgrade: boolean, isDowngrade: boolean): string {
+function getCtaLabel(tier: SubscriptionTier, isUpgrade: boolean): string {
   if (tier === "free") return "Manage Subscription";
-  if (isUpgrade) return tier === "elite" ? "Upgrade to Elite" : "Upgrade to Pro";
-  if (isDowngrade && tier === "pro") return "Switch to Pro";
+  if (isUpgrade) return "Upgrade to Mingla+";
   return "";
 }
 
@@ -110,15 +99,11 @@ export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
 
   // Internal paywall state for upgrade/downgrade flows
   const [showPaywall, setShowPaywall] = useState(false);
-  const [paywallTier, setPaywallTier] = useState<"pro" | "elite">("pro");
-
   const handleChangePlan = (tier: SubscriptionTier) => {
     if (tier === "free") {
       handleManageSubscription();
       return;
     }
-    // Safe: tier === "free" early-returns above, so only "pro" | "elite" reach here
-    setPaywallTier(tier as "pro" | "elite");
     setShowPaywall(true);
   };
 
@@ -275,7 +260,7 @@ export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
               isVisible={showPaywall}
               onClose={() => setShowPaywall(false)}
               userId={userId}
-              initialTier={paywallTier}
+
             />
           )}
         </View>
@@ -328,7 +313,7 @@ function CurrentPlanCard({ tier, trialDays, trialTotalDays, referralDays }: Curr
       {isOnTrial && (
         <View style={styles.trialSection}>
           <View style={styles.trialLabelRow}>
-            <Text style={styles.trialLabel}>Elite trial</Text>
+            <Text style={styles.trialLabel}>Trial</Text>
             <Text style={styles.trialDaysText}>
               {trialDays} {trialDays === 1 ? "day" : "days"} left
             </Text>
@@ -372,7 +357,7 @@ interface TierCardProps {
 
 function TierCard({ tier, isCurrent, isUpgrade, isDowngrade, onChangePlan }: TierCardProps) {
   const config = TIERS[tier];
-  const ctaText = getCtaLabel(tier, isUpgrade, isDowngrade);
+  const ctaText = getCtaLabel(tier, isUpgrade);
   const showCta = !isCurrent && ctaText;
 
   return (

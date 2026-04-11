@@ -43,8 +43,7 @@ const SEGMENT_TYPES = [
 
 const TIER_OPTIONS = [
   { value: "free", label: "Free" },
-  { value: "pro", label: "Pro" },
-  { value: "elite", label: "Elite" },
+  { value: "mingla_plus", label: "Mingla+" },
 ];
 
 const LAST_ACTIVE_OPTIONS = [

@@ -162,6 +162,12 @@ export default function ProfilePage({
 
       setCurrentLocation(placeString || "");
       await AsyncStorage.setItem("mingla_user_location", placeString || "");
+      if (user?.id && placeString) {
+        await supabase
+          .from('profiles')
+          .update({ location: placeString })
+          .eq('id', user.id);
+      }
     } catch (error: any) {
       setLocationError(error?.message || "Unable to fetch location");
       try {

@@ -947,7 +947,6 @@ export default function CollaborationSessions({
         onClose={() => setShowPaywall(false)}
         userId={user?.id ?? ''}
         feature="session_creation"
-        initialTier="pro"
       />
 
     </View>

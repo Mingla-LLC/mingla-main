@@ -3361,26 +3361,17 @@ export default function DiscoverScreen({
                 {/* Add Pair Button */}
                 <TouchableOpacity
                   ref={coachPair.targetRef as any}
-                  style={[
-                    styles.addUserButtonPill,
-                    !canAccess('pairing') && styles.addUserButtonPillLocked,
-                  ]}
+                  style={styles.addUserButtonPill}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    if (!canAccess('pairing')) {
-                      setPaywallFeature('pairing');
-                      if (onUpgradePress) onUpgradePress();
-                      else setShowPaywall(true);
-                      return;
-                    }
                     setIsPairModalVisible(true);
                   }}
                   activeOpacity={0.7}
                 >
                   <Icon
-                    name={canAccess('pairing') ? "person-add-outline" : "lock-closed"}
-                    size={canAccess('pairing') ? 18 : 16}
-                    color={canAccess('pairing') ? "#eb7825" : "#9CA3AF"}
+                    name="person-add-outline"
+                    size={18}
+                    color="#eb7825"
                   />
                 </TouchableOpacity>
 
@@ -3712,48 +3703,30 @@ export default function DiscoverScreen({
               {false && (
                 <>
                   {/* Paired People Row — horizontal scroll of paired people cards */}
-                  {canAccess('pairing') ? (
-                    <PairedPeopleRow
-                      people={pairingPills
-                        .filter((p) => p.pillState === "active" && p.pairedUserId)
-                        .map((p) => ({
-                          pairedUserId: p.pairedUserId!,
-                          pairingId: p.pairingId!,
-                          displayName: p.displayName,
-                          firstName: p.firstName,
-                          avatarUrl: p.avatarUrl,
-                          initials: p.initials,
-                          birthday: p.birthday,
-                          gender: p.gender,
-                        }))}
-                      onSelectPerson={(person) => {
-                        // Find the matching pill and select it
-                        const pill = pairingPills.find(
-                          (p) => p.pairedUserId === person.pairedUserId
-                        );
-                        if (pill) {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setSelectedPillId(pill.id);
-                        }
-                      }}
-                    />
-                  ) : (
-                    pairingPills.filter((p) => p.pillState === "active").length > 0 && (
-                      <TouchableOpacity
-                        style={styles.frozenPairingBanner}
-                        onPress={() => {
-                          setPaywallFeature('pairing');
-                          if (onUpgradePress) onUpgradePress();
-                          else setShowPaywall(true);
-                        }}
-                      >
-                        <Icon name="lock-closed" size={16} color="#F59E0B" />
-                        <Text style={styles.frozenPairingText}>
-                          {pairingPills.filter((p) => p.pillState === "active").length} pairing{pairingPills.filter((p) => p.pillState === "active").length > 1 ? 's' : ''} — upgrade to Elite to reconnect
-                        </Text>
-                      </TouchableOpacity>
-                    )
-                  )}
+                  <PairedPeopleRow
+                    people={pairingPills
+                      .filter((p) => p.pillState === "active" && p.pairedUserId)
+                      .map((p) => ({
+                        pairedUserId: p.pairedUserId!,
+                        pairingId: p.pairingId!,
+                        displayName: p.displayName,
+                        firstName: p.firstName,
+                        avatarUrl: p.avatarUrl,
+                        initials: p.initials,
+                        birthday: p.birthday,
+                        gender: p.gender,
+                      }))}
+                    onSelectPerson={(person) => {
+                      // Find the matching pill and select it
+                      const pill = pairingPills.find(
+                        (p) => p.pairedUserId === person.pairedUserId
+                      );
+                      if (pill) {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setSelectedPillId(pill.id);
+                      }
+                    }}
+                  />
 
                   {/* Loading State */}
                   {recommendationsLoading && !hasCompletedInitialFetch && (
@@ -4021,6 +3994,12 @@ export default function DiscoverScreen({
         onPairRequestSent={() => {
           setIsPairModalVisible(false);
         }}
+        onPairingLimitReached={() => {
+          setIsPairModalVisible(false);
+          setPaywallFeature('pairing');
+          if (onUpgradePress) onUpgradePress();
+          else setShowPaywall(true);
+        }}
       />
 
       {/* Incoming Pair Request Card (tap on incoming request pill) */}
@@ -4052,7 +4031,6 @@ export default function DiscoverScreen({
         onClose={() => setShowPaywall(false)}
         userId={user?.id ?? ''}
         feature={paywallFeature}
-        initialTier={paywallFeature === 'pairing' ? 'elite' : 'pro'}
       />
 
       {/* Add Custom Day Modal */}
@@ -4956,11 +4934,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginLeft: 4,
     marginRight: 4,
-  },
-  addUserButtonPillLocked: {
-    backgroundColor: '#f3f4f6',
-    borderColor: '#d1d5db',
-    borderStyle: 'solid',
   },
   personPillTouchable: {
     flexDirection: "row",
@@ -5924,25 +5897,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
     justifyContent: "center",
     alignItems: "center",
-  },
-  frozenPairingBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginHorizontal: 16,
-    marginBottom: 8,
-  },
-  frozenPairingText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#F59E0B',
-    fontWeight: '500',
   },
   retryButton: {
     backgroundColor: "#eb7825",

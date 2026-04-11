@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  CreditCard, Crown, Zap, UserCheck, Shield, Clock, Search,
+  CreditCard, Crown, UserCheck, Shield, Clock, Search,
   ChevronLeft, ChevronRight, X, AlertTriangle, History, Gift,
   Ban, Check, RefreshCw, Download,
 } from "lucide-react";
@@ -38,8 +38,7 @@ function timeRemaining(dateStr) {
 
 const TIER_CONFIG = {
   free: { label: "Free", variant: "default", icon: UserCheck },
-  pro: { label: "Pro", variant: "brand", icon: Zap },
-  elite: { label: "Elite", variant: "warning", icon: Crown },
+  mingla_plus: { label: "Mingla+", variant: "warning", icon: Crown },
 };
 
 function TierBadge({ tier }) {
@@ -69,7 +68,7 @@ export function SubscriptionManagementPage() {
   const [listError, setListError] = useState(null);
 
   // Stats
-  const [stats, setStats] = useState({ total: 0, free: 0, pro: 0, elite: 0, overrides: 0 });
+  const [stats, setStats] = useState({ total: 0, free: 0, mingla_plus: 0, overrides: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
 
   // Expiring overrides alert
@@ -78,7 +77,7 @@ export function SubscriptionManagementPage() {
   // Grant modal
   const [grantModal, setGrantModal] = useState(false);
   const [grantTarget, setGrantTarget] = useState(null);
-  const [grantForm, setGrantForm] = useState({ tier: "pro", reason: "", duration_days: 30 });
+  const [grantForm, setGrantForm] = useState({ tier: "mingla_plus", reason: "", duration_days: 30 });
   const [granting, setGranting] = useState(false);
 
   // Revoke modal
@@ -166,8 +165,7 @@ export function SubscriptionManagementPage() {
           setStats({
             total: s.total ?? 0,
             free: s.free ?? 0,
-            pro: s.pro ?? 0,
-            elite: s.elite ?? 0,
+            mingla_plus: s.mingla_plus ?? 0,
             overrides: s.overrides ?? 0,
           });
           setStatsLoading(false);
@@ -194,8 +192,7 @@ export function SubscriptionManagementPage() {
       setStats({
         total: all.length,
         free: all.filter(u => u.effective_tier === "free").length,
-        pro: all.filter(u => u.effective_tier === "pro").length,
-        elite: all.filter(u => u.effective_tier === "elite").length,
+        mingla_plus: all.filter(u => u.effective_tier === "mingla_plus").length,
         overrides: all.filter(u => u.has_admin_override).length,
       });
     } catch (err) {
@@ -252,7 +249,7 @@ export function SubscriptionManagementPage() {
       addToast({ variant: "success", title: "Override granted", description: `${grantForm.tier} tier for ${grantForm.duration_days} days` });
       logAdminAction("subscription.grant_override", "subscription", grantTarget.user_id, { tier: grantForm.tier, duration_days: grantForm.duration_days, reason: grantForm.reason.trim() });
       setGrantModal(false);
-      setGrantForm({ tier: "pro", reason: "", duration_days: 30 });
+      setGrantForm({ tier: "mingla_plus", reason: "", duration_days: 30 });
       setGrantTarget(null);
       fetchSubscriptions();
       fetchStats();
@@ -468,7 +465,7 @@ export function SubscriptionManagementPage() {
         <div className="flex gap-1">
           <Button variant="ghost" size="sm" onClick={() => {
             setGrantTarget({ user_id: row.user_id, display_name: row.display_name });
-            setGrantForm({ tier: "pro", reason: "", duration_days: 30 });
+            setGrantForm({ tier: "mingla_plus", reason: "", duration_days: 30 });
             setGrantModal(true);
           }}>
             <Gift className="h-4 w-4" />
@@ -512,15 +509,14 @@ export function SubscriptionManagementPage() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statsLoading ? (
-          Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
+          Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
             <StatCard label="Total Users" value={stats.total} icon={UserCheck} />
             <StatCard label="Free" value={stats.free} icon={UserCheck} />
-            <StatCard label="Pro" value={stats.pro} icon={Zap} />
-            <StatCard label="Elite" value={stats.elite} icon={Crown} />
+            <StatCard label="Mingla+" value={stats.mingla_plus} icon={Crown} />
             <StatCard label="Admin Overrides" value={stats.overrides} icon={Shield} />
           </>
         )}
@@ -537,7 +533,7 @@ export function SubscriptionManagementPage() {
           />
         </div>
         <div className="flex gap-2 flex-wrap">
-          {[null, "free", "pro", "elite"].map((tier) => (
+          {[null, "free", "mingla_plus"].map((tier) => (
             <button
               key={tier ?? "all"}
               onClick={() => { setTierFilter(tier); setPage(0); }}
@@ -606,7 +602,7 @@ export function SubscriptionManagementPage() {
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">Tier</label>
               <div className="flex gap-2">
-                {["free", "pro", "elite"].map((t) => {
+                {["free", "mingla_plus"].map((t) => {
                   const Icon = TIER_CONFIG[t].icon;
                   return (
                     <button
@@ -647,7 +643,7 @@ export function SubscriptionManagementPage() {
               <div className="flex items-start gap-2 p-3 rounded-lg" style={{ backgroundColor: "var(--color-warning-50, #fffbeb)" }}>
                 <AlertTriangle className="h-4 w-4 text-[var(--color-warning-600)] shrink-0 mt-0.5" />
                 <p className="text-xs text-[var(--color-text-secondary)]">
-                  Setting tier to Free will override any active paid subscription. The user will lose access to Pro/Elite features for the override duration.
+                  Setting tier to Free will override any active paid subscription. The user will lose access to Mingla+ features for the override duration.
                 </p>
               </div>
             )}

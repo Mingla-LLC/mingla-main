@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,6 @@ import { Icon } from './ui/Icon';
 import InAppBrowserModal from './InAppBrowserModal';
 import { LEGAL_URLS } from '../constants/urls';
 import { useQueryClient } from '@tanstack/react-query';
-import type { PurchasesPackage } from 'react-native-purchases';
-
 import { useOfferings, usePurchasePackage, useRestorePurchases, revenueCatKeys } from '../hooks/useRevenueCat';
 import { syncSubscriptionFromRC } from '../services/subscriptionService';
 import { subscriptionKeys } from '../hooks/useSubscription';
@@ -32,7 +30,6 @@ interface CustomPaywallScreenProps {
   onClose: () => void;
   userId: string;
   feature?: GatedFeature;
-  initialTier?: 'pro' | 'elite';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,7 +40,6 @@ const FEATURE_HEADERS: Record<GatedFeature, string> = {
   curated_cards: 'Unlock Curated Experiences',
   pairing: 'Connect with Your People',
   custom_starting_point: 'Explore From Anywhere',
-  unlimited_swipes: 'Never Stop Discovering',
   session_creation: 'Plan More Adventures',
 };
 
@@ -53,33 +49,24 @@ const FEATURE_HEADERS: Record<GatedFeature, string> = {
 
 interface ChecklistItem {
   label: string;
-  pro: boolean;
-  elite: boolean;
+  free: boolean;
+  minglaPlus: boolean;
 }
 
 const FEATURE_CHECKLIST: ChecklistItem[] = [
-  { label: 'Unlimited swipes', pro: true, elite: true },
-  { label: 'Curated experiences', pro: true, elite: true },
-  { label: 'Custom starting point', pro: true, elite: true },
-  { label: 'Pairing', pro: false, elite: true },
-  { label: '3 sessions', pro: true, elite: false },
-  { label: 'Unlimited sessions (15 members)', pro: false, elite: true },
+  { label: 'Unlimited swipes', free: true, minglaPlus: true },
+  { label: '1 pairing', free: true, minglaPlus: false },
+  { label: 'Unlimited pairings', free: false, minglaPlus: true },
+  { label: '1 session', free: true, minglaPlus: false },
+  { label: 'Unlimited sessions', free: false, minglaPlus: true },
+  { label: 'View curated experiences', free: true, minglaPlus: true },
+  { label: 'Save curated experiences', free: false, minglaPlus: true },
+  { label: 'Custom starting point', free: false, minglaPlus: true },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-type TierKey = 'pro' | 'elite';
-
-function filterPackagesByTier(
-  packages: PurchasesPackage[],
-  tier: TierKey,
-): PurchasesPackage[] {
-  return packages.filter((pkg) =>
-    pkg.product.identifier.toLowerCase().includes(tier),
-  );
-}
 
 function getPeriodLabel(identifier: string): string {
   const id = identifier.toLowerCase();
@@ -95,7 +82,7 @@ function getPeriodLabel(identifier: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Full-screen branded paywall with Pro and Elite tier comparison,
+ * Full-screen branded paywall with Mingla+ plan,
  * package selection, and purchase/restore flows.
  */
 export function CustomPaywallScreen({
@@ -103,7 +90,6 @@ export function CustomPaywallScreen({
   onClose,
   userId,
   feature,
-  initialTier = 'pro',
 }: CustomPaywallScreenProps) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -111,45 +97,25 @@ export function CustomPaywallScreen({
   const { mutateAsync: purchase, isPending: isPurchasing } = usePurchasePackage();
   const { mutateAsync: restore, isPending: isRestoring } = useRestorePurchases();
 
-  const [selectedTier, setSelectedTier] = useState<TierKey>(initialTier);
   const [selectedPkgId, setSelectedPkgId] = useState<string | null>(null);
   const [legalBrowserVisible, setLegalBrowserVisible] = useState(false);
   const [legalBrowserUrl, setLegalBrowserUrl] = useState('');
   const [legalBrowserTitle, setLegalBrowserTitle] = useState('');
 
-  // Sync state when the modal reopens — initialTier may have changed
-  // (e.g. pairing gates pass 'elite', curated cards pass 'pro')
+  // Log paywall view when modal opens
   useEffect(() => {
     if (isVisible) {
-      setSelectedTier(initialTier);
       setSelectedPkgId(null);
       logAppsFlyerEvent('paywall_viewed', {
         trigger: feature || 'general',
-        current_tier: initialTier,
       });
     }
-  }, [isVisible, initialTier, feature]);
-
-  // Reset package selection when switching tiers so the UI
-  // always highlights the first package of the newly selected tier
-  const handleTierSwitch = (tier: TierKey) => {
-    setSelectedTier(tier);
-    setSelectedPkgId(null);
-  };
+  }, [isVisible, feature]);
 
   const headerText = feature ? FEATURE_HEADERS[feature] : 'Upgrade Your Experience';
 
-  // Split packages by tier
-  const proPackages = useMemo(
-    () => (offering ? filterPackagesByTier(offering.availablePackages, 'pro') : []),
-    [offering],
-  );
-  const elitePackages = useMemo(
-    () => (offering ? filterPackagesByTier(offering.availablePackages, 'elite') : []),
-    [offering],
-  );
-
-  const activePackages = selectedTier === 'pro' ? proPackages : elitePackages;
+  const packages = offering?.availablePackages ?? [];
+  const activePackages = packages;
 
   // ── Purchase handler ────────────────────────────────────────────────────
   const handlePurchase = async () => {
@@ -244,33 +210,10 @@ export function CustomPaywallScreen({
             Choose the plan that fits your lifestyle
           </Text>
 
-          {/* Tier selector tabs */}
-          <View style={styles.tierTabs}>
-            <TouchableOpacity
-              style={[styles.tierTab, selectedTier === 'pro' && styles.tierTabActivePro]}
-              onPress={() => handleTierSwitch('pro')}
-            >
-              <Text style={[styles.tierTabText, selectedTier === 'pro' && styles.tierTabTextActive]}>
-                Pro
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tierTab, selectedTier === 'elite' && styles.tierTabActiveElite]}
-              onPress={() => handleTierSwitch('elite')}
-            >
-              <View style={styles.bestValueBadge}>
-                <Text style={styles.bestValueText}>Best Value</Text>
-              </View>
-              <Text style={[styles.tierTabText, selectedTier === 'elite' && styles.tierTabTextActive]}>
-                Elite
-              </Text>
-            </TouchableOpacity>
-          </View>
-
           {/* Feature checklist */}
           <View style={styles.checklist}>
             {FEATURE_CHECKLIST.map((item) => {
-              const included = selectedTier === 'pro' ? item.pro : item.elite;
+              const included = item.minglaPlus;
               return (
                 <View key={item.label} style={styles.checklistRow}>
                   <Icon
@@ -280,7 +223,6 @@ export function CustomPaywallScreen({
                   />
                   <Text style={[styles.checklistLabel, !included && styles.checklistLabelDimmed]}>
                     {item.label}
-                    {!included && item.label === 'Pairing' ? ' (Elite only)' : ''}
                   </Text>
                 </View>
               );
@@ -293,7 +235,7 @@ export function CustomPaywallScreen({
               {activePackages.map((pkg) => {
                 const isSelected = selectedPkgId === pkg.identifier ||
                   (selectedPkgId === null && pkg === activePackages[0]);
-                const accentColor = selectedTier === 'pro' ? colors.primary[500] : '#F59E0B';
+                const accentColor = colors.primary[500];
                 return (
                   <TouchableOpacity
                     key={pkg.identifier}
@@ -321,7 +263,7 @@ export function CustomPaywallScreen({
           <TouchableOpacity
             style={[
               styles.ctaButton,
-              { backgroundColor: selectedTier === 'pro' ? colors.primary[500] : '#F59E0B' },
+              { backgroundColor: colors.primary[500] },
             ]}
             onPress={handlePurchase}
             disabled={isBusy}
@@ -421,55 +363,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xs,
     marginBottom: spacing.lg,
-  },
-
-  // Tier tabs
-  tierTabs: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  tierTab: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.gray[700],
-    backgroundColor: 'rgba(255,255,255,0.05)',
-  },
-  tierTabActivePro: {
-    borderColor: colors.primary[500],
-    borderWidth: 2,
-    backgroundColor: 'rgba(249,115,22,0.1)',
-  },
-  tierTabActiveElite: {
-    borderColor: '#F59E0B',
-    borderWidth: 2,
-    backgroundColor: 'rgba(245,158,11,0.1)',
-  },
-  tierTabText: {
-    color: '#9CA3AF',
-    fontSize: typography.md.fontSize,
-    fontWeight: fontWeights.semibold,
-  },
-  tierTabTextActive: {
-    color: '#fff',
-  },
-  bestValueBadge: {
-    position: 'absolute',
-    top: -10,
-    backgroundColor: '#F59E0B',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.sm,
-  },
-  bestValueText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: fontWeights.bold,
-    letterSpacing: 0.5,
   },
 
   // Checklist

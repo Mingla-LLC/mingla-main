@@ -51,6 +51,7 @@ interface PairRequestModalProps {
   visible: boolean;
   onClose: () => void;
   onPairRequestSent: () => void;
+  onPairingLimitReached?: () => void;
 }
 
 function getInitials(name: string): string {
@@ -87,6 +88,7 @@ export default function PairRequestModal({
   visible,
   onClose,
   onPairRequestSent,
+  onPairingLimitReached,
 }: PairRequestModalProps) {
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
@@ -163,14 +165,17 @@ export default function PairRequestModal({
         Alert.alert("Sent", `Pair request sent to ${name}`);
         onPairRequestSent();
       } catch (err) {
-        setFriendError(
-          err instanceof Error ? err.message : "Failed to send pair request"
-        );
+        const msg = err instanceof Error ? err.message : "Failed to send pair request";
+        if (msg === "pairing_limit_reached") {
+          onPairingLimitReached?.();
+          return;
+        }
+        setFriendError(msg);
       } finally {
         setSendingFriendId(null);
       }
     },
-    [sendPairRequest, onPairRequestSent]
+    [sendPairRequest, onPairRequestSent, onPairingLimitReached]
   );
 
   const handlePhoneAction = useCallback(async () => {
@@ -222,9 +227,12 @@ export default function PairRequestModal({
         onPairRequestSent();
       }
     } catch (err) {
-      setPhoneError(
-        err instanceof Error ? err.message : "Failed to send pair request"
-      );
+      const msg = err instanceof Error ? err.message : "Failed to send pair request";
+      if (msg === "pairing_limit_reached") {
+        onPairingLimitReached?.();
+        return;
+      }
+      setPhoneError(msg);
     } finally {
       setSendingPhone(false);
     }
@@ -236,6 +244,7 @@ export default function PairRequestModal({
     user,
     queryClient,
     onPairRequestSent,
+    onPairingLimitReached,
   ]);
 
   // Check if found user already has a pending/active pairing

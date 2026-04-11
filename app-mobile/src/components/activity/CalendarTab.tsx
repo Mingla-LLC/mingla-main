@@ -1251,34 +1251,7 @@ const CalendarTab = ({
       getReadableCategoryName(entry.experience?.category || entry.category || "") ||
       "Experience";
 
-    // Detect curated + locked
-    const entryData = entry.experience || entry;
-    const isEntryCurated = Array.isArray((entryData as any).stops) && (entryData as any).stops.length > 0;
-    const isEntryLocked = isEntryCurated && !canAccess('curated_cards');
-
-    // Locked curated card on calendar — show minimal info with upgrade CTA
-    if (isEntryLocked) {
-      const stopCount = (entryData as any).stops?.length ?? 0;
-      return (
-        <View style={[styles.calendarCard, styles.lockedCardOverflow]}>
-          <View style={styles.lockedCalendarBody}>
-            <Icon name="lock-closed" size={24} color="rgba(255,255,255,0.5)" />
-            <View style={styles.lockedCalendarInfo}>
-              <Text style={styles.lockedCalendarTitle}>Locked Curated Experience</Text>
-              <Text style={styles.lockedCalendarSubtext}>
-                {stopCount} stops · {formattedDate}{formattedTime ? ` at ${formattedTime}` : ''}
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => { setShowLockedPaywall(true); }}
-              style={styles.lockedCalendarUpgrade}
-            >
-              <Text style={styles.lockedCalendarUpgradeText}>Unlock</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      );
-    }
+    // Curated cards are viewable by all tiers — no locked state needed
 
     return (
       <View style={styles.calendarCard}>
@@ -1901,7 +1874,6 @@ const CalendarTab = ({
         onClose={() => setShowLockedPaywall(false)}
         userId={user?.id ?? ''}
         feature="curated_cards"
-        initialTier="pro"
       />
     </View>
   );

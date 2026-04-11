@@ -51,10 +51,8 @@ import { getReadableCategoryName } from "../utils/categoryUtils";
 import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
 import { SkeletonCard } from './SkeletonCard';
 import { useFeatureGate } from '../hooks/useFeatureGate';
-import { useSwipeLimit } from '../hooks/useSwipeLimit';
 import { getTierLimits } from '../constants/tierLimits';
 import { useCreatorTier } from '../hooks/useCreatorTier';
-import { LockedCuratedCard } from './LockedCuratedCard';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
 
@@ -462,9 +460,8 @@ export default function SwipeableCards({
 
   // Feature gating hooks
   const { canAccess: userCanAccess } = useFeatureGate();
-  const { remaining, limit: swipeLimit, isLimited, isUnlimited: userIsUnlimited, recordSwipe } = useSwipeLimit();
   const [showPaywall, setShowPaywall] = useState(false);
-  const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('unlimited_swipes');
+  const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('curated_cards');
 
   // Collab tier inheritance: when in a session, use the creator's tier for gating
   const creatorId = !isInSolo ? (currentSession as any)?.created_by ?? null : null;
@@ -478,7 +475,6 @@ export default function SwipeableCards({
       if (isInCollab && creatorLimits) {
         switch (feature) {
           case 'curated_cards': return creatorLimits.curatedCardsAccess;
-          case 'unlimited_swipes': return creatorLimits.dailySwipes === -1;
           default: return userCanAccess(feature);
         }
       }
@@ -486,13 +482,9 @@ export default function SwipeableCards({
     },
     [isInCollab, creatorLimits, userCanAccess],
   );
-  const isUnlimited = isInCollab && creatorLimits ? creatorLimits.dailySwipes === -1 : userIsUnlimited;
-
   // Refs for PanResponder (created once) to read fresh values
   const canAccessRef = useRef(canAccess);
   useEffect(() => { canAccessRef.current = canAccess; });
-  const swipeLimitRef = useRef({ isLimited, isUnlimited, remaining });
-  useEffect(() => { swipeLimitRef.current = { isLimited, isUnlimited, remaining }; });
 
   // Storage keys for persisting card state
   const getStorageKeys = () => {
@@ -1011,19 +1003,6 @@ export default function SwipeableCards({
             HapticFeedback.cardDislike();
           }
 
-          // Block swiping if at daily swipe limit (sync check from ref)
-          const sl = swipeLimitRef.current;
-          if (!sl.isUnlimited && sl.remaining <= 0) {
-            Animated.spring(position, {
-              toValue: { x: 0, y: 0 },
-              useNativeDriver: false,
-            }).start();
-            // Show paywall instead of silently snapping back (CF-02)
-            setPaywallFeature('unlimited_swipes');
-            setShowPaywall(true);
-            return;
-          }
-
           // Check if card exists
           if (!cardToRemove) {
             console.warn("No card to swipe");
@@ -1172,13 +1151,6 @@ export default function SwipeableCards({
 
     // Track swiped card in session history
     addSwipedCard(card);
-
-    // Record swipe count and capture the post-update result.
-    // The PanResponder ref check blocks swipes 21+ synchronously before animation.
-    let swipeResult: { allowed: boolean } | undefined;
-    if (!isUnlimited) {
-      swipeResult = await recordSwipe();
-    }
 
     // ── AppsFlyer: save or dismiss ──
     if (direction === 'right') {
@@ -1363,14 +1335,6 @@ export default function SwipeableCards({
     // availableRecommendations still includes the card being swiped (state not committed yet)
     // currentCardIndex is always 0 in the removed-cards pattern, so remaining = length - 1
     handleDeckCardProgress(0, availableRecommendations.length);
-
-    // Show paywall after the 20th swipe (all tracking complete, card already gone).
-    // Uses the synchronous return value from recordSwipe() — NOT the stale ref
-    // (React 18 batching delays the ref update to the next render).
-    if (!isUnlimited && swipeResult && !swipeResult.allowed) {
-      setPaywallFeature('unlimited_swipes');
-      setShowPaywall(true);
-    }
 
     // When last card is swiped, let the exhaustion screen handle next steps.
     // The user explicitly chooses: review a previous deck, load a new deck, or change preferences.
@@ -1655,14 +1619,6 @@ export default function SwipeableCards({
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         <View style={styles.cardContainer}>
-          {/* Swipe counter pill for free users */}
-          {!isUnlimited && (
-            <View style={styles.swipeCounterPill}>
-              <Text style={styles.swipeCounterText}>
-                {remaining}/{swipeLimit} swipes left
-              </Text>
-            </View>
-          )}
           {/* View Previous overlay — appears after first swipe */}
           {sessionSwipedCards.length > 0 && (
             <TouchableOpacity
@@ -1833,7 +1789,6 @@ export default function SwipeableCards({
               style={StyleSheet.absoluteFill}
             >
               {(currentRec as any).cardType === 'curated' ? (
-                canAccess('curated_cards') ? (
                   <CuratedExperienceSwipeCard
                     card={currentRec as unknown as CuratedExperienceCard}
                     onSeePlan={handleCardExpand}
@@ -1841,15 +1796,6 @@ export default function SwipeableCards({
                     measurementSystem={accountPreferences?.measurementSystem}
                     currencyCode={accountPreferences?.currency || 'USD'}
                   />
-                ) : (
-                  <LockedCuratedCard
-                    card={currentRec as unknown as CuratedExperienceCard}
-                    onUpgrade={() => {
-                      setPaywallFeature('curated_cards');
-                      setShowPaywall(true);
-                    }}
-                  />
-                )
               ) : (
                 <>
                   {/* Hero Image Section - 60-65% of card */}
@@ -2039,7 +1985,6 @@ export default function SwipeableCards({
         onClose={() => setShowPaywall(false)}
         userId={user?.id ?? ''}
         feature={paywallFeature}
-        initialTier={paywallFeature === 'pairing' ? 'elite' : 'pro'}
       />
     </View>
   );
@@ -2644,21 +2589,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#6b7280",
-  },
-  swipeCounterPill: {
-    position: 'absolute',
-    top: 4,
-    right: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 999,
-    zIndex: 10,
-  },
-  swipeCounterText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '600',
   },
   savedBadge: {
     flexDirection: "row",

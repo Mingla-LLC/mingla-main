@@ -97,6 +97,7 @@ interface MessageInterfaceProps {
   currentUserName?: string | null;
   broadcastSeenIds?: React.MutableRefObject<Set<string>>;
   isOffline?: boolean;
+  onViewProfile?: (userId: string) => void;
 }
 
 export default function MessageInterface({
@@ -124,6 +125,7 @@ export default function MessageInterface({
   currentUserName = null,
   broadcastSeenIds: broadcastSeenIdsProp,
   isOffline = false,
+  onViewProfile,
 }: MessageInterfaceProps) {
   // Helper function to clean email-like names
   const cleanName = (name: string): string => {
@@ -568,7 +570,14 @@ export default function MessageInterface({
             <Icon name="arrow-back" size={24} color="#6b7280" />
           </TouchableOpacity>
 
-          <View style={styles.avatarContainer}>
+          <TouchableOpacity
+            style={styles.avatarContainer}
+            onPress={() => onViewProfile?.(friend.id)}
+            disabled={!onViewProfile}
+            activeOpacity={0.8}
+            accessibilityLabel={`View ${cleanName(friend.name)}'s profile`}
+            accessibilityRole="button"
+          >
             {friend.avatar ? (
               <ImageWithFallback
                 source={{ uri: friend.avatar }}
@@ -585,7 +594,7 @@ export default function MessageInterface({
               </View>
             )}
             {isOtherOnline && <View style={styles.onlineIndicator} />}
-          </View>
+          </TouchableOpacity>
 
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{cleanName(friend.name)}</Text>

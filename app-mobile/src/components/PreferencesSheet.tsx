@@ -929,7 +929,7 @@ export default function PreferencesSheet({
             selectedIntents={selectedIntents}
             onIntentToggle={handleIntentToggle}
             minMessage={minSelectionMessage}
-            isCuratedLocked={!canAccess('curated_cards')}
+            isCuratedLocked={false}
             onLockedTap={() => {
               setPaywallFeature('curated_cards');
               setShowPaywall(true);
@@ -1129,7 +1129,6 @@ export default function PreferencesSheet({
         onClose={() => setShowPaywall(false)}
         userId={user?.id ?? ''}
         feature={paywallFeature}
-        initialTier="pro"
       />
     </>
   );

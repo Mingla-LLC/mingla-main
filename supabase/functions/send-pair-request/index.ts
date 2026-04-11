@@ -73,16 +73,18 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     });
 
-    // --- TIER GATING: Pairing is Elite-only ---
+    // --- TIER GATING: Pairing limit check ---
     const { data: pairingAllowed } = await adminClient
       .rpc('check_pairing_allowed', { p_user_id: senderId });
 
     if (!pairingAllowed?.[0]?.allowed) {
       return jsonResponse({
-        error: 'elite_required',
+        error: 'pairing_limit_reached',
         feature: 'pairing',
-        message: 'Pairing is an Elite feature. Upgrade to connect with people.',
+        message: 'You\'ve reached your free pairing limit. Upgrade to Mingla+ for unlimited pairings.',
         currentTier: pairingAllowed?.[0]?.tier ?? 'free',
+        currentCount: pairingAllowed?.[0]?.current_count ?? 0,
+        maxAllowed: pairingAllowed?.[0]?.max_allowed ?? 1,
       }, 403);
     }
 

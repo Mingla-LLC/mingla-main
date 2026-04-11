@@ -18,8 +18,6 @@ import {
   purchasePackage,
   restorePurchases,
   addCustomerInfoListener,
-  hasProEntitlement,
-  hasEliteEntitlement,
   loginRevenueCat,
   logoutRevenueCat,
 } from '../services/revenueCatService'
@@ -92,16 +90,6 @@ export function useCustomerInfoListener(): void {
 // Entitlement check
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Returns true if the current user has an active "Mingla Pro" entitlement.
- * Returns false while loading or if the SDK hasn't fetched yet.
- */
-export function useIsProEntitled(): boolean {
-  const { data: customerInfo } = useCustomerInfo()
-  if (!customerInfo) return false
-  return hasProEntitlement(customerInfo)
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Offerings
 // ─────────────────────────────────────────────────────────────────────────────
@@ -160,11 +148,10 @@ export function usePurchasePackage(): UseMutationResult<
       queryClient.setQueryData(revenueCatKeys.customerInfo(), customerInfo)
 
       // ── AppsFlyer: subscription revenue event ──
-      const isElite = hasEliteEntitlement(customerInfo)
       logAppsFlyerEvent('af_subscribe', {
         af_revenue: pkg.product?.price ?? 0,
         af_currency: pkg.product?.currencyCode ?? 'USD',
-        af_content_type: isElite ? 'elite' : 'pro',
+        af_content_type: 'mingla_plus',
         af_content_id: pkg.identifier,
         af_quantity: 1,
       })
