@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
@@ -35,6 +36,7 @@ interface Props {
 }
 
 export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode }: Props) {
+  const { t } = useTranslation(['common']);
   // Compact card shows only main (non-optional) stops
   const mainStops = card.stops.filter(s => !s.optional);
   const visibleStops = mainStops.length > 0 ? mainStops : card.stops;
@@ -54,8 +56,9 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
       : `${formatCurrency(card.totalPriceMin, effectiveCurrency)}–${formatCurrency(card.totalPriceMax, effectiveCurrency)}`;
 
   const isSingleStop = visibleStops.length === 1;
-  const categoryLabel = card.categoryLabel || 'Adventurous';
-  const categoryIcon = CURATED_ICON_MAP[categoryLabel] || 'compass-outline';
+  const rawIntentKey = (card.experienceType || 'adventurous').replace(/-/g, '_');
+  const categoryLabel = t(`common:intent_${rawIntentKey}`);
+  const categoryIcon = CURATED_ICON_MAP[card.categoryLabel || 'Adventurous'] || 'compass-outline';
   const ctaText = isSingleStop ? 'See Details' : 'See Full Plan';
 
   // First stop distance & travel time (most relevant to the user)

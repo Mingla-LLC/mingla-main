@@ -89,5 +89,13 @@
   "error_login_required": "You must be logged in to do this.",
   "visited": "Visited",
   "success": "Success",
-  "permission_denied": "Permission denied"
+  "permission_denied": "Permission denied",
+  "intent_adventurous": "Adventurous",
+  "intent_first_date": "First Dates",
+  "intent_romantic": "Romantic",
+  "intent_group_fun": "Group Fun",
+  "intent_picnic_dates": "Picnic Dates",
+  "intent_take_a_stroll": "Take a Stroll",
+  "unknown": "Unknown",
+  "time_just_now": "Just now"
 }

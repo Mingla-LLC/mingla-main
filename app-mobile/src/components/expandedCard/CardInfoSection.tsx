@@ -5,6 +5,7 @@ import { parseAndFormatDistance } from "../utils/formatters";
 import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG } from "../../constants/priceTiers";
 import { getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
 import { useTranslation } from "react-i18next";
+import { getReadableCategoryName } from "../../utils/categoryUtils";
 
 interface CardInfoSectionProps {
   title: string;
@@ -116,7 +117,7 @@ export default function CardInfoSection({
       <View style={styles.tagsRow}>
         <View style={styles.categoryTag}>
           <Icon name={getCategoryIcon()} size={14} color="#d97706" />
-          <Text style={styles.categoryText}>{formatTag(category)}</Text>
+          <Text style={styles.categoryText}>{getReadableCategoryName(category)}</Text>
         </View>
         {romanticTag && (
           <>

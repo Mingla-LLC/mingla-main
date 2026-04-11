@@ -201,5 +201,8 @@
     "leaveDeleteNote": "Board will be permanently deleted (less than 2 members remaining)",
     "leaveUndoNote": "This action cannot be undone",
     "leaveBoard": "Leave Board"
+  },
+  "member": {
+    "you_suffix": " (You)"
   }
 }

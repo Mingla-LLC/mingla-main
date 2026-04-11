@@ -1686,16 +1686,8 @@ const SavedTab = ({
     const durationLabel = hrs > 0
       ? `${hrs}h ${mins > 0 ? `${mins}min` : ''}`
       : `${mins}min`;
-    const EXPERIENCE_LABELS: Record<string, string> = {
-      'adventurous': 'Adventurous',
-      'first-date': 'First Date',
-      'romantic': 'Romantic',
-      'group-fun': 'Group Fun',
-      'picnic-dates': 'Picnic Dates',
-      'take-a-stroll': 'Take a Stroll',
-    };
     const rawType = (card as any).experienceType || 'adventurous';
-    const experienceLabel = EXPERIENCE_LABELS[rawType] ?? rawType.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    const experienceLabel = t(`common:intent_${rawType.replace(/-/g, '_')}`);
 
     return (
       <View style={curatedSavedStyles.card}>

@@ -93,7 +93,7 @@ export const ExperienceTypesSection = memo(
                     isSelected && styles.experienceTypeTextSelected,
                   ]}
                 >
-                  {type.label}
+                  {t(`common:intent_${type.id.replace(/-/g, '_')}`)}
                 </Text>
               </TouchableOpacity>
             );
@@ -103,7 +103,7 @@ export const ExperienceTypesSection = memo(
           <View style={styles.helperTextContainer}>
             <Icon name="information-circle-outline" size={14} color="#eb7825" style={{ marginRight: 6, marginTop: 1 }} />
             <Text style={styles.helperText}>
-              <Text style={styles.helperTextBold}>{helperIntent.label}:</Text>{" "}
+              <Text style={styles.helperTextBold}>{t(`common:intent_${helperIntent.id.replace(/-/g, '_')}`)}:</Text>{" "}
               {t(`preferences:${EXPERIENCE_TYPE_DESCRIPTION_KEYS[helperIntent.id]}`)}
             </Text>
           </View>

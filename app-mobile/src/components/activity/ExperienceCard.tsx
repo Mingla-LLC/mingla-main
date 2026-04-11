@@ -7,6 +7,7 @@ import { useLocalePreferences } from '../../hooks/useLocalePreferences';
 import { formatPriceRange, getCurrencySymbol, getCurrencyRate } from '../utils/formatters';
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import { useTranslation } from 'react-i18next';
+import { getReadableCategoryName } from '../../utils/categoryUtils';
 
 interface ExperienceCardProps {
   experience: {
@@ -419,7 +420,7 @@ const ExperienceCard = ({
                 <Text style={styles.cardTitle}>{experience.title}</Text>
                 <View style={styles.cardCategory}>
                   <Icon name={CardIcon} size={16} color="#eb7825" />
-                  <Text style={styles.categoryText}>{experience.category}</Text>
+                  <Text style={styles.categoryText}>{getReadableCategoryName(experience.category)}</Text>
                 </View>
               </View>
               {experience.dateAdded && (

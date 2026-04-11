@@ -111,7 +111,7 @@ export default function CollaborationSessions({
   onOpenSessionHandled,
 }: CollaborationSessionsProps) {
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation(['modals']);
+  const { t } = useTranslation(['modals', 'common']);
   const scrollViewRef = useRef<ScrollView>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const coachCreate = useCoachMark(4, 20);
@@ -270,25 +270,25 @@ export default function CollaborationSessions({
     if (!gateAllows && !isUnlimited) {
       const limitLabel = maxSessions === 1 ? '1 session' : `${maxSessions} sessions`;
       Alert.alert(
-        'Session limit reached',
-        `Your plan allows up to ${limitLabel}. Upgrade to create more.`,
+        t('modals:collaboration.session_limit_title'),
+        t('modals:collaboration.session_limit_body', { limit: limitLabel }),
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Upgrade', onPress: () => { setShowCreateModal(false); setShowPaywall(true); } },
+          { text: t('common:cancel'), style: 'cancel' },
+          { text: t('modals:collaboration.upgrade'), onPress: () => { setShowCreateModal(false); setShowPaywall(true); } },
         ],
       );
       return;
     }
 
     if (!newSessionName.trim()) {
-      Alert.alert('Session name required', 'Please enter a session name before creating a session.');
+      Alert.alert(t('modals:collaboration.session_name_required_title'), t('modals:collaboration.session_name_required_body'));
       return;
     }
 
     if (selectedFriends.length === 0) {
       Alert.alert(
-        'Add at least one collaborator',
-        'For safety, you can only create a collaboration session after adding at least one friend as a collaborator.'
+        t('modals:collaboration.add_collaborator_title'),
+        t('modals:collaboration.add_collaborator_body')
       );
       return;
     }
@@ -332,7 +332,7 @@ export default function CollaborationSessions({
 
         // Guard: can't add yourself
         if (user && lookupUser.id === user.id) {
-          Alert.alert('That\'s you', 'You can\'t add yourself as a collaborator.');
+          Alert.alert(t('modals:collaboration.thats_you_title'), t('modals:collaboration.thats_you_body'));
           setPhoneActionStatus('idle');
           return;
         }
@@ -341,7 +341,7 @@ export default function CollaborationSessions({
         // invite/activation layer, not at the UI selection layer.
         const alreadySelected = selectedFriends.some(f => f.id === lookupUser.id);
         if (alreadySelected) {
-          Alert.alert('Already selected', 'This person is already added as a collaborator.');
+          Alert.alert(t('modals:collaboration.already_selected_title'), t('modals:collaboration.already_selected_body'));
         } else {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           const friendData: Friend = {
@@ -388,13 +388,13 @@ export default function CollaborationSessions({
   }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, user, selectedFriends, phoneInvitees]);
 
   const getPhoneActionLabel = (): string => {
-    if (phoneLookupLoading) return 'Looking up...';
-    if (!isPhoneValid) return 'Enter phone number';
+    if (phoneLookupLoading) return t('modals:collaboration.looking_up');
+    if (!isPhoneValid) return t('modals:collaboration.enter_phone_number');
     if (phoneLookupResult?.found) {
       const alreadySelected = selectedFriends.some(f => f.id === phoneLookupResult.user?.id);
-      return alreadySelected ? 'Already added' : 'Add to session';
+      return alreadySelected ? t('modals:collaboration.added_as_collaborator') : t('modals:collaboration.add_to_session');
     }
-    return 'Invite to Mingla';
+    return t('modals:collaboration.invite_to_mingla');
   };
 
   const isPhoneActionDisabled =
@@ -478,7 +478,7 @@ export default function CollaborationSessions({
           activeOpacity={0.7}
         >
           <Text style={[styles.pillText, isSoloMode && styles.soloPillText]}>
-            Solo
+            {t('modals:collaboration.solo')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -546,13 +546,13 @@ export default function CollaborationSessions({
 
             <View style={styles.createSheetHeader}>
               <View style={styles.modalCloseButtonPlaceholder} />
-              <Text style={styles.modalTitle}>Create New Session</Text>
+              <Text style={styles.modalTitle}>{t('modals:collaboration.create_new_session')}</Text>
               <View style={styles.modalCloseButtonPlaceholder} />
             </View>
 
             <ScrollView style={styles.modalScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {/* Session Name Input */}
-              <Text style={styles.modalLabel}>Session Name</Text>
+              <Text style={styles.modalLabel}>{t('modals:collaboration.session_name')}</Text>
               <TextInput
                 ref={createSessionInputRef}
                 style={styles.modalInput}
@@ -564,7 +564,7 @@ export default function CollaborationSessions({
 
               {/* Invite by phone */}
               <View style={styles.friendSelectionSection}>
-                <Text style={styles.modalLabel}>Add by phone number</Text>
+                <Text style={styles.modalLabel}>{t('modals:collaboration.add_by_phone')}</Text>
 
                 <View style={styles.csPhoneRow}>
                   <TouchableOpacity
@@ -608,13 +608,13 @@ export default function CollaborationSessions({
                       <View style={styles.csLookupRow}>
                         <Icon name="checkmark-circle" size={14} color="#22c55e" />
                         <Text style={styles.csLookupTextGreen}>
-                          {getDisplayName(phoneLookupResult.user, 'Someone')} is on Mingla
+                          {t('modals:collaboration.is_on_mingla', { name: getDisplayName(phoneLookupResult.user, 'Someone') })}
                         </Text>
                       </View>
                     ) : (
                       <View style={styles.csLookupRow}>
                         <Icon name="person-add-outline" size={14} color="#6b7280" />
-                        <Text style={styles.csLookupTextMuted}>Not on Mingla yet</Text>
+                        <Text style={styles.csLookupTextMuted}>{t('modals:collaboration.not_on_mingla')}</Text>
                       </View>
                     )}
                   </View>
@@ -627,9 +627,9 @@ export default function CollaborationSessions({
                     <Text style={styles.csStatusSuccess}>
                       {phoneLookupResult?.found
                         ? phoneLookupResult.friendship_status === 'friends'
-                          ? 'Added as collaborator!'
-                          : 'Friend request sent!'
-                        : 'Invite shared!'}
+                          ? t('modals:collaboration.added_as_collaborator')
+                          : t('modals:collaboration.friend_request_sent')
+                        : t('modals:collaboration.invite_shared')}
                     </Text>
                   </View>
                 )}
@@ -665,7 +665,7 @@ export default function CollaborationSessions({
                 {/* Phone invitees (not on Mingla) */}
                 {phoneInvitees.length > 0 && (
                   <View style={styles.csPhoneInviteesContainer}>
-                    <Text style={styles.csPhoneInviteesLabel}>Pending invites</Text>
+                    <Text style={styles.csPhoneInviteesLabel}>{t('modals:collaboration.pending_invites')}</Text>
                     <View style={styles.csPhoneInviteesList}>
                       {phoneInvitees.map((invitee) => (
                         <View key={invitee.phoneE164} style={styles.csPhoneInviteePill}>
@@ -685,7 +685,7 @@ export default function CollaborationSessions({
 
               {/* Select existing friends as collaborators */}
               <View style={styles.friendSelectionSection}>
-                <Text style={styles.modalLabel}>Select Collaborators</Text>
+                <Text style={styles.modalLabel}>{t('modals:collaboration.select_collaborators')}</Text>
 
                 {/* Selected Friends */}
                 {selectedFriends.length > 0 && (
@@ -722,9 +722,9 @@ export default function CollaborationSessions({
                 {availableFriends.length === 0 ? (
                   <View style={styles.noFriendsContainer}>
                     <Icon name="people-outline" size={32} color="#D1D5DB" />
-                    <Text style={styles.noFriendsText}>No friends yet</Text>
+                    <Text style={styles.noFriendsText}>{t('modals:collaboration.no_friends_yet')}</Text>
                     <Text style={styles.noFriendsSubtext}>
-                      Invite someone by phone number above
+                      {t('modals:collaboration.invite_by_phone_hint')}
                     </Text>
                   </View>
                 ) : (
@@ -784,8 +784,8 @@ export default function CollaborationSessions({
                 ) : (
                   <Text style={styles.modalCreateButtonText}>
                     {selectedFriends.length > 0
-                      ? `Invite (${selectedFriends.length})`
-                      : 'Create'}
+                      ? t('modals:collaboration.invite_count', { count: selectedFriends.length })
+                      : t('modals:collaboration.create')}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -833,8 +833,8 @@ export default function CollaborationSessions({
               <View style={styles.modalCloseButtonPlaceholder} />
               <Text style={styles.inviteSheetTitle}>
                 {inviteModalSession?.type === 'received-invite'
-                  ? 'Received Invite'
-                  : 'Pending Invite'}
+                  ? t('modals:collaboration.received_invite')
+                  : t('modals:collaboration.pending_invite')}
               </Text>
               <TouchableOpacity
                 onPress={() => setShowInviteModal(false)}
@@ -862,12 +862,12 @@ export default function CollaborationSessions({
               </Text>
               {inviteModalSession?.type === 'received-invite' && (
                 <Text style={styles.inviteFromText}>
-                  {inviteModalSession?.invitedBy?.name || 'Someone'} invited you to collaborate
+                  {t('modals:collaboration.invited_to_collaborate', { name: inviteModalSession?.invitedBy?.name || 'Someone' })}
                 </Text>
               )}
               {inviteModalSession?.type === 'sent-invite' && (
                 <Text style={styles.inviteFromText}>
-                  Waiting for response...
+                  {t('modals:collaboration.waiting_for_response')}
                 </Text>
               )}
             </View>
@@ -884,7 +884,7 @@ export default function CollaborationSessions({
                   }}
                 >
                   <Icon name="person-remove" size={14} color="#DC2626" style={{ marginRight: 5 }} />
-                  <Text style={styles.modalDeclineButtonText}>Decline Invite</Text>
+                  <Text style={styles.modalDeclineButtonText}>{t('modals:collaboration.decline_invite')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.modalAcceptButton}
@@ -896,7 +896,7 @@ export default function CollaborationSessions({
                   }}
                 >
                   <Icon name="checkmark-circle" size={14} color="#FFFFFF" style={{ marginRight: 5 }} />
-                  <Text style={styles.modalAcceptButtonText}>Accept Invite</Text>
+                  <Text style={styles.modalAcceptButtonText}>{t('modals:collaboration.accept_invite')}</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -910,7 +910,7 @@ export default function CollaborationSessions({
                     setShowInviteModal(false);
                   }}
                 >
-                  <Text style={styles.modalCancelInviteButtonText}>Cancel Invite</Text>
+                  <Text style={styles.modalCancelInviteButtonText}>{t('modals:collaboration.cancel_invite')}</Text>
                 </TouchableOpacity>
               </View>
             )}

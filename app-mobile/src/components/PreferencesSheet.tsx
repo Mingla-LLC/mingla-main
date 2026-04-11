@@ -158,7 +158,7 @@ export default function PreferencesSheet({
   const user = useAppStore((state) => state.user);
   const { profile, setProfile } = useAppStore();
   const queryClient = useQueryClient();
-  const { t } = useTranslation(['common']);
+  const { t } = useTranslation(['common', 'preferences']);
 
   // Feature gating
   const { canAccess } = useFeatureGate();
@@ -915,7 +915,7 @@ export default function PreferencesSheet({
                 {sessionName} Vibes
               </Text>
             ) : (
-              <Text style={styles.title}>Your Vibe</Text>
+              <Text style={styles.title}>{t('preferences:sheet.title')}</Text>
             )}
           </View>
         </View>
@@ -950,8 +950,8 @@ export default function PreferencesSheet({
           {/* Price Tier Section */}
           {!(selectedCategories.length === 1 && selectedCategories[0] === "nature") && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Budget</Text>
-              <Text style={styles.sectionSubtitle}>Select every tier you're open to</Text>
+              <Text style={styles.sectionTitle}>{t('preferences:budget.title')}</Text>
+              <Text style={styles.sectionSubtitle}>{t('preferences:budget.subtitle')}</Text>
               <View style={styles.tierGrid}>
                 {PRICE_TIERS.map((tier) => {
                   const isActive = selectedPriceTiers.includes(tier.slug);
@@ -1027,9 +1027,9 @@ export default function PreferencesSheet({
               locationSectionY.current = y;
             }}
           >
-            <Text style={styles.sectionTitle}>Starting Point</Text>
+            <Text style={styles.sectionTitle}>{t('preferences:starting_point.title')}</Text>
             <Text style={styles.sectionSubtitle}>
-              Where should we start looking?
+              {t('preferences:starting_point.subtitle')}
             </Text>
 
             <LocationInputSection
@@ -1073,17 +1073,17 @@ export default function PreferencesSheet({
                 (isSaving || !isFormComplete || !hasChanges) && styles.applyButtonDisabled,
               ]}
               disabled={isSaving || !isFormComplete || !hasChanges}
-              accessibilityLabel={ctaHintText ?? (hasChanges ? `Lock It In, ${countChanges()} changes` : 'Lock It In')}
+              accessibilityLabel={ctaHintText ?? (hasChanges ? `${t('preferences:sheet.lock_it_in')}, ${countChanges()} changes` : t('preferences:sheet.lock_it_in'))}
               accessibilityState={{ disabled: isSaving || !isFormComplete || !hasChanges }}
             >
               {isSaving ? (
                 <View style={styles.buttonLoadingContainer}>
                   <ActivityIndicator size="small" color="#ffffff" />
-                  <Text style={styles.applyButtonText}>Saving...</Text>
+                  <Text style={styles.applyButtonText}>{t('preferences:sheet.saving')}</Text>
                 </View>
               ) : (
                 <Text style={styles.applyButtonText}>
-                  {ctaHintText ?? (hasChanges ? `Lock It In (${countChanges()})` : 'Lock It In')}
+                  {ctaHintText ?? (hasChanges ? t('preferences:sheet.lock_it_in_count', { count: countChanges() }) : t('preferences:sheet.lock_it_in'))}
                 </Text>
               )}
             </TouchableOpacity>
@@ -1092,7 +1092,7 @@ export default function PreferencesSheet({
               style={styles.resetButton}
               disabled={isSaving}
             >
-              <Text style={styles.resetButtonText}>Start Over</Text>
+              <Text style={styles.resetButtonText}>{t('preferences:sheet.start_over')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1112,7 +1112,7 @@ export default function PreferencesSheet({
           />
           <SafeAreaView style={styles.modalContent} edges={["bottom"]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Date</Text>
+              <Text style={styles.modalTitle}>{t('preferences:sheet.select_date')}</Text>
             </View>
             <ScrollView>
               <Calendar

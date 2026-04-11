@@ -89,5 +89,13 @@
   "error_login_required": "Debes iniciar sesión para hacer esto.",
   "visited": "Visitado",
   "success": "Éxito",
-  "permission_denied": "Permiso denegado"
+  "permission_denied": "Permiso denegado",
+  "intent_adventurous": "Aventurero",
+  "intent_first_date": "Primeras citas",
+  "intent_romantic": "Romántico",
+  "intent_group_fun": "Diversión grupal",
+  "intent_picnic_dates": "Citas de picnic",
+  "intent_take_a_stroll": "Dar un paseo",
+  "unknown": "Desconocido",
+  "time_just_now": "Ahora"
 }

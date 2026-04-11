@@ -12,11 +12,13 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
 import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import type { CuratedStop } from '../../types/curatedExperience';
 import { useSessionVoting } from "../../hooks/useSessionVoting";
+import { getReadableCategoryName } from "../../utils/categoryUtils";
 
 const CURATED_ICON_MAP: Record<string, string> = {
   'Adventurous':   'compass-outline',
@@ -96,6 +98,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
   loading = false,
   accountPreferences,
 }) => {
+  const { t } = useTranslation(['common']);
   const scrollRef = useRef<ScrollView | null>(null);
   const [scrollPosition, setScrollPosition] = useState(0);
 
@@ -196,7 +199,7 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
             const isCardLocked = lockedCards[card.id]?.isLocked || false;
             const isCurated = cardData.cardType === 'curated';
             const categoryIcon = isCurated ? "" : getIconComponent(cardData.categoryIcon || "star");
-            const categoryLabel = isCurated ? "" : (cardData.category || "Experience");
+            const categoryLabel = isCurated ? "" : (cardData.category ? getReadableCategoryName(cardData.category) : "Experience");
 
             // Shared vote/RSVP buttons for both card types
             const voteButtons = (
@@ -269,8 +272,9 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                   : "";
 
               const isSingleStop = stops.length === 1;
-              const curatedCategoryLabel = cardData.categoryLabel || "Adventurous";
-              const curatedCategoryIcon = CURATED_ICON_MAP[curatedCategoryLabel] || "compass-outline";
+              const rawCuratedIntentKey = (cardData.experienceType || 'adventurous').replace(/-/g, '_');
+              const curatedCategoryLabel = t(`common:intent_${rawCuratedIntentKey}`);
+              const curatedCategoryIcon = CURATED_ICON_MAP[cardData.categoryLabel || "Adventurous"] || "compass-outline";
 
               // First stop distance & travel time
               const firstStop = stops[0];

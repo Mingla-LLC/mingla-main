@@ -5,6 +5,7 @@ import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { parseAndFormatDistance } from './utils/formatters';
+import { getReadableCategoryName } from '../utils/categoryUtils';
 
 interface BoardCard {
   id: string;
@@ -241,10 +242,10 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                               <Text style={styles.cardTitle}>{card.title}</Text>
                               <View style={styles.categoryRow}>
                                 <Icon name={card.categoryIcon} size={16} color="white" />
-                                <Text style={styles.categoryText}>{card.category}</Text>
+                                <Text style={styles.categoryText}>{getReadableCategoryName(card.category)}</Text>
                               </View>
                             </View>
-                            
+
                             <TrackedTouchableOpacity logComponent="SwipeableBoardCards"
                               onPress={() => toggleExpanded(card.id)}
                               style={styles.expandButton}
@@ -379,7 +380,7 @@ export default function SwipeableBoardCards({ cards, onVote, onRSVP, onOpenDiscu
                               <Text style={styles.expandedTitle}>{card.title}</Text>
                               <View style={styles.expandedCategory}>
                                 <Icon name={card.categoryIcon} size={16} color="#eb7825" />
-                                <Text style={styles.expandedCategoryText}>{card.category}</Text>
+                                <Text style={styles.expandedCategoryText}>{getReadableCategoryName(card.category)}</Text>
                               </View>
                               <Text style={styles.expandedDescription}>{card.fullDescription || card.description}</Text>
                             </View>

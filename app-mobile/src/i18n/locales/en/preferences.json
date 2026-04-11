@@ -62,5 +62,16 @@
   "location.gps_helper": "We've got you pinned. Chill.",
   "location.manual_helper": "Drop a pin anywhere. Or toggle back for GPS.",
   "location.pro_feature": "Pro feature — explore from anywhere",
-  "location.searching": "Searching..."
+  "location.searching": "Searching...",
+
+  "sheet.title": "Your Vibe",
+  "sheet.lock_it_in": "Lock It In",
+  "sheet.lock_it_in_count": "Lock It In ({{count}})",
+  "sheet.start_over": "Start Over",
+  "sheet.saving": "Saving...",
+  "sheet.select_date": "Select Date",
+  "budget.title": "Budget",
+  "budget.subtitle": "Select every tier you're open to",
+  "starting_point.title": "Starting Point",
+  "starting_point.subtitle": "Where should we start looking?"
 }

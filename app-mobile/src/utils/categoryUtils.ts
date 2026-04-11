@@ -3,6 +3,7 @@
  * Provides functions to convert category translation keys to readable names.
  * 13 categories: 12 visible + 1 hidden (Groceries).
  */
+import i18n from '../i18n';
 
 /** Maximum number of category cards a user can select. */
 export const MAX_CATEGORIES = 3;
@@ -29,117 +30,74 @@ export const VISIBLE_CATEGORY_SLUGS = [...VALID_SLUGS].filter(
 );
 
 /**
- * Convert translation key to readable category name
+ * Convert translation key to readable category name.
+ * Uses i18n for locale-aware display names, with legacy slug normalization.
  */
 export const getReadableCategoryName = (categoryKey: string): string => {
   if (!categoryKey) return 'Experience';
-  const categoryMap: Record<string, string> = {
-    // New category slugs -> display names
-    'nature': 'Nature & Views',
-    'first_meet': 'First Meet',
-    'picnic_park': 'Picnic Park',
-    'picnic': 'Picnic Park',
-    'drink': 'Drink',
-    'casual_eats': 'Casual Eats',
-    'fine_dining': 'Fine Dining',
-    'watch': 'Watch',
-    'live_performance': 'Live Performance',
-    'creative_arts': 'Creative & Arts',
-    'play': 'Play',
-    'wellness': 'Wellness',
-    'flowers': 'Flowers',
-    'groceries': 'Groceries',
 
-    // Legacy compat
-    'groceries_flowers': 'Flowers',
-    'groceries & flowers': 'Flowers',
-    'Groceries & Flowers': 'Flowers',
-    'work_business': 'First Meet',
-    'work & business': 'First Meet',
-    'Work & Business': 'First Meet',
-    'Nature': 'Nature & Views',
-    'Picnic': 'Picnic Park',
-
-    // Legacy translation keys -> new names
-    'category.screen_nature': 'Nature & Views',
-    'category.screen_drink': 'Drink',
-    'category.screen_relax': 'Watch',
-    'category.screen_creative': 'Creative & Arts',
-    'category.screen_dining': 'Fine Dining',
-    'category.screen_wellness': 'Wellness',
-    'category.screen_play': 'Play',
-    'category.screen_eat': 'Casual Eats',
-    'category.screen_social': 'Drink',
-    'category.screen_romantic': 'Fine Dining',
-    'category.screen_family': 'Nature & Views',
-    'category.screen_business': 'First Meet',
-    'category.screen_travel': 'Nature & Views',
-    'category.screen_stroll': 'Nature & Views',
-    'category.screen_sip': 'Drink',
-    'category.screen_shop': 'Creative & Arts',
-    'category.screen_learn': 'Creative & Arts',
-    'category.screen_exercise': 'Wellness',
-    'category.screen_culture': 'Creative & Arts',
-    'category.screen_nightlife': 'Play',
-    'category.screen_shopping': 'Creative & Arts',
-    // Short keys (without category. prefix)
-    'screen_nature': 'Nature & Views',
-    'screen_drink': 'Drink',
-    'screen_relax': 'Watch',
-    'screen_creative': 'Creative & Arts',
-    'screen_dining': 'Fine Dining',
-    'screen_wellness': 'Wellness',
-    'screen_play': 'Play',
-    'screen_eat': 'Casual Eats',
-    'screen_social': 'Drink',
-    'screen_romantic': 'Fine Dining',
-    'screen_family': 'Nature & Views',
-    'screen_business': 'First Meet',
-    'screen_travel': 'Nature & Views',
-    'screen_stroll': 'Nature & Views',
-    'screen_sip': 'Drink',
-    'screen_shop': 'Creative & Arts',
-    'screen_learn': 'Creative & Arts',
-    'screen_exercise': 'Wellness',
-    'screen_culture': 'Creative & Arts',
-    'screen_nightlife': 'Play',
-    'screen_shopping': 'Creative & Arts',
-    // Old slug -> new name fallbacks
-    'stroll': 'Nature & Views',
-    'sip': 'Drink',
-    'sip_and_chill': 'Drink',
-    'screen_relax_old': 'Watch',
-    'creative': 'Creative & Arts',
-    'play_move': 'Play',
-    'dining': 'Fine Dining',
-    'casual eats': 'Casual Eats',
-    'fine dining': 'Fine Dining',
-    'creative & arts': 'Creative & Arts',
-    'first meet': 'First Meet'
+  // Normalize legacy slugs to canonical slugs first
+  const legacyToSlug: Record<string, string> = {
+    'picnic': 'picnic_park',
+    'groceries_flowers': 'flowers',
+    'groceries & flowers': 'flowers',
+    'Groceries & Flowers': 'flowers',
+    'work_business': 'first_meet',
+    'work & business': 'first_meet',
+    'Work & Business': 'first_meet',
+    'Nature': 'nature',
+    'Picnic': 'picnic_park',
+    'stroll': 'nature',
+    'sip': 'drink',
+    'sip_and_chill': 'drink',
+    'creative': 'creative_arts',
+    'play_move': 'play',
+    'dining': 'fine_dining',
+    'casual eats': 'casual_eats',
+    'fine dining': 'fine_dining',
+    'creative & arts': 'creative_arts',
+    'first meet': 'first_meet',
+    // Legacy screen_ prefixed keys
+    'screen_nature': 'nature', 'screen_drink': 'drink', 'screen_relax': 'watch',
+    'screen_creative': 'creative_arts', 'screen_dining': 'fine_dining',
+    'screen_wellness': 'wellness', 'screen_play': 'play', 'screen_eat': 'casual_eats',
+    'screen_social': 'drink', 'screen_romantic': 'fine_dining',
+    'screen_family': 'nature', 'screen_business': 'first_meet',
+    'screen_travel': 'nature', 'screen_stroll': 'nature', 'screen_sip': 'drink',
+    'screen_shop': 'creative_arts', 'screen_learn': 'creative_arts',
+    'screen_exercise': 'wellness', 'screen_culture': 'creative_arts',
+    'screen_nightlife': 'play', 'screen_shopping': 'creative_arts',
+    'screen_relax_old': 'watch',
   };
 
-  // Check for exact match first
-  if (categoryMap[categoryKey]) {
-    return categoryMap[categoryKey];
-  }
+  // Strip legacy "category." prefix
+  const stripped = categoryKey.replace(/^category\./, '');
 
-  // If it's already a readable name, return as is
-  if (!categoryKey.includes('_') && !categoryKey.includes('.')) {
-    return categoryKey;
-  }
+  // Resolve to canonical slug
+  const slug = legacyToSlug[stripped] ?? legacyToSlug[categoryKey] ?? stripped;
+  const normalizedSlug = slug.replace(/-/g, '_').toLowerCase();
 
-  // Fallback: convert to readable format
-  return categoryKey.replace('category.', '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  // Try i18n translation
+  const key = `common:category_${normalizedSlug}`;
+  const translated = i18n.t(key);
+  // If i18n returns the key itself (no translation found), fall back to formatting
+  if (translated === key) {
+    return slug.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return translated;
 };
 
 /**
- * Get category slug from translation key or category name
+ * Get category slug from translation key or category name.
+ * Works with both English display names, translated names, and raw slugs.
  */
 export const getCategorySlug = (categoryKey: string): string => {
   if (!categoryKey) return 'experience';
-  const readableName = getReadableCategoryName(categoryKey);
 
-  // Map readable names to slugs
+  // Fast path: already a valid slug
+  if (VALID_SLUGS.has(categoryKey)) return categoryKey;
+
+  // Direct name-to-slug mapping (English display names + legacy names)
   const nameToSlugMap: Record<string, string> = {
     'Nature & Views': 'nature',
     'First Meet': 'first_meet',
@@ -168,10 +126,22 @@ export const getCategorySlug = (categoryKey: string): string => {
     'Dining Experiences': 'fine_dining',
     'Wellness Dates': 'wellness',
     'Freestyle': 'nature',
-    'Picnics': 'picnic_park'
+    'Picnics': 'picnic_park',
+    // Legacy slugs
+    'picnic': 'picnic_park',
+    'groceries_flowers': 'flowers',
+    'work_business': 'first_meet',
+    'stroll': 'nature',
+    'sip': 'drink',
+    'sip_and_chill': 'drink',
+    'creative': 'creative_arts',
+    'play_move': 'play',
+    'dining': 'fine_dining',
   };
 
-  return nameToSlugMap[readableName] || readableName.toLowerCase().replace(/\s+/g, '-');
+  // Strip legacy prefix
+  const stripped = categoryKey.replace(/^category\./, '').replace(/^screen_/, '');
+  return nameToSlugMap[categoryKey] || nameToSlugMap[stripped] || stripped.toLowerCase().replace(/\s+/g, '-');
 };
 
 /**

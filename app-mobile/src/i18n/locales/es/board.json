@@ -201,5 +201,8 @@
     "leaveDeleteNote": "El tablero se eliminar\u00e1 permanentemente (menos de 2 miembros restantes)",
     "leaveUndoNote": "Esta acci\u00f3n no se puede deshacer",
     "leaveBoard": "Salir del tablero"
+  },
+  "member": {
+    "you_suffix": " (Tú)"
   }
 }

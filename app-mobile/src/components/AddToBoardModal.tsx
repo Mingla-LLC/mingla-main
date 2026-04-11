@@ -41,16 +41,16 @@ interface AddToBoardModalProps {
 }
 
 // Helper to format relative time
-const formatRelativeTime = (dateString: string | undefined): string => {
-  if (!dateString) return 'Unknown';
+const formatRelativeTime = (dateString: string | undefined, t: (key: string) => string): string => {
+  if (!dateString) return t('common:unknown');
   const date = new Date(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
-  
-  if (diffMins < 1) return 'Just now';
+
+  if (diffMins < 1) return t('common:time_just_now');
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
@@ -136,14 +136,14 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
     status: board.status || 'active',
     participants: (board.participants || []).map((p: any) => ({
       id: p.id || p.user_id,
-      name: p.name || getDisplayName(p, 'Unknown'),
+      name: p.name || getDisplayName(p, t('common:unknown')),
       username: p.username || 'user',
       status: 'offline' as const,
       isOnline: false,
     })),
     createdBy: board.creatorId || board.created_by || 'unknown',
-    createdAt: formatRelativeTime(board.createdAt || board.created_at),
-    lastActivity: formatRelativeTime(board.lastActivity || board.last_activity || board.updated_at),
+    createdAt: formatRelativeTime(board.createdAt || board.created_at, t),
+    lastActivity: formatRelativeTime(board.lastActivity || board.last_activity || board.updated_at, t),
     hasCollabPreferences: board.hasCollabPreferences || false,
     pendingParticipants: board.pendingParticipants || 0,
     totalParticipants: board.participants?.length || 0,

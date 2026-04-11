@@ -143,7 +143,7 @@ export default function BoardMemberManagementModal({
                       <View style={styles.memberNameRow}>
                         <Text style={styles.memberName}>
                           {participant.name}
-                          {isCurrentUser && ' (You)'}
+                          {isCurrentUser && t('board:member.you_suffix')}
                         </Text>
                         {isCreator && (
                           <View style={styles.creatorBadge}>

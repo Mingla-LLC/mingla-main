@@ -37,12 +37,7 @@ const EMPTY_PENDING_SET = new Set<string>();
 
 type FilterTab = 'all' | 'social' | 'sessions' | 'messages';
 
-const FILTER_TABS: { key: FilterTab; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'social', label: 'Social' },
-  { key: 'sessions', label: 'Sessions' },
-  { key: 'messages', label: 'Messages' },
-];
+const FILTER_TAB_KEYS: FilterTab[] = ['all', 'social', 'sessions', 'messages'];
 
 function getFilterCategory(type: string): FilterTab {
   if (
@@ -108,17 +103,17 @@ function getIconConfig(type: string): IconConfig {
 
 // ── Actionable notification types ────────────────────────────────────────────
 
-const ACTIONABLE_TYPES: Record<string, { acceptLabel: string; declineLabel?: string }> = {
-  friend_request_received: { acceptLabel: 'Accept', declineLabel: 'Decline' },
-  pair_request_received: { acceptLabel: 'Accept', declineLabel: 'Decline' },
-  collaboration_invite_received: { acceptLabel: 'Join', declineLabel: 'Decline' },
-  trial_ending: { acceptLabel: 'Upgrade' },
-  visit_feedback_prompt: { acceptLabel: 'Review' },
+const ACTIONABLE_TYPES: Record<string, { acceptKey: string; declineKey?: string }> = {
+  friend_request_received: { acceptKey: 'actions.accept', declineKey: 'actions.decline' },
+  pair_request_received: { acceptKey: 'actions.accept', declineKey: 'actions.decline' },
+  collaboration_invite_received: { acceptKey: 'actions.join', declineKey: 'actions.decline' },
+  trial_ending: { acceptKey: 'actions.upgrade' },
+  visit_feedback_prompt: { acceptKey: 'actions.review' },
 };
 
 // ── Time formatting ──────────────────────────────────────────────────────────
 
-function formatTimeAgo(isoTimestamp: string): string {
+function formatTimeAgo(isoTimestamp: string, t: (key: string, opts?: any) => string): string {
   const now = Date.now();
   const then = new Date(isoTimestamp).getTime();
   const diffMs = now - then;
@@ -128,7 +123,7 @@ function formatTimeAgo(isoTimestamp: string): string {
   const diffDay = Math.floor(diffHr / 24);
   const diffWeek = Math.floor(diffDay / 7);
 
-  if (diffSec < 60) return 'Just now';
+  if (diffSec < 60) return t('notifications:timeAgo.justNow');
   if (diffMin < 60) return `${diffMin}m`;
   if (diffHr < 24) return `${diffHr}h`;
   if (diffDay < 7) return `${diffDay}d`;
@@ -139,7 +134,8 @@ function formatTimeAgo(isoTimestamp: string): string {
 // ── Section grouping ─────────────────────────────────────────────────────────
 
 function groupNotificationsByDate(
-  notifications: ServerNotification[]
+  notifications: ServerNotification[],
+  t: (key: string) => string
 ): { title: string; data: ServerNotification[] }[] {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -160,10 +156,10 @@ function groupNotificationsByDate(
   });
 
   const sections: { title: string; data: ServerNotification[] }[] = [];
-  if (today.length > 0) sections.push({ title: 'Today', data: today });
-  if (yesterday.length > 0) sections.push({ title: 'Yesterday', data: yesterday });
-  if (thisWeek.length > 0) sections.push({ title: 'This Week', data: thisWeek });
-  if (older.length > 0) sections.push({ title: 'Earlier', data: older });
+  if (today.length > 0) sections.push({ title: t('notifications:dateGroups.today'), data: today });
+  if (yesterday.length > 0) sections.push({ title: t('notifications:dateGroups.yesterday'), data: yesterday });
+  if (thisWeek.length > 0) sections.push({ title: t('notifications:dateGroups.thisWeek'), data: thisWeek });
+  if (older.length > 0) sections.push({ title: t('notifications:dateGroups.earlier'), data: older });
 
   return sections;
 }
@@ -266,8 +262,8 @@ export default function NotificationsModal({
   }, [notifications, activeFilter]);
 
   const sections = useMemo(
-    () => groupNotificationsByDate(filteredNotifications),
-    [filteredNotifications]
+    () => groupNotificationsByDate(filteredNotifications, t),
+    [filteredNotifications, t]
   );
 
   const handleImageError = useCallback((notificationId: string) => {
@@ -452,7 +448,7 @@ export default function NotificationsModal({
                 {item.title}
               </Text>
               <Text style={styles.notificationTime}>
-                {formatTimeAgo(item.created_at)}
+                {formatTimeAgo(item.created_at, t)}
               </Text>
             </View>
 
@@ -472,10 +468,10 @@ export default function NotificationsModal({
                   activeOpacity={0.7}
                 >
                   <Text style={styles.acceptButtonText}>
-                    {actionConfig.acceptLabel}
+                    {t(`notifications:${actionConfig.acceptKey}`)}
                   </Text>
                 </TouchableOpacity>
-                {actionConfig.declineLabel && (
+                {actionConfig.declineKey && (
                   <TouchableOpacity
                     style={styles.declineButton}
                     onPress={(e) => {
@@ -485,7 +481,7 @@ export default function NotificationsModal({
                     activeOpacity={0.7}
                   >
                     <Text style={styles.declineButtonText}>
-                      {actionConfig.declineLabel}
+                      {t(`notifications:${actionConfig.declineKey}`)}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -605,23 +601,23 @@ export default function NotificationsModal({
             style={styles.filterTabsScroll}
             nestedScrollEnabled
           >
-            {FILTER_TABS.map((tab) => (
+            {FILTER_TAB_KEYS.map((key) => (
               <TouchableOpacity
-                key={tab.key}
+                key={key}
                 style={[
                   styles.filterTab,
-                  activeFilter === tab.key && styles.filterTabActive,
+                  activeFilter === key && styles.filterTabActive,
                 ]}
-                onPress={() => setActiveFilter(tab.key)}
+                onPress={() => setActiveFilter(key)}
                 activeOpacity={0.7}
               >
                 <Text
                   style={[
                     styles.filterTabText,
-                    activeFilter === tab.key && styles.filterTabTextActive,
+                    activeFilter === key && styles.filterTabTextActive,
                   ]}
                 >
-                  {tab.label}
+                  {t(`notifications:filters.${key}`)}
                 </Text>
               </TouchableOpacity>
             ))}

@@ -62,5 +62,16 @@
   "location.gps_helper": "Ya te tenemos ubicado. Relájate.",
   "location.manual_helper": "Pon un pin en cualquier lugar. O vuelve al GPS.",
   "location.pro_feature": "Función Pro — explora desde cualquier lugar",
-  "location.searching": "Buscando..."
+  "location.searching": "Buscando...",
+
+  "sheet.title": "Tu vibra",
+  "sheet.lock_it_in": "Confirmar",
+  "sheet.lock_it_in_count": "Confirmar ({{count}})",
+  "sheet.start_over": "Empezar de nuevo",
+  "sheet.saving": "Guardando...",
+  "sheet.select_date": "Seleccionar fecha",
+  "budget.title": "Presupuesto",
+  "budget.subtitle": "Selecciona todos los rangos que te funcionen",
+  "starting_point.title": "Punto de partida",
+  "starting_point.subtitle": "¿Desde dónde empezamos a buscar?"
 }
