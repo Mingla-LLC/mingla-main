@@ -290,6 +290,16 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
           gender: data.userGender || '',
           country: data.userCountry || '',
         })
+        mixpanelService.setUserProperties({
+          onboarding_completed: true,
+          onboarding_completed_at: new Date().toISOString(),
+          country: data.userCountry || '',
+          gender: data.userGender || '',
+          language: data.userPreferredLanguage || 'en',
+        })
+        mixpanelService.setUserPropertyOnce({
+          onboarding_completed_at: new Date().toISOString(),
+        })
 
         // Only clear persistence AFTER DB confirms success
         await clearOnboardingData()

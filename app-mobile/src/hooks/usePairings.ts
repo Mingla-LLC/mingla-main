@@ -16,6 +16,7 @@ import type {
 } from "../services/pairingService";
 import { customHolidayKeys } from "./useCustomHolidays";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
+import { mixpanelService } from "../services/mixpanelService";
 import { useAppStore } from "../store/appStore";
 import { trackedInvoke } from "../services/supabase";
 import { dismissNotificationByEntity } from "./useNotifications";
@@ -104,6 +105,8 @@ export function useUnpair() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
       queryClient.invalidateQueries({ queryKey: customHolidayKeys.all });
+      mixpanelService.registerSuperProperties({ is_paired: false });
+      mixpanelService.setUserProperties({ is_paired: false });
     },
     onError: (error) => {
       console.error('[usePairings] Unpair failed:', error);
@@ -160,6 +163,8 @@ export function useAcceptPairRequest() {
     },
     onSuccess: async (data, requestId) => {
       logAppsFlyerEvent('pair_request_accepted', {});
+      mixpanelService.registerSuperProperties({ is_paired: true });
+      mixpanelService.setUserProperties({ is_paired: true });
       // Fire-and-forget notification to the sender
       if (userId && data?.pairedWithUserId) {
         try {

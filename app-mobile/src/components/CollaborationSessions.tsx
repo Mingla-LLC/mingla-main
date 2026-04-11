@@ -261,6 +261,7 @@ export default function CollaborationSessions({
       setShowSessionViewModal(true);
       onSessionSelect(session.id);
       mixpanelService.trackSessionSwitched({ mode: 'session', sessionName: session.name });
+      mixpanelService.registerSuperProperties({ session_mode: 'session' });
       logAppsFlyerEvent('session_switched', { mode: 'session' });
     }
   };
@@ -473,6 +474,7 @@ export default function CollaborationSessions({
           onPress={() => {
             onSoloSelect();
             mixpanelService.trackSessionSwitched({ mode: 'solo' });
+            mixpanelService.registerSuperProperties({ session_mode: 'solo' });
             logAppsFlyerEvent('session_switched', { mode: 'solo' });
           }}
           activeOpacity={0.7}

@@ -22,6 +22,7 @@ import {
   logoutRevenueCat,
 } from '../services/revenueCatService'
 import { logAppsFlyerEvent } from '../services/appsFlyerService'
+import { mixpanelService } from '../services/mixpanelService'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Query keys
@@ -147,7 +148,7 @@ export function usePurchasePackage(): UseMutationResult<
       // Push the fresh CustomerInfo into the cache immediately
       queryClient.setQueryData(revenueCatKeys.customerInfo(), customerInfo)
 
-      // ── AppsFlyer: subscription revenue event ──
+      // ── Analytics: subscription revenue event ──
       logAppsFlyerEvent('af_subscribe', {
         af_revenue: pkg.product?.price ?? 0,
         af_currency: pkg.product?.currencyCode ?? 'USD',
@@ -155,6 +156,8 @@ export function usePurchasePackage(): UseMutationResult<
         af_content_id: pkg.identifier,
         af_quantity: 1,
       })
+      mixpanelService.registerSuperProperties({ subscription_tier: 'mingla_plus', trial_active: false })
+      mixpanelService.setUserProperties({ subscription_tier: 'mingla_plus', trial_active: false })
     },
     onError: (error) => {
       // User cancellation is handled by consuming components — only log here

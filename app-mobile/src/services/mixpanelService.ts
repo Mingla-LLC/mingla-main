@@ -1,6 +1,6 @@
 import { Mixpanel } from "mixpanel-react-native";
 import { Platform } from "react-native";
-import * as Application from "expo-application";
+import Constants from "expo-constants";
 
 const MIXPANEL_TOKEN = process.env.EXPO_PUBLIC_MIXPANEL_TOKEN;
 
@@ -111,15 +111,71 @@ class MixpanelService {
   // ─── Convenience helpers ────────────────────────────────────────────
 
   /**
-   * Track a successful login event and identify the user.
+   * Track a successful login event, identify the user, set profile properties,
+   * and register super properties for all subsequent events.
    */
-  trackLogin(user: { id: string; email?: string; provider?: string }): void {
+  trackLogin(user: {
+    id: string;
+    email?: string;
+    provider?: string;
+    displayName?: string;
+    country?: string;
+    city?: string;
+    tier?: string;
+    trialActive?: boolean;
+    trialEndDate?: string | null;
+    friendsCount?: number;
+    isPaired?: boolean;
+    onboardingCompleted?: boolean;
+  }): void {
     this.identify(user.id);
+
+    const platform = Platform.OS;
+    const appVersion = Constants.expoConfig?.version ?? "unknown";
+
+    // Identity properties
     this.setUserProperties({
       $email: user.email,
+      $name: user.displayName,
+      user_id: user.id,
       login_provider: user.provider ?? "email",
+      platform,
+      app_version: appVersion,
       last_login: new Date().toISOString(),
     });
+
+    // Set $created only on first login (never overwritten)
+    this.setUserPropertyOnce({
+      $created: new Date().toISOString(),
+    });
+
+    // Lifecycle properties
+    this.setUserProperties({
+      subscription_tier: user.tier ?? "free",
+      trial_active: user.trialActive ?? false,
+      trial_end_date: user.trialEndDate ?? null,
+      onboarding_completed: user.onboardingCompleted ?? false,
+      country: user.country ?? "",
+      city: user.city ?? "",
+    });
+
+    // Social properties
+    this.setUserProperties({
+      friends_count: user.friendsCount ?? 0,
+      is_paired: user.isPaired ?? false,
+    });
+
+    // Super properties — attach to every future event
+    this.registerSuperProperties({
+      subscription_tier: user.tier ?? "free",
+      city: user.city ?? "",
+      platform,
+      app_version: appVersion,
+      session_mode: "solo",
+      is_paired: user.isPaired ?? false,
+      trial_active: user.trialActive ?? false,
+    });
+
     this.track("Login", {
       method: user.provider ?? "email",
     });

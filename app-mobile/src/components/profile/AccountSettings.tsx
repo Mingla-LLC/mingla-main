@@ -238,6 +238,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
         setProfile({ ...profile, [field]: value } as typeof profile);
       }
       mixpanelService.trackProfileSettingUpdated({ field });
+      mixpanelService.trackAccountSettingUpdated({ setting: field, value: String(value) });
     } catch {
       Alert.alert(t('common:error'), t('settings:error_update'));
     } finally {
@@ -309,6 +310,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
               }
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               mixpanelService.trackProfileSettingUpdated({ field: "country" });
+              mixpanelService.trackAccountSettingUpdated({ setting: 'country', value: newCountryCode });
             } catch {
               Alert.alert(t('common:error'), t('settings:error_update'));
             } finally {

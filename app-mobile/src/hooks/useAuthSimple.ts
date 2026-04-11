@@ -10,6 +10,7 @@ import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { User } from "../types";
 import { logger } from "../utils/logger";
+import { mixpanelService } from "../services/mixpanelService";
 import { queryClient } from "../config/queryClient";
 import { deckService, DeckResponse } from "../services/deckService";
 import { buildDeckQueryKey } from "./useDeckCards";
@@ -588,6 +589,7 @@ export const useAuthSimple = () => {
       const code = (err as { code?: unknown })?.code;
       logger.error('Google sign-in failed', { code, message: error.message });
       console.error("Google sign-in error:", code, error.message, err);
+      mixpanelService.trackLoginFailed('google', error.message);
 
       // Handle specific error cases
       if (code === statusCodes.SIGN_IN_CANCELLED) {
@@ -705,6 +707,7 @@ export const useAuthSimple = () => {
       const code = (err as { code?: unknown })?.code;
       logger.error('Apple sign-in failed', { code, message: error.message });
       console.error("Apple sign-in error:", err);
+      mixpanelService.trackLoginFailed('apple', error.message);
 
       // Handle specific error cases
       if (code === "ERR_REQUEST_CANCELED") {

@@ -927,16 +927,21 @@ function AppContent() {
     }
   }, [currentPage, isAuthenticated, isLoadingAuth]);
 
-  // Identify user in Mixpanel once authenticated
+  // Identify user in Mixpanel once authenticated — sets user properties + super properties
   useEffect(() => {
     if (isAuthenticated && user?.id) {
       mixpanelService.trackLogin({
         id: user.id,
         email: user.email,
         provider: (user as any).app_metadata?.provider ?? "email",
+        displayName: profile?.display_name ?? profile?.first_name ?? undefined,
+        country: profile?.country ?? undefined,
+        city: (profile as any)?.city ?? (profile as any)?.location ?? undefined,
+        onboardingCompleted: profile?.has_completed_onboarding ?? false,
+        friendsCount: dbFriends?.length ?? 0,
       });
     }
-  }, [isAuthenticated, user?.id]);
+  }, [isAuthenticated, user?.id, profile?.has_completed_onboarding]);
 
   // Transform friends to Friend format for session creation
   // dbFriends from useFriends has: id, friend_user_id, username, display_name, first_name, last_name, avatar_url
