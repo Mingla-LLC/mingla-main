@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from "react";
+import { mixpanelService } from "../../services/mixpanelService";
 import {
   View,
   Text,
@@ -353,6 +354,11 @@ export default function ActionButtons({
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       });
       onVisitPress?.();
+      mixpanelService.trackExperienceVisited({
+        card_id: card.id,
+        card_title: card.title,
+        category: card.category,
+      });
     }
   };
 

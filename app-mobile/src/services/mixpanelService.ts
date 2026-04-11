@@ -781,6 +781,11 @@ class MixpanelService {
     this.track("Experience Unsaved", props);
   }
 
+  trackExperienceVisited(props: { card_id: string; card_title: string; category: string }): void {
+    this.track("Experience Visited", props);
+    this.checkAndFireMilestone("first_visit", "First Visit", "first_visit_at");
+  }
+
 }
 
 export const mixpanelService = MixpanelService.getInstance();

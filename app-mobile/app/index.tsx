@@ -932,6 +932,7 @@ function AppContent() {
 
   // Identify user in Mixpanel once authenticated — sets user properties + super properties
   const signupFiredRef = useRef(false);
+  const abandonedFiredRef = useRef(false);
   useEffect(() => {
     if (isAuthenticated && user?.id) {
       mixpanelService.trackLogin({
@@ -952,6 +953,20 @@ function AppContent() {
           country: profile?.country ?? undefined,
         });
         signupFiredRef.current = true;
+      }
+
+      // Detect Onboarding Abandoned — user started onboarding before but hasn't completed
+      if (!profile?.has_completed_onboarding && !abandonedFiredRef.current) {
+        import("../src/utils/onboardingPersistence").then(({ loadOnboardingData }) => {
+          loadOnboardingData().then((saved) => {
+            if (saved && !abandonedFiredRef.current) {
+              mixpanelService.track("Onboarding Abandoned", {
+                last_step: (saved as any).step ?? "unknown",
+              });
+              abandonedFiredRef.current = true;
+            }
+          }).catch(() => {});
+        }).catch(() => {});
       }
     }
   }, [isAuthenticated, user?.id, profile?.has_completed_onboarding]);
