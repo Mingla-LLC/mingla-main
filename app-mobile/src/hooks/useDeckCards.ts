@@ -85,6 +85,10 @@ interface UseDeckCardsParams {
   batchSeed: number;
   enabled: boolean;
   excludeCardIds?: string[];
+  /** Persisted query key from last session — enables instant cache read on cold start
+   *  before location resolves. Only set after proximity check confirms same location.
+   *  ORCH-0391. */
+  lastKnownQueryKey?: readonly unknown[] | null;
 }
 
 export interface UseDeckCardsResult {
@@ -107,6 +111,8 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
 
   // Build query key using the shared function — guarantees identical key shape
   // between this hook and onboarding prefetch (ORCH-0386).
+  // On cold start before location resolves, use lastKnownQueryKey (from persisted
+  // session state, proximity-checked) to read hydrated cache instantly. ORCH-0391.
   const queryKey = location
     ? buildDeckQueryKey({
         lat: location.lat,
@@ -125,7 +131,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
         batchSeed: params.batchSeed,
         excludeCardIds: params.excludeCardIds,
       })
-    : ['deck-cards', null];
+    : (params.lastKnownQueryKey ?? ['deck-cards', null]);
 
   const query = useQuery<DeckResponse>({
     queryKey,

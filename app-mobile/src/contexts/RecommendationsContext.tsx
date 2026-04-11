@@ -16,7 +16,8 @@ import { useBoardSession } from "../hooks/useBoardSession";
 import { useCardsCache } from "./CardsCacheContext";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
-import { useDeckCards } from "../hooks/useDeckCards";
+import { useDeckCards, buildDeckQueryKey } from "../hooks/useDeckCards";
+import { cachedLocationSync } from "../hooks/useUserLocation";
 import { deckService } from "../services/deckService";
 import { computePrefsHash, normalizeDateTime } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
@@ -144,6 +145,45 @@ export const RecommendationsProvider: React.FC<
   const previousRefreshKeyRef = useRef(propRefreshKey);
   const currentCacheKeyRef = useRef<string | null>(null);
   const queryClient = useQueryClient();
+
+  // ── ORCH-0391: Persisted deck key for instant cold-start render ─────
+  // On cold start, loads the last-used deck query key from AsyncStorage.
+  // Only set if the persisted location matches current GPS hint (within 3dp
+  // rounding = ~110m). Prevents wrong-city cards. See ORCH-0391 precedence report.
+  const DECK_LAST_KEY = '@mingla/lastDeckQueryKey';
+  const DECK_LAST_LOCATION_KEY = '@mingla/lastDeckLocation';
+  const [lastDeckKey, setLastDeckKey] = useState<readonly unknown[] | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [keyRaw, locRaw] = await Promise.all([
+          AsyncStorage.getItem(DECK_LAST_KEY),
+          AsyncStorage.getItem(DECK_LAST_LOCATION_KEY),
+        ]);
+        if (!keyRaw || !locRaw) return;
+
+        const persistedLoc = JSON.parse(locRaw) as { lat: number; lng: number };
+
+        // cachedLocationSync is the module-level GPS hint loaded from AsyncStorage
+        // on import. Available before React renders. If not yet populated, skip —
+        // we can't verify location, so fall back to normal loading path.
+        if (!cachedLocationSync) return;
+
+        const currentRoundedLat = Math.round(cachedLocationSync.lat * 1000) / 1000;
+        const currentRoundedLng = Math.round(cachedLocationSync.lng * 1000) / 1000;
+
+        if (persistedLoc.lat === currentRoundedLat && persistedLoc.lng === currentRoundedLng) {
+          // User hasn't moved — safe to show cached deck instantly
+          setLastDeckKey(JSON.parse(keyRaw));
+          if (__DEV__) console.log('[Deck] Cold-start proximity match — using persisted deck key');
+        } else {
+          if (__DEV__) console.log('[Deck] Cold-start location mismatch — skipping persisted key',
+            { persisted: persistedLoc, current: { lat: currentRoundedLat, lng: currentRoundedLng } });
+        }
+      } catch {}
+    })();
+  }, []);
 
   // ── Deck session state (Zustand) ────────────────────────────────────
   const {
@@ -458,7 +498,46 @@ export const RecommendationsProvider: React.FC<
       !isWaitingForSessionResolution &&
       batchSeedReady,
     excludeCardIds,
+    lastKnownQueryKey: lastDeckKey,
   });
+
+  // ── ORCH-0391: Persist deck key + location on first successful solo load ──
+  // Enables instant cold-start render on next app open (if location matches).
+  const deckPersistFiredRef = useRef(false);
+  useEffect(() => {
+    if (
+      soloDeckCards.length > 0 &&
+      activeDeckLocation &&
+      activeDeckParams &&
+      isSoloMode &&
+      !deckPersistFiredRef.current
+    ) {
+      deckPersistFiredRef.current = true;
+      const key = buildDeckQueryKey({
+        lat: activeDeckLocation.lat,
+        lng: activeDeckLocation.lng,
+        categories: activeDeckParams.categories,
+        intents: activeDeckParams.intents,
+        priceTiers: effectivePriceTiers as string[],
+        budgetMin: effectiveBudgetMin,
+        budgetMax: effectiveBudgetMax,
+        travelMode: effectiveTravelMode,
+        travelConstraintType: 'time',
+        travelConstraintValue: effectiveTravelConstraintValue,
+        datetimePref: effectiveDatetimePref,
+        dateOption: effectiveDateOption,
+        timeSlot: effectiveTimeSlot,
+        batchSeed,
+        excludeCardIds,
+      });
+      AsyncStorage.setItem(DECK_LAST_KEY, JSON.stringify(key)).catch(() => {});
+      AsyncStorage.setItem(DECK_LAST_LOCATION_KEY, JSON.stringify({
+        lat: Math.round(activeDeckLocation.lat * 1000) / 1000,
+        lng: Math.round(activeDeckLocation.lng * 1000) / 1000,
+      })).catch(() => {});
+      if (__DEV__) console.log('[Deck] Persisted deck key + location for cold-start cache');
+    }
+  }, [soloDeckCards.length, activeDeckLocation?.lat, activeDeckLocation?.lng, isSoloMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Collaboration Deck Hook (server-side synchronized deck) ──────────
   const {

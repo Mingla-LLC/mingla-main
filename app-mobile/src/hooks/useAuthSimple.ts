@@ -10,6 +10,12 @@ import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
 import { User } from "../types";
 import { logger } from "../utils/logger";
+import { queryClient } from "../config/queryClient";
+import { deckService, DeckResponse } from "../services/deckService";
+import { buildDeckQueryKey } from "./useDeckCards";
+import { normalizeCategoryArray } from "../utils/categoryUtils";
+import { ExperiencesService } from "../services/experiencesService";
+import type { PriceTierSlug } from "../constants/priceTiers";
 
 // Module-level flag — shared across ALL instances of useAuthSimple.
 // Prevents duplicate SIGNED_OUT handling when multiple hook instances are mounted.
@@ -91,6 +97,75 @@ export const useAuthSimple = () => {
           // no worker pool competition). Without this, first deck call hits cold isolates and
           // takes 5-10s instead of 1-2s. See ORCH-0342.
           supabase.functions.invoke('keep-warm').catch(() => {});
+
+          // ── Deck prefetch for returning users (ORCH-0391) ─────────────
+          // Fetch preferences + last-known GPS, then pre-seed deck cache.
+          // Runs in parallel with profile loading. Fire-and-forget.
+          // Skips new users (empty prefs → handled by ORCH-0386 onboarding).
+          (async () => {
+            try {
+              const prefs = await ExperiencesService.getUserPreferences(session.user.id);
+              if (!prefs || !prefs.categories?.length) return; // New user or empty — skip
+
+              // Pre-seed preferences cache (saves ~200ms re-fetch post-transition)
+              queryClient.setQueryData(['userPreferences', session.user.id], prefs);
+
+              // Get last-known GPS (fast — reads cached position, no new fix)
+              const Location = await import('expo-location');
+              const loc = await Location.getLastKnownPositionAsync();
+              if (!loc) return; // No GPS cache — can't build deck key
+
+              const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+              const normalizedCategories = normalizeCategoryArray(
+                prefs.categories, prefs.categories.length
+              );
+              const normalizedIntents = (prefs.intents ?? []).slice(0, 1);
+              const priceTiers = prefs.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
+
+              const deckQueryKey = buildDeckQueryKey({
+                lat: coords.lat,
+                lng: coords.lng,
+                categories: normalizedCategories,
+                intents: normalizedIntents,
+                priceTiers,
+                budgetMin: 0,
+                budgetMax: prefs.budget_max ?? 1000,
+                travelMode: prefs.travel_mode ?? 'walking',
+                travelConstraintType: 'time',
+                travelConstraintValue: prefs.travel_constraint_value ?? 30,
+                datetimePref: prefs.datetime_pref ?? undefined,
+                dateOption: prefs.date_option ?? 'now',
+                timeSlot: prefs.time_slot ?? null,
+                batchSeed: 0,
+                excludeCardIds: [],
+              });
+
+              const result = await deckService.fetchDeck({
+                location: coords,
+                categories: normalizedCategories,
+                intents: normalizedIntents,
+                priceTiers: priceTiers as PriceTierSlug[],
+                budgetMin: 0,
+                budgetMax: prefs.budget_max ?? 1000,
+                travelMode: prefs.travel_mode ?? 'walking',
+                travelConstraintType: 'time' as const,
+                travelConstraintValue: prefs.travel_constraint_value ?? 30,
+                datetimePref: prefs.datetime_pref ?? undefined,
+                dateOption: prefs.date_option ?? 'now',
+                timeSlot: prefs.time_slot ?? null,
+                batchSeed: 0,
+                limit: 200,
+                excludeCardIds: [],
+              });
+
+              queryClient.setQueryData(deckQueryKey, result);
+              if (__DEV__) {
+                console.log(`[Auth] Deck prefetch complete: ${result.cards.length} cards cached`);
+              }
+            } catch (err) {
+              if (__DEV__) console.warn('[Auth] Deck prefetch failed (will use normal path):', err);
+            }
+          })();
 
           // Seed map location so friends can see this user on the map.
           // Fire-and-forget — uses last known GPS or skips if unavailable.

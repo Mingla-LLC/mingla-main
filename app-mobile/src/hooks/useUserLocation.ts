@@ -12,8 +12,11 @@ export interface LocationData {
 
 const LOCATION_CACHE_KEY = '@mingla/lastLocation';
 
-// Module-level cached location — populated asynchronously from AsyncStorage on import
-let cachedLocationSync: LocationData | null = null;
+// Module-level cached location — populated asynchronously from AsyncStorage on import.
+// Exported for ORCH-0391 proximity check: RecommendationsContext compares this with the
+// persisted deck location to decide whether to show cached cards on cold start.
+// Do NOT use this for deck query keys or fetch params — it's a hint, not authoritative.
+export let cachedLocationSync: LocationData | null = null;
 AsyncStorage.getItem(LOCATION_CACHE_KEY).then(raw => {
   if (raw) {
     try {
