@@ -19,7 +19,9 @@
     "error": "Error",
     "typeMessage": "Type a message...",
     "editMessage": "Edit message...",
-    "typing": "typing..."
+    "typing": "typing...",
+    "inputPlaceholder": "Type @ to mention, # to tag a card...",
+    "messagePlaceholder": "Message..."
   },
   "boardPreferencesForm": {
     "categories": "Categories",
@@ -67,7 +69,8 @@
     "deleteSessionTitle": "Delete Session",
     "deleteSessionMsg": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone and all cards, votes, and discussions will be permanently deleted.",
     "leaveSessionTitle": "Leave Board",
-    "leaveSessionMsg": "Are you sure you want to leave \"{{name}}\"?"
+    "leaveSessionMsg": "Are you sure you want to leave \"{{name}}\"?",
+    "namePlaceholder": "Enter session name"
   },
   "cardDiscussionModal": {
     "discussion": "Discussion",

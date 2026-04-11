@@ -291,7 +291,7 @@ export default function WelcomeScreen({
           {/* Word-by-word animated headline */}
           <View
             style={styles.headlineRow}
-            accessibilityLabel="Dates, hangouts, and everything in between — sorted."
+            accessibilityLabel={t('auth:welcome.tagline_accessibility')}
             accessibilityRole="header"
           >
             {HEADLINE_WORDS.map((word, i) => (

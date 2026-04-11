@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
 import { useAppStore } from '../store/appStore';
 import { toastManager } from '../components/ui/Toast';
+import i18n from '../i18n';
 
 export interface MapSettings {
   visibility_level: 'off' | 'paired' | 'friends' | 'friends_of_friends' | 'everyone';
@@ -75,7 +76,7 @@ export function useMapSettings() {
         queryClient.setQueryData(['map-settings', user?.id], context.previous);
       }
       console.warn('[useMapSettings] Update failed:', err.message);
-      toastManager.error("Couldn't update your setting. Try again.", 3000);
+      toastManager.error(i18n.t('common:error_update_setting'), 3000);
     },
   });
 

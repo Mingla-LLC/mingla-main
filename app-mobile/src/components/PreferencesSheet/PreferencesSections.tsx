@@ -204,7 +204,7 @@ export const CategoriesSection = memo(
                   ]}
                   numberOfLines={1}
                 >
-                  {category.label}
+                  {t(`common:category_${category.id}`)}
                 </Text>
               </TouchableOpacity>
             );
@@ -214,7 +214,7 @@ export const CategoriesSection = memo(
           <View style={styles.helperTextContainer}>
             <Icon name="information-circle-outline" size={14} color="#eb7825" style={{ marginRight: 6, marginTop: 1 }} />
             <Text style={styles.helperText}>
-              <Text style={styles.helperTextBold}>{helperCategory.label}:</Text>{" "}
+              <Text style={styles.helperTextBold}>{t(`common:category_${helperCategory.id}`)}:</Text>{" "}
               {t(`preferences:${CATEGORY_DESCRIPTION_KEYS[helperCategory.id]}`)}
             </Text>
           </View>
@@ -411,7 +411,7 @@ export const TravelModeSection = memo(
                   isSelected && styles.travelModeLabelSelected,
                 ]}
               >
-                {mode.label}
+                {t(`common:transport_${mode.id}`)}
               </Text>
             </TouchableOpacity>
           );

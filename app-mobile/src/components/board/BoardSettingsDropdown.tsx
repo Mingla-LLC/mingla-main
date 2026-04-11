@@ -13,6 +13,7 @@ import {
 import { Icon } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
 import { useKeyboard } from "../../hooks/useKeyboard";
+import { useTranslation } from "react-i18next";
 
 interface BoardSettingsDropdownProps {
   visible: boolean;
@@ -53,6 +54,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   position,
   variant = "overlay",
 }) => {
+  const { t } = useTranslation(['board', 'common']);
   const [showEditSessionModal, setShowEditSessionModal] = useState(false);
   const [editSessionName, setEditSessionName] = useState("");
   const [savingSessionName, setSavingSessionName] = useState(false);
@@ -99,7 +101,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   // Handle edit session name
   const handleEditSessionName = useCallback(() => {
     if (!canManageSession) {
-      Alert.alert("Permission denied", "Only the session creator or admins can edit the session name.");
+      Alert.alert(t('board:boardSettingsDropdown.permissionDenied'), t('board:boardSettingsDropdown.permissionEditName'));
       return;
     }
     setEditSessionName(sessionName);
@@ -110,7 +112,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   // Handle save session name
   const handleSaveSessionName = useCallback(async () => {
     if (!sessionId || !editSessionName.trim()) {
-      Alert.alert("Error", "Session name cannot be empty.");
+      Alert.alert(t('board:boardSettingsDropdown.errorGeneric'), t('board:boardSettingsDropdown.errorEmptyName'));
       return;
     }
 
@@ -131,12 +133,12 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
       }
       
       // Show success toast
-      Alert.alert("Success", "Session name updated successfully.");
+      Alert.alert(t('board:boardSettingsDropdown.success'), t('board:boardSettingsDropdown.nameUpdated'));
     } catch (error: any) {
       console.error("Error updating session name:", error);
       Alert.alert(
-        "Update failed",
-        error?.message || "Unable to update session name."
+        t('board:boardSettingsDropdown.updateFailed'),
+        error?.message || t('board:boardSettingsDropdown.updateFailedMsg')
       );
     } finally {
       setSavingSessionName(false);
@@ -148,7 +150,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
     if (deletingSession) return;
     if (!sessionId || !currentUserId) return;
     if (!isAdmin && sessionCreatorId !== currentUserId) {
-      Alert.alert("Permission denied", "Only admins can delete this session.");
+      Alert.alert(t('board:boardSettingsDropdown.permissionDenied'), t('board:boardSettingsDropdown.permissionDelete'));
       return;
     }
 
@@ -162,7 +164,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
       if (error) throw error;
 
       // Show success toast
-      Alert.alert("Success", "Session deleted successfully.");
+      Alert.alert(t('board:boardSettingsDropdown.success'), t('board:boardSettingsDropdown.sessionDeleted'));
 
       // Notify parent
       if (onSessionDeleted) {
@@ -171,8 +173,8 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
     } catch (error: any) {
       console.error("Error deleting session:", error);
       Alert.alert(
-        "Delete failed",
-        error?.message || "Unable to delete this session."
+        t('board:boardSettingsDropdown.deleteFailed'),
+        error?.message || t('board:boardSettingsDropdown.deleteFailedMsg')
       );
     } finally {
       setDeletingSession(false);
@@ -182,22 +184,22 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   // Handle delete session with confirmation
   const handleDeleteSessionWithConfirmation = useCallback(() => {
     if (!canManageSession) {
-      Alert.alert("Permission denied", "Only the session creator or admins can delete this session.");
+      Alert.alert(t('board:boardSettingsDropdown.permissionDenied'), t('board:boardSettingsDropdown.permissionDeleteBoard'));
       return;
     }
 
     onClose();
 
     Alert.alert(
-      "Delete Session",
-      `Are you sure you want to delete "${sessionName}"? This action cannot be undone and all cards, votes, and discussions will be permanently deleted.`,
+      t('board:boardSettingsDropdown.deleteSessionTitle'),
+      t('board:boardSettingsDropdown.deleteSessionMsg', { name: sessionName }),
       [
         {
-          text: "Cancel",
+          text: t('common:cancel'),
           style: "cancel",
         },
         {
-          text: "Delete",
+          text: t('common:delete'),
           style: "destructive",
           onPress: handleDeleteSession,
         },
@@ -374,7 +376,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
               style={styles.editModalInput}
               value={editSessionName}
               onChangeText={setEditSessionName}
-              placeholder="Enter session name"
+              placeholder={t('board:boardSettingsDropdown.namePlaceholder')}
               placeholderTextColor="#9ca3af"
               maxLength={100}
             />

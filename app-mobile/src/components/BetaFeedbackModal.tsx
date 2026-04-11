@@ -511,7 +511,7 @@ export default function BetaFeedbackModal({
               style={styles.addScreenshotButton}
               onPress={pickScreenshots}
               activeOpacity={0.7}
-              accessibilityLabel="Add screenshots from library"
+              accessibilityLabel={t('feedback:modal.add_screenshots_accessibility')}
             >
               <Icon name="images-outline" size={20} color={colors.primary[500]} />
               <Text style={styles.addScreenshotText}>

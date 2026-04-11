@@ -23,7 +23,8 @@
     "success_body": "Your feedback has been submitted",
     "error_recording_failed": "Recording failed. Please try again.",
     "error_too_short": "Recording too short \u2014 please record at least 3 seconds.",
-    "permission_photos": "Photo library access is needed to attach screenshots"
+    "permission_photos": "Photo library access is needed to attach screenshots",
+    "add_screenshots_accessibility": "Add screenshots from library"
   },
   "history": {
     "header": "Feedback History",
@@ -42,6 +43,8 @@
     "delete_body": "Delete this feedback? This can't be undone.",
     "delete_error": "Couldn't delete feedback. Try again.",
     "empty": "No feedback submitted yet",
-    "load_error": "Failed to load history"
+    "load_error": "Failed to load history",
+    "delete_accessibility": "Delete this feedback",
+    "close_screenshot": "Close screenshot"
   }
 }

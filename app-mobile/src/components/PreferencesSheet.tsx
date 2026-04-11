@@ -39,6 +39,7 @@ import { mixpanelService } from "../services/mixpanelService";
 import { useAppStore } from "../store/appStore";
 import { normalizePreferencesForSave } from "../utils/preferencesConverter";
 import { toastManager } from "./ui/Toast";
+import { useTranslation } from 'react-i18next';
 
 import {
   ExperienceTypesSection,
@@ -157,6 +158,7 @@ export default function PreferencesSheet({
   const user = useAppStore((state) => state.user);
   const { profile, setProfile } = useAppStore();
   const queryClient = useQueryClient();
+  const { t } = useTranslation(['common']);
 
   // Feature gating
   const { canAccess } = useFeatureGate();
@@ -967,8 +969,8 @@ export default function PreferencesSheet({
                         <Icon name={tier.icon} size={13} color={isActive ? '#ffffff' : '#9CA3AF'} />
                       </View>
                       <View style={styles.tierTextContainer}>
-                        <Text style={[styles.tierLabel, isActive && { color: '#ffffff' }]}>{tier.label}</Text>
-                        <Text style={[styles.tierRange, isActive && { color: '#ffffff', opacity: 0.85 }]}>{tier.rangeLabel}</Text>
+                        <Text style={[styles.tierLabel, isActive && { color: '#ffffff' }]}>{t(`common:tier_${tier.slug}`)}</Text>
+                        <Text style={[styles.tierRange, isActive && { color: '#ffffff', opacity: 0.85 }]}>{t(`common:tier_range_${tier.slug}`)}</Text>
                       </View>
                     </TouchableOpacity>
                   );

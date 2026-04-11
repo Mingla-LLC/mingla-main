@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useCoachMark } from '../hooks/useCoachMark';
+import { useTranslation } from 'react-i18next';
 import {
   Text,
   View,
@@ -110,6 +111,7 @@ export default function CollaborationSessions({
   onOpenSessionHandled,
 }: CollaborationSessionsProps) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation(['modals']);
   const scrollViewRef = useRef<ScrollView>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const coachCreate = useCoachMark(4, 20);
@@ -587,7 +589,7 @@ export default function CollaborationSessions({
                         setPhoneActionError('');
                       }
                     }}
-                    placeholder="Phone number"
+                    placeholder={t('modals:collaboration.phone_placeholder')}
                     placeholderTextColor="#9ca3af"
                     keyboardType="phone-pad"
                     autoCorrect={false}

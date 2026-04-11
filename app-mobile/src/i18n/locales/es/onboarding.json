@@ -1,6 +1,11 @@
 {
   "language": {
-    "search_placeholder": "Buscar idiomas..."
+    "search_placeholder": "Buscar idiomas...",
+    "close_accessibility": "Cerrar selector de idioma"
+  },
+  "country_picker": {
+    "search_placeholder": "Buscar países...",
+    "close_accessibility": "Cerrar selector de país"
   },
   "welcome": {
     "greeting_hey": "Hola",
@@ -118,7 +123,8 @@
     "search_placeholder": "Empieza a escribir tu dirección...",
     "no_results": "Hmm, no encontramos eso. Prueba con una calle o barrio cercano.",
     "helper": "Cuanto más preciso, mejores serán tus recomendaciones.",
-    "privacy": "Tu ubicación exacta queda entre nosotros. Siempre."
+    "privacy": "Tu ubicación exacta queda entre nosotros. Siempre.",
+    "change_accessibility": "Cambiar ubicación seleccionada"
   },
   "categories": {
     "headline": "¿Qué tipo de lugares te encantan?",

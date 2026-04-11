@@ -36,7 +36,9 @@
     "somewhere_cool": "Somewhere cool, probably",
     "tap_to_add_bio": "Tap to add a bio",
     "hint_add_photo": "People trust faces. Add a photo so friends know it's you.",
-    "hint_add_bio": "A short bio goes a long way. What should people know about you?"
+    "hint_add_bio": "A short bio goes a long way. What should people know about you?",
+    "cancel_editing": "Cancel editing",
+    "save_name": "Save name"
   },
   "stats": {
     "saved": "SAVED",
@@ -53,6 +55,9 @@
   },
   "paired_section": {
     "see_all": "See all"
+  },
+  "interests": {
+    "edit_accessibility": "Edit your interests"
   },
   "friend": {
     "loading_profile": "Loading profile\u2026",

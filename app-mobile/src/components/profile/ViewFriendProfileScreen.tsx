@@ -105,7 +105,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
       style={[styles.backButton, { top: headerTop }]}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       accessibilityRole="button"
-      accessibilityLabel="Go back"
+      accessibilityLabel={t('common:go_back')}
     >
       <View style={styles.backButtonInner}>
         <Icon name="arrow-back" size={s(22)} color="#111827" />

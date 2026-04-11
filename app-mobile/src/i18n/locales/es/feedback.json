@@ -23,7 +23,8 @@
     "success_body": "Tus comentarios han sido enviados",
     "error_recording_failed": "La grabación falló. Inténtalo de nuevo.",
     "error_too_short": "Grabación muy corta — graba al menos 3 segundos.",
-    "permission_photos": "Se necesita acceso a la galería de fotos para adjuntar capturas"
+    "permission_photos": "Se necesita acceso a la galería de fotos para adjuntar capturas",
+    "add_screenshots_accessibility": "Añadir capturas de pantalla de la galería"
   },
   "history": {
     "header": "Historial de comentarios",
@@ -42,6 +43,8 @@
     "delete_body": "¿Eliminar este comentario? No se puede deshacer.",
     "delete_error": "No se pudo eliminar el comentario. Inténtalo de nuevo.",
     "empty": "Aún no se han enviado comentarios",
-    "load_error": "No se pudo cargar el historial"
+    "load_error": "No se pudo cargar el historial",
+    "delete_accessibility": "Eliminar este comentario",
+    "close_screenshot": "Cerrar captura de pantalla"
   }
 }

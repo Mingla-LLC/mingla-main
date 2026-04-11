@@ -19,7 +19,9 @@
     "error": "Error",
     "typeMessage": "Escribe un mensaje...",
     "editMessage": "Editar mensaje...",
-    "typing": "escribiendo..."
+    "typing": "escribiendo...",
+    "inputPlaceholder": "Escribe @ para mencionar, # para etiquetar una tarjeta...",
+    "messagePlaceholder": "Mensaje..."
   },
   "boardPreferencesForm": {
     "categories": "Categor\u00edas",
@@ -67,7 +69,8 @@
     "deleteSessionTitle": "Eliminar sesi\u00f3n",
     "deleteSessionMsg": "\u00bfEst\u00e1s seguro de que deseas eliminar \"{{name}}\"? Esta acci\u00f3n no se puede deshacer y todas las tarjetas, votos y discusiones se eliminar\u00e1n permanentemente.",
     "leaveSessionTitle": "Salir del tablero",
-    "leaveSessionMsg": "\u00bfEst\u00e1s seguro de que deseas salir de \"{{name}}\"?"
+    "leaveSessionMsg": "\u00bfEst\u00e1s seguro de que deseas salir de \"{{name}}\"?",
+    "namePlaceholder": "Ingresa el nombre de la sesi\u00f3n"
   },
   "cardDiscussionModal": {
     "discussion": "Discusi\u00f3n",

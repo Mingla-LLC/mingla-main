@@ -13,6 +13,7 @@ import {
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../ui/Icon';
 import * as Haptics from 'expo-haptics';
+import { useTranslation } from 'react-i18next';
 import { COUNTRIES } from '../../constants/countries';
 import { CountryData } from '../../types/onboarding';
 import { useKeyboard } from '../../hooks/useKeyboard';
@@ -50,6 +51,7 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
   onClose,
 }) => {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation(['onboarding']);
   const [search, setSearch] = useState('');
   const listRef = useRef<FlatList<CountryData>>(null);
 
@@ -150,7 +152,7 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
           onPress={handleClose}
           style={styles.closeButton}
           accessibilityRole="button"
-          accessibilityLabel="Close country picker"
+          accessibilityLabel={t('onboarding:country_picker.close_accessibility')}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Icon name="close" size={24} color={colors.text.primary} />
@@ -167,7 +169,7 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
         />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search countries..."
+          placeholder={t('onboarding:country_picker.search_placeholder')}
           placeholderTextColor={colors.gray[400]}
           value={search}
           onChangeText={handleSearch}

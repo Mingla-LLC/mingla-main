@@ -1,6 +1,11 @@
 {
   "language": {
-    "search_placeholder": "Search languages..."
+    "search_placeholder": "Search languages...",
+    "close_accessibility": "Close language picker"
+  },
+  "country_picker": {
+    "search_placeholder": "Search countries...",
+    "close_accessibility": "Close country picker"
   },
   "welcome": {
     "greeting_hey": "Hey",
@@ -118,7 +123,8 @@
     "search_placeholder": "Start typing your address...",
     "no_results": "Hmm, we didn't catch that. Try a nearby street or neighborhood.",
     "helper": "The more precise, the better your recommendations.",
-    "privacy": "Your exact location stays between us. Always."
+    "privacy": "Your exact location stays between us. Always.",
+    "change_accessibility": "Change selected location"
   },
   "categories": {
     "headline": "What kind of places do you love?",

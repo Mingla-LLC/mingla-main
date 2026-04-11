@@ -14,6 +14,7 @@ import {
 import { Icon } from "../ui/Icon";
 import { getDisplayName } from "../../utils/getDisplayName";
 import { supabase } from "../../services/supabase";
+import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../store/appStore";
 import { mixpanelService } from "../../services/mixpanelService";
 import { logAppsFlyerEvent } from "../../services/appsFlyerService";
@@ -45,6 +46,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
   onInvitesSent,
 }) => {
   const { user } = useAppStore();
+  const { t } = useTranslation(['board', 'common']);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFriends, setSelectedFriends] = useState<FriendItem[]>([]);
@@ -226,18 +228,18 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
           success_count: successCount,
         });
         Alert.alert(
-          "Invites Sent",
-          `Successfully invited ${successCount} friend${successCount > 1 ? "s" : ""} to "${sessionName}".`
+          t('board:inviteParticipantsModal.invitesSent'),
+          t('board:inviteParticipantsModal.invitesSentMsg', { count: successCount, plural: successCount > 1 ? "s" : "", name: sessionName })
         );
         onInvitesSent?.();
       } else {
-        Alert.alert("Error", "Failed to send invites. Please try again.");
+        Alert.alert(t('board:inviteParticipantsModal.error'), t('board:inviteParticipantsModal.errorSendInvites'));
       }
 
       onClose();
     } catch (err: any) {
       console.error("Error sending invites:", err);
-      Alert.alert("Error", "Failed to send invites. Please try again.");
+      Alert.alert(t('board:inviteParticipantsModal.error'), t('board:inviteParticipantsModal.errorSendInvites'));
     } finally {
       setSending(false);
     }
@@ -289,7 +291,7 @@ export const InviteParticipantsModal: React.FC<InviteParticipantsModalProps> = (
             />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search friends..."
+              placeholder={t('board:inviteParticipantsModal.searchPlaceholder')}
               placeholderTextColor="#9ca3af"
               value={searchQuery}
               onChangeText={setSearchQuery}

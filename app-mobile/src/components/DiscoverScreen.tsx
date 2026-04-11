@@ -2706,7 +2706,7 @@ export default function DiscoverScreen({
     { id: "any", label: t('discover:filters.any_price') },
     ...PRICE_TIERS.filter((tier) => tier.slug !== "any").map((tier) => ({
       id: tier.slug as PriceFilter,
-      label: `${tier.label} · ${tier.rangeLabel}`,
+      label: `${t(`common:tier_${tier.slug}`)} · ${t(`common:tier_range_${tier.slug}`)}`,
     })),
   ];
 

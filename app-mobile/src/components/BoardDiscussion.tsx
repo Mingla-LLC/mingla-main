@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Icon } from './ui/Icon';
+import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -174,6 +175,7 @@ export default function BoardDiscussion({
   onRemoveMember,
   onLeaveBoard,
 }: BoardDiscussionProps) {
+  const { t } = useTranslation(['board']);
   const [activeView, setActiveView] = useState<"cards" | "discussion">(
     propActiveTab || "cards"
   );
@@ -630,7 +632,7 @@ export default function BoardDiscussion({
                       ref={inputRef}
                       value={newMessage}
                       onChangeText={handleInputChange}
-                      placeholder="Message..."
+                      placeholder={t('board:boardDiscussionTab.messagePlaceholder')}
                       placeholderTextColor={colors.gray[400]}
                       style={styles.textInput}
                       multiline

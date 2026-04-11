@@ -34,7 +34,8 @@
     "change_time": "Change Time",
     "schedule_anyway": "Schedule Anyway",
     "scheduled_toast": "Scheduled! {{title}} has been moved to your calendar",
-    "closed_message": "This place is closed at the selected date and time. Tap \"Schedule\" to choose a different time."
+    "closed_message": "This place is closed at the selected date and time. Tap \"Schedule\" to choose a different time.",
+    "share_prompt": "Share {{title}} with friends"
   },
   "busyness": {
     "traffic": "Traffic",

@@ -34,7 +34,8 @@
     "change_time": "Cambiar hora",
     "schedule_anyway": "Agendar de todos modos",
     "scheduled_toast": "¡Agendado! {{title}} se ha movido a tu calendario",
-    "closed_message": "Este lugar está cerrado en la fecha y hora seleccionadas. Toca \"Agendar\" para elegir un horario diferente."
+    "closed_message": "Este lugar está cerrado en la fecha y hora seleccionadas. Toca \"Agendar\" para elegir un horario diferente.",
+    "share_prompt": "Compartir {{title}} con amigos"
   },
   "busyness": {
     "traffic": "Tráfico",

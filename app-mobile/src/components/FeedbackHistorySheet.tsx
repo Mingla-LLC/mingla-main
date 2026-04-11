@@ -153,7 +153,7 @@ function FeedbackItem({
               }}
               hitSlop={8}
               activeOpacity={0.7}
-              accessibilityLabel="Delete this feedback"
+              accessibilityLabel={t('feedback:history.delete_accessibility')}
             >
               <Icon name="trash" size={16} color={colors.gray[400]} />
             </TouchableOpacity>
@@ -307,7 +307,7 @@ export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHisto
           <TouchableOpacity
             style={styles.fullScreenClose}
             onPress={() => setFullScreenImageUrl(null)}
-            accessibilityLabel="Close screenshot"
+            accessibilityLabel={t('feedback:history.close_screenshot')}
           >
             <Icon name="close-circle" size={36} color="#fff" />
           </TouchableOpacity>

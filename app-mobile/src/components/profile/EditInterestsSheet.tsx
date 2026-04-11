@@ -140,7 +140,7 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
                       />
                     )}
                     <Text style={[styles.pillText, selected ? styles.selectedText : styles.unselectedText]}>
-                      {cat.name}
+                      {t(`common:category_${cat.slug}`)}
                     </Text>
                   </TouchableOpacity>
                 );

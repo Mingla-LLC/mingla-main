@@ -16,6 +16,7 @@ import { computePrefsHash } from "../utils/cardConverters";
 import { getDisplayName } from "../utils/getDisplayName";
 import { TIER_BY_SLUG, PRICE_TIERS, PriceTierSlug } from '../constants/priceTiers';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
+import i18n from '../i18n';
 
 export function useAppHandlers(state: any) {
   const queryClient = useQueryClient();
@@ -1051,7 +1052,7 @@ export function useAppHandlers(state: any) {
 
   const handleRemoveFromCalendar = async (entry: any) => {
     if (!user?.id) {
-      Alert.alert("Error", "You must be logged in to remove calendar entries.");
+      Alert.alert(i18n.t('common:error'), i18n.t('common:error_login_required'));
       return;
     }
 

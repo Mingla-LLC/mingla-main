@@ -89,5 +89,6 @@
   },
   "country_confirm_title": "Update country?",
   "country_confirm_body": "Changing to {{country}} will update your currency to {{currency}} ({{symbol}}) and units to {{measurement}}. Continue?",
-  "error_update": "Failed to update. Please try again."
+  "error_update": "Failed to update. Please try again.",
+  "close_accessibility": "Close account settings"
 }

@@ -11,6 +11,7 @@ import {
 import { Icon } from "../ui/Icon";
 import { getDisplayName } from "../../utils/getDisplayName";
 import { supabase } from "../../services/supabase";
+import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../store/appStore";
 import { colors } from "../../constants/colors";
 import { truncateString } from "../../utils/general";
@@ -55,6 +56,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
   onParticipantsChange,
 }) => {
   const { user } = useAppStore();
+  const { t } = useTranslation(['board', 'common']);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<{ userId: string; displayName: string } | null>(null);
@@ -456,7 +458,7 @@ export const ManageBoardModal: React.FC<ManageBoardModalProps> = ({
         userName,
       });
 
-      Alert.alert("Left Board", "You have successfully left the board.");
+      Alert.alert(t('board:manageBoardModal.leftBoard'), t('board:manageBoardModal.leftBoardMsg'));
 
       onExitBoard?.();
     } catch (error: any) {

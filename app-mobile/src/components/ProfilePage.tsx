@@ -254,7 +254,7 @@ export default function ProfilePage({
         Alert.alert(t('common:error'), t('profile:page.error_upload_photo'));
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to upload profile photo.");
+      Alert.alert(t('common:error'), t('profile:page.error_upload_photo'));
     } finally {
       setIsUploading(false);
     }

@@ -36,7 +36,9 @@
     "somewhere_cool": "En algún lugar genial, probablemente",
     "tap_to_add_bio": "Toca para añadir una biografía",
     "hint_add_photo": "La gente confía en los rostros. Añade una foto para que tus amigos sepan que eres tú.",
-    "hint_add_bio": "Una breve biografía marca la diferencia. ¿Qué deberían saber de ti?"
+    "hint_add_bio": "Una breve biografía marca la diferencia. ¿Qué deberían saber de ti?",
+    "cancel_editing": "Cancelar edición",
+    "save_name": "Guardar nombre"
   },
   "stats": {
     "saved": "GUARDADOS",
@@ -53,6 +55,9 @@
   },
   "paired_section": {
     "see_all": "Ver todo"
+  },
+  "interests": {
+    "edit_accessibility": "Editar tus intereses"
   },
   "friend": {
     "loading_profile": "Cargando perfil\u2026",

@@ -89,5 +89,6 @@
   },
   "country_confirm_title": "¿Actualizar país?",
   "country_confirm_body": "Cambiar a {{country}} actualizará tu moneda a {{currency}} ({{symbol}}) y las unidades a {{measurement}}. ¿Continuar?",
-  "error_update": "No se pudo actualizar. Inténtalo de nuevo."
+  "error_update": "No se pudo actualizar. Inténtalo de nuevo.",
+  "close_accessibility": "Cerrar configuración de cuenta"
 }

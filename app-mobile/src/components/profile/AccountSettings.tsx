@@ -481,7 +481,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
             <TouchableOpacity
               onPress={onClose}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel="Close account settings"
+              accessibilityLabel={t('settings:close_accessibility')}
               accessibilityRole="button"
             >
               <Icon name="close" size={24} color="#6b7280" />

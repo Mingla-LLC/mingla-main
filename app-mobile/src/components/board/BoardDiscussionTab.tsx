@@ -12,6 +12,7 @@ import {
   Platform,
 } from "react-native";
 import { Icon } from "../ui/Icon";
+import { useTranslation } from "react-i18next";
 import { getDisplayName } from "../../utils/getDisplayName";
 import {
   BoardMessageService,
@@ -51,6 +52,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
   onUnreadCountChange,
 }) => {
   const { user } = useAppStore();
+  const { t } = useTranslation(['board', 'common']);
   const networkState = useNetworkMonitor();
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<BoardMessage[]>([]);
@@ -242,7 +244,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
       }
     } catch (err: any) {
       console.error("Error updating message:", err);
-      Alert.alert("Error", "Failed to update message");
+      Alert.alert(t('board:boardDiscussionTab.error'), t('board:boardDiscussionTab.errorUpdateMsg'));
     }
   }, [editingMessage, messageText, user?.id]);
 
@@ -252,12 +254,12 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
       if (!user?.id) return;
 
       Alert.alert(
-        "Delete Message",
-        "Are you sure you want to delete this message?",
+        t('board:boardDiscussionTab.deleteMessage'),
+        t('board:boardDiscussionTab.deleteMessageConfirm'),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: t('board:boardDiscussionTab.cancel'), style: "cancel" },
           {
-            text: "Delete",
+            text: t('board:boardDiscussionTab.delete'),
             style: "destructive",
             onPress: async () => {
               try {
@@ -271,7 +273,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
                 setMessages((prev) => prev.filter((m) => m.id !== messageId));
               } catch (err: any) {
                 console.error("Error deleting message:", err);
-                Alert.alert("Error", "Failed to delete message");
+                Alert.alert(t('board:boardDiscussionTab.error'), t('board:boardDiscussionTab.errorDeleteMsg'));
               }
             },
           },
@@ -776,7 +778,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
         <View style={styles.inputWrapper}>
           <TextInput
             style={[styles.input, isInputFocused && styles.inputFocused]}
-            placeholder="Type @ to mention, # to tag a card..."
+            placeholder={t('board:boardDiscussionTab.inputPlaceholder')}
             placeholderTextColor="#999"
             value={messageText}
             onChangeText={(text) => {

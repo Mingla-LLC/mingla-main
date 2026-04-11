@@ -6,6 +6,7 @@ import { Pencil, Sparkles } from 'lucide-react-native';
 import { ONBOARDING_INTENTS } from '../../types/onboarding';
 import { categories as allCategories } from '../../constants/categories';
 import { INTENT_ICON_MAP, CATEGORY_ICON_MAP } from '../../constants/interestIcons';
+import { useTranslation } from 'react-i18next';
 
 interface ProfileInterestsSectionProps {
   intents: string[];
@@ -26,6 +27,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
   onEditPress,
   sectionTitle,
 }) => {
+  const { t } = useTranslation(['profile', 'common']);
   const hasInterests = intents.length > 0 || categories.length > 0;
   const headerTitle = sectionTitle ?? (isOwnProfile ? 'Your Interests' : 'Interests');
   const intentData = ONBOARDING_INTENTS.filter((i) => intents.includes(i.id));
@@ -86,7 +88,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
             onPress={onEditPress}
             style={styles.editButton}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            accessibilityLabel="Edit your interests"
+            accessibilityLabel={t('profile:interests.edit_accessibility')}
             accessibilityRole="button"
           >
             <Pencil size={14} color="#6b7280" strokeWidth={2.5} />
@@ -148,7 +150,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
                   {CatIcon && (
                     <CatIcon size={14} color="#374151" strokeWidth={2} />
                   )}
-                  <Text style={styles.categoryText}>{cat.name}</Text>
+                  <Text style={styles.categoryText}>{t(`common:category_${cat.slug}`)}</Text>
                 </View>
               </Animated.View>
             );

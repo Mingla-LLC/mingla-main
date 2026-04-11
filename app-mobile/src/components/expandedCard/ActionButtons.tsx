@@ -366,7 +366,7 @@ export default function ActionButtons({
     try {
       await onSave(card);
     } catch (error: any) {
-      Alert.alert("Error", t('expanded_details:action_buttons.error_save'));
+      Alert.alert(t('common:error'), t('expanded_details:action_buttons.error_save'));
     } finally {
       setIsSaving(false);
     }
@@ -503,7 +503,7 @@ export default function ActionButtons({
 
   const proceedWithScheduling = async (scheduledDateTime: Date, skipStopCheck = false) => {
     if (!user?.id) {
-      Alert.alert("Error", t('expanded_details:action_buttons.error_login'));
+      Alert.alert(t('common:error'), t('expanded_details:action_buttons.error_login'));
       setIsScheduling(false);
       return;
     }
@@ -669,7 +669,7 @@ export default function ActionButtons({
     if (onShare) {
       onShare(card);
     } else {
-      Alert.alert("Share", `Share ${card.title} with friends`);
+      Alert.alert(t('expanded_details:action_buttons.share_prompt', { title: card.title }));
     }
   };
 

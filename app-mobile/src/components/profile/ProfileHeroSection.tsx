@@ -215,7 +215,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
               onPress={cancelEditing}
               disabled={isSavingName}
               hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-              accessibilityLabel="Cancel editing"
+              accessibilityLabel={t('profile:hero.cancel_editing')}
               accessibilityRole="button"
             >
               <Icon name="close" size={18} color="#6b7280" />
@@ -225,7 +225,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
               onPress={saveName}
               disabled={isSavingName}
               hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-              accessibilityLabel="Save name"
+              accessibilityLabel={t('profile:hero.save_name')}
               accessibilityRole="button"
             >
               {isSavingName ? (
