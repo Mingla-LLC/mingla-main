@@ -1,0 +1,30 @@
+{
+  "page": {
+    "account_section": "CUENTA",
+    "billing_label": "Facturación",
+    "billing_description": "Administra tu plan y suscripción",
+    "account_settings_label": "Configuración de cuenta",
+    "account_settings_description": "Privacidad, preferencias y gestión de cuenta",
+    "upload_profile_photo_title": "Subir foto de perfil",
+    "upload_profile_photo_body": "Elige cómo quieres actualizar tu foto de perfil",
+    "change_profile_photo_title": "Cambiar foto de perfil",
+    "change_profile_photo_body": "Sube una nueva foto o elimina la existente",
+    "error_remove_photo": "No se pudo eliminar la foto de perfil.",
+    "error_take_photo": "No se pudo tomar la foto. Inténtalo de nuevo.",
+    "error_select_image": "No se pudo seleccionar la imagen. Inténtalo de nuevo.",
+    "error_upload_photo": "No se pudo subir la foto de perfil.",
+    "error_save_bio": "No se pudo guardar la biografía."
+  },
+  "friend": {
+    "loading_profile": "Cargando perfil\u2026",
+    "profile_unavailable_title": "Este perfil no está disponible",
+    "profile_unavailable_body": "El perfil de esta persona puede ser privado, o puede que no estén conectados.",
+    "about": "Acerca de",
+    "location_label": "Ubicación",
+    "not_shared": "No compartido",
+    "mingla_level": "Nivel Mingla",
+    "interests": "Intereses",
+    "message": "Mensaje",
+    "friend_fallback": "Amigo"
+  }
+}

@@ -44,5 +44,19 @@
   "apply": "Aplicar",
   "messages": "Mensajes",
   "copy_link": "Copiar enlace",
-  "copy_message": "Copiar mensaje"
+  "copy_message": "Copiar mensaje",
+  "ok": "OK",
+  "remove": "Eliminar",
+  "submit": "Enviar",
+  "play": "Reproducir",
+  "pause": "Pausar",
+  "loading": "Cargando...",
+  "sign_out": "Cerrar sesión",
+  "go_back": "Volver",
+  "take_photo": "Tomar foto",
+  "upload": "Subir",
+  "privacy_policy": "Política de privacidad",
+  "terms_of_service": "Términos de servicio",
+  "remove_photo": "Eliminar foto",
+  "choose_from_gallery": "Elegir de la galería"
 }

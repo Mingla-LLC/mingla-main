@@ -18,6 +18,7 @@ import { Icon } from './ui/Icon';
 import { colors, spacing, radius, typography, fontWeights } from '../constants/designSystem';
 import { useFeedbackHistory, useDeleteFeedback } from '../hooks/useBetaFeedback';
 import { betaFeedbackService, type BetaFeedback, type FeedbackCategory } from '../services/betaFeedbackService';
+import { useTranslation } from 'react-i18next';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -28,12 +29,7 @@ interface FeedbackHistorySheetProps {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-const CATEGORY_LABELS: Record<FeedbackCategory, string> = {
-  bug: 'Bug',
-  feature_request: 'Feature',
-  ux_issue: 'UX Issue',
-  general: 'General',
-};
+// Category labels resolved via i18n inside FeedbackItem component
 
 const CATEGORY_COLORS: Record<FeedbackCategory, string> = {
   bug: colors.error[500],
@@ -42,12 +38,7 @@ const CATEGORY_COLORS: Record<FeedbackCategory, string> = {
   general: colors.gray[500],
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  new: 'New',
-  reviewed: 'Reviewed',
-  actioned: 'Actioned',
-  dismissed: 'Dismissed',
-};
+// Status labels resolved via i18n inside FeedbackItem component
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -74,6 +65,19 @@ function FeedbackItem({
   onDelete: (item: BetaFeedback) => void;
   isDeleting: boolean;
 }) {
+  const { t } = useTranslation(['feedback', 'common']);
+  const CATEGORY_LABELS: Record<FeedbackCategory, string> = {
+    bug: t('feedback:history.category_bug'),
+    feature_request: t('feedback:history.category_feature'),
+    ux_issue: t('feedback:history.category_ux'),
+    general: t('feedback:history.category_general'),
+  };
+  const STATUS_LABELS: Record<string, string> = {
+    new: t('feedback:history.status_new'),
+    reviewed: t('feedback:history.status_reviewed'),
+    actioned: t('feedback:history.status_actioned'),
+    dismissed: t('feedback:history.status_dismissed'),
+  };
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
@@ -139,11 +143,11 @@ function FeedbackItem({
             <TouchableOpacity
               onPress={() => {
                 Alert.alert(
-                  'Delete Feedback',
-                  "Delete this feedback? This can't be undone.",
+                  t('feedback:history.delete_title'),
+                  t('feedback:history.delete_body'),
                   [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Delete', style: 'destructive', onPress: () => onDelete(item) },
+                    { text: t('common:cancel'), style: 'cancel' },
+                    { text: t('common:delete'), style: 'destructive', onPress: () => onDelete(item) },
                   ],
                 );
               }}
@@ -169,13 +173,15 @@ function FeedbackItem({
         ) : (
           <Icon name={isPlaying ? 'pause' : 'play'} size={18} color={colors.primary[500]} />
         )}
-        <Text style={styles.playLabel}>{isPlaying ? 'Pause' : 'Play recording'}</Text>
+        <Text style={styles.playLabel}>{isPlaying ? t('common:pause') : t('feedback:history.play_recording')}</Text>
       </TouchableOpacity>
 
       {item.screenshot_urls && item.screenshot_urls.length > 0 && (
         <View style={styles.screenshotSection}>
           <Text style={styles.screenshotCountText}>
-            {item.screenshot_urls.length} screenshot{item.screenshot_urls.length > 1 ? 's' : ''}
+            {item.screenshot_urls.length > 1
+              ? t('feedback:history.screenshot_count_plural', { count: item.screenshot_urls.length })
+              : t('feedback:history.screenshot_count', { count: item.screenshot_urls.length })}
           </Text>
           <ScrollView
             horizontal
@@ -206,6 +212,7 @@ function FeedbackItem({
 // ── Main Component ──────────────────────────────────────────────────────────
 
 export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHistorySheetProps) {
+  const { t } = useTranslation(['feedback', 'common']);
   const insets = useSafeAreaInsets();
   const { data: history, isLoading, isError } = useFeedbackHistory();
   const [fullScreenImageUrl, setFullScreenImageUrl] = useState<string | null>(null);
@@ -221,7 +228,7 @@ export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHisto
         screenshotPaths: item.screenshot_paths,
       });
     } catch {
-      Alert.alert('Error', "Couldn't delete feedback. Try again.");
+      Alert.alert(t('common:error'), t('feedback:history.delete_error'));
     } finally {
       setDeletingId(null);
     }
@@ -230,7 +237,7 @@ export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHisto
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <Icon name="chatbubble-outline" size={40} color={colors.gray[300]} />
-      <Text style={styles.emptyText}>No feedback submitted yet</Text>
+      <Text style={styles.emptyText}>{t('feedback:history.empty')}</Text>
     </View>
   );
 
@@ -245,7 +252,7 @@ export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHisto
           <View style={styles.header}>
             <View style={styles.handle} />
             <View style={styles.headerRow}>
-              <Text style={styles.headerTitle}>Feedback History</Text>
+              <Text style={styles.headerTitle}>{t('feedback:history.header')}</Text>
               <TouchableOpacity onPress={onClose} hitSlop={8}>
                 <Icon name="close" size={24} color={colors.gray[400]} />
               </TouchableOpacity>
@@ -260,7 +267,7 @@ export default function FeedbackHistorySheet({ visible, onClose }: FeedbackHisto
           ) : isError ? (
             <View style={styles.emptyContainer}>
               <Icon name="alert-circle" size={40} color={colors.error[400]} />
-              <Text style={styles.emptyText}>Failed to load history</Text>
+              <Text style={styles.emptyText}>{t('feedback:history.load_error')}</Text>
             </View>
           ) : (
             <FlatList

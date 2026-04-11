@@ -42,6 +42,7 @@ import { withTimeout } from "../utils/withTimeout";
 import { useToast } from "./ToastManager";
 import { showMutationError } from "../utils/showMutationError";
 import { getDisplayName } from "../utils/getDisplayName";
+import { useTranslation } from 'react-i18next';
 
 // Sub-components
 import { ChatListItem } from "./connections/ChatListItem";
@@ -119,6 +120,7 @@ export default function ConnectionsPageRefactored({
   onOpenDirectMessageHandled,
 }: ConnectionsPageProps) {
   useScreenLogger('connections');
+  const { t } = useTranslation(['connections', 'common']);
   const coachChatHeader = useCoachMark(10, 0);
   const user = useAppStore((state) => state.user);
   const { height: screenHeight } = useWindowDimensions();
@@ -386,7 +388,7 @@ export default function ConnectionsPageRefactored({
         console.warn("[ConnectionsPage] fetchConversations timed out — network may be recovering after background");
       } else {
         console.error("Error fetching conversations:", err);
-        setError("Failed to load conversations");
+        setError(t('connections:failed_load'));
       }
     } finally {
       setConversationsLoading(false);
@@ -444,7 +446,7 @@ export default function ConnectionsPageRefactored({
       try {
         const inviteLink = `https://mingla.app/invite/${user?.id || ""}`;
         Clipboard.setString(inviteLink);
-        Alert.alert("", "Invite link copied!");
+        Alert.alert("", t('connections:invite_link_copied'));
       } catch (e) {
         console.error("Error copying invite link:", e);
       }
@@ -500,11 +502,11 @@ export default function ConnectionsPageRefactored({
         );
         HapticFeedback.light();
       } else {
-        Alert.alert("Error", muteError || "Failed to update mute status.");
+        Alert.alert(t('common:error'), muteError || t('connections:mute_error'));
       }
     } catch (e) {
       console.error("Error toggling mute:", e);
-      Alert.alert("Error", "Failed to update mute status.");
+      Alert.alert(t('common:error'), t('connections:mute_error'));
     } finally {
       setMuteLoadingFriendId(null);
     }
@@ -514,12 +516,12 @@ export default function ConnectionsPageRefactored({
     const friendUserId = friend.user_id === user?.id ? friend.friend_user_id : friend.user_id;
     const displayName = getFriendDisplayNameFromUseFriend(friend);
     Alert.alert(
-      "Remove Friend",
-      `Are you sure you want to remove ${displayName} from your friends?`,
+      t('connections:remove_friend_title'),
+      t('connections:remove_friend_body', { name: displayName }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t('common:cancel'), style: "cancel" },
         {
-          text: "Remove",
+          text: t('common:remove'),
           style: "destructive",
           onPress: () => {
             HapticFeedback.warning();
@@ -1241,8 +1243,8 @@ export default function ConnectionsPageRefactored({
     // No network call on the send path. RLS enforces server-side as the real authority.
     if (activeChatIsBlocked || blockedUsers.some((b) => b.id === activeChat.id)) {
       Alert.alert(
-        "Message Not Sent",
-        "Messaging is not available with this user. One of you may have blocked the other."
+        t('connections:message_not_sent'),
+        t('connections:message_blocked')
       );
       return;
     }
@@ -1283,7 +1285,7 @@ export default function ConnectionsPageRefactored({
         if (uploadError) {
           console.error("Error uploading file:", uploadError);
           setUploadingFile(false);
-          Alert.alert("Upload Error", "Failed to upload file. Please try again.");
+          Alert.alert(t('connections:upload_error_title'), t('connections:upload_error_body'));
           return;
         }
 
@@ -1295,7 +1297,7 @@ export default function ConnectionsPageRefactored({
       } catch (e) {
         console.error("Error uploading file:", e);
         setUploadingFile(false);
-        Alert.alert("Upload Error", "Failed to upload file. Please try again.");
+        Alert.alert(t('connections:upload_error_title'), t('connections:upload_error_body'));
         return;
       }
     }
@@ -1380,13 +1382,13 @@ export default function ConnectionsPageRefactored({
           sendError?.includes("policy")
         ) {
           Alert.alert(
-            "Message Not Sent",
-            "You cannot send messages to this user. They may have blocked you or you may have blocked them."
+            t('connections:message_not_sent'),
+            t('connections:message_blocked_alt')
           );
         } else {
           Alert.alert(
-            "Message Not Sent",
-            "Failed to send message. Please check your connection and try again."
+            t('connections:message_not_sent'),
+            t('connections:message_failed')
           );
         }
         return;
@@ -1515,12 +1517,12 @@ export default function ConnectionsPageRefactored({
 
   const handleRemoveFriend = (friend: Friend) => {
     Alert.alert(
-      "Remove Friend",
-      `Are you sure you want to remove ${friend.name} as a friend?`,
+      t('connections:remove_friend_title'),
+      t('connections:remove_friend_body_alt', { name: friend.name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t('common:cancel'), style: "cancel" },
         {
-          text: "Remove",
+          text: t('common:remove'),
           style: "destructive",
           onPress: () => {
             onRemoveFriend?.(friend);
@@ -1554,18 +1556,18 @@ export default function ConnectionsPageRefactored({
           isMuted ? [...prev, friend.id] : prev.filter((id) => id !== friend.id)
         );
         Alert.alert(
-          isMuted ? "Friend Muted" : "Friend Unmuted",
+          isMuted ? t('connections:muted_title') : t('connections:unmuted_title'),
           isMuted
-            ? `You will no longer receive notifications from ${friend.name}.`
-            : `You will now receive notifications from ${friend.name}.`,
-          [{ text: "OK" }]
+            ? t('connections:muted_body', { name: friend.name })
+            : t('connections:unmuted_body', { name: friend.name }),
+          [{ text: t('common:ok') }]
         );
       } else {
-        Alert.alert("Error", muteError || "Failed to update mute status.");
+        Alert.alert(t('common:error'), muteError || t('connections:mute_error'));
       }
     } catch (e) {
       console.error("Error toggling mute:", e);
-      Alert.alert("Error", "Failed to update mute status.");
+      Alert.alert(t('common:error'), t('connections:mute_error'));
     } finally {
       setMuteLoadingFriendId(null);
     }
@@ -1615,19 +1617,19 @@ export default function ConnectionsPageRefactored({
       setSelectedUserToReport(null);
       if (result.success) {
         Alert.alert(
-          "Report Submitted",
-          "Thank you for your report. Our moderation team will review it shortly.",
-          [{ text: "OK" }]
+          t('connections:report_submitted_title'),
+          t('connections:report_submitted_body'),
+          [{ text: t('common:ok') }]
         );
         onReportUser?.(selectedUserToReport, true);
       } else {
-        Alert.alert("Report Failed", result.error || "Unable to submit report.", [{ text: "OK" }]);
+        Alert.alert(t('connections:report_failed_title'), result.error || t('connections:report_failed_body'), [{ text: t('common:ok') }]);
       }
     } catch (e) {
       console.error("Error submitting report:", e);
       setShowReportModal(false);
       setSelectedUserToReport(null);
-      Alert.alert("Error", "An unexpected error occurred.", [{ text: "OK" }]);
+      Alert.alert(t('common:error'), t('connections:unexpected_error'), [{ text: t('common:ok') }]);
     }
   };
 
@@ -1638,7 +1640,7 @@ export default function ConnectionsPageRefactored({
       <>
         <View style={styles.container}>
           <View style={styles.headerRow}>
-            <Text style={styles.title}>Chats</Text>
+            <Text style={styles.title}>{t('connections:title')}</Text>
             <View style={styles.headerActions}>
               <TouchableOpacity
                 onPress={() => handleActionPress("add")}
@@ -1676,7 +1678,7 @@ export default function ConnectionsPageRefactored({
                 loadFriendRequests();
               }}
             >
-              <Text style={styles.retryButtonText}>Try Again</Text>
+              <Text style={styles.retryButtonText}>{t('common:try_again')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1700,7 +1702,7 @@ export default function ConnectionsPageRefactored({
               <View style={styles.sheetHandle} />
               <View style={styles.sheetHeader}>
                 <Text style={styles.sheetTitle}>
-                  {activePanel === "add" ? "Add Friend" : "Friends"}
+                  {activePanel === "add" ? t('connections:add_friend') : t('connections:friends')}
                 </Text>
                 <TouchableOpacity onPress={() => { dismissKeyboard(); setActivePanel(null); }} activeOpacity={0.7}>
                   <Icon name="close" size={24} color="#6b7280" />
@@ -1734,7 +1736,7 @@ export default function ConnectionsPageRefactored({
                         activeOpacity={0.7}
                       >
                         <Text style={[styles.tabText, friendsModalTab === "friends" && styles.tabTextActive]}>
-                          Friends
+                          {t('connections:friends')}
                         </Text>
                       </TouchableOpacity>
 
@@ -1744,7 +1746,7 @@ export default function ConnectionsPageRefactored({
                         activeOpacity={0.7}
                       >
                         <Text style={[styles.tabText, friendsModalTab === "requests" && styles.tabTextActive]}>
-                          Requests
+                          {t('connections:requests')}
                         </Text>
                         {incomingRequests.length > 0 && (
                           <View style={styles.tabBadge}>
@@ -1895,7 +1897,7 @@ export default function ConnectionsPageRefactored({
         <View style={styles.content}>
           {/* Compact header: title + action icons */}
           <View ref={coachChatHeader.targetRef as any} style={styles.headerRow}>
-            <Text style={styles.title}>Chats</Text>
+            <Text style={styles.title}>{t('connections:title')}</Text>
             <View style={styles.headerActions}>
               <TouchableOpacity
                 onPress={() => handleActionPress("add")}
@@ -1957,7 +1959,7 @@ export default function ConnectionsPageRefactored({
               style={styles.searchIcon}
             />
             <TextInput
-              placeholder="Search chats..."
+              placeholder={t('connections:search_placeholder')}
               value={searchQuery}
               onChangeText={setSearchQuery}
               style={styles.searchInput}
@@ -1980,21 +1982,21 @@ export default function ConnectionsPageRefactored({
             <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.emptyContainer}>
               <Icon name="chatbubbles-outline" size={56} color="#d1d5db" />
-              <Text style={styles.emptyTitle}>Your chats live here</Text>
-              <Text style={styles.emptySubtitle}>Tap the compose button to start a conversation</Text>
+              <Text style={styles.emptyTitle}>{t('connections:empty_title')}</Text>
+              <Text style={styles.emptySubtitle}>{t('connections:empty_subtitle')}</Text>
               <TouchableOpacity
                 onPress={() => setFriendPickerVisible(true)}
                 style={styles.emptyCtaButton}
                 activeOpacity={0.7}
               >
-                <Text style={styles.emptyCtaText}>Start a chat</Text>
+                <Text style={styles.emptyCtaText}>{t('connections:start_chat')}</Text>
               </TouchableOpacity>
             </View>
             </TouchableWithoutFeedback>
           ) : filteredConversations.length === 0 && searchQuery.trim() ? (
             <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>No results for "{searchQuery}"</Text>
+              <Text style={styles.emptyTitle}>{t('connections:no_results', { query: searchQuery })}</Text>
             </View>
             </TouchableWithoutFeedback>
           ) : (

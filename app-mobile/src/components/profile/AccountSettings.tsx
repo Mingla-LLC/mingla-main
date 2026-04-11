@@ -32,6 +32,7 @@ import { CountryPickerModal } from "../onboarding/CountryPickerModal";
 import { getCountryByCode } from "../../constants/countries";
 import { getCurrencyByCountryCode, getMeasurementSystem } from "../../services/countryCurrencyService";
 import { GENDER_OPTIONS, GENDER_DISPLAY_LABELS } from "../../types/onboarding";
+import { useTranslation } from 'react-i18next';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -54,16 +55,7 @@ const LANGUAGE_OPTIONS = [
 ] as const;
 
 const VISIBILITY_MODES = ["friends", "public", "private"] as const;
-const VISIBILITY_LABELS: Record<string, string> = {
-  friends: "Friends Only",
-  public: "Everyone",
-  private: "Nobody",
-};
-const VISIBILITY_DESCRIPTIONS: Record<string, string> = {
-  friends: "Only people you've linked with can see your profile.",
-  public: "Anyone on Mingla can find you and see your profile.",
-  private: "You're invisible. No one can see your profile — full ghost mode.",
-};
+// Visibility labels/descriptions are now handled via i18n keys in the component
 
 // --- Accordion section IDs ---
 type SectionId = "basics" | "privacy" | "notifications" | "quietHours" | "appInfo";
@@ -86,6 +78,17 @@ interface AccountSettingsProps {
 }
 
 export default function AccountSettings({ user, onSignOut, visible, onClose, notificationsEnabled = true, onNotificationsToggle }: AccountSettingsProps) {
+  const { t } = useTranslation(['settings', 'common']);
+  const VISIBILITY_LABELS: Record<string, string> = {
+    friends: t('settings:privacy.friends_only'),
+    public: t('settings:privacy.everyone'),
+    private: t('settings:privacy.nobody'),
+  };
+  const VISIBILITY_DESCRIPTIONS: Record<string, string> = {
+    friends: t('settings:privacy.friends_only_desc'),
+    public: t('settings:privacy.everyone_desc'),
+    private: t('settings:privacy.nobody_desc'),
+  };
   const insets = useSafeAreaInsets();
   const profile = useAppStore((s) => s.profile);
   const { settings: mapSettings, updateSettings: updateMapSettings } = useMapSettings();
@@ -193,7 +196,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
       );
     if (error) {
       setNotifPrefs(prev);
-      Alert.alert("Error", "Failed to update notification setting.");
+      Alert.alert(t('common:error'), t('settings:notifications.error_update'));
     }
   };
 
@@ -210,7 +213,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
       );
     if (error) {
       setDmBypassQuietHours(prev);
-      Alert.alert("Error", "Failed to update quiet hours setting.");
+      Alert.alert(t('common:error'), t('settings:quiet_hours.error_update'));
     }
   };
 
@@ -236,7 +239,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
       }
       mixpanelService.trackProfileSettingUpdated({ field });
     } catch {
-      Alert.alert("Error", "Failed to update. Please try again.");
+      Alert.alert(t('common:error'), t('settings:error_update'));
     } finally {
       setSavingField(null);
     }
@@ -282,12 +285,12 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
     const countryName = getCountryByCode(newCountryCode)?.name ?? newCountryCode;
 
     Alert.alert(
-      "Update country?",
-      `Changing to ${countryName} will update your currency to ${newCurrency} (${newSymbol}) and units to ${newMeasurement}. Continue?`,
+      t('settings:country_confirm_title'),
+      t('settings:country_confirm_body', { country: countryName, currency: newCurrency, symbol: newSymbol, measurement: newMeasurement }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t('common:cancel'), style: "cancel" },
         {
-          text: "Continue",
+          text: t('common:continue'),
           onPress: async () => {
             setSavingField("country");
             try {
@@ -307,7 +310,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               mixpanelService.trackProfileSettingUpdated({ field: "country" });
             } catch {
-              Alert.alert("Error", "Failed to update. Please try again.");
+              Alert.alert(t('common:error'), t('settings:error_update'));
             } finally {
               setSavingField(null);
             }
@@ -327,7 +330,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
   const executeDeleteAccount = async () => {
     if (deleteInProgressRef.current) return;
     if (!user?.id) {
-      setDeleteError("You must be signed in to delete your account.");
+      setDeleteError(t('settings:delete.error_must_sign_in'));
       setDeleteStep("error");
       return;
     }
@@ -388,10 +391,10 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
             return;
           }
         } catch { /* fall through */ }
-        setDeleteError("This is taking longer than expected. Your account may already be deleted — try closing and reopening the app.");
+        setDeleteError(t('settings:delete.error_timeout'));
         setDeleteStep("error");
       } else {
-        const errorMsg = e instanceof Error ? e.message : "Could not delete account. Please try again.";
+        const errorMsg = e instanceof Error ? e.message : t('settings:delete.error_default');
         setDeleteError(errorMsg);
         setDeleteStep("error");
       }
@@ -474,7 +477,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
 
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Settings</Text>
+            <Text style={styles.headerTitle}>{t('settings:header')}</Text>
             <TouchableOpacity
               onPress={onClose}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -496,13 +499,13 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
             {/* Section 1: The Basics (accordion) */}
             <AccordionCard
               icon="person-circle"
-              title="The Basics"
+              title={t('settings:basics.title')}
               expanded={expandedSections.has("basics")}
               onToggle={() => toggleSection("basics")}
             >
               {/* Country */}
               <TouchableOpacity style={styles.row} onPress={() => setShowCountryPicker(true)} activeOpacity={0.7}>
-                <Text style={styles.rowLabel}>Country</Text>
+                <Text style={styles.rowLabel}>{t('settings:basics.country')}</Text>
                 <View style={styles.rowRight}>
                   {savingField === "country" ? (
                     <ActivityIndicator size="small" color="#eb7825" />
@@ -510,24 +513,24 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                     <Text style={[styles.rowValue, !profile?.country && styles.rowPlaceholder]}>
                       {profile?.country
                         ? `${getCountryByCode(profile.country)?.flag ?? ""} ${getCountryByCode(profile.country)?.name ?? profile.country}`
-                        : "Not set"}
+                        : t('settings:basics.not_set')}
                     </Text>
                   )}
                   <Icon name="chevron-forward" size={16} color="#9ca3af" />
                 </View>
               </TouchableOpacity>
-              <Text style={styles.rowHelper}>Affects currency and units across the app</Text>
+              <Text style={styles.rowHelper}>{t('settings:basics.country_hint')}</Text>
               <View style={styles.rowDivider} />
 
               {/* Birthday */}
               <TouchableOpacity style={styles.row} onPress={() => setShowBirthdayPicker(true)} activeOpacity={0.7}>
-                <Text style={styles.rowLabel}>Birthday</Text>
+                <Text style={styles.rowLabel}>{t('settings:basics.birthday')}</Text>
                 <View style={styles.rowRight}>
                   {savingField === "birthday" ? (
                     <ActivityIndicator size="small" color="#eb7825" />
                   ) : (
                     <Text style={[styles.rowValue, !birthday && styles.rowPlaceholder]}>
-                      {birthday ? formatBirthday(birthday) : "When's the party?"}
+                      {birthday ? formatBirthday(birthday) : t('settings:basics.birthday_placeholder')}
                     </Text>
                   )}
                   <Icon name="chevron-forward" size={16} color="#9ca3af" />
@@ -538,7 +541,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
 
               {/* Gender */}
               <TouchableOpacity style={styles.row} onPress={() => setShowGenderPicker(true)} activeOpacity={0.7}>
-                <Text style={styles.rowLabel}>Gender</Text>
+                <Text style={styles.rowLabel}>{t('settings:basics.gender')}</Text>
                 <View style={styles.rowRight}>
                   {savingField === "gender" ? (
                     <ActivityIndicator size="small" color="#eb7825" />
@@ -546,7 +549,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                     <Text style={[styles.rowValue, !gender && styles.rowPlaceholder]}>
                       {gender
                         ? GENDER_DISPLAY_LABELS[gender] ?? gender
-                        : "How do you identify?"}
+                        : t('settings:basics.gender_placeholder')}
                     </Text>
                   )}
                   <Icon name="chevron-forward" size={16} color="#9ca3af" />
@@ -557,13 +560,13 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
 
               {/* Preferred Language */}
               <TouchableOpacity style={styles.row} onPress={() => setShowLanguagePicker(true)} activeOpacity={0.7}>
-                <Text style={styles.rowLabel}>Language</Text>
+                <Text style={styles.rowLabel}>{t('settings:basics.language')}</Text>
                 <View style={styles.rowRight}>
                   {savingField === "preferred_language" ? (
                     <ActivityIndicator size="small" color="#eb7825" />
                   ) : (
                     <Text style={[styles.rowValue, !preferredLanguage && styles.rowPlaceholder]}>
-                      {getLanguageName(preferredLanguage) || "Choose your language"}
+                      {getLanguageName(preferredLanguage) || t('settings:basics.language_placeholder')}
                     </Text>
                   )}
                   <Icon name="chevron-forward" size={16} color="#9ca3af" />
@@ -574,14 +577,14 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
             {/* Section 2: Privacy (accordion) */}
             <AccordionCard
               icon="lock-closed"
-              title="Privacy"
+              title={t('settings:privacy.title')}
               expanded={expandedSections.has("privacy")}
               onToggle={() => toggleSection("privacy")}
             >
               {/* Profile Visibility */}
               <TouchableOpacity style={[styles.row, styles.rowMultiline]} onPress={handleCycleVisibility} activeOpacity={0.7}>
                 <View style={styles.rowLabelWrap}>
-                  <Text style={styles.rowLabel}>Profile Visibility</Text>
+                  <Text style={styles.rowLabel}>{t('settings:privacy.profile_visibility')}</Text>
                   <Text style={styles.rowHint}>
                     {VISIBILITY_DESCRIPTIONS[currentVisibility] || ""}
                   </Text>
@@ -591,7 +594,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                     <ActivityIndicator size="small" color="#eb7825" />
                   ) : (
                     <Text style={styles.rowValueBold}>
-                      {VISIBILITY_LABELS[currentVisibility] || "Friends Only"}
+                      {VISIBILITY_LABELS[currentVisibility] || t('settings:privacy.friends_only')}
                     </Text>
                   )}
                   <Icon name="chevron-forward" size={16} color="#9ca3af" />
@@ -603,11 +606,11 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
               {/* Show Activity */}
               <View style={[styles.row, styles.rowMultiline]}>
                 <View style={styles.rowLabelWrap}>
-                  <Text style={styles.rowLabel}>Show Activity</Text>
+                  <Text style={styles.rowLabel}>{t('settings:privacy.show_activity')}</Text>
                   <Text style={styles.rowHint}>
                     {showActivity
-                      ? "Friends can see what you've been up to lately."
-                      : "Your activity is hidden from everyone."}
+                      ? t('settings:privacy.show_activity_on')
+                      : t('settings:privacy.show_activity_off')}
                   </Text>
                 </View>
                 <Toggle value={showActivity} onToggle={handleToggleShowActivity} />
@@ -618,8 +621,8 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
               {/* Notifications - legacy toggle */}
               <View style={[styles.row, styles.rowMultiline]}>
                 <View style={styles.rowLabelWrap}>
-                  <Text style={styles.rowLabel}>Notifications</Text>
-                  <Text style={styles.rowHint}>Invites, boards, and messages</Text>
+                  <Text style={styles.rowLabel}>{t('settings:privacy.notifications')}</Text>
+                  <Text style={styles.rowHint}>{t('settings:privacy.notifications_hint')}</Text>
                 </View>
                 <Toggle
                   value={notificationsEnabled}
@@ -638,15 +641,15 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
             {/* Section 3: Notification Settings (accordion) */}
             <AccordionCard
               icon="notifications"
-              title="Notification Settings"
+              title={t('settings:notifications.title')}
               expanded={expandedSections.has("notifications")}
               onToggle={() => toggleSection("notifications")}
             >
               {/* Master toggle */}
               <View style={[styles.row, styles.rowMultiline]}>
                 <View style={styles.rowLabelWrap}>
-                  <Text style={styles.rowLabel}>Push Notifications</Text>
-                  <Text style={styles.rowHint}>Receive push notifications on your device</Text>
+                  <Text style={styles.rowLabel}>{t('settings:notifications.push_notifications')}</Text>
+                  <Text style={styles.rowHint}>{t('settings:notifications.push_hint')}</Text>
                 </View>
                 <Toggle
                   value={notifPrefs.push_enabled ?? true}
@@ -660,8 +663,8 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                   <View style={styles.rowDivider} />
                   <View style={[styles.row, styles.rowMultiline]}>
                     <View style={styles.rowLabelWrap}>
-                      <Text style={styles.rowLabel}>Friends & Pairing</Text>
-                      <Text style={styles.rowHint}>Friend requests, pair requests, and social updates</Text>
+                      <Text style={styles.rowLabel}>{t('settings:notifications.friends_pairing')}</Text>
+                      <Text style={styles.rowHint}>{t('settings:notifications.friends_pairing_hint')}</Text>
                     </View>
                     <Toggle
                       value={notifPrefs.friend_requests ?? true}
@@ -672,8 +675,8 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                   <View style={styles.rowDivider} />
                   <View style={[styles.row, styles.rowMultiline]}>
                     <View style={styles.rowLabelWrap}>
-                      <Text style={styles.rowLabel}>Link Requests</Text>
-                      <Text style={styles.rowHint}>When someone wants to link profiles with you</Text>
+                      <Text style={styles.rowLabel}>{t('settings:notifications.link_requests')}</Text>
+                      <Text style={styles.rowHint}>{t('settings:notifications.link_requests_hint')}</Text>
                     </View>
                     <Toggle
                       value={notifPrefs.link_requests ?? true}
@@ -684,8 +687,8 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                   <View style={styles.rowDivider} />
                   <View style={[styles.row, styles.rowMultiline]}>
                     <View style={styles.rowLabelWrap}>
-                      <Text style={styles.rowLabel}>Messages</Text>
-                      <Text style={styles.rowHint}>Direct messages and session chat</Text>
+                      <Text style={styles.rowLabel}>{t('settings:notifications.messages')}</Text>
+                      <Text style={styles.rowHint}>{t('settings:notifications.messages_hint')}</Text>
                     </View>
                     <Toggle
                       value={notifPrefs.messages ?? true}
@@ -696,8 +699,8 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                   <View style={styles.rowDivider} />
                   <View style={[styles.row, styles.rowMultiline]}>
                     <View style={styles.rowLabelWrap}>
-                      <Text style={styles.rowLabel}>Sessions</Text>
-                      <Text style={styles.rowHint}>Invites, member updates, and board activity</Text>
+                      <Text style={styles.rowLabel}>{t('settings:notifications.sessions')}</Text>
+                      <Text style={styles.rowHint}>{t('settings:notifications.sessions_hint')}</Text>
                     </View>
                     <Toggle
                       value={notifPrefs.collaboration_invites ?? true}
@@ -708,8 +711,8 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                   <View style={styles.rowDivider} />
                   <View style={[styles.row, styles.rowMultiline]}>
                     <View style={styles.rowLabelWrap}>
-                      <Text style={styles.rowLabel}>Tips & Re-engagement</Text>
-                      <Text style={styles.rowHint}>Occasional nudges, weekly digest, and recommendations</Text>
+                      <Text style={styles.rowLabel}>{t('settings:notifications.tips_reengagement')}</Text>
+                      <Text style={styles.rowHint}>{t('settings:notifications.tips_hint')}</Text>
                     </View>
                     <Toggle
                       value={notifPrefs.marketing ?? true}
@@ -723,24 +726,24 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
             {/* Section 4: Quiet Hours (accordion) */}
             <AccordionCard
               icon="moon"
-              title="Quiet Hours"
+              title={t('settings:quiet_hours.title')}
               expanded={expandedSections.has("quietHours")}
               onToggle={() => toggleSection("quietHours")}
             >
               <View style={[styles.row, styles.rowMultiline]}>
                 <View style={styles.rowLabelWrap}>
-                  <Text style={styles.rowLabel}>Quiet Hours</Text>
-                  <Text style={styles.rowHint}>10 PM - 8 AM</Text>
+                  <Text style={styles.rowLabel}>{t('settings:quiet_hours.label')}</Text>
+                  <Text style={styles.rowHint}>{t('settings:quiet_hours.schedule')}</Text>
                 </View>
-                <Text style={styles.rowValueMuted}>Active</Text>
+                <Text style={styles.rowValueMuted}>{t('settings:quiet_hours.active')}</Text>
               </View>
 
               <View style={styles.rowDivider} />
 
               <View style={[styles.row, styles.rowMultiline]}>
                 <View style={styles.rowLabelWrap}>
-                  <Text style={styles.rowLabel}>Messages during quiet hours</Text>
-                  <Text style={styles.rowHint}>Allow DMs between 10 PM - 8 AM</Text>
+                  <Text style={styles.rowLabel}>{t('settings:quiet_hours.messages_label')}</Text>
+                  <Text style={styles.rowHint}>{t('settings:quiet_hours.messages_hint')}</Text>
                 </View>
                 <Toggle
                   value={dmBypassQuietHours}
@@ -752,12 +755,12 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
             {/* Section 5: App Information (accordion) */}
             <AccordionCard
               icon="information-circle"
-              title="App Information"
+              title={t('settings:app_info.title')}
               expanded={expandedSections.has("appInfo")}
               onToggle={() => toggleSection("appInfo")}
             >
               <View style={styles.row}>
-                <Text style={styles.rowLabel}>App Version</Text>
+                <Text style={styles.rowLabel}>{t('settings:app_info.app_version')}</Text>
                 <Text style={styles.rowValueMuted}>1.0.0</Text>
               </View>
             </AccordionCard>
@@ -766,7 +769,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
             <View style={[styles.card, styles.dangerCard]}>
               <View style={styles.cardHeaderStatic}>
                 <Icon name="trash" size={20} color="#ef4444" />
-                <Text style={[styles.cardTitle, styles.dangerTitle]}>The Red Zone</Text>
+                <Text style={[styles.cardTitle, styles.dangerTitle]}>{t('settings:delete.title')}</Text>
               </View>
 
               <TouchableOpacity
@@ -781,12 +784,12 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                   <Icon name="trash" size={16} color="#dc2626" />
                 )}
                 <Text style={styles.deleteButtonText}>
-                  {isDeleting ? "Deleting\u2026" : "Delete My Account"}
+                  {isDeleting ? t('settings:delete.deleting') : t('settings:delete.button')}
                 </Text>
               </TouchableOpacity>
 
               <Text style={styles.dangerWarning}>
-                This permanently deletes your data, your boards, and your history. There's no undo.
+                {t('settings:delete.warning')}
               </Text>
             </View>
 
@@ -801,7 +804,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
         <Pressable style={styles.pickerOverlay} onPress={() => setShowGenderPicker(false)}>
           <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.pickerHandle} />
-            <Text style={styles.pickerTitle}>Gender</Text>
+            <Text style={styles.pickerTitle}>{t('settings:pickers.gender_title')}</Text>
             {GENDER_OPTIONS.map((option) => (
               <TouchableOpacity
                 key={option}
@@ -825,7 +828,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
         <Pressable style={styles.pickerOverlay} onPress={() => setShowLanguagePicker(false)}>
           <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.pickerHandle} />
-            <Text style={styles.pickerTitle}>Language</Text>
+            <Text style={styles.pickerTitle}>{t('settings:pickers.language_title')}</Text>
             {LANGUAGE_OPTIONS.map((lang) => (
               <TouchableOpacity
                 key={lang.code}
@@ -849,7 +852,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
         <Pressable style={styles.pickerOverlay} onPress={() => setShowBirthdayPicker(false)}>
           <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.pickerHandle} />
-            <Text style={styles.pickerTitle}>Birthday</Text>
+            <Text style={styles.pickerTitle}>{t('settings:pickers.birthday_title')}</Text>
             <BirthdayPicker
               currentValue={birthday}
               onSelect={handleSelectBirthday}
@@ -881,16 +884,16 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                 <View style={styles.deleteIconCircle}>
                   <Icon name="warning" size={48} color="#ef4444" />
                 </View>
-                <Text style={styles.deleteModalTitle}>Are you sure?</Text>
+                <Text style={styles.deleteModalTitle}>{t('settings:delete.confirm_title')}</Text>
                 <Text style={styles.deleteModalBody}>
-                  Deleting your account removes everything — your profile, boards, links, and activity. This can't be reversed.
+                  {t('settings:delete.confirm_body')}
                 </Text>
                 <View style={styles.deleteModalButtons}>
                   <TouchableOpacity style={styles.deleteModalConfirm} onPress={executeDeleteAccount}>
-                    <Text style={styles.deleteModalConfirmText}>Delete my account</Text>
+                    <Text style={styles.deleteModalConfirmText}>{t('settings:delete.confirm_button')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.deleteModalCancel} onPress={closeDeleteModal}>
-                    <Text style={styles.deleteModalCancelText}>Never mind</Text>
+                    <Text style={styles.deleteModalCancelText}>{t('settings:delete.confirm_cancel')}</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -898,9 +901,9 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
             {deleteStep === "deleting" && (
               <>
                 <ActivityIndicator size="large" color="#ef4444" style={styles.deleteSpinner} />
-                <Text style={styles.deleteModalTitle}>We're sad to see you go</Text>
-                <Text style={styles.deleteModalBody}>Packing up your things and sweeping the floors.</Text>
-                <Text style={styles.deleteModalSub}>This takes a moment. Hang tight.</Text>
+                <Text style={styles.deleteModalTitle}>{t('settings:delete.deleting_title')}</Text>
+                <Text style={styles.deleteModalBody}>{t('settings:delete.deleting_body')}</Text>
+                <Text style={styles.deleteModalSub}>{t('settings:delete.deleting_sub')}</Text>
               </>
             )}
             {deleteStep === "success" && (
@@ -908,9 +911,9 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                 <View style={[styles.deleteIconCircle, styles.deleteIconSuccess]}>
                   <Icon name="checkmark-circle" size={48} color="#10b981" />
                 </View>
-                <Text style={styles.deleteModalTitle}>Account Deleted</Text>
-                <Text style={styles.deleteModalBody}>You're always welcome back. We'll leave the light on.</Text>
-                <Text style={styles.deleteModalSub}>Signing you out now. Until next time.</Text>
+                <Text style={styles.deleteModalTitle}>{t('settings:delete.success_title')}</Text>
+                <Text style={styles.deleteModalBody}>{t('settings:delete.success_body')}</Text>
+                <Text style={styles.deleteModalSub}>{t('settings:delete.success_sub')}</Text>
               </>
             )}
             {deleteStep === "error" && (
@@ -918,14 +921,14 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                 <View style={styles.deleteIconCircle}>
                   <Icon name="close-circle" size={48} color="#ef4444" />
                 </View>
-                <Text style={styles.deleteModalTitle}>That Didn't Work</Text>
-                <Text style={styles.deleteModalBody}>{deleteError || "Something went wrong. Please try again."}</Text>
+                <Text style={styles.deleteModalTitle}>{t('settings:delete.error_title')}</Text>
+                <Text style={styles.deleteModalBody}>{deleteError || t('settings:delete.error_default')}</Text>
                 <View style={styles.deleteModalButtons}>
                   <TouchableOpacity style={styles.deleteModalCancel} onPress={closeDeleteModal}>
-                    <Text style={styles.deleteModalCancelText}>Cancel</Text>
+                    <Text style={styles.deleteModalCancelText}>{t('common:cancel')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.deleteModalConfirm, styles.deleteRetryButton]} onPress={() => { setDeleteStep("confirm"); setDeleteError(null); }}>
-                    <Text style={styles.deleteModalConfirmText}>Try Again</Text>
+                    <Text style={styles.deleteModalConfirmText}>{t('common:try_again')}</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -990,6 +993,7 @@ interface BirthdayPickerProps {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function BirthdayPicker({ currentValue, onSelect, onCancel }: BirthdayPickerProps) {
+  const { t } = useTranslation(['settings', 'common']);
   const now = new Date();
   const parsed = currentValue ? new Date(currentValue + "T00:00:00") : null;
 
@@ -1008,7 +1012,7 @@ function BirthdayPicker({ currentValue, onSelect, onCancel }: BirthdayPickerProp
   const handleConfirm = () => {
     const selected = new Date(year, month, day);
     if (selected > now) {
-      Alert.alert("Invalid date", "Birthday can't be in the future.");
+      Alert.alert(t('settings:pickers.invalid_date'), t('settings:pickers.birthday_future'));
       return;
     }
     const m = String(month + 1).padStart(2, "0");
@@ -1020,7 +1024,7 @@ function BirthdayPicker({ currentValue, onSelect, onCancel }: BirthdayPickerProp
     <View style={bdStyles.container}>
       <View style={bdStyles.row}>
         <View style={bdStyles.column}>
-          <Text style={bdStyles.colLabel}>Month</Text>
+          <Text style={bdStyles.colLabel}>{t('settings:pickers.birthday_month')}</Text>
           <ScrollView style={bdStyles.scroll} showsVerticalScrollIndicator={false}>
             {MONTHS.map((m, i) => (
               <TouchableOpacity
@@ -1034,7 +1038,7 @@ function BirthdayPicker({ currentValue, onSelect, onCancel }: BirthdayPickerProp
           </ScrollView>
         </View>
         <View style={bdStyles.column}>
-          <Text style={bdStyles.colLabel}>Day</Text>
+          <Text style={bdStyles.colLabel}>{t('settings:pickers.birthday_day')}</Text>
           <ScrollView style={bdStyles.scroll} showsVerticalScrollIndicator={false}>
             {days.map((d) => (
               <TouchableOpacity
@@ -1048,7 +1052,7 @@ function BirthdayPicker({ currentValue, onSelect, onCancel }: BirthdayPickerProp
           </ScrollView>
         </View>
         <View style={bdStyles.column}>
-          <Text style={bdStyles.colLabel}>Year</Text>
+          <Text style={bdStyles.colLabel}>{t('settings:pickers.birthday_year')}</Text>
           <ScrollView style={bdStyles.scroll} showsVerticalScrollIndicator={false}>
             {years.map((y) => (
               <TouchableOpacity
@@ -1064,10 +1068,10 @@ function BirthdayPicker({ currentValue, onSelect, onCancel }: BirthdayPickerProp
       </View>
       <View style={bdStyles.buttons}>
         <TouchableOpacity style={bdStyles.cancelBtn} onPress={onCancel}>
-          <Text style={bdStyles.cancelText}>Cancel</Text>
+          <Text style={bdStyles.cancelText}>{t('common:cancel')}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={bdStyles.confirmBtn} onPress={handleConfirm}>
-          <Text style={bdStyles.confirmText}>Set Birthday</Text>
+          <Text style={bdStyles.confirmText}>{t('settings:pickers.set_birthday')}</Text>
         </TouchableOpacity>
       </View>
     </View>

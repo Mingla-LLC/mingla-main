@@ -1,0 +1,93 @@
+{
+  "header": "Configuración",
+  "basics": {
+    "title": "Lo básico",
+    "country": "País",
+    "country_hint": "Afecta la moneda y las unidades en toda la app",
+    "not_set": "No establecido",
+    "birthday": "Cumpleaños",
+    "birthday_placeholder": "¿Cuándo es la fiesta?",
+    "gender": "Género",
+    "gender_placeholder": "¿Cómo te identificas?",
+    "language": "Idioma",
+    "language_placeholder": "Elige tu idioma"
+  },
+  "privacy": {
+    "title": "Privacidad",
+    "profile_visibility": "Visibilidad del perfil",
+    "friends_only": "Solo amigos",
+    "everyone": "Todos",
+    "nobody": "Nadie",
+    "friends_only_desc": "Solo las personas con las que te has vinculado pueden ver tu perfil.",
+    "everyone_desc": "Cualquier persona en Mingla puede encontrarte y ver tu perfil.",
+    "nobody_desc": "Eres invisible. Nadie puede ver tu perfil — modo fantasma total.",
+    "show_activity": "Mostrar actividad",
+    "show_activity_on": "Tus amigos pueden ver lo que has estado haciendo últimamente.",
+    "show_activity_off": "Tu actividad está oculta para todos.",
+    "notifications": "Notificaciones",
+    "notifications_hint": "Invitaciones, tableros y mensajes"
+  },
+  "notifications": {
+    "title": "Configuración de notificaciones",
+    "push_notifications": "Notificaciones push",
+    "push_hint": "Recibe notificaciones push en tu dispositivo",
+    "friends_pairing": "Amigos y emparejamiento",
+    "friends_pairing_hint": "Solicitudes de amistad, solicitudes de emparejamiento y actualizaciones sociales",
+    "link_requests": "Solicitudes de vínculo",
+    "link_requests_hint": "Cuando alguien quiere vincular perfiles contigo",
+    "messages": "Mensajes",
+    "messages_hint": "Mensajes directos y chat de sesión",
+    "sessions": "Sesiones",
+    "sessions_hint": "Invitaciones, actualizaciones de miembros y actividad de tableros",
+    "tips_reengagement": "Consejos y reactivación",
+    "tips_hint": "Recordatorios ocasionales, resumen semanal y recomendaciones",
+    "error_update": "No se pudo actualizar la configuración de notificaciones."
+  },
+  "quiet_hours": {
+    "title": "Horas de silencio",
+    "label": "Horas de silencio",
+    "schedule": "10 PM - 8 AM",
+    "active": "Activo",
+    "messages_label": "Mensajes durante horas de silencio",
+    "messages_hint": "Permitir mensajes directos entre 10 PM - 8 AM",
+    "error_update": "No se pudo actualizar la configuración de horas de silencio."
+  },
+  "app_info": {
+    "title": "Información de la app",
+    "app_version": "Versión de la app"
+  },
+  "delete": {
+    "title": "La zona roja",
+    "button": "Eliminar mi cuenta",
+    "deleting": "Eliminando\u2026",
+    "warning": "Esto elimina permanentemente tus datos, tableros e historial. No hay vuelta atrás.",
+    "confirm_title": "¿Estás seguro?",
+    "confirm_body": "Eliminar tu cuenta borra todo — tu perfil, tableros, vínculos y actividad. No se puede revertir.",
+    "confirm_button": "Eliminar mi cuenta",
+    "confirm_cancel": "No importa",
+    "deleting_title": "Nos entristece verte partir",
+    "deleting_body": "Empacando tus cosas y barriendo los pisos.",
+    "deleting_sub": "Esto toma un momento. Ten paciencia.",
+    "success_title": "Cuenta eliminada",
+    "success_body": "Siempre eres bienvenido de vuelta. Dejaremos la luz encendida.",
+    "success_sub": "Cerrando tu sesión ahora. Hasta la próxima.",
+    "error_title": "Eso no funcionó",
+    "error_default": "Algo salió mal. Inténtalo de nuevo.",
+    "error_must_sign_in": "Debes haber iniciado sesión para eliminar tu cuenta.",
+    "error_timeout": "Esto está tardando más de lo esperado. Tu cuenta puede que ya haya sido eliminada — intenta cerrar y reabrir la app."
+  },
+  "pickers": {
+    "gender_title": "Género",
+    "language_title": "Idioma",
+    "birthday_title": "Cumpleaños",
+    "birthday_month": "Mes",
+    "birthday_day": "Día",
+    "birthday_year": "Año",
+    "set_birthday": "Establecer cumpleaños",
+    "invalid_date": "Fecha inválida",
+    "birthday_future": "El cumpleaños no puede ser en el futuro."
+  },
+  "country_confirm_title": "¿Actualizar país?",
+  "country_confirm_body": "Cambiar a {{country}} actualizará tu moneda a {{currency}} ({{symbol}}) y las unidades a {{measurement}}. ¿Continuar?",
+  "error_update": "No se pudo actualizar. Inténtalo de nuevo."
+}

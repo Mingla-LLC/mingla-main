@@ -14,6 +14,7 @@ import SavedTab from "./activity/SavedTab";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboard } from '../hooks/useKeyboard';
+import { useTranslation } from 'react-i18next';
 
 interface SavedExperiencesPageProps {
   isTabVisible?: boolean;
@@ -59,25 +60,7 @@ const ALL_FILTER_OPTIONS = [
   ...ALL_EXPERIENCE_TYPES,
 ];
 
-const matchScoreOptions = [
-  { label: "Any", value: null },
-  { label: "70+", value: 70 },
-  { label: "80+", value: 80 },
-  { label: "90+", value: 90 },
-];
-
-const dateRangeOptions: { label: string; value: DateRangeFilter }[] = [
-  { label: "All time", value: "all" },
-  { label: "Last 7 days", value: "7" },
-  { label: "Last 30 days", value: "30" },
-];
-
-const sortOptions: { label: string; value: SortOption }[] = [
-  { label: "Newest first", value: "newest" },
-  { label: "Oldest first", value: "oldest" },
-  { label: "Match score (high to low)", value: "matchHigh" },
-  { label: "Match score (low to high)", value: "matchLow" },
-];
+// These are now built inside the component using t() for i18n
 
 interface DropdownProps {
   label: string;
@@ -92,7 +75,7 @@ const Dropdown: React.FC<DropdownProps> = ({
   value,
   options,
   onSelect,
-  placeholder = "Select...",
+  placeholder,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const selectedOption = options.find((opt) => opt.value === value);
@@ -177,6 +160,28 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
   onShareCard,
 }) => {
   useScreenLogger('saved');
+  const { t } = useTranslation(['saved', 'common']);
+
+  const matchScoreOptions = [
+    { label: t('saved:match_any'), value: null },
+    { label: t('saved:match_70'), value: 70 },
+    { label: t('saved:match_80'), value: 80 },
+    { label: t('saved:match_90'), value: 90 },
+  ];
+
+  const dateRangeOptions: { label: string; value: DateRangeFilter }[] = [
+    { label: t('saved:date_all'), value: "all" },
+    { label: t('saved:date_7'), value: "7" },
+    { label: t('saved:date_30'), value: "30" },
+  ];
+
+  const sortOptions: { label: string; value: SortOption }[] = [
+    { label: t('saved:sort_newest'), value: "newest" },
+    { label: t('saved:sort_oldest'), value: "oldest" },
+    { label: t('saved:sort_match_high'), value: "matchHigh" },
+    { label: t('saved:sort_match_low'), value: "matchLow" },
+  ];
+
   const insets = useSafeAreaInsets();
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
   const [searchQuery, setSearchQuery] = useState("");
@@ -282,7 +287,7 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
     return (
       <View style={styles.loadingContainer}>
         <Icon name="heart" size={28} color="#eb7825" />
-        <Text style={styles.loadingText}>Loading your saved experiences...</Text>
+        <Text style={styles.loadingText}>{t('saved:loading')}</Text>
       </View>
     );
   }
@@ -297,14 +302,14 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
       >
         <View style={styles.header}>
           <View>
-            <Text style={styles.title}>Saved experiences</Text>
+            <Text style={styles.title}>{t('saved:title')}</Text>
             <Text style={styles.subtitle}>
-              {savedCards?.length || 0} total • {filteredCards.length} shown
+              {t('saved:total_shown', { total: savedCards?.length || 0, shown: filteredCards.length })}
             </Text>
           </View>
           <View style={styles.badge}>
             <Icon name="bookmark" size={16} color="#eb7825" />
-            <Text style={styles.badgeText}>Library</Text>
+            <Text style={styles.badgeText}>{t('saved:library')}</Text>
           </View>
         </View>
 
@@ -312,7 +317,7 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
         <View style={styles.searchContainer}>
           <Icon name="search" size={18} color="#9CA3AF" />
           <TextInput
-            placeholder="Search saved experiences"
+            placeholder={t('saved:search_placeholder')}
             placeholderTextColor="#9CA3AF"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -325,22 +330,22 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
           {/* Category Filter */}
           <View style={styles.filterHalf}>
             <Dropdown
-              label="Category"
+              label={t('saved:category_label')}
               value={selectedCategory || "All"}
               options={categoryOptions}
               onSelect={(value) => setSelectedCategory(value)}
-              placeholder="All categories"
+              placeholder={t('saved:all_categories')}
             />
           </View>
 
           {/* Match Score Filter */}
           <View style={styles.filterHalf}>
             <Dropdown
-              label="Match Score"
+              label={t('saved:match_score_label')}
               value={String(matchScoreFilter ?? '')}
               options={matchScoreOptions}
               onSelect={(value) => setMatchScoreFilter(value)}
-              placeholder="Any score"
+              placeholder={t('saved:any_score')}
             />
           </View>
         </View>
@@ -350,7 +355,7 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
           {/* Date Range Filter */}
           <View style={styles.filterHalf}>
             <Dropdown
-              label="Date Range"
+              label={t('saved:date_range_label')}
               value={dateRangeFilter}
               options={dateRangeOptions}
               onSelect={(value) => setDateRangeFilter(value)}
@@ -360,7 +365,7 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
           {/* Sort Filter */}
           <View style={styles.filterHalf}>
             <Dropdown
-              label="Sort By"
+              label={t('saved:sort_label')}
               value={sortOption}
               options={sortOptions}
               onSelect={(value) => setSortOption(value)}

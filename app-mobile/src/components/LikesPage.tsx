@@ -11,6 +11,7 @@ import CalendarTab from "./activity/CalendarTab";
 import { useAppState } from "./AppStateManager";
 import { mixpanelService } from "../services/mixpanelService";
 import { useScreenLogger } from "../hooks/useScreenLogger";
+import { useTranslation } from 'react-i18next';
 // Tab types for Likes screen
 export type LikesTab = "saved" | "calendar";
 
@@ -24,9 +25,10 @@ const LikesTabs: React.FC<LikesTabsProps> = ({
   activeTab,
   onTabChange,
 }) => {
+  const { t } = useTranslation(['saved']);
   const tabs: Array<{ id: LikesTab; label: string; icon: string }> = [
-    { id: "saved", label: "Saved", icon: "bookmark" },
-    { id: "calendar", label: "Calendar", icon: "calendar" },
+    { id: "saved", label: t('saved:tab_saved'), icon: "bookmark" },
+    { id: "calendar", label: t('saved:tab_calendar'), icon: "calendar" },
   ];
 
   return (

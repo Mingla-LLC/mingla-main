@@ -34,6 +34,7 @@ import { useScreenLogger } from "../hooks/useScreenLogger";
 import BetaFeedbackButton from "./BetaFeedbackButton";
 import InAppBrowserModal from "./InAppBrowserModal";
 import { LEGAL_URLS } from "../constants/urls";
+import { useTranslation } from 'react-i18next';
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -67,6 +68,7 @@ export default function ProfilePage({
   userIdentity,
 }: ProfilePageProps) {
   useScreenLogger('profile');
+  const { t } = useTranslation(['profile', 'common']);
   const insets = useSafeAreaInsets();
   const [legalBrowserVisible, setLegalBrowserVisible] = useState(false);
   const [legalBrowserUrl, setLegalBrowserUrl] = useState('');
@@ -181,20 +183,20 @@ export default function ProfilePage({
 
   // Avatar upload handlers
   const showUploadOptions = () => {
-    Alert.alert("Upload Profile Photo", "Choose how you want to update your profile photo", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Take Photo", onPress: handleTakePhoto },
-      { text: "Choose from Gallery", onPress: handlePickFromLibrary },
+    Alert.alert(t('profile:page.upload_profile_photo_title'), t('profile:page.upload_profile_photo_body'), [
+      { text: t('common:cancel'), style: "cancel" },
+      { text: t('common:take_photo'), onPress: handleTakePhoto },
+      { text: t('common:choose_from_gallery'), onPress: handlePickFromLibrary },
     ]);
   };
 
   const handleAvatarChange = () => {
     if (userIdentity?.profileImage) {
-      Alert.alert("Change Profile Photo", "Upload a new photo or remove the existing one", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Upload", onPress: showUploadOptions },
+      Alert.alert(t('profile:page.change_profile_photo_title'), t('profile:page.change_profile_photo_body'), [
+        { text: t('common:cancel'), style: "cancel" },
+        { text: t('common:upload'), onPress: showUploadOptions },
         {
-          text: "Remove Photo",
+          text: t('common:remove_photo'),
           style: "destructive",
           onPress: async () => {
             if (!user?.id) return;
@@ -204,7 +206,7 @@ export default function ProfilePage({
               onUserIdentityUpdate?.({ ...(userIdentity || {}), profileImage: null });
               mixpanelService.trackProfilePictureUpdated("removed");
             } catch (error) {
-              Alert.alert("Error", "Failed to remove profile photo.");
+              Alert.alert(t('common:error'), t('profile:page.error_remove_photo'));
             } finally {
               setIsUploading(false);
             }
@@ -224,7 +226,7 @@ export default function ProfilePage({
       });
       if (result?.uri) await uploadAvatar(result.uri);
     } catch (error) {
-      Alert.alert("Error", "Failed to take photo. Please try again.");
+      Alert.alert(t('common:error'), t('profile:page.error_take_photo'));
     }
   };
 
@@ -236,7 +238,7 @@ export default function ProfilePage({
       });
       if (result?.uri) await uploadAvatar(result.uri);
     } catch (error) {
-      Alert.alert("Error", "Failed to select image. Please try again.");
+      Alert.alert(t('common:error'), t('profile:page.error_select_image'));
     }
   };
 
@@ -249,7 +251,7 @@ export default function ProfilePage({
         onUserIdentityUpdate?.({ ...(userIdentity || {}), profileImage: publicUrl });
         mixpanelService.trackProfilePictureUpdated("uploaded");
       } else {
-        Alert.alert("Error", "Failed to upload profile photo.");
+        Alert.alert(t('common:error'), t('profile:page.error_upload_photo'));
       }
     } catch (error) {
       Alert.alert("Error", "Failed to upload profile photo.");
@@ -282,7 +284,7 @@ export default function ProfilePage({
     try {
       await authService.updateBio(user.id, bio);
     } catch (error) {
-      Alert.alert("Error", "Failed to save bio.");
+      Alert.alert(t('common:error'), t('profile:page.error_save_bio'));
     }
   };
 
@@ -347,19 +349,19 @@ export default function ProfilePage({
 
           {/* 4. Account Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>ACCOUNT</Text>
+            <Text style={styles.sectionLabel}>{t('profile:page.account_section')}</Text>
             <SettingsRow
               icon="credit-card"
-              label="Billing"
-              description="Manage your plan and subscription"
+              label={t('profile:page.billing_label')}
+              description={t('profile:page.billing_description')}
               showChevron
               onPress={() => setShowBillingSheet(true)}
             />
             <View ref={accountSettingsRef} collapsable={false}>
               <SettingsRow
                 icon="shield"
-                label="Account Settings"
-                description="Privacy, preferences, and account management"
+                label={t('profile:page.account_settings_label')}
+                description={t('profile:page.account_settings_description')}
                 showChevron
                 onPress={() => setShowAccountSettings(true)}
                 isLast
@@ -374,25 +376,25 @@ export default function ProfilePage({
           <View style={styles.legalRow}>
             <TouchableOpacity onPress={() => {
               setLegalBrowserUrl(LEGAL_URLS.privacyPolicy);
-              setLegalBrowserTitle('Privacy Policy');
+              setLegalBrowserTitle(t('common:privacy_policy'));
               setLegalBrowserVisible(true);
             }}>
-              <Text style={styles.legalLink}>Privacy Policy</Text>
+              <Text style={styles.legalLink}>{t('common:privacy_policy')}</Text>
             </TouchableOpacity>
             <Text style={styles.legalSeparator}>|</Text>
             <TouchableOpacity onPress={() => {
               setLegalBrowserUrl(LEGAL_URLS.termsOfService);
-              setLegalBrowserTitle('Terms of Service');
+              setLegalBrowserTitle(t('common:terms_of_service'));
               setLegalBrowserVisible(true);
             }}>
-              <Text style={styles.legalLink}>Terms of Service</Text>
+              <Text style={styles.legalLink}>{t('common:terms_of_service')}</Text>
             </TouchableOpacity>
           </View>
 
           {/* 7. Sign Out */}
           <View style={styles.signOutSection}>
             <TouchableOpacity onPress={onSignOut} style={styles.signOutButton}>
-              <Text style={styles.signOutText}>Sign Out</Text>
+              <Text style={styles.signOutText}>{t('common:sign_out')}</Text>
             </TouchableOpacity>
           </View>
         </View>

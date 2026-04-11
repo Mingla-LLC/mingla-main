@@ -32,6 +32,7 @@ import { getDeviceInfo } from '../services/deviceInfoService';
 import { getSessionDurationMs } from '../services/sessionTracker';
 import { useSubmitFeedback } from '../hooks/useBetaFeedback';
 import { useAppStore } from '../store/appStore';
+import { useTranslation } from 'react-i18next';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -49,12 +50,14 @@ interface CategoryOption {
   icon: string;
 }
 
-const CATEGORIES: CategoryOption[] = [
-  { key: 'bug', label: 'Bug', icon: 'alert-circle' },
-  { key: 'feature_request', label: 'Feature Request', icon: 'star' },
-  { key: 'ux_issue', label: 'UX Issue', icon: 'alert-triangle' },
-  { key: 'general', label: 'General', icon: 'chatbubble-outline' },
-];
+// Category labels resolved via i18n inside component
+const CATEGORY_ICONS: Record<FeedbackCategory, string> = {
+  bug: 'alert-circle',
+  feature_request: 'star',
+  ux_issue: 'alert-triangle',
+  general: 'chatbubble-outline',
+};
+const CATEGORY_KEYS: FeedbackCategory[] = ['bug', 'feature_request', 'ux_issue', 'general'];
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -72,8 +75,21 @@ export default function BetaFeedbackModal({
   onClose,
   screenBefore,
 }: BetaFeedbackModalProps) {
+  const { t } = useTranslation(['feedback', 'common']);
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
+
+  const CATEGORY_LABEL_MAP: Record<FeedbackCategory, string> = {
+    bug: t('feedback:modal.category_bug'),
+    feature_request: t('feedback:modal.category_feature'),
+    ux_issue: t('feedback:modal.category_ux'),
+    general: t('feedback:modal.category_general'),
+  };
+  const CATEGORIES: CategoryOption[] = CATEGORY_KEYS.map((key) => ({
+    key,
+    label: CATEGORY_LABEL_MAP[key],
+    icon: CATEGORY_ICONS[key],
+  }));
   const submitMutation = useSubmitFeedback();
 
   // State
@@ -159,7 +175,7 @@ export default function BetaFeedbackModal({
   const startRecording = async () => {
     const started = await feedbackRecorder.startRecording();
     if (!started) {
-      setErrorMessage('Recording failed. Please try again.');
+      setErrorMessage(t('feedback:modal.error_recording_failed'));
       setStep('error');
       return;
     }
@@ -190,14 +206,14 @@ export default function BetaFeedbackModal({
 
     const result = await feedbackRecorder.stopRecording();
     if (!result) {
-      setErrorMessage('Recording failed. Please try again.');
+      setErrorMessage(t('feedback:modal.error_recording_failed'));
       setStep('error');
       return;
     }
 
     // Enforce minimum duration
     if (result.durationMs < MIN_FEEDBACK_DURATION_MS) {
-      setErrorMessage('Recording too short — please record at least 3 seconds.');
+      setErrorMessage(t('feedback:modal.error_too_short'));
       setStep('error');
       return;
     }
@@ -271,7 +287,7 @@ export default function BetaFeedbackModal({
 
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      setPermissionMessage('Photo library access is needed to attach screenshots');
+      setPermissionMessage(t('feedback:modal.permission_photos'));
       return;
     }
     setPermissionMessage('');
@@ -375,8 +391,8 @@ export default function BetaFeedbackModal({
 
   const renderCategory = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>What kind of feedback?</Text>
-      <Text style={styles.stepSubtitle}>Select a category, then record your thoughts</Text>
+      <Text style={styles.stepTitle}>{t('feedback:modal.category_title')}</Text>
+      <Text style={styles.stepSubtitle}>{t('feedback:modal.category_subtitle')}</Text>
 
       <View style={styles.categoryGrid}>
         {CATEGORIES.map((cat) => {
@@ -411,24 +427,24 @@ export default function BetaFeedbackModal({
         activeOpacity={0.7}
       >
         <Icon name="mic-outline" size={20} color={colors.text.inverse} />
-        <Text style={styles.primaryButtonText}>Start Recording</Text>
+        <Text style={styles.primaryButtonText}>{t('feedback:modal.start_recording')}</Text>
       </TouchableOpacity>
     </View>
   );
 
   const renderRecording = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Recording...</Text>
+      <Text style={styles.stepTitle}>{t('feedback:modal.recording_title')}</Text>
 
       <View style={styles.timerContainer}>
         <View style={styles.recordingDot} />
         <Text style={styles.timerText}>{formatTimer(elapsedMs)}</Text>
-        <Text style={styles.timerLimit}> / 05:00</Text>
+        <Text style={styles.timerLimit}> {t('feedback:modal.timer_limit')}</Text>
       </View>
 
       <View style={styles.recordingActions}>
         <TouchableOpacity style={styles.secondaryButton} onPress={cancelRecording} activeOpacity={0.7}>
-          <Text style={styles.secondaryButtonText}>Cancel</Text>
+          <Text style={styles.secondaryButtonText}>{t('common:cancel')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.stopButton} onPress={stopRecording} activeOpacity={0.7}>
@@ -443,20 +459,22 @@ export default function BetaFeedbackModal({
     return (
       <View style={styles.stepContainer}>
         <ScrollView style={styles.reviewScrollContainer} showsVerticalScrollIndicator={false}>
-          <Text style={styles.stepTitle}>Review your feedback</Text>
-          <Text style={styles.stepSubtitle}>{formatTimer(recordedDurationMs)} recorded</Text>
+          <Text style={styles.stepTitle}>{t('feedback:modal.review_title')}</Text>
+          <Text style={styles.stepSubtitle}>{t('feedback:modal.recorded_duration', { duration: formatTimer(recordedDurationMs) })}</Text>
 
           <TouchableOpacity style={styles.playButton} onPress={togglePlayback} activeOpacity={0.7}>
             <Icon name={isPlaying ? 'pause' : 'play'} size={24} color={colors.primary[500]} />
-            <Text style={styles.playButtonText}>{isPlaying ? 'Pause' : 'Play'}</Text>
+            <Text style={styles.playButtonText}>{isPlaying ? t('common:pause') : t('common:play')}</Text>
           </TouchableOpacity>
 
           {/* ── Screenshots Section (optional) ─────────────────────────── */}
           <View style={styles.screenshotSectionDivider}>
             <Text style={styles.screenshotSectionTitle}>
-              Attach Screenshots{selectedScreenshots.length > 0 ? ` (${selectedScreenshots.length}/${MAX_SCREENSHOTS})` : ''}
+              {selectedScreenshots.length > 0
+                ? t('feedback:modal.screenshots_count', { count: selectedScreenshots.length, max: MAX_SCREENSHOTS })
+                : t('feedback:modal.screenshots_title')}
             </Text>
-            <Text style={styles.screenshotSectionHint}>Optional — add images from your photo library</Text>
+            <Text style={styles.screenshotSectionHint}>{t('feedback:modal.screenshots_hint')}</Text>
           </View>
 
           {permissionMessage !== '' && (
@@ -497,7 +515,7 @@ export default function BetaFeedbackModal({
             >
               <Icon name="images-outline" size={20} color={colors.primary[500]} />
               <Text style={styles.addScreenshotText}>
-                {selectedScreenshots.length === 0 ? 'Add from Library' : 'Add More'}
+                {selectedScreenshots.length === 0 ? t('feedback:modal.add_from_library') : t('feedback:modal.add_more')}
               </Text>
             </TouchableOpacity>
           )}
@@ -506,11 +524,11 @@ export default function BetaFeedbackModal({
         {/* ── Action Buttons (always visible at bottom) ──────────────── */}
         <View style={styles.reviewActions}>
           <TouchableOpacity style={styles.secondaryButton} onPress={reRecord} activeOpacity={0.7}>
-            <Text style={styles.secondaryButtonText}>Re-record</Text>
+            <Text style={styles.secondaryButtonText}>{t('feedback:modal.re_record')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} activeOpacity={0.7}>
-            <Text style={styles.primaryButtonText}>Submit</Text>
+            <Text style={styles.primaryButtonText}>{t('common:submit')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -520,15 +538,15 @@ export default function BetaFeedbackModal({
   const renderSubmitting = () => (
     <View style={styles.centeredStep}>
       <ActivityIndicator size="large" color={colors.primary[500]} />
-      <Text style={styles.submittingText}>Submitting feedback...</Text>
+      <Text style={styles.submittingText}>{t('feedback:modal.submitting')}</Text>
     </View>
   );
 
   const renderSuccess = () => (
     <View style={styles.centeredStep}>
       <Icon name="checkmark-circle" size={56} color={colors.success[500]} />
-      <Text style={styles.successText}>Thank you!</Text>
-      <Text style={styles.stepSubtitle}>Your feedback has been submitted</Text>
+      <Text style={styles.successText}>{t('feedback:modal.success_title')}</Text>
+      <Text style={styles.stepSubtitle}>{t('feedback:modal.success_body')}</Text>
     </View>
   );
 
@@ -541,7 +559,7 @@ export default function BetaFeedbackModal({
         onPress={() => setStep(recordedUri ? 'review' : 'category')}
         activeOpacity={0.7}
       >
-        <Text style={styles.secondaryButtonText}>Try Again</Text>
+        <Text style={styles.secondaryButtonText}>{t('common:try_again')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -575,7 +593,7 @@ export default function BetaFeedbackModal({
           <View style={styles.header}>
             <View style={styles.handle} />
             <View style={styles.headerRow}>
-              <Text style={styles.headerTitle}>Share Feedback</Text>
+              <Text style={styles.headerTitle}>{t('feedback:modal.header')}</Text>
               {step !== 'submitting' && step !== 'success' && (
                 <TouchableOpacity onPress={handleClose} hitSlop={8}>
                   <Icon name="close" size={24} color={colors.gray[400]} />

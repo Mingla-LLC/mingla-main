@@ -44,5 +44,19 @@
   "apply": "Apply",
   "messages": "Messages",
   "copy_link": "Copy link",
-  "copy_message": "Copy Message"
+  "copy_message": "Copy Message",
+  "ok": "OK",
+  "remove": "Remove",
+  "submit": "Submit",
+  "play": "Play",
+  "pause": "Pause",
+  "loading": "Loading...",
+  "sign_out": "Sign Out",
+  "go_back": "Go back",
+  "take_photo": "Take Photo",
+  "upload": "Upload",
+  "privacy_policy": "Privacy Policy",
+  "terms_of_service": "Terms of Service",
+  "remove_photo": "Remove Photo",
+  "choose_from_gallery": "Choose from Gallery"
 }

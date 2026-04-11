@@ -12,6 +12,11 @@ import en_discover from './locales/en/discover.json'
 import en_preferences from './locales/en/preferences.json'
 import en_share from './locales/en/share.json'
 import en_paywall from './locales/en/paywall.json'
+import en_profile from './locales/en/profile.json'
+import en_settings from './locales/en/settings.json'
+import en_connections from './locales/en/connections.json'
+import en_saved from './locales/en/saved.json'
+import en_feedback from './locales/en/feedback.json'
 import es_common from './locales/es/common.json'
 import es_onboarding from './locales/es/onboarding.json'
 import es_navigation from './locales/es/navigation.json'
@@ -20,6 +25,11 @@ import es_discover from './locales/es/discover.json'
 import es_preferences from './locales/es/preferences.json'
 import es_share from './locales/es/share.json'
 import es_paywall from './locales/es/paywall.json'
+import es_profile from './locales/es/profile.json'
+import es_settings from './locales/es/settings.json'
+import es_connections from './locales/es/connections.json'
+import es_saved from './locales/es/saved.json'
+import es_feedback from './locales/es/feedback.json'
 
 const LANGUAGE_STORAGE_KEY = 'mingla_preferred_language'
 
@@ -48,12 +58,12 @@ export async function persistLanguage(code: string): Promise<void> {
 
 i18n.use(initReactI18next).init({
   resources: {
-    en: { common: en_common, onboarding: en_onboarding, navigation: en_navigation, cards: en_cards, discover: en_discover, preferences: en_preferences, share: en_share, paywall: en_paywall },
-    es: { common: es_common, onboarding: es_onboarding, navigation: es_navigation, cards: es_cards, discover: es_discover, preferences: es_preferences, share: es_share, paywall: es_paywall },
+    en: { common: en_common, onboarding: en_onboarding, navigation: en_navigation, cards: en_cards, discover: en_discover, preferences: en_preferences, share: en_share, paywall: en_paywall, profile: en_profile, settings: en_settings, connections: en_connections, saved: en_saved, feedback: en_feedback },
+    es: { common: es_common, onboarding: es_onboarding, navigation: es_navigation, cards: es_cards, discover: es_discover, preferences: es_preferences, share: es_share, paywall: es_paywall, profile: es_profile, settings: es_settings, connections: es_connections, saved: es_saved, feedback: es_feedback },
   },
   lng: getDefaultLanguageCode(),
   fallbackLng: 'en',
-  ns: ['common', 'onboarding', 'navigation', 'cards', 'discover', 'preferences', 'share', 'paywall'],
+  ns: ['common', 'onboarding', 'navigation', 'cards', 'discover', 'preferences', 'share', 'paywall', 'profile', 'settings', 'connections', 'saved', 'feedback'],
   defaultNS: 'common',
   interpolation: {
     escapeValue: false,

@@ -1,0 +1,93 @@
+{
+  "header": "Settings",
+  "basics": {
+    "title": "The Basics",
+    "country": "Country",
+    "country_hint": "Affects currency and units across the app",
+    "not_set": "Not set",
+    "birthday": "Birthday",
+    "birthday_placeholder": "When's the party?",
+    "gender": "Gender",
+    "gender_placeholder": "How do you identify?",
+    "language": "Language",
+    "language_placeholder": "Choose your language"
+  },
+  "privacy": {
+    "title": "Privacy",
+    "profile_visibility": "Profile Visibility",
+    "friends_only": "Friends Only",
+    "everyone": "Everyone",
+    "nobody": "Nobody",
+    "friends_only_desc": "Only people you've linked with can see your profile.",
+    "everyone_desc": "Anyone on Mingla can find you and see your profile.",
+    "nobody_desc": "You're invisible. No one can see your profile \u2014 full ghost mode.",
+    "show_activity": "Show Activity",
+    "show_activity_on": "Friends can see what you've been up to lately.",
+    "show_activity_off": "Your activity is hidden from everyone.",
+    "notifications": "Notifications",
+    "notifications_hint": "Invites, boards, and messages"
+  },
+  "notifications": {
+    "title": "Notification Settings",
+    "push_notifications": "Push Notifications",
+    "push_hint": "Receive push notifications on your device",
+    "friends_pairing": "Friends & Pairing",
+    "friends_pairing_hint": "Friend requests, pair requests, and social updates",
+    "link_requests": "Link Requests",
+    "link_requests_hint": "When someone wants to link profiles with you",
+    "messages": "Messages",
+    "messages_hint": "Direct messages and session chat",
+    "sessions": "Sessions",
+    "sessions_hint": "Invites, member updates, and board activity",
+    "tips_reengagement": "Tips & Re-engagement",
+    "tips_hint": "Occasional nudges, weekly digest, and recommendations",
+    "error_update": "Failed to update notification setting."
+  },
+  "quiet_hours": {
+    "title": "Quiet Hours",
+    "label": "Quiet Hours",
+    "schedule": "10 PM - 8 AM",
+    "active": "Active",
+    "messages_label": "Messages during quiet hours",
+    "messages_hint": "Allow DMs between 10 PM - 8 AM",
+    "error_update": "Failed to update quiet hours setting."
+  },
+  "app_info": {
+    "title": "App Information",
+    "app_version": "App Version"
+  },
+  "delete": {
+    "title": "The Red Zone",
+    "button": "Delete My Account",
+    "deleting": "Deleting\u2026",
+    "warning": "This permanently deletes your data, your boards, and your history. There's no undo.",
+    "confirm_title": "Are you sure?",
+    "confirm_body": "Deleting your account removes everything \u2014 your profile, boards, links, and activity. This can't be reversed.",
+    "confirm_button": "Delete my account",
+    "confirm_cancel": "Never mind",
+    "deleting_title": "We're sad to see you go",
+    "deleting_body": "Packing up your things and sweeping the floors.",
+    "deleting_sub": "This takes a moment. Hang tight.",
+    "success_title": "Account Deleted",
+    "success_body": "You're always welcome back. We'll leave the light on.",
+    "success_sub": "Signing you out now. Until next time.",
+    "error_title": "That Didn't Work",
+    "error_default": "Something went wrong. Please try again.",
+    "error_must_sign_in": "You must be signed in to delete your account.",
+    "error_timeout": "This is taking longer than expected. Your account may already be deleted \u2014 try closing and reopening the app."
+  },
+  "pickers": {
+    "gender_title": "Gender",
+    "language_title": "Language",
+    "birthday_title": "Birthday",
+    "birthday_month": "Month",
+    "birthday_day": "Day",
+    "birthday_year": "Year",
+    "set_birthday": "Set Birthday",
+    "invalid_date": "Invalid date",
+    "birthday_future": "Birthday can't be in the future."
+  },
+  "country_confirm_title": "Update country?",
+  "country_confirm_body": "Changing to {{country}} will update your currency to {{currency}} ({{symbol}}) and units to {{measurement}}. Continue?",
+  "error_update": "Failed to update. Please try again."
+}

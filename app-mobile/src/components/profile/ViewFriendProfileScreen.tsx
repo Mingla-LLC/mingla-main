@@ -18,6 +18,7 @@ import { getCountryByCode } from '../../constants/countries';
 import ProfileInterestsSection from './ProfileInterestsSection';
 import ProfileStatsRow from './ProfileStatsRow';
 import type { SubscriptionTier } from '../../types/subscription';
+import { useTranslation } from 'react-i18next';
 
 const TIER_LABEL: Record<SubscriptionTier, string> = {
   free: 'Free',
@@ -92,6 +93,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   onBack,
   onMessage,
 }) => {
+  const { t } = useTranslation(['profile', 'common']);
   const insets = useSafeAreaInsets();
   const { data: profile, isLoading, isError } = useFriendProfile(userId);
 
@@ -124,7 +126,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
         </View>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#eb7825" />
-          <Text style={styles.loadingHint}>Loading profile…</Text>
+          <Text style={styles.loadingHint}>{t('profile:friend.loading_profile')}</Text>
         </View>
       </View>
     );
@@ -145,12 +147,12 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           <View style={styles.errorIconWrap}>
             <Icon name="person-outline" size={s(40)} color="#d1d5db" />
           </View>
-          <Text style={styles.errorTitle}>This profile isn&apos;t available</Text>
+          <Text style={styles.errorTitle}>{t('profile:friend.profile_unavailable_title')}</Text>
           <Text style={styles.errorBody}>
-            This person&apos;s profile may be private, or you may not be connected.
+            {t('profile:friend.profile_unavailable_body')}
           </Text>
           <TouchableOpacity style={styles.primaryButton} onPress={onBack} activeOpacity={0.85}>
-            <Text style={styles.primaryButtonText}>Go back</Text>
+            <Text style={styles.primaryButtonText}>{t('common:go_back')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -161,10 +163,10 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   const countryName = profile.country
     ? getCountryByCode(profile.country)?.name ?? profile.country
     : null;
-  const locationLine = profile.location ?? countryName ?? 'Not shared';
+  const locationLine = profile.location ?? countryName ?? t('profile:friend.not_shared');
   const levelLine = TIER_LABEL[profile.tier] ?? profile.tier;
   const tierBadge = TIER_BADGE_STYLES[profile.tier] ?? TIER_BADGE_STYLES.free;
-  const locationMuted = locationLine === 'Not shared';
+  const locationMuted = locationLine === t('profile:friend.not_shared');
 
   return (
     <View style={styles.container}>
@@ -206,17 +208,17 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardSectionLabel}>About</Text>
+          <Text style={styles.cardSectionLabel}>{t('profile:friend.about')}</Text>
           <InfoRow
             icon="map-pin"
-            label="Location"
+            label={t('profile:friend.location_label')}
             value={locationLine}
             muted={locationMuted}
           />
           <View style={styles.rowDivider} />
           <InfoRow
             icon="sparkles-outline"
-            label="Mingla level"
+            label={t('profile:friend.mingla_level')}
             rightSlot={
               <View
                 style={[
@@ -250,7 +252,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
             intents={profile.intents}
             categories={profile.categories}
             isOwnProfile={false}
-            sectionTitle="Interests"
+            sectionTitle={t('profile:friend.interests')}
           />
         </View>
 
@@ -261,7 +263,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
             activeOpacity={0.88}
           >
             <Icon name="chatbubble-outline" size={s(20)} color="#ffffff" />
-            <Text style={styles.messageText}>Message</Text>
+            <Text style={styles.messageText}>{t('profile:friend.message')}</Text>
           </TouchableOpacity>
         ) : null}
 
