@@ -26,6 +26,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         iosUrlScheme: `com.googleusercontent.apps.${process.env.GOOGLE_IOS_CLIENT_ID ?? "618060733220-t2vsovng5evma3vfkl0fd0f0pa28lnlc"}`,
       },
     ],
+    "expo-localization",
   ],
   extra: {
     ...config.extra,
