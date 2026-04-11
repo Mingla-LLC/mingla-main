@@ -385,14 +385,25 @@ function AppContent() {
         return;
       }
 
-      // Mark as read on server (fire-and-forget)
+      // Mark as read + record click on server (fire-and-forget)
       if (notificationId) {
         supabase
           .from('notifications')
-          .update({ is_read: true, read_at: new Date().toISOString() })
+          .update({
+            is_read: true,
+            read_at: new Date().toISOString(),
+            push_clicked: true,
+            push_clicked_at: new Date().toISOString(),
+          })
           .eq('id', notificationId)
           .then(() => {});
       }
+
+      // Analytics: track which notification type drove re-engagement
+      mixpanelService.track('Push Notification Clicked', {
+        notification_type: (data.type as string) ?? 'unknown',
+        notification_id: notificationId ?? 'unknown',
+      });
 
       // Navigate via deep link
       if (data.type === 'paired_user_saved_card' && notificationId) {

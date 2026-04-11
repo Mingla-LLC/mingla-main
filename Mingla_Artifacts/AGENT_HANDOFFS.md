@@ -1,7 +1,7 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-11
-> Total: 0 active | 84 completed
+> Total: 0 active | 87 completed
 
 ## Active Dispatches
 
@@ -13,6 +13,9 @@
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-081 | ORCH-0387 | Implementor | 2026-04-11 | Mixpanel token set, 7 methods wired, push_clicked populated, dead config removed | VERIFIED — live events in Mixpanel dashboard |
+| AH-080 | ORCH-0387 | Product (strategy) | 2026-04-11 | ANALYTICS_STRATEGY_FOR_LAUNCH.md | APPROVED |
+| AH-079 | ORCH-0387 | Orchestrator (review) | 2026-04-11 | Product strategy + investigation approved, implementor dispatched | APPROVED |
 | AH-078 | ORCH-0390 | Orchestrator (artifact sync) | 2026-04-11 | READMEs, Decision Log, Priority Board, queue docs, World Map updated | APPROVED |
 | AH-077 | ORCH-0390 Dispatch 2 | Investigator (forensics) | 2026-04-11 | INVESTIGATION_ANALYTICS_NOTIFICATION_ARCHITECTURE.md | APPROVED |
 | AH-076 | ORCH-0390 Dispatch 1 | Investigator (forensics) | 2026-04-11 | INVESTIGATION_CODE_INVENTORY.md | APPROVED |

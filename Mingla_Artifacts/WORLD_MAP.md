@@ -547,10 +547,10 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
 |----|-------|---------|----------|-------|--------|-------|----------|----------|
 | ORCH-0242 | AppsFlyer integration | Analytics | S1 | data-integrity | investigated | C | 2026-04-11 | INVESTIGATION_ANALYTICS_IDENTITY_AUDIT.md — 22 events wired, never verified in dashboard, identity not cleared on logout |
-| ORCH-0243 | Mixpanel integration | Analytics | S1 | data-integrity | investigated | D | 2026-04-11 | INVESTIGATION_ANALYTICS_IDENTITY_AUDIT.md — SDK + service fully wired (40+ methods, 19 files) but EXPO_PUBLIC_MIXPANEL_TOKEN not set. All calls are silent no-ops. Zero data. |
-| ORCH-0387 | Analytics identity & cross-service integration audit | Analytics | S1 | data-integrity | investigated | D | 2026-04-11 | INVESTIGATION_ANALYTICS_IDENTITY_AUDIT.md — No unified identity layer, services don't talk to each other, Mixpanel dead, push_clicked never set, AppsFlyer not cleared on logout |
+| ORCH-0243 | Mixpanel integration | Analytics | S1 | data-integrity | closed | A | 2026-04-11 | Token set, 17 active methods firing, 4 onboarding methods wired, preferences + friend request tracking wired. Live events confirmed in dashboard. |
+| ORCH-0387 | Analytics identity & cross-service integration audit | Analytics | S1 | data-integrity | closed | B | 2026-04-11 | Mixpanel live (A), push_clicked wired (A), onboarding funnel tracked (A). Remaining: AppsFlyer logout gap (deferred), unified identity layer (deferred per product strategy). |
 | ORCH-0388 | RevenueCat "customer" count inflation — 104 phantom customers | Analytics | S2 | data-integrity | investigated | C | 2026-04-11 | INVESTIGATION_ANALYTICS_IDENTITY_AUDIT.md — RC counts every SDK touch as "customer." Anonymous→identified merges may inflate. Need RC dashboard audit. |
-| ORCH-0389 | OneSignal push_clicked tracking gap | Analytics | S2 | missing-feature | open | F | 2026-04-11 | INVESTIGATION_ANALYTICS_IDENTITY_AUDIT.md — Column exists in notifications table, never populated on tap. |
+| ORCH-0389 | OneSignal push_clicked tracking gap | Analytics | S2 | missing-feature | closed | A | 2026-04-11 | push_clicked + push_clicked_at now set on notification tap in processNotification. Mixpanel "Push Notification Clicked" event also fires. |
 | ORCH-0244 | Screen logger | Analytics | S3 | unaudited | open | F | — | — |
 | ORCH-0245 | Tracked pressable / touchable | Analytics | S3 | missing-feature | closed | A | 2026-03-22 | Commit dba7b3f0 |
 | ORCH-0246 | User activity service | Analytics | S2 | unaudited | open | F | — | — |

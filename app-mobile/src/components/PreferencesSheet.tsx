@@ -692,21 +692,21 @@ export default function PreferencesSheet({
   const ctaHintText = useMemo(() => {
     if (!isFormComplete) {
       if ((selectedDateOption === 'Today' || selectedDateOption === 'This Weekend') && !selectedTimeSlot) {
-        return 'Pick a time to continue';
+        return t('preferences:sheet.pick_time_hint');
       }
       if (selectedDateOption === 'Pick a Date' && !selectedDate) {
-        return 'Pick a date to continue';
+        return t('preferences:sheet.pick_date_hint');
       }
       if (selectedDateOption === 'Pick a Date' && selectedDate && !selectedTimeSlot) {
-        return 'Pick a time to continue';
+        return t('preferences:sheet.pick_time_hint');
       }
       if (typeof constraintValue !== 'number' || constraintValue < 5) {
-        return 'Set travel time to continue';
+        return t('preferences:sheet.set_travel_hint');
       }
-      return 'Complete your preferences';
+      return t('preferences:sheet.complete_hint');
     }
     return null;
-  }, [isFormComplete, selectedDateOption, selectedTimeSlot, selectedDate, constraintValue]);
+  }, [isFormComplete, selectedDateOption, selectedTimeSlot, selectedDate, constraintValue, t]);
 
   const countChanges = useCallback((): number => {
     if (!initialPreferences) return 0;
@@ -865,9 +865,20 @@ export default function PreferencesSheet({
           categories_count: finalCategories.length,
           intents_count: finalIntents.length,
         });
+        mixpanelService.trackPreferencesUpdated({
+          isCollaborationMode,
+          changesCount: finalCategories.length + finalIntents.length,
+          intents: finalIntents,
+          categories: finalCategories,
+          travelMode,
+          constraintType: 'time',
+          constraintValue: typeof constraintValue === 'number' ? constraintValue : 30,
+          dateOption: selectedDateOption ?? null,
+          timeSlot: selectedTimeSlot ?? null,
+        });
       } catch (error) {
         console.warn("[PreferencesSheet] Background save failed:", error);
-        toastManager.error("Preferences couldn't save — they'll reset next time.", 4000);
+        toastManager.error(t('preferences:sheet.save_error'), 4000);
       }
 
       // RELIABILITY: DO NOT add invalidateQueries here. AppHandlers.handleSavePreferences
@@ -912,7 +923,7 @@ export default function PreferencesSheet({
           <View style={styles.titleContainer}>
             {isCollaborationMode && sessionName ? (
               <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-                {sessionName} Vibes
+                {t('preferences:sheet.session_vibes', { name: sessionName })}
               </Text>
             ) : (
               <Text style={styles.title}>{t('preferences:sheet.title')}</Text>

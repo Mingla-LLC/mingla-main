@@ -44,6 +44,7 @@ import { normalizeCategoryArray } from '../utils/categoryUtils'
 import { normalizeDateTime } from '../utils/cardConverters'
 import { withTimeout } from '../utils/withTimeout'
 import { logAppsFlyerEvent } from '../services/appsFlyerService'
+import { mixpanelService } from '../services/mixpanelService'
 
 import { OnboardingShell } from './onboarding/OnboardingShell'
 import { PhoneInput } from './onboarding/PhoneInput'
@@ -274,7 +275,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
 
         if (updateError) throw updateError
 
-        // ── AppsFlyer: onboarding complete + trial start ──
+        // ── Analytics: onboarding complete + trial start ──
         logAppsFlyerEvent('af_tutorial_completion', {
           af_success: true,
           af_content: 'onboarding',
@@ -284,6 +285,10 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
         logAppsFlyerEvent('af_start_trial', {
           af_trial_type: 'elite_7day',
           af_duration: 7,
+        })
+        mixpanelService.trackOnboardingCompleted({
+          gender: data.userGender || '',
+          country: data.userCountry || '',
         })
 
         // Only clear persistence AFTER DB confirms success
@@ -698,8 +703,9 @@ const OnboardingFlow = ({
       (navState.step === 1 && navState.subStep === 'language')
     : (navState.step === 1 && navState.subStep === 'language')
 
-  // ── AppsFlyer: track each onboarding sub-step transition ──
+  // ── Analytics: track each onboarding sub-step transition ──
   const prevSubStepRef = useRef(navState.subStep)
+  const prevStepRef = useRef(navState.step)
   useEffect(() => {
     if (navState.subStep !== prevSubStepRef.current) {
       // The PREVIOUS sub-step was completed — fire the event for it
@@ -708,7 +714,15 @@ const OnboardingFlow = ({
         step_name: `Step ${navState.step}`,
         substep: prevSubStepRef.current,
       })
+      mixpanelService.trackOnboardingStepCompleted(navState.step, {
+        substep: prevSubStepRef.current,
+      })
       prevSubStepRef.current = navState.subStep
+    }
+    // Track step viewed when the step number changes
+    if (navState.step !== prevStepRef.current) {
+      mixpanelService.trackOnboardingStepViewed(navState.step)
+      prevStepRef.current = navState.step
     }
   }, [navState.step, navState.subStep])
 
@@ -1893,6 +1907,7 @@ const OnboardingFlow = ({
       autoAdvanceRef.current = null
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    mixpanelService.trackOnboardingStepBack(navState.step)
 
     // Skip OTP step when navigating back if phone is already verified
     // (user shouldn't land on "Enter the code" screen when already verified)
