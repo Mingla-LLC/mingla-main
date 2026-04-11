@@ -557,7 +557,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0247 | User interaction service | Analytics | S2 | unaudited | open | F | — | — |
 | ORCH-0248 | Session tracker | Analytics | S2 | unaudited | open | F | — | — |
 | ORCH-0249 | A/B testing service | Analytics | S3 | unaudited | open | F | — | — |
-| ORCH-0390 | Documentation truth sweep — all artifacts, READMEs, comments must reflect code reality | Documentation | S1 | documentation-drift | partial | C | 2026-04-11 | QA_ORCH-0390_DEAD_CODE_ELIMINATION_REPORT.md — PASS. Dead code phase complete (17 files, 4 exports, 4 edge functions, 3 RPCs, 3 comments). README/doc sync phase still pending. |
+| ORCH-0390 | Documentation truth sweep — all artifacts, READMEs, comments must reflect code reality | Documentation | S1 | documentation-drift | closed | A | 2026-04-11 | 3 phases complete: (1) Dead code elimination — 17 files, 4 exports, 4 edge fns, 3 RPCs removed (QA PASS). (2) Code inventory + analytics architecture — 57 edge fns, 79 services, 25 AF events, 33 MP methods, 29 notification types mapped. (3) Artifact sync — READMEs fixed (71→57), 4 queue docs deprecated, 5 decisions logged, Priority Board updated. |
 
 ### Cross-Cutting: Weather & External Data
 

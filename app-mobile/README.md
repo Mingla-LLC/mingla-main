@@ -1,6 +1,6 @@
 # Mingla
 
-A mobile-first experience discovery and planning app — swipe, save, and go. Built with React Native (Expo), TypeScript, Supabase, and 27 Deno edge functions.
+A mobile-first experience discovery and planning app — swipe, save, and go. Built with React Native (Expo), TypeScript, Supabase, and 57 Deno edge functions.
 
 ## Tech Stack
 
@@ -10,7 +10,7 @@ A mobile-first experience discovery and planning app — swipe, save, and go. Bu
 | Server state | React Query |
 | Client state | Zustand + AsyncStorage persistence |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge functions | 27 Deno edge functions |
+| Edge functions | 57 Deno edge functions (shared backend with admin) |
 | AI | OpenAI GPT-4o-mini (structured JSON output) |
 | Maps | Google Places API (New) |
 | Events | Ticketmaster Discovery API v2 |
@@ -54,10 +54,9 @@ app-mobile/
       throttledGeocode.ts  # Centralized throttled/cached reverse geocoding wrapper
 
 supabase/
-  functions/               # 27 Deno edge functions
-    _shared/               # Shared modules (categoryPlaceTypes, cardPoolService, placesCache)
+  functions/               # 57 Deno edge functions (shared with admin dashboard)
+    _shared/               # 13 shared modules (categoryPlaceTypes, cardPoolService, placesCache, push-utils, etc.)
     submit-feedback/       # Beta feedback submission (validates beta tester, denormalizes user data)
-    admin-feedback/        # Admin CRUD for feedback (list, get, update status, add notes, audio URLs)
   migrations/              # 40+ SQL migration files
 ```
 
@@ -100,9 +99,7 @@ supabase/
 | discover-cards | Discover tab card serving |
 | recommendations-enhanced | Recommendation scoring engine |
 | ticketmaster-events | Ticketmaster API proxy |
-| refresh-place-pool | Daily pool refresh (free Place Details) |
 | submit-feedback | Beta feedback submission (validates beta tester, denormalizes user snapshot) |
-| admin-feedback | Admin CRUD for feedback (list, get, update status, add notes, signed audio URLs) |
 
 ## Storage Buckets
 
@@ -209,6 +206,5 @@ eas submit --platform ios --latest
 
 ## Recent Changes
 
-- **Beta tester feedback system** — full audio feedback pipeline: 4 SQL migrations (profile flags, beta_feedback table, RLS policies, storage bucket), 2 new edge functions (submit-feedback, admin-feedback), 3 new services (betaFeedbackService, deviceInfoService, sessionTracker), React Query hook, and 3 UI components (BetaFeedbackModal, FeedbackHistorySheet, BetaFeedbackButton) integrated into ProfilePage
-- **Admin API contract** — admin-feedback edge function provides list/get/update_status/add_note/get_audio_url actions for the separate admin repo to consume
+- **Beta tester feedback system** — full audio feedback pipeline: 4 SQL migrations (profile flags, beta_feedback table, RLS policies, storage bucket), edge function (submit-feedback), 3 new services (betaFeedbackService, deviceInfoService, sessionTracker), React Query hook, and 3 UI components (BetaFeedbackModal, FeedbackHistorySheet, BetaFeedbackButton) integrated into ProfilePage
 - **No new dependencies** — uses expo-device and expo-constants (already installed) for device metadata

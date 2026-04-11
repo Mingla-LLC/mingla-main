@@ -1,7 +1,7 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-11
-> Total: 0 active | 81 completed
+> Total: 0 active | 84 completed
 
 ## Active Dispatches
 
@@ -13,6 +13,9 @@
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-078 | ORCH-0390 | Orchestrator (artifact sync) | 2026-04-11 | READMEs, Decision Log, Priority Board, queue docs, World Map updated | APPROVED |
+| AH-077 | ORCH-0390 Dispatch 2 | Investigator (forensics) | 2026-04-11 | INVESTIGATION_ANALYTICS_NOTIFICATION_ARCHITECTURE.md | APPROVED |
+| AH-076 | ORCH-0390 Dispatch 1 | Investigator (forensics) | 2026-04-11 | INVESTIGATION_CODE_INVENTORY.md | APPROVED |
 | AH-075 | ORCH-0392 | Implementor | 2026-04-11 | flexWrap added to travelModesGrid | APPROVED — visually verified on-device |
 | AH-074 | ORCH-0392 | Investigator (forensics) | 2026-04-11 | INVESTIGATION_TRAVEL_MODE_PILL_BLEED_REPORT.md | APPROVED — root cause proven |
 | AH-073 | ORCH-0386 Phase 2 | Implementor | 2026-04-11 | Commit 9e82190f (translate ~61 remaining strings) | APPROVED — introduced ORCH-0392 regression |

@@ -14,7 +14,7 @@ A monorepo mobile + admin platform for social discovery -- combining an interact
 | Server State | React Query |
 | Client State | Zustand |
 | Backend | Supabase (PostgreSQL + Auth + Realtime + Storage + Edge Functions + RLS) |
-| Edge Functions | ~71 Deno serverless functions |
+| Edge Functions | 57 Deno serverless functions |
 | AI | OpenAI GPT-5.4-mini (card quality gate with web search), GPT-4o-mini (AI reasons), Whisper (audio transcription) |
 | Maps & Places | Google Maps (CartoDB Positron tiles -- clean barren map, faint roads, city names only, no POIs), Google Places API (New) |
 | Live Events | Ticketmaster Discovery API v2 |
@@ -22,7 +22,7 @@ A monorepo mobile + admin platform for social discovery -- combining an interact
 | Email | Resend (admin email sending) |
 | Payments | RevenueCat (subscription management) + Stripe Connect |
 | Push Notifications | OneSignal (FCM v1 + APNs) |
-| Analytics | Mixpanel (event tracking, user identification) |
+| Analytics | AppsFlyer (attribution, 25 events), Mixpanel (behavioral, 33 methods — requires EXPO_PUBLIC_MIXPANEL_TOKEN) |
 | Admin Dashboard | React 19, Vite, Tailwind CSS v4, Framer Motion, Recharts, Leaflet |
 | Navigation | Custom state-driven (no React Navigation) |
 | Styling | StyleSheet only (no inline styles) |
@@ -180,7 +180,7 @@ Mingla/
 │   └── package.json
 │
 ├── supabase/
-│   ├── functions/                       # ~71 Deno edge functions
+│   ├── functions/                       # 57 Deno edge functions
 │   │   ├── _shared/                     # Shared edge function utilities
 │   │   ├── update-map-location/         # User map location updates
 │   │   ├── get-nearby-people/           # Nearby people with taste matching
@@ -316,7 +316,7 @@ Mingla/
 
 ## Edge Functions
 
-~72 Deno edge functions deployed on Supabase.
+57 Deno edge functions deployed on Supabase.
 
 ### Discovery and Serving
 - `discover-cards` -- Pool-only card serving with 5-factor scoring
@@ -349,16 +349,12 @@ Mingla/
 - `admin-refresh-places` -- Refresh place data from Google
 - `admin-seed-map-strangers` -- Seed fake stranger profiles around real users for map population
 - `admin-send-email` -- Email sending via Resend
-- `admin-feedback` -- Feedback management
 - `backfill-place-photos` -- Re-download photos for places
-- `backfill-place-websites` -- Backfill place website data
-- `refresh-place-pool` -- Bulk place pool refresh
 
 ### Auth and Identity
 - `send-otp` -- OTP code delivery via Twilio
 - `verify-otp` -- OTP verification
 - `lookup-phone` -- Phone number lookup
-- `search-users` -- User search
 - `delete-user` -- Server-side user deletion with FK cascades
 
 ### Social
@@ -389,10 +385,8 @@ Mingla/
 - `ticketmaster-events` -- Ticketmaster API integration
 - `places` -- Places API proxy
 - `weather` -- Weather data
-- `process-voice-review` -- Whisper audio transcription
 - `record-visit` -- Visit recording
 - `submit-feedback` -- User feedback submission
-- `get-google-maps-key` -- Secure Maps API key delivery
 
 ### Shared
 - `_shared/` -- Shared utilities (CORS, Supabase client, category definitions, seeding categories, error handling)
