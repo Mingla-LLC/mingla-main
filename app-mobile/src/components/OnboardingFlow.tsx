@@ -1682,6 +1682,12 @@ const OnboardingFlow = ({
           limit: 200,
           excludeCardIds: [],
         }).then((result: DeckResponse) => {
+          // Guard: don't cache empty results — likely auth failure, not genuine empty pool.
+          // The normal post-transition useDeckCards flow will retry with valid token. ORCH-0387.
+          if (result.cards.length === 0) {
+            if (__DEV__) console.warn('[Onboarding] Deck prefetch returned 0 cards — skipping cache (possible auth failure)')
+            return
+          }
           // Pre-seed the deck-cards cache with the exact key useDeckCards uses
           queryClient.setQueryData(deckQueryKey, result)
           if (__DEV__) {

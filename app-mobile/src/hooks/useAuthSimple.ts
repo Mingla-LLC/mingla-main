@@ -158,9 +158,15 @@ export const useAuthSimple = () => {
                 excludeCardIds: [],
               });
 
-              queryClient.setQueryData(deckQueryKey, result);
-              if (__DEV__) {
-                console.log(`[Auth] Deck prefetch complete: ${result.cards.length} cards cached`);
+              // Guard: don't cache empty results — likely auth failure, not genuine empty pool.
+              // The normal post-transition useDeckCards flow will retry with valid token. ORCH-0387.
+              if (result.cards.length === 0) {
+                if (__DEV__) console.warn('[Auth] Deck prefetch returned 0 cards — skipping cache (possible auth failure)');
+              } else {
+                queryClient.setQueryData(deckQueryKey, result);
+                if (__DEV__) {
+                  console.log(`[Auth] Deck prefetch complete: ${result.cards.length} cards cached`);
+                }
               }
             } catch (err) {
               if (__DEV__) console.warn('[Auth] Deck prefetch failed (will use normal path):', err);
