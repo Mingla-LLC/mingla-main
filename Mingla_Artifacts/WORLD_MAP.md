@@ -251,6 +251,8 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0352 | Beta feedback modal — end-to-end defects (freeze, stale state, audio leak, icon errors, close-path gaps) | Profile | S1 | bug | closed | A | 2026-04-09 | QA PASS (AH-051). Full audit found 4 defects (missing pause icon, orphaned success timer, unstable onClose, cached permissions). All fixed in clean pass (AH-050). Prior patches preserved. 5 files changed total. |
 | ORCH-0353 | Permission storm on first landing — 4 OS dialogs fire on boot | App Lifecycle | S1 | ux | closed | A | 2026-04-09 | Device-verified PASS. Split OneSignal login/permission, removed auto location/camera/tracking from MobileFeaturesProvider, ATT wait→0. Zero dialogs on Home. |
 | ORCH-0354 | Coach mark guided tour system (10-step, cross-tab, resumable) | App Lifecycle | S1 | missing-feature | implementing | F | 2026-04-09 | Spec: SPEC_ORCH-0349_COACH_MARK_SYSTEM.md. Design: Hybrid bottom card + self-highlight. Phase 1 pending. Prerequisite ORCH-0353 complete. |
+| ORCH-0371 | Beta feedback — optional screenshot attachments (up to 10) | Profile | S3 | missing-feature | speccing | F | — | Intake complete. Full chain mapped. Awaiting spec. |
+| ORCH-0373 | Friend profile screen overhaul — hide username, add bio + stats (places/streak/friends non-tappable), fix interests not showing, wire chat avatar tap to open profile | Profile + Chat | S1 | quality-gap | investigating | F | — | Intake confirmed. 5 sub-issues: (1) username visible, (2) bio missing, (3) interests empty for all users, (4) no stats row, (5) chat header avatar not tappable. |
 
 ### Section 9: Map & Location
 
@@ -272,7 +274,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0124 | Activity status picker | Map | S3 | unaudited | open | F | — | — |
 | ORCH-0125 | Map cards hook | Map | S2 | unaudited | open | F | — | — |
 | ORCH-0126 | Discover map integration | Map | S1 | unaudited | open | F | — | — |
-| ORCH-0366 | Edge function timeouts — query_pool_cards optimized to lightweight count pass, timeout raised 12s→20s, dead curated timeout removed | Map | S1 | performance | implemented | F | — | IMPLEMENTATION_ORCH-0367_0366_REPORT.md — Migration 20260410000005 + timeout bump + dead code removal. Awaiting deploy + verification. |
+| ORCH-0366 | Edge function timeouts — query_pool_cards optimized, timeout 12s→20s, dead curated timeout removed | Map | S1 | performance | closed | A | 2026-04-10 | User-verified working. Migration 20260410000005. Commit 6bdbbd30. |
 | ORCH-0324 | User marker disappears from map — map shrunk to 1px when person pill active | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — mapHidden: 1x1px confuses react-native-maps marker rendering. paused=true disables nearby-people query. |
 | ORCH-0325 | Map centering broken — animateToRegion races with 1px→fullscreen layout transition | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — Both state updates in same tick; animation fires before map expands. |
 | ORCH-0326 | Mock strangers invisible — bidirectional "everyone" visibility required + code defaults to "off" | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — get-nearby-people:103 requires requester visibility="everyone". Code defaults to "off" (line 42) contradicting schema default "friends". |
@@ -302,7 +304,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0133 | DM email notification | Chat | S3 | unaudited | open | F | — | — |
 | ORCH-0134 | Chat status line | Chat | S3 | unaudited | open | F | — | — |
 | ORCH-0357 | Blocked/unfriended/deleted users still messageable — message field should be hidden, replaced with status banner explaining why ("You blocked this person" / "User deleted their account") | Chat | S1 | security | closed | A | 2026-04-09 | QA PASS (AH-054). Three banners (blocked/unfriended/deleted) with hidden input. Account deletion confirmed regression-free. |
-| ORCH-0367 | Block/friend mutual exclusion — accept_friend_request_atomic now clears blocks, on_user_blocked now cancels pending requests, stale data fixed | Chat + Social | S0 | data-integrity | implemented | F | — | IMPLEMENTATION_ORCH-0367_0366_REPORT.md — Migration 20260410000004 + dead code removed. Awaiting deploy + verification. |
+| ORCH-0367 | Block/friend mutual exclusion — accept clears blocks, block cancels pending requests, stale data fixed | Chat + Social | S0 | data-integrity | closed | A | 2026-04-10 | User-verified: Seth+Arifat can message. Migration 20260410000004. Commit 6bdbbd30. |
 
 ### Section 11: Payments & Subscriptions
 
@@ -323,6 +325,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0147 | Silent swipe blocking after limit | Payments | S2 | quality-gap | closed | A | 2026-03-31 | Fixed with ORCH-0146 — PanResponder now shows paywall |
 | ORCH-0148 | useEffectiveTier can downgrade (misleading comment) | Payments | S2 | quality-gap | closed | A | 2026-03-31 | Fixed with ORCH-0143 — comment corrected in useSubscription.ts |
 | ORCH-0149 | Trial abuse: delete+re-signup = infinite Elite | Payments | S1 | bug | closed | A | 2026-03-31 | QA_PAYMENTS_EXPIRY_TRIAL_REPORT.md — phone-hash table, checked at onboarding |
+| ORCH-0372 | Price tier restructure: 3 tiers (Free/Pro/Elite) → 2 tiers (Free/Mingla+) | Payments | S0 | architecture-flaw | investigating | F | — | ORCH-0371_PRICE_TIER_RESTRUCTURE_BLAST_RADIUS.md — blast radius mapped. ~30 files across all 3 domains. 5 decisions pending. |
 
 ### Section 12: Calendar & Scheduling
 
@@ -526,6 +529,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0239 | Mobile features provider | Lifecycle | S2 | unaudited | open | F | — | — |
 | ORCH-0240 | Foreground refresh | Lifecycle | S2 | quality-gap | closed | A | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md — refreshes ALL tabs (all mounted), preferences prefetched |
 | ORCH-0241 | Lifecycle logger | Lifecycle | S3 | unaudited | open | F | — | — |
+| ORCH-0368 | Bad merge artifact audit — corruption isolated to MessageInterface.tsx only. 88 files scanned with 6 detection passes, zero additional corruption found. | Lifecycle | S1 | regression | closed | A | 2026-04-10 | INVESTIGATION_ORCH-0368_BAD_MERGE_AUDIT.md — All 88 files clean. Fix: commit 8bc694c6. |
 
 ### Cross-Cutting: Analytics & Tracking
 
