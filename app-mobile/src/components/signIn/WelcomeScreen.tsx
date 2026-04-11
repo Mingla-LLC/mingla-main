@@ -33,9 +33,7 @@ import { s, vs } from "../../utils/responsive";
 const googleIcon = require("../../../assets/google_icon.png");
 const logo = require("../../../assets/mingla_official_logo.png");
 
-// Placeholder URLs — replace with actual URLs when provided by product
-const TERMS_URL = "https://mingla.app/terms";
-const PRIVACY_URL = "https://mingla.app/privacy";
+import { LEGAL_URLS } from "../../constants/urls";
 
 interface WelcomeScreenProps {
   onGoogleSignIn: () => Promise<void>;
@@ -249,11 +247,11 @@ export default function WelcomeScreen({
   };
 
   const openTerms = async () => {
-    await WebBrowser.openBrowserAsync(TERMS_URL);
+    await WebBrowser.openBrowserAsync(LEGAL_URLS.termsOfService);
   };
 
   const openPrivacy = async () => {
-    await WebBrowser.openBrowserAsync(PRIVACY_URL);
+    await WebBrowser.openBrowserAsync(LEGAL_URLS.privacyPolicy);
   };
 
   return (

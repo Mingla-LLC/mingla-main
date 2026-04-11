@@ -61,6 +61,7 @@ const LikesTabs: React.FC<LikesTabsProps> = ({
 };
 
 interface LikesPageProps {
+  isTabVisible?: boolean;
   savedCards?: any[];
   userPreferences?: any;
   accountPreferences?: {

@@ -1,84 +1,36 @@
-import * as React from "react";
-import { View, StyleSheet } from "react-native";
-import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Icon } from './Icon';
+import React from 'react';
+import { TouchableOpacity, View, StyleSheet, ViewStyle } from 'react-native';
 
 interface CheckboxProps {
-  checked?: boolean;
-  onCheckedChange?: (checked: boolean) => void;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
-  style?: any;
-  size?: 'sm' | 'md' | 'lg';
+  size?: string;
+  style?: ViewStyle;
 }
 
-function Checkbox({
-  checked = false,
-  onCheckedChange,
-  disabled = false,
-  style,
-  size = 'md',
-  ...props
-}: CheckboxProps) {
-  const handlePress = () => {
-    if (!disabled && onCheckedChange) {
-      onCheckedChange(!checked);
-    }
-  };
-
-  const getSizeStyles = () => {
-    switch (size) {
-      case 'sm':
-        return { width: 16, height: 16, iconSize: 10 };
-      case 'lg':
-        return { width: 24, height: 24, iconSize: 16 };
-      default:
-        return { width: 20, height: 20, iconSize: 12 };
-    }
-  };
-
-  const sizeStyles = getSizeStyles();
-
+export const Checkbox: React.FC<CheckboxProps> = ({ checked, onCheckedChange, disabled }) => {
   return (
-    <TrackedTouchableOpacity logComponent="Checkbox"
-      style={[
-        styles.checkbox,
-        {
-          width: sizeStyles.width,
-          height: sizeStyles.height,
-        },
-        checked && styles.checked,
-        disabled && styles.disabled,
-        style,
-      ]}
-      onPress={handlePress}
+    <TouchableOpacity
+      onPress={() => onCheckedChange(!checked)}
       disabled={disabled}
+      style={[styles.container, checked && styles.checked, disabled && styles.disabled]}
       activeOpacity={0.7}
-      {...props}
     >
-      {checked && (
-        <Icon
-          name="checkmark"
-          size={sizeStyles.iconSize}
-          color={checked ? 'white' : '#6b7280'}
-        />
-      )}
-    </TrackedTouchableOpacity>
+      {checked && <View style={styles.checkmark} />}
+    </TouchableOpacity>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  checkbox: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#ffffff',
+  container: {
+    width: 20,
+    height: 20,
     borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
   checked: {
     backgroundColor: '#eb7825',
@@ -86,9 +38,11 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.5,
-    backgroundColor: '#f9fafb',
-    borderColor: '#e5e7eb',
+  },
+  checkmark: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+    backgroundColor: '#ffffff',
   },
 });
-
-export { Checkbox };

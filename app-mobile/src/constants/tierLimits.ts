@@ -1,40 +1,32 @@
 import { SubscriptionTier } from '../types/subscription';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tier limit definitions
+// Tier limit definitions (2-tier: free / mingla_plus)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface TierLimits {
   dailySwipes: number;        // -1 = unlimited
-  maxPairings: number;        // -1 = unlimited, 0 = none
+  maxPairings: number;        // -1 = unlimited
   maxSessions: number;        // -1 = unlimited
-  maxSessionMembers: number;
-  curatedCardsAccess: boolean;
+  maxSessionMembers: number;  // -1 = unlimited
+  curatedCardsAccess: boolean; // true = can save curated cards (all users can VIEW)
   customStartingPoint: boolean;
 }
 
 export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
   free: {
-    dailySwipes: 20,
-    maxPairings: 0,
+    dailySwipes: -1,
+    maxPairings: 1,
     maxSessions: 1,
-    maxSessionMembers: 5,
+    maxSessionMembers: -1,
     curatedCardsAccess: false,
     customStartingPoint: false,
   },
-  pro: {
-    dailySwipes: -1,
-    maxPairings: 0,
-    maxSessions: 3,
-    maxSessionMembers: 5,
-    curatedCardsAccess: true,
-    customStartingPoint: true,
-  },
-  elite: {
+  mingla_plus: {
     dailySwipes: -1,
     maxPairings: -1,
     maxSessions: -1,
-    maxSessionMembers: 15,
+    maxSessionMembers: -1,
     curatedCardsAccess: true,
     customStartingPoint: true,
   },
@@ -57,13 +49,9 @@ export function canSetCustomStartingPoint(tier: SubscriptionTier): boolean {
 }
 
 export function canPair(tier: SubscriptionTier): boolean {
-  return tier === 'elite';
+  return getTierLimits(tier).maxPairings !== 0;
 }
 
 export function getSessionLimit(tier: SubscriptionTier): number {
   return getTierLimits(tier).maxSessions;
-}
-
-export function getSwipeLimit(tier: SubscriptionTier): number {
-  return getTierLimits(tier).dailySwipes;
 }

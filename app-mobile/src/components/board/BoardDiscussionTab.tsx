@@ -613,7 +613,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
           </View>
         ) : (
           messages.map((message, index) => {
-            const senderName = getParticipantName(message.user_id);
+            const senderName = getParticipantName(message.user_id ?? '');
             const reactionGroups = groupReactions(message.reactions);
 
             return (

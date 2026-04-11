@@ -607,6 +607,7 @@ const styles = StyleSheet.create({
   },
   thankYouButton: {
     marginTop: 32,
+    alignSelf: "stretch",
   },
   thankYouSubtitle: {
     fontSize: 16,

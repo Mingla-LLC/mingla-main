@@ -97,15 +97,14 @@ export const Toast: React.FC<ToastProps> = ({
   });
 
   const progressStyle = useAnimatedStyle(() => {
-    const width = interpolate(
+    const scaleX = interpolate(
       progress.value,
       [0, 1],
-      ['100%', '0%'],
+      [1, 0],
       Extrapolate.CLAMP
     );
-
     return {
-      width,
+      transform: [{ scaleX }],
     };
   });
 
@@ -226,7 +225,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressBar: {
+    width: '100%',
     height: '100%',
     borderRadius: 1,
+    transformOrigin: 'left',
   },
 });

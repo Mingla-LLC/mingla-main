@@ -16,7 +16,7 @@ export const feedbackKeys = {
 
 export function useIsBetaTester(): boolean {
   const profile = useAppStore((s) => s.profile);
-  return (profile as Record<string, unknown>)?.is_beta_tester === true;
+  return (profile as unknown as Record<string, unknown>)?.is_beta_tester === true;
 }
 
 // ── Feedback History ────────────────────────────────────────────────────────
@@ -47,6 +47,32 @@ export function useSubmitFeedback() {
     },
     onError: (error) => {
       console.error('[useBetaFeedback] Submit failed:', error.message);
+    },
+  });
+}
+
+// ── Delete Mutation ────────────────────────────────────────────────────────
+
+export function useDeleteFeedback() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationKey: ['beta-feedback', 'delete'],
+    mutationFn: (params: {
+      feedbackId: string;
+      audioPath: string;
+      screenshotPaths: string[] | null;
+    }) =>
+      betaFeedbackService.deleteFeedback(
+        params.feedbackId,
+        params.audioPath,
+        params.screenshotPaths,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: feedbackKeys.all });
+    },
+    onError: (error) => {
+      console.error('[useBetaFeedback] Delete failed:', error.message);
     },
   });
 }

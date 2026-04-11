@@ -475,8 +475,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
           )}
 
           {pendingCollabInvites.map((invite) => {
-            const inviterName = invite.invitedBy?.displayName
-              || invite.invitedBy?.name
+            const inviterName = invite.invitedBy?.name
               || 'Someone'
             return (
               <View key={invite.id} style={styles.inviteCard}>

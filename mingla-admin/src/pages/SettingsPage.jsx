@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Settings, Flag, Sliders, Plug, Plus, Trash2, Edit3, Save, X,
-  History, Sun, Moon, Monitor, Search,
+  History, Sun, Moon, Monitor, Search, FlaskConical, RotateCcw,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { SectionCard } from "../components/ui/Card";
@@ -23,6 +23,7 @@ const SUB_TABS = [
   { id: "flags", label: "Feature Flags" },
   { id: "config", label: "App Config" },
   { id: "integrations", label: "Integrations" },
+  { id: "testing", label: "Testing Tools" },
 ];
 
 // ─── Appearance Tab ─────────────────────────────────────────────────────────
@@ -501,6 +502,142 @@ function IntegrationsView() {
   );
 }
 
+// ─── Testing Tools Tab ─────────────────────────────────────────────────────
+
+function TestingToolsView() {
+  const { addToast } = useToast();
+  const [userEmail, setUserEmail] = useState("");
+  const [resettingSingle, setResettingSingle] = useState(false);
+  const [resettingAll, setResettingAll] = useState(false);
+  const [confirmResetAll, setConfirmResetAll] = useState(false);
+
+  const handleResetSingle = async () => {
+    if (!userEmail.trim()) {
+      addToast({ variant: "error", title: "Enter a user email" });
+      return;
+    }
+    setResettingSingle(true);
+    try {
+      // First verify user exists
+      const { data: user, error: findError } = await supabase
+        .from("profiles")
+        .select("id, coach_mark_step")
+        .eq("email", userEmail.trim())
+        .maybeSingle();
+
+      if (findError) {
+        console.error("[CoachMarkReset] Find error:", findError);
+        addToast({ variant: "error", title: findError.message || "Failed to look up user" });
+      } else if (!user) {
+        addToast({ variant: "error", title: `No user found with email "${userEmail.trim()}"` });
+      } else {
+        // Always set to 0, even if already 0
+        const { error: updateError } = await supabase
+          .from("profiles")
+          .update({ coach_mark_step: 0 })
+          .eq("id", user.id);
+
+        if (updateError) {
+          console.error("[CoachMarkReset] Update error:", updateError);
+          addToast({ variant: "error", title: updateError.message || "Failed to update" });
+        } else {
+          const prev = user.coach_mark_step;
+          addToast({ variant: "success", title: `Coach mark reset for ${userEmail.trim()}`, description: prev === 0 ? "Was already at start" : `Was on step ${prev}` });
+          logAdminAction("testing.reset_coach_mark", "profile", userEmail.trim(), { scope: "single", previous_step: prev });
+          setUserEmail("");
+        }
+      }
+    } catch (e) {
+      addToast({ variant: "error", title: "Reset failed" });
+    } finally {
+      setResettingSingle(false);
+    }
+  };
+
+  const handleResetAll = async () => {
+    setResettingAll(true);
+    try {
+      const { error, count } = await supabase
+        .from("profiles")
+        .update({ coach_mark_step: 0 })
+        .neq("coach_mark_step", 0);
+
+      if (error) {
+        addToast({ variant: "error", title: error.message || "Failed to reset" });
+      } else {
+        addToast({ variant: "success", title: "Coach mark reset for all users" });
+        logAdminAction("testing.reset_coach_mark", "profile", "all", { scope: "all" });
+      }
+    } catch (e) {
+      addToast({ variant: "error", title: "Reset failed" });
+    } finally {
+      setResettingAll(false);
+      setConfirmResetAll(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <SectionCard title="Coach Mark Tour" icon={FlaskConical}>
+        <p className="text-sm text-[var(--color-text-secondary)] mb-4">
+          Reset the guided tour so it restarts from Step 1. Use this to test the first-time user experience without deleting accounts.
+        </p>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">User email</label>
+              <input
+                type="email"
+                value={userEmail}
+                onChange={(e) => setUserEmail(e.target.value)}
+                placeholder="user@example.com"
+                className="w-full h-10 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                onKeyDown={(e) => e.key === "Enter" && handleResetSingle()}
+              />
+            </div>
+            <Button
+              onClick={handleResetSingle}
+              disabled={resettingSingle || !userEmail.trim()}
+              icon={RotateCcw}
+            >
+              {resettingSingle ? "Resetting..." : "Reset This User"}
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-3 pt-2 border-t border-[var(--gray-100)]">
+            <Button
+              variant="danger"
+              onClick={() => setConfirmResetAll(true)}
+              disabled={resettingAll}
+              icon={RotateCcw}
+            >
+              Reset ALL Users
+            </Button>
+            <span className="text-xs text-[var(--color-text-tertiary)]">
+              Restarts the tour for every user in the database
+            </span>
+          </div>
+        </div>
+      </SectionCard>
+
+      <Modal open={confirmResetAll} onClose={() => setConfirmResetAll(false)} title="Reset Coach Marks for All Users" destructive>
+        <ModalBody>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            This will restart the guided tour for <strong>every user</strong>. They will all see the coach mark tour again on their next app open. Are you sure?
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setConfirmResetAll(false)}>Cancel</Button>
+          <Button variant="danger" onClick={handleResetAll} disabled={resettingAll}>
+            {resettingAll ? "Resetting..." : "Yes, Reset All"}
+          </Button>
+        </ModalFooter>
+      </Modal>
+    </div>
+  );
+}
+
 // ─── Main Settings Page ─────────────────────────────────────────────────────
 
 export function SettingsPage() {
@@ -516,6 +653,7 @@ export function SettingsPage() {
       {activeTab === "flags" && <FeatureFlagsView />}
       {activeTab === "config" && <AppConfigView />}
       {activeTab === "integrations" && <IntegrationsView />}
+      {activeTab === "testing" && <TestingToolsView />}
     </div>
   );
 }

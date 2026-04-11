@@ -23,8 +23,6 @@ import { CollaborationSession, getInitials, Friend } from "../src/components/Col
 import PreferencesSheet from "../src/components/PreferencesSheet";
 import ProfilePage from "../src/components/ProfilePage";
 import WelcomeScreen from "../src/components/signIn/WelcomeScreen";
-import TermsOfService from "../src/components/profile/TermsOfService";
-import PrivacyPolicy from "../src/components/profile/PrivacyPolicy";
 import AccountSettings from "../src/components/profile/AccountSettings";
 
 import ViewFriendProfileScreen from "../src/components/profile/ViewFriendProfileScreen";
@@ -48,11 +46,13 @@ import ShareModal from "../src/components/ShareModal";
 
 import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
+import { CoachMarkProvider, useCoachMarkContext } from "../src/contexts/CoachMarkContext";
+import SpotlightOverlay from "../src/components/SpotlightOverlay";
 import PaywallScreen from "../src/components/PaywallScreen";
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
 import {
   initializeOneSignal,
-  loginAndSubscribe,
+  loginToOneSignal,
   logoutOneSignal,
   onForegroundNotification,
   onNotificationClicked,
@@ -78,7 +78,6 @@ import { logger } from "../src/utils/logger";
 // are handled by useNotifications hook + Supabase Realtime. The old service file
 // stays in place but is no longer referenced from the app root.
 import { mixpanelService } from "../src/services/mixpanelService";
-import { useLifecycleLogger } from "../src/hooks/useLifecycleLogger";
 import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
 import RealtimeSubscriptions from "../src/components/RealtimeSubscriptions";
 import * as friendsService from "../src/services/friendsService";
@@ -89,6 +88,23 @@ import {
 } from "../src/hooks/useNotifications";
 
 const TAB_BAR_ICON_SIZE = ms(20);
+
+/** Wraps the tab bar and disables it when the coach mark is loading, pending, or active */
+function CoachMarkNavigationGate({ layout, children }: { layout: any; children: React.ReactNode }) {
+  const { isCoachLoading, isCoachPending, isCoachActive } = useCoachMarkContext();
+  const locked = isCoachLoading || isCoachPending || isCoachActive;
+  return (
+    <View
+      style={[
+        styles.bottomNavigation,
+        { paddingBottom: layout.bottomNavPadding },
+      ]}
+      pointerEvents={locked ? 'none' : 'auto'}
+    >
+      {children}
+    </View>
+  );
+}
 
 // ── Sentry ──────────────────────────────────────────────────────────────────
 // Initialize BEFORE any React component renders. Sentry's native module
@@ -108,7 +124,6 @@ Sentry.init({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AppContent() {
-  useLifecycleLogger();
   const state = useAppState();
   const handlers = useAppHandlers(state);
   const layout = useAppLayout();
@@ -133,10 +148,6 @@ function AppContent() {
     setShowPreferences,
     showCollabPreferences,
     setShowCollabPreferences,
-    showTermsOfService,
-    setShowTermsOfService,
-    showPrivacyPolicy,
-    setShowPrivacyPolicy,
     showAccountSettings,
     setShowAccountSettings,
     showShareModal,
@@ -267,16 +278,15 @@ function AppContent() {
     initializeOneSignal();
   }, []); // intentionally once
 
-  // Full login sequence: link device → request OS permission → opt in.
-  // Login path: if user?.id is available (even while auth is still "loading"
-  // from a persisted Zustand session), call loginAndSubscribe immediately.
+  // Link device to user identity (no permission dialog).
+  // Permission is deferred to after the coach mark tour (ORCH-0349).
   // Logout path: only fires after isLoadingAuth is false, to prevent
   // premature logout while auth is still resolving a cached session.
   useEffect(() => {
     if (user?.id) {
-      console.log('[OneSignal] Calling loginAndSubscribe for:', user.id);
-      loginAndSubscribe(user.id).catch((err) =>
-        console.warn('[OneSignal] loginAndSubscribe failed:', err)
+      console.log('[OneSignal] Calling loginToOneSignal for:', user.id);
+      loginToOneSignal(user.id).catch((err) =>
+        console.warn('[OneSignal] loginToOneSignal failed:', err)
       );
     } else if (!isLoadingAuth) {
       logoutOneSignal();
@@ -873,10 +883,6 @@ function AppContent() {
       logger.nav('Screen: OnboardingFlow', { showOnboardingFlow, needsOnboarding, hasCompletedOnboarding: profile?.has_completed_onboarding });
     } else if (showPreferences) {
       logger.nav('Modal: PreferencesSheet');
-    } else if (showTermsOfService) {
-      logger.nav('Modal: TermsOfService');
-    } else if (showPrivacyPolicy) {
-      logger.nav('Modal: PrivacyPolicy');
     } else {
       logger.nav(`Page: ${currentPage}`, { userId: user?.id });
     }
@@ -889,8 +895,6 @@ function AppContent() {
     showOnboardingFlow,
     needsOnboarding,
     showPreferences,
-    showTermsOfService,
-    showPrivacyPolicy,
   ]);
 
   // Track main screen visits in Mixpanel
@@ -1743,7 +1747,7 @@ function AppContent() {
   }
 
   // Whether any full-screen overlay is active (hides tab container)
-  const isOverlayActive = !!viewingFriendProfileId || (showPaywall && !!user?.id) || showTermsOfService || showPrivacyPolicy;
+  const isOverlayActive = !!viewingFriendProfileId || (showPaywall && !!user?.id);
 
   // Function to render current page based on navigation
   const renderCurrentPage = () => {
@@ -1911,8 +1915,6 @@ function AppContent() {
               logger.action('Navigate to connections from profile');
               setCurrentPage("connections");
             }}
-            onNavigateToPrivacyPolicy={() => { logger.action('Open privacy policy'); setShowPrivacyPolicy(true) }}
-            onNavigateToTermsOfService={() => { logger.action('Open terms of service'); setShowTermsOfService(true) }}
             savedExperiences={savedCards?.length || 0}
             boardsCount={boardsSessions?.length || 0}
             notificationsEnabled={notificationsEnabled}
@@ -1973,8 +1975,6 @@ function AppContent() {
 
   // Ensure any full-screen profile overlays are closed when switching tabs/pages
   const closeProfileOverlays = () => {
-    setShowPrivacyPolicy(false);
-    setShowTermsOfService(false);
     setViewingFriendProfileId(null);
   };
 
@@ -2004,6 +2004,7 @@ function AppContent() {
           >
             <MobileFeaturesProvider>
               <NavigationProvider>
+                <CoachMarkProvider navigateToTab={(tab: string) => setCurrentPage(tab as any)}>
                 <ErrorBoundary>
                   <View style={styles.safeArea}>
                     <StatusBar
@@ -2019,16 +2020,17 @@ function AppContent() {
                           <ViewFriendProfileScreen
                             userId={viewingFriendProfileId}
                             onBack={() => setViewingFriendProfileId(null)}
+                            onMessage={(userId) => {
+                              setViewingFriendProfileId(null);
+                              setPendingOpenDmUserId(userId);
+                              setCurrentPage("connections");
+                            }}
                           />
                         ) : showPaywall && user?.id ? (
                           <PaywallScreen
                             userId={user.id}
                             onClose={() => setShowPaywall(false)}
                           />
-                        ) : showTermsOfService ? (
-                          <TermsOfService onNavigateBack={() => setShowTermsOfService(false)} />
-                        ) : showPrivacyPolicy ? (
-                          <PrivacyPolicy onNavigateBack={() => setShowPrivacyPolicy(false)} />
                         ) : null}
 
                         {/* All 5 tabs always mounted — only active tab visible */}
@@ -2190,8 +2192,6 @@ function AppContent() {
                                   logger.action('Navigate to connections from profile');
                                   setCurrentPage("connections");
                                 }}
-                                onNavigateToPrivacyPolicy={() => { logger.action('Open privacy policy'); setShowPrivacyPolicy(true) }}
-                                onNavigateToTermsOfService={() => { logger.action('Open terms of service'); setShowTermsOfService(true) }}
                                 savedExperiences={savedCards?.length || 0}
                                 boardsCount={boardsSessions?.length || 0}
                                 notificationsEnabled={notificationsEnabled}
@@ -2203,13 +2203,11 @@ function AppContent() {
                         )}
                       </View>
 
+                      {/* Coach Mark Spotlight Overlay */}
+                      <SpotlightOverlay />
+
                       {/* Bottom Navigation — full-bleed: bg extends behind gesture bar */}
-                      <View
-                        style={[
-                          styles.bottomNavigation,
-                          { paddingBottom: layout.bottomNavPadding },
-                        ]}
-                      >
+                      <CoachMarkNavigationGate layout={layout}>
                         <View style={styles.navigationContainer}>
                           <TouchableOpacity
                             onPress={() => {
@@ -2403,7 +2401,7 @@ function AppContent() {
                             </Text>
                           </TouchableOpacity>
                         </View>
-                      </View>
+                      </CoachMarkNavigationGate>
                     </View>
 
                     {/* Share Modal */}
@@ -2474,6 +2472,7 @@ function AppContent() {
           </ErrorBoundary>
                 ) : null}
 
+              </CoachMarkProvider>
               </NavigationProvider>
             </MobileFeaturesProvider>
           </RecommendationsProvider>

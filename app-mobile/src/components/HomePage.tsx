@@ -13,6 +13,7 @@ import { Icon } from "./ui/Icon";
 import { LinearGradient } from "expo-linear-gradient";
 import { s, vs, ms } from "../utils/responsive";
 import SwipeableCards from "./SwipeableCards";
+import { useCoachMark } from "../hooks/useCoachMark";
 import CollaborationSessions, { CollaborationSession, Friend } from "./CollaborationSessions";
 import NotificationsModal from "./NotificationsModal";
 import FriendRequestsModal from "./FriendRequestsModal";
@@ -25,6 +26,7 @@ import minglaLogo from "../../assets/6850c6540f4158618f67e1fdd72281118b419a35.pn
 const ANIMATION_DURATION = 400;
 
 interface HomePageProps {
+  isTabVisible?: boolean;
   onOpenPreferences: () => void;
   onOpenCollabPreferences?: () => void;
   currentMode: "solo" | string;
@@ -35,7 +37,7 @@ interface HomePageProps {
   };
   onAddToCalendar: (experienceData: any) => void;
   savedCards?: any[];
-  onSaveCard?: (card: any) => void;
+  onSaveCard?: (card: any) => Promise<boolean>;
   onShareCard?: (card: any) => void;
   onPurchaseComplete?: (experienceData: any, purchaseOption: any) => void;
   removedCardIds?: string[];
@@ -134,6 +136,7 @@ export default function HomePage({
   });
 
   const noop = useMemo(() => () => {}, []);
+  const asyncNoop = useMemo(() => async (_card: any): Promise<boolean> => false, []);
 
   const handleOpenNotifications = useCallback(() => {
     setShowNotificationsModal(true);
@@ -171,6 +174,16 @@ export default function HomePage({
 
   // Animation values
   const headerSlideAnim = useRef(new Animated.Value(-60)).current;
+
+  // Coach mark refs (v2 spotlight — ref-based measurement, no styles)
+  const coachDeck = useCoachMark(1, 0);
+  const coachPrefs = useCoachMark(2, 19);
+  const coachCardTap = useCoachMark(3, 0);
+  const coachCollabPrefs = useCoachMark(5, 19);
+  const gearRef = useCallback((node: any) => {
+    coachPrefs.targetRef(node);
+    coachCollabPrefs.targetRef(node);
+  }, [coachPrefs.targetRef, coachCollabPrefs.targetRef]);
   const sessionsOpacity = useRef(new Animated.Value(0.3)).current;
 
   // Run entrance animations on mount
@@ -212,6 +225,7 @@ export default function HomePage({
                   onOpenCollabPreferences?.();
                 }
               }}
+              ref={gearRef}
               style={[
                 styles.preferencesButton,
                 currentMode !== "solo" && styles.preferencesButtonActive,
@@ -288,13 +302,16 @@ export default function HomePage({
             </Animated.View>
           )}
 
-          <View style={styles.deckWrapper}>
+          <View
+            ref={(node: any) => { coachDeck.targetRef(node); coachCardTap.targetRef(node); }}
+            style={styles.deckWrapper}
+          >
           <SwipeableCards
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
             currentMode={currentMode}
             onAddToCalendar={onAddToCalendar}
-            onCardLike={onSaveCard || noop}
+            onCardLike={onSaveCard || asyncNoop}
             onShareCard={onShareCard}
             onPurchaseComplete={onPurchaseComplete}
             removedCardIds={removedCardIds}

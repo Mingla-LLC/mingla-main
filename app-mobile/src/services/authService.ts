@@ -15,6 +15,9 @@ export interface UserProfile {
   show_activity?: boolean;
   visibility_mode?: "public" | "friends" | "private";
   photos?: string[];
+  country?: string;
+  currency?: string;
+  measurement_system?: string;
   created_at: string;
   updated_at: string;
 }

@@ -6,7 +6,7 @@
 import { supabase } from './supabase';
 import { RecommendationCard } from '../types';
 import { recommendationHistoryService } from './recommendationHistoryService';
-import { enhancedFavoritesService } from './enhancedFavoritesService';
+// enhancedFavoritesService removed (dead code — ORCH-0384). Favorite notifications stubbed.
 
 /**
  * NotificationPreferences — matches the flat `notification_preferences` table exactly.
@@ -419,7 +419,7 @@ class SmartNotificationService {
     const notifications: SmartNotification[] = [];
 
     try {
-      const favorites = await enhancedFavoritesService.getFavoriteItems(userId, { limit: 20 });
+      const favorites: { recommendation_id: string; recommendation_data: RecommendationCard }[] = [];
       
       // Check for new recommendations similar to favorites
       if (favorites.length > 0) {

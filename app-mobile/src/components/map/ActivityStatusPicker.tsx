@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Switch, StyleSheet, LayoutAnimation, UIManager, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Switch, Pressable, StyleSheet, LayoutAnimation, UIManager, Platform } from 'react-native';
 import { Icon } from '../ui/Icon';
+import { useKeyboard } from '../../hooks/useKeyboard';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -36,6 +37,8 @@ interface ActivityStatusPickerProps {
   onToggleHeatmap: () => void;
   visibility: VisibilityLevel;
   onVisibilityChange: (level: VisibilityLevel) => void;
+  /** Coach mark ref — attaches to the FAB button for spotlight measurement */
+  fabRef?: (node: any) => void;
 }
 
 export function ActivityStatusPicker({
@@ -45,12 +48,14 @@ export function ActivityStatusPicker({
   feedOn, onToggleFeed,
   heatmapOn, onToggleHeatmap,
   visibility, onVisibilityChange,
+  fabRef,
 }: ActivityStatusPickerProps) {
   const [expanded, setExpanded] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
   const [customText, setCustomText] = useState('');
   const [visDropdownOpen, setVisDropdownOpen] = useState(false);
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const { keyboardHeight } = useKeyboard();
 
   const toggleExpanded = () => {
     if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -75,7 +80,14 @@ export function ActivityStatusPicker({
   const statusIcon = STATUS_PRESETS.find(p => p.label === currentStatus)?.icon || 'chatbubble-ellipses-outline';
 
   return (
-    <View style={[styles.container, currentStatus && !expanded && styles.containerWithStatus]}>
+    <View style={[styles.container, currentStatus && !expanded && styles.containerWithStatus, keyboardHeight > 0 && { bottom: 12 + keyboardHeight }]}>
+      {expanded && (
+        <Pressable
+          style={styles.backdrop}
+          onPress={toggleExpanded}
+          accessible={false}
+        />
+      )}
       {expanded && (
         <View style={styles.dropdown}>
           {/* Who sees you — compact dropdown at top */}
@@ -206,7 +218,7 @@ export function ActivityStatusPicker({
       )}
 
       {/* Single FAB */}
-      <TouchableOpacity style={styles.mainFab} onPress={toggleExpanded} activeOpacity={0.8}>
+      <TouchableOpacity ref={fabRef} style={styles.mainFab} onPress={toggleExpanded} activeOpacity={0.8}>
         <Icon name={expanded ? 'close' : 'options-outline'} size={22} color="#FFF" />
       </TouchableOpacity>
       {currentStatus && !expanded && (
@@ -245,6 +257,14 @@ const styles = StyleSheet.create({
   },
   containerWithStatus: {
     bottom: 52,
+  },
+  backdrop: {
+    position: 'absolute',
+    top: -1000,
+    left: -1000,
+    right: -1000,
+    bottom: -1000,
+    zIndex: -1,
   },
   mainFab: {
     width: 48,

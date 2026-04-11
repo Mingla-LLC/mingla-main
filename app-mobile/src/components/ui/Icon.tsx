@@ -112,6 +112,7 @@ import {
   Navigation,
   Palette,
   Paperclip,
+  Pause,
   Pen,
   PenLine,
   Pencil,
@@ -357,6 +358,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   // ─── P ───
   'paper-plane':                Send,
   'paper-plane-outline':        Send,
+  'pause':                      Pause,
   'pencil':                     Pencil,
   'people':                     Users,
   'people-outline':             Users,

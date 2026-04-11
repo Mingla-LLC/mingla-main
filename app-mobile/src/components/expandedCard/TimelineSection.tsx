@@ -25,6 +25,7 @@ interface TimelineSectionProps {
     duration: number;
   }>;
   routeDuration?: number;
+  currency?: string;
 }
 
 interface StepData {

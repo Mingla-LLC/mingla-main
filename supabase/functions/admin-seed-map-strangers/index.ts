@@ -471,6 +471,7 @@ serve(async (req) => {
             const status = ACTIVITY_STATUSES[Math.floor(Math.random() * ACTIVITY_STATUSES.length)];
             allRows.push({
               id,
+              city_id: city.id,
               display_name: person.displayName,
               first_name: person.firstName,
               avatar_url: null,
@@ -508,6 +509,97 @@ serve(async (req) => {
         });
       }
 
+      case "get_seed_stats": {
+        const { data: cities, error: statsErr } = await adminClient.rpc("get_seed_stats_per_city");
+        if (statsErr) throw new Error(`Stats failed: ${statsErr.message}`);
+
+        const { count: globalCount } = await adminClient
+          .from("seed_map_presence")
+          .select("*", { count: "exact", head: true })
+          .is("city_id", null);
+
+        return json({
+          action: "get_seed_stats",
+          cities: cities || [],
+          totalSeeds: (cities || []).reduce((sum: number, c: any) => sum + Number(c.seed_count), 0) + (globalCount || 0),
+          globalSeeds: globalCount || 0,
+        });
+      }
+
+      case "seed_single_city": {
+        const { cityId, count: seedCount = 10 } = body;
+        if (!cityId) return json({ error: "cityId is required" }, 400);
+
+        const { data: city, error: cityErr } = await adminClient
+          .from("seeding_cities")
+          .select("id, name, country, center_lat, center_lng, coverage_radius_km")
+          .eq("id", cityId)
+          .single();
+        if (cityErr || !city) return json({ error: "City not found" }, 404);
+
+        const { count: prevCount } = await adminClient
+          .from("seed_map_presence")
+          .select("*", { count: "exact", head: true })
+          .eq("city_id", cityId);
+        await adminClient.from("seed_map_presence").delete().eq("city_id", cityId);
+
+        const radiusKm = city.coverage_radius_km || 10;
+        const rows: any[] = [];
+        for (let j = 0; j < seedCount; j++) {
+          const person = FAKE_PEOPLE[Math.floor(Math.random() * FAKE_PEOPLE.length)];
+          const id = crypto.randomUUID();
+          const angle = Math.random() * 2 * Math.PI;
+          const dist = Math.random() * radiusKm;
+          const latOff = (dist / 111.32) * Math.cos(angle);
+          const lngOff = (dist / (111.32 * Math.cos((city.center_lat * Math.PI) / 180))) * Math.sin(angle);
+          const status = ACTIVITY_STATUSES[Math.floor(Math.random() * ACTIVITY_STATUSES.length)];
+
+          rows.push({
+            id,
+            city_id: cityId,
+            display_name: person.displayName,
+            first_name: person.firstName,
+            avatar_url: null,
+            approximate_lat: city.center_lat + latOff,
+            approximate_lng: city.center_lng + lngOff,
+            last_active_at: new Date(Date.now() - Math.random() * 4 * 60 * 60 * 1000).toISOString(),
+            activity_status: status,
+            activity_status_expires_at: status ? new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString() : null,
+            categories: pickRandom(ALL_CATEGORIES, 2, 4),
+            price_tiers: pickRandom(ALL_TIERS, 1, 3),
+            intents: pickRandom(ALL_INTENTS, 1, 2),
+          });
+        }
+
+        const { error: insertErr } = await adminClient.from("seed_map_presence").insert(rows);
+        if (insertErr) throw new Error(`Insert failed: ${insertErr.message}`);
+
+        return json({
+          action: "seed_single_city",
+          cityId,
+          cityName: city.name,
+          created: rows.length,
+          previouslyClearedForCity: prevCount || 0,
+        });
+      }
+
+      case "clear_single_city": {
+        const { cityId } = body;
+        if (!cityId) return json({ error: "cityId is required" }, 400);
+
+        const { count } = await adminClient
+          .from("seed_map_presence")
+          .select("*", { count: "exact", head: true })
+          .eq("city_id", cityId);
+        await adminClient.from("seed_map_presence").delete().eq("city_id", cityId);
+
+        return json({
+          action: "clear_single_city",
+          cityId,
+          deleted: count || 0,
+        });
+      }
+
       case "cleanup": {
         const result = await cleanup(adminClient);
         return json({ action: "cleanup", ...result });
@@ -516,7 +608,7 @@ serve(async (req) => {
       default:
         return json(
           {
-            error: `Unknown action: ${body.action}. Valid: seed, seed_around_all_users, seed_global_grid, seed_cities, cleanup`,
+            error: `Unknown action: ${body.action}. Valid: seed, seed_around_all_users, seed_global_grid, seed_cities, seed_single_city, clear_single_city, get_seed_stats, cleanup`,
           },
           400
         );

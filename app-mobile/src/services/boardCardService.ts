@@ -87,10 +87,9 @@ export class BoardCardService {
       realtimeService.broadcastCardSave(sessionId, {
         id: data.id,
         session_id: sessionId,
-        experience_id: experienceId,
         saved_by: userId,
         saved_at: data.saved_at,
-        card_data: data.card_data,
+        experience_data: data.card_data,
       });
 
       return { data, error: null };

@@ -23,7 +23,7 @@ import { formatToOneDecimal } from '../utils/numberFormatter';
 import { getReadableCategoryName } from '../utils/categoryUtils';
 import { useLocalePreferences } from '../hooks/useLocalePreferences';
 import { formatCurrency } from './utils/formatters';
-import { googleLevelToTierSlug, tierLabel, tierRangeLabel } from '../constants/priceTiers';
+import { googleLevelToTierSlug, tierLabel, tierRangeLabel, PriceTierSlug } from '../constants/priceTiers';
 
 interface SingleCardDisplayProps {
   card: RecommendationCard;
@@ -288,7 +288,7 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
   };
 
   // Price tier display
-  const priceTier = card.priceTier ?? googleLevelToTierSlug(card.priceLevel);
+  const priceTier = (card.priceTier ?? googleLevelToTierSlug(card.priceLevel)) as PriceTierSlug;
   const priceDisplay = `${tierLabel(priceTier)} · ${tierRangeLabel(priceTier)}`;
 
 
@@ -385,10 +385,10 @@ export const SingleCardDisplay: React.FC<SingleCardDisplayProps> = ({
           </View>
 
           {/* Rating */}
-          {card.rating > 0 && (
+          {(card.rating ?? 0) > 0 && (
             <View style={styles.ratingContainer}>
               <Icon name="star" size={12} color="#FCD34D" />
-              <Text style={styles.ratingText}>{formatToOneDecimal(card.rating)}</Text>
+              <Text style={styles.ratingText}>{formatToOneDecimal(card.rating ?? 0)}</Text>
             </View>
           )}
 

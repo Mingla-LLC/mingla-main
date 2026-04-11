@@ -1765,7 +1765,6 @@ export default function ExpandedCardModal({
                   rating={card.rating}
                   distance={card.distance}
                   travelTime={hideTravelTime ? undefined : card.travelTime}
-                  travelMode={card.travelMode || effectiveTravelMode}
                   measurementSystem={accountPreferences?.measurementSystem}
                   priceRange={card.priceRange}
                   priceTier={(card as any).priceTier}
@@ -1924,11 +1923,11 @@ export default function ExpandedCardModal({
                             </Text>
                           </View>
                         </View>
-                        {picnicData.groceryStore.rating > 0 && (
+                        {(picnicData.groceryStore.rating ?? 0) > 0 && (
                           <View style={styles.groceryStoreRating}>
                             <Icon name="star" size={14} color="#fbbf24" />
                             <Text style={styles.ratingText}>
-                              {picnicData.groceryStore.rating.toFixed(1)}
+                              {(picnicData.groceryStore.rating ?? 0).toFixed(1)}
                             </Text>
                             {picnicData.groceryStore.reviewCount && (
                               <Text style={styles.reviewText}>

@@ -526,66 +526,15 @@ serve(async (req: Request) => {
       }
     }
 
-    // --- TIER GATING: Swipe limit check + effective tier ---
-    let swipeData: { remaining: number; daily_limit: number; used: number; resets_at: string } | null = null;
+    // --- TIER GATING: Effective tier ---
     let effectiveTier = 'free';
     if (userId) {
-      // Fetch swipe data and effective tier in parallel
-      const [swipeResult, tierResult] = await Promise.all([
-        supabaseAdmin.rpc('get_remaining_swipes', { p_user_id: userId }),
-        supabaseAdmin.rpc('get_effective_tier', { p_user_id: userId }),
-      ]);
-
-      if (swipeResult.data?.[0]) {
-        swipeData = swipeResult.data[0];
-      }
-      effectiveTier = tierResult.data ?? 'free';
-
-      if (swipeData && swipeData.remaining === 0) {
-        return new Response(
-          JSON.stringify({
-            limited: true,
-            remaining: 0,
-            dailyLimit: swipeData.daily_limit,
-            resetsAt: swipeData.resets_at,
-            cards: [],
-          }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      const { data: tierData } = await supabaseAdmin.rpc('get_effective_tier', { p_user_id: userId });
+      effectiveTier = tierData ?? 'free';
     }
 
-    // --- TIER GATING: Helper to strip curated card details for free users ---
-    function applyTierGating(cards: any[]): any[] {
-      return cards.map(card => {
-        if (card.cardType === 'curated' && effectiveTier === 'free') {
-          return {
-            ...card,
-            stops: card.stops?.map((_stop: any, i: number) => ({
-              stopNumber: i + 1,
-            })),
-            title: card.teaserText || 'A curated experience awaits...',
-            tagline: card.tagline,
-            stopPlacePoolIds: [],
-            stopGooglePlaceIds: [],
-            _locked: true,
-          };
-        }
-        return card;
-      });
-    }
-
-    // --- TIER GATING: Helper to add swipe info to response for free users ---
-    function swipeInfoPayload(): Record<string, unknown> {
-      if (effectiveTier === 'free' && swipeData) {
-        return {
-          remainingSwipes: swipeData.remaining,
-          dailyLimit: swipeData.daily_limit,
-          resetsAt: swipeData.resets_at,
-        };
-      }
-      return {};
-    }
+    // Note: curated cards are now fully visible to all tiers.
+    // Save-gating is handled client-side (free users can view but not save).
 
     // ── Calculate search radius from travel constraint ────────────────────
     const maxDistKm = (travelConstraintValue / 60) * (SPEED_KMH[travelMode] || 4.5) * 1.3;
@@ -653,10 +602,9 @@ serve(async (req: Request) => {
           console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (${poolResult.cards.length} pre-filter, batch=${batchSeed}) in ${elapsed}ms`);
 
           return new Response(JSON.stringify({
-            cards: applyTierGating(scoredPoolCards),
+            cards: scoredPoolCards,
             total: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
             source: 'pool',
-            ...swipeInfoPayload(),
             metadata: {
               hasMore: poolResult.hasMore,
               poolSize: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
@@ -689,7 +637,6 @@ serve(async (req: Request) => {
       cards: [],
       total: 0,
       source: 'pool',
-      ...swipeInfoPayload(),
       metadata: { hasMore: false, poolSize: 0, batchSeed: batchSeed ?? 0 },
       sourceBreakdown: {
         fromPool: 0,

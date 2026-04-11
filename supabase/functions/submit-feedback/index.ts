@@ -16,6 +16,7 @@ function jsonResponse(body: object, status = 200) {
 
 const VALID_CATEGORIES = ["bug", "feature_request", "ux_issue", "general"];
 const MAX_DURATION_MS = 300_000; // 5 minutes
+const MAX_SCREENSHOTS = 10;
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -85,6 +86,7 @@ serve(async (req: Request) => {
     session_duration_ms,
     latitude,
     longitude,
+    screenshot_paths,
   } = body as Record<string, unknown>;
 
   // Validate required fields
@@ -123,12 +125,47 @@ serve(async (req: Request) => {
     return jsonResponse({ error: "app_version is required" }, 400);
   }
 
+  // Validate optional screenshot_paths
+  let validScreenshotPaths: string[] = [];
+  if (screenshot_paths != null) {
+    if (!Array.isArray(screenshot_paths)) {
+      return jsonResponse({ error: "screenshot_paths must be an array" }, 400);
+    }
+    if (screenshot_paths.length > MAX_SCREENSHOTS) {
+      return jsonResponse(
+        { error: `screenshot_paths must contain at most ${MAX_SCREENSHOTS} items` },
+        400,
+      );
+    }
+    for (const p of screenshot_paths) {
+      if (typeof p !== "string") {
+        return jsonResponse({ error: "Each screenshot_path must be a string" }, 400);
+      }
+      if (!p.startsWith(user.id + "/screenshots/")) {
+        return jsonResponse(
+          { error: "Each screenshot_path must reference your own screenshots folder" },
+          403,
+        );
+      }
+    }
+    validScreenshotPaths = screenshot_paths as string[];
+  }
+
   // Generate signed URL for audio playback (1-hour expiry)
   const { data: signedData, error: signedError } = await supabaseAdmin.storage
     .from("beta-feedback")
     .createSignedUrl(audio_path as string, 3600);
 
   const audioUrl = signedError ? null : signedData?.signedUrl ?? null;
+
+  // Generate signed URLs for screenshots (if any)
+  const screenshotUrls: string[] = [];
+  for (const path of validScreenshotPaths) {
+    const { data: ssData } = await supabaseAdmin.storage
+      .from("beta-feedback")
+      .createSignedUrl(path, 3600);
+    screenshotUrls.push(ssData?.signedUrl ?? "");
+  }
 
   // Insert feedback row with denormalized user snapshot
   const { data: feedback, error: insertError } = await supabaseAdmin
@@ -150,6 +187,8 @@ serve(async (req: Request) => {
       session_duration_ms: typeof session_duration_ms === "number" ? session_duration_ms : null,
       latitude: typeof latitude === "number" ? latitude : null,
       longitude: typeof longitude === "number" ? longitude : null,
+      screenshot_paths: validScreenshotPaths.length > 0 ? validScreenshotPaths : null,
+      screenshot_urls: screenshotUrls.length > 0 ? screenshotUrls : null,
     })
     .select("id")
     .single();

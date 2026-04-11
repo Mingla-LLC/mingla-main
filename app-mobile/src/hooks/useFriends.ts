@@ -11,6 +11,7 @@ import {
   useBlockedUsers,
   friendsKeys,
 } from "./useFriendsQuery";
+import { dismissNotificationByEntity } from "./useNotifications";
 
 // Re-export types from service so existing imports work
 export type { Friend, FriendRequest, BlockedUser } from "../services/friendsService";
@@ -344,6 +345,14 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
 
         // Invalidate all friends caches (friends list + requests)
         await queryClient.invalidateQueries({ queryKey: friendsKeys.all });
+
+        // Clear the corresponding notification (fire-and-forget — DB trigger also handles this)
+        if (userId) {
+          dismissNotificationByEntity(userId, queryClient, {
+            relatedId: requestId,
+            type: 'friend_request_received',
+          }).catch(() => {});
+        }
       } catch (error) {
         console.error("Error accepting friend request:", error);
         throw error;
@@ -363,6 +372,14 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         if (error) throw error;
 
         await queryClient.invalidateQueries({ queryKey: friendsKeys.requests(userId ?? "") });
+
+        // Clear the corresponding notification (fire-and-forget — DB trigger also handles this)
+        if (userId) {
+          dismissNotificationByEntity(userId, queryClient, {
+            relatedId: requestId,
+            type: 'friend_request_received',
+          }).catch(() => {});
+        }
       } catch (error) {
         console.error("Error declining friend request:", error);
         throw error;

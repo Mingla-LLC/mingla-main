@@ -8,7 +8,11 @@ import {
   Pressable,
   ActivityIndicator,
   Platform,
+  Image,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
@@ -20,6 +24,7 @@ import {
   betaFeedbackService,
   MAX_FEEDBACK_DURATION_MS,
   MIN_FEEDBACK_DURATION_MS,
+  MAX_SCREENSHOTS,
   type FeedbackCategory,
   type SubmitFeedbackRequest,
 } from '../services/betaFeedbackService';
@@ -80,17 +85,24 @@ export default function BetaFeedbackModal({
   const [errorMessage, setErrorMessage] = useState('');
   const [playbackSound, setPlaybackSound] = useState<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [selectedScreenshots, setSelectedScreenshots] = useState<
+    Array<{ uri: string; width: number; height: number }>
+  >([]);
+  const [permissionMessage, setPermissionMessage] = useState('');
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const successCloseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Cleanup on close ────────────────────────────────────────────────────
 
   const resetState = useCallback(async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (autoStopRef.current) clearTimeout(autoStopRef.current);
+    if (successCloseRef.current) clearTimeout(successCloseRef.current);
     timerRef.current = null;
     autoStopRef.current = null;
+    successCloseRef.current = null;
 
     if (feedbackRecorder.isRecording()) {
       await feedbackRecorder.cancelRecording();
@@ -101,6 +113,10 @@ export default function BetaFeedbackModal({
       setPlaybackSound(null);
     }
 
+    // Always revert audio mode, even if we weren't actively recording.
+    // Handles the case where initialize() set allowsRecordingIOS:true but recording failed.
+    await feedbackRecorder.resetAudioMode();
+
     setStep('category');
     setSelectedCategory(null);
     setElapsedMs(0);
@@ -108,6 +124,8 @@ export default function BetaFeedbackModal({
     setRecordedDurationMs(0);
     setErrorMessage('');
     setIsPlaying(false);
+    setSelectedScreenshots([]);
+    setPermissionMessage('');
   }, [playbackSound]);
 
   const handleClose = useCallback(async () => {
@@ -120,15 +138,28 @@ export default function BetaFeedbackModal({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (autoStopRef.current) clearTimeout(autoStopRef.current);
+      if (successCloseRef.current) clearTimeout(successCloseRef.current);
     };
   }, []);
+
+  // Clean up when modal is hidden externally (e.g., tab switch auto-close).
+  // handleClose() normally runs resetState() before calling onClose(), but when
+  // visible becomes false through other paths (isTabVisible effect), resetState()
+  // is skipped. This catches all close paths.
+  const prevVisibleRef = useRef(visible);
+  useEffect(() => {
+    if (prevVisibleRef.current && !visible) {
+      resetState();
+    }
+    prevVisibleRef.current = visible;
+  }, [visible, resetState]);
 
   // ── Recording Logic ─────────────────────────────────────────────────────
 
   const startRecording = async () => {
     const started = await feedbackRecorder.startRecording();
     if (!started) {
-      setErrorMessage('Could not start recording. Please check microphone permissions.');
+      setErrorMessage('Recording failed. Please try again.');
       setStep('error');
       return;
     }
@@ -232,6 +263,42 @@ export default function BetaFeedbackModal({
     setStep('category');
   };
 
+  // ── Screenshot Logic ─────────────────────────────────────────────────────
+
+  const pickScreenshots = async (): Promise<void> => {
+    const remaining = MAX_SCREENSHOTS - selectedScreenshots.length;
+    if (remaining <= 0) return;
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      setPermissionMessage('Photo library access is needed to attach screenshots');
+      return;
+    }
+    setPermissionMessage('');
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
+      quality: 1,
+      exif: false,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    const newImages = result.assets.map((asset) => ({
+      uri: asset.uri,
+      width: asset.width,
+      height: asset.height,
+    }));
+
+    setSelectedScreenshots((prev) => [...prev, ...newImages].slice(0, MAX_SCREENSHOTS));
+  };
+
+  const removeScreenshot = (index: number): void => {
+    setSelectedScreenshots((prev) => prev.filter((_, i) => i !== index));
+  };
+
   // ── Submit Logic ────────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
@@ -242,6 +309,15 @@ export default function BetaFeedbackModal({
     try {
       // Upload audio
       const audioPath = await betaFeedbackService.uploadFeedbackAudio(user.id, recordedUri);
+
+      // Upload screenshots (only if any selected)
+      let screenshotPaths: string[] | undefined;
+      if (selectedScreenshots.length > 0) {
+        screenshotPaths = await betaFeedbackService.uploadFeedbackScreenshots(
+          user.id,
+          selectedScreenshots,
+        );
+      }
 
       // Collect metadata
       const deviceInfo = getDeviceInfo();
@@ -275,6 +351,7 @@ export default function BetaFeedbackModal({
         session_duration_ms: sessionDurationMs,
         latitude,
         longitude,
+        screenshot_paths: screenshotPaths,
       };
 
       await submitMutation.mutateAsync(params);
@@ -282,8 +359,9 @@ export default function BetaFeedbackModal({
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setStep('success');
 
-      // Auto-close after 2 seconds
-      setTimeout(() => {
+      // Auto-close after 2 seconds — store ref so resetState() can cancel it
+      // if the modal is closed/reopened before the timer fires.
+      successCloseRef.current = setTimeout(() => {
         handleClose();
       }, 2000);
     } catch (error: unknown) {
@@ -360,27 +438,84 @@ export default function BetaFeedbackModal({
     </View>
   );
 
-  const renderReview = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Review your feedback</Text>
-      <Text style={styles.stepSubtitle}>{formatTimer(recordedDurationMs)} recorded</Text>
+  const renderReview = () => {
+    const thumbWidth = (Dimensions.get('window').width - spacing.lg * 2 - spacing.sm * 2) / 3;
+    return (
+      <View style={styles.stepContainer}>
+        <ScrollView style={styles.reviewScrollContainer} showsVerticalScrollIndicator={false}>
+          <Text style={styles.stepTitle}>Review your feedback</Text>
+          <Text style={styles.stepSubtitle}>{formatTimer(recordedDurationMs)} recorded</Text>
 
-      <TouchableOpacity style={styles.playButton} onPress={togglePlayback} activeOpacity={0.7}>
-        <Icon name={isPlaying ? 'pause' : 'play'} size={24} color={colors.primary[500]} />
-        <Text style={styles.playButtonText}>{isPlaying ? 'Pause' : 'Play'}</Text>
-      </TouchableOpacity>
+          <TouchableOpacity style={styles.playButton} onPress={togglePlayback} activeOpacity={0.7}>
+            <Icon name={isPlaying ? 'pause' : 'play'} size={24} color={colors.primary[500]} />
+            <Text style={styles.playButtonText}>{isPlaying ? 'Pause' : 'Play'}</Text>
+          </TouchableOpacity>
 
-      <View style={styles.reviewActions}>
-        <TouchableOpacity style={styles.secondaryButton} onPress={reRecord} activeOpacity={0.7}>
-          <Text style={styles.secondaryButtonText}>Re-record</Text>
-        </TouchableOpacity>
+          {/* ── Screenshots Section (optional) ─────────────────────────── */}
+          <View style={styles.screenshotSectionDivider}>
+            <Text style={styles.screenshotSectionTitle}>
+              Attach Screenshots{selectedScreenshots.length > 0 ? ` (${selectedScreenshots.length}/${MAX_SCREENSHOTS})` : ''}
+            </Text>
+            <Text style={styles.screenshotSectionHint}>Optional — add images from your photo library</Text>
+          </View>
 
-        <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} activeOpacity={0.7}>
-          <Text style={styles.primaryButtonText}>Submit</Text>
-        </TouchableOpacity>
+          {permissionMessage !== '' && (
+            <Text style={styles.permissionMessage}>{permissionMessage}</Text>
+          )}
+
+          {selectedScreenshots.length > 0 && (
+            <View style={styles.screenshotGrid}>
+              {selectedScreenshots.map((img, index) => (
+                <View
+                  key={`${img.uri}-${index}`}
+                  style={[styles.screenshotThumb, { width: thumbWidth, height: thumbWidth }]}
+                >
+                  <Image
+                    source={{ uri: img.uri }}
+                    style={styles.screenshotImage}
+                    resizeMode="cover"
+                  />
+                  <TouchableOpacity
+                    style={styles.screenshotRemove}
+                    onPress={() => removeScreenshot(index)}
+                    hitSlop={8}
+                    accessibilityLabel={`Remove screenshot ${index + 1}`}
+                  >
+                    <Icon name="close-circle" size={22} color={colors.error[500]} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {selectedScreenshots.length < MAX_SCREENSHOTS && (
+            <TouchableOpacity
+              style={styles.addScreenshotButton}
+              onPress={pickScreenshots}
+              activeOpacity={0.7}
+              accessibilityLabel="Add screenshots from library"
+            >
+              <Icon name="images-outline" size={20} color={colors.primary[500]} />
+              <Text style={styles.addScreenshotText}>
+                {selectedScreenshots.length === 0 ? 'Add from Library' : 'Add More'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+
+        {/* ── Action Buttons (always visible at bottom) ──────────────── */}
+        <View style={styles.reviewActions}>
+          <TouchableOpacity style={styles.secondaryButton} onPress={reRecord} activeOpacity={0.7}>
+            <Text style={styles.secondaryButtonText}>Re-record</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} activeOpacity={0.7}>
+            <Text style={styles.primaryButtonText}>Submit</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderSubmitting = () => (
     <View style={styles.centeredStep}>
@@ -651,6 +786,76 @@ const styles = StyleSheet.create({
   reviewActions: {
     flexDirection: 'row',
     gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+
+  // Review scroll (content scrolls, buttons stay pinned below)
+  reviewScrollContainer: {
+    maxHeight: 340,
+  },
+
+  // Screenshots (inline on review step)
+  screenshotSectionDivider: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.gray[200],
+    marginBottom: spacing.sm,
+  },
+  screenshotSectionTitle: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginBottom: 2,
+  },
+  screenshotSectionHint: {
+    ...typography.xs,
+    color: colors.text.tertiary,
+    marginBottom: spacing.sm,
+  },
+  screenshotGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  screenshotThumb: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    position: 'relative' as const,
+  },
+  screenshotImage: {
+    width: '100%',
+    height: '100%',
+  },
+  screenshotRemove: {
+    position: 'absolute' as const,
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 11,
+  },
+  addScreenshotButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.primary[200],
+    borderStyle: 'dashed' as const,
+    backgroundColor: colors.primary[50],
+  },
+  addScreenshotText: {
+    ...typography.md,
+    fontWeight: fontWeights.semibold,
+    color: colors.primary[500],
+  },
+  permissionMessage: {
+    ...typography.xs,
+    color: colors.warning[600],
+    marginBottom: spacing.sm,
   },
 
   // Status
