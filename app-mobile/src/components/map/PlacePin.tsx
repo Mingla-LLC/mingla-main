@@ -26,6 +26,7 @@ interface PlacePinProps {
   isSaved: boolean;
   isPairedSaved?: boolean;
   isScheduled: boolean;
+  isSelected?: boolean;
   onPress: () => void;
 }
 
@@ -42,6 +43,7 @@ export const PlacePinContent = React.memo(function PlacePinContent({
   isSaved,
   isPairedSaved = false,
   isScheduled,
+  isSelected = false,
 }: Omit<PlacePinProps, 'onPress'>) {
   const slug = getCategorySlug(card.category);
   const categoryColor = getCategoryColor(card.category) || '#6b7280';
@@ -76,7 +78,7 @@ export const PlacePinContent = React.memo(function PlacePinContent({
           <Icon name="calendar" size={8} color="#3b82f6" />
         </View>
       )}
-      {pinLabel ? (
+      {pinLabel && !isSelected ? (
         <View style={isCurated ? styles.labelPillLarge : styles.labelPill}>
           <Text style={styles.labelText}>{pinLabel}</Text>
         </View>
@@ -94,6 +96,8 @@ export function PlacePin({ card, isSaved, isPairedSaved = false, isScheduled, on
       coordinate={{ latitude: card.lat, longitude: card.lng }}
       onPress={onPress}
       tracksViewChanges={false}
+      anchor={{ x: 0.5, y: 0.27 }}
+      tappable
     >
       <PlacePinContent card={card} isSaved={isSaved} isPairedSaved={isPairedSaved} isScheduled={isScheduled} />
     </Marker>

@@ -139,6 +139,7 @@ export function ReactNativeMapsProvider({
           isSaved={savedCardIds.has(card.id)}
           isPairedSaved={pairedSavedCardIds.has(card.id)}
           isScheduled={scheduledCardIds.has(card.id)}
+          isSelected={selectedCard?.id === card.id}
           onPress={() => onPlacePress(card)}
         />
       ))}
