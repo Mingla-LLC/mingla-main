@@ -976,12 +976,9 @@ export default function SwipeableCards({
         );
         const cardToRemove = availableCards[currentCardIndexRef.current];
 
-        // Check for swipe up (expand card) — block for locked curated cards
+        // Check for swipe up (expand card)
         if (gestureState.dy < -50 && Math.abs(gestureState.dx) < 50) {
-          if (cardToRemove && !(
-            (cardToRemove as any)?.cardType === 'curated' &&
-            !canAccessRef.current('curated_cards')
-          )) {
+          if (cardToRemove) {
             HapticFeedback.medium();
             handleCardExpandRef.current?.();
           }
@@ -1061,12 +1058,6 @@ export default function SwipeableCards({
     const currentX = (position.x as any)._value || 0;
     const currentY = (position.y as any)._value || 0;
     if (Math.abs(currentX) < 10 && Math.abs(currentY) < 10 && currentRec) {
-      // Block expand for locked curated cards — open paywall instead
-      if ((currentRec as any).cardType === 'curated' && !canAccess('curated_cards')) {
-        setPaywallFeature('curated_cards');
-        setShowPaywall(true);
-        return;
-      }
       handleCardExpand();
     }
   };

@@ -294,6 +294,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0359 | Place pins now show name labels — truncated place/stop name below each pin | Map | S2 | ux | closed | A | 2026-04-10 | QA PASS (AH-059). Text label added to PlacePinContent. Curated shows first stop name, singles show place name. 15-char truncation. |
 | ORCH-0361 | Avatar disappearance fixed — 3s tracksViewChanges window for image loading | Map | S1 | bug | closed | A | 2026-04-10 | QA PASS (AH-059). Person markers `tracksViewChanges={true}` for 3s then false. Prevents permanent fallback on slow image load. |
 | ORCH-0378 | Map pin labels redesigned — orange pill with "Category · Place Name", full text no truncation, widened wrappers | Map | S2 | ux | closed | A | 2026-04-11 | User-verified on device. PlacePin.tsx: orange pill (rgba(235,120,37,0.85)), getReadableCategoryName + title, no maxWidth/numberOfLines constraints. 3 iterations (v1 pill, v2 content, v3 no truncation). |
+| ORCH-0379 | REGRESSION from ORCH-0378: (1) Bottom sheet no longer opens on pin tap — wider wrapper misaligns hit target, Marker missing anchor/tappable props. (2) Label pill should hide when pin is selected and bottom sheet is open. | Map | S1 | regression | implementing | F | — | Root cause: 140px wrapper without anchor prop shifts tap target. AnimatedPlacePin Marker needs anchor/tappable. PlacePinContent needs isSelected prop to hide label. |
 
 ### Section 10: Direct Messaging & Chat
 
@@ -329,7 +330,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0147 | Silent swipe blocking after limit | Payments | S2 | quality-gap | closed | A | 2026-03-31 | Fixed with ORCH-0146 — PanResponder now shows paywall |
 | ORCH-0148 | useEffectiveTier can downgrade (misleading comment) | Payments | S2 | quality-gap | closed | A | 2026-03-31 | Fixed with ORCH-0143 — comment corrected in useSubscription.ts |
 | ORCH-0149 | Trial abuse: delete+re-signup = infinite Elite | Payments | S1 | bug | closed | A | 2026-03-31 | QA_PAYMENTS_EXPIRY_TRIAL_REPORT.md — phone-hash table, checked at onboarding |
-| ORCH-0372 | Price tier restructure: 3 tiers (Free/Pro/Elite) → 2 tiers (Free/Mingla+) | Payments | S0 | architecture-flaw | implementing | F | — | Spec APPROVED. Implementor dispatched in 2 waves: W1=backend (migration+edge), W2=frontend (mobile+admin). Awaiting W1 implementation. |
+| ORCH-0372 | Price tier restructure: 3 tiers (Free/Pro/Elite) → 2 tiers (Free/Mingla+) | Payments | S0 | architecture-flaw | closed | A | 2026-04-11 | QA CONDITIONAL PASS (P1 reworked). 19/23 code tests PASS, 14 UNVERIFIED (device). DB migration applied, 3 edge functions deployed, ~22 frontend files updated, 2 deleted. Full pipeline: forensic → spec → W1 backend → W2 frontend → QA → rework → PASS. |
 
 ### Section 12: Calendar & Scheduling
 
