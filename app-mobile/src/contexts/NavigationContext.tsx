@@ -52,16 +52,16 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
   const openPreferencesModal = () => setIsPreferencesModalOpen(true);
   const closePreferencesModal = () => setIsPreferencesModalOpen(false);
 
-  const navigateToExperience = (experienceId: string) => {
-    // This will be implemented when we add stack navigation
+  const navigateToExperience = (_experienceId: string) => {
+    // Stub — requires stack navigation (not yet built)
   };
 
-  const navigateToBoard = (boardId: string) => {
-    // This will be implemented when we add stack navigation
+  const navigateToBoard = (_boardId: string) => {
+    // Stub — requires stack navigation (not yet built)
   };
 
-  const navigateToSession = (sessionId: string) => {
-    // This will be implemented when we add stack navigation
+  const navigateToSession = (_sessionId: string) => {
+    // Stub — requires stack navigation (not yet built)
   };
 
   const navigateToConnections = () => {

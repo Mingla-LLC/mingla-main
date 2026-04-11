@@ -19,8 +19,7 @@ import {
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
 import { Icon } from './ui/Icon'
-// WhatsAppLogo available when WhatsApp channel is enabled in Twilio Console
-// import { WhatsAppLogo } from './ui/BrandIcons'
+// WhatsAppLogo: available from './ui/BrandIcons' if needed for OTP channel UI
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -2636,7 +2635,7 @@ const OnboardingFlow = ({
               <Pressable
                 style={styles.locationSelectedCard}
                 onPress={handleClearLocationSelection}
-                accessibilityLabel="Change selected location"
+                accessibilityLabel={t('onboarding:manual_location.change_accessibility')}
                 accessibilityHint="Tap to search for a different location"
               >
                 <View style={styles.locationSelectedContent}>
@@ -2748,7 +2747,7 @@ const OnboardingFlow = ({
               <CategoryTile
                 key={cat.slug}
                 slug={cat.slug}
-                name={cat.name}
+                name={t(`common:category_${cat.slug}`)}
                 icon={cat.ux.activeColor ? getCategoryIcon(cat.slug) : 'ellipse-outline'}
                 activeColor={cat.ux.activeColor}
                 selected={data.selectedCategories.includes(cat.slug)}
@@ -2826,13 +2825,13 @@ const OnboardingFlow = ({
                     styles.budgetTileLabel,
                     isActive && styles.budgetTileLabelActive,
                   ]}>
-                    {tier.label}
+                    {t(`common:tier_${tier.slug}`)}
                   </Text>
                   <Text style={[
                     styles.budgetTileRange,
                     isActive && styles.budgetTileRangeActive,
                   ]}>
-                    {tier.rangeLabel}
+                    {t(`common:tier_range_${tier.slug}`)}
                   </Text>
                 </Pressable>
               )
@@ -2855,7 +2854,7 @@ const OnboardingFlow = ({
                 key={mode.value}
                 style={[styles.selectionTile, styles.selectionTileTall, data.travelMode === mode.value && styles.selectionTileActive]}
                 onPress={() => {
-                  logger.action(`Transport selected: ${mode.label}`)
+                  logger.action(`Transport selected: ${mode.value}`)
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                   setData((p) => ({ ...p, travelMode: mode.value }))
                 }}
@@ -2865,7 +2864,7 @@ const OnboardingFlow = ({
                   size={28}
                   color={data.travelMode === mode.value ? colors.text.inverse : colors.gray[600]}
                 />
-                <Text style={[styles.tileLabelSm, data.travelMode === mode.value && styles.tileTextActive]}>{mode.label}</Text>
+                <Text style={[styles.tileLabelSm, data.travelMode === mode.value && styles.tileTextActive]}>{t(`common:transport_${mode.value}`)}</Text>
               </Pressable>
             ))}
           </View>

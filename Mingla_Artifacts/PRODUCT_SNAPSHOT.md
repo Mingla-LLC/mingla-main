@@ -7,12 +7,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Total items tracked | 286 |
+| Total items tracked | 292 |
 | Grade A (launch-ready) | 91 (32%) |
 | Grade B (solid, minor gaps) | 24 (8%) |
-| Grade C (functional, incomplete) | 2 (<1%) |
-| Grade D (fragile) | 2 (<1%) |
-| Grade F (broken/unaudited) | 170 (59%) |
+| Grade C (functional, incomplete) | 4 (1%) |
+| Grade D (fragile) | 4 (1%) |
+| Grade F (broken/unaudited) | 169 (58%) |
 | Deferred | 1 (<1%) |
 | Deck hardening passes complete | 12 (46 bugs fixed) |
 

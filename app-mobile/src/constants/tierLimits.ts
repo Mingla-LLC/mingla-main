@@ -40,18 +40,6 @@ export function getTierLimits(tier: SubscriptionTier): TierLimits {
   return TIER_LIMITS[tier] ?? TIER_LIMITS.free;
 }
 
-export function canAccessCuratedCards(tier: SubscriptionTier): boolean {
-  return getTierLimits(tier).curatedCardsAccess;
-}
-
-export function canSetCustomStartingPoint(tier: SubscriptionTier): boolean {
-  return getTierLimits(tier).customStartingPoint;
-}
-
-export function canPair(tier: SubscriptionTier): boolean {
-  return getTierLimits(tier).maxPairings !== 0;
-}
-
 export function getSessionLimit(tier: SubscriptionTier): number {
   return getTierLimits(tier).maxSessions;
 }

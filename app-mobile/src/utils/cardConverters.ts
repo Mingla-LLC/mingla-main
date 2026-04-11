@@ -18,15 +18,6 @@ export function normalizeDateTime(dt: string): string {
   return Number.isNaN(d.getTime()) ? dt : d.toISOString();
 }
 
-export function shuffleArray<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 /**
  * Round-robin interleave multiple card arrays.
  * Given [[N1,N2,N3], [A1,A2,A3]], produces [N1,A1,N2,A2,N3,A3].

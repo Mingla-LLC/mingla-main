@@ -1,7 +1,9 @@
 # Master Bug List
 
 > Last updated: 2026-04-11
-> Total: 307 | Open: 131 | Closed: 108 | Verified (B grade): 21 | Deferred: 1
+> Total: 311 | Open: 131 | Closed: 109 | Verified (B grade): 21 | Partial: 1 | Deferred: 1
+>
+> Recently closed: ORCH-0390 (dead code elimination — QA PASS, partial close)
 
 ## Summary by Status
 

@@ -205,7 +205,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0077 | Link intent flow | Social | S2 | unaudited | open | F | — | — |
 | ORCH-0078 | Block/unblock/remove responsiveness | Social | S2 | bug | closed | A | 2026-03-23 | Commit 76cd2ca7 |
 | ORCH-0079 | Friend-based content visibility | Social | S1 | unaudited | open | F | — | — |
-| ORCH-0080 | Friend search (search-users) | Social | S2 | unaudited | open | F | — | — |
+| ORCH-0080 | Friend search (search-users) | Social | S2 | unaudited | open | F | — | Edge function `search-users` deleted as dead code (ORCH-0390). Feature never built. |
 | ORCH-0081 | View friend profile | Social | S2 | unaudited | open | F | — | — |
 | ORCH-0082 | Mute/unmute friends | Social | S3 | unaudited | open | F | — | — |
 
@@ -544,14 +544,18 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 
 | ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
 |----|-------|---------|----------|-------|--------|-------|----------|----------|
-| ORCH-0242 | AppsFlyer integration | Analytics | S1 | unaudited | open | F | — | — |
-| ORCH-0243 | Mixpanel integration | Analytics | S2 | unaudited | open | F | — | — |
+| ORCH-0242 | AppsFlyer integration | Analytics | S1 | data-integrity | investigated | C | 2026-04-11 | INVESTIGATION_ANALYTICS_IDENTITY_AUDIT.md — 22 events wired, never verified in dashboard, identity not cleared on logout |
+| ORCH-0243 | Mixpanel integration | Analytics | S1 | data-integrity | investigated | D | 2026-04-11 | INVESTIGATION_ANALYTICS_IDENTITY_AUDIT.md — SDK + service fully wired (40+ methods, 19 files) but EXPO_PUBLIC_MIXPANEL_TOKEN not set. All calls are silent no-ops. Zero data. |
+| ORCH-0387 | Analytics identity & cross-service integration audit | Analytics | S1 | data-integrity | investigated | D | 2026-04-11 | INVESTIGATION_ANALYTICS_IDENTITY_AUDIT.md — No unified identity layer, services don't talk to each other, Mixpanel dead, push_clicked never set, AppsFlyer not cleared on logout |
+| ORCH-0388 | RevenueCat "customer" count inflation — 104 phantom customers | Analytics | S2 | data-integrity | investigated | C | 2026-04-11 | INVESTIGATION_ANALYTICS_IDENTITY_AUDIT.md — RC counts every SDK touch as "customer." Anonymous→identified merges may inflate. Need RC dashboard audit. |
+| ORCH-0389 | OneSignal push_clicked tracking gap | Analytics | S2 | missing-feature | open | F | 2026-04-11 | INVESTIGATION_ANALYTICS_IDENTITY_AUDIT.md — Column exists in notifications table, never populated on tap. |
 | ORCH-0244 | Screen logger | Analytics | S3 | unaudited | open | F | — | — |
 | ORCH-0245 | Tracked pressable / touchable | Analytics | S3 | missing-feature | closed | A | 2026-03-22 | Commit dba7b3f0 |
 | ORCH-0246 | User activity service | Analytics | S2 | unaudited | open | F | — | — |
 | ORCH-0247 | User interaction service | Analytics | S2 | unaudited | open | F | — | — |
 | ORCH-0248 | Session tracker | Analytics | S2 | unaudited | open | F | — | — |
 | ORCH-0249 | A/B testing service | Analytics | S3 | unaudited | open | F | — | — |
+| ORCH-0390 | Documentation truth sweep — all artifacts, READMEs, comments must reflect code reality | Documentation | S1 | documentation-drift | partial | C | 2026-04-11 | QA_ORCH-0390_DEAD_CODE_ELIMINATION_REPORT.md — PASS. Dead code phase complete (17 files, 4 exports, 4 edge functions, 3 RPCs, 3 comments). README/doc sync phase still pending. |
 
 ### Cross-Cutting: Weather & External Data
 

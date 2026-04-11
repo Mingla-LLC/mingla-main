@@ -1,7 +1,7 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-11
-> Total: 1 active | 75 completed
+> Total: 1 active | 77 completed
 
 ## Active Dispatches
 
@@ -13,6 +13,8 @@
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-072 | ORCH-0390 | Tester | 2026-04-11 | QA_ORCH-0390_DEAD_CODE_ELIMINATION_REPORT.md | PASS (0 P0, 1 P3, 2 P4) |
+| AH-071 | ORCH-0390 | Implementor (chat) | 2026-04-11 | 17 files deleted, 4 exports removed, 4 edge functions deleted, 1 migration | APPROVED |
 | AH-069 | ORCH-0386 Phase 2 | Investigator | 2026-04-11 | INVESTIGATION_ORCH-0386_I18N_PHASE2_REPORT.md | APPROVED |
 
 ## Completed Dispatches

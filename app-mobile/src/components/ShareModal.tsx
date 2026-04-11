@@ -34,7 +34,6 @@ export default function ShareModal({
   const [messageCopied, setMessageCopied] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const { t } = useTranslation(['share', 'common']);
-  // const { accountPreferences } = useAppState();
   
   if (!isOpen) return null;
   

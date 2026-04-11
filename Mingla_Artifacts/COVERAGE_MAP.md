@@ -32,10 +32,10 @@
 | Security & Auth | 13 | 5 | 0 | 1 | 2 | 5 | 38% | 0% | Weak |
 | Deep Linking | 4 | 0 | 1 | 0 | 0 | 3 | 75% | 0% | Weak |
 | App Lifecycle | 11 | 2 | 0 | 0 | 0 | 9 | 82% | 0% | Weak |
-| Analytics & Tracking | 8 | 1 | 0 | 0 | 0 | 7 | 88% | 0% | Weak |
+| Analytics & Tracking | 11 | 1 | 0 | 2 | 2 | 6 | 55% | 0% | Weak |
 | Weather & External | 6 | 0 | 0 | 0 | 0 | 6 | 100% | 0% | Unaudited |
 | UI Components | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
-| **TOTAL** | **289** | **91** | **24** | **2** | **2** | **170** | **59%** | **0%** | **Weak** |
+| **TOTAL** | **292** | **91** | **24** | **4** | **4** | **169** | **58%** | **0%** | **Weak** |
 
 ## Heatmap Summary
 
