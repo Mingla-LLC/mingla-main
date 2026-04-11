@@ -15,6 +15,7 @@ import {
   TouchableWithoutFeedback,
   ActivityIndicator,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import { Icon } from './ui/Icon';
 import { BlockReason } from "../services/blockService";
 
@@ -26,11 +27,11 @@ interface BlockUserModalProps {
   loading?: boolean;
 }
 
-const BLOCK_REASONS: { value: BlockReason; label: string; icon: string }[] = [
-  { value: "harassment", label: "Harassment", icon: "warning" },
-  { value: "spam", label: "Spam", icon: "mail-unread" },
-  { value: "inappropriate", label: "Inappropriate content", icon: "alert-circle" },
-  { value: "other", label: "Other", icon: "ellipsis-horizontal" },
+const BLOCK_REASON_KEYS: { value: BlockReason; labelKey: string; icon: string }[] = [
+  { value: "harassment", labelKey: "social:harassment", icon: "warning" },
+  { value: "spam", labelKey: "social:spam", icon: "mail-unread" },
+  { value: "inappropriate", labelKey: "social:inappropriateContent", icon: "alert-circle" },
+  { value: "other", labelKey: "social:other", icon: "ellipsis-horizontal" },
 ];
 
 export const BlockUserModal: React.FC<BlockUserModalProps> = ({
@@ -40,6 +41,7 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
   userName,
   loading = false,
 }) => {
+  const { t } = useTranslation(['social', 'common']);
   const [selectedReason, setSelectedReason] = useState<BlockReason | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -78,37 +80,37 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
                 <View style={styles.iconContainer}>
                   <Icon name="shield" size={32} color="#ef4444" />
                 </View>
-                <Text style={styles.title}>Block {userName}?</Text>
+                <Text style={styles.title}>{t('social:blockTitle', { name: userName })}</Text>
               </View>
 
               {/* Description */}
               <View style={styles.descriptionContainer}>
                 <Text style={styles.description}>
-                  When you block someone:
+                  {t('social:blockDescription')}
                 </Text>
                 <View style={styles.bulletList}>
                   <View style={styles.bulletItem}>
                     <Icon name="remove-circle" size={16} color="#6b7280" />
                     <Text style={styles.bulletText}>
-                      They'll be removed from your friends list
+                      {t('social:blockBulletFriendsList')}
                     </Text>
                   </View>
                   <View style={styles.bulletItem}>
                     <Icon name="chatbubble-ellipses" size={16} color="#6b7280" />
                     <Text style={styles.bulletText}>
-                      They won't be able to message you
+                      {t('social:blockBulletMessage')}
                     </Text>
                   </View>
                   <View style={styles.bulletItem}>
                     <Icon name="search" size={16} color="#6b7280" />
                     <Text style={styles.bulletText}>
-                      They won't be able to find you in search
+                      {t('social:blockBulletSearch')}
                     </Text>
                   </View>
                   <View style={styles.bulletItem}>
                     <Icon name="people" size={16} color="#6b7280" />
                     <Text style={styles.bulletText}>
-                      Existing collaboration sessions remain unaffected
+                      {t('social:blockBulletCollaboration')}
                     </Text>
                   </View>
                 </View>
@@ -116,9 +118,9 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
 
               {/* Reason Selection (Optional) */}
               <View style={styles.reasonContainer}>
-                <Text style={styles.reasonLabel}>Reason (optional):</Text>
+                <Text style={styles.reasonLabel}>{t('social:reasonOptional')}</Text>
                 <View style={styles.reasonOptions}>
-                  {BLOCK_REASONS.map((reason) => (
+                  {BLOCK_REASON_KEYS.map((reason) => (
                     <TouchableOpacity
                       key={reason.value}
                       style={[
@@ -141,7 +143,7 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
                           selectedReason === reason.value && styles.reasonTextSelected,
                         ]}
                       >
-                        {reason.label}
+                        {t(reason.labelKey)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -155,7 +157,7 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
                   onPress={handleClose}
                   disabled={isLoading}
                 >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                  <Text style={styles.cancelButtonText}>{t('social:cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.blockButton, isLoading && styles.buttonDisabled]}
@@ -167,7 +169,7 @@ export const BlockUserModal: React.FC<BlockUserModalProps> = ({
                   ) : (
                     <>
                       <Icon name="shield" size={18} color="white" />
-                      <Text style={styles.blockButtonText}>Block</Text>
+                      <Text style={styles.blockButtonText}>{t('social:block')}</Text>
                     </>
                   )}
                 </TouchableOpacity>

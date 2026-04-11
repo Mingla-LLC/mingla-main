@@ -14,6 +14,7 @@ import Svg, { Defs, Rect, Mask } from 'react-native-svg';
 import { useCoachMarkContext, TargetRect } from '../contexts/CoachMarkContext';
 import { useAppLayout } from '../hooks/useAppLayout';
 import { COACH_STEP_COUNT } from '../constants/coachMarkSteps';
+import { useTranslation } from 'react-i18next';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -50,6 +51,7 @@ export default function SpotlightOverlay(): React.ReactElement | null {
     overlayVisible,
   } = useCoachMarkContext();
   const layout = useAppLayout();
+  const { t } = useTranslation(['modals', 'common']);
 
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const bubbleOpacity = useRef(new Animated.Value(0)).current;
@@ -217,7 +219,7 @@ export default function SpotlightOverlay(): React.ReactElement | null {
       style={[StyleSheet.absoluteFill, { zIndex: 100, opacity: overlayOpacity }]}
       pointerEvents={overlayVisible ? 'box-none' : 'none'}
       accessibilityRole="none"
-      accessibilityLabel={`Guided tour step ${currentStep} of ${COACH_STEP_COUNT}`}
+      accessibilityLabel={t('modals:spotlight.guided_tour_label', { current: currentStep, total: COACH_STEP_COUNT })}
     >
       {/* Layer 1: Scrim strips — 4 strips around the cutout block taps on dark area.
           The cutout area has NO View covering it, so touches fall through the
@@ -328,7 +330,7 @@ export default function SpotlightOverlay(): React.ReactElement | null {
               />
             ))}
           </View>
-          <Text style={styles.stepCounter}>{currentStep} of {COACH_STEP_COUNT}</Text>
+          <Text style={styles.stepCounter}>{t('modals:spotlight.step_counter', { current: currentStep, total: COACH_STEP_COUNT })}</Text>
         </View>
 
         {/* Title */}
@@ -350,10 +352,10 @@ export default function SpotlightOverlay(): React.ReactElement | null {
               style={styles.backButton}
               activeOpacity={0.5}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel="Go to previous step"
+              accessibilityLabel={t('modals:spotlight.previous_step_label')}
               accessibilityRole="button"
             >
-              <Text style={styles.backText}>← Back</Text>
+              <Text style={styles.backText}>← {t('modals:spotlight.back')}</Text>
             </TouchableOpacity>
           ) : (
             <View style={styles.backButton} />
@@ -365,10 +367,10 @@ export default function SpotlightOverlay(): React.ReactElement | null {
               onPress={skipTour}
               style={styles.skipButton}
               activeOpacity={0.5}
-              accessibilityLabel="Skip guided tour"
+              accessibilityLabel={t('modals:spotlight.skip_tour_label')}
               accessibilityRole="button"
             >
-              <Text style={styles.skipText}>Skip</Text>
+              <Text style={styles.skipText}>{t('modals:spotlight.skip')}</Text>
             </TouchableOpacity>
           )}
 
@@ -377,7 +379,7 @@ export default function SpotlightOverlay(): React.ReactElement | null {
             onPress={nextStep}
             style={styles.primaryButton}
             activeOpacity={0.85}
-            accessibilityLabel={isLastStep ? 'Finish guided tour' : 'Go to next step'}
+            accessibilityLabel={isLastStep ? t('modals:spotlight.finish_tour_label') : t('modals:spotlight.next_step_label')}
             accessibilityRole="button"
           >
             <Text style={styles.primaryButtonText}>{currentStepConfig.buttonLabel}</Text>

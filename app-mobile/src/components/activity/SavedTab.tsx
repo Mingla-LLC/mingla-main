@@ -41,6 +41,7 @@ import { useFeatureGate } from "../../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import type { GatedFeature } from "../../hooks/useFeatureGate";
 import { useKeyboard } from "../../hooks/useKeyboard";
+import { useTranslation } from 'react-i18next';
 
 function getTravelModeIcon(mode?: string): string {
   switch (mode) {
@@ -128,6 +129,7 @@ const SavedTab = ({
   boardSavedCards,
   activeBoardSessionId,
 }: SavedTabProps) => {
+  const { t } = useTranslation(['activity', 'common']);
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
   // savedCards and calendarEntries now come via props from the parent chain.
   // No more useAppState() call — eliminates duplicate auth/realtime/query instances.
@@ -1281,7 +1283,7 @@ const SavedTab = ({
 
   const proceedWithScheduling = async (scheduledDateTime: Date) => {
     if (!cardToSchedule || !user?.id) {
-      Alert.alert("Error", "You must be logged in to schedule cards.");
+      Alert.alert(t('activity:savedTab.errorGeneric'), t('activity:savedTab.scheduleErrorLogin'));
       setSchedulingCardId(null);
       setCardToSchedule(null);
       return;
@@ -1292,7 +1294,7 @@ const SavedTab = ({
 
     try {
       if (isNaN(scheduledDateTime.getTime())) {
-        Alert.alert("Invalid Date", "The selected date is not valid. Please try again.");
+        Alert.alert(t('activity:savedTab.invalidDate'), t('activity:savedTab.invalidDateMsg'));
         setSchedulingCardId(null);
         setCardToSchedule(null);
         return;
@@ -1439,7 +1441,7 @@ const SavedTab = ({
 
       // Show success toast
       toastManager.success(
-        `Scheduled! ${cardToSchedule.title} has been moved to your calendar`,
+        t('activity:savedTab.scheduledToast', { title: cardToSchedule.title }),
         3000
       );
 
@@ -1448,8 +1450,8 @@ const SavedTab = ({
       console.error("[SavedTab] Scheduling error:", error);
       const detail = __DEV__ && error?.message ? `\n\nDEV: ${error.message}` : "";
       Alert.alert(
-        "Schedule failed",
-        `We couldn't add this to your calendar. Please try again.${detail}`,
+        t('activity:savedTab.scheduleFailed'),
+        `${t('activity:savedTab.scheduleFailedMsg')}${detail}`,
       );
     } finally {
       setSchedulingCardId(null);
@@ -1650,7 +1652,7 @@ const SavedTab = ({
       }
     } catch (error) {
       console.error("Error removing saved card:", error);
-      toastManager.error("Couldn't remove — try again", 3000);
+      toastManager.error(t('activity:savedTab.couldntRemove'), 3000);
     } finally {
       setRemovingCardIds((prev) => {
         const next = new Set(prev);
@@ -1849,7 +1851,7 @@ const SavedTab = ({
                   </View>
                 </View>
                 <View style={styles.recentlySavedWrap}>
-                  <Text style={styles.recentlySavedText} numberOfLines={1}>Recently saved</Text>
+                  <Text style={styles.recentlySavedText} numberOfLines={1}>{t('activity:savedTab.recentlySaved')}</Text>
                 </View>
               </View>
 
@@ -1898,8 +1900,8 @@ const SavedTab = ({
                     ]}
                   >
                     {card.source === "solo"
-                      ? "Solo Discovery"
-                      : `From ${card.sessionName}`}
+                      ? t('activity:savedTab.soloDiscovery')
+                      : t('activity:savedTab.fromSession', { name: card.sessionName })}
                   </Text>
                 </View>
               </View>
@@ -1919,7 +1921,7 @@ const SavedTab = ({
                 style={styles.primaryButton}
               >
                 <Icon name="bag" size={16} color="white" />
-                <Text style={styles.primaryButtonText}>Buy Now</Text>
+                <Text style={styles.primaryButtonText}>{t('activity:savedTab.buyNow')}</Text>
               </TouchableOpacity>
             ) : (
               <View style={styles.scheduleButtonContainer}>
@@ -1942,14 +1944,14 @@ const SavedTab = ({
                     <>
                       <Icon name="calendar" size={16} color="white" />
                       <Text style={styles.primaryButtonText}>
-                        {isScheduled ? "Scheduled" : "Schedule"}
+                        {isScheduled ? t('activity:savedTab.scheduled') : t('activity:savedTab.schedule')}
                       </Text>
                     </>
                   )}
                 </TouchableOpacity>
                 {!isPlaceOpen && (
                   <Text style={styles.closedMessage}>
-                    This place is currently closed
+                    {t('activity:savedTab.placeClosed')}
                   </Text>
                 )}
               </View>
@@ -1984,7 +1986,7 @@ const SavedTab = ({
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#eb7825" />
-          <Text style={styles.loadingText}>Loading saved experiences...</Text>
+          <Text style={styles.loadingText}>{t('activity:savedTab.loadingSaved')}</Text>
         </View>
       );
     }
@@ -1996,14 +1998,14 @@ const SavedTab = ({
             <Icon name="alert-circle-outline" size={22} color="#ef4444" />
           </View>
           <View style={styles.emptyStateTextContainer}>
-            <Text style={styles.emptyStateTitle}>Couldn't load saved cards</Text>
+            <Text style={styles.emptyStateTitle}>{t('activity:savedTab.errorTitle')}</Text>
             <Text style={styles.emptyStateSubtitle}>
-              Something went wrong. Tap to try again.
+              {t('activity:savedTab.errorSubtitle')}
             </Text>
           </View>
           {onRetry && (
             <TouchableOpacity onPress={onRetry} style={styles.retryPill} activeOpacity={0.7}>
-              <Text style={styles.retryPillText}>Retry</Text>
+              <Text style={styles.retryPillText}>{t('activity:savedTab.retry')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -2018,9 +2020,9 @@ const SavedTab = ({
             <Icon name="filter-outline" size={22} color="#9ca3af" />
           </View>
           <View style={styles.emptyStateTextContainer}>
-            <Text style={styles.emptyStateTitle}>No matches</Text>
+            <Text style={styles.emptyStateTitle}>{t('activity:savedTab.noMatchesTitle')}</Text>
             <Text style={styles.emptyStateSubtitle}>
-              Try changing your filters or search.
+              {t('activity:savedTab.noMatchesSubtitle')}
             </Text>
           </View>
           <TouchableOpacity
@@ -2033,7 +2035,7 @@ const SavedTab = ({
             }}
             activeOpacity={0.7}
           >
-            <Text style={styles.clearFiltersText}>Clear filters</Text>
+            <Text style={styles.clearFiltersText}>{t('activity:savedTab.clearFilters')}</Text>
           </TouchableOpacity>
         </View>
       );
@@ -2046,9 +2048,9 @@ const SavedTab = ({
           <Icon name="heart-outline" size={22} color="#eb7825" />
         </View>
         <View style={styles.emptyStateTextContainer}>
-          <Text style={styles.emptyStateTitle}>Nothing saved yet</Text>
+          <Text style={styles.emptyStateTitle}>{t('activity:savedTab.emptyTitle')}</Text>
           <Text style={styles.emptyStateSubtitle}>
-            Swipe right on something great and it lands here.
+            {t('activity:savedTab.emptySubtitle')}
           </Text>
         </View>
       </View>

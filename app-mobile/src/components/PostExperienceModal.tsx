@@ -19,6 +19,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toastManager } from "./ui/Toast";
 import { colors } from "../constants/colors";
 import { PendingExperienceReview } from "../hooks/usePostExperienceCheck";
+import { useTranslation } from "react-i18next";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,7 @@ export default function PostExperienceModal({
   const { user } = useAppStore();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation(['modals', 'common']);
 
   // Step state machine
   const [step, setStep] = useState<Step>("prompt");
@@ -126,7 +128,7 @@ export default function PostExperienceModal({
       setStep("thank-you");
     } catch (error) {
       console.error("[PostExperienceModal] Submit failed:", error);
-      setSubmitError("Something went wrong. Try again.");
+      setSubmitError(t('modals:post_experience.error_generic'));
       setIsSubmitting(false);
     }
   }, [user, review, rating, resolvedCalendarEntryId]);
@@ -191,11 +193,11 @@ export default function PostExperienceModal({
         .eq("user_id", user.id);
 
       queryClient.invalidateQueries({ queryKey: ["calendarEntries"] });
-      toastManager.success("Experience rescheduled!");
+      toastManager.success(t('modals:post_experience.rescheduled_toast'));
       onComplete();
     } catch (error) {
       console.error("[PostExperienceModal] Reschedule failed:", error);
-      toastManager.error("Failed to reschedule. Please try again.");
+      toastManager.error(t('modals:post_experience.reschedule_failed_toast'));
     } finally {
       setIsRescheduling(false);
     }
@@ -219,7 +221,7 @@ export default function PostExperienceModal({
       <View style={styles.promptContent}>
         <Text style={styles.promptTitle}>{review.placeName}</Text>
         <Text style={styles.promptQuestion}>
-          Did you go to {review.placeName}?
+          {t('modals:post_experience.did_you_go', { placeName: review.placeName })}
         </Text>
 
         <TouchableOpacity
@@ -227,7 +229,7 @@ export default function PostExperienceModal({
           onPress={() => setStep("rate")}
         >
           <Icon name="checkmark-circle-outline" size={24} color="#FFFFFF" />
-          <Text style={styles.primaryButtonText}>Yes, I went</Text>
+          <Text style={styles.primaryButtonText}>{t('modals:post_experience.yes_i_went')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -235,7 +237,7 @@ export default function PostExperienceModal({
           onPress={() => setStep("reschedule")}
         >
           <Icon name="calendar-outline" size={24} color={colors.primary} />
-          <Text style={styles.secondaryButtonText}>No, I'll go later</Text>
+          <Text style={styles.secondaryButtonText}>{t('modals:post_experience.no_go_later')}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -252,7 +254,7 @@ export default function PostExperienceModal({
         <Icon name="arrow-back" size={24} color={colors.gray800} />
       </TouchableOpacity>
 
-      <Text style={styles.rateTitle}>How was {review.placeName}?</Text>
+      <Text style={styles.rateTitle}>{t('modals:post_experience.how_was', { placeName: review.placeName })}</Text>
 
       <View style={styles.starsContainer}>
         {[1, 2, 3, 4, 5].map((i) => (
@@ -282,7 +284,7 @@ export default function PostExperienceModal({
         {isSubmitting ? (
           <ActivityIndicator size="small" color="#FFFFFF" />
         ) : (
-          <Text style={styles.primaryButtonText}>Submit</Text>
+          <Text style={styles.primaryButtonText}>{t('modals:post_experience.submit')}</Text>
         )}
       </TouchableOpacity>
     </View>
@@ -293,15 +295,15 @@ export default function PostExperienceModal({
   const renderThankYouStep = () => (
     <View style={styles.centerContainer}>
       <Icon name="checkmark-circle" size={80} color="#10B981" />
-      <Text style={styles.thankYouTitle}>Thank you!</Text>
+      <Text style={styles.thankYouTitle}>{t('modals:post_experience.thank_you_title')}</Text>
       <Text style={styles.thankYouSubtitle}>
-        Your feedback helps everyone find better experiences.
+        {t('modals:post_experience.thank_you_subtitle')}
       </Text>
       <TouchableOpacity
         style={[styles.primaryButton, styles.thankYouButton]}
         onPress={onComplete}
       >
-        <Text style={styles.primaryButtonText}>Done</Text>
+        <Text style={styles.primaryButtonText}>{t('modals:post_experience.done')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -318,7 +320,7 @@ export default function PostExperienceModal({
       </TouchableOpacity>
 
       <Text style={styles.rescheduleTitle}>
-        Pick a new date for {review.placeName}
+        {t('modals:post_experience.pick_new_date', { placeName: review.placeName })}
       </Text>
 
       <View style={styles.dateOptionsContainer}>
@@ -340,7 +342,7 @@ export default function PostExperienceModal({
               selectedDateOption === "today" && styles.dateOptionTextSelected,
             ]}
           >
-            Today
+            {t('modals:post_experience.today')}
           </Text>
         </TouchableOpacity>
 
@@ -362,7 +364,7 @@ export default function PostExperienceModal({
               selectedDateOption === "weekend" && styles.dateOptionTextSelected,
             ]}
           >
-            This weekend
+            {t('modals:post_experience.this_weekend')}
           </Text>
         </TouchableOpacity>
 
@@ -384,7 +386,7 @@ export default function PostExperienceModal({
               selectedDateOption === "custom" && styles.dateOptionTextSelected,
             ]}
           >
-            Custom date
+            {t('modals:post_experience.custom_date')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -434,7 +436,7 @@ export default function PostExperienceModal({
         {isRescheduling ? (
           <ActivityIndicator size="small" color="#FFFFFF" />
         ) : (
-          <Text style={styles.primaryButtonText}>Confirm</Text>
+          <Text style={styles.primaryButtonText}>{t('modals:post_experience.confirm')}</Text>
         )}
       </TouchableOpacity>
     </View>
@@ -455,7 +457,7 @@ export default function PostExperienceModal({
             style={styles.dismissButton}
             onPress={onComplete}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityLabel="Close"
+            accessibilityLabel={t('modals:post_experience.close_label')}
             accessibilityRole="button"
           >
             <Icon name="close" size={24} color={colors.gray800} />

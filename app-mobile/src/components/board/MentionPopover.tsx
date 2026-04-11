@@ -9,6 +9,7 @@ import {
 import { Icon } from '../ui/Icon';
 import { getDisplayName } from '../../utils/getDisplayName';
 import { Participant } from './ParticipantAvatars';
+import { useTranslation } from 'react-i18next';
 
 interface MentionPopoverProps {
   participants: Participant[];
@@ -25,6 +26,7 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
   visible,
   keyboardHeight,
 }) => {
+  const { t } = useTranslation(['board', 'common']);
   if (!visible || participants.length === 0) {
     return null;
   }
@@ -72,7 +74,7 @@ export const MentionPopover: React.FC<MentionPopoverProps> = ({
     <View style={[styles.container, { bottom: bottomOffset }]}>
       <View style={styles.popover}>
         <View style={styles.header}>
-          <Text style={styles.headerText}>Mention someone</Text>
+          <Text style={styles.headerText}>{t('board:mentionPopover.mentionSomeone')}</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <Icon name="close" size={20} color="#666" />
           </TouchableOpacity>

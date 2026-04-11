@@ -27,6 +27,7 @@ import { useNetInfo } from '@react-native-community/netinfo';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { colors, spacing, radius, shadows } from '../constants/designSystem';
 import type { ServerNotification } from '../hooks/useNotifications';
+import { useTranslation } from 'react-i18next';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.88;
@@ -250,6 +251,7 @@ export default function NotificationsModal({
   hasMore = false,
   pendingActions = EMPTY_PENDING_SET,
 }: NotificationsModalProps) {
+  const { t } = useTranslation(['notifications', 'common']);
   const insets = useSafeAreaInsets();
   const netInfo = useNetInfo();
   const isOffline = netInfo.isConnected === false;
@@ -499,7 +501,7 @@ export default function NotificationsModal({
 
             {/* Error state */}
             {hasError && !isPending && (
-              <Text style={styles.actionError}>Action failed. Tap to retry.</Text>
+              <Text style={styles.actionError}>{t('notifications:actions.actionFailed')}</Text>
             )}
           </View>
         </TouchableOpacity>
@@ -566,9 +568,9 @@ export default function NotificationsModal({
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <Text style={styles.headerTitle}>Notifications</Text>
+              <Text style={styles.headerTitle}>{t('notifications:header.title')}</Text>
               {unreadCount > 0 && (
-                <Text style={styles.headerUnreadBadge}>{unreadCount} unread</Text>
+                <Text style={styles.headerUnreadBadge}>{t('notifications:header.unread', { count: unreadCount })}</Text>
               )}
             </View>
             <View style={styles.headerActions}>
@@ -578,7 +580,7 @@ export default function NotificationsModal({
                   onPress={onMarkAllRead}
                 >
                   <Icon name="checkmark-done-outline" size={16} color="#eb7825" />
-                  <Text style={styles.headerActionText}>Mark all read</Text>
+                  <Text style={styles.headerActionText}>{t('notifications:header.markAllRead')}</Text>
                 </TouchableOpacity>
               )}
               {notifications.length > 0 && (
@@ -588,7 +590,7 @@ export default function NotificationsModal({
                 >
                   <Icon name="trash-outline" size={16} color={colors.gray[400]} />
                   <Text style={[styles.headerActionText, { color: colors.gray[400] }]}>
-                    Clear all
+                    {t('notifications:header.clearAll')}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -632,12 +634,12 @@ export default function NotificationsModal({
             ) : isError ? (
               <View style={styles.errorState}>
                 <Icon name="alert-circle-outline" size={48} color={colors.gray[300]} />
-                <Text style={styles.errorTitle}>Something went wrong</Text>
+                <Text style={styles.errorTitle}>{t('notifications:errorState.title')}</Text>
                 <Text style={styles.errorSubtext}>
-                  Couldn't load notifications.
+                  {t('notifications:errorState.subtitle')}
                 </Text>
                 <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
-                  <Text style={styles.retryButtonText}>Try Again</Text>
+                  <Text style={styles.retryButtonText}>{t('notifications:errorState.tryAgain')}</Text>
                 </TouchableOpacity>
               </View>
             ) : filteredNotifications.length === 0 && !isOffline ? (
@@ -649,9 +651,9 @@ export default function NotificationsModal({
                     color={colors.gray[300]}
                   />
                 </View>
-                <Text style={styles.emptyStateTitle}>You're all caught up</Text>
+                <Text style={styles.emptyStateTitle}>{t('notifications:emptyState.title')}</Text>
                 <Text style={styles.emptyStateSubtext}>
-                  New activity will show up here.
+                  {t('notifications:emptyState.subtitle')}
                 </Text>
               </View>
             ) : (
@@ -660,7 +662,7 @@ export default function NotificationsModal({
                   <View style={styles.offlineBanner}>
                     <Icon name="cloud-offline-outline" size={14} color="#6B7280" />
                     <Text style={styles.offlineBannerText}>
-                      You're offline — showing cached notifications
+                      {t('notifications:offline.banner')}
                     </Text>
                   </View>
                 )}

@@ -3,6 +3,7 @@ import { Text, View, StyleSheet, Modal, ScrollView } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
 import { getDisplayName } from '../utils/getDisplayName';
+import { useTranslation } from 'react-i18next';
 
 interface Friend {
   id: string;
@@ -57,6 +58,7 @@ const formatRelativeTime = (dateString: string | undefined): string => {
 };
 
 export default function AddToBoardModal({ isOpen, onClose, friend, boardsSessions = [], onConfirm }: AddToBoardModalProps) {
+  const { t } = useTranslation(['modals', 'common']);
   const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
   const [isAdding, setIsAdding] = useState(false);
 
@@ -173,9 +175,9 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
           <View style={styles.headerContent}>
             <View style={styles.headerSidePlaceholder} />
             <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>Add to Board</Text>
+              <Text style={styles.headerTitle}>{t('modals:add_to_board.title')}</Text>
               <Text style={styles.headerSubtitle}>
-                Add <Text style={styles.friendName}>{friend.name}</Text> to existing collaboration boards
+                {t('modals:add_to_board.subtitle', { friendName: friend.name })}
               </Text>
             </View>
             <TrackedTouchableOpacity logComponent="AddToBoardModal"
@@ -192,16 +194,16 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
           {availableSessions.length === 0 ? (
             <View style={styles.emptyState}>
               <Icon name="people" size={48} color="#d1d5db" />
-              <Text style={styles.emptyStateTitle}>No Available Boards</Text>
+              <Text style={styles.emptyStateTitle}>{t('modals:add_to_board.no_boards_title')}</Text>
               <Text style={styles.emptyStateText}>
-                {friend.name} is already in all your active collaboration boards, or you don't have any boards yet.
+                {t('modals:add_to_board.no_boards_text', { friendName: friend.name })}
               </Text>
             </View>
           ) : (
             <>
               <View style={styles.selectionHeader}>
                 <Text style={styles.selectionText}>
-                  Select collaboration boards to add {friend.name} to:
+                  {t('modals:add_to_board.select_boards', { friendName: friend.name })}
                 </Text>
                 <View style={styles.selectionControls}>
                   {selectedSessions.length > 0 && (
@@ -220,7 +222,7 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
                       ) : (
                         <Icon name="checkmark" size={12} color="#eb7825" />
                       )}
-                      <Text style={styles.selectAllText}>All</Text>
+                      <Text style={styles.selectAllText}>{t('modals:add_to_board.all')}</Text>
                     </TrackedTouchableOpacity>
                   )}
                 </View>
@@ -251,11 +253,11 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
                         <View style={styles.sessionCardMeta}>
                           <View style={styles.metaItem}>
                             <Icon name="people" size={12} color="#6b7280" />
-                            <Text style={styles.metaText}>{session.totalParticipants} members</Text>
+                            <Text style={styles.metaText}>{t('modals:add_to_board.members_count', { count: session.totalParticipants })}</Text>
                           </View>
                           <View style={styles.metaItem}>
                             <Icon name="calendar" size={12} color="#6b7280" />
-                            <Text style={styles.metaText}>{session.boardCards} cards</Text>
+                            <Text style={styles.metaText}>{t('modals:add_to_board.cards_count', { count: session.boardCards })}</Text>
                           </View>
                           <View style={styles.metaItem}>
                             <Icon name="time" size={12} color="#6b7280" />
@@ -298,7 +300,7 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
                         )}
                       </View>
                       <Text style={styles.participantsLabel}>
-                        Current members
+                        {t('modals:add_to_board.current_members')}
                       </Text>
                     </View>
                   </TrackedTouchableOpacity>
@@ -315,7 +317,7 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
               onPress={onClose}
               style={styles.cancelButton}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={styles.cancelButtonText}>{t('modals:add_to_board.cancel')}</Text>
             </TrackedTouchableOpacity>
             <TrackedTouchableOpacity logComponent="AddToBoardModal"
               onPress={handleAddToBoard}
@@ -328,15 +330,15 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
               {isAdding ? (
                 <>
                   <View style={styles.loadingSpinner} />
-                  <Text style={styles.addButtonText}>Adding...</Text>
+                  <Text style={styles.addButtonText}>{t('modals:add_to_board.adding')}</Text>
                 </>
               ) : (
                 <Text style={styles.addButtonText}>
                   {selectedSessions.length === 0
-                    ? 'Select Boards'
+                    ? t('modals:add_to_board.select_boards_button')
                     : selectedSessions.length === 1
-                      ? 'Add to Board'
-                      : `Add to ${selectedSessions.length} Boards`}
+                      ? t('modals:add_to_board.add_to_board_button')
+                      : t('modals:add_to_board.add_to_boards_button', { count: selectedSessions.length })}
                 </Text>
               )}
             </TrackedTouchableOpacity>

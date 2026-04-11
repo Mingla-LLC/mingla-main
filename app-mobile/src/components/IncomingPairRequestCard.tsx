@@ -18,6 +18,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { useAcceptPairRequest, useDeclinePairRequest } from "../hooks/usePairings";
 import type { PairRequest } from "../services/pairingService";
+import { useTranslation } from 'react-i18next';
 import { colors, shadows } from "../constants/designSystem";
 import { s } from "../utils/responsive";
 
@@ -60,6 +61,7 @@ export default function IncomingPairRequestCard({
   onDecline,
   onClose,
 }: IncomingPairRequestCardProps) {
+  const { t } = useTranslation(['social', 'common']);
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -133,9 +135,9 @@ export default function IncomingPairRequestCard({
   };
 
   const errorMessage = acceptMutation.isError
-    ? "Couldn\u2019t accept \u2014 tap to try again"
+    ? t('social:couldntAccept')
     : declineMutation.isError
-      ? "Couldn\u2019t decline \u2014 tap to try again"
+      ? t('social:couldntDecline')
       : null;
 
   return (
@@ -165,9 +167,9 @@ export default function IncomingPairRequestCard({
             <>
               {/* Success state */}
               <Text style={styles.successIcon}>&#x2705;</Text>
-              <Text style={styles.successTitle}>You're paired!</Text>
+              <Text style={styles.successTitle}>{t('social:youArePaired')}</Text>
               <Text style={styles.successSubtitle}>
-                Start discovering for each other
+                {t('social:startDiscovering')}
               </Text>
             </>
           ) : (
@@ -201,11 +203,11 @@ export default function IncomingPairRequestCard({
               </Text>
 
               {/* Subtitle */}
-              <Text style={styles.subtitle}>wants to pair with you</Text>
+              <Text style={styles.subtitle}>{t('social:wantsToPairWithYou')}</Text>
 
               {/* Description */}
               <Text style={styles.description}>
-                Pairing lets you discover experiences for each other
+                {t('social:pairingDescription')}
               </Text>
 
               {/* Buttons */}
@@ -222,7 +224,7 @@ export default function IncomingPairRequestCard({
                   {declineMutation.isPending ? (
                     <ActivityIndicator size="small" color={colors.gray[700]} />
                   ) : (
-                    <Text style={styles.declineButtonText}>Decline</Text>
+                    <Text style={styles.declineButtonText}>{t('social:decline')}</Text>
                   )}
                 </TouchableOpacity>
 
@@ -238,7 +240,7 @@ export default function IncomingPairRequestCard({
                   {acceptMutation.isPending ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <Text style={styles.acceptButtonText}>Accept</Text>
+                    <Text style={styles.acceptButtonText}>{t('social:accept')}</Text>
                   )}
                 </TouchableOpacity>
               </View>

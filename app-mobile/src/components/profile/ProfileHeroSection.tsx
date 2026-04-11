@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Icon } from '../ui/Icon';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import * as Haptics from 'expo-haptics';
+import { useTranslation } from 'react-i18next';
 
 interface ProfileHeroSectionProps {
   isOwnProfile: boolean;
@@ -56,6 +57,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
   statusBarHeight = 0,
   onSaveName,
 }) => {
+  const { t } = useTranslation(['profile', 'common']);
   const displayName = [firstName, lastName].filter(Boolean).join(' ') || '';
   const missingBio = !bio || bio.trim().length === 0;
   const missingAvatar = !avatarUrl;
@@ -63,8 +65,8 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
   const showHint = isOwnProfile && (missingBio || missingAvatar);
 
   const hintText = missingAvatar
-    ? 'People trust faces. Add a photo so friends know it\u2019s you.'
-    : 'A short bio goes a long way. What should people know about you?';
+    ? t('profile:hero.hint_add_photo')
+    : t('profile:hero.hint_add_bio');
 
   // Inline name editing state
   const [isEditingName, setIsEditingName] = useState(false);
@@ -97,7 +99,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
     const trimFirst = editFirstName.trim();
     const trimLast = editLastName.trim();
     if (!trimFirst && !trimLast) {
-      setNameError('Please enter your name.');
+      setNameError(t('profile:hero.name_error_empty'));
       triggerShake();
       return;
     }
@@ -109,7 +111,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
       if (success) {
         setIsEditingName(false);
       } else {
-        setNameError('Failed to save. Try again.');
+        setNameError(t('profile:hero.name_error_failed'));
         triggerShake();
       }
     } catch {
@@ -185,7 +187,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
               style={[styles.nameInput, isSavingName && styles.nameInputDisabled]}
               value={editFirstName}
               onChangeText={setEditFirstName}
-              placeholder="First name"
+              placeholder={t('profile:hero.first_name')}
               placeholderTextColor="#9ca3af"
               autoCapitalize="words"
               autoFocus
@@ -199,7 +201,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
               style={[styles.nameInput, isSavingName && styles.nameInputDisabled]}
               value={editLastName}
               onChangeText={setEditLastName}
-              placeholder="Last name"
+              placeholder={t('profile:hero.last_name')}
               placeholderTextColor="#9ca3af"
               autoCapitalize="words"
               editable={!isSavingName}
@@ -246,12 +248,12 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
               accessibilityRole="button"
             >
               <Text style={[styles.name, missingName && styles.namePlaceholder]}>
-                {displayName || 'Your name here'}
+                {displayName || t('profile:hero.your_name_here')}
               </Text>
               <Icon name="pencil" size={14} color="#9ca3af" style={styles.pencilIcon} />
             </TouchableOpacity>
           ) : (
-            <Text style={styles.name}>{displayName || 'User'}</Text>
+            <Text style={styles.name}>{displayName || t('profile:hero.user_fallback')}</Text>
           )}
         </View>
       )}
@@ -262,7 +264,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
           {isLoadingLocation ? (
             <ActivityIndicator size="small" color="#6b7280" style={styles.locationLoader} />
           ) : (
-            <Text style={styles.locationText}>{location || 'Somewhere cool, probably'}</Text>
+            <Text style={styles.locationText}>{location || t('profile:hero.somewhere_cool')}</Text>
           )}
           {isOwnProfile && onLocationRefresh && (
             <TouchableOpacity onPress={onLocationRefresh} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -275,7 +277,7 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
       <View>
         {missingBio && isOwnProfile ? (
           <TouchableOpacity onPress={onBioPress}>
-            <Text style={styles.addBio}>Tap to add a bio</Text>
+            <Text style={styles.addBio}>{t('profile:hero.tap_to_add_bio')}</Text>
           </TouchableOpacity>
         ) : bio ? (
           <TouchableOpacity onPress={isOwnProfile ? onBioPress : undefined} disabled={!isOwnProfile}>

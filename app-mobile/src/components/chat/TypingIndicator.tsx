@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Animated, Easing, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { colors, typography, fontWeights, radius } from '../../constants/designSystem';
 
 interface TypingIndicatorProps {
@@ -7,7 +8,9 @@ interface TypingIndicatorProps {
   label?: string; // e.g., "typing" or "Alex is typing"
 }
 
-export function TypingIndicator({ isVisible, label = 'typing' }: TypingIndicatorProps) {
+export function TypingIndicator({ isVisible, label }: TypingIndicatorProps) {
+  const { t } = useTranslation(['chat', 'common']);
+  const resolvedLabel = label ?? t('chat:typing');
   const opacity = useRef(new Animated.Value(0)).current;
   const dot1 = useRef(new Animated.Value(0)).current;
   const dot2 = useRef(new Animated.Value(0)).current;
@@ -77,8 +80,8 @@ export function TypingIndicator({ isVisible, label = 'typing' }: TypingIndicator
   if (!isVisible) return null;
 
   return (
-    <Animated.View style={[styles.container, { opacity }]} accessibilityLabel={label}>
-      <Text style={styles.text}>{label}</Text>
+    <Animated.View style={[styles.container, { opacity }]} accessibilityLabel={resolvedLabel}>
+      <Text style={styles.text}>{resolvedLabel}</Text>
       <View style={styles.dotsContainer}>
         <Animated.View style={[styles.dot, { transform: [{ translateY: dot1 }] }]} />
         <Animated.View style={[styles.dot, { transform: [{ translateY: dot2 }] }]} />

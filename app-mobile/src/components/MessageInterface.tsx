@@ -30,6 +30,7 @@ import { MessageBubble } from "./chat/MessageBubble";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
 import { DirectMessage } from "../services/messagingService";
+import { useTranslation } from 'react-i18next';
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { colors as dsColors, spacing as dsSpacing } from "../constants/designSystem";
 import { useAppLayout } from "../hooks/useAppLayout";
@@ -132,6 +133,7 @@ export default function MessageInterface({
   isOffline = false,
   onViewProfile,
 }: MessageInterfaceProps) {
+  const { t } = useTranslation(['chat', 'common']);
   // Helper function to clean email-like names
   const cleanName = (name: string): string => {
     if (!name) return "Unknown";
@@ -310,8 +312,8 @@ export default function MessageInterface({
           await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== "granted") {
           Alert.alert(
-            "Permission Required",
-            "We need access to your media library to select files."
+            t('chat:permissionRequired'),
+            t('chat:mediaLibraryPermission')
           );
           return;
         }
@@ -389,7 +391,7 @@ export default function MessageInterface({
       setIsProcessingFile(false);
       setSelectedFile(null);
       setPreviewUrl("");
-      Alert.alert("Error", "Failed to select file. Please try again.");
+      Alert.alert(t('social:error'), t('chat:errorSelectFile'));
     }
   };
 
@@ -412,7 +414,7 @@ export default function MessageInterface({
     try {
       // Check if URL is valid
       if (!url) {
-        Alert.alert("Error", "Document URL is not available");
+        Alert.alert(t('social:error'), t('chat:errorDocumentUrl'));
         return;
       }
 
@@ -430,21 +432,21 @@ export default function MessageInterface({
           await Linking.openURL(url);
         } else {
           Alert.alert(
-            "Error",
-            "Unable to open document. Please check your internet connection."
+            t('social:error'),
+            t('chat:errorOpenDocument')
           );
         }
       }
     } catch (error) {
       console.error("Error opening document:", error);
-      Alert.alert("Error", "Failed to open document. Please try again.");
+      Alert.alert(t('social:error'), t('chat:errorOpenDocumentGeneric'));
     }
   };
 
   const handleOpenVideo = async (url: string) => {
     try {
       if (!url) {
-        Alert.alert("Error", "Video URL is not available");
+        Alert.alert(t('social:error'), t('chat:errorVideoUrl'));
         return;
       }
       // Try to open video externally as fallback
@@ -453,13 +455,13 @@ export default function MessageInterface({
         await Linking.openURL(url);
       } else {
         Alert.alert(
-          "Error",
-          "Unable to open video. Please check your internet connection."
+          t('social:error'),
+          t('chat:errorOpenVideo')
         );
       }
     } catch (error) {
       console.error("Error opening video:", error);
-      Alert.alert("Error", "Failed to open video. Please try again.");
+      Alert.alert(t('social:error'), t('chat:errorOpenVideoGeneric'));
     }
   };
 
@@ -508,8 +510,8 @@ export default function MessageInterface({
   const handleAddToBoard = () => {
     if (boardsSessions.length === 0) {
       showNotification(
-        "No Boards Available",
-        "Create a collaboration board first to add friends",
+        t('chat:noBoardsAvailable'),
+        t('chat:noBoardsMessage'),
         "info"
       );
       setShowMoreOptionsMenu(false);
@@ -523,10 +525,10 @@ export default function MessageInterface({
     if (selectedBoards.length > 0) {
       onAddToBoard?.(selectedBoards, friend, true);
       showNotification(
-        "Added to Board!",
-        `${friend.name} has been added to ${
-          selectedBoards.length
-        } collaboration board${selectedBoards.length > 1 ? "s" : ""}`
+        t('chat:addedToBoard'),
+        selectedBoards.length > 1
+          ? t('chat:addedToBoardMessagePlural', { name: friend.name, count: selectedBoards.length })
+          : t('chat:addedToBoardMessage', { name: friend.name, count: selectedBoards.length })
       );
     }
     setShowBoardSelection(false);
@@ -536,8 +538,8 @@ export default function MessageInterface({
     onShareSavedCard?.(friend, true);
     setShowMoreOptionsMenu(false);
     showNotification(
-      "Card Shared!",
-      `A saved experience has been shared with ${friend.name}`
+      t('chat:cardShared'),
+      t('chat:cardSharedMessage', { name: friend.name })
     );
   };
 
@@ -545,23 +547,23 @@ export default function MessageInterface({
     onRemoveFriend?.(friend, true);
     setShowMoreOptionsMenu(false);
     showNotification(
-      "Friend Removed",
-      `${friend.name} has been removed from your friends list`
+      t('chat:friendRemoved'),
+      t('chat:friendRemovedMessage', { name: friend.name })
     );
   };
 
   const handleBlockUser = () => {
     onBlockUser?.(friend, true);
     setShowMoreOptionsMenu(false);
-    showNotification("User Blocked", `${friend.name} has been blocked`);
+    showNotification(t('chat:userBlocked'), t('chat:userBlockedMessage', { name: friend.name }));
   };
 
   const handleReportUser = () => {
     onReportUser?.(friend, true);
     setShowMoreOptionsMenu(false);
     showNotification(
-      "User Reported",
-      `Thank you for reporting ${friend.name}. Our team will review this report.`
+      t('chat:userReported'),
+      t('chat:userReportedMessage', { name: friend.name })
     );
   };
 
@@ -679,9 +681,9 @@ export default function MessageInterface({
             <View style={styles.emptyStateIcon}>
               <Icon name="chatbubble" size={32} color="#eb7825" />
             </View>
-            <Text style={styles.emptyStateTitle}>Start your conversation</Text>
+            <Text style={styles.emptyStateTitle}>{t('chat:startConversation')}</Text>
             <Text style={styles.emptyStateText}>
-              Send a message to {cleanName(friend.name)}
+              {t('chat:sendMessageTo', { name: cleanName(friend.name) })}
             </Text>
           </View>
         </View>
@@ -723,7 +725,7 @@ export default function MessageInterface({
         <View style={styles.processingOverlay}>
           <View style={styles.processingContainer}>
             <ActivityIndicator size="large" color="#eb7825" />
-            <Text style={styles.processingText}>Processing file...</Text>
+            <Text style={styles.processingText}>{t('chat:processingFile')}</Text>
           </View>
         </View>
       </Modal>
@@ -804,7 +806,7 @@ export default function MessageInterface({
         <View style={styles.offlineBanner}>
           <Icon name="cloud-offline-outline" size={16} color="#92400e" />
           <Text style={styles.offlineBannerText}>
-            You're offline — showing saved messages
+            {t('chat:offlineShowingSaved')}
           </Text>
         </View>
       )}
@@ -814,7 +816,7 @@ export default function MessageInterface({
         <View style={styles.blockedBanner}>
           <Icon name="ban" size={18} color="#dc2626" />
           <Text style={styles.blockedBannerText}>
-            Messaging is not available with this user
+            {t('chat:messagingNotAvailable')}
           </Text>
         </View>
       )}
@@ -824,7 +826,7 @@ export default function MessageInterface({
         <View style={styles.blockedBanner}>
           <Icon name="person-remove" size={18} color="#dc2626" />
           <Text style={styles.blockedBannerText}>
-            You are no longer connected with this person
+            {t('chat:noLongerConnected')}
           </Text>
         </View>
       )}
@@ -834,7 +836,7 @@ export default function MessageInterface({
         <View style={styles.blockedBanner}>
           <Icon name="alert-circle" size={18} color="#6b7280" />
           <Text style={styles.blockedBannerText}>
-            This user has deleted their account
+            {t('chat:accountDeleted')}
           </Text>
         </View>
       )}
@@ -871,9 +873,9 @@ export default function MessageInterface({
                     <Icon name="image" size={16} color="#3b82f6" />
                   </View>
                   <View>
-                    <Text style={styles.attachmentMenuTitle}>Photo</Text>
+                    <Text style={styles.attachmentMenuTitle}>{t('chat:photo')}</Text>
                     <Text style={styles.attachmentMenuSubtitle}>
-                      Share an image
+                      {t('chat:shareImage')}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -886,9 +888,9 @@ export default function MessageInterface({
                     <Icon name="videocam" size={16} color="#8b5cf6" />
                   </View>
                   <View>
-                    <Text style={styles.attachmentMenuTitle}>Video</Text>
+                    <Text style={styles.attachmentMenuTitle}>{t('chat:video')}</Text>
                     <Text style={styles.attachmentMenuSubtitle}>
-                      Share a video
+                      {t('chat:shareVideo')}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -901,9 +903,9 @@ export default function MessageInterface({
                     <Icon name="document-text" size={16} color="#10b981" />
                   </View>
                   <View>
-                    <Text style={styles.attachmentMenuTitle}>Document</Text>
+                    <Text style={styles.attachmentMenuTitle}>{t('chat:documentAttach')}</Text>
                     <Text style={styles.attachmentMenuSubtitle}>
-                      Share a file
+                      {t('chat:shareFile')}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -930,7 +932,7 @@ export default function MessageInterface({
               }}
               onBlur={stopTyping}
               placeholder={
-                selectedFile ? "Add a caption..." : "Type a message..."
+                selectedFile ? t('chat:addCaption') : t('chat:typeMessage')
               }
               placeholderTextColor="#9ca3af"
               style={styles.messageInput}
@@ -962,7 +964,7 @@ export default function MessageInterface({
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add to Board</Text>
+              <Text style={styles.modalTitle}>{t('chat:addToBoard')}</Text>
               <TouchableOpacity
                 onPress={() => setShowBoardSelection(false)}
                 style={styles.modalCloseButton}
@@ -972,7 +974,7 @@ export default function MessageInterface({
             </View>
 
             <Text style={styles.modalSubtitle}>
-              Select collaboration boards to add {friend.name} to:
+              {t('chat:selectBoardsSubtitle', { name: friend.name })}
             </Text>
 
             <ScrollView style={styles.boardList}>
@@ -1009,7 +1011,7 @@ export default function MessageInterface({
                   <View style={styles.boardInfo}>
                     <Text style={styles.boardName}>{board.name}</Text>
                     <Text style={styles.boardParticipants}>
-                      {board.participants?.length || 0} participants
+                      {t('chat:boardParticipants', { count: board.participants?.length || 0 })}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -1021,13 +1023,13 @@ export default function MessageInterface({
                 onPress={() => setShowBoardSelection(false)}
                 style={styles.cancelButton}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>{t('chat:cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => handleBoardSelection(selectedBoards)}
                 style={styles.confirmButton}
               >
-                <Text style={styles.confirmButtonText}>Add to Board</Text>
+                <Text style={styles.confirmButtonText}>{t('chat:addToBoardConfirm')}</Text>
               </TouchableOpacity>
             </View>
           </View>

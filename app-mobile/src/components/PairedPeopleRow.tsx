@@ -7,6 +7,7 @@ import {
   Image,
   StyleSheet,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import { Icon } from './ui/Icon';
 import { s } from "../utils/responsive";
 
@@ -62,10 +63,10 @@ function formatBirthdayShort(birthdayStr: string): string {
   return `${months[month]} ${day}`;
 }
 
-function getCountdownLabel(daysAway: number): string {
-  if (daysAway === 0) return "Today!";
-  if (daysAway === 1) return "Tomorrow";
-  return `${daysAway}d away`;
+function getCountdownLabel(daysAway: number, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  if (daysAway === 0) return t('social:birthdayToday');
+  if (daysAway === 1) return t('social:birthdayTomorrow');
+  return t('social:birthdayDaysAway', { count: daysAway });
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -74,13 +75,14 @@ export default function PairedPeopleRow({
   people,
   onSelectPerson,
 }: PairedPeopleRowProps) {
+  const { t } = useTranslation(['social', 'common']);
   const [failedAvatars, setFailedAvatars] = useState<Set<string>>(new Set());
 
   if (people.length === 0) return null;
 
   return (
     <View style={styles.container}>
-      <Text style={styles.sectionTitle}>Your People</Text>
+      <Text style={styles.sectionTitle}>{t('social:yourPeople')}</Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -130,7 +132,7 @@ export default function PairedPeopleRow({
                   </Text>
                   <View style={styles.badgeDot} />
                   <Text style={styles.badgeCountdown}>
-                    {getCountdownLabel(daysAway)}
+                    {getCountdownLabel(daysAway, t)}
                   </Text>
                 </View>
               )}

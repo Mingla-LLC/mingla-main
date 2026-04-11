@@ -10,6 +10,7 @@ import {
   Share,
   FlatList,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
 import * as Haptics from "expo-haptics";
 import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
@@ -63,6 +64,7 @@ export function AddFriendView({
   onCancelRequest,
   onAddFriend,
 }: AddFriendViewProps) {
+  const { t } = useTranslation(['social', 'common']);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<Tab>("add");
@@ -125,7 +127,7 @@ export function AddFriendView({
   const handlePhoneAction = useCallback(async () => {
     if (!isPhoneValid || !debouncedPhoneE164) return;
     if (!user) {
-      setActionError("Not signed in");
+      setActionError(t('social:notSignedIn'));
       setActionStatus("error");
       return;
     }
@@ -137,7 +139,7 @@ export function AddFriendView({
       if (phoneLookupResult?.found && phoneLookupResult.user) {
         // Self-lookup guard
         if (phoneLookupResult.user.id === currentUserId) {
-          Alert.alert("That's you!", "You can't send a friend request to yourself.");
+          Alert.alert(t('social:thatsYou'), t('social:cantSendToSelf'));
           setActionStatus("idle");
           return;
         }
@@ -157,14 +159,14 @@ export function AddFriendView({
           }, 2000);
         } else if (phoneLookupResult.friendship_status === "friends") {
           Alert.alert(
-            "Already Friends",
-            "You're already connected with this person."
+            t('social:alreadyFriendsTitle'),
+            t('social:alreadyFriendsMessage')
           );
           setActionStatus("idle");
         } else {
           Alert.alert(
-            "Request Pending",
-            "A friend request is already pending with this person."
+            t('social:requestPendingTitle'),
+            t('social:requestPendingMessage')
           );
           setActionStatus("idle");
         }
@@ -177,8 +179,7 @@ export function AddFriendView({
         // Share in its own try/catch — dismissal is not an error
         try {
           await Share.share({
-            message:
-              "Hey! Join me on Mingla and let's find amazing experiences together. https://usemingla.com",
+            message: t('social:shareInviteMessage'),
           });
         } catch {
           // User dismissed share sheet — not an error
@@ -193,7 +194,7 @@ export function AddFriendView({
     } catch (err) {
       console.error("[AddFriendView] Action error:", err);
       setActionError(
-        err instanceof Error ? err.message : "Something went wrong"
+        err instanceof Error ? err.message : t('social:somethingWentWrong')
       );
       setActionStatus("error");
     }
@@ -209,15 +210,15 @@ export function AddFriendView({
   ]);
 
   const getActionLabel = (): string => {
-    if (phoneLookupLoading) return "Looking up...";
-    if (!isPhoneValid) return "Enter phone number";
+    if (phoneLookupLoading) return t('social:lookingUp');
+    if (!isPhoneValid) return t('social:enterPhoneNumber');
     if (phoneLookupResult?.found) {
       if (phoneLookupResult.friendship_status === "friends")
-        return "Already friends";
-      if (phoneLookupResult.friendship_status === "none") return "Send request";
-      return "Request pending";
+        return t('social:alreadyFriends');
+      if (phoneLookupResult.friendship_status === "none") return t('social:sendRequest');
+      return t('social:requestPending');
     }
-    return "Invite to Mingla";
+    return t('social:inviteToMingla');
   };
 
   const isActionDisabled =
@@ -238,12 +239,12 @@ export function AddFriendView({
   const handleCancelRequest = useCallback(
     (requestId: string, displayName: string) => {
       Alert.alert(
-        "Cancel Request",
-        `Cancel your friend request to ${displayName}?`,
+        t('social:cancelRequest'),
+        t('social:cancelRequestConfirm', { name: displayName }),
         [
-          { text: "Keep", style: "cancel" },
+          { text: t('social:keep'), style: "cancel" },
           {
-            text: "Cancel Request",
+            text: t('social:cancelRequestButton'),
             style: "destructive",
             onPress: async () => {
               try {
@@ -253,8 +254,8 @@ export function AddFriendView({
                 );
               } catch {
                 Alert.alert(
-                  "Error",
-                  "Failed to cancel request. Please try again."
+                  t('social:error'),
+                  t('social:errorCancelRequest')
                 );
               }
             },
@@ -267,10 +268,10 @@ export function AddFriendView({
 
   const handleCancelInvite = useCallback(
     (inviteId: string, phone: string) => {
-      Alert.alert("Cancel Invite", `Cancel your invite to ${phone}?`, [
-        { text: "Keep", style: "cancel" },
+      Alert.alert(t('social:cancelInvite'), t('social:cancelInviteConfirm', { phone }), [
+        { text: t('social:keep'), style: "cancel" },
         {
-          text: "Cancel Invite",
+          text: t('social:cancelInviteButton'),
           style: "destructive",
           onPress: async () => {
             try {
@@ -281,8 +282,8 @@ export function AddFriendView({
               );
             } catch {
               Alert.alert(
-                "Error",
-                "Failed to cancel invite. Please try again."
+                t('social:error'),
+                t('social:errorCancelInvite')
               );
             }
           },
@@ -342,7 +343,7 @@ export function AddFriendView({
             style={styles.cancelButton}
             activeOpacity={0.7}
           >
-            <Text style={styles.cancelText}>Cancel</Text>
+            <Text style={styles.cancelText}>{t('social:cancel')}</Text>
           </TouchableOpacity>
         </View>
       );
@@ -360,7 +361,7 @@ export function AddFriendView({
             {invite.phoneE164}
           </Text>
           <Text style={styles.sentTime}>
-            Invited {formatTimeAgo(invite.createdAt)}
+            {t('social:invited', { time: formatTimeAgo(invite.createdAt) })}
           </Text>
         </View>
         <TouchableOpacity
@@ -368,7 +369,7 @@ export function AddFriendView({
           style={styles.cancelButton}
           activeOpacity={0.7}
         >
-          <Text style={styles.cancelText}>Cancel</Text>
+          <Text style={styles.cancelText}>{t('social:cancel')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -389,7 +390,7 @@ export function AddFriendView({
               activeTab === "add" && styles.tabTextActive,
             ]}
           >
-            Add Friend
+            {t('social:addFriend')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -403,7 +404,7 @@ export function AddFriendView({
               activeTab === "sent" && styles.tabTextActive,
             ]}
           >
-            Sent{sentTabCount > 0 ? ` (${sentTabCount})` : ""}
+            {sentTabCount > 0 ? t('social:sentWithCount', { count: sentTabCount }) : t('social:sent')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -446,7 +447,7 @@ export function AddFriendView({
                   setActionError("");
                 }
               }}
-              placeholder="Phone number"
+              placeholder={t('social:phoneNumber')}
               placeholderTextColor="#9ca3af"
               keyboardType="phone-pad"
               autoCorrect={false}
@@ -473,8 +474,7 @@ export function AddFriendView({
                     color="#22c55e"
                   />
                   <Text style={styles.lookupTextGreen}>
-                    {getDisplayNameUtil(phoneLookupResult.user, "User")}{" "}
-                    is on Mingla
+                    {t('social:isOnMingla', { name: getDisplayNameUtil(phoneLookupResult.user, "User") })}
                   </Text>
                 </View>
               ) : (
@@ -485,7 +485,7 @@ export function AddFriendView({
                     color="#6b7280"
                   />
                   <Text style={styles.lookupTextMuted}>
-                    Not on Mingla yet
+                    {t('social:notOnMinglaYet')}
                   </Text>
                 </View>
               )}
@@ -501,7 +501,7 @@ export function AddFriendView({
                 color="#22c55e"
               />
               <Text style={styles.statusSuccess}>
-                {phoneLookupResult?.found ? "Request sent!" : "Invite sent!"}
+                {phoneLookupResult?.found ? t('social:requestSent') : t('social:inviteSent')}
               </Text>
             </View>
           )}
@@ -560,7 +560,7 @@ export function AddFriendView({
                 color="#d1d5db"
               />
               <Text style={styles.sentEmptyText}>
-                No pending requests or invites
+                {t('social:noPendingRequestsOrInvites')}
               </Text>
             </View>
           ) : (

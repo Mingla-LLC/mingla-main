@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Icon } from '../ui/Icon';
 import { Clipboard } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 interface InviteCodeDisplayProps {
   inviteCode: string;
@@ -16,6 +17,7 @@ interface InviteCodeDisplayProps {
 export const InviteCodeDisplay: React.FC<InviteCodeDisplayProps> = ({
   inviteCode,
 }) => {
+  const { t } = useTranslation(['board', 'common']);
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -24,18 +26,18 @@ export const InviteCodeDisplay: React.FC<InviteCodeDisplayProps> = ({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
       // Use haptic feedback if available
-      Alert.alert('Copied!', 'Invite code copied to clipboard');
+      Alert.alert(t('board:inviteCodeDisplay.copied'), t('board:inviteCodeDisplay.copiedMsg'));
     } catch (error) {
       console.error('Failed to copy code:', error);
-      Alert.alert('Error', 'Failed to copy code. Please try again.');
+      Alert.alert('Error', t('board:inviteCodeDisplay.errorCopy'));
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Invite Code</Text>
+      <Text style={styles.title}>{t('board:inviteCodeDisplay.inviteCode')}</Text>
       <Text style={styles.description}>
-        Share this code with people you want to invite
+        {t('board:inviteCodeDisplay.description')}
       </Text>
 
       <View style={styles.codeContainer}>
@@ -52,14 +54,14 @@ export const InviteCodeDisplay: React.FC<InviteCodeDisplayProps> = ({
           color="white"
         />
         <Text style={styles.copyButtonText}>
-          {copied ? 'Copied!' : 'Copy Code'}
+          {copied ? t('board:inviteCodeDisplay.copied') : t('board:inviteCodeDisplay.copyCode')}
         </Text>
       </TouchableOpacity>
 
       <View style={styles.infoContainer}>
         <Icon name="information-circle-outline" size={16} color="#666" />
         <Text style={styles.infoText}>
-          Recipients can enter this code in the app to join your board session
+          {t('board:inviteCodeDisplay.infoText')}
         </Text>
       </View>
     </View>

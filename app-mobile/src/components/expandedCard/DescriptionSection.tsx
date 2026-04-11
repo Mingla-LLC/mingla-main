@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, NativeSyntheticEvent, TextLayoutEventData } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 const COLLAPSED_LINES = 4;
 
@@ -14,6 +15,7 @@ export default function DescriptionSection({
   description,
   fullDescription,
 }: DescriptionSectionProps) {
+  const { t } = useTranslation(['expanded_details', 'common']);
   const displayDescription = fullDescription || description;
   const [isExpanded, setIsExpanded] = useState(false);
   const [isTruncated, setIsTruncated] = useState(false);
@@ -46,7 +48,7 @@ export default function DescriptionSection({
           style={styles.toggleButton}
         >
           <Text style={styles.toggleText}>
-            {isExpanded ? 'Show less' : 'Read more'}
+            {isExpanded ? t('expanded_details:description.show_less') : t('expanded_details:description.read_more')}
           </Text>
         </TouchableOpacity>
       )}

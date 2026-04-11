@@ -8,6 +8,7 @@ import {
   Alert,
   StyleSheet,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
 import { BlockedUser } from "../../hooks/useFriends";
 
@@ -32,15 +33,16 @@ export function BlockedUsersView({
   loading,
   onUnblock,
 }: BlockedUsersViewProps) {
+  const { t } = useTranslation(['social', 'common']);
   const handleUnblock = (user: BlockedUser) => {
     const displayName = user.name || user.username || "this user";
     Alert.alert(
-      `Unblock ${displayName}?`,
-      "They will be able to message you again.",
+      t('social:unblockTitle', { name: displayName }),
+      t('social:unblockMessage'),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t('social:cancel'), style: "cancel" },
         {
-          text: "Unblock",
+          text: t('social:unblock'),
           style: "destructive",
           onPress: () => onUnblock(user.id),
         },
@@ -60,7 +62,7 @@ export function BlockedUsersView({
     return (
       <View style={styles.emptyState}>
         <Icon name="ban-outline" size={32} color="#d1d5db" />
-        <Text style={styles.emptyText}>No blocked users</Text>
+        <Text style={styles.emptyText}>{t('social:noBlockedUsers')}</Text>
       </View>
     );
   }
@@ -82,7 +84,7 @@ export function BlockedUsersView({
           style={styles.unblockButton}
           activeOpacity={0.7}
         >
-          <Text style={styles.unblockText}>Unblock</Text>
+          <Text style={styles.unblockText}>{t('social:unblock')}</Text>
         </TouchableOpacity>
       </View>
     );

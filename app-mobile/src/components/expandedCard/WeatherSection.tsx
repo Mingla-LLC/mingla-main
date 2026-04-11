@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { Icon } from "../ui/Icon";
 import { WeatherData } from "../../services/weatherService";
 import { formatTemperature } from "../utils/formatters";
+import { useTranslation } from "react-i18next";
 
 interface WeatherSectionProps {
   weatherData: WeatherData | null;
@@ -17,6 +18,8 @@ export default function WeatherSection({
   loading,
   measurementSystem = 'Imperial',
 }: WeatherSectionProps) {
+  const { t } = useTranslation(['expanded_details', 'common']);
+
   const getWeatherIcon = (iconCode: string): string => {
     const iconMap: { [key: string]: string } = {
       "01d": "sunny",
@@ -43,12 +46,12 @@ export default function WeatherSection({
 
   const getConditionText = (description: string): string => {
     const desc = description.toLowerCase();
-    if (desc.includes("clear") || desc.includes("sunny")) return "Clear";
-    if (desc.includes("cloud")) return "Cloudy";
-    if (desc.includes("rain")) return "Rainy";
-    if (desc.includes("snow")) return "Snowy";
-    if (desc.includes("storm")) return "Stormy";
-    return "Cloudy";
+    if (desc.includes("clear") || desc.includes("sunny")) return t('expanded_details:weather.clear');
+    if (desc.includes("cloud")) return t('expanded_details:weather.cloudy');
+    if (desc.includes("rain")) return t('expanded_details:weather.rainy');
+    if (desc.includes("snow")) return t('expanded_details:weather.snowy');
+    if (desc.includes("storm")) return t('expanded_details:weather.stormy');
+    return t('expanded_details:weather.cloudy');
   };
 
   if (loading) {
@@ -58,7 +61,7 @@ export default function WeatherSection({
           <View style={styles.iconBadge}>
             <Icon name="cloudy" size={14} color="#ea580c" />
           </View>
-          <Text style={styles.label}>Weather</Text>
+          <Text style={styles.label}>{t('expanded_details:weather.weather')}</Text>
           <ActivityIndicator size="small" color="#ea580c" />
         </View>
       </View>

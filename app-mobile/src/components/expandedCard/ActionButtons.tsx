@@ -27,6 +27,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
 import { extractWeekdayText, isPlaceOpenAt } from "../../utils/openingHoursUtils";
+import { useTranslation } from "react-i18next";
 
 
 interface ActionButtonsProps {
@@ -69,6 +70,7 @@ export default function ActionButtons({
   hasCalendarEntry = false,
 }: ActionButtonsProps) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation(['expanded_details', 'common']);
   const [isSaving, setIsSaving] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
   const [showDateTimePicker, setShowDateTimePicker] = useState(false);
@@ -364,7 +366,7 @@ export default function ActionButtons({
     try {
       await onSave(card);
     } catch (error: any) {
-      Alert.alert("Error", "Failed to save the card. Please try again.");
+      Alert.alert("Error", t('expanded_details:action_buttons.error_save'));
     } finally {
       setIsSaving(false);
     }
@@ -501,7 +503,7 @@ export default function ActionButtons({
 
   const proceedWithScheduling = async (scheduledDateTime: Date, skipStopCheck = false) => {
     if (!user?.id) {
-      Alert.alert("Error", "You must be logged in to schedule cards.");
+      Alert.alert("Error", t('expanded_details:action_buttons.error_login'));
       setIsScheduling(false);
       return;
     }
@@ -509,7 +511,7 @@ export default function ActionButtons({
     setIsScheduling(true);
     try {
       if (isNaN(scheduledDateTime.getTime())) {
-        Alert.alert("Invalid Date", "The selected date is not valid. Please try again.");
+        Alert.alert(t('expanded_details:action_buttons.schedule_failed_title'), t('expanded_details:action_buttons.error_invalid_date'));
         setIsScheduling(false);
         return;
       }
@@ -632,7 +634,7 @@ export default function ActionButtons({
       // Show success toast + haptic
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       toastManager.success(
-        `Scheduled! ${card.title} has been moved to your calendar`,
+        t('expanded_details:action_buttons.scheduled_toast', { title: card.title }),
         3000,
       );
 
@@ -651,8 +653,8 @@ export default function ActionButtons({
       console.error("[ActionButtons] Scheduling error:", error);
       const detail = __DEV__ && error?.message ? `\n\nDEV: ${error.message}` : "";
       Alert.alert(
-        "Schedule failed",
-        `We couldn't add this to your calendar. Please try again.${detail}`,
+        t('expanded_details:action_buttons.schedule_failed_title'),
+        `${t('expanded_details:action_buttons.schedule_failed_body')}${detail}`,
       );
     } finally {
       setIsScheduling(false);
@@ -709,7 +711,7 @@ export default function ActionButtons({
                 <SafeAreaView style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 20) }]} edges={['bottom', 'left', 'right']}>
                   <View style={styles.modalHeader}>
                     <Text style={styles.modalTitle}>
-                      {pickerMode === "date" ? "Select Date" : "Select Time"}
+                      {pickerMode === "date" ? t('expanded_details:action_buttons.select_date') : t('expanded_details:action_buttons.select_time')}
                     </Text>
                     <View style={styles.modalHeaderButtons}>
                       <TrackedTouchableOpacity
@@ -718,7 +720,7 @@ export default function ActionButtons({
                         style={styles.modalCancelButton}
                         onPress={() => setShowDateTimePicker(false)}
                       >
-                        <Text style={styles.modalCancelText}>Cancel</Text>
+                        <Text style={styles.modalCancelText}>{t('expanded_details:action_buttons.cancel')}</Text>
                       </TrackedTouchableOpacity>
                       <TrackedTouchableOpacity
                         logComponent="ActionButtons"
@@ -727,7 +729,7 @@ export default function ActionButtons({
                         onPress={pickerMode === "date" ? handleDatePickerConfirm : handleTimePickerConfirm}
                       >
                         <Text style={styles.modalConfirmText}>
-                          {pickerMode === "date" ? "Next" : "Done"}
+                          {pickerMode === "date" ? t('expanded_details:action_buttons.next') : t('expanded_details:action_buttons.done')}
                         </Text>
                       </TrackedTouchableOpacity>
                     </View>
@@ -764,7 +766,7 @@ export default function ActionButtons({
         <View style={styles.openingHoursSection}>
           <View style={styles.openingHoursHeader}>
             <Icon name="time" size={18} color="#ea580c" />
-            <Text style={styles.openingHoursTitle}>Opening Hours</Text>
+            <Text style={styles.openingHoursTitle}>{t('expanded_details:action_buttons.opening_hours')}</Text>
             {liveOpenStatus !== null && (
               <View style={[
                 styles.openNowBadge,
@@ -778,7 +780,7 @@ export default function ActionButtons({
                   styles.openNowText,
                   liveOpenStatus ? styles.openNowTextOpen : styles.openNowTextClosed,
                 ]}>
-                  {liveOpenStatus ? "Open Now" : "Closed"}
+                  {liveOpenStatus ? t('expanded_details:action_buttons.open_now') : t('expanded_details:action_buttons.closed')}
                 </Text>
               </View>
             )}
@@ -803,7 +805,7 @@ export default function ActionButtons({
           {parsedOpeningHours.lines.length > 1 && (
             <TrackedTouchableOpacity logComponent="ActionButtons" logId="toggle_hours" onPress={() => setShowAllHours(!showAllHours)} style={styles.showAllHoursButton}>
               <Text style={styles.showAllHoursText}>
-                {showAllHours ? "Show less" : "Show all hours"}
+                {showAllHours ? t('expanded_details:action_buttons.show_less') : t('expanded_details:action_buttons.show_all_hours')}
               </Text>
               <Icon name={showAllHours ? "chevron-up" : "chevron-down"} size={14} color="#ea580c" />
             </TrackedTouchableOpacity>
@@ -835,7 +837,7 @@ export default function ActionButtons({
                 color="#ffffff"
               />
               <Text style={styles.saveButtonText}>
-                {isSaved ? "Saved" : "Save"}
+                {isSaved ? t('expanded_details:action_buttons.saved') : t('expanded_details:action_buttons.save')}
               </Text>
             </>
           )}
@@ -863,7 +865,7 @@ export default function ActionButtons({
                 color="#ffffff"
               />
               <Text style={styles.scheduleButtonText}>
-                {isScheduled ? "Scheduled" : "Schedule"}
+                {isScheduled ? t('expanded_details:action_buttons.scheduled') : t('expanded_details:action_buttons.schedule')}
               </Text>
             </>
           )}
@@ -892,7 +894,7 @@ export default function ActionButtons({
         >
           <Icon name="globe-outline" size={18} color="#ffffff" />
           <Text style={styles.policiesButtonText}>
-            Policies & Reservations
+            {t('expanded_details:action_buttons.policies_reservations')}
           </Text>
         </TrackedTouchableOpacity>
       )}
@@ -913,19 +915,19 @@ export default function ActionButtons({
             disabled={isVisitLoading}
             accessibilityLabel={
               isVisited
-                ? "You visited this place"
-                : "Mark this place as visited"
+                ? t('expanded_details:action_buttons.visited_label')
+                : t('expanded_details:action_buttons.mark_visited_label')
             }
             accessibilityHint={
               isVisited
-                ? "Tap to remove your visit marker"
-                : "Records your visit and opens the review flow"
+                ? t('expanded_details:action_buttons.visited_hint')
+                : t('expanded_details:action_buttons.mark_visited_hint')
             }
           >
             {isVisitLoading ? (
               <>
                 <ActivityIndicator size="small" color="#9ca3af" />
-                <Text style={styles.visitButtonTextLoading}>On it...</Text>
+                <Text style={styles.visitButtonTextLoading}>{t('expanded_details:action_buttons.on_it')}</Text>
               </>
             ) : isVisited ? (
               <>
@@ -935,7 +937,7 @@ export default function ActionButtons({
                   color="#16a34a"
                 />
                 <Text style={styles.visitButtonTextVisited}>
-                  Been there ✓
+                  {t('expanded_details:action_buttons.been_there')} ✓
                 </Text>
               </>
             ) : (
@@ -945,7 +947,7 @@ export default function ActionButtons({
                   size={20}
                   color="#9ca3af"
                 />
-                <Text style={styles.visitButtonTextDefault}>I went here</Text>
+                <Text style={styles.visitButtonTextDefault}>{t('expanded_details:action_buttons.i_went_here')}</Text>
               </>
             )}
           </TrackedTouchableOpacity>
@@ -960,7 +962,7 @@ export default function ActionButtons({
           <View style={styles.closedMessageContainer}>
             <Icon name="alert-circle" size={16} color="#9a3412" />
             <Text style={styles.closedMessage}>
-              This place is closed at the selected date and time. Tap "Schedule" to choose a different time.
+              {t('expanded_details:action_buttons.closed_message')}
             </Text>
           </View>
         )}

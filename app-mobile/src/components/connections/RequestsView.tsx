@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
 import { FriendRequest } from "../../hooks/useFriends";
 import { getDisplayName as getDisplayNameUtil } from "../../utils/getDisplayName";
@@ -40,6 +41,7 @@ export function RequestsView({
   onAccept,
   onDecline,
 }: RequestsViewProps) {
+  const { t } = useTranslation(['social', 'common']);
   if (loading) {
     return (
       <View style={styles.loadingState}>
@@ -52,7 +54,7 @@ export function RequestsView({
     return (
       <View style={styles.emptyState}>
         <Icon name="people-outline" size={32} color="#d1d5db" />
-        <Text style={styles.emptyText}>No pending requests</Text>
+        <Text style={styles.emptyText}>{t('social:noPendingRequests')}</Text>
       </View>
     );
   }
@@ -76,14 +78,14 @@ export function RequestsView({
             style={styles.acceptButton}
             activeOpacity={0.7}
           >
-            <Text style={styles.acceptText}>Accept</Text>
+            <Text style={styles.acceptText}>{t('social:accept')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => onDecline(item.id)}
             style={styles.declineButton}
             activeOpacity={0.7}
           >
-            <Text style={styles.declineText}>Decline</Text>
+            <Text style={styles.declineText}>{t('social:decline')}</Text>
           </TouchableOpacity>
         </View>
       </View>

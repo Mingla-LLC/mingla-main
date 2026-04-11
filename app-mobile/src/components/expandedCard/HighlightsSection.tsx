@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { Icon } from '../ui/Icon';
+import { useTranslation } from 'react-i18next';
 
 interface HighlightsSectionProps {
   highlights: string[];
@@ -11,6 +12,8 @@ export default function HighlightsSection({
   highlights,
   category,
 }: HighlightsSectionProps) {
+  const { t } = useTranslation(['expanded_details', 'common']);
+
   if (!highlights || highlights.length === 0) {
     return null;
   }
@@ -25,7 +28,7 @@ export default function HighlightsSection({
     <View style={styles.container}>
       <View style={styles.header}>
         <Icon name="sparkles" size={20} color="#eb7825" />
-        <Text style={styles.title}>Highlights</Text>
+        <Text style={styles.title}>{t('expanded_details:highlights.title')}</Text>
       </View>
       <ScrollView
         horizontal

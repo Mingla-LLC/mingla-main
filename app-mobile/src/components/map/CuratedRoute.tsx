@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { Polyline, Marker, Callout } from 'react-native-maps';
 import { Recommendation } from '../../types/recommendation';
 
@@ -8,6 +9,7 @@ interface CuratedRouteProps {
 }
 
 export function CuratedRoute({ card }: CuratedRouteProps) {
+  const { t } = useTranslation(['map', 'common']);
   if (!card.strollData) return null;
 
   const { anchor, companionStops, timeline } = card.strollData;
@@ -54,7 +56,7 @@ export function CuratedRoute({ card }: CuratedRouteProps) {
           <Callout tooltip>
             <View style={styles.calloutBubble}>
               <Text style={styles.calloutTitle}>{stop.name}</Text>
-              <Text style={styles.calloutRole}>{roleMap.get(stop.step) || `Stop ${stop.step}`}</Text>
+              <Text style={styles.calloutRole}>{roleMap.get(stop.step) || t('map:stop', { step: stop.step })}</Text>
             </View>
           </Callout>
         </Marker>

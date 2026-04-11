@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Icon } from '../ui/Icon';
 import { Clipboard } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 interface InviteLinkShareProps {
   inviteLink: string;
@@ -19,6 +20,7 @@ export const InviteLinkShare: React.FC<InviteLinkShareProps> = ({
   inviteLink,
   inviteCode,
 }) => {
+  const { t } = useTranslation(['board', 'common']);
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -26,32 +28,31 @@ export const InviteLinkShare: React.FC<InviteLinkShareProps> = ({
       Clipboard.setString(inviteLink);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-      // Use haptic feedback if available
-      Alert.alert('Copied!', 'Invite link copied to clipboard');
+      Alert.alert(t('board:inviteLinkShare.copied'), t('board:inviteLinkShare.copiedMsg'));
     } catch (error) {
       console.error('Failed to copy link:', error);
-      Alert.alert('Error', 'Failed to copy link. Please try again.');
+      Alert.alert(t('board:inviteLinkShare.error'), t('board:inviteLinkShare.errorCopy'));
     }
   };
 
   const handleShare = async () => {
     try {
       const result = await Share.share({
-        message: `Join my board session on Mingla! ${inviteLink}`,
+        message: t('board:inviteLinkShare.shareMessage', { link: inviteLink }),
         url: inviteLink,
       });
     } catch (error: any) {
       if (error.message !== 'User did not share') {
-        Alert.alert('Error', 'Failed to share link');
+        Alert.alert(t('board:inviteLinkShare.error'), t('board:inviteLinkShare.errorShare'));
       }
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Share Invite Link</Text>
+      <Text style={styles.title}>{t('board:inviteLinkShare.shareInviteLink')}</Text>
       <Text style={styles.description}>
-        Send this link to anyone you want to invite
+        {t('board:inviteLinkShare.description')}
       </Text>
 
       <View style={styles.linkContainer}>
@@ -62,7 +63,7 @@ export const InviteLinkShare: React.FC<InviteLinkShareProps> = ({
 
       {inviteCode && (
         <View style={styles.codeContainer}>
-          <Text style={styles.codeLabel}>Or share this code:</Text>
+          <Text style={styles.codeLabel}>{t('board:inviteLinkShare.orShareCode')}</Text>
           <Text style={styles.codeText}>{inviteCode}</Text>
         </View>
       )}
@@ -78,7 +79,7 @@ export const InviteLinkShare: React.FC<InviteLinkShareProps> = ({
             color="white"
           />
           <Text style={styles.actionButtonText}>
-            {copied ? 'Copied!' : 'Copy Link'}
+            {copied ? t('board:inviteLinkShare.copied') : t('board:inviteLinkShare.copyLink')}
           </Text>
         </TouchableOpacity>
 
@@ -87,7 +88,7 @@ export const InviteLinkShare: React.FC<InviteLinkShareProps> = ({
           onPress={handleShare}
         >
           <Icon name="share-outline" size={20} color="white" />
-          <Text style={styles.actionButtonText}>Share</Text>
+          <Text style={styles.actionButtonText}>{t('board:inviteLinkShare.share')}</Text>
         </TouchableOpacity>
       </View>
     </View>

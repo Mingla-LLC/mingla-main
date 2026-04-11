@@ -15,6 +15,45 @@
     "error_upload_photo": "No se pudo subir la foto de perfil.",
     "error_save_bio": "No se pudo guardar la biografía."
   },
+  "edit_bio": {
+    "title": "Editar biografía",
+    "placeholder": "Cuéntale a la gente sobre ti",
+    "save": "Guardar"
+  },
+  "edit_interests": {
+    "title": "Editar intereses",
+    "what_are_you_into": "¿Qué te interesa?",
+    "what_do_you_like": "¿Qué te gusta?",
+    "save": "Guardar"
+  },
+  "hero": {
+    "your_name_here": "Tu nombre aquí",
+    "user_fallback": "Usuario",
+    "first_name": "Nombre",
+    "last_name": "Apellido",
+    "name_error_empty": "Ingresa tu nombre.",
+    "name_error_failed": "No se pudo guardar. Inténtalo de nuevo.",
+    "somewhere_cool": "En algún lugar genial, probablemente",
+    "tap_to_add_bio": "Toca para añadir una biografía",
+    "hint_add_photo": "La gente confía en los rostros. Añade una foto para que tus amigos sepan que eres tú.",
+    "hint_add_bio": "Una breve biografía marca la diferencia. ¿Qué deberían saber de ti?"
+  },
+  "stats": {
+    "saved": "GUARDADOS",
+    "friends": "AMIGOS",
+    "boards": "TABLEROS",
+    "places": "LUGARES",
+    "streak": "RACHA",
+    "level": "NIVEL",
+    "motivation_start": "Tus estadísticas comienzan a crecer en el momento en que haces algo. Ve a explorar.",
+    "motivation_close": "{{count}} lugar más para alcanzar {{tier}}. Estás cerca.",
+    "motivation_close_plural": "{{count}} lugares más para alcanzar {{tier}}. Estás cerca.",
+    "motivation_week": "Una semana entera. La constancia te queda bien.",
+    "motivation_month": "30 días seguidos. Podrías ser imparable."
+  },
+  "paired_section": {
+    "see_all": "Ver todo"
+  },
   "friend": {
     "loading_profile": "Cargando perfil\u2026",
     "profile_unavailable_title": "Este perfil no está disponible",

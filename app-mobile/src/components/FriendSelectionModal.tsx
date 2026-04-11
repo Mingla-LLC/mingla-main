@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Text, View, TextInput, StyleSheet, Modal, ScrollView } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
 import { ImageWithFallback } from './figma/ImageWithFallback';
@@ -32,6 +33,7 @@ export default function FriendSelectionModal({
   onSelectFriend,
   friends
 }: FriendSelectionModalProps) {
+  const { t } = useTranslation(['chat', 'common']);
   const [searchQuery, setSearchQuery] = useState('');
   const insets = useSafeAreaInsets();
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
@@ -61,8 +63,8 @@ export default function FriendSelectionModal({
           <View style={styles.header}>
             <View style={styles.headerSidePlaceholder} />
             <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>Start New Conversation</Text>
-              <Text style={styles.headerSubtitle}>Choose a friend to message</Text>
+              <Text style={styles.headerTitle}>{t('chat:newConversation')}</Text>
+              <Text style={styles.headerSubtitle}>{t('chat:chooseAFriend')}</Text>
             </View>
             <View style={styles.headerSidePlaceholder} />
           </View>
@@ -72,7 +74,7 @@ export default function FriendSelectionModal({
           <View style={styles.searchInputContainer}>
             <Icon name="search" size={16} color="#9ca3af" style={styles.searchIcon} />
             <TextInput
-              placeholder="Search friends..."
+              placeholder={t('chat:searchFriends')}
               value={searchQuery}
               onChangeText={setSearchQuery}
               style={styles.searchInput}
@@ -86,10 +88,10 @@ export default function FriendSelectionModal({
             <View style={styles.emptyState}>
               <Icon name="people" size={48} color="#d1d5db" />
               <Text style={styles.emptyStateText}>
-                {searchQuery ? 'No friends found' : 'No friends available'}
+                {searchQuery ? t('chat:noFriendsFound') : t('chat:noFriendsAvailable')}
               </Text>
               <Text style={styles.emptyStateSubtext}>
-                {searchQuery ? 'Try a different search term' : 'Add friends to start messaging'}
+                {searchQuery ? t('chat:tryDifferentSearch') : t('chat:addFriendsToStart')}
               </Text>
             </View>
           ) : (
@@ -137,7 +139,7 @@ export default function FriendSelectionModal({
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            Only direct one-on-one conversations are supported
+            {t('chat:dmOnly')}
           </Text>
         </View>
         </View>

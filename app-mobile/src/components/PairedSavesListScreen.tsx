@@ -9,6 +9,7 @@ import {
   Animated,
   ScrollView,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { Icon } from './ui/Icon';
 import { s, vs, SCREEN_WIDTH } from '../utils/responsive';
 import { colors, shadows } from '../constants/designSystem';
@@ -104,6 +105,7 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
   selectedCategory,
   onCategoryChange,
 }) => {
+  const { t } = useTranslation(['social', 'common']);
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => (
       <View style={styles.cardWrapper}>
@@ -148,7 +150,7 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
               !selectedCategory && styles.filterPillTextActive,
             ]}
           >
-            All
+            {t('social:all')}
           </Text>
         </TouchableOpacity>
         {categories.map((cat) => (
@@ -213,10 +215,10 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
         </View>
         <View style={styles.centered}>
           <Icon name="alert-circle-outline" size={s(48)} color={colors.gray[400]} />
-          <Text style={styles.errorText}>Something went wrong</Text>
+          <Text style={styles.errorText}>{t('social:somethingWentWrongError')}</Text>
           {onRetry && (
             <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
-              <Text style={styles.retryText}>Try again</Text>
+              <Text style={styles.retryText}>{t('social:tryAgain')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -243,7 +245,7 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
       {items.length === 0 ? (
         <View style={styles.centered}>
           <Icon name="albums-outline" size={s(48)} color={colors.gray[300]} />
-          <Text style={styles.emptyTitle}>Nothing here yet</Text>
+          <Text style={styles.emptyTitle}>{t('social:nothingHereYet')}</Text>
         </View>
       ) : (
         <FlatList

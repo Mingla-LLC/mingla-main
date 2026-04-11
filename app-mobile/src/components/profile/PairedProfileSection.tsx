@@ -10,6 +10,7 @@ import {
 import { Icon } from '../ui/Icon';
 import { s, vs, SCREEN_WIDTH } from '../../utils/responsive';
 import { colors } from '../../constants/designSystem';
+import { useTranslation } from 'react-i18next';
 import { PERSON_GRID_CARD_WIDTH } from '../PersonGridCard';
 
 interface PairedProfileSectionProps {
@@ -96,6 +97,8 @@ const PairedProfileSection: React.FC<PairedProfileSectionProps> = ({
   emptyBody,
   emptyIcon,
 }) => {
+  const { t } = useTranslation(['profile', 'common']);
+
   return (
     <View style={styles.container}>
       {/* Header Row */}
@@ -115,7 +118,7 @@ const PairedProfileSection: React.FC<PairedProfileSectionProps> = ({
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={styles.seeAllButton}
         >
-          <Text style={styles.seeAllText}>See all</Text>
+          <Text style={styles.seeAllText}>{t('profile:paired_section.see_all')}</Text>
           <Icon name="arrow-forward" size={s(14)} color={'#eb7825'} />
         </TouchableOpacity>
       </View>

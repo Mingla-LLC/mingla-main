@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from 'react-i18next';
 import { Icon } from './ui/Icon';
 import { getDisplayName } from '../utils/getDisplayName';
 import { useFriends } from "../hooks/useFriends";
@@ -27,6 +28,7 @@ export default function FriendRequestsModal({
   isOpen,
   onClose,
 }: FriendRequestsModalProps) {
+  const { t } = useTranslation(['social', 'common']);
   const insets = useSafeAreaInsets();
   const {
     friendRequests,
@@ -181,17 +183,14 @@ export default function FriendRequestsModal({
             <View style={styles.headerContent}>
               <View style={styles.headerSidePlaceholder} />
               <View style={styles.headerCenter}>
-                <Text style={styles.headerTitle}>Friend Requests</Text>
+                <Text style={styles.headerTitle}>{t('social:friendRequests')}</Text>
                 <Text style={styles.headerSubtitle}>
                   {initialLoading ? (
-                    "Loading..."
+                    t('social:loading')
                   ) : incomingRequests.length === 0 ? (
-                    "All caught up"
+                    t('social:allCaughtUp')
                   ) : (
-                    <>
-                      {incomingRequests.length} pending{" "}
-                      {incomingRequests.length === 1 ? "request" : "requests"}
-                    </>
+                    t('social:pendingCount', { count: incomingRequests.length })
                   )}
                 </Text>
               </View>
@@ -218,16 +217,15 @@ export default function FriendRequestsModal({
                       <Icon name="inbox" size={32} color="#9ca3af" />
                     </View>
                     <Text style={styles.emptyStateTitle}>
-                      No Friend Requests
+                      {t('social:noFriendRequests')}
                     </Text>
                     <Text style={styles.emptyStateText}>
-                      You're all caught up! New friend requests will appear
-                      here.
+                      {t('social:noFriendRequestsMessage')}
                     </Text>
                     <View style={styles.emptyStateHint}>
                       <Icon name="info" size={14} color="#9ca3af" />
                       <Text style={styles.emptyStateHintText}>
-                        When someone sends you a friend request, you'll see it here
+                        {t('social:friendRequestHint')}
                       </Text>
                     </View>
                   </View>
@@ -287,7 +285,7 @@ export default function FriendRequestsModal({
                                       color="#059669"
                                     />
                                     <Text style={styles.statusText}>
-                                      Accepted
+                                      {t('social:accepted')}
                                     </Text>
                                   </View>
                                 ) : status === "declined" ? (
@@ -298,7 +296,7 @@ export default function FriendRequestsModal({
                                       color="#dc2626"
                                     />
                                     <Text style={styles.statusTextDeclined}>
-                                      Declined
+                                      {t('social:declined')}
                                     </Text>
                                   </View>
                                 ) : (
@@ -361,7 +359,7 @@ export default function FriendRequestsModal({
               {/* Footer */}
               <View style={styles.footer}>
                 <Text style={styles.footerText}>
-                  Accept or decline friend requests to manage your connections
+                  {t('social:manageConnectionsFooter')}
                 </Text>
               </View>
             </>

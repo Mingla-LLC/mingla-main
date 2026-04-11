@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions, Image } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { colors, typography, fontWeights, radius, spacing } from '../../constants/designSystem';
 
@@ -69,6 +70,7 @@ const BORDER_RADIUS = {
 } as const;
 
 export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isRead }: MessageBubbleProps) {
+  const { t } = useTranslation(['chat', 'common']);
   const borderRadius = BORDER_RADIUS[isMe ? 'sent' : 'received'][groupPosition];
   const isGroupEnd = groupPosition === 'last' || groupPosition === 'solo';
   const isDelivered = !message.id.startsWith('temp-');
@@ -93,7 +95,7 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
           styles.bubbleRow,
           isMe ? styles.bubbleRowRight : styles.bubbleRowLeft,
         ]}
-        accessibilityLabel={`${isMe ? 'You' : 'Friend'} said: ${message.content}, ${formatTimestampForPill(message.timestamp)}`}
+        accessibilityLabel={isMe ? t('chat:youSaid', { content: message.content, time: formatTimestampForPill(message.timestamp) }) : t('chat:friendSaid', { content: message.content, time: formatTimestampForPill(message.timestamp) })}
         accessibilityRole="text"
       >
         <View
@@ -144,10 +146,10 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
               <Icon name="document-text" size={16} color={isMe ? 'white' : colors.primary[500]} />
               <View style={styles.fileInfo}>
                 <Text style={[styles.fileName, isMe ? styles.textSent : styles.textReceived]} numberOfLines={1}>
-                  {message.fileName || 'Document'}
+                  {message.fileName || t('chat:document')}
                 </Text>
                 <Text style={[styles.fileSize, isMe ? { color: 'rgba(255,255,255,0.7)' } : { color: colors.text.tertiary }]}>
-                  {message.fileSize || 'Unknown size'}
+                  {message.fileSize || t('chat:unknownSize')}
                 </Text>
               </View>
             </View>
@@ -166,7 +168,7 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
       {isMe && (groupPosition === 'solo' || groupPosition === 'last') && (
         <View style={styles.readReceiptContainer}>
           {isFailed ? (
-            <Text style={styles.failedText}>Failed</Text>
+            <Text style={styles.failedText}>{t('chat:failed')}</Text>
           ) : !isDelivered ? (
             <Icon name="checkmark" size={12} color={colors.gray[400]} />
           ) : isRead ? (

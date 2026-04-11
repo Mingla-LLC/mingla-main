@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 export type BoardTab = "saved" | "discussion";
 
 interface BoardTabsProps {
@@ -20,6 +21,7 @@ export const BoardTabs: React.FC<BoardTabsProps> = ({
   savedCount = 0,
   unreadMessages = 0,
 }) => {
+  const { t } = useTranslation(['board', 'common']);
   const tabs: Array<{
     id: BoardTab;
     label: string;
@@ -27,12 +29,12 @@ export const BoardTabs: React.FC<BoardTabsProps> = ({
   }> = [
     {
       id: "saved",
-      label: "Cards",
+      label: t('board:boardTabs.cards'),
       count: savedCount,
     },
     {
       id: "discussion",
-      label: "Discussion",
+      label: t('board:boardTabs.discussion'),
       count: unreadMessages > 0 ? unreadMessages : undefined,
     },
   ];

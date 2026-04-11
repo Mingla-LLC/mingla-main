@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import { Icon } from './ui/Icon';
+import { useTranslation } from 'react-i18next';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -26,6 +27,7 @@ export default function InAppBrowserModal({
   title,
   onClose,
 }: InAppBrowserModalProps) {
+  const { t } = useTranslation(['modals', 'common']);
   const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -97,7 +99,7 @@ export default function InAppBrowserModal({
               disabled={!canGoBack}
               style={[styles.navButton, !canGoBack && styles.navButtonDisabled]}
               activeOpacity={0.7}
-              accessibilityLabel="Go back"
+              accessibilityLabel={t('modals:in_app_browser.go_back')}
               accessibilityRole="button"
             >
               <Icon name="chevron-back" size={20} color={canGoBack ? '#111827' : '#d1d5db'} />
@@ -107,7 +109,7 @@ export default function InAppBrowserModal({
               disabled={!canGoForward}
               style={[styles.navButton, !canGoForward && styles.navButtonDisabled]}
               activeOpacity={0.7}
-              accessibilityLabel="Go forward"
+              accessibilityLabel={t('modals:in_app_browser.go_forward')}
               accessibilityRole="button"
             >
               <Icon name="chevron-forward" size={20} color={canGoForward ? '#111827' : '#d1d5db'} />

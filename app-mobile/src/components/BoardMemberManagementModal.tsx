@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Text, View, StyleSheet, Modal, ScrollView } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
+import { useTranslation } from 'react-i18next';
 
 interface Participant {
   id: string;
@@ -42,6 +43,7 @@ export default function BoardMemberManagementModal({
     participantName?: string;
   } | null>(null);
 
+  const { t } = useTranslation(['board', 'common']);
   if (!isOpen) return null;
 
   const isCurrentUserAdmin = board.admins.includes(board.currentUserId);
@@ -109,7 +111,7 @@ export default function BoardMemberManagementModal({
           <View style={styles.headerContent}>
             <View style={styles.headerSidePlaceholder} />
             <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>Manage Board</Text>
+              <Text style={styles.headerTitle}>{t('board:boardMemberManagement.manageBoard')}</Text>
               <Text style={styles.headerSubtitle}>{board.name}</Text>
             </View>
             <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
@@ -146,13 +148,13 @@ export default function BoardMemberManagementModal({
                         {isCreator && (
                           <View style={styles.creatorBadge}>
                             <Icon name="star" size={12} color="white" />
-                            <Text style={styles.badgeText}>Creator</Text>
+                            <Text style={styles.badgeText}>{t('board:boardMemberManagement.creator')}</Text>
                           </View>
                         )}
                         {isAdmin && !isCreator && (
                           <View style={styles.adminBadge}>
                             <Icon name="shield" size={12} color="white" />
-                            <Text style={styles.badgeText}>Admin</Text>
+                            <Text style={styles.badgeText}>{t('board:boardMemberManagement.admin')}</Text>
                           </View>
                         )}
                       </View>
@@ -200,16 +202,16 @@ export default function BoardMemberManagementModal({
           <View style={styles.boardInfo}>
             <View style={styles.boardInfoHeader}>
               <Icon name="people" size={16} color="#eb7825" />
-              <Text style={styles.boardInfoTitle}>Board Info</Text>
+              <Text style={styles.boardInfoTitle}>{t('board:boardMemberManagement.boardInfo')}</Text>
             </View>
             <View style={styles.boardInfoContent}>
-              <Text style={styles.boardInfoText}>Total Members: {board.participants.length}</Text>
-              <Text style={styles.boardInfoText}>Admins: {board.admins.length}</Text>
+              <Text style={styles.boardInfoText}>{t('board:boardMemberManagement.totalMembers', { count: board.participants.length })}</Text>
+              <Text style={styles.boardInfoText}>{t('board:boardMemberManagement.admins', { count: board.admins.length })}</Text>
               {board.participants.length <= 2 && (
                 <View style={styles.warningBox}>
                   <Icon name="warning" size={16} color="#d97706" />
                   <Text style={styles.warningText}>
-                    Board will be deleted if any member leaves (minimum 2 members required)
+                    {t('board:boardMemberManagement.minMembersWarning')}
                   </Text>
                 </View>
               )}
@@ -231,13 +233,13 @@ export default function BoardMemberManagementModal({
                       onPress={() => handleRemoveMember(confirmAction.participantId!)}
                       style={styles.confirmButton}
                     >
-                      <Text style={styles.confirmButtonText}>Remove Member</Text>
+                      <Text style={styles.confirmButtonText}>{t('board:boardMemberManagement.removeMember')}</Text>
                     </TrackedTouchableOpacity>
                     <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
                       onPress={() => setConfirmAction(null)}
                       style={styles.cancelConfirmButton}
                     >
-                      <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
+                      <Text style={styles.cancelConfirmButtonText}>{t('board:boardMemberManagement.cancel')}</Text>
                     </TrackedTouchableOpacity>
                   </View>
                 </View>
@@ -253,13 +255,13 @@ export default function BoardMemberManagementModal({
                       onPress={() => handleDemoteFromAdmin(confirmAction.participantId!)}
                       style={styles.demoteConfirmButton}
                     >
-                      <Text style={styles.demoteButtonText}>Remove Admin</Text>
+                      <Text style={styles.demoteButtonText}>{t('board:boardMemberManagement.removeAdmin')}</Text>
                     </TrackedTouchableOpacity>
                     <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
                       onPress={() => setConfirmAction(null)}
                       style={styles.cancelConfirmButton}
                     >
-                      <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
+                      <Text style={styles.cancelConfirmButtonText}>{t('board:boardMemberManagement.cancel')}</Text>
                     </TrackedTouchableOpacity>
                   </View>
                 </View>
@@ -284,13 +286,13 @@ export default function BoardMemberManagementModal({
                       onPress={handleLeaveBoard}
                       style={styles.leaveButton}
                     >
-                      <Text style={styles.leaveButtonText}>Leave Board</Text>
+                      <Text style={styles.leaveButtonText}>{t('board:boardMemberManagement.leaveBoard')}</Text>
                     </TrackedTouchableOpacity>
                     <TrackedTouchableOpacity logComponent="BoardMemberManagementModal"
                       onPress={() => setConfirmAction(null)}
                       style={styles.cancelConfirmButton}
                     >
-                      <Text style={styles.cancelConfirmButtonText}>Cancel</Text>
+                      <Text style={styles.cancelConfirmButtonText}>{t('board:boardMemberManagement.cancel')}</Text>
                     </TrackedTouchableOpacity>
                   </View>
                 </View>
@@ -302,7 +304,7 @@ export default function BoardMemberManagementModal({
               style={styles.leaveBoardButton}
             >
               <Icon name="person-remove" size={16} color="#dc2626" />
-              <Text style={styles.leaveBoardButtonText}>Leave Board</Text>
+              <Text style={styles.leaveBoardButtonText}>{t('board:boardMemberManagement.leaveBoard')}</Text>
             </TrackedTouchableOpacity>
           )}
         </View>

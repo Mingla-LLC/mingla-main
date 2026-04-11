@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Icon } from '../ui/Icon';
 import Svg, { Circle } from 'react-native-svg';
+import { useTranslation } from 'react-i18next';
 
 // --- Types ---
 
@@ -185,6 +186,7 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
   levelProgress = 0,
   onStatPress,
 }) => {
+  const { t } = useTranslation(['profile', 'common']);
   const nextTier = getNextTier(placesVisited);
   const tierName = getTierName(placesVisited);
 
@@ -208,13 +210,15 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
   let motivationText = '';
   if (onStatPress) {
     if (placesVisited === 0 && streakDays === 0) {
-      motivationText = 'Your stats start building the moment you do something. Go explore.';
+      motivationText = t('profile:stats.motivation_start');
     } else if (nextTier && nextTier.remaining <= 3) {
-      motivationText = `${nextTier.remaining} more place${nextTier.remaining === 1 ? '' : 's'} to hit ${nextTier.name}. You're close.`;
+      motivationText = nextTier.remaining === 1
+        ? t('profile:stats.motivation_close', { count: nextTier.remaining, tier: nextTier.name })
+        : t('profile:stats.motivation_close_plural', { count: nextTier.remaining, tier: nextTier.name });
     } else if (streakDays === 7) {
-      motivationText = 'A whole week. Consistency looks good on you.';
+      motivationText = t('profile:stats.motivation_week');
     } else if (streakDays === 30) {
-      motivationText = '30 days straight. You might be unstoppable.';
+      motivationText = t('profile:stats.motivation_month');
     }
   }
 
@@ -224,19 +228,19 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
       <View style={styles.topRow}>
         <StatColumn
           icon="bookmark" iconColor="#eb7825" iconBg="#fff7ed"
-          count={savedCount} label="SAVED" statKey="saved"
+          count={savedCount} label={t('profile:stats.saved')} statKey="saved"
           highlightColor="#eb7825" onPress={onStatPress}
         />
         <View style={styles.divider} />
         <StatColumn
           icon="people" iconColor="#22c55e" iconBg="#f0fdf4"
-          count={connectionsCount} label="FRIENDS" statKey="connections"
+          count={connectionsCount} label={t('profile:stats.friends')} statKey="connections"
           onPress={onStatPress}
         />
         <View style={styles.divider} />
         <StatColumn
           icon="grid" iconColor="#3b82f6" iconBg="#eff6ff"
-          count={boardsCount} label="BOARDS" statKey="boards"
+          count={boardsCount} label={t('profile:stats.boards')} statKey="boards"
           onPress={onStatPress}
         />
       </View>
@@ -249,7 +253,7 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
           <Text style={[styles.gamifiedNumber, placesVisited === 0 && styles.gamifiedNumberZero]}>
             {visitedDisplay}
           </Text>
-          <Text style={styles.gamifiedLabel}>PLACES</Text>
+          <Text style={styles.gamifiedLabel}>{t('profile:stats.places')}</Text>
         </View>
 
         {/* Streak */}
@@ -266,7 +270,7 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
             </Text>
             <Text style={styles.streakSuffix}>d</Text>
           </View>
-          <Text style={styles.gamifiedLabel}>STREAK</Text>
+          <Text style={styles.gamifiedLabel}>{t('profile:stats.streak')}</Text>
         </View>
 
         {/* Level */}
@@ -276,7 +280,7 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
             <ProgressRing progress={levelProgress} />
             <Text style={styles.levelNumber}>{level}</Text>
           </View>
-          <Text style={styles.gamifiedLabel}>LEVEL</Text>
+          <Text style={styles.gamifiedLabel}>{t('profile:stats.level')}</Text>
         </View>
       </View>
 

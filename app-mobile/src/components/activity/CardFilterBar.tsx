@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Icon } from '../ui/Icon';
 import { PRICE_TIERS } from '../../constants/priceTiers';
+import { useTranslation } from 'react-i18next';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -67,6 +68,7 @@ export function CardFilterBar({
   selectedCategory, onCategoryChange,
   selectedTier, onTierChange,
 }: CardFilterBarProps) {
+  const { t } = useTranslation(['activity', 'common']);
   const [isExpanded, setIsExpanded] = useState(false);
 
   const toggleExpanded = () => {
@@ -86,7 +88,7 @@ export function CardFilterBar({
           <Icon name="search" size={18} color="#9ca3af" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search..."
+            placeholder={t('activity:cardFilterBar.searchPlaceholder')}
             placeholderTextColor="#9ca3af"
             value={searchQuery}
             onChangeText={onSearchChange}
@@ -121,10 +123,10 @@ export function CardFilterBar({
               activeOpacity={0.7}
             >
               <Icon name="close-circle" size={14} color="#f97316" />
-              <Text style={styles.clearAllText}>Clear filters</Text>
+              <Text style={styles.clearAllText}>{t('activity:cardFilterBar.clearFilters')}</Text>
             </TouchableOpacity>
           )}
-          <Text style={styles.filterLabel}>When</Text>
+          <Text style={styles.filterLabel}>{t('activity:cardFilterBar.when')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chipRow}>
             {FILTER_WHEN.map(w => (
               <TouchableOpacity
@@ -138,7 +140,7 @@ export function CardFilterBar({
             ))}
           </ScrollView>
 
-          <Text style={styles.filterLabel}>Category</Text>
+          <Text style={styles.filterLabel}>{t('activity:cardFilterBar.category')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chipRow}>
             {FILTER_CATEGORIES.map(c => (
               <TouchableOpacity
@@ -152,7 +154,7 @@ export function CardFilterBar({
             ))}
           </ScrollView>
 
-          <Text style={styles.filterLabel}>Budget</Text>
+          <Text style={styles.filterLabel}>{t('activity:cardFilterBar.budget')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chipRow}>
             {FILTER_TIERS.map(t => (
               <TouchableOpacity

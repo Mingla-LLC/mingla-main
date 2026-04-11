@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Text, View, StyleSheet, Modal, ScrollView, TextInput } from 'react-native';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
+import { useTranslation } from 'react-i18next';
 import { Icon } from './ui/Icon';
 import { blockUser, BlockReason } from '../services/blockService';
 
@@ -47,6 +48,7 @@ const reportOptions = [
 ];
 
 export default function ReportUserModal({ isOpen, onClose, user, onReport }: ReportUserModalProps) {
+  const { t } = useTranslation(['social', 'common']);
   const [selectedReason, setSelectedReason] = useState<string>('');
   const [additionalDetails, setAdditionalDetails] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -116,7 +118,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
               <View style={styles.iconContainer}>
                 <Icon name="flag" size={20} color="#dc2626" />
               </View>
-              <Text style={styles.headerTitle}>Report User</Text>
+              <Text style={styles.headerTitle}>{t('social:reportUserTitle')}</Text>
             </View>
             <TrackedTouchableOpacity logComponent="ReportUserModal"
               onPress={handleClose}
@@ -130,16 +132,16 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
         <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.descriptionContainer}>
             <Text style={styles.description}>
-              We take reports seriously. Please select the reason that best describes why you're reporting <Text style={styles.boldText}>{user.name}</Text>.
+              {t('social:reportDescription', { name: user.name })}
             </Text>
             <Text style={styles.subDescription}>
-              This user will be blocked and will no longer be able to contact you.
+              {t('social:reportBlockNotice')}
             </Text>
           </View>
 
           {/* Report Options */}
           <View style={styles.optionsContainer}>
-            <Text style={styles.optionsTitle}>Reason for reporting:</Text>
+            <Text style={styles.optionsTitle}>{t('social:reasonForReporting')}</Text>
             {reportOptions.map((option) => (
               <TrackedTouchableOpacity logComponent="ReportUserModal"
                 key={option.id}
@@ -176,12 +178,12 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
           {selectedReason && (
             <View style={styles.detailsContainer}>
               <Text style={styles.detailsTitle}>
-                Additional details (optional):
+                {t('social:additionalDetails')}
               </Text>
               <TextInput
                 value={additionalDetails}
                 onChangeText={setAdditionalDetails}
-                placeholder="Please provide any additional context that might help us review this report..."
+                placeholder={t('social:additionalDetailsPlaceholder')}
                 style={styles.textInput}
                 multiline={true}
                 numberOfLines={3}
@@ -201,7 +203,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
             onPress={handleClose}
             style={styles.cancelButton}
           >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
+            <Text style={styles.cancelButtonText}>{t('social:cancel')}</Text>
           </TrackedTouchableOpacity>
           <TrackedTouchableOpacity logComponent="ReportUserModal"
             onPress={handleSubmit}
@@ -215,7 +217,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
               styles.submitButtonText,
               selectedReason && !isSubmitting ? styles.submitButtonTextEnabled : styles.submitButtonTextDisabled
             ]}>
-              {isSubmitting ? 'Submitting...' : 'Submit Report'}
+              {isSubmitting ? t('social:submitting') : t('social:submitReport')}
             </Text>
           </TrackedTouchableOpacity>
         </View>
@@ -223,7 +225,7 @@ export default function ReportUserModal({ isOpen, onClose, user, onReport }: Rep
         {/* Disclaimer */}
         <View style={styles.disclaimer}>
           <Text style={styles.disclaimerText}>
-            Reports are reviewed by our moderation team. False reports may result in action on your account.
+            {t('social:reportDisclaimer')}
           </Text>
         </View>
         </View>

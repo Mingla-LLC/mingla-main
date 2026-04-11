@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { TypingIndicator } from './TypingIndicator';
 import { colors, typography, fontWeights, radius } from '../../constants/designSystem';
 
@@ -15,15 +16,15 @@ interface ChatStatusLineProps {
   typingUserNames?: string[];
 }
 
-function formatLastSeen(lastSeenAt: string | null): string {
-  if (!lastSeenAt) return 'offline';
+function formatLastSeen(lastSeenAt: string | null, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  if (!lastSeenAt) return t('chat:offline');
 
   const now = Date.now();
   const seen = new Date(lastSeenAt).getTime();
   const diffMs = now - seen;
 
-  if (diffMs < 60_000) return 'just now';
-  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m ago`;
+  if (diffMs < 60_000) return t('chat:lastSeenJustNow');
+  if (diffMs < 3_600_000) return t('chat:lastSeenMinutes', { count: Math.floor(diffMs / 60_000) });
 
   const seenDate = new Date(lastSeenAt);
   const todayStart = new Date();
@@ -34,11 +35,11 @@ function formatLastSeen(lastSeenAt: string | null): string {
 
   const timeStr = seenDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-  if (seen >= todayStart.getTime()) return `today at ${timeStr}`;
-  if (seen >= yesterdayStart.getTime()) return `yesterday at ${timeStr}`;
+  if (seen >= todayStart.getTime()) return t('chat:lastSeenToday', { time: timeStr });
+  if (seen >= yesterdayStart.getTime()) return t('chat:lastSeenYesterday', { time: timeStr });
 
   const monthStr = seenDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  return `${monthStr} at ${timeStr}`;
+  return t('chat:lastSeenDate', { date: monthStr, time: timeStr });
 }
 
 export function ChatStatusLine({
@@ -49,6 +50,7 @@ export function ChatStatusLine({
   totalParticipants,
   typingUserNames,
 }: ChatStatusLineProps) {
+  const { t } = useTranslation(['chat', 'common']);
   const isGroupMode = totalParticipants != null && totalParticipants > 1;
 
   if (isGroupMode) {
@@ -58,25 +60,25 @@ export function ChatStatusLine({
     if (typingNames.length > 0) {
       let label: string;
       if (typingNames.length === 1) {
-        label = `${typingNames[0]} is typing`;
+        label = t('chat:isTyping', { name: typingNames[0] });
       } else if (typingNames.length === 2) {
-        label = `${typingNames[0]} and ${typingNames[1]} are typing`;
+        label = t('chat:twoTyping', { name1: typingNames[0], name2: typingNames[1] });
       } else {
-        label = `${typingNames[0]} and ${typingNames.length - 1} others are typing`;
+        label = t('chat:multiTyping', { name: typingNames[0], count: typingNames.length - 1 });
       }
       return <TypingIndicator isVisible={true} label={label} />;
     }
 
     const online = onlineCount || 0;
     if (online === 0) {
-      return <Text style={styles.offlineText}>No one online</Text>;
+      return <Text style={styles.offlineText}>{t('chat:noOneOnline')}</Text>;
     }
     // We don't have participant names here, so just show count
     return (
       <View style={styles.onlineContainer}>
         <View style={styles.onlineDot} />
         <Text style={styles.onlineText}>
-          {online} online
+          {t('chat:onlineCount', { count: online })}
         </Text>
       </View>
     );
@@ -91,14 +93,14 @@ export function ChatStatusLine({
     return (
       <View style={styles.onlineContainer}>
         <View style={styles.onlineDot} />
-        <Text style={styles.onlineText}>Online</Text>
+        <Text style={styles.onlineText}>{t('chat:online')}</Text>
       </View>
     );
   }
 
   return (
     <Text style={styles.offlineText}>
-      Last seen {formatLastSeen(lastSeenAt || null)}
+      {t('chat:lastSeen', { time: formatLastSeen(lastSeenAt || null, t) })}
     </Text>
   );
 }

@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
 import { Conversation } from "../../hooks/useMessages";
 import { getDisplayName } from "../../utils/getDisplayName";
@@ -76,6 +77,7 @@ export function ChatListItem({
   isMuted = false,
   onAvatarPress,
 }: ChatListItemProps) {
+  const { t } = useTranslation(['chat', 'common']);
   // Find the other participant (for direct conversations)
   const otherParticipant = conversation.participants.find(
     (p) => p.id !== currentUserId
@@ -96,9 +98,9 @@ export function ChatListItem({
   let messagePreview = "";
   if (lastMessage) {
     if (lastMessage.message_type === "image") {
-      messagePreview = "\ud83d\udcf7 Photo";
+      messagePreview = t('chat:photoPreview');
     } else if (lastMessage.message_type === "file") {
-      messagePreview = "\ud83d\udcce File";
+      messagePreview = t('chat:filePreview');
     } else {
       const content = lastMessage.content || "";
       messagePreview =
@@ -170,7 +172,7 @@ export function ChatListItem({
             style={[styles.preview, hasUnread && styles.previewBold]}
             numberOfLines={1}
           >
-            {messagePreview || "No messages yet"}
+            {messagePreview || t('chat:noMessagesYet')}
           </Text>
           {hasUnread && (
             <View style={styles.unreadBadge}>

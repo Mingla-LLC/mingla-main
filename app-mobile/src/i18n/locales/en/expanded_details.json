@@ -1,0 +1,90 @@
+{
+  "action_buttons": {
+    "save": "Save",
+    "saved": "Saved",
+    "schedule": "Schedule",
+    "scheduled": "Scheduled",
+    "policies_reservations": "Policies & Reservations",
+    "i_went_here": "I went here",
+    "been_there": "Been there",
+    "on_it": "On it...",
+    "visited_label": "You visited this place",
+    "mark_visited_label": "Mark this place as visited",
+    "visited_hint": "Tap to remove your visit marker",
+    "mark_visited_hint": "Records your visit and opens the review flow",
+    "opening_hours": "Opening Hours",
+    "open_now": "Open Now",
+    "closed": "Closed",
+    "show_all_hours": "Show all hours",
+    "show_less": "Show less",
+    "select_date": "Select Date",
+    "select_time": "Select Time",
+    "cancel": "Cancel",
+    "next": "Next",
+    "done": "Done",
+    "error_save": "Failed to save the card. Please try again.",
+    "error_login": "You must be logged in to schedule cards.",
+    "error_invalid_date": "The selected date is not valid. Please try again.",
+    "schedule_failed_title": "Schedule failed",
+    "schedule_failed_body": "We couldn't add this to your calendar. Please try again.",
+    "place_closed_title": "Place Closed",
+    "place_closed_body": "This place is closed at the selected date and time. Please choose a different time.",
+    "choose_another_time": "Choose Another Time",
+    "some_stops_closed_title": "Some Stops May Be Closed",
+    "change_time": "Change Time",
+    "schedule_anyway": "Schedule Anyway",
+    "scheduled_toast": "Scheduled! {{title}} has been moved to your calendar",
+    "closed_message": "This place is closed at the selected date and time. Tap \"Schedule\" to choose a different time."
+  },
+  "busyness": {
+    "traffic": "Traffic",
+    "busy_level": "Busy Level",
+    "busy": "Busy",
+    "clear_roads": "Clear Roads",
+    "clear": "Clear",
+    "moderate": "Moderate",
+    "heavy": "Heavy"
+  },
+  "match_factors": {
+    "title": "Match Breakdown",
+    "location": "Location",
+    "budget": "Budget",
+    "category": "Category",
+    "time": "Time",
+    "popularity": "Popularity",
+    "excellent": "Excellent",
+    "good": "Good",
+    "fair": "Fair",
+    "poor": "Poor",
+    "summary": "These factors determine how well this experience matches your preferences. Higher scores indicate better alignment."
+  },
+  "weather": {
+    "weather": "Weather",
+    "clear": "Clear",
+    "cloudy": "Cloudy",
+    "rainy": "Rainy",
+    "snowy": "Snowy",
+    "stormy": "Stormy"
+  },
+  "timeline": {
+    "start": "Start",
+    "stop": "Stop {{number}}",
+    "open_in_maps": "Open in Maps",
+    "then": "Then..."
+  },
+  "companion_stops": {
+    "title": "Start Your Stroll",
+    "subtitle": "Begin at one of these nearby spots before your walk",
+    "reviews_count": "({{count}} reviews)"
+  },
+  "highlights": {
+    "title": "Highlights"
+  },
+  "description": {
+    "show_less": "Show less",
+    "read_more": "Read more"
+  },
+  "card_info": {
+    "nearby": "Nearby"
+  }
+}

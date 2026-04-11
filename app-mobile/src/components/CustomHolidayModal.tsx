@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { s, vs, SCREEN_HEIGHT } from "../utils/responsive";
 import { colors } from "../constants/designSystem";
+import { useTranslation } from "react-i18next";
 
 interface CustomHolidayModalProps {
   visible: boolean;
@@ -57,6 +58,7 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
     [currentYear]
   );
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation(['modals', 'common']);
   const [name, setName] = useState("");
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
@@ -88,9 +90,9 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
 
   const validate = (): boolean => {
     const newErrors: { name?: string; date?: string } = {};
-    if (!name.trim()) newErrors.name = "Give this day a name";
+    if (!name.trim()) newErrors.name = t('modals:custom_holiday.error_name');
     if (selectedYear === null || selectedMonth === null || selectedDay === null) {
-      newErrors.date = "Pick a date";
+      newErrors.date = t('modals:custom_holiday.error_date');
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -176,7 +178,7 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
           >
             {/* Header */}
             <View style={styles.header}>
-              <Text style={styles.title}>Mark a day that matters</Text>
+              <Text style={styles.title}>{t('modals:custom_holiday.title')}</Text>
               <TouchableOpacity
                 onPress={onClose}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -187,7 +189,7 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
 
             {/* Name */}
             <View style={styles.field}>
-              <Text style={styles.label}>What's the day?</Text>
+              <Text style={styles.label}>{t('modals:custom_holiday.whats_the_day')}</Text>
               <TextInput
                 style={[styles.textInput, errors.name && styles.inputError]}
                 value={name}
@@ -195,7 +197,7 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
                   setName(t);
                   if (errors.name) setErrors((e) => ({ ...e, name: undefined }));
                 }}
-                placeholder="e.g. Our first trip together"
+                placeholder={t('modals:custom_holiday.placeholder_name')}
                 placeholderTextColor={colors.gray[400]}
                 maxLength={50}
               />
@@ -206,7 +208,7 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
 
             {/* Date Picker — 3 horizontal pill rows */}
             <View style={styles.field}>
-              <Text style={styles.label}>When did it happen?</Text>
+              <Text style={styles.label}>{t('modals:custom_holiday.when_did_it_happen')}</Text>
 
               {/* Year picker */}
               <ScrollView
@@ -314,7 +316,7 @@ const CustomHolidayModal: React.FC<CustomHolidayModalProps> = ({
 
             {/* Save */}
             <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-              <Text style={styles.saveButtonText}>Save this day</Text>
+              <Text style={styles.saveButtonText}>{t('modals:custom_holiday.save_this_day')}</Text>
             </TouchableOpacity>
           </KeyboardAwareScrollView>
         </View>

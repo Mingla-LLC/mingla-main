@@ -2,6 +2,7 @@ import React, { forwardRef, useState, useEffect } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { BlurView } from 'expo-blur';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import type { NearbyPerson } from '../../hooks/useNearbyPeople';
 
@@ -20,6 +21,7 @@ const snapPoints = ['40%'];
 
 export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>(
   ({ person, onClose, onMessage, onViewPairedCards, onViewProfile, onAddFriend, onBlock, onReport }, ref) => {
+    const { t } = useTranslation(['map', 'common']);
     const [friendRequestSending, setFriendRequestSending] = useState(false);
     const [friendRequestSent, setFriendRequestSent] = useState(false);
 
@@ -65,9 +67,9 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                 <View style={styles.headerText}>
                   <Text style={styles.name}>{person.displayName}</Text>
                   <Text style={styles.relationship}>
-                    {person.relationship === 'paired' ? 'Your pair'
-                      : person.relationship === 'friend' ? 'Friend'
-                      : 'Nearby'}
+                    {person.relationship === 'paired' ? t('map:yourPair')
+                      : person.relationship === 'friend' ? t('map:friendRelation')
+                      : t('map:nearby')}
                   </Text>
                   {person.activityStatus && (
                     <Text style={styles.status}>{person.activityStatus}</Text>
@@ -92,7 +94,7 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
               {person.relationship === 'stranger' && !person.isSeed && person.tasteMatchPct != null && (
                 <View style={styles.tasteMatchSection}>
                   <Text style={styles.matchPctLarge}>{person.tasteMatchPct}%</Text>
-                  <Text style={styles.matchLabel}>taste match</Text>
+                  <Text style={styles.matchLabel}>{t('map:tasteMatch')}</Text>
                 </View>
               )}
 
@@ -103,7 +105,7 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                   <TouchableOpacity style={styles.actionWrapper} onPress={() => onMessage(person.userId)} activeOpacity={0.7}>
                     <BlurView intensity={40} tint="light" style={styles.blurButton}>
                       <Icon name="chatbubble-outline" size={18} color="#111" />
-                      <Text style={styles.actionText}>Message</Text>
+                      <Text style={styles.actionText}>{t('map:message')}</Text>
                     </BlurView>
                   </TouchableOpacity>
                 )}
@@ -111,14 +113,14 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                   <TouchableOpacity style={styles.actionWrapper} onPress={() => onViewPairedCards(person.userId)} activeOpacity={0.7}>
                     <BlurView intensity={40} tint="light" style={styles.blurButton}>
                       <Icon name="heart-outline" size={18} color="#111" />
-                      <Text style={styles.actionText}>Cards</Text>
+                      <Text style={styles.actionText}>{t('map:cards')}</Text>
                     </BlurView>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity style={styles.actionWrapper} onPress={() => onViewProfile(person.userId)} activeOpacity={0.7}>
                   <BlurView intensity={40} tint="light" style={styles.blurButton}>
                     <Icon name="person-outline" size={18} color="#111" />
-                    <Text style={styles.actionText}>Profile</Text>
+                    <Text style={styles.actionText}>{t('map:profile')}</Text>
                   </BlurView>
                 </TouchableOpacity>
               </View>
@@ -145,18 +147,18 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                           />
                         )}
                         <Text style={[styles.actionText, (!person.canSendFriendRequest || friendRequestSent) && styles.textDisabled]}>
-                          {friendRequestSent ? 'Request Sent' : (person.canSendFriendRequest ? 'Add Friend' : 'Limit reached')}
+                          {friendRequestSent ? t('map:requestSent') : (person.canSendFriendRequest ? t('map:addFriend') : t('map:limitReached'))}
                         </Text>
                       </BlurView>
                     </TouchableOpacity>
                   </View>
                   <View style={styles.safetyRow}>
                     <TouchableOpacity onPress={() => onBlock(person.userId)} activeOpacity={0.7}>
-                      <Text style={styles.safetyText}>Block</Text>
+                      <Text style={styles.safetyText}>{t('map:blockAction')}</Text>
                     </TouchableOpacity>
                     <Text style={styles.safetyDot}>·</Text>
                     <TouchableOpacity onPress={() => onReport(person.userId)} activeOpacity={0.7}>
-                      <Text style={styles.safetyText}>Report</Text>
+                      <Text style={styles.safetyText}>{t('map:reportAction')}</Text>
                     </TouchableOpacity>
                   </View>
                 </>

@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Icon } from '../ui/Icon';
+import { useTranslation } from 'react-i18next';
 
 // Dynamic import to handle cases where the library might not be available
 let QRCode: any = null;
@@ -22,10 +23,11 @@ interface QRCodeDisplayProps {
 
 // Fallback QR Code component using simple pattern
 const FallbackQRCode: React.FC<{ data: string; size: number }> = ({ data, size }) => {
+  const { t: tBoard } = useTranslation(['board']);
   return (
     <View style={[styles.fallbackContainer, { width: size, height: size }]}>
       <Icon name="qr-code-outline" size={size * 0.4} color="#007AFF" />
-      <Text style={styles.fallbackText}>QR Code</Text>
+      <Text style={styles.fallbackText}>{tBoard('board:qrCodeDisplay.qrCode')}</Text>
       <Text style={styles.fallbackData} numberOfLines={2} ellipsizeMode="middle">
         {data}
       </Text>
@@ -37,6 +39,7 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({
   data,
   size = 200,
 }) => {
+  const { t } = useTranslation(['board', 'common']);
   const [hasError, setHasError] = useState(false);
 
   if (!data || data.trim().length === 0) {
@@ -45,8 +48,8 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({
         <View style={[styles.qrCodeContainer, { width: size + 40, height: size + 40 }]}>
           <View style={styles.errorContainer}>
             <Icon name="alert-circle-outline" size={48} color="#FF3B30" />
-            <Text style={styles.errorText}>No Data</Text>
-            <Text style={styles.errorSubtext}>Cannot generate QR code without data</Text>
+            <Text style={styles.errorText}>{t('board:qrCodeDisplay.noData')}</Text>
+            <Text style={styles.errorSubtext}>{t('board:qrCodeDisplay.noDataMsg')}</Text>
           </View>
         </View>
       </View>
@@ -61,10 +64,10 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({
           <FallbackQRCode data={data} size={size} />
         </View>
         <Text style={styles.instruction}>
-          Scan this QR code to join the board session
+          {t('board:qrCodeDisplay.scanInstruction')}
         </Text>
         <View style={styles.dataContainer}>
-          <Text style={styles.dataLabel}>Or use this code:</Text>
+          <Text style={styles.dataLabel}>{t('board:qrCodeDisplay.orUseCode')}</Text>
           <Text style={styles.codeText} selectable>
             {data.length > 30 ? `${data.substring(0, 15)}...${data.substring(data.length - 15)}` : data}
           </Text>
@@ -94,10 +97,10 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({
         <View style={styles.quietZone} />
       </View>
       <Text style={styles.instruction}>
-        Scan this QR code to join the board session
+        {t('board:qrCodeDisplay.scanInstruction')}
       </Text>
       <View style={styles.dataContainer}>
-        <Text style={styles.dataLabel}>Or use this code:</Text>
+        <Text style={styles.dataLabel}>{t('board:qrCodeDisplay.orUseCode')}</Text>
         <Text style={styles.codeText} selectable>
           {data.length > 30 ? `${data.substring(0, 15)}...${data.substring(data.length - 15)}` : data}
         </Text>

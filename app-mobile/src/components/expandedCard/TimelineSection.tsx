@@ -9,6 +9,7 @@ import {
 import { Icon } from "../ui/Icon";
 import { TimelineData } from "../../types/expandedCardTypes";
 import { generateTimeline } from "../../utils/timelineGenerator";
+import { useTranslation } from "react-i18next";
 
 interface TimelineSectionProps {
   category: string;
@@ -53,6 +54,7 @@ export default function TimelineSection({
   strollTimeline,
   routeDuration,
 }: TimelineSectionProps) {
+  const { t } = useTranslation(['expanded_details', 'common']);
   // State to track which steps are expanded (first step expanded by default)
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set([0]));
 
@@ -98,7 +100,7 @@ export default function TimelineSection({
       return {
         id: `step-${stepNumber}`,
         stepNumber,
-        label: isStart ? "Start" : `Stop ${stepNumber}`,
+        label: isStart ? t('expanded_details:timeline.start') : t('expanded_details:timeline.stop', { number: stepNumber }),
         title: stepTitle,
         subtitle: stepSubtitle,
         description: step.description,
@@ -125,7 +127,7 @@ export default function TimelineSection({
       return {
         id: step.id,
         stepNumber: index + 1,
-        label: isStart ? "Start" : `Stop ${index + 1}`,
+        label: isStart ? t('expanded_details:timeline.start') : t('expanded_details:timeline.stop', { number: index + 1 }),
         title: stepTitle,
         subtitle: step.location,
         description: step.description,
@@ -294,7 +296,7 @@ export default function TimelineSection({
                               color="#eb7825"
                             />
                             <Text style={styles.openMapsText}>
-                              Open in Maps
+                              {t('expanded_details:timeline.open_in_maps')}
                             </Text>
                             <Icon
                               name="open-outline"
@@ -309,7 +311,7 @@ export default function TimelineSection({
                     {!isLast && (
                       <View style={styles.separator}>
                         <View style={styles.separatorLine} />
-                        <Text style={styles.separatorText}>Then...</Text>
+                        <Text style={styles.separatorText}>{t('expanded_details:timeline.then')}</Text>
                         <View style={styles.separatorLine} />
                       </View>
                     )}

@@ -33,6 +33,7 @@ import { formatCurrency } from "../utils/formatters";
 import { useFeatureGate } from "../../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import { useKeyboard } from "../../hooks/useKeyboard";
+import { useTranslation } from 'react-i18next';
 
 interface CalendarEntry {
   id: string;
@@ -96,6 +97,7 @@ const CalendarTab = ({
   userPreferences,
   accountPreferences,
 }: CalendarTabProps) => {
+  const { t } = useTranslation(['activity', 'common']);
   const { canAccess } = useFeatureGate();
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
   const [showLockedPaywall, setShowLockedPaywall] = useState(false);
@@ -343,7 +345,7 @@ const CalendarTab = ({
     dateOption: "now" | "today" | "weekend" | "custom"
   ) => {
     if (!entryToReschedule || !user?.id) {
-      Alert.alert("Error", "Unable to reschedule. Please try again.");
+      Alert.alert(t('activity:calendarTab.rescheduleErrorTitle'), t('activity:calendarTab.rescheduleError'));
       setShowProposeDateTimeModal(false);
       setEntryToReschedule(null);
       return;
@@ -405,7 +407,7 @@ const CalendarTab = ({
         }
       } catch (deviceCalendarError) {
         console.warn("Failed to update device calendar:", deviceCalendarError);
-        Alert.alert("Note", "Rescheduled, but your phone calendar may not be updated.");
+        Alert.alert(t('activity:calendarTab.noteTitle'), t('activity:calendarTab.noteCalendarNotUpdated'));
       }
 
       // 3. Invalidate calendar entries query to refresh the list
@@ -427,7 +429,7 @@ const CalendarTab = ({
 
       // 5. Show success message
       toastManager.success(
-        `${entryToReschedule.title || "Experience"} rescheduled successfully`,
+        t('activity:calendarTab.rescheduledSuccess', { title: entryToReschedule.title || "Experience" }),
         3000
       );
 
@@ -437,9 +439,9 @@ const CalendarTab = ({
     } catch (error: any) {
       console.error("Error rescheduling calendar entry:", error);
       Alert.alert(
-        "Reschedule Failed",
+        t('activity:calendarTab.rescheduleFailed'),
         error.message ||
-          "We couldn't reschedule this experience. Please try again."
+          t('activity:calendarTab.rescheduleFailedMsg')
       );
       setShowProposeDateTimeModal(false);
       setEntryToReschedule(null);
@@ -1313,7 +1315,7 @@ const CalendarTab = ({
                   <Text style={styles.eventDetailText}>
                     {entry.experience?.address ||
                       entry.address ||
-                      "Location TBD"}
+                      t('activity:calendarTab.locationTBD')}
                   </Text>
                 </View>
               </View>
@@ -1324,7 +1326,7 @@ const CalendarTab = ({
                   <Icon name="eye" size={12} color="#1e40af" />
                   <Text style={[styles.sourceText, styles.soloText]}>
                     {entry.source === "solo"
-                      ? "Solo Discovery"
+                      ? t('activity:calendarTab.soloDiscovery')
                       : `${entry.sessionName}`}
                   </Text>
                 </View>
@@ -1339,7 +1341,7 @@ const CalendarTab = ({
             <View style={styles.purchaseCard}>
               <View style={styles.purchaseHeader}>
                 <Icon name="bag" size={16} color="#059669" />
-                <Text style={styles.purchaseTitle}>Purchase Details</Text>
+                <Text style={styles.purchaseTitle}>{t('activity:calendarTab.purchaseDetails')}</Text>
               </View>
               <View style={styles.purchaseDetailsList}>
                 <View style={styles.purchaseDetailRow}>
@@ -1412,7 +1414,7 @@ const CalendarTab = ({
               style={styles.proposeDateButton}
             >
               <Icon name="calendar" size={18} color="white" />
-              <Text style={styles.proposeDateButtonText}>Reschedule</Text>
+              <Text style={styles.proposeDateButtonText}>{t('activity:calendarTab.reschedule')}</Text>
             </TouchableOpacity>
 
             {/* Share Button - Small circular */}
@@ -1644,12 +1646,12 @@ const CalendarTab = ({
         </View>
         <View style={styles.emptyStateTextContainer}>
           <Text style={styles.emptyStateTitle}>
-            {isActive ? "Your calendar's wide open" : "No past plans yet"}
+            {isActive ? t('activity:calendarTab.emptyActiveTitle') : t('activity:calendarTab.emptyArchiveTitle')}
           </Text>
           <Text style={styles.emptyStateSubtitle}>
             {isActive
-              ? "Save something you love and lock in a date."
-              : "Completed plans show up here."}
+              ? t('activity:calendarTab.emptyActiveSubtitle')
+              : t('activity:calendarTab.emptyArchiveSubtitle')}
           </Text>
         </View>
       </View>
@@ -1686,7 +1688,7 @@ const CalendarTab = ({
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#eb7825" />
-        <Text style={styles.loadingText}>Loading your calendar...</Text>
+        <Text style={styles.loadingText}>{t('activity:calendarTab.loadingCalendar')}</Text>
       </View>
     );
   }
@@ -1733,7 +1735,7 @@ const CalendarTab = ({
           activeOpacity={0.7}
         >
           <View style={styles.accordionTitleContainer}>
-            <Text style={styles.accordionTitle}>Active</Text>
+            <Text style={styles.accordionTitle}>{t('activity:calendarTab.active')}</Text>
             <Text style={styles.accordionCount}>
               ({filteredActiveEntries.length})
             </Text>
@@ -1786,7 +1788,7 @@ const CalendarTab = ({
           activeOpacity={0.7}
         >
           <View style={styles.accordionTitleContainer}>
-            <Text style={styles.accordionTitle}>Archives</Text>
+            <Text style={styles.accordionTitle}>{t('activity:calendarTab.archives')}</Text>
             <Text style={styles.accordionCount}>
               ({filteredArchiveEntries.length})
             </Text>

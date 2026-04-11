@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboard } from '../../hooks/useKeyboard';
@@ -44,6 +45,7 @@ export function FriendPickerSheet({
   friends,
   loadingFriends,
 }: FriendPickerSheetProps) {
+  const { t } = useTranslation(['chat', 'common']);
   const [searchQuery, setSearchQuery] = useState("");
   const [loadingFriendId, setLoadingFriendId] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
@@ -124,7 +126,7 @@ export function FriendPickerSheet({
 
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>New Message</Text>
+            <Text style={styles.headerTitle}>{t('chat:newMessage')}</Text>
             <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
               <Icon name="close" size={24} color="#111827" />
             </TouchableOpacity>
@@ -139,7 +141,7 @@ export function FriendPickerSheet({
               style={styles.searchIcon}
             />
             <TextInput
-              placeholder="Search friends..."
+              placeholder={t('chat:searchFriends')}
               value={searchQuery}
               onChangeText={setSearchQuery}
               style={styles.searchInput}
@@ -156,17 +158,17 @@ export function FriendPickerSheet({
           ) : friends.length === 0 ? (
             <View style={styles.emptyState}>
               <Icon name="people-outline" size={48} color="#d1d5db" />
-              <Text style={styles.emptyTitle}>No friends yet</Text>
+              <Text style={styles.emptyTitle}>{t('chat:noFriendsYet')}</Text>
               <Text style={styles.emptySubtitle}>
-                Add friends to start messaging
+                {t('chat:addFriendsToStart')}
               </Text>
             </View>
           ) : filteredFriends.length === 0 ? (
             <View style={styles.emptyState}>
               <Icon name="search" size={48} color="#d1d5db" />
-              <Text style={styles.emptyTitle}>No results</Text>
+              <Text style={styles.emptyTitle}>{t('chat:noResults')}</Text>
               <Text style={styles.emptySubtitle}>
-                Try a different search term
+                {t('chat:tryDifferentSearch')}
               </Text>
             </View>
           ) : (

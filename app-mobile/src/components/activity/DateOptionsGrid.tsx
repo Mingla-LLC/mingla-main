@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
+import { useTranslation } from 'react-i18next';
 
 interface DateOptionsGridProps {
   selectedDateOption: "now" | "today" | "weekend" | "custom" | null;
@@ -13,6 +14,7 @@ export default function DateOptionsGrid({
   onSelectOption,
   dark = false,
 }: DateOptionsGridProps) {
+  const { t } = useTranslation(['activity', 'common']);
   const optionStyle = dark ? styles.dateOptionDark : styles.dateOption;
   const optionSelectedStyle = dark
     ? styles.dateOptionSelectedDark
@@ -38,7 +40,7 @@ export default function DateOptionsGrid({
               selectedDateOption === "now" && textSelectedStyle,
             ]}
           >
-            Now
+            {t('activity:dateOptionsGrid.now')}
           </Text>
         </TrackedTouchableOpacity>
         <TrackedTouchableOpacity logComponent="DateOptionsGrid"
@@ -54,7 +56,7 @@ export default function DateOptionsGrid({
               selectedDateOption === "today" && textSelectedStyle,
             ]}
           >
-            Today
+            {t('activity:dateOptionsGrid.today')}
           </Text>
         </TrackedTouchableOpacity>
       </View>
@@ -72,7 +74,7 @@ export default function DateOptionsGrid({
               selectedDateOption === "weekend" && textSelectedStyle,
             ]}
           >
-            This Weekend
+            {t('activity:dateOptionsGrid.thisWeekend')}
           </Text>
         </TrackedTouchableOpacity>
         <TrackedTouchableOpacity logComponent="DateOptionsGrid"
@@ -88,7 +90,7 @@ export default function DateOptionsGrid({
               selectedDateOption === "custom" && textSelectedStyle,
             ]}
           >
-            Pick a Date
+            {t('activity:dateOptionsGrid.pickADate')}
           </Text>
         </TrackedTouchableOpacity>
       </View>

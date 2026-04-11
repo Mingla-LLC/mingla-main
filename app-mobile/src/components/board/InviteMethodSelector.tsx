@@ -6,6 +6,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Icon } from '../ui/Icon';
+import { useTranslation } from 'react-i18next';
 
 export type InviteMethod = 'friends_list' | 'link' | 'qr_code' | 'invite_code' | null;
 
@@ -52,13 +53,14 @@ export const InviteMethodSelector: React.FC<InviteMethodSelectorProps> = ({
   onMethodSelect,
   availableMethods,
 }) => {
+  const { t } = useTranslation(['board', 'common']);
   const methodsToShow = availableMethods || inviteMethods.map(m => m.id);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>How would you like to invite people?</Text>
+      <Text style={styles.title}>{t('board:inviteMethodSelector.title')}</Text>
       <Text style={styles.description}>
-        Choose one or more methods to invite participants
+        {t('board:inviteMethodSelector.description')}
       </Text>
       
       <View style={styles.methodsContainer}>

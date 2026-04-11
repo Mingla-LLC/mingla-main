@@ -1,0 +1,43 @@
+{
+  "header": {
+    "title": "Notificaciones",
+    "unread": "{{count}} sin leer",
+    "markAllRead": "Marcar todo le\u00eddo",
+    "clearAll": "Borrar todo"
+  },
+  "filters": {
+    "all": "Todo",
+    "social": "Social",
+    "sessions": "Sesiones",
+    "messages": "Mensajes"
+  },
+  "timeAgo": {
+    "justNow": "Ahora mismo"
+  },
+  "dateGroups": {
+    "today": "Hoy",
+    "yesterday": "Ayer",
+    "thisWeek": "Esta semana",
+    "earlier": "Anteriores"
+  },
+  "actions": {
+    "accept": "Aceptar",
+    "decline": "Rechazar",
+    "join": "Unirse",
+    "upgrade": "Mejorar plan",
+    "review": "Rese\u00f1ar",
+    "actionFailed": "La acci\u00f3n fall\u00f3. Toca para reintentar."
+  },
+  "emptyState": {
+    "title": "Est\u00e1s al d\u00eda",
+    "subtitle": "La nueva actividad aparecer\u00e1 aqu\u00ed."
+  },
+  "errorState": {
+    "title": "Algo sali\u00f3 mal",
+    "subtitle": "No se pudieron cargar las notificaciones.",
+    "tryAgain": "Intentar de nuevo"
+  },
+  "offline": {
+    "banner": "Est\u00e1s sin conexi\u00f3n \u2014 mostrando notificaciones en cach\u00e9"
+  }
+}

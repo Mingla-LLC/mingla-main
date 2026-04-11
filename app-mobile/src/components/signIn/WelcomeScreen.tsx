@@ -29,6 +29,7 @@ import {
   backgroundWarmGlow,
 } from "../../constants/designSystem";
 import { s, vs } from "../../utils/responsive";
+import { useTranslation } from "react-i18next";
 
 const googleIcon = require("../../../assets/google_icon.png");
 const logo = require("../../../assets/mingla_official_logo.png");
@@ -48,6 +49,7 @@ export default function WelcomeScreen({
   onAppleSignIn,
 }: WelcomeScreenProps) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation(['auth', 'common']);
   const [isGoogleSignInInProgress, setIsGoogleSignInInProgress] =
     useState(false);
   const [isAppleSignInInProgress, setIsAppleSignInInProgress] = useState(false);
@@ -211,9 +213,9 @@ export default function WelcomeScreen({
         return;
       }
       Alert.alert(
-        "Couldn't sign you in",
-        "Something didn't connect. Give it another tap.",
-        [{ text: "Got it" }]
+        t('auth:welcome.sign_in_failed_title'),
+        t('auth:welcome.sign_in_failed_body'),
+        [{ text: t('auth:welcome.sign_in_failed_ok') }]
       );
     } finally {
       setIsGoogleSignInInProgress(false);
@@ -237,9 +239,9 @@ export default function WelcomeScreen({
         return;
       }
       Alert.alert(
-        "Couldn't sign you in",
-        "Something didn't connect. Give it another tap.",
-        [{ text: "Got it" }]
+        t('auth:welcome.sign_in_failed_title'),
+        t('auth:welcome.sign_in_failed_body'),
+        [{ text: t('auth:welcome.sign_in_failed_ok') }]
       );
     } finally {
       setIsAppleSignInInProgress(false);
@@ -281,7 +283,7 @@ export default function WelcomeScreen({
               source={logo}
               style={styles.logo}
               resizeMode="contain"
-              accessibilityLabel="Mingla logo"
+              accessibilityLabel={t('auth:welcome.logo_label')}
               accessibilityRole="image"
             />
           </Animated.View>
@@ -334,7 +336,7 @@ export default function WelcomeScreen({
                 ]}
                 disabled={isAnyAuthInProgress}
                 activeOpacity={0.85}
-                accessibilityLabel="Continue with Apple"
+                accessibilityLabel={t('auth:welcome.continue_with_apple')}
                 accessibilityRole="button"
                 accessibilityHint="Signs you in or creates an account using your Apple ID"
                 accessibilityState={{
@@ -349,8 +351,8 @@ export default function WelcomeScreen({
                 )}
                 <Text style={styles.appleButtonText}>
                   {isAppleSignInInProgress
-                    ? "Connecting..."
-                    : "Continue with Apple"}
+                    ? t('auth:welcome.connecting')
+                    : t('auth:welcome.continue_with_apple')}
                 </Text>
               </TouchableOpacity>
             </Animated.View>
@@ -376,7 +378,7 @@ export default function WelcomeScreen({
               ]}
               disabled={isAnyAuthInProgress}
               activeOpacity={0.9}
-              accessibilityLabel="Continue with Google"
+              accessibilityLabel={t('auth:welcome.continue_with_google')}
               accessibilityRole="button"
               accessibilityHint="Signs you in or creates an account using your Google account"
               accessibilityState={{
@@ -395,8 +397,8 @@ export default function WelcomeScreen({
               )}
               <Text style={styles.googleButtonText}>
                 {isGoogleSignInInProgress
-                  ? "Connecting..."
-                  : "Continue with Google"}
+                  ? t('auth:welcome.connecting')
+                  : t('auth:welcome.continue_with_google')}
               </Text>
             </TouchableOpacity>
           </Animated.View>
@@ -404,27 +406,25 @@ export default function WelcomeScreen({
           {/* Terms & Privacy */}
           <Animated.View style={[styles.termsWrapper, { opacity: termsOpacity }]}>
             <Text style={styles.termsText}>
-              By continuing, you agree to our{" "}
+              {t('auth:welcome.terms_prefix')}
               <Text
                 style={styles.termsLink}
                 onPress={openTerms}
-                accessibilityLabel="Terms of Service"
+                accessibilityLabel={t('auth:welcome.terms_of_service')}
                 accessibilityRole="link"
-                accessibilityHint="Opens Mingla's Terms of Service"
               >
-                Terms of Service
-              </Text>{" "}
-              and{" "}
+                {t('auth:welcome.terms_of_service')}
+              </Text>
+              {t('auth:welcome.terms_and')}
               <Text
                 style={styles.termsLink}
                 onPress={openPrivacy}
-                accessibilityLabel="Privacy Policy"
+                accessibilityLabel={t('auth:welcome.privacy_policy')}
                 accessibilityRole="link"
-                accessibilityHint="Opens Mingla's Privacy Policy"
               >
-                Privacy Policy
+                {t('auth:welcome.privacy_policy')}
               </Text>
-              .
+              {t('auth:welcome.terms_suffix')}
             </Text>
           </Animated.View>
         </View>

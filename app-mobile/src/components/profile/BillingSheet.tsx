@@ -28,6 +28,7 @@ import {
 import type { SubscriptionTier } from "../../types/subscription";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import { getCustomerInfo } from "../../services/revenueCatService";
+import { useTranslation } from "react-i18next";
 
 // --- Tier configuration ---
 
@@ -86,6 +87,7 @@ interface BillingSheetProps {
 // --- Component ---
 
 export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
+  const { t } = useTranslation(['billing', 'common']);
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
   const userId = user?.id;
@@ -127,14 +129,14 @@ export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
     if (fallbackUrl) {
       Linking.openURL(fallbackUrl).catch(() => {
         Alert.alert(
-          "Unable to open",
-          "Please manage your subscription in your device's Settings.",
+          t('billing:sheet.unable_to_open_title'),
+          t('billing:sheet.unable_to_open_body'),
         );
       });
     } else {
       Alert.alert(
-        "Subscription Management",
-        "Please manage your subscription through your device's app store settings.",
+        t('billing:sheet.subscription_management_title'),
+        t('billing:sheet.subscription_management_body'),
       );
     }
   };
@@ -142,11 +144,11 @@ export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
   const handleRestore = async () => {
     try {
       await restorePurchases();
-      Alert.alert("Purchases restored", "Your subscription status has been updated.");
+      Alert.alert(t('billing:sheet.purchases_restored_title'), t('billing:sheet.purchases_restored_body'));
     } catch {
       Alert.alert(
-        "Restore failed",
-        "We couldn't find any previous purchases. If you believe this is an error, contact support@mingla.app.",
+        t('billing:sheet.restore_failed_title'),
+        t('billing:sheet.restore_failed_body'),
       );
     }
   };
@@ -172,11 +174,11 @@ export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
 
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Your Plan</Text>
+            <Text style={styles.headerTitle}>{t('billing:sheet.title')}</Text>
             <TouchableOpacity
               onPress={onClose}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel="Close billing"
+              accessibilityLabel={t('billing:sheet.close_label')}
               accessibilityRole="button"
             >
               <Icon name="close" size={24} color="#6b7280" />
@@ -197,10 +199,10 @@ export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
             ) : isError ? (
               <View style={styles.errorCard}>
                 <Icon name="cloud-offline-outline" size={32} color="#9ca3af" />
-                <Text style={styles.errorTitle}>Couldn't load your plan</Text>
-                <Text style={styles.errorBody}>Check your connection and try again.</Text>
+                <Text style={styles.errorTitle}>{t('billing:sheet.error_title')}</Text>
+                <Text style={styles.errorBody}>{t('billing:sheet.error_body')}</Text>
                 <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
-                  <Text style={styles.retryText}>Retry</Text>
+                  <Text style={styles.retryText}>{t('billing:sheet.retry')}</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -214,7 +216,7 @@ export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
                 />
 
                 {/* Compare Plans */}
-                <Text style={styles.compareSectionTitle}>Compare plans</Text>
+                <Text style={styles.compareSectionTitle}>{t('billing:sheet.compare_plans')}</Text>
 
                 {TIER_ORDER.map((tier) => {
                   const isCurrent = tier === effectiveTier;
@@ -239,13 +241,13 @@ export default function BillingSheet({ visible, onClose }: BillingSheetProps) {
                   style={styles.restoreButton}
                   onPress={handleRestore}
                   disabled={isRestoring}
-                  accessibilityLabel="Restore purchases"
+                  accessibilityLabel={t('billing:sheet.restore_purchases')}
                   accessibilityRole="button"
                 >
                   {isRestoring ? (
                     <ActivityIndicator size="small" color="#6b7280" />
                   ) : (
-                    <Text style={styles.restoreText}>Restore purchases</Text>
+                    <Text style={styles.restoreText}>{t('billing:sheet.restore_purchases')}</Text>
                   )}
                 </TouchableOpacity>
 
@@ -279,6 +281,7 @@ interface CurrentPlanCardProps {
 }
 
 function CurrentPlanCard({ tier, trialDays, trialTotalDays, referralDays }: CurrentPlanCardProps) {
+  const { t } = useTranslation(['billing', 'common']);
   const config = TIERS[tier];
   const isOnTrial = trialDays > 0;
   const hasReferralBonus = referralDays > 0 && !isOnTrial;
@@ -296,12 +299,12 @@ function CurrentPlanCard({ tier, trialDays, trialTotalDays, referralDays }: Curr
         <Text style={styles.currentTierName}>{config.name}</Text>
         {isOnTrial && (
           <View style={styles.trialBadge}>
-            <Text style={styles.trialBadgeText}>TRIAL</Text>
+            <Text style={styles.trialBadgeText}>{t('billing:sheet.trial_badge')}</Text>
           </View>
         )}
         {hasReferralBonus && (
           <View style={styles.trialBadge}>
-            <Text style={styles.trialBadgeText}>REFERRAL BONUS</Text>
+            <Text style={styles.trialBadgeText}>{t('billing:sheet.referral_badge')}</Text>
           </View>
         )}
       </View>
@@ -313,9 +316,9 @@ function CurrentPlanCard({ tier, trialDays, trialTotalDays, referralDays }: Curr
       {isOnTrial && (
         <View style={styles.trialSection}>
           <View style={styles.trialLabelRow}>
-            <Text style={styles.trialLabel}>Trial</Text>
+            <Text style={styles.trialLabel}>{t('billing:sheet.trial_label')}</Text>
             <Text style={styles.trialDaysText}>
-              {trialDays} {trialDays === 1 ? "day" : "days"} left
+              {t('billing:sheet.days_left', { count: trialDays })}
             </Text>
           </View>
           <View style={styles.trialTrack}>
@@ -337,7 +340,7 @@ function CurrentPlanCard({ tier, trialDays, trialTotalDays, referralDays }: Curr
         <View style={styles.referralRow}>
           <Icon name="gift-outline" size={14} color="#eb7825" />
           <Text style={styles.referralText}>
-            {referralDays} bonus {referralDays === 1 ? "day" : "days"} remaining
+            {t('billing:sheet.bonus_remaining', { count: referralDays })}
           </Text>
         </View>
       )}
@@ -356,6 +359,7 @@ interface TierCardProps {
 }
 
 function TierCard({ tier, isCurrent, isUpgrade, isDowngrade, onChangePlan }: TierCardProps) {
+  const { t } = useTranslation(['billing', 'common']);
   const config = TIERS[tier];
   const ctaText = getCtaLabel(tier, isUpgrade);
   const showCta = !isCurrent && ctaText;
@@ -374,7 +378,7 @@ function TierCard({ tier, isCurrent, isUpgrade, isDowngrade, onChangePlan }: Tie
         </View>
         {isCurrent && (
           <View style={styles.currentBadge}>
-            <Text style={styles.currentBadgeText}>Current</Text>
+            <Text style={styles.currentBadgeText}>{t('billing:sheet.current_badge')}</Text>
           </View>
         )}
       </View>

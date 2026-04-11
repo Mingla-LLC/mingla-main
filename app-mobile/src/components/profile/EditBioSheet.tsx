@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Icon } from '../ui/Icon';
 import { KeyboardAwareView } from '../ui/KeyboardAwareView';
+import { useTranslation } from 'react-i18next';
 
 interface EditBioSheetProps {
   visible: boolean;
@@ -26,6 +27,7 @@ const EditBioSheet: React.FC<EditBioSheetProps> = ({
   currentBio,
   onSave,
 }) => {
+  const { t } = useTranslation(['profile', 'common']);
   const [bioText, setBioText] = useState(currentBio);
 
   useEffect(() => {
@@ -49,7 +51,7 @@ const EditBioSheet: React.FC<EditBioSheetProps> = ({
         >
           <Pressable style={styles.card} onPress={() => {}}>
             <View style={styles.header}>
-              <Text style={styles.headerTitle}>Edit Bio</Text>
+              <Text style={styles.headerTitle}>{t('profile:edit_bio.title')}</Text>
               <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Icon name="close" size={24} color="#111827" />
               </TouchableOpacity>
@@ -63,7 +65,7 @@ const EditBioSheet: React.FC<EditBioSheetProps> = ({
                 maxLength={MAX_LENGTH}
                 multiline
                 numberOfLines={4}
-                placeholder="Tell people about yourself"
+                placeholder={t('profile:edit_bio.placeholder')}
                 placeholderTextColor="#9ca3af"
                 textAlignVertical="top"
               />
@@ -79,7 +81,7 @@ const EditBioSheet: React.FC<EditBioSheetProps> = ({
                 disabled={!hasChanged}
                 activeOpacity={0.8}
               >
-                <Text style={styles.saveText}>Save</Text>
+                <Text style={styles.saveText}>{t('profile:edit_bio.save')}</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

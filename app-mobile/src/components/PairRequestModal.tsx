@@ -36,6 +36,7 @@ import { CountryPickerModal } from "./onboarding/CountryPickerModal";
 import { usePhoneLookup, useDebouncedValue } from "../hooks/usePhoneLookup";
 import { createPendingInvite } from "../services/phoneLookupService";
 import { phoneInviteKeys } from "../hooks/usePhoneInvite";
+import { useTranslation } from 'react-i18next';
 import { colors, spacing, radius, shadows } from "../constants/designSystem";
 import { s } from "../utils/responsive";
 import { getDisplayName } from "../utils/getDisplayName";
@@ -90,6 +91,7 @@ export default function PairRequestModal({
   onPairRequestSent,
   onPairingLimitReached,
 }: PairRequestModalProps) {
+  const { t } = useTranslation(['social', 'common']);
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
   const { friends, loading: friendsLoading } = useFriends({ autoFetchBlockedUsers: false });
@@ -162,10 +164,10 @@ export default function PairRequestModal({
           friendUserId: friend.friend_user_id,
         });
         const name = getFriendDisplayName(friend);
-        Alert.alert("Sent", `Pair request sent to ${name}`);
+        Alert.alert(t('social:pairRequestSent'), t('social:pairRequestSentMessage', { name }));
         onPairRequestSent();
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Failed to send pair request";
+        const msg = err instanceof Error ? err.message : t('social:failedToSendPairRequest');
         if (msg === "pairing_limit_reached") {
           onPairingLimitReached?.();
           return;
@@ -188,7 +190,7 @@ export default function PairRequestModal({
       if (phoneLookupResult?.found && phoneLookupResult.user) {
         // Self-lookup guard
         if (phoneLookupResult.user.id === user?.id) {
-          Alert.alert("That's you!", "You can't send a pair request to yourself.");
+          Alert.alert(t('social:thatsYou'), t('social:cantPairSelf'));
           setSendingPhone(false);
           return;
         }
@@ -196,9 +198,9 @@ export default function PairRequestModal({
         // Person is on Mingla — send pair request via edge function
         const result = await sendPairRequest.mutateAsync({ phoneE164: debouncedPhoneE164 });
         if (result.tier === 2) {
-          Alert.alert("Sent", "Friend request + pair request sent");
+          Alert.alert(t('social:pairRequestSent'), t('social:friendAndPairRequestSent'));
         } else {
-          Alert.alert("Sent", "Pair request sent");
+          Alert.alert(t('social:pairRequestSent'), t('social:pairRequestSentGeneric'));
         }
         setPhoneNumber("");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -215,8 +217,7 @@ export default function PairRequestModal({
         // Share in its own try/catch — dismissal is not an error
         try {
           await Share.share({
-            message:
-              "Hey! Join me on Mingla and let's find amazing experiences together. https://usemingla.com",
+            message: t('social:shareInviteMessage'),
           });
         } catch {
           // User dismissed share sheet — not an error
@@ -227,7 +228,7 @@ export default function PairRequestModal({
         onPairRequestSent();
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to send pair request";
+      const msg = err instanceof Error ? err.message : t('social:failedToSendPairRequest');
       if (msg === "pairing_limit_reached") {
         onPairingLimitReached?.();
         return;
@@ -258,14 +259,14 @@ export default function PairRequestModal({
   }, [phoneLookupResult, pairingPills]);
 
   const getActionLabel = (): string => {
-    if (phoneLookupLoading) return "Looking up...";
-    if (!isPhoneValid) return "Enter phone number";
+    if (phoneLookupLoading) return t('social:lookingUp');
+    if (!isPhoneValid) return t('social:enterPhoneNumber');
     if (phoneLookupResult?.found) {
-      if (foundUserPairStatus === "paired") return "Already paired";
-      if (foundUserPairStatus === "pending") return "Already pending";
-      return "Send pair request";
+      if (foundUserPairStatus === "paired") return t('social:alreadyPaired');
+      if (foundUserPairStatus === "pending") return t('social:alreadyPending');
+      return t('social:sendPairRequest');
     }
-    return "Invite to Mingla";
+    return t('social:inviteToMingla');
   };
 
   const isActionDisabled =
@@ -315,7 +316,7 @@ export default function PairRequestModal({
 
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Pair with someone</Text>
+            <Text style={styles.headerTitle}>{t('social:pairWithSomeone')}</Text>
             <TouchableOpacity
               style={styles.closeButton}
               onPress={handleClose}
@@ -331,7 +332,7 @@ export default function PairRequestModal({
           >
             {/* Section 1: Your Friends */}
             <View style={styles.section}>
-              <Text style={styles.sectionHeader}>YOUR FRIENDS</Text>
+              <Text style={styles.sectionHeader}>{t('social:yourFriends')}</Text>
 
               {/* Search filter */}
               {acceptedFriends.length > 3 && (
@@ -343,7 +344,7 @@ export default function PairRequestModal({
                   />
                   <TextInput
                     style={styles.searchInput}
-                    placeholder="Search friends..."
+                    placeholder={t('social:searchFriends')}
                     placeholderTextColor={colors.gray[400]}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
@@ -365,7 +366,7 @@ export default function PairRequestModal({
                     color={colors.gray[300]}
                   />
                   <Text style={styles.emptyText}>
-                    No friends yet — head to Connections to find your people
+                    {t('social:noFriendsYetPair')}
                   </Text>
                 </View>
               ) : (
@@ -426,13 +427,13 @@ export default function PairRequestModal({
                         {status === "paired" ? (
                           <View style={styles.pairedBadge}>
                             <Text style={styles.pairedBadgeText}>
-                              Paired
+                              {t('social:paired')}
                             </Text>
                           </View>
                         ) : status === "pending" ? (
                           <View style={styles.pendingBadge}>
                             <Text style={styles.pendingBadgeText}>
-                              Pending
+                              {t('social:pending')}
                             </Text>
                           </View>
                         ) : (
@@ -452,7 +453,7 @@ export default function PairRequestModal({
                               />
                             ) : (
                               <Text style={styles.pairButtonText}>
-                                Pair
+                                {t('social:pair')}
                               </Text>
                             )}
                           </TouchableOpacity>
@@ -470,7 +471,7 @@ export default function PairRequestModal({
 
             {/* Section 2: Pair by Phone */}
             <View style={styles.section}>
-              <Text style={styles.sectionHeader}>PAIR BY PHONE</Text>
+              <Text style={styles.sectionHeader}>{t('social:pairByPhone')}</Text>
 
               <View style={styles.phoneRow}>
                 {/* Country Picker */}
@@ -497,7 +498,7 @@ export default function PairRequestModal({
                 {/* Phone Input */}
                 <TextInput
                   style={styles.phoneInput}
-                  placeholder="Phone number"
+                  placeholder={t('social:phoneNumber')}
                   placeholderTextColor={colors.gray[400]}
                   value={phoneNumber}
                   onChangeText={(text) => {
@@ -529,8 +530,7 @@ export default function PairRequestModal({
                         color="#22c55e"
                       />
                       <Text style={styles.lookupTextGreen}>
-                        {getDisplayName(phoneLookupResult.user, "Someone")}{" "}
-                        is on Mingla
+                        {t('social:isOnMingla', { name: getDisplayName(phoneLookupResult.user, "Someone") })}
                       </Text>
                     </View>
                   ) : (
@@ -541,7 +541,7 @@ export default function PairRequestModal({
                         color={colors.gray[500]}
                       />
                       <Text style={styles.lookupTextMuted}>
-                        Not on Mingla yet
+                        {t('social:notOnMinglaYet')}
                       </Text>
                     </View>
                   )}

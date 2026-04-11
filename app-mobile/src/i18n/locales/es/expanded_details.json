@@ -1,0 +1,90 @@
+{
+  "action_buttons": {
+    "save": "Guardar",
+    "saved": "Guardado",
+    "schedule": "Agendar",
+    "scheduled": "Agendado",
+    "policies_reservations": "Políticas y reservas",
+    "i_went_here": "Fui aquí",
+    "been_there": "Ya fui",
+    "on_it": "En ello...",
+    "visited_label": "Visitaste este lugar",
+    "mark_visited_label": "Marcar este lugar como visitado",
+    "visited_hint": "Toca para quitar tu marca de visita",
+    "mark_visited_hint": "Registra tu visita y abre el flujo de reseña",
+    "opening_hours": "Horario de apertura",
+    "open_now": "Abierto ahora",
+    "closed": "Cerrado",
+    "show_all_hours": "Ver todos los horarios",
+    "show_less": "Ver menos",
+    "select_date": "Seleccionar fecha",
+    "select_time": "Seleccionar hora",
+    "cancel": "Cancelar",
+    "next": "Siguiente",
+    "done": "Listo",
+    "error_save": "No se pudo guardar la tarjeta. Inténtalo de nuevo.",
+    "error_login": "Debes iniciar sesión para agendar tarjetas.",
+    "error_invalid_date": "La fecha seleccionada no es válida. Inténtalo de nuevo.",
+    "schedule_failed_title": "Error al agendar",
+    "schedule_failed_body": "No pudimos añadir esto a tu calendario. Inténtalo de nuevo.",
+    "place_closed_title": "Lugar cerrado",
+    "place_closed_body": "Este lugar está cerrado en la fecha y hora seleccionadas. Elige un horario diferente.",
+    "choose_another_time": "Elegir otra hora",
+    "some_stops_closed_title": "Algunas paradas pueden estar cerradas",
+    "change_time": "Cambiar hora",
+    "schedule_anyway": "Agendar de todos modos",
+    "scheduled_toast": "¡Agendado! {{title}} se ha movido a tu calendario",
+    "closed_message": "Este lugar está cerrado en la fecha y hora seleccionadas. Toca \"Agendar\" para elegir un horario diferente."
+  },
+  "busyness": {
+    "traffic": "Tráfico",
+    "busy_level": "Nivel de ocupación",
+    "busy": "Ocupado",
+    "clear_roads": "Vías despejadas",
+    "clear": "Despejado",
+    "moderate": "Moderado",
+    "heavy": "Pesado"
+  },
+  "match_factors": {
+    "title": "Desglose de coincidencia",
+    "location": "Ubicación",
+    "budget": "Presupuesto",
+    "category": "Categoría",
+    "time": "Tiempo",
+    "popularity": "Popularidad",
+    "excellent": "Excelente",
+    "good": "Bueno",
+    "fair": "Regular",
+    "poor": "Bajo",
+    "summary": "Estos factores determinan qué tan bien esta experiencia coincide con tus preferencias. Puntuaciones más altas indican mejor alineación."
+  },
+  "weather": {
+    "weather": "Clima",
+    "clear": "Despejado",
+    "cloudy": "Nublado",
+    "rainy": "Lluvioso",
+    "snowy": "Nevado",
+    "stormy": "Tormentoso"
+  },
+  "timeline": {
+    "start": "Inicio",
+    "stop": "Parada {{number}}",
+    "open_in_maps": "Abrir en Mapas",
+    "then": "Luego..."
+  },
+  "companion_stops": {
+    "title": "Comienza tu paseo",
+    "subtitle": "Empieza en uno de estos lugares cercanos antes de caminar",
+    "reviews_count": "({{count}} reseñas)"
+  },
+  "highlights": {
+    "title": "Destacados"
+  },
+  "description": {
+    "show_less": "Ver menos",
+    "read_more": "Leer más"
+  },
+  "card_info": {
+    "nearby": "Cerca"
+  }
+}

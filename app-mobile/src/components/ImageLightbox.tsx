@@ -13,6 +13,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { Icon } from './ui/Icon';
+import { useTranslation } from 'react-i18next';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -24,6 +25,7 @@ interface ImageLightboxProps {
 }
 
 export function ImageLightbox({ images, initialIndex, visible, onClose }: ImageLightboxProps): React.ReactElement | null {
+  const { t } = useTranslation(['modals', 'common']);
   const scrollRef = useRef<ScrollView>(null);
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
@@ -63,7 +65,7 @@ export function ImageLightbox({ images, initialIndex, visible, onClose }: ImageL
           style={styles.closeButton}
           onPress={onClose}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          accessibilityLabel="Close image viewer"
+          accessibilityLabel={t('modals:image_lightbox.close_label')}
           accessibilityRole="button"
         >
           <Icon name="close" size={24} color="#ffffff" />

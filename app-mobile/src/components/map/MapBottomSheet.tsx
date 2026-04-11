@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { BlurView } from 'expo-blur';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { Recommendation } from '../../types/recommendation';
 import { getReadableCategoryName } from '../../utils/categoryUtils';
@@ -34,6 +35,7 @@ function isPriceTierSlug(value: string): value is PriceTierSlug {
 
 export const MapBottomSheet = forwardRef<BottomSheet, MapBottomSheetProps>(
   ({ card, onExpand, onNext, onClose, accountPreferences }, ref) => {
+    const { t } = useTranslation(['map', 'common']);
     const currency = accountPreferences?.currency || 'USD';
     const currencySymbol = getCurrencySymbol(currency);
     const currencyRate = getCurrencyRate(currency);
@@ -95,12 +97,12 @@ export const MapBottomSheet = forwardRef<BottomSheet, MapBottomSheetProps>(
                 <TouchableOpacity style={styles.buttonWrapper} onPress={() => onExpand(card)} activeOpacity={0.8}>
                   <View style={styles.solidButtonDetails}>
                     <Icon name="information-circle-outline" size={17} color="#FFF" />
-                    <Text style={styles.solidButtonDetailsText}>Details</Text>
+                    <Text style={styles.solidButtonDetailsText}>{t('map:details')}</Text>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.buttonWrapper} onPress={onNext} activeOpacity={0.8}>
                   <BlurView intensity={60} tint="dark" style={styles.glassButtonNext}>
-                    <Text style={styles.glassButtonNextText}>Next</Text>
+                    <Text style={styles.glassButtonNextText}>{t('map:next')}</Text>
                     <Icon name="arrow-forward" size={15} color="#FFF" />
                   </BlurView>
                 </TouchableOpacity>

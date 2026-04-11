@@ -15,6 +15,7 @@ import { Recommendation } from '../contexts/RecommendationsContext';
 import { getReadableCategoryName } from '../utils/categoryUtils';
 import { useLocalePreferences } from '../hooks/useLocalePreferences';
 import { parseAndFormatDistance } from './utils/formatters';
+import { useTranslation } from 'react-i18next';
 
 const { height: screenHeight } = Dimensions.get('window');
 
@@ -36,6 +37,7 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
   onCardPress,
 }) => {
   const { measurementSystem } = useLocalePreferences();
+  const { t } = useTranslation(['modals', 'common']);
 
   // Build a set of dismissed card IDs for quick lookup
   const dismissedIds = new Set(dismissedCards.map(c => c.id));
@@ -75,7 +77,7 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               <Text style={styles.title}>
-                {allCards.length} Card{allCards.length !== 1 ? 's' : ''} Viewed
+                {t('modals:dismissed_cards.cards_viewed', { count: allCards.length })}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -91,7 +93,7 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
           >
             {allCards.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No cards viewed yet</Text>
+                <Text style={styles.emptyText}>{t('modals:dismissed_cards.no_cards_viewed')}</Text>
               </View>
             ) : (
               allCards.map((card, index) => {
@@ -128,12 +130,12 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
                           {isDismissed ? (
                             <View style={styles.statusBadgeDismissed}>
                               <Icon name="close-circle-outline" size={12} color="#9ca3af" />
-                              <Text style={styles.statusTextDismissed}>Passed</Text>
+                              <Text style={styles.statusTextDismissed}>{t('modals:dismissed_cards.passed')}</Text>
                             </View>
                           ) : isSaved ? (
                             <View style={styles.statusBadgeSaved}>
                               <Icon name="bookmark" size={12} color="#10B981" />
-                              <Text style={styles.statusTextSaved}>Saved</Text>
+                              <Text style={styles.statusTextSaved}>{t('modals:dismissed_cards.saved')}</Text>
                             </View>
                           ) : (
                             <Text style={styles.distanceText}>
@@ -153,7 +155,7 @@ export const DismissedCardsSheet: React.FC<DismissedCardsSheetProps> = ({
                             activeOpacity={0.6}
                           >
                             <Icon name="bookmark-outline" size={16} color="#eb7825" />
-                            <Text style={styles.actionText}>Save</Text>
+                            <Text style={styles.actionText}>{t('modals:dismissed_cards.save')}</Text>
                           </TouchableOpacity>
                         </View>
                       )}

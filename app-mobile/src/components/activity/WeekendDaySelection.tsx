@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
+import { useTranslation } from 'react-i18next';
 
 interface WeekendDaySelectionProps {
   selectedWeekendDay: "saturday" | "sunday" | null;
@@ -13,6 +14,7 @@ export default function WeekendDaySelection({
   onSelectDay,
   dark = false,
 }: WeekendDaySelectionProps) {
+  const { t } = useTranslation(['activity', 'common']);
   const btnStyle = dark ? styles.weekendDayButtonDark : styles.weekendDayButton;
   const btnSelectedStyle = dark
     ? styles.weekendDayButtonSelectedDark
@@ -39,7 +41,7 @@ export default function WeekendDaySelection({
             selectedWeekendDay === "saturday" && txtSelectedStyle,
           ]}
         >
-          Saturday
+          {t('activity:weekendDaySelection.saturday')}
         </Text>
       </TrackedTouchableOpacity>
       <TrackedTouchableOpacity logComponent="WeekendDaySelection"
@@ -55,7 +57,7 @@ export default function WeekendDaySelection({
             selectedWeekendDay === "sunday" && txtSelectedStyle,
           ]}
         >
-          Sunday
+          {t('activity:weekendDaySelection.sunday')}
         </Text>
       </TrackedTouchableOpacity>
     </View>

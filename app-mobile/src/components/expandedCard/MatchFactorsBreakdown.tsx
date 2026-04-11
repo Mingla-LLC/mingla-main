@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Icon } from '../ui/Icon';
+import { useTranslation } from 'react-i18next';
 
 interface MatchFactorsBreakdownProps {
   matchFactors: {
@@ -21,29 +22,31 @@ interface FactorConfig {
 export default function MatchFactorsBreakdown({
   matchFactors,
 }: MatchFactorsBreakdownProps) {
+  const { t } = useTranslation(['expanded_details', 'common']);
+
   const factors: FactorConfig[] = [
     {
-      name: 'Location',
+      name: t('expanded_details:match_factors.location'),
       icon: 'location',
       value: matchFactors.location,
     },
     {
-      name: 'Budget',
+      name: t('expanded_details:match_factors.budget'),
       icon: 'cash',
       value: matchFactors.budget,
     },
     {
-      name: 'Category',
+      name: t('expanded_details:match_factors.category'),
       icon: 'pricetag',
       value: matchFactors.category,
     },
     {
-      name: 'Time',
+      name: t('expanded_details:match_factors.time'),
       icon: 'time',
       value: matchFactors.time,
     },
     {
-      name: 'Popularity',
+      name: t('expanded_details:match_factors.popularity'),
       icon: 'trending-up',
       value: matchFactors.popularity,
     },
@@ -82,17 +85,17 @@ export default function MatchFactorsBreakdown({
 
   // Get score label
   const getScoreLabel = (score: number): string => {
-    if (score >= 80) return 'Excellent';
-    if (score >= 60) return 'Good';
-    if (score >= 40) return 'Fair';
-    return 'Poor';
+    if (score >= 80) return t('expanded_details:match_factors.excellent');
+    if (score >= 60) return t('expanded_details:match_factors.good');
+    if (score >= 40) return t('expanded_details:match_factors.fair');
+    return t('expanded_details:match_factors.poor');
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Icon name="analytics" size={20} color="#eb7825" />
-        <Text style={styles.title}>Match Breakdown</Text>
+        <Text style={styles.title}>{t('expanded_details:match_factors.title')}</Text>
       </View>
 
       <View style={styles.factorsContainer}>
@@ -151,8 +154,7 @@ export default function MatchFactorsBreakdown({
       {/* Summary */}
       <View style={styles.summaryContainer}>
         <Text style={styles.summaryText}>
-          These factors determine how well this experience matches your
-          preferences. Higher scores indicate better alignment.
+          {t('expanded_details:match_factors.summary')}
         </Text>
       </View>
     </View>

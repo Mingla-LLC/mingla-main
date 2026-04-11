@@ -1,16 +1,17 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import Toggle from '../profile/Toggle';
 import type { MapSettings } from '../../hooks/useMapSettings';
 
 const VISIBILITY_LEVELS = ['off', 'paired', 'friends', 'friends_of_friends', 'everyone'] as const;
-const VISIBILITY_LABELS: Record<string, string> = {
-  off: 'Hidden',
-  paired: 'Paired only',
-  friends: 'Friends',
-  friends_of_friends: 'Friends of friends',
-  everyone: 'Everyone nearby',
+const VISIBILITY_LABEL_KEYS: Record<string, string> = {
+  off: 'map:visibilityHidden',
+  paired: 'map:visibilityPairedOnly',
+  friends: 'map:visibilityFriends',
+  friends_of_friends: 'map:visibilityFriendsOfFriends',
+  everyone: 'map:visibilityEveryone',
 };
 
 interface MapPrivacySettingsProps {
@@ -19,6 +20,7 @@ interface MapPrivacySettingsProps {
 }
 
 export function MapPrivacySettings({ settings, onUpdate }: MapPrivacySettingsProps) {
+  const { t } = useTranslation(['map', 'common']);
   const cycleVisibility = () => {
     const idx = VISIBILITY_LEVELS.indexOf(settings.visibility_level);
     const next = VISIBILITY_LEVELS[(idx + 1) % VISIBILITY_LEVELS.length];
@@ -27,7 +29,7 @@ export function MapPrivacySettings({ settings, onUpdate }: MapPrivacySettingsPro
 
   return (
     <View>
-      <Text style={styles.sectionTitle}>Map privacy</Text>
+      <Text style={styles.sectionTitle}>{t('map:mapPrivacy')}</Text>
 
       <TouchableOpacity
         style={[styles.row, styles.rowMultiline]}
@@ -35,11 +37,11 @@ export function MapPrivacySettings({ settings, onUpdate }: MapPrivacySettingsPro
         activeOpacity={0.7}
       >
         <View style={styles.rowLabelWrap}>
-          <Text style={styles.rowLabel}>Map Visibility</Text>
-          <Text style={styles.rowHint}>Who sees your approximate location on the map</Text>
+          <Text style={styles.rowLabel}>{t('map:mapVisibility')}</Text>
+          <Text style={styles.rowHint}>{t('map:mapVisibilityHint')}</Text>
         </View>
         <View style={styles.rowRight}>
-          <Text style={styles.rowValueBold}>{VISIBILITY_LABELS[settings.visibility_level]}</Text>
+          <Text style={styles.rowValueBold}>{t(VISIBILITY_LABEL_KEYS[settings.visibility_level])}</Text>
           <Icon name="chevron-forward" size={16} color="#9ca3af" />
         </View>
       </TouchableOpacity>
@@ -48,8 +50,8 @@ export function MapPrivacySettings({ settings, onUpdate }: MapPrivacySettingsPro
 
       <View style={[styles.row, styles.rowMultiline]}>
         <View style={styles.rowLabelWrap}>
-          <Text style={styles.rowLabel}>Show Saved Places</Text>
-          <Text style={styles.rowHint}>Saved pins can appear on your map presence</Text>
+          <Text style={styles.rowLabel}>{t('map:showSavedPlaces')}</Text>
+          <Text style={styles.rowHint}>{t('map:showSavedPlacesHint')}</Text>
         </View>
         <Toggle
           value={settings.show_saved_places}
@@ -61,8 +63,8 @@ export function MapPrivacySettings({ settings, onUpdate }: MapPrivacySettingsPro
 
       <View style={[styles.row, styles.rowMultiline]}>
         <View style={styles.rowLabelWrap}>
-          <Text style={styles.rowLabel}>Show Scheduled</Text>
-          <Text style={styles.rowHint}>Upcoming plans visible on the map</Text>
+          <Text style={styles.rowLabel}>{t('map:showScheduled')}</Text>
+          <Text style={styles.rowHint}>{t('map:showScheduledHint')}</Text>
         </View>
         <Toggle
           value={settings.show_scheduled_places}

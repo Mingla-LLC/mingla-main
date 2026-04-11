@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Pressable, View, Text, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { supabase } from '../../services/supabase';
 import { useAppStore } from '../../store/appStore';
@@ -21,6 +22,7 @@ interface ActivityFeedOverlayProps {
 }
 
 export function ActivityFeedOverlay({ enabled, nearbyPeople, onActivityPress }: ActivityFeedOverlayProps) {
+  const { t } = useTranslation(['map', 'common']);
   const [items, setItems] = useState<FeedItem[]>([]);
   const user = useAppStore(s => s.user);
 
@@ -53,7 +55,7 @@ export function ActivityFeedOverlay({ enabled, nearbyPeople, onActivityPress }: 
 
         const newItem: FeedItem = {
           id: notification.id || `${notification.type}-${Date.now()}`,
-          message: notification.body || notification.title || 'New activity nearby',
+          message: notification.body || notification.title || t('map:newActivityNearby'),
           icon: notification.type === 'paired_user_saved_card' ? 'heart' : 'location-outline',
           timestamp: notification.created_at ? new Date(notification.created_at) : new Date(),
           relatedId: notification.related_id ?? null,
@@ -85,7 +87,7 @@ export function ActivityFeedOverlay({ enabled, nearbyPeople, onActivityPress }: 
       {exploringCount > 0 && (
         <View style={styles.toast}>
           <Icon name="people-outline" size={14} color="#6b7280" />
-          <Text style={styles.toastText}>{exploringCount} {exploringCount === 1 ? 'person' : 'people'} exploring nearby</Text>
+          <Text style={styles.toastText}>{t('map:exploringNearby', { count: exploringCount })}</Text>
         </View>
       )}
       {items.map(item => (
@@ -101,7 +103,7 @@ export function ActivityFeedOverlay({ enabled, nearbyPeople, onActivityPress }: 
         >
           <Icon name={item.icon} size={14} color="#eb7825" />
           <Text style={styles.toastText}>{item.message}</Text>
-          <Text style={styles.toastTime}>just now</Text>
+          <Text style={styles.toastTime}>{t('map:justNow')}</Text>
         </Pressable>
       ))}
     </View>

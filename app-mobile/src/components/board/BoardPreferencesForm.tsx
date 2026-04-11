@@ -13,6 +13,7 @@ import { useLocalePreferences } from '../../hooks/useLocalePreferences';
 import { getCurrencySymbol } from '../utils/formatters';
 import { getRate } from '../../services/currencyService';
 import { formatNumberWithCommas } from '../../utils/currency';
+import { useTranslation } from 'react-i18next';
 
 export interface BoardPreferences {
   categories: string[];
@@ -27,20 +28,22 @@ interface BoardPreferencesFormProps {
   onPreferencesChange: (preferences: BoardPreferences) => void;
 }
 
-const experienceTypes = [
-  { id: 'adventurous', label: 'Adventurous', icon: 'compass-outline' },
-  { id: 'first-date', label: 'First Date', icon: 'sparkles' },
-  { id: 'romantic', label: 'Romantic', icon: 'heart' },
-  { id: 'group-fun', label: 'Group Fun', icon: 'people' },
-  { id: 'picnic-dates', label: 'Picnic Dates', icon: 'sandwich' },
-  { id: 'take-a-stroll', label: 'Take a Stroll', icon: 'walk-outline' },
+const experienceTypeIds = [
+  { id: 'adventurous', labelKey: 'adventurous', icon: 'compass-outline' },
+  { id: 'first-date', labelKey: 'firstDate', icon: 'sparkles' },
+  { id: 'romantic', labelKey: 'romantic', icon: 'heart' },
+  { id: 'group-fun', labelKey: 'groupFun', icon: 'people' },
+  { id: 'picnic-dates', labelKey: 'picnicDates', icon: 'sandwich' },
+  { id: 'take-a-stroll', labelKey: 'takeAStroll', icon: 'walk-outline' },
 ];
 
 export const BoardPreferencesForm: React.FC<BoardPreferencesFormProps> = ({
   initialPreferences,
   onPreferencesChange,
 }) => {
+  const { t } = useTranslation(['board', 'common']);
   const { currency } = useLocalePreferences();
+  const experienceTypes = experienceTypeIds.map(et => ({ ...et, label: t(`board:boardPreferencesForm.${et.labelKey}`) }));
   const symbol = getCurrencySymbol(currency);
   const rate = getRate(currency);
 
@@ -129,9 +132,9 @@ export const BoardPreferencesForm: React.FC<BoardPreferencesFormProps> = ({
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Categories Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Categories</Text>
+        <Text style={styles.sectionTitle}>{t('board:boardPreferencesForm.categories')}</Text>
         <Text style={styles.sectionDescription}>
-          Select the types of experiences you want to explore together
+          {t('board:boardPreferencesForm.categoriesDesc')}
         </Text>
         <View style={styles.chipContainer}>
           {categories.map((category) => (
@@ -159,9 +162,9 @@ export const BoardPreferencesForm: React.FC<BoardPreferencesFormProps> = ({
 
       {/* Experience Types Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Experience Types</Text>
+        <Text style={styles.sectionTitle}>{t('board:boardPreferencesForm.experienceTypes')}</Text>
         <Text style={styles.sectionDescription}>
-          What kind of experience are you planning?
+          {t('board:boardPreferencesForm.experienceTypesDesc')}
         </Text>
         <View style={styles.chipContainer}>
           {experienceTypes.map((type) => (
@@ -194,9 +197,9 @@ export const BoardPreferencesForm: React.FC<BoardPreferencesFormProps> = ({
 
       {/* Budget Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Budget</Text>
+        <Text style={styles.sectionTitle}>{t('board:boardPreferencesForm.budget')}</Text>
         <Text style={styles.sectionDescription}>
-          Optional: Set a budget range for experiences
+          {t('board:boardPreferencesForm.budgetDesc')}
         </Text>
         <View style={styles.chipContainer}>
           {budgetPresets.map((preset) => (
@@ -223,9 +226,9 @@ export const BoardPreferencesForm: React.FC<BoardPreferencesFormProps> = ({
 
       {/* Group Size Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Group Size</Text>
+        <Text style={styles.sectionTitle}>{t('board:boardPreferencesForm.groupSize')}</Text>
         <Text style={styles.sectionDescription}>
-          How many people will be participating?
+          {t('board:boardPreferencesForm.groupSizeDesc')}
         </Text>
         <View style={styles.groupSizeContainer}>
           {[2, 3, 4, 5, 6, 7, 8].map((size) => (

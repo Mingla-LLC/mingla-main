@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { Icon } from "../ui/Icon";
 import { BusynessData } from "../../services/busynessService";
+import { useTranslation } from "react-i18next";
 
 interface BusynessSectionProps {
   busynessData: BusynessData | null;
@@ -14,6 +15,8 @@ export default function BusynessSection({
   loading,
   travelTime,
 }: BusynessSectionProps) {
+  const { t } = useTranslation(['expanded_details', 'common']);
+
   const getBusynessRange = (popularity: number): string => {
     if (popularity < 30) return "0-30%";
     if (popularity < 50) return "30-50%";
@@ -25,16 +28,16 @@ export default function BusynessSection({
   const getTrafficCondition = (
     condition?: "Light" | "Moderate" | "Heavy"
   ): string => {
-    if (!condition) return "Clear Roads";
+    if (!condition) return t('expanded_details:busyness.clear_roads');
     switch (condition) {
       case "Light":
-        return "Clear";
+        return t('expanded_details:busyness.clear');
       case "Moderate":
-        return "Moderate";
+        return t('expanded_details:busyness.moderate');
       case "Heavy":
-        return "Heavy";
+        return t('expanded_details:busyness.heavy');
       default:
-        return "Clear";
+        return t('expanded_details:busyness.clear');
     }
   };
 
@@ -45,14 +48,14 @@ export default function BusynessSection({
           <View style={styles.iconBadge}>
             <Icon name="car" size={14} color="#ea580c" />
           </View>
-          <Text style={styles.label}>Traffic</Text>
+          <Text style={styles.label}>{t('expanded_details:busyness.traffic')}</Text>
           <ActivityIndicator size="small" color="#ea580c" />
         </View>
         <View style={styles.row}>
           <View style={styles.iconBadge}>
             <Icon name="stats-chart" size={14} color="#ea580c" />
           </View>
-          <Text style={styles.label}>Busy Level</Text>
+          <Text style={styles.label}>{t('expanded_details:busyness.busy_level')}</Text>
           <ActivityIndicator size="small" color="#ea580c" />
         </View>
       </View>
@@ -74,7 +77,7 @@ export default function BusynessSection({
           <View style={styles.iconBadge}>
             <Icon name="car" size={14} color="#ea580c" />
           </View>
-          <Text style={styles.label}>Traffic</Text>
+          <Text style={styles.label}>{t('expanded_details:busyness.traffic')}</Text>
           <View style={styles.conditionBadge}>
             <Text style={styles.conditionText}>
               {getTrafficCondition(trafficCondition)}
@@ -90,7 +93,7 @@ export default function BusynessSection({
         <View style={styles.iconBadge}>
           <Icon name="stats-chart" size={14} color="#ea580c" />
         </View>
-        <Text style={styles.label}>Busy</Text>
+        <Text style={styles.label}>{t('expanded_details:busyness.busy')}</Text>
         <View style={styles.conditionBadge}>
           <Text style={styles.conditionText}>
             {busynessData.busynessLevel}

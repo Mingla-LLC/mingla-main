@@ -13,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import { ONBOARDING_INTENTS } from '../../types/onboarding';
 import { categories } from '../../constants/categories';
 import { INTENT_ICON_MAP, CATEGORY_ICON_MAP } from '../../constants/interestIcons';
+import { useTranslation } from 'react-i18next';
 
 interface EditInterestsSheetProps {
   visible: boolean;
@@ -29,6 +30,7 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
   currentCategories,
   onSave,
 }) => {
+  const { t } = useTranslation(['profile', 'common']);
   const [selectedIntents, setSelectedIntents] = useState<string[]>(currentIntents);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(currentCategories);
 
@@ -74,14 +76,14 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.card} onPress={() => {}}>
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Edit Interests</Text>
+            <Text style={styles.headerTitle}>{t('profile:edit_interests.title')}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <X size={24} color="#111827" strokeWidth={2} />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-            <Text style={styles.sectionTitle}>What are you into?</Text>
+            <Text style={styles.sectionTitle}>{t('profile:edit_interests.what_are_you_into')}</Text>
             <View style={styles.pillsWrap}>
               {ONBOARDING_INTENTS.map((intent) => {
                 const selected = selectedIntents.includes(intent.id);
@@ -114,7 +116,7 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
               })}
             </View>
 
-            <Text style={styles.sectionTitle}>What do you like?</Text>
+            <Text style={styles.sectionTitle}>{t('profile:edit_interests.what_do_you_like')}</Text>
             <View style={styles.pillsWrap}>
               {categories.map((cat) => {
                 const selected = selectedCategories.includes(cat.name);
@@ -155,7 +157,7 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
               disabled={!hasChanged}
               activeOpacity={0.8}
             >
-              <Text style={styles.saveText}>Save</Text>
+              <Text style={styles.saveText}>{t('profile:edit_interests.save')}</Text>
             </TouchableOpacity>
           </View>
         </Pressable>

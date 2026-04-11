@@ -29,6 +29,7 @@ import { useAppStore } from '../../store/appStore';
 import { MapBottomSheet } from './MapBottomSheet';
 import { PersonBottomSheet } from './PersonBottomSheet';
 import { ActivityStatusPicker } from './ActivityStatusPicker';
+import { useTranslation } from 'react-i18next';
 import { useCoachMark } from '../../hooks/useCoachMark';
 import { ActivityFeedOverlay } from './ActivityFeedOverlay';
 import { MapProviderSurface } from './providers/MapProviderSurface';
@@ -73,6 +74,7 @@ export function DiscoverMap({
   pendingFocusCardId = null,
   onFocusCardHandled,
 }: DiscoverMapProps) {
+  const { t } = useTranslation(['map', 'common']);
   const coachMapControls = useCoachMark(8, 12);
   const [selectedCard, setSelectedCard] = useState<Recommendation | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<NearbyPerson | null>(null);
@@ -264,10 +266,10 @@ export function DiscoverMap({
   const handleUserMarkerPress = useCallback(() => {
     const firstName = profile?.first_name || profile?.display_name?.split(' ')[0] || 'there';
     const statusMessage = currentUserActivityStatus
-      ? `You're currently "${currentUserActivityStatus}".`
-      : 'You found yourself. Very Mingla.';
+      ? t('map:currentlyStatus', { status: currentUserActivityStatus })
+      : t('map:youFoundYourself');
 
-    Alert.alert('Hey, this is you', `${statusMessage} Hi, ${firstName}.`);
+    Alert.alert(t('map:heyThisIsYou'), `${statusMessage} ${t('map:hiName', { name: firstName })}`);
   }, [currentUserActivityStatus, profile?.display_name, profile?.first_name]);
 
   useEffect(() => {
@@ -331,7 +333,7 @@ export function DiscoverMap({
           console.warn('[DiscoverMap] Friend request notification failed:', e);
         });
       } catch {
-        Alert.alert('Error', 'Could not send friend request. Try again later.');
+        Alert.alert(t('social:error'), t('map:errorFriendRequest'));
       }
     },
     [user, profile, queryClient, nearbyPeople],
@@ -339,10 +341,10 @@ export function DiscoverMap({
 
   const handleBlockFromMap = useCallback(
     async (userId: string) => {
-      Alert.alert('Block User', "They won't be able to see you or contact you.", [
-        { text: 'Cancel', style: 'cancel' },
+      Alert.alert(t('map:blockUser'), t('map:blockUserMessage'), [
+        { text: t('map:blockCancel'), style: 'cancel' },
         {
-          text: 'Block',
+          text: t('map:blockConfirm'),
           style: 'destructive',
           onPress: async () => {
             const result = await blockUser(userId);
@@ -351,7 +353,7 @@ export function DiscoverMap({
               queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
               queryClient.invalidateQueries({ queryKey: ['friends'] });
             } else {
-              Alert.alert('Error', result.error || 'Could not block user. Try again later.');
+              Alert.alert(t('social:error'), result.error || t('map:errorBlockUser'));
             }
           },
         },
@@ -369,10 +371,10 @@ export function DiscoverMap({
       const result = await submitReport(userId, reason as ReportReason, details);
       setReportTargetUserId(null);
       if (result.success) {
-        Alert.alert('Reported', 'Thanks for helping keep Mingla safe.');
+        Alert.alert(t('map:reported'), t('map:reportedMessage'));
         personSheetRef.current?.close();
       } else {
-        Alert.alert('Report Failed', result.error || 'Unable to submit report.');
+        Alert.alert(t('map:reportFailed'), result.error || t('map:reportFailedMessage'));
       }
     },
     [],

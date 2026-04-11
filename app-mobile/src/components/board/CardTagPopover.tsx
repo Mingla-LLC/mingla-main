@@ -8,6 +8,7 @@ import {
   Image,
 } from 'react-native';
 import { Icon } from '../ui/Icon';
+import { useTranslation } from 'react-i18next';
 
 interface CardData {
   id?: string;
@@ -40,6 +41,7 @@ export const CardTagPopover: React.FC<CardTagPopoverProps> = ({
   visible,
   keyboardHeight,
 }) => {
+  const { t } = useTranslation(['board', 'common']);
   if (!visible || cards.length === 0) {
     return null;
   }
@@ -50,12 +52,12 @@ export const CardTagPopover: React.FC<CardTagPopoverProps> = ({
 
   const getCardTitle = (card: SavedCard): string => {
     const data = card.card_data || card.experience_data || {};
-    return data.title || data.name || 'Untitled';
+    return data.title || data.name || t('board:cardTagPopover.untitled');
   };
 
   const getCardCategory = (card: SavedCard): string => {
     const data = card.card_data || card.experience_data || {};
-    return data.category || 'Experience';
+    return data.category || t('board:cardTagPopover.experience');
   };
 
   const getCardImage = (card: SavedCard): string | undefined => {
@@ -69,7 +71,7 @@ export const CardTagPopover: React.FC<CardTagPopoverProps> = ({
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Icon name="pricetag" size={16} color="#eb7825" />
-            <Text style={styles.headerText}>Tag a card</Text>
+            <Text style={styles.headerText}>{t('board:cardTagPopover.tagACard')}</Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <Icon name="close" size={20} color="#666" />
@@ -118,7 +120,7 @@ export const CardTagPopover: React.FC<CardTagPopoverProps> = ({
         />
         {cards.length === 0 && (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No cards saved yet</Text>
+            <Text style={styles.emptyText}>{t('board:cardTagPopover.noCardsSaved')}</Text>
           </View>
         )}
       </View>

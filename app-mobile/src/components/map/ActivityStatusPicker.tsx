@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Switch, Pressable, StyleSheet, LayoutAnimation, UIManager, Platform } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { useKeyboard } from '../../hooks/useKeyboard';
 
@@ -8,20 +9,20 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 const STATUS_PRESETS = [
-  { key: 'exploring', label: 'Exploring', icon: 'compass-outline' },
-  { key: 'plans', label: 'Looking for plans', icon: 'search-outline' },
-  { key: 'meet', label: 'Open to meet', icon: 'hand-right-outline' },
-  { key: 'busy', label: 'Busy', icon: 'close-circle-outline' },
+  { key: 'exploring', labelKey: 'map:exploring', icon: 'compass-outline' },
+  { key: 'plans', labelKey: 'map:lookingForPlans', icon: 'search-outline' },
+  { key: 'meet', labelKey: 'map:openToMeet', icon: 'hand-right-outline' },
+  { key: 'busy', labelKey: 'map:busy', icon: 'close-circle-outline' },
 ] as const;
 
 export type VisibilityLevel = 'off' | 'paired' | 'friends' | 'friends_of_friends' | 'everyone';
 
-const VISIBILITY_OPTIONS: { key: VisibilityLevel; label: string; icon: string }[] = [
-  { key: 'everyone', label: 'Everyone', icon: 'globe-outline' },
-  { key: 'friends_of_friends', label: 'Friends of friends', icon: 'people-circle-outline' },
-  { key: 'friends', label: 'Friends', icon: 'people-outline' },
-  { key: 'paired', label: 'Paired', icon: 'heart-outline' },
-  { key: 'off', label: 'Nobody', icon: 'eye-off' },
+const VISIBILITY_OPTIONS: { key: VisibilityLevel; labelKey: string; icon: string }[] = [
+  { key: 'everyone', labelKey: 'map:everyone', icon: 'globe-outline' },
+  { key: 'friends_of_friends', labelKey: 'map:friendsOfFriends', icon: 'people-circle-outline' },
+  { key: 'friends', labelKey: 'map:friends', icon: 'people-outline' },
+  { key: 'paired', labelKey: 'map:pairedVisibility', icon: 'heart-outline' },
+  { key: 'off', labelKey: 'map:nobody', icon: 'eye-off' },
 ];
 
 interface ActivityStatusPickerProps {
@@ -50,6 +51,7 @@ export function ActivityStatusPicker({
   visibility, onVisibilityChange,
   fabRef,
 }: ActivityStatusPickerProps) {
+  const { t } = useTranslation(['map', 'common']);
   const [expanded, setExpanded] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
   const [customText, setCustomText] = useState('');
@@ -67,17 +69,18 @@ export function ActivityStatusPicker({
     }
   };
 
-  const selectStatus = (label: string) => {
-    const isActive = currentStatus === label;
-    onSetStatus(isActive ? null : label);
+  const selectStatus = (translatedLabel: string) => {
+    const isActive = currentStatus === translatedLabel;
+    onSetStatus(isActive ? null : translatedLabel);
     if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setStatusDropdownOpen(false);
     setShowCustom(false);
   };
 
-  const visibilityLabel = VISIBILITY_OPTIONS.find(o => o.key === visibility)?.label || 'Friends';
-  const visibilityIcon = VISIBILITY_OPTIONS.find(o => o.key === visibility)?.icon || 'people-outline';
-  const statusIcon = STATUS_PRESETS.find(p => p.label === currentStatus)?.icon || 'chatbubble-ellipses-outline';
+  const visibilityOption = VISIBILITY_OPTIONS.find(o => o.key === visibility);
+  const visibilityLabel = visibilityOption ? t(visibilityOption.labelKey) : t('map:friends');
+  const visibilityIcon = visibilityOption?.icon || 'people-outline';
+  const statusIcon = STATUS_PRESETS.find(p => t(p.labelKey) === currentStatus)?.icon || 'chatbubble-ellipses-outline';
 
   return (
     <View style={[styles.container, currentStatus && !expanded && styles.containerWithStatus, keyboardHeight > 0 && { bottom: 12 + keyboardHeight }]}>
@@ -91,7 +94,7 @@ export function ActivityStatusPicker({
       {expanded && (
         <View style={styles.dropdown}>
           {/* Who sees you — compact dropdown at top */}
-          <Text style={styles.sectionLabel}>Who sees you</Text>
+          <Text style={styles.sectionLabel}>{t('map:whoSeesYou')}</Text>
           <TouchableOpacity
             style={styles.visSelector}
             onPress={() => {
@@ -121,7 +124,7 @@ export function ActivityStatusPicker({
                     activeOpacity={0.7}
                   >
                     <Icon name={opt.icon} size={12} color={isActive ? '#eb7825' : '#6b7280'} />
-                    <Text style={[styles.visOptionText, isActive && styles.visOptionTextActive]}>{opt.label}</Text>
+                    <Text style={[styles.visOptionText, isActive && styles.visOptionTextActive]}>{t(opt.labelKey)}</Text>
                     {isActive && <Icon name="checkmark" size={10} color="#eb7825" />}
                   </TouchableOpacity>
                 );
@@ -132,16 +135,16 @@ export function ActivityStatusPicker({
           <View style={styles.divider} />
 
           {/* Map layers — toggles */}
-          <Text style={styles.sectionLabel}>Show on map</Text>
-          <ToggleRow label="People" icon="people-outline" on={peopleLayerOn} onToggle={onTogglePeople} />
-          <ToggleRow label="Places" icon="location-outline" on={placesLayerOn} onToggle={onTogglePlaces} />
-          <ToggleRow label="Feed" icon="notifications-outline" on={feedOn} onToggle={onToggleFeed} />
-          <ToggleRow label="Heatmap" icon="flame-outline" on={heatmapOn} onToggle={onToggleHeatmap} />
+          <Text style={styles.sectionLabel}>{t('map:showOnMap')}</Text>
+          <ToggleRow label={t('map:people')} icon="people-outline" on={peopleLayerOn} onToggle={onTogglePeople} />
+          <ToggleRow label={t('map:places')} icon="location-outline" on={placesLayerOn} onToggle={onTogglePlaces} />
+          <ToggleRow label={t('map:feed')} icon="notifications-outline" on={feedOn} onToggle={onToggleFeed} />
+          <ToggleRow label={t('map:heatmap')} icon="flame-outline" on={heatmapOn} onToggle={onToggleHeatmap} />
 
           <View style={styles.divider} />
 
           {/* Your status — collapsible */}
-          <Text style={styles.sectionLabel}>Your status</Text>
+          <Text style={styles.sectionLabel}>{t('map:yourStatus')}</Text>
           <TouchableOpacity
             style={styles.visSelector}
             onPress={() => {
@@ -152,7 +155,7 @@ export function ActivityStatusPicker({
           >
             <Icon name={statusIcon} size={13} color={currentStatus ? '#eb7825' : '#6b7280'} />
             <Text style={[styles.visSelectorText, !currentStatus && styles.visSelectorTextMuted]}>
-              {currentStatus || 'None'}
+              {currentStatus || t('map:none')}
             </Text>
             <Icon name={statusDropdownOpen ? 'chevron-up' : 'chevron-down'} size={12} color="#9ca3af" />
           </TouchableOpacity>
@@ -166,20 +169,21 @@ export function ActivityStatusPicker({
                   activeOpacity={0.7}
                 >
                   <Icon name="close-circle-outline" size={12} color="#6b7280" />
-                  <Text style={styles.visOptionText}>Clear status</Text>
+                  <Text style={styles.visOptionText}>{t('map:clearStatus')}</Text>
                 </TouchableOpacity>
               )}
               {STATUS_PRESETS.map(preset => {
-                const isActive = currentStatus === preset.label;
+                const presetLabel = t(preset.labelKey);
+                const isActive = currentStatus === presetLabel;
                 return (
                   <TouchableOpacity
                     key={preset.key}
                     style={[styles.visOption, isActive && styles.visOptionActive]}
-                    onPress={() => selectStatus(preset.label)}
+                    onPress={() => selectStatus(presetLabel)}
                     activeOpacity={0.7}
                   >
                     <Icon name={preset.icon} size={12} color={isActive ? '#eb7825' : '#6b7280'} />
-                    <Text style={[styles.visOptionText, isActive && styles.visOptionTextActive]}>{preset.label}</Text>
+                    <Text style={[styles.visOptionText, isActive && styles.visOptionTextActive]}>{presetLabel}</Text>
                     {isActive && <Icon name="checkmark" size={10} color="#eb7825" />}
                   </TouchableOpacity>
                 );
@@ -190,14 +194,14 @@ export function ActivityStatusPicker({
                 activeOpacity={0.7}
               >
                 <Icon name="create-outline" size={12} color="#6b7280" />
-                <Text style={styles.visOptionText}>Custom...</Text>
+                <Text style={styles.visOptionText}>{t('map:custom')}</Text>
               </TouchableOpacity>
               {showCustom && (
                 <TextInput
                   style={styles.customInput}
                   value={customText}
                   onChangeText={setCustomText}
-                  placeholder="What are you up to?"
+                  placeholder={t('map:whatAreYouUpTo')}
                   placeholderTextColor="#9ca3af"
                   maxLength={30}
                   returnKeyType="done"

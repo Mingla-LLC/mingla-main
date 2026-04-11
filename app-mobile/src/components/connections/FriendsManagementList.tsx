@@ -8,6 +8,7 @@ import {
   TextInput,
   StyleSheet,
 } from "react-native";
+import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
 import { Friend } from "../../hooks/useFriends";
 import { getDisplayName } from "../../utils/getDisplayName";
@@ -56,6 +57,7 @@ export function FriendsManagementList({
   mutedUserIds,
   currentUserId,
 }: FriendsManagementListProps) {
+  const { t } = useTranslation(['social', 'common']);
   const [searchQuery, setSearchQuery] = useState("");
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
@@ -87,7 +89,7 @@ export function FriendsManagementList({
     return (
       <View style={styles.emptyState}>
         <Icon name="people-outline" size={32} color={colors.gray[300]} />
-        <Text style={styles.emptyText}>No friends yet</Text>
+        <Text style={styles.emptyText}>{t('social:noFriendsYet')}</Text>
       </View>
     );
   }
@@ -107,7 +109,7 @@ export function FriendsManagementList({
       <View style={styles.searchContainer}>
         <Icon name="search" size={14} color={colors.gray[400]} style={styles.searchIcon} />
         <TextInput
-          placeholder="Search friends..."
+          placeholder={t('social:searchFriends')}
           value={searchQuery}
           onChangeText={setSearchQuery}
           style={styles.searchInput}
@@ -119,7 +121,7 @@ export function FriendsManagementList({
       {/* Friends list */}
       {filteredFriends.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No matching friends</Text>
+          <Text style={styles.emptyText}>{t('social:noMatchingFriends')}</Text>
         </View>
       ) : (
         filteredFriends.map((friend, index) => {
@@ -194,7 +196,7 @@ export function FriendsManagementList({
                       />
                     )}
                     <Text style={styles.dropdownText}>
-                      {isMuted ? "Unmute" : "Mute"}
+                      {isMuted ? t('social:unmute') : t('social:mute')}
                     </Text>
                   </TouchableOpacity>
 
@@ -212,7 +214,7 @@ export function FriendsManagementList({
                       color={colors.error[500]}
                       style={styles.dropdownIcon}
                     />
-                    <Text style={styles.dropdownTextDanger}>Remove Friend</Text>
+                    <Text style={styles.dropdownTextDanger}>{t('social:removeFriend')}</Text>
                   </TouchableOpacity>
 
                   {/* Block User */}
@@ -227,7 +229,7 @@ export function FriendsManagementList({
                       color={colors.error[500]}
                       style={styles.dropdownIcon}
                     />
-                    <Text style={styles.dropdownTextDanger}>Block User</Text>
+                    <Text style={styles.dropdownTextDanger}>{t('social:blockUserMenu')}</Text>
                   </TouchableOpacity>
 
                   {/* Report User */}
@@ -242,7 +244,7 @@ export function FriendsManagementList({
                       color={colors.error[500]}
                       style={styles.dropdownIcon}
                     />
-                    <Text style={styles.dropdownTextDanger}>Report User</Text>
+                    <Text style={styles.dropdownTextDanger}>{t('social:reportUserMenu')}</Text>
                   </TouchableOpacity>
                 </View>
               )}

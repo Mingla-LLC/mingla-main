@@ -15,6 +15,45 @@
     "error_upload_photo": "Failed to upload profile photo.",
     "error_save_bio": "Failed to save bio."
   },
+  "edit_bio": {
+    "title": "Edit Bio",
+    "placeholder": "Tell people about yourself",
+    "save": "Save"
+  },
+  "edit_interests": {
+    "title": "Edit Interests",
+    "what_are_you_into": "What are you into?",
+    "what_do_you_like": "What do you like?",
+    "save": "Save"
+  },
+  "hero": {
+    "your_name_here": "Your name here",
+    "user_fallback": "User",
+    "first_name": "First name",
+    "last_name": "Last name",
+    "name_error_empty": "Please enter your name.",
+    "name_error_failed": "Failed to save. Try again.",
+    "somewhere_cool": "Somewhere cool, probably",
+    "tap_to_add_bio": "Tap to add a bio",
+    "hint_add_photo": "People trust faces. Add a photo so friends know it's you.",
+    "hint_add_bio": "A short bio goes a long way. What should people know about you?"
+  },
+  "stats": {
+    "saved": "SAVED",
+    "friends": "FRIENDS",
+    "boards": "BOARDS",
+    "places": "PLACES",
+    "streak": "STREAK",
+    "level": "LEVEL",
+    "motivation_start": "Your stats start building the moment you do something. Go explore.",
+    "motivation_close": "{{count}} more place to hit {{tier}}. You're close.",
+    "motivation_close_plural": "{{count}} more places to hit {{tier}}. You're close.",
+    "motivation_week": "A whole week. Consistency looks good on you.",
+    "motivation_month": "30 days straight. You might be unstoppable."
+  },
+  "paired_section": {
+    "see_all": "See all"
+  },
   "friend": {
     "loading_profile": "Loading profile\u2026",
     "profile_unavailable_title": "This profile isn't available",

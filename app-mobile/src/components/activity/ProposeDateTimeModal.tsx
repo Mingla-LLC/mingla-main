@@ -18,6 +18,7 @@ import DateOptionsGrid from "./DateOptionsGrid";
 import WeekendDaySelection from "./WeekendDaySelection";
 import ProposeDateTimeFooter from "./ProposeDateTimeFooter";
 import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
+import { useTranslation } from 'react-i18next';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -49,6 +50,7 @@ export default function ProposeDateTimeModal({
   isScheduling = false,
   isCurated = false,
 }: ProposeDateTimeModalProps) {
+  const { t } = useTranslation(['activity', 'common']);
   const [selectedDateOption, setSelectedDateOption] = useState<
     "now" | "today" | "weekend" | "custom" | null
   >(null);
@@ -514,7 +516,7 @@ export default function ProposeDateTimeModal({
   const selectedTimeLabel = useMemo(() => {
     if (!selectedDateOption) return null;
 
-    if (selectedDateOption === "now") return "Right now";
+    if (selectedDateOption === "now") return t('activity:proposeDateTimeModal.rightNow');
 
     if (selectedDateOption === "today" && customTime) {
       return `Today at ${customTime.toLocaleTimeString("en-US", {
@@ -634,7 +636,7 @@ export default function ProposeDateTimeModal({
                 </View>
                 <View style={styles.headerTextContainer}>
                   <Text style={styles.headerTitle}>
-                    {isCurated ? "Schedule Plan" : "Schedule Experience"}
+                    {isCurated ? t('activity:proposeDateTimeModal.schedulePlan') : t('activity:proposeDateTimeModal.scheduleExperience')}
                   </Text>
                   {card && (
                     <Text style={styles.headerSubtitle} numberOfLines={1}>
@@ -683,7 +685,7 @@ export default function ProposeDateTimeModal({
                 <View style={styles.openingHoursSection}>
                   <View style={styles.openingHoursHeader}>
                     <Icon name="time" size={18} color="#F59E0B" />
-                    <Text style={styles.openingHoursTitle}>Opening Hours</Text>
+                    <Text style={styles.openingHoursTitle}>{t('activity:proposeDateTimeModal.openingHours')}</Text>
                     {liveOpenStatus !== null && (
                       <View
                         style={[
@@ -709,7 +711,7 @@ export default function ProposeDateTimeModal({
                               : styles.openNowTextClosed,
                           ]}
                         >
-                          {liveOpenStatus ? "Open Now" : "Closed"}
+                          {liveOpenStatus ? t('activity:proposeDateTimeModal.openNow') : t('activity:proposeDateTimeModal.closed')}
                         </Text>
                       </View>
                     )}
@@ -749,7 +751,7 @@ export default function ProposeDateTimeModal({
                   <View style={styles.currentScheduleHeader}>
                     <Icon name="calendar" size={16} color="#F59E0B" />
                     <Text style={styles.currentScheduleTitle}>
-                      Currently Scheduled
+                      {t('activity:proposeDateTimeModal.currentlyScheduled')}
                     </Text>
                   </View>
                   <Text style={styles.currentScheduleValue}>
@@ -761,7 +763,7 @@ export default function ProposeDateTimeModal({
 
               {/* Date Selection */}
               <View style={styles.sectionContainer}>
-                <Text style={styles.sectionTitle}>Pick a Date</Text>
+                <Text style={styles.sectionTitle}>{t('activity:proposeDateTimeModal.pickADate')}</Text>
                 <DateOptionsGrid
                   selectedDateOption={selectedDateOption}
                   onSelectOption={handleDateOptionSelect}
@@ -789,7 +791,7 @@ export default function ProposeDateTimeModal({
                       onPress={() => setShowTimePicker(true)}
                       style={styles.changeTimeButton}
                     >
-                      <Text style={styles.changeTimeText}>Change Time</Text>
+                      <Text style={styles.changeTimeText}>{t('activity:proposeDateTimeModal.changeTime')}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -800,8 +802,7 @@ export default function ProposeDateTimeModal({
                 <View style={styles.availabilityMessage}>
                   <Icon name="warning" size={18} color="#ef4444" />
                   <Text style={styles.availabilityMessageText}>
-                    This place is closed at the selected time. Please choose a
-                    different time.
+                    {t('activity:proposeDateTimeModal.closedAtTime')}
                   </Text>
                 </View>
               )}
@@ -855,13 +856,13 @@ export default function ProposeDateTimeModal({
               edges={["bottom", "left", "right"]}
             >
               <View style={pickerModalStyles.header}>
-                <Text style={pickerModalStyles.title}>Select Date</Text>
+                <Text style={pickerModalStyles.title}>{t('activity:proposeDateTimeModal.selectDate')}</Text>
                 <View style={pickerModalStyles.headerButtons}>
                   <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                    <Text style={pickerModalStyles.cancelText}>Cancel</Text>
+                    <Text style={pickerModalStyles.cancelText}>{t('activity:proposeDateTimeModal.cancel')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={handleDatePickerDone}>
-                    <Text style={pickerModalStyles.doneText}>Done</Text>
+                    <Text style={pickerModalStyles.doneText}>{t('activity:proposeDateTimeModal.done')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>

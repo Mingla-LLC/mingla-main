@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Icon } from '../ui/Icon';
+import { useTranslation } from 'react-i18next';
 
 interface CompanionStop {
   id: string;
@@ -22,6 +23,8 @@ interface CompanionStopsSectionProps {
 export default function CompanionStopsSection({
   companionStops,
 }: CompanionStopsSectionProps) {
+  const { t } = useTranslation(['expanded_details', 'common']);
+
   if (!companionStops || companionStops.length === 0) {
     return null;
   }
@@ -82,10 +85,10 @@ export default function CompanionStopsSection({
     <View style={styles.container}>
       <View style={styles.header}>
         <Icon name="location" size={20} color="#eb7825" />
-        <Text style={styles.title}>Start Your Stroll</Text>
+        <Text style={styles.title}>{t('expanded_details:companion_stops.title')}</Text>
       </View>
       <Text style={styles.subtitle}>
-        Begin at one of these nearby spots before your walk
+        {t('expanded_details:companion_stops.subtitle')}
       </Text>
 
       <View style={styles.stopsContainer}>
@@ -120,7 +123,7 @@ export default function CompanionStopsSection({
                   </Text>
                   {(stop.reviewCount ?? 0) > 0 && (
                     <Text style={styles.reviewText}>
-                      ({stop.reviewCount} reviews)
+                      {t('expanded_details:companion_stops.reviews_count', { count: stop.reviewCount })}
                     </Text>
                   )}
                 </View>

@@ -4,6 +4,7 @@ import { Icon } from "../ui/Icon";
 import { parseAndFormatDistance } from "../utils/formatters";
 import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG } from "../../constants/priceTiers";
 import { getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
+import { useTranslation } from "react-i18next";
 
 interface CardInfoSectionProps {
   title: string;
@@ -52,6 +53,7 @@ export default function CardInfoSection({
   tip,
   currency = 'USD',
 }: CardInfoSectionProps) {
+  const { t } = useTranslation(['expanded_details', 'common']);
   const resolvedTier = priceTier ?? googleLevelToTierSlug(priceLevel);
   const tierData = TIER_BY_SLUG[resolvedTier];
   const currencySymbol = getCurrencySymbol(currency || 'USD');
@@ -137,7 +139,7 @@ export default function CardInfoSection({
             {rating !== undefined && <View style={styles.metricDivider} />}
             <View style={styles.metricItem}>
               <Icon name="location" size={14} color="#d97706" />
-              <Text style={styles.metricText}>{parseAndFormatDistance(distance, measurementSystem) || 'Nearby'}</Text>
+              <Text style={styles.metricText}>{parseAndFormatDistance(distance, measurementSystem) || t('expanded_details:card_info.nearby')}</Text>
             </View>
           </>
         )}

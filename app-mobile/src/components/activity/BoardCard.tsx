@@ -2,6 +2,7 @@ import React from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Icon } from '../ui/Icon';
+import { useTranslation } from 'react-i18next';
 
 interface Board {
   id: string;
@@ -51,6 +52,7 @@ const BoardCard = ({
   isUserAdmin,
   showMenu = true
 }: BoardCardProps) => {
+  const { t } = useTranslation(['activity', 'common']);
   const styles = StyleSheet.create({
     card: {
       backgroundColor: 'white',
@@ -248,25 +250,25 @@ const BoardCard = ({
       case 'voting':
         return (
           <View style={styles.votingBadge}>
-            <Text style={styles.votingBadgeText}>Voting</Text>
+            <Text style={styles.votingBadgeText}>{t('activity:boardCard.voting')}</Text>
           </View>
         );
       case 'locked':
         return (
           <View style={styles.lockedBadge}>
-            <Text style={styles.lockedBadgeText}>Locked In</Text>
+            <Text style={styles.lockedBadgeText}>{t('activity:boardCard.lockedIn')}</Text>
           </View>
         );
       case 'active':
         return (
           <View style={styles.activeBadge}>
-            <Text style={styles.activeBadgeText}>Active</Text>
+            <Text style={styles.activeBadgeText}>{t('activity:boardCard.active')}</Text>
           </View>
         );
       case 'completed':
         return (
           <View style={styles.completedBadge}>
-            <Text style={styles.completedBadgeText}>Completed</Text>
+            <Text style={styles.completedBadgeText}>{t('activity:boardCard.completed')}</Text>
           </View>
         );
       default:
@@ -295,12 +297,12 @@ const BoardCard = ({
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
               <Text style={styles.statNumber}>{board.participants.length}</Text>
-              <Text style={styles.statLabel}>MEMBERS</Text>
+              <Text style={styles.statLabel}>{t('activity:boardCard.members')}</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={styles.statNumber}>{board.cardsCount}</Text>
-              <Text style={styles.statLabel}>EXPERIENCES</Text>
+              <Text style={styles.statLabel}>{t('activity:boardCard.experiences')}</Text>
             </View>
           </View>
         </View>
@@ -312,7 +314,7 @@ const BoardCard = ({
             onPress={() => onOpenBoard(board.id)}
             style={styles.primaryButton}
           >
-            <Text style={styles.primaryButtonText}>Open Board</Text>
+            <Text style={styles.primaryButtonText}>{t('activity:boardCard.openBoard')}</Text>
           </TrackedTouchableOpacity>
           
           {/* Admin Actions */}

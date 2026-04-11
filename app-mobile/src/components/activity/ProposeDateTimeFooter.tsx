@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Icon } from "../ui/Icon";
+import { useTranslation } from 'react-i18next';
 
 interface ProposeDateTimeFooterProps {
   selectedDateOption: "now" | "today" | "weekend" | "custom" | null;
@@ -35,6 +36,7 @@ export default function ProposeDateTimeFooter({
   customTime,
   dark = false,
 }: ProposeDateTimeFooterProps) {
+  const { t } = useTranslation(['activity', 'common']);
   const footerBg = dark ? "#1C1C1E" : "white";
 
   // ---------- CURATED FLOW ----------
@@ -71,12 +73,12 @@ export default function ProposeDateTimeFooter({
           )}
           <Text style={styles.buttonText}>
             {isScheduling
-              ? "Scheduling..."
+              ? t('activity:proposeDateTimeFooter.scheduling')
               : !selectedDateOption
-                ? "Pick a date first"
+                ? t('activity:proposeDateTimeFooter.pickDateFirst')
                 : needsTime && !customTime
-                  ? "Pick a time"
-                  : "Schedule Plan"}
+                  ? t('activity:proposeDateTimeFooter.pickATime')
+                  : t('activity:proposeDateTimeFooter.schedulePlan')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -105,7 +107,7 @@ export default function ProposeDateTimeFooter({
             <Icon name="calendar" size={20} color="white" />
           )}
           <Text style={styles.buttonText}>
-            {isScheduling ? "Scheduling..." : "Schedule"}
+            {isScheduling ? t('activity:proposeDateTimeFooter.scheduling') : t('activity:proposeDateTimeFooter.schedule')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -136,7 +138,7 @@ export default function ProposeDateTimeFooter({
           <Icon name="sparkles" size={20} color="white" />
         )}
         <Text style={styles.buttonText}>
-          {isCheckingAvailability ? "Checking..." : "Check Availability"}
+          {isCheckingAvailability ? t('activity:proposeDateTimeFooter.checking') : t('activity:proposeDateTimeFooter.checkAvailability')}
         </Text>
       </TouchableOpacity>
     </View>

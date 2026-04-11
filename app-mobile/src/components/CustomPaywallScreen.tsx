@@ -20,6 +20,7 @@ import type { GatedFeature } from '../hooks/useFeatureGate';
 import { colors, spacing, radius, typography, fontWeights } from '../constants/designSystem';
 import { logAppsFlyerEvent } from '../services/appsFlyerService';
 import { useToast } from './ToastManager';
+import { useTranslation } from 'react-i18next';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -93,6 +94,7 @@ export function CustomPaywallScreen({
 }: CustomPaywallScreenProps) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { t } = useTranslation(['billing', 'common']);
   const { data: offering } = useOfferings(isVisible);
   const { mutateAsync: purchase, isPending: isPurchasing } = usePurchasePackage();
   const { mutateAsync: restore, isPending: isRestoring } = useRestorePurchases();
@@ -112,7 +114,13 @@ export function CustomPaywallScreen({
     }
   }, [isVisible, feature]);
 
-  const headerText = feature ? FEATURE_HEADERS[feature] : 'Upgrade Your Experience';
+  const FEATURE_HEADER_KEYS: Record<GatedFeature, string> = {
+    curated_cards: 'billing:paywall.header_curated_cards',
+    pairing: 'billing:paywall.header_pairing',
+    custom_starting_point: 'billing:paywall.header_custom_starting_point',
+    session_creation: 'billing:paywall.header_session_creation',
+  };
+  const headerText = feature ? t(FEATURE_HEADER_KEYS[feature]) : t('billing:paywall.header_default');
 
   const packages = offering?.availablePackages ?? [];
   const activePackages = packages;
@@ -121,7 +129,7 @@ export function CustomPaywallScreen({
   const handlePurchase = async () => {
     const pkg = activePackages.find((p) => p.identifier === selectedPkgId) ?? activePackages[0];
     if (!pkg) {
-      Alert.alert('No Package', 'No subscription package is available right now.');
+      Alert.alert(t('billing:paywall.no_package_title'), t('billing:paywall.no_package_body'));
       return;
     }
 
@@ -137,7 +145,7 @@ export function CustomPaywallScreen({
             await syncSubscriptionFromRC(userId, result.customerInfo);
           } catch (retryErr) {
             console.error('[CustomPaywallScreen] Sync retry failed:', retryErr);
-            showToast({ message: 'Purchase successful. Features may take a moment to activate.', type: 'info' });
+            showToast({ message: t('billing:paywall.purchase_sync_info'), type: 'info' });
           }
         }, 2000);
       }
@@ -148,8 +156,8 @@ export function CustomPaywallScreen({
     } catch (err: unknown) {
       // RevenueCat throws { userCancelled: true } when user dismisses the payment sheet
       if (err != null && typeof err === 'object' && 'userCancelled' in err && (err as Record<string, unknown>).userCancelled) return;
-      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
-      Alert.alert('Purchase Failed', message);
+      const message = err instanceof Error ? err.message : t('billing:paywall.purchase_failed_fallback');
+      Alert.alert(t('billing:paywall.purchase_failed_title'), message);
     }
   };
 
@@ -167,17 +175,17 @@ export function CustomPaywallScreen({
             await syncSubscriptionFromRC(userId, customerInfo);
           } catch (retryErr) {
             console.error('[CustomPaywallScreen] Restore sync retry failed:', retryErr);
-            showToast({ message: 'Purchases restored. Features may take a moment to activate.', type: 'info' });
+            showToast({ message: t('billing:paywall.restore_sync_info'), type: 'info' });
           }
         }, 2000);
       }
       queryClient.invalidateQueries({ queryKey: subscriptionKeys.all });
       queryClient.invalidateQueries({ queryKey: revenueCatKeys.all });
-      Alert.alert('Restored', 'Your purchases have been restored.');
+      Alert.alert(t('billing:paywall.restored_title'), t('billing:paywall.restored_body'));
       onClose();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Could not restore purchases.';
-      Alert.alert('Restore Failed', message);
+      const message = err instanceof Error ? err.message : t('billing:paywall.restore_failed_fallback');
+      Alert.alert(t('billing:paywall.restore_failed_title'), message);
     }
   };
 
@@ -207,7 +215,7 @@ export function CustomPaywallScreen({
           {/* Header */}
           <Text style={styles.header}>{headerText}</Text>
           <Text style={styles.subheader}>
-            Choose the plan that fits your lifestyle
+            {t('billing:paywall.subheader')}
           </Text>
 
           {/* Feature checklist */}
@@ -256,7 +264,7 @@ export function CustomPaywallScreen({
               })}
             </View>
           ) : (
-            <Text style={styles.noPackagesText}>Loading packages...</Text>
+            <Text style={styles.noPackagesText}>{t('billing:paywall.loading_packages')}</Text>
           )}
 
           {/* Subscribe CTA */}
@@ -272,7 +280,7 @@ export function CustomPaywallScreen({
             {isBusy ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.ctaText}>Subscribe</Text>
+              <Text style={styles.ctaText}>{t('billing:paywall.subscribe')}</Text>
             )}
           </TouchableOpacity>
 
@@ -282,25 +290,25 @@ export function CustomPaywallScreen({
             onPress={handleRestore}
             disabled={isBusy}
           >
-            <Text style={styles.restoreText}>Restore Purchases</Text>
+            <Text style={styles.restoreText}>{t('billing:paywall.restore_purchases')}</Text>
           </TouchableOpacity>
 
           {/* Terms & Privacy */}
           <View style={styles.legalRow}>
             <TouchableOpacity onPress={() => {
               setLegalBrowserUrl(LEGAL_URLS.termsOfService);
-              setLegalBrowserTitle('Terms of Service');
+              setLegalBrowserTitle(t('billing:paywall.terms_of_service'));
               setLegalBrowserVisible(true);
             }}>
-              <Text style={styles.legalLink}>Terms of Service</Text>
+              <Text style={styles.legalLink}>{t('billing:paywall.terms_of_service')}</Text>
             </TouchableOpacity>
             <Text style={styles.legalDot}> | </Text>
             <TouchableOpacity onPress={() => {
               setLegalBrowserUrl(LEGAL_URLS.privacyPolicy);
-              setLegalBrowserTitle('Privacy Policy');
+              setLegalBrowserTitle(t('billing:paywall.privacy_policy'));
               setLegalBrowserVisible(true);
             }}>
-              <Text style={styles.legalLink}>Privacy Policy</Text>
+              <Text style={styles.legalLink}>{t('billing:paywall.privacy_policy')}</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>

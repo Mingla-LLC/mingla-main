@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import type { PairingPill } from "../services/pairingService";
+import { useTranslation } from 'react-i18next';
 import { colors, radius, shadows } from "../constants/designSystem";
 import { s } from "../utils/responsive";
 
@@ -70,10 +71,12 @@ export default function PairingInfoCard({
     }
   }, [visible, scaleAnim, opacityAnim]);
 
+  const { t } = useTranslation(['social', 'common']);
+
   if (!pill) return null;
 
   const cancelLabel =
-    pill.type === "pending_invite" ? "Cancel invite" : "Cancel pair request";
+    pill.type === "pending_invite" ? t('social:cancelInviteLabel') : t('social:cancelPairRequest');
 
   const avatarColor = getInitialsColor(pill.displayName);
 

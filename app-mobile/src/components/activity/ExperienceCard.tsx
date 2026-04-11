@@ -6,6 +6,7 @@ import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { useLocalePreferences } from '../../hooks/useLocalePreferences';
 import { formatPriceRange, getCurrencySymbol, getCurrencyRate } from '../utils/formatters';
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
+import { useTranslation } from 'react-i18next';
 
 interface ExperienceCardProps {
   experience: {
@@ -63,6 +64,7 @@ const ExperienceCard = ({
   showActions = true,
   variant = 'saved'
 }: ExperienceCardProps) => {
+  const { t } = useTranslation(['activity', 'common']);
   const { currency } = useLocalePreferences();
   const [currentImageIndex, setCurrentImageIndex] = useState<number>(0);
 
@@ -442,7 +444,7 @@ const ExperienceCard = ({
                 <Text style={styles.priceText}>
                   {experience.priceTier && TIER_BY_SLUG[experience.priceTier as PriceTierSlug]
                     ? formatTierLabel(experience.priceTier as PriceTierSlug, getCurrencySymbol(currency), getCurrencyRate(currency))
-                    : experience.priceRange ? formatPriceRange(experience.priceRange, currency) : 'Varies'}
+                    : experience.priceRange ? formatPriceRange(experience.priceRange, currency) : t('activity:experienceCard.varies')}
                 </Text>
               </View>
               
@@ -476,7 +478,7 @@ const ExperienceCard = ({
                     styles.sourceText,
                     experience.source === 'solo' ? styles.soloText : styles.collaborationText
                   ]}>
-                    {experience.source === 'solo' ? 'Solo Discovery' : `From ${experience.sessionName}`}
+                    {experience.source === 'solo' ? t('activity:experienceCard.soloDiscovery') : t('activity:experienceCard.fromSession', { name: experience.sessionName })}
                   </Text>
                 </View>
               </View>
@@ -496,15 +498,15 @@ const ExperienceCard = ({
                 style={styles.primaryButton}
               >
                 <Icon name="bag" size={16} color="white" />
-                <Text style={styles.primaryButtonText}>Buy Now</Text>
+                <Text style={styles.primaryButtonText}>{t('activity:experienceCard.buyNow')}</Text>
               </TrackedTouchableOpacity>
             ) : (
-              <TrackedTouchableOpacity logComponent="ExperienceCard" 
+              <TrackedTouchableOpacity logComponent="ExperienceCard"
                 onPress={() => onSchedule?.(experience)}
                 style={styles.primaryButton}
               >
                 <Icon name="calendar" size={16} color="white" />
-                <Text style={styles.primaryButtonText}>Schedule</Text>
+                <Text style={styles.primaryButtonText}>{t('activity:experienceCard.schedule')}</Text>
               </TrackedTouchableOpacity>
             )}
             
@@ -580,13 +582,13 @@ const ExperienceCard = ({
           {/* Details */}
           <View style={styles.detailsSection}>
             <View>
-              <Text style={styles.sectionTitle}>About this experience</Text>
+              <Text style={styles.sectionTitle}>{t('activity:experienceCard.aboutExperience')}</Text>
               <Text style={styles.sectionText}>{experience.fullDescription}</Text>
             </View>
             
             {experience.highlights && experience.highlights.length > 0 && (
               <View style={styles.highlightsContainer}>
-                <Text style={styles.sectionTitle}>Highlights</Text>
+                <Text style={styles.sectionTitle}>{t('activity:experienceCard.highlights')}</Text>
                 <View style={styles.highlightsList}>
                   {experience.highlights.map((highlight, index) => (
                     <View key={index} style={styles.highlightTag}>
@@ -598,30 +600,30 @@ const ExperienceCard = ({
             )}
             
             <View style={styles.locationContainer}>
-              <Text style={styles.sectionTitle}>Location</Text>
+              <Text style={styles.sectionTitle}>{t('activity:experienceCard.location')}</Text>
               <View style={styles.locationRow}>
                 <Icon name="location" size={16} color="#eb7825" />
                 <Text style={styles.locationText}>
-                  {experience.address || 'Address not available'}
+                  {experience.address || t('activity:experienceCard.addressNotAvailable')}
                 </Text>
               </View>
             </View>
             
             {experience.socialStats && (
               <View style={styles.socialStatsContainer}>
-                <Text style={styles.socialStatsTitle}>Community Stats</Text>
+                <Text style={styles.socialStatsTitle}>{t('activity:experienceCard.communityStats')}</Text>
                 <View style={styles.socialStatsRow}>
                   <View style={styles.socialStatItem}>
                     <Icon name="eye" size={16} color="#6b7280" />
-                    <Text style={styles.socialStatText}>{experience.socialStats.views} views</Text>
+                    <Text style={styles.socialStatText}>{t('activity:experienceCard.views', { count: experience.socialStats.views })}</Text>
                   </View>
                   <View style={styles.socialStatItem}>
                     <Icon name="heart" size={16} color="#6b7280" />
-                    <Text style={styles.socialStatText}>{experience.socialStats.likes} likes</Text>
+                    <Text style={styles.socialStatText}>{t('activity:experienceCard.likes', { count: experience.socialStats.likes })}</Text>
                   </View>
                   <View style={styles.socialStatItem}>
                     <Icon name="bookmark" size={16} color="#6b7280" />
-                    <Text style={styles.socialStatText}>{experience.socialStats.saves} saves</Text>
+                    <Text style={styles.socialStatText}>{t('activity:experienceCard.saves', { count: experience.socialStats.saves })}</Text>
                   </View>
                 </View>
               </View>

@@ -7,6 +7,7 @@ import {
   Image,
 } from 'react-native';
 import { Icon } from '../ui/Icon';
+import { useTranslation } from 'react-i18next';
 
 export interface Participant {
   id: string;
@@ -41,6 +42,7 @@ export const ParticipantAvatars: React.FC<ParticipantAvatarsProps> = ({
   onPress,
   onViewAll,
 }) => {
+  const { t } = useTranslation(['board', 'common']);
   const acceptedParticipants = participants.filter(p => p.has_accepted);
   const visibleParticipants = acceptedParticipants.slice(0, maxVisible);
   const remainingCount = acceptedParticipants.length - maxVisible;
@@ -125,7 +127,7 @@ export const ParticipantAvatars: React.FC<ParticipantAvatarsProps> = ({
     return (
       <View style={styles.emptyContainer}>
         <Icon name="people-outline" size={size} color="#ccc" />
-        <Text style={styles.emptyText}>No participants</Text>
+        <Text style={styles.emptyText}>{t('board:participantAvatars.noParticipants')}</Text>
       </View>
     );
   }
@@ -165,7 +167,7 @@ export const ParticipantAvatars: React.FC<ParticipantAvatarsProps> = ({
       
       {acceptedParticipants.length > 0 && (
         <Text style={styles.countText}>
-          {acceptedParticipants.length} {acceptedParticipants.length === 1 ? 'participant' : 'participants'}
+          {t('board:participantAvatars.participant', { count: acceptedParticipants.length })}
         </Text>
       )}
     </View>
