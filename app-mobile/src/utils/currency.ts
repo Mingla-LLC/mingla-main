@@ -1,4 +1,6 @@
 // Currency symbols and formatting utilities
+import { getUserLocale } from './localeUtils';
+
 export const getCurrencySymbol = (currency: string): string => {
   const symbols: Record<string, string> = {
     USD: '$',
@@ -62,7 +64,7 @@ export const getCurrencySymbol = (currency: string): string => {
  * @returns Formatted string with commas (e.g., 136851 -> "136,851")
  */
 export const formatNumberWithCommas = (num: number): string => {
-  return Math.round(num).toLocaleString('en-US');
+  return Math.round(num).toLocaleString(getUserLocale());
 };
 
 // RELIABILITY: Do NOT use this for user-facing price display — it does NOT apply

@@ -39,20 +39,10 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// --- Language options (gender uses canonical DB values from onboarding types) ---
-
-const LANGUAGE_OPTIONS = [
-  { code: "en", name: "English" },
-  { code: "es", name: "Spanish" },
-  { code: "fr", name: "French" },
-  { code: "pt", name: "Portuguese" },
-  { code: "de", name: "German" },
-  { code: "ar", name: "Arabic" },
-  { code: "zh", name: "Mandarin" },
-  { code: "ja", name: "Japanese" },
-  { code: "ko", name: "Korean" },
-  { code: "hi", name: "Hindi" },
-] as const;
+// Language options: use the canonical LANGUAGES list from constants (29 languages)
+import { LANGUAGES, getLanguageByCode } from '../../constants/languages'
+import i18nInstance from '../../i18n'
+import { persistLanguage } from '../../i18n'
 
 const VISIBILITY_MODES = ["friends", "public", "private"] as const;
 // Visibility labels/descriptions are now handled via i18n keys in the component
@@ -267,6 +257,9 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
   const handleSelectLanguage = async (code: string) => {
     setPreferredLanguage(code);
     setShowLanguagePicker(false);
+    // INV-I18N-003: changeLanguage + persistLanguage always called together
+    i18nInstance.changeLanguage(code);
+    persistLanguage(code);
     await updateField("preferred_language", code);
   };
 
@@ -461,7 +454,8 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
 
   const getLanguageName = (code: string | null): string => {
     if (!code) return "";
-    return LANGUAGE_OPTIONS.find((l) => l.code === code)?.name || code;
+    const lang = getLanguageByCode(code);
+    return lang ? `${lang.nativeName} (${lang.name})` : code;
   };
 
   // --- Sheet sizing (matches BillingSheet pattern) ---
@@ -825,25 +819,30 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
         </Pressable>
       </Modal>
 
-      {/* Language picker */}
+      {/* Language picker — uses canonical 29-language list */}
       <Modal visible={showLanguagePicker} transparent animationType="slide" onRequestClose={() => setShowLanguagePicker(false)}>
         <Pressable style={styles.pickerOverlay} onPress={() => setShowLanguagePicker(false)}>
-          <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
+          <View style={[styles.pickerSheet, { maxHeight: '70%' }]} onStartShouldSetResponder={() => true}>
             <View style={styles.pickerHandle} />
             <Text style={styles.pickerTitle}>{t('settings:pickers.language_title')}</Text>
-            {LANGUAGE_OPTIONS.map((lang) => (
-              <TouchableOpacity
-                key={lang.code}
-                style={styles.pickerOption}
-                onPress={() => handleSelectLanguage(lang.code)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.pickerOptionText, preferredLanguage === lang.code && styles.pickerOptionSelected]}>
-                  {lang.name}
-                </Text>
-                {preferredLanguage === lang.code && <Icon name="checkmark" size={20} color="#eb7825" />}
-              </TouchableOpacity>
-            ))}
+            <ScrollView showsVerticalScrollIndicator keyboardShouldPersistTaps="handled">
+              {LANGUAGES.map((lang) => (
+                <TouchableOpacity
+                  key={lang.code}
+                  style={styles.pickerOption}
+                  onPress={() => handleSelectLanguage(lang.code)}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.pickerOptionText, preferredLanguage === lang.code && styles.pickerOptionSelected]}>
+                      {lang.nativeName}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: '#9ca3af' }}>{lang.name}</Text>
+                  </View>
+                  {preferredLanguage === lang.code && <Icon name="checkmark" size={20} color="#eb7825" />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
             <View style={{ height: Math.max(insets.bottom, 16) }} />
           </View>
         </Pressable>

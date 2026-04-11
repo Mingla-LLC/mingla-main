@@ -10,6 +10,8 @@
  * Must stay in sync with supabase/functions/_shared/priceTiers.ts
  */
 
+import { getUserLocale } from '../utils/localeUtils';
+
 export type PriceTierSlug = 'any' | 'chill' | 'comfy' | 'bougie' | 'lavish';
 
 export interface PriceTier {
@@ -60,12 +62,12 @@ export function tierRangeLabel(slug: PriceTierSlug, currencySymbol: string = '$'
   const tier = TIER_BY_SLUG[slug];
   if (!tier) return '';
   if (tier.max === null) {
-    return `${currencySymbol}${Math.round(tier.min * rate).toLocaleString('en-US')}+`;
+    return `${currencySymbol}${Math.round(tier.min * rate).toLocaleString(getUserLocale())}+`;
   }
   if (tier.min === 0) {
-    return `${currencySymbol}${Math.round(tier.max * rate).toLocaleString('en-US')} max`;
+    return `${currencySymbol}${Math.round(tier.max * rate).toLocaleString(getUserLocale())} max`;
   }
-  return `${currencySymbol}${Math.round(tier.min * rate).toLocaleString('en-US')} – ${currencySymbol}${Math.round(tier.max * rate).toLocaleString('en-US')}`;
+  return `${currencySymbol}${Math.round(tier.min * rate).toLocaleString(getUserLocale())} – ${currencySymbol}${Math.round(tier.max * rate).toLocaleString(getUserLocale())}`;
 }
 
 export function formatTierLabel(slug: PriceTierSlug, currencySymbol: string = '$', rate: number = 1): string {

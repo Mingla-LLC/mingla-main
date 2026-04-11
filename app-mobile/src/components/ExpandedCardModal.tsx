@@ -28,6 +28,7 @@ import { bookingService, BookingOption } from "../services/bookingService";
 import { ExperienceGenerationService } from "../services/experienceGenerationService";
 import { useRecommendations } from "../contexts/RecommendationsContext";
 import ExpandedCardHeader from "./expandedCard/ExpandedCardHeader";
+import { getUserLocale } from "../utils/localeUtils";
 import ImageGallery from "./expandedCard/ImageGallery";
 import CardInfoSection from "./expandedCard/CardInfoSection";
 import DescriptionSection from "./expandedCard/DescriptionSection";
@@ -759,7 +760,7 @@ function MultiStopPlanView({
     if (url) Linking.openURL(url);
   };
 
-  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const todayName = new Date().toLocaleDateString(getUserLocale(), { weekday: 'long' });
 
   return (
     <View style={curatedStyles.container}>

@@ -5,6 +5,7 @@
 
 import { supabase } from './supabase';
 import { RecommendationCard } from '../types';
+import { getUserLocale } from '../utils/localeUtils';
 
 export interface RecommendationHistoryEntry {
   id: string;
@@ -91,7 +92,7 @@ class RecommendationHistoryService {
   ): Promise<void> {
     try {
       const now = new Date();
-      const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' });
+      const dayOfWeek = now.toLocaleDateString(getUserLocale(), { weekday: 'long' });
       const timeOfDay = this.getTimeOfDay(now.getHours());
       
       const historyEntry: Omit<RecommendationHistoryEntry, 'id'> = {

@@ -28,6 +28,7 @@ import { savedCardKeys } from "../../hooks/queryKeys";
 import { CalendarService } from "../../services/calendarService";
 import { savedCardsService } from "../../services/savedCardsService";
 import { toastManager } from "../ui/Toast";
+import { getUserLocale } from "../../utils/localeUtils";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import ProposeDateTimeModal from "./ProposeDateTimeModal"; // dark bottom sheet
 import { formatPriceRange, formatCurrency, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
@@ -1088,7 +1089,7 @@ const SavedTab = ({
     stop: CuratedStop,
     arrivalTime: Date
   ): StopAvailability => {
-    const dayName = arrivalTime.toLocaleDateString('en-US', { weekday: 'long' });
+    const dayName = arrivalTime.toLocaleDateString(getUserLocale(), { weekday: 'long' });
     const hoursString = stop.openingHours?.[dayName];
 
     // No hours data — assume open
@@ -1224,7 +1225,7 @@ const SavedTab = ({
 
       if (allOpen) {
         // All stops are open — ask for confirmation
-        const timeStr = date.toLocaleString('en-US', {
+        const timeStr = date.toLocaleString(getUserLocale(), {
           weekday: 'short',
           month: 'short',
           day: 'numeric',

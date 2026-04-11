@@ -1,3 +1,5 @@
+import { getUserLocale } from './localeUtils';
+
 /**
  * Format a timestamp to a relative time string (e.g., "2 hours ago", "3 days ago")
  */
@@ -47,7 +49,7 @@ export const formatTimestamp = (timestamp: string): string => {
 export const formatMonthYear = (date: Date | string): string => {
   const d = typeof date === 'string' ? new Date(date) : date;
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  return d.toLocaleDateString(getUserLocale(), { month: 'short', year: 'numeric' });
 };
 
 /**
@@ -56,6 +58,6 @@ export const formatMonthYear = (date: Date | string): string => {
 export const formatActivityDate = (date: Date | string): string => {
   const d = typeof date === 'string' ? new Date(date) : date;
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(getUserLocale(), { month: 'short', day: 'numeric' });
 };
 

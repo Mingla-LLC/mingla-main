@@ -2,6 +2,7 @@
 
 import { getRate } from '../../services/currencyService';
 import { currencySymbolMap } from '../../services/countryCurrencyService';
+import { getUserLocale } from '../../utils/localeUtils';
 
 // Currency symbols - use comprehensive list from countryCurrencyService
 // Falls back to basic symbols for any missing currencies
@@ -37,16 +38,16 @@ const wholeNumberCurrencies = [
 export function formatCurrency(amount: number, currencyCode: string = 'USD'): string {
   const currency = currencyData[currencyCode as keyof typeof currencyData];
   const rate = getRate(currencyCode);
-  if (!currency) return `$${Math.round(amount).toLocaleString('en-US')}`;
+  if (!currency) return `$${Math.round(amount).toLocaleString(getUserLocale())}`;
 
   const convertedAmount = amount * rate;
   
   if (wholeNumberCurrencies.includes(currencyCode)) {
-    return `${currency.symbol}${Math.round(convertedAmount).toLocaleString('en-US')}`;
+    return `${currency.symbol}${Math.round(convertedAmount).toLocaleString(getUserLocale())}`;
   }
   
   // For currencies with decimals, format with 2 decimal places and thousand separators
-  return `${currency.symbol}${convertedAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${currency.symbol}${convertedAmount.toLocaleString(getUserLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /**
@@ -162,13 +163,13 @@ export function formatPriceRange(priceRange: string | undefined, currencyCode: s
     const minConverted = Math.round(minUSD * rate);
     const maxConverted = Math.round(maxUSD * rate);
     
-    return `${symbol}${minConverted.toLocaleString('en-US')} - ${symbol}${maxConverted.toLocaleString('en-US')}`;
+    return `${symbol}${minConverted.toLocaleString(getUserLocale())} - ${symbol}${maxConverted.toLocaleString(getUserLocale())}`;
   } else if (singleMatch) {
     // Single value format: $100+ or $50
     const valueUSD = parseFloat(singleMatch[1].replace(/,/g, ''));
     const valueConverted = Math.round(valueUSD * rate);
     
-    return `${symbol}${valueConverted.toLocaleString('en-US')}${hasPlus ? '+' : ''}`;
+    return `${symbol}${valueConverted.toLocaleString(getUserLocale())}${hasPlus ? '+' : ''}`;
   }
 
   // If we can't parse, return original
