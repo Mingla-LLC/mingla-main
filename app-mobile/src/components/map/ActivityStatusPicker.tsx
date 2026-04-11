@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Switch, Pressable, StyleSheet, LayoutAnimation, UIManager, Platform } from 'react-native';
 import { Icon } from '../ui/Icon';
+import { useKeyboard } from '../../hooks/useKeyboard';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -54,6 +55,7 @@ export function ActivityStatusPicker({
   const [customText, setCustomText] = useState('');
   const [visDropdownOpen, setVisDropdownOpen] = useState(false);
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const { keyboardHeight } = useKeyboard();
 
   const toggleExpanded = () => {
     if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -78,7 +80,7 @@ export function ActivityStatusPicker({
   const statusIcon = STATUS_PRESETS.find(p => p.label === currentStatus)?.icon || 'chatbubble-ellipses-outline';
 
   return (
-    <View style={[styles.container, currentStatus && !expanded && styles.containerWithStatus]}>
+    <View style={[styles.container, currentStatus && !expanded && styles.containerWithStatus, keyboardHeight > 0 && { bottom: 12 + keyboardHeight }]}>
       {expanded && (
         <Pressable
           style={styles.backdrop}
