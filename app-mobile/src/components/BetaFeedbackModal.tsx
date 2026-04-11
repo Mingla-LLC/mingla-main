@@ -41,7 +41,7 @@ interface BetaFeedbackModalProps {
   screenBefore: string;
 }
 
-type ModalStep = 'category' | 'recording' | 'review' | 'screenshots' | 'submitting' | 'success' | 'error';
+type ModalStep = 'category' | 'recording' | 'review' | 'submitting' | 'success' | 'error';
 
 interface CategoryOption {
   key: FeedbackCategory;
@@ -438,103 +438,79 @@ export default function BetaFeedbackModal({
     </View>
   );
 
-  const renderReview = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Review your feedback</Text>
-      <Text style={styles.stepSubtitle}>{formatTimer(recordedDurationMs)} recorded</Text>
-
-      <TouchableOpacity style={styles.playButton} onPress={togglePlayback} activeOpacity={0.7}>
-        <Icon name={isPlaying ? 'pause' : 'play'} size={24} color={colors.primary[500]} />
-        <Text style={styles.playButtonText}>{isPlaying ? 'Pause' : 'Play'}</Text>
-      </TouchableOpacity>
-
-      <View style={styles.reviewActions}>
-        <TouchableOpacity style={styles.secondaryButton} onPress={reRecord} activeOpacity={0.7}>
-          <Text style={styles.secondaryButtonText}>Re-record</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.primaryButton} onPress={() => setStep('screenshots')} activeOpacity={0.7}>
-          <Text style={styles.primaryButtonText}>Next</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  const renderScreenshots = () => {
+  const renderReview = () => {
     const thumbWidth = (Dimensions.get('window').width - spacing.lg * 2 - spacing.sm * 2) / 3;
     return (
       <View style={styles.stepContainer}>
-        <Text style={styles.stepTitle}>Add Screenshots</Text>
-        <Text style={styles.stepSubtitle}>
-          {selectedScreenshots.length === 0
-            ? 'Optionally attach up to 10 images from your photo library'
-            : `${selectedScreenshots.length}/${MAX_SCREENSHOTS} screenshots`}
-        </Text>
+        <ScrollView style={styles.reviewScrollContainer} showsVerticalScrollIndicator={false}>
+          <Text style={styles.stepTitle}>Review your feedback</Text>
+          <Text style={styles.stepSubtitle}>{formatTimer(recordedDurationMs)} recorded</Text>
 
-        {permissionMessage !== '' && (
-          <Text style={styles.permissionMessage}>{permissionMessage}</Text>
-        )}
+          <TouchableOpacity style={styles.playButton} onPress={togglePlayback} activeOpacity={0.7}>
+            <Icon name={isPlaying ? 'pause' : 'play'} size={24} color={colors.primary[500]} />
+            <Text style={styles.playButtonText}>{isPlaying ? 'Pause' : 'Play'}</Text>
+          </TouchableOpacity>
 
-        {selectedScreenshots.length > 0 && (
-          <ScrollView
-            style={styles.screenshotScrollContainer}
-            contentContainerStyle={styles.screenshotGrid}
-            showsVerticalScrollIndicator={false}
-          >
-            {selectedScreenshots.map((img, index) => (
-              <View
-                key={`${img.uri}-${index}`}
-                style={[styles.screenshotThumb, { width: thumbWidth, height: thumbWidth }]}
-              >
-                <Image
-                  source={{ uri: img.uri }}
-                  style={styles.screenshotImage}
-                  resizeMode="cover"
-                />
-                <TouchableOpacity
-                  style={styles.screenshotRemove}
-                  onPress={() => removeScreenshot(index)}
-                  hitSlop={8}
-                  accessibilityLabel={`Remove screenshot ${index + 1}`}
+          {/* ── Screenshots Section (optional) ─────────────────────────── */}
+          <View style={styles.screenshotSectionDivider}>
+            <Text style={styles.screenshotSectionTitle}>
+              Attach Screenshots{selectedScreenshots.length > 0 ? ` (${selectedScreenshots.length}/${MAX_SCREENSHOTS})` : ''}
+            </Text>
+            <Text style={styles.screenshotSectionHint}>Optional — add images from your photo library</Text>
+          </View>
+
+          {permissionMessage !== '' && (
+            <Text style={styles.permissionMessage}>{permissionMessage}</Text>
+          )}
+
+          {selectedScreenshots.length > 0 && (
+            <View style={styles.screenshotGrid}>
+              {selectedScreenshots.map((img, index) => (
+                <View
+                  key={`${img.uri}-${index}`}
+                  style={[styles.screenshotThumb, { width: thumbWidth, height: thumbWidth }]}
                 >
-                  <Icon name="close-circle" size={22} color={colors.error[500]} />
-                </TouchableOpacity>
-              </View>
-            ))}
-          </ScrollView>
-        )}
+                  <Image
+                    source={{ uri: img.uri }}
+                    style={styles.screenshotImage}
+                    resizeMode="cover"
+                  />
+                  <TouchableOpacity
+                    style={styles.screenshotRemove}
+                    onPress={() => removeScreenshot(index)}
+                    hitSlop={8}
+                    accessibilityLabel={`Remove screenshot ${index + 1}`}
+                  >
+                    <Icon name="close-circle" size={22} color={colors.error[500]} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
 
-        {selectedScreenshots.length < MAX_SCREENSHOTS && (
-          <TouchableOpacity
-            style={styles.addScreenshotButton}
-            onPress={pickScreenshots}
-            activeOpacity={0.7}
-            accessibilityLabel="Add screenshots from library"
-          >
-            <Icon name="images-outline" size={20} color={colors.primary[500]} />
-            <Text style={styles.addScreenshotText}>
-              {selectedScreenshots.length === 0 ? 'Add from Library' : 'Add More'}
-            </Text>
+          {selectedScreenshots.length < MAX_SCREENSHOTS && (
+            <TouchableOpacity
+              style={styles.addScreenshotButton}
+              onPress={pickScreenshots}
+              activeOpacity={0.7}
+              accessibilityLabel="Add screenshots from library"
+            >
+              <Icon name="images-outline" size={20} color={colors.primary[500]} />
+              <Text style={styles.addScreenshotText}>
+                {selectedScreenshots.length === 0 ? 'Add from Library' : 'Add More'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+
+        {/* ── Action Buttons (always visible at bottom) ──────────────── */}
+        <View style={styles.reviewActions}>
+          <TouchableOpacity style={styles.secondaryButton} onPress={reRecord} activeOpacity={0.7}>
+            <Text style={styles.secondaryButtonText}>Re-record</Text>
           </TouchableOpacity>
-        )}
 
-        <View style={styles.screenshotActions}>
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => setStep('review')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.secondaryButtonText}>Back</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={handleSubmit}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.primaryButtonText}>
-              {selectedScreenshots.length === 0 ? 'Skip & Submit' : 'Submit'}
-            </Text>
+          <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} activeOpacity={0.7}>
+            <Text style={styles.primaryButtonText}>Submit</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -562,7 +538,7 @@ export default function BetaFeedbackModal({
       <Text style={styles.errorText}>{errorMessage}</Text>
       <TouchableOpacity
         style={styles.secondaryButton}
-        onPress={() => setStep(recordedUri ? 'screenshots' : 'category')}
+        onPress={() => setStep(recordedUri ? 'review' : 'category')}
         activeOpacity={0.7}
       >
         <Text style={styles.secondaryButtonText}>Try Again</Text>
@@ -575,7 +551,6 @@ export default function BetaFeedbackModal({
       case 'category': return renderCategory();
       case 'recording': return renderRecording();
       case 'review': return renderReview();
-      case 'screenshots': return renderScreenshots();
       case 'submitting': return renderSubmitting();
       case 'success': return renderSuccess();
       case 'error': return renderError();
@@ -811,12 +786,32 @@ const styles = StyleSheet.create({
   reviewActions: {
     flexDirection: 'row',
     gap: spacing.sm,
+    marginTop: spacing.md,
   },
 
-  // Screenshots
-  screenshotScrollContainer: {
-    maxHeight: 240,
-    marginBottom: spacing.md,
+  // Review scroll (content scrolls, buttons stay pinned below)
+  reviewScrollContainer: {
+    maxHeight: 340,
+  },
+
+  // Screenshots (inline on review step)
+  screenshotSectionDivider: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.gray[200],
+    marginBottom: spacing.sm,
+  },
+  screenshotSectionTitle: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginBottom: 2,
+  },
+  screenshotSectionHint: {
+    ...typography.xs,
+    color: colors.text.tertiary,
+    marginBottom: spacing.sm,
   },
   screenshotGrid: {
     flexDirection: 'row',
@@ -856,10 +851,6 @@ const styles = StyleSheet.create({
     ...typography.md,
     fontWeight: fontWeights.semibold,
     color: colors.primary[500],
-  },
-  screenshotActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
   },
   permissionMessage: {
     ...typography.xs,

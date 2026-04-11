@@ -1,7 +1,7 @@
 # Master Bug List
 
-> Last updated: 2026-04-10
-> Total: 306 | Open: 132 | Closed: 106 | Verified (B grade): 21 | Deferred: 1
+> Last updated: 2026-04-11
+> Total: 306 | Open: 131 | Closed: 107 | Verified (B grade): 21 | Deferred: 1
 
 ## Summary by Status
 
@@ -9,10 +9,10 @@
 |--------|-------|---|
 | Open (F grade, unaudited) | 123 | 41% |
 | Open (F grade, known bug) | 7 | 2% |
-| Open (F grade, missing-feature) | 2 | <1% |
+| Open (F grade, missing-feature) | 1 | <1% |
 | Open (F grade, quality-gap) | 2 | <1% |
 | Open (D grade, quality-gap) | 2 | <1% |
-| Closed (A grade) | 88 | 30% |
+| Closed (A grade) | 89 | 30% |
 | Verified (B grade) | 16 | 5% |
 | Verified (C grade) | 1 | <1% |
 | Deferred | 1 | <1% |

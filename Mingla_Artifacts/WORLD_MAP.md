@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-10
+> Last updated: 2026-04-11
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 
@@ -251,8 +251,10 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0352 | Beta feedback modal — end-to-end defects (freeze, stale state, audio leak, icon errors, close-path gaps) | Profile | S1 | bug | closed | A | 2026-04-09 | QA PASS (AH-051). Full audit found 4 defects (missing pause icon, orphaned success timer, unstable onClose, cached permissions). All fixed in clean pass (AH-050). Prior patches preserved. 5 files changed total. |
 | ORCH-0353 | Permission storm on first landing — 4 OS dialogs fire on boot | App Lifecycle | S1 | ux | closed | A | 2026-04-09 | Device-verified PASS. Split OneSignal login/permission, removed auto location/camera/tracking from MobileFeaturesProvider, ATT wait→0. Zero dialogs on Home. |
 | ORCH-0354 | Coach mark guided tour system (10-step, cross-tab, resumable) | App Lifecycle | S1 | missing-feature | implementing | F | 2026-04-09 | Spec: SPEC_ORCH-0349_COACH_MARK_SYSTEM.md. Design: Hybrid bottom card + self-highlight. Phase 1 pending. Prerequisite ORCH-0353 complete. |
-| ORCH-0371 | Beta feedback — optional screenshot attachments (up to 10) | Profile | S3 | missing-feature | implementing | F | — | Spec: SPEC_ORCH-0371_FEEDBACK_SCREENSHOTS.md. 7 files, 3 domains, 17 success criteria. Dispatched to implementor. |
-| ORCH-0373 | Friend profile screen overhaul — hide username, add bio + stats (places/streak/friends non-tappable), fix interests not showing, wire chat avatar tap to open profile, wire onMessage | Profile + Chat | S1 | quality-gap | implementing | F | — | Investigation APPROVED (5 root causes proven). Dispatching to implementor. Report: INVESTIGATION_ORCH-0373_FRIEND_PROFILE_OVERHAUL.md |
+| ORCH-0371 | Beta feedback — optional screenshot attachments (up to 10) | Profile | S3 | missing-feature | closed | A | 2026-04-11 | QA PASS (0 defects, 17/17 SC). Commit a666dee7. Migration applied, functions deployed. Report: QA_ORCH-0371_FEEDBACK_SCREENSHOTS_REPORT.md |
+| ORCH-0373 | Friend profile screen overhaul — hide username, add bio + stats (places/streak/friends non-tappable), fix interests, wire chat avatar tap, wire onMessage (friends-only gate) | Profile + Chat | S1 | quality-gap | closed | A | 2026-04-11 | QA PASS 12/12 + rework approved. 5 files changed. Message button gated to friends-only. Reports: QA_ORCH-0373 + REWORK_MESSAGE_GATE. |
+| ORCH-0374 | Friend profile — show GPS city instead of country code, and make interests visible to all viewers (not just friends) | Profile | S1 | quality-gap | closed | A | 2026-04-11 | Implementation approved. GPS city persisted to profiles.location on profile open. RLS policy added for public display interests read. Migration: 20260411000002. Deploy order: migration first, then OTA. |
+| ORCH-0375 | Own-profile + friend-profile stats decorative — placesVisited=0, streakDays=0 hardcoded despite real computation engine existing | Profile | S2 | quality-gap | investigated | F | — | Constitutional Rule #9 violation (no fabricated data). ProfilePage.tsx:330-331 and ViewFriendProfileScreen.tsx:243-244 hardcode zeros. enhancedProfileService.ts has working calculateUserAchievements(). GamifiedHistory.tsx already uses real data. Fix: wire useEnhancedProfile into both screens. |
 
 ### Section 9: Map & Location
 
@@ -326,7 +328,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0147 | Silent swipe blocking after limit | Payments | S2 | quality-gap | closed | A | 2026-03-31 | Fixed with ORCH-0146 — PanResponder now shows paywall |
 | ORCH-0148 | useEffectiveTier can downgrade (misleading comment) | Payments | S2 | quality-gap | closed | A | 2026-03-31 | Fixed with ORCH-0143 — comment corrected in useSubscription.ts |
 | ORCH-0149 | Trial abuse: delete+re-signup = infinite Elite | Payments | S1 | bug | closed | A | 2026-03-31 | QA_PAYMENTS_EXPIRY_TRIAL_REPORT.md — phone-hash table, checked at onboarding |
-| ORCH-0372 | Price tier restructure: 3 tiers (Free/Pro/Elite) → 2 tiers (Free/Mingla+) | Payments | S0 | architecture-flaw | speccing | F | — | Forensic complete (35 files). 8 decisions locked. Spec dispatched. No trial, remove swipe tracking, 1 pairing free, unlimited members all, mingla_plus in DB, RC=Mingla Plus. |
+| ORCH-0372 | Price tier restructure: 3 tiers (Free/Pro/Elite) → 2 tiers (Free/Mingla+) | Payments | S0 | architecture-flaw | implementing | F | — | Spec APPROVED. Implementor dispatched in 2 waves: W1=backend (migration+edge), W2=frontend (mobile+admin). Awaiting W1 implementation. |
 
 ### Section 12: Calendar & Scheduling
 
@@ -570,6 +572,12 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0263 | Popularity indicators | UI | S3 | unaudited | open | F | — | — |
 | ORCH-0264 | Confidence score | UI | S3 | unaudited | open | F | — | — |
 | ORCH-0265 | Icon map completeness | UI | S2 | bug | closed | A | 2026-03-22 | Commit 88f2d43f |
+
+### Cross-Cutting: Code Quality & Type Safety
+
+| ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
+|----|-------|---------|----------|-------|--------|-------|----------|----------|
+| ORCH-0376 | 272 pre-existing TypeScript errors — 4-phase cleanup (dead ui/ code, type defs, undefined vars, null safety) | Code Quality | S3 | design-debt | implementing | F | — | 76 errors from 27 unused web-only shadcn/ui components (dead code). ~64 TS2339 (missing properties). ~41 TS2769 (overload mismatches). ~39 TS2322 (type assignment). ~34 TS2307 (missing modules). ~15 undefined variable refs (real bugs). Phased fix with regression checks. |
 
 ---
 

@@ -1,7 +1,7 @@
 # Agent Handoffs
 
-> Last updated: 2026-04-10
-> Total: 0 active | 65 completed
+> Last updated: 2026-04-11
+> Total: 0 active | 69 completed
 
 ## Active Dispatches
 
@@ -13,6 +13,10 @@
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-063 | ORCH-0371 | Tester | 2026-04-11 | QA_ORCH-0371_FEEDBACK_SCREENSHOTS_REPORT.md | PASS |
+| AH-062 | ORCH-0371 | Implementor | 2026-04-11 | IMPLEMENTATION_ORCH-0371_FEEDBACK_SCREENSHOTS_REPORT.md | APPROVED |
+| AH-061 | ORCH-0371 | Spec Writer | 2026-04-11 | SPEC_ORCH-0371_FEEDBACK_SCREENSHOTS.md | APPROVED |
+| AH-060 | ORCH-0371 | Investigator (intake) | 2026-04-11 | Full chain mapped during intake | APPROVED |
 | AH-059 | ORCH-0355/0359/0361 | Tester | 2026-04-10 | QA_WAVE2_ORCH-0355-0359-0361.md | PASS |
 | AH-058 | ORCH-0355/0359/0361 | Implementor | 2026-04-10 | IMPLEMENTATION_WAVE2_ORCH-0355-0359-0361.md | APPROVED |
 | AH-057 | ORCH-0358/0362/0363/0364/0365 | Tester | 2026-04-10 | QA_WAVE1_ORCH-0358-0362-0363-0364-0365.md | PASS |
