@@ -41,7 +41,6 @@ interface DiscoverMapProps {
   scheduledCardIds: Set<string>;
   onCardExpand: (card: Recommendation) => void;
   onPersonMessage?: (userId: string) => void;
-  onPersonInvite?: (userId: string) => void;
   onPersonCards?: (userId: string) => void;
   onPersonProfile?: (userId: string) => void;
   accountPreferences: { currency?: string; measurementSystem?: string };
@@ -63,7 +62,6 @@ export function DiscoverMap({
   scheduledCardIds,
   onCardExpand,
   onPersonMessage,
-  onPersonInvite,
   onPersonCards,
   onPersonProfile,
   accountPreferences,
@@ -511,7 +509,6 @@ export function DiscoverMap({
         person={selectedPerson}
         onClose={() => setSelectedPerson(null)}
         onMessage={handlePersonMessage}
-        onInviteToSession={(userId) => onPersonInvite?.(userId)}
         onViewPairedCards={(userId) => onPersonCards?.(userId)}
         onViewProfile={handleViewProfile}
         onAddFriend={handleAddFriendFromMap}

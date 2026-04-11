@@ -9,7 +9,6 @@ interface PersonBottomSheetProps {
   person: NearbyPerson | null;
   onClose: () => void;
   onMessage: (userId: string) => void;
-  onInviteToSession: (userId: string) => void;
   onViewPairedCards: (userId: string) => void;
   onViewProfile: (userId: string) => void;
   onAddFriend: (userId: string) => void | Promise<void>;
@@ -20,7 +19,7 @@ interface PersonBottomSheetProps {
 const snapPoints = ['40%'];
 
 export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>(
-  ({ person, onClose, onMessage, onInviteToSession, onViewPairedCards, onViewProfile, onAddFriend, onBlock, onReport }, ref) => {
+  ({ person, onClose, onMessage, onViewPairedCards, onViewProfile, onAddFriend, onBlock, onReport }, ref) => {
     const [friendRequestSending, setFriendRequestSending] = useState(false);
     const [friendRequestSent, setFriendRequestSent] = useState(false);
 
@@ -97,7 +96,7 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                 </View>
               )}
 
-              {/* Action buttons — friends/paired get Message + Invite/Cards + Profile; strangers get Profile only */}
+              {/* Action buttons — friends/paired get Message + Cards + Profile; strangers get Profile only */}
               {!person.isSeed && (
               <View style={styles.actionRow}>
                 {(person.relationship === 'friend' || person.relationship === 'paired') && (
@@ -105,14 +104,6 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                     <BlurView intensity={40} tint="light" style={styles.blurButton}>
                       <Icon name="chatbubble-outline" size={18} color="#111" />
                       <Text style={styles.actionText}>Message</Text>
-                    </BlurView>
-                  </TouchableOpacity>
-                )}
-                {person.relationship === 'friend' && (
-                  <TouchableOpacity style={styles.actionWrapper} onPress={() => onInviteToSession(person.userId)} activeOpacity={0.7}>
-                    <BlurView intensity={40} tint="light" style={styles.blurButton}>
-                      <Icon name="people-outline" size={18} color="#111" />
-                      <Text style={styles.actionText}>Invite</Text>
                     </BlurView>
                   </TouchableOpacity>
                 )}

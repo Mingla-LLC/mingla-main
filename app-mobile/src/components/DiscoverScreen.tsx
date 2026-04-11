@@ -3674,7 +3674,6 @@ export default function DiscoverScreen({
                     const pill = pairingPills.find((p) => p.pairedUserId === userId);
                     if (pill) setSelectedPillId(pill.id);
                   }}
-                  onPersonInvite={() => {}}
                   onPersonCards={(userId) => {
                     const pill = pairingPills.find(p => p.pairedUserId === userId);
                     if (pill) {
