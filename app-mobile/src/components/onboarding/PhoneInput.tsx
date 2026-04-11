@@ -22,6 +22,7 @@ import {
 } from '../../constants/designSystem';
 import { getCountryByCode } from '../../constants/countries';
 import { CountryPickerModal } from './CountryPickerModal';
+import { useTranslation } from 'react-i18next';
 
 const PHONE_ACCESSORY_ID = 'phoneInputDone';
 
@@ -42,6 +43,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
   error,
   disabled,
 }) => {
+  const { t } = useTranslation('onboarding')
   const [focused, setFocused] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -128,7 +130,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
           activeOpacity={0.6}
           disabled={disabled}
           accessibilityRole="button"
-          accessibilityLabel={`Selected country: ${country?.name || countryCode}. Tap to change.`}
+          accessibilityLabel={t('phone.country_accessibility', { name: country?.name || countryCode })}
         >
           <Text style={styles.flag}>{country?.flag || ''}</Text>
           <Text style={styles.dialCode}>{country?.dialCode || '+1'}</Text>
@@ -150,7 +152,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
           keyboardType="phone-pad"
           returnKeyType="done"
           maxLength={15}
-          placeholder="(555) 123-4567"
+          placeholder={t('phone.placeholder_phone')}
           placeholderTextColor={colors.gray[400]}
           editable={!disabled}
           onFocus={() => setFocused(true)}
@@ -158,7 +160,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
           onSubmitEditing={Keyboard.dismiss}
           blurOnSubmit
           inputAccessoryViewID={Platform.OS === 'ios' ? PHONE_ACCESSORY_ID : undefined}
-          accessibilityLabel="Phone number"
+          accessibilityLabel={t('phone.headline')}
         />
       </Animated.View>
 
@@ -186,9 +188,9 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
               onPress={Keyboard.dismiss}
               style={styles.doneButton}
               accessibilityRole="button"
-              accessibilityLabel="Done"
+              accessibilityLabel={t('common:done')}
             >
-              <Text style={styles.doneButtonText}>Done</Text>
+              <Text style={styles.doneButtonText}>{t('common:done')}</Text>
             </TouchableOpacity>
           </View>
         </InputAccessoryView>

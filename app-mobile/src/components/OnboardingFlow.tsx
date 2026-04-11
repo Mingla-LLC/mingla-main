@@ -39,7 +39,10 @@ import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../uti
 // Legacy saved_people + audio services removed — pairing uses real behavior data.
 import { getCurrencySymbol, formatNumberWithCommas } from '../utils/currency'
 import { getRate } from '../services/currencyService'
-import { deckService } from '../services/deckService'
+import { deckService, DeckResponse } from '../services/deckService'
+import { buildDeckQueryKey } from '../hooks/useDeckCards'
+import { normalizeCategoryArray } from '../utils/categoryUtils'
+import { normalizeDateTime } from '../utils/cardConverters'
 import { withTimeout } from '../utils/withTimeout'
 import { logAppsFlyerEvent } from '../services/appsFlyerService'
 
@@ -76,8 +79,11 @@ import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTier
 import { categories } from '../constants/categories'
 import { getCountryByCode } from '../constants/countries'
 import { getDefaultLanguageCode, getLanguageByCode } from '../constants/languages'
-import { LanguagePickerModal } from './onboarding/LanguagePickerModal'
 import { CountryPickerModal } from './onboarding/CountryPickerModal'
+import { LanguageSelectionStep } from './onboarding/LanguageSelectionStep'
+import { useTranslation } from 'react-i18next'
+import i18n from '../i18n'
+import { persistLanguage } from '../i18n'
 import { getCurrencyByCountryCode, getMeasurementSystem } from '../services/countryCurrencyService'
 import {
   colors,
@@ -165,12 +171,13 @@ interface GettingExperiencesScreenProps {
   onComplete: () => void
 }
 
-const LOADING_MESSAGES = [
-  'Checking spots nearby...',
-  'Matching your preferences...',
-  'Finding hidden gems...',
-  'Almost there...',
-]
+// Loading messages are now fetched via i18n in GettingExperiencesScreen
+const LOADING_MESSAGE_KEYS = [
+  'getting_experiences.loading_1',
+  'getting_experiences.loading_2',
+  'getting_experiences.loading_3',
+  'getting_experiences.loading_4',
+] as const
 
 const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
   userId,
@@ -178,6 +185,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
   warmPoolPromiseRef,
   onComplete,
 }) => {
+  const { t: tOnboarding } = useTranslation('onboarding')
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
   const [messageIndex, setMessageIndex] = useState(0)
   const [retryCount, setRetryCount] = useState(0)
@@ -227,7 +235,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
     if (phase !== 'loading') return
     const interval = setInterval(() => {
       Animated.timing(messageOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-        setMessageIndex(prev => (prev + 1) % LOADING_MESSAGES.length)
+        setMessageIndex(prev => (prev + 1) % LOADING_MESSAGE_KEYS.length)
         Animated.timing(messageOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start()
       })
     }, 1200)
@@ -404,7 +412,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
           </View>
 
           <Animated.Text style={[getExpStyles.statusMessage, { opacity: messageOpacity }]}>
-            {LOADING_MESSAGES[messageIndex]}
+            {tOnboarding(LOADING_MESSAGE_KEYS[messageIndex])}
           </Animated.Text>
         </Animated.View>
       )}
@@ -648,6 +656,7 @@ const OnboardingFlow = ({
 }: OnboardingFlowProps) => {
   const { user, profile, setProfile } = useAppStore()
   const queryClient = useQueryClient()
+  const { t } = useTranslation(['onboarding', 'common'])
 
   // ─── Friends (for incoming request UI in Step 5/friends) ───
   const {
@@ -687,8 +696,8 @@ const OnboardingFlow = ({
   // without a sign-out path.
   const isFirstScreen = phonePreVerified
     ? (navState.step === 2 && navState.subStep === 'value_prop') ||
-      (navState.step === 1 && navState.subStep === 'welcome')
-    : (navState.step === 1 && navState.subStep === 'welcome')
+      (navState.step === 1 && navState.subStep === 'language')
+    : (navState.step === 1 && navState.subStep === 'language')
 
   // ── AppsFlyer: track each onboarding sub-step transition ──
   const prevSubStepRef = useRef(navState.subStep)
@@ -776,7 +785,6 @@ const OnboardingFlow = ({
   const [prefsSaveError, setPrefsSaveError] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
   // saving state removed — save handlers (Path A/B) deleted
-  const [showLanguagePicker, setShowLanguagePicker] = useState(false)
   const [showCountryPicker, setShowCountryPicker] = useState(false)
   const [showCustomTravelTime, setShowCustomTravelTime] = useState(false)
   const [customTravelInput, setCustomTravelInput] = useState('')
@@ -803,7 +811,6 @@ const OnboardingFlow = ({
   // ─── Reset picker modals when navigating away from details ───
   useEffect(() => {
     if (navState.subStep !== 'details') {
-      setShowLanguagePicker(false)
       setShowDatePicker(false)
     }
   }, [navState.subStep])
@@ -1600,28 +1607,94 @@ const OnboardingFlow = ({
 
       persistStep(5).catch(() => {})
 
-      // Warm the deck pool — both category cards and curated cards
+      // ── Pre-seed React Query caches (ORCH-0386) ────────────────────────
+      // Pre-seed the userPreferences cache so RecommendationsContext doesn't
+      // re-fetch from DB after onboarding transition (~200ms saved).
+      const datetimePref = new Date().toISOString()
+      queryClient.setQueryData(['userPreferences', user.id], {
+        categories: data.selectedCategories,
+        intents: data.selectedIntents,
+        price_tiers: data.selectedPriceTiers ?? DEFAULT_PRICE_TIERS,
+        budget_min: 0,
+        budget_max: backCompatBudgetMax,
+        travel_mode: data.travelMode,
+        travel_constraint_type: 'time',
+        travel_constraint_value: data.travelTimeMinutes,
+        datetime_pref: datetimePref,
+        date_option: 'now',
+        time_slot: null,
+        use_gps_location: data.useGpsLocation,
+        custom_location: data.manualLocation,
+        custom_lat: data.coordinates?.lat ?? null,
+        custom_lng: data.coordinates?.lng ?? null,
+      })
+
+      // ── Real deck prefetch (replaces dead warmDeckPool no-op) ──────────
+      // Fire the actual deck fetch NOW (end of Step 4). User will spend
+      // 25-100s on Steps 5-7a (friends, collabs, consent) — plenty of time
+      // for this to complete. On success, pre-seeds the React Query cache so
+      // useDeckCards finds data on first mount and renders instantly.
+      // On failure, the catch logs and continues — post-transition cold fetch
+      // still works as fallback (zero regression risk).
       const coords = data.coordinates
       if (coords) {
-        const warmPoolPromise = deckService.warmDeckPool({
-          location: coords,
-          categories: data.selectedCategories,
-          intents: data.selectedIntents,
-          priceTiers: data.selectedPriceTiers ?? DEFAULT_PRICE_TIERS,
+        // Apply identical normalization as RecommendationsContext stableDeckParams
+        const normalizedCategories = normalizeCategoryArray(
+          data.selectedCategories,
+          data.selectedCategories.length
+        )
+        // Cap intents to 1 matching RecommendationsContext
+        const normalizedIntents = (data.selectedIntents ?? []).slice(0, 1)
+        const priceTiers = data.selectedPriceTiers ?? DEFAULT_PRICE_TIERS
+
+        // Build the exact query key useDeckCards will look for post-transition
+        const deckQueryKey = buildDeckQueryKey({
+          lat: coords.lat,
+          lng: coords.lng,
+          categories: normalizedCategories,
+          intents: normalizedIntents,
+          priceTiers,
           budgetMin: 0,
           budgetMax: backCompatBudgetMax,
           travelMode: data.travelMode,
           travelConstraintType: 'time',
           travelConstraintValue: data.travelTimeMinutes,
-          datetimePref: new Date().toISOString(),
+          datetimePref,
           dateOption: 'now',
           timeSlot: null,
-        }).catch((err) => {
-          console.warn('[Onboarding] Warm pool failed:', err);
-        });
+          batchSeed: 0,
+          excludeCardIds: [],
+        })
 
-        // Store promise ref for readiness check in handleLaunch
-        warmPoolPromiseRef.current = warmPoolPromise;
+        const prefetchPromise = deckService.fetchDeck({
+          location: coords,
+          categories: normalizedCategories,
+          intents: normalizedIntents,
+          priceTiers: priceTiers as import('../constants/priceTiers').PriceTierSlug[],
+          budgetMin: 0,
+          budgetMax: backCompatBudgetMax,
+          travelMode: data.travelMode,
+          travelConstraintType: 'time' as const,
+          travelConstraintValue: data.travelTimeMinutes,
+          datetimePref,
+          dateOption: 'now',
+          timeSlot: null,
+          batchSeed: 0,
+          limit: 200,
+          excludeCardIds: [],
+        }).then((result: DeckResponse) => {
+          // Pre-seed the deck-cards cache with the exact key useDeckCards uses
+          queryClient.setQueryData(deckQueryKey, result)
+          if (__DEV__) {
+            console.log(`[Onboarding] Deck prefetch complete: ${result.cards.length} cards cached`)
+          }
+        }).catch((err: unknown) => {
+          // Non-blocking — cold fetch will work as fallback post-transition
+          console.warn('[Onboarding] Deck prefetch failed (will retry post-transition):', err)
+        })
+
+        // Store promise for GettingExperiencesScreen readiness check
+        warmPoolPromiseRef.current = prefetchPromise
       }
 
       goNext()
@@ -1842,50 +1915,52 @@ const OnboardingFlow = ({
     const { step, subStep } = navState
 
     switch (subStep) {
+      case 'language':
+        return { label: t('common:continue'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
       case 'welcome': {
         const nameReady = data.firstName.trim().length > 0 && data.lastName.trim().length > 0;
-        return { label: "Let's go", disabled: !nameReady, loading: false, onPress: handleSaveName, hide: false }
+        return { label: t('common:lets_go'), disabled: !nameReady, loading: false, onPress: handleSaveName, hide: false }
       }
       case 'phone':
         return data.phoneVerified
-          ? { label: 'Continue', disabled: false, loading: false, onPress: () => goToSubStep('gender_identity'), hide: false }
-          : { label: 'Send code', disabled: !isPhoneValid() || !smsConsentChecked, loading: sendingOtp, onPress: handleSendOtp, hide: false }
+          ? { label: t('common:continue'), disabled: false, loading: false, onPress: () => goToSubStep('gender_identity'), hide: false }
+          : { label: t('onboarding:phone.cta_send_code'), disabled: !isPhoneValid() || !smsConsentChecked, loading: sendingOtp, onPress: handleSendOtp, hide: false }
       case 'otp':
-        return { label: 'Verify', disabled: otpCode.length < 6, loading: otpLoading, onPress: () => handleVerifyOtp(otpCode), hide: true }
+        return { label: t('onboarding:otp.cta_verify'), disabled: otpCode.length < 6, loading: otpLoading, onPress: () => handleVerifyOtp(otpCode), hide: true }
       case 'gender_identity':
-        return { label: 'Next', disabled: !data.userGender, loading: false, onPress: handleGoNext, hide: false }
+        return { label: t('common:next'), disabled: !data.userGender, loading: false, onPress: handleGoNext, hide: false }
       case 'details':
-        return { label: "Let's go", disabled: !data.userBirthday, loading: false, onPress: handleSaveIdentity, hide: false }
+        return { label: t('common:lets_go'), disabled: !data.userBirthday, loading: false, onPress: handleSaveIdentity, hide: false }
       case 'value_prop':
-        return { label: 'Next', disabled: false, loading: false, onPress: () => { logger.action(`Value prop beat advance`, { beat: valuePropBeat }); setValuePropBeat(Math.min(valuePropBeat + 1, 2)); if (valuePropBeat >= 2) handleGoNext() }, hide: false }
+        return { label: t('common:next'), disabled: false, loading: false, onPress: () => { logger.action(`Value prop beat advance`, { beat: valuePropBeat }); setValuePropBeat(Math.min(valuePropBeat + 1, 2)); if (valuePropBeat >= 2) handleGoNext() }, hide: false }
       case 'intents':
-        return { label: 'Next', disabled: data.selectedIntents.length === 0, loading: false, onPress: () => {
+        return { label: t('common:next'), disabled: data.selectedIntents.length === 0, loading: false, onPress: () => {
           persistStep(3).catch(() => {})
           handleGoNext()
         }, hide: false }
       case 'location':
-        return { label: 'Enable location', disabled: locationStatus === 'requesting', loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
+        return { label: t('onboarding:location.cta_enable'), disabled: locationStatus === 'requesting', loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
       case 'celebration':
-        return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
+        return { label: t('common:next'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
       case 'manual_location':
-        return { label: 'Next', disabled: !selectedLocation, loading: savingPrefs, onPress: handleManualLocation, hide: false }
+        return { label: t('common:next'), disabled: !selectedLocation, loading: savingPrefs, onPress: handleManualLocation, hide: false }
       case 'categories':
-        return { label: 'Next', disabled: data.selectedCategories.length === 0, loading: false, onPress: () => {
+        return { label: t('common:next'), disabled: data.selectedCategories.length === 0, loading: false, onPress: () => {
           handleGoNext()
         }, hide: false }
       case 'budget':
-        return { label: 'Next', disabled: data.selectedPriceTiers.length === 0, loading: false, onPress: () => {
+        return { label: t('common:next'), disabled: data.selectedPriceTiers.length === 0, loading: false, onPress: () => {
           handleGoNext()
         }, hide: false }
       case 'transport':
-        return { label: 'Next', disabled: false, loading: false, onPress: () => {
+        return { label: t('common:next'), disabled: false, loading: false, onPress: () => {
           handleGoNext()
         }, hide: false }
       case 'travel_time':
-        return { label: prefsSaveError ? 'Retry' : 'Next', disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
+        return { label: prefsSaveError ? t('common:retry') : t('common:next'), disabled: false, loading: savingPrefs, onPress: handleSavePreferences, hide: false }
       case 'friends_and_pairing':
         return {
-          label: 'Continue',
+          label: t('common:continue'),
           disabled: false,
           loading: false,
           onPress: () => goNext(),
@@ -1894,7 +1969,7 @@ const OnboardingFlow = ({
       case 'collaborations': {
         const hasActed = data.createdSessions.length > 0 || data.collabActionTaken
         return {
-          label: hasActed ? 'Continue' : "I'll do this later",
+          label: hasActed ? t('common:continue') : t('common:ill_do_this_later'),
           disabled: false,
           loading: false,
           onPress: () => goNext(),
@@ -1902,12 +1977,12 @@ const OnboardingFlow = ({
         }
       }
       case 'consent':
-        return { label: "Sounds good — let's go", disabled: false, loading: false, onPress: () => goNext(), hide: false }
+        return { label: t('common:sounds_good_lets_go'), disabled: false, loading: false, onPress: () => goNext(), hide: false }
       case 'getting_experiences':
         // Full-screen takeover, no shell CTA
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       default:
-        return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
+        return { label: t('common:next'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
     }
   }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, smsConsentChecked, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep])
 
@@ -1917,6 +1992,19 @@ const OnboardingFlow = ({
     logger.onboarding(`Rendering: Step ${step} / ${subStep}`)
 
     // ─── STEP 1 ───
+    if (subStep === 'language') {
+      return (
+        <LanguageSelectionStep
+          selectedCode={data.userPreferredLanguage}
+          onSelect={(code: string) => {
+            setData((p) => ({ ...p, userPreferredLanguage: code }))
+            i18n.changeLanguage(code)
+            persistLanguage(code)
+          }}
+        />
+      )
+    }
+
     if (subStep === 'welcome') {
       const hasName = (data.firstName || '').trim().length > 0;
 
@@ -1927,24 +2015,24 @@ const OnboardingFlow = ({
             <Animated.Text
               style={[styles.welcomeGreeting, { opacity: heyAnim.opacity, transform: [{ translateY: heyAnim.translateY }] }]}
             >
-              Hey
+              {t('onboarding:welcome.greeting_hey')}
             </Animated.Text>
             <Animated.Text
               style={[styles.welcomeName, { opacity: nameAnim.opacity, transform: [{ translateY: nameAnim.translateY }, { scale: nameAnim.scale }] }]}
               numberOfLines={1}
               adjustsFontSizeToFit
             >
-              {data.firstName.trim()}.
+              {t('onboarding:welcome.greeting_name', { name: data.firstName.trim() })}
             </Animated.Text>
             <Animated.Text
               style={[styles.welcomeTaglineTop, { opacity: tagTopAnim.opacity, transform: [{ translateY: tagTopAnim.translateY }] }]}
             >
-              Good taste
+              {t('onboarding:welcome.greeting_good_taste')}
             </Animated.Text>
             <Animated.Text
               style={[styles.welcomeTaglineAccent, { opacity: tagAccentAnim.opacity, transform: [{ translateY: tagAccentAnim.translateY }] }]}
             >
-              just walked in.
+              {t('onboarding:welcome.greeting_walked_in')}
             </Animated.Text>
           </View>
         );
@@ -1953,16 +2041,16 @@ const OnboardingFlow = ({
       // Phase 1: Name collection — minimal, centered, modern
       return (
         <View style={styles.nameCollectionContainer}>
-          <Text style={styles.nameGreeting}>We know</Text>
-          <Text style={styles.nameGreetingAccent}>good taste</Text>
-          <Text style={styles.nameGreeting}>just walked in.</Text>
-          <Text style={styles.namePrompt}>But we don't know your name yet.</Text>
+          <Text style={styles.nameGreeting}>{t('onboarding:welcome.we_know')}</Text>
+          <Text style={styles.nameGreetingAccent}>{t('onboarding:welcome.good_taste')}</Text>
+          <Text style={styles.nameGreeting}>{t('onboarding:welcome.just_walked_in')}</Text>
+          <Text style={styles.namePrompt}>{t('onboarding:welcome.name_prompt')}</Text>
 
           <View style={styles.nameInputRow}>
             <TextInput
               ref={firstNameRef}
               style={styles.nameInput}
-              placeholder="First"
+              placeholder={t('onboarding:welcome.placeholder_first')}
               placeholderTextColor={colors.gray[300]}
               value={data.firstName}
               onChangeText={(text) => setData((p) => ({ ...p, firstName: text }))}
@@ -1975,7 +2063,7 @@ const OnboardingFlow = ({
             <TextInput
               ref={lastNameRef}
               style={styles.nameInput}
-              placeholder="Last"
+              placeholder={t('onboarding:welcome.placeholder_last')}
               placeholderTextColor={colors.gray[300]}
               value={data.lastName}
               onChangeText={(text) => setData((p) => ({ ...p, lastName: text }))}
@@ -1997,14 +2085,14 @@ const OnboardingFlow = ({
         const displayPhone = profile?.phone || buildE164()
         return (
           <View>
-            <Text style={styles.headline}>You're all set.</Text>
-            <Text style={styles.body}>Your number's locked in. One less thing.</Text>
+            <Text style={styles.headline}>{t('onboarding:phone.verified_headline')}</Text>
+            <Text style={styles.body}>{t('onboarding:phone.verified_body')}</Text>
             <View style={styles.verifiedCard}>
               <View style={styles.verifiedBadgeRow}>
                 <View style={styles.verifiedIconCircle}>
                   <Icon name="checkmark" size={16} color="#fff" />
                 </View>
-                <Text style={styles.verifiedBadgeText}>Verified</Text>
+                <Text style={styles.verifiedBadgeText}>{t('common:verified')}</Text>
               </View>
               <Text style={styles.verifiedPhoneNumber}>{displayPhone}</Text>
             </View>
@@ -2014,8 +2102,8 @@ const OnboardingFlow = ({
 
       return (
         <View>
-          <Text style={styles.headline}>What's your number?</Text>
-          <Text style={styles.body}>We'll send a code. Takes two seconds.</Text>
+          <Text style={styles.headline}>{t('onboarding:phone.headline')}</Text>
+          <Text style={styles.body}>{t('onboarding:phone.body')}</Text>
           <View style={styles.inputSpacing}>
             <PhoneInput
               value={data.phoneNumber}
@@ -2030,7 +2118,7 @@ const OnboardingFlow = ({
             style={styles.consentRow}
             onPress={() => setSmsConsentChecked(prev => !prev)}
             accessibilityRole="checkbox"
-            accessibilityLabel="Agree to receive messages from Mingla"
+            accessibilityLabel={t('onboarding:phone.consent_accessibility')}
             accessibilityState={{ checked: smsConsentChecked }}
           >
             <Checkbox
@@ -2040,33 +2128,31 @@ const OnboardingFlow = ({
               style={styles.consentCheckbox}
             />
             <Text style={styles.consentText}>
-              I agree to receive messages from Mingla via SMS or phone call, including verification codes, friend invitations, and experience reminders. Reply STOP to opt out or HELP for help. See our{' '}
+              {t('onboarding:phone.consent_text')}
               <Text
                 style={styles.consentLink}
                 onPress={() => {
                   setLegalBrowserUrl(LEGAL_URLS.termsOfService)
-                  setLegalBrowserTitle('Terms of Service')
+                  setLegalBrowserTitle(t('onboarding:phone.terms_of_service'))
                   setLegalBrowserVisible(true)
                 }}
                 accessibilityRole="link"
-                accessibilityLabel="Terms of Service"
-                accessibilityHint="Opens Terms of Service in a browser window"
+                accessibilityLabel={t('onboarding:phone.terms_of_service')}
               >
-                Terms of Service
+                {t('onboarding:phone.terms_of_service')}
               </Text>
-              {' '}and{' '}
+              {t('onboarding:phone.and')}
               <Text
                 style={styles.consentLink}
                 onPress={() => {
                   setLegalBrowserUrl(LEGAL_URLS.privacyPolicy)
-                  setLegalBrowserTitle('Privacy Policy')
+                  setLegalBrowserTitle(t('onboarding:phone.privacy_policy'))
                   setLegalBrowserVisible(true)
                 }}
                 accessibilityRole="link"
-                accessibilityLabel="Privacy Policy"
-                accessibilityHint="Opens Privacy Policy in a browser window"
+                accessibilityLabel={t('onboarding:phone.privacy_policy')}
               >
-                Privacy Policy
+                {t('onboarding:phone.privacy_policy')}
               </Text>
               .
             </Text>
@@ -2078,8 +2164,8 @@ const OnboardingFlow = ({
     if (subStep === 'otp') {
       return (
         <View>
-          <Text style={styles.headline}>Enter the code</Text>
-          <Text style={styles.body}>Sent to {buildE164()}</Text>
+          <Text style={styles.headline}>{t('onboarding:otp.headline')}</Text>
+          <Text style={styles.body}>{t('onboarding:otp.body', { phone: buildE164() })}</Text>
           {channelConfirmation && (
             <Text style={styles.channelConfirmation}>{channelConfirmation}</Text>
           )}
@@ -2094,41 +2180,41 @@ const OnboardingFlow = ({
             />
           </View>
           {otpLoading ? (
-            <Text style={[styles.caption, styles.textCenter]}>Verifying...</Text>
+            <Text style={[styles.caption, styles.textCenter]}>{t('onboarding:otp.verifying')}</Text>
           ) : sendingOtp ? (
-            <Text style={[styles.caption, styles.textCenter]}>Sending...</Text>
+            <Text style={[styles.caption, styles.textCenter]}>{t('onboarding:otp.sending')}</Text>
           ) : (
             <>
               {resendCountdown > 0 && !showChannelOptions ? (
                 <View style={styles.resendRow}>
-                  <Text style={styles.caption}>Resend in {resendCountdown}s</Text>
+                  <Text style={styles.caption}>{t('onboarding:otp.resend_countdown', { seconds: resendCountdown })}</Text>
                 </View>
               ) : showChannelOptions ? (
                 <View style={styles.channelOptions}>
-                  <Text style={styles.channelOptionsLabel}>Didn't get it? Try another way:</Text>
+                  <Text style={styles.channelOptionsLabel}>{t('onboarding:otp.channel_label')}</Text>
                   <Pressable
                     style={styles.channelButton}
                     onPress={() => handleResendViaChannel('sms')}
                     accessibilityRole="button"
-                    accessibilityLabel="Resend code via SMS"
+                    accessibilityLabel={t('onboarding:otp.resend_sms_accessibility')}
                   >
                     <Icon name="message-square" size={18} color={colors.text.secondary} />
-                    <Text style={styles.channelButtonText}>Resend SMS</Text>
+                    <Text style={styles.channelButtonText}>{t('onboarding:otp.resend_sms')}</Text>
                   </Pressable>
                   <Pressable
                     style={styles.channelButton}
                     onPress={() => handleResendViaChannel('call')}
                     accessibilityRole="button"
-                    accessibilityLabel="Receive code via phone call"
+                    accessibilityLabel={t('onboarding:otp.call_me_accessibility')}
                   >
                     <Icon name="call" size={18} color={colors.text.secondary} />
-                    <Text style={styles.channelButtonText}>Call me instead</Text>
+                    <Text style={styles.channelButtonText}>{t('onboarding:otp.call_me')}</Text>
                   </Pressable>
                 </View>
               ) : null}
               {otpError && (
                 <Text style={styles.errorText}>
-                  {otpAttempts >= 3 ? "Three tries, no luck. Try a different method below." : "That code didn't land. Try again."}
+                  {otpAttempts >= 3 ? t('onboarding:otp.error_max_attempts') : t('onboarding:otp.error_wrong_code')}
                 </Text>
               )}
             </>
@@ -2141,21 +2227,21 @@ const OnboardingFlow = ({
     if (subStep === 'gender_identity') {
       return (
         <View>
-          <Text style={styles.headline}>Tell us about you.</Text>
-          <Text style={styles.body}>So we can get your picks right.</Text>
+          <Text style={styles.headline}>{t('onboarding:gender.headline')}</Text>
+          <Text style={styles.body}>{t('onboarding:gender.body')}</Text>
           <View style={styles.genderListContainer}>
             {GENDER_OPTIONS.map((g) => (
               <Pressable
                 key={g}
                 style={[styles.genderRow, data.userGender === g && styles.genderRowSelected]}
                 onPress={() => {
-                  logger.action(`User gender selected: ${GENDER_DISPLAY_LABELS[g]}`)
+                  logger.action(`User gender selected: ${t(`onboarding:gender.${g.replace(/-/g, '_')}`)}`)
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                   setData((p) => ({ ...p, userGender: g }))
                 }}
               >
                 <Text style={[styles.genderText, data.userGender === g && styles.genderTextSelected]}>
-                  {GENDER_DISPLAY_LABELS[g]}
+                  {t(`onboarding:gender.${g.replace(/-/g, '_')}`)}
                 </Text>
                 {data.userGender === g && (
                   <Icon name="checkmark" size={20} color={colors.text.inverse} />
@@ -2171,11 +2257,11 @@ const OnboardingFlow = ({
     if (subStep === 'details') {
       return (
         <View>
-          <Text style={styles.headline}>Almost done.</Text>
-          <Text style={styles.body}>Just the basics. We'll handle the rest.</Text>
+          <Text style={styles.headline}>{t('onboarding:details.headline')}</Text>
+          <Text style={styles.body}>{t('onboarding:details.body')}</Text>
 
           {/* Country — pre-detected from phone number, editable */}
-          <Text style={styles.fieldLabel}>Country</Text>
+          <Text style={styles.fieldLabel}>{t('onboarding:details.country_label')}</Text>
           <Pressable
             style={styles.detailsPickerButton}
             onPress={() => setShowCountryPicker(true)}
@@ -2186,7 +2272,7 @@ const OnboardingFlow = ({
             </Text>
             <Icon name="chevron-forward" size={16} color={colors.text.tertiary} />
           </Pressable>
-          <Text style={styles.fieldHelperText}>Sets your currency and units of measurement</Text>
+          <Text style={styles.fieldHelperText}>{t('onboarding:details.country_helper')}</Text>
 
           <CountryPickerModal
             visible={showCountryPicker}
@@ -2199,7 +2285,7 @@ const OnboardingFlow = ({
           />
 
           {/* Date of Birth */}
-          <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>Date of birth</Text>
+          <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>{t('onboarding:details.dob_label')}</Text>
           <Pressable
             style={styles.detailsPickerButton}
             onPress={() => {
@@ -2213,7 +2299,7 @@ const OnboardingFlow = ({
             ]}>
               {data.userBirthday
                 ? formatBirthdayDisplay(data.userBirthday)
-                : "When's your birthday?"}
+                : t('onboarding:details.dob_placeholder')}
             </Text>
             <Icon name="calendar-outline" size={18} color={colors.text.secondary} />
           </Pressable>
@@ -2259,35 +2345,12 @@ const OnboardingFlow = ({
                     ...typography.md,
                     fontWeight: fontWeights.semibold,
                     color: colors.primary[600],
-                  }}>Done</Text>
+                  }}>{t('common:done')}</Text>
                 </Pressable>
               )}
             </View>
           )}
 
-          {/* Preferred Language */}
-          <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>Language</Text>
-          <Pressable
-            style={styles.detailsPickerButton}
-            onPress={() => setShowLanguagePicker(true)}
-          >
-            <Text style={styles.detailsPickerText}>
-              {getLanguageByCode(data.userPreferredLanguage)?.nativeName ?? 'English'}
-              {' '}
-              <Text style={styles.detailsPickerHint}>
-                ({getLanguageByCode(data.userPreferredLanguage)?.name ?? 'English'})
-              </Text>
-            </Text>
-            <Icon name="chevron-down" size={18} color={colors.text.secondary} />
-          </Pressable>
-
-          {/* Language Picker Modal */}
-          <LanguagePickerModal
-            visible={showLanguagePicker}
-            onClose={() => setShowLanguagePicker(false)}
-            onSelect={(code) => setData((p) => ({ ...p, userPreferredLanguage: code }))}
-            selectedCode={data.userPreferredLanguage}
-          />
         </View>
       )
     }
@@ -2295,9 +2358,9 @@ const OnboardingFlow = ({
     // ─── STEP 2 ───
     if (subStep === 'value_prop') {
       const beats = [
-        { icon: 'navigate-outline' as const, headline: 'Know exactly where to go.', sub: 'Stop guessing. Start going.' },
-        { icon: 'people-outline' as const, headline: 'For dates, friends & solo runs.', sub: 'Plans for every kind of outing.' },
-        { icon: 'flash-outline' as const, headline: 'Find it fast. Go.', sub: 'Swipe. Save. Go.' },
+        { icon: 'navigate-outline' as const, headline: t('onboarding:value_prop.beat1_headline'), sub: t('onboarding:value_prop.beat1_sub') },
+        { icon: 'people-outline' as const, headline: t('onboarding:value_prop.beat2_headline'), sub: t('onboarding:value_prop.beat2_sub') },
+        { icon: 'flash-outline' as const, headline: t('onboarding:value_prop.beat3_headline'), sub: t('onboarding:value_prop.beat3_sub') },
       ]
       const beat = beats[valuePropBeat]
       const isLightning = valuePropBeat === 2
@@ -2333,8 +2396,8 @@ const OnboardingFlow = ({
     if (subStep === 'intents') {
       return (
         <View style={styles.intentContainer}>
-          <Text style={[styles.headline, styles.textCenter, styles.intentHeadline]}>Now the fun part.</Text>
-          <Text style={[styles.body, styles.textCenter, styles.intentBody]}>Tap every vibe that sounds like you.</Text>
+          <Text style={[styles.headline, styles.textCenter, styles.intentHeadline]}>{t('onboarding:intents.headline')}</Text>
+          <Text style={[styles.body, styles.textCenter, styles.intentBody]}>{t('onboarding:intents.body')}</Text>
           <View style={styles.intentGrid}>
             {ONBOARDING_INTENTS.map((intent, idx) => {
               const selected = data.selectedIntents.includes(intent.id)
@@ -2368,14 +2431,14 @@ const OnboardingFlow = ({
                       size={28}
                       color={selected ? colors.text.inverse : colors.gray[600]}
                     />
-                    <Text style={[styles.intentLabel, selected && styles.intentLabelSelected]}>{intent.label}</Text>
-                    <Text style={[styles.intentDesc, selected && styles.intentDescSelected]}>{intent.description}</Text>
+                    <Text style={[styles.intentLabel, selected && styles.intentLabelSelected]}>{t(`onboarding:intents.${intent.id.replace(/-/g, '_')}`)}</Text>
+                    <Text style={[styles.intentDesc, selected && styles.intentDescSelected]}>{t(`onboarding:intents.${intent.id.replace(/-/g, '_')}_desc`)}</Text>
                   </Pressable>
                 </Animated.View>
               )
             })}
           </View>
-          <Text style={[styles.caption, styles.textCenter]}>Pick the one that excites you most.</Text>
+          <Text style={[styles.caption, styles.textCenter]}>{t('onboarding:intents.caption')}</Text>
         </View>
       )
     }
@@ -2401,9 +2464,9 @@ const OnboardingFlow = ({
               </View>
             </Animated.View>
             <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
-              Locked in — {data.cityName}!
+              {t('onboarding:location.granted_headline', { city: data.cityName })}
             </Animated.Text>
-            <Text style={styles.locTapHint}>Tap to continue</Text>
+            <Text style={styles.locTapHint}>{t('onboarding:location.granted_tap_hint')}</Text>
           </Pressable>
         )
       }
@@ -2416,10 +2479,10 @@ const OnboardingFlow = ({
               </Animated.View>
             </Animated.View>
             <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
-              One quick toggle
+              {t('onboarding:location.settings_headline')}
             </Animated.Text>
             <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
-              Location is off for Mingla.{'\n'}Turn it on in Settings so we can find{'\n'}the best spots near you.
+              {t('onboarding:location.settings_body')}
             </Animated.Text>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
               <Pressable
@@ -2427,7 +2490,7 @@ const OnboardingFlow = ({
                 onPress={() => { logger.action('Open device settings pressed'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Linking.openSettings() }}
               >
                 <Icon name="settings-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
-                <Text style={styles.locButtonText}>Open Settings</Text>
+                <Text style={styles.locButtonText}>{t('onboarding:location.open_settings')}</Text>
               </Pressable>
             </Animated.View>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
@@ -2441,7 +2504,7 @@ const OnboardingFlow = ({
                 ) : (
                   <Icon name="refresh-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
                 )}
-                <Text style={styles.locRetryText}>{isRequesting ? 'Finding you...' : "I've turned it on — retry"}</Text>
+                <Text style={styles.locRetryText}>{isRequesting ? t('onboarding:location.retry_finding') : t('onboarding:location.retry_turned_on')}</Text>
               </Pressable>
             </Animated.View>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.sm }]}>
@@ -2454,7 +2517,7 @@ const OnboardingFlow = ({
                 }}
               >
                 <Icon name="create-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
-                <Text style={styles.locRetryText}>Type my city instead</Text>
+                <Text style={styles.locRetryText}>{t('onboarding:location.type_city')}</Text>
               </Pressable>
             </Animated.View>
           </View>
@@ -2469,10 +2532,10 @@ const OnboardingFlow = ({
               </Animated.View>
             </Animated.View>
             <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
-              Couldn't get your location
+              {t('onboarding:location.error_headline')}
             </Animated.Text>
             <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
-              Weak signal or GPS still warming up.{'\n'}Try again or type your city instead.
+              {t('onboarding:location.error_body')}
             </Animated.Text>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
               <Pressable
@@ -2489,7 +2552,7 @@ const OnboardingFlow = ({
                   <Icon name="refresh-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
                 )}
                 <Text style={styles.locButtonText}>
-                  {isRequesting ? 'Finding you...' : 'Try Again'}
+                  {isRequesting ? t('onboarding:location.retry_finding') : t('onboarding:location.try_again')}
                 </Text>
               </Pressable>
             </Animated.View>
@@ -2503,7 +2566,7 @@ const OnboardingFlow = ({
                 }}
               >
                 <Icon name="create-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
-                <Text style={styles.locRetryText}>Type my city instead</Text>
+                <Text style={styles.locRetryText}>{t('onboarding:location.type_city')}</Text>
               </Pressable>
             </Animated.View>
           </View>
@@ -2518,10 +2581,10 @@ const OnboardingFlow = ({
             </Animated.View>
           </Animated.View>
           <Animated.Text style={[styles.locHeadline, { opacity: locHeadlineAnim.opacity, transform: [{ translateY: locHeadlineAnim.translateY }] }]}>
-            Better spots start here
+            {t('onboarding:location.idle_headline')}
           </Animated.Text>
           <Animated.Text style={[styles.locBody, { opacity: locBodyAnim.opacity, transform: [{ translateY: locBodyAnim.translateY }] }]}>
-            Enable GPS so we can find hidden{'\n'}gems right around the corner.
+            {t('onboarding:location.idle_body')}
           </Animated.Text>
           <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
             <Pressable
@@ -2535,14 +2598,14 @@ const OnboardingFlow = ({
                 <Icon name="location" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
               )}
               <Text style={styles.locButtonText}>
-                {locationStatus === 'requesting' ? 'Finding you...' : 'Enable Location'}
+                {locationStatus === 'requesting' ? t('onboarding:location.retry_finding') : t('onboarding:location.enable_location')}
               </Text>
             </Pressable>
           </Animated.View>
           <Animated.View style={[{ opacity: locBodyAnim.opacity }]}>
             <View style={styles.locPrivacyRow}>
               <Icon name="shield-checkmark-outline" size={14} color={colors.text.tertiary} />
-              <Text style={styles.locPrivacyText}>Your location stays private. Always.</Text>
+              <Text style={styles.locPrivacyText}>{t('onboarding:location.privacy_hint')}</Text>
             </View>
           </Animated.View>
         </View>
@@ -2554,8 +2617,8 @@ const OnboardingFlow = ({
       return (
         <View style={styles.celebrationCenter}>
           <Icon name="trophy-outline" size={64} color={colors.primary[500]} style={styles.stepIcon} />
-          <Text style={[styles.headline, styles.textCenter]}>Look at you go.</Text>
-          <Text style={[styles.body, styles.textCenter]}>Four quick picks and you're done.</Text>
+          <Text style={[styles.headline, styles.textCenter]}>{t('onboarding:celebration.headline')}</Text>
+          <Text style={[styles.body, styles.textCenter]}>{t('onboarding:celebration.body')}</Text>
         </View>
       )
     }
@@ -2563,9 +2626,9 @@ const OnboardingFlow = ({
     if (subStep === 'manual_location') {
       return (
         <View>
-          <Text style={styles.headline}>Drop your pin on the map</Text>
+          <Text style={styles.headline}>{t('onboarding:manual_location.headline')}</Text>
           <Text style={styles.body}>
-            Give us your exact address — down to the street — and we'll unlock the best spots around you.
+            {t('onboarding:manual_location.body')}
           </Text>
           <View style={styles.inputSpacing}>
             {selectedLocation ? (
@@ -2609,7 +2672,7 @@ const OnboardingFlow = ({
                       setManualLocationText(text)
                       if (selectedLocation) setSelectedLocation(null)
                     }}
-                    placeholder="Start typing your address..."
+                    placeholder={t('onboarding:manual_location.search_placeholder')}
                     placeholderTextColor={colors.gray[400]}
                     autoCapitalize="words"
                     autoCorrect={false}
@@ -2658,18 +2721,18 @@ const OnboardingFlow = ({
                 {manualLocationText.trim().length >= 3 && !locationSearchLoading && locationHasSearched && locationSuggestions.length === 0 && (
                   <View style={styles.locationNoResults}>
                     <Icon name="search" size={16} color={colors.gray[400]} />
-                    <Text style={styles.locationNoResultsText}>Hmm, we didn't catch that. Try a nearby street or neighborhood.</Text>
+                    <Text style={styles.locationNoResultsText}>{t('onboarding:manual_location.no_results')}</Text>
                   </View>
                 )}
               </View>
             )}
           </View>
           <Text style={styles.locationHelperText}>
-            The more precise, the better your recommendations.
+            {t('onboarding:manual_location.helper')}
           </Text>
           <View style={styles.locPrivacyRow}>
             <Icon name="shield-checkmark-outline" size={14} color={colors.text.tertiary} />
-            <Text style={styles.locPrivacyText}>Your exact location stays between us. Always.</Text>
+            <Text style={styles.locPrivacyText}>{t('onboarding:manual_location.privacy')}</Text>
           </View>
         </View>
       )
@@ -2678,8 +2741,8 @@ const OnboardingFlow = ({
     if (subStep === 'categories') {
       return (
         <View style={styles.categoryStepRoot}>
-          <Text style={styles.headline}>What kind of places do you love?</Text>
-          <Text style={styles.body}>Pick up to 3 that match your vibe.</Text>
+          <Text style={styles.headline}>{t('onboarding:categories.headline')}</Text>
+          <Text style={styles.body}>{t('onboarding:categories.body')}</Text>
           <View style={styles.categoryGrid}>
             {categories.map((cat) => (
               <CategoryTile
@@ -2710,7 +2773,7 @@ const OnboardingFlow = ({
           </View>
           {categoryCapMessage && (
             <Text style={styles.selectionCapMessage}>
-              Maximum 3 categories. Deselect one to choose another.
+              {t('onboarding:categories.cap_message')}
             </Text>
           )}
         </View>
@@ -2720,8 +2783,8 @@ const OnboardingFlow = ({
     if (subStep === 'budget') {
       return (
         <View style={styles.budgetContainer}>
-          <Text style={styles.headlineCentered}>Your sweet spot</Text>
-          <Text style={styles.bodyCentered}>Pick the price ranges that work.</Text>
+          <Text style={styles.headlineCentered}>{t('onboarding:budget.headline')}</Text>
+          <Text style={styles.bodyCentered}>{t('onboarding:budget.body')}</Text>
           <View style={styles.budgetGrid}>
             {PRICE_TIERS.map((tier) => {
               const isActive = data.selectedPriceTiers.includes(tier.slug)
@@ -2776,7 +2839,7 @@ const OnboardingFlow = ({
             })}
           </View>
 
-          <Text style={styles.captionCentered}>Free stuff always shows up too.</Text>
+          <Text style={styles.captionCentered}>{t('onboarding:budget.caption')}</Text>
         </View>
       )
     }
@@ -2784,8 +2847,8 @@ const OnboardingFlow = ({
     if (subStep === 'transport') {
       return (
         <View>
-          <Text style={styles.headline}>How do you get around?</Text>
-          <Text style={styles.body}>Helps us nail the travel times.</Text>
+          <Text style={styles.headline}>{t('onboarding:transport.headline')}</Text>
+          <Text style={styles.body}>{t('onboarding:transport.body')}</Text>
           <View style={styles.tileGrid}>
             {TRANSPORT_MODES.map((mode) => (
               <Pressable
@@ -2813,8 +2876,8 @@ const OnboardingFlow = ({
     if (subStep === 'travel_time') {
       return (
         <View style={styles.travelTimeContainer}>
-          <Text style={styles.headlineCentered}>How far will you go?</Text>
-          <Text style={styles.bodyCentered}>Set your comfort zone.</Text>
+          <Text style={styles.headlineCentered}>{t('onboarding:travel_time.headline')}</Text>
+          <Text style={styles.bodyCentered}>{t('onboarding:travel_time.body')}</Text>
           <View style={[styles.tileGrid, styles.tileGridCentered]}>
             {TRAVEL_TIME_PRESETS.map((mins) => (
               <Pressable
@@ -2835,13 +2898,13 @@ const OnboardingFlow = ({
                   styles.tileText,
                   !showCustomTravelTime && data.travelTimeMinutes === mins && styles.tileTextActive,
                   showCustomTravelTime && styles.tileTextDimmed,
-                ]}>{mins} min</Text>
+                ]}>{mins} {t('onboarding:travel_time.unit')}</Text>
               </Pressable>
             ))}
           </View>
 
           <View style={styles.customToggleRow}>
-            <Text style={styles.customToggleLabel}>Set your own</Text>
+            <Text style={styles.customToggleLabel}>{t('onboarding:travel_time.custom_toggle')}</Text>
             <Switch
               value={showCustomTravelTime}
               onValueChange={(val) => {
@@ -2877,7 +2940,7 @@ const OnboardingFlow = ({
                 }}
                 keyboardType="numeric"
                 style={styles.customInputField}
-                placeholder="5 – 120 minutes"
+                placeholder={t('onboarding:travel_time.custom_placeholder')}
                 placeholderTextColor={colors.text.tertiary}
                 maxLength={3}
                 onBlur={() => {
@@ -2888,17 +2951,17 @@ const OnboardingFlow = ({
                   setData((p) => ({ ...p, travelTimeMinutes: val }))
                 }}
               />
-              <Text style={styles.customInputUnit}>min</Text>
+              <Text style={styles.customInputUnit}>{t('onboarding:travel_time.unit')}</Text>
             </View>
           )}
 
           <Text style={styles.captionCentered}>
-            Up to {data.travelTimeMinutes} min by {data.travelMode}
+            {t('onboarding:travel_time.caption', { minutes: data.travelTimeMinutes, mode: data.travelMode })}
           </Text>
 
           {prefsSaveError && (
             <Text style={[styles.captionCentered, { color: '#ef4444', marginTop: spacing.sm }]}>
-              Couldn't save your preferences. Tap Retry to try again.
+              {t('onboarding:travel_time.error')}
             </Text>
           )}
         </View>

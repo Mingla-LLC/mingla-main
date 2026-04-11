@@ -13,6 +13,7 @@ import {
   StyleSheet,
 } from 'react-native'
 import * as Haptics from 'expo-haptics'
+import { useTranslation } from 'react-i18next'
 import { Icon } from '../ui/Icon'
 import { getDisplayName } from '../../utils/getDisplayName'
 
@@ -111,6 +112,8 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
   onAcceptRequest,
   onDeclineRequest,
 }) => {
+  const { t } = useTranslation(['onboarding', 'common'])
+
   // ─── Phone Input State ───
   const [phoneDigits, setPhoneDigits] = useState('')
   const [phoneCountry, setPhoneCountry] = useState(getDefaultCountryCode())
@@ -187,12 +190,12 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
 
     try {
       if (debouncedPhoneE164 === userPhoneE164) {
-        Alert.alert("That's you", "You can't add yourself as a friend.")
+        Alert.alert(t('onboarding:friends.alert_self_title'), t('onboarding:friends.alert_self_message'))
         return
       }
 
       if (addedFriends.some(f => f.phoneE164 === debouncedPhoneE164)) {
-        Alert.alert('Already added', 'This person is already in your list.')
+        Alert.alert(t('onboarding:friends.alert_duplicate_title'), t('onboarding:friends.alert_duplicate_message'))
         return
       }
 
@@ -212,7 +215,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
           userId: lookupUser.id,
           username: lookupUser.username,
           phoneE164: debouncedPhoneE164,
-          displayName: getDisplayName(lookupUser, 'User'),
+          displayName: getDisplayName(lookupUser, t('onboarding:friends.fallback_user')),
           avatarUrl: lookupUser.avatar_url,
           friendshipStatus: phoneLookupResult.friendship_status === 'friends'
             ? 'friends'
@@ -232,7 +235,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
         })
 
         await Share.share({
-          message: `Hey! Join me on Mingla and let's find amazing experiences together. https://usemingla.com`,
+          message: t('onboarding:friends.share_message'),
         })
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
@@ -240,7 +243,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
       }
     } catch (err) {
       console.error('[OnboardingFriendsAndPairingStep] Phone action error:', err)
-      Alert.alert('Error', err instanceof Error ? err.message : 'Something went wrong')
+      Alert.alert(t('common:error'), err instanceof Error ? err.message : t('common:something_went_wrong'))
     } finally {
       setActionLoading(false)
     }
@@ -267,11 +270,11 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
         })
       }, 800)
     } catch {
-      Alert.alert('Something went wrong', "Couldn't process the request. Try again.")
+      Alert.alert(t('common:something_went_wrong'), t('onboarding:friends.alert_generic_error'))
     } finally {
       setProcessingRequestId(null)
     }
-  }, [processingRequestId, onAcceptRequest, refetchPairRequests])
+  }, [processingRequestId, onAcceptRequest, refetchPairRequests, t])
 
   const handleDeclineFriendRequest = useCallback(async (requestId: string) => {
     if (processingRequestId) return
@@ -288,11 +291,11 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
         })
       }, 800)
     } catch {
-      Alert.alert('Something went wrong', "Couldn't process the request. Try again.")
+      Alert.alert(t('common:something_went_wrong'), t('onboarding:friends.alert_generic_error'))
     } finally {
       setProcessingRequestId(null)
     }
-  }, [processingRequestId, onDeclineRequest])
+  }, [processingRequestId, onDeclineRequest, t])
 
   // ─── Send Pair Request ───
   const handleSendPairRequest = useCallback(async (friend: AddedFriend) => {
@@ -344,7 +347,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
     } catch (err) {
       console.error('[OnboardingFriendsAndPairingStep] Pair request error:', err)
-      Alert.alert('Error', err instanceof Error ? err.message : 'Could not send pair request')
+      Alert.alert(t('common:error'), err instanceof Error ? err.message : t('onboarding:friends.alert_pair_error'))
     } finally {
       setSendingPairForUserId(null)
     }
@@ -377,7 +380,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
         })
       }, 800)
     } catch {
-      Alert.alert('Something went wrong', "Couldn't accept the pair request. Try again.")
+      Alert.alert(t('common:something_went_wrong'), t('onboarding:friends.alert_accept_error'))
     } finally {
       setProcessingPairRequestId(null)
     }
@@ -399,7 +402,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
         })
       }, 800)
     } catch {
-      Alert.alert('Something went wrong', "Couldn't decline the pair request. Try again.")
+      Alert.alert(t('common:something_went_wrong'), t('onboarding:friends.alert_decline_error'))
     } finally {
       setProcessingPairRequestId(null)
     }
@@ -437,15 +440,15 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
       keyboardShouldPersistTaps="handled"
     >
       {/* Header */}
-      <Text style={styles.headline}>Your inner circle</Text>
+      <Text style={styles.headline}>{t('onboarding:friends.headline')}</Text>
       <Text style={styles.subtitle}>
-        Add your closest people, then pair up. You'll discover things to do together, see what they love, and plan the good stuff side by side.
+        {t('onboarding:friends.body')}
       </Text>
 
       {/* Section 1: Incoming Friend Requests */}
       {incomingRequests.length > 0 && (
         <View style={styles.section}>
-          {renderSectionLabel('Waiting for you', incomingRequests.length)}
+          {renderSectionLabel(t('onboarding:friends.waiting_header'), incomingRequests.length)}
           {incomingRequests.map((request) => {
             const status = processedRequests[request.id]
             const isProcessing = processingRequestId === request.id
@@ -456,7 +459,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
               return (
                 <View key={request.id} style={[styles.requestCard, styles.requestCardAccepted]}>
                   <Icon name="checkmark-circle" size={20} color={colors.success[600]} />
-                  <Text style={styles.acceptedText}>Added</Text>
+                  <Text style={styles.acceptedText}>{t('onboarding:friends.added_feedback')}</Text>
                 </View>
               )
             }
@@ -465,7 +468,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
               return (
                 <View key={request.id} style={[styles.requestCard, styles.requestCardDeclined]}>
                   <Icon name="close-circle" size={20} color={colors.gray[500]} />
-                  <Text style={styles.declinedText}>Declined</Text>
+                  <Text style={styles.declinedText}>{t('onboarding:friends.declined_feedback')}</Text>
                 </View>
               )
             }
@@ -492,7 +495,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                     {isProcessing ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={styles.acceptButtonText}>Accept</Text>
+                      <Text style={styles.acceptButtonText}>{t('common:accept')}</Text>
                     )}
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -501,7 +504,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                     disabled={!!processingRequestId}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.declineButtonText}>Decline</Text>
+                    <Text style={styles.declineButtonText}>{t('common:decline')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -512,7 +515,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
 
       {/* Section 2: Phone Input (Add/Invite) */}
       <View style={styles.section}>
-        {renderSectionLabel('Add friends')}
+        {renderSectionLabel(t('onboarding:friends.add_friends_header'))}
         <View style={styles.phoneRow}>
           <View style={styles.phoneInputWrapper}>
             <PhoneInput
@@ -555,7 +558,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.actionButtonText}>
-                  {phoneLookupResult?.found ? 'Add' : 'Invite'}
+                  {phoneLookupResult?.found ? t('common:add') : t('common:invite')}
                 </Text>
               )}
             </TouchableOpacity>
@@ -566,7 +569,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
       {/* Section 3: Your Friends List (with Pair Pill) */}
       {addedFriends.length > 0 ? (
         <View style={styles.section}>
-          {renderSectionLabel('Your people', addedFriends.length)}
+          {renderSectionLabel(t('onboarding:friends.your_people_header'), addedFriends.length)}
           {addedFriends.map((friend) => {
             const pillState = getPairPillState(friend, pairActions, sendingPairForUserId, queuedPairPhones)
             const animKey = friend.userId || friend.phoneE164
@@ -590,9 +593,9 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                     {friend.displayName}
                   </Text>
                   <Text style={styles.friendStatus}>
-                    {friend.friendshipStatus === 'friends' ? 'Friends'
-                      : friend.friendshipStatus === 'pending_sent' ? 'Request sent'
-                      : friend.type === 'invited' ? 'Invited'
+                    {friend.friendshipStatus === 'friends' ? t('onboarding:friends.status_friends')
+                      : friend.friendshipStatus === 'pending_sent' ? t('onboarding:friends.status_request_sent')
+                      : friend.type === 'invited' ? t('onboarding:friends.status_invited')
                       : ''}
                   </Text>
                 </View>
@@ -642,10 +645,10 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                           pillState === 'queued' && styles.pairPillTextQueued,
                           pillState === 'disabled' && styles.pairPillTextDisabled,
                         ]}>
-                          {pillState === 'paired' ? 'Paired'
-                            : pillState === 'pending' ? 'Pending'
-                            : pillState === 'queued' ? 'Queued'
-                            : 'Pair'}
+                          {pillState === 'paired' ? t('onboarding:friends.pair_paired')
+                            : pillState === 'pending' ? t('onboarding:friends.pair_pending')
+                            : pillState === 'queued' ? t('onboarding:friends.pair_queued')
+                            : t('onboarding:friends.pair_button')}
                         </Text>
                       </>
                     )}
@@ -662,7 +665,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                 </TouchableOpacity>
               </View>
               {pillState === 'queued' && (
-                <Text style={styles.queuedHint}>Activates when they join</Text>
+                <Text style={styles.queuedHint}>{t('onboarding:friends.pair_queued_hint')}</Text>
               )}
               </React.Fragment>
             )
@@ -671,7 +674,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
       ) : (
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateText}>
-            No friends here yet. Add someone you'd actually make plans with.
+            {t('onboarding:friends.empty_state')}
           </Text>
         </View>
       )}
@@ -679,7 +682,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
       {/* Section 4: Incoming Pair Requests */}
       {visiblePairRequests.length > 0 && (
         <View style={styles.section}>
-          {renderSectionLabel('Pair requests', visiblePairRequests.length)}
+          {renderSectionLabel(t('onboarding:friends.pair_requests_header'), visiblePairRequests.length)}
           {visiblePairRequests.map((request) => {
             const status = processedPairRequests[request.id]
             const isProcessing = processingPairRequestId === request.id
@@ -688,7 +691,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
               return (
                 <View key={request.id} style={[styles.pairRequestCard, styles.pairRequestCardAccepted]}>
                   <Icon name="checkmark-circle" size={20} color={colors.success[600]} />
-                  <Text style={styles.pairedFeedbackText}>Paired!</Text>
+                  <Text style={styles.pairedFeedbackText}>{t('onboarding:friends.paired_feedback')}</Text>
                 </View>
               )
             }
@@ -697,7 +700,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
               return (
                 <View key={request.id} style={[styles.requestCard, styles.requestCardDeclined]}>
                   <Icon name="close-circle" size={20} color={colors.gray[500]} />
-                  <Text style={styles.declinedText}>Declined</Text>
+                  <Text style={styles.declinedText}>{t('onboarding:friends.declined_feedback')}</Text>
                 </View>
               )
             }
@@ -717,12 +720,12 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                       {request.senderName}
                     </Text>
                     <Text style={styles.pairRequestSubtitle}>
-                      Wants to pair with you
+                      {t('onboarding:friends.pair_wants')}
                     </Text>
                   </View>
                 </View>
                 <Text style={styles.pairRequestBody}>
-                  See experiences curated for both of you.
+                  {t('onboarding:friends.pair_curated')}
                 </Text>
                 <View style={styles.pairRequestActions}>
                   <TouchableOpacity
@@ -734,7 +737,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                     {isProcessing ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={styles.pairAcceptButtonText}>Accept</Text>
+                      <Text style={styles.pairAcceptButtonText}>{t('common:accept')}</Text>
                     )}
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -743,7 +746,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
                     disabled={!!processingPairRequestId}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.pairDeclineButtonText}>Decline</Text>
+                    <Text style={styles.pairDeclineButtonText}>{t('common:decline')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>

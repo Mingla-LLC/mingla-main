@@ -10,6 +10,7 @@ import {
   TextInputKeyPressEventData,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useTranslation } from 'react-i18next';
 import {
   colors,
   typography,
@@ -36,6 +37,7 @@ export const OTPInput: React.FC<OTPInputProps> = ({
   error,
   disabled,
 }) => {
+  const { t } = useTranslation('onboarding')
   const inputRef = useRef<TextInput>(null);
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const [showError, setShowError] = useState(false);
@@ -133,7 +135,7 @@ export const OTPInput: React.FC<OTPInputProps> = ({
           maxLength={length}
           caretHidden
           editable={!disabled}
-          accessibilityLabel="One-time verification code"
+          accessibilityLabel={t('otp.otp_accessibility')}
           textContentType="oneTimeCode"
         />
 

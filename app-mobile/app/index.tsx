@@ -78,6 +78,8 @@ import { logger } from "../src/utils/logger";
 // are handled by useNotifications hook + Supabase Realtime. The old service file
 // stays in place but is no longer referenced from the app root.
 import { mixpanelService } from "../src/services/mixpanelService";
+import i18n from '../src/i18n';
+import { persistLanguage } from '../src/i18n';
 import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
 import RealtimeSubscriptions from "../src/components/RealtimeSubscriptions";
 import * as friendsService from "../src/services/friendsService";
@@ -765,6 +767,14 @@ function AppContent() {
   const { resumeCount, realtimeEpoch } = useForegroundRefresh(user?.id, () => {
     refreshAllSessions();
   });
+
+  // Sync i18n language from profile (handles cross-device language changes)
+  useEffect(() => {
+    if (profile?.preferred_language && profile.preferred_language !== i18n.language) {
+      i18n.changeLanguage(profile.preferred_language)
+      persistLanguage(profile.preferred_language)
+    }
+  }, [profile?.preferred_language])
 
   // Realtime subscriptions moved to <RealtimeSubscriptions /> component below,
   // keyed by realtimeEpoch for clean unmount/remount after long background.

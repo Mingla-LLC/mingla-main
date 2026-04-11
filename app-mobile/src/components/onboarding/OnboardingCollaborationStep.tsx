@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView'
 import * as Haptics from 'expo-haptics'
+import { useTranslation } from 'react-i18next'
 import { Icon } from '../ui/Icon'
 
 import { useSessionManagement, SessionParticipantInput } from '../../hooks/useSessionManagement'
@@ -52,6 +53,8 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
   onSkip,
   onActionTaken,
 }) => {
+  const { t } = useTranslation(['onboarding', 'common'])
+
   // Selected friends for new session (keyed by userId or phoneE164)
   const [selectedFriendKeys, setSelectedFriendKeys] = useState<Set<string>>(new Set())
 
@@ -213,9 +216,9 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
       console.error('Error creating session:', err)
       const msg = err instanceof Error ? err.message : ''
       if (msg.toLowerCase().includes('already exists')) {
-        setCreateError("That name's taken. Get creative!")
+        setCreateError(t('onboarding:collaborations.name_taken_error'))
       } else {
-        setCreateError("Hmm, that didn't work. Give it another go.")
+        setCreateError(t('onboarding:collaborations.generic_error'))
       }
     } finally {
       setCreating(false)
@@ -247,7 +250,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
         onActionTaken()
       } catch (err) {
         console.error('Error accepting invite:', err)
-        Alert.alert('Error', err instanceof Error ? err.message : 'Could not join session')
+        Alert.alert(t('common:error'), err instanceof Error ? err.message : t('onboarding:collaborations.join_error'))
       } finally {
         setProcessingInviteId(null)
       }
@@ -266,7 +269,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
       } catch (err) {
         console.error('Error declining invite:', err)
-        Alert.alert('Error', err instanceof Error ? err.message : 'Could not decline invite')
+        Alert.alert(t('common:error'), err instanceof Error ? err.message : t('onboarding:collaborations.decline_error'))
       } finally {
         setProcessingInviteId(null)
       }
@@ -301,13 +304,13 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
 
   return (
     <KeyboardAwareScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" keyboardPadding={160}>
-      <Text style={styles.headline}>Plan something together</Text>
+      <Text style={styles.headline}>{t('onboarding:collaborations.headline')}</Text>
       <Text style={styles.body}>
-        Start a session with your crew. Discover things to do, vote on favorites, and actually make it happen.
+        {t('onboarding:collaborations.body')}
       </Text>
 
       {/* Friend chips */}
-      <Text style={styles.sectionLabel}>Who's in?</Text>
+      <Text style={styles.sectionLabel}>{t('onboarding:collaborations.whos_in')}</Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -349,12 +352,12 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
       {/* Session name input */}
       {hasSelectedFriends && (
         <View style={styles.nameSection}>
-          <Text style={styles.sectionLabel}>Session name</Text>
+          <Text style={styles.sectionLabel}>{t('onboarding:collaborations.session_name_label')}</Text>
           <TextInput
             style={styles.nameInput}
             value={sessionName}
             onChangeText={(text) => { setSessionName(text); setCreateError(null) }}
-            placeholder="e.g. Weekend plans, Date night ideas..."
+            placeholder={t('onboarding:collaborations.session_name_placeholder')}
             placeholderTextColor={colors.gray[400]}
             maxLength={50}
             autoCapitalize="sentences"
@@ -373,7 +376,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
             {creating ? (
               <ActivityIndicator size="small" color={colors.text.inverse} />
             ) : (
-              <Text style={styles.createButtonText}>Start session</Text>
+              <Text style={styles.createButtonText}>{t('common:start_session')}</Text>
             )}
           </Pressable>
           {createError && (
@@ -386,7 +389,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
       {createdSessions.length > 0 && (
         <View style={styles.sessionsSection}>
           <Text style={styles.sectionLabel}>
-            Created sessions ({createdSessions.length})
+            {t('onboarding:collaborations.created_header', { count: createdSessions.length })}
           </Text>
           {createdSessions.map((session, index) => (
             <View key={`${session.name}-${index}`} style={styles.sessionCard}>
@@ -447,14 +450,14 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
       {loadingInvites && (
         <View style={styles.loadingSection}>
           <ActivityIndicator size="small" color={colors.primary[500]} />
-          <Text style={styles.loadingText}>Loading invites...</Text>
+          <Text style={styles.loadingText}>{t('onboarding:collaborations.loading_invites')}</Text>
         </View>
       )}
 
       {pendingCollabInvites.length > 0 && (
         <View style={styles.invitesSection}>
           <Text style={styles.sectionLabel}>
-            You're invited ({pendingCollabInvites.length})
+            {t('onboarding:collaborations.invited_header', { count: pendingCollabInvites.length })}
           </Text>
 
           {pendingCollabInvites.length > 10 && (
@@ -463,20 +466,20 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
                 style={styles.bulkButton}
                 onPress={handleAcceptAllInvites}
               >
-                <Text style={styles.bulkButtonTextAccept}>Accept All</Text>
+                <Text style={styles.bulkButtonTextAccept}>{t('common:accept_all')}</Text>
               </Pressable>
               <Pressable
                 style={styles.bulkButton}
                 onPress={handleDeclineAllInvites}
               >
-                <Text style={styles.bulkButtonTextDecline}>Decline All</Text>
+                <Text style={styles.bulkButtonTextDecline}>{t('common:decline_all')}</Text>
               </Pressable>
             </View>
           )}
 
           {pendingCollabInvites.map((invite) => {
             const inviterName = invite.invitedBy?.name
-              || 'Someone'
+              || t('onboarding:collaborations.fallback_someone')
             return (
               <View key={invite.id} style={styles.inviteCard}>
                 <View style={styles.inviteCardHeader}>
@@ -485,10 +488,10 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
                   </View>
                   <View style={styles.inviteCardInfo}>
                     <Text style={styles.inviteCardName} numberOfLines={1}>
-                      {invite.sessionName || 'Session'}
+                      {invite.sessionName || t('onboarding:collaborations.fallback_session')}
                     </Text>
                     <Text style={styles.inviteCardFrom} numberOfLines={1}>
-                      {inviterName} invited you
+                      {t('onboarding:collaborations.inviter_message', { name: inviterName })}
                     </Text>
                   </View>
                 </View>
@@ -504,7 +507,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
                     {processingInviteId === invite.id ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={styles.inviteJoinButtonText}>Join</Text>
+                      <Text style={styles.inviteJoinButtonText}>{t('common:join')}</Text>
                     )}
                   </Pressable>
                   <Pressable
@@ -518,7 +521,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
                     {processingInviteId === invite.id ? (
                       <ActivityIndicator size="small" color={colors.gray[500]} />
                     ) : (
-                      <Text style={styles.inviteDeclineButtonText}>Decline</Text>
+                      <Text style={styles.inviteDeclineButtonText}>{t('common:decline')}</Text>
                     )}
                   </Pressable>
                 </View>
@@ -537,7 +540,7 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
             color={colors.gray[300]}
           />
           <Text style={styles.emptyStateText}>
-            Add friends first — then you can start planning together.
+            {t('onboarding:collaborations.empty_state')}
           </Text>
         </View>
       )}

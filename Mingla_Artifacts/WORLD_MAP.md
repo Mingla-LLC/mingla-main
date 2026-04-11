@@ -97,6 +97,9 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0350 | Update Terms/Privacy URLs app-wide to usemingla.com | Cross-cutting | S2 | missing-feature | closed | A | 2026-04-09 | QA_ORCH-0350-0351 PASS. All legal URLs centralized in urls.ts → usemingla.com. 660 lines hardcoded text deleted. InAppBrowserModal for Profile + Paywall. |
 | ORCH-0351 | SMS consent checkbox gate before OTP on onboarding | Onboarding | S1 | missing-feature | closed | A | 2026-04-09 | QA_ORCH-0350-0351 PASS. Checkbox + TCPA consent text. CTA gated. InAppBrowserModal links. Full accessibility. |
 | ORCH-0370 | OTP multi-channel support — add WhatsApp and voice call fallback channels via Twilio Verify | Onboarding | S2 | missing-feature | closed | A | 2026-04-10 | QA PASS. 16/16 tests, 0 defects. send-otp accepts channel param (sms/whatsapp/call). OTP sub-step shows fallback buttons. Consent text covers all channels. verify-otp untouched. |
+| ORCH-0386 | App-wide i18n — translate all UI strings + move language picker to first onboarding screen | Onboarding + Cross-cutting | S2 | missing-feature | closed | A | 2026-04-11 | QA PASS. 13/13 SC, 5/5 regressions, 0 defects. i18next + react-i18next wired. Language picker first onboarding screen. 171 keys EN+ES. All onboarding strings use t(). |
+| ORCH-0387 | Settings language picker uses stale hardcoded 10-language list instead of canonical 25 | Profile & Settings | S3 | quality-gap | open | F | — | Found during ORCH-0386 investigation |
+| ORCH-0388 | 37 hardcoded 'en-US' locale strings in date/currency formatting — wrong for non-US users | Cross-cutting | S2 | bug | open | F | — | Found during ORCH-0386 investigation |
 
 ### Section 3: Discovery / Explore (Card Deck)
 

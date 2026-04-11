@@ -1,3 +1,4 @@
+import '../src/i18n'  // Must be first — initializes i18next before any component renders
 import { Stack } from "expo-router";
 import * as Sentry from '@sentry/react-native';
 

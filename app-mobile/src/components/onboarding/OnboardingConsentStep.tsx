@@ -5,6 +5,7 @@ import {
   StyleSheet,
 } from 'react-native'
 import { Icon } from '../ui/Icon'
+import { useTranslation } from 'react-i18next'
 import {
   colors,
   typography,
@@ -19,16 +20,17 @@ interface OnboardingConsentStepProps {
 export const OnboardingConsentStep: React.FC<OnboardingConsentStepProps> = ({
   onConsent,
 }) => {
+  const { t } = useTranslation('onboarding')
   return (
     <View style={styles.container}>
       <View style={styles.iconContainer}>
         <Icon name="shield-checkmark-outline" size={48} color={colors.primary[500]} />
       </View>
 
-      <Text style={styles.headline}>One quick thing</Text>
+      <Text style={styles.headline}>{t('consent.headline')}</Text>
 
       <Text style={styles.body}>
-        Mingla uses what you've shared — your tastes, your vibe, your location — to find experiences you'll genuinely love. Your data stays yours. We never sell it, and you can delete it anytime.
+        {t('consent.body')}
       </Text>
     </View>
   )

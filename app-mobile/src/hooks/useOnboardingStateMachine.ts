@@ -9,7 +9,7 @@ import { logger } from '../utils/logger'
 // ─── Step Sub-Step Sequences ───
 
 const STEP_SUBSTEPS: Record<OnboardingStep, SubStep[]> = {
-  1: ['welcome', 'phone', 'otp', 'gender_identity', 'details'],
+  1: ['language', 'welcome', 'phone', 'otp', 'gender_identity', 'details'],
   2: ['value_prop', 'intents'],
   3: ['location'],
   4: ['celebration', 'categories', 'budget', 'transport', 'travel_time'],
@@ -141,8 +141,8 @@ export function useOnboardingStateMachine({
       return
     }
 
-    // At Step 1 welcome — can't go back further
-    logger.onboarding(`goBack: already at Step 1/welcome — no-op`)
+    // At Step 1 language — can't go back further
+    logger.onboarding(`goBack: already at Step 1/language — no-op`)
   }, [getSequence])
 
   const goToSubStep = useCallback((subStep: SubStep) => {

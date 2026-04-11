@@ -15,6 +15,7 @@ import { Icon } from '../ui/Icon';
 import * as Haptics from 'expo-haptics';
 import { SegmentedProgressBar } from './SegmentedProgressBar';
 import { KeyboardAwareView } from '../ui/KeyboardAwareView';
+import { useTranslation } from 'react-i18next';
 import { logger } from '../../utils/logger';
 import {
   colors,
@@ -59,6 +60,8 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
   onBackToWelcome,
   children,
 }) => {
+  const { t } = useTranslation('common')
+
   // CTA press animation
   const ctaScale = useRef(new Animated.Value(1)).current;
   const secondaryScale = useRef(new Animated.Value(1)).current;
@@ -174,8 +177,8 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
     onPrimaryCta();
   };
 
-  const secondaryLabel = showBackToWelcome ? 'Back to sign in' : 'Back';
-  const secondaryAccessibilityLabel = showBackToWelcome ? 'Back to sign in' : 'Go back';
+  const secondaryLabel = showBackToWelcome ? t('back_to_sign_in') : t('back');
+  const secondaryAccessibilityLabel = showBackToWelcome ? t('back_to_sign_in') : t('back');
   const secondaryHandler = showBackToWelcome ? handleBackToWelcome : handleBack;
 
   const renderBottomBarContent = () => (
@@ -215,7 +218,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
                   color={colors.text.inverse}
                   style={styles.ctaSpinner}
                 />
-                <Text style={styles.primaryCtaTextEnabled}>Saving...</Text>
+                <Text style={styles.primaryCtaTextEnabled}>{t('saving')}</Text>
               </>
             ) : (
               <Text

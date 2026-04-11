@@ -1,7 +1,7 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-11
-> Total: 0 active | 69 completed
+> Total: 0 active | 74 completed
 
 ## Active Dispatches
 
@@ -13,6 +13,11 @@
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-068 | ORCH-0386 | Tester | 2026-04-11 | QA_ORCH-0386_I18N_PHASE0_PHASE1_REPORT.md | PASS |
+| AH-067 | ORCH-0386 | Implementor (rework) | 2026-04-11 | OnboardingFlow.tsx rework | APPROVED |
+| AH-066 | ORCH-0386 | Implementor | 2026-04-11 | IMPLEMENTATION_ORCH-0386_I18N_PHASE0_PHASE1_REPORT.md | NEEDS WORK (linter reversion) |
+| AH-065 | ORCH-0386 | Spec Writer | 2026-04-11 | SPEC_ORCH-0386_I18N_PHASE0_PHASE1.md | APPROVED |
+| AH-064 | ORCH-0386 | Investigator | 2026-04-11 | INVESTIGATION_ORCH-0386_I18N_REPORT.md | APPROVED |
 | AH-063 | ORCH-0371 | Tester | 2026-04-11 | QA_ORCH-0371_FEEDBACK_SCREENSHOTS_REPORT.md | PASS |
 | AH-062 | ORCH-0371 | Implementor | 2026-04-11 | IMPLEMENTATION_ORCH-0371_FEEDBACK_SCREENSHOTS_REPORT.md | APPROVED |
 | AH-061 | ORCH-0371 | Spec Writer | 2026-04-11 | SPEC_ORCH-0371_FEEDBACK_SCREENSHOTS.md | APPROVED |
