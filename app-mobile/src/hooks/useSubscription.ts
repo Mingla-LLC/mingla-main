@@ -13,6 +13,7 @@ import { useCustomerInfo } from './useRevenueCat'
 import { useAppStore } from '../store/appStore'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { logAppsFlyerEvent } from '../services/appsFlyerService'
+import { mixpanelService } from '../services/mixpanelService'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Query keys
@@ -192,6 +193,7 @@ export function useTrialExpiryTracking(userId: string | undefined): void {
       logAppsFlyerEvent('trial_expired_no_conversion', {
         trial_days: getTrialTotalDays(subscription),
       })
+      mixpanelService.trackTrialExpired({ trial_days: getTrialTotalDays(subscription) })
       firedRef.current = true
       AsyncStorage.setItem(storageKey, '1').catch(() => {})
     }).catch(() => {})

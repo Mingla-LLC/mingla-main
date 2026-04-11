@@ -63,6 +63,7 @@ export function useSendPairRequest() {
     mutationFn: async (args) => sendPairRequest(args),
     onSuccess: () => {
       logAppsFlyerEvent('pair_request_sent', {});
+      mixpanelService.trackPairRequestSent({});
       // Invalidate pills — the new request will appear there
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
     },
@@ -163,6 +164,7 @@ export function useAcceptPairRequest() {
     },
     onSuccess: async (data, requestId) => {
       logAppsFlyerEvent('pair_request_accepted', {});
+      mixpanelService.trackPairRequestAccepted({});
       mixpanelService.registerSuperProperties({ is_paired: true });
       mixpanelService.setUserProperties({ is_paired: true });
       // Fire-and-forget notification to the sender

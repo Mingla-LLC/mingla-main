@@ -606,6 +606,131 @@ class MixpanelService {
     });
   }
 
+  // ─── App lifecycle helpers ───────────────────────────────────────────
+
+  trackAppOpened(props: { source: "cold" | "warm" | "push"; secondsSinceLastOpen?: number }): void {
+    this.timeEvent("Session Ended");
+    this.track("App Opened", props);
+  }
+
+  trackSessionEnded(): void {
+    this.track("Session Ended");
+  }
+
+  trackSignupCompleted(props: { method: string; country?: string }): void {
+    this.track("Signup Completed", props);
+    this.timeEvent("Onboarding Completed");
+  }
+
+  // ─── Card lifecycle helpers ──────────────────────────────────────────
+
+  trackCardViewed(props: {
+    card_id: string;
+    card_title: string;
+    category: string;
+    position_in_deck: number;
+    is_curated: boolean;
+  }): void {
+    this.timeEvent("Card Saved");
+    this.timeEvent("Card Dismissed");
+    this.track("Card Viewed", props);
+  }
+
+  trackCardSaved(props: {
+    card_id: string;
+    card_title: string;
+    category: string;
+    is_curated: boolean;
+    position_in_deck?: number;
+    source?: string;
+  }): void {
+    this.track("Card Saved", props);
+    this.incrementUserProperty("total_saves");
+  }
+
+  trackCardDismissed(props: {
+    card_id: string;
+    card_title: string;
+    category: string;
+    is_curated: boolean;
+    position_in_deck?: number;
+  }): void {
+    this.track("Card Dismissed", props);
+  }
+
+  trackDeckExhausted(props: {
+    cards_seen: number;
+    cards_saved: number;
+    cards_dismissed: number;
+    session_mode: string;
+  }): void {
+    this.track("Deck Exhausted", props);
+  }
+
+  // ─── Revenue helpers ─────────────────────────────────────────────────
+
+  trackPaywallViewed(props: { trigger: string; gated_feature?: string }): void {
+    this.timeEvent("Paywall Dismissed");
+    this.track("Paywall Viewed", props);
+  }
+
+  trackPaywallDismissed(props: { trigger: string }): void {
+    this.track("Paywall Dismissed", props);
+  }
+
+  trackFeatureGateHit(props: { feature: string; current_tier: string }): void {
+    this.track("Feature Gate Hit", props);
+  }
+
+  trackTrialStarted(props: { trial_duration_days: number }): void {
+    this.track("Trial Started", props);
+  }
+
+  trackTrialExpired(props: { trial_days: number }): void {
+    this.track("Trial Expired", props);
+  }
+
+  trackSubscriptionPurchased(props: {
+    plan: string;
+    tier: string;
+    revenue: number;
+    currency: string;
+    is_trial_conversion?: boolean;
+  }): void {
+    this.track("Subscription Purchased", props);
+    this.setUserProperties({ subscription_tier: props.tier });
+    this.registerSuperProperties({ subscription_tier: props.tier, trial_active: false });
+  }
+
+  // ─── Pairing helpers ─────────────────────────────────────────────────
+
+  trackPairRequestSent(props: { target_name?: string }): void {
+    this.track("Pair Request Sent", props);
+  }
+
+  trackPairRequestAccepted(props: { sender_name?: string }): void {
+    this.track("Pair Request Accepted", props);
+  }
+
+  // ─── Coach mark helpers ──────────────────────────────────────────────
+
+  trackCoachMarkViewed(props: { step_id: string; step_title: string; tab: string; target_id?: string }): void {
+    this.track("Coach Mark Viewed", props);
+  }
+
+  trackCoachMarkCompleted(props: { step_id: string; step_title: string; tab: string }): void {
+    this.track("Coach Mark Completed", props);
+  }
+
+  trackCoachMarkSkipped(props: { last_step_seen: string; steps_completed: number; steps_remaining: number }): void {
+    this.track("Coach Mark Skipped", props);
+  }
+
+  trackCoachTourCompleted(): void {
+    this.track("Coach Tour Completed");
+    this.setUserProperties({ coach_tour_completed: true, coach_tour_completed_at: new Date().toISOString() });
+  }
+
 }
 
 export const mixpanelService = MixpanelService.getInstance();

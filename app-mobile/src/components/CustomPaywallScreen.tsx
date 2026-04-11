@@ -19,6 +19,7 @@ import { subscriptionKeys } from '../hooks/useSubscription';
 import type { GatedFeature } from '../hooks/useFeatureGate';
 import { colors, spacing, radius, typography, fontWeights } from '../constants/designSystem';
 import { logAppsFlyerEvent } from '../services/appsFlyerService';
+import { mixpanelService } from '../services/mixpanelService';
 import { useToast } from './ToastManager';
 import { useTranslation } from 'react-i18next';
 
@@ -105,6 +106,10 @@ export function CustomPaywallScreen({
       setSelectedPkgId(null);
       logAppsFlyerEvent('paywall_viewed', {
         trigger: feature || 'general',
+      });
+      mixpanelService.trackPaywallViewed({
+        trigger: feature || 'general',
+        gated_feature: feature,
       });
     }
   }, [isVisible, feature]);
@@ -193,7 +198,10 @@ export function CustomPaywallScreen({
       visible={isVisible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        mixpanelService.trackPaywallDismissed({ trigger: feature || 'general' });
+        onClose();
+      }}
     >
       <View style={styles.safeArea}>
         {/* Swipe-down handle */}

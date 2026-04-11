@@ -156,8 +156,12 @@ export function usePurchasePackage(): UseMutationResult<
         af_content_id: pkg.identifier,
         af_quantity: 1,
       })
-      mixpanelService.registerSuperProperties({ subscription_tier: 'mingla_plus', trial_active: false })
-      mixpanelService.setUserProperties({ subscription_tier: 'mingla_plus', trial_active: false })
+      mixpanelService.trackSubscriptionPurchased({
+        plan: pkg.identifier,
+        tier: 'mingla_plus',
+        revenue: pkg.product?.price ?? 0,
+        currency: pkg.product?.currencyCode ?? 'USD',
+      })
     },
     onError: (error) => {
       // User cancellation is handled by consuming components — only log here

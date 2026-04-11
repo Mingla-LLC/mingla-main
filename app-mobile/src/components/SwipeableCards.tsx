@@ -1145,16 +1145,30 @@ export default function SwipeableCards({
     // Track swiped card in session history
     addSwipedCard(card);
 
-    // ── AppsFlyer: save or dismiss ──
+    // ── Analytics: save or dismiss ──
+    const isCurated = (card as any).cardType === 'curated';
     if (direction === 'right') {
       logAppsFlyerEvent('af_add_to_wishlist', {
         af_content_type: card.category,
         af_price: (card as any).estimatedCostPerPerson || 0,
         af_content_id: card.id,
       });
+      mixpanelService.trackCardSaved({
+        card_id: card.id,
+        card_title: card.title,
+        category: card.category,
+        is_curated: isCurated,
+        source: 'swipe',
+      });
     } else {
       logAppsFlyerEvent('card_dismissed', {
         af_content_type: card.category,
+      });
+      mixpanelService.trackCardDismissed({
+        card_id: card.id,
+        card_title: card.title,
+        category: card.category,
+        is_curated: isCurated,
       });
     }
 

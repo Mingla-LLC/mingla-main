@@ -286,6 +286,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
           af_trial_type: 'elite_7day',
           af_duration: 7,
         })
+        mixpanelService.trackTrialStarted({ trial_duration_days: 7 })
         mixpanelService.trackOnboardingCompleted({
           gender: data.userGender || '',
           country: data.userCountry || '',

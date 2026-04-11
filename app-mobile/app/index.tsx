@@ -246,9 +246,12 @@ function AppContent() {
   // visible to any future developer extracting refreshAllSessions to a custom hook.
   const refreshGenerationRef = useRef(0);
 
-  // Initialize Mixpanel on mount
+  // Initialize Mixpanel on mount + track cold open
+  const lastActiveRef = useRef(Date.now());
   useEffect(() => {
-    mixpanelService.initialize();
+    mixpanelService.initialize().then(() => {
+      mixpanelService.trackAppOpened({ source: 'cold' });
+    });
   }, []);
 
   // ── RevenueCat ─────────────────────────────────────────────────────────────
@@ -928,6 +931,7 @@ function AppContent() {
   }, [currentPage, isAuthenticated, isLoadingAuth]);
 
   // Identify user in Mixpanel once authenticated — sets user properties + super properties
+  const signupFiredRef = useRef(false);
   useEffect(() => {
     if (isAuthenticated && user?.id) {
       mixpanelService.trackLogin({
@@ -940,6 +944,15 @@ function AppContent() {
         onboardingCompleted: profile?.has_completed_onboarding ?? false,
         friendsCount: dbFriends?.length ?? 0,
       });
+
+      // Track Signup Completed for new users (not yet onboarded)
+      if (!profile?.has_completed_onboarding && !signupFiredRef.current) {
+        mixpanelService.trackSignupCompleted({
+          method: (user as any).app_metadata?.provider ?? 'email',
+          country: profile?.country ?? undefined,
+        });
+        signupFiredRef.current = true;
+      }
     }
   }, [isAuthenticated, user?.id, profile?.has_completed_onboarding]);
 

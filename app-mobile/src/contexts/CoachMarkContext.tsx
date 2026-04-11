@@ -5,6 +5,7 @@ import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabase';
 import { COACH_STEPS, COACH_STEP_COUNT, CoachStep } from '../constants/coachMarkSteps';
 import { requestPostTourPermissions } from '../services/permissionOrchestrator';
+import { mixpanelService } from '../services/mixpanelService';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -139,6 +140,16 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       const config = COACH_STEPS.find((s) => s.id === currentStep);
       if (config) {
         navigateToTabRef.current(config.tab);
+        mixpanelService.trackCoachMarkViewed({
+          step_id: String(config.id),
+          step_title: config.title,
+          tab: config.tab,
+          target_id: config.targetId,
+        });
+        // Start tour timer on first step
+        if (config.id === 1) {
+          mixpanelService.timeEvent('Coach Tour Completed');
+        }
       }
 
       // Steps 11-12: known-position scroll approach
@@ -276,6 +287,16 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   const nextStep = useCallback((): void => {
     if (currentStep < 1 || currentStep > COACH_STEP_COUNT) return;
 
+    // Track current step completion
+    const stepConfig = COACH_STEPS[currentStep - 1];
+    if (stepConfig) {
+      mixpanelService.trackCoachMarkCompleted({
+        step_id: String(stepConfig.id),
+        step_title: stepConfig.title,
+        tab: stepConfig.tab,
+      });
+    }
+
     const newStep = currentStep + 1;
 
     if (newStep > COACH_STEP_COUNT) {
@@ -283,6 +304,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       setScrollLockActive(false);
       setCurrentStep(TOUR_COMPLETED);
       persistStep(TOUR_COMPLETED);
+      mixpanelService.trackCoachTourCompleted();
       navigateToTabRef.current('home');
       requestPostTourPermissions().catch((e) =>
         console.warn('[CoachMark] Post-tour permissions failed:', e)
@@ -301,6 +323,12 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
 
   // ── Skip tour ───────────────────────────────────────────────────────────
   const skipTour = useCallback((): void => {
+    const stepConfig = currentStep >= 1 ? COACH_STEPS[currentStep - 1] : undefined;
+    mixpanelService.trackCoachMarkSkipped({
+      last_step_seen: stepConfig?.title ?? `Step ${currentStep}`,
+      steps_completed: Math.max(0, currentStep - 1),
+      steps_remaining: COACH_STEP_COUNT - currentStep,
+    });
     setOverlayVisible(false);
     setScrollLockActive(false);
     setCurrentStep(TOUR_SKIPPED);
@@ -309,7 +337,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     requestPostTourPermissions().catch((e) =>
       console.warn('[CoachMark] Post-tour permissions failed:', e)
     );
-  }, [persistStep]);
+  }, [currentStep, persistStep]);
 
   // ── Derived state ───────────────────────────────────────────────────────
   const isCoachActive = currentStep >= 1 && currentStep <= COACH_STEP_COUNT;

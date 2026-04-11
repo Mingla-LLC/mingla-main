@@ -16,6 +16,7 @@ import { pairingKeys } from './usePairings';
 import { phoneInviteKeys } from './usePhoneInvite';
 import { subscriptionKeys } from './useSubscription';
 import { logger } from '../utils/logger';
+import { mixpanelService } from '../services/mixpanelService';
 
 // Query key prefixes for critical queries that should refresh on resume.
 // Deck/curated/session-deck EXCLUDED — active swipe sessions that only refresh on
@@ -101,6 +102,7 @@ export function useForegroundRefresh(
       // Track when we enter background (for duration logging + skip logic)
       if (nextState === 'background') {
         backgroundTimestampRef.current = Date.now();
+        mixpanelService.trackSessionEnded();
         // Stop the Supabase auto-refresh ticker to save battery while backgrounded.
         // iOS freezes timers anyway, but this ensures a clean restart on resume.
         // Constraint S8: isBrowser()=false means ticker runs unconditionally without this.
@@ -115,6 +117,12 @@ export function useForegroundRefresh(
       appStateRef.current = nextState;
 
       if (!wasBackground || !isNowActive) return;
+
+      // Analytics: track warm open with time since last active
+      const secondsSinceBackground = backgroundTimestampRef.current
+        ? Math.round((Date.now() - backgroundTimestampRef.current) / 1000)
+        : undefined;
+      mixpanelService.trackAppOpened({ source: 'warm', secondsSinceLastOpen: secondsSinceBackground });
 
       // Restart the auto-refresh ticker immediately on foreground.
       supabase.auth.startAutoRefresh();
