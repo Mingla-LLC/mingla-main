@@ -20,7 +20,7 @@
     "typeMessage": "Type a message...",
     "editMessage": "Edit message...",
     "typing": "typing...",
-    "inputPlaceholder": "Type @ to mention, # to tag a card...",
+    "inputPlaceholder": "Message... # to share a card",
     "messagePlaceholder": "Message..."
   },
   "boardPreferencesForm": {

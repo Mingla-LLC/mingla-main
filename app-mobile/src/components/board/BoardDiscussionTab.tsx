@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Clipboard,
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import { useTranslation } from "react-i18next";
@@ -27,7 +28,11 @@ import { MentionPopover } from "./MentionPopover";
 import { CardTagPopover } from "./CardTagPopover";
 import { KeyboardAwareView } from "../ui/KeyboardAwareView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import EmojiReactionPicker from "../discussion/EmojiReactionPicker";
+import { MessageContextMenu } from "../chat/MessageContextMenu";
+import { ReplyPreviewBar } from "../chat/ReplyPreviewBar";
+import { MentionChip } from "../chat/MentionChip";
+import { ReplyQuoteBlock } from "../chat/ReplyQuoteBlock";
+import { CardPreview } from "../chat/CardPreview";
 import * as Haptics from "expo-haptics";
 
 interface SavedCard {
@@ -42,6 +47,7 @@ interface BoardDiscussionTabProps {
   savedCards?: SavedCard[];
   onMentionUser?: (userId: string) => void;
   onUnreadCountChange?: () => void;
+  onCardPress?: (card: SavedCard) => void;
 }
 
 export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
@@ -50,6 +56,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
   savedCards = [],
   onMentionUser,
   onUnreadCountChange,
+  onCardPress,
 }) => {
   const { user } = useAppStore();
   const { t } = useTranslation(['board', 'common']);
@@ -70,12 +77,15 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
   const [mentionSearchText, setMentionSearchText] = useState("");
   const [showCardTagPopover, setShowCardTagPopover] = useState(false);
   const [cardTagSearchText, setCardTagSearchText] = useState("");
+  const [attachedCards, setAttachedCards] = useState<SavedCard[]>([]);
   const [reactionPicker, setReactionPicker] = useState<{
     visible: boolean;
     messageId: string;
     top: number;
   }>({ visible: false, messageId: "", top: 0 });
+  const [replyingTo, setReplyingTo] = useState<BoardMessage | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const inputRef = useRef<TextInput>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Tracks mention label → user_id for popover-selected mentions in the current draft.
   // Using a Map so we can prune stale entries when the user deletes the @mention text.
@@ -142,8 +152,18 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
       return;
     }
 
-    const content = messageText.trim();
+    // Build content: prepend #CardTitle for each attached card so they render as CardPreview in the thread
+    const cardTags = attachedCards.map((c) => {
+      const data = c.card_data || c.experience_data || {};
+      return `#${data.title || data.name || 'Card'}`;
+    });
+    const rawText = messageText.trim();
+    const content = cardTags.length > 0
+      ? `${cardTags.join(' ')} ${rawText}`.trim()
+      : rawText;
+
     setMessageText("");
+    setAttachedCards([]);
     setSending(true);
 
     try {
@@ -172,10 +192,22 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
       const mentions = Array.from(mentionSet);
       pendingMentions.current.clear();
 
+      const replyToId = replyingTo?.id;
+      const replyToSnapshot = replyingTo ? {
+        id: replyingTo.id,
+        content: replyingTo.content,
+        user_id: replyingTo.user_id,
+        image_url: (replyingTo as any).image_url ?? null,
+        deleted_at: null,
+        profiles: replyingTo.profiles ?? null,
+      } : null;
+      setReplyingTo(null);
+
       const { data, error } = await BoardMessageService.sendBoardMessage({
         sessionId,
         content,
         mentions,
+        replyToId,
         userId: user.id,
       });
 
@@ -185,14 +217,18 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
           setMessageText(content);
           handleSendMessage();
         });
-        setMessageText(content); // Restore message text
+        setMessageText(content);
         return;
       }
 
       if (data) {
+        // Attach reply_to snapshot so ReplyQuoteBlock renders immediately
+        const dataWithReply = replyToSnapshot
+          ? { ...data, reply_to: replyToSnapshot as any }
+          : data;
         setMessages((prev) => {
           if (prev.find((m) => m.id === data.id)) return prev;
-          return [...prev, data];
+          return [...prev, dataWithReply as BoardMessage];
         });
         // Scroll to bottom
         setTimeout(() => {
@@ -220,6 +256,7 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
     sessionId,
     participants,
     networkState.isConnected,
+    replyingTo,
   ]);
 
   // Update message
@@ -433,78 +470,56 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
     [user?.id]
   );
 
-  // Render message with mentions and hashtags
+  // Render message with card previews on top and text below
   const renderMessageContent = (content: string, mentions?: string[]) => {
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
+    const cardPreviews: React.ReactNode[] = [];
+    let remainingText = content;
     let key = 0;
 
-    // Combined regex for mentions (@[Display Name], @username) and hashtags (#hashtag with spaces)
-    const combinedRegex = /(@\[[^\]]+\]|@\w+)|(#[\w\s]+)/g;
-    let match;
+    // Build exact-match patterns from saved card titles (longest first to avoid partial matches)
+    const cardTitles = savedCards
+      .map((c) => {
+        const data = c.card_data || c.experience_data || {};
+        return { card: c, title: data.title || data.name || '' };
+      })
+      .filter((c) => c.title)
+      .sort((a, b) => b.title.length - a.title.length);
 
-    while ((match = combinedRegex.exec(content)) !== null) {
-      // Add text before match
-      if (match.index > lastIndex) {
-        parts.push(
-          <Text key={key++} style={styles.messageText}>
-            {content.substring(lastIndex, match.index)}
-          </Text>
-        );
-      }
+    // Extract card tags from content: match #ExactTitle against known cards
+    for (const { card, title } of cardTitles) {
+      const tag = `#${title}`;
+      const idx = remainingText.indexOf(tag);
+      if (idx === -1) continue;
 
-      // Check if it's a mention or hashtag
-      if (match[0].startsWith("@")) {
-        // Mention - always orange color
-        // Handle both @[Display Name] and @username formats
-        const mentionMatch = match[0].match(/^@\[([^\]]+)\]$/) || match[0].match(/^@(\w+)$/);
-        const mentionName = mentionMatch ? mentionMatch[1] : match[0].substring(1);
-        const mentionedUser = participants.find(
-          (p) =>
-            p.profiles?.username === mentionName ||
-            p.profiles?.first_name?.toLowerCase() === mentionName.toLowerCase() ||
-            p.profiles?.display_name?.toLowerCase() === mentionName.toLowerCase() ||
-            (p.profiles?.first_name && p.profiles?.last_name &&
-              `${p.profiles.first_name} ${p.profiles.last_name}`.toLowerCase() === mentionName.toLowerCase())
-        );
-
-        // Always apply orange color to mentions, even if user not found
-        // Display as @Name without brackets (strip @[...] wrapper)
-        parts.push(
-          <Text
-            key={key++}
-            style={[styles.messageText, styles.mentionText]}
-            onPress={
-              mentionedUser
-                ? () => onMentionUser?.(mentionedUser.user_id)
-                : undefined
-            }
-          >
-            @{mentionName}
-          </Text>
-        );
-      } else if (match[0].startsWith("#")) {
-        // Hashtag - blue color
-        parts.push(
-          <Text key={key++} style={[styles.messageText, styles.hashtagText]}>
-            {match[0]}
-          </Text>
-        );
-      }
-
-      lastIndex = match.index + match[0].length;
-    }
-
-    // Add remaining text
-    if (lastIndex < content.length) {
-      parts.push(
-        <Text key={key++} style={styles.messageText}>
-          {content.substring(lastIndex)}
-        </Text>
+      // Found a card tag — extract it and add a preview
+      remainingText = (remainingText.substring(0, idx) + remainingText.substring(idx + tag.length)).trim();
+      const data = card.card_data || card.experience_data || {};
+      const images = data.images || (data.image ? [data.image] : []);
+      cardPreviews.push(
+        <CardPreview
+          key={`card-${key++}`}
+          title={title}
+          category={data.category}
+          categoryIcon={data.categoryIcon}
+          imageUrl={images[0]}
+          onPress={() => onCardPress?.(card)}
+        />
       );
     }
 
-    return <Text style={styles.messageText}>{parts}</Text>;
+    // Render remaining text (may contain @mentions)
+    const textContent = remainingText.trim();
+
+    if (cardPreviews.length > 0) {
+      return (
+        <View>
+          {cardPreviews}
+          {textContent ? <Text style={styles.messageText}>{textContent}</Text> : null}
+        </View>
+      );
+    }
+
+    return <Text style={styles.messageText}>{content}</Text>;
   };
 
   // Subscribe to real-time updates.
@@ -641,6 +656,18 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
                         {formatTime(message.created_at)}
                       </Text>
                     </View>
+                    {(message as any).reply_to && (
+                      <ReplyQuoteBlock
+                        senderName={
+                          (message as any).reply_to.profiles
+                            ? getDisplayName((message as any).reply_to.profiles, '')
+                            : getParticipantName((message as any).reply_to.user_id ?? '')
+                        }
+                        previewText={(message as any).reply_to.content || ''}
+                        variant="received"
+                        isDeleted={!!(message as any).reply_to.deleted_at}
+                      />
+                    )}
                     {renderMessageContent(message.content, message.mentions)}
                     {reactionGroups.length > 0 && (
                       <View style={styles.reactionsRow}>
@@ -686,50 +713,8 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
         )}
       </ScrollView>
 
-      {/* Popovers — positioned absolutely above input, outside inputContainer to avoid clipping */}
+      {/* Popovers — positioned absolutely above input */}
       <View style={styles.popoverAnchor} pointerEvents="box-none">
-        {/* Mention Popover */}
-        <MentionPopover
-          participants={participants
-            .filter((p) => p.user_id !== user?.id)
-            .filter((p) => {
-              if (!showMentionPopover) return false;
-              if (!mentionSearchText) return true;
-
-              const name = getDisplayName(p.profiles, "");
-              const username = p.profiles?.username || "";
-
-              return (
-                name.toLowerCase().includes(mentionSearchText) ||
-                username.toLowerCase().includes(mentionSearchText)
-              );
-            })}
-          onSelectParticipant={(participant) => {
-            const lastAtIndex = messageText.lastIndexOf("@");
-            if (lastAtIndex !== -1) {
-              const beforeAt = messageText.substring(0, lastAtIndex);
-              // Use first name only — single word, no brackets, clean UX.
-              // The user_id is tracked in pendingMentions so we never lose who was mentioned.
-              const mentionLabel =
-                participant.profiles?.first_name ||
-                participant.profiles?.display_name?.split(" ")[0] ||
-                participant.profiles?.username?.split("_")[0] ||
-                "user";
-              pendingMentions.current.set(mentionLabel, participant.user_id);
-              const newText = `${beforeAt}@${mentionLabel} `;
-              setMessageText(newText);
-            }
-            setShowMentionPopover(false);
-            setMentionSearchText("");
-          }}
-          onClose={() => {
-            setShowMentionPopover(false);
-            setMentionSearchText("");
-          }}
-          visible={showMentionPopover}
-          keyboardHeight={0}
-        />
-
         {/* Card Tag Popover */}
         <CardTagPopover
           cards={savedCards.filter((card) => {
@@ -741,12 +726,16 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
             return title.includes(cardTagSearchText) || category.includes(cardTagSearchText);
           })}
           onSelectCard={(card) => {
+            // Add card to attached previews above input (not inline text)
+            setAttachedCards((prev) => {
+              if (prev.find((c) => c.id === card.id)) return prev;
+              return [...prev, card];
+            });
+            // Remove the # trigger from the text
             const lastHashIndex = messageText.lastIndexOf("#");
             if (lastHashIndex !== -1) {
               const beforeHash = messageText.substring(0, lastHashIndex);
-              const cardTitle = card.card_data?.title || card.experience_data?.title || card.card_data?.name || card.experience_data?.name || 'Card';
-              const newText = `${beforeHash}#${cardTitle} `;
-              setMessageText(newText);
+              setMessageText(beforeHash.trimEnd());
             }
             setShowCardTagPopover(false);
             setCardTagSearchText("");
@@ -775,8 +764,44 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
             </TouchableOpacity>
           </View>
         )}
+        {replyingTo && !editingMessage && (
+          <ReplyPreviewBar
+            senderName={getParticipantName(replyingTo.user_id ?? '')}
+            previewText={replyingTo.content || ''}
+            isOwnMessage={replyingTo.user_id === user?.id}
+            onClose={() => setReplyingTo(null)}
+          />
+        )}
+        {/* Attached card previews — shown above input */}
+        {attachedCards.length > 0 && (
+          <View style={styles.attachedCardsRow}>
+            {attachedCards.map((card) => {
+              const data = card.card_data || card.experience_data || {};
+              const images = data.images || (data.image ? [data.image] : []);
+              return (
+                <View key={card.id} style={styles.attachedCardWrapper}>
+                  <CardPreview
+                    title={data.title || data.name || 'Card'}
+                    category={data.category}
+                    categoryIcon={data.categoryIcon}
+                    imageUrl={images[0]}
+                    onPress={() => onCardPress?.(card)}
+                  />
+                  <TouchableOpacity
+                    style={styles.attachedCardRemove}
+                    onPress={() => setAttachedCards((prev) => prev.filter((c) => c.id !== card.id))}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Icon name="close" size={12} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        )}
         <View style={styles.inputWrapper}>
           <TextInput
+            ref={inputRef}
             style={[styles.input, isInputFocused && styles.inputFocused]}
             placeholder={t('board:boardDiscussionTab.inputPlaceholder')}
             placeholderTextColor="#999"
@@ -784,42 +809,17 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
             onChangeText={(text) => {
               setMessageText(text);
 
-              // Find cursor context: check what trigger character is active
-              const lastAtIndex = text.lastIndexOf("@");
+              // # card tag detection
               const lastHashIndex = text.lastIndexOf("#");
-
-              const atIsActive = lastAtIndex !== -1 && !text.substring(lastAtIndex + 1).includes(" ");
               const hashIsActive = lastHashIndex !== -1 && !text.substring(lastHashIndex + 1).includes(" ");
 
-              // @ mention detection — only if @ is the most recent trigger
-              if (atIsActive && (!hashIsActive || lastAtIndex > lastHashIndex)) {
-                const afterAt = text.substring(lastAtIndex + 1);
-                setShowMentionPopover(true);
-                setMentionSearchText(afterAt.toLowerCase());
-                setShowCardTagPopover(false);
-                setCardTagSearchText("");
-              } else {
-                setShowMentionPopover(false);
-                setMentionSearchText("");
-              }
-
-              // # card tag detection — only if # is the most recent trigger
-              if (hashIsActive && (!atIsActive || lastHashIndex > lastAtIndex)) {
+              if (hashIsActive) {
                 const afterHash = text.substring(lastHashIndex + 1);
                 setShowCardTagPopover(true);
                 setCardTagSearchText(afterHash.toLowerCase());
-                setShowMentionPopover(false);
-                setMentionSearchText("");
               } else {
                 setShowCardTagPopover(false);
                 setCardTagSearchText("");
-              }
-
-              // Prune stale pending mentions whose @label was deleted from the text
-              for (const [label] of pendingMentions.current) {
-                if (!text.includes(`@${label}`)) {
-                  pendingMentions.current.delete(label);
-                }
               }
 
               if (!editingMessage) {
@@ -852,12 +852,17 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
         </View>
       </View>
 
-      {/* Emoji Reaction Picker */}
-      <EmojiReactionPicker
+      {/* Message Context Menu */}
+      <MessageContextMenu
         visible={reactionPicker.visible}
         position={{ top: reactionPicker.top }}
-        onSelect={(emoji) => handleReaction(reactionPicker.messageId, emoji)}
-        onClose={() => setReactionPicker({ visible: false, messageId: "", top: 0 })}
+        messageId={reactionPicker.messageId}
+        messageContent={
+          messages.find((m) => m.id === reactionPicker.messageId)?.content ?? ""
+        }
+        isOwnMessage={
+          messages.find((m) => m.id === reactionPicker.messageId)?.user_id === user?.id
+        }
         existingReactions={
           reactionPicker.visible
             ? (messages.find((m) => m.id === reactionPicker.messageId)?.reactions ?? [])
@@ -865,6 +870,25 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
                 .map((r) => r.emoji)
             : []
         }
+        onReaction={handleReaction}
+        onReply={(msgId) => {
+          const msg = messages.find((m) => m.id === msgId);
+          if (msg) {
+            setReplyingTo(msg);
+          }
+        }}
+        onCopy={() => {
+          // Copy handled internally by MessageContextMenu
+        }}
+        onEdit={(msgId) => {
+          const msg = messages.find((m) => m.id === msgId);
+          if (msg) {
+            setEditingMessage(msg);
+            setMessageText(msg.content);
+          }
+        }}
+        onDelete={handleDeleteMessage}
+        onClose={() => setReactionPicker({ visible: false, messageId: "", top: 0 })}
       />
     </KeyboardAwareView>
   );
@@ -960,6 +984,12 @@ const styles = StyleSheet.create({
     lineHeight: Platform.OS === "android" ? 18 : 21,
     fontWeight: "400",
   },
+  contentWithMentions: {
+    flexDirection: "row" as const,
+    flexWrap: "wrap" as const,
+    alignItems: "center" as const,
+    gap: 2,
+  },
   mentionText: {
     color: "#eb7825",
     fontWeight: "600",
@@ -1026,6 +1056,45 @@ const styles = StyleSheet.create({
   editingText: {
     fontSize: 12,
     color: "#92400E",
+    fontWeight: "600",
+  },
+  attachedCardsRow: {
+    paddingBottom: 8,
+    gap: 6,
+  },
+  attachedCardWrapper: {
+    position: "relative",
+  },
+  attachedCardRemove: {
+    position: "absolute",
+    top: 8,
+    right: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  taggedRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 6,
+  },
+  inputChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#eb7825",
+    borderRadius: 6,
+    paddingLeft: 8,
+    paddingRight: 5,
+    paddingVertical: 3,
+    gap: 4,
+  },
+  inputChipText: {
+    fontSize: 12,
+    color: "#FFFFFF",
     fontWeight: "600",
   },
   input: {

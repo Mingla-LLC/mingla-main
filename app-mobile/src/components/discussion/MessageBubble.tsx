@@ -9,15 +9,27 @@ import {
 import { BoardMessage } from "../../services/boardDiscussionService";
 import { getDisplayName } from "../../utils/getDisplayName";
 import { colors, typography, shadows } from "../../constants/designSystem";
+import { MentionChip } from "../chat/MentionChip";
+import { ReplyQuoteBlock } from "../chat/ReplyQuoteBlock";
+
+interface ReplyToData {
+  id: string;
+  content: string;
+  user_id: string | null;
+  image_url?: string | null;
+  deleted_at?: string | null;
+  profiles?: { id: string; display_name?: string | null; first_name?: string | null; last_name?: string | null } | null;
+}
 
 interface MessageBubbleProps {
-  message: BoardMessage;
+  message: BoardMessage & { reply_to?: ReplyToData };
   isOwnMessage: boolean;
   currentUserId: string;
   onLongPress: (messageId: string, pageY: number) => void;
   onReaction: (messageId: string, emoji: string) => void;
   participantNames: Record<string, string>;
   isLastOwnMessage?: boolean;
+  onScrollToMessage?: (messageId: string) => void;
 }
 
 function formatTime(isoString: string): string {
@@ -29,8 +41,39 @@ function formatTime(isoString: string): string {
   return `${hours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
 }
 
-function renderContent(content: string, isOwn: boolean): React.ReactNode[] {
-  // Match @Name (word chars + spaces up to next @ or # or end) and #Tag
+/** Check if content contains @mentions that need chip rendering. */
+function hasMentions(content: string): boolean {
+  return /@[\w]/.test(content);
+}
+
+/**
+ * Render message content with @mention chips and #card tags.
+ * Returns a View with flex-wrap when mentions are present (View-based chips),
+ * or plain Text nodes when no mentions exist (better performance).
+ */
+function renderContent(content: string, isOwn: boolean): React.ReactElement {
+  if (!hasMentions(content)) {
+    // Fast path: no mentions, render as plain text
+    // Still handle #tags
+    const tagRegex = /(#[\w\s]+?)(?=\s@|\s#|$)/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = tagRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(<Text key={`t-${lastIndex}`}>{content.slice(lastIndex, match.index)}</Text>);
+      }
+      parts.push(<Text key={`c-${match.index}`} style={styles.cardTag}>{match[0]}</Text>);
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < content.length) {
+      parts.push(<Text key={`t-${lastIndex}`}>{content.slice(lastIndex)}</Text>);
+    }
+    return <Text style={[styles.messageText, isOwn ? styles.messageTextOwn : styles.messageTextOther]}>{parts.length > 0 ? parts : content}</Text>;
+  }
+
+  // Mentions present: use View flex-wrap so MentionChip (View-based) renders properly
   const regex = /(@[\w\s]+?)(?=\s@|\s#|$)|(#[\w\s]+?)(?=\s@|\s#|$)/g;
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
@@ -39,7 +82,7 @@ function renderContent(content: string, isOwn: boolean): React.ReactNode[] {
   while ((match = regex.exec(content)) !== null) {
     if (match.index > lastIndex) {
       parts.push(
-        <Text key={`t-${lastIndex}`}>
+        <Text key={`t-${lastIndex}`} style={[styles.messageText, isOwn ? styles.messageTextOwn : styles.messageTextOther]}>
           {content.slice(lastIndex, match.index)}
         </Text>
       );
@@ -47,17 +90,17 @@ function renderContent(content: string, isOwn: boolean): React.ReactNode[] {
 
     const matched = match[0];
     if (matched.startsWith("@")) {
+      const mentionName = matched.slice(1).trim();
       parts.push(
-        <Text
+        <MentionChip
           key={`m-${match.index}`}
-          style={isOwn ? styles.mentionOwn : styles.mention}
-        >
-          {matched}
-        </Text>
+          name={mentionName}
+          variant={isOwn ? 'sent' : 'received'}
+        />
       );
     } else {
       parts.push(
-        <Text key={`c-${match.index}`} style={styles.cardTag}>
+        <Text key={`c-${match.index}`} style={[styles.messageText, isOwn ? styles.messageTextOwn : styles.messageTextOther, styles.cardTag]}>
           {matched}
         </Text>
       );
@@ -66,10 +109,18 @@ function renderContent(content: string, isOwn: boolean): React.ReactNode[] {
   }
 
   if (lastIndex < content.length) {
-    parts.push(<Text key={`t-${lastIndex}`}>{content.slice(lastIndex)}</Text>);
+    parts.push(
+      <Text key={`t-${lastIndex}`} style={[styles.messageText, isOwn ? styles.messageTextOwn : styles.messageTextOther]}>
+        {content.slice(lastIndex)}
+      </Text>
+    );
   }
 
-  return parts.length > 0 ? parts : [<Text key="full">{content}</Text>];
+  return (
+    <View style={styles.contentWithMentions}>
+      {parts}
+    </View>
+  );
 }
 
 function MessageBubbleComponent({
@@ -80,6 +131,7 @@ function MessageBubbleComponent({
   onReaction,
   participantNames,
   isLastOwnMessage,
+  onScrollToMessage,
 }: MessageBubbleProps) {
   const reactions = message.reactions ?? [];
   const readBy = message.read_by ?? [];
@@ -166,6 +218,22 @@ function MessageBubbleComponent({
               isOwnMessage ? styles.bubbleOwn : styles.bubbleOther,
             ]}
           >
+            {/* Reply quote block */}
+            {message.reply_to && (
+              <ReplyQuoteBlock
+                senderName={
+                  message.reply_to.profiles
+                    ? getDisplayName(message.reply_to.profiles, '')
+                    : participantNames[message.reply_to.user_id ?? ''] || 'Unknown'
+                }
+                previewText={message.reply_to.content || ''}
+                imageUrl={message.reply_to.image_url ?? undefined}
+                variant={isOwnMessage ? 'sent' : 'received'}
+                isDeleted={!!message.reply_to.deleted_at}
+                onPress={onScrollToMessage ? () => onScrollToMessage(message.reply_to!.id) : undefined}
+              />
+            )}
+
             {/* Image */}
             {message.image_url && (
               <Image
@@ -176,18 +244,7 @@ function MessageBubbleComponent({
             )}
 
             {/* Text content */}
-            {message.content ? (
-              <Text
-                style={[
-                  styles.messageText,
-                  isOwnMessage
-                    ? styles.messageTextOwn
-                    : styles.messageTextOther,
-                ]}
-              >
-                {renderContent(message.content, isOwnMessage)}
-              </Text>
-            ) : null}
+            {message.content ? renderContent(message.content, isOwnMessage) : null}
 
             {/* Timestamp */}
             <Text
@@ -309,13 +366,11 @@ const styles = StyleSheet.create({
   messageTextOther: {
     color: colors.gray[900],
   },
-  mention: {
-    color: "#eb7825",
-    fontWeight: "600",
-  },
-  mentionOwn: {
-    color: "#FFFFFF",
-    fontWeight: "700",
+  contentWithMentions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 2,
   },
   cardTag: {
     color: colors.primary[500],

@@ -120,8 +120,12 @@ export class BoardMessageService {
         profiles: message.user_id ? profileMap.get(message.user_id) || null : null,
       }));
 
-      // Load read receipts and reactions for messages
+      // Load read receipts, reactions, and reply-to messages
       const messageIds = messages.map(m => m.id);
+      const replyToIds = [...new Set(
+        messages.map(m => m.reply_to_id).filter(Boolean)
+      )] as string[];
+
       if (messageIds.length > 0) {
         const [{ data: reads }, { data: reactions }] = await Promise.all([
           supabase
@@ -134,12 +138,50 @@ export class BoardMessageService {
             .in('message_id', messageIds),
         ]);
 
-        // Attach read receipts and reactions to messages
-        const messagesWithExtras = messagesWithProfiles.map(message => ({
-          ...message,
-          read_by: reads?.filter(r => r.message_id === message.id) || [],
-          reactions: reactions?.filter(r => r.message_id === message.id) || [],
-        }));
+        // Fetch reply-to messages if any exist
+        let replyMessages: any[] = [];
+        if (replyToIds.length > 0) {
+          const { data: replyData } = await supabase
+            .from('board_messages')
+            .select('id, content, user_id, image_url, deleted_at')
+            .in('id', replyToIds);
+          replyMessages = replyData || [];
+        }
+
+        // Build reply-to lookup map
+        const replyMap = new Map<string, any>();
+        for (const rm of (replyMessages || [])) {
+          replyMap.set(rm.id, rm);
+        }
+
+        // Fetch profiles for reply-to authors
+        const replyUserIds = [...new Set(
+          (replyMessages || []).map((rm: any) => rm.user_id).filter(Boolean)
+        )] as string[];
+        const missingReplyUserIds = replyUserIds.filter(id => !profileMap.has(id));
+        if (missingReplyUserIds.length > 0) {
+          const { data: replyProfiles } = await supabase
+            .from('profiles')
+            .select('id, username, display_name, first_name, last_name, avatar_url')
+            .in('id', missingReplyUserIds);
+          for (const p of (replyProfiles || [])) {
+            profileMap.set(p.id, p);
+          }
+        }
+
+        // Attach read receipts, reactions, and reply_to to messages
+        const messagesWithExtras = messagesWithProfiles.map(message => {
+          const replyToMsg = message.reply_to_id ? replyMap.get(message.reply_to_id) : null;
+          return {
+            ...message,
+            read_by: reads?.filter((r: any) => r.message_id === message.id) || [],
+            reactions: reactions?.filter((r: any) => r.message_id === message.id) || [],
+            reply_to: replyToMsg ? {
+              ...replyToMsg,
+              profiles: replyToMsg.user_id ? profileMap.get(replyToMsg.user_id) || null : null,
+            } : undefined,
+          };
+        });
 
         return { data: messagesWithExtras as BoardMessage[], error: null };
       }
@@ -203,8 +245,9 @@ export class BoardMessageService {
       // Mark as read by sender
       await this.markMessageAsRead(message.id, userId);
 
-      // Send notifications (non-blocking)
-      this.sendBoardMessageNotifications(sessionId, userId, message, messageWithProfile).catch(err =>
+      // Send notifications (non-blocking) — include reply-to author
+      const replyToUserId = message.reply_to_id ? await this.getMessageAuthor(message.reply_to_id) : null;
+      this.sendBoardMessageNotifications(sessionId, userId, message, messageWithProfile, replyToUserId).catch(err =>
         console.error('Error sending board message notifications:', err)
       );
 
@@ -724,22 +767,44 @@ export class BoardMessageService {
   }
 
   /**
-   * Send mention notifications via the notify-message → notify-dispatch pipeline.
-   * Creates in-app notification records AND sends push notifications in one call.
-   * Only fires for @mentioned users — general board message notifications are
-   * handled separately by notify-message's board_message type.
+   * Look up the author of a message by ID.
+   */
+  private static async getMessageAuthor(messageId: string): Promise<string | null> {
+    try {
+      const { data } = await supabase
+        .from('board_messages')
+        .select('user_id')
+        .eq('id', messageId)
+        .single();
+      return data?.user_id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Send notifications for mentions and replies via the notify-message → notify-dispatch pipeline.
+   * Fires for @mentioned users AND the author of the replied-to message.
    */
   private static async sendBoardMessageNotifications(
     sessionId: string,
     senderId: string,
     message: { id: string; content: string; mentions?: string[] | null },
-    _messageWithProfile: BoardMessage
+    _messageWithProfile: BoardMessage,
+    replyToUserId?: string | null
   ): Promise<void> {
     try {
-      const mentionedUserIds: string[] = Array.isArray(message.mentions)
-        ? message.mentions.filter((id: string) => id !== senderId)
-        : [];
+      const notifySet = new Set<string>(
+        Array.isArray(message.mentions) ? message.mentions : []
+      );
+      // Also notify the person being replied to
+      if (replyToUserId) {
+        notifySet.add(replyToUserId);
+      }
+      // Never notify the sender themselves
+      notifySet.delete(senderId);
 
+      const mentionedUserIds = Array.from(notifySet);
       if (mentionedUserIds.length === 0) return;
 
       // Get session name for the notification copy

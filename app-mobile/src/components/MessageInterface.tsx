@@ -27,6 +27,8 @@ import { useKeyboard } from "../hooks/useKeyboard";
 import { useChatPresence } from "../hooks/useChatPresence";
 import { useBroadcastReceiver } from "../hooks/useBroadcastReceiver";
 import { MessageBubble } from "./chat/MessageBubble";
+import { MessageContextMenu } from "./chat/MessageContextMenu";
+import { ReplyPreviewBar } from "./chat/ReplyPreviewBar";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
 import { DirectMessage } from "../services/messagingService";
@@ -154,6 +156,19 @@ export default function MessageInterface({
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
   const [showBoardSelection, setShowBoardSelection] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    messageId: string;
+    content: string;
+    isMe: boolean;
+    top: number;
+  }>({ visible: false, messageId: '', content: '', isMe: false, top: 0 });
+  const [replyingTo, setReplyingTo] = useState<{
+    messageId: string;
+    senderName: string;
+    content: string;
+    isMe: boolean;
+  } | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [selectedBoards, setSelectedBoards] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
@@ -692,23 +707,37 @@ export default function MessageInterface({
           ref={flatListRef}
           data={groupedMessages}
           renderItem={({ item }) => (
-            <MessageBubble
-              message={{
-                id: item.message.id,
-                content: item.message.content,
-                timestamp: item.message.timestamp,
-                type: item.message.type,
-                fileUrl: item.message.fileUrl,
-                fileName: item.message.fileName,
-                fileSize: item.message.fileSize,
-                isMe: item.message.isMe,
-                failed: item.message.failed,
+            <TouchableOpacity
+              activeOpacity={1}
+              onLongPress={(e) => {
+                setContextMenu({
+                  visible: true,
+                  messageId: item.message.id,
+                  content: item.message.content,
+                  isMe: item.message.isMe,
+                  top: e.nativeEvent.pageY,
+                });
               }}
-              isMe={item.message.isMe}
-              groupPosition={item.groupPosition}
-              showTimestamp={item.showTimestamp}
-              isRead={item.message.isMe && !item.message.id.startsWith("temp-") && (item.message.isRead === true)}
-            />
+              delayLongPress={500}
+            >
+              <MessageBubble
+                message={{
+                  id: item.message.id,
+                  content: item.message.content,
+                  timestamp: item.message.timestamp,
+                  type: item.message.type,
+                  fileUrl: item.message.fileUrl,
+                  fileName: item.message.fileName,
+                  fileSize: item.message.fileSize,
+                  isMe: item.message.isMe,
+                  failed: item.message.failed,
+                }}
+                isMe={item.message.isMe}
+                groupPosition={item.groupPosition}
+                showTimestamp={item.showTimestamp}
+                isRead={item.message.isMe && !item.message.id.startsWith("temp-") && (item.message.isRead === true)}
+              />
+            </TouchableOpacity>
           )}
           keyExtractor={(item) => item.message.id}
           inverted={true}
@@ -719,6 +748,35 @@ export default function MessageInterface({
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* Message Context Menu */}
+      <MessageContextMenu
+        visible={contextMenu.visible}
+        position={{ top: contextMenu.top }}
+        messageId={contextMenu.messageId}
+        messageContent={contextMenu.content}
+        isOwnMessage={contextMenu.isMe}
+        onReaction={(_msgId, _emoji) => {
+          // [TRANSITIONAL] Wave 1: no-op — DM reactions added in Wave 2
+          console.log('[Wave1] DM reaction requested:', _msgId, _emoji);
+        }}
+        onReply={(msgId) => {
+          // Find the message in the current messages list
+          const msg = messages.find((m) => m.id === msgId);
+          if (msg) {
+            setReplyingTo({
+              messageId: msg.id,
+              senderName: msg.isMe ? (currentUserName || 'You') : cleanName(friend.name),
+              content: msg.content,
+              isMe: msg.isMe,
+            });
+          }
+        }}
+        onCopy={() => {
+          // Copy handled internally by MessageContextMenu
+        }}
+        onClose={() => setContextMenu({ visible: false, messageId: '', content: '', isMe: false, top: 0 })}
+      />
 
       {/* Processing File Loader */}
       <Modal visible={isProcessingFile} transparent={true} animationType="fade">
@@ -853,6 +911,15 @@ export default function MessageInterface({
           },
         ]}
       >
+        {/* Reply Preview Bar */}
+        {replyingTo && (
+          <ReplyPreviewBar
+            senderName={replyingTo.senderName}
+            previewText={replyingTo.content}
+            isOwnMessage={replyingTo.isMe}
+            onClose={() => setReplyingTo(null)}
+          />
+        )}
         <View style={styles.inputContainer}>
           {/* Attachment Menu */}
           <View style={styles.attachmentContainer}>

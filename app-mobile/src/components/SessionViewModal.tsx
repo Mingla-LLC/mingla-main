@@ -710,6 +710,7 @@ export default function SessionViewModal({
                   participants={participants}
                   savedCards={savedCards}
                   onUnreadCountChange={loadUnreadCount}
+                  onCardPress={(card) => handleViewCardDetails(card as any)}
                 />
               )}
             </View>

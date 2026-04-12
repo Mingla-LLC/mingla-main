@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions, Image } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { colors, typography, fontWeights, radius, spacing } from '../../constants/designSystem';
+import { MentionChip } from './MentionChip';
+import { ReplyQuoteBlock } from './ReplyQuoteBlock';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -18,12 +20,79 @@ interface MessageData {
   failed?: boolean;
 }
 
+interface ReplyToData {
+  senderName: string;
+  content: string;
+  imageUrl?: string;
+  isDeleted?: boolean;
+  messageId?: string;
+}
+
 interface MessageBubbleProps {
   message: MessageData;
   isMe: boolean;
   groupPosition: 'solo' | 'first' | 'middle' | 'last';
   showTimestamp: boolean;
   isRead: boolean;
+  replyTo?: ReplyToData;
+  onScrollToMessage?: (messageId: string) => void;
+}
+
+/** Check if content has @mentions. */
+function hasMentions(content: string): boolean {
+  return /@[\w]/.test(content);
+}
+
+/**
+ * Render message content with @mention chips.
+ * Returns a View (flex-wrap) when mentions present, plain Text otherwise.
+ */
+function renderContentWithMentions(content: string, isMe: boolean): React.ReactElement {
+  if (!hasMentions(content)) {
+    return (
+      <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
+        {content}
+      </Text>
+    );
+  }
+
+  const regex = /(@[\w\s]+?)(?=\s@|\s#|$)/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(
+        <Text key={`t-${lastIndex}`} style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
+          {content.slice(lastIndex, match.index)}
+        </Text>
+      );
+    }
+    const mentionName = match[0].slice(1).trim();
+    parts.push(
+      <MentionChip
+        key={`m-${match.index}`}
+        name={mentionName}
+        variant={isMe ? 'sent' : 'received'}
+      />
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < content.length) {
+    parts.push(
+      <Text key={`t-${lastIndex}`} style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
+        {content.slice(lastIndex)}
+      </Text>
+    );
+  }
+
+  return (
+    <View style={styles.contentWithMentions}>
+      {parts}
+    </View>
+  );
 }
 
 function formatTimestampForPill(timestamp: string): string {
@@ -69,7 +138,7 @@ const BORDER_RADIUS = {
   },
 } as const;
 
-export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isRead }: MessageBubbleProps) {
+export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isRead, replyTo, onScrollToMessage }: MessageBubbleProps) {
   const { t } = useTranslation(['chat', 'common']);
   const borderRadius = BORDER_RADIUS[isMe ? 'sent' : 'received'][groupPosition];
   const isGroupEnd = groupPosition === 'last' || groupPosition === 'solo';
@@ -107,11 +176,19 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
             !isDelivered && !isFailed && styles.bubbleSending,
           ]}
         >
-          {message.type === 'text' && (
-            <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
-              {message.content}
-            </Text>
+          {/* Reply quote block (Wave 2 will wire data; renders when replyTo prop is provided) */}
+          {replyTo && (
+            <ReplyQuoteBlock
+              senderName={replyTo.senderName}
+              previewText={replyTo.content}
+              imageUrl={replyTo.imageUrl}
+              variant={isMe ? 'sent' : 'received'}
+              isDeleted={replyTo.isDeleted}
+              onPress={replyTo.messageId && onScrollToMessage ? () => onScrollToMessage(replyTo.messageId!) : undefined}
+            />
           )}
+
+          {message.type === 'text' && renderContentWithMentions(message.content, isMe)}
 
           {message.type === 'image' && message.fileUrl && (
             <View style={styles.mediaContainer}>
@@ -243,6 +320,12 @@ const styles = StyleSheet.create({
   },
   textReceived: {
     color: colors.text.primary,
+  },
+  contentWithMentions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 2,
   },
   mediaContainer: {
     gap: 4,
