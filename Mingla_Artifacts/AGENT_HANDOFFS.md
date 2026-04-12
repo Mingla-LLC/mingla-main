@@ -1,7 +1,7 @@
 # Agent Handoffs
 
 > Last updated: 2026-04-11
-> Total: 0 active | 87 completed
+> Total: 0 active | 90 completed
 
 ## Active Dispatches
 
@@ -13,6 +13,9 @@
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-084 | ORCH-0402 | Tester | 2026-04-11 | QA_ORCH-0402_CALENDAR_BUTTON_AND_BIRTHDAY_PUSH_REPORT.md | PASS — 17/17 criteria, 4/4 regressions clean, 0 P0 |
+| AH-083 | ORCH-0402 | Implementor | 2026-04-11 | CalendarButton inverted prop + birthday push edge function + cron migration + alarm trim | APPROVED |
+| AH-082 | ORCH-0402 | Orchestrator (intake + spec) | 2026-04-11 | IMPLEMENTOR_ORCH-0402_CALENDAR_BUTTON_VISIBILITY.md | APPROVED |
 | AH-081 | ORCH-0387 | Implementor | 2026-04-11 | Mixpanel token set, 7 methods wired, push_clicked populated, dead config removed | VERIFIED — live events in Mixpanel dashboard |
 | AH-080 | ORCH-0387 | Product (strategy) | 2026-04-11 | ANALYTICS_STRATEGY_FOR_LAUNCH.md | APPROVED |
 | AH-079 | ORCH-0387 | Orchestrator (review) | 2026-04-11 | Product strategy + investigation approved, implementor dispatched | APPROVED |

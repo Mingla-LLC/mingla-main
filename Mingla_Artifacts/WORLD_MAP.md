@@ -176,6 +176,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0274 | Photo backfill pipeline broken — no city filter, timeouts, no job tracking | Discovery | S1 | architecture-flaw | closed | A | 2026-04-02 | QA_PHOTO_BACKFILL_PHASE1_BACKEND_REPORT.md + QA_PHOTO_BACKFILL_PHASE2_ADMIN_UI_REPORT.md — Full job system: 2 tables, 9 actions, city-scoped batches, auto-advance, persist across reloads. P1 13/13 + P2 10/10 PASS. |
 
 | ORCH-0392 | Travel mode pills overflow section container — "Driving" bleeds right edge after i18n label change | Discovery | S2 | regression | closed | A | 2026-04-11 | flexWrap: "wrap" added to travelModesGrid. Visually verified EN + ES on-device. Parent: ORCH-0386. |
+| ORCH-0402 | Calendar button invisible on birthday hero + no birthday push notifications | Discovery | S2 | ux + missing-feature | closed | A | 2026-04-11 | QA_ORCH-0402_CALENDAR_BUTTON_AND_BIRTHDAY_PUSH_REPORT.md — 17/17 criteria PASS, 4/4 regressions clean. CalendarButton inverted prop, 5-tier push pipeline via pg_cron. |
 
 ### Section 4: Collaboration Sessions
 

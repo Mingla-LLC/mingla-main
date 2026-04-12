@@ -125,7 +125,7 @@ export default function CalendarButton({
         return;
       }
 
-      // Create event with 7-tier reminders using expo-calendar directly
+      // Create event with 5-tier reminders using expo-calendar directly
       // to avoid DeviceCalendarService.addEventToDeviceCalendar's duplicate alerts
       const event = buildHolidayCalendarEvent(eventTitle, nextOccurrence, notes);
       const Calendar = await import("expo-calendar");

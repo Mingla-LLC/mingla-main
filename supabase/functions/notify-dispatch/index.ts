@@ -47,6 +47,7 @@ const typeToPreference: Record<string, string> = {
   // Calendar + holiday reminders gated under "reminders" preference.
   // Previously calendar reminders had no preference key (always sent push).
   "holiday_reminder": "reminders",
+  "birthday_reminder": "reminders",
   "calendar_reminder_tomorrow": "reminders",
   "calendar_reminder_today": "reminders",
   "visit_feedback_prompt": "reminders",

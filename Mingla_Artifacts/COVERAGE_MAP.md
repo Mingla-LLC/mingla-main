@@ -18,7 +18,7 @@
 | Chat / DM | 8 | 0 | 0 | 0 | 0 | 8 | 100% | 0% | Unaudited |
 | Payments & Subscriptions | 15 | 8 | 6 | 1 | 0 | 0 | 0% | 0% | Strong |
 | Calendar & Scheduling | 8 | 0 | 0 | 0 | 0 | 8 | 100% | 0% | Unaudited |
-| Holidays & Events | 7 | 0 | 1 | 0 | 0 | 6 | 86% | 0% | Weak |
+| Holidays & Events | 8 | 1 | 1 | 0 | 0 | 6 | 75% | 0% | Weak |
 | People Discovery | 10 | 0 | 0 | 0 | 0 | 10 | 100% | 0% | Unaudited |
 | Pairing System | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
 | Sharing & Invites | 10 | 0 | 0 | 0 | 0 | 10 | 100% | 0% | Unaudited |

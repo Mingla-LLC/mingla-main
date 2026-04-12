@@ -1,10 +1,10 @@
 # Master Bug List
 
 > Last updated: 2026-04-11
-> Total: 312 | Open: 131 | Closed: 110 | Verified (B grade): 21 | Partial: 1 | Deferred: 1
+> Total: 313 | Open: 131 | Closed: 111 | Verified (B grade): 21 | Partial: 1 | Deferred: 1
 >
-> Recently closed: ORCH-0392 (travel mode pill bleed — flexWrap fix, visually verified on-device)
-> Previously closed: ORCH-0390 (dead code elimination — QA PASS, partial close)
+> Recently closed: ORCH-0402 (calendar button visibility + birthday push notifications — QA PASS 17/17)
+> Previously closed: ORCH-0392 (travel mode pill bleed — flexWrap fix, visually verified on-device)
 
 ## Summary by Status
 
@@ -15,7 +15,7 @@
 | Open (F grade, missing-feature) | 1 | <1% |
 | Open (F grade, quality-gap) | 2 | <1% |
 | Open (D grade, quality-gap) | 2 | <1% |
-| Closed (A grade) | 89 | 30% |
+| Closed (A grade) | 90 | 30% |
 | Verified (B grade) | 16 | 5% |
 | Verified (C grade) | 1 | <1% |
 | Deferred | 1 | <1% |
