@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { userActivityService } from "./userActivityService";
+import { recordCardSchedule } from "./cardEngagementService";
 
 export interface CalendarEntryRecord {
   id: string;
@@ -130,7 +131,11 @@ export class CalendarService {
       metadata: { scheduled_at: scheduledAtIso },
     });
 
-    // Fire-and-forget engagement counters — must NEVER affect scheduling outcome.
+    // ORCH-0408 Phase 3: Record schedule to card_pool counter (fire-and-forget)
+    recordCardSchedule(card.id);
+
+    // [TRANSITIONAL] Dead call — user_engagement_stats table doesn't exist on live DB.
+    // Silently fails. Will be removed in Phase 6 cleanup.
     Promise.resolve().then(() =>
       supabase.rpc('increment_user_engagement', {
         p_user_id: userId,

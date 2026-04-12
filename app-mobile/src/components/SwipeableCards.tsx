@@ -41,7 +41,7 @@ import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { BoardCardService } from "../services/boardCardService";
 import { notifyMatch } from "../services/boardNotificationService";
 import { inAppNotificationService } from "../services/inAppNotificationService";
-import { recordCardSwipe } from "../services/cardEngagementService";
+import { recordCardSwipe, recordCardExpand } from "../services/cardEngagementService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -1105,18 +1105,22 @@ export default function SwipeableCards({
     if (!currentRec) return;
     setIsExpandedModalVisible(true);
 
-    // Curated cards have their own shape — pass through directly
-    if ((currentRec as any).cardType === 'curated') {
-      setSelectedCardForExpansion(currentRec as unknown as ExpandedCardData);
-      return;
-    }
-    // Track card expanded
+    // ORCH-0408 Phase 3: Record expand for ALL card types (fire-and-forget)
+    recordCardExpand(currentRec.id);
+
+    // Track card expanded in Mixpanel (ALL card types — curated was previously skipped)
     mixpanelService.trackCardExpanded({
       cardId: currentRec.id,
       cardTitle: currentRec.title,
       category: currentRec.category,
       source: "home",
     });
+
+    // Curated cards have their own shape — pass through directly
+    if ((currentRec as any).cardType === 'curated') {
+      setSelectedCardForExpansion(currentRec as unknown as ExpandedCardData);
+      return;
+    }
     logAppsFlyerEvent('af_content_view', {
       af_content_type: currentRec.category,
       af_content_id: currentRec.id,

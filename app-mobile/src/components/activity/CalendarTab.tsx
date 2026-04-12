@@ -24,6 +24,7 @@ import ProposeDateTimeModal from "./ProposeDateTimeModal";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { mixpanelService } from "../../services/mixpanelService";
 import { logAppsFlyerEvent } from "../../services/appsFlyerService";
+import { recordCardExpand } from "../../services/cardEngagementService";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1187,9 +1188,12 @@ const CalendarTab = ({
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);
 
-    // Track card expanded
+    // ORCH-0408 Phase 3: Record expand to card_pool counter (fire-and-forget)
+    recordCardExpand((entry as any).card_id || entry.id);
+
+    // Track card expanded (fixed: use card_id instead of calendar entry UUID)
     mixpanelService.trackCardExpanded({
-      cardId: entry.id,
+      cardId: (entry as any).card_id || entry.id,
       cardTitle: experience.title || entry.title,
       category: experience.category || entry.category || "Experience",
       source: "calendar",

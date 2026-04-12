@@ -21,6 +21,7 @@ import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
 import { mixpanelService } from "../../services/mixpanelService";
 import { logAppsFlyerEvent } from "../../services/appsFlyerService";
+import { recordCardExpand } from "../../services/cardEngagementService";
 import { useSavedCards } from "@/src/hooks/useSavedCards";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1536,6 +1537,9 @@ const SavedTab = ({
     setSelectedCardForModal(expandedCardData);
     setOriginalSavedCard(card);
     setIsModalVisible(true);
+
+    // ORCH-0408 Phase 3: Record expand to card_pool counter (fire-and-forget)
+    recordCardExpand(card.id);
 
     // Track card expanded
     mixpanelService.trackCardExpanded({
