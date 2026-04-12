@@ -34,6 +34,9 @@ export interface PoolQueryParams {
   excludeCardIds?: string[];       // additional UUID exclusions (card_pool.id)
   excludePlaceIds?: string[];      // Place ID exclusions (card_pool.google_place_id)
   priceTiers?: PriceTierSlug[];    // price tier filter (e.g., ['chill', 'comfy'])
+  // ORCH-0404: Haversine distance filter applied INSIDE the SQL query so the RPC
+  // never returns cards that the JS post-filter would strip. Optional for backward compat.
+  maxDistanceKm?: number;          // max haversine distance from (lat, lng) in km
 }
 
 export interface PoolQueryResult {
@@ -161,6 +164,11 @@ async function queryPoolCards(
     return { poolCards: [], totalUnseenCount: 0 };
   }
 
+  // ORCH-0404: Pass center lat/lng + max distance to the RPC so the haversine
+  // filter runs in SQL. This prevents the bounding box from returning distant
+  // popular cards that the JS post-filter would strip (the root cause of the
+  // 3-card collab deck bug). When maxDistanceKm is null, the RPC skips the
+  // haversine filter (backward compat for callers that don't set it).
   const { data, error } = await supabaseAdmin.rpc('query_pool_cards', {
     p_user_id: userId,
     p_categories: resolvedCats.length > 0 ? resolvedCats : [],
@@ -176,6 +184,9 @@ async function queryPoolCards(
     p_price_tiers: params.priceTiers && params.priceTiers.length > 0 ? params.priceTiers : [],
     p_exclude_place_ids: params.excludePlaceIds || [],
     p_limit: limit,
+    p_center_lat: params.maxDistanceKm != null ? lat : null,
+    p_center_lng: params.maxDistanceKm != null ? lng : null,
+    p_max_distance_km: params.maxDistanceKm ?? null,
   });
 
   if (error) {
@@ -854,7 +865,18 @@ export async function serveCardsFromPipeline(
   // ── STEP 2: Query pool (SQL-level impression exclusion) ──────────────
   // Over-fetch by 50% to compensate for post-query travel time filter losses.
   const fetchLimit = Math.ceil(params.limit * 1.5);
-  const adjustedParams = { ...params, limit: fetchLimit };
+
+  // ORCH-0404: Compute the effective travel distance and pass it to the RPC
+  // so the haversine filter runs in SQL. Formula mirrors estimateTravelMin():
+  //   travelMin = distKm * factor / speed * 60 → distKm = travelMin / 60 * speed / factor
+  let maxDistanceKm: number | undefined;
+  if (options?.travelConstraintValue && options.travelConstraintValue > 0) {
+    const mode = options.travelMode || 'walking';
+    const { speed, factor } = TRAVEL_CONFIG[mode] ?? TRAVEL_CONFIG.walking;
+    maxDistanceKm = (options.travelConstraintValue / 60) * speed / factor;
+  }
+
+  const adjustedParams = { ...params, limit: fetchLimit, maxDistanceKm };
   let { poolCards, totalUnseenCount } = await queryPoolCards(adjustedParams, prefUpdatedAt);
   const totalPoolSize = totalUnseenCount; // backward compat alias
 

@@ -364,8 +364,14 @@ serve(async (req: Request) => {
     };
 
     // Pipeline 1: Category cards via discover-cards
-    const categoryPromise: Promise<any[]> = (async () => {
-      if (aggregated.categories.length === 0) return [];
+    // ORCH-0404: limit raised from 20 → 200 to match solo (useDeckCards.ts).
+    // The RPC returns top-N by popularity from a wide bounding box. A JS post-filter
+    // inside serveCardsFromPipeline then strips cards beyond the travel time radius.
+    // With limit=20 (overfetch=30), most top cards are far away and get stripped,
+    // leaving only 3-5 cards. With limit=200, ~100-150 nearby cards survive.
+    // The interleave below still caps the stored deck at 20 cards.
+    const categoryPromise: Promise<{ cards: any[]; hasMore: boolean }> = (async () => {
+      if (aggregated.categories.length === 0) return { cards: [], hasMore: false };
       try {
         const discoverUrl = `${SUPABASE_URL}/functions/v1/discover-cards`;
         const resp = await fetch(discoverUrl, {
@@ -381,20 +387,23 @@ serve(async (req: Request) => {
             dateOption: aggregated.dateOption,
             timeSlots: aggregated.timeSlots,
             batchSeed,
-            limit: 20,
+            limit: 200,
             priceTiers: aggregated.priceTiers,
             excludeCardIds,
           }),
         });
         if (!resp.ok) {
           console.error(`[generate-session-deck] discover-cards failed:`, await resp.text());
-          return [];
+          return { cards: [], hasMore: false };
         }
         const data = await resp.json();
-        return data.cards || [];
+        return {
+          cards: data.cards || [],
+          hasMore: data.metadata?.hasMore ?? false,
+        };
       } catch (err) {
         console.error(`[generate-session-deck] discover-cards error:`, err);
-        return [];
+        return { cards: [], hasMore: false };
       }
     })();
 
@@ -444,7 +453,9 @@ serve(async (req: Request) => {
       curatedPromise,
     ]);
 
-    const categoryCards = categoryResult.status === 'fulfilled' ? categoryResult.value : [];
+    const categoryPayload = categoryResult.status === 'fulfilled' ? categoryResult.value : { cards: [], hasMore: false };
+    const categoryCards = categoryPayload.cards;
+    const categoryHasMore = categoryPayload.hasMore;
     const curatedArrays = curatedResult.status === 'fulfilled' ? curatedResult.value : [];
 
     // Flatten curated arrays into a single stream
@@ -482,8 +493,11 @@ serve(async (req: Request) => {
     }
 
     const totalCards = cards.length;
-    // hasMore if either pipeline could produce more
-    const hasMore = categoryCards.length >= 20 || curatedCards.length > 0;
+    // ORCH-0404: hasMore now uses the pool-level signal from discover-cards
+    // instead of the batch-size heuristic (categoryCards.length >= 20).
+    // The old heuristic reported false when the post-filter reduced a large
+    // pool to <20 cards, causing the client to declare "entire deck seen."
+    const hasMore = categoryHasMore || curatedCards.length > 0;
 
     // ── Determine new deck version (single query, fixes MED-001) ──
     const { data: latestForSession } = await supabaseAdmin
