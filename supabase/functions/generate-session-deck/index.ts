@@ -319,22 +319,28 @@ serve(async (req: Request) => {
       if (sessionData?.created_by) {
         const { data: creatorPrefs } = await supabaseAdmin
           .from('preferences')
-          .select('use_gps_location, custom_location')
+          .select('use_gps_location, custom_location, custom_lat, custom_lng')
           .eq('profile_id', sessionData.created_by)
           .single();
 
-        // For GPS users, we need the last known location from user_location_history
-        if (creatorPrefs?.use_gps_location) {
-          const { data: locationData } = await supabaseAdmin
-            .from('user_location_history')
-            .select('latitude, longitude')
-            .eq('user_id', sessionData.created_by)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
+        if (creatorPrefs) {
+          // Priority 1: Direct coordinates from solo prefs (works for both GPS and manual users)
+          if (creatorPrefs.custom_lat != null && creatorPrefs.custom_lng != null) {
+            location = { lat: creatorPrefs.custom_lat, lng: creatorPrefs.custom_lng };
+          }
+          // Priority 2: GPS user's last known location from history
+          else if (creatorPrefs.use_gps_location) {
+            const { data: locationData } = await supabaseAdmin
+              .from('user_location_history')
+              .select('latitude, longitude')
+              .eq('user_id', sessionData.created_by)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .single();
 
-          if (locationData) {
-            location = { lat: locationData.latitude, lng: locationData.longitude };
+            if (locationData) {
+              location = { lat: locationData.latitude, lng: locationData.longitude };
+            }
           }
         }
       }

@@ -97,7 +97,7 @@ export const useBoardSession = (sessionId?: string) => {
               .from("collaboration_sessions")
               .select("*")
               .eq("id", id)
-              .single(),
+              .maybeSingle(),
             supabase
               .from("board_session_preferences")
               .select("*")
@@ -129,6 +129,14 @@ export const useBoardSession = (sessionId?: string) => {
         if (didTimeout || loadSessionIdRef.current !== loadId) return;
 
         if (sessionResult.error) throw sessionResult.error;
+
+        if (!sessionResult.data) {
+          setError('This session is no longer available.');
+          setSessionValid(false);
+          setHasPermission(false);
+          setLoading(false);
+          return;
+        }
 
         if (prefsResult.error && prefsResult.error.code !== "PGRST116") {
           console.error("Error loading preferences:", prefsResult.error);

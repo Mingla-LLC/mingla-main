@@ -633,7 +633,7 @@ export default function PreferencesSheet({
   }, [user?.id, setProfile]);
 
   const hasChanges = useMemo(() => {
-    if (!initialPreferences) return false;
+    if (!initialPreferences) return true;
 
     const arraysEqual = (a: any[], b: any[]) => {
       if (a.length !== b.length) return false;
@@ -709,7 +709,7 @@ export default function PreferencesSheet({
   }, [isFormComplete, selectedDateOption, selectedTimeSlot, selectedDate, constraintValue, t]);
 
   const countChanges = useCallback((): number => {
-    if (!initialPreferences) return 0;
+    if (!initialPreferences) return 1;
 
     let changes = 0;
 

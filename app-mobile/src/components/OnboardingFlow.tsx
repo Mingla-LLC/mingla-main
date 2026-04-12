@@ -287,6 +287,9 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
           af_duration: 7,
         })
         mixpanelService.trackTrialStarted({ trial_duration_days: 7 })
+        mixpanelService.trackOnboardingStepCompleted(7, {
+          substep: 'getting_experiences',
+        })
         mixpanelService.trackOnboardingCompleted({
           gender: data.userGender || '',
           country: data.userCountry || '',
@@ -718,22 +721,22 @@ const OnboardingFlow = ({
   const prevSubStepRef = useRef(navState.subStep)
   const prevStepRef = useRef(navState.step)
   useEffect(() => {
-    if (navState.subStep !== prevSubStepRef.current) {
-      // The PREVIOUS sub-step was completed — fire the event for it
-      logAppsFlyerEvent('onboarding_step_completed', {
-        step: navState.step,
-        step_name: `Step ${navState.step}`,
-        substep: prevSubStepRef.current,
-      })
-      mixpanelService.trackOnboardingStepCompleted(navState.step, {
-        substep: prevSubStepRef.current,
-      })
-      prevSubStepRef.current = navState.subStep
-    }
-    // Track step viewed when the step number changes
     if (navState.step !== prevStepRef.current) {
+      // The user moved to a new step — the PREVIOUS step is completed
+      logAppsFlyerEvent('onboarding_step_completed', {
+        step: prevStepRef.current,
+        step_name: `Step ${prevStepRef.current}`,
+        substep: prevSubStepRef.current,
+      })
+      mixpanelService.trackOnboardingStepCompleted(prevStepRef.current, {
+        substep: prevSubStepRef.current,
+      })
       mixpanelService.trackOnboardingStepViewed(navState.step)
       prevStepRef.current = navState.step
+      prevSubStepRef.current = navState.subStep
+    } else if (navState.subStep !== prevSubStepRef.current) {
+      // Sub-step changed within same step — track the sub-step transition
+      prevSubStepRef.current = navState.subStep
     }
   }, [navState.step, navState.subStep])
 
@@ -1599,7 +1602,7 @@ const OnboardingFlow = ({
       try {
         const { data: soloPrefs } = await supabase
           .from("preferences")
-          .select("categories, intents, price_tiers, budget_min, budget_max, travel_mode, travel_constraint_value, date_option, time_slot, exact_time, datetime_pref, use_gps_location, custom_location")
+          .select("categories, intents, price_tiers, budget_min, budget_max, travel_mode, travel_constraint_value, date_option, time_slot, exact_time, datetime_pref, use_gps_location, custom_location, custom_lat, custom_lng")
           .eq("profile_id", user.id)
           .single()
 
@@ -1620,6 +1623,8 @@ const OnboardingFlow = ({
               datetime_pref: soloPrefs.datetime_pref ?? null,
               use_gps_location: soloPrefs.use_gps_location ?? true,
               custom_location: soloPrefs.custom_location ?? null,
+              custom_lat: soloPrefs.custom_lat ?? null,
+              custom_lng: soloPrefs.custom_lng ?? null,
             })
             .eq("user_id", user.id)
             .filter("categories", "eq", "{}")

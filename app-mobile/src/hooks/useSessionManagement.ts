@@ -119,6 +119,12 @@ async function buildSeedFromSoloPrefs(
   if (typeof soloAny.custom_location === 'string') {
     raw.custom_location = soloAny.custom_location;
   }
+  if (typeof soloAny.custom_lat === 'number') {
+    raw.custom_lat = soloAny.custom_lat;
+  }
+  if (typeof soloAny.custom_lng === 'number') {
+    raw.custom_lng = soloAny.custom_lng;
+  }
 
   // Apply normalization to eliminate conflicting date/time/location combos
   const normalized = normalizePreferencesForSave({
