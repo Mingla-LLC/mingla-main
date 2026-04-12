@@ -576,7 +576,7 @@ export function useAppHandlers(state: any) {
     }
   };
 
-  const handleNavigateToActivity = (tab: "saved" | "boards" | "calendar") => {
+  const handleNavigateToActivity = (tab: "saved" | "calendar") => {
     setCurrentPage("likes");
     setActivityNavigation({ activeTab: tab });
   };

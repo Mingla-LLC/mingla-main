@@ -239,7 +239,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           <ProfileStatsRow
             savedCount={0}
             connectionsCount={profile.friendCount}
-            boardsCount={0}
+            scheduledCount={0}
             placesVisited={0}
             streakDays={0}
             level={1}

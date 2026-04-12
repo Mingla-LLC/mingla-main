@@ -42,8 +42,8 @@
   },
   "stats": {
     "saved": "SAVED",
+    "scheduled": "SCHEDULED",
     "friends": "FRIENDS",
-    "boards": "BOARDS",
     "places": "PLACES",
     "streak": "STREAK",
     "level": "LEVEL",

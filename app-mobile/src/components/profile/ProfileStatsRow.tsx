@@ -9,13 +9,13 @@ import { useTranslation } from 'react-i18next';
 
 interface ProfileStatsRowProps {
   savedCount: number;
+  scheduledCount: number;
   connectionsCount: number;
-  boardsCount: number;
   placesVisited?: number;
   streakDays?: number;
   level?: number;
   levelProgress?: number;
-  onStatPress?: (stat: 'saved' | 'connections' | 'boards') => void;
+  onStatPress?: (stat: 'saved' | 'scheduled' | 'connections') => void;
 }
 
 // --- Tier helpers ---
@@ -131,9 +131,9 @@ interface StatColumnProps {
   iconBg: string;
   count: number;
   label: string;
-  statKey: 'saved' | 'connections' | 'boards';
+  statKey: 'saved' | 'scheduled' | 'connections';
   highlightColor?: string;
-  onPress?: (stat: 'saved' | 'connections' | 'boards') => void;
+  onPress?: (stat: 'saved' | 'scheduled' | 'connections') => void;
 }
 
 const StatColumn: React.FC<StatColumnProps> = ({
@@ -178,8 +178,8 @@ const StatColumn: React.FC<StatColumnProps> = ({
 
 const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
   savedCount,
+  scheduledCount,
   connectionsCount,
-  boardsCount,
   placesVisited = 0,
   streakDays = 0,
   level = 1,
@@ -233,14 +233,14 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
         />
         <View style={styles.divider} />
         <StatColumn
-          icon="people" iconColor="#22c55e" iconBg="#f0fdf4"
-          count={connectionsCount} label={t('profile:stats.friends')} statKey="connections"
+          icon="calendar" iconColor="#3b82f6" iconBg="#eff6ff"
+          count={scheduledCount} label={t('profile:stats.scheduled')} statKey="scheduled"
           onPress={onStatPress}
         />
         <View style={styles.divider} />
         <StatColumn
-          icon="grid" iconColor="#3b82f6" iconBg="#eff6ff"
-          count={boardsCount} label={t('profile:stats.boards')} statKey="boards"
+          icon="people" iconColor="#22c55e" iconBg="#f0fdf4"
+          count={connectionsCount} label={t('profile:stats.friends')} statKey="connections"
           onPress={onStatPress}
         />
       </View>

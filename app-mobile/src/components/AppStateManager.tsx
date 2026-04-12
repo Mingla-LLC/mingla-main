@@ -182,7 +182,7 @@ export function useAppState() {
 
   const [activityNavigation, setActivityNavigation] = useState<{
     selectedBoard?: any;
-    activeTab?: "saved" | "boards" | "calendar";
+    activeTab?: "saved" | "calendar";
     discussionTab?: string;
   } | null>(null);
 

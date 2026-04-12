@@ -39,11 +39,11 @@ import { useTranslation } from 'react-i18next';
 interface ProfilePageProps {
   onSignOut?: () => void;
   onUserIdentityUpdate?: (identity: any) => Promise<void>;
-  onNavigateToActivity?: (tab: "saved" | "boards" | "calendar") => void;
+  onNavigateToActivity?: (tab: "saved" | "calendar") => void;
   onNavigateToConnections?: () => void;
   isTabVisible?: boolean;
   savedExperiences?: number;
-  boardsCount?: number;
+  scheduledCount?: number;
   notificationsEnabled?: boolean;
   onNotificationsToggle?: (enabled: boolean) => void;
   userIdentity?: {
@@ -62,7 +62,7 @@ export default function ProfilePage({
   onNavigateToConnections,
   isTabVisible,
   savedExperiences = 0,
-  boardsCount = 0,
+  scheduledCount = 0,
   notificationsEnabled = true,
   onNotificationsToggle,
   userIdentity,
@@ -334,14 +334,14 @@ export default function ProfilePage({
             <ProfileStatsRow
               savedCount={savedExperiences}
               connectionsCount={actualConnectionsCount}
-              boardsCount={boardsCount}
+              scheduledCount={scheduledCount}
               placesVisited={0}
               streakDays={0}
               level={1}
               levelProgress={0.35}
               onStatPress={(stat) => {
                 if (stat === "saved") onNavigateToActivity?.("saved");
-                else if (stat === "boards") onNavigateToActivity?.("boards");
+                else if (stat === "scheduled") onNavigateToActivity?.("calendar");
                 else if (stat === "connections") onNavigateToConnections?.();
               }}
             />

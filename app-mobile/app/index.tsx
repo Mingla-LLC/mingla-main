@@ -232,7 +232,7 @@ function AppContent() {
   const [pendingSessionOpen, setPendingSessionOpen] = useState<string | null>(null);
   const [pendingOpenDmUserId, setPendingOpenDmUserId] = useState<string | null>(null);
   const [pendingConnectionsPanel, setPendingConnectionsPanel] = useState<"friends" | "add" | "blocked" | null>(null);
-  const [likesNavData, setLikesNavData] = useState<{ activeTab?: 'saved' | 'calendar' } | null>(null);
+
   // Pending experience reviews — shows review modal after scheduled experiences
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
   const viewShotRef = useRef<any>(null);
@@ -1951,8 +1951,8 @@ function AppContent() {
             calendarEntries={calendarEntries}
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
-            navigationData={likesNavData}
-            onNavigationComplete={() => setLikesNavData(null)}
+            navigationData={activityNavigation}
+            onNavigationComplete={() => setActivityNavigation(null)}
             onPurchaseFromSaved={(card: any, purchaseOption: any) => {
               console.log("Purchasing from saved:", card, purchaseOption);
               // Handle purchase logic here
@@ -1988,7 +1988,7 @@ function AppContent() {
               setCurrentPage("connections");
             }}
             savedExperiences={savedCards?.length || 0}
-            boardsCount={boardsSessions?.length || 0}
+            scheduledCount={calendarEntries?.length || 0}
             notificationsEnabled={notificationsEnabled}
             onNotificationsToggle={handlers.handleNotificationsToggle}
             userIdentity={userIdentity}
@@ -2239,8 +2239,8 @@ function AppContent() {
                                 calendarEntries={calendarEntries}
                                 userPreferences={userPreferences}
                                 accountPreferences={accountPreferences}
-                                navigationData={likesNavData}
-                                onNavigationComplete={() => setLikesNavData(null)}
+                                navigationData={activityNavigation}
+                                onNavigationComplete={() => setActivityNavigation(null)}
                                 onPurchaseFromSaved={(card: any, purchaseOption: any) => {
                                   console.log("Purchasing from saved:", card, purchaseOption);
                                 }}
@@ -2269,7 +2269,7 @@ function AppContent() {
                                   setCurrentPage("connections");
                                 }}
                                 savedExperiences={savedCards?.length || 0}
-                                boardsCount={boardsSessions?.length || 0}
+                                scheduledCount={calendarEntries?.length || 0}
                                 notificationsEnabled={notificationsEnabled}
                                 onNotificationsToggle={handlers.handleNotificationsToggle}
                                 userIdentity={userIdentity}
