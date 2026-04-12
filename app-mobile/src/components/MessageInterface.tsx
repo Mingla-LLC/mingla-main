@@ -33,7 +33,6 @@ import { DirectMessage } from "../services/messagingService";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { colors as dsColors, spacing as dsSpacing } from "../constants/designSystem";
 import { useAppLayout } from "../hooks/useAppLayout";
-import { useAppLayout } from "../hooks/useAppLayout";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
