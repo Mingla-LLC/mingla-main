@@ -32,7 +32,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ...config.extra,
     googleWebClientId:
       process.env.GOOGLE_WEB_CLIENT_ID ??
-      "618060733220-l9ls35bklsvlqbj7ii9v5tiok9neqhee.apps.googleusercontent.com",
+      "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",
     EXPO_PUBLIC_OPENWEATHER_API_KEY:
       process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY ?? "",
     EXPO_PUBLIC_FOURSQUARE_API_KEY:
@@ -40,15 +40,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY ?? "",
     EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:
       process.env.GOOGLE_WEB_CLIENT_ID ??
-      "618060733220-l9ls35bklsvlqbj7ii9v5tiok9neqhee.apps.googleusercontent.com",
+      "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",
     ANDROID_CLIENT_ID:
       process.env.GOOGLE_ANDROID_CLIENT_ID ??
-      "618060733220-hvlvia73dcm2sd5hgbvnp59bnas46gt0.apps.googleusercontent.com",
+      "169132274606-ibip7eu1oq892ilolnfjarqefn1d65as.apps.googleusercontent.com",
     IOS_CLIENT_ID:
       process.env.GOOGLE_IOS_CLIENT_ID ??
       "618060733220-t2vsovng5evma3vfkl0fd0f0pa28lnlc.apps.googleusercontent.com",
     GOOGLE_ANDROID_CLIENT_ID:
       process.env.GOOGLE_ANDROID_CLIENT_ID ??
-      "618060733220-hvlvia73dcm2sd5hgbvnp59bnas46gt0.apps.googleusercontent.com",
+      "169132274606-ibip7eu1oq892ilolnfjarqefn1d65as.apps.googleusercontent.com",
   },
 });
