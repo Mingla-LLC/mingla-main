@@ -131,8 +131,12 @@ export class CalendarService {
       metadata: { scheduled_at: scheduledAtIso },
     });
 
-    // ORCH-0408 Phase 3: Record schedule to card_pool counter (fire-and-forget)
-    recordCardSchedule(card.id);
+    // ORCH-0408 Phase 4: Record schedule — counter + user interaction log (fire-and-forget)
+    recordCardSchedule(card.id, {
+      category: card.category,
+      priceTier: card.priceTier,
+      isCurated: !!(card as any).stops || (card as any).cardType === 'curated',
+    });
 
     // [TRANSITIONAL] Dead call — user_engagement_stats table doesn't exist on live DB.
     // Silently fails. Will be removed in Phase 6 cleanup.

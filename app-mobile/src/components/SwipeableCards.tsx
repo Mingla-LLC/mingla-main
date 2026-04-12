@@ -1105,8 +1105,12 @@ export default function SwipeableCards({
     if (!currentRec) return;
     setIsExpandedModalVisible(true);
 
-    // ORCH-0408 Phase 3: Record expand for ALL card types (fire-and-forget)
-    recordCardExpand(currentRec.id);
+    // ORCH-0408 Phase 4: Record expand — counter + user interaction log (fire-and-forget)
+    recordCardExpand(currentRec.id, {
+      category: currentRec.category,
+      priceTier: currentRec.priceTier,
+      isCurated: (currentRec as any).cardType === 'curated',
+    });
 
     // Track card expanded in Mixpanel (ALL card types — curated was previously skipped)
     mixpanelService.trackCardExpanded({
@@ -1186,8 +1190,12 @@ export default function SwipeableCards({
     // Track swiped card in session history
     addSwipedCard(card);
 
-    // ORCH-0408 Phase 2: Record swipe to card_pool counters (fire-and-forget)
-    recordCardSwipe(card.id, direction);
+    // ORCH-0408 Phase 4: Record swipe — counter + user interaction log (fire-and-forget)
+    recordCardSwipe(card.id, direction, {
+      category: card.category,
+      priceTier: card.priceTier,
+      isCurated: (card as any).cardType === 'curated',
+    });
 
     // ── Analytics: save or dismiss ──
     const isCurated = (card as any).cardType === 'curated';
@@ -1221,27 +1229,7 @@ export default function SwipeableCards({
       if (user?.id) {
         // Curated cards don't have a single place_id — skip Supabase operations
         if ((card as any).cardType === 'curated') {
-          // Track curated card interaction in DB
-          try {
-            const interactionType = direction === 'right' ? 'swipe_right' : 'swipe_left';
-            await ExperiencesService.trackInteraction(
-              user.id,
-              card.id,
-              interactionType,
-              {
-                category: card.category,
-                cardType: 'curated',
-                priceTier: card.priceTier || null,
-                timeOfDay: getTimeOfDay(),
-                lat: card.lat || null,
-                lng: card.lng || null,
-                rating: card.rating || null,
-                totalPriceMin: (card as { totalPriceMin?: number }).totalPriceMin || null,
-                totalPriceMax: (card as { totalPriceMax?: number }).totalPriceMax || null,
-                estimatedDurationMinutes: (card as { estimatedDurationMinutes?: number }).estimatedDurationMinutes || null,
-              }
-            ).catch(err => console.warn('[SwipeableCards] Curated interaction tracking failed:', err));
-          } catch {}
+          // ORCH-0408 Phase 4: ExperiencesService.trackInteraction removed — consolidated into record_card_interaction RPC
 
           if (direction === 'right') {
             // ORCH-0395: In collab mode, skip onCardLike (direct save). The DB trigger
@@ -1262,29 +1250,7 @@ export default function SwipeableCards({
           // Left-swipe dismissal tracking handled in the shared block below
         } else {
 
-        const interactionType =
-          direction === "right" ? "swipe_right" : "swipe_left";
-
-        try {
-          await ExperiencesService.trackInteraction(
-            user.id,
-            card.id,
-            interactionType,
-            {
-              category: card.category,
-              priceTier: card.priceTier || null,
-              timeOfDay: getTimeOfDay(),
-              lat: card.lat || null,
-              lng: card.lng || null,
-              distanceKm: card.distance ? parseDistanceToKm(card.distance) : null,
-              rating: card.rating || null,
-              reviewCount: card.reviewCount || null,
-            }
-          );
-        } catch (trackingError) {
-          console.error("Error tracking interaction:", trackingError);
-          // Continue without tracking - not critical
-        }
+        // ORCH-0408 Phase 4: ExperiencesService.trackInteraction removed — consolidated into record_card_interaction RPC
 
         // Save to Supabase if swiped right (liked)
         if (direction === "right") {

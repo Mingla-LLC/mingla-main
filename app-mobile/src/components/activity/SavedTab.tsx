@@ -1538,8 +1538,12 @@ const SavedTab = ({
     setOriginalSavedCard(card);
     setIsModalVisible(true);
 
-    // ORCH-0408 Phase 3: Record expand to card_pool counter (fire-and-forget)
-    recordCardExpand(card.id);
+    // ORCH-0408 Phase 4: Record expand — counter + user interaction log (fire-and-forget)
+    recordCardExpand(card.id, {
+      category: card.category,
+      priceTier: card.priceTier,
+      isCurated: (card as any).cardType === 'curated',
+    });
 
     // Track card expanded
     mixpanelService.trackCardExpanded({

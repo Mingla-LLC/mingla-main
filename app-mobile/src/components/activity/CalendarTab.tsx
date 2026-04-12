@@ -1188,8 +1188,12 @@ const CalendarTab = ({
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);
 
-    // ORCH-0408 Phase 3: Record expand to card_pool counter (fire-and-forget)
-    recordCardExpand((entry as any).card_id || entry.id);
+    // ORCH-0408 Phase 4: Record expand — counter + user interaction log (fire-and-forget)
+    recordCardExpand((entry as any).card_id || entry.id, {
+      category: experience.category || (entry as any).category,
+      priceTier: (experience as any).priceTier || null,
+      isCurated: !!(experience as any).stops,
+    });
 
     // Track card expanded (fixed: use card_id instead of calendar entry UUID)
     mixpanelService.trackCardExpanded({
