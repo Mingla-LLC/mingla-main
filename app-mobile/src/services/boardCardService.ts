@@ -110,6 +110,9 @@ export class BoardCardService {
   }: Omit<SwipeState, 'swipedAt'>): Promise<{ data: any; error: any }> {
     try {
       // Upsert swipe state
+      // Map direction to DB enum: 'left' → 'swiped_left', 'right' → 'swiped_right'
+      const swipeState = swipeDirection === 'right' ? 'swiped_right' : 'swiped_left';
+
       const { data, error } = await supabase
         .from('board_user_swipe_states')
         .upsert(
@@ -117,7 +120,7 @@ export class BoardCardService {
             session_id: sessionId,
             experience_id: experienceId,
             user_id: userId,
-            swipe_direction: swipeDirection,
+            swipe_state: swipeState,
             swiped_at: new Date().toISOString(),
           },
           {
@@ -226,6 +229,56 @@ export class BoardCardService {
     } catch (err: any) {
       console.error('Error removing card from board:', err);
       return { error: err };
+    }
+  }
+
+  /**
+   * Check if a mutual-like match was created by the DB trigger (ORCH-0395).
+   * After trackSwipeState(), the check_mutual_like trigger may have inserted
+   * a board_saved_cards row. This method detects that and returns the match info.
+   */
+  static async checkForMatch(
+    sessionId: string,
+    experienceId: string
+  ): Promise<{ matched: boolean; savedCardId?: string; cardTitle?: string; matchedUserIds?: string[] }> {
+    try {
+      // Check if the trigger created a saved card for this experience
+      const { data: savedCard, error: savedError } = await supabase
+        .from('board_saved_cards')
+        .select('id, card_data')
+        .eq('session_id', sessionId)
+        .eq('experience_id', experienceId)
+        .limit(1)
+        .maybeSingle();
+
+      if (savedError || !savedCard) {
+        return { matched: false };
+      }
+
+      // Get all users who swiped right on this experience
+      const { data: swipers, error: swipeError } = await supabase
+        .from('board_user_swipe_states')
+        .select('user_id')
+        .eq('session_id', sessionId)
+        .eq('experience_id', experienceId)
+        .eq('swipe_state', 'swiped_right');
+
+      if (swipeError) {
+        console.warn('[BoardCardService] checkForMatch swiper query failed:', swipeError);
+      }
+
+      const matchedUserIds = (swipers || []).map((s: { user_id: string }) => s.user_id);
+      const cardTitle = savedCard.card_data?.title || savedCard.card_data?.name || 'a spot';
+
+      return {
+        matched: true,
+        savedCardId: savedCard.id,
+        cardTitle,
+        matchedUserIds,
+      };
+    } catch (err: unknown) {
+      console.error('[BoardCardService] checkForMatch error:', err);
+      return { matched: false };
     }
   }
 }

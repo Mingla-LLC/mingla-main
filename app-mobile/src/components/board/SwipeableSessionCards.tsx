@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useMemo } from "react";
+import React, { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrenc
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import type { CuratedStop } from '../../types/curatedExperience';
 import { useSessionVoting } from "../../hooks/useSessionVoting";
+import { supabase } from "../../services/supabase";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
 
 const CURATED_ICON_MAP: Record<string, string> = {
@@ -110,6 +111,38 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
     handleRSVP: onRSVP,
   } = useSessionVoting(sessionId, userId, participantCount);
 
+  // ORCH-0395: Resolve voter UUIDs to display names for "Liked by" label
+  const [voterNames, setVoterNames] = useState<Record<string, string>>({});
+  const allVoterIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const vc of Object.values(voteCounts)) {
+      for (const v of vc.voters) ids.add(v);
+    }
+    return Array.from(ids);
+  }, [voteCounts]);
+
+  useEffect(() => {
+    if (allVoterIds.length === 0) return;
+    // Only fetch names we don't already have
+    const missing = allVoterIds.filter((id) => !voterNames[id]);
+    if (missing.length === 0) return;
+
+    supabase
+      .from('profiles')
+      .select('id, display_name, username')
+      .in('id', missing)
+      .then(({ data }) => {
+        if (!data) return;
+        setVoterNames((prev) => {
+          const next = { ...prev };
+          for (const p of data) {
+            next[p.id] = p.display_name || p.username || 'Someone';
+          }
+          return next;
+        });
+      });
+  }, [allVoterIds]);
+
   // Vote-based ordering: descending by yes votes, then by saved_at
   const sortedCards = useMemo(() => {
     return [...cards].sort((a, b) => {
@@ -201,53 +234,68 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
             const categoryIcon = isCurated ? "" : getIconComponent(cardData.categoryIcon || "star");
             const categoryLabel = isCurated ? "" : (cardData.category ? getReadableCategoryName(cardData.category) : "Experience");
 
+            // ORCH-0395: Build "Liked by" label from voter names
+            const voterNamesList = (voteCount.voters || [])
+              .map((id: string) => voterNames[id])
+              .filter(Boolean);
+            const likedByLabel = voterNamesList.length > 0
+              ? voterNamesList.length <= 2
+                ? `Liked by ${voterNamesList.join(' and ')}`
+                : `Liked by ${voterNamesList[0]} and ${voterNamesList.length - 1} others`
+              : null;
+
             // Shared vote/RSVP buttons for both card types
             const voteButtons = (
-              <View style={styles.actionButtonsRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.voteButton,
-                    styles.thumbsUpButton,
-                    voteCount.userVote === "yes" && styles.voteButtonActive,
-                    isCardLocked && styles.buttonDisabled,
-                  ]}
-                  onPress={() => onVote(card.id, "yes")}
-                  disabled={isCardLocked}
-                >
-                  <Icon name="thumbs-up" size={15} color="white" />
-                  <Text style={styles.voteButtonText}>{voteCount.yes}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.voteButton,
-                    styles.thumbsDownButton,
-                    voteCount.userVote === "no" && styles.thumbsDownButtonActive,
-                    isCardLocked && styles.buttonDisabled,
-                  ]}
-                  onPress={() => onVote(card.id, "no")}
-                  disabled={isCardLocked}
-                >
-                  <Icon name="thumbs-down" size={15} color="#d63d1f" />
-                  <Text style={styles.thumbsDownText}>{voteCount.no}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.rsvpButton,
-                    rsvpCount.userRSVP === "yes" && styles.rsvpButtonActive,
-                    isCardLocked && styles.buttonDisabled,
-                  ]}
-                  onPress={() => onRSVP(card.id, "yes")}
-                  disabled={isCardLocked}
-                >
-                  <Text
+              <View>
+                <View style={styles.actionButtonsRow}>
+                  <TouchableOpacity
                     style={[
-                      styles.rsvpButtonText,
-                      rsvpCount.userRSVP === "yes" && styles.rsvpButtonTextActive,
+                      styles.voteButton,
+                      styles.thumbsUpButton,
+                      voteCount.userVote === "yes" && styles.voteButtonActive,
+                      isCardLocked && styles.buttonDisabled,
                     ]}
+                    onPress={() => onVote(card.id, "yes")}
+                    disabled={isCardLocked}
                   >
-                    {rsvpCount.userRSVP === "yes" ? "RSVP'd" : "RSVP"}
-                  </Text>
-                </TouchableOpacity>
+                    <Icon name="thumbs-up" size={15} color="white" />
+                    <Text style={styles.voteButtonText}>{voteCount.yes}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.voteButton,
+                      styles.thumbsDownButton,
+                      voteCount.userVote === "no" && styles.thumbsDownButtonActive,
+                      isCardLocked && styles.buttonDisabled,
+                    ]}
+                    onPress={() => onVote(card.id, "no")}
+                    disabled={isCardLocked}
+                  >
+                    <Icon name="thumbs-down" size={15} color="#d63d1f" />
+                    <Text style={styles.thumbsDownText}>{voteCount.no}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.rsvpButton,
+                      rsvpCount.userRSVP === "yes" && styles.rsvpButtonActive,
+                      isCardLocked && styles.buttonDisabled,
+                    ]}
+                    onPress={() => onRSVP(card.id, "yes")}
+                    disabled={isCardLocked}
+                  >
+                    <Text
+                      style={[
+                        styles.rsvpButtonText,
+                        rsvpCount.userRSVP === "yes" && styles.rsvpButtonTextActive,
+                      ]}
+                    >
+                      {rsvpCount.userRSVP === "yes" ? "RSVP'd" : "RSVP"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {likedByLabel && (
+                  <Text style={styles.likedByText}>{likedByLabel}</Text>
+                )}
               </View>
             );
 
@@ -834,6 +882,12 @@ const styles = StyleSheet.create({
   },
   rsvpButtonTextActive: {
     color: "white",
+  },
+  likedByText: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    paddingTop: 8,
+    paddingHorizontal: 4,
   },
   cardLocked: {
     borderWidth: 2,

@@ -35,6 +35,7 @@ const typeToPreference: Record<string, string> = {
   "board_card_saved": "collaboration_invites",
   "board_card_voted": "collaboration_invites",
   "board_card_rsvp": "collaboration_invites",
+  "board_card_matched": "collaboration_invites",
   "direct_message_received": "messages",
   "board_message_received": "messages",
   "board_message_mention": "messages",

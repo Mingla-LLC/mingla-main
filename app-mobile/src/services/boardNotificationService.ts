@@ -237,3 +237,30 @@ export function notifyMemberLeft(
     });
   });
 }
+
+/**
+ * Notify all session participants that a mutual-like match occurred (ORCH-0395).
+ * Calls the notify-session-match edge function which handles push + DB insert
+ * for all participants (including the matchers themselves).
+ * Fire-and-forget — errors logged, never thrown.
+ */
+export function notifyMatch(payload: {
+  sessionId: string;
+  savedCardId: string;
+  experienceId: string;
+  cardTitle: string;
+  matchedUserIds: string[];
+}): void {
+  const { sessionId, savedCardId, experienceId, cardTitle, matchedUserIds } = payload;
+  if (!sessionId || !savedCardId || !matchedUserIds?.length) return;
+
+  withTimeout(
+    supabase.functions.invoke('notify-session-match', {
+      body: { sessionId, savedCardId, experienceId, cardTitle, matchedUserIds },
+    }),
+    10000,
+    'notifyMatch'
+  ).catch((err) =>
+    console.warn('[boardNotificationService] notifyMatch error:', err)
+  );
+}

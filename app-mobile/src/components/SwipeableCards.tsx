@@ -39,6 +39,8 @@ import type { CuratedExperienceCard } from "../types/curatedExperience";
 import { mixpanelService } from "../services/mixpanelService";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { BoardCardService } from "../services/boardCardService";
+import { notifyMatch } from "../services/boardNotificationService";
+import { inAppNotificationService } from "../services/inAppNotificationService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -540,14 +542,17 @@ export default function SwipeableCards({
 
   // isWaitingForSessionResolution is now provided by RecommendationsContext
 
-  // Check if we're in a board session
+  // Check if we're in a board/collab session.
+  // ORCH-0395: Use resolvedSessionId (derived from currentMode + availableSessions).
+  // NOT currentSession?.id — useSessionManagement.currentSession is always null because
+  // switchToCollaborative() is never called from the session selection flow.
   const isBoardSession =
-    !isInSolo && (currentSession as any)?.session_type === "board";
+    currentMode !== "solo" && !!resolvedSessionId;
 
   // Load board preferences if in board session
   // Use hook unconditionally (React rules) but pass undefined when not in board session
   const boardSessionResult = useBoardSession(
-    isBoardSession && currentSession?.id ? currentSession.id : undefined
+    isBoardSession && resolvedSessionId ? resolvedSessionId : undefined
   );
   const boardPreferences = boardSessionResult?.preferences || null;
 
@@ -1231,18 +1236,19 @@ export default function SwipeableCards({
           } catch {}
 
           if (direction === 'right') {
-            // RELIABILITY: Await onCardLike and check the boolean result. If false (save
-            // failed), remove card.id from removedCards so it reappears in the deck. Without
-            // this rollback, a failed save = permanent card loss (not in saved, not in deck).
-            const saveResult = await onCardLike(card);
-            if (saveResult === false) {
-              // Rollback: re-add card to deck by removing from removedCards
-              setRemovedCards((prev) => {
-                const newSet = new Set(prev);
-                newSet.delete(card.id);
-                return newSet;
-              });
-              return;
+            // ORCH-0395: In collab mode, skip onCardLike (direct save). The DB trigger
+            // check_mutual_like handles saving after 2+ right-swipes.
+            // Solo mode: save immediately via onCardLike as before.
+            if (!isBoardSession) {
+              const saveResult = await onCardLike(card);
+              if (saveResult === false) {
+                setRemovedCards((prev) => {
+                  const newSet = new Set(prev);
+                  newSet.delete(card.id);
+                  return newSet;
+                });
+                return;
+              }
             }
           }
           // Left-swipe dismissal tracking handled in the shared block below
@@ -1301,16 +1307,19 @@ export default function SwipeableCards({
             }
           }
 
-          // Call onCardLike which handles saving to board or solo saved_cards
-          const saveResult = await onCardLike(card);
-          if (saveResult === false) {
-            // Rollback: re-add card to deck by removing from removedCards
-            setRemovedCards((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(card.id);
-              return newSet;
-            });
-            return;
+          // ORCH-0395: In collab mode, skip onCardLike (direct save). The DB trigger
+          // check_mutual_like handles saving after 2+ right-swipes.
+          // Solo mode: save immediately via onCardLike as before.
+          if (!isBoardSession) {
+            const saveResult = await onCardLike(card);
+            if (saveResult === false) {
+              setRemovedCards((prev) => {
+                const newSet = new Set(prev);
+                newSet.delete(card.id);
+                return newSet;
+              });
+              return;
+            }
           }
         } else {
           // Track dislike
@@ -1340,14 +1349,41 @@ export default function SwipeableCards({
         }
 
         // Track swipe state for board sessions
-        if (isBoardSession && currentSession?.id) {
+        if (isBoardSession && resolvedSessionId) {
           try {
             await BoardCardService.trackSwipeState({
-              sessionId: currentSession.id,
+              sessionId: resolvedSessionId,
               experienceId: card.id,
               userId: user.id,
               swipeDirection: direction,
             });
+
+            // ORCH-0395: After tracking swipe, check if the DB trigger created a match.
+            // Only check on right-swipe — left-swipes can't trigger a match.
+            if (direction === 'right') {
+              const matchResult = await BoardCardService.checkForMatch(
+                resolvedSessionId,
+                card.id
+              );
+              if (matchResult.matched && matchResult.savedCardId && matchResult.matchedUserIds) {
+                // Fire-and-forget: send push + in-app notification to all participants
+                notifyMatch({
+                  sessionId: resolvedSessionId,
+                  savedCardId: matchResult.savedCardId,
+                  experienceId: card.id,
+                  cardTitle: matchResult.cardTitle || card.title || 'a spot',
+                  matchedUserIds: matchResult.matchedUserIds,
+                });
+
+                // Local in-app notification for the current user
+                inAppNotificationService.add(
+                  'board_card_matched',
+                  "It's a match! 🎉",
+                  `You and others liked ${matchResult.cardTitle || card.title || 'a spot'}`,
+                  { page: 'home', sessionId: resolvedSessionId }
+                );
+              }
+            }
           } catch (swipeStateError) {
             console.error("Error tracking swipe state:", swipeStateError);
             // Continue even if swipe state tracking fails

@@ -26,6 +26,7 @@ export type InAppNotificationType =
   | "welcome"             // Welcome / onboarding complete
   | "collaboration_invite" // Collaboration session invite
   | "pair_request"        // Received a pair request
+  | "board_card_matched"  // Mutual-like match in collab session (ORCH-0395)
   | "system";             // System-level notification
 
 // Navigation targets for each notification type
@@ -438,6 +439,8 @@ class InAppNotificationServiceClass {
         return { icon: "sparkles", iconColor: "#eb7825" };
       case "collaboration_invite":
         return { icon: "calendar-outline", iconColor: "#eb7825" };
+      case "board_card_matched":
+        return { icon: "heart", iconColor: "#10B981" };
       case "system":
       default:
         return { icon: "notifications-outline", iconColor: "#6B7280" };
