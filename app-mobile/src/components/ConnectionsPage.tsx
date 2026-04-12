@@ -123,6 +123,7 @@ export default function ConnectionsPageRefactored({
   onOpenDirectMessageHandled,
   initialPanel,
   onInitialPanelHandled,
+  isTabVisible,
 }: ConnectionsPageProps) {
   useScreenLogger('connections');
   const { t } = useTranslation(['connections', 'common']);
@@ -465,15 +466,17 @@ export default function ConnectionsPageRefactored({
   };
 
   // ── Auto-open panel from external navigation (e.g. Profile "Friends" stat) ──
+  // Guard with isTabVisible: in tab-based layout the component stays mounted while hidden.
+  // isTabVisible is undefined in switch-case layout (always visible when rendered).
   useEffect(() => {
-    if (initialPanel) {
+    if (initialPanel && isTabVisible !== false) {
       if (initialPanel === "friends") {
         setFriendsModalTab("friends");
       }
       setActivePanel(initialPanel);
       onInitialPanelHandled?.();
     }
-  }, [initialPanel, onInitialPanelHandled]);
+  }, [initialPanel, onInitialPanelHandled, isTabVisible]);
 
   // ── Friend request actions ───────────────────────────────
   const handleAcceptRequest = (requestId: string) => {
@@ -993,6 +996,7 @@ export default function ConnectionsPageRefactored({
       try {
         const convs = conversationsForOpenDmRef.current;
         const friends = dbFriendsForOpenDmRef.current;
+        // 1. Try local cache first (fastest)
         const existing = convs.find((c) =>
           c.participants.some((p) => p.id === targetId)
         );
@@ -1000,6 +1004,7 @@ export default function ConnectionsPageRefactored({
           await handleSelectConversation(existing);
           return;
         }
+        // 2. Try friends list (may trigger getOrCreateDirectConversation)
         const friend = friends.find(
           (f) => (f.friend_user_id || f.id) === targetId
         );
@@ -1007,6 +1012,35 @@ export default function ConnectionsPageRefactored({
           await handlePickFriend(friend);
           return;
         }
+        // 3. Cold-start fallback: conversations haven't hydrated yet.
+        //    Query DB directly for existing conversation (no friendship gate).
+        //    Avoids stale ref race: fetchConversations updates state/ref asynchronously,
+        //    but the ref won't reflect the new value until the next render.
+        const { conversation: directConv } =
+          await messagingService.findExistingDirectConversation(user.id, targetId);
+        if (!active) return;
+        if (directConv) {
+          // Adapt to local Conversation shape (handleSelectConversation expects it)
+          const adapted = {
+            id: directConv.id,
+            created_by: directConv.created_by ?? '',
+            created_at: directConv.created_at,
+            participants: directConv.participants.map((p: any) => ({
+              id: p.user_id || p.id,
+              username: p.username || 'user',
+              display_name: p.display_name,
+              first_name: p.first_name,
+              last_name: p.last_name,
+              avatar_url: p.avatar_url,
+              is_online: p.is_online,
+            })),
+            unread_count: directConv.unread_count ?? 0,
+            messages: [] as ConvMessage[],
+          } as Conversation;
+          await handleSelectConversation(adapted);
+          return;
+        }
+        // 4. Last resort: try creating via handlePickFriend with synthetic friend
         await handlePickFriend({
           id: targetId,
           user_id: user.id,

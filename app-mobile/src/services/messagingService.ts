@@ -43,6 +43,49 @@ export class MessagingService {
   private static PROFILE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   /**
+   * Find an existing direct conversation between two users (no friendship gate, no creation).
+   * Used for notification deep-links where the conversation is known to exist.
+   */
+  async findExistingDirectConversation(userId1: string, userId2: string): Promise<{ conversation: Conversation | null; error: string | null }> {
+    try {
+      const { data: user1Convs, error: u1Err } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('user_id', userId1);
+      if (u1Err) throw u1Err;
+      if (!user1Convs || user1Convs.length === 0) {
+        return { conversation: null, error: null };
+      }
+
+      const { data: user2Convs, error: u2Err } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .in('conversation_id', user1Convs.map(c => c.conversation_id))
+        .eq('user_id', userId2);
+      if (u2Err) throw u2Err;
+
+      if (user2Convs && user2Convs.length > 0) {
+        for (const participant of user2Convs) {
+          const { data: conv } = await supabase
+            .from('conversations')
+            .select('id, type')
+            .eq('id', participant.conversation_id)
+            .eq('type', 'direct')
+            .single();
+          if (conv) {
+            return await this.getConversation(conv.id, userId1);
+          }
+        }
+      }
+
+      return { conversation: null, error: null };
+    } catch (error: any) {
+      console.error('Error finding existing conversation:', error);
+      return { conversation: null, error: error.message };
+    }
+  }
+
+  /**
    * Get or create a direct conversation between two users
    */
   async getOrCreateDirectConversation(userId1: string, userId2: string): Promise<{ conversation: Conversation | null; error: string | null }> {
@@ -327,6 +370,34 @@ export class MessagingService {
     } catch (error: any) {
       console.error('Error getting messages:', error);
       return { messages: [], error: error.message };
+    }
+  }
+
+  /**
+   * Fetch a single message by ID (for resolving reply-to references outside the loaded window)
+   */
+  async getMessageById(messageId: string, userId: string): Promise<{ message: DirectMessage | null; error: string | null }> {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('id', messageId)
+        .is('deleted_at', null)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // Not found or deleted
+          return { message: null, error: null };
+        }
+        throw error;
+      }
+
+      const enriched = await this.enrichMessage(data, userId);
+      return { message: enriched, error: null };
+    } catch (error: any) {
+      console.error('Error getting message by ID:', error);
+      return { message: null, error: error.message };
     }
   }
 

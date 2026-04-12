@@ -291,13 +291,81 @@ export default function MessageInterface({
   }, [presenceParticipants, currentUserId]);
 
   // ���─ Message lookup map for reply-to resolution ────────────
+  // Includes both loaded messages and lazily-fetched reply-to references
+  const [replyCache, setReplyCache] = useState<Map<string, Message>>(new Map());
+  const replyFetchingRef = useRef<Set<string>>(new Set());
+
   const messageMap = useMemo(() => {
     const map = new Map<string, Message>();
+    // Merge reply cache first so loaded messages take priority
+    for (const [id, msg] of replyCache) {
+      map.set(id, msg);
+    }
     for (const msg of messages) {
       map.set(msg.id, msg);
     }
     return map;
-  }, [messages]);
+  }, [messages, replyCache]);
+
+  // Collect all replyToIds that are missing from the map and fetch them
+  useEffect(() => {
+    if (!currentUserId) return;
+    let active = true;
+
+    const missingIds: string[] = [];
+    for (const msg of messages) {
+      if (msg.replyToId && !messageMap.has(msg.replyToId) && !replyFetchingRef.current.has(msg.replyToId)) {
+        missingIds.push(msg.replyToId);
+      }
+    }
+    if (missingIds.length === 0) return;
+
+    for (const id of missingIds) {
+      replyFetchingRef.current.add(id);
+    }
+
+    Promise.all(
+      missingIds.map((id) => messagingService.getMessageById(id, currentUserId!))
+    ).then((results) => {
+      if (!active) return;
+      const newEntries = new Map<string, Message>();
+      for (let i = 0; i < results.length; i++) {
+        const { message: fetched } = results[i];
+        if (fetched) {
+          newEntries.set(missingIds[i], {
+            id: fetched.id,
+            senderId: fetched.sender_id ?? '',
+            senderName: fetched.sender_name || 'Unknown',
+            content: fetched.content,
+            timestamp: fetched.created_at,
+            type: fetched.message_type,
+            fileUrl: fetched.file_url,
+            fileName: fetched.file_name,
+            fileSize: fetched.file_size?.toString(),
+            isMe: fetched.sender_id === currentUserId,
+            isRead: fetched.is_read ?? false,
+          });
+        }
+      }
+      if (newEntries.size > 0) {
+        setReplyCache((prev) => {
+          const next = new Map(prev);
+          for (const [id, msg] of newEntries) {
+            next.set(id, msg);
+          }
+          return next;
+        });
+      }
+    }).catch(() => {
+      // Silent — UI shows "deleted" as fallback until fetch succeeds
+    }).finally(() => {
+      for (const id of missingIds) {
+        replyFetchingRef.current.delete(id);
+      }
+    });
+
+    return () => { active = false; };
+  }, [messages, currentUserId, messageMap]);
 
   const isOtherOnline = otherPresence?.isOnline ?? friend.isOnline;
   const otherLastSeen = otherPresence?.lastSeenAt ?? null;

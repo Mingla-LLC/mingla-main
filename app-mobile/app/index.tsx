@@ -2265,6 +2265,7 @@ function AppContent() {
                                 onNavigateToActivity={handlers.handleNavigateToActivity}
                                 onNavigateToConnections={() => {
                                   logger.action('Navigate to connections from profile');
+                                  setPendingConnectionsPanel("friends");
                                   setCurrentPage("connections");
                                 }}
                                 savedExperiences={savedCards?.length || 0}

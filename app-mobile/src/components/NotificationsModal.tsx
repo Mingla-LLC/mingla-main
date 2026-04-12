@@ -377,13 +377,23 @@ export default function NotificationsModal({
 
   const handleCardPress = useCallback(
     (notification: ServerNotification) => {
-      // Remove notification from list (user acknowledged it by tapping)
-      onDeleteNotification(notification.id);
+      const isActionable = !!ACTIONABLE_TYPES[notification.type];
+      if (isActionable) {
+        // Actionable notifications (friend request, pair request, collab invite, etc.)
+        // must NOT be deleted on card tap — user needs the Accept/Decline buttons.
+        // Only mark as read so the unread indicator clears.
+        if (!notification.is_read) {
+          onMarkAsRead(notification.id);
+        }
+      } else {
+        // Non-actionable notifications: remove from list (user acknowledged by tapping)
+        onDeleteNotification(notification.id);
+      }
       // Close modal + navigate
       onClose();
       onNotificationTap(notification);
     },
-    [onDeleteNotification, onClose, onNotificationTap]
+    [onDeleteNotification, onMarkAsRead, onClose, onNotificationTap]
   );
 
   // ── Render notification card ──
