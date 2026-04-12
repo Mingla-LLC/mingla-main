@@ -82,6 +82,7 @@ const SHORT_BACKGROUND_THRESHOLD_MS = 30000;
 export function useForegroundRefresh(
   userId: string | undefined,
   onResume?: () => void,
+  onCheckOtaUpdate?: () => Promise<void>,
 ): { resumeCount: number; realtimeEpoch: number } {
   const queryClient = useQueryClient();
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
@@ -92,6 +93,9 @@ export function useForegroundRefresh(
 
   const onResumeRef = useRef(onResume);
   onResumeRef.current = onResume;
+
+  const onCheckOtaUpdateRef = useRef(onCheckOtaUpdate);
+  onCheckOtaUpdateRef.current = onCheckOtaUpdate;
 
   useEffect(() => {
     if (!userId) return;
@@ -168,6 +172,8 @@ export function useForegroundRefresh(
             queryClient.invalidateQueries({ queryKey: key });
           }
           onResumeRef.current?.();
+          // Fire-and-forget OTA check — never blocks resume
+          onCheckOtaUpdateRef.current?.().catch(() => {});
           return;
         }
 
@@ -277,6 +283,9 @@ export function useForegroundRefresh(
         // Step 6: Fire the callback for non-React-Query refreshes.
         // refreshAllSessions() now fires AFTER auth is confirmed valid.
         onResumeRef.current?.();
+
+        // Step 7: Fire-and-forget OTA check — never blocks resume
+        onCheckOtaUpdateRef.current?.().catch(() => {});
       }, DEBOUNCE_MS);
     };
 

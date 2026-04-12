@@ -82,6 +82,8 @@ import { useTranslation } from 'react-i18next';
 import i18n from '../src/i18n';
 import { persistLanguage } from '../src/i18n';
 import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
+import { useOtaUpdates } from "../src/hooks/useOtaUpdates";
+import { OtaUpdateBanner } from "../src/components/ui/OtaUpdateBanner";
 import RealtimeSubscriptions from "../src/components/RealtimeSubscriptions";
 import * as friendsService from "../src/services/friendsService";
 import { parseDeepLink, executeDeepLink } from "../src/services/deepLinkService";
@@ -777,12 +779,15 @@ function AppContent() {
     }
   }, [user?.id]);
 
+  // OTA update checker — checks on foreground resume, shows banner when ready. ORCH-0406.
+  const { isUpdateReady, isDismissed, checkForUpdate, applyUpdate, dismissBanner } = useOtaUpdates();
+
   // Centralized foreground resume: auth-first sequence, aggressive Realtime remount,
   // query invalidation AFTER auth, refreshAllSessions gated on valid JWT.
   // See useForegroundRefresh for the full resume state machine. ORCH-0336.
   const { resumeCount, realtimeEpoch } = useForegroundRefresh(user?.id, () => {
     refreshAllSessions();
-  });
+  }, checkForUpdate);
 
   // Sync i18n language from profile (handles cross-device language changes)
   useEffect(() => {
@@ -2534,6 +2539,11 @@ function AppContent() {
           </RecommendationsProvider>
         </CardsCacheProvider>
         <ToastContainer />
+        <OtaUpdateBanner
+          isVisible={isUpdateReady && !isDismissed}
+          onApply={applyUpdate}
+          onDismiss={dismissBanner}
+        />
       </ToastProvider>
       </>
     );
