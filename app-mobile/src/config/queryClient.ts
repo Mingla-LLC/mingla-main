@@ -161,6 +161,15 @@ export const queryClient = new QueryClient({
       const key = mutation.options.mutationKey
         ? Array.isArray(mutation.options.mutationKey) ? mutation.options.mutationKey.join('.') : String(mutation.options.mutationKey)
         : '(unnamed)';
+
+      // Expected business-logic rejections — log as info, not error
+      const expectedErrors = ['pairing_limit_reached', 'session_limit_reached'];
+      if (expectedErrors.includes(error?.message)) {
+        if (__DEV__) logger.mutation(`${key} blocked: ${error.message}`);
+        handlePotentialAuthError(error);
+        return;
+      }
+
       // console.error for production log aggregators; logger.mutation for dev Metro output
       console.error(`[MUTATION] ERROR ${key} | ${error.name}: ${error.message}`);
       if (__DEV__) logger.mutation(`ERROR ${key}`, { error: error.message });

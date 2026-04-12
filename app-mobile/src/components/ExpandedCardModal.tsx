@@ -559,6 +559,8 @@ function CuratedPlanView({
   currentMode,
   onCardRemoved,
   currencyCode,
+  onPaywallRequired,
+  canAccessCurated,
 }: {
   card: CuratedExperienceCard;
   isSaved?: boolean;
@@ -569,6 +571,8 @@ function CuratedPlanView({
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void;
   currencyCode?: string;
+  onPaywallRequired?: () => void;
+  canAccessCurated?: boolean;
 }) {
   return (
     <MultiStopPlanView
@@ -581,6 +585,8 @@ function CuratedPlanView({
       currentMode={currentMode}
       onCardRemoved={onCardRemoved}
       currencyCode={currencyCode}
+      onPaywallRequired={onPaywallRequired}
+      canAccessCurated={canAccessCurated}
     />
   );
 }
@@ -596,6 +602,8 @@ function MultiStopPlanView({
   currentMode,
   onCardRemoved,
   currencyCode,
+  onPaywallRequired,
+  canAccessCurated,
 }: {
   card: CuratedExperienceCard;
   isSaved?: boolean;
@@ -606,6 +614,8 @@ function MultiStopPlanView({
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void;
   currencyCode?: string;
+  onPaywallRequired?: () => void;
+  canAccessCurated?: boolean;
 }) {
   const { t } = useTranslation(['cards', 'common']);
   // ── Local card state (mutable for stop replacements) ──────────────────────
@@ -1143,6 +1153,8 @@ function MultiStopPlanView({
           setBrowserUrl(url);
           setBrowserTitle(title);
         }}
+        onPaywallRequired={onPaywallRequired}
+        canAccessCurated={canAccessCurated}
       />
 
       {/* Undo toast — shown for 4s after a stop replacement */}
@@ -1218,6 +1230,8 @@ export default function ExpandedCardModal({
   onNavigatePrevious,
   navigationIndex,
   navigationTotal,
+  onPaywallRequired,
+  canAccessCurated = true,
 }: ExpandedCardModalProps) {
   const { t } = useTranslation(['cards', 'common']);
   const { updateCardStrollData, collabTravelMode } = useRecommendations();
@@ -1586,6 +1600,8 @@ export default function ExpandedCardModal({
                   currentMode={currentMode}
                   onCardRemoved={onCardRemoved}
                   currencyCode={accountPreferences?.currency || 'USD'}
+                  onPaywallRequired={onPaywallRequired}
+                  canAccessCurated={canAccessCurated}
                 />
 
                 {/* Weather for first stop */}
@@ -2023,6 +2039,8 @@ export default function ExpandedCardModal({
                     setBrowserUrl(url);
                     setBrowserTitle(title);
                   }}
+                  onPaywallRequired={onPaywallRequired}
+                  canAccessCurated={canAccessCurated}
                 />
               </>
             ))}

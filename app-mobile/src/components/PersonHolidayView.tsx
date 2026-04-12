@@ -863,6 +863,7 @@ export default function PersonHolidayView({
                 eventTitle={t('social:holiday.birthday_event', { name: fn })} nextOccurrence={nd}
                 notes={t('social:holiday.reminder_notes', { event: t('social:holiday.birthday_event', { name: fn }) })}
                 personName={fn} occasionLabel={t('social:holiday.birthday_label')}
+                inverted
               />
             </View>
             {/* Birthday card row — always visible beneath hero */}
@@ -1046,7 +1047,7 @@ const styles = StyleSheet.create({
     borderRadius: s(20),
     paddingTop: s(20),
     paddingHorizontal: s(20),
-    paddingBottom: s(2),
+    paddingBottom: s(16),
     marginBottom: s(4),
   },
   heroContent: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },

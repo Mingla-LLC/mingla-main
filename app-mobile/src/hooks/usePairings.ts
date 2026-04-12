@@ -68,6 +68,8 @@ export function useSendPairRequest() {
       queryClient.invalidateQueries({ queryKey: ["pairings", "pills"] });
     },
     onError: (error) => {
+      // pairing_limit_reached is expected for free users — not a real error
+      if (error?.message === 'pairing_limit_reached') return;
       console.error('[usePairings] Send request failed:', error);
     },
   });

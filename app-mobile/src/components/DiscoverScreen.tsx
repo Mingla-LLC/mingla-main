@@ -3985,6 +3985,12 @@ export default function DiscoverScreen({
           setExpandedCardIndex(prev);
           setSelectedCardForExpansion(expandedCardListRef.current[prev]);
         } : undefined}
+        canAccessCurated={canAccess('curated_cards')}
+        onPaywallRequired={() => {
+          handleCloseExpandedModal();
+          setPaywallFeature('curated_cards');
+          setShowPaywall(true);
+        }}
       />
 
       {/* Pair Request Modal */}

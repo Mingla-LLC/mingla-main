@@ -241,4 +241,6 @@ export interface ExpandedCardModalProps {
   onNavigatePrevious?: () => void;
   navigationIndex?: number;
   navigationTotal?: number;
+  onPaywallRequired?: () => void;
+  canAccessCurated?: boolean;
 }

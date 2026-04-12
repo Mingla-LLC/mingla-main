@@ -49,6 +49,10 @@ interface ActionButtonsProps {
   onVisitPress?: () => void;
   onRemoveVisitPress?: () => void;
   hasCalendarEntry?: boolean;
+  /** Called when a gated action is attempted on a curated card by a free user */
+  onPaywallRequired?: () => void;
+  /** Whether the current user can access curated card actions (save/schedule) */
+  canAccessCurated?: boolean;
 }
 
 export default function ActionButtons({
@@ -69,6 +73,8 @@ export default function ActionButtons({
   onVisitPress,
   onRemoveVisitPress,
   hasCalendarEntry = false,
+  onPaywallRequired,
+  canAccessCurated = true,
 }: ActionButtonsProps) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation(['expanded_details', 'common']);
@@ -368,6 +374,13 @@ export default function ActionButtons({
   const handleSave = async () => {
     if (isSaving) return; // Prevent multiple saves
 
+    // Gate: curated card save requires Mingla+
+    const isCurated = (card as any).cardType === 'curated' || (card as any).is_curated;
+    if (isCurated && !canAccessCurated) {
+      onPaywallRequired?.();
+      return;
+    }
+
     setIsSaving(true);
     try {
       await onSave(card);
@@ -380,6 +393,14 @@ export default function ActionButtons({
 
   const handleSchedule = () => {
     if (isScheduling || isScheduled || !user?.id) return;
+
+    // Gate: curated card schedule requires Mingla+
+    const isCurated = (card as any).cardType === 'curated' || (card as any).is_curated;
+    if (isCurated && !canAccessCurated) {
+      onPaywallRequired?.();
+      return;
+    }
+
     // Always reset and show date/time picker
     setAvailabilityCheck(null);
     setHasCheckedAvailability(false);

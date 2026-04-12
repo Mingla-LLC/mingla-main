@@ -48,7 +48,7 @@ import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
 import { CoachMarkProvider, useCoachMarkContext } from "../src/contexts/CoachMarkContext";
 import SpotlightOverlay from "../src/components/SpotlightOverlay";
-import PaywallScreen from "../src/components/PaywallScreen";
+import { CustomPaywallScreen } from "../src/components/CustomPaywallScreen";
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
 import {
   initializeOneSignal,
@@ -2083,7 +2083,8 @@ function AppContent() {
                             }}
                           />
                         ) : showPaywall && user?.id ? (
-                          <PaywallScreen
+                          <CustomPaywallScreen
+                            isVisible={showPaywall}
                             userId={user.id}
                             onClose={() => setShowPaywall(false)}
                           />

@@ -1179,6 +1179,13 @@ const SavedTab = ({
   };
 
   const handleScheduleCurated = (card: SavedCard) => {
+    // Gate: curated card schedule requires Mingla+
+    if (!canAccess('curated_cards')) {
+      setPaywallFeature('curated_cards');
+      setShowPaywall(true);
+      return;
+    }
+
     HapticFeedback.success();
     if (scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id)) return;
 
@@ -2133,6 +2140,12 @@ const SavedTab = ({
           userPreferences={userPreferences}
           onStrollDataFetched={handleStrollDataFetched}
           onPicnicDataFetched={handlePicnicDataFetched}
+          canAccessCurated={canAccess('curated_cards')}
+          onPaywallRequired={() => {
+            handleCloseModal();
+            setPaywallFeature('curated_cards');
+            setShowPaywall(true);
+          }}
         />
       )}
 

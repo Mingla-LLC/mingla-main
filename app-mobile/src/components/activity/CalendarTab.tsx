@@ -1868,6 +1868,11 @@ const CalendarTab = ({
               ? "solo"
               : "collaboration"
           }
+          canAccessCurated={canAccess('curated_cards')}
+          onPaywallRequired={() => {
+            handleCloseExpandedModal();
+            setShowLockedPaywall(true);
+          }}
         />
       )}
 

@@ -5,7 +5,7 @@ import Purchases, {
   type PurchasesPackage,
   type MakePurchaseResult,
 } from 'react-native-purchases'
-import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui'
+import RevenueCatUI from 'react-native-purchases-ui'
 import { Platform } from 'react-native'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -220,31 +220,6 @@ export async function purchasePackage(
  */
 export async function restorePurchases(): Promise<CustomerInfo> {
   return Purchases.restorePurchases()
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Paywall UI (RevenueCat Paywalls)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Imperatively present the RevenueCat paywall modal.
- * Returns the PAYWALL_RESULT enum indicating what happened.
- *
- * Use this for quick "upgrade" prompts from feature gates.
- * For the full standalone paywall screen, use <PaywallScreen />.
- */
-export async function presentPaywall(): Promise<PAYWALL_RESULT> {
-  return RevenueCatUI.presentPaywall()
-}
-
-/**
- * Present the paywall only if the user does not already have Mingla+.
- * Returns PAYWALL_RESULT.NOT_PRESENTED if the user is already subscribed.
- */
-export async function presentPaywallIfNeeded(): Promise<PAYWALL_RESULT> {
-  return RevenueCatUI.presentPaywallIfNeeded({
-    requiredEntitlementIdentifier: RC_MINGLA_PLUS_ENTITLEMENT_ID,
-  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

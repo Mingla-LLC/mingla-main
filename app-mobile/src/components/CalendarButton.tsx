@@ -31,6 +31,8 @@ interface CalendarButtonProps {
   personName: string;
   /** Occasion label used in permission denial alerts */
   occasionLabel: string;
+  /** Use white-on-color scheme (for dark/colored backgrounds like birthday hero) */
+  inverted?: boolean;
 }
 
 const STORAGE_PREFIX = "mingla_calendar_events_";
@@ -47,6 +49,7 @@ export default function CalendarButton({
   notes,
   personName,
   occasionLabel,
+  inverted,
 }: CalendarButtonProps) {
   const { t } = useTranslation(['common']);
   const [isAdded, setIsAdded] = useState(false);
@@ -174,23 +177,35 @@ export default function CalendarButton({
     occasionLabel,
   ]);
 
+  const iconColor = inverted
+    ? (isAdded ? "#eb7825" : "#FFFFFF")
+    : (isAdded ? "#FFFFFF" : "#eb7825");
+
   return (
     <TouchableOpacity
-      style={[styles.button, isAdded && styles.buttonAdded]}
+      style={[
+        styles.button,
+        inverted && styles.buttonInverted,
+        isAdded && (inverted ? styles.buttonAddedInverted : styles.buttonAdded),
+      ]}
       onPress={handlePress}
       disabled={isAdded || isLoading}
       activeOpacity={0.7}
     >
       {isLoading ? (
-        <ActivityIndicator size="small" color="#eb7825" />
+        <ActivityIndicator size="small" color={inverted ? "#FFFFFF" : "#eb7825"} />
       ) : (
         <>
           <Icon
             name={isAdded ? "checkmark-circle" : "calendar-outline"}
             size={s(16)}
-            color={isAdded ? "#FFFFFF" : "#eb7825"}
+            color={iconColor}
           />
-          <Text style={[styles.buttonText, isAdded && styles.buttonTextAdded]}>
+          <Text style={[
+            styles.buttonText,
+            inverted && styles.buttonTextInverted,
+            isAdded && (inverted ? styles.buttonTextAddedInverted : styles.buttonTextAdded),
+          ]}>
             {isAdded ? `${t('common:added_to_calendar')} \u2713` : t('common:add_to_calendar')}
           </Text>
         </>
@@ -212,16 +227,29 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     marginTop: s(10),
   },
+  buttonInverted: {
+    borderColor: "#FFFFFF",
+  },
   buttonAdded: {
     backgroundColor: "#eb7825",
     borderColor: "#eb7825",
+  },
+  buttonAddedInverted: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#FFFFFF",
   },
   buttonText: {
     fontSize: s(13),
     fontWeight: "600",
     color: "#eb7825",
   },
+  buttonTextInverted: {
+    color: "#FFFFFF",
+  },
   buttonTextAdded: {
     color: "#FFFFFF",
+  },
+  buttonTextAddedInverted: {
+    color: "#eb7825",
   },
 });

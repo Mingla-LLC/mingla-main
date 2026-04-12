@@ -1027,6 +1027,22 @@ export default function SwipeableCards({
             return;
           }
 
+          // Gate: curated card right-swipe (save) requires Mingla+
+          if (
+            direction === 'right' &&
+            (cardToRemove as any).cardType === 'curated' &&
+            !canAccessRef.current('curated_cards')
+          ) {
+            HapticFeedback.medium();
+            setPaywallFeature('curated_cards');
+            setShowPaywall(true);
+            Animated.spring(position, {
+              toValue: { x: 0, y: 0 },
+              useNativeDriver: false,
+            }).start();
+            return;
+          }
+
           // Animate card off the screen edge
           Animated.timing(position, {
             toValue: {
@@ -1631,6 +1647,12 @@ export default function SwipeableCards({
             onNavigatePrevious={reviewIndex > 0 ? handleReviewPrevious : undefined}
             navigationIndex={reviewIndex}
             navigationTotal={reviewCards.length}
+            canAccessCurated={canAccess('curated_cards')}
+            onPaywallRequired={() => {
+              handleCloseExpandedModal();
+              setPaywallFeature('curated_cards');
+              setShowPaywall(true);
+            }}
           />
         </>
       );
@@ -2008,6 +2030,12 @@ export default function SwipeableCards({
         }}
         userPreferences={userPreferences}
         accountPreferences={accountPreferences}
+        canAccessCurated={canAccess('curated_cards')}
+        onPaywallRequired={() => {
+          handleCloseExpandedModal();
+          setPaywallFeature('curated_cards');
+          setShowPaywall(true);
+        }}
       />
 
       <DismissedCardsSheet
