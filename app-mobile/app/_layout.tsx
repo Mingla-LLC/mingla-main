@@ -1,6 +1,7 @@
 import '../src/i18n'  // Must be first — initializes i18next before any component renders
 import { Stack } from "expo-router";
 import * as Sentry from '@sentry/react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 Sentry.init({
   dsn: 'https://5bb11663dddc2efc612498d7a14b70f4@o4511136062701568.ingest.us.sentry.io/4511136064012288',
@@ -23,6 +24,8 @@ Sentry.init({
 
 export default Sentry.wrap(function RootLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false }} />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <Stack screenOptions={{ headerShown: false }} />
+    </GestureHandlerRootView>
   );
 });

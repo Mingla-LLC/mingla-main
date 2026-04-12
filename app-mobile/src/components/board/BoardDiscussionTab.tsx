@@ -33,6 +33,8 @@ import { ReplyPreviewBar } from "../chat/ReplyPreviewBar";
 import { MentionChip } from "../chat/MentionChip";
 import { ReplyQuoteBlock } from "../chat/ReplyQuoteBlock";
 import { CardPreview } from "../chat/CardPreview";
+import { SwipeableMessage } from "../chat/SwipeableMessage";
+import { DoubleTapHeart } from "../chat/DoubleTapHeart";
 import * as Haptics from "expo-haptics";
 
 interface SavedCard {
@@ -634,14 +636,20 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
             const reactionGroups = groupReactions(message.reactions);
 
             return (
-              <Pressable
+              <SwipeableMessage
                 key={message.id}
-                onLongPress={(e) =>
-                  handleMessageLongPress(message.id, e.nativeEvent.pageY)
-                }
-                delayLongPress={400}
+                onReply={() => setReplyingTo(message)}
               >
-                <View style={styles.messageWrapper}>
+                <DoubleTapHeart
+                  onDoubleTap={() => handleReaction(message.id, '❤️')}
+                >
+                  <Pressable
+                    onLongPress={(e) =>
+                      handleMessageLongPress(message.id, e.nativeEvent.pageY)
+                    }
+                    delayLongPress={400}
+                  >
+                  <View style={styles.messageWrapper}>
                   <View style={styles.avatarContainer}>
                     <View style={styles.avatar}>
                       <Text style={styles.avatarText}>
@@ -695,7 +703,9 @@ export const BoardDiscussionTab: React.FC<BoardDiscussionTabProps> = ({
                     )}
                   </View>
                 </View>
-              </Pressable>
+                </Pressable>
+                </DoubleTapHeart>
+              </SwipeableMessage>
             );
           })
         )}
@@ -1175,26 +1185,32 @@ const styles = StyleSheet.create({
   reactionChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    gap: 4,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    gap: 3,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
   },
   reactionChipActive: {
-    backgroundColor: "#FFF7ED",
-    borderWidth: 1,
-    borderColor: "#eb7825",
+    backgroundColor: "#FFF0E8",
+    borderColor: "#FDBA74",
   },
   reactionEmoji: {
-    fontSize: 14,
+    fontSize: 15,
   },
   reactionCount: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#6B7280",
     fontWeight: "600",
   },
   reactionCountActive: {
-    color: "#eb7825",
+    color: "#C2410C",
   },
 });

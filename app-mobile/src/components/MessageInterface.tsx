@@ -29,9 +29,11 @@ import { useBroadcastReceiver } from "../hooks/useBroadcastReceiver";
 import { MessageBubble } from "./chat/MessageBubble";
 import { MessageContextMenu } from "./chat/MessageContextMenu";
 import { ReplyPreviewBar } from "./chat/ReplyPreviewBar";
+import { SwipeableMessage } from "./chat/SwipeableMessage";
+import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
-import { DirectMessage } from "../services/messagingService";
+import { DirectMessage, messagingService } from "../services/messagingService";
 import { useTranslation } from 'react-i18next';
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { colors as dsColors, spacing as dsSpacing } from "../constants/designSystem";
@@ -294,6 +296,9 @@ export default function MessageInterface({
 
   const handleSendMessage = () => {
     if (newMessage.trim() || selectedFile) {
+      const replyToId = replyingTo?.messageId;
+      setReplyingTo(null); // Clear reply state immediately
+
       if (selectedFile) {
         const fileType =
           selectedFile.type === "image"
@@ -707,37 +712,56 @@ export default function MessageInterface({
           ref={flatListRef}
           data={groupedMessages}
           renderItem={({ item }) => (
-            <TouchableOpacity
-              activeOpacity={1}
-              onLongPress={(e) => {
-                setContextMenu({
-                  visible: true,
+            <SwipeableMessage
+              onReply={() => {
+                setReplyingTo({
                   messageId: item.message.id,
+                  senderName: item.message.isMe ? (currentUserName || 'You') : cleanName(friend.name),
                   content: item.message.content,
                   isMe: item.message.isMe,
-                  top: e.nativeEvent.pageY,
                 });
               }}
-              delayLongPress={500}
             >
-              <MessageBubble
-                message={{
-                  id: item.message.id,
-                  content: item.message.content,
-                  timestamp: item.message.timestamp,
-                  type: item.message.type,
-                  fileUrl: item.message.fileUrl,
-                  fileName: item.message.fileName,
-                  fileSize: item.message.fileSize,
-                  isMe: item.message.isMe,
-                  failed: item.message.failed,
+              <DoubleTapHeart
+                onDoubleTap={() => {
+                  if (currentUserId) {
+                    messagingService.toggleDirectMessageReaction(item.message.id, currentUserId, '❤️');
+                  }
                 }}
-                isMe={item.message.isMe}
-                groupPosition={item.groupPosition}
-                showTimestamp={item.showTimestamp}
-                isRead={item.message.isMe && !item.message.id.startsWith("temp-") && (item.message.isRead === true)}
-              />
-            </TouchableOpacity>
+              >
+              <TouchableOpacity
+                activeOpacity={1}
+                onLongPress={(e) => {
+                  setContextMenu({
+                    visible: true,
+                    messageId: item.message.id,
+                    content: item.message.content,
+                    isMe: item.message.isMe,
+                    top: e.nativeEvent.pageY,
+                  });
+                }}
+                delayLongPress={500}
+              >
+                <MessageBubble
+                  message={{
+                    id: item.message.id,
+                    content: item.message.content,
+                    timestamp: item.message.timestamp,
+                    type: item.message.type,
+                    fileUrl: item.message.fileUrl,
+                    fileName: item.message.fileName,
+                    fileSize: item.message.fileSize,
+                    isMe: item.message.isMe,
+                    failed: item.message.failed,
+                  }}
+                  isMe={item.message.isMe}
+                  groupPosition={item.groupPosition}
+                  showTimestamp={item.showTimestamp}
+                  isRead={item.message.isMe && !item.message.id.startsWith("temp-") && (item.message.isRead === true)}
+                />
+              </TouchableOpacity>
+              </DoubleTapHeart>
+            </SwipeableMessage>
           )}
           keyExtractor={(item) => item.message.id}
           inverted={true}

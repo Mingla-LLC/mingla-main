@@ -41,6 +41,7 @@ import { CardDiscussionModal } from "./board/CardDiscussionModal";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import ShareModal from "./ShareModal";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -577,6 +578,7 @@ export default function SessionViewModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose} statusBarTranslucent>
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.modalOverlay}>
         <Pressable style={styles.backdropTouch} onPress={onClose} />
         <View style={[styles.modalContent, { height: SCREEN_HEIGHT - insets.top }]}>
@@ -846,6 +848,7 @@ export default function SessionViewModal({
           </SafeAreaView>
         </View>
       </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

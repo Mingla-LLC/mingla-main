@@ -439,12 +439,64 @@ export class BoardMessageService {
           .from('board_message_reactions')
           .insert({ message_id: messageId, user_id: userId, emoji });
         if (error) throw error;
+
+        // Notify the message author (non-blocking)
+        this.sendReactionNotification(messageId, userId, emoji).catch((err) =>
+          console.warn('Reaction notification failed (non-critical):', err)
+        );
+
         return { added: true, error: null };
       }
     } catch (err: any) {
       console.error('Error toggling reaction:', err);
       return { added: false, error: err };
     }
+  }
+
+  /**
+   * Send a push notification to the message author when someone reacts.
+   */
+  private static async sendReactionNotification(
+    messageId: string,
+    reactorId: string,
+    emoji: string
+  ): Promise<void> {
+    // Get the message author
+    const authorId = await this.getMessageAuthor(messageId);
+    if (!authorId || authorId === reactorId) return; // Don't notify self
+
+    // Get the message content for preview
+    const { data: message } = await supabase
+      .from('board_messages')
+      .select('content, session_id')
+      .eq('id', messageId)
+      .single();
+
+    if (!message) return;
+
+    // Get session name
+    const { data: session } = await supabase
+      .from('collaboration_sessions')
+      .select('name')
+      .eq('id', message.session_id)
+      .single();
+
+    let messagePreview = message.content || '';
+    if (messagePreview.length > 50) {
+      messagePreview = messagePreview.substring(0, 49) + '\u2026';
+    }
+
+    await supabase.functions.invoke('notify-message', {
+      body: {
+        type: 'board_mention',
+        senderId: reactorId,
+        sessionId: message.session_id,
+        sessionName: session?.name || 'Board',
+        messageId,
+        messagePreview: `${emoji} "${messagePreview}"`,
+        mentionedUserIds: [authorId],
+      },
+    });
   }
 
   // ===========================================

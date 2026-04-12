@@ -619,6 +619,43 @@ export class MessagingService {
       console.error('Error sending message notifications:', error);
     }
   }
+
+  /**
+   * Toggle a reaction on a direct message (add if not exists, remove if exists).
+   */
+  async toggleDirectMessageReaction(
+    messageId: string,
+    userId: string,
+    emoji: string
+  ): Promise<{ added: boolean; error: any }> {
+    try {
+      const { data: existing } = await supabase
+        .from('direct_message_reactions')
+        .select('id')
+        .eq('message_id', messageId)
+        .eq('user_id', userId)
+        .eq('emoji', emoji)
+        .maybeSingle();
+
+      if (existing) {
+        const { error } = await supabase
+          .from('direct_message_reactions')
+          .delete()
+          .eq('id', existing.id);
+        if (error) throw error;
+        return { added: false, error: null };
+      } else {
+        const { error } = await supabase
+          .from('direct_message_reactions')
+          .insert({ message_id: messageId, user_id: userId, emoji });
+        if (error) throw error;
+        return { added: true, error: null };
+      }
+    } catch (err: any) {
+      console.error('Error toggling DM reaction:', err);
+      return { added: false, error: err };
+    }
+  }
 }
 
 export const messagingService = new MessagingService();
