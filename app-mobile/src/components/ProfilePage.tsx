@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useCoachMarkContext } from "../contexts/CoachMarkContext";
 import {
   Text,
   View,
@@ -6,6 +7,7 @@ import {
   StyleSheet,
   Alert,
   StatusBar,
+  Dimensions,
 } from "react-native";
 import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
 import * as Location from "expo-location";
@@ -30,14 +32,15 @@ import BillingSheet from "./profile/BillingSheet";
 import * as Haptics from 'expo-haptics';
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import BetaFeedbackButton from "./BetaFeedbackButton";
+import InAppBrowserModal from "./InAppBrowserModal";
+import { LEGAL_URLS } from "../constants/urls";
 
 interface ProfilePageProps {
   onSignOut?: () => void;
   onUserIdentityUpdate?: (identity: any) => Promise<void>;
   onNavigateToActivity?: (tab: "saved" | "boards" | "calendar") => void;
   onNavigateToConnections?: () => void;
-  onNavigateToPrivacyPolicy?: () => void;
-  onNavigateToTermsOfService?: () => void;
+  isTabVisible?: boolean;
   savedExperiences?: number;
   boardsCount?: number;
   notificationsEnabled?: boolean;
@@ -56,8 +59,7 @@ export default function ProfilePage({
   onUserIdentityUpdate,
   onNavigateToActivity,
   onNavigateToConnections,
-  onNavigateToPrivacyPolicy,
-  onNavigateToTermsOfService,
+  isTabVisible,
   savedExperiences = 0,
   boardsCount = 0,
   notificationsEnabled = true,
@@ -66,6 +68,9 @@ export default function ProfilePage({
 }: ProfilePageProps) {
   useScreenLogger('profile');
   const insets = useSafeAreaInsets();
+  const [legalBrowserVisible, setLegalBrowserVisible] = useState(false);
+  const [legalBrowserUrl, setLegalBrowserUrl] = useState('');
+  const [legalBrowserTitle, setLegalBrowserTitle] = useState('');
   const { friends: realFriends, fetchFriends, friendCount } = useFriends();
   const actualConnectionsCount = friendCount;
 
@@ -86,6 +91,47 @@ export default function ProfilePage({
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showBillingSheet, setShowBillingSheet] = useState(false);
+  // Coach mark: register scroll ref + measure target positions for steps 11-12
+  const scrollRef = useRef<any>(null);
+  const contentRef = useRef<View>(null);
+  const accountSettingsRef = useRef<View>(null);
+  const feedbackButtonRef = useRef<View>(null);
+  const { currentStep, registerScrollRef, registerTargetScrollOffset, scrollLockActive } = useCoachMarkContext();
+  const isScrollStep = currentStep === 11 || currentStep === 12;
+  const coachScrollPadding = isScrollStep ? Dimensions.get('window').height * 0.65 : 0;
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      registerScrollRef('profile', scrollRef);
+    }
+  }, [registerScrollRef]);
+
+  // Use measureLayout to get exact positions relative to scroll content root
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (contentRef.current) {
+        if (accountSettingsRef.current) {
+          (accountSettingsRef.current as any).measureLayout(
+            contentRef.current,
+            (x: number, y: number, width: number, height: number) => {
+              registerTargetScrollOffset(11, x, y, width, height);
+            },
+            () => console.warn('[CoachMark] measureLayout failed for step 11'),
+          );
+        }
+        if (feedbackButtonRef.current) {
+          (feedbackButtonRef.current as any).measureLayout(
+            contentRef.current,
+            (x: number, y: number, width: number, height: number) => {
+              registerTargetScrollOffset(12, x, y, width, height);
+            },
+            () => console.warn('[CoachMark] measureLayout failed for step 12'),
+          );
+        }
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [registerTargetScrollOffset]);
 
   // Profile interests
   const { data: interests } = useProfileInterests();
@@ -116,6 +162,12 @@ export default function ProfilePage({
 
       setCurrentLocation(placeString || "");
       await AsyncStorage.setItem("mingla_user_location", placeString || "");
+      if (user?.id && placeString) {
+        await supabase
+          .from('profiles')
+          .update({ location: placeString })
+          .eq('id', user.id);
+      }
     } catch (error: any) {
       setLocationError(error?.message || "Unable to fetch location");
       try {
@@ -244,8 +296,8 @@ export default function ProfilePage({
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
-      <KeyboardAwareScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-        <View style={styles.content}>
+      <KeyboardAwareScrollView ref={scrollRef} style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEnabled={!scrollLockActive}>
+        <View style={[styles.content, coachScrollPadding > 0 && { paddingBottom: coachScrollPadding }]} ref={contentRef} collapsable={false}>
           {/* 1. Hero Section — extends behind status bar */}
           <ProfileHeroSection
             isOwnProfile
@@ -303,26 +355,36 @@ export default function ProfilePage({
               showChevron
               onPress={() => setShowBillingSheet(true)}
             />
-            <SettingsRow
-              icon="shield"
-              label="Account Settings"
-              description="Privacy, preferences, and account management"
-              showChevron
-              onPress={() => setShowAccountSettings(true)}
-              isLast
-            />
+            <View ref={accountSettingsRef} collapsable={false}>
+              <SettingsRow
+                icon="shield"
+                label="Account Settings"
+                description="Privacy, preferences, and account management"
+                showChevron
+                onPress={() => setShowAccountSettings(true)}
+                isLast
+              />
+            </View>
           </View>
 
           {/* 5. Beta Feedback (conditional — only for beta testers) */}
-          <BetaFeedbackButton />
+          <BetaFeedbackButton isTabVisible={isTabVisible} feedbackButtonRef={feedbackButtonRef} />
 
           {/* 6. Legal Footer */}
           <View style={styles.legalRow}>
-            <TouchableOpacity onPress={onNavigateToPrivacyPolicy}>
+            <TouchableOpacity onPress={() => {
+              setLegalBrowserUrl(LEGAL_URLS.privacyPolicy);
+              setLegalBrowserTitle('Privacy Policy');
+              setLegalBrowserVisible(true);
+            }}>
               <Text style={styles.legalLink}>Privacy Policy</Text>
             </TouchableOpacity>
             <Text style={styles.legalSeparator}>|</Text>
-            <TouchableOpacity onPress={onNavigateToTermsOfService}>
+            <TouchableOpacity onPress={() => {
+              setLegalBrowserUrl(LEGAL_URLS.termsOfService);
+              setLegalBrowserTitle('Terms of Service');
+              setLegalBrowserVisible(true);
+            }}>
               <Text style={styles.legalLink}>Terms of Service</Text>
             </TouchableOpacity>
           </View>
@@ -361,6 +423,12 @@ export default function ProfilePage({
       <BillingSheet
         visible={showBillingSheet}
         onClose={() => setShowBillingSheet(false)}
+      />
+      <InAppBrowserModal
+        visible={legalBrowserVisible}
+        url={legalBrowserUrl}
+        title={legalBrowserTitle}
+        onClose={() => setLegalBrowserVisible(false)}
       />
     </View>
   );

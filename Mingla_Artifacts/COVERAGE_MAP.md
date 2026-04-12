@@ -1,6 +1,6 @@
 # Coverage Map
 
-> Last updated: 2026-04-02
+> Last updated: 2026-04-11
 
 ## Surface Coverage
 
@@ -13,7 +13,7 @@
 | Social / Friends | 7 | 1 | 1 | 0 | 0 | 5 | 71% | 0% | Weak |
 | Notifications | 11 | 6 | 2 | 0 | 0 | 3 | 27% | 0% | Partial |
 | Saved / Boards | 5 | 0 | 0 | 0 | 0 | 5 | 100% | 0% | Unaudited |
-| Profile & Settings | 10 | 3 | 1 | 0 | 0 | 6 | 60% | 0% | Weak |
+| Profile & Settings | 10 | 4 | 1 | 0 | 0 | 5 | 50% | 0% | Weak |
 | Map & Location | 16 | 0 | 0 | 0 | 0 | 16 | 100% | 0% | Unaudited |
 | Chat / DM | 8 | 0 | 0 | 0 | 0 | 8 | 100% | 0% | Unaudited |
 | Payments & Subscriptions | 15 | 8 | 6 | 1 | 0 | 0 | 0% | 0% | Strong |
@@ -35,7 +35,7 @@
 | Analytics & Tracking | 8 | 1 | 0 | 0 | 0 | 7 | 88% | 0% | Weak |
 | Weather & External | 6 | 0 | 0 | 0 | 0 | 6 | 100% | 0% | Unaudited |
 | UI Components | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
-| **TOTAL** | **289** | **90** | **24** | **2** | **2** | **171** | **59%** | **0%** | **Weak** |
+| **TOTAL** | **289** | **91** | **24** | **2** | **2** | **170** | **59%** | **0%** | **Weak** |
 
 ## Heatmap Summary
 

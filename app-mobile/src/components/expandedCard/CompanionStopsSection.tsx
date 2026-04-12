@@ -112,13 +112,13 @@ export default function CompanionStopsSection({
                   <Text style={styles.stopType}>{getTypeLabel(stop.type)}</Text>
                 </View>
               </View>
-              {stop.rating > 0 && (
+              {(stop.rating ?? 0) > 0 && (
                 <View style={styles.stopRating}>
                   <Icon name="star" size={14} color="#fbbf24" />
                   <Text style={styles.ratingText}>
-                    {stop.rating.toFixed(1)}
+                    {(stop.rating ?? 0).toFixed(1)}
                   </Text>
-                  {stop.reviewCount > 0 && (
+                  {(stop.reviewCount ?? 0) > 0 && (
                     <Text style={styles.reviewText}>
                       ({stop.reviewCount} reviews)
                     </Text>

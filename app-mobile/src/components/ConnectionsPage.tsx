@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
+import { useCoachMark } from "../hooks/useCoachMark";
 import {
   Text,
   View,
@@ -16,6 +17,7 @@ import {
   ScrollView,
   useWindowDimensions,
   RefreshControl,
+  InteractionManager,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from "./ui/Icon";
@@ -28,7 +30,7 @@ import { reportService, ReportReason } from "../services/reportService";
 import { supabase } from "../services/supabase";
 import { mixpanelService } from "../services/mixpanelService";
 import { HapticFeedback } from "../utils/hapticFeedback";
-import { Conversation } from "../hooks/useMessages";
+import { Conversation, Message as ConvMessage } from "../hooks/useMessages";
 import { Friend, Message } from "../services/connectionsService";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useKeyboard } from "../hooks/useKeyboard";
@@ -57,6 +59,7 @@ import AddToBoardModal from "./AddToBoardModal";
 import ReportUserModal from "./ReportUserModal";
 import BlockUserModal from "./BlockUserModal";
 interface ConnectionsPageProps {
+  isTabVisible?: boolean;
   onSendCollabInvite?: (friend: any) => void;
   onAddToBoard?: (
     sessionIds: string[],
@@ -116,6 +119,7 @@ export default function ConnectionsPageRefactored({
   onOpenDirectMessageHandled,
 }: ConnectionsPageProps) {
   useScreenLogger('connections');
+  const coachChatHeader = useCoachMark(10, 0);
   const user = useAppStore((state) => state.user);
   const { height: screenHeight } = useWindowDimensions();
 
@@ -206,6 +210,8 @@ export default function ConnectionsPageRefactored({
   const [messagesCache, setMessagesCache] = useState<Record<string, Message[]>>({});
   const [uploadingFile, setUploadingFile] = useState(false);
   const [activeChatIsBlocked, setActiveChatIsBlocked] = useState(false);
+  const [activeChatIsUnfriended, setActiveChatIsUnfriended] = useState(false);
+  const [activeChatIsDeletedAccount, setActiveChatIsDeletedAccount] = useState(false);
   const conversationChannelRef = useRef<any>(null);
   const broadcastSeenIds = useRef(new Set<string>());
   // Tracks the most-recently selected chat — used to discard stale background block-check results
@@ -355,10 +361,10 @@ export default function ConnectionsPageRefactored({
 
         return {
           id: conv.id,
-          created_by: conv.created_by,
+          created_by: conv.created_by ?? '',
           created_at: conv.created_at,
           participants,
-          last_message: conv.last_message || undefined,
+          last_message: conv.last_message as unknown as ConvMessage | undefined,
           unread_count: conv.unread_count || 0,
           messages: [],
         };
@@ -517,10 +523,14 @@ export default function ConnectionsPageRefactored({
           style: "destructive",
           onPress: () => {
             HapticFeedback.warning();
-            // removeFriend invalidates friendsKeys.all — no explicit refetch needed
-            removeFriend(friendUserId).catch((e) => {
-              showMutationError(e, 'removing friend', showToast);
-            });
+            // removeFriend invalidates friendsKeys.all — also invalidate nearby-people for map (ORCH-0360)
+            removeFriend(friendUserId)
+              .then(() => {
+                queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
+              })
+              .catch((e) => {
+                showMutationError(e, 'removing friend', showToast);
+              });
           },
         },
       ]
@@ -537,7 +547,9 @@ export default function ConnectionsPageRefactored({
       status: "offline",
       isOnline: false,
     });
-    setShowBlockModal(true);
+    InteractionManager.runAfterInteractions(() => {
+      setShowBlockModal(true);
+    });
   };
 
   const handleReportFromModal = (friend: UseFriend) => {
@@ -557,7 +569,7 @@ export default function ConnectionsPageRefactored({
   const transformMessage = useCallback(
     (msg: DirectMessage, userId: string): Message => ({
       id: msg.id,
-      senderId: msg.sender_id,
+      senderId: msg.sender_id ?? '',
       senderName: msg.sender_name || "Unknown",
       content: msg.content,
       timestamp: msg.created_at,
@@ -631,6 +643,15 @@ export default function ConnectionsPageRefactored({
     // No network call — tap opens immediately. Server RLS enforces at send time.
     const isBlockedByMe = blockedUsers.some((b) => b.id === friend.id);
     setActiveChatIsBlocked(isBlockedByMe);
+
+    // Start optimistic (assume connected). The background server query below
+    // will set true if actually unfriended. This prevents a brief banner flash
+    // when the cache is stale but the user IS friends (ORCH-0360 rework).
+    setActiveChatIsUnfriended(false);
+
+    // Reset deleted-account state (will be checked in background below)
+    setActiveChatIsDeletedAccount(false);
+
     latestSelectedChatRef.current = friend.id;
 
     setActiveChat(friend);
@@ -645,6 +666,39 @@ export default function ConnectionsPageRefactored({
         }
       })
       .catch(() => {}); // Server enforces at send time via RLS
+
+    // Background check: is the other user's account deleted/inactive? (ORCH-0357)
+    Promise.resolve(
+      supabase
+        .from('profiles')
+        .select('active')
+        .eq('id', friend.id)
+        .single()
+    ).then(({ data: otherProfile }) => {
+      if (latestSelectedChatRef.current === capturedFriendId) {
+        setActiveChatIsDeletedAccount(otherProfile?.active === false || !otherProfile);
+      }
+    }).catch(() => {}); // Fail silently — input area defaults to visible
+
+    // Background friendship re-check (ORCH-0360) — handles re-friended users.
+    // The synchronous check above uses the cached friends list which may be stale.
+    // This server query catches cases where friendship was restored after unfriending.
+    Promise.resolve(
+      supabase
+        .from('friends')
+        .select('id')
+        .or(`and(user_id.eq.${user!.id},friend_user_id.eq.${friend.id}),and(user_id.eq.${friend.id},friend_user_id.eq.${user!.id})`)
+        .eq('status', 'accepted')
+        .limit(1)
+    ).then(({ data: friendshipData }) => {
+      if (latestSelectedChatRef.current === capturedFriendId) {
+        const isFriendNow = friendshipData && friendshipData.length > 0;
+        // Server is the single source of truth for unfriended state (ORCH-0360 rework).
+        // Set true only when server confirms NOT friends and NOT blocked.
+        setActiveChatIsUnfriended(!isFriendNow && !isBlockedByMe);
+      }
+    }).catch(() => {}); // Fail silently — optimistic false stays
+
     setCurrentConversationId(conversation.id);
 
     // ── Offline-resilient message loading ──────────────────
@@ -746,6 +800,12 @@ export default function ConnectionsPageRefactored({
     // Synchronous block check from cached blocked-users list
     const isBlockedByMe = blockedUsers.some((b) => b.id === friendUserId);
     setActiveChatIsBlocked(isBlockedByMe);
+
+    // Start optimistic — friend picker only shows friends, so this should always be false.
+    // Background server query will correct if needed (ORCH-0360 rework).
+    setActiveChatIsUnfriended(false);
+    setActiveChatIsDeletedAccount(false);
+
     latestSelectedChatRef.current = friendUserId;
 
     // Background bidirectional check — fire-and-forget
@@ -1103,11 +1163,11 @@ export default function ConnectionsPageRefactored({
           // is immediately visible and marked as read below. Incrementing here
           // would inflate the tab badge until the next fetchConversations.
           setConversations((prev) =>
-            prev.map((conv) => {
+            prev.map((conv): Conversation => {
               if (conv.id === conversationId) {
                 return {
                   ...conv,
-                  last_message: newMessage,
+                  last_message: newMessage as unknown as ConvMessage,
                   // Keep unread_count at 0 — user is actively viewing this chat
                 };
               }
@@ -1158,6 +1218,8 @@ export default function ConnectionsPageRefactored({
     setCurrentConversationId(null);
     setMessages([]);
     setActiveChatIsBlocked(false);
+    setActiveChatIsUnfriended(false);
+    setActiveChatIsDeletedAccount(false);
     latestSelectedChatRef.current = null;
     broadcastSeenIds.current.clear();
 
@@ -1349,9 +1411,9 @@ export default function ConnectionsPageRefactored({
 
       // Update conversation with real message
       setConversations((prev) =>
-        prev.map((conv) => {
+        prev.map((conv): Conversation => {
           if (conv.id === currentConversationId) {
-            return { ...conv, last_message: sentMessage };
+            return { ...conv, last_message: sentMessage as unknown as ConvMessage };
           }
           return conv;
         })
@@ -1469,6 +1531,10 @@ export default function ConnectionsPageRefactored({
             // Sequential: cleanup before remove. removeFriend invalidates friendsKeys.all.
             cleanupSharedSessions(friend.id)
               .then(() => removeFriend(friend.id))
+              .then(() => {
+                // Invalidate nearby-people so the map updates relationship state (ORCH-0360)
+                queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
+              })
               .catch((e) => {
                 showMutationError(e, 'removing friend', showToast);
               });
@@ -1507,7 +1573,12 @@ export default function ConnectionsPageRefactored({
 
   const handleBlockUser = (friend: Friend) => {
     setSelectedUserToBlock(friend);
-    setShowBlockModal(true);
+    // Defer modal show until pending animations/interactions complete.
+    // ConnectionsPage is ~2100 lines — immediate setState triggers a heavy
+    // re-render that makes the modal feel sluggish to appear.
+    InteractionManager.runAfterInteractions(() => {
+      setShowBlockModal(true);
+    });
   };
 
   const handleBlockConfirm = async (reason?: BlockReason) => {
@@ -1533,7 +1604,6 @@ export default function ConnectionsPageRefactored({
   };
 
   const handleReportUser = (friend: Friend) => {
-    onBlockUser?.(friend, true);
     setSelectedUserToReport(friend);
     setShowReportModal(true);
   };
@@ -1768,11 +1838,14 @@ export default function ConnectionsPageRefactored({
             onCreateSession={onCreateSession}
             availableFriends={[]}
             isBlocked={activeChatIsBlocked}
+            isUnfriended={activeChatIsUnfriended}
+            isDeletedAccount={activeChatIsDeletedAccount}
             conversationId={currentConversationId}
             currentUserId={user?.id || null}
             currentUserName={currentUserDisplayName}
             broadcastSeenIds={broadcastSeenIds}
             isOffline={isOffline}
+            onViewProfile={onNavigateToFriendProfile}
           />
         </View>
 
@@ -1821,7 +1894,7 @@ export default function ConnectionsPageRefactored({
       <View style={styles.container}>
         <View style={styles.content}>
           {/* Compact header: title + action icons */}
-          <View style={styles.headerRow}>
+          <View ref={coachChatHeader.targetRef as any} style={styles.headerRow}>
             <Text style={styles.title}>Chats</Text>
             <View style={styles.headerActions}>
               <TouchableOpacity

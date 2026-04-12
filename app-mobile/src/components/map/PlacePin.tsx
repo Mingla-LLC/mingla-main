@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { Icon } from '../ui/Icon';
-import { getCategoryIcon, getCategoryColor, getCategorySlug } from '../../utils/categoryUtils';
+import { getCategoryIcon, getCategoryColor, getCategorySlug, getReadableCategoryName } from '../../utils/categoryUtils';
 import { Recommendation } from '../../types/recommendation';
 
 // Direct slug → icon map matching preferences sheet exactly
@@ -26,6 +26,7 @@ interface PlacePinProps {
   isSaved: boolean;
   isPairedSaved?: boolean;
   isScheduled: boolean;
+  isSelected?: boolean;
   onPress: () => void;
 }
 
@@ -42,12 +43,18 @@ export const PlacePinContent = React.memo(function PlacePinContent({
   isSaved,
   isPairedSaved = false,
   isScheduled,
+  isSelected = false,
 }: Omit<PlacePinProps, 'onPress'>) {
   const slug = getCategorySlug(card.category);
   const categoryColor = getCategoryColor(card.category) || '#6b7280';
   const categoryIcon = CATEGORY_ICON_MAP[slug] || getCategoryIcon(card.category) || 'compass-outline';
   const tierColor = TIER_BORDER_COLORS[card.priceTier ?? 'chill'] || '#10B981';
   const isCurated = !!card.strollData;
+  const categoryName = getReadableCategoryName(card.category);
+  const placeName = card.title || '';
+  const pinLabel = isCurated
+    ? placeName
+    : (categoryName && placeName ? `${categoryName} · ${placeName}` : placeName || categoryName);
 
   return (
     <View style={isCurated ? styles.wrapperLarge : styles.wrapper}>
@@ -71,6 +78,11 @@ export const PlacePinContent = React.memo(function PlacePinContent({
           <Icon name="calendar" size={8} color="#3b82f6" />
         </View>
       )}
+      {pinLabel && !isSelected ? (
+        <View style={isCurated ? styles.labelPillLarge : styles.labelPill}>
+          <Text style={styles.labelText}>{pinLabel}</Text>
+        </View>
+      ) : null}
     </View>
   );
 });
@@ -84,6 +96,8 @@ export function PlacePin({ card, isSaved, isPairedSaved = false, isScheduled, on
       coordinate={{ latitude: card.lat, longitude: card.lng }}
       onPress={onPress}
       tracksViewChanges={false}
+      anchor={{ x: 0.5, y: 0.27 }}
+      tappable
     >
       <PlacePinContent card={card} isSaved={isSaved} isPairedSaved={isPairedSaved} isScheduled={isScheduled} />
     </Marker>
@@ -92,8 +106,10 @@ export function PlacePin({ card, isSaved, isPairedSaved = false, isScheduled, on
 
 const styles = StyleSheet.create({
   wrapper: {
-    width: 36,
-    height: 36,
+    width: 140,
+    height: 60,
+    alignItems: 'center',
+    overflow: 'visible',
   },
   pinOuter: {
     width: 32,
@@ -113,8 +129,10 @@ const styles = StyleSheet.create({
   },
   // Curated cards — larger pins
   wrapperLarge: {
-    width: 50,
-    height: 50,
+    width: 160,
+    height: 72,
+    alignItems: 'center',
+    overflow: 'visible',
   },
   pinOuterLarge: {
     width: 46,
@@ -156,5 +174,38 @@ const styles = StyleSheet.create({
     backgroundColor: '#DBEAFE',
     right: -2,
     top: 20,
+  },
+  labelPill: {
+    backgroundColor: 'rgba(235, 120, 37, 0.85)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 2,
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  labelPillLarge: {
+    backgroundColor: 'rgba(235, 120, 37, 0.85)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 2,
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  labelText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 0.2,
   },
 });

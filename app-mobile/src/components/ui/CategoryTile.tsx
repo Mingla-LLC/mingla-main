@@ -27,12 +27,12 @@ interface CategoryTileProps {
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-// OnboardingShell content: spacing.lg (24) × 2 horizontal padding → 48. One gap between 2 columns (spacing.sm).
+// OnboardingShell content: spacing.lg (24) × 2 horizontal padding → 48. One gap between 2 columns (6px).
 const ONBOARDING_CONTENT_PADDING_X = 48;
-const CATEGORY_COLUMN_GAP = spacing.sm;
+const CATEGORY_COLUMN_GAP = 6;
 const TILE_WIDTH =
   (SCREEN_WIDTH - ONBOARDING_CONTENT_PADDING_X - CATEGORY_COLUMN_GAP) / 2;
-const TILE_HEIGHT = 96;
+const TILE_HEIGHT = 56;
 
 export const CategoryTile: React.FC<CategoryTileProps> = ({
   slug,
@@ -91,7 +91,7 @@ export const CategoryTile: React.FC<CategoryTileProps> = ({
       >
         <Icon
           name={icon}
-          size={28}
+          size={22}
           color={selected ? colors.text.inverse : colors.gray[600]}
         />
         <Text

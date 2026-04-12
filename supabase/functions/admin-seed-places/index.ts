@@ -1567,7 +1567,7 @@ async function handleGeocodeCity(body: any) {
     encodeURIComponent(query.trim())
   }&key=${GOOGLE_API_KEY}`;
 
-  const res = await timeoutFetch(url, { method: "GET" }, API_TIMEOUT_MS);
+  const res = await timeoutFetch(url, { method: "GET", timeoutMs: API_TIMEOUT_MS });
   if (!res.ok) {
     throw new Error(`Geocoding API HTTP ${res.status}`);
   }
@@ -1693,6 +1693,7 @@ serve(async (req) => {
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
+    console.error("[admin-seed-places] FATAL:", msg, e instanceof Error ? e.stack : "");
     return json({ error: msg }, 500);
   }
 });

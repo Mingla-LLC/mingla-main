@@ -80,8 +80,8 @@ class CameraService {
         width: processedAsset.width,
         height: processedAsset.height,
         type: 'image',
-        size: processedAsset.fileSize,
-        fileName: processedAsset.fileName,
+        size: processedAsset.fileSize ?? undefined,
+        fileName: processedAsset.fileName ?? undefined,
       };
     } catch (error) {
       console.error('Error taking photo:', error);
@@ -120,8 +120,8 @@ class CameraService {
         width: processedAsset.width,
         height: processedAsset.height,
         type: 'image',
-        size: processedAsset.fileSize,
-        fileName: processedAsset.fileName,
+        size: processedAsset.fileSize ?? undefined,
+        fileName: processedAsset.fileName ?? undefined,
       };
     } catch (error) {
       console.error('Error picking from library:', error);
@@ -154,8 +154,8 @@ class CameraService {
         width: asset.width,
         height: asset.height,
         type: 'video',
-        size: asset.fileSize,
-        fileName: asset.fileName,
+        size: asset.fileSize ?? undefined,
+        fileName: asset.fileName ?? undefined,
       };
     } catch (error) {
       console.error('Error taking video:', error);
@@ -188,7 +188,7 @@ class CameraService {
         uri: result.uri,
         width: result.width,
         height: result.height,
-        fileSize: result.size,
+        fileSize: (result as { size?: number }).size,
       };
     } catch (error) {
       console.error('Error compressing image:', error);
@@ -268,8 +268,8 @@ class CameraService {
       'Choose how you want to add an image',
       [
         { text: 'Cancel', style: 'cancel', onPress: onCancel },
-        { text: 'Take Photo', onPress: () => this.takePhoto().then(onTakePhoto) },
-        { text: 'Choose from Library', onPress: () => this.pickFromLibrary().then(onPickFromLibrary) },
+        { text: 'Take Photo', onPress: () => this.takePhoto().then(r => { if (r) onTakePhoto(r); }) },
+        { text: 'Choose from Library', onPress: () => this.pickFromLibrary().then(r => { if (r) onPickFromLibrary(r); }) },
       ]
     );
   }

@@ -19,6 +19,8 @@ import {
 import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
 import { Icon } from './ui/Icon'
+// WhatsAppLogo available when WhatsApp channel is enabled in Twilio Console
+// import { WhatsAppLogo } from './ui/BrandIcons'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -29,7 +31,7 @@ import { PreferencesService } from '../services/preferencesService'
 import { locationService } from '../services/locationService'
 import { throttledReverseGeocode, clearGeocodeCache } from '../utils/throttledGeocode'
 import { geocodingService } from '../services/geocodingService'
-import { sendOtp, verifyOtp } from '../services/otpService'
+import { sendOtp, verifyOtp, OtpChannel } from '../services/otpService'
 import { logger } from '../utils/logger'
 import { saveOnboardingData, clearOnboardingData } from '../utils/onboardingPersistence'
 import { detectLocaleFromCoordinates, detectLocaleFromCountryName } from '../utils/localeDetection'
@@ -48,6 +50,9 @@ import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaboratio
 import { CategoryTile } from './ui/CategoryTile'
 import { OnboardingFriendsAndPairingStep } from './onboarding/OnboardingFriendsAndPairingStep'
 import { OnboardingConsentStep } from './onboarding/OnboardingConsentStep'
+import { Checkbox } from './ui/checkbox'
+import InAppBrowserModal from './InAppBrowserModal'
+import { LEGAL_URLS } from '../constants/urls'
 import { useFriends } from '../hooks/useFriends'
 import { FriendRequest } from '../services/friendsService'
 // processPersonAudio removed — pairing uses real behavior data
@@ -745,8 +750,15 @@ const OnboardingFlow = ({
   const [otpLoading, setOtpLoading] = useState(false)
   const [sendingOtp, setSendingOtp] = useState(false)
   const [phoneError, setPhoneError] = useState<string | null>(null)
+  const [smsConsentChecked, setSmsConsentChecked] = useState(false)
+  const [legalBrowserUrl, setLegalBrowserUrl] = useState('')
+  const [legalBrowserTitle, setLegalBrowserTitle] = useState('')
+  const [legalBrowserVisible, setLegalBrowserVisible] = useState(false)
   const [resendCountdown, setResendCountdown] = useState(0)
   const [otpAttempts, setOtpAttempts] = useState(0)
+  const [activeChannel, setActiveChannel] = useState<OtpChannel>('sms')
+  const [channelConfirmation, setChannelConfirmation] = useState<string | null>(null)
+  const [showChannelOptions, setShowChannelOptions] = useState(false)
   const [valuePropBeat, setValuePropBeat] = useState(0)
   const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'settings' | 'error'>('idle')
   const [manualLocationText, setManualLocationText] = useState(initialData.manualLocation ?? '')
@@ -1075,7 +1087,13 @@ const OnboardingFlow = ({
   // ─── Resend Countdown Timer ───
   useEffect(() => {
     if (resendCountdown <= 0) return
-    const timer = setTimeout(() => setResendCountdown((c) => c - 1), 1000)
+    const timer = setTimeout(() => setResendCountdown((prev) => {
+      if (prev <= 1) {
+        setShowChannelOptions(true)
+        return 0
+      }
+      return prev - 1
+    }), 1000)
     return () => clearTimeout(timer)
   }, [resendCountdown])
 
@@ -1143,6 +1161,9 @@ const OnboardingFlow = ({
         goToSubStep('gender_identity')
         return
       }
+      setActiveChannel('sms')
+      setChannelConfirmation(null)
+      setShowChannelOptions(false)
       setResendCountdown(30)
       setOtpAttempts(0)
       goNext() // advance to OTP sub-step
@@ -1151,11 +1172,12 @@ const OnboardingFlow = ({
     }
   }, [isPhoneValid, buildE164, goNext, data.phoneVerified, goToSubStep])
 
-  // ─── Resend OTP (does NOT advance state — used for auto-resend after 3 failures) ───
-  const handleResendOtp = useCallback(async () => {
-    logger.action('Resend OTP pressed')
+  // ─── Resend OTP via Channel (replaces old SMS-only handleResendOtp) ───
+  const handleResendViaChannel = useCallback(async (channel: OtpChannel) => {
+    logger.action(`Resend OTP via ${channel}`)
     setSendingOtp(true)
-    const result = await sendOtp(buildE164())
+    setChannelConfirmation(null)
+    const result = await sendOtp(buildE164(), channel)
     setSendingOtp(false)
     if (result.success) {
       // Server confirmed phone is already verified — skip OTP, mark verified
@@ -1165,7 +1187,20 @@ const OnboardingFlow = ({
         goToSubStep('gender_identity')
         return
       }
+      setActiveChannel(channel)
+      setShowChannelOptions(false)
       setResendCountdown(30)
+      switch (channel) {
+        case 'sms':
+          setChannelConfirmation('Code re-sent via SMS')
+          break
+        case 'whatsapp':
+          setChannelConfirmation('Code sent via WhatsApp')
+          break
+        case 'call':
+          setChannelConfirmation('Calling you now...')
+          break
+      }
     } else {
       // Phone claimed by another user — navigate back to phone step with error
       if (result.error?.includes('already associated')) {
@@ -1176,12 +1211,20 @@ const OnboardingFlow = ({
         goToSubStep('phone')
         return
       }
-      // Generic resend failure
-      setPhoneError(result.error || "Couldn't resend code. Try again.")
+      // Rate limit — hide channel options, show error
+      if (result.error?.includes('Too many attempts')) {
+        setShowChannelOptions(false)
+      }
+      setPhoneError(result.error || "Couldn't send code. Try again.")
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
       goToSubStep('phone')
     }
   }, [buildE164, goToSubStep])
+
+  // Thin wrapper for backward compat (auto-resend references)
+  const handleResendOtp = useCallback(() => {
+    handleResendViaChannel('sms')
+  }, [handleResendViaChannel])
 
   // ─── Verify OTP ───
   const handleVerifyOtp = useCallback(
@@ -1221,14 +1264,14 @@ const OnboardingFlow = ({
         setOtpAttempts((a) => a + 1)
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
         if (otpAttempts >= 2) {
-          // Auto-resend after 3 failures — does NOT advance past OTP
+          // Show channel picker instead of auto-resending SMS
           setOtpCode('')
           setOtpAttempts(0)
-          handleResendOtp()
+          setShowChannelOptions(true)
         }
       }
     },
-    [buildE164, goNext, otpAttempts, handleResendOtp, goToSubStep]
+    [buildE164, goNext, otpAttempts, goToSubStep]
   )
 
   // ─── Location Capture ───
@@ -1806,7 +1849,7 @@ const OnboardingFlow = ({
       case 'phone':
         return data.phoneVerified
           ? { label: 'Continue', disabled: false, loading: false, onPress: () => goToSubStep('gender_identity'), hide: false }
-          : { label: 'Send code', disabled: !isPhoneValid(), loading: sendingOtp, onPress: handleSendOtp, hide: false }
+          : { label: 'Send code', disabled: !isPhoneValid() || !smsConsentChecked, loading: sendingOtp, onPress: handleSendOtp, hide: false }
       case 'otp':
         return { label: 'Verify', disabled: otpCode.length < 6, loading: otpLoading, onPress: () => handleVerifyOtp(otpCode), hide: true }
       case 'gender_identity':
@@ -1866,7 +1909,7 @@ const OnboardingFlow = ({
       default:
         return { label: 'Next', disabled: false, loading: false, onPress: handleGoNext, hide: false }
     }
-  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep])
+  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, smsConsentChecked, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep])
 
   // ─── Render Step Content ───
   const renderContent = () => {
@@ -1983,7 +2026,51 @@ const OnboardingFlow = ({
               disabled={sendingOtp}
             />
           </View>
-          <Text style={styles.caption}>Only used to verify it's you. That's it.</Text>
+          <Pressable
+            style={styles.consentRow}
+            onPress={() => setSmsConsentChecked(prev => !prev)}
+            accessibilityRole="checkbox"
+            accessibilityLabel="Agree to receive messages from Mingla"
+            accessibilityState={{ checked: smsConsentChecked }}
+          >
+            <Checkbox
+              checked={smsConsentChecked}
+              onCheckedChange={setSmsConsentChecked}
+              size="md"
+              style={styles.consentCheckbox}
+            />
+            <Text style={styles.consentText}>
+              I agree to receive messages from Mingla via SMS or phone call, including verification codes, friend invitations, and experience reminders. Reply STOP to opt out or HELP for help. See our{' '}
+              <Text
+                style={styles.consentLink}
+                onPress={() => {
+                  setLegalBrowserUrl(LEGAL_URLS.termsOfService)
+                  setLegalBrowserTitle('Terms of Service')
+                  setLegalBrowserVisible(true)
+                }}
+                accessibilityRole="link"
+                accessibilityLabel="Terms of Service"
+                accessibilityHint="Opens Terms of Service in a browser window"
+              >
+                Terms of Service
+              </Text>
+              {' '}and{' '}
+              <Text
+                style={styles.consentLink}
+                onPress={() => {
+                  setLegalBrowserUrl(LEGAL_URLS.privacyPolicy)
+                  setLegalBrowserTitle('Privacy Policy')
+                  setLegalBrowserVisible(true)
+                }}
+                accessibilityRole="link"
+                accessibilityLabel="Privacy Policy"
+                accessibilityHint="Opens Privacy Policy in a browser window"
+              >
+                Privacy Policy
+              </Text>
+              .
+            </Text>
+          </Pressable>
         </View>
       )
     }
@@ -1993,6 +2080,9 @@ const OnboardingFlow = ({
         <View>
           <Text style={styles.headline}>Enter the code</Text>
           <Text style={styles.body}>Sent to {buildE164()}</Text>
+          {channelConfirmation && (
+            <Text style={styles.channelConfirmation}>{channelConfirmation}</Text>
+          )}
           <View style={styles.otpContainer}>
             <OTPInput
               length={6}
@@ -2005,20 +2095,40 @@ const OnboardingFlow = ({
           </View>
           {otpLoading ? (
             <Text style={[styles.caption, styles.textCenter]}>Verifying...</Text>
+          ) : sendingOtp ? (
+            <Text style={[styles.caption, styles.textCenter]}>Sending...</Text>
           ) : (
             <>
-              <View style={styles.resendRow}>
-                {resendCountdown > 0 ? (
+              {resendCountdown > 0 && !showChannelOptions ? (
+                <View style={styles.resendRow}>
                   <Text style={styles.caption}>Resend in {resendCountdown}s</Text>
-                ) : (
-                  <Pressable onPress={handleResendOtp}>
-                    <Text style={styles.linkText}>Resend code</Text>
+                </View>
+              ) : showChannelOptions ? (
+                <View style={styles.channelOptions}>
+                  <Text style={styles.channelOptionsLabel}>Didn't get it? Try another way:</Text>
+                  <Pressable
+                    style={styles.channelButton}
+                    onPress={() => handleResendViaChannel('sms')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Resend code via SMS"
+                  >
+                    <Icon name="message-square" size={18} color={colors.text.secondary} />
+                    <Text style={styles.channelButtonText}>Resend SMS</Text>
                   </Pressable>
-                )}
-              </View>
+                  <Pressable
+                    style={styles.channelButton}
+                    onPress={() => handleResendViaChannel('call')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Receive code via phone call"
+                  >
+                    <Icon name="call" size={18} color={colors.text.secondary} />
+                    <Text style={styles.channelButtonText}>Call me instead</Text>
+                  </Pressable>
+                </View>
+              ) : null}
               {otpError && (
                 <Text style={styles.errorText}>
-                  {otpAttempts >= 3 ? 'Three tries, no luck. Sending a fresh code.' : "That code didn't land. Try again."}
+                  {otpAttempts >= 3 ? "Three tries, no luck. Try a different method below." : "That code didn't land. Try again."}
                 </Text>
               )}
             </>
@@ -2255,7 +2365,7 @@ const OnboardingFlow = ({
                   >
                     <Icon
                       name={intent.icon}
-                      size={20}
+                      size={28}
                       color={selected ? colors.text.inverse : colors.gray[600]}
                     />
                     <Text style={[styles.intentLabel, selected && styles.intentLabelSelected]}>{intent.label}</Text>
@@ -2272,6 +2382,10 @@ const OnboardingFlow = ({
 
     // ─── STEP 3 ───
     if (subStep === 'location') {
+      // Pre-compute requesting state to avoid TS narrowing inside if-branches:
+      // inside `if (locationStatus === 'settings')`, TS narrows to literal 'settings'
+      // and flags comparisons to 'requesting' as impossible.
+      const isRequesting = locationStatus === 'requesting';
       if (locationStatus === 'granted') {
         return (
           <Pressable
@@ -2318,16 +2432,16 @@ const OnboardingFlow = ({
             </Animated.View>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
               <Pressable
-                style={[styles.locRetryButton, locationStatus === 'requesting' && styles.locGlassButtonDisabled]}
+                style={[styles.locRetryButton, isRequesting && styles.locGlassButtonDisabled]}
                 onPress={() => { logger.action('Retry location after settings'); handleLocationRequest() }}
-                disabled={locationStatus === 'requesting'}
+                disabled={isRequesting}
               >
-                {locationStatus === 'requesting' ? (
+                {isRequesting ? (
                   <ActivityIndicator size="small" color={colors.primary[500]} style={styles.locButtonIcon} />
                 ) : (
                   <Icon name="refresh-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
                 )}
-                <Text style={styles.locRetryText}>{locationStatus === 'requesting' ? 'Finding you...' : "I've turned it on — retry"}</Text>
+                <Text style={styles.locRetryText}>{isRequesting ? 'Finding you...' : "I've turned it on — retry"}</Text>
               </Pressable>
             </Animated.View>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.sm }]}>
@@ -2362,20 +2476,20 @@ const OnboardingFlow = ({
             </Animated.Text>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, transform: [{ scale: locButtonAnim.scale }, { translateY: locButtonAnim.translateY }] }]}>
               <Pressable
-                style={[styles.locGlassButton, locationStatus === 'requesting' && styles.locGlassButtonDisabled]}
+                style={[styles.locGlassButton, isRequesting && styles.locGlassButtonDisabled]}
                 onPress={() => {
                   logger.action('Retry location from error state')
                   handleLocationRequest()
                 }}
-                disabled={locationStatus === 'requesting'}
+                disabled={isRequesting}
               >
-                {locationStatus === 'requesting' ? (
+                {isRequesting ? (
                   <ActivityIndicator size="small" color={colors.text.inverse} style={styles.locButtonIcon} />
                 ) : (
                   <Icon name="refresh-outline" size={20} color={colors.text.inverse} style={styles.locButtonIcon} />
                 )}
                 <Text style={styles.locButtonText}>
-                  {locationStatus === 'requesting' ? 'Finding you...' : 'Try Again'}
+                  {isRequesting ? 'Finding you...' : 'Try Again'}
                 </Text>
               </Pressable>
             </Animated.View>
@@ -2908,6 +3022,7 @@ const OnboardingFlow = ({
   const ctaConfig = getCtaConfig()
 
   return (
+    <>
     <OnboardingShell
       step={navState.step}
       segmentFill={progress.segmentFill}
@@ -2920,11 +3035,18 @@ const OnboardingFlow = ({
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={navState.subStep === 'getting_experiences'}
       disableKeyboardAvoidance={navState.subStep === 'collaborations' || navState.subStep === 'welcome'}
-      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations'}
+      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations' && navState.subStep !== 'categories'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
       {renderContent()}
     </OnboardingShell>
+    <InAppBrowserModal
+      visible={legalBrowserVisible}
+      url={legalBrowserUrl}
+      title={legalBrowserTitle}
+      onClose={() => setLegalBrowserVisible(false)}
+    />
+    </>
   )
 }
 
@@ -3078,6 +3200,25 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     marginTop: spacing.md,
   },
+  consentRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    marginTop: spacing.md,
+  },
+  consentCheckbox: {
+    marginTop: 2,
+  },
+  consentText: {
+    ...typography.sm,
+    fontWeight: fontWeights.regular,
+    color: colors.text.tertiary,
+    flex: 1,
+    marginLeft: spacing.sm,
+  },
+  consentLink: {
+    color: colors.primary[700],
+    fontWeight: fontWeights.medium,
+  },
   captionCentered: {
     ...typography.sm,
     fontWeight: fontWeights.regular,
@@ -3180,6 +3321,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.md,
   },
+  // ─── OTP Channel Options ───
+  channelConfirmation: {
+    ...typography.sm,
+    color: colors.success[600],
+    textAlign: 'center' as const,
+    marginTop: spacing.xs,
+  },
+  channelOptions: {
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  channelOptionsLabel: {
+    ...typography.sm,
+    fontWeight: fontWeights.medium,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+  },
+  channelButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    backgroundColor: colors.background.secondary,
+    gap: spacing.sm,
+  },
+  channelButtonText: {
+    ...typography.sm,
+    fontWeight: fontWeights.medium,
+    color: colors.text.primary,
+  },
   // ─── Value Prop Dots ───
   dotIndicator: {
     flexDirection: 'row',
@@ -3219,14 +3393,14 @@ const styles = StyleSheet.create({
     flex: 1,
     // Floor height so short copy (e.g. Romantic) matches taller cards; flex fills row with stretch
     minHeight: 136,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1.5,
     borderColor: colors.gray[200],
     backgroundColor: colors.background.primary,
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
   },
   intentLabel: {
     ...typography.sm,
@@ -3258,8 +3432,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    gap: 6,
+    marginTop: spacing.md,
   },
   // ─── Selection Tiles (Budget, Transport, Travel) ───
   tileGrid: {

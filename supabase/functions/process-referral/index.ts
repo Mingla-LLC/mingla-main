@@ -182,8 +182,8 @@ serve(async (req) => {
         body: JSON.stringify({
           userId: referrer_id,
           type: "referral_credited",
-          title: "You earned Elite time!",
-          body: `${referredName} joined Mingla! You earned 1 month of Elite.`,
+          title: "You earned Mingla+ time!",
+          body: `${referredName} joined Mingla! You earned 1 month of Mingla+.`,
           data: {
             deepLink: "mingla://subscription",
             type: "referral_credited",

@@ -113,8 +113,7 @@ export function useAppState() {
     | "profile"
     | "profile-settings"
     | "account-settings"
-    | "privacy-policy"
-    | "terms-of-service"
+    | "activity"
 ;
 
   // Pages safe to restore after process death. Board-view and modal-like pages
@@ -137,8 +136,6 @@ export function useAppState() {
   }, [currentPage]);
   const [showPreferences, setShowPreferences] = useState(false);
   const [showCollabPreferences, setShowCollabPreferences] = useState(false);
-  const [showTermsOfService, setShowTermsOfService] = useState(false);
-  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareData, setShareData] = useState<any>(null);
   // Load currentMode from storage first, then verify with database
@@ -362,8 +359,6 @@ export function useAppState() {
       setShowAccountSettings(false);
       setShowPreferences(false);
       setShowCollabPreferences(false);
-      setShowTermsOfService(false);
-      setShowPrivacyPolicy(false);
       setShowShareModal(false);
       setShowOnboardingFlow(false);
       setHasCompletedOnboarding(false);
@@ -744,8 +739,6 @@ export function useAppState() {
       setShowAccountSettings(false);
       setShowPreferences(false);
       setShowCollabPreferences(false);
-      setShowTermsOfService(false);
-      setShowPrivacyPolicy(false);
       setShowShareModal(false);
       setShowOnboardingFlow(false);
 
@@ -867,10 +860,6 @@ export function useAppState() {
     setShowPreferences,
     showCollabPreferences,
     setShowCollabPreferences,
-    showTermsOfService,
-    setShowTermsOfService,
-    showPrivacyPolicy,
-    setShowPrivacyPolicy,
     showAccountSettings,
     setShowAccountSettings,
     showShareModal,

@@ -24,12 +24,16 @@ import { useMapSettings } from '../../hooks/useMapSettings';
 import { useMapCards } from '../../hooks/useMapCards';
 import { usePairedMapSavedCards } from '../../hooks/usePairedMapSavedCards';
 import { supabase } from '../../services/supabase';
+import { blockUser } from '../../services/blockService';
 import { useAppStore } from '../../store/appStore';
 import { MapBottomSheet } from './MapBottomSheet';
 import { PersonBottomSheet } from './PersonBottomSheet';
 import { ActivityStatusPicker } from './ActivityStatusPicker';
+import { useCoachMark } from '../../hooks/useCoachMark';
 import { ActivityFeedOverlay } from './ActivityFeedOverlay';
 import { MapProviderSurface } from './providers/MapProviderSurface';
+import ReportUserModal from '../ReportUserModal';
+import { submitReport, type ReportReason } from '../../services/reportService';
 
 interface DiscoverMapProps {
   cards: Recommendation[];
@@ -71,12 +75,14 @@ export function DiscoverMap({
   pendingFocusCardId = null,
   onFocusCardHandled,
 }: DiscoverMapProps) {
+  const coachMapControls = useCoachMark(8, 12);
   const [selectedCard, setSelectedCard] = useState<Recommendation | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<NearbyPerson | null>(null);
   const [placesLayerOn, setPlacesLayerOn] = useState(true);
   const [peopleLayerOn, setPeopleLayerOn] = useState(true);
   const [feedOn, setFeedOn] = useState(false);
   const [heatmapOn, setHeatmapOn] = useState(false);
+  const [reportTargetUserId, setReportTargetUserId] = useState<string | null>(null);
   const bottomSheetRef = useRef<BottomSheet>(null);
   const personSheetRef = useRef<BottomSheet>(null);
   const mapRef = useRef<any>(null);
@@ -289,19 +295,48 @@ export function DiscoverMap({
           return;
         }
 
-        await supabase
+        const { data: requestData } = await supabase
           .from('friend_requests')
           .upsert(
             { sender_id: user!.id, receiver_id: userId, status: 'pending', source: 'map' },
             { onConflict: 'sender_id,receiver_id' },
-          );
+          )
+          .select('id')
+          .single();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
+
+        // Send push notification to the receiver (fire-and-forget, non-blocking)
+        const senderName = profile?.display_name || profile?.first_name || 'Someone';
+        supabase.functions.invoke('notify-dispatch', {
+          body: {
+            userId,
+            type: 'friend_request_received',
+            title: `${senderName} wants to connect`,
+            body: 'Tap to accept or pass.',
+            data: {
+              deepLink: 'mingla://connections?tab=requests',
+              type: 'friend_request',
+              requestId: requestData?.id || userId,
+              senderId: user!.id,
+            },
+            actorId: user!.id,
+            relatedId: requestData?.id || userId,
+            relatedType: 'friend_request',
+            idempotencyKey: `friend_request_received:${user!.id}:${userId}:${Date.now()}`,
+          },
+        }).then((result) => {
+          if (result.data && !result.data.pushSent) {
+            console.warn('[DiscoverMap] Push not sent:', result.data.reason);
+          }
+        }).catch((e) => {
+          console.warn('[DiscoverMap] Friend request notification failed:', e);
+        });
       } catch {
         Alert.alert('Error', 'Could not send friend request. Try again later.');
       }
     },
-    [user, queryClient, nearbyPeople],
+    [user, profile, queryClient, nearbyPeople],
   );
 
   const handleBlockFromMap = useCallback(
@@ -312,39 +347,37 @@ export function DiscoverMap({
           text: 'Block',
           style: 'destructive',
           onPress: async () => {
-            try {
-              await supabase.from('blocked_users').upsert(
-                { blocker_id: user!.id, blocked_user_id: userId },
-                { onConflict: 'blocker_id,blocked_user_id' },
-              );
+            const result = await blockUser(userId);
+            if (result.success) {
               personSheetRef.current?.close();
               queryClient.invalidateQueries({ queryKey: ['nearby-people'] });
-            } catch {
-              Alert.alert('Error', 'Could not block user. Try again later.');
+              queryClient.invalidateQueries({ queryKey: ['friends'] });
+            } else {
+              Alert.alert('Error', result.error || 'Could not block user. Try again later.');
             }
           },
         },
       ]);
     },
-    [user, queryClient],
+    [queryClient],
   );
 
-  const handleReportFromMap = useCallback(
-    async (userId: string) => {
-      try {
-        await supabase.from('user_reports').insert({
-          reporter_id: user!.id,
-          reported_user_id: userId,
-          reason: 'map_interaction',
-          details: 'Reported from map discovery',
-        });
+  const handleReportFromMap = useCallback((userId: string) => {
+    setReportTargetUserId(userId);
+  }, []);
+
+  const handleReportSubmit = useCallback(
+    async (userId: string, reason: string, details?: string) => {
+      const result = await submitReport(userId, reason as ReportReason, details);
+      setReportTargetUserId(null);
+      if (result.success) {
         Alert.alert('Reported', 'Thanks for helping keep Mingla safe.');
         personSheetRef.current?.close();
-      } catch {
-        Alert.alert('Error', 'Could not submit report. Try again later.');
+      } else {
+        Alert.alert('Report Failed', result.error || 'Unable to submit report.');
       }
     },
-    [user],
+    [],
   );
 
   const handleNext = useCallback(() => {
@@ -440,6 +473,7 @@ export function DiscoverMap({
       />
 
       <ActivityStatusPicker
+        fabRef={coachMapControls.targetRef}
         currentStatus={settings?.activity_status || null}
         peopleLayerOn={peopleLayerOn}
         onTogglePeople={() => setPeopleLayerOn((prev) => !prev)}
@@ -483,6 +517,17 @@ export function DiscoverMap({
         onAddFriend={handleAddFriendFromMap}
         onBlock={handleBlockFromMap}
         onReport={handleReportFromMap}
+      />
+
+      <ReportUserModal
+        isOpen={!!reportTargetUserId}
+        onClose={() => setReportTargetUserId(null)}
+        user={{
+          id: reportTargetUserId || '',
+          name: selectedPerson?.displayName || 'User',
+          username: selectedPerson?.displayName || '',
+        }}
+        onReport={handleReportSubmit}
       />
 
       {feedOn && (

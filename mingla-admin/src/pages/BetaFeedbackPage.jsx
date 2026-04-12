@@ -4,6 +4,7 @@ import {
   ChevronLeft, ChevronRight, Search, X, RefreshCw,
   Save, Clock, Smartphone, MapPin,
   CheckCircle, Eye, Archive, XCircle, Download,
+  Image as ImageIcon,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { StatCard, SectionCard } from "../components/ui/Card";
@@ -176,6 +177,62 @@ function AudioPlayer({ audioPath }) {
         onError={handleAudioError}
       />
     </div>
+  );
+}
+
+// ─── Screenshot Thumbnail Component ───────────────────────────────────────────
+
+function ScreenshotThumbnail({ path }) {
+  const [url, setUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [lightbox, setLightbox] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    async function fetchUrl() {
+      try {
+        const relativePath = path.startsWith("beta-feedback/") ? path.slice("beta-feedback/".length) : path;
+        const { data, error: storageError } = await supabase.storage
+          .from("beta-feedback")
+          .createSignedUrl(relativePath, AUDIO_URL_EXPIRY_SECONDS);
+        if (storageError) throw storageError;
+        if (!mountedRef.current) return;
+        setUrl(data.signedUrl);
+      } catch {
+        if (mountedRef.current) setError(true);
+      } finally {
+        if (mountedRef.current) setLoading(false);
+      }
+    }
+    fetchUrl();
+  }, [path]);
+
+  if (loading) return <div className="aspect-square rounded-lg bg-[var(--color-background-tertiary)] animate-pulse" />;
+  if (error || !url) return (
+    <div className="aspect-square rounded-lg bg-[var(--color-background-tertiary)] flex items-center justify-center">
+      <XCircle className="h-4 w-4 text-[var(--color-text-tertiary)]" />
+    </div>
+  );
+
+  return (
+    <>
+      <button onClick={() => setLightbox(true)} className="aspect-square rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity">
+        <img src={url} alt="Screenshot" className="w-full h-full object-cover" />
+      </button>
+      {lightbox && (
+        <Modal open={lightbox} onClose={() => setLightbox(false)} title="Screenshot" size="lg">
+          <ModalBody>
+            <img src={url} alt="Screenshot full size" className="w-full rounded-lg" />
+          </ModalBody>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -475,6 +532,20 @@ export function BetaFeedbackPage() {
       ),
     },
     {
+      key: "screenshot_count",
+      label: "Screenshots",
+      render: (_val, row) => {
+        const count = row.screenshot_paths?.length ?? 0;
+        if (count === 0) return <span className="text-sm text-[var(--color-text-tertiary)]">—</span>;
+        return (
+          <div className="flex items-center gap-1.5">
+            <ImageIcon className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
+            <span className="text-sm text-[var(--color-text-secondary)]">{count}</span>
+          </div>
+        );
+      },
+    },
+    {
       key: "device",
       label: "Device",
       render: (_val, row) => (
@@ -727,6 +798,20 @@ export function BetaFeedbackPage() {
                   <AudioPlayer audioPath={getRelativeAudioPath(detailItem.audio_path)} />
                 </div>
               </div>
+
+              {/* Screenshots */}
+              {detailItem.screenshot_paths && detailItem.screenshot_paths.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">
+                    Screenshots ({detailItem.screenshot_paths.length})
+                  </h4>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-3 rounded-lg" style={{ backgroundColor: "var(--color-background-secondary)" }}>
+                    {detailItem.screenshot_paths.map((path) => (
+                      <ScreenshotThumbnail key={path} path={path} />
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Admin Section */}
               <div>

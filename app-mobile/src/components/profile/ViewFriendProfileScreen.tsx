@@ -16,12 +16,12 @@ import { useFriendProfile } from '../../hooks/useFriendProfile';
 import { s, vs } from '../../utils/responsive';
 import { getCountryByCode } from '../../constants/countries';
 import ProfileInterestsSection from './ProfileInterestsSection';
+import ProfileStatsRow from './ProfileStatsRow';
 import type { SubscriptionTier } from '../../types/subscription';
 
 const TIER_LABEL: Record<SubscriptionTier, string> = {
   free: 'Free',
-  pro: 'Pro',
-  elite: 'Elite',
+  mingla_plus: 'Mingla+',
 };
 
 const TIER_BADGE_STYLES: Record<
@@ -29,8 +29,7 @@ const TIER_BADGE_STYLES: Record<
   { bg: string; text: string; border: string }
 > = {
   free: { bg: '#f3f4f6', text: '#4b5563', border: '#e5e7eb' },
-  pro: { bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' },
-  elite: { bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe' },
+  mingla_plus: { bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' },
 };
 
 interface ViewFriendProfileScreenProps {
@@ -159,17 +158,12 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   }
 
   const name = displayName(profile.first_name, profile.last_name, profile.username);
-  const usernameDisplay = profile.username
-    ? `@${profile.username.replace(/^@/, '')}`
-    : null;
-  const phoneLine = profile.phone?.trim() ? profile.phone : 'Not shared';
   const countryName = profile.country
     ? getCountryByCode(profile.country)?.name ?? profile.country
     : null;
-  const locationLine = countryName ?? 'Not shared';
+  const locationLine = profile.location ?? countryName ?? 'Not shared';
   const levelLine = TIER_LABEL[profile.tier] ?? profile.tier;
   const tierBadge = TIER_BADGE_STYLES[profile.tier] ?? TIER_BADGE_STYLES.free;
-  const phoneMuted = phoneLine === 'Not shared';
   const locationMuted = locationLine === 'Not shared';
 
   return (
@@ -205,21 +199,14 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
               )}
             </View>
             <Text style={styles.displayName}>{name}</Text>
-            {usernameDisplay ? (
-              <Text style={styles.usernameLine}>{usernameDisplay}</Text>
+            {profile.bio ? (
+              <Text style={styles.bioText} numberOfLines={3}>{profile.bio}</Text>
             ) : null}
           </View>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardSectionLabel}>About</Text>
-          <InfoRow
-            icon="call-outline"
-            label="Phone"
-            value={phoneLine}
-            muted={phoneMuted}
-          />
-          <View style={styles.rowDivider} />
           <InfoRow
             icon="map-pin"
             label="Location"
@@ -246,6 +233,18 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           />
         </View>
 
+        <View style={styles.statsWrap}>
+          <ProfileStatsRow
+            savedCount={0}
+            connectionsCount={profile.friendCount}
+            boardsCount={0}
+            placesVisited={0}
+            streakDays={0}
+            level={1}
+            levelProgress={0}
+          />
+        </View>
+
         <View style={styles.interestsWrap}>
           <ProfileInterestsSection
             intents={profile.intents}
@@ -255,7 +254,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           />
         </View>
 
-        {onMessage ? (
+        {onMessage && profile.isFriend ? (
           <TouchableOpacity
             style={styles.messageButton}
             onPress={() => onMessage(userId)}
@@ -343,12 +342,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: -0.3,
   },
-  usernameLine: {
-    marginTop: vs(4),
+  bioText: {
     fontSize: s(15),
-    fontWeight: '500',
-    color: '#6b7280',
+    color: '#374151',
     textAlign: 'center',
+    marginTop: vs(8),
+    paddingHorizontal: s(24),
+    lineHeight: s(22),
   },
   card: {
     marginHorizontal: s(20),
@@ -431,6 +431,9 @@ const styles = StyleSheet.create({
   tierPillText: {
     fontSize: s(14),
     fontWeight: '700',
+  },
+  statsWrap: {
+    marginTop: vs(16),
   },
   interestsWrap: {
     marginTop: vs(22),

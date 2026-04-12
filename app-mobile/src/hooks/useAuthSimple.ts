@@ -227,7 +227,7 @@ export const useAuthSimple = () => {
         const { queryClient, resetAuth401Counter } = require('../config/queryClient');
         resetAuth401Counter();
         queryClient.invalidateQueries({
-          predicate: (query) => query.state.status === 'error',
+          predicate: (query: { state: { status: string } }) => query.state.status === 'error',
         });
       }
 
@@ -382,8 +382,8 @@ export const useAuthSimple = () => {
       try {
         if (googleUser?.data?.user?.email) {
           googleEmail = googleUser.data.user.email.toLowerCase().trim();
-        } else if (googleUser?.user?.email) {
-          googleEmail = googleUser.user.email.toLowerCase().trim();
+        } else if ((googleUser as unknown as { user?: { email?: string } })?.user?.email) {
+          googleEmail = (googleUser as unknown as { user: { email: string } }).user.email.toLowerCase().trim();
         }
       } catch (e) {
         console.warn(
@@ -425,7 +425,7 @@ export const useAuthSimple = () => {
           error.message?.includes("Database error saving new user") ||
           error.message?.includes("duplicate key") ||
           error.message?.includes("violates") ||
-          (existingUser && error.message?.includes("user"));
+          !!(existingUser && error.message?.includes("user"));
 
         if (isExistingUserError) {
           console.log("User already exists, checking for session...");

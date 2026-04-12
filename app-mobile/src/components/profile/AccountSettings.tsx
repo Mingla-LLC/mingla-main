@@ -175,7 +175,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
           setDmBypassQuietHours((data as any).dm_bypass_quiet_hours ?? false);
         }
       })
-      .finally(() => setIsLoadingNotifPrefs(false));
+      .then(() => setIsLoadingNotifPrefs(false), () => setIsLoadingNotifPrefs(false));
   }, [visible, user?.id]);
 
   const updateNotifPref = async (key: string, value: boolean) => {
@@ -305,7 +305,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                 } as typeof profile);
               }
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              mixpanelService.trackProfileSettingUpdated({ field: "country", value: newCountryCode });
+              mixpanelService.trackProfileSettingUpdated({ field: "country" });
             } catch {
               Alert.alert("Error", "Failed to update. Please try again.");
             } finally {

@@ -196,24 +196,21 @@ class OfflineService {
         );
       }
 
-      // Filter by budget
-      if (request.budget) {
+      // Filter by price tiers (budget)
+      if (request.priceTiers && request.priceTiers.length > 0) {
         filteredRecommendations = filteredRecommendations.filter(rec => {
-          const cost = typeof rec.estimatedCostPerPerson === 'number' 
-            ? rec.estimatedCostPerPerson 
-            : 0;
-          return cost >= request.budget.min && cost <= request.budget.max;
+          return rec.priceTier ? (request.priceTiers as string[]).includes(rec.priceTier) : true;
         });
       }
 
       // Filter by location (if available)
       if (request.origin) {
         filteredRecommendations = filteredRecommendations.filter(rec => {
-          if (!rec.location?.coordinates) return true;
-          
+          if (!rec.location) return true;
+
           const distance = this.calculateDistance(
             request.origin,
-            rec.location.coordinates
+            rec.location
           );
           
           const maxMinutes = request.travel?.constraint?.maxMinutes || 30;

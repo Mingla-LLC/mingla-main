@@ -19,12 +19,11 @@ import * as Haptics from 'expo-haptics';
 import SwipeableBoardCards from "./SwipeableBoardCards";
 import BoardMemberManagementModal from "./BoardMemberManagementModal";
 import { KeyboardAwareView } from "./ui/KeyboardAwareView";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
+// dropdown-menu UI component not yet created — provide stub types
+const DropdownMenu: React.FC<{ children: React.ReactNode }> = ({ children }) => <>{children}</>;
+const DropdownMenuContent: React.FC<{ children: React.ReactNode; align?: string; style?: object }> = ({ children }) => <>{children}</>;
+const DropdownMenuItem: React.FC<{ children: React.ReactNode; onSelect?: () => void; onPress?: () => void; variant?: string }> = ({ children }) => <>{children}</>;
+const DropdownMenuTrigger: React.FC<{ children: React.ReactNode; asChild?: boolean }> = ({ children }) => <>{children}</>;
 import { colors, spacing, radius, shadows, typography } from "../constants/designSystem";
 import { useSessionDiscussion } from '../hooks/useSessionDiscussion';
 import { BoardMessage } from '../services/boardDiscussionService';
@@ -45,7 +44,12 @@ interface Board {
     | "food-tour"
     | "cultural";
   description: string;
-  participants: string[];
+  participants: Array<{
+    id: string;
+    name: string;
+    status: string;
+    lastActive?: string;
+  }>;
   status: "active" | "voting" | "locked" | "completed";
   voteDeadline?: string;
   finalizedDate?: string;
@@ -53,18 +57,12 @@ interface Board {
   createdAt: string;
   unreadMessages: number;
   lastActivity: string;
-  icon: any;
+  icon: unknown;
   gradient: string;
 }
 
 interface BoardDiscussionProps {
   board: Board & {
-    participants: Array<{
-      id: string;
-      name: string;
-      status: string;
-      lastActive?: string;
-    }>;
     admins: string[];
     currentUserId: string;
     creatorId: string | null;
@@ -104,8 +102,8 @@ const mockBoardCards = [
     highlights: ["Artisan Coffee", "Cozy Atmosphere", "Fresh Roasted", "WiFi Available"],
     matchScore: 87,
     socialStats: { views: 892, likes: 298, saves: 156 },
-    votes: { yes: 3, no: 1, userVote: null },
-    rsvps: { responded: 2, total: 2, userRSVP: null },
+    votes: { yes: 3, no: 1, userVote: null as 'yes' | 'no' | null },
+    rsvps: { responded: 2, total: 2, userRSVP: null as 'yes' | 'no' | null },
     messages: 5,
     isLocked: false,
   },
@@ -131,8 +129,8 @@ const mockBoardCards = [
     highlights: ["Scenic Views", "Photo Spots", "Pet Friendly", "Free Parking"],
     matchScore: 92,
     socialStats: { views: 1247, likes: 342, saves: 89 },
-    votes: { yes: 2, no: 0, userVote: "yes" },
-    rsvps: { responded: 2, total: 2, userRSVP: "yes" },
+    votes: { yes: 2, no: 0, userVote: "yes" as 'yes' | 'no' | null },
+    rsvps: { responded: 2, total: 2, userRSVP: "yes" as 'yes' | 'no' | null },
     messages: 3,
     isLocked: true,
     lockedAt: "yesterday",
@@ -158,8 +156,8 @@ const mockBoardCards = [
     highlights: ["Hands-on Learning", "Local Ingredients", "Take Home Recipes", "Wine Pairing"],
     matchScore: 89,
     socialStats: { views: 643, likes: 201, saves: 87 },
-    votes: { yes: 1, no: 1, userVote: null },
-    rsvps: { responded: 1, total: 2, userRSVP: null },
+    votes: { yes: 1, no: 1, userVote: null as 'yes' | 'no' | null },
+    rsvps: { responded: 1, total: 2, userRSVP: null as 'yes' | 'no' | null },
     messages: 2,
     isLocked: false,
   },

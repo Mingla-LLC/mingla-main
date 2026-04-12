@@ -204,16 +204,18 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
   const visitedDisplay = useAnimatedCount(placesVisited);
   const streakDisplay = useAnimatedCount(streakDays);
 
-  // Motivational text
+  // Motivational text — only shown on own profile (onStatPress is the implicit signal)
   let motivationText = '';
-  if (placesVisited === 0 && streakDays === 0) {
-    motivationText = 'Your stats start building the moment you do something. Go explore.';
-  } else if (nextTier && nextTier.remaining <= 3) {
-    motivationText = `${nextTier.remaining} more place${nextTier.remaining === 1 ? '' : 's'} to hit ${nextTier.name}. You're close.`;
-  } else if (streakDays === 7) {
-    motivationText = 'A whole week. Consistency looks good on you.';
-  } else if (streakDays === 30) {
-    motivationText = '30 days straight. You might be unstoppable.';
+  if (onStatPress) {
+    if (placesVisited === 0 && streakDays === 0) {
+      motivationText = 'Your stats start building the moment you do something. Go explore.';
+    } else if (nextTier && nextTier.remaining <= 3) {
+      motivationText = `${nextTier.remaining} more place${nextTier.remaining === 1 ? '' : 's'} to hit ${nextTier.name}. You're close.`;
+    } else if (streakDays === 7) {
+      motivationText = 'A whole week. Consistency looks good on you.';
+    } else if (streakDays === 30) {
+      motivationText = '30 days straight. You might be unstoppable.';
+    }
   }
 
   return (

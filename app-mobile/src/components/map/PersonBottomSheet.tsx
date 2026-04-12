@@ -1,5 +1,5 @@
-import React, { forwardRef } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { forwardRef, useState, useEffect } from 'react';
+import { View, Text, Image, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { BlurView } from 'expo-blur';
 import { Icon } from '../ui/Icon';
@@ -12,7 +12,7 @@ interface PersonBottomSheetProps {
   onInviteToSession: (userId: string) => void;
   onViewPairedCards: (userId: string) => void;
   onViewProfile: (userId: string) => void;
-  onAddFriend: (userId: string) => void;
+  onAddFriend: (userId: string) => void | Promise<void>;
   onBlock: (userId: string) => void;
   onReport: (userId: string) => void;
 }
@@ -21,6 +21,25 @@ const snapPoints = ['40%'];
 
 export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>(
   ({ person, onClose, onMessage, onInviteToSession, onViewPairedCards, onViewProfile, onAddFriend, onBlock, onReport }, ref) => {
+    const [friendRequestSending, setFriendRequestSending] = useState(false);
+    const [friendRequestSent, setFriendRequestSent] = useState(false);
+
+    // Reset state when person changes (new bottom sheet opened)
+    useEffect(() => {
+      setFriendRequestSending(false);
+      setFriendRequestSent(false);
+    }, [person?.userId]);
+
+    const handleAddFriendPress = async (userId: string) => {
+      setFriendRequestSending(true);
+      try {
+        await onAddFriend(userId);
+        setFriendRequestSent(true);
+      } finally {
+        setFriendRequestSending(false);
+      }
+    };
+
     return (
       <BottomSheet
         ref={ref}
@@ -57,29 +76,39 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                 </View>
               </View>
 
+              {/* Shared interests — all relationships (when available) */}
+              {person.sharedCategories.length > 0 && (
+                <View style={styles.interestsSection}>
+                  <View style={styles.interestsPills}>
+                    {person.sharedCategories.map((cat) => (
+                      <View key={cat} style={styles.interestPill}>
+                        <Text style={styles.interestPillText}>{cat}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
               {/* Taste match section — strangers only, hidden for seeds */}
               {person.relationship === 'stranger' && !person.isSeed && person.tasteMatchPct != null && (
                 <View style={styles.tasteMatchSection}>
                   <Text style={styles.matchPctLarge}>{person.tasteMatchPct}%</Text>
                   <Text style={styles.matchLabel}>taste match</Text>
-                  {person.sharedCategories.length > 0 && (
-                    <Text style={styles.sharedValues}>
-                      You both enjoy {person.sharedCategories.join(', ')}
-                    </Text>
-                  )}
                 </View>
               )}
 
-              {/* Action buttons — Message, Invite, Profile hidden for seeds */}
+              {/* Action buttons — friends/paired get Message + Invite/Cards + Profile; strangers get Profile only */}
               {!person.isSeed && (
               <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.actionWrapper} onPress={() => onMessage(person.userId)} activeOpacity={0.7}>
-                  <BlurView intensity={40} tint="light" style={styles.blurButton}>
-                    <Icon name="chatbubble-outline" size={18} color="#111" />
-                    <Text style={styles.actionText}>Message</Text>
-                  </BlurView>
-                </TouchableOpacity>
-                {person.relationship !== 'paired' && (
+                {(person.relationship === 'friend' || person.relationship === 'paired') && (
+                  <TouchableOpacity style={styles.actionWrapper} onPress={() => onMessage(person.userId)} activeOpacity={0.7}>
+                    <BlurView intensity={40} tint="light" style={styles.blurButton}>
+                      <Icon name="chatbubble-outline" size={18} color="#111" />
+                      <Text style={styles.actionText}>Message</Text>
+                    </BlurView>
+                  </TouchableOpacity>
+                )}
+                {person.relationship === 'friend' && (
                   <TouchableOpacity style={styles.actionWrapper} onPress={() => onInviteToSession(person.userId)} activeOpacity={0.7}>
                     <BlurView intensity={40} tint="light" style={styles.blurButton}>
                       <Icon name="people-outline" size={18} color="#111" />
@@ -110,14 +139,22 @@ export const PersonBottomSheet = forwardRef<BottomSheet, PersonBottomSheetProps>
                   <View style={styles.actionRow}>
                     <TouchableOpacity
                       style={styles.actionWrapper}
-                      onPress={() => onAddFriend(person.userId)}
-                      disabled={!person.canSendFriendRequest}
+                      onPress={() => handleAddFriendPress(person.userId)}
+                      disabled={!person.canSendFriendRequest || friendRequestSending || friendRequestSent}
                       activeOpacity={0.7}
                     >
-                      <BlurView intensity={40} tint="light" style={[styles.blurButton, !person.canSendFriendRequest && styles.buttonDisabled]}>
-                        <Icon name="person-add-outline" size={18} color={person.canSendFriendRequest ? '#111' : '#9ca3af'} />
-                        <Text style={[styles.actionText, !person.canSendFriendRequest && styles.textDisabled]}>
-                          {person.canSendFriendRequest ? 'Add Friend' : 'Limit reached'}
+                      <BlurView intensity={40} tint="light" style={[styles.blurButton, (!person.canSendFriendRequest || friendRequestSent) && styles.buttonDisabled]}>
+                        {friendRequestSending ? (
+                          <ActivityIndicator size="small" color="#111" />
+                        ) : (
+                          <Icon
+                            name={friendRequestSent ? 'checkmark' : 'person-add-outline'}
+                            size={18}
+                            color={friendRequestSent ? '#16a34a' : (person.canSendFriendRequest ? '#111' : '#9ca3af')}
+                          />
+                        )}
+                        <Text style={[styles.actionText, (!person.canSendFriendRequest || friendRequestSent) && styles.textDisabled]}>
+                          {friendRequestSent ? 'Request Sent' : (person.canSendFriendRequest ? 'Add Friend' : 'Limit reached')}
                         </Text>
                       </BlurView>
                     </TouchableOpacity>
@@ -168,6 +205,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.03)',
   },
   actionText: { fontSize: 11, fontWeight: '600', color: '#111827' },
+  interestsSection: { marginBottom: 12 },
+  interestsPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  interestPill: {
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14,
+    backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa',
+  },
+  interestPillText: { fontSize: 11, fontWeight: '600', color: '#c2410c' },
   tasteMatchSection: { alignItems: 'center', paddingVertical: 12, gap: 4 },
   matchPctLarge: { fontSize: 28, fontWeight: '800', color: '#eb7825' },
   matchLabel: { fontSize: 11, color: '#6b7280', marginTop: -2 },

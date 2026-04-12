@@ -9,8 +9,12 @@ interface Friend {
   name: string;
   username: string;
   avatar?: string;
-  status: 'online' | 'offline' | 'away';
+  avatar_url?: string;
+  status?: string;
   isOnline: boolean;
+  lastSeen?: string;
+  mutualFriends?: number;
+  isMuted?: boolean;
 }
 
 interface CollaborationSession {

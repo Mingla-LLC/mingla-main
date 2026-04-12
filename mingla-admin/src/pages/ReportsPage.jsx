@@ -74,7 +74,7 @@ export function ReportsPage() {
       let query = supabase
         .from("user_reports")
         .select(
-          "id, reason, details, status, severity, created_at, reviewed_at, reporter_id, reported_user_id, reporter:profiles!user_reports_reporter_id_fkey(display_name, email), reported:profiles!user_reports_reported_user_id_fkey(display_name, email)",
+          "id, reason, details, status, severity, created_at, reviewed_at, reporter_id, reported_user_id, reporter:profiles!reporter_id(display_name, email), reported:profiles!reported_user_id(display_name, email)",
           { count: "exact" }
         )
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);

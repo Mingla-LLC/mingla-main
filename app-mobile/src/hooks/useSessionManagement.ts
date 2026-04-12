@@ -109,7 +109,7 @@ async function buildSeedFromSoloPrefs(
   };
 
   // Read price_tiers from solo if it exists (field was added later, may be absent on type)
-  const soloAny = solo as Record<string, unknown>;
+  const soloAny = solo as unknown as Record<string, unknown>;
   if (Array.isArray(soloAny.price_tiers) && soloAny.price_tiers.length > 0) {
     raw.price_tiers = soloAny.price_tiers as string[];
   }
@@ -124,7 +124,6 @@ async function buildSeedFromSoloPrefs(
   const normalized = normalizePreferencesForSave({
     date_option: raw.date_option,
     time_slot: raw.time_slot,
-    exact_time: raw.exact_time,
     datetime_pref: raw.datetime_pref,
     use_gps_location: raw.use_gps_location,
     custom_location: raw.custom_location,
@@ -134,7 +133,6 @@ async function buildSeedFromSoloPrefs(
     ...raw,
     date_option: normalized.date_option,
     time_slot: normalized.time_slot,
-    exact_time: normalized.exact_time,
     datetime_pref: normalized.datetime_pref,
     use_gps_location: normalized.use_gps_location,
     custom_location: normalized.custom_location,
@@ -332,7 +330,7 @@ export const useSessionManagement = () => {
             id: inviterProfile.id,
             name: formatProfileName(inviterProfile),
             username: inviterProfile.username || 'unknown',
-            avatar: inviterProfile.avatar_url
+            avatar: inviterProfile.avatar_url ?? undefined
           } : undefined;
 
           return {
@@ -341,10 +339,13 @@ export const useSessionManagement = () => {
             participants,
             createdAt: session.created_at,
             isActive: allAccepted && participants.length >= 2,
-            boardId: session.board_id,
+            boardId: session.board_id ?? undefined,
             status,
-            invitedBy: session.created_by,
-            inviterProfile: formattedInviterProfile
+            invitedBy: session.created_by || '',
+            inviterProfile: formattedInviterProfile,
+            created_by: session.created_by || '',
+            created_at: session.created_at,
+            updated_at: session.updated_at,
           };
         });
 
@@ -361,7 +362,7 @@ export const useSessionManagement = () => {
             id: inviter?.id || invite.inviter_id,
             name: formatProfileName(inviter),
             username: inviter?.username || 'unknown',
-            avatar: inviter?.avatar_url
+            avatar: inviter?.avatar_url ?? undefined
           },
           message: invite.message,
           status: 'pending',
@@ -400,7 +401,7 @@ export const useSessionManagement = () => {
         .eq('user_id', user.id)
         .eq('has_accepted', true);
 
-      const matchingParticipations = (participations || []).filter((p: ParticipationRow) => {
+      const matchingParticipations = ((participations || []) as ParticipationRow[]).filter((p) => {
         const s = Array.isArray(p.collaboration_sessions) ? p.collaboration_sessions[0] : p.collaboration_sessions;
         return s?.name?.toLowerCase() === resolvedName.toLowerCase();
       });
@@ -459,6 +460,7 @@ export const useSessionManagement = () => {
         throw sessionError;
       }
       sessionData = createdSession;
+      if (!sessionData) throw new Error('Session creation returned no data');
 
       // Add creator as participant (auto-accepted)
       const { error: creatorParticipantError } = await supabase
@@ -530,7 +532,7 @@ export const useSessionManagement = () => {
         const { error: participantError } = await supabase
           .from('session_participants')
           .insert({
-            session_id: sessionData.id,
+            session_id: sessionData!.id,
             user_id: userData.id,
             has_accepted: false
           });
@@ -544,7 +546,7 @@ export const useSessionManagement = () => {
         const { data: inviteData, error: inviteError } = await supabase
           .from('collaboration_invites')
           .insert({
-            session_id: sessionData.id,
+            session_id: sessionData!.id,
             inviter_id: user.id,
             invited_user_id: userData.id,
             status: 'pending',
@@ -576,7 +578,7 @@ export const useSessionManagement = () => {
                 inviterId: user.id,
                 invitedUserId: userData.id,
                 invitedUserEmail: userData.email || '',
-                sessionId: sessionData.id,
+                sessionId: sessionData!.id,
                 sessionName: resolvedName,
                 inviteId: inviteData.id,
               }
@@ -821,7 +823,7 @@ export const useSessionManagement = () => {
       // Count accepted members to determine if session should become active
       const { data: allParticipants, error: participantsError } = await supabase
         .from('session_participants')
-        .select('has_accepted, user_id')
+        .select('has_accepted, user_id, is_admin')
         .eq('session_id', invite.sessionId);
 
       if (participantsError) {

@@ -20,11 +20,11 @@ const createAbortError = (message: string): Error => {
 };
 
 const fetchWithTimeout = (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
-  // 12-second hard cap. Aligned with mobile industry standard (10-15s).
-  // Previously 30s — caused 15s useUserPreferences wrapper to fire prematurely,
-  // and stacked to 60s+ worst-case via retries. At 12s with retry:1, worst case
-  // is 25s (12s + 1s delay + 12s) which is acceptable for mobile.
-  const TIMEOUT_MS = 12000;
+  // 20-second hard cap. Raised from 12s after ORCH-0366: discover-cards + curated
+  // functions routinely take 11-13s due to complex pool queries + Deno cold starts.
+  // At 12s, success depended on sub-second variance — a race condition, not a safety net.
+  // With retry:1, worst case is 41s (20s + 1s + 20s), acceptable for initial load.
+  const TIMEOUT_MS = 20000;
   const controller = new AbortController();
 
   // If the caller already provided a signal, respect it

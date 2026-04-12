@@ -29,10 +29,17 @@ export function SeedPage() {
   const [running, setRunning] = useState(null);
   const [confirmModal, setConfirmModal] = useState(null);
 
-  // Map Strangers state
-  const [strangerAction, setStrangerAction] = useState(null); // 'cleanup' | 'seed_global' | 'seed_point'
+  // ── Map Strangers state ─────────────────────────────────────────────────
+  const [strangerAction, setStrangerAction] = useState(null);
   const [strangerResult, setStrangerResult] = useState(null);
-  const [strangerProgress, setStrangerProgress] = useState(null); // { currentBand, totalBands, totalCreated }
+  const [strangerProgress, setStrangerProgress] = useState(null);
+
+  // Per-city state
+  const [cityStats, setCityStats] = useState([]);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [globalSeeds, setGlobalSeeds] = useState(0);
+  const [densities, setDensities] = useState({});
+  const [cityAction, setCityAction] = useState(null); // { cityId, action }
 
   const LAT_BANDS = [
     { latMin: -60, latMax: -40, label: "Far South (-60 to -40)" },
@@ -51,22 +58,93 @@ export function SeedPage() {
     { latMin: 65, latMax: 70, label: "Far North 2 (65 to 70)" },
   ];
 
+  // ── Load per-city stats ─────────────────────────────────────────────────
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-seed-map-strangers", {
+        body: { action: "get_seed_stats" },
+      });
+      if (error) throw error;
+      setCityStats(data.cities || []);
+      setGlobalSeeds(data.globalSeeds || 0);
+      const defaults = {};
+      for (const c of data.cities || []) {
+        defaults[c.city_id] = Math.max(3, Math.min(50, Math.ceil(c.place_count / 100)));
+      }
+      setDensities(prev => ({ ...defaults, ...prev }));
+    } catch (e) {
+      addToast({ variant: "error", title: "Failed to load seed stats", description: e?.message });
+    }
+    if (mountedRef.current) setStatsLoading(false);
+  }, [addToast]);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
+
+  // ── Per-city actions ────────────────────────────────────────────────────
+  const seedSingleCity = useCallback(async (cityId) => {
+    const count = densities[cityId] || 10;
+    setCityAction({ cityId, action: "seed" });
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-seed-map-strangers", {
+        body: { action: "seed_single_city", cityId, count },
+      });
+      if (error) throw error;
+      addToast({ variant: "success", title: `Seeded ${data.created} strangers in ${data.cityName}` });
+      logAdminAction("seed.stranger_single_city", "map_strangers", "seed_single_city", data);
+      await loadStats();
+    } catch (e) {
+      addToast({ variant: "error", title: "Seed failed", description: e?.message });
+    }
+    if (mountedRef.current) setCityAction(null);
+  }, [densities, addToast, loadStats]);
+
+  const clearSingleCity = useCallback(async (cityId) => {
+    setCityAction({ cityId, action: "clear" });
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-seed-map-strangers", {
+        body: { action: "clear_single_city", cityId },
+      });
+      if (error) throw error;
+      addToast({ variant: "success", title: `Cleared ${data.deleted} seeds` });
+      logAdminAction("seed.stranger_clear_city", "map_strangers", "clear_single_city", data);
+      await loadStats();
+    } catch (e) {
+      addToast({ variant: "error", title: "Clear failed", description: e?.message });
+    }
+    if (mountedRef.current) setCityAction(null);
+  }, [addToast, loadStats]);
+
+  // ── Bulk stranger actions ───────────────────────────────────────────────
   const runStrangerAction = useCallback(async (action) => {
     setStrangerAction(action);
     setStrangerResult(null);
     setStrangerProgress(null);
 
     try {
-      if (action === "seed_cities") {
-        setStrangerProgress({ currentBand: 0, totalBands: 1, totalCreated: 0, status: "Seeding cities from place pool..." });
-        const { data, error } = await supabase.functions.invoke("admin-seed-map-strangers", {
-          body: { action: "seed_cities" },
-        });
-        if (error) throw error;
+      if (action === "seed_all_cities") {
+        const cities = cityStats.filter(c => c.place_count > 0);
+        setStrangerProgress({ currentBand: 0, totalBands: cities.length, totalCreated: 0, status: "Seeding cities..." });
+        let totalCreated = 0;
+        for (let i = 0; i < cities.length; i++) {
+          const c = cities[i];
+          const count = densities[c.city_id] || 10;
+          setStrangerProgress({ currentBand: i + 1, totalBands: cities.length, totalCreated, status: `Seeding ${c.city_name}...` });
+          try {
+            const { data, error } = await supabase.functions.invoke("admin-seed-map-strangers", {
+              body: { action: "seed_single_city", cityId: c.city_id, count },
+            });
+            if (error) throw error;
+            totalCreated += data?.created ?? 0;
+          } catch (e) {
+            console.error(`[SeedPage] City ${c.city_name} failed:`, e?.message);
+          }
+        }
         setStrangerProgress(null);
-        setStrangerResult({ ok: true, message: `Created ${data?.totalCreated ?? 0} strangers across ${data?.cities ?? 0} cities` });
-        addToast({ variant: "success", title: `Seeded ${data?.totalCreated ?? 0} strangers in ${data?.cities ?? 0} cities` });
-        logAdminAction("seed.stranger_cities", "map_strangers", "seed_cities", data);
+        setStrangerResult({ ok: true, message: `Created ${totalCreated} strangers across ${cities.length} cities` });
+        addToast({ variant: "success", title: `Seeded ${totalCreated} strangers in ${cities.length} cities` });
+        logAdminAction("seed.stranger_all_cities", "map_strangers", "seed_all_cities", { totalCreated });
+        await loadStats();
       } else if (action === "cleanup") {
         const { data, error } = await supabase.functions.invoke("admin-seed-map-strangers", {
           body: { action: "cleanup" },
@@ -75,8 +153,8 @@ export function SeedPage() {
         setStrangerResult({ ok: true, message: `Cleaned up ${data?.deleted ?? 0} seed profiles` });
         addToast({ variant: "success", title: `Cleaned up ${data?.deleted ?? 0} seed profiles` });
         logAdminAction("seed.stranger_cleanup", "map_strangers", "cleanup", data);
+        await loadStats();
       } else if (action === "seed_global") {
-        // Run cleanup first, then seed each band
         setStrangerProgress({ currentBand: 0, totalBands: LAT_BANDS.length, totalCreated: 0, status: "Cleaning up..." });
         const { data: cleanupData, error: cleanupErr } = await supabase.functions.invoke("admin-seed-map-strangers", {
           body: { action: "cleanup" },
@@ -91,9 +169,7 @@ export function SeedPage() {
             body: { action: "seed_global_grid", latRange: { latMin: band.latMin, latMax: band.latMax }, skipCleanup: true },
           });
           if (error) {
-            const errMsg = error?.message || String(error);
-            console.error(`[SeedPage] Band ${band.label} failed:`, errMsg);
-            setStrangerProgress(prev => prev ? { ...prev, status: `Band ${band.label} failed — continuing...` } : prev);
+            console.error(`[SeedPage] Band ${band.label} failed:`, error?.message);
             continue;
           }
           totalCreated += data?.totalCreated ?? 0;
@@ -102,6 +178,7 @@ export function SeedPage() {
         setStrangerResult({ ok: true, message: `Created ${totalCreated.toLocaleString()} strangers across ${LAT_BANDS.length} bands (cleaned ${cleanupData?.deleted ?? 0} old)` });
         addToast({ variant: "success", title: `Seeded ${totalCreated.toLocaleString()} map strangers globally` });
         logAdminAction("seed.stranger_global", "map_strangers", "seed_global_grid", { totalCreated });
+        await loadStats();
       }
     } catch (e) {
       const msg = e?.message || "Failed";
@@ -109,8 +186,9 @@ export function SeedPage() {
       addToast({ variant: "error", title: "Stranger seeding failed", description: msg });
     }
     if (mountedRef.current) setStrangerAction(null);
-  }, [addToast]);
+  }, [addToast, cityStats, densities, loadStats]);
 
+  // ── Seed script runner (unchanged) ──────────────────────────────────────
   const runScript = useCallback(async (idx) => {
     const script = SEED_SCRIPTS[idx];
     setRunning(idx);
@@ -119,7 +197,6 @@ export function SeedPage() {
       const { error } = await supabase.rpc(script.rpc);
       if (!mountedRef.current) return;
       if (error) {
-        // PGRST202 = function not found
         const msg = error.code === "PGRST202"
           ? `RPC "${script.rpc}" not found. Run the admin dashboard migration first.`
           : error.message;
@@ -138,6 +215,8 @@ export function SeedPage() {
     }
     if (mountedRef.current) setRunning(null);
   }, [addToast]);
+
+  const totalCitySeeds = cityStats.reduce((s, c) => s + Number(c.seed_count), 0);
 
   return (
     <div className="flex flex-col gap-8">
@@ -217,12 +296,22 @@ export function SeedPage() {
 
       {/* ── Map Strangers Section ─────────────────────────────────────── */}
       <div>
-        <div className="flex items-center gap-2 mb-4">
-          <Globe className="w-5 h-5 text-[var(--color-brand-500)]" />
-          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Map Strangers</h2>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Globe className="w-5 h-5 text-[var(--color-brand-500)]" />
+            <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Map Strangers</h2>
+          </div>
+          <button
+            onClick={loadStats}
+            disabled={statsLoading}
+            className="p-2 rounded-lg hover:bg-[var(--gray-100)] transition-colors"
+            title="Refresh stats"
+          >
+            <RefreshCw className={`w-4 h-4 text-[var(--color-text-tertiary)] ${statsLoading ? "animate-spin" : ""}`} />
+          </button>
         </div>
         <p className="text-sm text-[var(--color-text-tertiary)] mb-4">
-          Seed fake profiles across the world map so it feels populated. Uses DiceBear avatars, random preferences, and &quot;everyone&quot; visibility. ~1.2M strangers on a 10km land grid.
+          Seed fake profiles per city so the map feels populated. Each city gets strangers proportional to its place pool.
         </p>
 
         {/* Progress bar */}
@@ -239,7 +328,7 @@ export function SeedPage() {
               />
             </div>
             <div className="flex justify-between text-xs text-[var(--color-text-tertiary)]">
-              <span>Band {strangerProgress.currentBand} / {strangerProgress.totalBands}</span>
+              <span>{strangerProgress.currentBand} / {strangerProgress.totalBands}</span>
               <span>{strangerProgress.totalCreated.toLocaleString()} created</span>
             </div>
           </div>
@@ -260,22 +349,115 @@ export function SeedPage() {
           </div>
         )}
 
+        {/* Per-City Table */}
+        <div className="bg-[var(--color-background-primary)] rounded-xl border border-[var(--gray-200)] overflow-hidden mb-4">
+          {statsLoading ? (
+            <div className="flex items-center justify-center p-8">
+              <Loader2 className="w-5 h-5 text-[var(--color-brand-500)] animate-spin" />
+              <span className="ml-2 text-sm text-[var(--color-text-tertiary)]">Loading city stats...</span>
+            </div>
+          ) : cityStats.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-8 text-center">
+              <MapPin className="w-8 h-8 text-[var(--gray-300)] mb-2" />
+              <p className="text-sm text-[var(--color-text-tertiary)]">No seeded or launched cities found.</p>
+              <p className="text-xs text-[var(--color-text-tertiary)] mt-1">Seed cities from the Place Pool page first.</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--gray-200)] bg-[var(--gray-50)]">
+                  <th className="text-left px-4 py-2.5 font-medium text-[var(--color-text-tertiary)]">City</th>
+                  <th className="text-left px-3 py-2.5 font-medium text-[var(--color-text-tertiary)]">Country</th>
+                  <th className="text-right px-3 py-2.5 font-medium text-[var(--color-text-tertiary)]">Places</th>
+                  <th className="text-right px-3 py-2.5 font-medium text-[var(--color-text-tertiary)]">Seeds</th>
+                  <th className="text-center px-3 py-2.5 font-medium text-[var(--color-text-tertiary)]">Density</th>
+                  <th className="text-right px-4 py-2.5 font-medium text-[var(--color-text-tertiary)]">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cityStats.map((city) => {
+                  const isSeeding = cityAction?.cityId === city.city_id && cityAction.action === "seed";
+                  const isClearing = cityAction?.cityId === city.city_id && cityAction.action === "clear";
+                  const isBusy = isSeeding || isClearing;
+
+                  return (
+                    <tr key={city.city_id} className="border-b border-[var(--gray-100)] last:border-0 hover:bg-[var(--gray-50)] transition-colors">
+                      <td className="px-4 py-2.5 font-semibold text-[var(--color-text-primary)]">{city.city_name}</td>
+                      <td className="px-3 py-2.5 text-[var(--color-text-tertiary)]">{city.country}</td>
+                      <td className="px-3 py-2.5 text-right text-[var(--color-text-secondary)]">{Number(city.place_count).toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-right">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          Number(city.seed_count) > 0
+                            ? "bg-[var(--color-success-50)] text-[var(--color-success-700)]"
+                            : "bg-[var(--gray-100)] text-[var(--color-text-tertiary)]"
+                        }`}>
+                          {Number(city.seed_count)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={densities[city.city_id] ?? 10}
+                          onChange={(e) => setDensities(prev => ({ ...prev, [city.city_id]: Math.max(1, Math.min(100, Number(e.target.value) || 1)) }))}
+                          className="w-16 px-2 py-1 text-center text-sm rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-500)] focus:border-transparent"
+                        />
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => seedSingleCity(city.city_id)}
+                            disabled={isBusy || !!strangerAction}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-[var(--color-brand-500)] text-white hover:bg-[var(--color-brand-600)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {isSeeding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Users className="w-3 h-3" />}
+                            Seed
+                          </button>
+                          {Number(city.seed_count) > 0 && (
+                            <button
+                              onClick={() => clearSingleCity(city.city_id)}
+                              disabled={isBusy || !!strangerAction}
+                              className="inline-flex items-center p-1 text-xs rounded-lg text-[var(--color-error-600)] hover:bg-[var(--color-error-50)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              title="Clear seeds for this city"
+                            >
+                              {isClearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Stats Summary */}
+        {!statsLoading && cityStats.length > 0 && (
+          <p className="text-xs text-[var(--color-text-tertiary)] mb-4">
+            Total: {totalCitySeeds.toLocaleString()} city seeds · {globalSeeds.toLocaleString()} global grid seeds
+          </p>
+        )}
+
+        {/* Bulk Actions */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Button
             variant="primary"
             icon={MapPin}
-            loading={strangerAction === "seed_cities"}
-            disabled={!!strangerAction}
-            onClick={() => setConfirmModal({ type: "stranger", action: "seed_cities", label: "Seed Cities (3-5 per seeded city)" })}
+            loading={strangerAction === "seed_all_cities"}
+            disabled={!!strangerAction || !!cityAction}
+            onClick={() => setConfirmModal({ type: "stranger", action: "seed_all_cities", label: "Seed All Cities (per-city density)" })}
             className="w-full"
           >
-            Seed Cities
+            Seed All Cities
           </Button>
           <Button
             variant="secondary"
             icon={Globe}
             loading={strangerAction === "seed_global"}
-            disabled={!!strangerAction}
+            disabled={!!strangerAction || !!cityAction}
             onClick={() => setConfirmModal({ type: "stranger", action: "seed_global", label: "Seed Global Grid (~1.2M strangers)" })}
             className="w-full"
           >
@@ -285,7 +467,7 @@ export function SeedPage() {
             variant="danger"
             icon={Trash2}
             loading={strangerAction === "cleanup"}
-            disabled={!!strangerAction}
+            disabled={!!strangerAction || !!cityAction}
             onClick={() => setConfirmModal({ type: "stranger", action: "cleanup", label: "Cleanup All Seed Strangers" })}
             className="w-full"
           >

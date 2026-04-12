@@ -64,8 +64,12 @@ interface Friend {
   name: string;
   username: string;
   avatar?: string;
+  avatar_url?: string;
+  status?: string;
   isOnline: boolean;
   lastSeen?: string;
+  mutualFriends?: number;
+  isMuted?: boolean;
 }
 
 interface MessageInterfaceProps {
@@ -93,12 +97,16 @@ interface MessageInterfaceProps {
   onUpdateBoardSession?: (updatedBoard: any) => void;
   onCreateSession?: (newSession: any) => void;
   availableFriends?: Friend[];
+  accountPreferences?: any;
   isBlocked?: boolean;
+  isUnfriended?: boolean;
+  isDeletedAccount?: boolean;
   conversationId?: string | null;
   currentUserId?: string | null;
   currentUserName?: string | null;
   broadcastSeenIds?: React.MutableRefObject<Set<string>>;
   isOffline?: boolean;
+  onViewProfile?: (userId: string) => void;
 }
 
 export default function MessageInterface({
@@ -119,11 +127,14 @@ export default function MessageInterface({
   onCreateSession,
   availableFriends = [],
   isBlocked = false,
+  isUnfriended = false,
+  isDeletedAccount = false,
   conversationId = null,
   currentUserId = null,
   currentUserName = null,
   broadcastSeenIds: broadcastSeenIdsProp,
   isOffline = false,
+  onViewProfile,
 }: MessageInterfaceProps) {
   // Helper function to clean email-like names
   const cleanName = (name: string): string => {
@@ -575,7 +586,14 @@ export default function MessageInterface({
             <Icon name="arrow-back" size={24} color="#6b7280" />
           </TouchableOpacity>
 
-          <View style={styles.avatarContainer}>
+          <TouchableOpacity
+            style={styles.avatarContainer}
+            onPress={() => onViewProfile?.(friend.id)}
+            disabled={!onViewProfile}
+            activeOpacity={0.8}
+            accessibilityLabel={`View ${cleanName(friend.name)}'s profile`}
+            accessibilityRole="button"
+          >
             {friend.avatar ? (
               <ImageWithFallback
                 source={{ uri: friend.avatar }}
@@ -592,7 +610,7 @@ export default function MessageInterface({
               </View>
             )}
             {isOtherOnline && <View style={styles.onlineIndicator} />}
-          </View>
+          </TouchableOpacity>
 
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{cleanName(friend.name)}</Text>
@@ -812,8 +830,28 @@ export default function MessageInterface({
         </View>
       )}
 
-      {/* Input Area - Hidden when blocked */}
-      {!isBlocked && (
+      {/* Unfriended Banner */}
+      {isUnfriended && !isBlocked && (
+        <View style={styles.blockedBanner}>
+          <Icon name="person-remove" size={18} color="#dc2626" />
+          <Text style={styles.blockedBannerText}>
+            You are no longer connected with this person
+          </Text>
+        </View>
+      )}
+
+      {/* Deleted Account Banner */}
+      {isDeletedAccount && !isBlocked && !isUnfriended && (
+        <View style={styles.blockedBanner}>
+          <Icon name="alert-circle" size={18} color="#6b7280" />
+          <Text style={styles.blockedBannerText}>
+            This user has deleted their account
+          </Text>
+        </View>
+      )}
+
+      {/* Input Area - Hidden when blocked, unfriended, or account deleted */}
+      {!isBlocked && !isUnfriended && !isDeletedAccount && (
       <Animated.View
         style={[
           styles.inputArea,

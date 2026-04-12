@@ -1,10 +1,13 @@
 import { trackedInvoke } from './supabase'
 import { extractFunctionError } from '../utils/edgeFunctionError'
 
+export type OtpChannel = 'sms' | 'whatsapp' | 'call'
+
 interface SendOtpResult {
   success: boolean
   error?: string
   status?: string
+  channel?: OtpChannel
 }
 
 interface VerifyOtpResult {
@@ -15,9 +18,9 @@ interface VerifyOtpResult {
 /**
  * Send OTP to the given phone number via Twilio Verify (proxied through edge function).
  */
-export async function sendOtp(phone: string): Promise<SendOtpResult> {
+export async function sendOtp(phone: string, channel?: OtpChannel): Promise<SendOtpResult> {
   const { data, error } = await trackedInvoke('send-otp', {
-    body: { phone },
+    body: { phone, ...(channel && { channel }) },
   })
 
   if (error) {
@@ -31,7 +34,7 @@ export async function sendOtp(phone: string): Promise<SendOtpResult> {
     return { success: false, error: data.error }
   }
 
-  return { success: true, status: data?.status }
+  return { success: true, status: data?.status, channel: data?.channel }
 }
 
 /**

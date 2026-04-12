@@ -9,12 +9,13 @@ interface AnimatedPlacePinProps {
   isSaved: boolean;
   isPairedSaved?: boolean;
   isScheduled: boolean;
+  isSelected?: boolean;
   onPress: () => void;
   index: number;
 }
 
 export const AnimatedPlacePin = React.memo(function AnimatedPlacePin({
-  card, isSaved, isPairedSaved = false, isScheduled, onPress, index,
+  card, isSaved, isPairedSaved = false, isScheduled, isSelected = false, onPress, index,
 }: AnimatedPlacePinProps) {
   const scale = useRef(new Animated.Value(0)).current;
   // Start false — only enable during the 300ms spring window
@@ -43,6 +44,8 @@ export const AnimatedPlacePin = React.memo(function AnimatedPlacePin({
       coordinate={{ latitude: card.lat, longitude: card.lng }}
       onPress={onPress}
       tracksViewChanges={tracking}
+      anchor={{ x: 0.5, y: 0.27 }}
+      tappable
     >
       <Animated.View style={{ transform: [{ scale }] }}>
         <PlacePinContent
@@ -50,6 +53,7 @@ export const AnimatedPlacePin = React.memo(function AnimatedPlacePin({
           isSaved={isSaved}
           isPairedSaved={isPairedSaved}
           isScheduled={isScheduled}
+          isSelected={isSelected}
         />
       </Animated.View>
     </Marker>

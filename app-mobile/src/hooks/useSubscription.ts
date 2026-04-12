@@ -82,11 +82,11 @@ export function useServerTier(userId: string | undefined) {
 /**
  * The single source of truth for the current user's subscription tier.
  *
- * Hierarchy: elite > pro > free
+ * Hierarchy: mingla_plus > free
  *
  * Sources (in priority order):
- *   1. RevenueCat CustomerInfo  — active entitlement (Elite checked first, then Pro)
- *   2. Supabase subscription    — active trial or referral bonus months → 'elite'
+ *   1. RevenueCat CustomerInfo  — active Mingla+ entitlement (or legacy Pro/Elite)
+ *   2. Supabase subscription    — active trial or referral bonus → 'mingla_plus'
  *   3. Server-side RPC          — admin subscription overrides (Priority 0 on server)
  *   4. Fallback                 → 'free'
  *

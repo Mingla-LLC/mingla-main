@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-08
+> Last updated: 2026-04-11
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 
@@ -11,11 +11,11 @@
 | Surface | Domain | Key Files | Grade | Items Tracked | Coverage |
 |---------|--------|-----------|-------|---------------|----------|
 | Auth & Session | Mobile + Backend | useAuthSimple.ts, session management | Mixed (2A, 4B, 1C) | 7 | Partial |
-| Onboarding | Mobile | OnboardingFlow.tsx, useOnboardingStateMachine.ts | Mixed (2A, 9F) | 11 | Weak |
+| Onboarding | Mobile | OnboardingFlow.tsx, useOnboardingStateMachine.ts | Mixed (3A, 9F) | 12 | Weak |
 | Discovery / Explore | Mobile + Backend | SwipeableCards.tsx, deckService.ts, RecommendationsContext.tsx | Strong (38A, 5B, 0C, 12F) | 55 | Strong |
 | Collaboration Sessions | Mobile + Backend | SessionViewModal, CollaborationSessions.tsx | Mixed (3A, 4F) | 7 | Weak |
 | Social / Friends | Mobile + Backend | friendsService.ts, ConnectionsPage.tsx | Mixed (1A, 1B, 5F) | 7 | Weak |
-| Notifications | Mobile + Backend | notify-dispatch, NotificationsModal.tsx | Strong (6A, 2B, 3F) | 11 | Partial |
+| Notifications | Mobile + Backend | notify-dispatch, NotificationsModal.tsx | Mixed (7A, 2B, 3F) | 12 | Partial |
 | Saved / Boards | Mobile | LikesPage.tsx, boardService.ts | All F | 5 | Unaudited |
 | Profile & Settings | Mobile | ProfilePage.tsx, AccountSettings.tsx | Mixed (3A, 1B, 6F) | 10 | Weak |
 | Map & Location | Mobile + Backend | DiscoverMap.tsx, get-nearby-people | All F | 16 | Unaudited |
@@ -28,6 +28,7 @@
 | Sharing & Invites | Mobile + Backend | ShareModal.tsx, send-phone-invite | All F | 10 | Unaudited |
 | Post-Experience & Reviews | Mobile + Backend | PostExperienceModal.tsx, record-visit | All F | 9 | Unaudited |
 | Booking | Mobile | bookingService.ts | All F | 2 | Unaudited |
+| Reporting & Moderation | Mobile + Admin + Backend | ReportModal, admin Reports page | All F (2×S0, 1×S1) | 3 | Unaudited |
 | Network & Offline | Cross-cutting | networkMonitor.ts | Mixed (1B, 4F) | 5 | Weak |
 | State & Cache | Cross-cutting | queryKeys.ts, Zustand stores | Mixed (5A, 3F) | 8 | Partial |
 | Chat Responsiveness | Cross-cutting | messagingService.ts | All A | 4 | Strong |
@@ -40,6 +41,7 @@
 | Weather & External | Cross-cutting | weatherService.ts, geocodingService.ts | All F | 6 | Unaudited |
 | UI Components | Cross-cutting | Toast.tsx, InAppBrowserModal.tsx | Mixed (3A, 7F) | 10 | Weak |
 | Admin Panel | Admin | PlacePoolManagementPage.jsx, admin-seed-places | Mixed (1A, 4F) | 5 | Weak |
+| Code Quality | Cross-cutting | tsconfig.json, all .ts/.tsx files | All A | 1 | Strong |
 
 ---
 
@@ -75,6 +77,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0005 | Google Sign-In flow | Auth | S1 | quality-gap | verified | C | 2026-03-31 | INVESTIGATION_AUTH_WAVE1.md — works but brittle string matching in retry logic |
 | ORCH-0006 | Apple Sign-In flow | Auth | S1 | quality-gap | verified | B | 2026-03-31 | INVESTIGATION_AUTH_WAVE1.md — clean, minor fire-and-forget name risk |
 | ORCH-0007 | Zombie auth prevention | Auth | S1 | bug | verified | B | 2026-03-23 | Commit 2a96c8f6 |
+| ORCH-0348 | Auto-assign beta tester flag on signup + backfill existing users | Auth | S2 | missing-feature | closed | A | 2026-04-09 | Migration 20260409700000 applied. Column default → true, all existing rows backfilled. Verified: 0 users with false. |
 
 ### Section 2: Onboarding
 
@@ -91,6 +94,9 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0016 | Friends & pairing onboarding step | Onboarding | S2 | unaudited | open | F | — | — |
 | ORCH-0017 | Consent step | Onboarding | S1 | unaudited | open | F | — | — |
 | ORCH-0018 | Skip button responsiveness | Onboarding | S2 | bug | closed | A | 2026-03-23 | Commit 76cd2ca7 |
+| ORCH-0350 | Update Terms/Privacy URLs app-wide to usemingla.com | Cross-cutting | S2 | missing-feature | closed | A | 2026-04-09 | QA_ORCH-0350-0351 PASS. All legal URLs centralized in urls.ts → usemingla.com. 660 lines hardcoded text deleted. InAppBrowserModal for Profile + Paywall. |
+| ORCH-0351 | SMS consent checkbox gate before OTP on onboarding | Onboarding | S1 | missing-feature | closed | A | 2026-04-09 | QA_ORCH-0350-0351 PASS. Checkbox + TCPA consent text. CTA gated. InAppBrowserModal links. Full accessibility. |
+| ORCH-0370 | OTP multi-channel support — add WhatsApp and voice call fallback channels via Twilio Verify | Onboarding | S2 | missing-feature | closed | A | 2026-04-10 | QA PASS. 16/16 tests, 0 defects. send-otp accepts channel param (sms/whatsapp/call). OTP sub-step shows fallback buttons. Consent text covers all channels. verify-otp untouched. |
 
 ### Section 3: Discovery / Explore (Card Deck)
 
@@ -215,6 +221,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0091 | DM unread realtime | Notifications | S2 | bug | closed | A | 2026-03-23 | Commit ea655d36 |
 | ORCH-0092 | Notification send observability | Notifications | S2 | quality-gap | verified | B | 2026-03-23 | Commit ea655d36 |
 | ORCH-0093 | Realtime subscription lifecycle | Notifications | S1 | architecture-flaw | closed | A | 2026-03-23 | Commit ea655d36 |
+| ORCH-0349 | Acted-on notifications not auto-clearing (in-sheet + out-of-sheet) | Notifications | S1 | bug | closed | A | 2026-04-09 | QA PASS. DB trigger + graceful stale handling + out-of-sheet cleanup. Migration 20260409800000. |
 
 ### Section 7: Saved Experiences / Boards
 
@@ -242,6 +249,14 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0108 | Privacy controls | Profile | S2 | unaudited | open | F | — | — |
 | ORCH-0109 | Billing management | Profile | S2 | unaudited | open | F | — | — |
 | ORCH-0110 | Terms/Privacy screens | Profile | S2 | unaudited | open | F | — | — |
+| ORCH-0352 | Beta feedback modal — end-to-end defects (freeze, stale state, audio leak, icon errors, close-path gaps) | Profile | S1 | bug | closed | A | 2026-04-09 | QA PASS (AH-051). Full audit found 4 defects (missing pause icon, orphaned success timer, unstable onClose, cached permissions). All fixed in clean pass (AH-050). Prior patches preserved. 5 files changed total. |
+| ORCH-0353 | Permission storm on first landing — 4 OS dialogs fire on boot | App Lifecycle | S1 | ux | closed | A | 2026-04-09 | Device-verified PASS. Split OneSignal login/permission, removed auto location/camera/tracking from MobileFeaturesProvider, ATT wait→0. Zero dialogs on Home. |
+| ORCH-0354 | Coach mark guided tour system (10-step, cross-tab, resumable) | App Lifecycle | S1 | missing-feature | implementing | F | 2026-04-09 | Spec: SPEC_ORCH-0349_COACH_MARK_SYSTEM.md. Design: Hybrid bottom card + self-highlight. Phase 1 pending. Prerequisite ORCH-0353 complete. |
+| ORCH-0371 | Beta feedback — optional screenshot attachments (up to 10) | Profile | S3 | missing-feature | closed | A | 2026-04-11 | QA PASS (0 defects, 17/17 SC). Commit a666dee7. Migration applied, functions deployed. Report: QA_ORCH-0371_FEEDBACK_SCREENSHOTS_REPORT.md |
+| ORCH-0373 | Friend profile screen overhaul — hide username, add bio + stats (places/streak/friends non-tappable), fix interests, wire chat avatar tap, wire onMessage (friends-only gate) | Profile + Chat | S1 | quality-gap | closed | A | 2026-04-11 | QA PASS 12/12 + rework approved. 5 files changed. Message button gated to friends-only. Reports: QA_ORCH-0373 + REWORK_MESSAGE_GATE. |
+| ORCH-0374 | Friend profile — show GPS city instead of country code, and make interests visible to all viewers (not just friends) | Profile | S1 | quality-gap | closed | A | 2026-04-11 | Implementation approved. GPS city persisted to profiles.location on profile open. RLS policy added for public display interests read. Migration: 20260411000002. Deploy order: migration first, then OTA. |
+| ORCH-0377 | Beta feedback — allow users to delete their own submitted feedback | Profile | S2 | missing-feature | implementing | F | — | Spec: SPEC_ORCH-0377_DELETE_FEEDBACK.md. 4 files, 13 success criteria. Dispatched to implementor. |
+| ORCH-0375 | Own-profile + friend-profile stats decorative — placesVisited=0, streakDays=0 hardcoded despite real computation engine existing | Profile | S2 | quality-gap | investigated | F | — | Constitutional Rule #9 violation (no fabricated data). ProfilePage.tsx:330-331 and ViewFriendProfileScreen.tsx:243-244 hardcode zeros. enhancedProfileService.ts has working calculateUserAchievements(). GamifiedHistory.tsx already uses real data. Fix: wire useEnhancedProfile into both screens. |
 
 ### Section 9: Map & Location
 
@@ -263,6 +278,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0124 | Activity status picker | Map | S3 | unaudited | open | F | — | — |
 | ORCH-0125 | Map cards hook | Map | S2 | unaudited | open | F | — | — |
 | ORCH-0126 | Discover map integration | Map | S1 | unaudited | open | F | — | — |
+| ORCH-0366 | Edge function timeouts — query_pool_cards optimized, timeout 12s→20s, dead curated timeout removed | Map | S1 | performance | closed | A | 2026-04-10 | User-verified working. Migration 20260410000005. Commit 6bdbbd30. |
 | ORCH-0324 | User marker disappears from map — map shrunk to 1px when person pill active | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — mapHidden: 1x1px confuses react-native-maps marker rendering. paused=true disables nearby-people query. |
 | ORCH-0325 | Map centering broken — animateToRegion races with 1px→fullscreen layout transition | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — Both state updates in same tick; animation fires before map expands. |
 | ORCH-0326 | Mock strangers invisible — bidirectional "everyone" visibility required + code defaults to "off" | Map | S1 | bug | investigated | F | — | INVESTIGATION_MAP_BUGS_REPORT.md — get-nearby-people:103 requires requester visibility="everyone". Code defaults to "off" (line 42) contradicting schema default "friends". |
@@ -271,6 +287,15 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0330 | Visibility dropdown fixed — optimistic update + rollback + toast on error | Map | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0329_VISIBILITY_FIXES_REPORT.md — onMutate instant cache, onError rollback + toast. |
 | ORCH-0327 | Stranger seeding — global grid, DiceBear avatars, friend request interception, updated categories | Map | S1 | missing-feature | closed | A | 2026-04-06 | QA_ORCH-0327_STRANGER_SEEDING_REPORT.md — 14/14 PASS. Code ready. Seed NOT yet run — deploy first, then call seed_global_grid. |
 | ORCH-0331 | Admin dashboard seed filter — all profile queries now exclude is_seed=true | Admin | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0327_STRANGER_SEEDING_REPORT.md — 8 admin queries fixed (T-11 through T-14 PASS). |
+| ORCH-0355 | Map person profile fixed — crash eliminated (.maybeSingle), shared category pills added to PersonBottomSheet | Map | S1 | bug | closed | A | 2026-04-10 | QA PASS (AH-059). `.single()` → `.maybeSingle()` prevents crash. Interests pills for all relationships. 18/18 tests pass. |
+| ORCH-0365 | Phone number PII removed from ViewFriendProfileScreen — useFriendProfile no longer selects phone | Profile | S1 | security | closed | A | 2026-04-10 | QA PASS (AH-057). Phone removed from interface, select, return, and UI. Zero references remain. |
+| ORCH-0356 | Strangers on discover map can be messaged — should only show Add Friend + View Profile. DM must be gated to friends-only app-wide (pairing/collab invites must NOT be affected). | Map | S1 | security | closed | A | 2026-04-09 | QA PASS (AH-054). 3-layer defense: UI gate (PersonBottomSheet), service gate (messagingService), RLS gate (blocked_users). 13/13 SC, 17/17 tests. Pairing/collab/deletion confirmed safe. |
+| ORCH-0360 | Map interactions — broken block handler (wrong column), silent push notification failure (idempotency), block modal sluggish, add friend UX gaps | Map | S1 | bug | closed | A | 2026-04-10 | QA PASS. blockService replaces raw upsert, idempotency key unique per attempt, InteractionManager defers modal, push response logged. 17/17 tests. |
+| ORCH-0358 | Friends-of-friends filter fixed — MapPrivacySettings + DB CHECK constraint updated | Map | S1 | bug | closed | A | 2026-04-10 | QA PASS (AH-057). FoF added to VISIBILITY_LEVELS + LABELS. DB constraint ALTERed live (migration 20260410000003). Verified via pg_constraint query. |
+| ORCH-0359 | Place pins now show name labels — truncated place/stop name below each pin | Map | S2 | ux | closed | A | 2026-04-10 | QA PASS (AH-059). Text label added to PlacePinContent. Curated shows first stop name, singles show place name. 15-char truncation. |
+| ORCH-0361 | Avatar disappearance fixed — 3s tracksViewChanges window for image loading | Map | S1 | bug | closed | A | 2026-04-10 | QA PASS (AH-059). Person markers `tracksViewChanges={true}` for 3s then false. Prevents permanent fallback on slow image load. |
+| ORCH-0378 | Map pin labels redesigned — orange pill with "Category · Place Name", full text no truncation, widened wrappers | Map | S2 | ux | closed | A | 2026-04-11 | User-verified on device. PlacePin.tsx: orange pill (rgba(235,120,37,0.85)), getReadableCategoryName + title, no maxWidth/numberOfLines constraints. 3 iterations (v1 pill, v2 content, v3 no truncation). |
+| ORCH-0379 | Fix pin tap regression + hide label on selection — anchor/tappable added to Markers, isSelected prop threaded through pin chain | Map | S1 | regression | closed | A | 2026-04-11 | User-verified on device. anchor={{x:0.5,y:0.27}} + tappable on both Markers. isSelected hides label pill when bottom sheet open. 3 files changed. |
 
 ### Section 10: Direct Messaging & Chat
 
@@ -284,6 +309,8 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0132 | Messaging realtime | Chat | S1 | unaudited | open | F | — | — |
 | ORCH-0133 | DM email notification | Chat | S3 | unaudited | open | F | — | — |
 | ORCH-0134 | Chat status line | Chat | S3 | unaudited | open | F | — | — |
+| ORCH-0357 | Blocked/unfriended/deleted users still messageable — message field should be hidden, replaced with status banner explaining why ("You blocked this person" / "User deleted their account") | Chat | S1 | security | closed | A | 2026-04-09 | QA PASS (AH-054). Three banners (blocked/unfriended/deleted) with hidden input. Account deletion confirmed regression-free. |
+| ORCH-0367 | Block/friend mutual exclusion — accept clears blocks, block cancels pending requests, stale data fixed | Chat + Social | S0 | data-integrity | closed | A | 2026-04-10 | User-verified: Seth+Arifat can message. Migration 20260410000004. Commit 6bdbbd30. |
 
 ### Section 11: Payments & Subscriptions
 
@@ -304,6 +331,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0147 | Silent swipe blocking after limit | Payments | S2 | quality-gap | closed | A | 2026-03-31 | Fixed with ORCH-0146 — PanResponder now shows paywall |
 | ORCH-0148 | useEffectiveTier can downgrade (misleading comment) | Payments | S2 | quality-gap | closed | A | 2026-03-31 | Fixed with ORCH-0143 — comment corrected in useSubscription.ts |
 | ORCH-0149 | Trial abuse: delete+re-signup = infinite Elite | Payments | S1 | bug | closed | A | 2026-03-31 | QA_PAYMENTS_EXPIRY_TRIAL_REPORT.md — phone-hash table, checked at onboarding |
+| ORCH-0372 | Price tier restructure: 3 tiers (Free/Pro/Elite) → 2 tiers (Free/Mingla+) | Payments | S0 | architecture-flaw | closed | A | 2026-04-11 | QA CONDITIONAL PASS (P1 reworked). 19/23 code tests PASS, 14 UNVERIFIED (device). DB migration applied, 3 edge functions deployed, ~22 frontend files updated, 2 deleted. Full pipeline: forensic → spec → W1 backend → W2 frontend → QA → rework → PASS. |
 
 ### Section 12: Calendar & Scheduling
 
@@ -406,6 +434,14 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0334 | Photo tab shows stale London run (180/351 batches) — old run has dead references | Admin | S3 | bug | open | F | — | Previous session: old photo backfill run data from pre-bbox migration. May need cancel/dismiss action. |
 | ORCH-0335 | admin_place_photo_stats only counts AI-approved places — correct per spec but changed from before | Admin | S3 | quality-gap | open | F | — | Spec decision: photo stats scoped to AI-approved. Stats look different from pre-spec totals. Not a bug — document and close. |
 
+### Section 20: User Reporting & Moderation
+
+| ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
+|----|-------|---------|----------|-------|--------|-------|----------|----------|
+| ORCH-0362 | Map report fixed — ReportUserModal replaces broken inline handler | Moderation | S0 | bug | closed | A | 2026-04-10 | QA PASS (AH-057). Old `map_interaction` enum removed. Now uses reportService.submitReport() via ReportUserModal. Error checking verified. |
+| ORCH-0363 | Report modal delay fixed — premature block removed, single-block on submit | Moderation | S1 | ux | closed | A | 2026-04-10 | QA PASS (AH-057). `onBlockUser` call removed from handleReportUser. ReportUserModal.handleSubmit blocks once on submit. |
+| ORCH-0364 | Admin reports RLS fixed — SELECT + UPDATE policies added, FK join hint corrected | Moderation | S0 | bug | closed | A | 2026-04-10 | QA PASS (AH-057). Migration 20260410000002 applied. is_admin_user() SELECT + UPDATE policies live. Join hint fixed to column-based. |
+
 ### Cross-Cutting: Network & Offline
 
 | ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
@@ -499,6 +535,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0239 | Mobile features provider | Lifecycle | S2 | unaudited | open | F | — | — |
 | ORCH-0240 | Foreground refresh | Lifecycle | S2 | quality-gap | closed | A | 2026-03-31 | QA_LIVE_APP_STATE_PERSISTENCE_REPORT.md — refreshes ALL tabs (all mounted), preferences prefetched |
 | ORCH-0241 | Lifecycle logger | Lifecycle | S3 | unaudited | open | F | — | — |
+| ORCH-0368 | Bad merge artifact audit — corruption isolated to MessageInterface.tsx only. 88 files scanned with 6 detection passes, zero additional corruption found. | Lifecycle | S1 | regression | closed | A | 2026-04-10 | INVESTIGATION_ORCH-0368_BAD_MERGE_AUDIT.md — All 88 files clean. Fix: commit 8bc694c6. |
 
 ### Cross-Cutting: Analytics & Tracking
 
@@ -538,6 +575,20 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0263 | Popularity indicators | UI | S3 | unaudited | open | F | — | — |
 | ORCH-0264 | Confidence score | UI | S3 | unaudited | open | F | — | — |
 | ORCH-0265 | Icon map completeness | UI | S2 | bug | closed | A | 2026-03-22 | Commit 88f2d43f |
+
+### Cross-Cutting: Code Quality & Type Safety
+
+| ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
+|----|-------|---------|----------|-------|--------|-------|----------|----------|
+| ORCH-0376 | 272 pre-existing TypeScript errors — full cleanup (dead code deletion + type fixes across 57 files) | Code Quality | S3 | design-debt | closed | A | 2026-04-11 | QA PASS 7/7, 0 defects (2 pre-existing noted). 272→0 errors. 50 dead files deleted. 57 files fixed. Reports: IMPLEMENTATION + QA_ORCH-0376_TYPESCRIPT_CLEANUP_REPORT.md |
+| ORCH-0377 | Dead code: src/main.tsx | Code Quality | S3 | design-debt | closed | A | 2026-04-11 | Deleted in ORCH-0384 sweep. |
+| ORCH-0378 | Dead code: SimpleAuthGuard.tsx | Code Quality | S3 | design-debt | closed | A | 2026-04-11 | Deleted in ORCH-0384 sweep. |
+| ORCH-0379 | Dead code: PurchaseQRCode.tsx | Code Quality | S3 | design-debt | closed | A | 2026-04-11 | Deleted in ORCH-0384 sweep. |
+| ORCH-0380 | SessionViewModal.tsx called 4 non-existent state setters — refactor remnant | Code Quality | S2 | bug | open | F | — | setParticipants/setSessionValid/setHasPermission/setIsAdmin removed during ORCH-0376. Session validation logic may be incomplete. |
+| ORCH-0381 | calendar.tsx + checkbox.tsx are minimal stubs — need proper implementations if features activate | Code Quality | S3 | design-debt | open | F | — | Created during ORCH-0376 to satisfy imports from PreferencesSheet + OnboardingFlow. Functional but bare-minimum UI. |
+| ORCH-0382 | BoardDiscussion dropdown menu renders flat — needs proper RN dropdown component | Collab Sessions | S2 | ux | open | F | — | Pre-existing: shadcn/Radix DropdownMenu never worked in RN. Now stubbed as pass-through (items always visible). Needs react-native-popup-menu or ActionSheet. QA_ORCH-0376 P2-001. |
+| ORCH-0383 | enhancedFavoritesService dead code | Code Quality | S3 | design-debt | closed | A | 2026-04-11 | Deleted in ORCH-0384 sweep. smartNotificationService import stubbed. |
+| ORCH-0384 | Full dead code sweep — 78 dead files deleted, 24K lines removed, across components/hooks/services/utils | Code Quality | S2 | design-debt | closed | A | 2026-04-11 | Forensic verified 87 candidates: 78 deleted, 12 false positives saved. 2 cascading fixes (useLifecycleLogger, enhancedFavoritesService). tsc=0, iOS build clean. Reports: INVESTIGATION + IMPLEMENTATION_ORCH-0384. |
 
 ---
 

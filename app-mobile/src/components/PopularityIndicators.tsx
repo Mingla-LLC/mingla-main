@@ -90,7 +90,7 @@ export const PopularityIndicators: React.FC<PopularityIndicatorsProps> = ({
     return num.toString();
   };
 
-  const AnimatedCounter = ({ value, suffix = '' }: { value: Animated.SharedValue<number>; suffix?: string }) => {
+  const AnimatedCounter = ({ value, suffix = '' }: { value: ReturnType<typeof useSharedValue<number>>; suffix?: string }) => {
     const animatedStyle = useAnimatedStyle(() => {
       const displayValue = Math.round(value.value);
       return {

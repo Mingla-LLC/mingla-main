@@ -18,6 +18,7 @@ import { customHolidayKeys } from "./useCustomHolidays";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { useAppStore } from "../store/appStore";
 import { trackedInvoke } from "../services/supabase";
+import { dismissNotificationByEntity } from "./useNotifications";
 
 // ── Query Keys ──────────────────────────────────────────────────────────────
 
@@ -116,7 +117,11 @@ export function useAcceptPairRequest() {
   return useMutation<
     { pairingId: string; pairedWithUserId: string },
     Error,
-    string
+    string,
+    {
+      prevIncoming: [readonly unknown[], PairRequest[] | undefined][];
+      prevPills: [readonly unknown[], PairingPill[] | undefined][];
+    }
   >({
     mutationKey: ["pairings", "accept"],
     mutationFn: async (id) => acceptPairRequest(id),
@@ -169,6 +174,13 @@ export function useAcceptPairRequest() {
           console.warn('[usePairings] pair accepted notification failed:', err);
         }
       }
+      // Clear the corresponding notification (fire-and-forget — DB trigger also handles this)
+      if (userId) {
+        dismissNotificationByEntity(userId, queryClient, {
+          relatedId: requestId,
+          type: 'pair_request_received',
+        }).catch(() => {});
+      }
     },
     onSettled: () => {
       // Always refetch to ensure server truth, regardless of success/failure
@@ -179,7 +191,15 @@ export function useAcceptPairRequest() {
 
 export function useDeclinePairRequest() {
   const queryClient = useQueryClient();
-  return useMutation<void, Error, string>({
+  const userId = useAppStore((s) => s.user?.id);
+  return useMutation<
+    void,
+    Error,
+    string,
+    {
+      prevIncoming: [readonly unknown[], PairRequest[] | undefined][];
+    }
+  >({
     mutationKey: ["pairings", "decline"],
     mutationFn: async (id) => declinePairRequest(id),
     onMutate: async (requestId) => {
@@ -201,6 +221,15 @@ export function useDeclinePairRequest() {
         for (const [key, data] of context.prevIncoming) {
           if (data !== undefined) queryClient.setQueryData(key, data);
         }
+      }
+    },
+    onSuccess: (_data, requestId) => {
+      // Clear the corresponding notification (fire-and-forget — DB trigger also handles this)
+      if (userId) {
+        dismissNotificationByEntity(userId, queryClient, {
+          relatedId: requestId,
+          type: 'pair_request_received',
+        }).catch(() => {});
       }
     },
     onSettled: () => {

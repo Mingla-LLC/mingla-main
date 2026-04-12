@@ -178,12 +178,12 @@ export class EnhancedLocationService {
       return;
     }
 
-    this.requestPermissions().then((hasPermission) => {
+    this.requestPermissions().then(async (hasPermission) => {
       if (!hasPermission) return;
 
       this.isTracking = true;
 
-      this.watchId = Location.watchPositionAsync(
+      this.watchId = await Location.watchPositionAsync(
         {
           accuracy: options.accuracy || Location.Accuracy.Balanced,
           timeInterval: options.timeInterval || 10000, // 10 seconds

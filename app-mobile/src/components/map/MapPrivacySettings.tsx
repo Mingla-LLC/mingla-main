@@ -4,11 +4,12 @@ import { Icon } from '../ui/Icon';
 import Toggle from '../profile/Toggle';
 import type { MapSettings } from '../../hooks/useMapSettings';
 
-const VISIBILITY_LEVELS = ['off', 'paired', 'friends', 'everyone'] as const;
+const VISIBILITY_LEVELS = ['off', 'paired', 'friends', 'friends_of_friends', 'everyone'] as const;
 const VISIBILITY_LABELS: Record<string, string> = {
   off: 'Hidden',
   paired: 'Paired only',
   friends: 'Friends',
+  friends_of_friends: 'Friends of friends',
   everyone: 'Everyone nearby',
 };
 

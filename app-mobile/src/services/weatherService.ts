@@ -67,7 +67,7 @@ class WeatherService {
           statusText: response.statusText,
           error: errorText,
         }); */
-        throw new Error(`Weather API error: ${response.status} - ${errorText}`);
+        throw new Error(`Weather API error: ${response.status} - ${response.statusText}`);
       }
 
       const data = await response.json();
