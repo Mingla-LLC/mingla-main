@@ -920,20 +920,12 @@ export async function serveCardsFromPipeline(
     const servedIds = served.map((c: any) => c.id);
     const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode, resolvedCats));
 
-    // Record impressions SYNCHRONOUSLY to prevent cross-batch duplicates (CF-002 fix)
-    try {
-      await recordImpressions(supabaseAdmin, userId, servedIds);
-    } catch (e) {
-      // Degraded mode: serve cards even if impressions fail (dedup will be broken)
-      console.error('[card-pool] Serving cards despite impression failure — dedup degraded');
-    }
+    // ORCH-0408 Phase 1: Serve-time impression recording REMOVED.
+    // Cards are no longer marked as "seen" on serve. Dedup is client-side
+    // via removedCards (SwipeableCards.tsx). Interaction counters will be
+    // wired to actual swipe events in Phase 2.
+    // updateServedCounts stays until Phase 2 provides replacement counters.
     updateServedCounts(supabaseAdmin, servedIds).catch(() => {});
-    supabaseAdmin.rpc('increment_user_engagement', {
-      p_user_id: userId,
-      p_field: 'total_cards_seen',
-      p_amount: servedIds.length,
-    }).then(() => {}, () => {});
-    incrementPlaceImpressions(supabaseAdmin, servedIds).catch(() => {});
 
     // hasMore based on UNSEEN count, not raw pool size (RC-003 fix)
     const remainingUnseen = totalUnseenCount - served.length;
@@ -961,21 +953,9 @@ export async function serveCardsFromPipeline(
   const servedIds = served.map((c: any) => c.id);
   const apiCards = served.map(c => poolCardToApiCard(c, lat, lng, options?.travelMode, resolvedCats));
 
-  // Record impressions for pool cards we're serving
+  // ORCH-0408 Phase 1: Serve-time impression recording REMOVED. See Path 1 comment.
   if (servedIds.length > 0) {
-    try {
-      await recordImpressions(supabaseAdmin, userId, servedIds);
-    } catch (e) {
-      // Degraded mode: serve cards even if impressions fail (dedup will be broken)
-      console.error('[card-pool] Serving cards despite impression failure — dedup degraded');
-    }
     updateServedCounts(supabaseAdmin, servedIds).catch(() => {});
-    supabaseAdmin.rpc('increment_user_engagement', {
-      p_user_id: userId,
-      p_field: 'total_cards_seen',
-      p_amount: servedIds.length,
-    }).then(() => {}, () => {});
-    incrementPlaceImpressions(supabaseAdmin, servedIds).catch(() => {});
   }
 
   const remainingUnseen = Math.max(0, totalUnseenCount - served.length);
