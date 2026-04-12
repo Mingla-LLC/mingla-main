@@ -767,7 +767,7 @@ export const RecommendationsProvider: React.FC<
             dateOption: prefetchDateOption,
             timeSlot: prefetchTimeSlot,
             batchSeed: nextSeed,
-            limit: 20,
+            limit: 10000, // Phase 5: match main fetch — return all matching cards
             excludeCardIds,
           }),
           staleTime: 5 * 60 * 1000,

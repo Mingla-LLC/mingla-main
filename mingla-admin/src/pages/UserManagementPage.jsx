@@ -436,7 +436,6 @@ export function UserManagementPage() {
       { table: "saved_card", column: "user_id" },
       { table: "saves", column: "user_id" },
       { table: "board_cards", column: "added_by" },
-      { table: "user_card_impressions", column: "user_id" },
       { table: "user_interactions", column: "user_id" },
       { table: "user_preference_learning", column: "user_id" },
       { table: "calendar_entries", column: "user_id" },

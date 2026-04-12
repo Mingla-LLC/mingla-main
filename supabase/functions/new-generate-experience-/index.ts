@@ -2,7 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchByCategory } from '../_shared/placesCache.ts';
-import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
+import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool } from '../_shared/cardPoolService.ts';
 import { resolveCategories, getExcludedTypesForCategory, getCategoryTypeMap, GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForIntent } from '../_shared/categoryPlaceTypes.ts';
 import { googleLevelToTierSlug, priceLevelToRange } from '../_shared/priceTiers.ts';
 
@@ -282,9 +282,7 @@ serve(async (req) => {
             });
             if (cardId) cardPoolIds.push(cardId);
           }
-          if (userId !== 'anonymous' && cardPoolIds.length > 0) {
-            await recordImpressions(supabaseAdmin, userId, cardPoolIds);
-          }
+          // ORCH-0410: Serve-time impression recording REMOVED. See generate-curated-experiences.
           console.log(`[pool-store] Stored ${cardPoolIds.length} cards in pool`);
         } catch (storeError) {
           console.warn('[pool-store] Error storing cards:', storeError);

@@ -104,13 +104,6 @@ export const savedCardsService = {
       reference_type: "experience",
     });
 
-    // Increment engagement counters (fire-and-forget)
-    Promise.resolve(supabase.rpc('increment_user_engagement', {
-      p_user_id: profileId,
-      p_field: 'total_cards_saved',
-      p_amount: 1,
-    })).catch(() => {});
-
     // Increment place-level saves counter
     const placeId = card.placeId || card.id;
     if (placeId) {

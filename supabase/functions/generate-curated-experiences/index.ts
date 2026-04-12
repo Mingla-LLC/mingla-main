@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { serveCuratedCardsFromPool, recordImpressions } from '../_shared/cardPoolService.ts';
+import { serveCuratedCardsFromPool } from '../_shared/cardPoolService.ts';
 import { SEEDING_CATEGORY_MAP } from '../_shared/seedingCategories.ts';
 import { googleLevelToTierSlug, slugMeetsMinimum } from '../_shared/priceTiers.ts';
 import { timeoutFetch } from '../_shared/timeoutFetch.ts';
@@ -1247,17 +1247,9 @@ serve(async (req) => {
                 console.warn(`[curated-v2] CRIT-001: Deleted ${invalidIds.length} curated cards with missing/partial stops`);
               }
 
-              // Record impressions
-              if (!warmPool && poolUserId !== 'anonymous') {
-                const { data: survivingCards } = await poolAdmin
-                  .from('card_pool')
-                  .select('id')
-                  .in('id', insertedIds);
-                const servedIds = (survivingCards || []).slice(0, limit).map((c: any) => c.id);
-                if (servedIds.length > 0) {
-                  await recordImpressions(poolAdmin, poolUserId, servedIds);
-                }
-              }
+              // ORCH-0410: Serve-time impression recording REMOVED.
+              // Cards are no longer marked as "seen" on fresh generation.
+              // Interaction tracking is now client-side via record_card_interaction RPC (Phase 2-4).
 
               console.log(`[curated-v2] Batch stored ${cardRows.length} cards in pool`);
             }

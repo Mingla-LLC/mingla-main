@@ -364,12 +364,9 @@ serve(async (req: Request) => {
     };
 
     // Pipeline 1: Category cards via discover-cards
-    // ORCH-0404: limit raised from 20 → 200 to match solo (useDeckCards.ts).
-    // The RPC returns top-N by popularity from a wide bounding box. A JS post-filter
-    // inside serveCardsFromPipeline then strips cards beyond the travel time radius.
-    // With limit=20 (overfetch=30), most top cards are far away and get stripped,
-    // leaving only 3-5 cards. With limit=200, ~100-150 nearby cards survive.
-    // The interleave below still caps the stored deck at 20 cards.
+    // Phase 5: limit raised to 10000 (effectively unlimited). Return all matching cards.
+    // The RPC returns cards from the pool; a JS post-filter inside
+    // serveCardsFromPipeline strips cards beyond the travel time radius.
     const categoryPromise: Promise<{ cards: any[]; hasMore: boolean }> = (async () => {
       if (aggregated.categories.length === 0) return { cards: [], hasMore: false };
       try {
@@ -387,7 +384,7 @@ serve(async (req: Request) => {
             dateOption: aggregated.dateOption,
             timeSlots: aggregated.timeSlots,
             batchSeed,
-            limit: 200,
+            limit: 10000, // Phase 5: return all matching cards, no artificial cap
             priceTiers: aggregated.priceTiers,
             excludeCardIds,
           }),

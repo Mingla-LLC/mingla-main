@@ -31,7 +31,6 @@ export const TABLES = [
   "user_interactions",
   "user_sessions",
   "user_activity",
-  "user_card_impressions",
   "user_location_history",
   "user_preference_learning",
   "calendar_entries",
@@ -166,7 +165,7 @@ export const TABLE_CATEGORIES = [
   },
   {
     label: "Experiences & Cards",
-    tables: ["experiences", "card_pool", "place_pool", "user_card_impressions"],
+    tables: ["experiences", "card_pool", "place_pool"],
   },
   {
     label: "Social & Messaging",

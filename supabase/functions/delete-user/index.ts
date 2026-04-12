@@ -281,7 +281,7 @@ serve(async (req) => {
     // ── Step 4: Delete auth user → CASCADE handles ~80 tables ──
     // This immediately invalidates the JWT and cascade-deletes from all
     // tables with FK to auth.users (friends, board_*, notifications, etc.)
-    // user_card_impressions and user_visits use SET NULL (engagement preserved).
+    // user_visits uses SET NULL (engagement preserved).
     // collaboration_sessions.created_by uses SET NULL (sessions survive).
     console.log("[delete-user] Deleting auth user (CASCADE handles ~80 tables)...");
     const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(userId);

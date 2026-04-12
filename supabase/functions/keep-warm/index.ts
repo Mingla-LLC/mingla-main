@@ -10,7 +10,6 @@ const FUNCTIONS_TO_WARM = [
   'generate-curated-experiences',
   'discover-experiences',
   'get-person-hero-cards',
-  'get-personalized-cards',
   'generate-session-deck',
 ];
 

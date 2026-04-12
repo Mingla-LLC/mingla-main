@@ -138,16 +138,6 @@ export class CalendarService {
       isCurated: !!(card as any).stops || (card as any).cardType === 'curated',
     });
 
-    // [TRANSITIONAL] Dead call — user_engagement_stats table doesn't exist on live DB.
-    // Silently fails. Will be removed in Phase 6 cleanup.
-    Promise.resolve().then(() =>
-      supabase.rpc('increment_user_engagement', {
-        p_user_id: userId,
-        p_field: 'total_cards_scheduled',
-        p_amount: 1,
-      })
-    ).catch((err) => console.warn('[calendarService] engagement RPC failed:', err));
-
     const placeId = card.placeId || card.id;
     if (placeId) {
       Promise.resolve().then(() =>

@@ -45,3 +45,4 @@ app-example
 
 .env
 .env.local
+play-service-account.json

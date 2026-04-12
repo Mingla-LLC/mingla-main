@@ -2,7 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchPlaces } from '../_shared/placesCache.ts';
-import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool, recordImpressions } from '../_shared/cardPoolService.ts';
+import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool } from '../_shared/cardPoolService.ts';
 import { resolveCategories } from '../_shared/categoryPlaceTypes.ts';
 import { googleLevelToTierSlug, priceLevelToRange } from '../_shared/priceTiers.ts';
 

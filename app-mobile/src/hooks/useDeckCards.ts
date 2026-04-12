@@ -143,7 +143,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
         {
           ...restParams,
           location: location!,
-          limit: 200,
+          limit: 10000, // Phase 5: return all matching cards, no artificial cap
         },
         // onSinglesReady: deliver partial results to cache immediately.
         // User sees cards in ~1s while curated continues loading. ORCH-0340.

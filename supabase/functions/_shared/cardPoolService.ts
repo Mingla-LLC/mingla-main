@@ -126,29 +126,10 @@ export async function checkPoolMaturity(
   };
 }
 
-// ── Step 1: Get user's preference timestamp ─────────────────────────────────
-
-async function getPreferencesUpdatedAt(
-  supabaseAdmin: SupabaseClient,
-  userId: string
-): Promise<string> {
-  try {
-    const { data } = await supabaseAdmin
-      .from('preferences')
-      .select('updated_at')
-      .eq('profile_id', userId)
-      .maybeSingle();
-    return data?.updated_at || new Date(0).toISOString();
-  } catch {
-    return new Date(0).toISOString();
-  }
-}
-
-// ── Step 2: Query card_pool via SQL function (RC-002 fix) ──────────────────
+// ── Step 1: Query card_pool via SQL function (RC-002 fix) ─────────────────
 
 async function queryPoolCards(
   params: PoolQueryParams,
-  prefUpdatedAt: string
 ): Promise<{ poolCards: any[]; totalUnseenCount: number }> {
   const {
     supabaseAdmin, userId, lat, lng, radiusMeters,
@@ -179,7 +160,6 @@ async function queryPoolCards(
     p_budget_max: budgetMax,
     p_card_type: cardType,
     p_experience_type: experienceType || null,
-    p_pref_updated_at: prefUpdatedAt,
     p_exclude_card_ids: excludeCardIds || [],
     p_price_tiers: params.priceTiers && params.priceTiers.length > 0 ? params.priceTiers : [],
     p_exclude_place_ids: params.excludePlaceIds || [],
@@ -450,29 +430,7 @@ export async function insertCardToPool(
   return cardId;
 }
 
-// ── Step 4: Record impressions ──────────────────────────────────────────────
-
-export async function recordImpressions(
-  supabaseAdmin: SupabaseClient,
-  userId: string,
-  cardPoolIds: string[],
-  batchNumber: number = 0
-): Promise<void> {
-  if (!userId || cardPoolIds.length === 0) return;
-
-  const { error } = await supabaseAdmin.rpc('record_card_impressions', {
-    p_user_id: userId,
-    p_card_pool_ids: cardPoolIds,
-    p_batch_number: batchNumber,
-  });
-
-  if (error) {
-    console.error('[card-pool] CRITICAL: Record impressions failed — cross-page dedup will break:', error.message);
-    throw new Error(`Impression recording failed: ${error.message}`);
-  }
-}
-
-// ── Step 5: Update served counts ────────────────────────────────────────────
+// ── Step 4: Update served counts ────────────────────────────────────────────
 
 async function updateServedCounts(
   supabaseAdmin: SupabaseClient,
@@ -859,12 +817,9 @@ export async function serveCardsFromPipeline(
 
   console.log(`[card-pool] Pipeline start: userId=${userId}, categories=[${resolvedCats}], limit=${limit}, cardType=${cardType}`);
 
-  // ── STEP 1: Get preference timestamp ──────────────────────────────────
-  const prefUpdatedAt = await getPreferencesUpdatedAt(supabaseAdmin, userId);
-
-  // ── STEP 2: Query pool (SQL-level impression exclusion) ──────────────
-  // Over-fetch by 50% to compensate for post-query travel time filter losses.
-  const fetchLimit = Math.ceil(params.limit * 1.5);
+  // ── STEP 1: Query pool ──────────────────────────────────────────────
+  // Phase 5: No overfetch needed — we want all matching cards.
+  const fetchLimit = params.limit;
 
   // ORCH-0404: Compute the effective travel distance and pass it to the RPC
   // so the haversine filter runs in SQL. Formula mirrors estimateTravelMin():
@@ -877,7 +832,7 @@ export async function serveCardsFromPipeline(
   }
 
   const adjustedParams = { ...params, limit: fetchLimit, maxDistanceKm };
-  let { poolCards, totalUnseenCount } = await queryPoolCards(adjustedParams, prefUpdatedAt);
+  let { poolCards, totalUnseenCount } = await queryPoolCards(adjustedParams);
   const totalPoolSize = totalUnseenCount; // backward compat alias
 
   console.log(`[card-pool] Pool query: ${poolCards.length} cards returned, ${totalUnseenCount} total unseen`);
