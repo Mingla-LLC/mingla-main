@@ -28,8 +28,6 @@ export function useAppHandlers(state: any) {
 
   const {
     setCurrentMode,
-    setActiveSessionData,
-    setShowCollabPreferences,
     setPreSelectedFriend,
     setNotifications,
     boardsSessions,
@@ -48,7 +46,6 @@ export function useAppHandlers(state: any) {
     setShowShareModal,
     setShareData,
     setUserPreferences,
-    setCollaborationPreferences,
     setHasCompletedOnboarding,
     setOnboardingData,
     setUserIdentity,
@@ -109,131 +106,6 @@ export function useAppHandlers(state: any) {
         setCurrentMode(mode);
       }
     }
-  };
-
-  const handleCollabPreferencesOpen = (sessionData: any) => {
-    setActiveSessionData(sessionData);
-    setShowCollabPreferences(true);
-  };
-
-  const handleCollabPreferencesSave = async (preferences: any) => {
-    // Get session ID from activeSessionData or currentMode
-    let sessionId: string | null = null;
-
-    if (state.activeSessionData?.id) {
-      sessionId = state.activeSessionData.id;
-    } else if (state.currentMode !== "solo") {
-      // Find session by name
-      const { data: sessions } = await supabase
-        .from("collaboration_sessions")
-        .select("id")
-        .eq("name", state.currentMode)
-        .limit(1);
-
-      if (sessions && sessions.length > 0) {
-        sessionId = sessions[0].id;
-      }
-    }
-
-    // Normalize categories and intents once — shared by both collab and solo save paths
-    const normalizedCats = normalizeCategoryArray(preferences.selectedCategories || []);
-    const normalizedIntents = (preferences.selectedIntents || []).slice(0, 1);
-    const collabTiers: PriceTierSlug[] = preferences.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
-    const collabHighest = PRICE_TIERS.slice().reverse().find(t => collabTiers.includes(t.slug));
-    const collabBudgetMax = collabHighest?.max ?? 150;
-
-    if (sessionId) {
-      // Transform preferences to database format
-      // Separate intents and categories — matches solo preferences table schema.
-      const isGps = preferences.useLocation === "gps" || !preferences.searchLocation;
-      const dbPreferences: any = {
-        categories: normalizedCats,
-        intents: normalizedIntents,
-        price_tiers: collabTiers,
-        budget_min: 0,
-        budget_max: collabBudgetMax,
-        travel_mode: preferences.travelMode || "walking",
-        travel_constraint_type: 'time' as const,
-        travel_constraint_value:
-          typeof preferences.constraintValue === "number"
-            ? preferences.constraintValue
-            : 20,
-        time_of_day: preferences.selectedTimeSlot || null,
-        time_slot: preferences.selectedTimeSlot || null,
-        datetime_pref: preferences.selectedDate || null,
-        date_option: preferences.selectedDateOption
-          ? ({ 'Now': 'now', 'Today': 'today', 'This Weekend': 'this-weekend', 'Pick a Date': 'pick-a-date' }[preferences.selectedDateOption as string] ?? preferences.selectedDateOption)
-          : null,
-        use_gps_location: isGps,
-        custom_location: !isGps && preferences.searchLocation ? preferences.searchLocation : null,
-      };
-
-      // Add location if searchLocation is provided (backward compat for legacy readers)
-      if (preferences.searchLocation) {
-        dbPreferences.location = preferences.searchLocation;
-      }
-
-      // Save to database
-      const { error } = await supabase.from("board_session_preferences").upsert(
-        {
-          session_id: sessionId,
-          user_id: user.id,
-          ...dbPreferences,
-        },
-        {
-          onConflict: "session_id,user_id",
-        }
-      );
-
-      if (error) {
-        console.error("Error saving collaboration preferences:", error);
-      }
-    }
-
-    // Also persist to the solo preferences table so that
-    // useUserPreferences (which drives curated-hook enabled flags) stays
-    // correct even after the TanStack cache staleTime expires.
-    if (user?.id) {
-      const soloDB: any = {
-        mode: preferences.selectedIntents?.length > 0 ? "custom" : "explore",
-        people_count: 1,
-        price_tiers: collabTiers,
-        budget_min: 0,
-        budget_max: collabBudgetMax,
-        categories: normalizedCats,
-        intents: normalizedIntents,
-        travel_mode: preferences.travelMode || "walking",
-        travel_constraint_type: 'time' as const,
-        travel_constraint_value:
-          typeof preferences.constraintValue === "number" ? preferences.constraintValue : 20,
-        datetime_pref: preferences.selectedDate
-          ? new Date(preferences.selectedDate).toISOString()
-          : new Date().toISOString(),
-      };
-      try {
-        await PreferencesService.updateUserPreferences(user.id, soloDB);
-        // Prime the TanStack + offline caches so future refetches return
-        // the correct data instead of stale pre-collab values.
-        queryClient.setQueryData(["userPreferences", user.id], soloDB);
-        await offlineService.cacheUserPreferences({ profile_id: user.id, ...soloDB } as any);
-      } catch (err) {
-        console.error("Error mirroring collab prefs to solo table:", err);
-      }
-    }
-
-    // Also update local state for backward compatibility
-    if (state.activeSessionData) {
-      setCollaborationPreferences((prev: any) => ({
-        ...prev,
-        [state.activeSessionData.id]: preferences,
-      }));
-    }
-
-    // Log in-app notification
-    inAppNotificationService.notifyPreferencesUpdated("collaboration");
-
-    setShowCollabPreferences(false);
-    setActiveSessionData(null);
   };
 
   const handleSendInvite = (sessionId: string, users: any[]) => {
@@ -1155,8 +1027,6 @@ export function useAppHandlers(state: any) {
 
   return {
     handleModeChange,
-    handleCollabPreferencesOpen,
-    handleCollabPreferencesSave,
     handleSendInvite,
     handlePromoteToAdmin,
     handleDemoteFromAdmin,

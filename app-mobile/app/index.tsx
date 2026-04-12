@@ -2497,7 +2497,6 @@ function AppContent() {
                 logger.action('Close collab preferences');
                 setShowCollabPreferences(false);
               }}
-              onSave={handlers.handleCollabPreferencesSave}
               sessionId={currentSessionId}
               sessionName={currentMode ?? "solo"}
               accountPreferences={{
