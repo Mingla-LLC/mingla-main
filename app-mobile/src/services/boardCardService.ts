@@ -124,7 +124,10 @@ export class BoardCardService {
             swiped_at: new Date().toISOString(),
           },
           {
-            onConflict: 'board_user_swipe_states_session_experience_user_unique',
+            // ORCH-0415: onConflict takes comma-separated COLUMN NAMES, not constraint names.
+            // The unique index board_user_swipe_states_session_experience_user_unique
+            // covers these 3 columns.
+            onConflict: 'session_id,experience_id,user_id',
           }
         )
         .select()
