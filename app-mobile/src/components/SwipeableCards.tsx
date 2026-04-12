@@ -1603,6 +1603,13 @@ export default function SwipeableCards({
             onSave={async (card) => {
               try {
                 onCardLike?.(card);
+                mixpanelService.trackCardSaved({
+                  card_id: card.id,
+                  card_title: card.title,
+                  category: card.category,
+                  is_curated: (card as any).cardType === 'curated',
+                  source: 'dismissed_sheet',
+                });
                 handleCloseExpandedModal();
               } catch (error: any) {
                 if (error?.code === "23505") {

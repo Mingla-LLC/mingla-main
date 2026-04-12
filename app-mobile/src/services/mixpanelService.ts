@@ -218,17 +218,13 @@ class MixpanelService {
   // ─── Onboarding helpers ───────────────────────────────────────────
 
   private static readonly STEP_NAMES: Record<number, string> = {
-    0: "Welcome",
-    1: "Account Setup",
-    2: "Intent Selection",
-    3: "Vibe Selection",
-    4: "Location Setup",
-    5: "Travel Mode",
-    6: "Travel Constraint",
-    7: "Budget Range",
-    8: "Date & Time Preferences",
-    9: "Invite Friends",
-    10: "Review & Finish",
+    1: "Account Setup",        // language, welcome, phone, otp, gender, details
+    2: "Intent Selection",     // value_prop, intents
+    3: "Location",             // location
+    4: "Preferences",          // celebration, categories, budget, transport, travel_time
+    5: "Friends & Pairing",    // friends_and_pairing
+    6: "Collaborations",       // collaborations
+    7: "Consent & Finish",     // consent, getting_experiences
   };
 
   /**
@@ -510,6 +506,20 @@ class MixpanelService {
     });
     this.incrementUserProperty("total_scheduled");
     this.checkAndFireMilestone("first_schedule", "First Experience Scheduled", "first_schedule_at");
+  }
+
+  /**
+   * Track when a user reviews a place after visiting.
+   */
+  trackPlaceReviewed(props: {
+    card_id: string;
+    place_name: string;
+    category?: string;
+    rating: number;
+  }): void {
+    this.track("Place Reviewed", props);
+    this.incrementUserProperty("total_reviews");
+    this.checkAndFireMilestone("first_review", "First Place Reviewed", "first_review_at");
   }
 
   /**

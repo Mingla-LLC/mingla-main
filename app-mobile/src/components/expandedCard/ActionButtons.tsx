@@ -637,6 +637,15 @@ export default function ActionButtons({
         console.warn("Failed to add to device calendar:", deviceCalendarError);
       }
 
+      // Track experience scheduled
+      mixpanelService.trackExperienceScheduled({
+        cardId: card.id,
+        cardTitle: card.title,
+        category: card.category,
+        source,
+        scheduledDate: scheduledDateISO,
+      });
+
       // Show success toast + haptic
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       toastManager.success(

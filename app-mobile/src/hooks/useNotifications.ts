@@ -499,6 +499,11 @@ export function useNotifications(
         // Invalidate friends + pairings cache (RPC may reveal hidden pair requests)
         queryClient.invalidateQueries({ queryKey: ['friends'] });
         queryClient.invalidateQueries({ queryKey: ['pairings'] });
+        // Track in Mixpanel
+        mixpanelService.trackFriendRequestAccepted({
+          requestId,
+          senderName: '',
+        });
         // Delete the notification
         await deleteNotification(notificationId);
       } catch (err) {
@@ -559,6 +564,10 @@ export function useNotifications(
         } catch (notifyErr) {
           console.warn('[useNotifications] pair accepted notification setup failed:', notifyErr);
         }
+        // Track in Mixpanel
+        mixpanelService.trackPairRequestAccepted({
+          sender_name: '',
+        });
         await deleteNotification(notificationId);
       } catch (err) {
         console.warn('[useNotifications] acceptPairRequest: entity likely already resolved, clearing notification:', err);

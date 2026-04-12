@@ -15,8 +15,12 @@
 1. `Signup Completed`
 2. `Onboarding Step Completed` WHERE `step_name` = "Account Setup"
 3. `Onboarding Step Completed` WHERE `step_name` = "Intent Selection"
-4. `Onboarding Step Completed` WHERE `step_name` = "Location Setup"
-5. `Onboarding Completed`
+4. `Onboarding Step Completed` WHERE `step_name` = "Location"
+5. `Onboarding Step Completed` WHERE `step_name` = "Preferences"
+6. `Onboarding Step Completed` WHERE `step_name` = "Friends & Pairing"
+7. `Onboarding Step Completed` WHERE `step_name` = "Collaborations"
+8. `Onboarding Step Completed` WHERE `step_name` = "Consent & Finish"
+9. `Onboarding Completed`
 
 **Conversion window**: 1 hour
 **Breakdown by**: `platform`, `login_provider` (in method property)
@@ -30,6 +34,7 @@
 3. `Card Saved`
 4. `Card Expanded`
 5. `Experience Scheduled`
+6. `Place Reviewed`
 
 **Conversion window**: 7 days
 **Breakdown by**: `subscription_tier`, `city`
@@ -40,8 +45,10 @@
 **Steps**:
 1. `Friend Request Sent`
 2. `Friend Request Accepted` (as receiver)
-3. `Collaboration Session Created`
-4. `Board Card Voted`
+3. `Pair Request Sent`
+4. `Pair Request Accepted`
+5. `Collaboration Session Created`
+6. `Board Card Voted`
 
 **Conversion window**: 30 days
 **Breakdown by**: `subscription_tier`, `friends_count`

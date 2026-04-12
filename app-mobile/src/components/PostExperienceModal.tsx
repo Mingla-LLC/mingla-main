@@ -20,6 +20,7 @@ import { toastManager } from "./ui/Toast";
 import { colors } from "../constants/colors";
 import { PendingExperienceReview } from "../hooks/usePostExperienceCheck";
 import { useTranslation } from "react-i18next";
+import { mixpanelService } from "../services/mixpanelService";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -124,6 +125,13 @@ export default function PostExperienceModal({
           .eq("id", resolvedCalendarEntryId)
           .eq("user_id", user.id);
       }
+
+      mixpanelService.trackPlaceReviewed({
+        card_id: review.cardId,
+        place_name: review.placeName,
+        category: review.placeCategory || undefined,
+        rating,
+      });
 
       setStep("thank-you");
     } catch (error) {
