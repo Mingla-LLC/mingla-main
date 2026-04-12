@@ -41,6 +41,7 @@ import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { BoardCardService } from "../services/boardCardService";
 import { notifyMatch } from "../services/boardNotificationService";
 import { inAppNotificationService } from "../services/inAppNotificationService";
+import { recordCardSwipe } from "../services/cardEngagementService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -1180,6 +1181,9 @@ export default function SwipeableCards({
 
     // Track swiped card in session history
     addSwipedCard(card);
+
+    // ORCH-0408 Phase 2: Record swipe to card_pool counters (fire-and-forget)
+    recordCardSwipe(card.id, direction);
 
     // ── Analytics: save or dismiss ──
     const isCurated = (card as any).cardType === 'curated';
