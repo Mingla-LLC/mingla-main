@@ -126,6 +126,8 @@ export function normalizePreferencesForSave(prefs: {
   datetime_pref?: string | null;
   use_gps_location?: boolean;
   custom_location?: string | null;
+  custom_lat?: number | null;
+  custom_lng?: number | null;
 }): typeof prefs {
   const normalized = { ...prefs };
 

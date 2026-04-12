@@ -24,6 +24,7 @@ import { Icon } from './ui/Icon';
 import { PreferencesService } from "../services/preferencesService";
 import { locationService } from "../services/locationService";
 import { offlineService } from "../services/offlineService";
+import { enhancedLocationService } from '../services/enhancedLocationService';
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { usePreferencesData } from "../hooks/usePreferencesData";
@@ -826,6 +827,26 @@ export default function PreferencesSheet({
         if (isCollaborationMode) {
           // PARITY: This is the SOLE preference sheet for both solo and collab modes.
           // CollaborationPreferences.tsx was deleted (ORCH-0316) — this file is the single source of truth.
+
+          // Resolve GPS coordinates for collab persistence (ORCH-0394).
+          // Solo passes location inline in API body (resolved at query time by useUserLocation).
+          // Collab MUST persist coords to DB because the server aggregates multiple participants'
+          // preferences server-side and can't access the device's GPS.
+          let collabLat: number | null = selectedCoords?.lat ?? null;
+          let collabLng: number | null = selectedCoords?.lng ?? null;
+
+          if (useGpsLocation && collabLat == null) {
+            try {
+              const gps = await enhancedLocationService.getCurrentLocation();
+              if (gps) {
+                collabLat = gps.latitude;
+                collabLng = gps.longitude;
+              }
+            } catch {
+              // GPS failed — save without coords. Server fallback chain provides defense-in-depth.
+            }
+          }
+
           const rawDbPrefs: any = {
             categories: finalCategories,
             intents: finalIntents,
@@ -844,8 +865,8 @@ export default function PreferencesSheet({
               : null,
             use_gps_location: useGpsLocation,
             custom_location: customLocationValue,
-            custom_lat: selectedCoords?.lat ?? null,
-            custom_lng: selectedCoords?.lng ?? null,
+            custom_lat: collabLat,
+            custom_lng: collabLng,
           };
 
           const dbPrefs = normalizePreferencesForSave(rawDbPrefs);
