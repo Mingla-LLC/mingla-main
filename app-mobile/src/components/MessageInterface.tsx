@@ -58,6 +58,7 @@ interface Message {
   unread?: boolean;
   failed?: boolean;
   isRead?: boolean;
+  replyToId?: string;
 }
 
 interface Friend {
@@ -79,7 +80,8 @@ interface MessageInterfaceProps {
   onSendMessage: (
     content: string,
     type: "text" | "image" | "video" | "file",
-    file?: File
+    file?: File,
+    replyToId?: string
   ) => void;
   messages: Message[];
   onSendCollabInvite?: (friend: Friend) => void;
@@ -288,6 +290,15 @@ export default function MessageInterface({
     return other ? other[1] : null;
   }, [presenceParticipants, currentUserId]);
 
+  // ���─ Message lookup map for reply-to resolution ────────────
+  const messageMap = useMemo(() => {
+    const map = new Map<string, Message>();
+    for (const msg of messages) {
+      map.set(msg.id, msg);
+    }
+    return map;
+  }, [messages]);
+
   const isOtherOnline = otherPresence?.isOnline ?? friend.isOnline;
   const otherLastSeen = otherPresence?.lastSeenAt ?? null;
   const isOtherTyping = currentUserId
@@ -309,12 +320,13 @@ export default function MessageInterface({
         onSendMessage(
           newMessage.trim() || selectedFile.name || "Media",
           fileType,
-          selectedFile
+          selectedFile,
+          replyToId
         );
         setSelectedFile(null);
         setPreviewUrl("");
       } else {
-        onSendMessage(newMessage.trim(), "text");
+        onSendMessage(newMessage.trim(), "text", undefined, replyToId);
       }
       setNewMessage("");
       stopTyping();
@@ -758,6 +770,16 @@ export default function MessageInterface({
                   groupPosition={item.groupPosition}
                   showTimestamp={item.showTimestamp}
                   isRead={item.message.isMe && !item.message.id.startsWith("temp-") && (item.message.isRead === true)}
+                  replyTo={item.message.replyToId ? (() => {
+                    const ref = messageMap.get(item.message.replyToId!);
+                    if (!ref) return { senderName: '', content: '', isDeleted: true, messageId: item.message.replyToId };
+                    return {
+                      senderName: ref.isMe ? (currentUserName || 'You') : cleanName(friend.name),
+                      content: ref.content,
+                      imageUrl: ref.type === 'image' ? ref.fileUrl : undefined,
+                      messageId: ref.id,
+                    };
+                  })() : undefined}
                 />
               </TouchableOpacity>
               </DoubleTapHeart>

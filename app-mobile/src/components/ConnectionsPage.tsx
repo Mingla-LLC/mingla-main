@@ -83,6 +83,9 @@ interface ConnectionsPageProps {
   /** When set (e.g. Discover map "Message"), open DM with this user; clear via onOpenDirectMessageHandled */
   openDirectMessageWithUserId?: string | null;
   onOpenDirectMessageHandled?: () => void;
+  /** When set (e.g. Profile "Friends" stat), auto-open this panel on mount; cleared via onInitialPanelHandled */
+  initialPanel?: "friends" | "add" | "blocked" | null;
+  onInitialPanelHandled?: () => void;
 }
 
 const CONNECTIONS_CACHE_VERSION = "v1";
@@ -118,6 +121,8 @@ export default function ConnectionsPageRefactored({
   onFriendAccepted,
   openDirectMessageWithUserId,
   onOpenDirectMessageHandled,
+  initialPanel,
+  onInitialPanelHandled,
 }: ConnectionsPageProps) {
   useScreenLogger('connections');
   const { t } = useTranslation(['connections', 'common']);
@@ -459,6 +464,17 @@ export default function ConnectionsPageRefactored({
     setActivePanel((prev) => (prev === id ? null : id));
   };
 
+  // ── Auto-open panel from external navigation (e.g. Profile "Friends" stat) ──
+  useEffect(() => {
+    if (initialPanel) {
+      if (initialPanel === "friends") {
+        setFriendsModalTab("friends");
+      }
+      setActivePanel(initialPanel);
+      onInitialPanelHandled?.();
+    }
+  }, [initialPanel, onInitialPanelHandled]);
+
   // ── Friend request actions ───────────────────────────────
   const handleAcceptRequest = (requestId: string) => {
     HapticFeedback.medium();
@@ -583,6 +599,7 @@ export default function ConnectionsPageRefactored({
       isMe: msg.sender_id === userId,
       unread: !msg.is_read && msg.sender_id !== userId,
       isRead: msg.is_read ?? false,
+      replyToId: msg.reply_to_id ?? undefined,
     }),
     []
   );
@@ -1236,7 +1253,8 @@ export default function ConnectionsPageRefactored({
   const handleSendMessage = async (
     content: string,
     type: "text" | "image" | "video" | "file",
-    file?: any
+    file?: any,
+    replyToId?: string
   ) => {
     if (!activeChat || !user?.id || !currentConversationId) return;
 
@@ -1316,6 +1334,7 @@ export default function ConnectionsPageRefactored({
       fileSize: fileSize?.toString(),
       isMe: true,
       unread: false,
+      replyToId,
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
@@ -1358,7 +1377,8 @@ export default function ConnectionsPageRefactored({
           type,
           fileUrl,
           fileName,
-          fileSize
+          fileSize,
+          replyToId
         );
 
       if (sendError || !sentMessage) {

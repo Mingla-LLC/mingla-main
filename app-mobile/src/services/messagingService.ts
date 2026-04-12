@@ -12,6 +12,7 @@ export interface DirectMessage {
   file_url?: string;
   file_name?: string;
   file_size?: number;
+  reply_to_id?: string | null;
   created_at: string;
   updated_at?: string;
   deleted_at?: string | null;
@@ -339,7 +340,8 @@ export class MessagingService {
     messageType: 'text' | 'image' | 'video' | 'file' = 'text',
     fileUrl?: string,
     fileName?: string,
-    fileSize?: number
+    fileSize?: number,
+    replyToId?: string
   ): Promise<{ message: DirectMessage | null; error: string | null }> {
     try {
       // Note: Server-side RLS will also enforce block check, but this provides faster feedback
@@ -353,6 +355,7 @@ export class MessagingService {
           file_url: fileUrl,
           file_name: fileName,
           file_size: fileSize,
+          ...(replyToId ? { reply_to_id: replyToId } : {}),
         })
         .select()
         .single();

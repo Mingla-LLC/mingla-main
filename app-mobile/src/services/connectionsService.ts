@@ -28,6 +28,7 @@ export interface Message {
   unread?: boolean;
   failed?: boolean;
   isRead?: boolean;
+  replyToId?: string;
 }
 
 export interface Conversation {

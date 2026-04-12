@@ -231,6 +231,7 @@ function AppContent() {
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
   const [pendingSessionOpen, setPendingSessionOpen] = useState<string | null>(null);
   const [pendingOpenDmUserId, setPendingOpenDmUserId] = useState<string | null>(null);
+  const [pendingConnectionsPanel, setPendingConnectionsPanel] = useState<"friends" | "add" | "blocked" | null>(null);
   const [likesNavData, setLikesNavData] = useState<{ activeTab?: 'saved' | 'calendar' } | null>(null);
   // Pending experience reviews — shows review modal after scheduled experiences
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
@@ -998,6 +999,13 @@ function AppContent() {
     if (notification.type === 'paired_user_saved_card' && notification.related_id) {
       setDeepLinkParams({ paired: 'true', cardId: notification.related_id });
       setCurrentPage('discover');
+      return;
+    }
+
+    // DM notifications → open the conversation directly via existing openDirectMessageWithUserId pattern
+    if (notification.type.startsWith('direct_message_') && notification.actor_id) {
+      setPendingOpenDmUserId(notification.actor_id);
+      setCurrentPage('connections');
       return;
     }
 
@@ -1928,6 +1936,8 @@ function AppContent() {
             onFriendAccepted={() => refreshAllSessions({ showLoading: false })}
             openDirectMessageWithUserId={pendingOpenDmUserId}
             onOpenDirectMessageHandled={() => setPendingOpenDmUserId(null)}
+            initialPanel={pendingConnectionsPanel}
+            onInitialPanelHandled={() => setPendingConnectionsPanel(null)}
           />
         );
       case "likes":
@@ -1974,6 +1984,7 @@ function AppContent() {
             onNavigateToActivity={handlers.handleNavigateToActivity}
             onNavigateToConnections={() => {
               logger.action('Navigate to connections from profile');
+              setPendingConnectionsPanel("friends");
               setCurrentPage("connections");
             }}
             savedExperiences={savedCards?.length || 0}
@@ -2198,6 +2209,8 @@ function AppContent() {
                                 onFriendAccepted={() => refreshAllSessions({ showLoading: false })}
                                 openDirectMessageWithUserId={pendingOpenDmUserId}
                                 onOpenDirectMessageHandled={() => setPendingOpenDmUserId(null)}
+                                initialPanel={pendingConnectionsPanel}
+                                onInitialPanelHandled={() => setPendingConnectionsPanel(null)}
                               />
                             </View>
                             <View style={currentPage === 'saved' ? styles.tabVisible : styles.tabHidden}>

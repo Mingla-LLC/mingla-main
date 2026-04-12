@@ -377,15 +377,13 @@ export default function NotificationsModal({
 
   const handleCardPress = useCallback(
     (notification: ServerNotification) => {
-      // Mark as read optimistically
-      if (!notification.is_read) {
-        onMarkAsRead(notification.id);
-      }
+      // Remove notification from list (user acknowledged it by tapping)
+      onDeleteNotification(notification.id);
       // Close modal + navigate
       onClose();
       onNotificationTap(notification);
     },
-    [onMarkAsRead, onClose, onNotificationTap]
+    [onDeleteNotification, onClose, onNotificationTap]
   );
 
   // ── Render notification card ──
