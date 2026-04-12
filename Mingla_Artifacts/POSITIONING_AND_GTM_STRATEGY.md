@@ -157,7 +157,7 @@ That last line — **"how did you find this place?"** — is the moment you're e
 
 **Two tiers. Pairing is free. Upgrade is expansion, not restoration.**
 
-| | Free | Mingla+ ($4.99/mo or $49.99/yr) |
+| | Free | Mingla+ |
 |---|---|---|
 | Swipes | **Unlimited** | Unlimited |
 | Pairing | **Yes (up to 2 pairings)** | Unlimited pairings |
@@ -173,17 +173,55 @@ That last line — **"how did you find this place?"** — is the moment you're e
 - **No bait-and-switch.** Free stays good forever. Paid adds *more*, doesn't restore what was taken.
 - **One decision.** Free or Mingla+. That's it.
 
-### Price Justification
+### Pricing Tiers
 
-| Price point | Signal | Verdict |
-|---|---|---|
-| $2.99/mo | "Impulse buy" — high conversion, signals low value | Too cheap |
-| **$4.99/mo** | **Sweet spot for lifestyle utility apps** | **Recommended** |
-| $6.99/mo | Works if brand equity is strong | Too risky for launch |
-| $9.99/mo | Dating app territory (Hinge, Bumble) | You're not dating — don't price like it |
-| **$49.99/yr** | **Annual commitment, "save 17%" psychology** | **Offer alongside monthly** |
+| Period | Price | Effective Monthly | Role |
+|--------|-------|-------------------|------|
+| **Weekly** | **$1.99/week** | ~$8.57/mo | The "try it this weekend" impulse buy |
+| **Monthly** | **$4.99/month** | $4.99/mo | The anchor — what most users land on |
+| **Yearly** | **$39.99/year** | $3.33/mo | The lock-in — "Save 33%" |
 
-**Anchoring strategy:** A couple spending $150 on dinner is paying $4.99 for the curation that *found* that dinner. Frame it as: "Less than a coffee. Better than an hour of Googling."
+**Why each period exists:**
+
+**Weekly ($1.99) — The Gateway.** NOT the money-maker — it's a conversion tool. Someone planning a date *this Friday* doesn't want to commit to a month. $1.99 for one weekend is an impulse buy. After 2–3 weeks of paying $1.99, they realize they're overpaying vs monthly — and upgrade. The weekly **trains them to value the product** and makes monthly feel like a deal. If priced too low ($0.99), no incentive to upgrade. If too high ($3.99+), nobody tries it.
+
+**Monthly ($4.99) — The Anchor.** Where most subscribers sit. Below dating app territory ($9.99 Hinge, $17.99 Bumble). Above throwaway territory ($0.99–$2.99). The mental math: the date costs $150, the app costs $5.
+
+**Yearly ($39.99) — The Lock-In.** 33% savings vs monthly ($3.33/mo vs $4.99/mo). Smooths seasonal revenue. Annual subscribers retain 2–3x better than monthly (psychological commitment + forgetting to cancel). $39.99 not $49.99 — at launch, priority is building a loyal base, not maximizing per-user revenue.
+
+### Paywall Anchoring Strategy (Decoy Pricing)
+
+On the paywall screen, show all three with the weekly effective monthly rate visible:
+
+```
+┌──────────────────────────────────────┐
+│                                      │
+│  YEARLY          $39.99/yr    ← BEST │
+│  $3.33/mo — Save 33%          VALUE  │
+│                                      │
+│  MONTHLY         $4.99/mo           │
+│  Most popular                        │
+│                                      │
+│  WEEKLY          $1.99/wk           │
+│  $8.57/mo effective                  │
+│                                      │
+└──────────────────────────────────────┘
+```
+
+The weekly option's *real job* is to make the other two look good. Showing $8.57/mo effective makes monthly look like a bargain. Showing "Save 33%" makes yearly feel smart. Classic decoy pricing — the weekly isn't there to be chosen, it's there to anchor.
+
+### Price Signals to Watch Post-Launch
+
+| Signal | What it means | Action |
+|--------|--------------|--------|
+| >50% choose weekly | Weekly too close to monthly value | Raise to $2.49 or add monthly-exclusive perks |
+| <5% choose yearly | Discount not compelling enough | Drop to $34.99/yr (42% savings) or add yearly-only perk |
+| Trial→paid <3% | Value prop problem, not price | Fix onboarding before touching price |
+| Churn spikes at month 2 | Not enough new value after initial discovery | Pool freshness issue, not pricing |
+
+**Never offer a "lifetime" option.** It caps value of best users forever, attracts deal-seekers not engaged users, and kills recurring revenue story for fundraising. If ever used, it's a limited promo ("first 100 users"), never a permanent tier.
+
+**Anchoring copy:** A couple spending $150 on dinner is paying $4.99 for the curation that *found* that dinner. Frame it as: "Less than a coffee. Better than an hour of Googling."
 
 ### Trial Strategy
 

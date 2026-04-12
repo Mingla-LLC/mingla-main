@@ -44,21 +44,20 @@ interface CustomPaywallScreenProps {
 // Feature checklists
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface ChecklistItem {
+interface ComparisonRow {
   labelKey: string;
-  free: boolean;
-  minglaPlus: boolean;
+  /** Display value for the Free column: true = ✓, false = ✗, string = custom label */
+  free: boolean | string;
+  /** Display value for the Mingla+ column: true = ✓, false = ✗, string = custom label */
+  plus: boolean | string;
 }
 
-const FEATURE_CHECKLIST: ChecklistItem[] = [
-  { labelKey: 'billing:paywall.checklist_unlimited_swipes', free: true, minglaPlus: true },
-  { labelKey: 'billing:paywall.checklist_1_pairing', free: true, minglaPlus: false },
-  { labelKey: 'billing:paywall.checklist_unlimited_pairings', free: false, minglaPlus: true },
-  { labelKey: 'billing:paywall.checklist_1_session', free: true, minglaPlus: false },
-  { labelKey: 'billing:paywall.checklist_unlimited_sessions', free: false, minglaPlus: true },
-  { labelKey: 'billing:paywall.checklist_view_curated', free: true, minglaPlus: true },
-  { labelKey: 'billing:paywall.checklist_save_curated', free: false, minglaPlus: true },
-  { labelKey: 'billing:paywall.checklist_custom_starting_point', free: false, minglaPlus: true },
+const COMPARISON_ROWS: ComparisonRow[] = [
+  { labelKey: 'billing:paywall.compare_swipes', free: true, plus: true },
+  { labelKey: 'billing:paywall.compare_pairings', free: '1', plus: '∞' },
+  { labelKey: 'billing:paywall.compare_sessions', free: '1', plus: '∞' },
+  { labelKey: 'billing:paywall.compare_curated', free: 'billing:paywall.compare_view', plus: 'billing:paywall.compare_save' },
+  { labelKey: 'billing:paywall.compare_starting_point', free: false, plus: true },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,6 +190,26 @@ export function CustomPaywallScreen({
 
   const isBusy = isPurchasing || isRestoring;
 
+  // ── Cell renderer for comparison table ─────────────────────────────────
+  const renderCellValue = (value: boolean | string, isPlus: boolean): React.ReactNode => {
+    if (typeof value === 'boolean') {
+      return (
+        <Icon
+          name={value ? 'checkmark-circle' : 'close-circle'}
+          size={18}
+          color={value ? (isPlus ? '#22C55E' : '#9CA3AF') : '#4B5563'}
+        />
+      );
+    }
+    // String value — could be a plain label ('1', '∞') or an i18n key
+    const displayText = value.includes(':') ? t(value) : value;
+    return (
+      <Text style={[styles.compareCellText, isPlus && styles.compareCellTextPlus]}>
+        {displayText}
+      </Text>
+    );
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <>
@@ -221,23 +240,35 @@ export function CustomPaywallScreen({
             {t('billing:paywall.subheader')}
           </Text>
 
-          {/* Feature checklist */}
-          <View style={styles.checklist}>
-            {FEATURE_CHECKLIST.map((item) => {
-              const included = item.minglaPlus;
-              return (
-                <View key={item.labelKey} style={styles.checklistRow}>
-                  <Icon
-                    name={included ? 'checkmark-circle' : 'close-circle'}
-                    size={20}
-                    color={included ? '#22C55E' : '#6B7280'}
-                  />
-                  <Text style={[styles.checklistLabel, !included && styles.checklistLabelDimmed]}>
-                    {t(item.labelKey)}
-                  </Text>
+          {/* Feature comparison table */}
+          <View style={styles.compareTable}>
+            {/* Column headers */}
+            <View style={styles.compareHeaderRow}>
+              <View style={styles.compareLabelCol} />
+              <View style={styles.compareValueCol}>
+                <Text style={styles.compareHeaderText}>{t('billing:paywall.compare_col_free')}</Text>
+              </View>
+              <View style={styles.compareValueCol}>
+                <Text style={[styles.compareHeaderText, styles.compareHeaderPlus]}>
+                  {t('billing:paywall.compare_col_plus')}
+                </Text>
+              </View>
+            </View>
+
+            {/* Data rows */}
+            {COMPARISON_ROWS.map((row) => (
+              <View key={row.labelKey} style={styles.compareRow}>
+                <View style={styles.compareLabelCol}>
+                  <Text style={styles.compareLabel}>{t(row.labelKey)}</Text>
                 </View>
-              );
-            })}
+                <View style={styles.compareValueCol}>
+                  {renderCellValue(row.free, false)}
+                </View>
+                <View style={styles.compareValueCol}>
+                  {renderCellValue(row.plus, true)}
+                </View>
+              </View>
+            ))}
           </View>
 
           {/* Package pills */}
@@ -376,23 +407,53 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
 
-  // Checklist
-  checklist: {
-    gap: spacing.sm,
+  // Comparison table
+  compareTable: {
     marginBottom: spacing.lg,
   },
-  checklistRow: {
+  compareHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    paddingBottom: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
   },
-  checklistLabel: {
+  compareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xs + 2,
+  },
+  compareLabelCol: {
+    flex: 1,
+  },
+  compareValueCol: {
+    width: 64,
+    alignItems: 'center',
+  },
+  compareHeaderText: {
+    color: '#9CA3AF',
+    fontSize: typography.xs.fontSize,
+    fontWeight: fontWeights.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  compareHeaderPlus: {
+    color: '#22C55E',
+  },
+  compareLabel: {
     color: '#fff',
     fontSize: typography.sm.fontSize,
     fontWeight: fontWeights.regular,
   },
-  checklistLabelDimmed: {
-    color: '#6B7280',
+  compareCellText: {
+    color: '#9CA3AF',
+    fontSize: typography.sm.fontSize,
+    fontWeight: fontWeights.medium,
+  },
+  compareCellTextPlus: {
+    color: '#22C55E',
+    fontWeight: fontWeights.bold,
   },
 
   // Packages
