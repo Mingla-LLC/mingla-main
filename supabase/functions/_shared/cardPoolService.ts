@@ -275,6 +275,7 @@ export async function upsertPlaceToPool(
     is_active: true,
     city: extractLocality(place) || null,
     country: extractCountry(place) || null,
+    utc_offset_minutes: place.utcOffsetMinutes ?? null,
   };
 
   const { data, error } = await supabaseAdmin
@@ -692,7 +693,7 @@ function poolCardToApiCard(
       tip: card.tip || null,
       scoringFactors: card.scoring_factors || null,
       teaserText: card.teaser_text || null,
-      utcOffsetMinutes: card.utc_offset_minutes ?? 0,
+      utcOffsetMinutes: card.utc_offset_minutes ?? null,
       _poolCardId: card.id,
     };
   }
@@ -750,7 +751,7 @@ function poolCardToApiCard(
     tip: card.tip || null,
     scoringFactors: card.scoring_factors || null,
     matchFactors: {},
-    utcOffsetMinutes: card.utc_offset_minutes ?? 0,
+    utcOffsetMinutes: card.utc_offset_minutes ?? null,
     _poolCardId: card.id,
   };
 }
