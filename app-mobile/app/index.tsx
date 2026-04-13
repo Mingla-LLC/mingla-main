@@ -549,8 +549,7 @@ function AppContent() {
     }
 
     // Navigation targets per notification type (fallback when deepLink is absent).
-    // Every type allowed through the foreground handler (MESSAGE_TYPES below)
-    // MUST have an entry here so tapping the push always lands somewhere.
+    // Every notification type MUST have an entry here so tapping the push always lands somewhere.
     // Fallback navigation map — used when a push notification's deepLink is
     // absent. Every notification type that could arrive as a push MUST have
     // an entry here so tapping it always lands somewhere meaningful.
@@ -604,17 +603,13 @@ function AppContent() {
     // sees it even if they're on a different tab. The notification center
     // also receives an in-app entry via Realtime (notifications table INSERT).
     // For non-DM notifications: suppress system tray — Realtime delivers in-app.
-    const MESSAGE_TYPES = new Set(['direct_message_received', 'message', 'board_message_received', 'board_message_mention', 'board_card_message']);
-    const removeForeground = onForegroundNotification((data, prevent) => {
-      if (!userIdRef.current) return;
-
-      const notifType = data.type as string | undefined;
-      if (notifType && MESSAGE_TYPES.has(notifType)) {
-        // Let message pushes show in system tray — user wants to see them
-        return;
-      }
-      // Suppress non-message pushes — Realtime delivers in-app notification
-      prevent();
+    // ORCH-0407: Let ALL push notifications show in system tray, even when
+    // app is foregrounded. Previously non-message types were suppressed via
+    // prevent() — this made the app feel dead. Now every push shows as a
+    // system banner so the app feels alive with activity.
+    // Revert: re-add MESSAGE_TYPES filter + prevent() call if too noisy.
+    const removeForeground = onForegroundNotification((_data, _prevent) => {
+      // No-op: all pushes pass through to system tray
     });
 
     // Background: user taps a push notification

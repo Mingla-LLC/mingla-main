@@ -239,19 +239,16 @@ serve(async (req) => {
     const userTimezone = userProfile?.timezone || null;
 
     if (isQuietHours(userTimezone)) {
-      // Exception: DMs can bypass quiet hours if user opted in
-      const bypassAllowed =
-        type === "direct_message_received" &&
-        prefs?.dm_bypass_quiet_hours === true;
-
-      if (!bypassAllowed) {
-        return jsonResponse({
-          success: true,
-          notificationId,
-          pushSent: false,
-          reason: "quiet_hours",
-        });
-      }
+      // ORCH-0407: Removed dead dm_bypass_quiet_hours check — column never existed
+      // in notification_preferences. Was always false. If this feature is wanted,
+      // add the column first, then re-add the bypass logic.
+      // Revert: re-add `prefs?.dm_bypass_quiet_hours === true` check for DMs.
+      return jsonResponse({
+        success: true,
+        notificationId,
+        pushSent: false,
+        reason: "quiet_hours",
+      });
     }
 
     // ── Send push ───────────────────────────────────────────────────────────

@@ -39,6 +39,9 @@ export function usePairingPills(userId: string | undefined) {
     queryFn: () => fetchPairingPills(userId!),
     enabled: !!userId,
     staleTime: 2 * 60 * 1000, // 2 minutes
+    refetchInterval: 5 * 60 * 1000, // ORCH-0404: Polling fallback matching friends pattern.
+    // Primary freshness via Realtime (useSocialRealtime). This is the safety net
+    // for when Realtime handlers die after WebSocket reconnect (ORCH-0337).
   });
 }
 
@@ -48,6 +51,7 @@ export function useIncomingPairRequests(userId: string | undefined) {
     queryFn: () => fetchIncomingPairRequests(userId!),
     enabled: !!userId,
     staleTime: 60 * 1000, // 1 minute
+    refetchInterval: 5 * 60 * 1000, // ORCH-0404: Polling fallback — same safety net as pills.
   });
 }
 
