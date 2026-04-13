@@ -60,7 +60,7 @@ export default function CardInfoSection({
   const currencySymbol = getCurrencySymbol(currency || 'USD');
   const currencyRate = getCurrencyRate(currency || 'USD');
   const tierDisplayText = `${tierLabel(resolvedTier)} · ${tierRangeLabel(resolvedTier, currencySymbol, currencyRate)}`;
-  const tierColor = tierData?.color ?? '#d97706';
+  const tierIcon = tierData?.icon ?? 'cash-outline';
   // Get category icon component
   const getCategoryIcon = () => {
     if (categoryIcon) {
@@ -127,39 +127,31 @@ export default function CardInfoSection({
         )}
       </View>
 
-      {/* Metrics Row */}
+      {/* Metrics Row — compact pill chips */}
       <View style={styles.metricsRow}>
         {rating !== undefined && (
-          <View style={styles.metricItem}>
-            <Icon name="star" size={14} color="#fbbf24" />
-            <Text style={styles.metricText}>{rating.toFixed(1)}</Text>
+          <View style={styles.metricPill}>
+            <Icon name="star" size={12} color="#fbbf24" />
+            <Text style={styles.metricPillText}>{rating.toFixed(1)}</Text>
           </View>
         )}
         {distance && (
-          <>
-            {rating !== undefined && <View style={styles.metricDivider} />}
-            <View style={styles.metricItem}>
-              <Icon name="location" size={14} color="#d97706" />
-              <Text style={styles.metricText}>{parseAndFormatDistance(distance, measurementSystem) || t('expanded_details:card_info.nearby')}</Text>
-            </View>
-          </>
+          <View style={styles.metricPill}>
+            <Icon name="location-outline" size={12} color="#eb7825" />
+            <Text style={styles.metricPillText}>{parseAndFormatDistance(distance, measurementSystem) || t('expanded_details:card_info.nearby')}</Text>
+          </View>
         )}
         {travelTime && travelTime !== '0 min' && (
-          <>
-            {(rating !== undefined || distance) && <View style={styles.metricDivider} />}
-            <View style={styles.metricItem}>
-              <Icon name={getTravelModeIcon(travelMode)} size={14} color="#d97706" />
-              <Text style={styles.metricText}>{travelTime}</Text>
-            </View>
-          </>
+          <View style={styles.metricPill}>
+            <Icon name={getTravelModeIcon(travelMode)} size={12} color="#eb7825" />
+            <Text style={styles.metricPillText}>{travelTime}</Text>
+          </View>
         )}
         {resolvedTier && (
-          <>
-            {(rating !== undefined || distance || (travelTime && travelTime !== '0 min')) && (
-              <View style={styles.metricDivider} />
-            )}
-            <Text style={[styles.priceText, { color: tierColor }]}>{tierDisplayText}</Text>
-          </>
+          <View style={styles.metricPill}>
+            <Icon name={tierIcon} size={12} color="#eb7825" />
+            <Text style={styles.metricPillText}>{tierDisplayText}</Text>
+          </View>
         )}
       </View>
 
@@ -214,27 +206,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
     flexWrap: "wrap",
+    gap: 8,
   },
-  metricItem: {
+  metricPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    backgroundColor: "#fff7ed",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#fed7aa",
   },
-  metricText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#d97706",
-  },
-  metricDivider: {
-    width: 1,
-    height: 16,
-    backgroundColor: "#e5e7eb",
-    marginHorizontal: 12,
-  },
-  priceText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#d97706",
+  metricPillText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#92400e",
   },
   description: {
     fontSize: 15,
