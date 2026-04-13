@@ -23,7 +23,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       "@react-native-google-signin/google-signin",
       {
-        iosUrlScheme: `com.googleusercontent.apps.${process.env.GOOGLE_IOS_CLIENT_ID ?? "618060733220-t2vsovng5evma3vfkl0fd0f0pa28lnlc"}`,
+        iosUrlScheme: `com.googleusercontent.apps.${process.env.GOOGLE_IOS_CLIENT_ID ?? "169132274606-k622epnsdbthemkatrctjpadcke6un46"}`,
       },
     ],
     "expo-localization",
@@ -46,7 +46,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       "169132274606-ibip7eu1oq892ilolnfjarqefn1d65as.apps.googleusercontent.com",
     IOS_CLIENT_ID:
       process.env.GOOGLE_IOS_CLIENT_ID ??
-      "618060733220-t2vsovng5evma3vfkl0fd0f0pa28lnlc.apps.googleusercontent.com",
+      "169132274606-k622epnsdbthemkatrctjpadcke6un46.apps.googleusercontent.com",
     GOOGLE_ANDROID_CLIENT_ID:
       process.env.GOOGLE_ANDROID_CLIENT_ID ??
       "169132274606-ibip7eu1oq892ilolnfjarqefn1d65as.apps.googleusercontent.com",

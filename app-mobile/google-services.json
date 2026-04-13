@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "169132274606-ibip7eu1oq892ilolnfjarqefn1d65as.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mingla.app.v2",
+            "certificate_hash": "d01942e6250fd130d767e3cc6a4d3b9e7273431f"
+          }
+        },
+        {
           "client_id": "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",
           "client_type": 3
         }
