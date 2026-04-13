@@ -11,7 +11,20 @@
 -- was manually dropped from live; 2 mobile call sites being removed in code).
 
 -- ═══════════════════════════════════════════════════════════════════
--- 1. Rewrite query_pool_cards WITHOUT user_card_impressions references
+-- 0. Drop old overloads of query_pool_cards
+-- ═══════════════════════════════════════════════════════════════════
+-- PostgreSQL treats functions with different parameter lists as separate
+-- overloads. CREATE OR REPLACE only replaces exact-signature matches.
+-- We must explicitly drop the old signatures before creating the new one.
+
+-- Overload 1: original version (no haversine params, has p_pref_updated_at)
+DROP FUNCTION IF EXISTS public.query_pool_cards(UUID, TEXT[], DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, INTEGER, TEXT, TEXT, TIMESTAMPTZ, UUID[], INTEGER, TEXT[], TEXT[]);
+
+-- Overload 2: haversine version (has p_pref_updated_at + haversine params)
+DROP FUNCTION IF EXISTS public.query_pool_cards(UUID, TEXT[], DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, INTEGER, TEXT, TEXT, TIMESTAMPTZ, UUID[], INTEGER, TEXT[], TEXT[], DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION);
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 1. Create query_pool_cards WITHOUT user_card_impressions references
 -- ═══════════════════════════════════════════════════════════════════
 -- Changes from previous version (20260412100001):
 --   - Removed p_pref_updated_at parameter (only used for impression filter)
