@@ -55,6 +55,20 @@ export function ReactNativeMapsProvider({
     return () => clearTimeout(timer);
   }, [peopleFingerprint]);
 
+  // ORCH-0409: Periodic heartbeat — briefly re-enable tracksViewChanges every 45s
+  // to recover from native bitmap cache invalidation that causes markers to vanish.
+  // Cost: 3s of active rendering out of every 45s = ~7% overhead. Acceptable for <50 markers.
+  // History: tracksViewChanges=false optimization added in ORCH-0361. Heartbeat preserves
+  // that optimization while preventing silent marker disappearance.
+  // Revert: remove this useEffect if markers never disappear without it.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPeopleTrackChanges(true);
+      setTimeout(() => setPeopleTrackChanges(false), 3000);
+    }, 45_000);
+    return () => clearInterval(interval);
+  }, []);
+
   const visiblePlaceCards = useMemo(() => {
     const cardMap = new Map(filteredCards.map((card) => [card.id, card]));
     for (const pairedSavedCard of pairedSavedCards) {

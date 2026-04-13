@@ -1508,6 +1508,7 @@ const SavedTab = ({
         saves: card.socialStats?.saves || 0,
         shares: (card.socialStats as any)?.shares || 0,
       },
+      priceTier: card.priceTier as ExpandedCardData['priceTier'],
       location:
         (card as any).location ||
         ((card as any).lat && (card as any).lng

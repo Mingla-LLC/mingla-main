@@ -2396,6 +2396,7 @@ export default function DiscoverScreen({
       selectedDateTime: new Date(),
       website: card.website || undefined,
       phone: card.phone || undefined,
+      priceTier: (card as any).priceTier as ExpandedCardData['priceTier'],
     };
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);
@@ -2445,6 +2446,7 @@ export default function DiscoverScreen({
       selectedDateTime: new Date(),
       website: card.website || undefined,
       phone: card.phone || undefined,
+      priceTier: (card as any).priceTier as ExpandedCardData['priceTier'],
     };
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);
@@ -2949,6 +2951,7 @@ export default function DiscoverScreen({
         matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
         socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
         selectedDateTime: new Date(),
+        priceTier: card.priceTier as ExpandedCardData["priceTier"],
         // Curated card fields
         ...(card.cardType === "curated"
           ? {
@@ -2959,7 +2962,6 @@ export default function DiscoverScreen({
               totalPriceMax: card.totalPriceMax ?? undefined,
               estimatedDurationMinutes: card.estimatedDurationMinutes ?? undefined,
               experienceType: card.experienceType || undefined,
-              priceTier: card.priceTier as ExpandedCardData["priceTier"],
               shoppingList: Array.isArray(card.shoppingList) ? card.shoppingList as string[] : undefined,
             }
           : {}),

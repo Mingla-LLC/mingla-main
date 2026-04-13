@@ -1171,6 +1171,7 @@ export default function SwipeableCards({
       // Pass through website/phone for Policies & Reservations button
       website: currentRec.website ?? undefined,
       phone: currentRec.phone ?? undefined,
+      priceTier: currentRec.priceTier as ExpandedCardData['priceTier'],
     };
 
     setSelectedCardForExpansion(expandedCardData);

@@ -1159,6 +1159,7 @@ const CalendarTab = ({
           saves: 0,
           shares: 0,
         },
+      priceTier: ((experience as any).priceTier || (entry as any).priceTier) as ExpandedCardData['priceTier'],
       location:
         (experience as any).location ||
         ((experience as any).lat && (experience as any).lng

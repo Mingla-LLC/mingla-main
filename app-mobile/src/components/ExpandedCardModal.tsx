@@ -1052,7 +1052,7 @@ function MultiStopPlanView({
                             <View style={curatedStyles.altCardBody}>
                               <Text style={curatedStyles.altCardName} numberOfLines={1}>{alt.placeName}</Text>
                               <Text style={curatedStyles.altCardMeta} numberOfLines={1}>
-                                {alt.rating > 0 ? `★ ${alt.rating.toFixed(1)}` : ''}{alt.rating > 0 && alt.priceTier ? ' · ' : ''}{alt.priceTier ? alt.priceTier.charAt(0).toUpperCase() + alt.priceTier.slice(1) : ''}
+                                {alt.rating > 0 ? `★ ${alt.rating.toFixed(1)}` : ''}{alt.rating > 0 && alt.priceTier ? ' · ' : ''}{alt.priceTier ? tierLabel(alt.priceTier as PriceTierSlug) : ''}
                               </Text>
                               <TouchableOpacity style={curatedStyles.altCardSelect} onPress={() => handleSelectAlternative(alt)} activeOpacity={0.8}>
                                 <Text style={curatedStyles.altCardSelectText}>{t('cards:expanded.select')}</Text>
@@ -1788,8 +1788,8 @@ export default function ExpandedCardModal({
                   travelTime={hideTravelTime ? undefined : card.travelTime}
                   measurementSystem={accountPreferences?.measurementSystem}
                   priceRange={card.priceRange}
-                  priceTier={(card as any).priceTier}
-                  priceLevel={(card as any).priceLevel}
+                  priceTier={card.priceTier}
+                  priceLevel={undefined}
                   description={card.description}
                   tip={card.tip}
                   currency={accountPreferences?.currency}

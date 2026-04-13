@@ -188,7 +188,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (!String(e.message).toLowerCase().includes("cancel")) {
-        Alert.alert("Google Sign-In failed", e.message || "Please try again.");
+        const msg = e.message || "Please try again.";
+        const audienceHint =
+          msg.includes("Unacceptable audience") || msg.includes("audience in id_token")
+            ? "\n\nRegister every OAuth client this build uses (Web, iOS, Android) in Supabase → Authentication → Google → Client IDs, comma-separated, Web client first."
+            : "";
+        Alert.alert("Google Sign-In failed", `${msg}${audienceHint}`);
       }
       return { error: e };
     }

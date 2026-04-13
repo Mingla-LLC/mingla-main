@@ -554,6 +554,7 @@ export default function SessionViewModal({
         saves: cardData.socialStats?.saves || 0,
         shares: cardData.socialStats?.shares || 0,
       },
+      priceTier: (cardData as any).priceTier as ExpandedCardData['priceTier'],
       location: cardData.location || (cardData.lat && cardData.lng ? { lat: cardData.lat, lng: cardData.lng } : undefined),
       selectedDateTime: cardData.selectedDateTime || new Date(),
       strollData: cardData.strollData,
