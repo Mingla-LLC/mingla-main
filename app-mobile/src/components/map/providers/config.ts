@@ -1,5 +1,4 @@
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
 import type { DiscoverMapProviderKind } from './types';
 
 const DEMO_MAPLIBRE_STYLE_URL = 'https://demotiles.maplibre.org/style.json';
@@ -20,13 +19,11 @@ function readExpoExtraString(key: string) {
 // iOS: Apple Maps via react-native-maps (working).
 // Android: MapLibre until next native build, then react-native-maps + Google Maps.
 //
-// After running `eas build --platform android`, change this to:
-//   export const ACTIVE_DISCOVER_MAP_PROVIDER: DiscoverMapProviderKind = 'react-native-maps';
-//
+// Native build with Google Maps API key deployed — safe to unify now.
 // History: dual-provider introduced in 649d2d1e. MapLibre was first implementation;
 // iOS fell back to react-native-maps when MapLibre crashed (EXC_BAD_ACCESS).
-export const ACTIVE_DISCOVER_MAP_PROVIDER: DiscoverMapProviderKind =
-  Platform.OS === 'ios' ? 'react-native-maps' : 'maplibre';
+// Revert: change to `Platform.OS === 'ios' ? 'react-native-maps' : 'maplibre'`
+export const ACTIVE_DISCOVER_MAP_PROVIDER: DiscoverMapProviderKind = 'react-native-maps';
 
 // [DEAD CODE after ORCH-0410] MapLibre style URL — only referenced by MapLibreProvider.tsx
 // which is no longer the active provider. Kept for rollback path.
