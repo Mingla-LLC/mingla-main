@@ -162,14 +162,18 @@ export interface OneSignalNotificationData {
  * Register a callback for when a push notification arrives while the app is
  * in the foreground. The callback receives the notification's `data` payload.
  *
- * By default, OneSignal will display the notification in the system tray.
- * Call `event.preventDefault()` inside the callback to suppress display
- * and handle it purely in-app.
+ * OneSignal SDK v5 requires an EXPLICIT `display()` call to show the notification
+ * in the system tray. Without it, the notification is received but not shown.
+ * The `prevent` callback suppresses display entirely.
+ *
+ * ORCH-0407: Updated to pass `display` alongside `prevent`. Callers must call
+ * `display()` to show the banner, or `prevent()` to suppress it, or neither
+ * (notification will NOT auto-display in SDK v5 — this was a bug).
  *
  * Returns a cleanup function to remove the listener.
  */
 export function onForegroundNotification(
-  callback: (data: OneSignalNotificationData, prevent: () => void) => void
+  callback: (data: OneSignalNotificationData, prevent: () => void, display: () => void) => void
 ): () => void {
   if (!_initialized) {
     console.warn('[OneSignal] onForegroundNotification called before init — listener not registered')
@@ -177,15 +181,20 @@ export function onForegroundNotification(
   }
 
   const handler = (event: any) => {
-    const data = (event.getNotification().additionalData ?? {}) as OneSignalNotificationData
+    const notification = event.getNotification()
+    const data = (notification.additionalData ?? {}) as OneSignalNotificationData
     if (__DEV__) {
       logger.push('foreground received', {
         type: data.type ?? '(unknown)',
-        title: event.getNotification().title ?? '(no title)',
+        title: notification.title ?? '(no title)',
         data,
       })
     }
-    callback(data, () => event.preventDefault())
+    callback(
+      data,
+      () => event.preventDefault(),
+      () => notification.display(),
+    )
   }
 
   OneSignal.Notifications.addEventListener('foregroundWillDisplay', handler)

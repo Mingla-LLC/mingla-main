@@ -603,13 +603,13 @@ function AppContent() {
     // sees it even if they're on a different tab. The notification center
     // also receives an in-app entry via Realtime (notifications table INSERT).
     // For non-DM notifications: suppress system tray — Realtime delivers in-app.
-    // ORCH-0407: Let ALL push notifications show in system tray, even when
-    // app is foregrounded. Previously non-message types were suppressed via
-    // prevent() — this made the app feel dead. Now every push shows as a
-    // system banner so the app feels alive with activity.
-    // Revert: re-add MESSAGE_TYPES filter + prevent() call if too noisy.
-    const removeForeground = onForegroundNotification((_data, _prevent) => {
-      // No-op: all pushes pass through to system tray
+    // ORCH-0407: Explicitly display ALL push notifications in system tray,
+    // even when app is foregrounded. OneSignal SDK v5 requires an explicit
+    // display() call — notifications do NOT auto-display in foreground.
+    // Previously non-message types were suppressed via prevent().
+    // Revert: replace display() with prevent() for specific types if too noisy.
+    const removeForeground = onForegroundNotification((_data, _prevent, display) => {
+      display();
     });
 
     // Background: user taps a push notification
