@@ -114,7 +114,7 @@ export function ReactNativeMapsProvider({
       showsTraffic={false}
       showsBuildings={false}
       showsIndoors={false}
-      showsPointsOfInterests={false}
+      showsPointsOfInterest={false}
       mapPadding={{ top: 60, right: 0, bottom: 80, left: 0 }}
       clusterColor="#eb7825"
       radius={50}
