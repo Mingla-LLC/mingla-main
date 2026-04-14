@@ -1,3 +1,6 @@
+// [DEAD CODE] This provider is no longer used after ORCH-0410 unified both
+// platforms to react-native-maps. Kept temporarily as rollback path.
+// Delete after 2 weeks of stable production usage.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
 import {
