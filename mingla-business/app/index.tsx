@@ -1,12 +1,13 @@
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
-import BusinessLandingScreen from "../src/components/landing/BusinessLandingScreen";
 import AppRoutes from "../src/config/routes";
 import { useAuth } from "../src/context/AuthContext";
+import BusinessWelcomeScreen from "../src/components/auth/BusinessWelcomeScreen";
 
 export default function Index() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, loading, accountStatus, signInWithGoogle, signInWithApple } =
+    useAuth();
 
   if (loading) {
     return (
@@ -16,16 +17,23 @@ export default function Index() {
     );
   }
 
-  if (user) {
-    return <Redirect href={AppRoutes.home} />;
+  // Not signed in → show sign-in screen directly (no landing page split)
+  if (!user) {
+    return (
+      <BusinessWelcomeScreen
+        onGoogleSignIn={async () => { await signInWithGoogle(); }}
+        onAppleSignIn={async () => { await signInWithApple(); }}
+      />
+    );
   }
 
-  return (
-    <BusinessLandingScreen
-      onGetStarted={() => router.push(AppRoutes.auth.index)}
-      onSignIn={() => router.push(AppRoutes.auth.index)}
-    />
-  );
+  // Signed in, onboarding not complete → onboarding flow
+  if (!accountStatus?.onboardingCompleted) {
+    return <Redirect href={AppRoutes.onboarding.index as never} />;
+  }
+
+  // Signed in, onboarding complete → dashboard
+  return <Redirect href={AppRoutes.home} />;
 }
 
 const styles = StyleSheet.create({

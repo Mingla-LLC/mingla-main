@@ -1,0 +1,18 @@
+{
+  "greeting_morning": "Good morning",
+  "greeting_afternoon": "Good afternoon",
+  "greeting_evening": "Good evening",
+  "subtitle_new": "Let's get your business on Mingla.",
+  "hero_place_title": "Your place could be here",
+  "hero_place_body": "Claim your business to start reaching Mingla users nearby.",
+  "hero_event_title": "Create your first event",
+  "hero_event_body": "Sell tickets, collect RSVPs, and reach Mingla users nearby.",
+  "cta_claim": "Claim your place",
+  "cta_event": "Create an event",
+  "cta_add_place": "Add a new place",
+  "cta_add_place_desc": "Not on Mingla yet? Create it.",
+  "cta_claim_desc": "Restaurant, bar, spa — claim and manage it.",
+  "cta_event_desc": "Sell tickets or collect RSVPs.",
+  "or": "or",
+  "sign_out": "Sign out"
+}

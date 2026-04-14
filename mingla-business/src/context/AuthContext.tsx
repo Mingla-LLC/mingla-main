@@ -15,7 +15,10 @@ import {
 import * as AppleAuthentication from "expo-apple-authentication";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../services/supabase";
-import { ensureCreatorAccount } from "../services/creatorAccount";
+import {
+  ensureCreatorAccount,
+  type CreatorAccountStatus,
+} from "../services/creatorAccount";
 
 const webClientId =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
@@ -42,6 +45,8 @@ type AuthContextValue = {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  accountStatus: CreatorAccountStatus | null;
+  refreshAccountStatus: () => Promise<void>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signInWithApple: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -53,6 +58,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accountStatus, setAccountStatus] =
+    useState<CreatorAccountStatus | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -71,7 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        await ensureCreatorAccount(s.user);
+        const status = await ensureCreatorAccount(s.user);
+        if (mounted) setAccountStatus(status);
       }
       setLoading(false);
     };
@@ -85,7 +93,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        await ensureCreatorAccount(s.user);
+        const status = await ensureCreatorAccount(s.user);
+        if (mounted) setAccountStatus(status);
+      } else {
+        setAccountStatus(null);
       }
       setLoading(false);
     });
@@ -255,6 +266,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const refreshAccountStatus = useCallback(async () => {
+    if (!user) return;
+    const status = await ensureCreatorAccount(user);
+    setAccountStatus(status);
+  }, [user]);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     try {
@@ -271,11 +288,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       session,
       loading,
+      accountStatus,
+      refreshAccountStatus,
       signInWithGoogle,
       signInWithApple,
       signOut,
     }),
-    [user, session, loading, signInWithGoogle, signInWithApple, signOut]
+    [user, session, loading, accountStatus, refreshAccountStatus, signInWithGoogle, signInWithApple, signOut]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
