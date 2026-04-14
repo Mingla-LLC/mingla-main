@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated } from 'react-native';
+import { Animated, View } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { PlacePinContent } from './PlacePin';
 import type { Recommendation } from '../../types/recommendation';
@@ -47,15 +47,17 @@ export const AnimatedPlacePin = React.memo(function AnimatedPlacePin({
       anchor={{ x: 0.5, y: 0.27 }}
       tappable
     >
-      <Animated.View style={{ transform: [{ scale }] }}>
-        <PlacePinContent
-          card={card}
-          isSaved={isSaved}
-          isPairedSaved={isPairedSaved}
-          isScheduled={isScheduled}
-          isSelected={isSelected}
-        />
-      </Animated.View>
+      <View collapsable={false}>
+        <Animated.View style={{ transform: [{ scale }] }}>
+          <PlacePinContent
+            card={card}
+            isSaved={isSaved}
+            isPairedSaved={isPairedSaved}
+            isScheduled={isScheduled}
+            isSelected={isSelected}
+          />
+        </Animated.View>
+      </View>
     </Marker>
   );
 });

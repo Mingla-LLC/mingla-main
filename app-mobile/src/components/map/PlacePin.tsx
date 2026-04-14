@@ -99,7 +99,9 @@ export function PlacePin({ card, isSaved, isPairedSaved = false, isScheduled, on
       anchor={{ x: 0.5, y: 0.27 }}
       tappable
     >
-      <PlacePinContent card={card} isSaved={isSaved} isPairedSaved={isPairedSaved} isScheduled={isScheduled} />
+      <View collapsable={false}>
+        <PlacePinContent card={card} isSaved={isSaved} isPairedSaved={isPairedSaved} isScheduled={isScheduled} />
+      </View>
     </Marker>
   );
 }

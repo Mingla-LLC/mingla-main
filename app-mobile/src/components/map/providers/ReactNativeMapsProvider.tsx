@@ -9,6 +9,20 @@ import { PersonPinContent, SelfPinContent } from '../PersonPin';
 import { PlaceHeatmap } from '../PlaceHeatmap';
 import { layoutNearbyPeople } from '../layoutNearbyPeople';
 import type { DiscoverMapProviderProps } from './types';
+import type { MapStyleElement } from 'react-native-maps';
+
+// ORCH-0410: Clean Google Maps style for Android — hides all POIs, business labels,
+// transit stations, road labels, and address numbers. Keeps road geometry, water,
+// parks for spatial context. Only applied on Android (iOS uses CARTO tiles via UrlTile).
+const GOOGLE_MAPS_CLEAN_STYLE: MapStyleElement[] = [
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.land_parcel', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.neighborhood', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+];
 
 export function ReactNativeMapsProvider({
   mapRef,
@@ -122,13 +136,23 @@ export function ReactNativeMapsProvider({
       // iOS defaults to LayoutAnimation on every region settle — markers relayout and
       // taps on people pins are often lost until the animation finishes.
       animationEnabled={false}
+      // ORCH-0410: Hide all Google Maps labels/POIs on Android so only Mingla pins show.
+      // On iOS, Apple Maps POIs are hidden by showsPointsOfInterest={false}.
+      // On Android, Google Maps needs customMapStyle to hide labels.
+      // shouldReplaceMapContent on UrlTile is iOS-only (MapUrlTile.d.ts:66-68).
+      {...(Platform.OS === 'android' ? { customMapStyle: GOOGLE_MAPS_CLEAN_STYLE } : {})}
     >
-      <UrlTile
-        urlTemplate="https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
-        maximumZ={19}
-        tileSize={256}
-        shouldReplaceMapContent
-      />
+      {/* CARTO light tiles — iOS only. shouldReplaceMapContent is not supported on Android
+          (MapUrlTile.d.ts:66-68). On Android, Google Maps base tiles are styled via
+          customMapStyle above instead. */}
+      {Platform.OS === 'ios' && (
+        <UrlTile
+          urlTemplate="https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
+          maximumZ={19}
+          tileSize={256}
+          shouldReplaceMapContent
+        />
+      )}
 
       {userLocation && (
         <Marker
@@ -139,7 +163,7 @@ export function ReactNativeMapsProvider({
           zIndex={30}
           {...{ cluster: false }}
         >
-          <View style={styles.userMarker}>
+          <View collapsable={false} style={styles.userMarker}>
             <View style={styles.userMarkerPulse} />
             <SelfPinContent
               avatarUrl={userAvatarUrl}
