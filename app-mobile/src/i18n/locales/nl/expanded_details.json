@@ -44,7 +44,8 @@
     "clear_roads": "Vrije wegen",
     "clear": "Vrij",
     "moderate": "Matig",
-    "heavy": "Druk"
+    "heavy": "Druk",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "Match-uitsplitsing",

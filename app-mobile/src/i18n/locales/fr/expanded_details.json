@@ -44,7 +44,8 @@
     "clear_roads": "Routes dégagées",
     "clear": "Dégagé",
     "moderate": "Modéré",
-    "heavy": "Dense"
+    "heavy": "Dense",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "Détail de la correspondance",

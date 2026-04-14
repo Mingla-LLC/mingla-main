@@ -44,7 +44,8 @@
     "clear_roads": "طرق خالية",
     "clear": "خالٍ",
     "moderate": "متوسط",
-    "heavy": "مزدحم جداً"
+    "heavy": "مزدحم جداً",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "تفصيل التطابق",

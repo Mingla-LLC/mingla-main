@@ -44,7 +44,8 @@
     "clear_roads": "도로 원활",
     "clear": "한산",
     "moderate": "보통",
-    "heavy": "혼잡"
+    "heavy": "혼잡",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "매칭 분석",

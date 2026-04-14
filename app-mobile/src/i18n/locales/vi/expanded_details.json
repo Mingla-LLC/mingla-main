@@ -44,7 +44,8 @@
     "clear_roads": "Đường thông thoáng",
     "clear": "Thông thoáng",
     "moderate": "Vừa phải",
-    "heavy": "Tắc nghẽn"
+    "heavy": "Tắc nghẽn",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "Chi tiết độ phù hợp",

@@ -44,7 +44,8 @@
     "clear_roads": "道路空き",
     "clear": "空いている",
     "moderate": "普通",
-    "heavy": "混雑"
+    "heavy": "混雑",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "マッチ内訳",

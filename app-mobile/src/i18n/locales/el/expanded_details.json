@@ -44,7 +44,8 @@
     "clear_roads": "Ελεύθεροι Δρόμοι",
     "clear": "Ελεύθερο",
     "moderate": "Μέτριο",
-    "heavy": "Πυκνό"
+    "heavy": "Πυκνό",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "Ανάλυση Ταιριάσματος",

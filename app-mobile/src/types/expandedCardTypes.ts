@@ -169,6 +169,8 @@ export interface WeatherData {
     icon: string;
     precipitation: number;
   }>;
+  timezone?: string;
+  utcOffsetSeconds?: number;
 }
 
 export interface BusynessData {
@@ -184,6 +186,7 @@ export interface BusynessData {
     currentTravelTime: string;
     trafficCondition: "Light" | "Moderate" | "Heavy";
   };
+  isEstimated: boolean;
 }
 
 export interface BookingOption {

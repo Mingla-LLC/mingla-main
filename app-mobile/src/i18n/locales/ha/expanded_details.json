@@ -44,7 +44,8 @@
     "clear_roads": "Hanyoyi Masu Kyau",
     "clear": "Kyau",
     "moderate": "Matsakaici",
-    "heavy": "Mai yawa"
+    "heavy": "Mai yawa",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "Bayani na Daidaitawa",

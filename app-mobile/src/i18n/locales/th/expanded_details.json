@@ -44,7 +44,8 @@
     "clear_roads": "ถนนโล่ง",
     "clear": "โล่ง",
     "moderate": "ปานกลาง",
-    "heavy": "หนาแน่นมาก"
+    "heavy": "หนาแน่นมาก",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "รายละเอียดการจับคู่",

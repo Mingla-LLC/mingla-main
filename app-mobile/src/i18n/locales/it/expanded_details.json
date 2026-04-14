@@ -44,7 +44,8 @@
     "clear_roads": "Strade Libere",
     "clear": "Libero",
     "moderate": "Moderato",
-    "heavy": "Intenso"
+    "heavy": "Intenso",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "Analisi Corrispondenza",

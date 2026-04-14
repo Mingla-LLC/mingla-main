@@ -44,7 +44,8 @@
     "clear_roads": "Vías despejadas",
     "clear": "Despejado",
     "moderate": "Moderado",
-    "heavy": "Pesado"
+    "heavy": "Pesado",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "Desglose de coincidencia",

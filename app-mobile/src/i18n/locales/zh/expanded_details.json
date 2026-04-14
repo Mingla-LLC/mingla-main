@@ -44,7 +44,8 @@
     "clear_roads": "道路畅通",
     "clear": "畅通",
     "moderate": "适中",
-    "heavy": "拥堵"
+    "heavy": "拥堵",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "匹配分析",

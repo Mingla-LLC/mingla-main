@@ -44,7 +44,8 @@
     "clear_roads": "כבישים פנויים",
     "clear": "פנוי",
     "moderate": "בינוני",
-    "heavy": "כבד"
+    "heavy": "כבד",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "פירוט התאמה",

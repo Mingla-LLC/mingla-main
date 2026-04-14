@@ -44,7 +44,8 @@
     "clear_roads": "Jalan Lancar",
     "clear": "Lancar",
     "moderate": "Sederhana",
-    "heavy": "Sesak"
+    "heavy": "Sesak",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "Pecahan Padanan",

@@ -99,6 +99,13 @@ export default function BusynessSection({
             {busynessData.busynessLevel}
           </Text>
         </View>
+        {busynessData.isEstimated && (
+          <View style={styles.estimatedBadge}>
+            <Text style={styles.estimatedText}>
+              {t('expanded_details:busyness.estimated')}
+            </Text>
+          </View>
+        )}
         <View style={styles.spacer} />
         <View style={styles.miniBarContainer}>
           <View style={styles.miniBarTrack}>
@@ -189,5 +196,17 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "600",
     color: "#c2410c",
+  },
+  estimatedBadge: {
+    backgroundColor: "#eb782510",
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  estimatedText: {
+    fontSize: 9,
+    fontWeight: "500" as const,
+    color: "#c2410c80",
+    fontStyle: "italic" as const,
   },
 });

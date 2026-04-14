@@ -44,7 +44,8 @@
     "clear_roads": "Clear Roads",
     "clear": "Clear",
     "moderate": "Moderate",
-    "heavy": "Heavy"
+    "heavy": "Heavy",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "Match Breakdown",

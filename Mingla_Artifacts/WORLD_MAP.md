@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-11
+> Last updated: 2026-04-13
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 
@@ -38,7 +38,7 @@
 | Deep Linking | Cross-cutting | deepLinkService.ts | Mixed (1B, 3F) | 4 | Weak |
 | App Lifecycle | Cross-cutting | AppStateManager.tsx, AnimatedSplashScreen.tsx, useForegroundRefresh.ts | Mixed (2A, 10F) | 12 | Weak |
 | Analytics & Tracking | Cross-cutting | appsFlyerService.ts, mixpanelService.ts | Mixed (1A, 7F) | 8 | Weak |
-| Weather & External | Cross-cutting | weatherService.ts, geocodingService.ts | All F | 6 | Unaudited |
+| Weather & External | Cross-cutting | weatherService.ts, busynessService.ts, geocodingService.ts | Mixed (2A, 4F) | 6 | Partial |
 | UI Components | Cross-cutting | Toast.tsx, InAppBrowserModal.tsx | Mixed (3A, 7F) | 10 | Weak |
 | Admin Panel | Admin | PlacePoolManagementPage.jsx, admin-seed-places | Mixed (1A, 4F) | 5 | Weak |
 | Code Quality | Cross-cutting | tsconfig.json, all .ts/.tsx files | All A | 1 | Strong |
@@ -177,6 +177,9 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 
 | ORCH-0392 | Travel mode pills overflow section container — "Driving" bleeds right edge after i18n label change | Discovery | S2 | regression | closed | A | 2026-04-11 | flexWrap: "wrap" added to travelModesGrid. Visually verified EN + ES on-device. Parent: ORCH-0386. |
 | ORCH-0402 | Calendar button invisible on birthday hero + no birthday push notifications | Discovery | S2 | ux + missing-feature | closed | A | 2026-04-11 | QA_ORCH-0402_CALENDAR_BUTTON_AND_BIRTHDAY_PUSH_REPORT.md — 17/17 criteria PASS, 4/4 regressions clean. CalendarButton inverted prop, 5-tier push pipeline via pg_cron. |
+| ORCH-0403 | Generic/thin card descriptions on some categories (Play especially) — one-liners vs rich descriptions | Discovery | S2 | quality-gap | open | F | — | User report 2026-04-13. Hypothesis: data pipeline treats categories unevenly, or Google metadata sparse for Play venues. |
+| ORCH-0405 | Saved/scheduled cards should reappear in deck with label ("You have this saved") — deck never empty | Discovery | S2 | missing-feature | open | F | — | User report 2026-04-13. Feature request: re-surface saved/scheduled cards with badge so deck always has content. |
+| ORCH-0406 | Price tier labels wrong/hardcoded on expanded single card view + full card view audit needed | Discovery | S1 | bug | open | F | — | User report 2026-04-13. Price label on expanded view doesn't reflect actual price_tier. Audit both collapsed + expanded views for single and curated cards. |
 
 ### Section 4: Collaboration Sessions
 
@@ -228,6 +231,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0092 | Notification send observability | Notifications | S2 | quality-gap | verified | B | 2026-03-23 | Commit ea655d36 |
 | ORCH-0093 | Realtime subscription lifecycle | Notifications | S1 | architecture-flaw | closed | A | 2026-03-23 | Commit ea655d36 |
 | ORCH-0349 | Acted-on notifications not auto-clearing (in-sheet + out-of-sheet) | Notifications | S1 | bug | closed | A | 2026-04-09 | QA PASS. DB trigger + graceful stale handling + out-of-sheet cleanup. Migration 20260409800000. |
+| ORCH-0407 | Push notifications fundamentally broken across systems — full audit of OneSignal pipeline, triggers, in-app behavior | Notifications | S1 | architecture-flaw | open | F | — | User report 2026-04-13. Systemic: which events trigger push? Which should but don't? In-app behavior? App feels dead without push activity. |
 
 ### Section 7: Saved Experiences / Boards
 
@@ -302,6 +306,8 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0361 | Avatar disappearance fixed — 3s tracksViewChanges window for image loading | Map | S1 | bug | closed | A | 2026-04-10 | QA PASS (AH-059). Person markers `tracksViewChanges={true}` for 3s then false. Prevents permanent fallback on slow image load. |
 | ORCH-0378 | Map pin labels redesigned — orange pill with "Category · Place Name", full text no truncation, widened wrappers | Map | S2 | ux | closed | A | 2026-04-11 | User-verified on device. PlacePin.tsx: orange pill (rgba(235,120,37,0.85)), getReadableCategoryName + title, no maxWidth/numberOfLines constraints. 3 iterations (v1 pill, v2 content, v3 no truncation). |
 | ORCH-0379 | Fix pin tap regression + hide label on selection — anchor/tappable added to Markers, isSelected prop threaded through pin chain | Map | S1 | regression | closed | A | 2026-04-11 | User-verified on device. anchor={{x:0.5,y:0.27}} + tappable on both Markers. isSelected hides label pill when bottom sheet open. 3 files changed. |
+| ORCH-0409 | Map avatars intermittently disappear — possible ORCH-0385 regression or incomplete fix (different trigger than background return) | Map | S1 | regression | open | F | — | User report 2026-04-13. ORCH-0385 closed 2026-04-11 for background-return trigger. User still experiencing disappearance with unknown trigger. Closing+reopening app restores. |
+| ORCH-0410 | Android discover map fundamentally broken — pan/scroll issues, labels cut off, not fluid like iOS | Map | S1 | architecture-flaw | open | F | — | User report 2026-04-13. Platform parity issue. Gesture handler conflicts, text scaling, map tile provider differences suspected. Related: ORCH-0111. |
 
 ### Section 10: Direct Messaging & Chat
 
@@ -317,6 +323,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0134 | Chat status line | Chat | S3 | unaudited | open | F | — | — |
 | ORCH-0357 | Blocked/unfriended/deleted users still messageable — message field should be hidden, replaced with status banner explaining why ("You blocked this person" / "User deleted their account") | Chat | S1 | security | closed | A | 2026-04-09 | QA PASS (AH-054). Three banners (blocked/unfriended/deleted) with hidden input. Account deletion confirmed regression-free. |
 | ORCH-0367 | Block/friend mutual exclusion — accept clears blocks, block cancels pending requests, stale data fixed | Chat + Social | S0 | data-integrity | closed | A | 2026-04-10 | User-verified: Seth+Arifat can message. Migration 20260410000004. Commit 6bdbbd30. |
+| ORCH-0408 | Quoted/reply message in DM compressed to invisibility — can't read quoted content | Chat | S2 | bug | open | F | — | User report 2026-04-13. Quote-reply preview too compressed to read. Likely max-height or line-clamp too aggressive. |
 
 ### Section 11: Payments & Subscriptions
 
@@ -394,6 +401,8 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0176 | Pair activity notifications | Pairing | S2 | bug | closed | A | 2026-03-21 | Commit 376cd237 |
 | ORCH-0177 | Unpair flow (atomic RPC) | Pairing | S1 | bug | closed | A | 2026-03-22 | Commit 23f3a0dd |
 | ORCH-0178 | Pairing info card | Pairing | S3 | unaudited | open | F | — | — |
+| ORCH-0404 | Realtime update audit — pair request acceptance doesn't update sender + systemic audit of all two-party realtime gaps | Pairing + Cross-cutting | S1 | architecture-flaw | open | F | — | User report 2026-04-13. Expands ORCH-0308 scope. Audit ALL two-party interactions: pairing, friend requests, DM read receipts, board sharing, session invites. Confirm collab sessions DO have realtime. |
+| ORCH-0411 | Paired friend can't see my liked places — asymmetric visibility (user sees friend's 10, friend can't see user's 1) | Pairing | S1 | bug | open | F | — | User report 2026-04-13. Likely query direction assumption or RLS policy asymmetry. |
 
 ### Section 16: Sharing & Invites
 
@@ -564,12 +573,14 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 
 | ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
 |----|-------|---------|----------|-------|--------|-------|----------|----------|
-| ORCH-0250 | Weather service | Weather | S2 | unaudited | open | F | — | — |
-| ORCH-0251 | Busyness data | Weather | S3 | unaudited | open | F | — | — |
+| ORCH-0250 | Weather service — replaced OpenWeatherMap with Open-Meteo (free, no key, 15-min cache) | Weather | S2 | architecture-flaw | closed | A | 2026-04-13 | QA PASS 17/17. ORCH-0419 bundle. QA_ORCH-0419_REALTIME_DATA_STACK_REPORT.md |
+| ORCH-0251 | Busyness data — replaced BestTime (never worked) with venue-type-aware heuristic + Est. badge | Weather | S2 | architecture-flaw | closed | A | 2026-04-13 | QA PASS 17/17. ORCH-0419 bundle. QA_ORCH-0419_REALTIME_DATA_STACK_REPORT.md |
 | ORCH-0252 | Geocoding service | Weather | S2 | unaudited | open | F | — | — |
 | ORCH-0253 | Currency service | Weather | S2 | unaudited | open | F | — | — |
 | ORCH-0254 | Translation service | Weather | S3 | unaudited | open | F | — | — |
 | ORCH-0255 | Locale preferences | Weather | S2 | unaudited | open | F | — | — |
+| ORCH-0419 | Real-time data stack replacement — Mapbox (travel+traffic), Open-Meteo (weather), venue-type heuristic (busyness) with Est. badge. $0/month. | Weather | S1 | architecture-flaw | closed | A | 2026-04-13 | QA PASS 17/17, 0 defects. Full pipeline: investigation → spec → addendum (7 fixes) → implementation → QA. Reports: FORENSICS, SPEC, ADDENDUM, IMPLEMENTATION, QA_ORCH-0419_REALTIME_DATA_STACK_REPORT.md |
+| ORCH-0420 | Widen Haversine search radius + add "~" prefix to collapsed card travel times — standardize speed profiles across edge functions (35→50 km/h), larger candidate pool, and label all Haversine estimates as approximate ("~12 min") so they don't conflict with real Mapbox times on expanded card | Weather | S2 | quality-gap | open | F | — | User request 2026-04-13. Depends on ORCH-0419. Scope: standardize `_shared/` speed profile, bump speed, add "~" to SwipeableCards/CardInfoSection travel time pills. |
 
 ### Cross-Cutting: UI Components & Design System
 
@@ -585,6 +596,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0263 | Popularity indicators | UI | S3 | unaudited | open | F | — | — |
 | ORCH-0264 | Confidence score | UI | S3 | unaudited | open | F | — | — |
 | ORCH-0265 | Icon map completeness | UI | S2 | bug | closed | A | 2026-03-22 | Commit 88f2d43f |
+| ORCH-0412 | Default avatar color inconsistency — green/yellow/other colors in different app locations for users without profile pictures | UI | S2 | design-debt | open | F | — | User report 2026-04-13. Multiple avatar implementations with different color derivation logic. Need single source of truth. |
 
 ### Cross-Cutting: Code Quality & Type Safety
 

@@ -44,7 +44,8 @@
     "clear_roads": "खाली सड़कें",
     "clear": "खाली",
     "moderate": "मध्यम",
-    "heavy": "भारी"
+    "heavy": "भारी",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "मैच विश्लेषण",

@@ -1,16 +1,11 @@
 /**
- * Weather Service - OpenWeatherMap API Integration
- * Fetches weather forecasts for venues
+ * Weather Service — Open-Meteo API Integration
+ *
+ * Free, no API key, no rate limits. Data from national weather services.
+ * Replaces OpenWeatherMap (ORCH-0419, 2026-04-13).
  */
 
-import Constants from "expo-constants";
-
-const OPENWEATHER_API_KEY =
-  process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY ||
-  // expo `extra` from app.json/app.config.js
-  (Constants?.expoConfig as any)?.extra?.EXPO_PUBLIC_OPENWEATHER_API_KEY ||
-  "";
-const OPENWEATHER_BASE_URL = "https://api.openweathermap.org/data/2.5";
+const OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast";
 
 export interface WeatherData {
   temperature: number;
@@ -24,6 +19,8 @@ export interface WeatherData {
   precipitation?: number;
   recommendation: string;
   hourlyForecast?: HourlyForecast[];
+  timezone?: string;
+  utcOffsetSeconds?: number;
 }
 
 export interface HourlyForecast {
@@ -40,108 +37,187 @@ export interface ActivityRecommendation {
   suggestions: string[];
 }
 
+// ─── WMO Weather Code Mappings ──────────────────────────────────────────────
+// Maps WMO 4677 codes to condition strings matching OpenWeatherMap .main values.
+// This preserves compatibility with WeatherSection.getWeatherIcon() and
+// generateActivityRecommendation() which check condition.includes("rain") etc.
+
+const WMO_CONDITION_MAP: Record<number, string> = {
+  0: "Clear",
+  1: "Clear",
+  2: "Clouds",
+  3: "Clouds",
+  45: "Mist",
+  48: "Mist",
+  51: "Drizzle",
+  53: "Drizzle",
+  55: "Drizzle",
+  56: "Drizzle",
+  57: "Drizzle",
+  61: "Rain",
+  63: "Rain",
+  65: "Rain",
+  66: "Rain",
+  67: "Rain",
+  71: "Snow",
+  73: "Snow",
+  75: "Snow",
+  77: "Snow",
+  80: "Rain",
+  81: "Rain",
+  82: "Rain",
+  85: "Snow",
+  86: "Snow",
+  95: "Thunderstorm",
+  96: "Thunderstorm",
+  99: "Thunderstorm",
+};
+
+const WMO_DESCRIPTION_MAP: Record<number, string> = {
+  0: "clear sky",
+  1: "mainly clear",
+  2: "partly cloudy",
+  3: "overcast",
+  45: "fog",
+  48: "freezing fog",
+  51: "light drizzle",
+  53: "drizzle",
+  55: "heavy drizzle",
+  56: "light freezing drizzle",
+  57: "freezing drizzle",
+  61: "light rain",
+  63: "moderate rain",
+  65: "heavy rain",
+  66: "light freezing rain",
+  67: "freezing rain",
+  71: "light snow",
+  73: "moderate snow",
+  75: "heavy snow",
+  77: "snow grains",
+  80: "light rain showers",
+  81: "rain showers",
+  82: "heavy rain showers",
+  85: "light snow showers",
+  86: "heavy snow showers",
+  95: "thunderstorm",
+  96: "thunderstorm with hail",
+  99: "severe thunderstorm with hail",
+};
+
+/**
+ * Map WMO code + is_day to OpenWeatherMap-compatible icon code.
+ * Preserves compatibility with WeatherSection.getWeatherIcon().
+ */
+function getWmoIcon(code: number, isDay: number): string {
+  const suffix = isDay ? "d" : "n";
+  if (code <= 1) return `01${suffix}`;
+  if (code === 2) return `02${suffix}`;
+  if (code === 3) return `04${suffix}`;
+  if (code === 45 || code === 48) return `50${suffix}`;
+  if (code >= 51 && code <= 57) return `09${suffix}`;
+  if (code >= 61 && code <= 67) return `10${suffix}`;
+  if (code >= 71 && code <= 77) return `13${suffix}`;
+  if (code >= 80 && code <= 82) return `09${suffix}`;
+  if (code >= 85 && code <= 86) return `13${suffix}`;
+  if (code >= 95) return `11${suffix}`;
+  return `01${suffix}`;
+}
+
 class WeatherService {
+  private weatherCache = new Map<string, { data: WeatherData; ts: number }>();
+  private WEATHER_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
   /**
-   * Get current weather and forecast for a location
+   * Get current weather for a location from Open-Meteo.
+   * `date` parameter kept for API compatibility. Open-Meteo returns current weather only.
+   * All current callers pass `new Date()` — no functional change.
    */
   async getWeatherForecast(
     lat: number,
     lng: number,
     date?: Date
   ): Promise<WeatherData | null> {
-    if (!OPENWEATHER_API_KEY) {
-      console.warn("OpenWeatherMap API key not configured");
-      return null;
+    // Check cache
+    const cacheKey = `${lat.toFixed(3)}_${lng.toFixed(3)}`;
+    const cached = this.weatherCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < this.WEATHER_CACHE_TTL) {
+      return cached.data;
     }
 
     try {
-      // Use One Call API 3.0 for comprehensive data
-      const url = `${OPENWEATHER_BASE_URL}/onecall?lat=${lat}&lon=${lng}&appid=${OPENWEATHER_API_KEY}&units=imperial&exclude=minutely,alerts`;
+      const params = [
+        `latitude=${lat}`,
+        `longitude=${lng}`,
+        `current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,uv_index,precipitation,is_day`,
+        `temperature_unit=fahrenheit`,
+        `wind_speed_unit=mph`,
+        `precipitation_unit=inch`,
+        `timezone=auto`,
+      ].join("&");
 
-      const response = await fetch(url);
+      const response = await fetch(`${OPEN_METEO_URL}?${params}`);
 
       if (!response.ok) {
-        /*     const errorText = await response.text();
-        console.error("❌ Weather API error:", {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText,
-        }); */
-        throw new Error(`Weather API error: ${response.status} - ${response.statusText}`);
+        console.warn("[Weather] Open-Meteo HTTP error:", response.status);
+        return null;
       }
 
       const data = await response.json();
-
       const current = data.current;
-      const hourly = data.hourly || [];
 
-      // Get weather for specific date/time if provided
-      let targetWeather = current;
-      if (date) {
-        const targetTime = date.getTime() / 1000;
-        const targetHourly = hourly.find(
-          (h: any) => Math.abs(h.dt - targetTime) < 3600
-        );
-        if (targetHourly) {
-          targetWeather = targetHourly;
-        }
-      }
-
-      // Generate activity-specific recommendation
-      const recommendation = this.generateActivityRecommendation(
-        targetWeather,
-        data.current
-      );
-
-      // Format hourly forecast (next 12 hours)
-      const hourlyForecast: HourlyForecast[] = hourly
-        .slice(0, 12)
-        .map((h: any) => ({
-          time: new Date(h.dt * 1000).toLocaleTimeString("en-US", {
-            hour: "numeric",
-          }),
-          temperature: Math.round(h.temp),
-          condition: h.weather[0].main,
-          icon: h.weather[0].icon,
-          precipitation: (h.rain?.["1h"] || h.snow?.["1h"] || 0) * 0.0393701, // Convert to inches
-        }));
-
-      return {
-        temperature: Math.round(targetWeather.temp),
-        condition: targetWeather.weather[0].main,
-        icon: targetWeather.weather[0].icon,
-        description: targetWeather.weather[0].description,
-        feelsLike: Math.round(targetWeather.feels_like),
-        humidity: targetWeather.humidity,
-        windSpeed: targetWeather.wind_speed,
-        uvIndex: targetWeather.uvi,
-        precipitation:
-          (targetWeather.rain?.["1h"] || targetWeather.snow?.["1h"] || 0) *
-          0.0393701,
-        recommendation,
-        hourlyForecast,
-      };
-    } catch (error: any) {
-      /*   console.error("❌ Error fetching weather:", error);
-      console.error("Error details:", {
-        message: error?.message,
-        stack: error?.stack,
-        apiKeyPresent: !!OPENWEATHER_API_KEY,
-        apiKeyLength: OPENWEATHER_API_KEY?.length,
-      }); */
-
-      // If One Call API fails, try Current Weather API as fallback
-      try {
-        return await this.getCurrentWeatherFallback(lat, lng);
-      } catch (fallbackError) {
-        console.error("❌ Fallback also failed:", fallbackError);
+      if (!current) {
+        console.warn("[Weather] Open-Meteo response missing 'current' field");
         return null;
       }
+
+      const weatherCode: number = current.weather_code ?? 0;
+      const condition = WMO_CONDITION_MAP[weatherCode] || "Clear";
+
+      // Build adapter for generateActivityRecommendation (expects OpenWeatherMap shape)
+      const weatherForRec = {
+        temp: current.temperature_2m,
+        weather: [{ main: condition }],
+        wind_speed: current.wind_speed_10m,
+        rain: current.precipitation > 0
+          ? { "1h": current.precipitation / 0.0393701 } // inches → mm for recommendation logic
+          : undefined,
+        snow: undefined,
+      };
+
+      const recommendation = this.generateActivityRecommendation(
+        weatherForRec,
+        weatherForRec
+      );
+
+      const weatherData: WeatherData = {
+        temperature: Math.round(current.temperature_2m),
+        condition,
+        icon: getWmoIcon(weatherCode, current.is_day ?? 1),
+        description: WMO_DESCRIPTION_MAP[weatherCode] || "clear sky",
+        feelsLike: Math.round(current.apparent_temperature),
+        humidity: current.relative_humidity_2m,
+        windSpeed: current.wind_speed_10m,
+        uvIndex: current.uv_index,
+        precipitation: current.precipitation,
+        recommendation,
+        hourlyForecast: [],
+        timezone: data.timezone,
+        utcOffsetSeconds: data.utc_offset_seconds,
+      };
+
+      // Cache the result
+      this.weatherCache.set(cacheKey, { data: weatherData, ts: Date.now() });
+
+      return weatherData;
+    } catch (error) {
+      console.warn("[Weather] Open-Meteo error:", error);
+      return null;
     }
   }
 
   /**
-   * Generate activity-specific weather recommendations
+   * Generate activity-specific weather recommendations.
+   * Unchanged from OpenWeatherMap version — source-agnostic.
    */
   private generateActivityRecommendation(weather: any, current: any): string {
     const temp = weather.temp;
@@ -149,9 +225,6 @@ class WeatherService {
     const windSpeed = weather.wind_speed;
     const precipitation = weather.rain?.["1h"] || weather.snow?.["1h"] || 0;
 
-    // Combine temperature and condition for nuanced recommendations
-
-    // Rain conditions with temperature considerations
     if (condition.includes("rain") || precipitation > 0) {
       if (temp < 50) {
         return "Cold and rainy. Perfect for cozy indoor experiences like cafes, museums, or workshops.";
@@ -162,7 +235,6 @@ class WeatherService {
       }
     }
 
-    // Snow conditions with temperature considerations
     if (condition.includes("snow")) {
       if (temp < 32) {
         return "Freezing with snow. Ideal for cozy indoor venues or winter activities.";
@@ -173,7 +245,6 @@ class WeatherService {
       }
     }
 
-    // Clear/Sunny conditions with temperature considerations
     if (condition.includes("clear") || condition.includes("sun")) {
       if (temp < 50) {
         return "Clear but chilly. Great for brisk outdoor walks or indoor venues.";
@@ -188,7 +259,6 @@ class WeatherService {
       }
     }
 
-    // Cloudy conditions with temperature considerations
     if (condition.includes("cloud")) {
       if (temp < 50) {
         return "Cloudy and cool. Good for indoor activities or brisk outdoor walks.";
@@ -203,7 +273,6 @@ class WeatherService {
       }
     }
 
-    // Windy conditions with temperature considerations
     if (windSpeed > 15) {
       if (temp < 50) {
         return "Windy and cold. Better suited for indoor venues to stay warm.";
@@ -214,7 +283,6 @@ class WeatherService {
       }
     }
 
-    // Default fallback with temperature consideration
     if (temp < 50) {
       return "Cool weather. Good for indoor activities or layered outdoor experiences.";
     } else if (temp > 85) {
@@ -225,66 +293,7 @@ class WeatherService {
   }
 
   /**
-   * Fallback to Current Weather API if One Call API is unavailable
-   */
-  private async getCurrentWeatherFallback(
-    lat: number,
-    lng: number
-  ): Promise<WeatherData | null> {
-    try {
-      const url = `${OPENWEATHER_BASE_URL}/weather?lat=${lat}&lon=${lng}&appid=${OPENWEATHER_API_KEY}&units=imperial`;
-
-      const response = await fetch(url);
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ Current Weather API error:", {
-          status: response.status,
-          error: errorText,
-        });
-        throw new Error(
-          `Current Weather API error: ${response.status} - ${errorText}`
-        );
-      }
-
-      const data = await response.json();
-
-      /* console.log("data", data); */
-
-      // Convert Current Weather API format to match One Call API format for recommendation
-      const weatherForRecommendation = {
-        temp: data.main.temp,
-        weather: data.weather,
-        wind_speed: data.wind?.speed || 0,
-        rain: undefined,
-        snow: undefined,
-      };
-
-      const recommendation = this.generateActivityRecommendation(
-        weatherForRecommendation,
-        weatherForRecommendation
-      );
-
-      return {
-        temperature: Math.round(data.main.temp),
-        condition: data.weather[0].main,
-        icon: data.weather[0].icon,
-        description: data.weather[0].description,
-        feelsLike: Math.round(data.main.feels_like),
-        humidity: data.main.humidity,
-        windSpeed: data.wind?.speed || 0,
-        uvIndex: undefined,
-        precipitation: undefined,
-        recommendation,
-        hourlyForecast: [],
-      };
-    } catch (error) {
-      console.error("❌ Error in fallback weather API:", error);
-      return null;
-    }
-  }
-
-  /**
-   * Get activity-specific suitability
+   * Get activity-specific suitability (kept for future use — currently unused in UI).
    */
   getActivitySuitability(
     weather: WeatherData,
@@ -323,7 +332,6 @@ class WeatherService {
         message = "Perfect weather for outdoor activities!";
       }
     } else {
-      // Indoor activities
       suitable = true;
       message = "Weather is perfect for indoor experiences";
     }

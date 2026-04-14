@@ -1298,14 +1298,15 @@ export default function ExpandedCardModal({
   const fetchAdditionalData = async () => {
     if (!card) return;
     if ((card as any).cardType === 'curated') {
-      // For curated cards, fetch weather and busyness for the first stop's location
+      // For curated cards, fetch weather then busyness for the first stop's location
       const curatedCard = card as any;
       const firstStop = curatedCard.stops?.[0];
       if (firstStop?.lat && firstStop?.lng) {
-        // Fetch weather for first stop
+        // Fetch weather first (provides utcOffsetSeconds for busyness timezone)
+        let weather: WeatherData | null = null;
         setLoadingWeather(true);
         try {
-          const weather = await weatherService.getWeatherForecast(
+          weather = await weatherService.getWeatherForecast(
             firstStop.lat,
             firstStop.lng,
             new Date()
@@ -1318,7 +1319,7 @@ export default function ExpandedCardModal({
           setLoadingWeather(false);
         }
 
-        // Fetch busyness for first stop
+        // Fetch busyness for first stop (with category + timezone from weather)
         setLoadingBusyness(true);
         try {
           const busyness = await busynessService.getVenueBusyness(
@@ -1326,7 +1327,9 @@ export default function ExpandedCardModal({
             firstStop.lat,
             firstStop.lng,
             firstStop.address,
-            firstStop.placeId
+            firstStop.placeId,
+            card.category,
+            weather?.utcOffsetSeconds
           );
           setBusynessData(busyness);
         } catch (error) {
@@ -1338,40 +1341,37 @@ export default function ExpandedCardModal({
       return; // Still return — skip booking fetch (curated cards have per-stop links)
     }
 
-    // Fetch weather data
+    // Fetch weather first (provides utcOffsetSeconds for busyness timezone)
+    let weather: WeatherData | null = null;
     if (card.location) {
       setLoadingWeather(true);
       try {
-        // Convert selectedDateTime to Date if it's a string
-        const dateTime = new Date();
-
-        const weather = await weatherService.getWeatherForecast(
+        weather = await weatherService.getWeatherForecast(
           card.location.lat,
           card.location.lng,
-          dateTime
+          new Date()
         );
         setWeatherData(weather);
       } catch (error) {
-        console.error("❌ Error fetching weather in modal:", error);
+        console.error("Error fetching weather in modal:", error);
         setWeatherData(null);
       } finally {
         setLoadingWeather(false);
       }
-    } else {
-      console.warn("⚠️ No location data for weather fetch:", card);
     }
 
-    // Fetch busyness data
+    // Fetch busyness data (with category + timezone from weather)
     if (card.location) {
       setLoadingBusyness(true);
       try {
-        // Use address and placeId if available (more reliable than name)
         const busyness = await busynessService.getVenueBusyness(
           card.title,
           card.location.lat,
           card.location.lng,
-          card.address, // Use address for more reliable search
-          (card as any).source?.placeId // Use placeId if available
+          card.address,
+          (card as any).source?.placeId,
+          card.category,
+          weather?.utcOffsetSeconds
         );
         setBusynessData(busyness);
       } catch (error) {

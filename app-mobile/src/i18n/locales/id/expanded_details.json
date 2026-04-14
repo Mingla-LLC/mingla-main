@@ -44,7 +44,8 @@
     "clear_roads": "Jalan Lancar",
     "clear": "Lancar",
     "moderate": "Sedang",
-    "heavy": "Padat"
+    "heavy": "Padat",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "Rincian Kecocokan",

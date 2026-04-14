@@ -44,7 +44,8 @@
     "clear_roads": "ফাঁকা রাস্তা",
     "clear": "ফাঁকা",
     "moderate": "মাঝামাঝি",
-    "heavy": "ভারী"
+    "heavy": "ভারী",
+    "estimated": "Est."
   },
   "match_factors": {
     "title": "মিলের বিশ্লেষণ",

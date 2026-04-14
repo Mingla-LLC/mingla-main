@@ -1,10 +1,11 @@
 # Master Bug List
 
-> Last updated: 2026-04-11
-> Total: 313 | Open: 131 | Closed: 111 | Verified (B grade): 21 | Partial: 1 | Deferred: 1
+> Last updated: 2026-04-13
+> Total: 325 | Open: 140 | Closed: 114 | Verified (B grade): 21 | Partial: 1 | Deferred: 1
 >
-> Recently closed: ORCH-0402 (calendar button visibility + birthday push notifications — QA PASS 17/17)
-> Previously closed: ORCH-0392 (travel mode pill bleed — flexWrap fix, visually verified on-device)
+> Recently closed: ORCH-0419 (real-time data stack: Mapbox + Open-Meteo + venue heuristic — QA PASS 17/17), ORCH-0250, ORCH-0251
+> Recently added: ORCH-0420 (Haversine radius widening + ~prefix — queued behind 0419)
+> Previously closed: ORCH-0402 (calendar button visibility + birthday push notifications — QA PASS 17/17)
 
 ## Summary by Status
 
@@ -50,6 +51,12 @@
 | ID | Title | Surface | Classification | Source |
 |----|-------|---------|---------------|--------|
 | ORCH-0337 | Realtime event handlers silently cleared after disconnect/connect — all live updates dead until force-close | App Lifecycle | architecture-flaw | INV-010 (SDK-proven, RealtimeChannel.js:313) |
+| ORCH-0404 | Realtime update audit — pair request acceptance doesn't update sender + systemic audit of all two-party realtime gaps | Pairing + Cross-cutting | architecture-flaw | User report 2026-04-13 |
+| ORCH-0406 | Price tier labels wrong/hardcoded on expanded single card view + full card view audit | Discovery | bug | User report 2026-04-13 |
+| ORCH-0407 | Push notifications fundamentally broken across systems — full OneSignal pipeline audit | Notifications | architecture-flaw | User report 2026-04-13 |
+| ORCH-0409 | Map avatars intermittently disappear — possible ORCH-0385 regression | Map | regression | User report 2026-04-13 |
+| ORCH-0410 | Android discover map fundamentally broken — pan/scroll, labels, not fluid like iOS | Map | architecture-flaw | User report 2026-04-13 |
+| ORCH-0411 | Paired friend can't see my liked places — asymmetric visibility | Pairing | bug | User report 2026-04-13 |
 | ORCH-0363 | Report modal from friend list opens too late — user navigates away before modal appears | Moderation | ux | User report 2026-04-10 |
 | ORCH-0338 | React Query retry:1 wastes budget on 401s — auth-aware retry needed | State & Cache | quality-gap | INV-009 discovery |
 | ORCH-0352 | Beta feedback modal — end-to-end defects (CLOSED) | Profile | bug | Closed → A |
@@ -124,6 +131,21 @@
 | ORCH-0147 | Silent swipe blocking after limit — no user feedback | Payments | S2 | quality-gap | **CLOSED** |
 | ORCH-0148 | useEffectiveTier can downgrade user (misleading comment) | Payments | S2 | quality-gap | **CLOSED** |
 | ORCH-0149 | Trial abuse: delete + re-signup = infinite free Elite | Payments | S1 | bug | **CLOSED** |
+
+### New from Session 2026-04-13 (User-Reported Concerns)
+
+| ID | Title | Surface | Severity | Classification | Source |
+|----|-------|---------|----------|---------------|--------|
+| ORCH-0403 | Generic card descriptions on some categories (Play) — thin one-liners | Discovery | S2 | quality-gap | User report 2026-04-13 |
+| ORCH-0404 | Realtime update audit — pair request + all two-party systems | Pairing + Cross-cutting | S1 | architecture-flaw | User report 2026-04-13 |
+| ORCH-0405 | Saved/scheduled cards should reappear in deck with label | Discovery | S2 | missing-feature | User report 2026-04-13 |
+| ORCH-0406 | Price tier labels wrong/hardcoded on expanded card view | Discovery | S1 | bug | User report 2026-04-13 |
+| ORCH-0407 | Push notifications fundamentally broken across systems | Notifications | S1 | architecture-flaw | User report 2026-04-13 |
+| ORCH-0408 | Quoted message in DM compressed to invisibility | Chat | S2 | bug | User report 2026-04-13 |
+| ORCH-0409 | Map avatars intermittently disappear (possible ORCH-0385 regression) | Map | S1 | regression | User report 2026-04-13 |
+| ORCH-0410 | Android discover map fundamentally broken | Map | S1 | architecture-flaw | User report 2026-04-13 |
+| ORCH-0411 | Paired friend can't see my liked places — asymmetric | Pairing | S1 | bug | User report 2026-04-13 |
+| ORCH-0412 | Default avatar color inconsistency across app | UI | S2 | design-debt | User report 2026-04-13 |
 
 (Full list of S2 and S3 items omitted for readability — see WORLD_MAP.md Issue Registry for complete data)
 

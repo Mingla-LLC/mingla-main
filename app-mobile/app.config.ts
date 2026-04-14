@@ -33,11 +33,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     googleWebClientId:
       process.env.GOOGLE_WEB_CLIENT_ID ??
       "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",
-    EXPO_PUBLIC_OPENWEATHER_API_KEY:
-      process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY ?? "",
-    EXPO_PUBLIC_FOURSQUARE_API_KEY:
-      process.env.EXPO_PUBLIC_FOURSQUARE_API_KEY ?? "",
-    EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY ?? "",
+    EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN:
+      process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "",
     EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:
       process.env.GOOGLE_WEB_CLIENT_ID ??
       "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",
