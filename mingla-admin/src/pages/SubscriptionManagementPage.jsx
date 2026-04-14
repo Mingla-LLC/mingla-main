@@ -22,6 +22,7 @@ import { exportCsv } from "../lib/exportCsv";
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
+const GLOBAL_PLUS_KEY = "global_plus_access";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,11 @@ export function SubscriptionManagementPage() {
   const [historyTarget, setHistoryTarget] = useState(null);
   const [historyData, setHistoryData] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Global Plus toggle
+  const [globalPlusOn, setGlobalPlusOn] = useState(false);
+  const [globalPlusLoading, setGlobalPlusLoading] = useState(true);
+  const [globalPlusToggling, setGlobalPlusToggling] = useState(false);
 
   // Setup state (if RPC doesn't exist)
   const [setupNeeded, setSetupNeeded] = useState(false);
@@ -220,6 +226,57 @@ export function SubscriptionManagementPage() {
     }
     checkExpiring();
   }, []);
+
+  // ─── Fetch global Plus flag ──────────────────────────────────────────────
+
+  useEffect(() => {
+    async function loadGlobalPlus() {
+      try {
+        const { data, error } = await supabase
+          .from("app_config")
+          .select("config_value")
+          .eq("config_key", GLOBAL_PLUS_KEY)
+          .maybeSingle();
+        if (!error && data && mountedRef.current) {
+          setGlobalPlusOn(data.config_value === "true");
+        }
+      } catch { /* ignore */ }
+      finally { if (mountedRef.current) setGlobalPlusLoading(false); }
+    }
+    loadGlobalPlus();
+  }, []);
+
+  const handleToggleGlobalPlus = async () => {
+    const newValue = !globalPlusOn;
+    setGlobalPlusToggling(true);
+    try {
+      const { error } = await supabase
+        .from("app_config")
+        .update({ config_value: newValue ? "true" : "false", updated_at: new Date().toISOString() })
+        .eq("config_key", GLOBAL_PLUS_KEY);
+      if (error) throw error;
+      setGlobalPlusOn(newValue);
+      addToast({
+        variant: "success",
+        title: newValue ? "Global Plus ON" : "Global Plus OFF",
+        description: newValue
+          ? "All users now have Mingla+ access"
+          : "Users fall back to their real subscription tier",
+      });
+      logAdminAction(
+        newValue ? "subscription.global_plus_enabled" : "subscription.global_plus_disabled",
+        "app_config",
+        GLOBAL_PLUS_KEY,
+        { value: newValue }
+      );
+      fetchStats();
+      fetchSubscriptions();
+    } catch (err) {
+      addToast({ variant: "error", title: "Failed to toggle Global Plus", description: err.message });
+    } finally {
+      setGlobalPlusToggling(false);
+    }
+  };
 
   useEffect(() => {
     fetchSubscriptions();
@@ -499,6 +556,58 @@ export function SubscriptionManagementPage() {
           Export
         </Button>
       </div>
+
+      {/* Global Plus Toggle */}
+      {!globalPlusLoading && (
+        <div
+          className="flex items-center justify-between px-5 py-4 rounded-xl"
+          style={{
+            backgroundColor: globalPlusOn
+              ? "var(--color-brand-50, #fff7ed)"
+              : "var(--color-background-secondary)",
+            borderStyle: "solid",
+            borderWidth: 1,
+            borderColor: globalPlusOn
+              ? "var(--color-brand-500)"
+              : "var(--color-border)",
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <Crown className={`h-5 w-5 ${globalPlusOn ? "text-[var(--color-brand-500)]" : "text-[var(--color-text-tertiary)]"}`} />
+            <div>
+              <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                Global Plus Access
+              </p>
+              <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
+                {globalPlusOn
+                  ? "Every user has Mingla+ — regardless of subscription status"
+                  : "Users see their real subscription tier (free or paid)"}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleToggleGlobalPlus}
+            disabled={globalPlusToggling}
+            className="relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50"
+            style={{
+              backgroundColor: globalPlusOn
+                ? "var(--color-brand-500)"
+                : "var(--color-text-tertiary)",
+            }}
+            role="switch"
+            aria-checked={globalPlusOn}
+            aria-label="Toggle Global Plus Access"
+          >
+            <span
+              className="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ease-in-out"
+              style={{
+                marginTop: "4px",
+                transform: globalPlusOn ? "translateX(22px)" : "translateX(4px)",
+              }}
+            />
+          </button>
+        </div>
+      )}
 
       {/* Expiring overrides alert */}
       {expiringCount > 0 && (
