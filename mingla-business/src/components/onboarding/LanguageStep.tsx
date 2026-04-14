@@ -1,11 +1,13 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  Animated,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import * as Localization from "expo-localization";
 import { useTranslation } from "react-i18next";
@@ -30,9 +32,19 @@ export default function LanguageStep({
   const defaultLang = LANGUAGES.find((l) => l.code === deviceLocale)?.code ?? "en";
   const [selected, setSelected] = useState<string>(defaultLang);
 
+  // Entrance animation
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   const handleSelect = (code: string): void => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelected(code);
-    // Switch language immediately so the user sees the effect
     i18n.changeLanguage(code);
     persistLanguage(code);
   };
@@ -48,6 +60,7 @@ export default function LanguageStep({
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
+        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
         <Text style={styles.title}>{t("onboarding:language.title")}</Text>
         <Text style={styles.subtitle}>
           {t("onboarding:language.subtitle")}
@@ -82,6 +95,7 @@ export default function LanguageStep({
             );
           })}
         </View>
+        </Animated.View>
       </ScrollView>
     </WizardChrome>
   );

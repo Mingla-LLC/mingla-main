@@ -6,14 +6,24 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Alert,
   ActivityIndicator,
+  Animated,
+  Keyboard,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import { supabase } from "../../services/supabase";
 import { extractFunctionError } from "../../utils/extractFunctionError";
 import WizardChrome from "./WizardChrome";
-import { colors, spacing, radius, fontWeights, surface, border } from "../../constants/designSystem";
+import {
+  colors,
+  spacing,
+  radius,
+  fontWeights,
+  shadows,
+  surface,
+  border,
+} from "../../constants/designSystem";
 
 interface PhoneStepProps {
   onContinue: (phone: string) => void;
@@ -33,13 +43,16 @@ export default function PhoneStep({
   const [phase, setPhase] = useState<Phase>("phone");
   const [countryCode, setCountryCode] = useState("+1");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
+  const [otp, setOtp] = useState("");
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(0);
-  const otpRefs = useRef<(TextInput | null)[]>([]);
+  const otpInputRef = useRef<TextInput>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const fullPhone = `${countryCode}${phoneNumber.replace(/\D/g, "")}`;
   const phoneValid = E164_REGEX.test(fullPhone);
@@ -58,6 +71,15 @@ export default function PhoneStep({
     }, 1000);
   };
 
+  const animateIn = (): void => {
+    fadeAnim.setValue(0);
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
   const sendOtp = async (channel: Channel = "sms"): Promise<void> => {
     if (!phoneValid) {
       setError(t("onboarding:phone.invalid_phone"));
@@ -66,25 +88,36 @@ export default function PhoneStep({
     setSending(true);
     setError(null);
     try {
-      const { data, error: fnError } = await supabase.functions.invoke(
-        "send-otp",
-        { body: { phone: fullPhone, channel } }
-      );
+      const { error: fnError } = await supabase.functions.invoke("send-otp", {
+        body: { phone: fullPhone, channel },
+      });
       if (fnError) {
-        const msg = await extractFunctionError(fnError, t("onboarding:phone.send_failed"));
+        const msg = await extractFunctionError(
+          fnError,
+          t("onboarding:phone.send_failed")
+        );
         throw new Error(msg);
       }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPhase("otp");
+      setOtp("");
       startCountdown();
+      animateIn();
+      // Focus OTP input after transition
+      setTimeout(() => otpInputRef.current?.focus(), 400);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : t("onboarding:phone.send_failed");
+      const msg =
+        e instanceof Error ? e.message : t("onboarding:phone.send_failed");
       setError(msg);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setSending(false);
     }
   };
 
   const verifyOtp = async (code: string): Promise<void> => {
+    if (code.length !== 6) return;
+    Keyboard.dismiss();
     setVerifying(true);
     setError(null);
     try {
@@ -92,68 +125,51 @@ export default function PhoneStep({
         body: { phone: fullPhone, code },
       });
       if (fnError) {
-        const msg = await extractFunctionError(fnError, t("onboarding:phone.verify_failed"));
+        const msg = await extractFunctionError(
+          fnError,
+          t("onboarding:phone.verify_failed")
+        );
         throw new Error(msg);
       }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onContinue(fullPhone);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : t("onboarding:phone.verify_failed");
+      const msg =
+        e instanceof Error ? e.message : t("onboarding:phone.verify_failed");
       setError(msg);
-      setOtpDigits(["", "", "", "", "", ""]);
-      otpRefs.current[0]?.focus();
+      setOtp("");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      otpInputRef.current?.focus();
     } finally {
       setVerifying(false);
     }
   };
 
-  const handleOtpChange = (index: number, value: string): void => {
-    if (value.length > 1) {
-      // Handle paste of full code
-      const digits = value.replace(/\D/g, "").slice(0, 6).split("");
-      const newDigits = [...otpDigits];
-      digits.forEach((d, i) => {
-        if (i + index < 6) newDigits[i + index] = d;
-      });
-      setOtpDigits(newDigits);
-      const nextEmpty = newDigits.findIndex((d) => d === "");
-      if (nextEmpty === -1) {
-        verifyOtp(newDigits.join(""));
-      } else {
-        otpRefs.current[nextEmpty]?.focus();
-      }
-      return;
-    }
-
-    const newDigits = [...otpDigits];
-    newDigits[index] = value.replace(/\D/g, "");
-    setOtpDigits(newDigits);
-
-    if (value && index < 5) {
-      otpRefs.current[index + 1]?.focus();
-    }
-
-    const code = newDigits.join("");
-    if (code.length === 6 && !newDigits.includes("")) {
-      verifyOtp(code);
+  const handleOtpChange = (value: string): void => {
+    const cleaned = value.replace(/\D/g, "").slice(0, 6);
+    setOtp(cleaned);
+    if (cleaned.length === 6) {
+      verifyOtp(cleaned);
     }
   };
-
-  const handleOtpKeyPress = (index: number, key: string): void => {
-    if (key === "Backspace" && !otpDigits[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const continueAction =
-    phase === "phone" ? () => sendOtp("sms") : () => {};
 
   return (
     <WizardChrome
       currentStep={3}
       totalSteps={4}
-      onBack={phase === "otp" ? () => setPhase("phone") : onBack}
-      onContinue={continueAction}
-      continueLabel={phase === "phone" ? t("onboarding:phone.send_code") : t("onboarding:phone.verify_failed") + "..."}
+      onBack={
+        phase === "otp"
+          ? () => {
+              setPhase("phone");
+              setOtp("");
+              setError(null);
+            }
+          : onBack
+      }
+      onContinue={() => sendOtp("sms")}
+      continueLabel={
+        phase === "phone" ? t("onboarding:phone.send_code") : " "
+      }
       continueDisabled={phase === "phone" ? !phoneValid || sending : true}
       continueLoading={sending}
     >
@@ -162,26 +178,17 @@ export default function PhoneStep({
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>
-          {phase === "phone" ? t("onboarding:phone.title") : t("onboarding:phone.otp_title")}
-        </Text>
-        <Text style={styles.subtitle}>
-          {phase === "phone"
-            ? t("onboarding:phone.subtitle")
-            : t("onboarding:phone.otp_subtitle", { phone: fullPhone })}
-        </Text>
-
         {phase === "phone" && (
-          <>
+          <Animated.View>
+            <Text style={styles.title}>{t("onboarding:phone.title")}</Text>
+            <Text style={styles.subtitle}>
+              {t("onboarding:phone.subtitle")}
+            </Text>
+
             <View style={styles.phoneRow}>
-              <TextInput
-                style={styles.countryInput}
-                value={countryCode}
-                onChangeText={setCountryCode}
-                keyboardType="phone-pad"
-                maxLength={4}
-                accessibilityLabel="Country code"
-              />
+              <TouchableOpacity style={styles.countryButton} activeOpacity={0.7}>
+                <Text style={styles.countryText}>{countryCode}</Text>
+              </TouchableOpacity>
               <TextInput
                 style={styles.phoneInput}
                 value={phoneNumber}
@@ -191,45 +198,65 @@ export default function PhoneStep({
                 keyboardType="phone-pad"
                 autoComplete="tel"
                 maxLength={15}
-                accessibilityLabel="Phone number"
+                autoFocus
+                accessibilityLabel={t("onboarding:phone.placeholder")}
               />
             </View>
 
             <Text style={styles.consent}>
               {t("onboarding:phone.consent")}
             </Text>
-          </>
+          </Animated.View>
         )}
 
         {phase === "otp" && (
-          <>
-            <View style={styles.otpRow}>
-              {otpDigits.map((digit, i) => (
-                <TextInput
-                  key={i}
-                  ref={(ref) => {
-                    otpRefs.current[i] = ref;
-                  }}
-                  style={[styles.otpBox, digit && styles.otpBoxFilled]}
-                  value={digit}
-                  onChangeText={(v) => handleOtpChange(i, v)}
-                  onKeyPress={({ nativeEvent }) =>
-                    handleOtpKeyPress(i, nativeEvent.key)
-                  }
-                  keyboardType="number-pad"
-                  maxLength={1}
-                  selectTextOnFocus
-                  accessibilityLabel={`Digit ${i + 1} of verification code`}
-                />
-              ))}
+          <Animated.View style={{ opacity: fadeAnim }}>
+            <Text style={styles.title}>
+              {t("onboarding:phone.otp_title")}
+            </Text>
+            <Text style={styles.subtitle}>
+              {t("onboarding:phone.otp_subtitle", { phone: fullPhone })}
+            </Text>
+
+            {/* Single hidden input for OTP — renders as visual boxes */}
+            <View style={styles.otpContainer}>
+              <View style={styles.otpBoxes}>
+                {Array.from({ length: 6 }).map((_, i) => {
+                  const digit = otp[i] ?? "";
+                  const isFocused = i === otp.length && !verifying;
+                  return (
+                    <View
+                      key={i}
+                      style={[
+                        styles.otpBox,
+                        digit ? styles.otpBoxFilled : null,
+                        isFocused ? styles.otpBoxFocused : null,
+                      ]}
+                    >
+                      <Text style={styles.otpDigit}>{digit}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <TextInput
+                ref={otpInputRef}
+                style={styles.otpHiddenInput}
+                value={otp}
+                onChangeText={handleOtpChange}
+                keyboardType="number-pad"
+                maxLength={6}
+                autoComplete="one-time-code"
+                textContentType="oneTimeCode"
+                caretHidden
+                accessibilityLabel="Verification code"
+              />
             </View>
 
             {verifying && (
-              <ActivityIndicator
-                size="small"
-                color={colors.primary[500]}
-                style={styles.verifySpinner}
-              />
+              <View style={styles.verifyingRow}>
+                <ActivityIndicator size="small" color={colors.primary[500]} />
+                <Text style={styles.verifyingText}>Verifying...</Text>
+              </View>
             )}
 
             <View style={styles.fallbacks}>
@@ -244,36 +271,54 @@ export default function PhoneStep({
                     countdown > 0 && styles.fallbackDisabled,
                   ]}
                 >
-                  {countdown > 0 ? t("onboarding:phone.resend_countdown", { seconds: countdown }) : t("onboarding:phone.resend")}
+                  {countdown > 0
+                    ? t("onboarding:phone.resend_countdown", {
+                        seconds: countdown,
+                      })
+                    : t("onboarding:phone.resend")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.altChannels}>
+              <TouchableOpacity
+                onPress={() => sendOtp("whatsapp")}
+                style={styles.channelPill}
+              >
+                <Text style={styles.channelText}>
+                  {t("onboarding:phone.try_whatsapp")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => sendOtp("whatsapp")}
-                style={styles.fallbackButton}
-              >
-                <Text style={styles.fallbackText}>{t("onboarding:phone.try_whatsapp")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
                 onPress={() => sendOtp("call")}
-                style={styles.fallbackButton}
+                style={styles.channelPill}
               >
-                <Text style={styles.fallbackText}>{t("onboarding:phone.try_call")}</Text>
+                <Text style={styles.channelText}>
+                  {t("onboarding:phone.try_call")}
+                </Text>
               </TouchableOpacity>
             </View>
 
             <TouchableOpacity
               onPress={() => {
                 setPhase("phone");
-                setOtpDigits(["", "", "", "", "", ""]);
+                setOtp("");
                 setError(null);
               }}
+              style={styles.changeNumberButton}
             >
-              <Text style={styles.changeNumber}>{t("onboarding:phone.change_number")}</Text>
+              <Text style={styles.changeNumberText}>
+                {t("onboarding:phone.change_number")}
+              </Text>
             </TouchableOpacity>
-          </>
+          </Animated.View>
         )}
 
-        {error && <Text style={styles.errorText}>{error}</Text>}
+        {error && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
       </ScrollView>
     </WizardChrome>
   );
@@ -293,70 +338,100 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: colors.text.tertiary,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xl,
   },
   phoneRow: {
     flexDirection: "row",
     gap: spacing.sm,
     marginBottom: spacing.md,
   },
-  countryInput: {
+  countryButton: {
     width: 72,
-    height: 48,
+    height: 52,
     backgroundColor: surface.input,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: border.default,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    fontSize: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  countryText: {
+    fontSize: 18,
+    fontWeight: fontWeights.semibold,
     color: colors.text.primary,
-    textAlign: "center",
   },
   phoneInput: {
     flex: 1,
-    height: 48,
+    height: 52,
     backgroundColor: surface.input,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: border.default,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    fontSize: 16,
+    fontSize: 18,
     color: colors.text.primary,
+    letterSpacing: 0.5,
   },
   consent: {
     fontSize: 12,
     color: colors.text.tertiary,
     lineHeight: 18,
   },
-  otpRow: {
+  otpContainer: {
+    position: "relative",
+    marginBottom: spacing.lg,
+  },
+  otpBoxes: {
     flexDirection: "row",
     justifyContent: "center",
     gap: 10,
-    marginBottom: spacing.lg,
   },
   otpBox: {
     width: 48,
-    height: 56,
+    height: 58,
     backgroundColor: surface.input,
     borderWidth: 1.5,
     borderColor: border.default,
     borderRadius: radius.md,
-    textAlign: "center",
-    fontSize: 24,
-    fontWeight: fontWeights.bold,
-    color: colors.text.primary,
+    alignItems: "center",
+    justifyContent: "center",
   },
   otpBoxFilled: {
     borderColor: colors.primary[500],
     backgroundColor: colors.primary[50],
+    ...shadows.sm,
   },
-  verifySpinner: {
+  otpBoxFocused: {
+    borderColor: colors.primary[500],
+    borderWidth: 2,
+  },
+  otpDigit: {
+    fontSize: 26,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+  },
+  otpHiddenInput: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0,
+    fontSize: 1,
+  },
+  verifyingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
     marginBottom: spacing.md,
   },
+  verifyingText: {
+    fontSize: 14,
+    color: colors.text.tertiary,
+  },
   fallbacks: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: spacing.md,
+    alignItems: "center",
     marginBottom: spacing.md,
   },
   fallbackButton: {
@@ -364,23 +439,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   fallbackText: {
-    fontSize: 14,
-    fontWeight: fontWeights.medium,
+    fontSize: 15,
+    fontWeight: fontWeights.semibold,
     color: colors.primary[500],
   },
   fallbackDisabled: {
     color: colors.text.tertiary,
+    fontWeight: fontWeights.regular,
   },
-  changeNumber: {
+  altChannels: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  channelPill: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: colors.gray[100],
+    borderRadius: radius.full,
+  },
+  channelText: {
+    fontSize: 13,
+    fontWeight: fontWeights.medium,
+    color: colors.text.secondary,
+  },
+  changeNumberButton: {
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+  },
+  changeNumberText: {
     fontSize: 14,
     fontWeight: fontWeights.medium,
     color: colors.primary[500],
-    textAlign: "center",
+  },
+  errorContainer: {
+    backgroundColor: "#fef2f2",
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
   },
   errorText: {
     fontSize: 14,
     color: colors.error[500],
     textAlign: "center",
-    marginTop: spacing.md,
   },
 });

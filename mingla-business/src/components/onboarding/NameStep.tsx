@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { View, Text, TextInput, ScrollView, StyleSheet } from "react-native";
+import React, { useRef, useState } from "react";
+import { View, Text, TextInput, ScrollView, StyleSheet, Animated } from "react-native";
 import { useTranslation } from "react-i18next";
 import WizardChrome from "./WizardChrome";
 import { colors, spacing, radius, fontWeights, surface, border } from "../../constants/designSystem";
@@ -18,6 +18,16 @@ export default function NameStep({
   onBack,
 }: NameStepProps): React.JSX.Element {
   const { t } = useTranslation(["onboarding"]);
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   const [firstName, setFirstName] = useState(initialFirstName);
   const [lastName, setLastName] = useState(initialLastName);
   const [firstTouched, setFirstTouched] = useState(false);
@@ -40,6 +50,7 @@ export default function NameStep({
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
+        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
         <Text style={styles.title}>{t("onboarding:name.title")}</Text>
         <Text style={styles.subtitle}>{t("onboarding:name.subtitle")}</Text>
 
@@ -88,6 +99,7 @@ export default function NameStep({
             <Text style={styles.errorText}>{t("onboarding:name.required")}</Text>
           )}
         </View>
+        </Animated.View>
       </ScrollView>
     </WizardChrome>
   );

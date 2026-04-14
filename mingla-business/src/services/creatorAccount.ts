@@ -10,8 +10,11 @@ export interface CreatorAccountStatus {
 
 /**
  * Ensures a row exists in public.creator_accounts for the signed-in user.
- * Safe to call on every session / auth state change (idempotent upsert).
- * Returns onboarding status so the app knows where to navigate.
+ * Safe to call on every session / auth state change (idempotent).
+ *
+ * IMPORTANT: We do NOT upsert display_name/avatar on every call — that would
+ * overwrite the name the user entered during onboarding with OAuth metadata.
+ * Instead: INSERT if not exists (with OAuth defaults), then SELECT status.
  */
 export async function ensureCreatorAccount(
   user: User
@@ -27,6 +30,7 @@ export async function ensureCreatorAccount(
     (user.user_metadata?.picture as string | undefined) ||
     null;
 
+  // INSERT only if row doesn't exist — never overwrite user-entered data
   const { error } = await supabase.from("creator_accounts").upsert(
     {
       id: user.id,
@@ -34,12 +38,18 @@ export async function ensureCreatorAccount(
       display_name: displayName,
       avatar_url: avatarUrl,
     },
-    { onConflict: "id", ignoreDuplicates: false }
+    { onConflict: "id", ignoreDuplicates: true }
   );
 
   if (error) {
     console.warn("[creator_accounts] upsert failed:", error.message);
   }
+
+  // Always update email (it can change via OAuth) but NOT display_name
+  await supabase
+    .from("creator_accounts")
+    .update({ email: user.email ?? null })
+    .eq("id", user.id);
 
   // Fetch onboarding status
   const { data, error: fetchError } = await supabase
@@ -67,7 +77,7 @@ export async function ensureCreatorAccount(
 }
 
 /**
- * Update a single onboarding field. Used by each onboarding step.
+ * Update specific fields on the creator account. Used by onboarding steps.
  */
 export async function updateCreatorAccount(
   userId: string,
@@ -80,5 +90,20 @@ export async function updateCreatorAccount(
 
   if (error) {
     throw new Error(`Failed to update account: ${error.message}`);
+  }
+}
+
+/**
+ * Delete the creator account and the underlying auth user.
+ * This is irreversible. The auth.users CASCADE will clean up the creator_accounts row.
+ */
+export async function deleteCreatorAccount(userId: string): Promise<void> {
+  // Delete the auth user — CASCADE deletes creator_accounts row
+  const { error } = await supabase.functions.invoke("delete-user", {
+    body: { user_id: userId },
+  });
+
+  if (error) {
+    throw new Error("Couldn't delete account. Please try again.");
   }
 }

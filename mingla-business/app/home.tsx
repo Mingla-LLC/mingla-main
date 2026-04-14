@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../src/context/AuthContext";
+import { deleteCreatorAccount } from "../src/services/creatorAccount";
 import {
   colors,
   spacing,
@@ -146,14 +147,45 @@ export default function HomeScreen() {
         <Ionicons name="chevron-forward" size={20} color={colors.gray[300]} />
       </TouchableOpacity>
 
-      {/* Sign out (dev convenience — will move to settings later) */}
-      <TouchableOpacity
-        style={styles.signOutLink}
-        onPress={() => signOut()}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.signOutText}>{t("home:sign_out")}</Text>
-      </TouchableOpacity>
+      {/* Account actions */}
+      <View style={styles.accountActions}>
+        <TouchableOpacity
+          style={styles.signOutLink}
+          onPress={() => signOut()}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.signOutText}>{t("home:sign_out")}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.deleteLink}
+          onPress={() => {
+            Alert.alert(
+              "Delete account",
+              "This will permanently delete your account and all your data. This cannot be undone.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      if (user) await deleteCreatorAccount(user.id);
+                      await signOut();
+                    } catch (e: unknown) {
+                      const msg = e instanceof Error ? e.message : "Couldn't delete account";
+                      Alert.alert("Error", msg);
+                    }
+                  },
+                },
+              ]
+            );
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.deleteText}>Delete account</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -261,9 +293,12 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     marginTop: 2,
   },
-  signOutLink: {
-    alignSelf: "center",
+  accountActions: {
+    alignItems: "center",
     marginTop: 32,
+    gap: spacing.md,
+  },
+  signOutLink: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
   },
@@ -271,5 +306,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: fontWeights.medium,
     color: colors.text.tertiary,
+  },
+  deleteLink: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  deleteText: {
+    fontSize: 14,
+    fontWeight: fontWeights.medium,
+    color: colors.error[500],
   },
 });
