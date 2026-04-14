@@ -60,6 +60,7 @@ const BLOCKED_PRIMARY_TYPES = new Set([
   "locksmith", "plumber", "electrician", "roofing_contractor",
   "insurance_agency", "real_estate_agency", "accounting",
   "post_office", "fire_station", "police", "courthouse",
+  "wedding_venue", "banquet_hall",
 ]);
 
 // ── Flowers: primary_types that must NEVER get the flowers category ─────────
