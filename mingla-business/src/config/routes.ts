@@ -8,6 +8,12 @@ const AppRoutes = {
   onboarding: {
     index: "/onboarding",
   },
+  claim: {
+    index: "/claim",
+  },
+  menu: {
+    index: "/menu",
+  },
 } as const;
 
 export default AppRoutes;

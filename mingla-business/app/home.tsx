@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Alert,
 } from "react-native";
-import { Redirect } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
@@ -32,6 +32,7 @@ function getGreetingKey(): string {
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { t } = useTranslation(["home", "common"]);
   const { user, loading, accountStatus, signOut } = useAuth();
 
@@ -75,7 +76,13 @@ export default function HomeScreen() {
         </Text>
         <TouchableOpacity
           style={styles.heroCta}
-          onPress={comingSoon}
+          onPress={() => {
+            if (showEventFirst) {
+              comingSoon(); // Events coming in Phase 3
+            } else {
+              router.push("/claim" as never);
+            }
+          }}
           activeOpacity={0.85}
         >
           <Text style={styles.heroCtaText}>
@@ -114,7 +121,7 @@ export default function HomeScreen() {
       {showEventFirst && (
         <TouchableOpacity
           style={styles.secondaryCard}
-          onPress={comingSoon}
+          onPress={() => router.push("/claim" as never)}
           activeOpacity={0.85}
         >
           <View style={styles.secondaryIcon}>

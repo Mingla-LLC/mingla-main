@@ -34,6 +34,13 @@ export const shadows = {
     shadowRadius: 6,
     elevation: 4,
   },
+  lg: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    elevation: 8,
+  },
 } as const;
 
 export const fontWeights = {
