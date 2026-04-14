@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Ugbu a bụ akụkụ ọchịchọ.",
     "body": "Pịa ụdị ọ bụla dị ka nke gị.",
-    "caption": "Họrọ nke na-akpali gị karịsịa.",
+    "caption": "Họrọ ndị na-atọ gị ụtọ.",
     "adventurous": "Nlegharị Anya",
     "adventurous_desc": "Chọpụta ihe a na-atụghị anya ya",
     "first_date": "Ezigbo Oge Mbụ",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "Kedụ ụdị ebe ị hụrụ n'anya?",
-    "body": "Họrọ ruo 3 nke dabara na ụdị gị.",
-    "cap_message": "3 kasị. Wepụ otu iji họrọ ọzọ."
+    "body": "Họrọ ndị dabara na agwa gị."
   },
   "budget": {
     "headline": "Ebe dị gị mma",

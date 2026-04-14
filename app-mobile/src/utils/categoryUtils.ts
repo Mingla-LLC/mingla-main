@@ -5,14 +5,8 @@
  */
 import i18n from '../i18n';
 
-/** Maximum number of category cards a user can select. */
-export const MAX_CATEGORIES = 3;
-
-/** Maximum number of curated/intent cards a user can select (radio behavior). */
-export const MAX_INTENTS = 1;
-
-/** Cap an intents array to MAX_INTENTS. Use at every load-from-DB and save boundary. */
-export const capIntents = (raw: string[]): string[] => raw.slice(0, MAX_INTENTS);
+// ORCH-0424: Selection limits removed. intents[] and categories[] are unbounded.
+// Do NOT reintroduce caps without a product decision.
 
 /** Hidden category slugs — never shown to users */
 export const HIDDEN_CATEGORY_SLUGS = new Set(['groceries']);
@@ -177,11 +171,10 @@ export const getCategoryIcon = (categoryKey: string): string => {
  * Handles legacy display names ("Nature"), underscored slugs ("casual_eats"),
  * old removed slugs ("groceries_flowers" → "flowers", "work_business" → dropped),
  * and any other format that getCategorySlug understands. Returns a unique
- * array of visible slug IDs capped at `maxCategories`.
+ * array of visible slug IDs.
  */
 export const normalizeCategoryArray = (
   raw: string[],
-  maxCategories: number = 3,
 ): string[] => {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -204,7 +197,6 @@ export const normalizeCategoryArray = (
       seen.add(slug);
       result.push(slug);
     }
-    if (result.length >= maxCategories) break;
   }
   return result;
 };

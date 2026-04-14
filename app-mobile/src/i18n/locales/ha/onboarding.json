@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Yanzu sashen nishaɗi.",
     "body": "Danna kowane yanayin da yake yi maka.",
-    "caption": "Zaɓi wanda ya fi ƙarfafa maka.",
+    "caption": "Zaɓi waɗanda suka faranta maka rai.",
     "adventurous": "Mai ƙalubale",
     "adventurous_desc": "Bincika abin da ba a zata ba",
     "first_date": "Farkon Soyayya",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "Wanne irin wurare kake so?",
-    "body": "Zaɓi har zuwa 3 da suka dace da yanayin ka.",
-    "cap_message": "Mafi yawa 3 nau'ikan. Cire ɗaya don zaɓar wani."
+    "body": "Zaɓi waɗanda suka dace da ɗabi'arka."
   },
   "budget": {
     "headline": "Wurin da ya dace",

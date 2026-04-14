@@ -3,18 +3,14 @@
   "experience_types.subtitle": "Irú àjò wo ni o ń ní?",
   "experience_types.curated_locked": "Àwọn káàdì tí a ṣètò ti tì lórí Ọ̀fẹ́ — gbéga láti ṣàwárí wọn",
   "experience_types.min_message": "Yan ó kéré jù ìhùwàsí tàbí ẹ̀ka kan.",
-
   "experience_descriptions.adventurous": "Nǹkan tí a kò retí — fún àwọn tí kì í ṣeré lọ́nà tó rọrùn",
   "experience_descriptions.first-date": "Àwọn ibi tó rọrùn tí ìjíròrò ti ń ṣàn dáadáa",
   "experience_descriptions.romantic": "Àwọn àkókò ìfẹ́ tó dájú pe ó ṣe pàtàkì",
   "experience_descriptions.group-fun": "Bí wọ́n ti pọ̀ tó, bẹ́ẹ̀ ni ìgbádùn — iṣẹ́ tí gbogbo ẹgbẹ́ yóò nífẹ̀ẹ́ sí",
   "experience_descriptions.picnic-dates": "A ó ṣètò oúnjẹ — ìwọ wá jókòó kí o sì gbádùn",
   "experience_descriptions.take-a-stroll": "Ọ̀nà tí ó dára pẹ̀lú oúnjẹ dídùn ní ìpẹ̀kun méjèèjì",
-
   "categories.title": "Kíni Ó Dùn Mọ́ Ọ?",
-  "categories.cap_message": "Mẹ́ta ló pọ̀ jùlọ — yọ ọ̀kan kúrò láti fi ọ̀kan kún.",
   "categories.min_message": "Yan ó kéré jù ìhùwàsí tàbí ẹ̀ka kan.",
-
   "category_descriptions.nature": "Ipa ọ̀nà, ọgbà, ọgbà odòdó — afẹ́fẹ́ dídùn àti ibi ìwòran",
   "category_descriptions.first_meet": "Àwọn ibi tó rọrùn tí a ṣe fún ìpàdé àkọ́kọ́",
   "category_descriptions.picnic_park": "Àwọn ọgbà tó dára jùlọ nítòsí fún títa aṣọ",
@@ -27,14 +23,12 @@
   "category_descriptions.play": "Ilé eré, bọ́ọ̀lù, yàrá ìsálọ — mú ìdíje rẹ wá",
   "category_descriptions.wellness": "Spa, sauna, àti àwọn ibi tó ń mú wàhálà kúrò",
   "category_descriptions.flowers": "Àwọn tó ń ta odòdó fún àwọn ẹ̀wé tuntun",
-
   "datetime.title": "Ìgbà Wo",
   "datetime.question": "Ìgbà wo ni o ń jáde?",
   "datetime.this_weekend": "Ìparí Ọ̀sẹ̀ Yìí",
   "datetime.friday_through_sunday": "Ọjọ́ Ẹtì sí Ọjọ́ Àìkú",
   "datetime.date_placeholder": "mm/dd/yyyy",
   "datetime.time_label": "Ní Àkókò Wo?",
-
   "time_slots.brunch": "Brunch",
   "time_slots.brunch_time": "11–1",
   "time_slots.afternoon": "Ọ̀sán",
@@ -45,25 +39,20 @@
   "time_slots.late_night_time": "10–12",
   "time_slots.anytime": "Àkókò Èyíkéyìí",
   "time_slots.anytime_time": "Gbogbo ọjọ́",
-
   "travel_mode.title": "Ìdé Ibẹ̀",
   "travel_mode.question": "Báwo ni o ṣe ń lọ?",
-
   "loading.text": "Ń ṣètò ìhùwàsí...",
-
   "travel_limit.title": "Báwo Ni Ó Ṣe Jìnnà?",
   "travel_limit.question": "Ṣètò àgbègbè ìrìnàjò rẹ",
   "travel_limit.min_unit": "ìṣẹ́jú",
   "travel_limit.set_your_own": "Ṣètò tìrẹ",
   "travel_limit.custom_placeholder": "Ìṣẹ́jú 5 – 120",
-
   "location.use_current": "Lo ibi mi ní báyìí",
   "location.search_placeholder": "Wá ibi ìbẹ̀rẹ̀...",
   "location.gps_helper": "A ti rí ọ. Sinmi.",
   "location.manual_helper": "Fi àmì síbìkíbi. Tàbí yí padà sí GPS.",
   "location.pro_feature": "Ẹ̀yà Pro — ṣàwárí láti ibìkíbi",
   "location.searching": "Ń wá...",
-
   "sheet.title": "Ìhùwàsí Rẹ",
   "sheet.lock_it_in": "Fìdí Múlẹ̀",
   "sheet.lock_it_in_count": "Fìdí Múlẹ̀ ({{count}})",
@@ -74,7 +63,6 @@
   "budget.subtitle": "Yan gbogbo ìpele tí o ṣí sílẹ̀ fún",
   "starting_point.title": "Ibi Ìbẹ̀rẹ̀",
   "starting_point.subtitle": "Níbo ni a yóò bẹ̀rẹ̀ sí wá?",
-
   "date_options.now": "Báyìí",
   "date_options.now_desc": "Kúrò lẹ́sẹ̀kẹsẹ̀",
   "date_options.today": "Lónìí",
@@ -83,12 +71,10 @@
   "date_options.this_weekend_desc": "Jímọ̀-Àìkú",
   "date_options.pick_a_date": "Yan Ọjọ́",
   "date_options.pick_a_date_desc": "Ọjọ́ àdáni",
-
   "travel_modes.walk": "Rìn",
   "travel_modes.bike": "Kẹ̀kẹ́",
   "travel_modes.bus": "Bọ́ọ̀sì",
   "travel_modes.drive": "Wakọ̀",
-
   "sheet.session_vibes": "Ìhùwàsí {{name}}",
   "sheet.pick_time_hint": "Yan àkókò láti tẹsiwaju",
   "sheet.pick_date_hint": "Yan ọjọ́ láti tẹsiwaju",

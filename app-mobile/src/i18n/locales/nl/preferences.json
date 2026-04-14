@@ -3,18 +3,14 @@
   "experience_types.subtitle": "Wat voor uitje zoek je?",
   "experience_types.curated_locked": "Geselecteerde kaarten zijn vergrendeld in de gratis versie — upgrade om ze te verkennen",
   "experience_types.min_message": "Kies minstens één sfeer of categorie.",
-
   "experience_descriptions.adventurous": "Iets onverwachts — voor wie niet op safe speelt",
   "experience_descriptions.first-date": "Relaxte plekken waar het gesprek vanzelf gaat",
   "experience_descriptions.romantic": "Intieme momenten die echt bijzonder voelen",
   "experience_descriptions.group-fun": "Hoe meer zielen, hoe meer vreugd — activiteiten waar iedereen van geniet",
   "experience_descriptions.picnic-dates": "Wij stellen het menu samen — jij hoeft alleen maar te genieten",
   "experience_descriptions.take-a-stroll": "Een schilderachtige route met een goed restaurant aan elk uiteinde",
-
   "categories.title": "Waar heb je zin in?",
-  "categories.cap_message": "Maximaal 3 — verwijder er een om een andere toe te voegen.",
   "categories.min_message": "Kies minstens één sfeer of categorie.",
-
   "category_descriptions.nature": "Wandelpaden, parken, tuinen, uitzichten — frisse lucht en mooi landschap",
   "category_descriptions.first_meet": "Ontspannen plekken voor een eerste indruk",
   "category_descriptions.picnic_park": "De beste parken in de buurt om een deken uit te spreiden",
@@ -27,14 +23,12 @@
   "category_descriptions.play": "Arcadehallen, bowlen, escape rooms — laat je competitieve kant zien",
   "category_descriptions.wellness": "Spa's, sauna's en plekken om stress weg te smelten",
   "category_descriptions.flowers": "Bloemisten en bloemenwinkels voor verse boeketten",
-
   "datetime.title": "Wanneer",
   "datetime.question": "Wanneer ga je eropuit?",
   "datetime.this_weekend": "Dit weekend",
   "datetime.friday_through_sunday": "Vrijdag tot en met zondag",
   "datetime.date_placeholder": "dd/mm/jjjj",
   "datetime.time_label": "Rond welke tijd?",
-
   "time_slots.brunch": "Brunch",
   "time_slots.brunch_time": "11–13",
   "time_slots.afternoon": "Middag",
@@ -45,25 +39,20 @@
   "time_slots.late_night_time": "22–0",
   "time_slots.anytime": "Wanneer dan ook",
   "time_slots.anytime_time": "De hele dag",
-
   "travel_mode.title": "Hoe ga je erheen",
   "travel_mode.question": "Hoe verplaats je je?",
-
   "loading.text": "Sfeer wordt bepaald...",
-
   "travel_limit.title": "Hoe ver?",
   "travel_limit.question": "Stel je reisbereik in",
   "travel_limit.min_unit": "min",
   "travel_limit.set_your_own": "Zelf instellen",
   "travel_limit.custom_placeholder": "5 – 120 minuten",
-
   "location.use_current": "Gebruik mijn huidige locatie",
   "location.search_placeholder": "Zoek een startpunt...",
   "location.gps_helper": "We hebben je gevonden. Relax.",
   "location.manual_helper": "Zet een pin waar je wilt. Of schakel terug naar GPS.",
   "location.pro_feature": "Pro-functie — verken vanaf elke locatie",
   "location.searching": "Zoeken...",
-
   "sheet.title": "Jouw sfeer",
   "sheet.lock_it_in": "Bevestigen",
   "sheet.lock_it_in_count": "Bevestigen ({{count}})",
@@ -74,7 +63,6 @@
   "budget.subtitle": "Selecteer elke prijsklasse die je aanspreekt",
   "starting_point.title": "Startpunt",
   "starting_point.subtitle": "Waar moeten we beginnen met zoeken?",
-
   "date_options.now": "Nu",
   "date_options.now_desc": "Direct vertrekken",
   "date_options.today": "Vandaag",
@@ -83,12 +71,10 @@
   "date_options.this_weekend_desc": "Vr–Zo",
   "date_options.pick_a_date": "Kies een datum",
   "date_options.pick_a_date_desc": "Aangepaste datum",
-
   "travel_modes.walk": "Lopen",
   "travel_modes.bike": "Fietsen",
   "travel_modes.bus": "Bus",
   "travel_modes.drive": "Auto",
-
   "sheet.session_vibes": "{{name}} Sfeer",
   "sheet.pick_time_hint": "Kies een tijd om door te gaan",
   "sheet.pick_date_hint": "Kies een datum om door te gaan",

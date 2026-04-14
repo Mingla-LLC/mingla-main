@@ -3,18 +3,14 @@
   "experience_types.subtitle": "Kedụ ụdị ọpụpụ ị na-enwe?",
   "experience_types.curated_locked": "A kpọchiri kaadị a hazịrị na N'efu — gbakwunye iji nyochaa ha",
   "experience_types.min_message": "Họrọ otu ụdị ma ọ bụ ụdị karịsịa.",
-
   "experience_descriptions.adventurous": "Ihe a na-atụghị anya ya — maka ndị na-achọghị ihe dị mfe",
   "experience_descriptions.first-date": "Ebe dị mfe ebe mkparịta ụka na-agafe nke ọma",
   "experience_descriptions.romantic": "Oge ịhụnanya nke dị pụrụ iche n'ezie",
   "experience_descriptions.group-fun": "Ka ha dị ọtụtụ ka ọ dị mma — ihe omume nke otu niile ga-ahụ n'anya",
   "experience_descriptions.picnic-dates": "Anyị ga-ahazị nri — ị naanị bịa nụrịa ụtọ",
   "experience_descriptions.take-a-stroll": "Ụzọ mara mma nwere nri dị mma n'isi abụọ",
-
   "categories.title": "Kedụ Ihe Dị Gị Mma?",
-  "categories.cap_message": "3 kasị — wepụ otu iji tinye ọzọ.",
   "categories.min_message": "Họrọ otu ụdị ma ọ bụ ụdị karịsịa.",
-
   "category_descriptions.nature": "Ụzọ, ogige, ubi ifuru — ikuku dị mma na ihe nlele",
   "category_descriptions.first_meet": "Ebe dị nwayọọ maka nzukọ mbụ",
   "category_descriptions.picnic_park": "Ogige kachasị mma nso maka itinye akwa",
@@ -27,14 +23,12 @@
   "category_descriptions.play": "Ebe egwuregwu, bọ́ọ̀lù, ọnụ ụlọ mgbapụ — bute asọmpi gị",
   "category_descriptions.wellness": "Spa, sauna, na ebe na-ewepụ nsogbu",
   "category_descriptions.flowers": "Ndị na-ere ifuru maka ifuru ọhụrụ",
-
   "datetime.title": "Oge",
   "datetime.question": "Kedu mgbe ị na-apụ?",
   "datetime.this_weekend": "Ọgwụgwụ Izu A",
   "datetime.friday_through_sunday": "Fraịdee ruo Sọnde",
   "datetime.date_placeholder": "mm/dd/yyyy",
   "datetime.time_label": "Na Oge Ole?",
-
   "time_slots.brunch": "Nri Ụtụtụ",
   "time_slots.brunch_time": "11–1",
   "time_slots.afternoon": "Ehihie",
@@ -45,25 +39,20 @@
   "time_slots.late_night_time": "10–12",
   "time_slots.anytime": "Oge Ọ Bụla",
   "time_slots.anytime_time": "Ụbọchị niile",
-
   "travel_mode.title": "Ịga Ebe Ahụ",
   "travel_mode.question": "Kedu ka ị si aga?",
-
   "loading.text": "Na-atọ ụdị...",
-
   "travel_limit.title": "Olee Ebe?",
   "travel_limit.question": "Tọọ radius njem gị",
   "travel_limit.min_unit": "nkeji",
   "travel_limit.set_your_own": "Tọọ nke gị",
   "travel_limit.custom_placeholder": "Nkeji 5 – 120",
-
   "location.use_current": "Jiri ebe m nọ ugbu a",
   "location.search_placeholder": "Chọọ ebe mmalite...",
   "location.gps_helper": "Anyị achọtala gị. Nọdụ ala.",
   "location.manual_helper": "Tinye pin ebe ọ bụla. Ma ọ bụ laghachi na GPS.",
   "location.pro_feature": "Ọrụ Pro — nyochaa site ebe ọ bụla",
   "location.searching": "Na-achọ...",
-
   "sheet.title": "Ụdị Gị",
   "sheet.lock_it_in": "Kwado Ya",
   "sheet.lock_it_in_count": "Kwado Ya ({{count}})",
@@ -74,7 +63,6 @@
   "budget.subtitle": "Họrọ ọkwa ọ bụla ị megheri",
   "starting_point.title": "Ebe Mmalite",
   "starting_point.subtitle": "Ebee ka anyị ga-amalite ịlele?",
-
   "date_options.now": "Ugbu a",
   "date_options.now_desc": "Hapụ ozugbo",
   "date_options.today": "Taa",
@@ -83,12 +71,10 @@
   "date_options.this_weekend_desc": "Fraị-Sọn",
   "date_options.pick_a_date": "Họrọ Ụbọchị",
   "date_options.pick_a_date_desc": "Ụbọchị gị",
-
   "travel_modes.walk": "Jee ije",
   "travel_modes.bike": "Igwe",
   "travel_modes.bus": "Bọs",
   "travel_modes.drive": "Nya ụgbọ",
-
   "sheet.session_vibes": "Ụdị {{name}}",
   "sheet.pick_time_hint": "Họrọ oge ịga n'ihu",
   "sheet.pick_date_hint": "Họrọ ụbọchị ịga n'ihu",

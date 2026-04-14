@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Sekarang bagian serunya.",
     "body": "Ketuk setiap suasana yang cocok denganmu.",
-    "caption": "Pilih yang paling membuatmu bersemangat.",
+    "caption": "Pilih yang membuatmu bersemangat.",
     "adventurous": "Petualangan",
     "adventurous_desc": "Jelajahi hal tak terduga",
     "first_date": "Kencan Pertama",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "Tempat seperti apa yang kamu suka?",
-    "body": "Pilih hingga 3 yang sesuai gayamu.",
-    "cap_message": "Maksimal 3 kategori. Hapus satu untuk memilih yang lain."
+    "body": "Pilih yang sesuai dengan gayamu."
   },
   "budget": {
     "headline": "Kisaran hargamu",

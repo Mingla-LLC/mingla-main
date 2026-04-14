@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Niew the fun part.",
     "body": "Tap every vibe that sounds like you.",
-    "caption": "Pick the one that excites you most.",
+    "caption": "Wybierz te, które Cię ekscytują.",
     "adventurous": "Przygodowy",
     "adventurous_desc": "Eksploruj the unexpected",
     "first_date": "Pierwsza randka",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "What kind of places do you love?",
-    "body": "Pick up to 3 that match your vibe.",
-    "cap_message": "Maximum 3 categories. Deselect one to choose another."
+    "body": "Wybierz te, które pasują do Twojego stylu."
   },
   "budget": {
     "headline": "Your sweet spot",

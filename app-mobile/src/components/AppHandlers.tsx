@@ -462,7 +462,7 @@ export function useAppHandlers(state: any) {
         : (PRICE_TIERS.slice().reverse().find(t => userTiers.includes(t.slug))?.max ?? 1000);
 
       const soloCats = normalizeCategoryArray(preferences.selectedCategories || []);
-      const soloIntents = (preferences.selectedIntents || []).slice(0, 1);
+      const soloIntents = preferences.selectedIntents || [];
 
       const dbPreferences: any = {
         mode: soloIntents.length > 0 ? "custom" : "explore",

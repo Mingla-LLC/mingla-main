@@ -154,7 +154,7 @@ export function useOnboardingResume(userId: string, profile: ResumeProfile): Onb
           base.selectedPriceTiers = prefs.price_tiers?.length ? prefs.price_tiers as PriceTierSlug[] : DEFAULT_PRICE_TIERS
           base.travelMode = (prefs.travel_mode as typeof DEFAULT_TRANSPORT) || DEFAULT_TRANSPORT
           base.travelTimeMinutes = prefs.travel_constraint_value ?? DEFAULT_TRAVEL_TIME
-          base.selectedIntents = (prefs.intents ?? []).slice(0, 1)
+          base.selectedIntents = prefs.intents ?? []
           base.locationGranted = restoredUseGps
           base.useGpsLocation = restoredUseGps
           base.manualLocation = prefs.custom_location ?? null

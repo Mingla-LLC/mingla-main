@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Báyìí ni apá ìgbádùn.",
     "body": "Fọwọ́ kàn gbogbo ìhùwàsí tó dà bí tìrẹ.",
-    "caption": "Yan èyí tó mú ọ yá jùlọ.",
+    "caption": "Yan àwọn tí ó gbé ọ níyànjú.",
     "adventurous": "Ìrìnàjò",
     "adventurous_desc": "Ṣàwárí ohun tí a kò retí",
     "first_date": "Ìpàdé Àkọ́kọ́",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "Irú àwọn ibi wo ni o nífẹ̀ẹ́ sí?",
-    "body": "Yan tó mẹ́ta tó bá ìhùwàsí rẹ mu.",
-    "cap_message": "Mẹ́ta ló pọ̀ jùlọ. Yọ ọ̀kan kúrò láti yan òmíìràn."
+    "body": "Yan àwọn tí ó bá ara rẹ mu."
   },
   "budget": {
     "headline": "Ibi tó bá ọ mu",

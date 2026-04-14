@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Ora la parte divertente.",
     "body": "Tocca ogni vibe che ti rappresenta.",
-    "caption": "Scegli quello che ti entusiasma di più.",
+    "caption": "Scegli quelli che ti entusiasmano.",
     "adventurous": "Avventuroso",
     "adventurous_desc": "Esplora l'inaspettato",
     "first_date": "Primo Appuntamento",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "What kind of places do you love?",
-    "body": "Pick up to 3 that match your vibe.",
-    "cap_message": "Maximum 3 categories. Deselect one to choose another."
+    "body": "Scegli quelli che ti rispecchiano."
   },
   "budget": {
     "headline": "Your sweet spot",

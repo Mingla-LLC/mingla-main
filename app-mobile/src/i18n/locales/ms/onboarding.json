@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Sekarang bahagian yang seronok.",
     "body": "Ketik setiap vibe yang sesuai dengan anda.",
-    "caption": "Pilih yang paling menguja anda.",
+    "caption": "Pilih yang membuatkan anda teruja.",
     "adventurous": "Pengembaraan",
     "adventurous_desc": "Teroka yang tidak dijangka",
     "first_date": "Temu Janji Pertama",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "Apakah jenis tempat yang anda suka?",
-    "body": "Pilih sehingga 3 yang sepadan dengan vibe anda.",
-    "cap_message": "Maksimum 3 kategori. Nyahpilih satu untuk memilih yang lain."
+    "body": "Pilih yang sesuai dengan gaya anda."
   },
   "budget": {
     "headline": "Titik manis anda",

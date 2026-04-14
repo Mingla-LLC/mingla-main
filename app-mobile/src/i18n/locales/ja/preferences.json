@@ -3,18 +3,14 @@
   "experience_types.subtitle": "どんなお出かけがしたい？",
   "experience_types.curated_locked": "キュレーションカードはFreeプランではロックされています — アップグレードして閲覧しましょう",
   "experience_types.min_message": "ムードまたはカテゴリーを1つ以上選んでください。",
-
   "experience_descriptions.adventurous": "予想外のこと — 安全策を取らない人向け",
   "experience_descriptions.first-date": "会話が自然に弾む、気楽でリラックスした場所",
   "experience_descriptions.romantic": "本当に特別に感じる親密なひととき",
   "experience_descriptions.group-fun": "みんなで楽しめるアクティビティ",
   "experience_descriptions.picnic-dates": "私たちがセッティング — あなたは来て楽しむだけ",
   "experience_descriptions.take-a-stroll": "両端に素敵なお店がある景色のいい散歩道",
-
   "categories.title": "何が気になる？",
-  "categories.cap_message": "最大3つ — 1つ外して別のを追加。",
   "categories.min_message": "ムードまたはカテゴリーを1つ以上選んでください。",
-
   "category_descriptions.nature": "トレイル、公園、庭園、絶景 — 新鮮な空気といい景色",
   "category_descriptions.first_meet": "初対面に最適なリラックスしたスポット",
   "category_descriptions.picnic_park": "ブランケットを広げるのに最適な近くの公園",
@@ -27,14 +23,12 @@
   "category_descriptions.play": "アーケード、ボウリング、脱出ゲーム — 競争心を持ってきて",
   "category_descriptions.wellness": "スパ、サウナ、ストレスを溶かす場所",
   "category_descriptions.flowers": "新鮮なブーケが揃う花屋",
-
   "datetime.title": "いつ",
   "datetime.question": "いつ出かける？",
   "datetime.this_weekend": "今週末",
   "datetime.friday_through_sunday": "金曜日から日曜日",
   "datetime.date_placeholder": "yyyy/mm/dd",
   "datetime.time_label": "だいたい何時頃？",
-
   "time_slots.brunch": "ブランチ",
   "time_slots.brunch_time": "11–1",
   "time_slots.afternoon": "午後",
@@ -45,25 +39,20 @@
   "time_slots.late_night_time": "10–12",
   "time_slots.anytime": "いつでも",
   "time_slots.anytime_time": "終日",
-
   "travel_mode.title": "移動手段",
   "travel_mode.question": "どうやって行く？",
-
   "loading.text": "ムードを設定中...",
-
   "travel_limit.title": "どのくらい遠く？",
   "travel_limit.question": "移動範囲を設定",
   "travel_limit.min_unit": "分",
   "travel_limit.set_your_own": "自分で設定",
   "travel_limit.custom_placeholder": "5〜120分",
-
   "location.use_current": "現在地を使用",
   "location.search_placeholder": "出発地を検索...",
   "location.gps_helper": "位置を確認しました。安心してください。",
   "location.manual_helper": "どこでもピンを落とせます。GPSに戻すことも可能。",
   "location.pro_feature": "Proの機能 — どこからでも探索",
   "location.searching": "検索中...",
-
   "sheet.title": "あなたのバイブ",
   "sheet.lock_it_in": "確定する",
   "sheet.lock_it_in_count": "確定する ({{count}})",
@@ -74,7 +63,6 @@
   "budget.subtitle": "受け入れ可能なすべての価格帯を選択",
   "starting_point.title": "出発地点",
   "starting_point.subtitle": "どこから探し始める？",
-
   "date_options.now": "今すぐ",
   "date_options.now_desc": "すぐ出発",
   "date_options.today": "今日",
@@ -83,12 +71,10 @@
   "date_options.this_weekend_desc": "金〜日",
   "date_options.pick_a_date": "日付を選択",
   "date_options.pick_a_date_desc": "カスタム日程",
-
   "travel_modes.walk": "徒歩",
   "travel_modes.bike": "自転車",
   "travel_modes.bus": "バス",
   "travel_modes.drive": "車",
-
   "sheet.session_vibes": "{{name}}のバイブ",
   "sheet.pick_time_hint": "続けるには時間を選んでください",
   "sheet.pick_date_hint": "続けるには日付を選んでください",

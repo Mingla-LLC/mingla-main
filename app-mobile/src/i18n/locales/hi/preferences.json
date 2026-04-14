@@ -3,18 +3,14 @@
   "experience_types.subtitle": "किस तरह की आउटिंग का मन है?",
   "experience_types.curated_locked": "फ्री प्लान में क्यूरेटेड कार्ड लॉक हैं — एक्सप्लोर करने के लिए अपग्रेड करें",
   "experience_types.min_message": "कम से कम एक मूड या श्रेणी चुनें।",
-
   "experience_descriptions.adventurous": "कुछ अनोखा — उनके लिए जो सेफ़ नहीं खेलते",
   "experience_descriptions.first-date": "आसान, सहज जगहें जहाँ बातचीत अपने आप बहती है",
   "experience_descriptions.romantic": "अंतरंग पल जो सच में ख़ास लगें",
   "experience_descriptions.group-fun": "जितने ज़्यादा उतना मज़ा — पूरे ग्रुप को पसंद आने वाली एक्टिविटीज़",
   "experience_descriptions.picnic-dates": "हम सब तैयार करेंगे — आप बस आइए और मज़े कीजिए",
   "experience_descriptions.take-a-stroll": "दोनों छोर पर बढ़िया खाने के साथ सुंदर रास्ता",
-
   "categories.title": "क्या अच्छा लगेगा?",
-  "categories.cap_message": "अधिकतम 3 — दूसरी जोड़ने के लिए एक हटाएँ।",
   "categories.min_message": "कम से कम एक मूड या श्रेणी चुनें।",
-
   "category_descriptions.nature": "ट्रेल, पार्क, बगीचे, सुंदर दृश्य — ताज़ी हवा और अच्छी दृश्यावली",
   "category_descriptions.first_meet": "पहले इंप्रेशन के लिए आरामदेह जगहें",
   "category_descriptions.picnic_park": "कम्बल बिछाने के लिए पास के सबसे अच्छे पार्क",
@@ -27,14 +23,12 @@
   "category_descriptions.play": "आर्केड, बॉलिंग, एस्केप रूम — अपना प्रतिस्पर्धी पक्ष लाइए",
   "category_descriptions.wellness": "स्पा, सॉना, और तनाव दूर करने की जगहें",
   "category_descriptions.flowers": "फूलों की दुकानें और ताज़े गुलदस्ते",
-
   "datetime.title": "कब",
   "datetime.question": "कब निकल रहे हैं?",
   "datetime.this_weekend": "इस सप्ताहांत",
   "datetime.friday_through_sunday": "शुक्रवार से रविवार",
   "datetime.date_placeholder": "दिन/महीना/साल",
   "datetime.time_label": "लगभग किस समय?",
-
   "time_slots.brunch": "ब्रंच",
   "time_slots.brunch_time": "11–1",
   "time_slots.afternoon": "दोपहर",
@@ -45,25 +39,20 @@
   "time_slots.late_night_time": "10–12",
   "time_slots.anytime": "कभी भी",
   "time_slots.anytime_time": "पूरा दिन",
-
   "travel_mode.title": "वहाँ पहुँचना",
   "travel_mode.question": "कैसे जा रहे हैं?",
-
   "loading.text": "मूड सेट हो रहा है...",
-
   "travel_limit.title": "कितनी दूर?",
   "travel_limit.question": "अपनी यात्रा सीमा तय करें",
   "travel_limit.min_unit": "मिनट",
   "travel_limit.set_your_own": "खुद तय करें",
   "travel_limit.custom_placeholder": "5 – 120 मिनट",
-
   "location.use_current": "मेरा वर्तमान स्थान उपयोग करें",
   "location.search_placeholder": "शुरुआती जगह खोजें...",
   "location.gps_helper": "आपको ढूँढ लिया। बेफ़िक्र रहें।",
   "location.manual_helper": "कहीं भी पिन लगाएँ। या GPS पर वापस जाएँ।",
   "location.pro_feature": "Pro फ़ीचर — कहीं से भी एक्सप्लोर करें",
   "location.searching": "खोज रहे हैं...",
-
   "sheet.title": "आपकी वाइब",
   "sheet.lock_it_in": "पक्का करें",
   "sheet.lock_it_in_count": "पक्का करें ({{count}})",
@@ -74,7 +63,6 @@
   "budget.subtitle": "हर वो टीयर चुनें जो आपके लिए ठीक है",
   "starting_point.title": "शुरुआती बिंदु",
   "starting_point.subtitle": "कहाँ से ढूँढना शुरू करें?",
-
   "date_options.now": "अभी",
   "date_options.now_desc": "तुरंत निकलें",
   "date_options.today": "आज",
@@ -83,12 +71,10 @@
   "date_options.this_weekend_desc": "शुक्र-रवि",
   "date_options.pick_a_date": "तारीख चुनें",
   "date_options.pick_a_date_desc": "कस्टम तारीख",
-
   "travel_modes.walk": "पैदल",
   "travel_modes.bike": "साइकिल",
   "travel_modes.bus": "बस",
   "travel_modes.drive": "गाड़ी",
-
   "sheet.session_vibes": "{{name}} वाइब",
   "sheet.pick_time_hint": "जारी रखने के लिए समय चुनें",
   "sheet.pick_date_hint": "जारी रखने के लिए तारीख चुनें",

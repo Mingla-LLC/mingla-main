@@ -3,18 +3,14 @@
   "experience_types.subtitle": "Τι είδους έξοδο σκέφτεσαι;",
   "experience_types.curated_locked": "Οι επιλεγμένες κάρτες είναι κλειδωμένες στο Δωρεάν — αναβάθμισε για να τις εξερευνήσεις",
   "experience_types.min_message": "Διάλεξε τουλάχιστον μία διάθεση ή κατηγορία.",
-
   "experience_descriptions.adventurous": "Κάτι απρόσμενο — για όσους δεν παίζουν στο σίγουρο",
   "experience_descriptions.first-date": "Χαλαρά, ήρεμα μέρη όπου η συζήτηση κυλάει φυσικά",
   "experience_descriptions.romantic": "Ιδιαίτερες στιγμές που πραγματικά νιώθεις ξεχωριστές",
   "experience_descriptions.group-fun": "Όσο περισσότεροι τόσο καλύτερα — δραστηριότητες για όλη την παρέα",
   "experience_descriptions.picnic-dates": "Εμείς φτιάχνουμε το σετ — εσύ απλά εμφανίζεσαι και απολαμβάνεις",
   "experience_descriptions.take-a-stroll": "Μια γραφική διαδρομή με ένα ωραίο φαγητό σε κάθε άκρη",
-
   "categories.title": "Τι Ακούγεται Καλό;",
-  "categories.cap_message": "3 μέγιστο — αφαίρεσε ένα για να προσθέσεις άλλο.",
   "categories.min_message": "Διάλεξε τουλάχιστον μία διάθεση ή κατηγορία.",
-
   "category_descriptions.nature": "Μονοπάτια, πάρκα, κήποι, γραφικές θέες — καθαρός αέρας και ωραίο τοπίο",
   "category_descriptions.first_meet": "Χαλαρά μέρη φτιαγμένα για πρώτες εντυπώσεις",
   "category_descriptions.picnic_park": "Τα καλύτερα κοντινά πάρκα για να απλώσεις μια κουβέρτα",
@@ -27,14 +23,12 @@
   "category_descriptions.play": "Arcade, bowling, escape rooms — φέρε τον ανταγωνιστικό σου εαυτό",
   "category_descriptions.wellness": "Spa, σάουνες και μέρη που λιώνουν το στρες",
   "category_descriptions.flowers": "Ανθοπωλεία και καταστήματα λουλουδιών",
-
   "datetime.title": "Πότε",
   "datetime.question": "Πότε βγαίνεις;",
   "datetime.this_weekend": "Αυτό το Σαββατοκύριακο",
   "datetime.friday_through_sunday": "Παρασκευή ως Κυριακή",
   "datetime.date_placeholder": "ηη/μμ/εεεε",
   "datetime.time_label": "Περίπου τι ώρα;",
-
   "time_slots.brunch": "Brunch",
   "time_slots.brunch_time": "11–1",
   "time_slots.afternoon": "Απόγευμα",
@@ -45,25 +39,20 @@
   "time_slots.late_night_time": "10–12",
   "time_slots.anytime": "Οποιαδήποτε Ώρα",
   "time_slots.anytime_time": "Όλη μέρα",
-
   "travel_mode.title": "Μετακίνηση",
   "travel_mode.question": "Πώς πας;",
-
   "loading.text": "Ρυθμίζουμε τη διάθεση...",
-
   "travel_limit.title": "Πόσο Μακριά;",
   "travel_limit.question": "Όρισε την ακτίνα μετακίνησης",
   "travel_limit.min_unit": "λ",
   "travel_limit.set_your_own": "Όρισε δικό σου",
   "travel_limit.custom_placeholder": "5 – 120 λεπτά",
-
   "location.use_current": "Χρήση τρέχουσας τοποθεσίας",
   "location.search_placeholder": "Αναζήτηση σημείου εκκίνησης...",
   "location.gps_helper": "Σε εντοπίσαμε. Χαλάρωσε.",
   "location.manual_helper": "Βάλε μια πινέζα οπουδήποτε. Ή επιστροφή σε GPS.",
   "location.pro_feature": "Pro λειτουργία — εξερεύνησε από οπουδήποτε",
   "location.searching": "Αναζήτηση...",
-
   "sheet.title": "Το Vibe σου",
   "sheet.lock_it_in": "Κλείδωσέ το",
   "sheet.lock_it_in_count": "Κλείδωσέ το ({{count}})",
@@ -74,7 +63,6 @@
   "budget.subtitle": "Επίλεξε κάθε βαθμίδα που σου κάνει",
   "starting_point.title": "Σημείο Εκκίνησης",
   "starting_point.subtitle": "Από πού να ξεκινήσουμε;",
-
   "date_options.now": "Τώρα",
   "date_options.now_desc": "Φύγε αμέσως",
   "date_options.today": "Σήμερα",
@@ -83,12 +71,10 @@
   "date_options.this_weekend_desc": "Παρ-Κυρ",
   "date_options.pick_a_date": "Επίλεξε Ημερομηνία",
   "date_options.pick_a_date_desc": "Προσαρμοσμένη ημερομηνία",
-
   "travel_modes.walk": "Περπάτημα",
   "travel_modes.bike": "Ποδήλατο",
   "travel_modes.bus": "Λεωφορείο",
   "travel_modes.drive": "Αυτοκίνητο",
-
   "sheet.session_vibes": "{{name}} Vibes",
   "sheet.pick_time_hint": "Επίλεξε ώρα για να συνεχίσεις",
   "sheet.pick_date_hint": "Επίλεξε ημερομηνία για να συνεχίσεις",
