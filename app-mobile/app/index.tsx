@@ -54,7 +54,6 @@ import {
   initializeOneSignal,
   loginToOneSignal,
   logoutOneSignal,
-  onForegroundNotification,
   onNotificationClicked,
 } from "../src/services/oneSignalService";
 import { initializeAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent } from "../src/services/appsFlyerService";
@@ -598,28 +597,29 @@ function AppContent() {
       holiday_reminder: "discover",
     };
 
-    // Foreground: push arrives while app is open.
-    // For DM notifications: let the system tray show the push so the user
-    // sees it even if they're on a different tab. The notification center
-    // also receives an in-app entry via Realtime (notifications table INSERT).
-    // For non-DM notifications: suppress system tray — Realtime delivers in-app.
-    // ORCH-0407: Explicitly display ALL push notifications in system tray,
-    // even when app is foregrounded. OneSignal SDK v5 requires an explicit
-    // display() call — notifications do NOT auto-display in foreground.
-    // Previously non-message types were suppressed via prevent().
-    // Revert: replace display() with prevent() for specific types if too noisy.
-    const removeForeground = onForegroundNotification((_data, _prevent, display) => {
-      display();
-    });
+    // ORCH-0407: NO foreground listener registered. Without a listener, the
+    // OneSignal native SDK auto-displays ALL push notifications in the system
+    // tray, even when the app is foregrounded (RNOneSignal.java:380-382).
+    //
+    // Previously a foregroundWillDisplay listener was registered that called
+    // prevent() on non-message types. This was a design choice (not a bug fix)
+    // to avoid "double notification" (push banner + Realtime in-app). Removed
+    // because: (1) the user wants the app to feel alive, (2) OneSignal SDK v5.3.3
+    // has a timing bug where display() from JS arrives after the native callback
+    // returns — making JS-controlled display impossible.
+    //
+    // If filtering is needed later, use Android notification channels (OS-level
+    // control) instead of the SDK's broken foreground listener.
+    //
+    // History: added in f224813f (Notifications V2), removed in ORCH-0407.
 
-    // Background: user taps a push notification
+    // Background/tap: user taps a push notification
     const removeClicked = onNotificationClicked((data) => {
       if (!data?.type) return;
       processNotification(data, NAV_TARGETS[data.type as string]);
     });
 
     return () => {
-      removeForeground();
       removeClicked();
     };
   }, []);
