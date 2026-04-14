@@ -93,6 +93,14 @@ const RESTAURANT_TYPES = new Set([
   "fondue_restaurant", "oyster_bar_restaurant",
 ]);
 
+// ── Category Exclusivity: fine_dining and casual_eats are mutually exclusive ─
+function enforceExclusivity(categories: string[]): string[] {
+  if (categories.includes("fine_dining")) {
+    return categories.filter(c => c !== "casual_eats");
+  }
+  return categories;
+}
+
 const SOCIAL_DOMAINS = [
   "google.com","maps.google.com","facebook.com","instagram.com","twitter.com","x.com","yelp.com","tripadvisor.com","foursquare.com","youtube.com","tiktok.com","linkedin.com","pinterest.com","fresha.com","treatwell.com","treatwell.co.uk","treatwell.de","groupon.com","booksy.com","planity.com","vagaro.com","classpass.com","mindbody.com","wikipedia.org","wikidata.org","yellowpages.com","yell.com","pagesjaunes.fr","dasoertliche.de",
 ];
@@ -111,7 +119,7 @@ CORE RULES:
 
 CATEGORY DEFINITIONS:
 
-FINE_DINING: A restaurant that feels like a special occasion. The combination of: upscale ambience, high-end cuisine, reservation culture, and elevated service. You do NOT need to find the chef's name in the search results — many acclaimed restaurants don't lead with the chef in Google snippets. Signals that indicate fine_dining: very high ratings (4.5+) with upscale reviews, $$$/$$$$ pricing, words like "upscale", "elegant", "tasting menu", "sommelier", "Michelin", "acclaimed", "refined". Examples that ARE fine_dining: Zuma, Manhatta, Nobu, Le Bernardin, Alinea, any Michelin-starred restaurant, any restaurant described as upscale/elegant/refined with high ratings. Examples that are NOT fine_dining: wine bars, tapas bars, bistros, brasseries (especially Parisian bouillons), gastropubs, charming but casual restaurants. Being a chain does NOT disqualify if the experience is genuinely upscale. Olive Garden/Cheesecake Factory fail. Nobu/Morton's pass. PRICE_LEVEL_VERY_EXPENSIVE is a very strong signal. Unless the place is clearly casual (food hall, buffet, themed chain, sports bar), a VERY_EXPENSIVE restaurant with 4.0+ rating should get fine_dining. When genuinely uncertain AND price is MODERATE or INEXPENSIVE or unknown, default to casual_eats. When price is EXPENSIVE or VERY_EXPENSIVE with rating 4.0+, lean toward fine_dining — most high-end restaurants don't advertise "Michelin" or "tasting menu" in their Google snippets.
+FINE_DINING: A restaurant that feels like a special occasion. The combination of: upscale ambience, high-end cuisine, reservation culture, and elevated service. You do NOT need to find the chef's name in the search results — many acclaimed restaurants don't lead with the chef in Google snippets. Signals that indicate fine_dining: very high ratings (4.5+) with upscale reviews, $$$/$$$$ pricing, words like "upscale", "elegant", "tasting menu", "sommelier", "Michelin", "acclaimed", "refined". Examples that ARE fine_dining: Zuma, Manhatta, Nobu, Le Bernardin, Alinea, any Michelin-starred restaurant, any restaurant described as upscale/elegant/refined with high ratings. Examples that are NOT fine_dining: wine bars, tapas bars, bistros, brasseries (especially Parisian bouillons), gastropubs, charming but casual restaurants. Being a chain does NOT disqualify if the experience is genuinely upscale. Olive Garden/Cheesecake Factory fail. Nobu/Morton's pass. PRICE_LEVEL_VERY_EXPENSIVE is a very strong signal. Unless the place is clearly casual (food hall, buffet, themed chain, sports bar), a VERY_EXPENSIVE restaurant with 4.0+ rating should get fine_dining. When genuinely uncertain AND price is MODERATE or INEXPENSIVE or unknown, default to casual_eats. When price is EXPENSIVE or VERY_EXPENSIVE with rating 4.0+, lean toward fine_dining — most high-end restaurants don't advertise "Michelin" or "tasting menu" in their Google snippets. IMPORTANT: fine_dining and casual_eats are MUTUALLY EXCLUSIVE. If a place qualifies for fine_dining, do NOT also assign casual_eats. A fine dining restaurant is fine_dining only. If it also has a bar, it can be fine_dining + drink, but never fine_dining + casual_eats.
 
 CASUAL_EATS: Any real sit-down restaurant where you'd grab a meal. Includes chain restaurants with table service (Olive Garden, IHOP, Outback). Includes food halls and food markets with vendors. NO fast food/counter-service/grab-and-go chains (McDonald's, Subway, Starbucks). Wine bars and tapas bars with food → casual_eats + drink.
 
@@ -188,7 +196,7 @@ Note: Private/members clubs with bars, pools, restaurants, or spas still qualify
 
 Example 18: "The Ruxton Steakhouse" type:steak_house price:PRICE_LEVEL_VERY_EXPENSIVE rating:4.4 → {"d":"accept","c":["fine_dining"],"pi":"upscale steakhouse","w":true,"r":"VERY_EXPENSIVE steakhouse with high rating — fine_dining","f":"high"}
 
-Example 19: "Fogo de Chão Brazilian Steakhouse" type:brazilian_restaurant price:PRICE_LEVEL_EXPENSIVE rating:4.8 → {"d":"accept","c":["fine_dining","casual_eats"],"pi":"upscale Brazilian steakhouse chain","w":true,"r":"EXPENSIVE chain steakhouse with exceptional rating — fine_dining + casual_eats","f":"high"}
+Example 19: "Fogo de Chão Brazilian Steakhouse" type:brazilian_restaurant price:PRICE_LEVEL_EXPENSIVE rating:4.8 → {"d":"accept","c":["fine_dining"],"pi":"upscale Brazilian steakhouse chain","w":true,"r":"EXPENSIVE chain steakhouse with exceptional rating — fine_dining (not casual_eats — mutually exclusive)","f":"high"}
 
 Return ONLY valid JSON.`;
 
@@ -323,7 +331,9 @@ async function classifyPlace(factSheet: Record<string, unknown>): Promise<ClassR
       "flowers","fine_dining","nature_views","first_meet","drink","casual_eats",
       "watch","live_performance","creative_arts","play","wellness","picnic_park","groceries",
     ]);
-    parsed.c = (parsed.c || []).filter((s: string) => VALID_SLUGS.has(s));
+    parsed.c = enforceExclusivity(
+      (parsed.c || []).filter((s: string) => VALID_SLUGS.has(s))
+    );
     return {
       decision: parsed.d,
       categories: parsed.c,
@@ -425,7 +435,7 @@ function deterministicFilter(place: any): PreFilterResult {
       return {
         verdict: "modify",
         reason: "Rules: VERY_EXPENSIVE + high rating restaurant — promoted to fine_dining",
-        categories: cats,
+        categories: enforceExclusivity(cats),
         stageResolved: 2,
       };
     }
@@ -1109,7 +1119,7 @@ async function handleOverride(body: any): Promise<Response> {
   const approved = decision === "accept" || (decision === "reclassify" && body.categories?.length > 0);
   await db.from("place_pool").update({
     ai_approved: approved,
-    ai_categories: body.categories || [],
+    ai_categories: enforceExclusivity(body.categories || []),
     ai_reason: body.reason || "Admin override",
     ai_validated_at: new Date().toISOString(),
   }).eq("id", result.place_id);

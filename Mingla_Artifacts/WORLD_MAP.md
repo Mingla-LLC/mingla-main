@@ -589,6 +589,8 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0426 | Weird places blocked — gas stations, car dealers, cemeteries, funeral homes, no-data places rejected by Stage 2 | Discovery | S2 | data-integrity | closed | A | 2026-04-14 | QA PASS. 21 blocked types, underscore fix, min-data guard. Full fix. Pending deploy + SQL cleanup. |
 | ORCH-0427 | Fine dining promotion — VERY_EXPENSIVE restaurants auto-promoted, GPT prompt updated with price guidance | Discovery | S1 | data-integrity | closed | B | 2026-04-14 | QA PASS. Deterministic promotion + GPT prompt. Grade B: mutual exclusivity pending, EXPENSIVE restaurants need AI re-run. Pending deploy. |
 
+| ORCH-0428 | Fine dining / casual_eats mutual exclusivity — enforceExclusivity() at 3 write points + GPT prompt fix | Discovery | S2 | data-integrity | closed | A | 2026-04-14 | Implementation verified: enforceExclusivity() at lines 97/334/438/1122, MUTUALLY EXCLUSIVE instruction in prompt, Example 19 fixed. Pending deploy + SQL cleanup of 555 dual-tagged places. |
+
 ### Cross-Cutting: UI Components & Design System
 
 | ID | Title | Surface | Severity | Class | Status | Grade | Verified | Evidence |
