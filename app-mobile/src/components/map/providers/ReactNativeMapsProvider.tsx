@@ -141,6 +141,9 @@ export function ReactNativeMapsProvider({
       // On Android, Google Maps needs customMapStyle to hide labels.
       // shouldReplaceMapContent on UrlTile is iOS-only (MapUrlTile.d.ts:66-68).
       {...(Platform.OS === 'android' ? { customMapStyle: GOOGLE_MAPS_CLEAN_STYLE } : {})}
+      // ORCH-0410: Hide Android Google Maps toolbar (directions + "open in Maps" buttons).
+      // iOS ignores this prop. Required by Google Maps ToS to keep the "Google" logo.
+      toolbarEnabled={false}
     >
       {/* CARTO light tiles — iOS only. shouldReplaceMapContent is not supported on Android
           (MapUrlTile.d.ts:66-68). On Android, Google Maps base tiles are styled via
@@ -223,8 +226,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   userMarker: {
-    width: 56,
-    height: 68,
+    // ORCH-0410: Larger container for Android bitmap capture. On Android Google Maps,
+    // the marker bitmap clips at exactly the measured dimensions. The status bubble
+    // (maxWidth:100), elevation shadow, and pulse ring all extend beyond the original
+    // 56x68. 110x90 provides space for all overflow content.
+    width: 110,
+    height: 90,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -50,8 +50,8 @@ export const AnimatedPlacePin = React.memo(function AnimatedPlacePin({
       anchor={{ x: 0.5, y: 0.27 }}
       tappable
     >
-      <View collapsable={false}>
-        <Animated.View style={{ transform: [{ scale }] }}>
+      <View collapsable={false} style={{ width: 140, height: 80 }}>
+        <Animated.View style={{ transform: [{ scale }], width: 140, height: 80, alignItems: 'center' }}>
           <PlacePinContent
             card={card}
             isSaved={isSaved}
