@@ -18,8 +18,11 @@ export const AnimatedPlacePin = React.memo(function AnimatedPlacePin({
   card, isSaved, isPairedSaved = false, isScheduled, isSelected = false, onPress, index,
 }: AnimatedPlacePinProps) {
   const scale = useRef(new Animated.Value(0)).current;
-  // Start false — only enable during the 300ms spring window
-  const [tracking, setTracking] = useState(false);
+  // ORCH-0410: Start TRUE so Android Google Maps creates the initial bitmap.
+  // On Android, custom view markers need at least one render pass with
+  // tracksViewChanges=true to generate the bitmap. Starting false meant the
+  // bitmap was created at scale=0 (invisible) and never updated.
+  const [tracking, setTracking] = useState(true);
 
   useEffect(() => {
     const delay = Math.min(index * 50, 500);

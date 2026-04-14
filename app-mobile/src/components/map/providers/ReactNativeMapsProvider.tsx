@@ -154,21 +154,11 @@ export function ReactNativeMapsProvider({
         />
       )}
 
-      {/* [DIAGNOSTIC] ORCH-0410: Hardcoded default pin to test if ANY marker renders on
-          Android Google Maps. If this red pin shows, custom view markers are the issue.
-          If it doesn't, the MapView/Google Maps integration is broken.
-          REMOVE after diagnostic is complete. */}
-      <Marker
-        coordinate={{ latitude: 35.7796, longitude: -78.6382 }}
-        title="Diagnostic Pin"
-        description="If you see this, basic markers work"
-      />
-
       {userLocation && (
         <Marker
           coordinate={userLocation}
           onPress={onUserPress}
-          tracksViewChanges={false}
+          tracksViewChanges={peopleTrackChanges}
           anchor={{ x: 0.5, y: 0.35 }}
           zIndex={30}
           {...{ cluster: false }}
