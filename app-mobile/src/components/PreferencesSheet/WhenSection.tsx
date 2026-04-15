@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   LayoutAnimation,
-  Dimensions,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
@@ -28,11 +27,7 @@ const DATE_OPTIONS: { id: DateOptionId; labelKey: string }[] = [
   { id: 'pick_dates', labelKey: 'date_options.pick_dates' },
 ];
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const CARD_MARGIN = 16;
-const CARD_PADDING = 20;
-const PILL_GAP = 10;
-const PILL_WIDTH = (SCREEN_WIDTH - CARD_MARGIN * 2 - CARD_PADDING * 2 - PILL_GAP * 2) / 3;
+const PILL_GAP = 8;
 
 export const WhenSection = memo(({
   dateOption,
@@ -62,7 +57,6 @@ export const WhenSection = memo(({
               onPress={() => handleOptionPress(option.id)}
               style={[
                 whenStyles.glassPill,
-                { width: PILL_WIDTH, height: 42 },
                 isSelected && whenStyles.glassPillSelected,
               ]}
               activeOpacity={0.7}
@@ -125,12 +119,15 @@ const whenStyles = StyleSheet.create({
     gap: PILL_GAP,
   },
   glassPill: {
+    flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.35)',
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     shadowColor: 'rgba(0, 0, 0, 0.04)',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
