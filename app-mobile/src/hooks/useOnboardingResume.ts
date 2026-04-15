@@ -154,6 +154,12 @@ export function useOnboardingResume(userId: string, profile: ResumeProfile): Onb
           base.travelMode = (prefs.travel_mode as typeof DEFAULT_TRANSPORT) || DEFAULT_TRANSPORT
           base.travelTimeMinutes = prefs.travel_constraint_value ?? DEFAULT_TRAVEL_TIME
           base.selectedIntents = prefs.intents ?? []
+          if (prefs.date_option) {
+            base.dateOption = prefs.date_option
+          }
+          if (Array.isArray((prefs as any).selected_dates)) {
+            base.selectedDates = (prefs as any).selected_dates
+          }
           base.locationGranted = restoredUseGps
           base.useGpsLocation = restoredUseGps
           base.manualLocation = prefs.custom_location ?? null

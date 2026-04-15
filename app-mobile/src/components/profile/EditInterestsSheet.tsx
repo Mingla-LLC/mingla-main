@@ -119,7 +119,7 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
             <Text style={styles.sectionTitle}>{t('profile:edit_interests.what_do_you_like')}</Text>
             <View style={styles.pillsWrap}>
               {categories.map((cat) => {
-                const selected = selectedCategories.includes(cat.name);
+                const selected = selectedCategories.includes(cat.slug);
                 const CatIcon = CATEGORY_ICON_MAP[cat.slug];
                 return (
                   <TouchableOpacity
@@ -128,7 +128,7 @@ const EditInterestsSheet: React.FC<EditInterestsSheetProps> = ({
                       styles.categoryPill,
                       selected ? styles.selectedCategoryPill : styles.unselectedPill,
                     ]}
-                    onPress={() => toggleCategory(cat.name)}
+                    onPress={() => toggleCategory(cat.slug)}
                     activeOpacity={0.7}
                   >
                     {CatIcon && (

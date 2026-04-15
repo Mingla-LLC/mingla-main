@@ -74,8 +74,9 @@ import {
   GENDER_OPTIONS,
   GENDER_DISPLAY_LABELS,
 } from '../types/onboarding'
-import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers'
 import { categories } from '../constants/categories'
+import { WhenSection } from './PreferencesSheet/WhenSection'
+import type { DateOptionId } from './PreferencesSheet/WhenSection'
 import { getCountryByCode } from '../constants/countries'
 import { getDefaultLanguageCode, getLanguageByCode } from '../constants/languages'
 import { CountryPickerModal } from './onboarding/CountryPickerModal'
@@ -1579,9 +1580,12 @@ const OnboardingFlow = ({
           travel_constraint_type: 'time',
           travel_constraint_value: data.travelTimeMinutes,
           datetime_pref: new Date().toISOString(),
-          date_option: 'today',
+          date_option: data.dateOption || 'today',
+          selected_dates: data.selectedDates?.length > 0 ? data.selectedDates : null,
           use_gps_location: data.useGpsLocation,
           custom_location: data.manualLocation,
+          intent_toggle: true,
+          category_toggle: true,
         } as any),
         8000,
         'saveOnboardingPreferences'
@@ -1632,14 +1636,14 @@ const OnboardingFlow = ({
         travel_constraint_type: 'time',
         travel_constraint_value: data.travelTimeMinutes,
         datetime_pref: datetimePref,
-        date_option: 'today',
+        date_option: data.dateOption || 'today',
         use_gps_location: data.useGpsLocation,
         custom_location: data.manualLocation,
         custom_lat: data.coordinates?.lat ?? null,
         custom_lng: data.coordinates?.lng ?? null,
         intent_toggle: true,
         category_toggle: true,
-        selected_dates: null,
+        selected_dates: data.selectedDates?.length > 0 ? data.selectedDates : null,
       })
 
       // ── Real deck prefetch (replaces dead warmDeckPool no-op) ──────────
@@ -1665,7 +1669,7 @@ const OnboardingFlow = ({
           travelConstraintType: 'time',
           travelConstraintValue: data.travelTimeMinutes,
           datetimePref,
-          dateOption: 'today',
+          dateOption: data.dateOption || 'today',
           batchSeed: 0,
           excludeCardIds: [],
         })
@@ -1678,7 +1682,7 @@ const OnboardingFlow = ({
           travelConstraintType: 'time' as const,
           travelConstraintValue: data.travelTimeMinutes,
           datetimePref,
-          dateOption: 'today',
+          dateOption: data.dateOption || 'today',
           batchSeed: 0,
           limit: 200,
           excludeCardIds: [],
@@ -1951,11 +1955,14 @@ const OnboardingFlow = ({
         return { label: t('common:next'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
       case 'manual_location':
         return { label: t('common:next'), disabled: !selectedLocation, loading: savingPrefs, onPress: handleManualLocation, hide: false }
+      case 'when':
+        return { label: t('common:next'), disabled: !data.dateOption || (data.dateOption === 'pick_dates' && data.selectedDates.length === 0), loading: false, onPress: () => {
+          handleGoNext()
+        }, hide: false }
       case 'categories':
         return { label: t('common:next'), disabled: data.selectedCategories.length === 0, loading: false, onPress: () => {
           handleGoNext()
         }, hide: false }
-      // [TRANSITIONAL] 'budget' sub-step removed in ORCH-0434 — Phase 7 removes this case entirely
       case 'transport':
         return { label: t('common:next'), disabled: false, loading: false, onPress: () => {
           handleGoNext()
@@ -2742,6 +2749,21 @@ const OnboardingFlow = ({
       )
     }
 
+    if (subStep === 'when') {
+      return (
+        <View style={styles.categoryStepRoot}>
+          <Text style={styles.headline}>{t('onboarding:when.headline', { defaultValue: 'When are you heading out?' })}</Text>
+          <Text style={styles.body}>{t('onboarding:when.body', { defaultValue: 'Pick when you want to go — we\'ll find what\'s open' })}</Text>
+          <WhenSection
+            dateOption={(data.dateOption as DateOptionId) || null}
+            onDateOptionChange={(option) => setData(p => ({ ...p, dateOption: option }))}
+            selectedDates={data.selectedDates}
+            onDatesChange={(dates) => setData(p => ({ ...p, selectedDates: dates }))}
+          />
+        </View>
+      )
+    }
+
     if (subStep === 'categories') {
       return (
         <View style={styles.categoryStepRoot}>
@@ -2770,71 +2792,6 @@ const OnboardingFlow = ({
               />
             ))}
           </View>
-        </View>
-      )
-    }
-
-    // [TRANSITIONAL] Budget sub-step removed in ORCH-0434 — Phase 7 removes this block entirely
-    if (subStep === 'budget' as string) {
-      return (
-        <View style={styles.budgetContainer}>
-          <Text style={styles.headlineCentered}>{t('onboarding:budget.headline')}</Text>
-          <Text style={styles.bodyCentered}>{t('onboarding:budget.body')}</Text>
-          <View style={styles.budgetGrid}>
-            {PRICE_TIERS.map((tier) => {
-              const isActive = ((data as any).selectedPriceTiers ?? []).includes(tier.slug)
-              return (
-                <Pressable
-                  key={tier.slug}
-                  style={[
-                    styles.budgetTile,
-                    isActive && { backgroundColor: tier.color, borderColor: tier.color },
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                    setData((p) => {
-                      const current = (p as any).selectedPriceTiers ?? []
-                      // Mutual exclusion: "Any" vs specific tiers
-                      if (tier.slug === 'any') {
-                        // Selecting "Any" → replace all with ['any']
-                        return current.includes('any')
-                          ? p  // already selected, no-op (min 1)
-                          : { ...p, selectedPriceTiers: ['any'] }
-                      }
-                      // Selecting a specific tier → remove 'any' if present
-                      const withoutAny = current.filter((s) => s !== 'any')
-                      const next = withoutAny.includes(tier.slug)
-                        ? withoutAny.filter((s) => s !== tier.slug)
-                        : [...withoutAny, tier.slug]
-                      if (next.length === 0) return p
-                      return { ...p, selectedPriceTiers: next }
-                    })
-                  }}
-                >
-                  <Icon
-                    name={tier.icon}
-                    size={22}
-                    color={isActive ? colors.text.inverse : colors.text.tertiary}
-                    style={styles.tierIcon}
-                  />
-                  <Text style={[
-                    styles.budgetTileLabel,
-                    isActive && styles.budgetTileLabelActive,
-                  ]}>
-                    {t(`common:tier_${tier.slug}`)}
-                  </Text>
-                  <Text style={[
-                    styles.budgetTileRange,
-                    isActive && styles.budgetTileRangeActive,
-                  ]}>
-                    {t(`common:tier_range_${tier.slug}`)}
-                  </Text>
-                </Pressable>
-              )
-            })}
-          </View>
-
-          <Text style={styles.captionCentered}>{t('onboarding:budget.caption')}</Text>
         </View>
       )
     }
