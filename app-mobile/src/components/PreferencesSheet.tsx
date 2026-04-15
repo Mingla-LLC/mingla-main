@@ -74,25 +74,26 @@ interface PreferencesSheetProps {
 }
 
 // Experience Types — 7 curated types (kebab-case IDs match edge function)
+// Ordered for visual compactness — short labels paired on same row
 const experienceTypes = [
-  { id: "adventurous",   label: "Adventurous",   icon: "compass-outline" },
-  { id: "first-date",    label: "First Date",    icon: "sparkles" },
   { id: "romantic",      label: "Romantic",       icon: "heart" },
+  { id: "first-date",    label: "First Date",    icon: "sparkles" },
   { id: "group-fun",     label: "Group Fun",      icon: "people" },
+  { id: "adventurous",   label: "Adventurous",   icon: "compass-outline" },
   { id: "picnic-dates",  label: "Picnic Dates",   icon: "sandwich" },
   { id: "take-a-stroll", label: "Take a Stroll",  icon: "walk-outline" },
 ];
 
-// ORCH-0434: 8 categories with new canonical slugs
+// ORCH-0434: 8 categories — ordered for visual compactness (short labels paired)
 const categories = [
-  { id: 'nature',              label: 'Nature & Views',         icon: 'trees' },
+  { id: 'play',                label: 'Play',                   icon: 'game-controller-outline' },
   { id: 'icebreakers',         label: 'Icebreakers',            icon: 'sparkles' },
+  { id: 'nature',              label: 'Nature & Views',         icon: 'trees' },
   { id: 'drinks_and_music',    label: 'Drinks & Music',         icon: 'wine-outline' },
+  { id: 'creative_arts',       label: 'Creative & Arts',        icon: 'color-palette-outline' },
+  { id: 'movies_theatre',      label: 'Movies & Theatre',       icon: 'film-new' },
   { id: 'brunch_lunch_casual', label: 'Brunch, Lunch & Casual', icon: 'utensils-crossed' },
   { id: 'upscale_fine_dining', label: 'Upscale & Fine Dining',  icon: 'chef-hat' },
-  { id: 'movies_theatre',      label: 'Movies & Theatre',       icon: 'film-new' },
-  { id: 'creative_arts',       label: 'Creative & Arts',        icon: 'color-palette-outline' },
-  { id: 'play',                label: 'Play',                   icon: 'game-controller-outline' },
 ];
 
 // Travel modes matching database constraint
