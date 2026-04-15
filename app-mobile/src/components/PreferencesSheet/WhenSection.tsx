@@ -119,7 +119,6 @@ const whenStyles = StyleSheet.create({
     gap: PILL_GAP,
   },
   glassPill: {
-    flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.35)',
@@ -127,7 +126,7 @@ const whenStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 9,
-    paddingHorizontal: 4,
+    paddingHorizontal: 14,
     shadowColor: 'rgba(0, 0, 0, 0.04)',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
