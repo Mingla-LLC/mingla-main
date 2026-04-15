@@ -189,7 +189,6 @@ export const CategoriesSection = memo(
                     styles.categoryText,
                     isSelected && styles.categoryTextSelected,
                   ]}
-                  numberOfLines={1}
                 >
                   {t(`common:category_${category.id}`)}
                 </Text>
@@ -332,7 +331,8 @@ const styles = StyleSheet.create({
     gap: 7,
     height: 42,
     paddingHorizontal: 14,
-    borderRadius: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
     backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.35)',
@@ -369,10 +369,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    width: '48%',
     height: 42,
-    paddingHorizontal: 12,
-    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
     backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.35)',
@@ -445,7 +445,8 @@ const styles = StyleSheet.create({
     gap: 6,
     height: 42,
     paddingHorizontal: 14,
-    borderRadius: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
     backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.35)',
