@@ -27,7 +27,7 @@ const DATE_OPTIONS: { id: DateOptionId; labelKey: string }[] = [
   { id: 'pick_dates', labelKey: 'date_options.pick_dates' },
 ];
 
-const PILL_GAP = 8;
+const PILL_GAP = 10;
 
 export const WhenSection = memo(({
   dateOption,
@@ -126,8 +126,8 @@ const whenStyles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 4,
     shadowColor: 'rgba(0, 0, 0, 0.04)',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
