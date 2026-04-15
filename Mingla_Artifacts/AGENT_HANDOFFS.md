@@ -13,6 +13,11 @@
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-089 | ORCH-0434 Phase 1 | Tester | 2026-04-15 | QA_ORCH-0434_PHASE1_DATABASE.md | PASS — 11/11 criteria, 4/4 regressions, 3/3 invariants, 0 P0 |
+| AH-088 | ORCH-0434 Phase 1 | Implementor | 2026-04-15 | IMPLEMENTATION_ORCH-0434_PHASE1_DATABASE.md | APPROVED — migration applied, all verifications pass |
+| AH-087 | ORCH-0434 | Spec Writer | 2026-04-15 | SPEC_ORCH-0434_PREFERENCES_SIMPLIFICATION.md | APPROVED — 9-phase spec |
+| AH-086 | ORCH-0434 | Investigator (Phase 2) | 2026-04-15 | INVESTIGATION_ORCH-0434_PHASE2_PIPELINE_TRACE.md | APPROVED — pipeline trace, 120+ code quotes |
+| AH-085 | ORCH-0434 | Investigator (Phase 1) | 2026-04-15 | INVESTIGATION_ORCH-0434_PREFERENCES_SIMPLIFICATION.md | APPROVED — blast radius, 55 files |
 | AH-084 | ORCH-0402 | Tester | 2026-04-11 | QA_ORCH-0402_CALENDAR_BUTTON_AND_BIRTHDAY_PUSH_REPORT.md | PASS — 17/17 criteria, 4/4 regressions clean, 0 P0 |
 | AH-083 | ORCH-0402 | Implementor | 2026-04-11 | CalendarButton inverted prop + birthday push edge function + cron migration + alarm trim | APPROVED |
 | AH-082 | ORCH-0402 | Orchestrator (intake + spec) | 2026-04-11 | IMPLEMENTOR_ORCH-0402_CALENDAR_BUTTON_VISIBILITY.md | APPROVED |
