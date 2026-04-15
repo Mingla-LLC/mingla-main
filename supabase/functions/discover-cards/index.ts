@@ -251,14 +251,26 @@ function filterByDateTime(
   }
 
   // Weekend filtering — check Saturday (6) and Sunday (0) instead of today (ORCH-0431)
-  // dateOption values: "weekend", "this-weekend", "this weekend" (all accepted)
+  // Multi-slot aware: checks all selected slots against both weekend days (ORCH-0432)
   const dOpt = dateOption.toLowerCase().replace(/-/g, ' ');
   if (dOpt === 'weekend' || dOpt === 'this weekend') {
-    const hourStart = (timeSlot && TIME_SLOT_RANGES[timeSlot])
-      ? TIME_SLOT_RANGES[timeSlot].start
-      : 12; // noon default if no slot specified
+    const slotsToCheck = (timeSlots && timeSlots.length > 0)
+      ? timeSlots
+      : (timeSlot ? [timeSlot] : []);
+
+    if (slotsToCheck.length === 0) {
+      return places.filter(place =>
+        isOpenDuringHour(place, 6, 12) || isOpenDuringHour(place, 0, 12),
+      );
+    }
+
     return places.filter(place =>
-      isOpenDuringHour(place, 6, hourStart) || isOpenDuringHour(place, 0, hourStart),
+      slotsToCheck.some(slot => {
+        const range = TIME_SLOT_RANGES[slot];
+        if (!range) return false;
+        return isOpenDuringHour(place, 6, range.start)
+            || isOpenDuringHour(place, 0, range.start);
+      }),
     );
   }
 

@@ -32,7 +32,7 @@ export interface DeckParams {
   travelConstraintValue: number;
   datetimePref?: string;
   dateOption?: string;
-  timeSlot?: string | null;
+  timeSlots?: string[];
   batchSeed?: number;
   limit?: number;
   excludeCardIds?: string[];
@@ -283,7 +283,7 @@ class DeckService {
                 travelConstraintValue: params.travelConstraintValue,
                 datetimePref: params.datetimePref,
                 dateOption: params.dateOption,
-                timeSlot: params.timeSlot,
+                timeSlots: params.timeSlots,
                 batchSeed: params.batchSeed,
                 limit: categoryLimit,
                 excludeCardIds: params.excludeCardIds,

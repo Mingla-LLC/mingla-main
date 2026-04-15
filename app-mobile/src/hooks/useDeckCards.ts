@@ -37,7 +37,7 @@ export interface DeckQueryKeyParams {
   travelConstraintValue: number;
   datetimePref?: string;
   dateOption?: string;
-  timeSlot?: string | null;
+  timeSlots?: string[];
   batchSeed: number;
   excludeCardIds?: string[];
 }
@@ -63,7 +63,7 @@ export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[
     params.travelConstraintValue,
     nd,
     params.dateOption ?? 'now',
-    params.timeSlot ?? '',
+    [...(params.timeSlots ?? [])].sort().join(','),
     params.batchSeed,
     [...(params.excludeCardIds ?? [])].sort().join(','),
   ] as const;
@@ -81,7 +81,7 @@ interface UseDeckCardsParams {
   travelConstraintValue: number;
   datetimePref?: string;
   dateOption?: string;
-  timeSlot?: string | null;
+  timeSlots?: string[];
   batchSeed: number;
   enabled: boolean;
   excludeCardIds?: string[];
@@ -127,7 +127,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
         travelConstraintValue: params.travelConstraintValue,
         datetimePref: params.datetimePref,
         dateOption: params.dateOption,
-        timeSlot: params.timeSlot,
+        timeSlots: params.timeSlots,
         batchSeed: params.batchSeed,
         excludeCardIds: params.excludeCardIds,
       })

@@ -464,7 +464,13 @@ export const RecommendationsProvider: React.FC<
   // (they're solo-only UI concepts). For collab, pass defaults so the edge
   // function falls back to datetimePref-based filtering.
   const effectiveDateOption = isCollaborationMode ? 'now' : (userPrefs?.date_option ?? 'now');
-  const effectiveTimeSlot = isCollaborationMode ? null : (userPrefs?.time_slot ?? null);
+  const effectiveTimeSlots: string[] = isCollaborationMode
+    ? []
+    : (userPrefs?.time_slots && Array.isArray(userPrefs.time_slots) && userPrefs.time_slots.length > 0)
+      ? userPrefs.time_slots
+      : userPrefs?.time_slot
+        ? [userPrefs.time_slot]
+        : [];
 
   const {
     cards: soloDeckCards,
@@ -487,7 +493,7 @@ export const RecommendationsProvider: React.FC<
     travelConstraintValue: effectiveTravelConstraintValue,
     datetimePref: effectiveDatetimePref,
     dateOption: effectiveDateOption,
-    timeSlot: effectiveTimeSlot,
+    timeSlots: effectiveTimeSlots,
     batchSeed,
     enabled: isSoloMode &&
       !!activeDeckLocation &&
@@ -524,7 +530,7 @@ export const RecommendationsProvider: React.FC<
         travelConstraintValue: effectiveTravelConstraintValue,
         datetimePref: effectiveDatetimePref,
         dateOption: effectiveDateOption,
-        timeSlot: effectiveTimeSlot,
+        timeSlots: effectiveTimeSlots,
         batchSeed,
         excludeCardIds,
       });
@@ -729,7 +735,11 @@ export const RecommendationsProvider: React.FC<
         const prefetchConstraintType = 'time' as const;
         const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (collabDeckParams?.travelConstraintValue ?? 30);
         const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now';
-        const prefetchTimeSlot = isSoloMode ? (userPrefs?.time_slot ?? null) : null;
+        const prefetchTimeSlots: string[] = isSoloMode
+          ? ((userPrefs?.time_slots && Array.isArray(userPrefs.time_slots) && userPrefs.time_slots.length > 0)
+            ? userPrefs.time_slots
+            : userPrefs?.time_slot ? [userPrefs.time_slot] : [])
+          : [];
         const rawDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (collabDeckParams?.datetimePref ?? undefined);
         // Normalize to ISO string to match useDeckCards query key format
         const prefetchDatetimePref = rawDatetimePref
@@ -752,7 +762,7 @@ export const RecommendationsProvider: React.FC<
             prefetchConstraintValue,
             prefetchDatetimePref,
             prefetchDateOption,
-            prefetchTimeSlot ?? '',
+            [...prefetchTimeSlots].sort().join(','),
             nextSeed,
             excludeCardIds.sort().join(','),
           ],
@@ -768,7 +778,7 @@ export const RecommendationsProvider: React.FC<
             travelConstraintValue: prefetchConstraintValue,
             datetimePref: prefetchDatetimePref,
             dateOption: prefetchDateOption,
-            timeSlot: prefetchTimeSlot,
+            timeSlots: prefetchTimeSlots,
             batchSeed: nextSeed,
             limit: 10000, // Phase 5: match main fetch — return all matching cards
             excludeCardIds,
