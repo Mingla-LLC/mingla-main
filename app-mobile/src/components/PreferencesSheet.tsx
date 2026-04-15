@@ -269,9 +269,9 @@ export default function PreferencesSheet({
     selectedDateOption: 'today' as DateOptionId,
     selectedDates: [] as string[],
     selectedDate: null as Date | null,
-    travelMode: 'walking',
+    travelMode: 'driving',
     constraintType: 'time' as const,
-    constraintValue: 30,
+    constraintValue: 75,
     searchLocation: '',
     intentToggle: true,
     categoryToggle: true,
@@ -441,27 +441,29 @@ export default function PreferencesSheet({
     let blocked = false;
     setSelectedIntents((prev) => {
       if (prev.includes(id)) {
-        // Deselecting — read categories from ref to avoid stale closure
-        if (prev.length === 1 && selectedCategoriesRef.current.length === 0) {
+        // Can't deselect last one if categories section can't cover us
+        const categoriesCanCover = categoryToggle && selectedCategoriesRef.current.length > 0;
+        if (prev.length === 1 && !categoriesCanCover) {
           blocked = true;
           return prev;
         }
-        return prev.filter(i => i !== id);  // Toggle off
+        return prev.filter(i => i !== id);
       }
-      return [...prev, id];  // Toggle on
+      return [...prev, id];
     });
     if (blocked) {
       setMinSelectionMessage(true);
       setTimeout(() => setMinSelectionMessage(false), 2500);
     }
-  }, []);
+  }, [categoryToggle]);
 
   const handleCategoryToggle = useCallback((id: string) => {
     let blocked = false;
     setSelectedCategories((prev) => {
       if (prev.includes(id)) {
-        // Deselecting — read intents from ref to avoid stale closure
-        if (prev.length === 1 && selectedIntentsRef.current.length === 0) {
+        // Can't deselect last one if intents section can't cover us
+        const intentsCanCover = intentToggle && selectedIntentsRef.current.length > 0;
+        if (prev.length === 1 && !intentsCanCover) {
           blocked = true;
           return prev;
         }
@@ -473,7 +475,7 @@ export default function PreferencesSheet({
       setMinSelectionMessage(true);
       setTimeout(() => setMinSelectionMessage(false), 2500);
     }
-  }, []);
+  }, [intentToggle]);
 
   // ORCH-0434: Date option handler (simplified — 3 options, no time slots)
   const handleDateOptionChange = useCallback((option: DateOptionId) => {
@@ -1244,7 +1246,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: 8,
-    paddingBottom: 120,
+    paddingBottom: 200,
   },
   header: {
     flexDirection: "row",
