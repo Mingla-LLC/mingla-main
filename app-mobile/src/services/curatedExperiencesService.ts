@@ -4,8 +4,6 @@ import type { CuratedExperienceCard } from '../types/curatedExperience';
 interface GenerateCuratedParams {
   experienceType: 'adventurous' | 'first-date' | 'romantic' | 'group-fun' | 'picnic-dates' | 'take-a-stroll';
   location: { lat: number; lng: number };
-  budgetMin: number;
-  budgetMax: number;
   travelMode: string;
   travelConstraintType: 'time';
   travelConstraintValue: number;
@@ -43,7 +41,6 @@ class CuratedExperiencesService {
   async warmPool(params: {
     experienceType: string;
     location: { lat: number; lng: number };
-    budgetMax: number;
     travelMode: string;
     travelConstraintType: string;
     travelConstraintValue: number;
@@ -55,7 +52,6 @@ class CuratedExperiencesService {
         body: {
           experienceType: params.experienceType,
           location: params.location,
-          budgetMax: params.budgetMax,
           travelMode: params.travelMode,
           travelConstraintType: params.travelConstraintType,
           travelConstraintValue: params.travelConstraintValue,

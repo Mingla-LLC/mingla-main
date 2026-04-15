@@ -8,15 +8,14 @@ function nthWeekdayOfMonth(year: number, month: number, weekday: number, n: numb
   return new Date(year, month, day)
 }
 
-// Section presets
+// Section presets — ORCH-0434: updated to new canonical slugs
 const ROMANTIC_SECTION: HolidayCardSection = { label: 'Romantic', type: 'romantic' }
 const ADVENTUROUS_SECTION: HolidayCardSection = { label: 'Adventurous', type: 'adventurous' }
-const FINE_DINING_SECTION: HolidayCardSection = { label: 'Fine Dining', type: 'category', categorySlug: 'fine_dining' }
-const WELLNESS_SECTION: HolidayCardSection = { label: 'Wellness', type: 'category', categorySlug: 'wellness' }
+const FINE_DINING_SECTION: HolidayCardSection = { label: 'Fine Dining', type: 'category', categorySlug: 'upscale_fine_dining' }
+const NATURE_SECTION: HolidayCardSection = { label: 'Nature', type: 'category', categorySlug: 'nature' }
 const PLAY_SECTION: HolidayCardSection = { label: 'Play', type: 'category', categorySlug: 'play' }
-const PICNIC_SECTION: HolidayCardSection = { label: 'Picnic', type: 'category', categorySlug: 'picnic' }
-const DRINK_SECTION: HolidayCardSection = { label: 'Drink', type: 'category', categorySlug: 'drink' }
-const WATCH_SECTION: HolidayCardSection = { label: 'Watch', type: 'category', categorySlug: 'watch' }
+const DRINKS_SECTION: HolidayCardSection = { label: 'Drinks & Music', type: 'category', categorySlug: 'drinks_and_music' }
+const MOVIES_SECTION: HolidayCardSection = { label: 'Movies & Theatre', type: 'category', categorySlug: 'movies_theatre' }
 const CREATIVE_ARTS_SECTION: HolidayCardSection = { label: 'Creative & Arts', type: 'category', categorySlug: 'creative_arts' }
 
 // Birthday and Custom Holiday preset: 3 curated + 3 category
@@ -24,7 +23,7 @@ export const DEFAULT_PERSON_SECTIONS: HolidayCardSection[] = [
   ROMANTIC_SECTION,
   ADVENTUROUS_SECTION,
   FINE_DINING_SECTION,
-  WATCH_SECTION,
+  MOVIES_SECTION,
   PLAY_SECTION,
 ]
 
@@ -33,7 +32,7 @@ export const STANDARD_HOLIDAYS: HolidayDefinition[] = [
     id: 'new_years_day',
     name: "New Year's Day",
     getDate: (year) => new Date(year, 0, 1),
-    sections: [WELLNESS_SECTION, FINE_DINING_SECTION],
+    sections: [NATURE_SECTION, FINE_DINING_SECTION],
   },
   {
     id: 'valentines_day',
@@ -45,7 +44,7 @@ export const STANDARD_HOLIDAYS: HolidayDefinition[] = [
     id: 'intl_womens_day',
     name: "International Women's Day",
     getDate: (year) => new Date(year, 2, 8),
-    sections: [WELLNESS_SECTION, FINE_DINING_SECTION],
+    sections: [NATURE_SECTION, FINE_DINING_SECTION],
     genderFilter: ['woman'],
   },
   {
@@ -85,19 +84,19 @@ export const STANDARD_HOLIDAYS: HolidayDefinition[] = [
     id: 'intl_day_of_peace',
     name: 'International Day of Peace',
     getDate: (year) => new Date(year, 8, 21),
-    sections: [PICNIC_SECTION, FINE_DINING_SECTION],
+    sections: [NATURE_SECTION, FINE_DINING_SECTION],
   },
   {
     id: 'sweetest_day',
     name: 'Sweetest Day',
     getDate: (year) => new Date(year, 9, 17),
-    sections: [DRINK_SECTION, FINE_DINING_SECTION],
+    sections: [DRINKS_SECTION, FINE_DINING_SECTION],
   },
   {
     id: 'halloween',
     name: 'Halloween',
     getDate: (year) => new Date(year, 9, 31),
-    sections: [WATCH_SECTION, FINE_DINING_SECTION],
+    sections: [MOVIES_SECTION, FINE_DINING_SECTION],
   },
   {
     id: 'intl_mens_day',
@@ -122,7 +121,7 @@ export const STANDARD_HOLIDAYS: HolidayDefinition[] = [
     id: 'christmas_day',
     name: 'Christmas Day',
     getDate: (year) => new Date(year, 11, 25),
-    sections: [FINE_DINING_SECTION, WATCH_SECTION],
+    sections: [FINE_DINING_SECTION, MOVIES_SECTION],
   },
   {
     id: 'new_years_eve',
@@ -133,7 +132,8 @@ export const STANDARD_HOLIDAYS: HolidayDefinition[] = [
 ]
 
 // Intent → category slugs mapping for intent-based card sections
+// ORCH-0434: Updated to new canonical slugs.
 export const INTENT_CATEGORY_MAP: Record<string, string[]> = {
-  romantic: ['first_meet', 'drink', 'picnic_park', 'wellness', 'nature'],
-  adventurous: ['nature', 'play', 'creative_arts', 'casual_eats', 'drink', 'first_meet', 'picnic_park', 'watch', 'live_performance', 'wellness', 'flowers'],
+  romantic: ['icebreakers', 'drinks_and_music', 'nature'],
+  adventurous: ['nature', 'play', 'creative_arts', 'brunch_lunch_casual', 'drinks_and_music', 'icebreakers', 'movies_theatre'],
 }

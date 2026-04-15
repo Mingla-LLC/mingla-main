@@ -14,7 +14,7 @@ import { inAppNotificationService } from "../services/inAppNotificationService";
 import { useAppStore } from "../store/appStore";
 import { computePrefsHash } from "../utils/cardConverters";
 import { getDisplayName } from "../utils/getDisplayName";
-import { TIER_BY_SLUG, PRICE_TIERS, PriceTierSlug } from '../constants/priceTiers';
+
 import { normalizeCategoryArray } from '../utils/categoryUtils';
 import i18n from '../i18n';
 
@@ -455,21 +455,12 @@ export function useAppHandlers(state: any) {
         preferences.travelMode ||
         "walking";
 
-      // Compute backward-compat budget from price tiers
-      const userTiers: PriceTierSlug[] = preferences.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
-      const backCompatBudgetMax = userTiers.includes('any' as PriceTierSlug)
-        ? 10000
-        : (PRICE_TIERS.slice().reverse().find(t => userTiers.includes(t.slug))?.max ?? 1000);
-
       const soloCats = normalizeCategoryArray(preferences.selectedCategories || []);
       const soloIntents = preferences.selectedIntents || [];
 
       const dbPreferences: any = {
         mode: soloIntents.length > 0 ? "custom" : "explore",
         people_count: 1,
-        price_tiers: userTiers,
-        budget_min: 0,
-        budget_max: backCompatBudgetMax,
         categories: soloCats,
         intents: soloIntents,
         travel_mode: normalizedTravelMode,
@@ -481,22 +472,14 @@ export function useAppHandlers(state: any) {
             ? Number(preferences.constraintValue)
             : 30,
         date_option: preferences.dateOption
-          ? preferences.dateOption === "Now"
-            ? "now"
-            : preferences.dateOption === "Today"
+          ? preferences.dateOption === "Today"
             ? "today"
             : preferences.dateOption === "This Weekend"
-            ? "weekend"
-            : preferences.dateOption === "Pick a Date"
-            ? "custom"
-            : null
-          : null,
-        time_slot: preferences.selectedTimeSlots?.length > 0
-          ? preferences.selectedTimeSlots[0]
-          : null,
-        time_slots: preferences.selectedTimeSlots?.length > 0
-          ? preferences.selectedTimeSlots
-          : null,
+            ? "this_weekend"
+            : preferences.dateOption === "Pick Date(s)"
+            ? "pick_dates"
+            : "today"
+          : "today",
         datetime_pref: preferences.selectedDate
           ? new Date(preferences.selectedDate).toISOString()
           : null,
@@ -514,9 +497,6 @@ export function useAppHandlers(state: any) {
       // === Optimistic cache update FIRST — deck uses this immediately ===
       queryClient.setQueryData(["userPreferences", user.id], {
         mode: dbPreferences.mode,
-        price_tiers: dbPreferences.price_tiers,
-        budget_min: dbPreferences.budget_min,
-        budget_max: dbPreferences.budget_max,
         people_count: dbPreferences.people_count,
         categories: dbPreferences.categories,
         intents: dbPreferences.intents || [],
@@ -525,12 +505,13 @@ export function useAppHandlers(state: any) {
         travel_constraint_value: dbPreferences.travel_constraint_value,
         datetime_pref: dbPreferences.datetime_pref,
         date_option: dbPreferences.date_option,
-        time_slot: dbPreferences.time_slot,
-        time_slots: dbPreferences.time_slots,
         custom_location: dbPreferences.custom_location,
         custom_lat: dbPreferences.custom_lat,
         custom_lng: dbPreferences.custom_lng,
         use_gps_location: dbPreferences.use_gps_location,
+        intent_toggle: true,
+        category_toggle: true,
+        selected_dates: null,
       });
 
       // Deck history reset

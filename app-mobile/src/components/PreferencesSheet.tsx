@@ -53,7 +53,7 @@ import {
   TravelLimitSection,
   LocationInputSection,
 } from "./PreferencesSheet/PreferencesSectionsAdvanced";
-import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug, PRICE_EXEMPT_CATEGORIES } from '../constants/priceTiers';
+import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
@@ -689,7 +689,7 @@ export default function PreferencesSheet({
 
   const isFormComplete = useMemo(() => {
     const hasPills = selectedCategories.length > 0 || selectedIntents.length > 0;
-    const allExempt = selectedCategories.length > 0 && selectedCategories.every(cat => PRICE_EXEMPT_CATEGORIES.includes(cat));
+    const allExempt = false; // [TRANSITIONAL] PRICE_EXEMPT_CATEGORIES removed in ORCH-0434 — Phase 6 removes this check entirely
     const hasBudget = allExempt || selectedPriceTiers.length > 0;
 
     let hasDateTime = true;
@@ -995,7 +995,8 @@ export default function PreferencesSheet({
           />
 
           {/* Price Tier Section */}
-          {!(selectedCategories.length > 0 && selectedCategories.every(cat => PRICE_EXEMPT_CATEGORIES.includes(cat))) && (
+          {/* [TRANSITIONAL] Price tier section — removed in Phase 6. Kept for compilation. */}
+          {true && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t('preferences:budget.title')}</Text>
               <Text style={styles.sectionSubtitle}>{t('preferences:budget.subtitle')}</Text>

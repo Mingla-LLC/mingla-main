@@ -66,7 +66,6 @@ import {
   OnboardingStep,
   SubStep,
   ONBOARDING_INTENTS,
-  DEFAULT_PRICE_TIERS,
   TRAVEL_TIME_PRESETS,
   DEFAULT_TRAVEL_TIME,
   TRANSPORT_MODES,
@@ -1568,12 +1567,7 @@ const OnboardingFlow = ({
   // ─── Save Preferences (Step 4 → 5 transition) ───
   const handleSavePreferences = useCallback(async () => {
     if (!user?.id) return
-    const highestTier = data.selectedPriceTiers.length > 0
-      ? PRICE_TIERS.slice().reverse().find(t => data.selectedPriceTiers.includes(t.slug))
-      : undefined
-    const backCompatBudgetMax = highestTier?.max ?? 1000
-
-    logger.action('Save preferences pressed', { categories: data.selectedCategories.length, priceTiers: data.selectedPriceTiers, transport: data.travelMode })
+    logger.action('Save preferences pressed', { categories: data.selectedCategories.length, transport: data.travelMode })
     setSavingPrefs(true)
     setPrefsSaveError(false)
     try {
@@ -1581,14 +1575,11 @@ const OnboardingFlow = ({
         PreferencesService.updateUserPreferences(user.id, {
           intents: data.selectedIntents,
           categories: data.selectedCategories,
-          price_tiers: data.selectedPriceTiers,
-          budget_min: 0,
-          budget_max: backCompatBudgetMax,
           travel_mode: data.travelMode,
           travel_constraint_type: 'time',
           travel_constraint_value: data.travelTimeMinutes,
           datetime_pref: new Date().toISOString(),
-          date_option: 'now',
+          date_option: 'today',
           use_gps_location: data.useGpsLocation,
           custom_location: data.manualLocation,
         } as any),
@@ -1601,7 +1592,7 @@ const OnboardingFlow = ({
       try {
         const { data: soloPrefs } = await supabase
           .from("preferences")
-          .select("categories, intents, price_tiers, budget_min, budget_max, travel_mode, travel_constraint_value, date_option, time_slot, exact_time, datetime_pref, use_gps_location, custom_location, custom_lat, custom_lng")
+          .select("categories, intents, travel_mode, travel_constraint_value, date_option, datetime_pref, use_gps_location, custom_location, custom_lat, custom_lng")
           .eq("profile_id", user.id)
           .single()
 
@@ -1611,14 +1602,9 @@ const OnboardingFlow = ({
             .update({
               categories: soloPrefs.categories,
               intents: soloPrefs.intents ?? [],
-              price_tiers: soloPrefs.price_tiers ?? [],
-              budget_min: soloPrefs.budget_min ?? 0,
-              budget_max: soloPrefs.budget_max ?? 1000,
               travel_mode: soloPrefs.travel_mode ?? "walking",
               travel_constraint_value: soloPrefs.travel_constraint_value ?? 30,
               date_option: soloPrefs.date_option ?? null,
-              time_slot: soloPrefs.time_slot ?? null,
-              exact_time: soloPrefs.exact_time ?? null,
               datetime_pref: soloPrefs.datetime_pref ?? null,
               use_gps_location: soloPrefs.use_gps_location ?? true,
               custom_location: soloPrefs.custom_location ?? null,
@@ -1642,19 +1628,18 @@ const OnboardingFlow = ({
       queryClient.setQueryData(['userPreferences', user.id], {
         categories: data.selectedCategories,
         intents: data.selectedIntents,
-        price_tiers: data.selectedPriceTiers ?? DEFAULT_PRICE_TIERS,
-        budget_min: 0,
-        budget_max: backCompatBudgetMax,
         travel_mode: data.travelMode,
         travel_constraint_type: 'time',
         travel_constraint_value: data.travelTimeMinutes,
         datetime_pref: datetimePref,
-        date_option: 'now',
-        time_slot: null,
+        date_option: 'today',
         use_gps_location: data.useGpsLocation,
         custom_location: data.manualLocation,
         custom_lat: data.coordinates?.lat ?? null,
         custom_lng: data.coordinates?.lng ?? null,
+        intent_toggle: true,
+        category_toggle: true,
+        selected_dates: null,
       })
 
       // ── Real deck prefetch (replaces dead warmDeckPool no-op) ──────────
@@ -1669,7 +1654,6 @@ const OnboardingFlow = ({
         // Apply identical normalization as RecommendationsContext stableDeckParams
         const normalizedCategories = normalizeCategoryArray(data.selectedCategories)
         const normalizedIntents = data.selectedIntents ?? []
-        const priceTiers = data.selectedPriceTiers ?? DEFAULT_PRICE_TIERS
 
         // Build the exact query key useDeckCards will look for post-transition
         const deckQueryKey = buildDeckQueryKey({
@@ -1677,15 +1661,11 @@ const OnboardingFlow = ({
           lng: coords.lng,
           categories: normalizedCategories,
           intents: normalizedIntents,
-          priceTiers,
-          budgetMin: 0,
-          budgetMax: backCompatBudgetMax,
           travelMode: data.travelMode,
           travelConstraintType: 'time',
           travelConstraintValue: data.travelTimeMinutes,
           datetimePref,
-          dateOption: 'now',
-          timeSlots: [],
+          dateOption: 'today',
           batchSeed: 0,
           excludeCardIds: [],
         })
@@ -1694,15 +1674,11 @@ const OnboardingFlow = ({
           location: coords,
           categories: normalizedCategories,
           intents: normalizedIntents,
-          priceTiers: priceTiers as import('../constants/priceTiers').PriceTierSlug[],
-          budgetMin: 0,
-          budgetMax: backCompatBudgetMax,
           travelMode: data.travelMode,
           travelConstraintType: 'time' as const,
           travelConstraintValue: data.travelTimeMinutes,
           datetimePref,
-          dateOption: 'now',
-          timeSlots: [],
+          dateOption: 'today',
           batchSeed: 0,
           limit: 200,
           excludeCardIds: [],
@@ -1979,10 +1955,7 @@ const OnboardingFlow = ({
         return { label: t('common:next'), disabled: data.selectedCategories.length === 0, loading: false, onPress: () => {
           handleGoNext()
         }, hide: false }
-      case 'budget':
-        return { label: t('common:next'), disabled: data.selectedPriceTiers.length === 0, loading: false, onPress: () => {
-          handleGoNext()
-        }, hide: false }
+      // [TRANSITIONAL] 'budget' sub-step removed in ORCH-0434 — Phase 7 removes this case entirely
       case 'transport':
         return { label: t('common:next'), disabled: false, loading: false, onPress: () => {
           handleGoNext()
@@ -2801,14 +2774,15 @@ const OnboardingFlow = ({
       )
     }
 
-    if (subStep === 'budget') {
+    // [TRANSITIONAL] Budget sub-step removed in ORCH-0434 — Phase 7 removes this block entirely
+    if (subStep === 'budget' as string) {
       return (
         <View style={styles.budgetContainer}>
           <Text style={styles.headlineCentered}>{t('onboarding:budget.headline')}</Text>
           <Text style={styles.bodyCentered}>{t('onboarding:budget.body')}</Text>
           <View style={styles.budgetGrid}>
             {PRICE_TIERS.map((tier) => {
-              const isActive = data.selectedPriceTiers.includes(tier.slug)
+              const isActive = ((data as any).selectedPriceTiers ?? []).includes(tier.slug)
               return (
                 <Pressable
                   key={tier.slug}
@@ -2819,7 +2793,7 @@ const OnboardingFlow = ({
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
                     setData((p) => {
-                      const current = p.selectedPriceTiers
+                      const current = (p as any).selectedPriceTiers ?? []
                       // Mutual exclusion: "Any" vs specific tiers
                       if (tier.slug === 'any') {
                         // Selecting "Any" → replace all with ['any']
@@ -3062,7 +3036,6 @@ const OnboardingFlow = ({
           initialSessions={data.createdSessions}
           userPreferences={{
             categories: data.selectedCategories,
-            priceTiers: data.selectedPriceTiers,
             intents: data.selectedIntents,
             travelMode: data.travelMode,
             travelTimeMinutes: data.travelTimeMinutes,

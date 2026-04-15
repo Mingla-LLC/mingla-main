@@ -289,13 +289,10 @@ class MixpanelService {
     changesCount: number;
     intents?: string[];
     categories?: string[];
-    budgetMin?: number;
-    budgetMax?: number;
     travelMode?: string;
     constraintType?: string;
     constraintValue?: number;
     dateOption?: string | null;
-    timeSlot?: string | null;
     location?: string;
   }): void {
     this.track("Preferences Updated", {
@@ -305,13 +302,10 @@ class MixpanelService {
       intents_count: props.intents?.length ?? 0,
       categories: props.categories,
       categories_count: props.categories?.length ?? 0,
-      budget_min: props.budgetMin,
-      budget_max: props.budgetMax,
       travel_mode: props.travelMode,
       constraint_type: props.constraintType,
       constraint_value: props.constraintValue,
       date_option: props.dateOption,
-      time_slot: props.timeSlot,
       location: props.location,
     });
   }

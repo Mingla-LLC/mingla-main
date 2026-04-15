@@ -71,17 +71,12 @@ async function buildSeedFromSoloPrefs(
   const defaults = {
     session_id: sessionId,
     user_id: userId,
-    categories: ['nature', 'casual_eats', 'drink'],
+    categories: ['nature', 'drinks_and_music', 'icebreakers'],
     intents: [] as string[],
-    price_tiers: ['chill', 'comfy', 'bougie', 'lavish'],
-    budget_min: 0,
-    budget_max: 1000,
     travel_mode: 'walking',
     travel_constraint_type: 'time' as const,
     travel_constraint_value: 30,
     date_option: null as string | null,
-    time_slot: null as string | null,
-    exact_time: null as string | null,
     datetime_pref: null as string | null,
     use_gps_location: true,
     custom_location: null as string | null,
@@ -97,22 +92,14 @@ async function buildSeedFromSoloPrefs(
     ...defaults,
     categories: solo.categories?.length ? solo.categories : defaults.categories,
     intents: solo.intents ?? defaults.intents,
-    budget_min: solo.budget_min ?? defaults.budget_min,
-    budget_max: solo.budget_max ?? defaults.budget_max,
     travel_mode: solo.travel_mode ?? defaults.travel_mode,
     travel_constraint_type: 'time' as const,
     travel_constraint_value: solo.travel_constraint_value ?? defaults.travel_constraint_value,
     date_option: solo.date_option ?? defaults.date_option,
-    time_slot: solo.time_slot ?? defaults.time_slot,
-    exact_time: solo.exact_time ?? defaults.exact_time,
     datetime_pref: solo.datetime_pref ?? defaults.datetime_pref,
   };
 
-  // Read price_tiers from solo if it exists (field was added later, may be absent on type)
   const soloAny = solo as unknown as Record<string, unknown>;
-  if (Array.isArray(soloAny.price_tiers) && soloAny.price_tiers.length > 0) {
-    raw.price_tiers = soloAny.price_tiers as string[];
-  }
   if (typeof soloAny.use_gps_location === 'boolean') {
     raw.use_gps_location = soloAny.use_gps_location;
   }
@@ -129,7 +116,6 @@ async function buildSeedFromSoloPrefs(
   // Apply normalization to eliminate conflicting date/time/location combos
   const normalized = normalizePreferencesForSave({
     date_option: raw.date_option,
-    time_slot: raw.time_slot,
     datetime_pref: raw.datetime_pref,
     use_gps_location: raw.use_gps_location,
     custom_location: raw.custom_location,
@@ -138,7 +124,6 @@ async function buildSeedFromSoloPrefs(
   return {
     ...raw,
     date_option: normalized.date_option,
-    time_slot: normalized.time_slot,
     datetime_pref: normalized.datetime_pref,
     use_gps_location: normalized.use_gps_location,
     custom_location: normalized.custom_location,
@@ -631,7 +616,6 @@ export const useSessionManagement = () => {
       preferences?: {
         categories: string[]
         intents: string[]
-        priceTiers: string[]
         travelMode: string
         travelTimeMinutes: number
       }
@@ -675,9 +659,6 @@ export const useSessionManagement = () => {
             user_id: authUser.id,
             categories: preferences.categories,
             intents: preferences.intents,
-            price_tiers: preferences.priceTiers,
-            budget_min: 0,
-            budget_max: 1000,
             travel_mode: preferences.travelMode,
             travel_constraint_type: 'time',
             travel_constraint_value: preferences.travelTimeMinutes,

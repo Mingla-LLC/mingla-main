@@ -317,7 +317,7 @@ export async function acceptCollaborationInvite(
   const { data: soloPrefs } = await supabase
     .from('preferences')
     .select(
-      'categories, intents, price_tiers, budget_min, budget_max, travel_mode, travel_constraint_type, travel_constraint_value, date_option, time_slot, exact_time, datetime_pref, use_gps_location, custom_location, custom_lat, custom_lng'
+      'categories, intents, travel_mode, travel_constraint_type, travel_constraint_value, date_option, datetime_pref, use_gps_location, custom_location, custom_lat, custom_lng'
     )
     .eq('profile_id', userId)
     .single();
@@ -330,15 +330,10 @@ export async function acceptCollaborationInvite(
         user_id: userId,
         categories: soloPrefs?.categories ?? [],
         intents: soloPrefs?.intents ?? [],
-        price_tiers: soloPrefs?.price_tiers ?? [],
-        budget_min: soloPrefs?.budget_min ?? 0,
-        budget_max: soloPrefs?.budget_max ?? 1000,
         travel_mode: soloPrefs?.travel_mode ?? 'walking',
         travel_constraint_type: 'time',
         travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
         date_option: soloPrefs?.date_option ?? null,
-        time_slot: soloPrefs?.time_slot ?? null,
-        exact_time: soloPrefs?.exact_time ?? null,
         datetime_pref: soloPrefs?.datetime_pref ?? null,
         use_gps_location: soloPrefs?.use_gps_location ?? true,
         custom_location: soloPrefs?.custom_location ?? null,

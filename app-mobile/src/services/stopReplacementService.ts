@@ -5,7 +5,6 @@ interface GetAlternativesParams {
   categoryId: string;
   location: { lat: number; lng: number };
   travelMode: string;
-  budgetMax: number;
   excludePlaceIds: string[];
   siblingStops: Array<{ lat: number; lng: number }>;
   limit?: number;
@@ -26,7 +25,6 @@ class StopReplacementService {
         categoryId: params.categoryId,
         location: params.location,
         travelMode: params.travelMode,
-        budgetMax: params.budgetMax,
         excludePlaceIds: params.excludePlaceIds,
         siblingStops: params.siblingStops,
         limit: params.limit ?? 10,
