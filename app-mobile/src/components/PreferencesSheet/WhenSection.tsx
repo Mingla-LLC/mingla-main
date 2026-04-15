@@ -109,9 +109,15 @@ const whenStyles = StyleSheet.create({
     elevation: 6,
   },
   question: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.text.primary,
+    color: '#ffffff',
+    backgroundColor: '#1f2937',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    overflow: 'hidden',
     marginBottom: 14,
   },
   pillsRow: {
