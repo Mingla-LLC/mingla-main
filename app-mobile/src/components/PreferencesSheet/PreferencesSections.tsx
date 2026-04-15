@@ -105,7 +105,9 @@ export const ExperienceTypesSection = memo(
           </View>
         )}
         {minMessage && (
-          <Text style={styles.capMessage}>{t('preferences:experience_types.min_message')}</Text>
+          <View style={styles.funnyWarning}>
+            <Text style={styles.funnyWarningText}>You need at least one — we can't read minds yet 😄</Text>
+          </View>
         )}
       </View>
     );
@@ -205,11 +207,10 @@ export const CategoriesSection = memo(
             </Text>
           </View>
         )}
-        {capMessage && (
-          <Text style={styles.capMessage}>{t('preferences:categories.cap_message')}</Text>
-        )}
         {minMessage && (
-          <Text style={styles.capMessage}>{t('preferences:categories.min_message')}</Text>
+          <View style={styles.funnyWarning}>
+            <Text style={styles.funnyWarningText}>Keep at least one — gotta have something to explore! 🧭</Text>
+          </View>
         )}
       </View>
     );
@@ -421,17 +422,20 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#eb7825",
   },
-  capMessage: {
-    color: "#dc2626",
-    fontSize: 12,
-    fontWeight: "600",
-    textAlign: "center",
-    marginTop: 10,
-    paddingVertical: 6,
+  funnyWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(249, 115, 22, 0.10)',
+    borderRadius: 999,
     paddingHorizontal: 12,
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    overflow: "hidden",
+    paddingVertical: 7,
+    marginTop: 10,
+    alignSelf: 'flex-start',
+  },
+  funnyWarningText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#ea580c',
   },
   travelModesGrid: {
     flexDirection: "row",

@@ -159,7 +159,9 @@ export const LocationInputSection = memo(
           size={16}
           color={useGpsLocation ? "#ffffff" : "#6b7280"}
         />
-        <Text style={[styles.gpsSwitchLabel, useGpsLocation && styles.gpsSwitchLabelActive]}>{t('preferences:location.use_current')}</Text>
+        <Text style={[styles.gpsSwitchLabel, useGpsLocation && styles.gpsSwitchLabelActive]}>
+          {useGpsLocation ? "Using your current location" : "Use my current location"}
+        </Text>
         {isLocked && (
           <Icon name="lock-closed" size={14} color="#9CA3AF" style={{ marginRight: 4 }} />
         )}
@@ -172,8 +174,9 @@ export const LocationInputSection = memo(
             }
             onToggleGps(val);
           }}
-          trackColor={{ false: '#d1d5db', true: '#eb7825' }}
+          trackColor={{ false: '#d1d5db', true: 'rgba(255,255,255,0.3)' }}
           thumbColor="#ffffff"
+          ios_backgroundColor={useGpsLocation ? 'rgba(255,255,255,0.3)' : '#d1d5db'}
         />
       </View>
 
