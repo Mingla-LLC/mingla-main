@@ -593,7 +593,10 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 
 | ORCH-0429 | Picnic Park / Nature & Views — dual-tagging is fine (user confirmed parks can be both). Original exclusivity request WITHDRAWN. No code change needed. | Discovery | S1 | data-integrity | closed | B | 2026-04-14 | User confirmed parks can be both picnic and nature. The real problem is ORCH-0430 (same parks every time). |
 | ORCH-0430 | Curated experiences always showed same venues — fetchSinglesForCategory now shuffles results for variety | Discovery | S1 | quality-gap | closed | A | 2026-04-14 | Root cause: rating DESC sort + anchorPlaces[0] = deterministic. Fix: shuffle(filtered) at line 307. Benefits all 6 experience types. Pending deploy. |
-| ORCH-0431 | Deck stuck on exhausted/empty screen after preference change — no loading skeleton shown | Discovery | S1 | bug | open | F | — | Root cause proven: refreshKey handler (line 636) resets isExhausted but NOT hasCompletedFetchForCurrentMode, so state machine falls to EMPTY instead of INITIAL_LOADING. |
+| ORCH-0431 | Deck stuck on exhausted/empty screen after preference change — no loading skeleton shown | Discovery | S1 | bug | closed | A | 2026-04-14 | Root cause: refreshKey handler missing hasCompletedFetchForCurrentMode reset + race condition via placeholderData. Fix: 3 changes to RecommendationsContext.tsx. QA PASS 16/16. Commit b1b8ebef. |
+
+| ORCH-0432 | Pre-existing: blocked types gap — meal_takeaway (149), educational_institution (46), pizza_delivery (31), sports_complex (34) still approved | Discovery | S2 | data-integrity | open | F | — | Discovered by full session audit 2026-04-15. Deterministic filter catches keywords but not all Google primary_types. Add to BLOCKED_PRIMARY_TYPES or EXCLUSION_KEYWORDS. |
+| ORCH-0433 | Fine dining quality gap — INEXPENSIVE restaurants tagged fine_dining (Les Oiseaux Paris), event_venue tagged fine_dining (Marti's Bistro) | Discovery | S2 | data-integrity | open | F | — | Discovered by full session audit 2026-04-15. Add INEXPENSIVE demotion rule to deterministicFilter: if fine_dining AND INEXPENSIVE → strip fine_dining. Manual override for event_venue edge cases. |
 
 ### Cross-Cutting: UI Components & Design System
 

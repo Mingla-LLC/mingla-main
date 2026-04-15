@@ -3,7 +3,7 @@
 > Last updated: 2026-04-14
 > Total: 326 | Open: 141 | Closed: 114 | Verified (B grade): 21 | Partial: 1 | Deferred: 1
 >
-> Recently closed: ORCH-0419 (real-time data stack: Mapbox + Open-Meteo + venue heuristic — QA PASS 17/17), ORCH-0250, ORCH-0251
+> Recently closed: ORCH-0431 (deck loading skeleton on pref change — QA PASS 16/16), ORCH-0419 (real-time data stack: Mapbox + Open-Meteo + venue heuristic — QA PASS 17/17), ORCH-0250, ORCH-0251
 > Recently added: ORCH-0431 (Deck stuck on exhausted screen after pref change — no loading skeleton), ORCH-0429 (Android map markers rendering as lines — bitmap regression)
 > Previously closed: ORCH-0402 (calendar button visibility + birthday push notifications — QA PASS 17/17)
 
@@ -57,7 +57,7 @@
 | ORCH-0409 | Map avatars intermittently disappear — possible ORCH-0385 regression | Map | regression | User report 2026-04-13 |
 | ORCH-0410 | Android discover map fundamentally broken — pan/scroll, labels, not fluid like iOS | Map | architecture-flaw | User report 2026-04-13 |
 | ORCH-0429 | Android map markers (avatars + places) rendering as lines — bitmap regression | Map | regression | User report 2026-04-14 |
-| ORCH-0431 | Deck stuck on exhausted/empty screen after preference change — no loading skeleton | Discovery | bug | User report 2026-04-14 |
+| ORCH-0431 | Deck stuck on exhausted/empty screen after preference change — no loading skeleton | Discovery | bug | Closed → A |
 | ORCH-0411 | Paired friend can't see my liked places — asymmetric visibility | Pairing | bug | User report 2026-04-13 |
 | ORCH-0363 | Report modal from friend list opens too late — user navigates away before modal appears | Moderation | ux | User report 2026-04-10 |
 | ORCH-0338 | React Query retry:1 wastes budget on 401s — auth-aware retry needed | State & Cache | quality-gap | INV-009 discovery |
