@@ -8,6 +8,16 @@
         "--access-token",
         "sbp_93fcb4740c4d13fa383e358b760c2a6dccef57cd"
       ]
+    },
+    "clickup": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@chykalophia/clickup-mcp-server"
+      ],
+      "env": {
+        "CLICKUP_API_TOKEN": "pk_204077741_1VNRVUO3VZPJGUE0V2MAZFGLJS9MF58E"
+      }
     }
   }
 }
