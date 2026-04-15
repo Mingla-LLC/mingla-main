@@ -32,9 +32,8 @@ const SESSION_INTENT_IDS = new Set([
   'adventurous', 'first-date', 'romantic', 'group-fun', 'picnic-dates', 'take-a-stroll',
 ]);
 
+// ORCH-0434: budgetMin/budgetMax removed from return type.
 async function aggregateSessionPreferences(sessionId: string): Promise<{
-  budgetMin: number;
-  budgetMax: number;
   categories: string[];
   experienceTypes: string[];
   travelMode: string;
@@ -51,8 +50,7 @@ async function aggregateSessionPreferences(sessionId: string): Promise<{
     throw new Error(`No preferences found for session ${sessionId}`);
   }
 
-  const budgetMin = Math.min(...allPrefs.map(p => p.budget_min ?? 0));
-  const budgetMax = Math.max(...allPrefs.map(p => p.budget_max ?? 1000));
+  // ORCH-0434: budgetMin/budgetMax removed from aggregation.
 
   const allCats = new Set<string>();
   const allIntents = new Set<string>();
@@ -98,7 +96,7 @@ async function aggregateSessionPreferences(sessionId: string): Promise<{
   }
 
   return {
-    budgetMin, budgetMax, categories, experienceTypes,
+    categories, experienceTypes,
     travelMode, travelConstraintValue,
     datetimePref, location,
   };
@@ -137,10 +135,10 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
       { role: 'Dinner' },
     ],
     combos: [
-      ['nature_views', 'drink', 'casual_eats'],
-      ['nature_views', 'drink', 'fine_dining'],
-      ['play', 'drink', 'casual_eats'],
-      ['play', 'drink', 'fine_dining'],
+      ['nature', 'drinks_and_music', 'brunch_lunch_casual'],
+      ['nature', 'drinks_and_music', 'upscale_fine_dining'],
+      ['play', 'drinks_and_music', 'brunch_lunch_casual'],
+      ['play', 'drinks_and_music', 'upscale_fine_dining'],
     ],
     taglines: [
       'Explore the unexpected — your next discovery awaits',
@@ -160,14 +158,14 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
       { role: 'Drinks' },
     ],
     combos: [
-      ['flowers', 'watch', 'fine_dining', 'drink'],
-      ['flowers', 'watch', 'casual_eats', 'drink'],
-      ['flowers', 'creative_arts', 'fine_dining', 'drink'],
-      ['flowers', 'creative_arts', 'casual_eats', 'drink'],
-      ['flowers', 'live_performance', 'fine_dining', 'drink'],
-      ['flowers', 'live_performance', 'casual_eats', 'drink'],
-      ['flowers', 'first_meet', 'fine_dining', 'drink'],
-      ['flowers', 'first_meet', 'casual_eats', 'drink'],
+      ['flowers', 'movies_theatre', 'upscale_fine_dining', 'drinks_and_music'],
+      ['flowers', 'movies_theatre', 'brunch_lunch_casual', 'drinks_and_music'],
+      ['flowers', 'creative_arts', 'upscale_fine_dining', 'drinks_and_music'],
+      ['flowers', 'creative_arts', 'brunch_lunch_casual', 'drinks_and_music'],
+      ['flowers', 'movies_theatre', 'upscale_fine_dining', 'drinks_and_music'],
+      ['flowers', 'movies_theatre', 'brunch_lunch_casual', 'drinks_and_music'],
+      ['flowers', 'icebreakers', 'upscale_fine_dining', 'drinks_and_music'],
+      ['flowers', 'icebreakers', 'brunch_lunch_casual', 'drinks_and_music'],
     ],
     taglines: [
       'A thoughtful route for a great first impression',
@@ -187,8 +185,8 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
       { role: 'Drinks' },
     ],
     combos: [
-      ['flowers', 'creative_arts', 'fine_dining', 'drink'],
-      ['flowers', 'live_performance', 'fine_dining', 'drink'],
+      ['flowers', 'creative_arts', 'upscale_fine_dining', 'drinks_and_music'],
+      ['flowers', 'movies_theatre', 'upscale_fine_dining', 'drinks_and_music'],
     ],
     taglines: [
       'A curated route for two',
@@ -207,10 +205,10 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
       { role: 'Drinks' },
     ],
     combos: [
-      ['play', 'casual_eats', 'drink'],
-      ['play', 'fine_dining', 'drink'],
-      ['watch', 'casual_eats', 'drink'],
-      ['watch', 'fine_dining', 'drink'],
+      ['play', 'brunch_lunch_casual', 'drinks_and_music'],
+      ['play', 'upscale_fine_dining', 'drinks_and_music'],
+      ['movies_theatre', 'brunch_lunch_casual', 'drinks_and_music'],
+      ['movies_theatre', 'upscale_fine_dining', 'drinks_and_music'],
     ],
     taglines: [
       'Rally the crew — adventure is calling',
@@ -229,7 +227,7 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
       { role: 'Picnic Spot', reverseAnchor: true },
     ],
     combos: [
-      ['groceries', 'flowers', 'picnic_park'],
+      ['groceries', 'flowers', 'nature'],
     ],
     taglines: [
       'Grab supplies, find the perfect spot',
@@ -247,8 +245,8 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
       { role: 'Food' },
     ],
     combos: [
-      ['nature_views', 'casual_eats'],
-      ['nature_views', 'fine_dining'],
+      ['nature', 'brunch_lunch_casual'],
+      ['nature', 'upscale_fine_dining'],
     ],
     taglines: [
       'Nature and a great meal — the perfect pair',
@@ -310,10 +308,11 @@ async function fetchSinglesForCategory(
 // ── Build stop from place_pool row ─────────────────────────────────────────
 
 // Duration map by Mingla category (replaces STOP_DURATION_MINUTES keyed by Google type)
+// ORCH-0434: Updated to new canonical slugs.
 const CATEGORY_DURATION_MINUTES: Record<string, number> = {
-  casual_eats: 60, fine_dining: 90, drink: 60, first_meet: 45,
-  nature_views: 60, picnic_park: 75, watch: 120, live_performance: 120,
-  creative_arts: 90, play: 90, wellness: 90, flowers: 15, groceries: 20,
+  brunch_lunch_casual: 60, upscale_fine_dining: 90, drinks_and_music: 60,
+  icebreakers: 45, nature: 60, movies_theatre: 120,
+  creative_arts: 90, play: 90, flowers: 15, groceries: 20,
 };
 const CATEGORY_DEFAULT_DURATION = 60;
 
@@ -408,7 +407,7 @@ function buildCardFromStops(
     + mainStops.slice(1).reduce((sum, s) => sum + (s.travelTimeFromPreviousStopMin || 0), 0);
 
   // Derive category from first main stop's AI categories
-  const category = mainStops[0]?.aiCategories?.[0] || mainStops[0]?.placeType || 'casual_eats';
+  const category = mainStops[0]?.aiCategories?.[0] || mainStops[0]?.placeType || 'brunch_lunch_casual';
 
   return {
     id: `curated_${experienceType}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -492,7 +491,8 @@ async function generateCardsForType(
   const cards: any[] = [];
   const globalUsedPlaceIds = new Set<string>();
   const mainStopCount = typeDef.stops.filter(s => !s.optional).length;
-  const perStopBudget = budgetMax / mainStopCount;
+  // ORCH-0434: Budget filtering removed. perStopBudget set to Infinity to disable.
+  const perStopBudget = Infinity;
 
   for (const combo of comboList) {
     if (cards.length >= limit) break;
@@ -577,7 +577,7 @@ async function generateCardsForType(
           if (!stopDef.optional && p.price_min > perStopBudget) return false;
           // Fine Dining price floor — check highest tier in array meets minimum
           const bestTier = p.price_tiers?.length ? p.price_tiers[p.price_tiers.length - 1] : p.price_tier;
-          if (catId === 'fine_dining' && bestTier && !slugMeetsMinimum(bestTier, 'bougie')) {
+          if (catId === 'upscale_fine_dining' && bestTier && !slugMeetsMinimum(bestTier, 'bougie')) {
             return false;
           }
           return true;
@@ -620,7 +620,8 @@ async function generateCardsForType(
 
     // Validate budget
     const totalMin = stops.filter(s => !s.optional).reduce((s, st) => s + st.priceMin, 0);
-    if (totalMin > budgetMax) continue;
+    // ORCH-0434: Budget ceiling check removed — all price levels included.
+    // if (totalMin > budgetMax) continue;
 
     // Validate travel constraint
     const firstStop = stops.find(s => !s.optional);
@@ -1135,7 +1136,7 @@ serve(async (req) => {
             const popularityScore = Math.min(5, (card.matchScore || 85) / 20) * Math.log10(2);
 
             // Category from single cards' AI categories
-            const stopCategorySlug = mainStops[0]?.aiCategories?.[0] || mainStops[0]?.placeType || 'casual_eats';
+            const stopCategorySlug = mainStops[0]?.aiCategories?.[0] || mainStops[0]?.placeType || 'brunch_lunch_casual';
             const stopCategories = [...new Set(mainStops.flatMap((s: any) => s.aiCategories || []))];
             const stopCityId = mainStops[0]?.cityId || null;
 

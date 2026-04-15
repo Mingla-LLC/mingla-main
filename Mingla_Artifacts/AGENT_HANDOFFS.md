@@ -13,6 +13,8 @@
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-096 | ORCH-0434 Phase 3B | Tester | 2026-04-15 | QA_ORCH-0434_PHASE3B_SLUGS.md | PASS — 12/12 criteria, 0 P0 |
+| AH-095 | ORCH-0434 Phase 3B | Implementor | 2026-04-15 | IMPLEMENTATION_ORCH-0434_PHASE3B_SLUGS.md | APPROVED — 10 edge functions, 21 combos, GPT prompt rewrite |
 | AH-094 | ORCH-0434 Phase 3A | Tester | 2026-04-15 | QA_ORCH-0434_PHASE3A_EDGE_FN.md | PASS — 11/11 criteria, 3/3 regressions, 0 P0 |
 | AH-093 | ORCH-0434 Phase 3A | Implementor | 2026-04-15 | IMPLEMENTATION_ORCH-0434_PHASE3A_COMPILATION.md | APPROVED — filterByDateTime rewrite + budget/time removal across 5 edge functions |
 | AH-092 | ORCH-0434 Phase 2 | Tester | 2026-04-15 | QA_ORCH-0434_PHASE2_SHARED_LIBS.md | CONDITIONAL PASS → PASS after rework. 14/14 criteria, 3/3 regressions, 0 P0 |

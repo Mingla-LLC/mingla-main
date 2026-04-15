@@ -94,10 +94,11 @@ const RESTAURANT_TYPES = new Set([
   "fondue_restaurant", "oyster_bar_restaurant",
 ]);
 
-// ── Category Exclusivity: fine_dining and casual_eats are mutually exclusive ─
+// ── Category Exclusivity: upscale_fine_dining and brunch_lunch_casual are mutually exclusive ─
+// ORCH-0434: Updated from fine_dining/casual_eats to new slug names.
 function enforceExclusivity(categories: string[]): string[] {
-  if (categories.includes("fine_dining")) {
-    return categories.filter(c => c !== "casual_eats");
+  if (categories.includes("upscale_fine_dining")) {
+    return categories.filter(c => c !== "brunch_lunch_casual");
   }
   return categories;
 }
@@ -106,53 +107,46 @@ const SOCIAL_DOMAINS = [
   "google.com","maps.google.com","facebook.com","instagram.com","twitter.com","x.com","yelp.com","tripadvisor.com","foursquare.com","youtube.com","tiktok.com","linkedin.com","pinterest.com","fresha.com","treatwell.com","treatwell.co.uk","treatwell.de","groupon.com","booksy.com","planity.com","vagaro.com","classpass.com","mindbody.com","wikipedia.org","wikidata.org","yellowpages.com","yell.com","pagesjaunes.fr","dasoertliche.de",
 ];
 
-const SYSTEM_PROMPT = `You classify places for Mingla, a dating app, into 13 categories.
+// ORCH-0434: GPT prompt rewritten with new 10-category system.
+const SYSTEM_PROMPT = `You classify places for Mingla, a dating app, into 10 categories.
 
 CATEGORIES (* = must have candidate_website to qualify):
-flowers, *fine_dining, nature_views, first_meet, drink, casual_eats, *watch, *live_performance, *creative_arts, *play, *wellness, picnic_park, groceries
+flowers, *upscale_fine_dining, nature, icebreakers, drinks_and_music, brunch_lunch_casual, *movies_theatre, *creative_arts, *play, groceries
 
 CORE RULES:
 - Determine what this place PRIMARILY IS first (restaurant, museum, bar, park, etc.)
 - Only assign categories where the match is OBVIOUS. Default is zero categories.
-- A museum with a cafe is creative_arts, NOT casual_eats.
-- A park with a kiosk is nature_views+picnic_park, NOT drink.
+- A museum with a cafe is creative_arts, NOT brunch_lunch_casual.
+- A park with a kiosk is nature, NOT drinks_and_music.
 - If a place fits a category, ASSIGN it. Do not reject places that clearly match a category definition.
 
 CATEGORY DEFINITIONS:
 
-FINE_DINING: A restaurant that feels like a special occasion. The combination of: upscale ambience, high-end cuisine, reservation culture, and elevated service. You do NOT need to find the chef's name in the search results — many acclaimed restaurants don't lead with the chef in Google snippets. Signals that indicate fine_dining: very high ratings (4.5+) with upscale reviews, $$$/$$$$ pricing, words like "upscale", "elegant", "tasting menu", "sommelier", "Michelin", "acclaimed", "refined". Examples that ARE fine_dining: Zuma, Manhatta, Nobu, Le Bernardin, Alinea, any Michelin-starred restaurant, any restaurant described as upscale/elegant/refined with high ratings. Examples that are NOT fine_dining: wine bars, tapas bars, bistros, brasseries (especially Parisian bouillons), gastropubs, charming but casual restaurants. Being a chain does NOT disqualify if the experience is genuinely upscale. Olive Garden/Cheesecake Factory fail. Nobu/Morton's pass. PRICE_LEVEL_VERY_EXPENSIVE is a very strong signal. Unless the place is clearly casual (food hall, buffet, themed chain, sports bar), a VERY_EXPENSIVE restaurant with 4.0+ rating should get fine_dining. When genuinely uncertain AND price is MODERATE or INEXPENSIVE or unknown, default to casual_eats. When price is EXPENSIVE or VERY_EXPENSIVE with rating 4.0+, lean toward fine_dining — most high-end restaurants don't advertise "Michelin" or "tasting menu" in their Google snippets. IMPORTANT: fine_dining and casual_eats are MUTUALLY EXCLUSIVE. If a place qualifies for fine_dining, do NOT also assign casual_eats. A fine dining restaurant is fine_dining only. If it also has a bar, it can be fine_dining + drink, but never fine_dining + casual_eats.
+UPSCALE_FINE_DINING: A restaurant that feels like a special occasion. The combination of: upscale ambience, high-end cuisine, reservation culture, and elevated service. You do NOT need to find the chef's name in the search results — many acclaimed restaurants don't lead with the chef in Google snippets. Signals: very high ratings (4.5+) with upscale reviews, $$$/$$$$ pricing, words like "upscale", "elegant", "tasting menu", "sommelier", "Michelin", "acclaimed", "refined". Examples that ARE upscale_fine_dining: Zuma, Manhatta, Nobu, Le Bernardin, Alinea, any Michelin-starred restaurant, any restaurant described as upscale/elegant/refined with high ratings. Examples that are NOT upscale_fine_dining: wine bars, tapas bars, bistros, brasseries, gastropubs, charming but casual restaurants. PRICE_LEVEL_VERY_EXPENSIVE is a very strong signal. Unless clearly casual, a VERY_EXPENSIVE restaurant with 4.0+ rating should get upscale_fine_dining. When genuinely uncertain AND price is MODERATE or INEXPENSIVE or unknown, default to brunch_lunch_casual. IMPORTANT: upscale_fine_dining and brunch_lunch_casual are MUTUALLY EXCLUSIVE. If a place qualifies for upscale_fine_dining, do NOT also assign brunch_lunch_casual. If it also has a bar, it can be upscale_fine_dining + drinks_and_music, but never upscale_fine_dining + brunch_lunch_casual.
 
-CASUAL_EATS: Any real sit-down restaurant where you'd grab a meal. Includes chain restaurants with table service (Olive Garden, IHOP, Outback). Includes food halls and food markets with vendors. NO fast food/counter-service/grab-and-go chains (McDonald's, Subway, Starbucks). Wine bars and tapas bars with food → casual_eats + drink.
+BRUNCH_LUNCH_CASUAL: Any real sit-down restaurant where you'd grab a meal. Includes chain restaurants with table service (Olive Garden, IHOP, Outback). Includes food halls and food markets with vendors. NO fast food/counter-service/grab-and-go chains (McDonald's, Subway, Starbucks). Wine bars and tapas bars with food → brunch_lunch_casual + drinks_and_music.
 
-DRINK: Bars, cocktail bars, wine bars, breweries, beer gardens, pubs, speakeasies, rooftop bars, nightclubs, hookah bars, wineries. If the primary draw is drinks and social atmosphere, it's drink.
+DRINKS_AND_MUSIC: Bars, cocktail bars, wine bars, breweries, beer gardens, pubs, speakeasies, rooftop bars, nightclubs, live music venues, karaoke bars, hookah bars, wineries. If the primary draw is drinks, music, or social nightlife atmosphere, it's drinks_and_music.
 
-FIRST_MEET: Cafes, coffee shops, tea houses, bakeries with seating, bookstore cafes, ice cream parlors, juice bars. Any casual low-pressure spot for a 45-minute conversation.
+ICEBREAKERS: Cafes, coffee shops, tea houses, bakeries with seating, bookstore cafes, ice cream parlors, juice bars. Any casual low-pressure spot for a 45-minute conversation. Perfect for first dates or getting to know someone.
 
-WATCH: Real cinemas with screens and scheduled movies — movie theaters, indie cinemas, drive-ins, IMAX, AMC, Regal, Cinemark, Alamo Drafthouse. NO film production companies, NO festival offices. If it shows movies to audiences, it's watch.
+MOVIES_THEATRE: Real cinemas with screens and scheduled movies — movie theaters, indie cinemas, drive-ins, IMAX, AMC, Regal, Cinemark, Alamo Drafthouse. Also includes performing arts venues: concert halls, theaters, opera houses, comedy clubs, jazz clubs, amphitheaters. Stage + scheduled performers + audience = movies_theatre. NO film production companies, NO booking agencies, NO dance studios.
 
 PLAY: Active fun for adults — bowling, arcades, escape rooms (indoor AND outdoor), go-karts, laser tag, karaoke, mini golf, axe throwing, TopGolf/golf simulators, trampoline parks (adult-friendly), VR experiences, rock climbing, kayaking, skydiving, scavenger hunts, outdoor adventure games. NO kids-only venues, NO gyms, NO gambling halls (exception: upscale casinos like Bellagio).
 
-LIVE_PERFORMANCE: Stage + scheduled performers + audience — concert halls, theaters, opera houses, comedy clubs, jazz clubs, live music venues, amphitheaters. NO production companies, NO booking agencies, NO dance studios.
-
 CREATIVE_ARTS: Museums (all types), art galleries, cultural centers with exhibits, sculpture parks, immersive art (teamLab, Meow Wolf), pottery/paint-and-sip studios open to public, planetariums, aquariums, visitable castles/landmarks. Aquarium → creative_arts + play.
 
-WELLNESS: Spas (full-service day spas), saunas, hammams, massage studios, hot springs, float tanks, thermal baths, Korean spas, wellness retreats, resort hotels with spa facilities. NO salons, NO beauty parlours, NO nail/hair/waxing/lash studios, NO med spas (medical aesthetics), NO beauty lounges. CRITICAL: if the name contains "beauty", "aesthetics", "makeup", "cosmetic", "lash", "brow", "nail", "hair", "waxing", or "threading" → it is NOT wellness, it is personal grooming → REJECT entirely. A place called "Beauty Spa" or "Aesthetics Spa" is a salon, not a spa.
-
-NATURE_VIEWS: Parks, trails, beaches, botanical gardens, scenic viewpoints, observation decks, waterfronts, bridges, harbors, nature preserves. Parks with grass also get picnic_park.
-
-PICNIC_PARK: Parks with open lawns where you can lay a blanket. Almost always paired with nature_views.
+NATURE: Parks, trails, beaches, botanical gardens, scenic viewpoints, observation decks, waterfronts, bridges, harbors, nature preserves, picnic grounds, hiking areas. Any outdoor natural space.
 
 GROCERIES: Grocery stores, supermarkets, specialty food stores, gourmet markets, butcher shops, cheese shops. Places where you buy food to take home or for a picnic.
 
 FLOWERS: Florists, flower shops, flower bars. Large supermarkets with staffed floral departments (like Whole Foods) qualify for BOTH flowers and groceries.
 
-REJECT if AND ONLY IF the place fits NO category at all: kids-only venue, fast food chain, permanently closed, not a venue (offices/consultants/contractors), personal grooming (salons/barbers/waxing), fitness (gyms/yoga), gambling halls, production companies, booking agencies.
+REJECT if AND ONLY IF the place fits NO category at all: kids-only venue, fast food chain, permanently closed, not a venue (offices/consultants/contractors), personal grooming (salons/barbers/waxing/beauty/aesthetics/lash/brow/nail/hair/med spa), fitness (gyms/yoga), wellness spas, gambling halls, production companies, booking agencies.
 
 NEVER reject a place for having a low rating. A bar with 3.2 stars is still a bar. A restaurant with 2.8 stars is still a restaurant. Ratings measure quality, not category fitness. If it fits a category, ACCEPT it regardless of rating.
 
-RECLASSIFY (d:"reclassify"): If a place is in the WRONG category but fits a DIFFERENT valid category, use d:"reclassify" and provide the correct categories in c:[]. Example: a beauty salon classified as "wellness" → reclassify with c:[] (reject from wellness, fits no other category). A restaurant classified as "watch" → reclassify with c:["casual_eats"]. A hotel with a notable bar classified as "wellness" → reclassify with c:["drink"]. Always check if the place fits ANY category before fully rejecting.
-
-IMPORTANT — do NOT reject places that match ANY valid category. Libraries, hotels, and horse complexes may not fit, but grocery stores, nightclubs, bakeries, food halls, cinemas, and pottery studios DO fit their respective categories.
+RECLASSIFY (d:"reclassify"): If a place is in the WRONG category but fits a DIFFERENT valid category, use d:"reclassify" and provide the correct categories in c:[]. Always check if the place fits ANY category before fully rejecting.
 
 *categories need candidate_website to be non-null. If candidate_website is null for a *category, do not assign that category.
 
@@ -162,42 +156,35 @@ WORKED EXAMPLES (learn the pattern):
 
 Example 1: "Whole Foods Market" type:grocery_store → {"d":"accept","c":["groceries","flowers"],"pi":"grocery store","w":false,"r":"Grocery store with staffed floral department","f":"high"}
 
-Example 2: "TopGolf" type:restaurant → {"d":"accept","c":["play","casual_eats"],"pi":"golf entertainment venue","w":true,"r":"Interactive golf simulator with restaurant — play + casual_eats","f":"high"}
+Example 2: "TopGolf" type:restaurant → {"d":"accept","c":["play","brunch_lunch_casual"],"pi":"golf entertainment venue","w":true,"r":"Interactive golf simulator with restaurant — play + brunch_lunch_casual","f":"high"}
 
-Example 3: "AMC Southpoint 17" type:movie_theater → {"d":"accept","c":["watch"],"pi":"movie theater","w":true,"r":"Real cinema chain with multiple screens","f":"high"}
+Example 3: "AMC Southpoint 17" type:movie_theater → {"d":"accept","c":["movies_theatre"],"pi":"movie theater","w":true,"r":"Real cinema chain with multiple screens","f":"high"}
 
-Example 4: "Barcelona Wine Bar" type:wine_bar → {"d":"accept","c":["casual_eats","drink"],"pi":"tapas wine bar","w":true,"r":"Tapas wine bar — casual_eats + drink, not fine_dining","f":"high"}
+Example 4: "Barcelona Wine Bar" type:wine_bar → {"d":"accept","c":["brunch_lunch_casual","drinks_and_music"],"pi":"tapas wine bar","w":true,"r":"Tapas wine bar — brunch_lunch_casual + drinks_and_music","f":"high"}
 
-Example 5: "Morgan Street Food Hall" type:food_court → {"d":"accept","c":["casual_eats"],"pi":"food hall","w":true,"r":"Food hall with multiple vendors — casual_eats","f":"high"}
+Example 5: "Morgan Street Food Hall" type:food_court → {"d":"accept","c":["brunch_lunch_casual"],"pi":"food hall","w":true,"r":"Food hall with multiple vendors — brunch_lunch_casual","f":"high"}
 
 Example 6: "KidZania" type:amusement_center → {"d":"reject","c":[],"pi":"children's entertainment center","w":true,"r":"Kids-only venue — reject","f":"high"}
 
-Example 7: "Legends Nightclub" type:night_club → {"d":"accept","c":["drink"],"pi":"nightclub","w":true,"r":"Nightclub — primary draw is drinks and social atmosphere","f":"high"}
+Example 7: "Legends Nightclub" type:night_club → {"d":"accept","c":["drinks_and_music"],"pi":"nightclub","w":true,"r":"Nightclub — primary draw is drinks and social atmosphere","f":"high"}
 
-Example 8: "Paris Baguette" type:bakery → {"d":"accept","c":["first_meet"],"pi":"bakery cafe","w":true,"r":"Bakery with seating — good first_meet spot","f":"high"}
+Example 8: "Paris Baguette" type:bakery → {"d":"accept","c":["icebreakers"],"pi":"bakery cafe","w":true,"r":"Bakery with seating — good icebreakers spot","f":"high"}
 
 Example 9: "Living Kiln Studio" type:art_studio → {"d":"accept","c":["creative_arts"],"pi":"pottery studio","w":true,"r":"Pottery studio open to public — creative_arts","f":"high"}
 
 Example 10: "Planet Fitness" type:gym → {"d":"reject","c":[],"pi":"gym","w":true,"r":"Fitness center — reject","f":"high"}
 
-Example 11: "The Umstead Hotel and Spa" type:resort_hotel → {"d":"accept","c":["wellness"],"pi":"resort hotel with spa","w":true,"r":"Resort with notable spa facilities — wellness","f":"high"}
+Example 11: "Beauty Blinks Aesthetics/Spa" type:spa → {"d":"reject","c":[],"pi":"beauty salon","w":true,"r":"Beauty/aesthetics in name = personal grooming — reject","f":"high"}
 
-Example 13: "Beauty Blinks Aesthetics/Spa" type:spa → {"d":"reject","c":[],"pi":"beauty salon","w":true,"r":"Beauty/aesthetics in name = personal grooming, not wellness — reject","f":"high"}
+Example 12: "Urban Air Trampoline Park" type:amusement_center → {"d":"reject","c":[],"pi":"children's trampoline park","w":true,"r":"Primarily kids birthday parties — reject","f":"high"}
 
-Example 14: "DAZZLNSBEAUTYLOUNGE" type:spa → {"d":"reject","c":[],"pi":"beauty lounge","w":true,"r":"Beauty lounge = personal grooming — reject","f":"high"}
+Example 13: "Painting with a Twist" type:art_studio → {"d":"accept","c":["creative_arts"],"pi":"paint-and-sip studio","w":true,"r":"Public paint-and-sip studio — creative_arts","f":"high"}
 
-Example 15: "U2 UNIQUE MED SPA" type:spa → {"d":"reject","c":[],"pi":"medical aesthetics clinic","w":true,"r":"Med spa = medical aesthetics, not relaxation wellness — reject","f":"high"}
+Example 14: "The Ruxton Steakhouse" type:steak_house price:PRICE_LEVEL_VERY_EXPENSIVE rating:4.4 → {"d":"accept","c":["upscale_fine_dining"],"pi":"upscale steakhouse","w":true,"r":"VERY_EXPENSIVE steakhouse with high rating — upscale_fine_dining","f":"high"}
 
-Example 16: "Painting with a Twist" type:art_studio → {"d":"accept","c":["creative_arts"],"pi":"paint-and-sip studio","w":true,"r":"Public paint-and-sip studio — creative_arts","f":"high"}
+Example 15: "Fogo de Chão Brazilian Steakhouse" type:brazilian_restaurant price:PRICE_LEVEL_EXPENSIVE rating:4.8 → {"d":"accept","c":["upscale_fine_dining"],"pi":"upscale Brazilian steakhouse chain","w":true,"r":"EXPENSIVE chain with exceptional rating — upscale_fine_dining","f":"high"}
 
-Example 12: "Urban Air Trampoline Park" type:amusement_center → {"d":"reject","c":[],"pi":"children's trampoline park","w":true,"r":"Primarily kids birthday parties and toddler play — reject","f":"high"}
-
-Example 17: "Soho Beach House" type:hotel → {"d":"accept","c":["drink","wellness"],"pi":"members club with pool bar and spa","w":true,"r":"Upscale beach club/hotel with bar, pool, and spa — drink + wellness","f":"medium"}
-Note: Private/members clubs with bars, pools, restaurants, or spas still qualify for their respective categories. The membership model doesn't disqualify the venue.
-
-Example 18: "The Ruxton Steakhouse" type:steak_house price:PRICE_LEVEL_VERY_EXPENSIVE rating:4.4 → {"d":"accept","c":["fine_dining"],"pi":"upscale steakhouse","w":true,"r":"VERY_EXPENSIVE steakhouse with high rating — fine_dining","f":"high"}
-
-Example 19: "Fogo de Chão Brazilian Steakhouse" type:brazilian_restaurant price:PRICE_LEVEL_EXPENSIVE rating:4.8 → {"d":"accept","c":["fine_dining"],"pi":"upscale Brazilian steakhouse chain","w":true,"r":"EXPENSIVE chain steakhouse with exceptional rating — fine_dining (not casual_eats — mutually exclusive)","f":"high"}
+Example 16: "Jazz at Lincoln Center" type:performing_arts_theater → {"d":"accept","c":["movies_theatre"],"pi":"jazz concert venue","w":true,"r":"Live performance venue with scheduled shows — movies_theatre","f":"high"}
 
 Return ONLY valid JSON.`;
 
@@ -328,9 +315,10 @@ async function classifyPlace(factSheet: Record<string, unknown>): Promise<ClassR
     if (!outputText) throw new Error("No text output from GPT response");
     const parsed = JSON.parse(outputText);
     // Filter hallucinated categories — only allow known slugs
+    // ORCH-0434: Updated to new canonical slugs (10 categories).
     const VALID_SLUGS = new Set([
-      "flowers","fine_dining","nature_views","first_meet","drink","casual_eats",
-      "watch","live_performance","creative_arts","play","wellness","picnic_park","groceries",
+      "flowers","upscale_fine_dining","nature","icebreakers","drinks_and_music",
+      "brunch_lunch_casual","movies_theatre","creative_arts","play","groceries",
     ]);
     parsed.c = enforceExclusivity(
       (parsed.c || []).filter((s: string) => VALID_SLUGS.has(s))
@@ -409,33 +397,33 @@ function deterministicFilter(place: any): PreFilterResult {
     }
   }
 
-  // 5. Casual chain demotion
+  // 5. Casual chain demotion (ORCH-0434: updated slugs)
   if (nameMatches(name, CASUAL_CHAIN_DEMOTION)) {
     const cats = [...(place.ai_categories || [])];
-    if (cats.includes("fine_dining")) {
-      const newCats = cats.filter((c: string) => c !== "fine_dining");
-      if (!newCats.includes("casual_eats")) newCats.push("casual_eats");
+    if (cats.includes("upscale_fine_dining")) {
+      const newCats = cats.filter((c: string) => c !== "upscale_fine_dining");
+      if (!newCats.includes("brunch_lunch_casual")) newCats.push("brunch_lunch_casual");
       return {
         verdict: "accept",
-        reason: "Pipeline: sit-down chain — downgraded from fine_dining to casual_eats",
+        reason: "Pipeline: sit-down chain — downgraded from upscale_fine_dining to brunch_lunch_casual",
         categories: newCats,
         stageResolved: 2,
       };
     }
   }
 
-  // 6. Fine dining promotion: VERY_EXPENSIVE + 4.0+ rating + restaurant type
+  // 6. Fine dining promotion: VERY_EXPENSIVE + 4.0+ rating + restaurant type (ORCH-0434: updated slugs)
   if (
     place.price_level === "PRICE_LEVEL_VERY_EXPENSIVE" &&
     rating != null && rating >= 4.0 &&
     RESTAURANT_TYPES.has(primaryType)
   ) {
     const cats = [...(place.ai_categories || [])];
-    if (!cats.includes("fine_dining")) {
-      cats.push("fine_dining");
+    if (!cats.includes("upscale_fine_dining")) {
+      cats.push("upscale_fine_dining");
       return {
         verdict: "modify",
-        reason: "Rules: VERY_EXPENSIVE + high rating restaurant — promoted to fine_dining",
+        reason: "Rules: VERY_EXPENSIVE + high rating restaurant — promoted to upscale_fine_dining",
         categories: enforceExclusivity(cats),
         stageResolved: 2,
       };

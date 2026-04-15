@@ -112,11 +112,10 @@ const ACTIVITY_STATUSES: (string | null)[] = [
   null,
 ];
 
-// Current 12 category slugs (must match categoryUtils.ts)
+// ORCH-0434: Updated to new 9 visible category slugs.
 const ALL_CATEGORIES = [
-  "nature", "first_meet", "picnic_park", "drink", "casual_eats",
-  "fine_dining", "watch", "live_performance", "creative_arts",
-  "play", "wellness", "flowers",
+  "nature", "icebreakers", "drinks_and_music", "brunch_lunch_casual",
+  "upscale_fine_dining", "movies_theatre", "creative_arts", "play", "flowers",
 ];
 
 const ALL_TIERS = ["chill", "comfy", "bougie", "lavish"];

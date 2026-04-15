@@ -112,7 +112,7 @@ serve(async (req) => {
           lat: location.lat,
           lng: location.lng,
           radiusMeters: radius,
-          categories: ['Drink'], // Night-out maps to Drink category in pool
+          categories: ['Drinks & Music'], // Night-out maps to Drink category in pool
           limit: 15,
           cardType: 'single',
         },
@@ -252,8 +252,8 @@ serve(async (req) => {
             googlePlaceId: card.id?.split('_evt_')[0] || card.id,
             cardType: 'single',
             title: card.placeName,
-            category: 'Drink', // Night-out maps to Drink category
-            categories: ['Drink'],
+            category: 'Drinks & Music', // Night-out maps to Drinks & Music category
+            categories: ['Drinks & Music'],
             description: card.description,
             imageUrl: card.image,
             images: card.images,

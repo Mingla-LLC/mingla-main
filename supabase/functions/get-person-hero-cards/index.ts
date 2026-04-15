@@ -124,15 +124,15 @@ const DISTANCE_RADIUS_MAP: Record<string, { initial: number; max: number }> = {
 
 // ── Intent → category mapping (matches mobile holidays.ts) ─────────────────
 
+// ORCH-0434: Updated to new canonical slugs.
 const INTENT_CATEGORY_MAP: Record<string, string[]> = {
-  romantic: ["first_meet", "drink", "picnic_park", "wellness", "nature"],
+  romantic: ["icebreakers", "drinks_and_music", "nature", "upscale_fine_dining"],
   adventurous: [
-    "nature", "play", "creative_arts", "casual_eats", "drink",
-    "first_meet", "picnic_park", "watch", "live_performance",
-    "wellness", "flowers",
+    "nature", "play", "creative_arts", "brunch_lunch_casual", "drinks_and_music",
+    "icebreakers", "movies_theatre", "flowers",
   ],
-  friendly: ["play", "casual_eats", "drink", "nature", "creative_arts",
-    "picnic_park", "watch", "live_performance"],
+  friendly: ["play", "brunch_lunch_casual", "drinks_and_music", "nature", "creative_arts",
+    "movies_theatre"],
 };
 
 // ── Main handler ────────────────────────────────────────────────────────────
@@ -397,24 +397,10 @@ serve(async (req: Request) => {
             .gt("preference_value", 0.5)
             .order("preference_value", { ascending: false })
             .limit(2),
-          // Time-of-day preferences (paired)
-          adminClient.from("user_preference_learning")
-            .select("preference_key")
-            .eq("user_id", pairedUserId)
-            .eq("preference_type", "time_of_day")
-            .gte("confidence", 0.15)
-            .gt("preference_value", 0.5)
-            .order("preference_value", { ascending: false })
-            .limit(2),
-          // Time-of-day preferences (viewer)
-          adminClient.from("user_preference_learning")
-            .select("preference_key")
-            .eq("user_id", userId)
-            .eq("preference_type", "time_of_day")
-            .gte("confidence", 0.15)
-            .gt("preference_value", 0.5)
-            .order("preference_value", { ascending: false })
-            .limit(2),
+          // ORCH-0434: Time-of-day preferences removed — no longer used for card selection.
+          // Placeholder queries to preserve Promise.all destructure positions.
+          Promise.resolve({ data: [], error: null }),
+          Promise.resolve({ data: [], error: null }),
           // Distance preferences
           adminClient.from("user_preference_learning")
             .select("preference_key")
@@ -520,15 +506,8 @@ serve(async (req: Request) => {
             .gt("preference_value", 0.5)
             .order("preference_value", { ascending: false })
             .limit(2),
-          adminClient
-            .from("user_preference_learning")
-            .select("preference_key, preference_value")
-            .eq("user_id", pairedUserId)
-            .eq("preference_type", "time_of_day")
-            .gte("confidence", 0.15)
-            .gt("preference_value", 0.5)
-            .order("preference_value", { ascending: false })
-            .limit(2),
+          // ORCH-0434: Time-of-day query removed.
+          Promise.resolve({ data: [], error: null }),
           adminClient
             .from("user_preference_learning")
             .select("preference_key, preference_value")
@@ -611,7 +590,7 @@ serve(async (req: Request) => {
     const resolvedCategories = resolveCategories(expandedSlugs);
     if (resolvedCategories.length === 0) {
       // Fallback to common categories if resolution fails
-      resolvedCategories.push("Casual Eats", "Fine Dining", "Play");
+      resolvedCategories.push("Brunch, Lunch & Casual", "Upscale & Fine Dining", "Play");
     }
 
     // --- Determine curated experience type ---
