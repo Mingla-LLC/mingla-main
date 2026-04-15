@@ -3,18 +3,14 @@
   "experience_types.subtitle": "Mau jalan-jalan seperti apa?",
   "experience_types.curated_locked": "Kartu kurasi terkunci di paket Gratis — upgrade untuk menjelajahi",
   "experience_types.min_message": "Pilih minimal satu suasana atau kategori.",
-
   "experience_descriptions.adventurous": "Sesuatu yang tak terduga — untuk yang tidak main aman",
   "experience_descriptions.first-date": "Tempat santai dan mudah di mana percakapan mengalir alami",
   "experience_descriptions.romantic": "Momen intim yang benar-benar terasa spesial",
   "experience_descriptions.group-fun": "Makin ramai makin seru — aktivitas yang disukai seluruh grup",
   "experience_descriptions.picnic-dates": "Kami siapkan semuanya — kamu tinggal datang dan nikmati",
   "experience_descriptions.take-a-stroll": "Rute pemandangan dengan makanan enak di setiap ujung",
-
   "categories.title": "Apa yang Terdengar Bagus?",
-  "categories.cap_message": "Maks 3 — hapus satu untuk menambah yang lain.",
   "categories.min_message": "Pilih minimal satu suasana atau kategori.",
-
   "category_descriptions.nature": "Jalur, taman, kebun, pemandangan — udara segar dan pemandangan bagus",
   "category_descriptions.first_meet": "Tempat santai untuk kesan pertama",
   "category_descriptions.picnic_park": "Taman terdekat terbaik untuk menggelar tikar",
@@ -27,14 +23,12 @@
   "category_descriptions.play": "Arcade, bowling, escape room — tunjukkan sisi kompetitifmu",
   "category_descriptions.wellness": "Spa, sauna, dan tempat yang melelehkan stres",
   "category_descriptions.flowers": "Toko bunga dan buket segar",
-
   "datetime.title": "Kapan",
   "datetime.question": "Kapan mau berangkat?",
   "datetime.this_weekend": "Akhir Pekan Ini",
   "datetime.friday_through_sunday": "Jumat sampai Minggu",
   "datetime.date_placeholder": "hh/bb/tttt",
   "datetime.time_label": "Sekitar Jam Berapa?",
-
   "time_slots.brunch": "Brunch",
   "time_slots.brunch_time": "11–1",
   "time_slots.afternoon": "Siang",
@@ -45,25 +39,20 @@
   "time_slots.late_night_time": "10–12",
   "time_slots.anytime": "Kapan Saja",
   "time_slots.anytime_time": "Sepanjang hari",
-
   "travel_mode.title": "Cara Ke Sana",
   "travel_mode.question": "Bagaimana caramu pergi?",
-
   "loading.text": "Mengatur suasana...",
-
   "travel_limit.title": "Seberapa Jauh?",
   "travel_limit.question": "Atur radius perjalananmu",
   "travel_limit.min_unit": "menit",
   "travel_limit.set_your_own": "Atur sendiri",
   "travel_limit.custom_placeholder": "5 – 120 menit",
-
   "location.use_current": "Gunakan lokasi saya saat ini",
   "location.search_placeholder": "Cari titik mulai...",
   "location.gps_helper": "Kami sudah menemukan lokasimu. Santai.",
   "location.manual_helper": "Taruh pin di mana saja. Atau kembali ke GPS.",
   "location.pro_feature": "Fitur Pro — jelajahi dari mana saja",
   "location.searching": "Mencari...",
-
   "sheet.title": "Gayamu",
   "sheet.lock_it_in": "Kunci",
   "sheet.lock_it_in_count": "Kunci ({{count}})",
@@ -74,7 +63,6 @@
   "budget.subtitle": "Pilih setiap tingkat yang kamu terima",
   "starting_point.title": "Titik Mulai",
   "starting_point.subtitle": "Dari mana kami mulai mencari?",
-
   "date_options.now": "Sekarang",
   "date_options.now_desc": "Berangkat segera",
   "date_options.today": "Hari Ini",
@@ -83,12 +71,10 @@
   "date_options.this_weekend_desc": "Jum-Min",
   "date_options.pick_a_date": "Pilih Tanggal",
   "date_options.pick_a_date_desc": "Tanggal kustom",
-
   "travel_modes.walk": "Jalan",
   "travel_modes.bike": "Sepeda",
   "travel_modes.bus": "Bus",
   "travel_modes.drive": "Mobil",
-
   "sheet.session_vibes": "Gaya {{name}}",
   "sheet.pick_time_hint": "Pilih waktu untuk melanjutkan",
   "sheet.pick_date_hint": "Pilih tanggal untuk melanjutkan",

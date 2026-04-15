@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Nẹ ne ebe ne ọ sẹ.",
     "body": "Kẹ emwi ne ọ sẹ ọ hia.",
-    "caption": "Rhie ọkpa ne ọ mu ọ ya gbẹra.",
+    "caption": "Rhie emwen ne ọ ghà bẹ ghẹ re.",
     "adventurous": "Wa Emwi Nọhọ",
     "adventurous_desc": "Wa emwi ne a i re tẹ gha mwẹ",
     "first_date": "Ọse Ni Bẹ Ghe",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "De ẹkpa ehe ne u hẹnmwẹ?",
-    "body": "Rhie rrie ẹha ne ọ sẹ ẹre.",
-    "cap_message": "Ẹha ne ọ khian. Rhan ọkpa kua ne u gha rhie nọhọ."
+    "body": "Rhie emwen ne ọ ghà ghẹ nọ re."
   },
   "budget": {
     "headline": "Ehe ne ọ sẹ ẹre",

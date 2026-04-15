@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Ahora la parte divertida.",
     "body": "Toca cada vibra que te identifique.",
-    "caption": "Elige la que más te emocione.",
+    "caption": "Elige las que te emocionen.",
     "adventurous": "Aventurero",
     "adventurous_desc": "Explora lo inesperado",
     "first_date": "Primeras citas",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "¿Qué tipo de lugares te encantan?",
-    "body": "Elige hasta 3 que vayan con tu vibra.",
-    "cap_message": "Máximo 3 categorías. Deselecciona una para elegir otra."
+    "body": "Elige las que van con tu onda."
   },
   "budget": {
     "headline": "Tu punto ideal",

@@ -11,7 +11,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Brain, Globe, ShieldCheck, ShieldAlert, CheckCircle, XCircle,
+  Brain, Globe, ShieldCheck, ShieldAlert, Shield, CheckCircle, XCircle,
   Zap, RefreshCw, Play, Pause, ChevronDown, ChevronRight, Clock,
   UtensilsCrossed, Wine, Coffee, Flower2, Eye, Music, Palette, TreePine,
   Gamepad2, Heart, ShoppingBag, MapPin, Sparkles, AlertTriangle,
@@ -363,6 +363,10 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
   const [previewLoading, setPreviewLoading] = useState(false);
   const [starting, setStarting] = useState(false);
 
+  // Rules filter state
+  const [rulesRunning, setRulesRunning] = useState(false);
+  const [rulesResult, setRulesResult] = useState(null);
+
   // Run state
   const [activeRun, setActiveRun] = useState(null);
   const [autoRunning, setAutoRunning] = useState(false);
@@ -455,6 +459,36 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
       toast({ variant: "error", title: "Failed to start", description: err.message });
     } finally {
       if (mountedRef.current) setStarting(false);
+    }
+  };
+
+  const handleRunRulesFilter = async () => {
+    if (!selectedCityId) { toast({ variant: "warning", title: "Select a city first" }); return; }
+    setRulesRunning(true);
+    setRulesResult(null);
+    try {
+      const data = await invoke({
+        action: "run_rules_filter",
+        scope,
+        city_id: selectedCityId,
+        city: cityName,
+        category: scope === "category" ? category : undefined,
+        dry_run: dryRun,
+      });
+      if (data.status === "nothing_to_do") {
+        toast({ variant: "info", title: "No places to process with current filters" });
+        return;
+      }
+      setRulesResult(data);
+      toast({
+        variant: "success",
+        title: `Rules filter complete — ${fmt(data.rejected)} rejected, ${fmt(data.modified)} modified, ${fmt(data.unchanged)} unchanged`,
+      });
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      toast({ variant: "error", title: "Rules filter failed", description: err.message });
+    } finally {
+      if (mountedRef.current) setRulesRunning(false);
     }
   };
 
@@ -759,7 +793,48 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
             <span className="text-[var(--color-text-primary)]">Dry run (preview without writing)</span>
           </label>
 
-          {/* Start */}
+          {/* Rules Filter Button */}
+          <Button variant="secondary" icon={Shield} onClick={handleRunRulesFilter}
+            disabled={rulesRunning || !preview?.places_to_process}
+            loading={rulesRunning}
+            className="w-full">
+            {rulesRunning
+              ? "Running Rules Filter..."
+              : `Run Rules Filter — Free (${fmt(preview?.places_to_process || 0)} places)`}
+          </Button>
+          <p className="text-xs text-[var(--color-text-tertiary)] -mt-2">
+            Applies hardcoded rules only (blocked types, category corrections, fine dining promotion). No AI credits used.
+          </p>
+
+          {/* Rules Filter Results */}
+          {rulesResult && (
+            <div className="bg-[var(--color-success-50)] border border-[var(--color-success-200)] rounded-lg p-4">
+              <p className="text-sm font-semibold text-[var(--color-success-700)] mb-2">Rules Filter Complete</p>
+              <div className="grid grid-cols-4 gap-3 text-center">
+                <div>
+                  <p className="text-lg font-semibold text-[var(--color-text-primary)]">{fmt(rulesResult.total_processed)}</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">Processed</p>
+                </div>
+                <div>
+                  <p className="text-lg font-semibold text-[var(--color-error-600)]">{fmt(rulesResult.rejected)}</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">Rejected</p>
+                </div>
+                <div>
+                  <p className="text-lg font-semibold text-[var(--color-info-600)]">{fmt(rulesResult.modified)}</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">Modified</p>
+                </div>
+                <div>
+                  <p className="text-lg font-semibold text-[var(--color-text-tertiary)]">{fmt(rulesResult.unchanged)}</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">Unchanged</p>
+                </div>
+              </div>
+              {rulesResult.dry_run && (
+                <p className="text-xs text-[var(--color-warning-600)] mt-2 font-medium">⚠ Dry run — no changes written</p>
+              )}
+            </div>
+          )}
+
+          {/* Start AI Verification */}
           <Button variant="primary" icon={Play} onClick={handleStart}
             disabled={starting || !preview?.places_to_process}
             loading={starting}

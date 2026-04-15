@@ -117,10 +117,8 @@ export const useAuthSimple = () => {
               if (!loc) return; // No GPS cache — can't build deck key
 
               const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
-              const normalizedCategories = normalizeCategoryArray(
-                prefs.categories, prefs.categories.length
-              );
-              const normalizedIntents = (prefs.intents ?? []).slice(0, 1);
+              const normalizedCategories = normalizeCategoryArray(prefs.categories);
+              const normalizedIntents = prefs.intents ?? [];
               const priceTiers = prefs.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
 
               const deckQueryKey = buildDeckQueryKey({

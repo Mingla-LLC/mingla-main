@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Nuw the fun part.",
     "body": "Tap every vibe that sounds like you.",
-    "caption": "Pick the one that excites you most.",
+    "caption": "Alege-le pe cele care te entuziasmează.",
     "adventurous": "Adventurous",
     "adventurous_desc": "Explorează the unexpected",
     "first_date": "First Dates",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "What kind of places do you love?",
-    "body": "Pick up to 3 that match your vibe.",
-    "cap_message": "Maximum 3 categories. Deselect one to choose another."
+    "body": "Alege-le pe cele care ți se potrivesc."
   },
   "budget": {
     "headline": "Your sweet spot",

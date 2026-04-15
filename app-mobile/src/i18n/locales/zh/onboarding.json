@@ -81,7 +81,7 @@
   "intents": {
     "headline": "现在是有趣的部分。",
     "body": "点击所有适合你的风格。",
-    "caption": "选择最让你兴奋的一个。",
+    "caption": "选择让你兴奋的类型。",
     "adventurous": "冒险",
     "adventurous_desc": "探索未知",
     "first_date": "初次约会",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "你喜欢什么类型的地方？",
-    "body": "选择最多3个符合你风格的。",
-    "cap_message": "最多3个类别。取消一个才能选择另一个。"
+    "body": "选择适合你风格的类别。"
   },
   "budget": {
     "headline": "你的价格偏好",

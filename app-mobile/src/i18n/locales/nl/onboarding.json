@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Nu het leuke deel.",
     "body": "Tik op elke sfeer die bij je past.",
-    "caption": "Kies degene die je het meest aanspreekt.",
+    "caption": "Kies degene die je enthousiast maken.",
     "adventurous": "Avontuurlijk",
     "adventurous_desc": "Ontdek het onverwachte",
     "first_date": "Eerste dates",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "Wat voor plekken vind je leuk?",
-    "body": "Kies er maximaal 3 die bij je passen.",
-    "cap_message": "Maximaal 3 categorieën. Deselecteer er een om een andere te kiezen."
+    "body": "Kies degene die bij je passen."
   },
   "budget": {
     "headline": "Jouw ideale budget",

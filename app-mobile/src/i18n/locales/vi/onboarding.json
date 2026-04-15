@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Giờ đến phần vui.",
     "body": "Chọn mọi phong cách phù hợp với bạn.",
-    "caption": "Chọn cái khiến bạn hào hứng nhất.",
+    "caption": "Chọn những gì khiến bạn hào hứng.",
     "adventurous": "Phiêu lưu",
     "adventurous_desc": "Khám phá điều bất ngờ",
     "first_date": "Hẹn hò lần đầu",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "Bạn thích loại địa điểm nào?",
-    "body": "Chọn tối đa 3 loại phù hợp với phong cách bạn.",
-    "cap_message": "Tối đa 3 danh mục. Bỏ chọn một để chọn cái khác."
+    "body": "Chọn những gì phù hợp với phong cách của bạn."
   },
   "budget": {
     "headline": "Mức giá phù hợp",

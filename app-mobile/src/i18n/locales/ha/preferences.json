@@ -3,18 +3,14 @@
   "experience_types.subtitle": "Wanne irin fita kake ji?",
   "experience_types.curated_locked": "Katunan da aka zaɓa an kulle su a Kyauta — ƙara don bincika su",
   "experience_types.min_message": "Zaɓi aƙalla yanayi ɗaya ko nau'i.",
-
   "experience_descriptions.adventurous": "Wani abin da ba a zata ba — don waɗanda ba sa bugu da kari",
   "experience_descriptions.first-date": "Wurare masu sauƙi da zancen ke gudana da kyau",
   "experience_descriptions.romantic": "Lokutan soyayya da ke jin na musamman",
   "experience_descriptions.group-fun": "Yawan mutane yana da daɗi — ayyuka da ƙungiyar za ta so",
   "experience_descriptions.picnic-dates": "Za mu shirya abincin — kai kawai zo ka ji daɗi",
   "experience_descriptions.take-a-stroll": "Hanyar tafiya mai kyau tare da abinci mai kyau a kowane gefe",
-
   "categories.title": "Me Yake Yi Maka?",
-  "categories.cap_message": "3 mafi yawa — sauke ɗaya don ƙara wani.",
   "categories.min_message": "Zaɓi aƙalla yanayi ɗaya ko nau'i.",
-
   "category_descriptions.nature": "Hanyoyi, lambuna, wuraren shakatawa — iska mai kyau",
   "category_descriptions.first_meet": "Wurare masu sauƙi don farkon haɗuwa",
   "category_descriptions.picnic_park": "Mafi kyawun wuraren shakatawa kusa don shimfiɗa bargo",
@@ -27,14 +23,12 @@
   "category_descriptions.play": "Wuraren wasa, gidajen wasa — kawo ƙoƙarin ka",
   "category_descriptions.wellness": "Spa, sauna, da wuraren da ke rage damuwa",
   "category_descriptions.flowers": "Masu sayar da furanni don sabbin bukukuwa",
-
   "datetime.title": "Yaushe",
   "datetime.question": "Yaushe za ka fita?",
   "datetime.this_weekend": "Karshen Makon Nan",
   "datetime.friday_through_sunday": "Jumma'a zuwa Lahadi",
   "datetime.date_placeholder": "mm/dd/yyyy",
   "datetime.time_label": "Kusan Wanne Lokaci?",
-
   "time_slots.brunch": "Brunch",
   "time_slots.brunch_time": "11–1",
   "time_slots.afternoon": "La'asar",
@@ -45,25 +39,20 @@
   "time_slots.late_night_time": "10–12",
   "time_slots.anytime": "Kowane Lokaci",
   "time_slots.anytime_time": "Yini duka",
-
   "travel_mode.title": "Yin Tafiya",
   "travel_mode.question": "Yaya kake tafiya?",
-
   "loading.text": "Ana saita yanayi...",
-
   "travel_limit.title": "Zuwa Ina?",
   "travel_limit.question": "Saita nisan tafiya ka",
   "travel_limit.min_unit": "minti",
   "travel_limit.set_your_own": "Saita naka",
   "travel_limit.custom_placeholder": "Minti 5 – 120",
-
   "location.use_current": "Yi amfani da wurin yanzu",
   "location.search_placeholder": "Nemo wuri na farko...",
   "location.gps_helper": "An same ka. Nutsa.",
   "location.manual_helper": "Saka alama ko'ina. Ko koma ga GPS.",
   "location.pro_feature": "Fasalin Pro — bincika daga ko'ina",
   "location.searching": "Ana bincika...",
-
   "sheet.title": "Yanayin Ka",
   "sheet.lock_it_in": "Tabbatar",
   "sheet.lock_it_in_count": "Tabbatar ({{count}})",
@@ -74,7 +63,6 @@
   "budget.subtitle": "Zaɓi kowane mataki da kake buɗe wa",
   "starting_point.title": "Wurin Farawa",
   "starting_point.subtitle": "Daga ina za mu fara nema?",
-
   "date_options.now": "Yanzu",
   "date_options.now_desc": "Tashi nan da nan",
   "date_options.today": "Yau",
@@ -83,12 +71,10 @@
   "date_options.this_weekend_desc": "Jum-Lah",
   "date_options.pick_a_date": "Zaɓi Rana",
   "date_options.pick_a_date_desc": "Ranar da ka zaɓa",
-
   "travel_modes.walk": "Tafi a ƙafa",
   "travel_modes.bike": "Keke",
   "travel_modes.bus": "Bas",
   "travel_modes.drive": "Tuki",
-
   "sheet.session_vibes": "Yanayin {{name}}",
   "sheet.pick_time_hint": "Zaɓi lokaci don ci gaba",
   "sheet.pick_date_hint": "Zaɓi rana don ci gaba",

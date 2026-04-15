@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Jetzt wird's spaßig.",
     "body": "Tippe auf jede Stimmung, die zu dir passt.",
-    "caption": "Wähle die, die dich am meisten begeistert.",
+    "caption": "Wähle die, die dich begeistern.",
     "adventurous": "Abenteuerlustig",
     "adventurous_desc": "Das Unerwartete erkunden",
     "first_date": "Erste Dates",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "Welche Art von Orten magst du?",
-    "body": "Wähle bis zu 3, die zu dir passen.",
-    "cap_message": "Maximal 3 Kategorien. Wähle eine ab, um eine andere zu wählen."
+    "body": "Wähle die, die zu dir passen."
   },
   "budget": {
     "headline": "Dein Budget",

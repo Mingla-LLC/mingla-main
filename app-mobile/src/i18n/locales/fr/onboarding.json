@@ -81,7 +81,7 @@
   "intents": {
     "headline": "Place au fun.",
     "body": "Appuyez sur chaque ambiance qui vous correspond.",
-    "caption": "Choisissez celle qui vous enthousiasme le plus.",
+    "caption": "Choisis celles qui te font vibrer.",
     "adventurous": "Aventurier",
     "adventurous_desc": "Explorer l'inattendu",
     "first_date": "Premiers rendez-vous",
@@ -128,8 +128,7 @@
   },
   "categories": {
     "headline": "Quel type d'endroits aimez-vous ?",
-    "body": "Choisissez jusqu'à 3 qui correspondent à votre style.",
-    "cap_message": "Maximum 3 catégories. Désélectionnez-en une pour en choisir une autre."
+    "body": "Choisis celles qui te correspondent."
   },
   "budget": {
     "headline": "Votre budget idéal",

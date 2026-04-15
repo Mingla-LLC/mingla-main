@@ -694,7 +694,6 @@ const OnboardingFlow = ({
   // ─── State ───
   const [data, setData] = useState<OnboardingData>(initialData)
   const [hasGpsPermission, setHasGpsPermission] = useState(initialHasGpsPermission)
-  const [categoryCapMessage, setCategoryCapMessage] = useState(false)
 
   // ─── State Machine ───
   const {
@@ -1668,12 +1667,8 @@ const OnboardingFlow = ({
       const coords = data.coordinates
       if (coords) {
         // Apply identical normalization as RecommendationsContext stableDeckParams
-        const normalizedCategories = normalizeCategoryArray(
-          data.selectedCategories,
-          data.selectedCategories.length
-        )
-        // Cap intents to 1 matching RecommendationsContext
-        const normalizedIntents = (data.selectedIntents ?? []).slice(0, 1)
+        const normalizedCategories = normalizeCategoryArray(data.selectedCategories)
+        const normalizedIntents = data.selectedIntents ?? []
         const priceTiers = data.selectedPriceTiers ?? DEFAULT_PRICE_TIERS
 
         // Build the exact query key useDeckCards will look for post-transition
@@ -2457,8 +2452,8 @@ const OnboardingFlow = ({
                       setData((p) => ({
                         ...p,
                         selectedIntents: p.selectedIntents.includes(intent.id)
-                          ? []  // Deselect (CTA enforces min 1)
-                          : [intent.id],  // Radio: replace with only this one
+                          ? p.selectedIntents.filter(i => i !== intent.id)  // Toggle off
+                          : [...p.selectedIntents, intent.id],               // Toggle on
                       }))
                     }}
                   >
@@ -2796,22 +2791,12 @@ const OnboardingFlow = ({
                     if (selected) {
                       return { ...p, selectedCategories: p.selectedCategories.filter((c) => c !== cat.slug) };
                     }
-                    if (p.selectedCategories.length >= 3) {
-                      setCategoryCapMessage(true);
-                      setTimeout(() => setCategoryCapMessage(false), 2000);
-                      return p;
-                    }
                     return { ...p, selectedCategories: [...p.selectedCategories, cat.slug] };
                   })
                 }}
               />
             ))}
           </View>
-          {categoryCapMessage && (
-            <Text style={styles.selectionCapMessage}>
-              {t('onboarding:categories.cap_message')}
-            </Text>
-          )}
         </View>
       )
     }

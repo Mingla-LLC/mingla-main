@@ -3,18 +3,14 @@
   "experience_types.subtitle": "Was für einen Ausflug suchst du?",
   "experience_types.curated_locked": "Kuratierte Karten sind in der kostenlosen Version gesperrt — upgrade, um sie zu erkunden",
   "experience_types.min_message": "Wähle mindestens eine Stimmung oder Kategorie.",
-
   "experience_descriptions.adventurous": "Etwas Unerwartetes — für die, die nicht auf Nummer sicher gehen",
   "experience_descriptions.first-date": "Entspannte Orte, wo das Gespräch natürlich fließt",
   "experience_descriptions.romantic": "Intime Momente, die sich wirklich besonders anfühlen",
   "experience_descriptions.group-fun": "Je mehr, desto besser — Aktivitäten, die die ganze Gruppe liebt",
   "experience_descriptions.picnic-dates": "Wir stellen das Menü zusammen — du musst nur genießen",
   "experience_descriptions.take-a-stroll": "Eine malerische Route mit einem guten Restaurant an jedem Ende",
-
   "categories.title": "Worauf hast du Lust?",
-  "categories.cap_message": "Max. 3 — entferne eine, um eine andere hinzuzufügen.",
   "categories.min_message": "Wähle mindestens eine Stimmung oder Kategorie.",
-
   "category_descriptions.nature": "Wanderwege, Parks, Gärten, Aussichten — frische Luft und schöne Landschaft",
   "category_descriptions.first_meet": "Entspannte Orte für einen ersten Eindruck",
   "category_descriptions.picnic_park": "Die besten Parks in der Nähe, um eine Decke auszubreiten",
@@ -27,14 +23,12 @@
   "category_descriptions.play": "Spielhallen, Bowling, Escape Rooms — zeig deinen Ehrgeiz",
   "category_descriptions.wellness": "Spas, Saunas und Orte, die den Stress schmelzen lassen",
   "category_descriptions.flowers": "Blumenläden für frische Sträuße",
-
   "datetime.title": "Wann",
   "datetime.question": "Wann geht's los?",
   "datetime.this_weekend": "Dieses Wochenende",
   "datetime.friday_through_sunday": "Freitag bis Sonntag",
   "datetime.date_placeholder": "TT.MM.JJJJ",
   "datetime.time_label": "Ungefähr um welche Uhrzeit?",
-
   "time_slots.brunch": "Brunch",
   "time_slots.brunch_time": "11–13",
   "time_slots.afternoon": "Nachmittag",
@@ -45,25 +39,20 @@
   "time_slots.late_night_time": "22–0",
   "time_slots.anytime": "Jederzeit",
   "time_slots.anytime_time": "Den ganzen Tag",
-
   "travel_mode.title": "Anreise",
   "travel_mode.question": "Wie bist du unterwegs?",
-
   "loading.text": "Stimmung wird eingestellt...",
-
   "travel_limit.title": "Wie weit?",
   "travel_limit.question": "Lege deinen Reiseradius fest",
   "travel_limit.min_unit": "Min",
   "travel_limit.set_your_own": "Selbst festlegen",
   "travel_limit.custom_placeholder": "5 – 120 Minuten",
-
   "location.use_current": "Meinen aktuellen Standort verwenden",
   "location.search_placeholder": "Startpunkt suchen...",
   "location.gps_helper": "Wir haben dich gefunden. Alles gut.",
   "location.manual_helper": "Setze eine Nadel irgendwo. Oder wechsle zurück zu GPS.",
   "location.pro_feature": "Pro-Funktion — von überall aus erkunden",
   "location.searching": "Suche...",
-
   "sheet.title": "Deine Stimmung",
   "sheet.lock_it_in": "Bestätigen",
   "sheet.lock_it_in_count": "Bestätigen ({{count}})",
@@ -74,7 +63,6 @@
   "budget.subtitle": "Wähle jede Preisklasse, die dir zusagt",
   "starting_point.title": "Startpunkt",
   "starting_point.subtitle": "Wo sollen wir anfangen zu suchen?",
-
   "date_options.now": "Jetzt",
   "date_options.now_desc": "Sofort losfahren",
   "date_options.today": "Heute",
@@ -83,12 +71,10 @@
   "date_options.this_weekend_desc": "Fr–So",
   "date_options.pick_a_date": "Datum wählen",
   "date_options.pick_a_date_desc": "Eigenes Datum",
-
   "travel_modes.walk": "Zu Fuß",
   "travel_modes.bike": "Fahrrad",
   "travel_modes.bus": "Bus",
   "travel_modes.drive": "Auto",
-
   "sheet.session_vibes": "{{name}} Stimmung",
   "sheet.pick_time_hint": "Wähle eine Uhrzeit zum Fortfahren",
   "sheet.pick_date_hint": "Wähle ein Datum zum Fortfahren",

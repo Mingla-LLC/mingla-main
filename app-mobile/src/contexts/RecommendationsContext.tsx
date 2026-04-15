@@ -343,7 +343,7 @@ export const RecommendationsProvider: React.FC<
     // Defensive normalization: converts any display names to slugs, drops invalids.
     // Prevents corrupted DB data from reaching the deck. See ORCH-0346.
     const rawCats = userPrefs?.categories ?? [];
-    const cats = rawCats.length > 0 ? normalizeCategoryArray(rawCats, rawCats.length) : [];
+    const cats = rawCats.length > 0 ? normalizeCategoryArray(rawCats) : [];
     const ints = userPrefs?.intents ?? [];
 
     // Still loading and nothing to show yet — wait for preferences to settle.
@@ -361,9 +361,7 @@ export const RecommendationsProvider: React.FC<
         : hasAnySignal
           ? []                                      // user chose intents only — respect that
           : ["nature", "casual_eats", "drink"],     // true empty state — sensible default
-      // Radio behavior: max 1 intent. DB may have stale multi-intent data from
-      // legacy saves — cap here to prevent over-fetching curated pools.
-      intents: ints.slice(0, 1),
+      intents: ints,
     };
   }, [
     // Use JSON.stringify to prevent array-reference changes from causing recomputation

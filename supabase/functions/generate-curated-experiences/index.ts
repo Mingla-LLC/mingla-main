@@ -302,7 +302,9 @@ async function fetchSinglesForCategory(
   if (error || !data) return [];
 
   // Only keep cards with images (should always be true, but safety net)
-  return data.filter((card: any) => card.images?.length > 0 || card.image_url);
+  const filtered = data.filter((card: any) => card.images?.length > 0 || card.image_url);
+  // Shuffle to ensure variety across requests (all results are quality-filtered by DB query)
+  return shuffle(filtered);
 }
 
 // ── Build stop from place_pool row ─────────────────────────────────────────

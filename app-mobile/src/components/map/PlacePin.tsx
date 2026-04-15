@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { Icon } from '../ui/Icon';
@@ -89,17 +89,25 @@ export const PlacePinContent = React.memo(function PlacePinContent({
 
 // Full PlacePin with Marker wrapper — backward compatible
 export function PlacePin({ card, isSaved, isPairedSaved = false, isScheduled, onPress }: PlacePinProps) {
+  // ORCH-0410: Start true so Android Google Maps creates the initial bitmap.
+  // Disable after 3s for performance (same pattern as person markers).
+  const [tracking, setTracking] = useState(true);
+  useEffect(() => {
+    const timer = setTimeout(() => setTracking(false), 3000);
+    return () => clearTimeout(timer);
+  }, []);
+
   if (card.lat == null || card.lng == null) return null;
 
   return (
     <Marker
       coordinate={{ latitude: card.lat, longitude: card.lng }}
       onPress={onPress}
-      tracksViewChanges={false}
+      tracksViewChanges={tracking}
       anchor={{ x: 0.5, y: 0.27 }}
       tappable
     >
-      <View collapsable={false}>
+      <View collapsable={false} style={{ width: 140, height: 80 }}>
         <PlacePinContent card={card} isSaved={isSaved} isPairedSaved={isPairedSaved} isScheduled={isScheduled} />
       </View>
     </Marker>

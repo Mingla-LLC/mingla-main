@@ -53,6 +53,55 @@ const CASUAL_CHAIN_DEMOTION = [
   "olive garden","red lobster","outback","cheesecake factory","applebee","chili's","tgi friday","denny's","ihop","waffle house","cracker barrel","texas roadhouse","red robin","buffalo wild wings","longhorn steakhouse","nando's","wagamama","yo! sushi","pizza express","pizzaexpress","hippopotamus",
 ];
 
+// ── Blocked Primary Types (never a date spot) ───────────────────────────────
+const BLOCKED_PRIMARY_TYPES = new Set([
+  "cemetery", "funeral_home", "gas_station", "car_dealer", "car_wash",
+  "car_rental", "auto_repair", "parking", "storage", "laundry",
+  "locksmith", "plumber", "electrician", "roofing_contractor",
+  "insurance_agency", "real_estate_agency", "accounting",
+  "post_office", "fire_station", "police", "courthouse",
+  "wedding_venue", "banquet_hall",
+]);
+
+// ── Flowers: primary_types that must NEVER get the flowers category ─────────
+const FLOWERS_BLOCKED_TYPES = new Set([
+  "garden_center", "garden", "farm", "supplier", "cemetery", "funeral_home",
+  "restaurant", "meal_takeaway", "bar", "food_store",
+]);
+
+// ── Delivery-only patterns (strip flowers if matched + not a florist) ───────
+const DELIVERY_ONLY_PATTERNS = [
+  "flower delivery", "floral delivery", "same day delivery",
+  "same-day delivery", "livraison de fleurs", "livraison fleurs",
+  "blumen lieferung", "entrega de flores",
+];
+
+// ── Restaurant primary_types (for fine_dining promotion) ────────────────────
+const RESTAURANT_TYPES = new Set([
+  "restaurant", "fine_dining_restaurant", "american_restaurant",
+  "asian_restaurant", "asian_fusion_restaurant", "barbecue_restaurant",
+  "brazilian_restaurant", "caribbean_restaurant", "chinese_restaurant",
+  "ethiopian_restaurant", "french_restaurant", "fusion_restaurant",
+  "german_restaurant", "greek_restaurant", "indian_restaurant",
+  "indonesian_restaurant", "italian_restaurant", "japanese_restaurant",
+  "korean_restaurant", "korean_barbecue_restaurant", "lebanese_restaurant",
+  "mediterranean_restaurant", "mexican_restaurant", "middle_eastern_restaurant",
+  "moroccan_restaurant", "north_indian_restaurant", "peruvian_restaurant",
+  "ramen_restaurant", "seafood_restaurant", "spanish_restaurant",
+  "sushi_restaurant", "tapas_restaurant", "turkish_restaurant",
+  "vegan_restaurant", "vegetarian_restaurant", "vietnamese_restaurant",
+  "steak_house", "bistro", "british_restaurant", "belgian_restaurant",
+  "fondue_restaurant", "oyster_bar_restaurant",
+]);
+
+// ── Category Exclusivity: fine_dining and casual_eats are mutually exclusive ─
+function enforceExclusivity(categories: string[]): string[] {
+  if (categories.includes("fine_dining")) {
+    return categories.filter(c => c !== "casual_eats");
+  }
+  return categories;
+}
+
 const SOCIAL_DOMAINS = [
   "google.com","maps.google.com","facebook.com","instagram.com","twitter.com","x.com","yelp.com","tripadvisor.com","foursquare.com","youtube.com","tiktok.com","linkedin.com","pinterest.com","fresha.com","treatwell.com","treatwell.co.uk","treatwell.de","groupon.com","booksy.com","planity.com","vagaro.com","classpass.com","mindbody.com","wikipedia.org","wikidata.org","yellowpages.com","yell.com","pagesjaunes.fr","dasoertliche.de",
 ];
@@ -71,7 +120,7 @@ CORE RULES:
 
 CATEGORY DEFINITIONS:
 
-FINE_DINING: A restaurant that feels like a special occasion. The combination of: upscale ambience, high-end cuisine, reservation culture, and elevated service. You do NOT need to find the chef's name in the search results — many acclaimed restaurants don't lead with the chef in Google snippets. Signals that indicate fine_dining: very high ratings (4.5+) with upscale reviews, $$$/$$$$ pricing, words like "upscale", "elegant", "tasting menu", "sommelier", "Michelin", "acclaimed", "refined". Examples that ARE fine_dining: Zuma, Manhatta, Nobu, Le Bernardin, Alinea, any Michelin-starred restaurant, any restaurant described as upscale/elegant/refined with high ratings. Examples that are NOT fine_dining: wine bars, tapas bars, bistros, brasseries (especially Parisian bouillons), gastropubs, charming but casual restaurants. Being a chain does NOT disqualify if the experience is genuinely upscale. Olive Garden/Cheesecake Factory fail. Nobu/Morton's pass. When genuinely uncertain, default to casual_eats.
+FINE_DINING: A restaurant that feels like a special occasion. The combination of: upscale ambience, high-end cuisine, reservation culture, and elevated service. You do NOT need to find the chef's name in the search results — many acclaimed restaurants don't lead with the chef in Google snippets. Signals that indicate fine_dining: very high ratings (4.5+) with upscale reviews, $$$/$$$$ pricing, words like "upscale", "elegant", "tasting menu", "sommelier", "Michelin", "acclaimed", "refined". Examples that ARE fine_dining: Zuma, Manhatta, Nobu, Le Bernardin, Alinea, any Michelin-starred restaurant, any restaurant described as upscale/elegant/refined with high ratings. Examples that are NOT fine_dining: wine bars, tapas bars, bistros, brasseries (especially Parisian bouillons), gastropubs, charming but casual restaurants. Being a chain does NOT disqualify if the experience is genuinely upscale. Olive Garden/Cheesecake Factory fail. Nobu/Morton's pass. PRICE_LEVEL_VERY_EXPENSIVE is a very strong signal. Unless the place is clearly casual (food hall, buffet, themed chain, sports bar), a VERY_EXPENSIVE restaurant with 4.0+ rating should get fine_dining. When genuinely uncertain AND price is MODERATE or INEXPENSIVE or unknown, default to casual_eats. When price is EXPENSIVE or VERY_EXPENSIVE with rating 4.0+, lean toward fine_dining — most high-end restaurants don't advertise "Michelin" or "tasting menu" in their Google snippets. IMPORTANT: fine_dining and casual_eats are MUTUALLY EXCLUSIVE. If a place qualifies for fine_dining, do NOT also assign casual_eats. A fine dining restaurant is fine_dining only. If it also has a bar, it can be fine_dining + drink, but never fine_dining + casual_eats.
 
 CASUAL_EATS: Any real sit-down restaurant where you'd grab a meal. Includes chain restaurants with table service (Olive Garden, IHOP, Outback). Includes food halls and food markets with vendors. NO fast food/counter-service/grab-and-go chains (McDonald's, Subway, Starbucks). Wine bars and tapas bars with food → casual_eats + drink.
 
@@ -145,6 +194,10 @@ Example 12: "Urban Air Trampoline Park" type:amusement_center → {"d":"reject",
 
 Example 17: "Soho Beach House" type:hotel → {"d":"accept","c":["drink","wellness"],"pi":"members club with pool bar and spa","w":true,"r":"Upscale beach club/hotel with bar, pool, and spa — drink + wellness","f":"medium"}
 Note: Private/members clubs with bars, pools, restaurants, or spas still qualify for their respective categories. The membership model doesn't disqualify the venue.
+
+Example 18: "The Ruxton Steakhouse" type:steak_house price:PRICE_LEVEL_VERY_EXPENSIVE rating:4.4 → {"d":"accept","c":["fine_dining"],"pi":"upscale steakhouse","w":true,"r":"VERY_EXPENSIVE steakhouse with high rating — fine_dining","f":"high"}
+
+Example 19: "Fogo de Chão Brazilian Steakhouse" type:brazilian_restaurant price:PRICE_LEVEL_EXPENSIVE rating:4.8 → {"d":"accept","c":["fine_dining"],"pi":"upscale Brazilian steakhouse chain","w":true,"r":"EXPENSIVE chain steakhouse with exceptional rating — fine_dining (not casual_eats — mutually exclusive)","f":"high"}
 
 Return ONLY valid JSON.`;
 
@@ -279,7 +332,9 @@ async function classifyPlace(factSheet: Record<string, unknown>): Promise<ClassR
       "flowers","fine_dining","nature_views","first_meet","drink","casual_eats",
       "watch","live_performance","creative_arts","play","wellness","picnic_park","groceries",
     ]);
-    parsed.c = (parsed.c || []).filter((s: string) => VALID_SLUGS.has(s));
+    parsed.c = enforceExclusivity(
+      (parsed.c || []).filter((s: string) => VALID_SLUGS.has(s))
+    );
     return {
       decision: parsed.d,
       categories: parsed.c,
@@ -296,7 +351,7 @@ async function classifyPlace(factSheet: Record<string, unknown>): Promise<ClassR
 // ── Deterministic Pre-Filter ─────────────────────────────────────────────────
 
 interface PreFilterResult {
-  verdict: "reject" | "accept" | "pass";
+  verdict: "reject" | "accept" | "modify" | "pass";
   reason?: string;
   categories?: string[];
   stageResolved?: number;
@@ -305,25 +360,125 @@ interface PreFilterResult {
 function deterministicFilter(place: any): PreFilterResult {
   const name = place.name || "";
   const primaryType = place.primary_type || "";
-  const checkText = `${name} ${primaryType}`.toLowerCase();
+  // FIX: normalize underscores to spaces for keyword matching
+  const normalizedType = primaryType.replace(/_/g, " ");
+  const checkText = `${name} ${normalizedType}`.toLowerCase();
 
-  if (nameMatches(name, FAST_FOOD_BLACKLIST)) {
-    return { verdict: "reject", reason: "Pipeline: fast food chain — rejected", categories: [], stageResolved: 2 };
+  // 1. Blocked primary types — instant reject
+  if (BLOCKED_PRIMARY_TYPES.has(primaryType)) {
+    return {
+      verdict: "reject",
+      reason: `Rules: blocked primary_type '${primaryType}' — not a date venue`,
+      categories: [],
+      stageResolved: 2,
+    };
   }
 
+  // 2. Minimum-data guard — reject empty-profile places
+  const rating = place.rating;
+  const reviews = place.review_count || 0;
+  const website = place.website;
+  if (rating == null && reviews === 0 && !website) {
+    return {
+      verdict: "reject",
+      reason: "Rules: no rating, no reviews, no website — insufficient data",
+      categories: [],
+      stageResolved: 2,
+    };
+  }
+
+  // 3. Fast food blacklist
+  if (nameMatches(name, FAST_FOOD_BLACKLIST)) {
+    return {
+      verdict: "reject",
+      reason: "Pipeline: fast food chain — rejected",
+      categories: [],
+      stageResolved: 2,
+    };
+  }
+
+  // 4. Exclusion keywords (now with normalized underscores)
   for (const [category, keywords] of Object.entries(EXCLUSION_KEYWORDS)) {
     if (keywords.some((kw) => checkText.includes(kw.toLowerCase()))) {
-      return { verdict: "reject", reason: `Pipeline: excluded type (${category}) — rejected`, categories: [], stageResolved: 2 };
+      return {
+        verdict: "reject",
+        reason: `Pipeline: excluded type (${category}) — rejected`,
+        categories: [],
+        stageResolved: 2,
+      };
     }
   }
 
+  // 5. Casual chain demotion
   if (nameMatches(name, CASUAL_CHAIN_DEMOTION)) {
     const cats = [...(place.ai_categories || [])];
     if (cats.includes("fine_dining")) {
       const newCats = cats.filter((c: string) => c !== "fine_dining");
       if (!newCats.includes("casual_eats")) newCats.push("casual_eats");
-      return { verdict: "accept", reason: "Pipeline: sit-down chain — downgraded from fine_dining to casual_eats", categories: newCats, stageResolved: 2 };
+      return {
+        verdict: "accept",
+        reason: "Pipeline: sit-down chain — downgraded from fine_dining to casual_eats",
+        categories: newCats,
+        stageResolved: 2,
+      };
     }
+  }
+
+  // 6. Fine dining promotion: VERY_EXPENSIVE + 4.0+ rating + restaurant type
+  if (
+    place.price_level === "PRICE_LEVEL_VERY_EXPENSIVE" &&
+    rating != null && rating >= 4.0 &&
+    RESTAURANT_TYPES.has(primaryType)
+  ) {
+    const cats = [...(place.ai_categories || [])];
+    if (!cats.includes("fine_dining")) {
+      cats.push("fine_dining");
+      return {
+        verdict: "modify",
+        reason: "Rules: VERY_EXPENSIVE + high rating restaurant — promoted to fine_dining",
+        categories: enforceExclusivity(cats),
+        stageResolved: 2,
+      };
+    }
+  }
+
+  // 7. Per-category type blocking: strip flowers from non-flower types
+  const cats = [...(place.ai_categories || [])];
+  let modified = false;
+  let modifyReason = "";
+
+  if (cats.includes("flowers") && FLOWERS_BLOCKED_TYPES.has(primaryType)) {
+    const idx = cats.indexOf("flowers");
+    cats.splice(idx, 1);
+    modified = true;
+    modifyReason = `Rules: stripped 'flowers' from primary_type '${primaryType}'`;
+  }
+
+  // 8. Delivery-only florist detection (conservative: must match pattern AND not be a florist)
+  if (
+    cats.includes("flowers") &&
+    primaryType !== "florist" &&
+    DELIVERY_ONLY_PATTERNS.some((p) => name.toLowerCase().includes(p))
+  ) {
+    const idx = cats.indexOf("flowers");
+    if (idx >= 0) {
+      cats.splice(idx, 1);
+      modified = true;
+      modifyReason = `Rules: delivery-only pattern in name, not a florist — stripped 'flowers'`;
+    }
+  }
+
+  if (modified) {
+    // If stripping left zero categories AND place was previously approved, reject it
+    if (cats.length === 0) {
+      return {
+        verdict: "reject",
+        reason: modifyReason + " — no remaining categories, rejected",
+        categories: [],
+        stageResolved: 2,
+      };
+    }
+    return { verdict: "modify", reason: modifyReason, categories: cats, stageResolved: 2 };
   }
 
   return { verdict: "pass" };
@@ -349,7 +504,7 @@ async function processPlace(place: any): Promise<PlaceResult> {
   const preFilter = deterministicFilter(place);
   if (preFilter.verdict !== "pass") {
     return {
-      decision: preFilter.verdict,
+      decision: preFilter.verdict === "modify" ? "reclassify" : preFilter.verdict,
       categories: preFilter.categories || [],
       primary_identity: place.primary_type || "unknown",
       confidence: "high",
@@ -965,7 +1120,7 @@ async function handleOverride(body: any): Promise<Response> {
   const approved = decision === "accept" || (decision === "reclassify" && body.categories?.length > 0);
   await db.from("place_pool").update({
     ai_approved: approved,
-    ai_categories: body.categories || [],
+    ai_categories: enforceExclusivity(body.categories || []),
     ai_reason: body.reason || "Admin override",
     ai_validated_at: new Date().toISOString(),
   }).eq("id", result.place_id);
@@ -1029,6 +1184,167 @@ async function handleResumeRun(body: any): Promise<Response> {
   return json({ status: "running", run_id: body.run_id, remaining_batches: count || 0 });
 }
 
+// ── Rules-Only Filter Handler ────────────────────────────────────────────────
+
+async function handleRunRulesFilter(body: any, userId: string): Promise<Response> {
+  const db = getDb();
+  const scope = body.scope || "all";
+  const batchSize = Math.min(body.batch_size || 100, 200); // larger batches OK — no API calls
+
+  // Build query for matching places
+  let countQuery = db.from("place_pool")
+    .select("id", { count: "exact", head: true })
+    .eq("is_active", true);
+
+  if (scope === "unvalidated") countQuery = countQuery.is("ai_approved", null);
+  else if (scope === "failed") countQuery = countQuery.not("ai_validated_at", "is", null).is("ai_approved", null);
+  if (body.category) countQuery = countQuery.contains("ai_categories", [body.category]);
+  if (body.city_id) countQuery = countQuery.eq("city_id", body.city_id);
+  if (body.city) countQuery = countQuery.ilike("city", `%${body.city}%`);
+
+  const { count: totalPlaces, error: countErr } = await countQuery;
+  if (countErr) return json({ error: countErr.message }, 500);
+  if (!totalPlaces || totalPlaces === 0) return json({ status: "nothing_to_do", total_places: 0 });
+
+  // Create a job record for audit trail
+  const { data: job, error: jobErr } = await db
+    .from("ai_validation_jobs")
+    .insert({
+      status: "running",
+      scope,
+      total_places: totalPlaces,
+      processed: 0,
+      approved: 0,
+      rejected: 0,
+      reclassified: 0,
+      failed: 0,
+      category_filter: body.category || null,
+      city_filter: body.city || null,
+      dry_run: body.dry_run || false,
+      batch_size: batchSize,
+      total_batches: Math.ceil(totalPlaces / batchSize),
+      estimated_cost_usd: 0,
+      triggered_by: userId,
+      started_at: new Date().toISOString(),
+      stage: "rules_only",
+    })
+    .select("id")
+    .single();
+  if (jobErr) return json({ error: jobErr.message }, 500);
+
+  // Process in batches (paginated reads)
+  let offset = 0;
+  let totalProcessed = 0;
+  let totalRejected = 0;
+  let totalModified = 0;
+  let totalUnchanged = 0;
+
+  while (true) {
+    let query = db.from("place_pool")
+      .select("id, name, primary_type, types, rating, review_count, website, price_level, ai_categories, ai_approved")
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .range(offset, offset + batchSize - 1);
+
+    if (scope === "unvalidated") query = query.is("ai_approved", null);
+    else if (scope === "failed") query = query.not("ai_validated_at", "is", null).is("ai_approved", null);
+    if (body.category) query = query.contains("ai_categories", [body.category]);
+    if (body.city_id) query = query.eq("city_id", body.city_id);
+    if (body.city) query = query.ilike("city", `%${body.city}%`);
+
+    const { data: places, error: fetchErr } = await query;
+    if (fetchErr) {
+      console.error("Rules filter fetch error:", fetchErr.message);
+      break;
+    }
+    if (!places || places.length === 0) break;
+
+    for (const place of places) {
+      const result = deterministicFilter(place);
+      totalProcessed++;
+
+      if (result.verdict === "pass") {
+        totalUnchanged++;
+        continue; // No rule triggered — leave place as-is
+      }
+
+      // A rule triggered — write the result
+      if (!body.dry_run) {
+        if (result.verdict === "reject") {
+          totalRejected++;
+          await db.from("place_pool").update({
+            ai_approved: false,
+            ai_categories: [],
+            ai_reason: result.reason,
+            ai_validated_at: new Date().toISOString(),
+          }).eq("id", place.id);
+        } else if (result.verdict === "modify") {
+          totalModified++;
+          await db.from("place_pool").update({
+            ai_categories: result.categories,
+            ai_reason: result.reason,
+            ai_validated_at: new Date().toISOString(),
+          }).eq("id", place.id);
+        } else if (result.verdict === "accept") {
+          totalModified++;
+          await db.from("place_pool").update({
+            ai_approved: true,
+            ai_categories: result.categories,
+            ai_reason: result.reason,
+            ai_validated_at: new Date().toISOString(),
+          }).eq("id", place.id);
+        }
+
+        // Audit trail in ai_validation_results
+        await db.from("ai_validation_results").insert({
+          job_id: job.id,
+          place_id: place.id,
+          decision: result.verdict === "modify" ? "reclassify" : result.verdict,
+          previous_categories: place.ai_categories || [],
+          new_categories: result.categories || [],
+          primary_identity: place.primary_type || "unknown",
+          confidence: "high",
+          reason: result.reason,
+          evidence: "",
+          stage_resolved: 2,
+          website_verified: false,
+          search_results: null,
+          cost_usd: 0,
+        });
+      } else {
+        // Dry run — still count
+        if (result.verdict === "reject") totalRejected++;
+        else totalModified++;
+      }
+    }
+
+    offset += batchSize;
+  }
+
+  // Finalize job
+  await db.from("ai_validation_jobs").update({
+    status: "completed",
+    stage: "complete",
+    processed: totalProcessed,
+    rejected: totalRejected,
+    reclassified: totalModified,
+    approved: totalProcessed - totalRejected - totalModified,
+    cost_usd: 0,
+    completed_at: new Date().toISOString(),
+  }).eq("id", job.id);
+
+  return json({
+    status: "completed",
+    run_id: job.id,
+    total_processed: totalProcessed,
+    rejected: totalRejected,
+    modified: totalModified,
+    unchanged: totalUnchanged,
+    cost_usd: 0,
+    dry_run: body.dry_run || false,
+  });
+}
+
 // ── Main Handler ─────────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
@@ -1054,6 +1370,7 @@ serve(async (req: Request) => {
       case "stop_run":     return handleStopRun(body);
       case "pause_run":    return handlePauseRun(body);
       case "resume_run":   return handleResumeRun(body);
+      case "run_rules_filter": return handleRunRulesFilter(body, authResult.userId);
       default:
         return json({ error: `Unknown action: ${action}` }, 400);
     }

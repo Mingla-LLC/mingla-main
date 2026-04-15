@@ -53,11 +53,11 @@ import {
   TravelLimitSection,
   LocationInputSection,
 } from "./PreferencesSheet/PreferencesSectionsAdvanced";
-import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
+import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug, PRICE_EXEMPT_CATEGORIES } from '../constants/priceTiers';
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
-import { MAX_CATEGORIES, MAX_INTENTS, normalizeCategoryArray, capIntents } from '../utils/categoryUtils';
+import { normalizeCategoryArray } from '../utils/categoryUtils';
 
 interface PreferencesSheetProps {
   visible?: boolean;
@@ -192,7 +192,6 @@ export default function PreferencesSheet({
 
   // Selection limit messages
   const [minSelectionMessage, setMinSelectionMessage] = useState(false);
-  const [categoryCapMessage, setCategoryCapMessage] = useState(false);
 
   // Date & Time
   const [selectedDateOption, setSelectedDateOption] =
@@ -280,9 +279,7 @@ export default function PreferencesSheet({
       // Narrow type: in collab mode, preferences come from BoardSessionPreferences
       const prefs = loadedPreferences as import('../hooks/useBoardSession').BoardSessionPreferences;
       // Load from board session preferences — intents and categories are separate DB columns
-      const collabIntents = capIntents(
-        Array.isArray(prefs.intents) ? prefs.intents : []
-      );
+      const collabIntents = Array.isArray(prefs.intents) ? prefs.intents : [];
       setSelectedIntents(collabIntents);
       const collabCats = normalizeCategoryArray(
         Array.isArray(prefs.categories) ? prefs.categories : []
@@ -363,9 +360,7 @@ export default function PreferencesSheet({
       });
     } else {
       // Load from solo preferences — intents and categories are separate DB columns
-      const soloIntents = capIntents(
-        Array.isArray((loadedPreferences).intents) ? (loadedPreferences).intents : []
-      );
+      const soloIntents = Array.isArray((loadedPreferences).intents) ? (loadedPreferences).intents : [];
       setSelectedIntents(soloIntents);
       const soloCats = normalizeCategoryArray(
         Array.isArray(loadedPreferences.categories) ? loadedPreferences.categories : []
@@ -469,9 +464,9 @@ export default function PreferencesSheet({
           blocked = true;
           return prev;
         }
-        return [];  // Radio: goes to 0
+        return prev.filter(i => i !== id);  // Toggle off
       }
-      return [id];  // Radio: replace with only this one
+      return [...prev, id];  // Toggle on
     });
     if (blocked) {
       setMinSelectionMessage(true);
@@ -481,7 +476,6 @@ export default function PreferencesSheet({
 
   const handleCategoryToggle = useCallback((id: string) => {
     let blocked = false;
-    let capped = false;
     setSelectedCategories((prev) => {
       if (prev.includes(id)) {
         // Deselecting — read intents from ref to avoid stale closure
@@ -491,19 +485,11 @@ export default function PreferencesSheet({
         }
         return prev.filter((c) => c !== id);
       }
-      if (prev.length >= MAX_CATEGORIES) {
-        capped = true;
-        return prev;
-      }
       return [...prev, id];
     });
     if (blocked) {
       setMinSelectionMessage(true);
       setTimeout(() => setMinSelectionMessage(false), 2500);
-    }
-    if (capped) {
-      setCategoryCapMessage(true);
-      setTimeout(() => setCategoryCapMessage(false), 2000);
     }
   }, []);
 
@@ -675,7 +661,8 @@ export default function PreferencesSheet({
 
   const isFormComplete = useMemo(() => {
     const hasPills = selectedCategories.length > 0 || selectedIntents.length > 0;
-    const hasBudget = selectedPriceTiers.length > 0;
+    const allExempt = selectedCategories.length > 0 && selectedCategories.every(cat => PRICE_EXEMPT_CATEGORIES.includes(cat));
+    const hasBudget = allExempt || selectedPriceTiers.length > 0;
 
     let hasDateTime = true;
     if (selectedDateOption === 'Today' || selectedDateOption === 'This Weekend') {
@@ -792,9 +779,8 @@ export default function PreferencesSheet({
       custom_location: customLocationValue,
     });
 
-    // Safety cap — should already be ≤3/≤1 from toggle logic, but enforce at save boundary.
-    const finalCategories = selectedCategories.slice(0, MAX_CATEGORIES);
-    const finalIntents = capIntents(selectedIntents);
+    const finalCategories = selectedCategories;
+    const finalIntents = selectedIntents;
 
     const preferences = {
       selectedIntents: finalIntents,
@@ -975,12 +961,11 @@ export default function PreferencesSheet({
             filteredCategories={filteredCategories}
             selectedCategories={selectedCategories}
             onCategoryToggle={handleCategoryToggle}
-            capMessage={categoryCapMessage}
             minMessage={minSelectionMessage}
           />
 
           {/* Price Tier Section */}
-          {!(selectedCategories.length === 1 && selectedCategories[0] === "nature") && (
+          {!(selectedCategories.length > 0 && selectedCategories.every(cat => PRICE_EXEMPT_CATEGORIES.includes(cat))) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t('preferences:budget.title')}</Text>
               <Text style={styles.sectionSubtitle}>{t('preferences:budget.subtitle')}</Text>

@@ -3,18 +3,14 @@
   "experience_types.subtitle": "Quel type de sortie vous tente ?",
   "experience_types.curated_locked": "Les cartes sélectionnées sont verrouillées en version gratuite — passez à la version supérieure pour les explorer",
   "experience_types.min_message": "Choisissez au moins une ambiance ou une catégorie.",
-
   "experience_descriptions.adventurous": "Quelque chose d'inattendu — pour ceux qui n'aiment pas la routine",
   "experience_descriptions.first-date": "Des endroits décontractés où la conversation coule naturellement",
   "experience_descriptions.romantic": "Des moments intimes qui sont vraiment spéciaux",
   "experience_descriptions.group-fun": "Plus on est de fous, plus on rit — des activités que tout le monde adorera",
   "experience_descriptions.picnic-dates": "On prépare le menu — vous n'avez plus qu'à en profiter",
   "experience_descriptions.take-a-stroll": "Un itinéraire pittoresque avec un bon resto à chaque extrémité",
-
   "categories.title": "Qu'est-ce qui vous tente ?",
-  "categories.cap_message": "3 max — retirez-en une pour en ajouter une autre.",
   "categories.min_message": "Choisissez au moins une ambiance ou une catégorie.",
-
   "category_descriptions.nature": "Sentiers, parcs, jardins, panoramas — grand air et beaux paysages",
   "category_descriptions.first_meet": "Des endroits détendus idéaux pour une première impression",
   "category_descriptions.picnic_park": "Les meilleurs parcs à proximité pour étendre une couverture",
@@ -27,14 +23,12 @@
   "category_descriptions.play": "Arcades, bowling, escape rooms — montrez votre esprit de compétition",
   "category_descriptions.wellness": "Spas, saunas et lieux pour évacuer le stress",
   "category_descriptions.flowers": "Fleuristes et boutiques de fleurs pour des bouquets frais",
-
   "datetime.title": "Quand",
   "datetime.question": "Quand sortez-vous ?",
   "datetime.this_weekend": "Ce week-end",
   "datetime.friday_through_sunday": "Du vendredi au dimanche",
   "datetime.date_placeholder": "jj/mm/aaaa",
   "datetime.time_label": "Vers quelle heure ?",
-
   "time_slots.brunch": "Brunch",
   "time_slots.brunch_time": "11h–13h",
   "time_slots.afternoon": "Après-midi",
@@ -45,25 +39,20 @@
   "time_slots.late_night_time": "22h–0h",
   "time_slots.anytime": "N'importe quand",
   "time_slots.anytime_time": "Toute la journée",
-
   "travel_mode.title": "Comment y aller",
   "travel_mode.question": "Comment vous déplacez-vous ?",
-
   "loading.text": "Préparation de l'ambiance...",
-
   "travel_limit.title": "Jusqu'où ?",
   "travel_limit.question": "Définissez votre rayon de déplacement",
   "travel_limit.min_unit": "min",
   "travel_limit.set_your_own": "Personnaliser",
   "travel_limit.custom_placeholder": "5 – 120 minutes",
-
   "location.use_current": "Utiliser ma position actuelle",
   "location.search_placeholder": "Rechercher un point de départ...",
   "location.gps_helper": "On vous a localisé. Tout va bien.",
   "location.manual_helper": "Placez une épingle n'importe où. Ou revenez au GPS.",
   "location.pro_feature": "Fonction Pro — explorez depuis n'importe où",
   "location.searching": "Recherche...",
-
   "sheet.title": "Votre ambiance",
   "sheet.lock_it_in": "Confirmer",
   "sheet.lock_it_in_count": "Confirmer ({{count}})",
@@ -74,7 +63,6 @@
   "budget.subtitle": "Sélectionnez chaque gamme qui vous convient",
   "starting_point.title": "Point de départ",
   "starting_point.subtitle": "Où doit-on commencer à chercher ?",
-
   "date_options.now": "Maintenant",
   "date_options.now_desc": "Partir immédiatement",
   "date_options.today": "Aujourd'hui",
@@ -83,12 +71,10 @@
   "date_options.this_weekend_desc": "Ven–Dim",
   "date_options.pick_a_date": "Choisir une date",
   "date_options.pick_a_date_desc": "Date personnalisée",
-
   "travel_modes.walk": "À pied",
   "travel_modes.bike": "Vélo",
   "travel_modes.bus": "Bus",
   "travel_modes.drive": "Voiture",
-
   "sheet.session_vibes": "Ambiance {{name}}",
   "sheet.pick_time_hint": "Choisissez une heure pour continuer",
   "sheet.pick_date_hint": "Choisissez une date pour continuer",

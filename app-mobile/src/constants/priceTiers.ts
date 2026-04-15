@@ -90,3 +90,19 @@ export function priceTierFromAmount(priceMin: number, priceMax: number): PriceTi
   }
   return 'lavish';
 }
+
+/**
+ * Categories where price tier filtering is structurally irrelevant.
+ * Cards in these categories bypass price tier filtering in the SQL RPC.
+ *
+ * These are client-side category IDs (matching PreferencesSheet).
+ * The SQL RPC uses equivalent slugs: nature_views, picnic_park, watch, creative_arts, live_performance.
+ * Must stay in sync with v_price_exempt in query_pool_cards RPC.
+ */
+export const PRICE_EXEMPT_CATEGORIES: readonly string[] = [
+  'nature',
+  'picnic_park',
+  'watch',
+  'creative_arts',
+  'live_performance',
+] as const;
