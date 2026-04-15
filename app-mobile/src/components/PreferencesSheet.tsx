@@ -655,27 +655,14 @@ export default function PreferencesSheet({
   const ctaHintText = useMemo(() => {
     if (isFormComplete) return null;
 
-    // Check each section in order — show the first incomplete one
     const hasLocation = useGpsLocation || (searchLocation.length > 0 && selectedCoords !== null);
-    if (!hasLocation) {
-      return "Pick a starting point or turn on GPS";
-    }
-    if (selectedDateOption === null) {
-      return "When are you heading out?";
-    }
-    if (selectedDateOption === 'pick_dates' && selectedDates.length === 0) {
-      return "Tap a few dates on the calendar";
-    }
-    if (intentToggle && selectedIntents.length === 0) {
-      return "Pick at least one experience type";
-    }
-    if (categoryToggle && selectedCategories.length === 0) {
-      return "Choose at least one category";
-    }
-    if (typeof constraintValue !== 'number' || constraintValue < 5) {
-      return "Set how far you're willing to go";
-    }
-    return "Almost there — fill out the remaining sections";
+    if (!hasLocation) return "Add a starting point";
+    if (selectedDateOption === null) return "Pick a date";
+    if (selectedDateOption === 'pick_dates' && selectedDates.length === 0) return "Select dates";
+    if (intentToggle && selectedIntents.length === 0) return "Pick an experience";
+    if (categoryToggle && selectedCategories.length === 0) return "Pick a category";
+    if (typeof constraintValue !== 'number' || constraintValue < 5) return "Set travel distance";
+    return "Almost there";
   }, [isFormComplete, useGpsLocation, searchLocation, selectedCoords,
       selectedDateOption, selectedDates,
       intentToggle, selectedIntents, categoryToggle, selectedCategories,
