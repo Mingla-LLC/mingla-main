@@ -221,12 +221,16 @@ export const MultiDayCalendar: React.FC<MultiDayCalendarProps> = ({
 
 const calStyles = StyleSheet.create({
   container: {
-    backgroundColor: colors.background.primary,
+    backgroundColor: 'rgba(255, 255, 255, 0.60)',
     borderWidth: 1,
-    borderColor: colors.gray[200],
-    borderRadius: radius.lg,
+    borderColor: 'rgba(255, 255, 255, 0.40)',
+    borderRadius: 16,
     padding: spacing.md,
-    ...shadows.sm,
+    shadowColor: 'rgba(0, 0, 0, 0.08)',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    elevation: 6,
   },
   monthHeader: {
     flexDirection: 'row',

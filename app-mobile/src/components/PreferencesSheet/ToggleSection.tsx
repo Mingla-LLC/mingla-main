@@ -9,7 +9,7 @@ import {
   UIManager,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { colors, typography, fontWeights, spacing } from '../../constants/designSystem';
+import { colors, spacing } from '../../constants/designSystem';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -18,7 +18,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 interface ToggleSectionProps {
   title: string;
-  subtitle: string;
+  subtitle?: string;  // Optional — glassmorphism uses title only as the question
   isOn: boolean;
   onToggle: (newValue: boolean) => void;
   disabled?: boolean;
@@ -27,7 +27,6 @@ interface ToggleSectionProps {
 
 export const ToggleSection: React.FC<ToggleSectionProps> = ({
   title,
-  subtitle,
   isOn,
   onToggle,
   disabled,
@@ -44,12 +43,9 @@ export const ToggleSection: React.FC<ToggleSectionProps> = ({
   };
 
   return (
-    <View style={toggleStyles.container}>
+    <View style={toggleStyles.glassCard}>
       <View style={toggleStyles.headerRow}>
-        <View style={toggleStyles.textContainer}>
-          <Text style={toggleStyles.title}>{title}</Text>
-          <Text style={toggleStyles.subtitle}>{subtitle}</Text>
-        </View>
+        <Text style={toggleStyles.question}>{title}</Text>
         <Switch
           value={isOn}
           onValueChange={handleToggle}
@@ -70,31 +66,34 @@ export const ToggleSection: React.FC<ToggleSectionProps> = ({
 };
 
 const toggleStyles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 20,
-    marginTop: 28,
+  glassCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.70)',
+    borderWidth: 1,
+    borderTopWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.45)',
+    borderRadius: 24,
+    padding: 20,
+    marginHorizontal: 16,
+    marginTop: 16,
+    shadowColor: 'rgba(0, 0, 0, 0.08)',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    elevation: 6,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  textContainer: {
+  question: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text.primary,
     flex: 1,
     marginRight: spacing.md,
   },
-  title: {
-    fontSize: typography.md.fontSize,
-    fontWeight: fontWeights.semibold,
-    color: colors.text.primary,
-  },
-  subtitle: {
-    fontSize: 13,
-    fontWeight: fontWeights.regular,
-    color: colors.text.tertiary,
-    marginTop: 2,
-  },
   content: {
-    marginTop: 14,
+    marginTop: 16,
   },
 });

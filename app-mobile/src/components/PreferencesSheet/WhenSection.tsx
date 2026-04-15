@@ -11,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 import * as Haptics from 'expo-haptics';
 import { Icon } from '../ui/Icon';
 import { MultiDayCalendar } from '../ui/MultiDayCalendar';
-import { colors, radius, spacing, typography, fontWeights } from '../../constants/designSystem';
+import { colors } from '../../constants/designSystem';
 
 export type DateOptionId = 'today' | 'this_weekend' | 'pick_dates';
 
@@ -29,9 +29,10 @@ const DATE_OPTIONS: { id: DateOptionId; labelKey: string }[] = [
 ];
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const CARD_MARGIN = 16;
+const CARD_PADDING = 20;
 const PILL_GAP = 10;
-const CONTAINER_PADDING = 20;
-const PILL_WIDTH = (SCREEN_WIDTH - CONTAINER_PADDING * 2 - PILL_GAP * 2) / 3;
+const PILL_WIDTH = (SCREEN_WIDTH - CARD_MARGIN * 2 - CARD_PADDING * 2 - PILL_GAP * 2) / 3;
 
 export const WhenSection = memo(({
   dateOption,
@@ -48,9 +49,8 @@ export const WhenSection = memo(({
   };
 
   return (
-    <View style={whenStyles.container}>
-      <Text style={whenStyles.sectionTitle}>{t('preferences:datetime.title')}</Text>
-      <Text style={whenStyles.sectionSubtitle}>{t('preferences:datetime.question')}</Text>
+    <View style={whenStyles.glassCard}>
+      <Text style={whenStyles.question}>When are you heading out?</Text>
 
       {/* Date option pills */}
       <View style={whenStyles.pillsRow}>
@@ -61,8 +61,9 @@ export const WhenSection = memo(({
               key={option.id}
               onPress={() => handleOptionPress(option.id)}
               style={[
-                whenStyles.pill,
-                isSelected && whenStyles.pillSelected,
+                whenStyles.glassPill,
+                { width: PILL_WIDTH, height: 44 },
+                isSelected && whenStyles.glassPillSelected,
               ]}
               activeOpacity={0.7}
               accessibilityRole="button"
@@ -82,17 +83,6 @@ export const WhenSection = memo(({
         })}
       </View>
 
-      {/* Weekend info card */}
-      {dateOption === 'this_weekend' && (
-        <View style={whenStyles.weekendCard}>
-          <Icon name="calendar" size={20} color={colors.primary[600]} style={{ marginRight: 12 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={whenStyles.weekendTitle}>{t('preferences:datetime.this_weekend')}</Text>
-            <Text style={whenStyles.weekendDesc}>{t('preferences:datetime.friday_through_sunday')}</Text>
-          </View>
-        </View>
-      )}
-
       {/* Multi-day calendar */}
       {dateOption === 'pick_dates' && (
         <View style={whenStyles.calendarWrapper}>
@@ -109,64 +99,61 @@ export const WhenSection = memo(({
 WhenSection.displayName = 'WhenSection';
 
 const whenStyles = StyleSheet.create({
-  container: {
-    paddingHorizontal: CONTAINER_PADDING,
-    marginTop: 28,
+  glassCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.70)',
+    borderWidth: 1,
+    borderTopWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.45)',
+    borderRadius: 24,
+    padding: CARD_PADDING,
+    marginHorizontal: CARD_MARGIN,
+    marginTop: 16,
+    shadowColor: 'rgba(0, 0, 0, 0.08)',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    elevation: 6,
   },
-  sectionTitle: {
-    fontSize: typography.md.fontSize,
-    fontWeight: fontWeights.semibold,
+  question: {
+    fontSize: 17,
+    fontWeight: '700',
     color: colors.text.primary,
-    marginBottom: 4,
-  },
-  sectionSubtitle: {
-    fontSize: typography.sm.fontSize,
-    fontWeight: fontWeights.regular,
-    color: colors.text.tertiary,
-    marginBottom: 14,
+    marginBottom: 16,
   },
   pillsRow: {
     flexDirection: 'row',
     gap: PILL_GAP,
   },
-  pill: {
-    width: PILL_WIDTH,
-    height: 40,
-    borderRadius: radius.lg,
-    backgroundColor: colors.background.tertiary,
+  glassPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: 'rgba(0, 0, 0, 0.04)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 1,
   },
-  pillSelected: {
-    backgroundColor: colors.accent,
+  glassPillSelected: {
+    backgroundColor: '#eb7825',
+    borderColor: '#eb7825',
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   pillText: {
-    fontSize: typography.sm.fontSize,
-    fontWeight: fontWeights.medium,
+    fontSize: 14,
+    fontWeight: '500',
     color: colors.text.secondary,
   },
   pillTextSelected: {
-    color: colors.text.inverse,
-    fontWeight: fontWeights.semibold,
-  },
-  weekendCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary[50],
-    marginTop: 12,
-  },
-  weekendTitle: {
-    fontSize: 14,
-    fontWeight: fontWeights.semibold,
-    color: colors.text.primary,
-    marginBottom: 2,
-  },
-  weekendDesc: {
-    fontSize: 13,
-    fontWeight: fontWeights.regular,
-    color: colors.text.tertiary,
+    color: '#ffffff',
+    fontWeight: '600',
   },
   calendarWrapper: {
     marginTop: 14,

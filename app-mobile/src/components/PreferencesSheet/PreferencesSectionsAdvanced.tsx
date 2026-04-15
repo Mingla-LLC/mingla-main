@@ -42,10 +42,6 @@ export const TravelLimitSection = memo(
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('preferences:travel_limit.title')}</Text>
-        <Text style={styles.sectionQuestion}>
-          {t('preferences:travel_limit.question')}
-        </Text>
         <View style={styles.travelPresetsContainer}>
           {TRAVEL_TIME_PRESETS.map((mins) => {
             const selected = isPresetSelected(mins);

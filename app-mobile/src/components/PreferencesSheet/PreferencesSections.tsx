@@ -54,10 +54,6 @@ export const ExperienceTypesSection = memo(
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('preferences:experience_types.title')}</Text>
-        <Text style={styles.sectionSubtitle}>
-          {t('preferences:experience_types.subtitle')}
-        </Text>
         {isCuratedLocked && (
           <TouchableOpacity
             onPress={onLockedTap}
@@ -171,7 +167,6 @@ export const CategoriesSection = memo(
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('preferences:categories.title')}</Text>
         <View style={styles.categoriesContainer}>
           {filteredCategories.map((category) => {
             const isSelected = selectedCategories.includes(category.id);
@@ -251,8 +246,6 @@ export const TravelModeSection = memo(
     const { t } = useTranslation(['preferences', 'common']);
     return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{t('preferences:travel_mode.title')}</Text>
-      <Text style={styles.sectionQuestion}>{t('preferences:travel_mode.question')}</Text>
       <View style={styles.travelModesGrid}>
         {travelModes.map((mode) => {
           const isSelected = travelMode === mode.id;
@@ -356,10 +349,23 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 16,
     borderRadius: 16,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    shadowColor: 'rgba(0, 0, 0, 0.04)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 1,
   },
   experienceTypeButtonSelected: {
     backgroundColor: "#eb7825",
+    borderColor: "#eb7825",
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   experienceTypeText: {
     fontSize: 14,
@@ -383,10 +389,23 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 14,
     borderRadius: 16,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    shadowColor: 'rgba(0, 0, 0, 0.04)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 1,
   },
   categoryButtonSelected: {
     backgroundColor: "#eb7825",
+    borderColor: "#eb7825",
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   categoryText: {
     fontSize: 13,
@@ -433,29 +452,38 @@ const styles = StyleSheet.create({
   travelModesGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
+    gap: 10,
   },
   travelModeCard: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+    gap: 6,
+    height: 48,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#fafafa",
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    shadowColor: 'rgba(0, 0, 0, 0.04)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 1,
   },
   travelModeCardSelected: {
     backgroundColor: "#eb7825",
     borderColor: "#eb7825",
-    borderWidth: 1.5,
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   travelModeLabel: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "500",
-    color: "#374151",
+    color: "#4b5563",
   },
   travelModeLabelSelected: {
     color: "#ffffff",

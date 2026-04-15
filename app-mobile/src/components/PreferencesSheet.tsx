@@ -225,7 +225,7 @@ export default function PreferencesSheet({
   // Sequential section stagger animation (ORCH-0434 Phase 6B)
   const [reduceMotion, setReduceMotion] = useState(false);
   const sectionAnims = useRef(
-    Array.from({ length: 5 }, () => new Animated.Value(0))
+    Array.from({ length: 6 }, () => new Animated.Value(0))
   ).current;
 
   useEffect(() => {
@@ -241,7 +241,7 @@ export default function PreferencesSheet({
       // Reset
       sectionAnims.forEach(anim => anim.setValue(0));
       // Stagger: 80ms between each section, 300ms duration
-      const delays = [0, 80, 160, 240, 320];
+      const delays = [0, 70, 140, 210, 280, 350];
       const timers = delays.map((delay, i) =>
         setTimeout(() => {
           Animated.timing(sectionAnims[i], {
@@ -892,7 +892,7 @@ export default function PreferencesSheet({
           {/* 1. Starting Point — moved to top (ORCH-0434) */}
           <Animated.View style={{
             opacity: sectionAnims[0],
-            transform: [{ translateY: sectionAnims[0].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+            transform: [{ translateY: sectionAnims[0].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
           <View
             ref={locationSectionRef}
@@ -902,10 +902,7 @@ export default function PreferencesSheet({
               locationSectionY.current = y;
             }}
           >
-            <Text style={styles.sectionTitle}>{t('preferences:starting_point.title')}</Text>
-            <Text style={styles.sectionSubtitle}>
-              {t('preferences:starting_point.subtitle')}
-            </Text>
+            <Text style={styles.sectionTitle}>Where should we start looking?</Text>
 
             <LocationInputSection
               searchLocation={searchLocation}
@@ -937,7 +934,7 @@ export default function PreferencesSheet({
           {/* 2. When */}
           <Animated.View style={{
             opacity: sectionAnims[1],
-            transform: [{ translateY: sectionAnims[1].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+            transform: [{ translateY: sectionAnims[1].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
           <WhenSection
             dateOption={selectedDateOption}
@@ -951,7 +948,7 @@ export default function PreferencesSheet({
           {/* 3. Intents (with toggle) */}
           <Animated.View style={{
             opacity: sectionAnims[2],
-            transform: [{ translateY: sectionAnims[2].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+            transform: [{ translateY: sectionAnims[2].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
           <ToggleSection
             title={t('preferences:intents_toggle.title')}
@@ -978,7 +975,7 @@ export default function PreferencesSheet({
           {/* 4. Categories (with toggle) */}
           <Animated.View style={{
             opacity: sectionAnims[3],
-            transform: [{ translateY: sectionAnims[3].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+            transform: [{ translateY: sectionAnims[3].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
           <ToggleSection
             title={t('preferences:categories_toggle.title')}
@@ -997,17 +994,23 @@ export default function PreferencesSheet({
 
           </Animated.View>
 
-          {/* 5. Getting There */}
+          {/* 5. How are you rolling? */}
           <Animated.View style={{
             opacity: sectionAnims[4],
-            transform: [{ translateY: sectionAnims[4].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+            transform: [{ translateY: sectionAnims[4].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
           <TravelModeSection
             travelModes={travelModes}
             travelMode={travelMode}
             onTravelModeChange={setTravelMode}
           />
+          </Animated.View>
 
+          {/* 6. How far? */}
+          <Animated.View style={{
+            opacity: sectionAnims[5],
+            transform: [{ translateY: sectionAnims[5].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+          }}>
           <TravelLimitSection
             constraintValue={constraintValue}
             onConstraintValueChange={(text) => {
@@ -1167,10 +1170,11 @@ const styles = StyleSheet.create({
   // --- Shared styles ---
   container: {
     flex: 1,
-    backgroundColor: "#fafaf9",
+    backgroundColor: '#fff9f5',  // warm glow — glass cards float above this
   },
   scrollView: {
     flex: 1,
+    backgroundColor: '#fff9f5',
   },
   scrollContent: {
     paddingTop: 8,
@@ -1209,21 +1213,32 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   // --- Section (used for Budget + Starting Point inline sections) ---
-  // ORCH-0434: Flat layout — consistent padding, no card borders
+  // ORCH-0434 Phase 6D: Glass card treatment
   section: {
-    paddingHorizontal: 20,
-    marginTop: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.70)',
+    borderWidth: 1,
+    borderTopWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.45)',
+    borderRadius: 24,
+    padding: 20,
+    marginHorizontal: 16,
+    marginTop: 16,
+    shadowColor: 'rgba(0, 0, 0, 0.08)',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    elevation: 6,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 17,
+    fontWeight: "700",
     color: "#111827",
-    marginBottom: 4,
+    marginBottom: 16,
   },
   sectionSubtitle: {
     fontSize: 14,
     color: "#6b7280",
-    marginBottom: 14,
+    marginBottom: 16,
   },
   // --- Price Tier Pills ---
   tierGrid: {
@@ -1270,9 +1285,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "#ffffff",
+    backgroundColor: 'rgba(255, 249, 245, 0.95)',
     borderTopWidth: 1,
-    borderTopColor: "#f0ebe6",
+    borderTopColor: 'rgba(255, 255, 255, 0.50)',
     paddingHorizontal: 16,
     paddingTop: 12,
     shadowColor: "#000",
