@@ -26,13 +26,15 @@ interface CategoryTileProps {
   onPress: () => void;
 }
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-// OnboardingShell content: spacing.lg (24) × 2 horizontal padding → 48. One gap between 2 columns (6px).
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+// OnboardingShell content: spacing.lg (24) × 2 horizontal padding → 48. Gap between 2 columns (10px).
 const ONBOARDING_CONTENT_PADDING_X = 48;
-const CATEGORY_COLUMN_GAP = 6;
+const CATEGORY_COLUMN_GAP = 10;
 const TILE_WIDTH =
   (SCREEN_WIDTH - ONBOARDING_CONTENT_PADDING_X - CATEGORY_COLUMN_GAP) / 2;
-const TILE_HEIGHT = 56;
+// 4 rows of tiles, filling ~55% of screen height (rest is header + headline + button)
+const ROW_GAP = 10;
+const TILE_HEIGHT = Math.floor((SCREEN_HEIGHT * 0.50 - ROW_GAP * 3) / 4);
 
 export const CategoryTile: React.FC<CategoryTileProps> = ({
   slug,

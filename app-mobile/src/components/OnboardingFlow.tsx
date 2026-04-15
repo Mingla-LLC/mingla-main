@@ -75,8 +75,6 @@ import {
   GENDER_DISPLAY_LABELS,
 } from '../types/onboarding'
 import { categories } from '../constants/categories'
-import { WhenSection } from './PreferencesSheet/WhenSection'
-import type { DateOptionId } from './PreferencesSheet/WhenSection'
 import { getCountryByCode } from '../constants/countries'
 import { getDefaultLanguageCode, getLanguageByCode } from '../constants/languages'
 import { CountryPickerModal } from './onboarding/CountryPickerModal'
@@ -1580,7 +1578,7 @@ const OnboardingFlow = ({
           travel_constraint_type: 'time',
           travel_constraint_value: data.travelTimeMinutes,
           datetime_pref: new Date().toISOString(),
-          date_option: data.dateOption || 'today',
+          date_option: 'this_weekend',
           selected_dates: data.selectedDates?.length > 0 ? data.selectedDates : null,
           use_gps_location: data.useGpsLocation,
           custom_location: data.manualLocation,
@@ -1636,7 +1634,7 @@ const OnboardingFlow = ({
         travel_constraint_type: 'time',
         travel_constraint_value: data.travelTimeMinutes,
         datetime_pref: datetimePref,
-        date_option: data.dateOption || 'today',
+        date_option: 'this_weekend',
         use_gps_location: data.useGpsLocation,
         custom_location: data.manualLocation,
         custom_lat: data.coordinates?.lat ?? null,
@@ -1669,7 +1667,7 @@ const OnboardingFlow = ({
           travelConstraintType: 'time',
           travelConstraintValue: data.travelTimeMinutes,
           datetimePref,
-          dateOption: data.dateOption || 'today',
+          dateOption: 'this_weekend',
           batchSeed: 0,
           excludeCardIds: [],
         })
@@ -1682,7 +1680,7 @@ const OnboardingFlow = ({
           travelConstraintType: 'time' as const,
           travelConstraintValue: data.travelTimeMinutes,
           datetimePref,
-          dateOption: data.dateOption || 'today',
+          dateOption: 'this_weekend',
           batchSeed: 0,
           limit: 200,
           excludeCardIds: [],
@@ -1953,12 +1951,6 @@ const OnboardingFlow = ({
         return { label: t('onboarding:location.cta_enable'), disabled: locationStatus === 'requesting', loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
       case 'celebration':
         return { label: t('common:next'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
-      case 'manual_location':
-        return { label: t('common:next'), disabled: !selectedLocation, loading: savingPrefs, onPress: handleManualLocation, hide: false }
-      case 'when':
-        return { label: t('common:next'), disabled: !data.dateOption || (data.dateOption === 'pick_dates' && data.selectedDates.length === 0), loading: false, onPress: () => {
-          handleGoNext()
-        }, hide: false }
       case 'categories':
         return { label: t('common:next'), disabled: data.selectedCategories.length === 0, loading: false, onPress: () => {
           handleGoNext()
@@ -2373,28 +2365,31 @@ const OnboardingFlow = ({
         { icon: 'people-outline' as const, headline: t('onboarding:value_prop.beat2_headline'), sub: t('onboarding:value_prop.beat2_sub') },
         { icon: 'flash-outline' as const, headline: t('onboarding:value_prop.beat3_headline'), sub: t('onboarding:value_prop.beat3_sub') },
       ]
-      const beat = beats[valuePropBeat]
-      const isLightning = valuePropBeat === 2
       return (
         <View style={styles.valuePropCenter}>
-          <Animated.View style={[
-            styles.vpIconWrap,
-            {
-              opacity: vpIconOpacity,
-              transform: [
-                { scale: Animated.multiply(vpIconScale, vpGlowScale) },
-              ],
-            },
-          ]}>
-            <Icon name={beat.icon} size={64} color={colors.primary[500]} />
-            {isLightning && (
-              <Animated.View style={[styles.vpFlashOverlay, { opacity: vpFlashOpacity }]}>
-                <Icon name="flash" size={64} color="#FFFFFF" />
-              </Animated.View>
-            )}
-          </Animated.View>
-          <Text style={[styles.headline, styles.textCenter]}>{beat.headline}</Text>
-          <Text style={[styles.body, styles.textCenter]}>{beat.sub}</Text>
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            style={{ width: SCREEN_WIDTH - 48 }}
+            contentContainerStyle={{ alignItems: 'center' }}
+            onMomentumScrollEnd={(e) => {
+              const idx = Math.round(e.nativeEvent.contentOffset.x / (SCREEN_WIDTH - 48))
+              if (idx >= 0 && idx < beats.length) {
+                setValuePropBeat(idx)
+              }
+            }}
+          >
+            {beats.map((beat, i) => (
+              <View key={i} style={{ width: SCREEN_WIDTH - 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
+                <View style={styles.vpIconWrap}>
+                  <Icon name={beat.icon} size={64} color={colors.primary[500]} />
+                </View>
+                <Text style={[styles.headline, styles.textCenter]}>{beat.headline}</Text>
+                <Text style={[styles.body, styles.textCenter]}>{beat.sub}</Text>
+              </View>
+            ))}
+          </ScrollView>
           <View style={styles.dotIndicator}>
             {beats.map((_, i) => (
               <View key={i} style={[styles.dot, i === valuePropBeat && styles.dotActive]} />
@@ -2518,18 +2513,8 @@ const OnboardingFlow = ({
                 <Text style={styles.locRetryText}>{isRequesting ? t('onboarding:location.retry_finding') : t('onboarding:location.retry_turned_on')}</Text>
               </Pressable>
             </Animated.View>
-            <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.sm }]}>
-              <Pressable
-                style={styles.locRetryButton}
-                onPress={() => {
-                  logger.action('Skip GPS from settings — entering city manually')
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                  goNextRef.current()
-                }}
-              >
-                <Icon name="create-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
-                <Text style={styles.locRetryText}>{t('onboarding:location.type_city')}</Text>
-              </Pressable>
+            <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
+              <Text style={styles.locDeniedHelper}>We need your location to find great spots near you</Text>
             </Animated.View>
           </View>
         )
@@ -2568,17 +2553,7 @@ const OnboardingFlow = ({
               </Pressable>
             </Animated.View>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
-              <Pressable
-                style={styles.locRetryButton}
-                onPress={() => {
-                  logger.action('Skip GPS — entering city manually')
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                  goNextRef.current()
-                }}
-              >
-                <Icon name="create-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
-                <Text style={styles.locRetryText}>{t('onboarding:location.type_city')}</Text>
-              </Pressable>
+              <Text style={styles.locDeniedHelper}>We need your location to find great spots near you</Text>
             </Animated.View>
           </View>
         )
@@ -2634,135 +2609,6 @@ const OnboardingFlow = ({
       )
     }
 
-    if (subStep === 'manual_location') {
-      return (
-        <View>
-          <Text style={styles.headline}>{t('onboarding:manual_location.headline')}</Text>
-          <Text style={styles.body}>
-            {t('onboarding:manual_location.body')}
-          </Text>
-          <View style={styles.inputSpacing}>
-            {selectedLocation ? (
-              // ─── Confirmed Selection State (brand orange) ───
-              <Pressable
-                style={styles.locationSelectedCard}
-                onPress={handleClearLocationSelection}
-                accessibilityLabel={t('onboarding:manual_location.change_accessibility')}
-                accessibilityHint="Tap to search for a different location"
-              >
-                <View style={styles.locationSelectedContent}>
-                  <View style={styles.locationSelectedIconWrap}>
-                    <Icon name="location" size={20} color={colors.primary[500]} />
-                  </View>
-                  <View style={styles.locationSelectedTextWrap}>
-                    <Text style={styles.locationSelectedName} numberOfLines={1}>
-                      {selectedLocation.displayName}
-                    </Text>
-                    {selectedLocation.fullAddress !== selectedLocation.displayName && (
-                      <Text style={styles.locationSelectedAddress} numberOfLines={1}>
-                        {selectedLocation.fullAddress}
-                      </Text>
-                    )}
-                  </View>
-                  <Icon name="checkmark-circle" size={22} color={colors.primary[500]} />
-                </View>
-              </Pressable>
-            ) : (
-              // ─── Search Input + Dropdown ───
-              <View style={styles.locationSearchContainer}>
-                <View style={styles.locationSearchInputWrap}>
-                  <Icon
-                    name="search-outline"
-                    size={20}
-                    color={colors.text.tertiary}
-                  />
-                  <TextInput
-                    style={styles.locationSearchInput}
-                    value={manualLocationText}
-                    onChangeText={(text) => {
-                      setManualLocationText(text)
-                      if (selectedLocation) setSelectedLocation(null)
-                    }}
-                    placeholder={t('onboarding:manual_location.search_placeholder')}
-                    placeholderTextColor={colors.gray[400]}
-                    autoCapitalize="words"
-                    autoCorrect={false}
-                    returnKeyType="search"
-                  />
-                  {locationSearchLoading && (
-                    <ActivityIndicator size="small" color={colors.primary[500]} style={styles.locationSearchSpinner} />
-                  )}
-                </View>
-
-                {showLocationSuggestions && locationSuggestions.length > 0 && (
-                  <View style={styles.locationDropdown}>
-                    <ScrollView
-                      style={styles.locationDropdownScroll}
-                      keyboardShouldPersistTaps="handled"
-                      nestedScrollEnabled
-                    >
-                      {locationSuggestions.map((suggestion, index) => (
-                        <Pressable
-                          key={suggestion.placeId || `loc-${index}`}
-                          style={({ pressed }) => [
-                            styles.locationSuggestionRow,
-                            pressed && styles.locationSuggestionRowPressed,
-                          ]}
-                          onPress={() => handleSelectLocationSuggestion(suggestion)}
-                        >
-                          <View style={styles.locationSuggestionIconWrap}>
-                            <Icon name="location-outline" size={20} color={colors.gray[400]} />
-                          </View>
-                          <View style={styles.locationSuggestionTextWrap}>
-                            <Text style={styles.locationSuggestionName} numberOfLines={1}>
-                              {suggestion.displayName}
-                            </Text>
-                            {suggestion.fullAddress !== suggestion.displayName && (
-                              <Text style={styles.locationSuggestionAddress} numberOfLines={1}>
-                                {suggestion.fullAddress}
-                              </Text>
-                            )}
-                          </View>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-
-                {manualLocationText.trim().length >= 3 && !locationSearchLoading && locationHasSearched && locationSuggestions.length === 0 && (
-                  <View style={styles.locationNoResults}>
-                    <Icon name="search" size={16} color={colors.gray[400]} />
-                    <Text style={styles.locationNoResultsText}>{t('onboarding:manual_location.no_results')}</Text>
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-          <Text style={styles.locationHelperText}>
-            {t('onboarding:manual_location.helper')}
-          </Text>
-          <View style={styles.locPrivacyRow}>
-            <Icon name="shield-checkmark-outline" size={14} color={colors.text.tertiary} />
-            <Text style={styles.locPrivacyText}>{t('onboarding:manual_location.privacy')}</Text>
-          </View>
-        </View>
-      )
-    }
-
-    if (subStep === 'when') {
-      return (
-        <View style={styles.categoryStepRoot}>
-          <Text style={styles.headline}>{t('onboarding:when.headline', { defaultValue: 'When are you heading out?' })}</Text>
-          <Text style={styles.body}>{t('onboarding:when.body', { defaultValue: 'Pick when you want to go — we\'ll find what\'s open' })}</Text>
-          <WhenSection
-            dateOption={(data.dateOption as DateOptionId) || null}
-            onDateOptionChange={(option) => setData(p => ({ ...p, dateOption: option }))}
-            selectedDates={data.selectedDates}
-            onDatesChange={(dates) => setData(p => ({ ...p, selectedDates: dates }))}
-          />
-        </View>
-      )
-    }
 
     if (subStep === 'categories') {
       return (
@@ -2775,7 +2621,7 @@ const OnboardingFlow = ({
                 key={cat.slug}
                 slug={cat.slug}
                 name={t(`common:category_${cat.slug}`)}
-                icon={cat.ux.activeColor ? getCategoryIcon(cat.slug) : 'ellipse-outline'}
+                icon={getCategoryIcon(cat.slug)}
                 activeColor={cat.ux.activeColor}
                 selected={data.selectedCategories.includes(cat.slug)}
                 onPress={() => {
@@ -3438,16 +3284,19 @@ const styles = StyleSheet.create({
   },
   // ─── Category Grid (2 columns, full width — CategoryTile width matches this gap math) ───
   categoryStepRoot: {
+    flex: 1,
     width: '100%',
-    alignSelf: 'stretch',
   },
   categoryGrid: {
+    flex: 1,
     width: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 6,
-    marginTop: spacing.md,
+    alignContent: 'stretch',
+    gap: 10,
+    marginTop: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   // ─── Selection Tiles (Budget, Transport, Travel) ───
   tileGrid: {
@@ -3809,6 +3658,13 @@ const styles = StyleSheet.create({
     fontWeight: fontWeights.semibold,
     color: colors.primary[500],
     letterSpacing: 0.2,
+  },
+  locDeniedHelper: {
+    ...typography.sm,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xl,
+    lineHeight: 20,
   },
   locPrivacyRow: {
     flexDirection: 'row',
