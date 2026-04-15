@@ -87,14 +87,10 @@ const toggleStyles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   question: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#ffffff',
-    backgroundColor: '#1f2937',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 999,
-    overflow: 'hidden',
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6b7280',
+    flex: 1,
     marginRight: spacing.md,
   },
   content: {
