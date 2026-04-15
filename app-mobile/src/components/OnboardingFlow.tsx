@@ -2621,7 +2621,16 @@ const OnboardingFlow = ({
                 key={cat.slug}
                 slug={cat.slug}
                 name={t(`common:category_${cat.slug}`)}
-                icon={getCategoryIcon(cat.slug)}
+                icon={({
+                  nature: 'trees',
+                  icebreakers: 'cafe-outline',
+                  drinks_and_music: 'wine-outline',
+                  brunch_lunch_casual: 'restaurant-outline',
+                  upscale_fine_dining: 'chef-hat',
+                  movies_theatre: 'film-new',
+                  creative_arts: 'color-palette-outline',
+                  play: 'game-controller-outline',
+                } as Record<string, string>)[cat.slug] || 'compass-outline'}
                 activeColor={cat.ux.activeColor}
                 selected={data.selectedCategories.includes(cat.slug)}
                 onPress={() => {
