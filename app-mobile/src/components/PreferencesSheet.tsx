@@ -1105,16 +1105,17 @@ export default function PreferencesSheet({
                 </View>
               ) : (
                 <Text style={styles.applyButtonText}>
-                  {ctaHintText
-                    ? ctaHintText
-                    : hasChanges
-                      ? t('preferences:sheet.lock_it_in_count', { count: countChanges() })
-                      : t('preferences:sheet.lock_it_in')}
+                  {hasChanges
+                    ? t('preferences:sheet.lock_it_in_count', { count: countChanges() })
+                    : t('preferences:sheet.lock_it_in')}
                 </Text>
               )}
             </TouchableOpacity>
+            {!isSaving && !isFormComplete && ctaHintText && (
+              <Text style={styles.noChangesHint}>{ctaHintText}</Text>
+            )}
             {isFormComplete && !hasChanges && !isSaving && (
-              <Text style={styles.noChangesHint}>You're all set — change something to update</Text>
+              <Text style={styles.noChangesHint}>No changes to save</Text>
             )}
             <TouchableOpacity
               onPress={handleReset}
