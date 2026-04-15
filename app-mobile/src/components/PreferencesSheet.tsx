@@ -655,14 +655,31 @@ export default function PreferencesSheet({
   const ctaHintText = useMemo(() => {
     if (isFormComplete) return null;
 
+    // Check each section in order — show the first incomplete one
+    const hasLocation = useGpsLocation || (searchLocation.length > 0 && selectedCoords !== null);
+    if (!hasLocation) {
+      return "Pick a starting point or turn on GPS";
+    }
+    if (selectedDateOption === null) {
+      return "When are you heading out?";
+    }
     if (selectedDateOption === 'pick_dates' && selectedDates.length === 0) {
-      return t('preferences:sheet.pick_date_hint');
+      return "Tap a few dates on the calendar";
+    }
+    if (intentToggle && selectedIntents.length === 0) {
+      return "Pick at least one experience type";
+    }
+    if (categoryToggle && selectedCategories.length === 0) {
+      return "Choose at least one category";
     }
     if (typeof constraintValue !== 'number' || constraintValue < 5) {
-      return t('preferences:sheet.set_travel_hint');
+      return "Set how far you're willing to go";
     }
-    return t('preferences:sheet.complete_hint');
-  }, [isFormComplete, selectedDateOption, selectedDates, constraintValue, t]);
+    return "Almost there — fill out the remaining sections";
+  }, [isFormComplete, useGpsLocation, searchLocation, selectedCoords,
+      selectedDateOption, selectedDates,
+      intentToggle, selectedIntents, categoryToggle, selectedCategories,
+      constraintValue]);
 
   const countChanges = useCallback((): number => {
     if (!initialPreferences) return 1;
