@@ -628,8 +628,12 @@ export default function PreferencesSheet({
     searchLocation,
   ]);
 
-  // ORCH-0434: Form completion logic — toggles + date + travel
+  // ORCH-0434: Form completion logic — location + date + pills + travel
   const isFormComplete = useMemo(() => {
+    // Location: GPS is always valid. Custom requires validated address (has coords = chip state)
+    const hasLocation = useGpsLocation || (searchLocation.length > 0 && selectedCoords !== null);
+
+    // At least one toggle ON with selections
     const hasIntentPills = intentToggle && selectedIntents.length > 0;
     const hasCategoryPills = categoryToggle && selectedCategories.length > 0;
     const hasPills = hasIntentPills || hasCategoryPills;
@@ -641,8 +645,9 @@ export default function PreferencesSheet({
 
     const hasTravel = typeof constraintValue === 'number' && constraintValue >= 5;
 
-    return hasPills && hasDate && hasDateDetails && hasTravel;
-  }, [intentToggle, categoryToggle, selectedIntents, selectedCategories,
+    return hasLocation && hasPills && hasDate && hasDateDetails && hasTravel;
+  }, [useGpsLocation, searchLocation, selectedCoords,
+      intentToggle, categoryToggle, selectedIntents, selectedCategories,
       selectedDateOption, selectedDates, constraintValue]);
 
   const ctaHintText = useMemo(() => {
@@ -960,8 +965,7 @@ export default function PreferencesSheet({
             transform: [{ translateY: sectionAnims[2].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
           <ToggleSection
-            title={t('preferences:intents_toggle.title')}
-            subtitle={t('preferences:intents_toggle.subtitle')}
+            title="See curated experiences?"
             isOn={intentToggle}
             onToggle={handleIntentToggleChange}
             disabled={!categoryToggle}
@@ -987,8 +991,7 @@ export default function PreferencesSheet({
             transform: [{ translateY: sectionAnims[3].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
           <ToggleSection
-            title={t('preferences:categories_toggle.title')}
-            subtitle={t('preferences:categories_toggle.subtitle')}
+            title="See popular options?"
             isOn={categoryToggle}
             onToggle={handleCategoryToggleChange}
             disabled={!intentToggle}
