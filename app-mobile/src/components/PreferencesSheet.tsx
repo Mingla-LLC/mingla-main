@@ -379,8 +379,8 @@ export default function PreferencesSheet({
       }
 
       // Load toggle states
-      setIntentToggle(typeof (loadedPreferences as any).intent_toggle === 'boolean' ? (loadedPreferences as any).intent_toggle : true);
-      setCategoryToggle(typeof (loadedPreferences as any).category_toggle === 'boolean' ? (loadedPreferences as any).category_toggle : true);
+      setIntentToggle(typeof loadedPreferences.intent_toggle === 'boolean' ? loadedPreferences.intent_toggle : true);
+      setCategoryToggle(typeof loadedPreferences.category_toggle === 'boolean' ? loadedPreferences.category_toggle : true);
 
       // Load date option — ORCH-0434: new 3-option system with legacy compat
       if (loadedPreferences.date_option) {
@@ -388,7 +388,7 @@ export default function PreferencesSheet({
       }
 
       // Load selected dates (multi-day calendar)
-      const soloLoadedDates = Array.isArray((loadedPreferences as any).selected_dates) ? (loadedPreferences as any).selected_dates : [];
+      const soloLoadedDates = Array.isArray(loadedPreferences.selected_dates) ? loadedPreferences.selected_dates : [];
       setSelectedDates(soloLoadedDates);
 
       if (loadedPreferences.datetime_pref) {
@@ -421,8 +421,8 @@ export default function PreferencesSheet({
           ? DB_TO_DATE_OPTION[loadedPreferences.date_option] || 'today'
           : 'today',
         selectedDates: soloLoadedDates,
-        intentToggle: typeof (loadedPreferences as any).intent_toggle === 'boolean' ? (loadedPreferences as any).intent_toggle : true,
-        categoryToggle: typeof (loadedPreferences as any).category_toggle === 'boolean' ? (loadedPreferences as any).category_toggle : true,
+        intentToggle: typeof loadedPreferences.intent_toggle === 'boolean' ? loadedPreferences.intent_toggle : true,
+        categoryToggle: typeof loadedPreferences.category_toggle === 'boolean' ? loadedPreferences.category_toggle : true,
         selectedDate: loadedPreferences.datetime_pref
           ? new Date(loadedPreferences.datetime_pref)
           : null,

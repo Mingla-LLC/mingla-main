@@ -29,9 +29,8 @@ export interface BoardSessionPreferences {
   user_id?: string;
   categories?: string[];
   intents?: string[];
-  price_tiers?: string[];
-  budget_min?: number;
-  budget_max?: number;
+  intent_toggle?: boolean;
+  category_toggle?: boolean;
   time_of_day?: string | null;
   datetime_pref?: string | null;
   date_option?: string | null;

@@ -20,7 +20,6 @@ export interface UserPreferences {
 
   // Date options — ORCH-0434: 'today' | 'this_weekend' | 'pick_dates'
   date_option?: string | null;
-  exact_time?: string | null;
 
   // Location
   custom_location?: string | null;

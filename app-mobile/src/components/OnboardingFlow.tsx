@@ -2904,7 +2904,7 @@ const OnboardingFlow = ({
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={navState.subStep === 'getting_experiences'}
       disableKeyboardAvoidance={navState.subStep === 'collaborations' || navState.subStep === 'welcome'}
-      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations' && navState.subStep !== 'categories'}
+      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations' && navState.subStep !== 'categories'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
       {renderContent()}
@@ -3109,50 +3109,6 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginBottom: spacing.md,
     textAlign: 'center',
-  },
-  budgetContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  budgetGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-    justifyContent: 'center',
-    width: '100%',
-  },
-  budgetTile: {
-    width: (SCREEN_WIDTH - 48 - 8) / 2,
-    height: 84,
-    borderRadius: radius.md,
-    borderWidth: 1.5,
-    borderColor: colors.gray[200],
-    backgroundColor: colors.background.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
-  },
-  budgetTileLabel: {
-    ...typography.sm,
-    fontWeight: fontWeights.semibold,
-    color: colors.text.primary,
-    marginTop: 2,
-  },
-  budgetTileLabelActive: {
-    color: colors.text.inverse,
-  },
-  budgetTileRange: {
-    ...typography.xs,
-    color: colors.text.tertiary,
-    marginTop: 2,
-  },
-  budgetTileRangeActive: {
-    color: colors.text.inverse,
-  },
-  tierIcon: {
-    marginBottom: 2,
   },
   errorText: {
     ...typography.sm,
