@@ -84,7 +84,7 @@ export const ExperienceTypesSection = memo(
               >
                 <Icon
                   name={type.icon}
-                  size={14}
+                  size={18}
                   color={isSelected ? "#ffffff" : "#6b7280"}
                 />
                 <Text
@@ -186,7 +186,7 @@ export const CategoriesSection = memo(
               >
                 <Icon
                   name={isSelected ? (category.icon as string).replace('-outline', '') : category.icon}
-                  size={14}
+                  size={18}
                   color={isSelected ? "#ffffff" : "#6b7280"}
                 />
                 <Text
@@ -306,36 +306,25 @@ export const LoadingShimmer = memo(() => {
 LoadingShimmer.displayName = "LoadingShimmer";
 
 const styles = StyleSheet.create({
+  // ORCH-0434: Flat layout — no card borders, no shadows. Parent handles horizontal padding.
   section: {
-    backgroundColor: "#ffffff",
-    marginHorizontal: 16,
-    marginBottom: 10,
-    padding: 16,
-    borderRadius: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: "#f0ebe6",
+    backgroundColor: 'transparent',
   },
   sectionTitle: {
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "600",
     color: "#111827",
     marginBottom: 4,
-    letterSpacing: -0.2,
   },
   sectionSubtitle: {
-    fontSize: 12,
+    fontSize: 14,
     color: "#6b7280",
-    marginBottom: 10,
+    marginBottom: 14,
   },
   sectionQuestion: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#6b7280",
-    marginBottom: 10,
+    marginBottom: 14,
   },
   curatedLockedBanner: {
     flexDirection: 'row',
@@ -358,28 +347,24 @@ const styles = StyleSheet.create({
   experienceTypesContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
   experienceTypeButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#fafafa",
+    gap: 8,
+    height: 48,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: "#f3f4f6",
   },
   experienceTypeButtonSelected: {
     backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-    borderWidth: 1.5,
   },
   experienceTypeText: {
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: "500",
-    color: "#374151",
+    color: "#4b5563",
   },
   experienceTypeTextSelected: {
     color: "#ffffff",
@@ -388,32 +373,29 @@ const styles = StyleSheet.create({
   categoriesContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
   categoryButton: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#fafafa",
+    gap: 8,
+    width: '48%',
+    height: 48,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: "#f3f4f6",
   },
   categoryButtonSelected: {
     backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
   },
   categoryText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "500",
-    color: "#374151",
+    color: "#4b5563",
   },
   categoryTextSelected: {
     color: "#ffffff",
-    fontWeight: "700",
+    fontWeight: "600",
   },
   helperTextContainer: {
     flexDirection: "row",

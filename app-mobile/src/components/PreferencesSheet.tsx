@@ -896,7 +896,7 @@ export default function PreferencesSheet({
           }}>
           <View
             ref={locationSectionRef}
-            style={[styles.section, { marginTop: 20 }]}
+            style={[styles.section, { marginTop: 20 }]}  // First section: 20px
             onLayout={(event) => {
               const { y } = event.nativeEvent.layout;
               locationSectionY.current = y;
@@ -1209,31 +1209,21 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   // --- Section (used for Budget + Starting Point inline sections) ---
+  // ORCH-0434: Flat layout — consistent padding, no card borders
   section: {
-    backgroundColor: "#ffffff",
-    marginHorizontal: 16,
-    marginBottom: 10,
-    padding: 16,
-    borderRadius: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: "#f0ebe6",
+    paddingHorizontal: 20,
+    marginTop: 28,
   },
   sectionTitle: {
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "600",
     color: "#111827",
     marginBottom: 4,
-    letterSpacing: -0.2,
   },
   sectionSubtitle: {
-    fontSize: 12,
+    fontSize: 14,
     color: "#6b7280",
-    marginBottom: 10,
+    marginBottom: 14,
   },
   // --- Price Tier Pills ---
   tierGrid: {
