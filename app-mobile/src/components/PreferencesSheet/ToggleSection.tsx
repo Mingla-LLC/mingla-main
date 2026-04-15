@@ -87,8 +87,8 @@ const toggleStyles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   question: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     color: colors.text.primary,
     flex: 1,
     marginRight: spacing.md,

@@ -285,26 +285,9 @@ export const LocationInputSection = memo(
 LocationInputSection.displayName = "LocationInputSection";
 
 const styles = StyleSheet.create({
+  // Content container — glass card is provided by parent Animated.View in PreferencesSheet
   section: {
-    backgroundColor: "#ffffff",
-    marginHorizontal: 16,
-    marginBottom: 10,
-    padding: 16,
-    borderRadius: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: "#f0ebe6",
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 4,
-    letterSpacing: -0.2,
+    backgroundColor: 'transparent',
   },
   sectionQuestion: {
     fontSize: 13,

@@ -999,11 +999,14 @@ export default function PreferencesSheet({
             opacity: sectionAnims[4],
             transform: [{ translateY: sectionAnims[4].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
-          <TravelModeSection
-            travelModes={travelModes}
-            travelMode={travelMode}
-            onTravelModeChange={setTravelMode}
-          />
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>How are you rolling?</Text>
+            <TravelModeSection
+              travelModes={travelModes}
+              travelMode={travelMode}
+              onTravelModeChange={setTravelMode}
+            />
+          </View>
           </Animated.View>
 
           {/* 6. How far? */}
@@ -1011,7 +1014,9 @@ export default function PreferencesSheet({
             opacity: sectionAnims[5],
             transform: [{ translateY: sectionAnims[5].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
-          <TravelLimitSection
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>How far?</Text>
+            <TravelLimitSection
             constraintValue={constraintValue}
             onConstraintValueChange={(text) => {
               const numericValue = text.replace(/[^0-9]/g, "");
@@ -1026,6 +1031,7 @@ export default function PreferencesSheet({
             }}
             onFocus={() => {}}
           />
+          </View>
           </Animated.View>
 
           </KeyboardAwareScrollView>
@@ -1230,10 +1236,10 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   sectionTitle: {
-    fontSize: 17,
-    fontWeight: "700",
+    fontSize: 15,
+    fontWeight: "600",
     color: "#111827",
-    marginBottom: 16,
+    marginBottom: 14,
   },
   sectionSubtitle: {
     fontSize: 14,

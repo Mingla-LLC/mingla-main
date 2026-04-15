@@ -62,7 +62,7 @@ export const WhenSection = memo(({
               onPress={() => handleOptionPress(option.id)}
               style={[
                 whenStyles.glassPill,
-                { width: PILL_WIDTH, height: 44 },
+                { width: PILL_WIDTH, height: 42 },
                 isSelected && whenStyles.glassPillSelected,
               ]}
               activeOpacity={0.7}
@@ -115,10 +115,10 @@ const whenStyles = StyleSheet.create({
     elevation: 6,
   },
   question: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     color: colors.text.primary,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   pillsRow: {
     flexDirection: 'row',
@@ -147,7 +147,7 @@ const whenStyles = StyleSheet.create({
     elevation: 4,
   },
   pillText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     color: colors.text.secondary,
   },

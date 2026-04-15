@@ -80,7 +80,7 @@ export const ExperienceTypesSection = memo(
               >
                 <Icon
                   name={type.icon}
-                  size={18}
+                  size={16}
                   color={isSelected ? "#ffffff" : "#6b7280"}
                 />
                 <Text
@@ -181,7 +181,7 @@ export const CategoriesSection = memo(
               >
                 <Icon
                   name={isSelected ? (category.icon as string).replace('-outline', '') : category.icon}
-                  size={18}
+                  size={16}
                   color={isSelected ? "#ffffff" : "#6b7280"}
                 />
                 <Text
@@ -299,25 +299,9 @@ export const LoadingShimmer = memo(() => {
 LoadingShimmer.displayName = "LoadingShimmer";
 
 const styles = StyleSheet.create({
-  // ORCH-0434: Flat layout — no card borders, no shadows. Parent handles horizontal padding.
+  // ORCH-0434 Phase 6D: Content container inside glass cards — no wrapper styling needed
   section: {
     backgroundColor: 'transparent',
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginBottom: 14,
-  },
-  sectionQuestion: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginBottom: 14,
   },
   curatedLockedBanner: {
     flexDirection: 'row',
@@ -345,10 +329,10 @@ const styles = StyleSheet.create({
   experienceTypeButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    height: 48,
-    paddingHorizontal: 16,
-    borderRadius: 16,
+    gap: 7,
+    height: 42,
+    paddingHorizontal: 14,
+    borderRadius: 14,
     backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.35)',
@@ -368,7 +352,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   experienceTypeText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "500",
     color: "#4b5563",
   },
@@ -384,11 +368,11 @@ const styles = StyleSheet.create({
   categoryButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 7,
     width: '48%',
-    height: 48,
-    paddingHorizontal: 14,
-    borderRadius: 16,
+    height: 42,
+    paddingHorizontal: 12,
+    borderRadius: 14,
     backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.35)',
@@ -459,9 +443,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    height: 48,
-    paddingHorizontal: 16,
-    borderRadius: 16,
+    height: 42,
+    paddingHorizontal: 14,
+    borderRadius: 14,
     backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.35)',
@@ -481,7 +465,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   travelModeLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "500",
     color: "#4b5563",
   },
