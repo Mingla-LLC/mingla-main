@@ -122,6 +122,7 @@ const convertTimePreference = (time: string) => {
 export function normalizePreferencesForSave(prefs: {
   date_option?: string | null;
   time_slot?: string | null;
+  time_slots?: string[] | null;
   time_of_day?: string | null;
   datetime_pref?: string | null;
   use_gps_location?: boolean;
@@ -135,6 +136,7 @@ export function normalizePreferencesForSave(prefs: {
   const dateOpt = (normalized.date_option || '').toLowerCase();
   if (dateOpt === 'now') {
     normalized.time_slot = null;
+    normalized.time_slots = null;
     normalized.time_of_day = null;
     normalized.datetime_pref = null;
   } else if (dateOpt === 'today') {

@@ -1685,7 +1685,7 @@ const OnboardingFlow = ({
           travelConstraintValue: data.travelTimeMinutes,
           datetimePref,
           dateOption: 'now',
-          timeSlot: null,
+          timeSlots: [],
           batchSeed: 0,
           excludeCardIds: [],
         })
@@ -1702,7 +1702,7 @@ const OnboardingFlow = ({
           travelConstraintValue: data.travelTimeMinutes,
           datetimePref,
           dateOption: 'now',
-          timeSlot: null,
+          timeSlots: [],
           batchSeed: 0,
           limit: 200,
           excludeCardIds: [],

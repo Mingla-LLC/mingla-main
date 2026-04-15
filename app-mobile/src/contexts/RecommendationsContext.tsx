@@ -464,7 +464,13 @@ export const RecommendationsProvider: React.FC<
   // (they're solo-only UI concepts). For collab, pass defaults so the edge
   // function falls back to datetimePref-based filtering.
   const effectiveDateOption = isCollaborationMode ? 'now' : (userPrefs?.date_option ?? 'now');
-  const effectiveTimeSlot = isCollaborationMode ? null : (userPrefs?.time_slot ?? null);
+  const effectiveTimeSlots: string[] = isCollaborationMode
+    ? []
+    : (userPrefs?.time_slots && Array.isArray(userPrefs.time_slots) && userPrefs.time_slots.length > 0)
+      ? userPrefs.time_slots
+      : userPrefs?.time_slot
+        ? [userPrefs.time_slot]
+        : [];
 
   const {
     cards: soloDeckCards,
@@ -487,7 +493,7 @@ export const RecommendationsProvider: React.FC<
     travelConstraintValue: effectiveTravelConstraintValue,
     datetimePref: effectiveDatetimePref,
     dateOption: effectiveDateOption,
-    timeSlot: effectiveTimeSlot,
+    timeSlots: effectiveTimeSlots,
     batchSeed,
     enabled: isSoloMode &&
       !!activeDeckLocation &&
@@ -524,7 +530,7 @@ export const RecommendationsProvider: React.FC<
         travelConstraintValue: effectiveTravelConstraintValue,
         datetimePref: effectiveDatetimePref,
         dateOption: effectiveDateOption,
-        timeSlot: effectiveTimeSlot,
+        timeSlots: effectiveTimeSlots,
         batchSeed,
         excludeCardIds,
       });
@@ -632,6 +638,9 @@ export const RecommendationsProvider: React.FC<
   // ── Refresh Key Handler ─────────────────────────────────────────────────
   // When preferences change (refreshKey increments), reset state.
   // The query key change from updated categories/intents handles refetching automatically.
+  // ORCH-0431: This reset set must mirror the mode transition handler (~line 868).
+  // Both represent "old deck invalid, new fetch needed." If you add a reset to one,
+  // check whether the other needs it too.
   useEffect(() => {
     if (previousRefreshKeyRef.current !== undefined && previousRefreshKeyRef.current !== refreshKey) {
       // Reset page to 0 — the query key change from new params will
@@ -639,6 +648,8 @@ export const RecommendationsProvider: React.FC<
       setBatchSeedReady(false); // Block queries until batchSeed is confirmed 0
       setBatchSeed(0);
       setIsExhausted(false);
+      setHasCompletedFetchForCurrentMode(false);
+      setRecommendations(EMPTY_CARDS);
       setHasMoreCards(true);
       setIsRefreshingAfterPrefChange(true);
       setDismissedCards([]);
@@ -724,7 +735,11 @@ export const RecommendationsProvider: React.FC<
         const prefetchConstraintType = 'time' as const;
         const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (collabDeckParams?.travelConstraintValue ?? 30);
         const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now';
-        const prefetchTimeSlot = isSoloMode ? (userPrefs?.time_slot ?? null) : null;
+        const prefetchTimeSlots: string[] = isSoloMode
+          ? ((userPrefs?.time_slots && Array.isArray(userPrefs.time_slots) && userPrefs.time_slots.length > 0)
+            ? userPrefs.time_slots
+            : userPrefs?.time_slot ? [userPrefs.time_slot] : [])
+          : [];
         const rawDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (collabDeckParams?.datetimePref ?? undefined);
         // Normalize to ISO string to match useDeckCards query key format
         const prefetchDatetimePref = rawDatetimePref
@@ -747,7 +762,7 @@ export const RecommendationsProvider: React.FC<
             prefetchConstraintValue,
             prefetchDatetimePref,
             prefetchDateOption,
-            prefetchTimeSlot ?? '',
+            [...prefetchTimeSlots].sort().join(','),
             nextSeed,
             excludeCardIds.sort().join(','),
           ],
@@ -763,7 +778,7 @@ export const RecommendationsProvider: React.FC<
             travelConstraintValue: prefetchConstraintValue,
             datetimePref: prefetchDatetimePref,
             dateOption: prefetchDateOption,
-            timeSlot: prefetchTimeSlot,
+            timeSlots: prefetchTimeSlots,
             batchSeed: nextSeed,
             limit: 10000, // Phase 5: match main fetch — return all matching cards
             excludeCardIds,
@@ -943,7 +958,10 @@ export const RecommendationsProvider: React.FC<
         // flashing an empty state before cards arrive.
         // NOTE: isDeckFetching intentionally excluded — it stays true during
         // background refetches and would prevent completion after the initial load.
-        (!isLoadingLocation && !isLoadingPreferences && !isDeckLoading && !isModeTransitioning);
+        // ORCH-0431: isRefreshingAfterPrefChange guard mirrors isModeTransitioning —
+        // without it, placeholderData keeps isDeckLoading false after a pref change,
+        // causing premature completion before new cards arrive.
+        (!isLoadingLocation && !isLoadingPreferences && !isDeckLoading && !isModeTransitioning && !isRefreshingAfterPrefChange);
 
       if (shouldMarkComplete) {
         setHasCompletedFetchForCurrentMode(true);
@@ -971,6 +989,7 @@ export const RecommendationsProvider: React.FC<
     locationError,
     isLoadingLocation,
     isLoadingPreferences,
+    isRefreshingAfterPrefChange,
   ]);
 
   // ── Update Card Stroll Data ─────────────────────────────────────────────

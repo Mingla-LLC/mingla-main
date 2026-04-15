@@ -134,7 +134,7 @@ export const useAuthSimple = () => {
                 travelConstraintValue: prefs.travel_constraint_value ?? 30,
                 datetimePref: prefs.datetime_pref ?? undefined,
                 dateOption: prefs.date_option ?? 'now',
-                timeSlot: prefs.time_slot ?? null,
+                timeSlots: prefs.time_slots ?? (prefs.time_slot ? [prefs.time_slot] : []),
                 batchSeed: 0,
                 excludeCardIds: [],
               });
@@ -151,7 +151,7 @@ export const useAuthSimple = () => {
                 travelConstraintValue: prefs.travel_constraint_value ?? 30,
                 datetimePref: prefs.datetime_pref ?? undefined,
                 dateOption: prefs.date_option ?? 'now',
-                timeSlot: prefs.time_slot ?? null,
+                timeSlots: prefs.time_slots ?? (prefs.time_slot ? [prefs.time_slot] : []),
                 batchSeed: 0,
                 limit: 200,
                 excludeCardIds: [],

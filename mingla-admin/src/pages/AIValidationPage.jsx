@@ -469,10 +469,9 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
     try {
       const data = await invoke({
         action: "run_rules_filter",
-        scope,
+        scope: "all",
         city_id: selectedCityId,
         city: cityName,
-        category: scope === "category" ? category : undefined,
         dry_run: dryRun,
       });
       if (data.status === "nothing_to_do") {
@@ -793,23 +792,36 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
             <span className="text-[var(--color-text-primary)]">Dry run (preview without writing)</span>
           </label>
 
-          {/* Rules Filter Button */}
+          {/* Rules Filter Button — always enabled when city selected (processes all places, not just unvalidated) */}
           <Button variant="secondary" icon={Shield} onClick={handleRunRulesFilter}
-            disabled={rulesRunning || !preview?.places_to_process}
+            disabled={rulesRunning || !selectedCityId}
             loading={rulesRunning}
             className="w-full">
             {rulesRunning
               ? "Running Rules Filter..."
-              : `Run Rules Filter — Free (${fmt(preview?.places_to_process || 0)} places)`}
+              : "Run Rules Filter — Free"}
           </Button>
           <p className="text-xs text-[var(--color-text-tertiary)] -mt-2">
             Applies hardcoded rules only (blocked types, category corrections, fine dining promotion). No AI credits used.
           </p>
 
+          {/* Rules Filter Progress */}
+          {rulesRunning && (
+            <div className="bg-[var(--color-brand-50)] border border-[var(--color-brand-200)] rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <Spinner size="sm" />
+                <div>
+                  <p className="text-sm font-semibold text-[var(--color-brand-700)]">Processing all places in {cityName}...</p>
+                  <p className="text-xs text-[var(--color-text-secondary)] mt-1">Checking blocked types, category corrections, fine dining promotions. This takes 30-90 seconds for most cities. No credits used.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Rules Filter Results */}
-          {rulesResult && (
+          {rulesResult && !rulesRunning && (
             <div className="bg-[var(--color-success-50)] border border-[var(--color-success-200)] rounded-lg p-4">
-              <p className="text-sm font-semibold text-[var(--color-success-700)] mb-2">Rules Filter Complete</p>
+              <p className="text-sm font-semibold text-[var(--color-success-700)] mb-2">Rules Filter Complete — {cityName}</p>
               <div className="grid grid-cols-4 gap-3 text-center">
                 <div>
                   <p className="text-lg font-semibold text-[var(--color-text-primary)]">{fmt(rulesResult.total_processed)}</p>

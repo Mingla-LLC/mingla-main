@@ -196,9 +196,7 @@ export default function PreferencesSheet({
   // Date & Time
   const [selectedDateOption, setSelectedDateOption] =
     useState<DateOption | null>("Now");
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<TimeSlot | null>(
-    null
-  );
+  const [selectedTimeSlots, setSelectedTimeSlots] = useState<TimeSlot[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
 
@@ -261,7 +259,7 @@ export default function PreferencesSheet({
     budgetMax: 200,
     selectedCategories: [],
     selectedDateOption: "Now" as DateOption,
-    selectedTimeSlot: null,
+    selectedTimeSlots: [] as TimeSlot[],
     selectedDate: null,
     travelMode: "walking",
     constraintType: 'time' as const,
@@ -301,12 +299,19 @@ export default function PreferencesSheet({
         loadedDateOption = (KEBAB_TO_DATE_OPTION[prefs.date_option] || 'Now') as DateOption;
         setSelectedDateOption(loadedDateOption);
       }
-      // Prefer time_slot (parity with solo), fall back to time_of_day (legacy) — ORCH-0320
-      const loadedTimeSlot = prefs.time_slot || prefs.time_of_day;
-      if (loadedTimeSlot) {
-        if (["brunch", "afternoon", "dinner", "lateNight", "anytime"].includes(loadedTimeSlot)) {
-          setSelectedTimeSlot(loadedTimeSlot as TimeSlot);
+      // Load time_slots (array) first, fall back to time_slot (string) — ORCH-0432
+      const VALID_SLOTS = ["brunch", "afternoon", "dinner", "lateNight", "anytime"];
+      let loadedTimeSlots: TimeSlot[] = [];
+      if (prefs.time_slots && Array.isArray(prefs.time_slots) && prefs.time_slots.length > 0) {
+        loadedTimeSlots = prefs.time_slots.filter((s: string) => VALID_SLOTS.includes(s)) as TimeSlot[];
+      } else {
+        const legacySlot = prefs.time_slot || prefs.time_of_day;
+        if (legacySlot && VALID_SLOTS.includes(legacySlot)) {
+          loadedTimeSlots = [legacySlot as TimeSlot];
         }
+      }
+      if (loadedTimeSlots.length > 0) {
+        setSelectedTimeSlots(loadedTimeSlots);
       }
       if (prefs.datetime_pref) {
         const date = new Date(prefs.datetime_pref);
@@ -349,7 +354,7 @@ export default function PreferencesSheet({
         budgetMax: prefs.budget_max || 200,
         selectedCategories: collabCats,
         selectedDateOption: loadedDateOption,
-        selectedTimeSlot: loadedTimeSlot || null,
+        selectedTimeSlots: loadedTimeSlots,
         selectedDate: prefs.datetime_pref
           ? new Date(prefs.datetime_pref)
           : null,
@@ -392,10 +397,17 @@ export default function PreferencesSheet({
         );
       }
 
-      if ((loadedPreferences).time_slot) {
-        const timeSlot = (loadedPreferences).time_slot;
-        if (["brunch", "afternoon", "dinner", "lateNight", "anytime"].includes(timeSlot)) {
-          setSelectedTimeSlot(timeSlot as TimeSlot);
+      // Load time_slots (array) first, fall back to time_slot (string) — ORCH-0432
+      {
+        const VALID = ["brunch", "afternoon", "dinner", "lateNight", "anytime"];
+        const arr = (loadedPreferences as any).time_slots;
+        if (arr && Array.isArray(arr) && arr.length > 0) {
+          setSelectedTimeSlots(arr.filter((s: string) => VALID.includes(s)) as TimeSlot[]);
+        } else if ((loadedPreferences).time_slot) {
+          const slot = (loadedPreferences).time_slot;
+          if (VALID.includes(slot)) {
+            setSelectedTimeSlots([slot as TimeSlot]);
+          }
         }
       }
 
@@ -439,7 +451,14 @@ export default function PreferencesSheet({
             } as Record<string, DateOption>)[loadedPreferences.date_option] ||
             "Now"
           : "Now",
-        selectedTimeSlot: (loadedPreferences).time_slot || null,
+        selectedTimeSlots: (() => {
+          const VALID = ["brunch", "afternoon", "dinner", "lateNight", "anytime"];
+          const arr = (loadedPreferences as any).time_slots;
+          if (arr && Array.isArray(arr) && arr.length > 0) return arr.filter((s: string) => VALID.includes(s)) as TimeSlot[];
+          const slot = (loadedPreferences).time_slot;
+          if (slot && VALID.includes(slot)) return [slot as TimeSlot];
+          return [] as TimeSlot[];
+        })(),
         selectedDate: loadedPreferences.datetime_pref
           ? new Date(loadedPreferences.datetime_pref)
           : null,
@@ -511,21 +530,30 @@ export default function PreferencesSheet({
   const handleDateOptionSelect = useCallback((option: DateOption) => {
     setSelectedDateOption(option);
     if (option === "Now") {
-      setSelectedTimeSlot(null);
+      setSelectedTimeSlots([]);
       setSelectedDate(null);
     } else if (option === "Today") {
-      setSelectedTimeSlot(null);
+      setSelectedTimeSlots([]);
       setSelectedDate(null);
     } else if (option === "This Weekend") {
-      setSelectedTimeSlot(null);
+      setSelectedTimeSlots([]);
       setSelectedDate(null);
     } else if (option === "Pick a Date") {
-      setSelectedTimeSlot(null);
+      setSelectedTimeSlots([]);
     }
   }, []);
 
-  const handleTimeSlotSelect = useCallback((slot: TimeSlot) => {
-    setSelectedTimeSlot(slot);
+  const handleTimeSlotToggle = useCallback((slotId: string) => {
+    setSelectedTimeSlots(prev => {
+      if (slotId === 'anytime') {
+        return prev.includes('anytime') ? [] : ['anytime'] as TimeSlot[];
+      }
+      const withoutAnytime = prev.filter(s => s !== 'anytime');
+      if (withoutAnytime.includes(slotId as TimeSlot)) {
+        return withoutAnytime.filter(s => s !== slotId);
+      }
+      return [...withoutAnytime, slotId as TimeSlot];
+    });
   }, []);
 
   const handleCalendarDateSelect = useCallback((date: Date) => {
@@ -639,7 +667,7 @@ export default function PreferencesSheet({
     if (!arraysEqual([...selectedPriceTiers].sort(), [...(initialPreferences.selectedPriceTiers || [])].sort())) return true;
     if (!arraysEqual(selectedCategories, initialPreferences.selectedCategories)) return true;
     if (selectedDateOption !== initialPreferences.selectedDateOption) return true;
-    if (selectedTimeSlot !== initialPreferences.selectedTimeSlot) return true;
+    if (!arraysEqual([...selectedTimeSlots].sort(), [...(initialPreferences.selectedTimeSlots || [])].sort())) return true;
     if (!datesEqual(selectedDate, initialPreferences.selectedDate)) return true;
     if (travelMode !== initialPreferences.travelMode) return true;
     if (constraintValue !== initialPreferences.constraintValue) return true;
@@ -652,7 +680,7 @@ export default function PreferencesSheet({
     selectedPriceTiers,
     selectedCategories,
     selectedDateOption,
-    selectedTimeSlot,
+    selectedTimeSlots,
     selectedDate,
     travelMode,
     constraintValue,
@@ -666,26 +694,26 @@ export default function PreferencesSheet({
 
     let hasDateTime = true;
     if (selectedDateOption === 'Today' || selectedDateOption === 'This Weekend') {
-      hasDateTime = !!selectedTimeSlot;
+      hasDateTime = selectedTimeSlots.length > 0;
     } else if (selectedDateOption === 'Pick a Date') {
-      hasDateTime = !!selectedDate && !!selectedTimeSlot;
+      hasDateTime = !!selectedDate && selectedTimeSlots.length > 0;
     }
     // "Now" requires nothing extra
 
     const hasTravel = typeof constraintValue === 'number' && constraintValue >= 5;
 
     return hasPills && hasBudget && hasDateTime && hasTravel;
-  }, [selectedCategories, selectedIntents, selectedPriceTiers, selectedDateOption, selectedTimeSlot, selectedDate, constraintValue]);
+  }, [selectedCategories, selectedIntents, selectedPriceTiers, selectedDateOption, selectedTimeSlots, selectedDate, constraintValue]);
 
   const ctaHintText = useMemo(() => {
     if (!isFormComplete) {
-      if ((selectedDateOption === 'Today' || selectedDateOption === 'This Weekend') && !selectedTimeSlot) {
+      if ((selectedDateOption === 'Today' || selectedDateOption === 'This Weekend') && selectedTimeSlots.length === 0) {
         return t('preferences:sheet.pick_time_hint');
       }
       if (selectedDateOption === 'Pick a Date' && !selectedDate) {
         return t('preferences:sheet.pick_date_hint');
       }
-      if (selectedDateOption === 'Pick a Date' && selectedDate && !selectedTimeSlot) {
+      if (selectedDateOption === 'Pick a Date' && selectedDate && selectedTimeSlots.length === 0) {
         return t('preferences:sheet.pick_time_hint');
       }
       if (typeof constraintValue !== 'number' || constraintValue < 5) {
@@ -694,7 +722,7 @@ export default function PreferencesSheet({
       return t('preferences:sheet.complete_hint');
     }
     return null;
-  }, [isFormComplete, selectedDateOption, selectedTimeSlot, selectedDate, constraintValue, t]);
+  }, [isFormComplete, selectedDateOption, selectedTimeSlots, selectedDate, constraintValue, t]);
 
   const countChanges = useCallback((): number => {
     if (!initialPreferences) return 1;
@@ -717,7 +745,7 @@ export default function PreferencesSheet({
     )
       changes++;
     if (selectedDateOption !== initialPreferences.selectedDateOption) changes++;
-    if (selectedTimeSlot !== initialPreferences.selectedTimeSlot) changes++;
+    if (!arraysEqual([...selectedTimeSlots].sort(), [...(initialPreferences.selectedTimeSlots || [])].sort())) changes++;
 
     const datesEqual = (a: Date | null, b: Date | null) => {
       if (a === null && b === null) return true;
@@ -737,7 +765,7 @@ export default function PreferencesSheet({
     selectedPriceTiers,
     selectedCategories,
     selectedDateOption,
-    selectedTimeSlot,
+    selectedTimeSlots,
     selectedDate,
     travelMode,
     constraintValue,
@@ -750,7 +778,7 @@ export default function PreferencesSheet({
     setSelectedPriceTiers(defaultPreferences.selectedPriceTiers);
     setSelectedCategories(defaultPreferences.selectedCategories);
     setSelectedDateOption(defaultPreferences.selectedDateOption);
-    setSelectedTimeSlot(defaultPreferences.selectedTimeSlot);
+    setSelectedTimeSlots(defaultPreferences.selectedTimeSlots);
     setSelectedDate(defaultPreferences.selectedDate);
     setTravelMode(defaultPreferences.travelMode);
     setConstraintValue(defaultPreferences.constraintValue);
@@ -773,7 +801,8 @@ export default function PreferencesSheet({
     // Normalize date/time and location fields for consistency
     const normalized = normalizePreferencesForSave({
       date_option: selectedDateOption?.toLowerCase() || null,
-      time_slot: selectedTimeSlot || null,
+      time_slot: selectedTimeSlots.length > 0 ? selectedTimeSlots[0] : null,
+      time_slots: selectedTimeSlots.length > 0 ? selectedTimeSlots : null,
       datetime_pref: selectedDate ? selectedDate.toISOString() : null,
       use_gps_location: useGpsLocation,
       custom_location: customLocationValue,
@@ -790,7 +819,7 @@ export default function PreferencesSheet({
       selectedCategories: finalCategories,
       dateOption: selectedDateOption,
       selectedDate: normalized.datetime_pref || selectedDate?.toISOString(),
-      selectedTimeSlot: normalized.time_slot || selectedTimeSlot,
+      selectedTimeSlots: selectedTimeSlots,
       travelMode,
       constraintType,
       constraintValue,
@@ -843,8 +872,9 @@ export default function PreferencesSheet({
             travel_constraint_type: 'time' as const,
             travel_constraint_value:
               typeof constraintValue === "number" ? constraintValue : 30,
-            time_of_day: selectedTimeSlot || null,
-            time_slot: selectedTimeSlot || null,
+            time_of_day: selectedTimeSlots.length > 0 ? selectedTimeSlots[0] : null,
+            time_slot: selectedTimeSlots.length > 0 ? selectedTimeSlots[0] : null,
+            time_slots: selectedTimeSlots.length > 0 ? selectedTimeSlots : null,
             datetime_pref: selectedDate ? selectedDate.toISOString() : null,
             date_option: selectedDateOption
               ? DATE_OPTION_TO_KEBAB[selectedDateOption.toLowerCase()] || selectedDateOption.toLowerCase()
@@ -881,7 +911,7 @@ export default function PreferencesSheet({
           constraintType: 'time',
           constraintValue: typeof constraintValue === 'number' ? constraintValue : 30,
           dateOption: selectedDateOption ?? null,
-          timeSlot: selectedTimeSlot ?? null,
+          timeSlots: selectedTimeSlots,
         });
       } catch (error) {
         console.warn("[PreferencesSheet] Background save failed:", error);
@@ -905,7 +935,7 @@ export default function PreferencesSheet({
     selectedCategories,
     selectedDateOption,
     selectedDate,
-    selectedTimeSlot,
+    selectedTimeSlots,
     travelMode,
     constraintType,
     constraintValue,
@@ -1006,8 +1036,8 @@ export default function PreferencesSheet({
             selectedDate={selectedDate}
             onShowCalendar={() => setShowCalendar(true)}
             showTimeSection={selectedDateOption && selectedDateOption !== "Now"}
-            selectedTimeSlot={selectedTimeSlot}
-            onTimeSlotSelect={handleTimeSlotSelect}
+            selectedTimeSlots={selectedTimeSlots}
+            onTimeSlotSelect={handleTimeSlotToggle}
             formatDateForDisplay={formatDateForDisplay}
           />
 

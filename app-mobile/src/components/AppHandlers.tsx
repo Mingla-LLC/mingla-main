@@ -491,7 +491,12 @@ export function useAppHandlers(state: any) {
             ? "custom"
             : null
           : null,
-        time_slot: preferences.selectedTimeSlot || null,
+        time_slot: preferences.selectedTimeSlots?.length > 0
+          ? preferences.selectedTimeSlots[0]
+          : null,
+        time_slots: preferences.selectedTimeSlots?.length > 0
+          ? preferences.selectedTimeSlots
+          : null,
         datetime_pref: preferences.selectedDate
           ? new Date(preferences.selectedDate).toISOString()
           : null,
@@ -521,6 +526,7 @@ export function useAppHandlers(state: any) {
         datetime_pref: dbPreferences.datetime_pref,
         date_option: dbPreferences.date_option,
         time_slot: dbPreferences.time_slot,
+        time_slots: dbPreferences.time_slots,
         custom_location: dbPreferences.custom_location,
         custom_lat: dbPreferences.custom_lat,
         custom_lng: dbPreferences.custom_lng,
