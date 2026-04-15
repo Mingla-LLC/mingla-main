@@ -1,7 +1,8 @@
 /**
  * Seeding Category Configs — Google Nearby Search Type Definitions
  *
- * 13 category configs with includedTypes and excludedPrimaryTypes.
+ * 12 category configs with includedTypes and excludedPrimaryTypes.
+ * ORCH-0434: Wellness removed. Slugs updated to match new category names.
  * Used by admin-seed-places to populate place_pool via Google Nearby Search.
  *
  * NOT the category classification system — AI validation (ai-verify-pipeline)
@@ -69,9 +70,9 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
   },
   {
     id: 'first_meet',
-    label: 'First Meet',
-    appCategory: 'First Meet',
-    appCategorySlug: 'first_meet',
+    label: 'Icebreakers',
+    appCategory: 'Icebreakers',
+    appCategorySlug: 'icebreakers',
     includedTypes: [
       // Existing
       'book_store', 'cafe', 'coffee_shop', 'tea_house', 'bakery', 'dessert_shop',
@@ -99,9 +100,9 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
   },
   {
     id: 'picnic_park',
-    label: 'Picnic Park',
-    appCategory: 'Picnic Park',
-    appCategorySlug: 'picnic_park',
+    label: 'Nature & Views (Picnic)',
+    appCategory: 'Nature & Views',
+    appCategorySlug: 'nature',
     includedTypes: [
       'picnic_ground', 'park', 'city_park',
     ],
@@ -124,15 +125,17 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
   },
   {
     id: 'drink',
-    label: 'Drink',
-    appCategory: 'Drink',
-    appCategorySlug: 'drink',
+    label: 'Drinks & Music',
+    appCategory: 'Drinks & Music',
+    appCategorySlug: 'drinks_and_music',
     includedTypes: [
       // Existing
       'bar', 'cocktail_bar', 'lounge_bar', 'wine_bar', 'pub', 'brewery',
       'beer_garden', 'brewpub',
       // New
-      'bar_and_grill', 'hookah_bar', 'irish_pub', 'night_club', 'winery', 'sports_bar'
+      'bar_and_grill', 'hookah_bar', 'irish_pub', 'night_club', 'winery', 'sports_bar',
+      // ORCH-0434: Added for Drinks & Music
+      'live_music_venue', 'karaoke'
     ],
     excludedPrimaryTypes: [
       // Food-primary (not drink-focused)
@@ -150,9 +153,9 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
   },
   {
     id: 'casual_eats',
-    label: 'Casual Eats',
-    appCategory: 'Casual Eats',
-    appCategorySlug: 'casual_eats',
+    label: 'Brunch, Lunch & Casual',
+    appCategory: 'Brunch, Lunch & Casual',
+    appCategorySlug: 'brunch_lunch_casual',
     includedTypes: [
       // Core types (generic restaurant catches most casual dining)
       'restaurant', 'bistro', 'brunch_restaurant', 'breakfast_restaurant', 'diner',
@@ -195,9 +198,9 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
   },
   {
     id: 'fine_dining',
-    label: 'Fine Dining',
-    appCategory: 'Fine Dining',
-    appCategorySlug: 'fine_dining',
+    label: 'Upscale & Fine Dining',
+    appCategory: 'Upscale & Fine Dining',
+    appCategorySlug: 'upscale_fine_dining',
     includedTypes: [
       // Existing
       'fine_dining_restaurant', 'french_restaurant', 'italian_restaurant',
@@ -226,9 +229,9 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
   },
   {
     id: 'watch',
-    label: 'Watch',
-    appCategory: 'Watch',
-    appCategorySlug: 'watch',
+    label: 'Movies & Theatre',
+    appCategory: 'Movies & Theatre',
+    appCategorySlug: 'movies_theatre',
     includedTypes: ['movie_theater'],
     excludedPrimaryTypes: [
       // Arts / museums (different category)
@@ -247,9 +250,9 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
   },
   {
     id: 'live_performance',
-    label: 'Live Performance',
-    appCategory: 'Live Performance',
-    appCategorySlug: 'live_performance',
+    label: 'Movies & Theatre',
+    appCategory: 'Movies & Theatre',
+    appCategorySlug: 'movies_theatre',
     includedTypes: [
       // Existing
       'performing_arts_theater', 'concert_hall', 'opera_house',
@@ -345,36 +348,7 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
       'hotel', 'motel', 'store', 'department_store',
     ],
   },
-  {
-    id: 'wellness',
-    label: 'Wellness',
-    appCategory: 'Wellness',
-    appCategorySlug: 'wellness',
-    includedTypes: ['spa', 'massage_spa', 'sauna', 'wellness_center', 'yoga_studio', 'resort_hotel'],
-    excludedPrimaryTypes: [
-      // Fitness (not wellness/relaxation)
-      'gym', 'fitness_center', 'sports_club', 'swimming_pool',
-      'adventure_sports_center',
-      // Food / drink
-      'restaurant', 'fine_dining_restaurant', 'fast_food_restaurant',
-      'bar', 'cocktail_bar', 'lounge_bar', 'wine_bar', 'night_club',
-      'cafe', 'coffee_shop',
-      // Entertainment
-      'movie_theater', 'bowling_alley', 'karaoke', 'amusement_center',
-      'video_arcade', 'casino',
-      // Arts
-      'museum', 'art_gallery',
-      // Corporate / civic
-      'shopping_mall', 'corporate_office', 'coworking_space',
-      'convention_center', 'wedding_venue', 'banquet_hall', 'community_center',
-      // Nature (different category)
-      'park', 'beach', 'hiking_area',
-      // Medical (not relaxation)
-      'doctor', 'hospital', 'dentist', 'physiotherapist',
-      // Beauty (not wellness experience)
-      'beauty_salon', 'hair_salon', 'nail_salon',
-    ],
-  },
+  // ORCH-0434: Wellness config REMOVED — category no longer exists.
   {
     id: 'flowers',
     label: 'Flowers',

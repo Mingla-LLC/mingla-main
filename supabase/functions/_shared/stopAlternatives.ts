@@ -29,10 +29,11 @@ const TRAVEL_SPEEDS_KMH: Record<string, number> = {
 
 // ── Duration Map ───────────────────────────────────────────────────────────
 
+// ORCH-0434: Updated to new canonical slugs matching Phase 1 migrated database.
 export const CATEGORY_DURATION_MINUTES: Record<string, number> = {
-  casual_eats: 60, fine_dining: 90, drink: 60, first_meet: 45,
-  nature_views: 60, picnic_park: 75, watch: 120, live_performance: 120,
-  creative_arts: 90, play: 90, wellness: 90, flowers: 15, groceries: 20,
+  brunch_lunch_casual: 60, upscale_fine_dining: 90, drinks_and_music: 60,
+  icebreakers: 45, nature: 60, movies_theatre: 120,
+  creative_arts: 90, play: 90, flowers: 15, groceries: 20,
 };
 export const CATEGORY_DEFAULT_DURATION = 60;
 
@@ -108,7 +109,7 @@ export async function fetchStopAlternatives(
     if (excludeSet.has(card.google_place_id)) return false;
     if (card.price_min > budgetMax) return false;
     // Fine dining price floor
-    if (categoryId === 'fine_dining') {
+    if (categoryId === 'upscale_fine_dining') {
       const bestTier = card.price_tiers?.length ? card.price_tiers[card.price_tiers.length - 1] : card.price_tier;
       if (bestTier && !slugMeetsMinimum(bestTier, 'bougie')) return false;
     }
