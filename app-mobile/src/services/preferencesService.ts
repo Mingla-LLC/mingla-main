@@ -135,16 +135,16 @@ export class PreferencesService {
     try {
       const defaultPreferences: UserPreferences = {
         mode: "explore",
-        budget_min: 0,
-        budget_max: 1000,
         people_count: 1,
-        categories: ["nature", "casual_eats", "drink"],
+        categories: ["nature", "drinks_and_music", "icebreakers"],
         travel_mode: "walking",
         travel_constraint_type: "time",
         travel_constraint_value: 30,
         datetime_pref: new Date().toISOString(),
         use_gps_location: true,
-        price_tiers: ['chill', 'comfy', 'bougie', 'lavish'],
+        intent_toggle: true,
+        category_toggle: true,
+        selected_dates: null,
       };
 
       const { error } = await supabase.from("preferences").insert({

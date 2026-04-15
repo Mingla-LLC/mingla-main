@@ -196,13 +196,6 @@ class OfflineService {
         );
       }
 
-      // Filter by price tiers (budget)
-      if (request.priceTiers && request.priceTiers.length > 0) {
-        filteredRecommendations = filteredRecommendations.filter(rec => {
-          return rec.priceTier ? (request.priceTiers as string[]).includes(rec.priceTier) : true;
-        });
-      }
-
       // Filter by location (if available)
       if (request.origin) {
         filteredRecommendations = filteredRecommendations.filter(rec => {
