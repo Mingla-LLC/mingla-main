@@ -19,6 +19,7 @@ interface WhenSectionProps {
   onDateOptionChange: (option: DateOptionId) => void;
   selectedDates: string[];
   onDatesChange: (dates: string[]) => void;
+  warning?: string | null;
 }
 
 const DATE_OPTIONS: { id: DateOptionId; labelKey: string }[] = [
@@ -34,6 +35,7 @@ export const WhenSection = memo(({
   onDateOptionChange,
   selectedDates,
   onDatesChange,
+  warning,
 }: WhenSectionProps): React.JSX.Element => {
   const { t } = useTranslation(['preferences']);
 
@@ -84,6 +86,12 @@ export const WhenSection = memo(({
             selectedDates={selectedDates}
             onDatesChange={onDatesChange}
           />
+        </View>
+      )}
+
+      {warning && (
+        <View style={whenStyles.warningPill}>
+          <Text style={whenStyles.warningText}>{warning}</Text>
         </View>
       )}
     </View>
@@ -153,5 +161,18 @@ const whenStyles = StyleSheet.create({
   },
   calendarWrapper: {
     marginTop: 14,
+  },
+  warningPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(249, 115, 22, 0.12)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 10,
+  },
+  warningText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#ea580c',
   },
 });

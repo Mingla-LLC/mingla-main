@@ -18,10 +18,11 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 interface ToggleSectionProps {
   title: string;
-  subtitle?: string;  // Optional — glassmorphism uses title only as the question
+  subtitle?: string;
   isOn: boolean;
   onToggle: (newValue: boolean) => void;
   disabled?: boolean;
+  warning?: string | null;
   children: React.ReactNode;
 }
 
@@ -30,6 +31,7 @@ export const ToggleSection: React.FC<ToggleSectionProps> = ({
   isOn,
   onToggle,
   disabled,
+  warning,
   children,
 }) => {
   const handleToggle = (newValue: boolean): void => {
@@ -59,6 +61,11 @@ export const ToggleSection: React.FC<ToggleSectionProps> = ({
       {isOn && (
         <View style={toggleStyles.content}>
           {children}
+        </View>
+      )}
+      {warning && (
+        <View style={toggleStyles.warningPill}>
+          <Text style={toggleStyles.warningText}>{warning}</Text>
         </View>
       )}
     </View>
@@ -95,5 +102,18 @@ const toggleStyles = StyleSheet.create({
   },
   content: {
     marginTop: 16,
+  },
+  warningPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(249, 115, 22, 0.12)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 10,
+  },
+  warningText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#ea580c',
   },
 });

@@ -652,21 +652,35 @@ export default function PreferencesSheet({
       intentToggle, categoryToggle, selectedIntents, selectedCategories,
       selectedDateOption, selectedDates, constraintValue]);
 
-  const ctaHintText = useMemo(() => {
-    if (isFormComplete) return null;
-
+  // Per-section warnings — shown as orange pills on incomplete sections
+  const sectionWarnings = useMemo(() => {
+    if (isFormComplete) return { location: null, when: null, intents: null, categories: null, travelMode: null, travelLimit: null };
     const hasLocation = useGpsLocation || (searchLocation.length > 0 && selectedCoords !== null);
-    if (!hasLocation) return "Add a starting point";
-    if (selectedDateOption === null) return "Pick a date";
-    if (selectedDateOption === 'pick_dates' && selectedDates.length === 0) return "Select dates";
-    if (intentToggle && selectedIntents.length === 0) return "Pick an experience";
-    if (categoryToggle && selectedCategories.length === 0) return "Pick a category";
-    if (typeof constraintValue !== 'number' || constraintValue < 5) return "Set travel distance";
-    return "Almost there";
+    return {
+      location: !hasLocation ? "Add a starting point" : null,
+      when: selectedDateOption === null ? "Pick a date"
+        : (selectedDateOption === 'pick_dates' && selectedDates.length === 0) ? "Select dates"
+        : null,
+      intents: (intentToggle && selectedIntents.length === 0) ? "Pick an experience" : null,
+      categories: (categoryToggle && selectedCategories.length === 0) ? "Pick a category" : null,
+      travelMode: null, // travel mode always has a default
+      travelLimit: (typeof constraintValue !== 'number' || constraintValue < 5) ? "Set travel distance" : null,
+    };
   }, [isFormComplete, useGpsLocation, searchLocation, selectedCoords,
       selectedDateOption, selectedDates,
       intentToggle, selectedIntents, categoryToggle, selectedCategories,
       constraintValue]);
+
+  const ctaHintText = useMemo(() => {
+    if (isFormComplete) return null;
+    // Show first incomplete section's warning as the CTA hint
+    return sectionWarnings.location
+      || sectionWarnings.when
+      || sectionWarnings.intents
+      || sectionWarnings.categories
+      || sectionWarnings.travelLimit
+      || "Almost there";
+  }, [isFormComplete, sectionWarnings]);
 
   const countChanges = useCallback((): number => {
     if (!initialPreferences) return 1;
@@ -947,6 +961,11 @@ export default function PreferencesSheet({
                 setShowPaywall(true);
               }}
             />
+            {sectionWarnings.location && (
+              <View style={styles.sectionWarningPill}>
+                <Text style={styles.sectionWarningText}>{sectionWarnings.location}</Text>
+              </View>
+            )}
           </View>
 
           </Animated.View>
@@ -961,6 +980,7 @@ export default function PreferencesSheet({
             onDateOptionChange={handleDateOptionChange}
             selectedDates={selectedDates}
             onDatesChange={setSelectedDates}
+            warning={sectionWarnings.when}
           />
 
           </Animated.View>
@@ -975,6 +995,7 @@ export default function PreferencesSheet({
             isOn={intentToggle}
             onToggle={handleIntentToggleChange}
             disabled={!categoryToggle}
+            warning={sectionWarnings.intents}
           >
             <ExperienceTypesSection
               experienceTypes={experienceTypes}
@@ -1001,6 +1022,7 @@ export default function PreferencesSheet({
             isOn={categoryToggle}
             onToggle={handleCategoryToggleChange}
             disabled={!intentToggle}
+            warning={sectionWarnings.categories}
           >
             <CategoriesSection
               filteredCategories={filteredCategories}
@@ -1049,6 +1071,11 @@ export default function PreferencesSheet({
             }}
             onFocus={() => {}}
           />
+            {sectionWarnings.travelLimit && (
+              <View style={styles.sectionWarningPill}>
+                <Text style={styles.sectionWarningText}>{sectionWarnings.travelLimit}</Text>
+              </View>
+            )}
           </View>
           </Animated.View>
 
@@ -1258,6 +1285,19 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "#6b7280",
     marginBottom: 14,
+  },
+  sectionWarningPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(249, 115, 22, 0.12)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 10,
+  },
+  sectionWarningText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#ea580c',
   },
   sectionSubtitle: {
     fontSize: 14,
