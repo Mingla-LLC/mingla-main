@@ -7,7 +7,6 @@ import {
   resolveCategories,
   HIDDEN_CATEGORIES,
 } from '../_shared/categoryPlaceTypes.ts';
-import { PriceTierSlug } from '../_shared/priceTiers.ts';
 import { scoreCards } from '../_shared/scoringService.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -28,8 +27,12 @@ import { scoreCards } from '../_shared/scoringService.ts';
  *   - Multi-category in one request (e.g. ["Nature", "Drink", "Casual Eats"])
  *   - Offset pagination via batchSeed * limit
  *   - Travel constraint-based radius calculation
- *   - Budget, datetime, price tier filtering
+ *   - Date-based filtering (today/this_weekend/pick_dates) via Google opening hours
  *   - 5-factor scoring personalized per user
+ *
+ * ORCH-0434: Removed time-slot filtering, budget filtering, price tier filtering.
+ *            filterByDateTime simplified to 3 date modes only.
+ *            Cards without opening hours excluded (except ALWAYS_OPEN_TYPES).
  * ──────────────────────────────────────────────────────────────────────────── */
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -38,14 +41,6 @@ const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-// ── Time Slot Ranges ────────────────────────────────────────────────────────
-const TIME_SLOT_RANGES: Record<string, { start: number; end: number }> = {
-  brunch:    { start: 9,  end: 13 },
-  afternoon: { start: 12, end: 17 },
-  dinner:    { start: 17, end: 21 },
-  lateNight: { start: 21, end: 24 },
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -136,85 +131,21 @@ function hourInRanges(hour: number, ranges: { open: number; close: number }[]): 
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+// ORCH-0434: Simplified filterByDateTime — 3 date modes only, no time slots.
+// Cards without opening hours are EXCLUDED (except ALWAYS_OPEN_TYPES).
 function filterByDateTime(
   places: any[],
   datetimePref: string | undefined,
   dateOption: string,
-  timeSlot: string | null,
-  timeSlots?: string[] | null,
+  selectedDates?: string[] | null,
 ): any[] {
-  // Multi-slot UNION: if any slot is 'anytime', skip all time filtering
-  if (timeSlots?.includes('anytime')) return places;
-  // 'anytime' means no time-of-day filtering — return all places as-is
-  if (timeSlot === 'anytime') return places;
 
-  // LIVE OPENING HOURS CHECK (Block 6 — hardened 2026-03-22, timezone-aware 2026-03-28)
-  // Uses place-local time via utcOffsetMinutes for correct timezone handling.
-  // Always-open types (parks, beaches, etc.) bypass hours check.
-  // Cards with no hours AND not always-open are EXCLUDED.
-  if (dateOption === 'now' || (!datetimePref && !timeSlot)) {
-    const utcNow = new Date();
-
-    return places.filter(place => {
-      // Compute place-local day and hour using its UTC offset
-      const offsetMin = place.utcOffsetMinutes ?? (place.lng != null ? Math.round(place.lng / 15) * 60 : 0);
-      const localMs = utcNow.getTime() + offsetMin * 60 * 1000;
-      const localDate = new Date(localMs);
-      const targetDay = localDate.getUTCDay();
-      const targetHourFrac = localDate.getUTCHours() + localDate.getUTCMinutes() / 60;
-
-      // Always-open place types: no hours check needed
-      const pType = place.placeType || '';
-      if (ALWAYS_OPEN_TYPES.has(pType)) return true;
-
-      // Path A: Google API format — regularOpeningHours.periods
-      const periods = place.regularOpeningHours?.periods;
-      if (periods && periods.length > 0) {
-        return periods.some((period: any) => {
-          if (period.open?.day !== targetDay) return false;
-          const openHour = period.open?.hour ?? 0;
-          let closeHour = period.close?.hour ?? 24;
-          if (closeHour === 0) closeHour = 24;
-          if (closeHour <= openHour) closeHour += 24;
-          return targetHourFrac >= openHour && targetHourFrac < closeHour;
-        });
-      }
-
-      // Path B: Pool format — openingHours as Record<string, string>
-      const oh = place.openingHours;
-      if (oh && typeof oh === 'object') {
-        // Path B.1: Structured periods (preserved from Google API — most reliable)
-        if (oh._periods && Array.isArray(oh._periods) && oh._periods.length > 0) {
-          return oh._periods.some((period: any) => {
-            if (period.open?.day !== targetDay) return false;
-            const openH = (period.open?.hour ?? 0) + (period.open?.minute ?? 0) / 60;
-            let closeH = (period.close?.hour ?? 24) + (period.close?.minute ?? 0) / 60;
-            if (closeH === 0) closeH = 24;
-            if (closeH <= openH) closeH += 24;
-            return targetHourFrac >= openH && targetHourFrac < closeH;
-          });
-        }
-        // Path B.2: Text-based hours (fallback — uses regex parser)
-        const dayName = DAY_NAMES[targetDay];
-        const dayText = oh[dayName];
-        if (!dayText) return true; // No data for this specific day — include
-        const parsed = parseHoursText(dayText);
-        if (!parsed) return false; // "Closed" or unparseable
-        return hourInRanges(targetHourFrac, parsed);
-      }
-
-      // No opening hours data AND not an always-open type → INCLUDE (assumed possibly open).
-      // Including these places increases evening card counts by 30-50%. The user accepts
-      // the risk of traveling to a potentially closed place for a larger, more varied deck.
-      return true;
-    });
-  }
-
-  // Helper: check if a place is open during a specific hour range on a given day
-  function isOpenDuringHour(place: any, day: number, hourStart: number): boolean {
+  // Helper: check if a place is open at a specific hour on a given day
+  function isOpenAtHour(place: any, day: number, hourFrac: number): boolean {
     const pType = place.placeType || '';
     if (ALWAYS_OPEN_TYPES.has(pType)) return true;
 
+    // Path A: Google API format — regularOpeningHours.periods
     const periods = place.regularOpeningHours?.periods;
     if (periods && periods.length > 0) {
       return periods.some((period: any) => {
@@ -223,12 +154,14 @@ function filterByDateTime(
         let closeHour = period.close?.hour ?? 24;
         if (closeHour === 0) closeHour = 24;
         if (closeHour <= openHour) closeHour += 24;
-        return hourStart >= openHour && hourStart < closeHour;
+        return hourFrac >= openHour && hourFrac < closeHour;
       });
     }
 
+    // Path B: Pool format — openingHours as Record<string, string>
     const oh = place.openingHours;
     if (oh && typeof oh === 'object') {
+      // Path B.1: Structured periods (preserved from Google API — most reliable)
       if (oh._periods && Array.isArray(oh._periods) && oh._periods.length > 0) {
         return oh._periods.some((period: any) => {
           if (period.open?.day !== day) return false;
@@ -236,146 +169,106 @@ function filterByDateTime(
           let closeH = (period.close?.hour ?? 24) + (period.close?.minute ?? 0) / 60;
           if (closeH === 0) closeH = 24;
           if (closeH <= openH) closeH += 24;
-          return hourStart >= openH && hourStart < closeH;
+          return hourFrac >= openH && hourFrac < closeH;
         });
       }
+      // Path B.2: Text-based hours (fallback — uses regex parser)
       const dayName = DAY_NAMES[day];
       const dayText = oh[dayName];
-      if (!dayText) return true;
+      if (!dayText) return false; // No data for this day → exclude
       const parsed = parseHoursText(dayText);
-      if (!parsed) return false;
-      return hourInRanges(hourStart, parsed);
+      if (!parsed) return false; // "Closed" or unparseable
+      return hourInRanges(hourFrac, parsed);
     }
 
-    return true; // No hours data — assume open
+    // No opening hours data → EXCLUDE (ORCH-0434 hard rule)
+    return false;
   }
 
-  // Weekend filtering — check Saturday (6) and Sunday (0) instead of today (ORCH-0431)
-  // Multi-slot aware: checks all selected slots against both weekend days (ORCH-0432)
-  const dOpt = dateOption.toLowerCase().replace(/-/g, ' ');
-  if (dOpt === 'weekend' || dOpt === 'this weekend') {
-    const slotsToCheck = (timeSlots && timeSlots.length > 0)
-      ? timeSlots
-      : (timeSlot ? [timeSlot] : []);
-
-    if (slotsToCheck.length === 0) {
-      return places.filter(place =>
-        isOpenDuringHour(place, 6, 12) || isOpenDuringHour(place, 0, 12),
-      );
+  // Helper: check if a place has ANY opening hours data or is always-open type
+  function hasOpeningData(place: any): boolean {
+    if (ALWAYS_OPEN_TYPES.has(place.placeType || '')) return true;
+    if (place.regularOpeningHours?.periods?.length > 0) return true;
+    const oh = place.openingHours;
+    if (oh && typeof oh === 'object') {
+      if (oh._periods?.length > 0) return true;
+      // Check if any day has text data
+      return DAY_NAMES.some(d => oh[d]);
     }
-
-    return places.filter(place =>
-      slotsToCheck.some(slot => {
-        const range = TIME_SLOT_RANGES[slot];
-        if (!range) return false;
-        return isOpenDuringHour(place, 6, range.start)
-            || isOpenDuringHour(place, 0, range.start);
-      }),
-    );
+    return false;
   }
 
-  // Multi-slot UNION filtering (collab mode — DEC-010)
-  // Place passes if open during ANY of the selected time slots.
-  if (timeSlots && timeSlots.length > 1) {
+  // Helper: check if place is open at ANY hour from startHour to midnight on given day
+  function isOpenFromHourOnwards(place: any, day: number, startHour: number): boolean {
+    // Check every hour from startHour to 23 — if open at any, include
+    for (let h = Math.floor(startHour); h < 24; h++) {
+      if (isOpenAtHour(place, day, h)) return true;
+    }
+    return false;
+  }
+
+  // Normalize dateOption for backward compat
+  const dOpt = (dateOption || '').toLowerCase().replace(/-/g, '_').replace(/ /g, '_');
+
+  // ── Mode 1: TODAY ──
+  // Show cards open from user's current time onwards (not just "right now").
+  // Backward compat: 'now' treated as 'today'.
+  if (dOpt === 'today' || dOpt === 'now' || !dateOption) {
+    const utcNow = new Date();
+
     return places.filter(place => {
-      let targetDay: number;
-      if (datetimePref) {
-        const prefDate = new Date(datetimePref);
-        const noonUtc = new Date(prefDate.getUTCFullYear(), prefDate.getUTCMonth(), prefDate.getUTCDate(), 12, 0, 0);
-        targetDay = noonUtc.getDay();
-      } else {
-        const offsetMin = place.utcOffsetMinutes ?? (place.lng != null ? Math.round(place.lng / 15) * 60 : 0);
-        const localMs = Date.now() + offsetMin * 60 * 1000;
-        targetDay = new Date(localMs).getUTCDay();
-      }
-      return timeSlots.some(slot => {
-        const range = TIME_SLOT_RANGES[slot];
-        if (!range) return false;
-        return isOpenDuringHour(place, targetDay, range.start);
+      if (!hasOpeningData(place)) return false; // ORCH-0434: no hours = exclude
+
+      const offsetMin = place.utcOffsetMinutes ?? (place.lng != null ? Math.round(place.lng / 15) * 60 : 0);
+      const localMs = utcNow.getTime() + offsetMin * 60 * 1000;
+      const localDate = new Date(localMs);
+      const targetDay = localDate.getUTCDay();
+      const currentHour = localDate.getUTCHours() + localDate.getUTCMinutes() / 60;
+
+      // Include if open at current time OR opening later today
+      return isOpenFromHourOnwards(place, targetDay, currentHour);
+    });
+  }
+
+  // ── Mode 2: THIS WEEKEND ──
+  // Show cards open on Saturday OR Sunday.
+  // If today is Saturday: check today (Sat) + Sunday.
+  // Backward compat: 'weekend' treated as 'this_weekend'.
+  if (dOpt === 'this_weekend' || dOpt === 'weekend') {
+    return places.filter(place => {
+      if (!hasOpeningData(place)) return false;
+      // Check Saturday (day 6) at noon and Sunday (day 0) at noon
+      return isOpenAtHour(place, 6, 12) || isOpenAtHour(place, 0, 12);
+    });
+  }
+
+  // ── Mode 3: PICK DATES ──
+  // Show cards open on ANY of the selected dates.
+  // Backward compat: 'custom' treated as 'pick_dates'.
+  if (dOpt === 'pick_dates' || dOpt === 'custom') {
+    const dates = selectedDates && selectedDates.length > 0
+      ? selectedDates
+      : (datetimePref ? [datetimePref] : []);
+
+    if (dates.length === 0) {
+      // No dates specified — show all that have opening data
+      return places.filter(place => hasOpeningData(place));
+    }
+
+    return places.filter(place => {
+      if (!hasOpeningData(place)) return false;
+      // Card passes if open on ANY selected date (at noon as representative hour)
+      return dates.some(dateStr => {
+        const d = new Date(dateStr);
+        const noonUtc = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0);
+        const dayOfWeek = noonUtc.getDay();
+        return isOpenAtHour(place, dayOfWeek, 12);
       });
     });
   }
 
-  return places.filter(place => {
-    // Compute the target day and hour for hours filtering.
-    // When datetimePref is provided, the client already encoded local midnight as UTC
-    // (e.g., Monday midnight EDT → "2026-04-06T04:00:00.000Z"). Applying a longitude-based
-    // offset on top of that double-converts and pushes midnight back to the previous day.
-    // Fix: extract day directly from datetimePref (represents the user's chosen date).
-    // For "today"/"now" without datetimePref, use place-local time from server UTC.
-    let targetDay: number;
-    let targetHourStart: number;
-
-    if (datetimePref) {
-      // Client sent a specific date — trust it. Extract day from the UTC representation.
-      // The date in UTC is the user's intended date (off by a few hours at most, but
-      // the day-of-week is correct for the user's timezone when sent near midnight).
-      const prefDate = new Date(datetimePref);
-      // Use the date portion at noon UTC to avoid midnight boundary issues
-      const noonUtc = new Date(prefDate.getUTCFullYear(), prefDate.getUTCMonth(), prefDate.getUTCDate(), 12, 0, 0);
-      targetDay = noonUtc.getDay();
-    } else {
-      // No specific date — use current time in place's local timezone
-      const offsetMin = place.utcOffsetMinutes ?? (place.lng != null ? Math.round(place.lng / 15) * 60 : 0);
-      const localMs = Date.now() + offsetMin * 60 * 1000;
-      const localDate = new Date(localMs);
-      targetDay = localDate.getUTCDay();
-    }
-
-    if (timeSlot && TIME_SLOT_RANGES[timeSlot]) {
-      targetHourStart = TIME_SLOT_RANGES[timeSlot].start;
-    } else if (datetimePref) {
-      targetHourStart = new Date(datetimePref).getUTCHours();
-    } else {
-      const offsetMin = place.utcOffsetMinutes ?? (place.lng != null ? Math.round(place.lng / 15) * 60 : 0);
-      const localMs = Date.now() + offsetMin * 60 * 1000;
-      targetHourStart = new Date(localMs).getUTCHours();
-    }
-
-    // Always-open place types
-    const pType = place.placeType || '';
-    if (ALWAYS_OPEN_TYPES.has(pType)) return true;
-
-    // Path A: periods
-    const periods = place.regularOpeningHours?.periods;
-    if (periods && periods.length > 0) {
-      return periods.some((period: any) => {
-        if (period.open?.day !== targetDay) return false;
-        const openHour = period.open?.hour ?? 0;
-        let closeHour = period.close?.hour ?? 24;
-        if (closeHour === 0) closeHour = 24;
-        if (closeHour <= openHour) closeHour += 24;
-        return targetHourStart >= openHour && targetHourStart < closeHour;
-      });
-    }
-
-    // Path B: Record<string, string>
-    const oh = place.openingHours;
-    if (oh && typeof oh === 'object') {
-      // Path B.1: Structured periods (preserved from Google API)
-      if (oh._periods && Array.isArray(oh._periods) && oh._periods.length > 0) {
-        return oh._periods.some((period: any) => {
-          if (period.open?.day !== targetDay) return false;
-          const openH = (period.open?.hour ?? 0) + (period.open?.minute ?? 0) / 60;
-          let closeH = (period.close?.hour ?? 24) + (period.close?.minute ?? 0) / 60;
-          if (closeH === 0) closeH = 24;
-          if (closeH <= openH) closeH += 24;
-          return targetHourStart >= openH && targetHourStart < closeH;
-        });
-      }
-      // Path B.2: Text-based hours (fallback)
-      const dayName = DAY_NAMES[targetDay];
-      const dayText = oh[dayName];
-      if (!dayText) return true;
-      const parsed = parseHoursText(dayText);
-      if (!parsed) return false;
-      return hourInRanges(targetHourStart, parsed);
-    }
-
-    // No opening hours data AND not an always-open type → INCLUDE (assumed possibly open).
-    // Consistent with the "now" path — same policy for all date options.
-    return true;
-  });
+  // Unknown dateOption — filter by opening data only
+  return places.filter(place => hasOpeningData(place));
 }
 
 // ── Cascading Hours Filter for Curated Cards ───────────────────────────────
@@ -473,16 +366,13 @@ serve(async (req: Request) => {
     const {
       categories: rawCategories = [],
       location,
-      budgetMax = 200,
       travelMode = 'walking',
       travelConstraintValue = 30,
       datetimePref,
-      dateOption = 'now',
-      timeSlot: rawTimeSlot = null,
-      timeSlots: rawTimeSlots,
+      dateOption = 'today',
+      selectedDates,
       batchSeed = 0,
       limit = 200,
-      priceTiers,
       excludeCardIds: rawExcludeCardIds = [],
     } = body;
 
@@ -491,19 +381,7 @@ serve(async (req: Request) => {
       ? rawExcludeCardIds.filter((id: unknown) => typeof id === 'string' && (id as string).length > 0)
       : [];
 
-    // Support both single timeSlot (solo) and timeSlots array (collab UNION — DEC-010)
-    const VALID_SLOTS = ['brunch', 'afternoon', 'dinner', 'lateNight', 'anytime'];
-    let resolvedTimeSlots: string[] | null = null;
-    if (Array.isArray(rawTimeSlots) && rawTimeSlots.length > 0) {
-      resolvedTimeSlots = rawTimeSlots.filter((s: string) => VALID_SLOTS.includes(s));
-      if (resolvedTimeSlots.length === 0) resolvedTimeSlots = null;
-    } else if (rawTimeSlot && VALID_SLOTS.includes(rawTimeSlot)) {
-      resolvedTimeSlots = [rawTimeSlot];
-    }
-    // Single slot for backward compat with existing filterByDateTime path
-    const timeSlot = resolvedTimeSlots && resolvedTimeSlots.length === 1
-      ? resolvedTimeSlots[0]
-      : null;
+    // ORCH-0434: Time slot validation removed. Date filtering uses dateOption only.
 
     // ── Validate ──────────────────────────────────────────────────────────
     if (!location?.lat || !location?.lng) {
@@ -571,7 +449,7 @@ serve(async (req: Request) => {
       // No per-category price floor — if AI approved a place as fine_dining,
       // trust the AI regardless of price tier. User's price tier selection
       // (via preferences) is the only price filter that applies.
-      const scored = scoreCards(cards, { categories, priceTiers: priceTiers || [] });
+      const scored = scoreCards(cards, { categories });
       scored.sort((a, b) => b.matchScore - a.matchScore);
       return scored.map(s => ({
         ...s.card,
@@ -599,11 +477,8 @@ serve(async (req: Request) => {
           lng: location.lng,
           radiusMeters,
           categories,
-          budgetMin: 0,
-          budgetMax,
           limit,
           cardType: 'single' as const,
-          priceTiers: priceTiers as PriceTierSlug[] | undefined,
           excludePlaceIds: excludeCardIds,
         };
 
@@ -616,7 +491,7 @@ serve(async (req: Request) => {
         if (poolResult.cards.length > 0) {
           const elapsed = Date.now() - t0;
           // Apply date/time filter to pool-served cards
-          const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, timeSlot, resolvedTimeSlots);
+          const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, selectedDates);
 
           // Apply cascading hours filter to curated cards (timezone-aware via utcNow + card offset)
           const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();

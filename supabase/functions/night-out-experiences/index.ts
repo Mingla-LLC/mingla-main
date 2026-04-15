@@ -113,8 +113,6 @@ serve(async (req) => {
           lng: location.lng,
           radiusMeters: radius,
           categories: ['Drink'], // Night-out maps to Drink category in pool
-          budgetMin: 0,
-          budgetMax: 500,
           limit: 15,
           cardType: 'single',
         },

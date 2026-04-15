@@ -27,19 +27,17 @@ function majorityVote(values: string[], fallback: string): string {
   return best;
 }
 
+// ORCH-0434: Removed priceTiers, budgetMin, budgetMax, timeSlots. Added selectedDates.
 interface AggregatedPrefs {
   categories: string[];
   intents: string[];
-  priceTiers: string[];
-  budgetMin: number;
-  budgetMax: number;
   travelMode: string;
   travelConstraintType: 'time';
   travelConstraintValue: number;
   datetimePref: string | null;
   location: { lat: number; lng: number } | null;
   dateOption: string;
-  timeSlots: string[];
+  selectedDates: string[];
 }
 
 // UNION AGGREGATION (DEC-008 through DEC-011): All strategies use union/max/most-permissive.
@@ -49,16 +47,13 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
     return {
       categories: [],
       intents: [],
-      priceTiers: ['chill', 'comfy', 'bougie', 'lavish'],
-      budgetMin: 0,
-      budgetMax: 1000,
       travelMode: 'walking',
       travelConstraintType: 'time',
       travelConstraintValue: 30,
       datetimePref: null,
       location: null,
-      dateOption: 'now',
-      timeSlots: [],
+      dateOption: 'today',
+      selectedDates: [],
     };
   }
 
@@ -78,17 +73,15 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
     }
   }
 
-  // Price tiers: union
-  const tierSet = new Set<string>();
+  // ORCH-0434: Price tiers, budget removed from aggregation.
+
+  // Selected dates: union of all participants' dates (deduplicated)
+  const dateSet = new Set<string>();
   for (const row of rows) {
-    for (const tier of (row.price_tiers || [])) {
-      tierSet.add(tier);
+    if (Array.isArray(row.selected_dates)) {
+      for (const d of row.selected_dates) dateSet.add(d);
     }
   }
-
-  // Budget: widest range
-  const budgetMin = Math.min(...rows.map((r: any) => r.budget_min ?? 0));
-  const budgetMax = Math.max(...rows.map((r: any) => r.budget_max ?? 1000));
 
   // Travel mode: most permissive for widest card search radius (DEC-009)
   const MODE_RANK: Record<string, number> = { walking: 1, biking: 2, transit: 3, driving: 4 };
@@ -127,43 +120,34 @@ function aggregateAllPrefs(rows: any[]): AggregatedPrefs {
     .map((r: any) => r.date_option || 'now')
     .sort((a: string, b: string) => (DATE_RANK[b] ?? 0) - (DATE_RANK[a] ?? 0))[0] || 'now';
 
-  // Time slots: UNION of all selected (DEC-010)
-  const timeSlotValues = rows
-    .map((r: any) => r.time_slot || r.time_of_day)
-    .filter((v: any): v is string => v != null);
-  const timeSlots = [...new Set(timeSlotValues)];
+  // ORCH-0434: Time slots removed from aggregation.
 
   return {
     categories: Array.from(categorySet),
     intents: Array.from(intentSet),
-    priceTiers: tierSet.size > 0 ? Array.from(tierSet) : ['chill', 'comfy', 'bougie', 'lavish'],
-    budgetMin,
-    budgetMax,
     travelMode,
     travelConstraintType: 'time',
     travelConstraintValue,
     datetimePref: datetimes.length > 0 ? datetimes[0] : null,
     location,
     dateOption,
-    timeSlots,
+    selectedDates: Array.from(dateSet),
   };
 }
 
 // ── Stable hash of aggregated preferences ──
 
 async function computePreferencesHash(prefs: AggregatedPrefs): Promise<string> {
+  // ORCH-0434: Removed priceTiers, budgetMin, budgetMax, timeSlots. Added selectedDates.
   const sorted = JSON.stringify({
     categories: [...prefs.categories].sort(),
     intents: [...prefs.intents].sort(),
-    priceTiers: [...prefs.priceTiers].sort(),
-    budgetMin: prefs.budgetMin,
-    budgetMax: prefs.budgetMax,
     travelMode: prefs.travelMode,
     travelConstraintValue: prefs.travelConstraintValue,
     datetimePref: prefs.datetimePref,
     location: prefs.location,
     dateOption: prefs.dateOption,
-    timeSlots: [...prefs.timeSlots].sort(),
+    selectedDates: [...prefs.selectedDates].sort(),
   });
 
   const encoder = new TextEncoder();
@@ -377,15 +361,13 @@ serve(async (req: Request) => {
           body: JSON.stringify({
             categories: aggregated.categories,
             location,
-            budgetMax: aggregated.budgetMax,
             travelMode: aggregated.travelMode,
             travelConstraintValue: aggregated.travelConstraintValue,
             datetimePref: aggregated.datetimePref,
             dateOption: aggregated.dateOption,
-            timeSlots: aggregated.timeSlots,
+            selectedDates: aggregated.selectedDates,
             batchSeed,
             limit: 10000, // Phase 5: return all matching cards, no artificial cap
-            priceTiers: aggregated.priceTiers,
             excludeCardIds,
           }),
         });
@@ -418,8 +400,6 @@ serve(async (req: Request) => {
               body: JSON.stringify({
                 experienceType: intent,
                 location,
-                budgetMin: aggregated.budgetMin,
-                budgetMax: aggregated.budgetMax,
                 travelMode: aggregated.travelMode,
                 travelConstraintType: 'time',
                 travelConstraintValue: aggregated.travelConstraintValue,

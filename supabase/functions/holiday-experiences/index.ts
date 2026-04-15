@@ -274,8 +274,6 @@ serve(async (req) => {
             lng: location.lng,
             radiusMeters: radius,
             categories: allHolidayCategories,
-            budgetMin: 0,
-            budgetMax: 500,
             limit: totalNeeded + 20, // extra buffer
             cardType: 'single',
           },
