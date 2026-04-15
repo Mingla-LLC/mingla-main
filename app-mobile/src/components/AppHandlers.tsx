@@ -471,18 +471,13 @@ export function useAppHandlers(state: any) {
             : preferences.constraintValue !== ""
             ? Number(preferences.constraintValue)
             : 30,
-        date_option: preferences.dateOption
-          ? preferences.dateOption === "Today"
-            ? "today"
-            : preferences.dateOption === "This Weekend"
-            ? "this_weekend"
-            : preferences.dateOption === "Pick Date(s)"
-            ? "pick_dates"
-            : "today"
-          : "today",
+        date_option: preferences.dateOption || 'today',
         datetime_pref: preferences.selectedDate
           ? new Date(preferences.selectedDate).toISOString()
           : null,
+        intent_toggle: preferences.intentToggle ?? true,
+        category_toggle: preferences.categoryToggle ?? true,
+        selected_dates: preferences.selectedDates?.length > 0 ? preferences.selectedDates : null,
       };
 
       if (preferences.custom_location !== undefined) {
@@ -509,9 +504,9 @@ export function useAppHandlers(state: any) {
         custom_lat: dbPreferences.custom_lat,
         custom_lng: dbPreferences.custom_lng,
         use_gps_location: dbPreferences.use_gps_location,
-        intent_toggle: true,
-        category_toggle: true,
-        selected_dates: null,
+        intent_toggle: dbPreferences.intent_toggle,
+        category_toggle: dbPreferences.category_toggle,
+        selected_dates: dbPreferences.selected_dates,
       });
 
       // Deck history reset

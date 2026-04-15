@@ -12,6 +12,9 @@ import {
   Platform,
   Modal,
   Alert,
+  Animated,
+  Easing,
+  AccessibilityInfo,
 } from "react-native";
 import {
   SafeAreaView,
@@ -218,6 +221,42 @@ export default function PreferencesSheet({
 
   const isSavingRef = useRef(false);
   const isInternalUpdate = useRef(false);
+
+  // Sequential section stagger animation (ORCH-0434 Phase 6B)
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const sectionAnims = useRef(
+    Array.from({ length: 5 }, () => new Animated.Value(0))
+  ).current;
+
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+  }, []);
+
+  useEffect(() => {
+    if (visible && !preferencesLoading) {
+      if (reduceMotion) {
+        sectionAnims.forEach(anim => anim.setValue(1));
+        return;
+      }
+      // Reset
+      sectionAnims.forEach(anim => anim.setValue(0));
+      // Stagger: 80ms between each section, 300ms duration
+      const delays = [0, 80, 160, 240, 320];
+      const timers = delays.map((delay, i) =>
+        setTimeout(() => {
+          Animated.timing(sectionAnims[i], {
+            toValue: 1,
+            duration: 300,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }).start();
+        }, delay)
+      );
+      return () => timers.forEach(clearTimeout);
+    } else if (!visible) {
+      sectionAnims.forEach(anim => anim.setValue(0));
+    }
+  }, [visible, preferencesLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track initial preferences for change detection
   const [initialPreferences, setInitialPreferences] = useState<any>(null);
@@ -851,6 +890,10 @@ export default function PreferencesSheet({
             contentContainerStyle={styles.scrollContent}
           >
           {/* 1. Starting Point — moved to top (ORCH-0434) */}
+          <Animated.View style={{
+            opacity: sectionAnims[0],
+            transform: [{ translateY: sectionAnims[0].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+          }}>
           <View
             ref={locationSectionRef}
             style={[styles.section, { marginTop: 20 }]}
@@ -889,7 +932,13 @@ export default function PreferencesSheet({
             />
           </View>
 
+          </Animated.View>
+
           {/* 2. When */}
+          <Animated.View style={{
+            opacity: sectionAnims[1],
+            transform: [{ translateY: sectionAnims[1].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+          }}>
           <WhenSection
             dateOption={selectedDateOption}
             onDateOptionChange={handleDateOptionChange}
@@ -897,7 +946,13 @@ export default function PreferencesSheet({
             onDatesChange={setSelectedDates}
           />
 
+          </Animated.View>
+
           {/* 3. Intents (with toggle) */}
+          <Animated.View style={{
+            opacity: sectionAnims[2],
+            transform: [{ translateY: sectionAnims[2].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+          }}>
           <ToggleSection
             title={t('preferences:intents_toggle.title')}
             subtitle={t('preferences:intents_toggle.subtitle')}
@@ -918,7 +973,13 @@ export default function PreferencesSheet({
             />
           </ToggleSection>
 
+          </Animated.View>
+
           {/* 4. Categories (with toggle) */}
+          <Animated.View style={{
+            opacity: sectionAnims[3],
+            transform: [{ translateY: sectionAnims[3].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+          }}>
           <ToggleSection
             title={t('preferences:categories_toggle.title')}
             subtitle={t('preferences:categories_toggle.subtitle')}
@@ -934,7 +995,13 @@ export default function PreferencesSheet({
             />
           </ToggleSection>
 
+          </Animated.View>
+
           {/* 5. Getting There */}
+          <Animated.View style={{
+            opacity: sectionAnims[4],
+            transform: [{ translateY: sectionAnims[4].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
+          }}>
           <TravelModeSection
             travelModes={travelModes}
             travelMode={travelMode}
@@ -956,6 +1023,7 @@ export default function PreferencesSheet({
             }}
             onFocus={() => {}}
           />
+          </Animated.View>
 
           </KeyboardAwareScrollView>
         {/* Apply Button */}
