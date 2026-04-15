@@ -27,7 +27,6 @@ import { useSavedCards } from "../hooks/useSavedCards";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { aggregateAllPrefs } from '../utils/sessionPrefsUtils';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
-import { PriceTierSlug } from '../constants/priceTiers';
 import { useSessionDeck } from '../hooks/useSessionDeck';
 import { fetchSessionDeck, SessionDeckResponse } from '../services/sessionDeckService';
 
@@ -52,16 +51,16 @@ const EMPTY_PILLS: string[] = [];
 
 const getDefaultPreferences = (): UserPreferences => ({
   mode: "explore",
-  budget_min: 0,
-  budget_max: 1000,
   people_count: 1,
-  categories: ["nature", "casual_eats", "drink"],
+  categories: ["nature", "drinks_and_music", "icebreakers"],
   travel_mode: "walking",
   travel_constraint_type: "time",
   travel_constraint_value: 30,
   datetime_pref: null,
   use_gps_location: true,
-  price_tiers: ['chill', 'comfy', 'bougie', 'lavish'] as string[],
+  intent_toggle: true,
+  category_toggle: true,
+  selected_dates: null,
 });
 
 interface RecommendationsContextType {
@@ -360,7 +359,7 @@ export const RecommendationsProvider: React.FC<
         ? cats
         : hasAnySignal
           ? []                                      // user chose intents only — respect that
-          : ["nature", "casual_eats", "drink"],     // true empty state — sensible default
+          : ["nature", "drinks_and_music", "icebreakers"],     // true empty state — sensible default
       intents: ints,
     };
   }, [
@@ -385,9 +384,6 @@ export const RecommendationsProvider: React.FC<
     return {
       categories: aggregated.categories,
       intents: aggregated.intents,
-      priceTiers: aggregated.priceTiers,
-      budgetMin: aggregated.budgetMin,
-      budgetMax: aggregated.budgetMax,
       travelMode: aggregated.travelMode,
       travelConstraintType: aggregated.travelConstraintType,
       travelConstraintValue: aggregated.travelConstraintValue,
@@ -436,18 +432,6 @@ export const RecommendationsProvider: React.FC<
   // Categories and intents already come from activeDeckParams — this extends
   // the same pattern to budget, travel, and datetime fields.
 
-  const effectivePriceTiers = isCollaborationMode && collabDeckParams?.priceTiers
-    ? collabDeckParams.priceTiers
-    : userPrefs?.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
-
-  const effectiveBudgetMin = isCollaborationMode && collabDeckParams
-    ? collabDeckParams.budgetMin
-    : userPrefs?.budget_min ?? 0;
-
-  const effectiveBudgetMax = isCollaborationMode && collabDeckParams
-    ? collabDeckParams.budgetMax
-    : userPrefs?.budget_max ?? 1000;
-
   const effectiveTravelMode = isCollaborationMode && collabDeckParams
     ? collabDeckParams.travelMode
     : userPrefs?.travel_mode ?? 'walking';
@@ -460,17 +444,9 @@ export const RecommendationsProvider: React.FC<
     ? (collabDeckParams.datetimePref ?? undefined)
     : userPrefs?.datetime_pref ?? undefined;
 
-  // dateOption, timeSlot: collab aggregation doesn't compute these
-  // (they're solo-only UI concepts). For collab, pass defaults so the edge
-  // function falls back to datetimePref-based filtering.
-  const effectiveDateOption = isCollaborationMode ? 'now' : (userPrefs?.date_option ?? 'now');
-  const effectiveTimeSlots: string[] = isCollaborationMode
-    ? []
-    : (userPrefs?.time_slots && Array.isArray(userPrefs.time_slots) && userPrefs.time_slots.length > 0)
-      ? userPrefs.time_slots
-      : userPrefs?.time_slot
-        ? [userPrefs.time_slot]
-        : [];
+  // dateOption: collab aggregation doesn't compute this (solo-only UI concept).
+  // For collab, pass 'today' so the edge function uses datetimePref-based filtering.
+  const effectiveDateOption = isCollaborationMode ? 'today' : (userPrefs?.date_option ?? 'today');
 
   const {
     cards: soloDeckCards,
@@ -485,15 +461,11 @@ export const RecommendationsProvider: React.FC<
     location: activeDeckLocation,
     categories: activeDeckParams?.categories ?? [],
     intents: activeDeckParams?.intents ?? [],
-    priceTiers: effectivePriceTiers as PriceTierSlug[],
-    budgetMin: effectiveBudgetMin, // Always 0 — kept for interface compat
-    budgetMax: effectiveBudgetMax,
     travelMode: effectiveTravelMode,
     travelConstraintType: 'time' as const,
     travelConstraintValue: effectiveTravelConstraintValue,
     datetimePref: effectiveDatetimePref,
     dateOption: effectiveDateOption,
-    timeSlots: effectiveTimeSlots,
     batchSeed,
     enabled: isSoloMode &&
       !!activeDeckLocation &&
@@ -522,15 +494,11 @@ export const RecommendationsProvider: React.FC<
         lng: activeDeckLocation.lng,
         categories: activeDeckParams.categories,
         intents: activeDeckParams.intents,
-        priceTiers: effectivePriceTiers as string[],
-        budgetMin: effectiveBudgetMin,
-        budgetMax: effectiveBudgetMax,
         travelMode: effectiveTravelMode,
         travelConstraintType: 'time',
         travelConstraintValue: effectiveTravelConstraintValue,
         datetimePref: effectiveDatetimePref,
         dateOption: effectiveDateOption,
-        timeSlots: effectiveTimeSlots,
         batchSeed,
         excludeCardIds,
       });
@@ -726,20 +694,10 @@ export const RecommendationsProvider: React.FC<
         // Solo mode: prefetch via client-side deckService
         const prefetchCategories = activeDeckParams.categories ?? [];
         const prefetchIntents = activeDeckParams.intents ?? [];
-        const prefetchPriceTiers = isSoloMode
-          ? (userPrefs?.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'])
-          : (collabDeckParams?.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish']);
-        const prefetchBudgetMin = isSoloMode ? (userPrefs?.budget_min ?? 0) : (collabDeckParams?.budgetMin ?? 0);
-        const prefetchBudgetMax = isSoloMode ? (userPrefs?.budget_max ?? 1000) : (collabDeckParams?.budgetMax ?? 1000);
         const prefetchTravelMode = isSoloMode ? (userPrefs?.travel_mode ?? 'walking') : (collabDeckParams?.travelMode ?? 'walking');
         const prefetchConstraintType = 'time' as const;
         const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (collabDeckParams?.travelConstraintValue ?? 30);
-        const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now';
-        const prefetchTimeSlots: string[] = isSoloMode
-          ? ((userPrefs?.time_slots && Array.isArray(userPrefs.time_slots) && userPrefs.time_slots.length > 0)
-            ? userPrefs.time_slots
-            : userPrefs?.time_slot ? [userPrefs.time_slot] : [])
-          : [];
+        const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'today') : 'today';
         const rawDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (collabDeckParams?.datetimePref ?? undefined);
         // Normalize to ISO string to match useDeckCards query key format
         const prefetchDatetimePref = rawDatetimePref
@@ -754,15 +712,11 @@ export const RecommendationsProvider: React.FC<
             prefetchLat, prefetchLng,
             prefetchCategories.sort().join(','),
             prefetchIntents.sort().join(','),
-            prefetchPriceTiers.sort().join(','),
-            prefetchBudgetMin,
-            prefetchBudgetMax,
             prefetchTravelMode,
             prefetchConstraintType,
             prefetchConstraintValue,
             prefetchDatetimePref,
             prefetchDateOption,
-            [...prefetchTimeSlots].sort().join(','),
             nextSeed,
             excludeCardIds.sort().join(','),
           ],
@@ -770,17 +724,13 @@ export const RecommendationsProvider: React.FC<
             location: activeDeckLocation,
             categories: prefetchCategories,
             intents: prefetchIntents,
-            priceTiers: prefetchPriceTiers as PriceTierSlug[],
-            budgetMin: prefetchBudgetMin,
-            budgetMax: prefetchBudgetMax,
             travelMode: prefetchTravelMode,
             travelConstraintType: prefetchConstraintType,
             travelConstraintValue: prefetchConstraintValue,
             datetimePref: prefetchDatetimePref,
             dateOption: prefetchDateOption,
-            timeSlots: prefetchTimeSlots,
             batchSeed: nextSeed,
-            limit: 10000, // Phase 5: match main fetch — return all matching cards
+            limit: 10000,
             excludeCardIds,
           }),
           staleTime: 5 * 60 * 1000,

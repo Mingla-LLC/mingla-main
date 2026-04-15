@@ -16,7 +16,7 @@ import { deckService, DeckResponse } from "../services/deckService";
 import { buildDeckQueryKey } from "./useDeckCards";
 import { normalizeCategoryArray } from "../utils/categoryUtils";
 import { ExperiencesService } from "../services/experiencesService";
-import type { PriceTierSlug } from "../constants/priceTiers";
+
 
 // Module-level flag — shared across ALL instances of useAuthSimple.
 // Prevents duplicate SIGNED_OUT handling when multiple hook instances are mounted.
@@ -119,22 +119,17 @@ export const useAuthSimple = () => {
               const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
               const normalizedCategories = normalizeCategoryArray(prefs.categories);
               const normalizedIntents = prefs.intents ?? [];
-              const priceTiers = prefs.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
 
               const deckQueryKey = buildDeckQueryKey({
                 lat: coords.lat,
                 lng: coords.lng,
                 categories: normalizedCategories,
                 intents: normalizedIntents,
-                priceTiers,
-                budgetMin: 0,
-                budgetMax: prefs.budget_max ?? 1000,
                 travelMode: prefs.travel_mode ?? 'walking',
                 travelConstraintType: 'time',
                 travelConstraintValue: prefs.travel_constraint_value ?? 30,
                 datetimePref: prefs.datetime_pref ?? undefined,
-                dateOption: prefs.date_option ?? 'now',
-                timeSlots: prefs.time_slots ?? (prefs.time_slot ? [prefs.time_slot] : []),
+                dateOption: prefs.date_option ?? 'today',
                 batchSeed: 0,
                 excludeCardIds: [],
               });
@@ -143,15 +138,11 @@ export const useAuthSimple = () => {
                 location: coords,
                 categories: normalizedCategories,
                 intents: normalizedIntents,
-                priceTiers: priceTiers as PriceTierSlug[],
-                budgetMin: 0,
-                budgetMax: prefs.budget_max ?? 1000,
                 travelMode: prefs.travel_mode ?? 'walking',
                 travelConstraintType: 'time' as const,
                 travelConstraintValue: prefs.travel_constraint_value ?? 30,
                 datetimePref: prefs.datetime_pref ?? undefined,
-                dateOption: prefs.date_option ?? 'now',
-                timeSlots: prefs.time_slots ?? (prefs.time_slot ? [prefs.time_slot] : []),
+                dateOption: prefs.date_option ?? 'today',
                 batchSeed: 0,
                 limit: 200,
                 excludeCardIds: [],

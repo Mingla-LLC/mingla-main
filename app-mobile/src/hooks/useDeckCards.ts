@@ -11,7 +11,6 @@ import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { deckService, DeckResponse } from '../services/deckService';
 import type { Recommendation } from '../types/recommendation';
-import type { PriceTierSlug } from '../constants/priceTiers';
 import { normalizeDateTime } from '../utils/cardConverters';
 
 // Stable empty arrays to prevent new references on every render
@@ -29,15 +28,11 @@ export interface DeckQueryKeyParams {
   lng: number;
   categories: string[];
   intents: string[];
-  priceTiers: string[];
-  budgetMin: number;
-  budgetMax: number;
   travelMode: string;
   travelConstraintType: string;
   travelConstraintValue: number;
   datetimePref?: string;
   dateOption?: string;
-  timeSlots?: string[];
   batchSeed: number;
   excludeCardIds?: string[];
 }
@@ -55,15 +50,11 @@ export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[
     roundedLng,
     [...params.categories].sort().join(','),
     [...params.intents].sort().join(','),
-    [...(params.priceTiers ?? [])].sort().join(','),
-    params.budgetMin,
-    params.budgetMax,
     params.travelMode,
     params.travelConstraintType,
     params.travelConstraintValue,
     nd,
-    params.dateOption ?? 'now',
-    [...(params.timeSlots ?? [])].sort().join(','),
+    params.dateOption ?? 'today',
     params.batchSeed,
     [...(params.excludeCardIds ?? [])].sort().join(','),
   ] as const;
@@ -73,15 +64,11 @@ interface UseDeckCardsParams {
   location: { lat: number; lng: number } | null;
   categories: string[];
   intents?: string[];
-  priceTiers: PriceTierSlug[];
-  budgetMin: number; // Always 0 — not used for card filtering. Cards filtered by priceTiers instead.
-  budgetMax: number;
   travelMode: string;
   travelConstraintType: 'time';
   travelConstraintValue: number;
   datetimePref?: string;
   dateOption?: string;
-  timeSlots?: string[];
   batchSeed: number;
   enabled: boolean;
   excludeCardIds?: string[];
@@ -119,15 +106,11 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
         lng: location.lng,
         categories: params.categories,
         intents: params.intents ?? [],
-        priceTiers: params.priceTiers ?? [],
-        budgetMin: params.budgetMin,
-        budgetMax: params.budgetMax,
         travelMode: params.travelMode,
         travelConstraintType: params.travelConstraintType,
         travelConstraintValue: params.travelConstraintValue,
         datetimePref: params.datetimePref,
         dateOption: params.dateOption,
-        timeSlots: params.timeSlots,
         batchSeed: params.batchSeed,
         excludeCardIds: params.excludeCardIds,
       })

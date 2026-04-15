@@ -18,9 +18,6 @@ export interface AggregatedCollaborationPrefs {
  * Aggregation rules:
  * - categories: union of all participants' categories (deduplicated)
  * - intents: union of all participants' intents (deduplicated)
- * - priceTiers: union
- * - budgetMin: Math.min()
- * - budgetMax: Math.max()
  * - travelMode: most common, default 'walking'
  * - travelConstraintType: always 'time' (distance option removed)
  * - travelConstraintValue: median (not min — avoids extreme restriction)
@@ -66,7 +63,7 @@ export function aggregateAllPrefs(
   // Selected dates: union of all participants' dates
   const dateSet = new Set<string>();
   for (const row of rows) {
-    const dates = (row as any).selected_dates;
+    const dates = row.selected_dates;
     if (Array.isArray(dates)) {
       for (const d of dates) dateSet.add(d);
     }

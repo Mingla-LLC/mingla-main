@@ -35,8 +35,7 @@ export interface BoardSessionPreferences {
   time_of_day?: string | null;
   datetime_pref?: string | null;
   date_option?: string | null;
-  time_slot?: string | null;
-  exact_time?: string | null;
+  selected_dates?: string[] | null;
   location?: string | null;
   custom_location?: string | null;
   custom_lat?: number | null;
@@ -204,7 +203,6 @@ export const useBoardSession = (sessionId?: string) => {
         // conflicting date/time/location combinations from being persisted.
         const normalized = normalizePreferencesForSave({
           date_option: newPreferences.date_option,
-          time_slot: newPreferences.time_slot,
           datetime_pref: newPreferences.datetime_pref,
           use_gps_location: newPreferences.use_gps_location,
           custom_location: newPreferences.custom_location,
@@ -214,7 +212,6 @@ export const useBoardSession = (sessionId?: string) => {
           ...newPreferences,
           // Overwrite with normalized values (only the fields normalization touches)
           date_option: normalized.date_option,
-          time_slot: normalized.time_slot,
           datetime_pref: normalized.datetime_pref,
           use_gps_location: normalized.use_gps_location,
           custom_location: normalized.custom_location,

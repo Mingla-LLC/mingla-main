@@ -24,15 +24,11 @@ export interface DeckParams {
   location: { lat: number; lng: number };
   categories: string[];
   intents?: string[];
-  priceTiers: PriceTierSlug[];
-  budgetMin: number;
-  budgetMax: number;
   travelMode: string;
   travelConstraintType: 'time';
   travelConstraintValue: number;
   datetimePref?: string;
   dateOption?: string;
-  timeSlots?: string[];
   batchSeed?: number;
   limit?: number;
   excludeCardIds?: string[];
@@ -40,7 +36,7 @@ export interface DeckParams {
 
 export interface DeckResponse {
   cards: Recommendation[];
-  deckMode: 'nature' | 'first_meet' | 'picnic_park' | 'drink' | 'casual_eats' | 'fine_dining' | 'watch' | 'live_performance' | 'creative_arts' | 'play' | 'wellness' | 'flowers' | 'curated' | 'mixed';
+  deckMode: 'nature' | 'icebreakers' | 'drinks_and_music' | 'brunch_lunch_casual' | 'upscale_fine_dining' | 'movies_theatre' | 'creative_arts' | 'play' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
   hasMore: boolean;
@@ -52,19 +48,16 @@ interface DeckPill {
 }
 
 // ── Pill ID → display name for the unified edge function ─────────────────
+// ORCH-0434: Updated to new canonical slugs.
 const PILL_TO_CATEGORY_NAME: Record<string, string> = {
   nature: 'Nature & Views',
-  first_meet: 'First Meet',
-  picnic_park: 'Picnic Park',
-  drink: 'Drink',
-  casual_eats: 'Casual Eats',
-  fine_dining: 'Fine Dining',
-  watch: 'Watch',
-  live_performance: 'Live Performance',
+  icebreakers: 'Icebreakers',
+  drinks_and_music: 'Drinks & Music',
+  brunch_lunch_casual: 'Brunch, Lunch & Casual',
+  upscale_fine_dining: 'Upscale & Fine Dining',
+  movies_theatre: 'Movies & Theatre',
   creative_arts: 'Creative & Arts',
   play: 'Play',
-  wellness: 'Wellness',
-  flowers: 'Flowers',
 };
 
 /**
@@ -148,48 +141,52 @@ class DeckService {
 
     // Category pills — lookup map handles all format variations (display names,
     // slugs, underscored slugs) so no category silently falls through.
+    // ORCH-0434: Updated to new canonical slugs with backward compat for old slugs.
     const CATEGORY_PILL_MAP: Record<string, string> = {
+      // New canonical slugs
       'nature': 'nature',
       'nature & views': 'nature',
-      'nature_views': 'nature',
-      'first meet': 'first_meet',
-      'first_meet': 'first_meet',
-      'picnic park': 'picnic_park',
-      'picnic_park': 'picnic_park',
-      'picnic': 'picnic_park',
-      'drink': 'drink',
-      'casual eats': 'casual_eats',
-      'casual_eats': 'casual_eats',
-      'fine dining': 'fine_dining',
-      'fine_dining': 'fine_dining',
-      'watch': 'watch',
-      'creative & arts': 'creative_arts',
-      'creative arts': 'creative_arts',
+      'icebreakers': 'icebreakers',
+      'drinks_and_music': 'drinks_and_music',
+      'drinks & music': 'drinks_and_music',
+      'brunch_lunch_casual': 'brunch_lunch_casual',
+      'brunch, lunch & casual': 'brunch_lunch_casual',
+      'upscale_fine_dining': 'upscale_fine_dining',
+      'upscale & fine dining': 'upscale_fine_dining',
+      'movies_theatre': 'movies_theatre',
+      'movies & theatre': 'movies_theatre',
       'creative_arts': 'creative_arts',
+      'creative & arts': 'creative_arts',
       'play': 'play',
-      'wellness': 'wellness',
-      'live performance': 'live_performance',
-      'live_performance': 'live_performance',
-      'flowers': 'flowers',
+      // Old slugs → new slugs (backward compat)
+      'first_meet': 'icebreakers',
+      'first meet': 'icebreakers',
+      'picnic_park': 'nature',
+      'picnic park': 'nature',
+      'picnic': 'nature',
+      'drink': 'drinks_and_music',
+      'casual_eats': 'brunch_lunch_casual',
+      'casual eats': 'brunch_lunch_casual',
+      'fine_dining': 'upscale_fine_dining',
+      'fine dining': 'upscale_fine_dining',
+      'watch': 'movies_theatre',
+      'live_performance': 'movies_theatre',
+      'live performance': 'movies_theatre',
+      'wellness': 'brunch_lunch_casual',
+      'flowers': 'nature',
+      'nature_views': 'nature',
       // Legacy compat
-      'groceries & flowers': 'flowers',
-      'groceries flowers': 'flowers',
-      'groceries_flowers': 'flowers',
-      'work & business': 'first_meet',
-      'work_business': 'first_meet',
-      'work business': 'first_meet',
-      'work and business': 'first_meet',
-      // Legacy category names (pre-v2) → map to current slugs
+      'groceries & flowers': 'nature',
+      'groceries_flowers': 'nature',
+      'work & business': 'icebreakers',
+      'work_business': 'icebreakers',
       'play & move': 'play',
-      'play and move': 'play',
       'stroll': 'nature',
-      'sip & chill': 'drink',
-      'sip and chill': 'drink',
-      'dining': 'fine_dining',
-      'screen & relax': 'watch',
-      'screen and relax': 'watch',
+      'sip & chill': 'drinks_and_music',
+      'sip and chill': 'drinks_and_music',
+      'dining': 'upscale_fine_dining',
+      'screen & relax': 'movies_theatre',
       'creative & hands-on': 'creative_arts',
-      'creative and hands-on': 'creative_arts',
     };
 
     for (const cat of cats) {
@@ -276,14 +273,11 @@ class DeckService {
               body: {
                 categories: categoryNames,
                 location: params.location,
-                priceTiers: params.priceTiers,
-                budgetMax: params.budgetMax,
                 travelMode: params.travelMode,
                 travelConstraintType: params.travelConstraintType,
                 travelConstraintValue: params.travelConstraintValue,
                 datetimePref: params.datetimePref,
                 dateOption: params.dateOption,
-                timeSlots: params.timeSlots,
                 batchSeed: params.batchSeed,
                 limit: categoryLimit,
                 excludeCardIds: params.excludeCardIds,
@@ -340,8 +334,6 @@ class DeckService {
             const cards = await curatedExperiencesService.generateCuratedExperiences({
               experienceType: pill.id as any,
               location: params.location,
-              budgetMin: params.budgetMin,
-              budgetMax: params.budgetMax,
               travelMode: params.travelMode,
               travelConstraintType: params.travelConstraintType,
               travelConstraintValue: params.travelConstraintValue,

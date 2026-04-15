@@ -1,5 +1,4 @@
 import type { RecommendationsRequest } from '../types';
-import { PriceTierSlug, TIER_BY_SLUG } from '../constants/priceTiers';
 
 // ORCH-0434: Removed priceTiers, budgetRange. Added intentToggle, categoryToggle, selectedDates.
 interface PreferencesSheetState {
@@ -53,7 +52,6 @@ export const convertPreferencesToRequest = (
   };
 
   return {
-    priceTiers: preferences.priceTiers,
     categories: preferences.categories,
     experienceTypes: preferences.experienceTypes || [],
     timeWindow,
