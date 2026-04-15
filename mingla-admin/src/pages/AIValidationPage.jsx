@@ -469,10 +469,9 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
     try {
       const data = await invoke({
         action: "run_rules_filter",
-        scope,
+        scope: "all",
         city_id: selectedCityId,
         city: cityName,
-        category: scope === "category" ? category : undefined,
         dry_run: dryRun,
       });
       if (data.status === "nothing_to_do") {
@@ -793,14 +792,14 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
             <span className="text-[var(--color-text-primary)]">Dry run (preview without writing)</span>
           </label>
 
-          {/* Rules Filter Button */}
+          {/* Rules Filter Button — always enabled when city selected (processes all places, not just unvalidated) */}
           <Button variant="secondary" icon={Shield} onClick={handleRunRulesFilter}
-            disabled={rulesRunning || !preview?.places_to_process}
+            disabled={rulesRunning || !selectedCityId}
             loading={rulesRunning}
             className="w-full">
             {rulesRunning
               ? "Running Rules Filter..."
-              : `Run Rules Filter — Free (${fmt(preview?.places_to_process || 0)} places)`}
+              : "Run Rules Filter — Free"}
           </Button>
           <p className="text-xs text-[var(--color-text-tertiary)] -mt-2">
             Applies hardcoded rules only (blocked types, category corrections, fine dining promotion). No AI credits used.
