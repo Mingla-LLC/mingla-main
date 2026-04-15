@@ -56,7 +56,7 @@ const BASE_INITIAL_DATA: OnboardingData = {
   useGpsLocation: false,
   manualLocation: null,
   selectedCategories: [...DEFAULT_CATEGORIES],
-  dateOption: 'today',
+  dateOption: 'this_weekend',
   selectedDates: [],
   travelMode: DEFAULT_TRANSPORT,
   travelTimeMinutes: DEFAULT_TRAVEL_TIME,

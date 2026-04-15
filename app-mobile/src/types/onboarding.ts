@@ -5,11 +5,9 @@ export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7
 export type Step1SubStep = 'language' | 'welcome' | 'phone' | 'otp' | 'gender_identity' | 'details'
 export type Step2SubStep = 'value_prop' | 'intents'
 export type Step3SubStep = 'location'
-// ORCH-0434: 'budget' removed, 'when' added
+// ORCH-0434: 'budget', 'manual_location', 'when' removed — GPS mandatory, date defaults to this_weekend
 export type Step4SubStep =
   | 'celebration'
-  | 'manual_location'  // only shown when GPS was denied/skipped
-  | 'when'             // ORCH-0434: today / this weekend / pick dates
   | 'categories'
   | 'transport'
   | 'travel_time'

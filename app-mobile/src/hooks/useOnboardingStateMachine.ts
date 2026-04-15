@@ -12,7 +12,7 @@ const STEP_SUBSTEPS: Record<OnboardingStep, SubStep[]> = {
   1: ['language', 'welcome', 'phone', 'otp', 'gender_identity', 'details'],
   2: ['value_prop', 'intents'],
   3: ['location'],
-  4: ['celebration', 'when', 'categories', 'transport', 'travel_time'],
+  4: ['celebration', 'categories', 'transport', 'travel_time'],
   5: ['friends_and_pairing'],   // single substep, no paths
   6: ['collaborations'],         // NEW
   7: ['consent', 'getting_experiences'],  // NEW: consent moved here
@@ -65,10 +65,8 @@ export function useOnboardingStateMachine({
 
   // Build the effective sub-step sequence for Step 4 (conditionally includes manual_location)
   const getStep4Sequence = useCallback((): SubStep[] => {
-    if (hasGpsPermission) {
-      return ['celebration', 'when', 'categories', 'transport', 'travel_time']
-    }
-    return ['celebration', 'manual_location', 'when', 'categories', 'transport', 'travel_time']
+    // GPS is mandatory (Step 3) — no manual_location fallback. 'when' removed — defaults to this_weekend.
+    return ['celebration', 'categories', 'transport', 'travel_time']
   }, [hasGpsPermission])
 
   // Get full sequence for a given step
