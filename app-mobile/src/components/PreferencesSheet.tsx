@@ -1105,10 +1105,17 @@ export default function PreferencesSheet({
                 </View>
               ) : (
                 <Text style={styles.applyButtonText}>
-                  {ctaHintText ?? (hasChanges ? t('preferences:sheet.lock_it_in_count', { count: countChanges() }) : t('preferences:sheet.lock_it_in'))}
+                  {ctaHintText
+                    ? ctaHintText
+                    : hasChanges
+                      ? t('preferences:sheet.lock_it_in_count', { count: countChanges() })
+                      : t('preferences:sheet.lock_it_in')}
                 </Text>
               )}
             </TouchableOpacity>
+            {isFormComplete && !hasChanges && !isSaving && (
+              <Text style={styles.noChangesHint}>You're all set — change something to update</Text>
+            )}
             <TouchableOpacity
               onPress={handleReset}
               style={styles.resetButton}
@@ -1285,6 +1292,13 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "#6b7280",
     marginBottom: 14,
+  },
+  noChangesHint: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#9ca3af',
+    textAlign: 'center',
+    marginTop: 8,
   },
   sectionWarningPill: {
     alignSelf: 'flex-start',
