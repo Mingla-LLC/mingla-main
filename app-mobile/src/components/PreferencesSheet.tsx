@@ -222,6 +222,7 @@ export default function PreferencesSheet({
 
   const isSavingRef = useRef(false);
   const isInternalUpdate = useRef(false);
+  const scrollRef = useRef<any>(null);
 
   // Sequential section stagger animation (ORCH-0434 Phase 6B)
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -921,6 +922,7 @@ export default function PreferencesSheet({
 
         <View style={{ flex: 1 }}>
           <KeyboardAwareScrollView
+            ref={scrollRef}
             style={styles.scrollView}
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
@@ -1074,12 +1076,12 @@ export default function PreferencesSheet({
               }
             }}
             onFocus={() => {
-              // Scroll to make input visible above keyboard
+              // Force scroll to bottom so keyboard doesn't cover the input
+              // The KeyboardAwareScrollView auto-scrolls on keyboard show,
+              // but this ensures it works when keyboard is already open
               setTimeout(() => {
-                locationSectionRef.current?.measureInWindow((_x, _y, _w, _h) => {
-                  // KeyboardAwareScrollView handles this automatically
-                });
-              }, 100);
+                scrollRef.current?.scrollToEnd?.({ animated: true });
+              }, 300);
             }}
           />
             {sectionWarnings.travelLimit && (
