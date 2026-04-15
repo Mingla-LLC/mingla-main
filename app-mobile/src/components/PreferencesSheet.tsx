@@ -633,10 +633,12 @@ export default function PreferencesSheet({
     // Location: GPS is always valid. Custom requires validated address (has coords = chip state)
     const hasLocation = useGpsLocation || (searchLocation.length > 0 && selectedCoords !== null);
 
-    // At least one toggle ON with selections
-    const hasIntentPills = intentToggle && selectedIntents.length > 0;
-    const hasCategoryPills = categoryToggle && selectedCategories.length > 0;
-    const hasPills = hasIntentPills || hasCategoryPills;
+    // Every toggled-ON section must have at least 1 selection
+    const intentsOk = !intentToggle || selectedIntents.length > 0;
+    const categoriesOk = !categoryToggle || selectedCategories.length > 0;
+    // At least one toggle must be ON
+    const atLeastOneToggle = intentToggle || categoryToggle;
+    const hasPills = intentsOk && categoriesOk && atLeastOneToggle;
 
     const hasDate = selectedDateOption !== null;
     const hasDateDetails = selectedDateOption === 'pick_dates'
