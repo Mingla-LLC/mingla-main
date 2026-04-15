@@ -349,14 +349,24 @@ export const DateTimeSection = memo(
                     size={14}
                     color={isSelected ? "#ffffff" : "#6b7280"}
                   />
-                  <Text
-                    style={[
-                      styles.timeSlotPillLabel,
-                      isSelected && styles.timeSlotPillLabelSelected,
-                    ]}
-                  >
-                    {t(`preferences:${slot.labelKey}`)}
-                  </Text>
+                  <View>
+                    <Text
+                      style={[
+                        styles.timeSlotPillLabel,
+                        isSelected && styles.timeSlotPillLabelSelected,
+                      ]}
+                    >
+                      {t(`preferences:${slot.labelKey}`)}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.timeSlotPillTime,
+                        isSelected && styles.timeSlotPillTimeSelected,
+                      ]}
+                    >
+                      {t(`preferences:${slot.timeKey}`)}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -704,6 +714,15 @@ const styles = StyleSheet.create({
   timeSlotPillLabelSelected: {
     color: "#ffffff",
     fontWeight: "600",
+  },
+  timeSlotPillTime: {
+    fontSize: 9,
+    fontWeight: "400" as const,
+    color: "#9ca3af",
+    marginTop: 1,
+  },
+  timeSlotPillTimeSelected: {
+    color: "rgba(255, 255, 255, 0.75)",
   },
   travelModesGrid: {
     flexDirection: "row",

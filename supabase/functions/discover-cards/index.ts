@@ -250,6 +250,18 @@ function filterByDateTime(
     return true; // No hours data — assume open
   }
 
+  // Weekend filtering — check Saturday (6) and Sunday (0) instead of today (ORCH-0431)
+  // dateOption values: "weekend", "this-weekend", "this weekend" (all accepted)
+  const dOpt = dateOption.toLowerCase().replace(/-/g, ' ');
+  if (dOpt === 'weekend' || dOpt === 'this weekend') {
+    const hourStart = (timeSlot && TIME_SLOT_RANGES[timeSlot])
+      ? TIME_SLOT_RANGES[timeSlot].start
+      : 12; // noon default if no slot specified
+    return places.filter(place =>
+      isOpenDuringHour(place, 6, hourStart) || isOpenDuringHour(place, 0, hourStart),
+    );
+  }
+
   // Multi-slot UNION filtering (collab mode — DEC-010)
   // Place passes if open during ANY of the selected time slots.
   if (timeSlots && timeSlots.length > 1) {
