@@ -1,7 +1,7 @@
 /**
  * Category Utilities
  * Provides functions to convert category translation keys to readable names.
- * 13 categories: 12 visible + 1 hidden (Groceries).
+ * 10 categories: 8 visible + 2 hidden (Groceries, Flowers). ORCH-0434.
  */
 import i18n from '../i18n';
 
@@ -9,16 +9,18 @@ import i18n from '../i18n';
 // Do NOT reintroduce caps without a product decision.
 
 /** Hidden category slugs — never shown to users */
-export const HIDDEN_CATEGORY_SLUGS = new Set(['groceries']);
+// ORCH-0434: Added 'flowers' (hidden from user selection, kept in backend for curated experiences)
+export const HIDDEN_CATEGORY_SLUGS = new Set(['groceries', 'flowers']);
 
-/** All valid slugs (13 total) */
+/** All valid slugs (10 total: 8 visible + 2 hidden) */
+// ORCH-0434: Updated to new canonical slugs.
 const VALID_SLUGS = new Set([
-  'nature', 'first_meet', 'picnic_park', 'drink', 'casual_eats',
-  'fine_dining', 'watch', 'live_performance', 'creative_arts', 'play',
-  'wellness', 'flowers', 'groceries',
+  'nature', 'icebreakers', 'drinks_and_music', 'brunch_lunch_casual',
+  'upscale_fine_dining', 'movies_theatre', 'creative_arts', 'play',
+  'flowers', 'groceries',
 ]);
 
-/** Visible slugs only (12) — use for user-facing lists */
+/** Visible slugs only (8) — use for user-facing lists */
 export const VISIBLE_CATEGORY_SLUGS = [...VALID_SLUGS].filter(
   s => !HIDDEN_CATEGORY_SLUGS.has(s)
 );
@@ -30,38 +32,48 @@ export const VISIBLE_CATEGORY_SLUGS = [...VALID_SLUGS].filter(
 export const getReadableCategoryName = (categoryKey: string): string => {
   if (!categoryKey) return 'Experience';
 
-  // Normalize legacy slugs to canonical slugs first
+  // ORCH-0434: Legacy slugs now resolve to new canonical slugs.
   const legacyToSlug: Record<string, string> = {
-    'picnic': 'picnic_park',
+    // Old slugs → new slugs
+    'first_meet': 'icebreakers',
+    'picnic_park': 'nature',
+    'picnic': 'nature',
+    'drink': 'drinks_and_music',
+    'casual_eats': 'brunch_lunch_casual',
+    'fine_dining': 'upscale_fine_dining',
+    'watch': 'movies_theatre',
+    'live_performance': 'movies_theatre',
+    'wellness': 'brunch_lunch_casual',  // orphan fallback
+    // Legacy combined/removed categories
     'groceries_flowers': 'flowers',
     'groceries & flowers': 'flowers',
     'Groceries & Flowers': 'flowers',
-    'work_business': 'first_meet',
-    'work & business': 'first_meet',
-    'Work & Business': 'first_meet',
+    'work_business': 'icebreakers',
+    'work & business': 'icebreakers',
+    'Work & Business': 'icebreakers',
     'Nature': 'nature',
-    'Picnic': 'picnic_park',
+    'Picnic': 'nature',
     'stroll': 'nature',
-    'sip': 'drink',
-    'sip_and_chill': 'drink',
+    'sip': 'drinks_and_music',
+    'sip_and_chill': 'drinks_and_music',
     'creative': 'creative_arts',
     'play_move': 'play',
-    'dining': 'fine_dining',
-    'casual eats': 'casual_eats',
-    'fine dining': 'fine_dining',
+    'dining': 'upscale_fine_dining',
+    'casual eats': 'brunch_lunch_casual',
+    'fine dining': 'upscale_fine_dining',
     'creative & arts': 'creative_arts',
-    'first meet': 'first_meet',
+    'first meet': 'icebreakers',
     // Legacy screen_ prefixed keys
-    'screen_nature': 'nature', 'screen_drink': 'drink', 'screen_relax': 'watch',
-    'screen_creative': 'creative_arts', 'screen_dining': 'fine_dining',
-    'screen_wellness': 'wellness', 'screen_play': 'play', 'screen_eat': 'casual_eats',
-    'screen_social': 'drink', 'screen_romantic': 'fine_dining',
-    'screen_family': 'nature', 'screen_business': 'first_meet',
-    'screen_travel': 'nature', 'screen_stroll': 'nature', 'screen_sip': 'drink',
+    'screen_nature': 'nature', 'screen_drink': 'drinks_and_music', 'screen_relax': 'movies_theatre',
+    'screen_creative': 'creative_arts', 'screen_dining': 'upscale_fine_dining',
+    'screen_wellness': 'brunch_lunch_casual', 'screen_play': 'play', 'screen_eat': 'brunch_lunch_casual',
+    'screen_social': 'drinks_and_music', 'screen_romantic': 'upscale_fine_dining',
+    'screen_family': 'nature', 'screen_business': 'icebreakers',
+    'screen_travel': 'nature', 'screen_stroll': 'nature', 'screen_sip': 'drinks_and_music',
     'screen_shop': 'creative_arts', 'screen_learn': 'creative_arts',
-    'screen_exercise': 'wellness', 'screen_culture': 'creative_arts',
+    'screen_exercise': 'brunch_lunch_casual', 'screen_culture': 'creative_arts',
     'screen_nightlife': 'play', 'screen_shopping': 'creative_arts',
-    'screen_relax_old': 'watch',
+    'screen_relax_old': 'movies_theatre',
   };
 
   // Strip legacy "category." prefix
@@ -91,46 +103,60 @@ export const getCategorySlug = (categoryKey: string): string => {
   // Fast path: already a valid slug
   if (VALID_SLUGS.has(categoryKey)) return categoryKey;
 
-  // Direct name-to-slug mapping (English display names + legacy names)
+  // ORCH-0434: Updated to new canonical slugs. Old names resolve to new slugs.
   const nameToSlugMap: Record<string, string> = {
+    // Current display names → new slugs
     'Nature & Views': 'nature',
-    'First Meet': 'first_meet',
-    'Picnic Park': 'picnic_park',
-    'Drink': 'drink',
-    'Casual Eats': 'casual_eats',
-    'Fine Dining': 'fine_dining',
-    'Watch': 'watch',
-    'Live Performance': 'live_performance',
+    'Icebreakers': 'icebreakers',
+    'Drinks & Music': 'drinks_and_music',
+    'Brunch, Lunch & Casual': 'brunch_lunch_casual',
+    'Upscale & Fine Dining': 'upscale_fine_dining',
+    'Movies & Theatre': 'movies_theatre',
     'Creative & Arts': 'creative_arts',
     'Play': 'play',
-    'Wellness': 'wellness',
     'Flowers': 'flowers',
     'Groceries': 'groceries',
-    // Legacy names
+    // Old display names → new slugs (backward compat)
+    'First Meet': 'icebreakers',
+    'Picnic Park': 'nature',
+    'Drink': 'drinks_and_music',
+    'Casual Eats': 'brunch_lunch_casual',
+    'Fine Dining': 'upscale_fine_dining',
+    'Watch': 'movies_theatre',
+    'Live Performance': 'movies_theatre',
+    'Wellness': 'brunch_lunch_casual',
     'Nature': 'nature',
-    'Picnic': 'picnic_park',
+    'Picnic': 'nature',
     'Groceries & Flowers': 'flowers',
-    'Work & Business': 'first_meet',
+    'Work & Business': 'icebreakers',
     'Take a Stroll': 'nature',
-    'Sip & Chill': 'drink',
-    'Screen & Relax': 'watch',
+    'Sip & Chill': 'drinks_and_music',
+    'Screen & Relax': 'movies_theatre',
     'Creative & Hands-On': 'creative_arts',
     'Play & Move': 'play',
-    'Dining Experience': 'fine_dining',
-    'Dining Experiences': 'fine_dining',
-    'Wellness Dates': 'wellness',
+    'Dining Experience': 'upscale_fine_dining',
+    'Dining Experiences': 'upscale_fine_dining',
+    'Wellness Dates': 'brunch_lunch_casual',
     'Freestyle': 'nature',
-    'Picnics': 'picnic_park',
-    // Legacy slugs
-    'picnic': 'picnic_park',
+    'Picnics': 'nature',
+    // Old slugs → new slugs
+    'first_meet': 'icebreakers',
+    'picnic_park': 'nature',
+    'picnic': 'nature',
+    'drink': 'drinks_and_music',
+    'casual_eats': 'brunch_lunch_casual',
+    'fine_dining': 'upscale_fine_dining',
+    'watch': 'movies_theatre',
+    'live_performance': 'movies_theatre',
+    'wellness': 'brunch_lunch_casual',
     'groceries_flowers': 'flowers',
-    'work_business': 'first_meet',
+    'work_business': 'icebreakers',
     'stroll': 'nature',
-    'sip': 'drink',
-    'sip_and_chill': 'drink',
+    'sip': 'drinks_and_music',
+    'sip_and_chill': 'drinks_and_music',
     'creative': 'creative_arts',
     'play_move': 'play',
-    'dining': 'fine_dining',
+    'dining': 'upscale_fine_dining',
   };
 
   // Strip legacy prefix
@@ -145,19 +171,16 @@ export const getCategoryIcon = (categoryKey: string): string => {
   if (!categoryKey) return 'compass-outline';
   const slug = getCategorySlug(categoryKey);
 
+  // ORCH-0434: Updated to new canonical slugs.
   const iconMap: Record<string, string> = {
     'nature': 'trees',
-    'first_meet': 'handshake',
-    'picnic_park': 'tree-pine',
-    'picnic': 'tree-pine',
-    'drink': 'wine-outline',
-    'casual_eats': 'utensils-crossed',
-    'fine_dining': 'chef-hat',
-    'watch': 'film-new',
-    'live_performance': 'musical-notes-outline',
+    'icebreakers': 'cafe-outline',
+    'drinks_and_music': 'wine-outline',
+    'brunch_lunch_casual': 'utensils-crossed',
+    'upscale_fine_dining': 'chef-hat',
+    'movies_theatre': 'film-new',
     'creative_arts': 'color-palette-outline',
     'play': 'game-controller-outline',
-    'wellness': 'heart-pulse',
     'flowers': 'flower-outline',
     // groceries intentionally omitted — hidden category
   };
@@ -179,19 +202,21 @@ export const normalizeCategoryArray = (
   const seen = new Set<string>();
   const result: string[] = [];
   for (const cat of raw) {
-    // Migrate old slugs
+    // ORCH-0434: Migrate old slugs to new canonical slugs
     let slug: string;
-    if (cat === 'groceries_flowers') {
-      slug = 'flowers';
-    } else if (cat === 'work_business') {
-      continue; // removed category, skip
+    const oldToNew: Record<string, string> = {
+      'first_meet': 'icebreakers', 'picnic_park': 'nature', 'picnic': 'nature',
+      'drink': 'drinks_and_music', 'casual_eats': 'brunch_lunch_casual',
+      'fine_dining': 'upscale_fine_dining', 'watch': 'movies_theatre',
+      'live_performance': 'movies_theatre', 'wellness': 'brunch_lunch_casual',
+      'groceries_flowers': 'flowers', 'work_business': 'icebreakers',
+    };
+    if (oldToNew[cat]) {
+      slug = oldToNew[cat];
     } else {
       // Fast path: already a valid slug
       slug = VALID_SLUGS.has(cat) ? cat : getCategorySlug(cat);
-      // getCategorySlug returns hyphenated fallback for unknowns — remap to underscore
       slug = slug.replace(/-/g, '_');
-      // "picnic" from getCategorySlug → normalize to "picnic_park"
-      if (slug === 'picnic') slug = 'picnic_park';
     }
     if (!seen.has(slug) && VALID_SLUGS.has(slug) && !HIDDEN_CATEGORY_SLUGS.has(slug)) {
       seen.add(slug);
@@ -208,20 +233,17 @@ export const getCategoryColor = (categoryKey: string): string => {
   if (!categoryKey) return '#6B7280';
   const slug = getCategorySlug(categoryKey);
 
+  // ORCH-0434: Updated to new canonical slugs with matching colors from design spec.
   const colorMap: Record<string, string> = {
-    'nature': '#10B981',       // emerald
-    'first_meet': '#6366F1',   // indigo
-    'picnic_park': '#84CC16',  // lime
-    'picnic': '#84CC16',       // lime (legacy alias)
-    'drink': '#F59E0B',        // amber
-    'casual_eats': '#F97316',  // orange
-    'fine_dining': '#7C3AED',  // violet
-    'watch': '#3B82F6',        // blue
-    'live_performance': '#8B5CF6', // violet-500
-    'creative_arts': '#EC4899', // pink
-    'play': '#EF4444',         // red
-    'wellness': '#14B8A6',      // teal
-    'flowers': '#F472B6',       // pink-400
+    'nature': '#22C55E',              // green
+    'drinks_and_music': '#A855F7',    // purple
+    'icebreakers': '#F97316',         // orange
+    'brunch_lunch_casual': '#EF4444', // red
+    'upscale_fine_dining': '#DC2626', // dark red
+    'movies_theatre': '#3B82F6',      // blue
+    'creative_arts': '#EC4899',       // pink
+    'play': '#F59E0B',                // amber
+    'flowers': '#F472B6',             // pink-400
   };
 
   return colorMap[slug] || '#6B7280'; // gray fallback

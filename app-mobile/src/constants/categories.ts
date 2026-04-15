@@ -84,8 +84,8 @@ export const categories: Category[] = [
     incompatibleWith: ['watch', 'fine_dining', 'play']
   },
   {
-    slug: 'first_meet',
-    name: 'First Meet',
+    slug: 'icebreakers',
+    name: 'Icebreakers',
     icon: '🤝',
     description: 'Cafés, activities, and cultural spots — perfect for meeting someone new',
     detailedDescription: 'Coffee shops, bookstores, bowling alleys, arcades, art galleries, parks, museums, and more. Low-pressure venues mixing conversation, fun activities, and cultural outings for a memorable first meeting.',
@@ -180,8 +180,8 @@ export const categories: Category[] = [
     incompatibleWith: ['fine_dining', 'watch', 'wellness']
   },
   {
-    slug: 'drink',
-    name: 'Drink',
+    slug: 'drinks_and_music',
+    name: 'Drinks & Music',
     icon: '🍹',
     description: 'Bars, cocktail bars, breweries, coffee shops, tea houses, and more',
     detailedDescription: 'Drink-focused venues — bars, cocktail bars, beer gardens, breweries, coffee shops, coffee roasteries, tea houses, and juice bars. Works for first dates, group hangs, and casual social outings.',
@@ -223,8 +223,8 @@ export const categories: Category[] = [
     incompatibleWith: ['wellness', 'nature']
   },
   {
-    slug: 'casual_eats',
-    name: 'Casual Eats',
+    slug: 'brunch_lunch_casual',
+    name: 'Brunch, Lunch & Casual',
     icon: '🍔',
     description: 'Affordable, informal dining — burgers, ramen, tacos, pizza, and more',
     detailedDescription: 'Low-stakes, easygoing food outings across a wide range of cuisines. Fast food, diners, sandwich shops, ramen bars, pizza spots, and everything in between.',
@@ -272,8 +272,8 @@ export const categories: Category[] = [
     incompatibleWith: ['wellness', 'fine_dining']
   },
   {
-    slug: 'fine_dining',
-    name: 'Fine Dining',
+    slug: 'upscale_fine_dining',
+    name: 'Upscale & Fine Dining',
     icon: '🍽️',
     description: 'Elevated dining — steakhouses, French, seafood, Mediterranean, Spanish, tapas, bistros, and fine dining restaurants',
     detailedDescription: 'Curated, sit-down dining experiences centered on quality. Fine dining restaurants, steakhouses, French, seafood, Mediterranean, Spanish, tapas, oyster bars, bistros, gastropubs, and wine bars for special occasions and refined outings.',
@@ -316,8 +316,8 @@ export const categories: Category[] = [
     incompatibleWith: ['casual_eats', 'picnic_park', 'play', 'nature']
   },
   {
-    slug: 'watch',
-    name: 'Watch',
+    slug: 'movies_theatre',
+    name: 'Movies & Theatre',
     icon: '🎬',
     description: 'Movie theaters for a fun shared evening',
     detailedDescription: 'Movie theaters for a classic, low-effort outing. Grab popcorn and enjoy the latest releases or indie screenings together.',

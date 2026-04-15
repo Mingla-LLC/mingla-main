@@ -1,16 +1,15 @@
 import type { BoardSessionPreferences } from '../hooks/useBoardSession';
 
+// ORCH-0434: Removed priceTiers, budgetMin, budgetMax. Added selectedDates.
 export interface AggregatedCollaborationPrefs {
   categories: string[];
   intents: string[];
-  priceTiers: string[];
-  budgetMin: number;
-  budgetMax: number;
   travelMode: string;
   travelConstraintType: 'time';
   travelConstraintValue: number;
   datetimePref: string | null;
   location: { lat: number; lng: number } | null;
+  selectedDates: string[];
 }
 
 /**
@@ -35,14 +34,12 @@ export function aggregateAllPrefs(
     return {
       categories: [],
       intents: [],
-      priceTiers: ['chill', 'comfy', 'bougie', 'lavish'],
-      budgetMin: 0,
-      budgetMax: 1000,
       travelMode: 'walking',
       travelConstraintType: 'time',
       travelConstraintValue: 30,
       datetimePref: null,
       location: null,
+      selectedDates: [],
     };
   }
 
@@ -64,20 +61,17 @@ export function aggregateAllPrefs(
   }
   const intents = Array.from(intentSet);
 
-  // Price tiers: union
-  const tierSet = new Set<string>();
+  // ORCH-0434: Price tiers and budget removed from aggregation.
+
+  // Selected dates: union of all participants' dates
+  const dateSet = new Set<string>();
   for (const row of rows) {
-    for (const tier of (row.price_tiers || [])) {
-      tierSet.add(tier);
+    const dates = (row as any).selected_dates;
+    if (Array.isArray(dates)) {
+      for (const d of dates) dateSet.add(d);
     }
   }
-  const priceTiers = tierSet.size > 0
-    ? Array.from(tierSet)
-    : ['chill', 'comfy', 'bougie', 'lavish'];
-
-  // Budget: widest range
-  const budgetMin = Math.min(...rows.map((r) => r.budget_min ?? 0));
-  const budgetMax = Math.max(...rows.map((r) => r.budget_max ?? 1000));
+  const selectedDates = Array.from(dateSet);
 
   // Travel mode: majority vote
   const travelMode = majorityVote(
@@ -124,14 +118,12 @@ export function aggregateAllPrefs(
   return {
     categories,
     intents,
-    priceTiers,
-    budgetMin,
-    budgetMax,
     travelMode,
     travelConstraintType,
     travelConstraintValue,
     datetimePref,
     location,
+    selectedDates,
   };
 }
 
