@@ -632,6 +632,9 @@ export const RecommendationsProvider: React.FC<
   // ── Refresh Key Handler ─────────────────────────────────────────────────
   // When preferences change (refreshKey increments), reset state.
   // The query key change from updated categories/intents handles refetching automatically.
+  // ORCH-0431: This reset set must mirror the mode transition handler (~line 868).
+  // Both represent "old deck invalid, new fetch needed." If you add a reset to one,
+  // check whether the other needs it too.
   useEffect(() => {
     if (previousRefreshKeyRef.current !== undefined && previousRefreshKeyRef.current !== refreshKey) {
       // Reset page to 0 — the query key change from new params will
@@ -639,6 +642,8 @@ export const RecommendationsProvider: React.FC<
       setBatchSeedReady(false); // Block queries until batchSeed is confirmed 0
       setBatchSeed(0);
       setIsExhausted(false);
+      setHasCompletedFetchForCurrentMode(false);
+      setRecommendations(EMPTY_CARDS);
       setHasMoreCards(true);
       setIsRefreshingAfterPrefChange(true);
       setDismissedCards([]);
@@ -943,7 +948,10 @@ export const RecommendationsProvider: React.FC<
         // flashing an empty state before cards arrive.
         // NOTE: isDeckFetching intentionally excluded — it stays true during
         // background refetches and would prevent completion after the initial load.
-        (!isLoadingLocation && !isLoadingPreferences && !isDeckLoading && !isModeTransitioning);
+        // ORCH-0431: isRefreshingAfterPrefChange guard mirrors isModeTransitioning —
+        // without it, placeholderData keeps isDeckLoading false after a pref change,
+        // causing premature completion before new cards arrive.
+        (!isLoadingLocation && !isLoadingPreferences && !isDeckLoading && !isModeTransitioning && !isRefreshingAfterPrefChange);
 
       if (shouldMarkComplete) {
         setHasCompletedFetchForCurrentMode(true);
@@ -971,6 +979,7 @@ export const RecommendationsProvider: React.FC<
     locationError,
     isLoadingLocation,
     isLoadingPreferences,
+    isRefreshingAfterPrefChange,
   ]);
 
   // ── Update Card Stroll Data ─────────────────────────────────────────────

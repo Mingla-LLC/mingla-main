@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-13
+> Last updated: 2026-04-14
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 
@@ -593,6 +593,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 
 | ORCH-0429 | Picnic Park / Nature & Views — dual-tagging is fine (user confirmed parks can be both). Original exclusivity request WITHDRAWN. No code change needed. | Discovery | S1 | data-integrity | closed | B | 2026-04-14 | User confirmed parks can be both picnic and nature. The real problem is ORCH-0430 (same parks every time). |
 | ORCH-0430 | Curated experiences always showed same venues — fetchSinglesForCategory now shuffles results for variety | Discovery | S1 | quality-gap | closed | A | 2026-04-14 | Root cause: rating DESC sort + anchorPlaces[0] = deterministic. Fix: shuffle(filtered) at line 307. Benefits all 6 experience types. Pending deploy. |
+| ORCH-0431 | Deck stuck on exhausted/empty screen after preference change — no loading skeleton shown | Discovery | S1 | bug | open | F | — | Root cause proven: refreshKey handler (line 636) resets isExhausted but NOT hasCompletedFetchForCurrentMode, so state machine falls to EMPTY instead of INITIAL_LOADING. |
 
 ### Cross-Cutting: UI Components & Design System
 
