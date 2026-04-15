@@ -30,6 +30,7 @@ import { Input } from "../components/ui/Input";
 
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { Spinner } from "../components/ui/Spinner";
+import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from "../constants/categories";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -38,20 +39,6 @@ const TABS = [
   { id: "browse", label: "Browse Cards" },
   { id: "generate", label: "Generate Cards" },
 ];
-
-const CATEGORY_LABELS = {
-  nature_views: "Nature & Views", first_meet: "First Meet", picnic_park: "Picnic Park",
-  drink: "Drink", casual_eats: "Casual Eats", fine_dining: "Fine Dining",
-  watch: "Watch", live_performance: "Live Performance", creative_arts: "Creative & Arts",
-  play: "Play", wellness: "Wellness", flowers: "Flowers", groceries: "Groceries",
-};
-
-const CATEGORY_COLORS = {
-  nature_views: "#22c55e", first_meet: "#f97316", picnic_park: "#84cc16",
-  drink: "#a855f7", casual_eats: "#ef4444", fine_dining: "#dc2626",
-  watch: "#3b82f6", live_performance: "#8b5cf6", creative_arts: "#ec4899",
-  play: "#f59e0b", wellness: "#14b8a6", flowers: "#f472b6", groceries: "#6b7280",
-};
 
 const EXPERIENCE_TYPES = [
   { id: "adventurous", label: "Adventurous" },
@@ -62,7 +49,6 @@ const EXPERIENCE_TYPES = [
   { id: "take-a-stroll", label: "Take a Stroll" },
 ];
 
-const ALL_CATEGORIES = Object.keys(CATEGORY_LABELS);
 const PAGE_SIZE = 20;
 
 // Venue name keywords that the edge function excludes (must match categoryPlaceTypes.ts)
@@ -902,7 +888,6 @@ function BrowseCardsTab({ scope, pickerCities, onRefresh }) {
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLLS = 300;
-const ALL_SLUGS = Object.keys(CATEGORY_LABELS);
 
 function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
   const { addToast } = useToast();
@@ -965,7 +950,7 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
 
       // Build per-category stats
       const catStats = {};
-      for (const slug of ALL_SLUGS) catStats[slug] = { approved: 0, withPhotos: 0, existingCards: 0, ready: 0 };
+      for (const slug of ALL_CATEGORIES) catStats[slug] = { approved: 0, withPhotos: 0, existingCards: 0, ready: 0 };
 
       for (const p of (places || [])) {
         const cats = Array.isArray(p.ai_categories) ? p.ai_categories : [];
@@ -984,7 +969,7 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
         }
       }
 
-      const categories = ALL_SLUGS.map(slug => ({ slug, ...catStats[slug] }));
+      const categories = ALL_CATEGORIES.map(slug => ({ slug, ...catStats[slug] }));
       // Count distinct ready places (not category-slots) to avoid double-counting multi-category places
       let totalReady = 0;
       for (const p of (places || [])) {
@@ -1002,7 +987,7 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
         if (existingPlaceIds.has(p.id)) totalCarded++;
       }
       const totalActiveCards = totalCarded;
-      const coveredCount = ALL_SLUGS.filter(s => (catStats[s]?.existingCards || 0) > 0).length;
+      const coveredCount = ALL_CATEGORIES.filter(s => (catStats[s]?.existingCards || 0) > 0).length;
 
       setPreviewData({
         categories,
@@ -1136,7 +1121,7 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
   const displayRun = lastRun || (runStatus?.status && runStatus.status !== "running" ? runStatus : null);
 
   // ── Category feed rows (for RUNNING state) ─────────────────────────────
-  const categoryFeedRows = ALL_SLUGS.map(slug => {
+  const categoryFeedRows = ALL_CATEGORIES.map(slug => {
     const result = runStatus?.category_results?.[slug];
     const isCurrent = runStatus?.current_category === slug;
     return {
@@ -1200,7 +1185,7 @@ function GenerateCardsTab({ scope, pickerCities, onScopeChange, onRefresh }) {
   ];
   const buildResultRows = (run) => {
     if (!run?.category_results) return [];
-    return ALL_SLUGS.map(slug => {
+    return ALL_CATEGORIES.map(slug => {
       const stats = run.category_results[slug];
       return { slug, eligible: stats?.eligible || 0, created: stats?.created || 0, skipped: stats?.skipped || 0 };
     }).filter(r => r.eligible > 0);

@@ -1255,10 +1255,7 @@ export function UserManagementPage() {
             {userPrefs ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
                 <ProfileField icon={Zap} label="Mode" value={userPrefs.mode} />
-                <ProfileField icon={Activity} label="Budget Min" value={userPrefs.budget_min} />
-                <ProfileField icon={Activity} label="Budget Max" value={userPrefs.budget_max} />
                 <ProfileField icon={Globe} label="Travel Mode" value={userPrefs.travel_mode} />
-                <ProfileField icon={Clock} label="Time Slot" value={userPrefs.time_slot} />
                 <ProfileField icon={Globe} label="Max Distance (km)" value={userPrefs.max_distance_km} />
                 {userPrefs.categories && (
                   <div className="md:col-span-2">
@@ -1494,13 +1491,7 @@ export function UserManagementPage() {
           {impersonateData.preferences ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
               <ProfileField icon={Zap} label="Mode" value={impersonateData.preferences.mode} />
-              <ProfileField icon={Activity} label="Budget" value={
-                impersonateData.preferences.budget_min != null && impersonateData.preferences.budget_max != null
-                  ? `${impersonateData.preferences.budget_min} – ${impersonateData.preferences.budget_max}`
-                  : null
-              } />
               <ProfileField icon={Globe} label="Travel Mode" value={impersonateData.preferences.travel_mode} />
-              <ProfileField icon={Clock} label="Time Slot" value={impersonateData.preferences.time_slot} />
               {impersonateData.preferences.categories && (
                 <div className="md:col-span-2">
                   <span className="text-xs text-[var(--color-text-tertiary)] uppercase tracking-wider">Categories</span>

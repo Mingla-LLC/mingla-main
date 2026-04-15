@@ -423,3 +423,51 @@ export function getExcludedPrimaryTypes(categoryId: string): string[] {
 
 /** All 13 category IDs */
 export const ALL_SEEDING_CATEGORY_IDS = SEEDING_CATEGORIES.map(c => c.id);
+
+/** Reverse lookup: appCategorySlug → SeedingCategoryConfig[] (multiple configs can share one app slug) */
+export const SEEDING_CATEGORY_MAP_BY_APP_SLUG: Record<string, SeedingCategoryConfig[]> = {};
+for (const cat of SEEDING_CATEGORIES) {
+  if (!SEEDING_CATEGORY_MAP_BY_APP_SLUG[cat.appCategorySlug]) {
+    SEEDING_CATEGORY_MAP_BY_APP_SLUG[cat.appCategorySlug] = [];
+  }
+  SEEDING_CATEGORY_MAP_BY_APP_SLUG[cat.appCategorySlug].push(cat);
+}
+
+/**
+ * Resolve category identifiers (old seeding IDs or new app slugs) to configs.
+ * Accepts both `nature_views` (old) and `nature` (new) and returns the matching configs.
+ * ORCH-0434: Needed because admin sends new app slugs but SEEDING_CATEGORIES uses old IDs.
+ */
+export function resolveCategoriesToConfigs(ids: string[]): SeedingCategoryConfig[] {
+  const configs: SeedingCategoryConfig[] = [];
+  const seen = new Set<string>();
+  for (const id of ids) {
+    // Try old seeding ID first
+    const direct = SEEDING_CATEGORY_MAP[id];
+    if (direct && !seen.has(direct.id)) {
+      seen.add(direct.id);
+      configs.push(direct);
+      continue;
+    }
+    // Try new app slug (may resolve to multiple seeding configs, e.g. nature → nature_views + picnic_park)
+    const byApp = SEEDING_CATEGORY_MAP_BY_APP_SLUG[id];
+    if (byApp) {
+      for (const c of byApp) {
+        if (!seen.has(c.id)) {
+          seen.add(c.id);
+          configs.push(c);
+        }
+      }
+    }
+  }
+  return configs;
+}
+
+/**
+ * Resolve a single seeding_category value (from DB) to a config.
+ * Handles both old IDs (from legacy batch rows) and new app slugs (from post-migration rows).
+ */
+export function resolveSeedingCategory(categoryValue: string): SeedingCategoryConfig | undefined {
+  return SEEDING_CATEGORY_MAP[categoryValue]
+    ?? SEEDING_CATEGORY_MAP_BY_APP_SLUG[categoryValue]?.[0];
+}
