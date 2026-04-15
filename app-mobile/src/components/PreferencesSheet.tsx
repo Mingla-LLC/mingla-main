@@ -32,10 +32,7 @@ import {
   geocodingService,
   AutocompleteSuggestion,
 } from "../services/geocodingService";
-import { Calendar } from "./ui/calendar";
 import { useQueryClient } from "@tanstack/react-query";
-import { getCurrencySymbol, formatNumberWithCommas } from "../utils/currency";
-import { getRate } from "../services/currencyService";
 import { mixpanelService } from "../services/mixpanelService";
 import { useAppStore } from "../store/appStore";
 import { normalizePreferencesForSave } from "../utils/preferencesConverter";
@@ -45,7 +42,6 @@ import { useTranslation } from 'react-i18next';
 import {
   ExperienceTypesSection,
   CategoriesSection,
-  DateTimeSection,
   TravelModeSection,
   LoadingShimmer,
 } from "./PreferencesSheet/PreferencesSections";
@@ -53,11 +49,13 @@ import {
   TravelLimitSection,
   LocationInputSection,
 } from "./PreferencesSheet/PreferencesSectionsAdvanced";
-import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
+import { WhenSection, DateOptionId } from './PreferencesSheet/WhenSection';
+import { ToggleSection } from './PreferencesSheet/ToggleSection';
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
+import { colors } from '../constants/designSystem';
 
 interface PreferencesSheetProps {
   visible?: boolean;
@@ -82,22 +80,16 @@ const experienceTypes = [
   { id: "take-a-stroll", label: "Take a Stroll",  icon: "walk-outline" },
 ];
 
-// Budget presets removed — using PRICE_TIERS from constants/priceTiers
-
-// Categories with exact icons from image
+// ORCH-0434: 8 categories with new canonical slugs
 const categories = [
-  { id: "nature", label: "Nature & Views", icon: "trees" },
-  { id: "first_meet", label: "First Meet", icon: "handshake" },
-  { id: "picnic_park", label: "Picnic Park", icon: "tree-pine" },
-  { id: "drink", label: "Drink", icon: "wine-outline" },
-  { id: "casual_eats", label: "Casual Eats", icon: "utensils-crossed" },
-  { id: "fine_dining", label: "Fine Dining", icon: "chef-hat" },
-  { id: "watch", label: "Watch", icon: "film-new" },
-  { id: "live_performance", label: "Live Performance", icon: "musical-notes-outline" },
-  { id: "creative_arts", label: "Creative & Arts", icon: "color-palette-outline" },
-  { id: "play", label: "Play", icon: "game-controller-outline" },
-  { id: "wellness", label: "Wellness", icon: "heart-pulse" },
-  { id: "flowers", label: "Flowers", icon: "flower-outline" },
+  { id: 'nature',              label: 'Nature & Views',         icon: 'trees' },
+  { id: 'icebreakers',         label: 'Icebreakers',            icon: 'sparkles' },
+  { id: 'drinks_and_music',    label: 'Drinks & Music',         icon: 'wine-outline' },
+  { id: 'brunch_lunch_casual', label: 'Brunch, Lunch & Casual', icon: 'utensils-crossed' },
+  { id: 'upscale_fine_dining', label: 'Upscale & Fine Dining',  icon: 'chef-hat' },
+  { id: 'movies_theatre',      label: 'Movies & Theatre',       icon: 'film-new' },
+  { id: 'creative_arts',       label: 'Creative & Arts',        icon: 'color-palette-outline' },
+  { id: 'play',                label: 'Play',                   icon: 'game-controller-outline' },
 ];
 
 // Travel modes matching database constraint
@@ -108,44 +100,23 @@ const travelModes = [
   { id: "driving", label: "Drive", icon: "car-outline" },
 ];
 
-// Date options
-const dateOptions = [
-  { id: "Now", label: "Now", description: "Leave immediately" },
-  { id: "Today", label: "Today", description: "Pick a time" },
-  { id: "This Weekend", label: "This Weekend", description: "Fri-Sun" },
-  { id: "Pick a Date", label: "Pick a Date", description: "Custom date" },
-];
-
-// Time slots
-const timeSlots = [
-  { id: "brunch", label: "Brunch", time: "11–1", icon: "cafe-outline" },
-  { id: "afternoon", label: "Afternoon", time: "2–5", icon: "sunny-outline" },
-  { id: "dinner", label: "Dinner", time: "6–9", icon: "restaurant-outline" },
-  { id: "lateNight", label: "Late Night", time: "10–12", icon: "moon-outline" },
-  { id: "anytime", label: "Anytime", time: "All day", icon: "time-outline" },
-];
-
-type DateOption = "Now" | "Today" | "This Weekend" | "Pick a Date";
-type TimeSlot = "brunch" | "afternoon" | "dinner" | "lateNight" | "anytime";
-
-// Kebab-case mapping for date_option DB persistence (standardized format)
-const DATE_OPTION_TO_KEBAB: Record<string, string> = {
-  'now': 'now',
-  'today': 'today',
-  'this weekend': 'this-weekend',
-  'pick a date': 'pick-a-date',
+// ORCH-0434: Date option mappings (DB ↔ UI)
+const DATE_OPTION_TO_DB: Record<DateOptionId, string> = {
+  today: 'today',
+  this_weekend: 'this_weekend',
+  pick_dates: 'pick_dates',
 };
 
-// Reverse mapping for loading date_option from DB (handles both kebab and legacy formats)
-const KEBAB_TO_DATE_OPTION: Record<string, DateOption> = {
-  'now': 'Now',
-  'today': 'Today',
-  'this-weekend': 'This Weekend',
-  'this weekend': 'This Weekend',
-  'pick-a-date': 'Pick a Date',
-  'pick a date': 'Pick a Date',
-  'weekend': 'This Weekend',
-  'custom': 'Pick a Date',
+const DB_TO_DATE_OPTION: Record<string, DateOptionId> = {
+  today: 'today',
+  this_weekend: 'this_weekend',
+  pick_dates: 'pick_dates',
+  // Legacy compat
+  now: 'today',
+  'this-weekend': 'this_weekend',
+  weekend: 'this_weekend',
+  'pick-a-date': 'pick_dates',
+  custom: 'pick_dates',
 };
 
 export default function PreferencesSheet({
@@ -178,8 +149,9 @@ export default function PreferencesSheet({
   // Experience Types (Intents)
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
 
-  // Price Tiers
-  const [selectedPriceTiers, setSelectedPriceTiers] = useState<PriceTierSlug[]>(['comfy', 'bougie']);
+  // Toggle states
+  const [intentToggle, setIntentToggle] = useState<boolean>(true);
+  const [categoryToggle, setCategoryToggle] = useState<boolean>(true);
 
   // Categories
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -193,12 +165,11 @@ export default function PreferencesSheet({
   // Selection limit messages
   const [minSelectionMessage, setMinSelectionMessage] = useState(false);
 
-  // Date & Time
+  // Date & Time — ORCH-0434: simplified to 3 options + multi-day calendar
   const [selectedDateOption, setSelectedDateOption] =
-    useState<DateOption | null>("Now");
-  const [selectedTimeSlots, setSelectedTimeSlots] = useState<TimeSlot[]>([]);
+    useState<DateOptionId | null>('today');
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [showCalendar, setShowCalendar] = useState(false);
 
   // Travel Mode
   const [travelMode, setTravelMode] = useState<string>("walking");
@@ -251,20 +222,19 @@ export default function PreferencesSheet({
   // Track initial preferences for change detection
   const [initialPreferences, setInitialPreferences] = useState<any>(null);
 
-  // Default preferences
+  // Default preferences — ORCH-0434: no budget/time slots
   const defaultPreferences = {
-    selectedIntents: [],
-    selectedPriceTiers: ['comfy', 'bougie'] as PriceTierSlug[],
-    budgetMin: 0,
-    budgetMax: 200,
-    selectedCategories: [],
-    selectedDateOption: "Now" as DateOption,
-    selectedTimeSlots: [] as TimeSlot[],
-    selectedDate: null,
-    travelMode: "walking",
+    selectedIntents: [] as string[],
+    selectedCategories: [] as string[],
+    selectedDateOption: 'today' as DateOptionId,
+    selectedDates: [] as string[],
+    selectedDate: null as Date | null,
+    travelMode: 'walking',
     constraintType: 'time' as const,
     constraintValue: 30,
-    searchLocation: "",
+    searchLocation: '',
+    intentToggle: true,
+    categoryToggle: true,
   };
 
   // Initialize state from loaded preferences
@@ -283,9 +253,6 @@ export default function PreferencesSheet({
         Array.isArray(prefs.categories) ? prefs.categories : []
       );
       setSelectedCategories(collabCats);
-      if (Array.isArray(prefs.price_tiers) && prefs.price_tiers.length > 0) {
-        setSelectedPriceTiers(prefs.price_tiers as PriceTierSlug[]);
-      }
       if (prefs.travel_mode) {
         setTravelMode(prefs.travel_mode);
       }
@@ -293,26 +260,18 @@ export default function PreferencesSheet({
       if (prefs.travel_constraint_value !== undefined) {
         setConstraintValue(prefs.travel_constraint_value);
       }
-      // Load date_option — handle both kebab-case and legacy lowercase (ORCH-0321)
-      let loadedDateOption: DateOption = "Now";
+      // Load toggle states
+      setIntentToggle(typeof prefs.intent_toggle === 'boolean' ? prefs.intent_toggle : true);
+      setCategoryToggle(typeof prefs.category_toggle === 'boolean' ? prefs.category_toggle : true);
+      // Load date_option — handle legacy values (ORCH-0434)
+      let loadedDateOption: DateOptionId = 'today';
       if (prefs.date_option) {
-        loadedDateOption = (KEBAB_TO_DATE_OPTION[prefs.date_option] || 'Now') as DateOption;
+        loadedDateOption = DB_TO_DATE_OPTION[prefs.date_option] || 'today';
         setSelectedDateOption(loadedDateOption);
       }
-      // Load time_slots (array) first, fall back to time_slot (string) — ORCH-0432
-      const VALID_SLOTS = ["brunch", "afternoon", "dinner", "lateNight", "anytime"];
-      let loadedTimeSlots: TimeSlot[] = [];
-      if (prefs.time_slots && Array.isArray(prefs.time_slots) && prefs.time_slots.length > 0) {
-        loadedTimeSlots = prefs.time_slots.filter((s: string) => VALID_SLOTS.includes(s)) as TimeSlot[];
-      } else {
-        const legacySlot = prefs.time_slot || prefs.time_of_day;
-        if (legacySlot && VALID_SLOTS.includes(legacySlot)) {
-          loadedTimeSlots = [legacySlot as TimeSlot];
-        }
-      }
-      if (loadedTimeSlots.length > 0) {
-        setSelectedTimeSlots(loadedTimeSlots);
-      }
+      // Load selected dates (multi-day calendar)
+      const loadedDates = Array.isArray(prefs.selected_dates) ? prefs.selected_dates : [];
+      setSelectedDates(loadedDates);
       if (prefs.datetime_pref) {
         const date = new Date(prefs.datetime_pref);
         if (!isNaN(date.getTime())) {
@@ -347,14 +306,11 @@ export default function PreferencesSheet({
 
       setInitialPreferences({
         selectedIntents: collabIntents,
-        selectedPriceTiers: Array.isArray(prefs.price_tiers) && prefs.price_tiers.length > 0
-          ? prefs.price_tiers
-          : ['comfy', 'bougie'],
-        budgetMin: prefs.budget_min || 0,
-        budgetMax: prefs.budget_max || 200,
         selectedCategories: collabCats,
         selectedDateOption: loadedDateOption,
-        selectedTimeSlots: loadedTimeSlots,
+        selectedDates: loadedDates,
+        intentToggle: typeof prefs.intent_toggle === 'boolean' ? prefs.intent_toggle : true,
+        categoryToggle: typeof prefs.category_toggle === 'boolean' ? prefs.category_toggle : true,
         selectedDate: prefs.datetime_pref
           ? new Date(prefs.datetime_pref)
           : null,
@@ -372,10 +328,6 @@ export default function PreferencesSheet({
       );
       setSelectedCategories(soloCats);
 
-      if (Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0) {
-        setSelectedPriceTiers((loadedPreferences).price_tiers as PriceTierSlug[]);
-      }
-
       if (loadedPreferences.travel_mode) {
         setTravelMode(loadedPreferences.travel_mode);
       }
@@ -385,31 +337,18 @@ export default function PreferencesSheet({
         setConstraintValue(loadedPreferences.travel_constraint_value);
       }
 
+      // Load toggle states
+      setIntentToggle(typeof (loadedPreferences as any).intent_toggle === 'boolean' ? (loadedPreferences as any).intent_toggle : true);
+      setCategoryToggle(typeof (loadedPreferences as any).category_toggle === 'boolean' ? (loadedPreferences as any).category_toggle : true);
+
+      // Load date option — ORCH-0434: new 3-option system with legacy compat
       if (loadedPreferences.date_option) {
-        const dateOptionMap: { [key: string]: DateOption } = {
-          now: "Now",
-          today: "Today",
-          weekend: "This Weekend",
-          custom: "Pick a Date",
-        };
-        setSelectedDateOption(
-          (dateOptionMap[loadedPreferences.date_option] || "Now") as DateOption
-        );
+        setSelectedDateOption(DB_TO_DATE_OPTION[loadedPreferences.date_option] || 'today');
       }
 
-      // Load time_slots (array) first, fall back to time_slot (string) — ORCH-0432
-      {
-        const VALID = ["brunch", "afternoon", "dinner", "lateNight", "anytime"];
-        const arr = (loadedPreferences as any).time_slots;
-        if (arr && Array.isArray(arr) && arr.length > 0) {
-          setSelectedTimeSlots(arr.filter((s: string) => VALID.includes(s)) as TimeSlot[]);
-        } else if ((loadedPreferences).time_slot) {
-          const slot = (loadedPreferences).time_slot;
-          if (VALID.includes(slot)) {
-            setSelectedTimeSlots([slot as TimeSlot]);
-          }
-        }
-      }
+      // Load selected dates (multi-day calendar)
+      const soloLoadedDates = Array.isArray((loadedPreferences as any).selected_dates) ? (loadedPreferences as any).selected_dates : [];
+      setSelectedDates(soloLoadedDates);
 
       if (loadedPreferences.datetime_pref) {
         const date = new Date(loadedPreferences.datetime_pref);
@@ -436,29 +375,13 @@ export default function PreferencesSheet({
 
       setInitialPreferences({
         selectedIntents: soloIntents,
-        selectedPriceTiers: Array.isArray((loadedPreferences).price_tiers) && (loadedPreferences).price_tiers.length > 0
-          ? (loadedPreferences).price_tiers
-          : ['comfy', 'bougie'],
-        budgetMin: loadedPreferences.budget_min || 0,
-        budgetMax: loadedPreferences.budget_max || 200,
         selectedCategories: soloCats,
         selectedDateOption: loadedPreferences.date_option
-          ? ({
-              now: "Now",
-              today: "Today",
-              weekend: "This Weekend",
-              custom: "Pick a Date",
-            } as Record<string, DateOption>)[loadedPreferences.date_option] ||
-            "Now"
-          : "Now",
-        selectedTimeSlots: (() => {
-          const VALID = ["brunch", "afternoon", "dinner", "lateNight", "anytime"];
-          const arr = (loadedPreferences as any).time_slots;
-          if (arr && Array.isArray(arr) && arr.length > 0) return arr.filter((s: string) => VALID.includes(s)) as TimeSlot[];
-          const slot = (loadedPreferences).time_slot;
-          if (slot && VALID.includes(slot)) return [slot as TimeSlot];
-          return [] as TimeSlot[];
-        })(),
+          ? DB_TO_DATE_OPTION[loadedPreferences.date_option] || 'today'
+          : 'today',
+        selectedDates: soloLoadedDates,
+        intentToggle: typeof (loadedPreferences as any).intent_toggle === 'boolean' ? (loadedPreferences as any).intent_toggle : true,
+        categoryToggle: typeof (loadedPreferences as any).category_toggle === 'boolean' ? (loadedPreferences as any).category_toggle : true,
         selectedDate: loadedPreferences.datetime_pref
           ? new Date(loadedPreferences.datetime_pref)
           : null,
@@ -512,61 +435,30 @@ export default function PreferencesSheet({
     }
   }, []);
 
-  const handlePriceTierToggle = useCallback((slug: PriceTierSlug) => {
-    setSelectedPriceTiers((prev) => {
-      // Mutual exclusion: "Any" vs specific tiers
-      if (slug === 'any') {
-        return prev.includes('any') ? prev : ['any'];
-      }
-      // Selecting a specific tier → remove 'any' if present
-      const withoutAny = prev.filter((s) => s !== 'any');
-      const next = withoutAny.includes(slug)
-        ? withoutAny.filter((s) => s !== slug)
-        : [...withoutAny, slug];
-      return next.length === 0 ? prev : next;
-    });
-  }, []);
-
-  const handleDateOptionSelect = useCallback((option: DateOption) => {
+  // ORCH-0434: Date option handler (simplified — 3 options, no time slots)
+  const handleDateOptionChange = useCallback((option: DateOptionId) => {
     setSelectedDateOption(option);
-    if (option === "Now") {
-      setSelectedTimeSlots([]);
-      setSelectedDate(null);
-    } else if (option === "Today") {
-      setSelectedTimeSlots([]);
-      setSelectedDate(null);
-    } else if (option === "This Weekend") {
-      setSelectedTimeSlots([]);
-      setSelectedDate(null);
-    } else if (option === "Pick a Date") {
-      setSelectedTimeSlots([]);
+    if (option !== 'pick_dates') {
+      setSelectedDates([]);
     }
   }, []);
 
-  const handleTimeSlotToggle = useCallback((slotId: string) => {
-    setSelectedTimeSlots(prev => {
-      if (slotId === 'anytime') {
-        return prev.includes('anytime') ? [] : ['anytime'] as TimeSlot[];
-      }
-      const withoutAnytime = prev.filter(s => s !== 'anytime');
-      if (withoutAnytime.includes(slotId as TimeSlot)) {
-        return withoutAnytime.filter(s => s !== slotId);
-      }
-      return [...withoutAnytime, slotId as TimeSlot];
-    });
-  }, []);
+  // ORCH-0434: Toggle handlers with mutual exclusion guard
+  const handleIntentToggleChange = useCallback((newValue: boolean) => {
+    if (!newValue && !categoryToggle) {
+      toastManager.warning(t('preferences:experience_types.min_message'), 2000);
+      return;
+    }
+    setIntentToggle(newValue);
+  }, [categoryToggle, t]);
 
-  const handleCalendarDateSelect = useCallback((date: Date) => {
-    setSelectedDate(date);
-    setShowCalendar(false);
-  }, []);
-
-  const formatDateForDisplay = useCallback((date: Date): string => {
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${month}/${day}/${year}`;
-  }, []);
+  const handleCategoryToggleChange = useCallback((newValue: boolean) => {
+    if (!newValue && !intentToggle) {
+      toastManager.warning(t('preferences:categories.min_message'), 2000);
+      return;
+    }
+    setCategoryToggle(newValue);
+  }, [intentToggle, t]);
 
   const handleLocationInputChange = useCallback((text: string) => {
     setSearchLocation(text);
@@ -664,10 +556,11 @@ export default function PreferencesSheet({
     };
 
     if (!arraysEqual(selectedIntents, initialPreferences.selectedIntents)) return true;
-    if (!arraysEqual([...selectedPriceTiers].sort(), [...(initialPreferences.selectedPriceTiers || [])].sort())) return true;
     if (!arraysEqual(selectedCategories, initialPreferences.selectedCategories)) return true;
     if (selectedDateOption !== initialPreferences.selectedDateOption) return true;
-    if (!arraysEqual([...selectedTimeSlots].sort(), [...(initialPreferences.selectedTimeSlots || [])].sort())) return true;
+    if (!arraysEqual([...selectedDates].sort(), [...(initialPreferences.selectedDates || [])].sort())) return true;
+    if (intentToggle !== initialPreferences.intentToggle) return true;
+    if (categoryToggle !== initialPreferences.categoryToggle) return true;
     if (!datesEqual(selectedDate, initialPreferences.selectedDate)) return true;
     if (travelMode !== initialPreferences.travelMode) return true;
     if (constraintValue !== initialPreferences.constraintValue) return true;
@@ -677,52 +570,45 @@ export default function PreferencesSheet({
   }, [
     initialPreferences,
     selectedIntents,
-    selectedPriceTiers,
     selectedCategories,
     selectedDateOption,
-    selectedTimeSlots,
+    selectedDates,
     selectedDate,
+    intentToggle,
+    categoryToggle,
     travelMode,
     constraintValue,
     searchLocation,
   ]);
 
+  // ORCH-0434: Form completion logic — toggles + date + travel
   const isFormComplete = useMemo(() => {
-    const hasPills = selectedCategories.length > 0 || selectedIntents.length > 0;
-    const allExempt = false; // [TRANSITIONAL] PRICE_EXEMPT_CATEGORIES removed in ORCH-0434 — Phase 6 removes this check entirely
-    const hasBudget = allExempt || selectedPriceTiers.length > 0;
+    const hasIntentPills = intentToggle && selectedIntents.length > 0;
+    const hasCategoryPills = categoryToggle && selectedCategories.length > 0;
+    const hasPills = hasIntentPills || hasCategoryPills;
 
-    let hasDateTime = true;
-    if (selectedDateOption === 'Today' || selectedDateOption === 'This Weekend') {
-      hasDateTime = selectedTimeSlots.length > 0;
-    } else if (selectedDateOption === 'Pick a Date') {
-      hasDateTime = !!selectedDate && selectedTimeSlots.length > 0;
-    }
-    // "Now" requires nothing extra
+    const hasDate = selectedDateOption !== null;
+    const hasDateDetails = selectedDateOption === 'pick_dates'
+      ? selectedDates.length > 0
+      : true;
 
     const hasTravel = typeof constraintValue === 'number' && constraintValue >= 5;
 
-    return hasPills && hasBudget && hasDateTime && hasTravel;
-  }, [selectedCategories, selectedIntents, selectedPriceTiers, selectedDateOption, selectedTimeSlots, selectedDate, constraintValue]);
+    return hasPills && hasDate && hasDateDetails && hasTravel;
+  }, [intentToggle, categoryToggle, selectedIntents, selectedCategories,
+      selectedDateOption, selectedDates, constraintValue]);
 
   const ctaHintText = useMemo(() => {
-    if (!isFormComplete) {
-      if ((selectedDateOption === 'Today' || selectedDateOption === 'This Weekend') && selectedTimeSlots.length === 0) {
-        return t('preferences:sheet.pick_time_hint');
-      }
-      if (selectedDateOption === 'Pick a Date' && !selectedDate) {
-        return t('preferences:sheet.pick_date_hint');
-      }
-      if (selectedDateOption === 'Pick a Date' && selectedDate && selectedTimeSlots.length === 0) {
-        return t('preferences:sheet.pick_time_hint');
-      }
-      if (typeof constraintValue !== 'number' || constraintValue < 5) {
-        return t('preferences:sheet.set_travel_hint');
-      }
-      return t('preferences:sheet.complete_hint');
+    if (isFormComplete) return null;
+
+    if (selectedDateOption === 'pick_dates' && selectedDates.length === 0) {
+      return t('preferences:sheet.pick_date_hint');
     }
-    return null;
-  }, [isFormComplete, selectedDateOption, selectedTimeSlots, selectedDate, constraintValue, t]);
+    if (typeof constraintValue !== 'number' || constraintValue < 5) {
+      return t('preferences:sheet.set_travel_hint');
+    }
+    return t('preferences:sheet.complete_hint');
+  }, [isFormComplete, selectedDateOption, selectedDates, constraintValue, t]);
 
   const countChanges = useCallback((): number => {
     if (!initialPreferences) return 1;
@@ -738,14 +624,12 @@ export default function PreferencesSheet({
 
     if (!arraysEqual(selectedIntents, initialPreferences.selectedIntents))
       changes++;
-    if (!arraysEqual([...selectedPriceTiers].sort(), [...(initialPreferences.selectedPriceTiers || [])].sort()))
-      changes++;
-    if (
-      !arraysEqual(selectedCategories, initialPreferences.selectedCategories)
-    )
+    if (!arraysEqual(selectedCategories, initialPreferences.selectedCategories))
       changes++;
     if (selectedDateOption !== initialPreferences.selectedDateOption) changes++;
-    if (!arraysEqual([...selectedTimeSlots].sort(), [...(initialPreferences.selectedTimeSlots || [])].sort())) changes++;
+    if (!arraysEqual([...selectedDates].sort(), [...(initialPreferences.selectedDates || [])].sort())) changes++;
+    if (intentToggle !== initialPreferences.intentToggle) changes++;
+    if (categoryToggle !== initialPreferences.categoryToggle) changes++;
 
     const datesEqual = (a: Date | null, b: Date | null) => {
       if (a === null && b === null) return true;
@@ -762,11 +646,12 @@ export default function PreferencesSheet({
   }, [
     initialPreferences,
     selectedIntents,
-    selectedPriceTiers,
     selectedCategories,
     selectedDateOption,
-    selectedTimeSlots,
+    selectedDates,
     selectedDate,
+    intentToggle,
+    categoryToggle,
     travelMode,
     constraintValue,
     searchLocation,
@@ -775,11 +660,12 @@ export default function PreferencesSheet({
   const handleReset = useCallback(() => {
     mixpanelService.trackPreferencesReset(isCollaborationMode);
     setSelectedIntents(defaultPreferences.selectedIntents);
-    setSelectedPriceTiers(defaultPreferences.selectedPriceTiers);
     setSelectedCategories(defaultPreferences.selectedCategories);
     setSelectedDateOption(defaultPreferences.selectedDateOption);
-    setSelectedTimeSlots(defaultPreferences.selectedTimeSlots);
+    setSelectedDates(defaultPreferences.selectedDates);
     setSelectedDate(defaultPreferences.selectedDate);
+    setIntentToggle(defaultPreferences.intentToggle);
+    setCategoryToggle(defaultPreferences.categoryToggle);
     setTravelMode(defaultPreferences.travelMode);
     setConstraintValue(defaultPreferences.constraintValue);
     setSearchLocation(defaultPreferences.searchLocation);
@@ -793,16 +679,9 @@ export default function PreferencesSheet({
       ? null
       : searchLocation || null;
 
-    // Compute backward-compat budget from selected tiers
-    const backCompatBudgetMax = selectedPriceTiers.includes('any' as PriceTierSlug)
-      ? 10000
-      : (PRICE_TIERS.slice().reverse().find(t => selectedPriceTiers.includes(t.slug))?.max ?? 1000);
-
-    // Normalize date/time and location fields for consistency
+    // Normalize location fields for consistency
     const normalized = normalizePreferencesForSave({
-      date_option: selectedDateOption?.toLowerCase() || null,
-      time_slot: selectedTimeSlots.length > 0 ? selectedTimeSlots[0] : null,
-      time_slots: selectedTimeSlots.length > 0 ? selectedTimeSlots : null,
+      date_option: selectedDateOption ? DATE_OPTION_TO_DB[selectedDateOption] : null,
       datetime_pref: selectedDate ? selectedDate.toISOString() : null,
       use_gps_location: useGpsLocation,
       custom_location: customLocationValue,
@@ -811,15 +690,13 @@ export default function PreferencesSheet({
     const finalCategories = selectedCategories;
     const finalIntents = selectedIntents;
 
+    // ORCH-0434: Clean payload — no budget, price tiers, or time slots
     const preferences = {
       selectedIntents: finalIntents,
-      priceTiers: selectedPriceTiers,
-      budgetMin: 0,
-      budgetMax: backCompatBudgetMax,
       selectedCategories: finalCategories,
       dateOption: selectedDateOption,
+      selectedDates,
       selectedDate: normalized.datetime_pref || selectedDate?.toISOString(),
-      selectedTimeSlots: selectedTimeSlots,
       travelMode,
       constraintType,
       constraintValue,
@@ -829,6 +706,8 @@ export default function PreferencesSheet({
       custom_location: normalized.custom_location ?? customLocationValue,
       custom_lat: selectedCoords?.lat ?? null,
       custom_lng: selectedCoords?.lng ?? null,
+      intentToggle,
+      categoryToggle,
     };
 
     // === CLOSE SHEET IMMEDIATELY — user sees instant response ===
@@ -862,27 +741,25 @@ export default function PreferencesSheet({
             }
           }
 
+          // ORCH-0434: Clean collab save — no budget, price tiers, time slots
           const rawDbPrefs: any = {
             categories: finalCategories,
             intents: finalIntents,
-            price_tiers: selectedPriceTiers,
-            budget_min: 0,
-            budget_max: backCompatBudgetMax,
             travel_mode: travelMode,
             travel_constraint_type: 'time' as const,
             travel_constraint_value:
               typeof constraintValue === "number" ? constraintValue : 30,
-            time_of_day: selectedTimeSlots.length > 0 ? selectedTimeSlots[0] : null,
-            time_slot: selectedTimeSlots.length > 0 ? selectedTimeSlots[0] : null,
-            time_slots: selectedTimeSlots.length > 0 ? selectedTimeSlots : null,
             datetime_pref: selectedDate ? selectedDate.toISOString() : null,
             date_option: selectedDateOption
-              ? DATE_OPTION_TO_KEBAB[selectedDateOption.toLowerCase()] || selectedDateOption.toLowerCase()
-              : null,
+              ? DATE_OPTION_TO_DB[selectedDateOption]
+              : 'today',
+            selected_dates: selectedDates.length > 0 ? selectedDates : null,
             use_gps_location: useGpsLocation,
             custom_location: customLocationValue,
             custom_lat: collabLat,
             custom_lng: collabLng,
+            intent_toggle: intentToggle,
+            category_toggle: categoryToggle,
           };
 
           const dbPrefs = normalizePreferencesForSave(rawDbPrefs);
@@ -911,7 +788,6 @@ export default function PreferencesSheet({
           constraintType: 'time',
           constraintValue: typeof constraintValue === 'number' ? constraintValue : 30,
           dateOption: selectedDateOption ?? null,
-          timeSlots: selectedTimeSlots,
         });
       } catch (error) {
         console.warn("[PreferencesSheet] Background save failed:", error);
@@ -931,11 +807,12 @@ export default function PreferencesSheet({
     setIsSaving(false);
   }, [
     selectedIntents,
-    selectedPriceTiers,
     selectedCategories,
     selectedDateOption,
+    selectedDates,
     selectedDate,
-    selectedTimeSlots,
+    intentToggle,
+    categoryToggle,
     travelMode,
     constraintType,
     constraintValue,
@@ -973,103 +850,10 @@ export default function PreferencesSheet({
             style={styles.scrollView}
             contentContainerStyle={styles.scrollContent}
           >
-          {/* Experience Type Section */}
-          <ExperienceTypesSection
-            experienceTypes={experienceTypes}
-            selectedIntents={selectedIntents}
-            onIntentToggle={handleIntentToggle}
-            minMessage={minSelectionMessage}
-            isCuratedLocked={false}
-            onLockedTap={() => {
-              setPaywallFeature('curated_cards');
-              setShowPaywall(true);
-            }}
-          />
-
-          {/* Categories Section */}
-          <CategoriesSection
-            filteredCategories={filteredCategories}
-            selectedCategories={selectedCategories}
-            onCategoryToggle={handleCategoryToggle}
-            minMessage={minSelectionMessage}
-          />
-
-          {/* Price Tier Section */}
-          {/* [TRANSITIONAL] Price tier section — removed in Phase 6. Kept for compilation. */}
-          {true && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>{t('preferences:budget.title')}</Text>
-              <Text style={styles.sectionSubtitle}>{t('preferences:budget.subtitle')}</Text>
-              <View style={styles.tierGrid}>
-                {PRICE_TIERS.map((tier) => {
-                  const isActive = selectedPriceTiers.includes(tier.slug);
-                  return (
-                    <TouchableOpacity
-                      key={tier.slug}
-                      style={[
-                        styles.tierPill,
-                        isActive && { borderColor: tier.color, backgroundColor: tier.color },
-                      ]}
-                      onPress={() => handlePriceTierToggle(tier.slug)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={[styles.tierIconDot, isActive && { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
-                        <Icon name={tier.icon} size={13} color={isActive ? '#ffffff' : '#9CA3AF'} />
-                      </View>
-                      <View style={styles.tierTextContainer}>
-                        <Text style={[styles.tierLabel, isActive && { color: '#ffffff' }]}>{t(`common:tier_${tier.slug}`)}</Text>
-                        <Text style={[styles.tierRange, isActive && { color: '#ffffff', opacity: 0.85 }]}>{t(`common:tier_range_${tier.slug}`)}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          )}
-
-          {/* Date & Time Section */}
-          <DateTimeSection
-            dateOptions={dateOptions}
-            selectedDateOption={selectedDateOption}
-            onDateOptionSelect={handleDateOptionSelect}
-            showWeekendInfo={selectedDateOption === "This Weekend"}
-            showCalendarInput={selectedDateOption === "Pick a Date"}
-            selectedDate={selectedDate}
-            onShowCalendar={() => setShowCalendar(true)}
-            showTimeSection={selectedDateOption && selectedDateOption !== "Now"}
-            selectedTimeSlots={selectedTimeSlots}
-            onTimeSlotSelect={handleTimeSlotToggle}
-            formatDateForDisplay={formatDateForDisplay}
-          />
-
-          {/* Travel Mode Section */}
-          <TravelModeSection
-            travelModes={travelModes}
-            travelMode={travelMode}
-            onTravelModeChange={setTravelMode}
-          />
-
-          {/* Travel Limit Section */}
-          <TravelLimitSection
-            constraintValue={constraintValue}
-            onConstraintValueChange={(text) => {
-              const numericValue = text.replace(/[^0-9]/g, "");
-              if (numericValue === "") {
-                setConstraintValue("");
-                return;
-              }
-              const val = Number(numericValue);
-              if (val >= 5 && val <= 120) {
-                setConstraintValue(val);
-              }
-            }}
-            onFocus={() => {}}
-          />
-
-          {/* Starting Point Section */}
+          {/* 1. Starting Point — moved to top (ORCH-0434) */}
           <View
             ref={locationSectionRef}
-            style={styles.section}
+            style={[styles.section, { marginTop: 20 }]}
             onLayout={(event) => {
               const { y } = event.nativeEvent.layout;
               locationSectionY.current = y;
@@ -1104,6 +888,74 @@ export default function PreferencesSheet({
               }}
             />
           </View>
+
+          {/* 2. When */}
+          <WhenSection
+            dateOption={selectedDateOption}
+            onDateOptionChange={handleDateOptionChange}
+            selectedDates={selectedDates}
+            onDatesChange={setSelectedDates}
+          />
+
+          {/* 3. Intents (with toggle) */}
+          <ToggleSection
+            title={t('preferences:intents_toggle.title')}
+            subtitle={t('preferences:intents_toggle.subtitle')}
+            isOn={intentToggle}
+            onToggle={handleIntentToggleChange}
+            disabled={!categoryToggle}
+          >
+            <ExperienceTypesSection
+              experienceTypes={experienceTypes}
+              selectedIntents={selectedIntents}
+              onIntentToggle={handleIntentToggle}
+              minMessage={minSelectionMessage}
+              isCuratedLocked={false}
+              onLockedTap={() => {
+                setPaywallFeature('curated_cards');
+                setShowPaywall(true);
+              }}
+            />
+          </ToggleSection>
+
+          {/* 4. Categories (with toggle) */}
+          <ToggleSection
+            title={t('preferences:categories_toggle.title')}
+            subtitle={t('preferences:categories_toggle.subtitle')}
+            isOn={categoryToggle}
+            onToggle={handleCategoryToggleChange}
+            disabled={!intentToggle}
+          >
+            <CategoriesSection
+              filteredCategories={filteredCategories}
+              selectedCategories={selectedCategories}
+              onCategoryToggle={handleCategoryToggle}
+              minMessage={minSelectionMessage}
+            />
+          </ToggleSection>
+
+          {/* 5. Getting There */}
+          <TravelModeSection
+            travelModes={travelModes}
+            travelMode={travelMode}
+            onTravelModeChange={setTravelMode}
+          />
+
+          <TravelLimitSection
+            constraintValue={constraintValue}
+            onConstraintValueChange={(text) => {
+              const numericValue = text.replace(/[^0-9]/g, "");
+              if (numericValue === "") {
+                setConstraintValue("");
+                return;
+              }
+              const val = Number(numericValue);
+              if (val >= 5 && val <= 120) {
+                setConstraintValue(val);
+              }
+            }}
+            onFocus={() => {}}
+          />
 
           </KeyboardAwareScrollView>
         {/* Apply Button */}
@@ -1145,32 +997,6 @@ export default function PreferencesSheet({
           </View>
         </View>
       </View>
-
-      {/* Calendar Modal */}
-      <Modal
-        visible={showCalendar}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowCalendar(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <Pressable
-            style={styles.backdropTouch}
-            onPress={() => setShowCalendar(false)}
-          />
-          <SafeAreaView style={styles.modalContent} edges={["bottom"]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t('preferences:sheet.select_date')}</Text>
-            </View>
-            <ScrollView>
-              <Calendar
-                selected={selectedDate || undefined}
-                onSelect={handleCalendarDateSelect}
-              />
-            </ScrollView>
-          </SafeAreaView>
-        </View>
-      </Modal>
 
       </SafeAreaView>
 
