@@ -128,6 +128,7 @@ export const LocationInputSection = memo(
     suggestions,
     isLoadingSuggestions,
     onSuggestionSelect,
+    onClearLocation,
     isInputFocused,
     useGpsLocation,
     onToggleGps,
@@ -142,6 +143,7 @@ export const LocationInputSection = memo(
     suggestions: any[];
     isLoadingSuggestions: boolean;
     onSuggestionSelect: (suggestion: any) => void;
+    onClearLocation?: () => void;
     isInputFocused: boolean;
     useGpsLocation: boolean;
     onToggleGps: (value: boolean) => void;
@@ -177,6 +179,20 @@ export const LocationInputSection = memo(
 
       {!useGpsLocation && !isLocked && (
         <>
+          {/* Show chip when location is selected and not editing */}
+          {searchLocation.length > 0 && !isInputFocused ? (
+            <View style={styles.locationChip}>
+              <Icon name="location" size={14} color="#eb7825" />
+              <Text style={styles.locationChipText} numberOfLines={1}>{searchLocation}</Text>
+              <TouchableOpacity
+                onPress={onClearLocation}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel="Clear location"
+              >
+                <Icon name="close-circle" size={18} color="#9ca3af" />
+              </TouchableOpacity>
+            </View>
+          ) : (
           <View
             style={[
               styles.locationInputContainer,
@@ -201,7 +217,7 @@ export const LocationInputSection = memo(
               returnKeyType="done"
             />
           </View>
-
+          )}
         </>
       )}
 
@@ -288,6 +304,24 @@ const styles = StyleSheet.create({
   // Content container — glass card is provided by parent Animated.View in PreferencesSheet
   section: {
     backgroundColor: 'transparent',
+  },
+  locationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(235, 120, 37, 0.25)',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  locationChipText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#111827',
   },
   sectionQuestion: {
     fontSize: 13,

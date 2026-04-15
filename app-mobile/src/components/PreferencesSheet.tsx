@@ -529,6 +529,13 @@ export default function PreferencesSheet({
     }
   }, []);
 
+  const handleClearLocation = useCallback(() => {
+    setSearchLocation('');
+    setSelectedCoords(null);
+    setSuggestions([]);
+    setShowSuggestions(false);
+  }, []);
+
   const handleSuggestionSelect = useCallback(async (suggestion: AutocompleteSuggestion) => {
     if (isSelectingSuggestion.current) return;
     isSelectingSuggestion.current = true;
@@ -919,6 +926,7 @@ export default function PreferencesSheet({
               suggestions={suggestions}
               isLoadingSuggestions={isLoadingSuggestions}
               onSuggestionSelect={handleSuggestionSelect}
+              onClearLocation={handleClearLocation}
               isInputFocused={isInputFocused}
               useGpsLocation={useGpsLocation}
               onToggleGps={handleGpsToggle}
