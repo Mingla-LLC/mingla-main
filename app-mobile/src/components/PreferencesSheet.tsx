@@ -921,6 +921,7 @@ export default function PreferencesSheet({
           <KeyboardAwareScrollView
             style={styles.scrollView}
             contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
           >
           {/* 1. Starting Point — moved to top (ORCH-0434) */}
           <Animated.View style={{
@@ -1065,11 +1066,19 @@ export default function PreferencesSheet({
                 return;
               }
               const val = Number(numericValue);
-              if (val >= 5 && val <= 120) {
+              // Accept any value while typing — validation happens in isFormComplete (>= 5)
+              if (val <= 120) {
                 setConstraintValue(val);
               }
             }}
-            onFocus={() => {}}
+            onFocus={() => {
+              // Scroll to make input visible above keyboard
+              setTimeout(() => {
+                locationSectionRef.current?.measureInWindow((_x, _y, _w, _h) => {
+                  // KeyboardAwareScrollView handles this automatically
+                });
+              }, 100);
+            }}
           />
             {sectionWarnings.travelLimit && (
               <View style={styles.sectionWarningPill}>
