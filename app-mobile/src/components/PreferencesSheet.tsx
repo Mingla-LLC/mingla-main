@@ -155,6 +155,39 @@ export default function PreferencesSheet({
     updateBoardPreferences,
   } = usePreferencesData(user?.id, sessionId, !!visible);
 
+  // ORCH-0444: Guard — close preferences sheet if the collab session is deleted while open.
+  // When the session is deleted, RecommendationsContext.onSessionLost switches to solo,
+  // which changes currentMode, which eventually unmounts the collab UI. But the modal
+  // may still be visible during the transition. This guard closes it immediately.
+  useEffect(() => {
+    if (visible && sessionId && !preferencesLoading && isCollaborationMode === false) {
+      // sessionId was provided (we're in collab mode) but usePreferencesData says we're NOT
+      // in collab mode — means the session was deleted or became unavailable. Close.
+      onClose?.();
+    }
+  }, [visible, sessionId, preferencesLoading, isCollaborationMode, onClose]);
+
+  // ORCH-0446: Reset form state when sessionId changes to prevent stale state leaking
+  // between sessions. Without this, switching from Session A to Session B would show
+  // Session A's categories in Session B's preferences sheet.
+  const prevSessionIdRef = useRef(sessionId);
+  useEffect(() => {
+    if (prevSessionIdRef.current !== sessionId) {
+      setSelectedIntents([]);
+      setSelectedCategories([]);
+      setSelectedDateOption('today');
+      setSelectedDates([]);
+      setSelectedDate(null);
+      setIntentToggle(true);
+      setCategoryToggle(true);
+      setTravelMode('walking');
+      setConstraintValue(30);
+      setSearchLocation('');
+      setInitialPreferences(null);
+      prevSessionIdRef.current = sessionId;
+    }
+  }, [sessionId]);
+
   // Experience Types (Intents)
   const [selectedIntents, setSelectedIntents] = useState<string[]>([]);
 
@@ -841,12 +874,14 @@ export default function PreferencesSheet({
       categoryToggle,
     };
 
-    // === CLOSE SHEET IMMEDIATELY — user sees instant response ===
-    onClose?.();
+    // === ORCH-0446: Two close behaviors ===
+    // Collab: save first, close on success, error if fails (sheet stays open)
+    // Solo: close immediately, fire-and-forget save (existing behavior preserved)
+    if (!isCollaborationMode) {
+      onClose?.();
+    }
 
-    // === FIRE-AND-FORGET: Save + invalidate ===
-    // onSave sets the optimistic React Query cache FIRST, then we invalidate
-    // deck/curated to trigger re-fetch with the new params.
+    // Save + invalidate
     (async () => {
       try {
         if (isCollaborationMode) {
@@ -900,6 +935,10 @@ export default function PreferencesSheet({
           }
 
           await updateBoardPreferences(dbPrefs);
+          // ORCH-0446: Collab save succeeded — close sheet now
+          if (isCollaborationMode) {
+            onClose?.();
+          }
         } else {
           if (onSave) {
             await Promise.resolve(onSave(preferences));
@@ -921,7 +960,13 @@ export default function PreferencesSheet({
           dateOption: selectedDateOption ?? null,
         });
       } catch (error) {
-        console.warn("[PreferencesSheet] Background save failed:", error);
+        console.warn("[PreferencesSheet] Save failed:", error);
+        if (isCollaborationMode) {
+          // ORCH-0446 R8.4: Sheet stays open for collab — user can retry or dismiss
+          toastManager.error("Couldn't save. Check your connection and try again.", 4000);
+          isSavingRef.current = false;
+          return;
+        }
         toastManager.error(t('preferences:sheet.save_error'), 4000);
       }
 
@@ -1009,9 +1054,13 @@ export default function PreferencesSheet({
         <View style={styles.header}>
           <View style={styles.titleContainer}>
             {isCollaborationMode && sessionName ? (
-              <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-                {t('preferences:sheet.session_vibes', { name: sessionName })}
-              </Text>
+              <>
+                <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+                  {t('preferences:sheet.session_vibes', { name: sessionName })}
+                </Text>
+                {/* ORCH-0446 R4.2: Session banner — visual indicator of collab mode */}
+                <Text style={styles.sessionBannerHint}>Your picks for this session</Text>
+              </>
             ) : (
               <Text style={styles.title}>{t('preferences:sheet.title')}</Text>
             )}
@@ -1544,6 +1593,13 @@ const styles = StyleSheet.create({
     color: "#374151",
     textAlign: "center",
     letterSpacing: -0.2,
+  },
+  sessionBannerHint: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 2,
   },
   // --- Section (used for Budget + Starting Point inline sections) ---
   // ORCH-0434 Phase 6D: Glass card treatment

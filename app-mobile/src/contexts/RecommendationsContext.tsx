@@ -13,6 +13,7 @@ import {
 } from "../services/experiencesService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
+import { supabase } from "../services/supabase";
 import { useCardsCache } from "./CardsCacheContext";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
@@ -25,10 +26,9 @@ import { useAppStore } from "../store/appStore";
 import { Recommendation } from "../types/recommendation";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
-import { aggregateAllPrefs } from '../utils/sessionPrefsUtils';
+import { aggregateCollabPrefs } from '../utils/sessionPrefsUtils';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
-import { useSessionDeck } from '../hooks/useSessionDeck';
-import { fetchSessionDeck, SessionDeckResponse } from '../services/sessionDeckService';
+// ORCH-0446: useSessionDeck and sessionDeckService deleted. Collab uses useDeckCards (same as solo).
 
 // Re-export so all existing consumer imports keep working
 export type { Recommendation };
@@ -110,6 +110,9 @@ interface RecommendationsProviderProps {
   /** Pre-resolved session UUID from AsyncStorage — enables instant session resolution
    *  without waiting for the full loadUserSessions() network round-trip. */
   persistedSessionId?: string | null;
+  /** ORCH-0444 INV-DEL-1: Called when the current collab session is detected as
+   *  deleted/removed while the user is on the deck. Triggers solo mode switch. */
+  onSessionLost?: () => void;
 }
 
 export const RecommendationsProvider: React.FC<
@@ -119,6 +122,7 @@ export const RecommendationsProvider: React.FC<
   currentMode: propCurrentMode = "solo",
   refreshKey: propRefreshKey,
   persistedSessionId: propPersistedSessionId = null,
+  onSessionLost,
 }) => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [batchSeed, setBatchSeed] = useState(0);
@@ -390,7 +394,8 @@ export const RecommendationsProvider: React.FC<
       return null;
     }
 
-    const aggregated = aggregateAllPrefs(allParticipantPrefs);
+    // ORCH-0446: Corrected aggregation with proper algorithms
+    const aggregated = aggregateCollabPrefs(allParticipantPrefs);
 
     if (aggregated.categories.length === 0 && aggregated.intents.length === 0) return null;
 
@@ -401,6 +406,8 @@ export const RecommendationsProvider: React.FC<
       travelConstraintType: aggregated.travelConstraintType,
       travelConstraintValue: aggregated.travelConstraintValue,
       datetimePref: aggregated.datetimePref,
+      dateOption: aggregated.dateOption,
+      dateWindows: aggregated.dateWindows, // ORCH-0446: for AND date logic
       location: aggregated.location,
     };
   }, [isCollaborationMode, allParticipantPrefs]);
@@ -480,7 +487,8 @@ export const RecommendationsProvider: React.FC<
     datetimePref: effectiveDatetimePref,
     dateOption: effectiveDateOption,
     batchSeed,
-    enabled: isSoloMode &&
+    // ORCH-0446: Enable for BOTH solo and collab. Collab uses aggregated params via activeDeckParams.
+    enabled: (isSoloMode || isCollaborationMode) &&
       !!activeDeckLocation &&
       activeDeckParams !== null &&
       isDeckParamsStable &&
@@ -488,6 +496,9 @@ export const RecommendationsProvider: React.FC<
       batchSeedReady,
     excludeCardIds,
     lastKnownQueryKey: lastDeckKey,
+    // ORCH-0446: Pass dateWindows and sessionId for collab mode
+    dateWindows: isCollaborationMode ? (collabDeckParams as any)?.dateWindows : undefined,
+    sessionId: isCollaborationMode ? resolvedSessionId ?? undefined : undefined,
   });
 
   // ── ORCH-0391: Persist deck key + location on first successful solo load ──
@@ -524,41 +535,20 @@ export const RecommendationsProvider: React.FC<
     }
   }, [soloDeckCards.length, activeDeckLocation?.lat, activeDeckLocation?.lng, isSoloMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Collaboration Deck Hook (server-side synchronized deck) ──────────
-  const {
-    data: sessionDeckData,
-    isLoading: isSessionDeckLoading,
-    isFetching: isSessionDeckFetching,
-    error: sessionDeckError,
-  } = useSessionDeck(
-    isCollaborationMode ? resolvedSessionId ?? undefined : undefined,
-    batchSeed,
-    isCollaborationMode && !!resolvedSessionId && !isWaitingForSessionResolution && batchSeedReady && !!collabDeckParams,
-    [], // ORCH-0438: excludeCardIds no longer sent — session decks are shared, filtered client-side below
-    activeDeckLocation, // ORCH-0443: Pass GPS location so edge function doesn't need to derive it from DB
-  );
+  // ORCH-0446: useSessionDeck DELETED. Collab deck now uses useDeckCards (above)
+  // with aggregated params from collabDeckParams. Same code path as solo.
+  // No server middleman. No session_decks cache. No generate-session-deck edge function.
 
-  // ── Unified deck output (branch by mode) ─────────────────────────────
-  // Solo: excludeCardIds handled server-side (per-user deck)
-  // Collab: excludeCardIds filtered client-side (shared deck, per-user exclusions)
-  const rawSessionCards = sessionDeckData?.cards ?? EMPTY_CARDS;
-  const filteredSessionCards = isCollaborationMode
-    ? rawSessionCards.filter((c: Recommendation) => {
-        const key = c.placeId || c.id;
-        return !excludeCardIds.includes(key);
-      })
-    : EMPTY_CARDS;
-  const deckCards = isCollaborationMode ? filteredSessionCards : soloDeckCards;
-  const deckMode = isCollaborationMode ? 'mixed' : soloDeckMode;
-  const activePills = isCollaborationMode ? EMPTY_PILLS : soloActivePills;
-  const isDeckLoading = isCollaborationMode ? isSessionDeckLoading : isSoloDeckLoading;
-  const isDeckFetching = isCollaborationMode ? isSessionDeckFetching : isSoloDeckFetching;
-  const isDeckBatchLoaded = isCollaborationMode
-    ? (!isSessionDeckLoading && !isSessionDeckFetching)
-    : isSoloDeckBatchLoaded;
-  const deckHasMore = isCollaborationMode
-    ? (sessionDeckData?.hasMore ?? false)
-    : soloDeckHasMore;
+  // ── ORCH-0446: Unified deck output — both modes use useDeckCards ─────
+  // No branching needed. Solo and collab use the same hook with different params.
+  const deckCards = soloDeckCards;
+  const deckMode = soloDeckMode;
+  const activePills = soloActivePills;
+  const isDeckLoading = isSoloDeckLoading;
+  const isDeckFetching = isSoloDeckFetching;
+  // ORCH-0446: Both solo and collab use useDeckCards now. No branching needed.
+  const isDeckBatchLoaded = isSoloDeckBatchLoaded;
+  const deckHasMore = soloDeckHasMore;
 
   // batchSeed race guard: re-enable queries once batchSeed has settled to 0
   useEffect(() => {
@@ -656,14 +646,26 @@ export const RecommendationsProvider: React.FC<
     previousRefreshKeyRef.current = refreshKey;
   }, [refreshKey, user?.id]);
 
-  // ── Clear isRefreshingAfterPrefChange once deck settles ─────────────────
+  // ── Clear isRefreshingAfterPrefChange once NEW deck data arrives ─────────
+  // ORCH-0444: The old check (isDeckBatchLoaded && !isDeckFetching) could be
+  // satisfied by stale React Query cache state before the new fetch completed.
+  // This caused premature completion → EXHAUSTED flash → "You've seen everything"
+  // while new cards were still loading. Now we wait until cards actually arrive
+  // OR batchSeedReady confirms the new query cycle has fully settled.
   useEffect(() => {
     if (!isRefreshingAfterPrefChange) return;
-    const allSettled = isDeckBatchLoaded && !isDeckFetching;
-    if (allSettled) {
+    // New cards have arrived — safe to clear
+    if (recommendations.length > 0) {
+      setIsRefreshingAfterPrefChange(false);
+      return;
+    }
+    // No cards, but new fetch cycle has genuinely completed (not stale cache)
+    // batchSeedReady gates the new query; once it + isDeckBatchLoaded are both true
+    // AND isDeckFetching is false, the new fetch is truly done with 0 results.
+    if (batchSeedReady && isDeckBatchLoaded && !isDeckFetching) {
       setIsRefreshingAfterPrefChange(false);
     }
-  }, [isRefreshingAfterPrefChange, isDeckBatchLoaded, isDeckFetching]);
+  }, [isRefreshingAfterPrefChange, recommendations.length, batchSeedReady, isDeckBatchLoaded, isDeckFetching]);
 
   // Pref refresh safety timeout REMOVED — state machine handles this:
   // pref change → INITIAL_LOADING → query resolves → LOADED/EMPTY.
@@ -865,9 +867,13 @@ export const RecommendationsProvider: React.FC<
       // Also clear the persisted value for belt-and-suspenders safety.
       suppressExhaustionReadRef.current = true;
       AsyncStorage.removeItem(`deck_exhausted_${user?.id}_${currentMode}`).catch(() => {});
-      // ORCH-0443: Remove cached session-deck data so a fresh fetch fires.
-      // The 30-min staleTime was preventing retries after a waiting_for_preferences response.
-      queryClient.removeQueries({ queryKey: ['session-deck'] });
+      // ORCH-0444: Mark session-deck cache as stale but don't trigger immediate re-fetch.
+      // Using invalidateQueries instead of removeQueries prevents the dual-fetch race (RC-4):
+      // removeQueries caused React Query to re-mount and auto-fetch (call #1) while
+      // collabDeckParams changing enabled → true triggered call #2. invalidateQueries
+      // marks stale and waits for the enabled gate (which includes !!activeDeckLocation).
+      // ORCH-0446: session-deck queries no longer exist. Deck uses deck-cards key.
+      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
       setHasMoreCards(true);
       setDismissedCards([]);
       accumulatedCardsRef.current = [];
@@ -899,6 +905,65 @@ export const RecommendationsProvider: React.FC<
       }
     };
   }, [currentMode, queryClient]);
+
+  // ── ORCH-0444 INV-DEL-1: Session health monitor ──────────────────────────
+  // Detects when the current collab session is deleted by another participant.
+  // The session_pills Realtime channel fires loadUserSessions() on participant
+  // deletion, which updates availableSessions. This effect detects when the
+  // current session disappears and forces a switch to solo.
+  //
+  // CRITICAL: We must NOT fire during the initial mode transition. When a user
+  // taps a session pill, currentMode changes instantly (synchronous) but
+  // availableSessions hasn't refreshed yet — the session may not be in the list
+  // until loadUserSessions() completes. Without this guard, the monitor
+  // ── ORCH-0446 R3.8: Update GPS on each collab session entry ──────────
+  useEffect(() => {
+    if (!isCollaborationMode || !resolvedSessionId || !userLocation || !user?.id) return;
+
+    // Atomic GPS update via RPC — deep merge preserves all other pref fields
+    supabase.rpc('upsert_participant_prefs', {
+      p_session_id: resolvedSessionId,
+      p_user_id: user.id,
+      p_prefs: {
+        custom_lat: userLocation.lat,
+        custom_lng: userLocation.lng,
+      },
+    }).catch(() => { /* Non-blocking GPS update */ });
+  }, [isCollaborationMode, resolvedSessionId, userLocation?.lat, userLocation?.lng, user?.id]);
+
+  // immediately kicks back to solo, creating an enter→exit→enter loop.
+  //
+  // The sessionSeenInListRef tracks whether we've EVER seen the current session
+  // in availableSessions. We only trigger the "session lost" path after the
+  // session was previously present and then disappeared — a true deletion.
+  const sessionSeenInListRef = useRef(false);
+
+  // Reset the "seen" flag when the target session changes
+  useEffect(() => {
+    sessionSeenInListRef.current = false;
+  }, [resolvedSessionId]);
+
+  useEffect(() => {
+    if (!isCollaborationMode || !resolvedSessionId) return;
+    if (sessionsLoading) return; // Don't react while sessions are loading
+
+    const currentSessionExists = availableSessions.some(
+      (s) => s.id === resolvedSessionId,
+    );
+
+    if (currentSessionExists) {
+      // Session is in the list — mark as seen
+      sessionSeenInListRef.current = true;
+    } else if (sessionSeenInListRef.current) {
+      // Session WAS in the list but no longer is — it was deleted
+      console.log(
+        '[RecommendationsContext] Current session no longer exists — switching to solo',
+      );
+      onSessionLost?.();
+    }
+    // If !currentSessionExists && !sessionSeenInListRef.current:
+    // Session hasn't appeared in the list yet (initial load). Do nothing — wait.
+  }, [isCollaborationMode, resolvedSessionId, availableSessions, sessionsLoading, onSessionLost]);
 
   // ── Loading & Fetching States ───────────────────────────────────────────
   const loading = isLoadingLocation || isLoadingPreferences || isDeckLoading;
@@ -1047,11 +1112,13 @@ export const RecommendationsProvider: React.FC<
     // invalidate session-deck to clear any cached errors from prior attempts
     // where the other participant hadn't set preferences yet.
     if (!prevCollabModeRef.current) {
-      queryClient.invalidateQueries({ queryKey: ['session-deck'] });
+      // ORCH-0446: session-deck queries no longer exist. Deck uses deck-cards key.
+      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
       prevCollabModeRef.current = true;
     } else if (prevCollabParamsRef.current !== null && prevCollabParamsRef.current !== paramsKey) {
       // Collab params changed (preference update) — invalidate session deck
-      queryClient.invalidateQueries({ queryKey: ['session-deck'] });
+      // ORCH-0446: session-deck queries no longer exist. Deck uses deck-cards key.
+      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
       setBatchSeed(0);
     }
     prevCollabParamsRef.current = paramsKey;
@@ -1072,26 +1139,15 @@ export const RecommendationsProvider: React.FC<
       return { type: 'ERROR', message: 'Something went wrong loading experiences' };
     }
 
-    // ORCH-0438: Session deck error (collab mode) — real errors (401, 403, network failure)
-    if (
-      isCollaborationMode &&
-      sessionDeckError &&
-      recommendations.length === 0 &&
-      hasCompletedFetchForCurrentMode
-    ) {
-      return { type: 'ERROR', message: 'Couldn\'t load the session deck. Tap to retry.' };
-    }
+    // ORCH-0446: Collab now uses useDeckCards (same as solo). Errors are unified.
+    // The soloDeckError check above covers both modes.
 
-    // ORCH-0438: Session deck lifecycle states — server reports why deck is empty
-    if (isCollaborationMode && sessionDeckData?.deckStatus && hasCompletedFetchForCurrentMode) {
-      if (sessionDeckData.deckStatus === 'waiting_for_participants') {
+    // ORCH-0446: Collab-specific waiting state — ≥2 participants required
+    if (isCollaborationMode && hasCompletedFetchForCurrentMode && recommendations.length === 0) {
+      // Check if the session has fewer than 2 accepted participants
+      const acceptedCount = allParticipantPrefs?.length ?? 0;
+      if (acceptedCount < 2) {
         return { type: 'WAITING_FOR_PARTICIPANTS' };
-      }
-      if (sessionDeckData.deckStatus === 'waiting_for_preferences') {
-        return { type: 'WAITING_FOR_PREFERENCES' };
-      }
-      if (sessionDeckData.deckStatus === 'empty_pool' && recommendations.length === 0) {
-        return { type: 'EMPTY_POOL' };
       }
     }
 
@@ -1134,9 +1190,9 @@ export const RecommendationsProvider: React.FC<
     // once the fetch cycle completes, the EMPTY branch above catches it.
     return { type: 'INITIAL_LOADING' };
   }, [
-    locationError, soloDeckError, sessionDeckError, isModeTransitioning, isWaitingForSessionResolution,
+    locationError, soloDeckError, isModeTransitioning, isWaitingForSessionResolution,
     hasCompletedFetchForCurrentMode, recommendations, isCollaborationMode,
-    sessionDeckData?.deckStatus, isExhausted,
+    allParticipantPrefs?.length, isExhausted,
     // NOTE: `loading` intentionally removed — the EMPTY check no longer depends on it.
     // Keeping it here caused unnecessary recomputation on every background refetch.
   ]);

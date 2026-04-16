@@ -1589,7 +1589,14 @@ export default function SwipeableCards({
                 {t('cards:swipeable.seen_everything')}
               </Text>
               <Text style={styles.emptyDeckSubtitle}>
-                {t('cards:swipeable.shift_vibe')}
+                {(() => {
+                  const hour = new Date().getHours();
+                  const isLateNight = hour >= 21 || hour < 6;
+                  // ORCH-0446 R8.3: Smart late night suggestion
+                  return isLateNight
+                    ? 'Most places are closing soon. Try "This Weekend" for more options.'
+                    : t('cards:swipeable.shift_vibe');
+                })()}
               </Text>
 
               <View style={styles.emptyDeckActions}>
@@ -1708,8 +1715,17 @@ export default function SwipeableCards({
           <Icon name="location-outline" size={48} color="#9CA3AF" />
           <Text style={styles.noCardsTitle}>No places found nearby</Text>
           <Text style={styles.noCardsSubtitle}>
-            Try changing your location or adding more categories.
+            Try adjusting your categories or travel distance.
           </Text>
+          {onOpenPreferences && (
+            <TouchableOpacity
+              style={styles.emptyPoolButton}
+              onPress={onOpenPreferences}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.emptyPoolButtonText}>Adjust Preferences</Text>
+            </TouchableOpacity>
+          )}
         </View>
       );
 
@@ -2541,6 +2557,18 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     marginBottom: 8,
     paddingHorizontal: 8,
+  },
+  emptyPoolButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: '#111827',
+    borderRadius: 12,
+  },
+  emptyPoolButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
   },
   startOverButton: {
     backgroundColor: "#eb7825",

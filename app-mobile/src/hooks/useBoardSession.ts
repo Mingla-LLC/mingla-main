@@ -88,24 +88,14 @@ export const useBoardSession = (sessionId?: string) => {
       }, 10000);
 
       try {
-        // Parallel: session + user prefs + all prefs + participants
-        const [sessionResult, prefsResult, allPrefsResult, participantsResult] =
+        // ORCH-0446: Parallel session + participants only. Prefs read from session JSONB.
+        const [sessionResult, participantsResult] =
           await Promise.all([
             supabase
               .from("collaboration_sessions")
               .select("*")
               .eq("id", id)
               .maybeSingle(),
-            supabase
-              .from("board_session_preferences")
-              .select("*")
-              .eq("session_id", id)
-              .eq("user_id", user?.id || "")
-              .single(),
-            supabase
-              .from("board_session_preferences")
-              .select("*")
-              .eq("session_id", id),
             supabase
               .from("session_participants")
               .select(
@@ -136,27 +126,29 @@ export const useBoardSession = (sessionId?: string) => {
           return;
         }
 
-        if (prefsResult.error && prefsResult.error.code !== "PGRST116") {
-          console.error("Error loading preferences:", prefsResult.error);
-        }
-        if (allPrefsResult.error) {
-          console.warn("Error loading all participant preferences:", allPrefsResult.error);
-        }
         if (participantsResult.error) {
           console.error("Error loading participants:", participantsResult.error);
         }
 
-        setAllParticipantPreferences(allPrefsResult.data || []);
+        // ORCH-0446: Read participant_prefs from session JSONB (already loaded above)
+        const rawParticipantPrefs = sessionResult.data?.participant_prefs || {};
+        const userPrefs = rawParticipantPrefs[user?.id || ''] || null;
+        const allPrefs = Object.entries(rawParticipantPrefs).map(([uid, prefs]: [string, any]) => ({
+          user_id: uid,
+          ...prefs,
+        }));
+
+        setAllParticipantPreferences(allPrefs);
 
         setSession({
           ...sessionResult.data,
           participants: participantsResult.data || [],
         } as BoardSession);
 
-        if (prefsResult.data) {
-          setPreferences(prefsResult.data as BoardSessionPreferences);
+        if (userPrefs) {
+          setPreferences(userPrefs as BoardSessionPreferences);
         }
-        // ORCH-0443: Fallback seeding removed. Seeding happens at acceptance time
+        // ORCH-0446: Prefs are read from session JSONB, no separate table.
         // (via seedCollabPrefsFromSolo). Deck generator has solo fallback as defense-in-depth.
 
         // --- Derive session validity and user permission from fetched data ---
@@ -218,18 +210,12 @@ export const useBoardSession = (sessionId?: string) => {
           custom_location: normalized.custom_location,
         };
 
-        const { error } = await supabase
-          .from("board_session_preferences")
-          .upsert(
-            {
-              session_id: sessionId,
-              user_id: user.id,
-              ...payload,
-            },
-            {
-              onConflict: "session_id,user_id",
-            }
-          );
+        // ORCH-0446: Atomic merge via RPC — safe for 20+ concurrent participants
+        const { error } = await supabase.rpc('upsert_participant_prefs', {
+          p_session_id: sessionId,
+          p_user_id: user.id,
+          p_prefs: payload,
+        });
 
         if (error) throw error;
 
@@ -239,6 +225,7 @@ export const useBoardSession = (sessionId?: string) => {
           user_id: user.id,
         } as BoardSessionPreferences;
 
+        // Optimistic local state update
         setPreferences(
           (prev) =>
             ({
@@ -260,11 +247,9 @@ export const useBoardSession = (sessionId?: string) => {
           return [...list, updatedUserPrefs];
         });
 
-        // RELIABILITY: Invalidate session deck after collab prefs save. Without this,
-        // the query key ['session-deck', sessionId] never changes, staleTime is 30min,
-        // and cached cards are served forever after preference changes.
-        // Partial key match covers all batchSeed variants for this session.
-        queryClient.invalidateQueries({ queryKey: ['session-deck', sessionId] });
+        // ORCH-0446: No session-deck invalidation needed. Deck re-fetch is triggered by
+        // collabDeckParams changing in RecommendationsContext (React Query key change → auto-fetch).
+        // Realtime UPDATE on collaboration_sessions fires loadSession → allParticipantPreferences updates.
       } catch (err: any) {
         setError(err.message || "Failed to update preferences");
         throw err;
@@ -362,39 +347,26 @@ export const useBoardSession = (sessionId?: string) => {
             };
           });
         },
-        onPreferencesChanged: (newPrefs: any) => {
-          if (capturedSessionId !== stableSessionIdRef.current) {
-            console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
-            return;
-          }
+        onPreferencesChanged: () => {
+          if (capturedSessionId !== stableSessionIdRef.current) return;
+          // ORCH-0446: Re-read session JSONB. This updates allParticipantPreferences,
+          // which triggers collabDeckParams recompute in RecommendationsContext,
+          // which changes the React Query key → auto-fetch new deck. No manual invalidation needed.
           if (sessionId) {
             loadSession(sessionId);
-            // All participants invalidate their deck cache so they refetch merged prefs
-            queryClient.invalidateQueries({ queryKey: ["session-deck", sessionId] });
-          }
-          // Only the user who changed prefs triggers server-side regeneration
-          if (sessionId && newPrefs?.user_id === user?.id) {
-            supabase.functions.invoke("generate-session-deck", {
-              body: { sessionId, batchSeed: 0 },
-            }).catch((err) => {
-              console.warn("[useBoardSession] Deck regeneration after prefs change failed:", err);
-            });
           }
         },
         onDeckRegenerated: () => {
-          if (capturedSessionId !== stableSessionIdRef.current) {
-            console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
-            return;
-          }
-          if (sessionId) {
-            queryClient.invalidateQueries({ queryKey: ["session-deck", sessionId] });
-          }
+          // ORCH-0446: No-op. generate-session-deck is deleted. session_decks table is gone.
+          // Deck re-fetch is handled by collabDeckParams change → React Query key change.
         },
         onSessionDeleted: () => {
           if (capturedSessionId !== stableSessionIdRef.current) return;
           setSession(null);
           setSessionValid(false);
           setError('This session has been deleted.');
+          // ORCH-0446: No session-deck invalidation needed (hook deleted).
+          // The mode switch is handled by the health monitor in RecommendationsContext.
         },
       };
       boardCallbacksRef.current = callbacks;

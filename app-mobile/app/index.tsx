@@ -2199,6 +2199,7 @@ function AppContent() {
             currentMode={currentMode ?? "solo"}
             refreshKey={preferencesRefreshKey}
             persistedSessionId={currentSessionId}
+            onSessionLost={handleSoloSelect}
           >
             <MobileFeaturesProvider>
               <NavigationProvider>

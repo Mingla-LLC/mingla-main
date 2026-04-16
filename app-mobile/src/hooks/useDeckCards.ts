@@ -76,6 +76,10 @@ interface UseDeckCardsParams {
    *  before location resolves. Only set after proximity check confirms same location.
    *  ORCH-0391. */
   lastKnownQueryKey?: readonly unknown[] | null;
+  /** ORCH-0446: Array of date windows for AND intersection (collab only). */
+  dateWindows?: string[];
+  /** ORCH-0446: Session ID for analytics tracking (collab only). */
+  sessionId?: string;
 }
 
 export interface UseDeckCardsResult {

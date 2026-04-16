@@ -32,6 +32,8 @@ export interface DeckParams {
   batchSeed?: number;
   limit?: number;
   excludeCardIds?: string[];
+  dateWindows?: string[];  // ORCH-0446: array of date windows for AND intersection (collab only)
+  sessionId?: string;      // ORCH-0446: optional, for analytics tracking (collab only)
 }
 
 export interface DeckResponse {
@@ -281,6 +283,8 @@ class DeckService {
                 batchSeed: params.batchSeed,
                 limit: categoryLimit,
                 excludeCardIds: params.excludeCardIds,
+                dateWindows: params.dateWindows,  // ORCH-0446: AND date intersection (collab only)
+                sessionId: params.sessionId,       // ORCH-0446: analytics tracking (collab only)
               },
             }),
             timeoutPromise,

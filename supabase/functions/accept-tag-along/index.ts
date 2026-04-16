@@ -8,20 +8,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const TRAVEL_MODE_RANK: Record<string, number> = {
-  driving: 4,
-  transit: 3,
-  biking: 2,
-  bicycling: 2,
-  walking: 1,
-};
-
-function mostPermissiveTravelMode(a: string | null, b: string | null): string {
-  const rankA = TRAVEL_MODE_RANK[a ?? "walking"] ?? 1;
-  const rankB = TRAVEL_MODE_RANK[b ?? "walking"] ?? 1;
-  if (rankA >= rankB) return a ?? "walking";
-  return b ?? "walking";
-}
+// ORCH-0444 INV-TAG-1: Tag-along writes per-user preference rows, never merged rows.
+// Aggregation is generate-session-deck's job. This edge function only copies solo prefs.
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -159,22 +147,9 @@ serve(async (req) => {
     const receiverPrefs = receiverPrefsResult.data;
     const senderPrefs = senderPrefsResult.data;
 
-    // Merge categories (union, deduplicated)
-    const receiverCats: string[] = receiverPrefs?.categories ?? [];
-    const senderCats: string[] = senderPrefs?.categories ?? [];
-    const mergedCategories = [...new Set([...receiverCats, ...senderCats])];
-
-    // Merge travel mode (most permissive)
-    const mergedTravelMode = mostPermissiveTravelMode(
-      receiverPrefs?.travel_mode,
-      senderPrefs?.travel_mode
-    );
-
-    // Travel constraint = MAX of both
-    const mergedTravelConstraint = Math.max(
-      receiverPrefs?.travel_constraint_value ?? 30,
-      senderPrefs?.travel_constraint_value ?? 30
-    );
+    // ORCH-0444: No more client-side merging. Each user gets their own preference
+    // row with their solo prefs copied verbatim. generate-session-deck handles
+    // UNION aggregation across all participants.
 
     // Get display names for session naming
     const [receiverProfileResult, senderProfileResult] = await Promise.all([
@@ -215,20 +190,27 @@ serve(async (req) => {
           role: "member",
         }, { onConflict: "session_id,user_id" });
 
-      // Re-merge categories into board_session_preferences
-      const { data: existingBsp } = await supabase
-        .from("board_session_preferences")
-        .select("categories")
-        .eq("session_id", collabSessionId)
-        .maybeSingle();
-
-      const existingCats: string[] = existingBsp?.categories ?? [];
-      const reMerged = [...new Set([...existingCats, ...senderCats])];
-
-      await supabase
-        .from("board_session_preferences")
-        .update({ categories: reMerged, updated_at: new Date().toISOString() })
-        .eq("session_id", collabSessionId);
+      // ORCH-0446: Write joiner's prefs to JSONB via atomic RPC (no read-modify-write race)
+      await supabase.rpc("upsert_participant_prefs", {
+        p_session_id: collabSessionId,
+        p_user_id: senderId,
+        p_prefs: {
+          categories: senderPrefs?.categories ?? [],
+          intents: senderPrefs?.intents ?? [],
+          intent_toggle: senderPrefs?.intent_toggle ?? true,
+          category_toggle: senderPrefs?.category_toggle ?? true,
+          travel_mode: senderPrefs?.travel_mode ?? "walking",
+          travel_constraint_type: "time",
+          travel_constraint_value: senderPrefs?.travel_constraint_value ?? 30,
+          date_option: senderPrefs?.date_option ?? null,
+          datetime_pref: senderPrefs?.datetime_pref ?? null,
+          selected_dates: senderPrefs?.selected_dates ?? null,
+          use_gps_location: senderPrefs?.use_gps_location ?? true,
+          custom_location: senderPrefs?.custom_location ?? null,
+          custom_lat: senderPrefs?.custom_lat ?? null,
+          custom_lng: senderPrefs?.custom_lng ?? null,
+        },
+      });
 
       // Update session name
       await supabase
@@ -306,21 +288,33 @@ serve(async (req) => {
           ]);
       }
 
-      // Create board_session_preferences with merged values
-      await supabase
-        .from("board_session_preferences")
-        .insert({
-          session_id: collabSessionId,
-          user_id: receiverId,
-          categories: mergedCategories,
-          travel_mode: mergedTravelMode,
-          travel_constraint_type: receiverPrefs?.travel_constraint_type ?? "time",
-          travel_constraint_value: mergedTravelConstraint,
-          location: receiverPrefs?.location ?? null,
-          custom_lat: receiverPrefs?.custom_lat ?? null,
-          custom_lng: receiverPrefs?.custom_lng ?? null,
-          use_gps_location: receiverPrefs?.use_gps_location ?? true,
+      // ORCH-0446: Write per-user prefs to participant_prefs JSONB via atomic RPC
+      for (const participant of [
+        { userId: receiverId, prefs: receiverPrefs },
+        { userId: senderId, prefs: senderPrefs },
+      ]) {
+        const solo = participant.prefs;
+        await supabase.rpc("upsert_participant_prefs", {
+          p_session_id: collabSessionId,
+          p_user_id: participant.userId,
+          p_prefs: {
+            categories: solo?.categories ?? [],
+            intents: solo?.intents ?? [],
+            intent_toggle: solo?.intent_toggle ?? true,
+            category_toggle: solo?.category_toggle ?? true,
+            travel_mode: solo?.travel_mode ?? "walking",
+            travel_constraint_type: "time",
+            travel_constraint_value: solo?.travel_constraint_value ?? 30,
+            date_option: solo?.date_option ?? null,
+            datetime_pref: solo?.datetime_pref ?? null,
+            selected_dates: solo?.selected_dates ?? null,
+            use_gps_location: solo?.use_gps_location ?? true,
+            custom_location: solo?.custom_location ?? null,
+            custom_lat: solo?.custom_lat ?? null,
+            custom_lng: solo?.custom_lng ?? null,
+          },
         });
+      }
     }
 
     // ── Step 6: Update leaderboard presence (decrement seats) ──
@@ -416,7 +410,7 @@ serve(async (req) => {
         collab_session_id: collabSessionId,
         session_name: sessionName,
         friendship_created: friendshipCreated,
-        merged_categories: mergedCategories,
+        preferences_seeded: true,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

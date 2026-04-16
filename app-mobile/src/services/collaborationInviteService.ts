@@ -11,7 +11,7 @@
  */
 import { supabase } from './supabase';
 import { getDisplayName } from '../utils/getDisplayName';
-import { seedCollabPrefsFromSolo } from './collabPreferenceSeedService';
+// ORCH-0446: seedCollabPrefsFromSolo deleted. Seeding is now inline via RPC.
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -163,14 +163,38 @@ export async function acceptCollaborationInvite(
     };
   }
 
-  // ── Step 3: Seed preferences BEFORE participant insert (ORCH-0443) ─────
-  // Seeding first ensures prefs exist when the Realtime event fires
-  // from the participant insert below. Eliminates the race condition.
+  // ── Step 3: Write acceptor's prefs to session JSONB (ORCH-0446) ─────
+  // Atomic RPC merge — safe for concurrent writes, no read-modify-write race.
   try {
-    await seedCollabPrefsFromSolo(userId, sessionId);
+    const { data: soloPrefs } = await supabase
+      .from('preferences')
+      .select('*')
+      .eq('profile_id', userId)
+      .maybeSingle();
+
+    await supabase.rpc('upsert_participant_prefs', {
+      p_session_id: sessionId,
+      p_user_id: userId,
+      p_prefs: {
+        categories: soloPrefs?.categories?.length ? soloPrefs.categories : ['nature', 'drinks_and_music', 'icebreakers'],
+        intents: soloPrefs?.intents ?? [],
+        travel_mode: soloPrefs?.travel_mode ?? 'walking',
+        travel_constraint_type: 'time',
+        travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
+        date_option: soloPrefs?.date_option ?? null,
+        datetime_pref: soloPrefs?.datetime_pref ?? null,
+        selected_dates: soloPrefs?.selected_dates ?? null,
+        use_gps_location: soloPrefs?.use_gps_location ?? true,
+        custom_location: soloPrefs?.custom_location ?? null,
+        custom_lat: soloPrefs?.custom_lat ?? null,
+        custom_lng: soloPrefs?.custom_lng ?? null,
+        intent_toggle: soloPrefs?.intent_toggle ?? true,
+        category_toggle: soloPrefs?.category_toggle ?? true,
+      },
+    });
   } catch (err) {
-    console.error('[collaborationInviteService] Preference seeding failed:', err);
-    // Non-blocking: deck generator has solo fallback (ORCH-0443 Layer 3)
+    console.error('[collaborationInviteService] Preference write failed:', err);
+    // Non-blocking: deck aggregation falls back to empty prefs for this user
   }
 
   // ── Step 4: Upsert user as accepted participant ─────────────────────────
@@ -323,7 +347,7 @@ export async function acceptCollaborationInvite(
     }
   }
 
-  // Seeding already done in Step 3 (ORCH-0443)
+  // Prefs written to JSONB in Step 3 (ORCH-0446)
 
   return {
     success: true,

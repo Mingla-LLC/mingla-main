@@ -21,6 +21,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { Icon } from './ui/Icon';
+import { useToast } from './ToastManager';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { HapticFeedback } from '../utils/hapticFeedback';
@@ -125,6 +126,7 @@ export default function CollaborationSessions({
 }: CollaborationSessionsProps) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation(['modals', 'common']);
+  const { showToast } = useToast();
   const scrollViewRef = useRef<ScrollView>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const coachCreate = useCoachMark(4, 20);
@@ -146,6 +148,26 @@ export default function CollaborationSessions({
       }
     }
   }, [sessions, inviteModalSession?.id, showInviteModal]);
+
+  // ORCH-0444: Detect when a session disappears (deleted by another participant).
+  // Case 2: User is a member but viewing a different session — show toast + pill disappears.
+  // Case 1 (user ON the deleted session) is handled by RecommendationsContext.onSessionLost.
+  const prevSessionIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const currentIds = new Set(sessions.map(s => s.id));
+    const prevIds = prevSessionIdsRef.current;
+
+    if (prevIds.size > 0) {
+      for (const id of prevIds) {
+        if (!currentIds.has(id) && id !== selectedSessionId) {
+          showToast({ message: 'A session was ended', type: 'info', duration: 2000 });
+          break; // One toast is enough even if multiple sessions disappeared
+        }
+      }
+    }
+
+    prevSessionIdsRef.current = currentIds;
+  }, [sessions, selectedSessionId, showToast]);
 
   const [newSessionName, setNewSessionName] = useState('');
   const [selectedFriends, setSelectedFriends] = useState<Friend[]>([]);

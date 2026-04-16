@@ -393,13 +393,37 @@ export const useSessionManagement = () => {
         throw creatorParticipantError;
       }
 
-      // ORCH-0443: Seed via single source of truth
+      // ORCH-0446: Write creator's solo prefs to session JSONB via atomic RPC
       try {
-        const { seedCollabPrefsFromSolo } = await import('../services/collabPreferenceSeedService');
-        await seedCollabPrefsFromSolo(user.id, sessionData.id);
+        const { data: soloPrefs } = await supabase
+          .from('preferences')
+          .select('*')
+          .eq('profile_id', user.id)
+          .maybeSingle();
+
+        await supabase.rpc('upsert_participant_prefs', {
+          p_session_id: sessionData.id,
+          p_user_id: user.id,
+          p_prefs: {
+            categories: soloPrefs?.categories?.length ? soloPrefs.categories : ['nature', 'drinks_and_music', 'icebreakers'],
+            intents: soloPrefs?.intents ?? [],
+            travel_mode: soloPrefs?.travel_mode ?? 'walking',
+            travel_constraint_type: 'time',
+            travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
+            date_option: soloPrefs?.date_option ?? null,
+            datetime_pref: soloPrefs?.datetime_pref ?? null,
+            selected_dates: soloPrefs?.selected_dates ?? null,
+            use_gps_location: soloPrefs?.use_gps_location ?? true,
+            custom_location: soloPrefs?.custom_location ?? null,
+            custom_lat: soloPrefs?.custom_lat ?? null,
+            custom_lng: soloPrefs?.custom_lng ?? null,
+            intent_toggle: soloPrefs?.intent_toggle ?? true,
+            category_toggle: soloPrefs?.category_toggle ?? true,
+          },
+        });
       } catch (seedErr) {
-        console.error('[useSessionManagement] Creator pref seeding failed:', seedErr);
-        // Non-blocking: deck generator has solo fallback (ORCH-0443 Layer 3)
+        console.error('[useSessionManagement] Creator pref write failed:', seedErr);
+        // Non-blocking: deck aggregation works with remaining participants' prefs
       }
 
       // Process participants
@@ -570,26 +594,11 @@ export const useSessionManagement = () => {
         }
       }
 
-      // ORCH-0443: Seeding already done by createCollaborativeSession (W1).
-      // If caller passed explicit overrides, apply them via the preference sheet
-      // save path (W5), which is the only other legitimate write path.
-      if (preferences) {
-        const { error: prefError } = await supabase
-          .from('board_session_preferences')
-          .upsert({
-            session_id: sessionId,
-            user_id: authUser.id,
-            categories: preferences.categories,
-            intents: preferences.intents,
-            travel_mode: preferences.travelMode,
-            travel_constraint_type: 'time',
-            travel_constraint_value: preferences.travelTimeMinutes,
-          }, { onConflict: 'session_id,user_id' })
-
-        if (prefError) {
-          console.error('[useSessionManagement] Failed to apply preference overrides:', prefError)
-        }
-      }
+      // ORCH-0446: Seeding is handled by createCollaborativeSession via
+      // upsert_participant_prefs RPC. The `preferences` parameter is kept in the
+      // signature for API compat with OnboardingCollaborationStep but is ignored.
+      // All writes to participant_prefs go through atomic RPCs.
+      // and useBoardSession.updatePreferences. Do not add a third.
 
       return sessionId
     },
@@ -746,6 +755,14 @@ export const useSessionManagement = () => {
     try {
       // If user is currently in this active session, leave it
       if (sessionState.currentSession?.id === sessionId) {
+        // ORCH-0446 R6.4: Remove leaver's prefs from session JSONB (atomic)
+        try {
+          await supabase.rpc('remove_participant_prefs', {
+            p_session_id: sessionId,
+            p_user_id: user.id,
+          });
+        } catch { /* Non-blocking cleanup */ }
+
         // Remove user from session participants (this will trigger cleanup)
         await supabase
           .from('session_participants')
@@ -811,6 +828,14 @@ export const useSessionManagement = () => {
           .update({ status: 'declined' })
           .eq('session_id', sessionId)
           .eq('invited_user_id', user.id);
+
+        // ORCH-0446 R6.4: Remove leaver's prefs from session JSONB
+        try {
+          await supabase.rpc('remove_participant_prefs', {
+            p_session_id: sessionId,
+            p_user_id: user.id,
+          });
+        } catch { /* Non-blocking cleanup */ }
 
         // Remove user from participants (this may trigger session cleanup)
         await supabase

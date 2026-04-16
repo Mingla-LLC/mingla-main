@@ -131,6 +131,43 @@ function hourInRanges(hour: number, ranges: { open: number; close: number }[]): 
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+/**
+ * ORCH-0446: AND date filtering for collab sessions.
+ * Card must be open during ALL provided date windows (INTERSECTION).
+ * If AND produces zero results, falls back to UNION (OR) — card passes if open during ANY window.
+ * Solo mode never calls this — it uses filterByDateTime directly.
+ */
+function filterByDateWindows(
+  places: any[],
+  dateWindows: string[],
+  datetimePref: string | undefined,
+  selectedDates?: string[] | null,
+): any[] {
+  if (!dateWindows || dateWindows.length === 0) {
+    return places;
+  }
+
+  // AND pass: card must pass ALL windows
+  const andResult = places.filter(place => {
+    return dateWindows.every(window => {
+      const windowFiltered = filterByDateTime([place], datetimePref, window, selectedDates);
+      return windowFiltered.length > 0;
+    });
+  });
+
+  if (andResult.length > 0) {
+    return andResult;
+  }
+
+  // UNION fallback: card passes if it matches ANY window
+  return places.filter(place => {
+    return dateWindows.some(window => {
+      const windowFiltered = filterByDateTime([place], datetimePref, window, selectedDates);
+      return windowFiltered.length > 0;
+    });
+  });
+}
+
 // ORCH-0434: Simplified filterByDateTime — 3 date modes only, no time slots.
 // Cards without opening hours are EXCLUDED (except ALWAYS_OPEN_TYPES).
 function filterByDateTime(
@@ -374,6 +411,8 @@ serve(async (req: Request) => {
       batchSeed = 0,
       limit = 200,
       excludeCardIds: rawExcludeCardIds = [],
+      dateWindows,  // ORCH-0446: array of date windows for AND intersection (collab only)
+      sessionId,    // ORCH-0446: optional, for analytics logging (collab only)
     } = body;
 
     // Accept all string IDs — can be Google Place IDs or card_pool UUIDs
@@ -408,7 +447,7 @@ serve(async (req: Request) => {
       );
     }
 
-    console.log(`[discover-cards] Request: categories=[${categories}], batchSeed=${batchSeed}, limit=${limit}, mode=${travelMode}`);
+    console.log(`[discover-cards] Request: categories=[${categories}], batchSeed=${batchSeed}, limit=${limit}, mode=${travelMode}${sessionId ? `, session=${sessionId}` : ''}${dateWindows ? `, dateWindows=[${dateWindows}]` : ''}`);
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -491,7 +530,10 @@ serve(async (req: Request) => {
         if (poolResult.cards.length > 0) {
           const elapsed = Date.now() - t0;
           // Apply date/time filter to pool-served cards
-          const timeFilteredCards = filterByDateTime(poolResult.cards, datetimePref, dateOption, selectedDates);
+          // ORCH-0446: Use AND intersection when collab dateWindows provided, else solo single-mode
+          const timeFilteredCards = dateWindows && dateWindows.length > 0
+            ? filterByDateWindows(poolResult.cards, dateWindows, datetimePref, selectedDates)
+            : filterByDateTime(poolResult.cards, datetimePref, dateOption, selectedDates);
 
           // Apply cascading hours filter to curated cards (timezone-aware via utcNow + card offset)
           const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();
