@@ -313,10 +313,17 @@ export const RecommendationsProvider: React.FC<
     sessionsLoading &&
     !hasTimedOutWaitingForSession;
 
-  // ORCH-0443: The old check `session_type === "board"` was always false because
-  // sessions are created with session_type='group_hangout'. The correct check is
-  // simply: are we in collab mode with a valid session ID?
-  const isBoardSession = !isInSolo && !!resolvedSessionId;
+  // ── Collaboration mode flag ──
+  const isCollaborationMode: boolean = Boolean(
+    currentMode !== "solo" && resolvedSessionId
+  );
+  const isSoloMode = currentMode === "solo";
+
+  // ORCH-0443: Use isCollaborationMode instead of isInSolo from useSessionManagement.
+  // isInSolo is never set to false because switchToCollaborative is not called
+  // from the pill-bar select handler. isCollaborationMode derives from currentMode
+  // which IS set correctly.
+  const isBoardSession = isCollaborationMode;
 
   const boardSessionResult = useBoardSession(
     isBoardSession ? resolvedSessionId ?? undefined : undefined
@@ -325,12 +332,6 @@ export const RecommendationsProvider: React.FC<
 
   // Read all participants' prefs from board session
   const allParticipantPrefs = boardSessionResult?.allParticipantPreferences ?? null;
-
-  // ── Collaboration mode flag ──
-  const isCollaborationMode: boolean = Boolean(
-    currentMode !== "solo" && resolvedSessionId
-  );
-  const isSoloMode = currentMode === "solo";
 
   // ── Location & Preferences ──────────────────────────────────────────────
   const {
