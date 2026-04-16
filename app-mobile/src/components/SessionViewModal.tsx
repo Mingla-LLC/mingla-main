@@ -431,7 +431,12 @@ export default function SessionViewModal({
           type: 'info',
           message: `"${localName}" was deleted by an admin.`,
         });
-        onClose();
+        // Trigger the same cleanup as explicit delete — switches to solo
+        if (onSessionDeleted) {
+          onSessionDeleted();
+        } else {
+          onClose();
+        }
       },
     });
 
