@@ -1336,6 +1336,39 @@ function AppContent() {
 
       if (participantError) throw participantError;
 
+      // ORCH-0446B: Write creator's solo prefs to session JSONB
+      try {
+        const { data: soloPrefs } = await supabase
+          .from('preferences')
+          .select('*')
+          .eq('profile_id', user.id)
+          .maybeSingle();
+
+        const { error: rpcError } = await supabase.rpc('upsert_participant_prefs', {
+          p_session_id: session.id,
+          p_user_id: user.id,
+          p_prefs: {
+            categories: soloPrefs?.categories?.length ? soloPrefs.categories : ['nature', 'drinks_and_music', 'icebreakers'],
+            intents: soloPrefs?.intents ?? [],
+            travel_mode: soloPrefs?.travel_mode ?? 'walking',
+            travel_constraint_type: 'time',
+            travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
+            date_option: soloPrefs?.date_option ?? null,
+            datetime_pref: soloPrefs?.datetime_pref ?? null,
+            selected_dates: soloPrefs?.selected_dates ?? null,
+            use_gps_location: soloPrefs?.use_gps_location ?? true,
+            custom_location: soloPrefs?.custom_location ?? null,
+            custom_lat: soloPrefs?.custom_lat ?? null,
+            custom_lng: soloPrefs?.custom_lng ?? null,
+            intent_toggle: soloPrefs?.intent_toggle ?? true,
+            category_toggle: soloPrefs?.category_toggle ?? true,
+          },
+        });
+        if (rpcError) console.error('[index] Creator pref RPC error:', rpcError.message);
+      } catch (err) {
+        console.error('[index] Creator pref write failed:', err);
+      }
+
       // Add selected friends as participants and send invites
       for (const friend of selectedFriends) {
         const friendUserId = friend.id;

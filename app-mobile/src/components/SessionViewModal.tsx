@@ -411,9 +411,9 @@ export default function SessionViewModal({
   useEffect(() => {
     if (!visible || !sessionId) return;
 
-    const channel = realtimeService.subscribeToBoardSession(sessionId, {
-      onCardSaved: (card) => {
-        setSavedCards((prev) => {
+    const callbacks = {
+      onCardSaved: (card: any) => {
+        setSavedCards((prev: any[]) => {
           if (prev.some((c) => c.id === card.id)) return prev;
           return [card, ...prev];
         });
@@ -438,10 +438,14 @@ export default function SessionViewModal({
           onClose();
         }
       },
-    });
+    };
+
+    realtimeService.subscribeToBoardSession(sessionId, callbacks);
 
     return () => {
-      realtimeService.unsubscribe(`board_session:${sessionId}`);
+      // ORCH-0446B: Unregister callbacks only — don't destroy the shared channel.
+      // Other hooks (useBoardSession, useSessionVoting) share this channel.
+      realtimeService.unregisterBoardCallbacks(sessionId, callbacks);
     };
   }, [visible, sessionId]);
 

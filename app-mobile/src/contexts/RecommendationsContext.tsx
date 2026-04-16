@@ -906,6 +906,21 @@ export const RecommendationsProvider: React.FC<
     };
   }, [currentMode, queryClient]);
 
+  // ── ORCH-0446B: Clear mode transition once collab params resolve ───────
+  // isModeTransitioning blocks isDeckParamsStable's fast path, preventing
+  // the collab deck from fetching. The 5s timeout is too slow — clear as
+  // soon as collabDeckParams is available (loadSession completed).
+  useEffect(() => {
+    if (isCollaborationMode && collabDeckParams && isModeTransitioning) {
+      setIsModeTransitioning(false);
+      setHasCompletedFetchForCurrentMode(false); // Let it complete naturally
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current);
+        completionTimeoutRef.current = null;
+      }
+    }
+  }, [isCollaborationMode, collabDeckParams, isModeTransitioning]);
+
   // ── ORCH-0444 INV-DEL-1: Session health monitor ──────────────────────────
   // Detects when the current collab session is deleted by another participant.
   // The session_pills Realtime channel fires loadUserSessions() on participant
@@ -921,14 +936,14 @@ export const RecommendationsProvider: React.FC<
     if (!isCollaborationMode || !resolvedSessionId || !userLocation || !user?.id) return;
 
     // Atomic GPS update via RPC — deep merge preserves all other pref fields
-    supabase.rpc('upsert_participant_prefs', {
+    void Promise.resolve(supabase.rpc('upsert_participant_prefs', {
       p_session_id: resolvedSessionId,
       p_user_id: user.id,
       p_prefs: {
         custom_lat: userLocation.lat,
         custom_lng: userLocation.lng,
       },
-    }).catch(() => { /* Non-blocking GPS update */ });
+    })).catch(() => { /* Non-blocking GPS update */ });
   }, [isCollaborationMode, resolvedSessionId, userLocation?.lat, userLocation?.lng, user?.id]);
 
   // immediately kicks back to solo, creating an enter→exit→enter loop.

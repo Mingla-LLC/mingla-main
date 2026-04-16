@@ -163,8 +163,28 @@ export async function acceptCollaborationInvite(
     };
   }
 
-  // ── Step 3: Write acceptor's prefs to session JSONB (ORCH-0446) ─────
+  // ── Step 3: Upsert user as accepted participant ─────────────────────────
+  // MUST happen before prefs RPC — the RPC validates has_accepted = true.
+
+  const { error: participantError } = await supabase
+    .from('session_participants')
+    .upsert(
+      {
+        session_id: sessionId,
+        user_id: userId,
+        has_accepted: true,
+        joined_at: new Date().toISOString(),
+      },
+      { onConflict: 'session_id,user_id' }
+    );
+
+  if (participantError) {
+    console.error('[collaborationInviteService] Error adding participant:', participantError);
+  }
+
+  // ── Step 4: Write acceptor's prefs to session JSONB (ORCH-0446) ─────
   // Atomic RPC merge — safe for concurrent writes, no read-modify-write race.
+  // Runs after participant upsert so the RPC's has_accepted validation passes.
   try {
     const { data: soloPrefs } = await supabase
       .from('preferences')
@@ -195,24 +215,6 @@ export async function acceptCollaborationInvite(
   } catch (err) {
     console.error('[collaborationInviteService] Preference write failed:', err);
     // Non-blocking: deck aggregation falls back to empty prefs for this user
-  }
-
-  // ── Step 4: Upsert user as accepted participant ─────────────────────────
-
-  const { error: participantError } = await supabase
-    .from('session_participants')
-    .upsert(
-      {
-        session_id: sessionId,
-        user_id: userId,
-        has_accepted: true,
-        joined_at: new Date().toISOString(),
-      },
-      { onConflict: 'session_id,user_id' }
-    );
-
-  if (participantError) {
-    console.error('[collaborationInviteService] Error adding participant:', participantError);
   }
 
   // Notify other participants that this user joined (fire-and-forget).

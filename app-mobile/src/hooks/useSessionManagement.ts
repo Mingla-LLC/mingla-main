@@ -401,10 +401,7 @@ export const useSessionManagement = () => {
           .eq('profile_id', user.id)
           .maybeSingle();
 
-        await supabase.rpc('upsert_participant_prefs', {
-          p_session_id: sessionData.id,
-          p_user_id: user.id,
-          p_prefs: {
+        const creatorPrefsPayload = {
             categories: soloPrefs?.categories?.length ? soloPrefs.categories : ['nature', 'drinks_and_music', 'icebreakers'],
             intents: soloPrefs?.intents ?? [],
             travel_mode: soloPrefs?.travel_mode ?? 'walking',
@@ -419,8 +416,18 @@ export const useSessionManagement = () => {
             custom_lng: soloPrefs?.custom_lng ?? null,
             intent_toggle: soloPrefs?.intent_toggle ?? true,
             category_toggle: soloPrefs?.category_toggle ?? true,
-          },
+        };
+        console.log('[useSessionManagement] Writing creator prefs:', JSON.stringify({ sessionId: sessionData.id, userId: user.id, categories: creatorPrefsPayload.categories }));
+        const { error: rpcError } = await supabase.rpc('upsert_participant_prefs', {
+          p_session_id: sessionData.id,
+          p_user_id: user.id,
+          p_prefs: creatorPrefsPayload,
         });
+        if (rpcError) {
+          console.error('[useSessionManagement] Creator pref RPC error:', rpcError.message, rpcError);
+        } else {
+          console.log('[useSessionManagement] Creator prefs written successfully');
+        }
       } catch (seedErr) {
         console.error('[useSessionManagement] Creator pref write failed:', seedErr);
         // Non-blocking: deck aggregation works with remaining participants' prefs
