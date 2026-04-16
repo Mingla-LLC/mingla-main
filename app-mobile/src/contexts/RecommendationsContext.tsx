@@ -313,11 +313,13 @@ export const RecommendationsProvider: React.FC<
     sessionsLoading &&
     !hasTimedOutWaitingForSession;
 
-  const isBoardSession =
-    !isInSolo && (currentSession as any)?.session_type === "board";
+  // ORCH-0443: The old check `session_type === "board"` was always false because
+  // sessions are created with session_type='group_hangout'. The correct check is
+  // simply: are we in collab mode with a valid session ID?
+  const isBoardSession = !isInSolo && !!resolvedSessionId;
 
   const boardSessionResult = useBoardSession(
-    isBoardSession && currentSession?.id ? currentSession.id : undefined
+    isBoardSession ? resolvedSessionId ?? undefined : undefined
   );
   const boardPreferences = boardSessionResult?.preferences || null;
 
