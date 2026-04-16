@@ -369,7 +369,7 @@ function AppContent() {
       if (!userIdRef.current) {
         // Stash the deep link for after auth
         if (data.type === 'paired_user_saved_card' && data.notificationId) {
-          pendingDeepLinkRef.current = `mingla://discover?paired=true&notificationId=${data.notificationId as string}`;
+          pendingDeepLinkRef.current = `mingla://connections?paired=true&notificationId=${data.notificationId as string}`;
         } else if (data.deepLink) {
           pendingDeepLinkRef.current = data.deepLink as string;
         }
@@ -421,7 +421,7 @@ function AppContent() {
             const cardId = notification?.related_id;
             if (typeof cardId === 'string' && cardId) {
               setDeepLinkParams({ paired: 'true', cardId });
-              setCurrentPage('discover');
+              setCurrentPage('connections');
               return;
             }
 
@@ -558,10 +558,10 @@ function AppContent() {
       friend_request_accepted: "connections",
       friend_request: "connections", // legacy
       friend_accepted: "connections", // legacy
-      pair_request_received: "discover",
-      pair_request_accepted: "discover",
-      paired_user_saved_card: "discover",
-      paired_user_visited: "discover",
+      pair_request_received: "connections",
+      pair_request_accepted: "connections",
+      paired_user_saved_card: "connections",
+      paired_user_visited: "connections",
       // Collaboration / Sessions
       collaboration_invite_received: "home",
       collaboration_invite_accepted: "home",
@@ -594,7 +594,7 @@ function AppContent() {
       // Feedback
       visit_feedback_prompt: "likes",
       // Holiday reminders (Block 3 Pass 2)
-      holiday_reminder: "discover",
+      holiday_reminder: "connections",
     };
 
     // ORCH-0407: NO foreground listener registered. Without a listener, the
@@ -751,7 +751,7 @@ function AppContent() {
             const cardId = notification?.related_id;
             if (typeof cardId === 'string' && cardId) {
               setDeepLinkParams({ paired: 'true', cardId });
-              setCurrentPage('discover');
+              setCurrentPage('connections');
               return;
             }
 
@@ -993,7 +993,7 @@ function AppContent() {
 
     if (notification.type === 'paired_user_saved_card' && notification.related_id) {
       setDeepLinkParams({ paired: 'true', cardId: notification.related_id });
-      setCurrentPage('discover');
+      setCurrentPage('connections');
       return;
     }
 
@@ -2346,7 +2346,7 @@ function AppContent() {
                           >
                             <View style={styles.navIconContainer}>
                               <Ionicons
-                                name="chatbubbles-outline"
+                                name="people-outline"
                                 size={TAB_BAR_ICON_SIZE}
                                 color={
                                   currentPage === "connections"
@@ -2372,7 +2372,7 @@ function AppContent() {
                                   : styles.navTextInactive,
                               ]}
                             >
-                              {t('navigation:tabs.chats')}
+                              {t('navigation:tabs.friends')}
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity

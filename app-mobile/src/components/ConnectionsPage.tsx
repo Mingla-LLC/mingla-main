@@ -18,6 +18,7 @@ import {
   useWindowDimensions,
   RefreshControl,
   InteractionManager,
+  Image,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from "./ui/Icon";
@@ -53,12 +54,19 @@ import { FriendsManagementList } from "./connections/FriendsManagementList";
 import { BlockedUsersView } from "./connections/BlockedUsersView";
 import MessageInterface from "./MessageInterface";
 
-type PanelId = "add" | "friends" | "blocked" | null;
+type PanelId = "add" | "friends" | "blocked" | null; // [TRANSITIONAL] kept for initialPanel prop compat
+type FriendsModalTab = "friend-list" | "sent" | "requests" | "blocked";
 
 // Modals kept for MessageInterface actions
 import AddToBoardModal from "./AddToBoardModal";
 import ReportUserModal from "./ReportUserModal";
 import BlockUserModal from "./BlockUserModal";
+
+// Pairing — ORCH-0435 Phase A
+import PairRequestModal from "./PairRequestModal";
+import IncomingPairRequestCard from "./IncomingPairRequestCard";
+import { usePairingPills, useIncomingPairRequests, useSendPairRequest, useCancelPairRequest, useCancelPairInvite, useAcceptPairRequest, useDeclinePairRequest, useUnpair } from "../hooks/usePairings";
+import type { PairRequest } from "../services/pairingService";
 interface ConnectionsPageProps {
   isTabVisible?: boolean;
   onSendCollabInvite?: (friend: any) => void;
@@ -102,6 +110,177 @@ const normalizeSearchText = (value: string | null | undefined): string =>
     .replace(/^@/, "")
     .replace(/\s+/g, " ")
     .trim();
+
+// ── ORCH-0435: Paired friends pill bar ─────────────────────────────────────
+interface PairedPillPerson {
+  pairedUserId: string;
+  displayName: string;
+  firstName: string | null;
+  avatarUrl: string | null;
+  initials: string;
+  pending?: boolean;
+  incoming?: boolean;
+  incomingRequest?: PairRequest;
+}
+
+function PairedPillsBar({
+  people,
+  onSelectPerson,
+  onAddPress,
+  onPendingPress,
+  onIncomingPress,
+}: {
+  people: PairedPillPerson[];
+  onSelectPerson: (person: PairedPillPerson) => void;
+  onAddPress: () => void;
+  onPendingPress?: (person: PairedPillPerson) => void;
+  onIncomingPress?: (person: PairedPillPerson) => void;
+}) {
+  const [failedAvatars, setFailedAvatars] = useState<Set<string>>(new Set());
+
+  return (
+    <View style={pillStyles.container}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={pillStyles.scrollContent}
+      >
+        {/* Add button — first */}
+        <TouchableOpacity style={pillStyles.pill} onPress={onAddPress} activeOpacity={0.7}>
+          <View style={pillStyles.addButtonRing}>
+            <Icon name="add" size={20} color="#eb7825" />
+          </View>
+          <Text style={pillStyles.name} numberOfLines={1}>Add</Text>
+        </TouchableOpacity>
+        {people.map((person) => {
+          const name = person.firstName || person.displayName?.split(" ")[0] || "Friend";
+          const isPending = person.pending;
+          return (
+            <TouchableOpacity
+              key={person.pairedUserId}
+              style={[pillStyles.pill, isPending && pillStyles.pillPending]}
+              onPress={() => person.incoming ? onIncomingPress?.(person) : isPending ? onPendingPress?.(person) : onSelectPerson(person)}
+              activeOpacity={0.7}
+            >
+              <View style={[pillStyles.avatarRing, isPending && pillStyles.avatarRingPending]}>
+                {person.avatarUrl && !failedAvatars.has(person.pairedUserId) ? (
+                  <Image
+                    source={{ uri: person.avatarUrl }}
+                    style={[pillStyles.avatar, isPending && pillStyles.avatarPending]}
+                    onError={() => setFailedAvatars(prev => new Set([...prev, person.pairedUserId]))}
+                  />
+                ) : (
+                  <View style={[pillStyles.avatarFallback, isPending && pillStyles.avatarFallbackPending]}>
+                    <Text style={pillStyles.avatarInitials}>{person.initials}</Text>
+                  </View>
+                )}
+                {/* Star badge — green for active, grey for pending */}
+                <View style={[pillStyles.starBadge, isPending && pillStyles.starBadgePending]}>
+                  <Icon name="star" size={10} color="#ffffff" />
+                </View>
+              </View>
+              <Text style={[pillStyles.name, isPending && pillStyles.namePending]} numberOfLines={1}>{name}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+const pillStyles = StyleSheet.create({
+  container: {
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#f3f4f6",
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    gap: 14,
+    alignItems: "center",
+  },
+  pill: {
+    alignItems: "center",
+    width: 56,
+  },
+  avatarRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: "#10b981",
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  avatarFallback: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#eb7825",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarInitials: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+  starBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#10b981",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#ffffff",
+  },
+  name: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#374151",
+    marginTop: 4,
+    textAlign: "center",
+    maxWidth: 56,
+  },
+  pillPending: {
+    opacity: 0.6,
+  },
+  avatarRingPending: {
+    borderColor: "#d1d5db",
+  },
+  avatarPending: {
+    opacity: 0.5,
+  },
+  avatarFallbackPending: {
+    backgroundColor: "#9ca3af",
+  },
+  starBadgePending: {
+    backgroundColor: "#9ca3af",
+  },
+  namePending: {
+    color: "#9ca3af",
+  },
+  addButtonRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: "#eb7825",
+    borderStyle: "dashed",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+});
 
 export default function ConnectionsPageRefactored({
   onSendCollabInvite,
@@ -158,11 +337,13 @@ export default function ConnectionsPageRefactored({
     : stableHeightRef.current * 0.88;
 
   // ── UI state ─────────────────────────────────────────────
-  const [activePanel, setActivePanel] = useState<PanelId>(null);
+  const [activePanel, setActivePanel] = useState<PanelId>(null); // [TRANSITIONAL] legacy — being replaced by showFriendsModal
+  const [showFriendsModal, setShowFriendsModal] = useState(false);
+  const [badgeDismissed, setBadgeDismissed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [friendsModalTab, setFriendsModalTab] = useState<"friends" | "requests">("friends");
+  const [friendsModalTab, setFriendsModalTab] = useState<FriendsModalTab>("friend-list");
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
@@ -210,6 +391,52 @@ export default function ConnectionsPageRefactored({
   const [conversationsLoading, setConversationsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // ── Archive state (ORCH-0435) ───────────────────────────
+  const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
+  const [showArchived, setShowArchived] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    AsyncStorage.getItem(`mingla:archived_chats:${user.id}`).then(raw => {
+      if (raw) {
+        try { setArchivedIds(new Set(JSON.parse(raw))); } catch { /* ignore */ }
+      }
+    }).catch(() => {});
+  }, [user?.id]);
+
+  const handleArchiveChat = useCallback((conversationId: string) => {
+    setArchivedIds(prev => {
+      const next = new Set(prev);
+      next.add(conversationId);
+      if (user?.id) {
+        AsyncStorage.setItem(`mingla:archived_chats:${user.id}`, JSON.stringify([...next])).catch(() => {});
+      }
+      return next;
+    });
+  }, [user?.id]);
+
+  const handleUnarchiveChat = useCallback((conversationId: string) => {
+    setArchivedIds(prev => {
+      const next = new Set(prev);
+      next.delete(conversationId);
+      if (user?.id) {
+        AsyncStorage.setItem(`mingla:archived_chats:${user.id}`, JSON.stringify([...next])).catch(() => {});
+      }
+      return next;
+    });
+  }, [user?.id]);
+
+  const handleDeleteChat = useCallback((conversationId: string) => {
+    Alert.alert('Delete Chat', 'Are you sure you want to delete this chat?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: () => {
+          setConversations(prev => prev.filter(c => c.id !== conversationId));
+        }
+      },
+    ]);
+  }, []);
+
   // ── Messaging state ──────────────────────────────────────
   const [activeChat, setActiveChat] = useState<Friend | null>(null);
   const [showMessageInterface, setShowMessageInterface] = useState(false);
@@ -252,6 +479,117 @@ export default function ConnectionsPageRefactored({
   const [blockLoading, setBlockLoading] = useState(false);
   const [muteLoadingFriendId, setMuteLoadingFriendId] = useState<string | null>(null);
 
+  // ── Pairing data (ORCH-0435 Phase A) ────────────────────
+  const { data: pairingPills = [] } = usePairingPills(user?.id);
+  const { data: incomingPairRequests = [] } = useIncomingPairRequests(user?.id);
+  const sendPairMutation = useSendPairRequest();
+  const cancelPairRequestMutation = useCancelPairRequest();
+  const cancelPairInviteMutation = useCancelPairInvite();
+  const acceptPairRequestMutation = useAcceptPairRequest();
+  const declinePairRequestMutation = useDeclinePairRequest();
+  const unpairMutation = useUnpair();
+  const [showPairRequestModal, setShowPairRequestModal] = useState(false);
+  const [showIncomingPairRequest, setShowIncomingPairRequest] = useState<PairRequest | null>(null);
+  const [pairLoadingUserId, setPairLoadingUserId] = useState<string | null>(null);
+
+  const activePairedPeople: PairedPillPerson[] = useMemo(() => {
+    const active = pairingPills
+      .filter(p => p.pillState === 'active' && p.pairedUserId != null)
+      .map(p => ({
+        pairedUserId: p.pairedUserId!,
+        displayName: p.displayName,
+        firstName: p.firstName,
+        avatarUrl: p.avatarUrl,
+        initials: p.initials,
+        pending: false,
+      }));
+    const pending = pairingPills
+      .filter(p => p.pillState !== 'active' && p.pairedUserId != null)
+      .map(p => ({
+        pairedUserId: p.pairedUserId!,
+        displayName: p.displayName,
+        firstName: p.firstName,
+        avatarUrl: p.avatarUrl,
+        initials: p.initials,
+        pending: true,
+      }));
+    const incoming = incomingPairRequests.map(req => ({
+      pairedUserId: req.senderId,
+      displayName: req.senderName,
+      firstName: req.senderName.split(' ')[0] ?? null,
+      avatarUrl: req.senderAvatar ?? null,
+      initials: req.senderName.split(' ').map(n => n[0] ?? '').join('').toUpperCase().slice(0, 2) || '?',
+      pending: true,
+      incoming: true,
+      incomingRequest: req,
+    }));
+    return [...active, ...incoming, ...pending];
+  }, [pairingPills, incomingPairRequests]);
+
+  const pairedUserIds = useMemo(() => new Set(
+    pairingPills.filter(p => p.pillState === 'active' && p.pairedUserId != null).map(p => p.pairedUserId!)
+  ), [pairingPills]);
+
+  const pendingPairUserIds = useMemo(() => new Set(
+    pairingPills.filter(p => p.pillState !== 'active' && p.pairedUserId != null).map(p => p.pairedUserId!)
+  ), [pairingPills]);
+
+  const handlePairFriend = useCallback(async (friendUserId: string) => {
+    setPairLoadingUserId(friendUserId);
+    // Find friend details for optimistic pill display
+    const friend = dbFriends.find(f => {
+      const fid = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
+      return fid === friendUserId;
+    });
+    const friendDisplayName = friend ? getDisplayName(friend) : undefined;
+    try {
+      await sendPairMutation.mutateAsync({
+        friendUserId,
+        displayName: friendDisplayName ?? undefined,
+        avatarUrl: friend?.avatar_url ?? null,
+      });
+      showToast({ message: 'Pair request sent!', type: 'info' });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : '';
+      if (errMsg !== 'pairing_limit_reached') {
+        showMutationError(err, 'sending pair request', showToast);
+      }
+    } finally {
+      setPairLoadingUserId(null);
+    }
+  }, [sendPairMutation, showToast, dbFriends, user?.id]);
+
+  const handleUnpairFriend = useCallback((friendUserId: string) => {
+    // Find the pairingId for this friend
+    const pill = pairingPills.find(p => p.pairedUserId === friendUserId && p.pillState === 'active');
+    if (!pill?.pairingId) return;
+    Alert.alert(
+      'Unpair',
+      `Are you sure you want to unpair?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unpair',
+          style: 'destructive',
+          onPress: () => {
+            unpairMutation.mutate(pill.pairingId!);
+          },
+        },
+      ]
+    );
+  }, [pairingPills, unpairMutation]);
+
+  /** Derive pair status for a given user ID (used by ChatListItem star buttons) */
+  const getPairStatus = useCallback((participantId: string): 'paired' | 'pending' | 'unpaired' | 'not-friend' => {
+    if (pairedUserIds.has(participantId)) return 'paired';
+    if (pendingPairUserIds.has(participantId)) return 'pending';
+    const isFriend = dbFriends.some(f => {
+      const friendId = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
+      return friendId === participantId;
+    });
+    return isFriend ? 'unpaired' : 'not-friend';
+  }, [pairedUserIds, pendingPairUserIds, dbFriends, user?.id]);
+
   // ── Derived data ─────────────────────────────────────────
   const incomingRequests = useMemo(() => {
     return friendRequests
@@ -265,6 +603,16 @@ export default function ConnectionsPageRefactored({
     );
   }, [friendRequests]);
 
+  // Reset badge when NEW requests arrive after dismissal
+  const prevRequestCountRef = useRef(0);
+  useEffect(() => {
+    const total = incomingRequests.length + incomingPairRequests.length;
+    if (total > prevRequestCountRef.current && badgeDismissed) {
+      setBadgeDismissed(false);
+    }
+    prevRequestCountRef.current = total;
+  }, [incomingRequests.length, incomingPairRequests.length, badgeDismissed]);
+
   // Sort conversations by most recent message
   const sortedConversations = useMemo(() => {
     const sorted = [...conversations].sort((a, b) => {
@@ -272,8 +620,18 @@ export default function ConnectionsPageRefactored({
       const bTime = b.last_message?.created_at || b.created_at;
       return new Date(bTime).getTime() - new Date(aTime).getTime();
     });
-    return sorted;
-  }, [conversations]);
+    return sorted.filter(c => !archivedIds.has(c.id));
+  }, [conversations, archivedIds]);
+
+  const archivedConversations = useMemo(() => {
+    return [...conversations]
+      .filter(c => archivedIds.has(c.id))
+      .sort((a, b) => {
+        const aTime = a.last_message?.created_at || a.created_at;
+        const bTime = b.last_message?.created_at || b.created_at;
+        return new Date(bTime).getTime() - new Date(aTime).getTime();
+      });
+  }, [conversations, archivedIds]);
 
   // Search-filtered conversations
   const filteredConversations = useMemo(() => {
@@ -445,24 +803,24 @@ export default function ConnectionsPageRefactored({
   }, [conversations, onUnreadCountChange, mutedUserIds]);
 
   // ── Panel handler ────────────────────────────────────────
-  const handleActionPress = (id: PanelId | "invite") => {
+  const handleInvitePress = () => {
+    HapticFeedback.light();
+    try {
+      const inviteLink = `https://mingla.app/invite/${user?.id || ""}`;
+      Clipboard.setString(inviteLink);
+      Alert.alert("", t('connections:invite_link_copied'));
+      mixpanelService.trackReferralLinkShared({ method: 'copy' });
+    } catch (e) {
+      console.error("Error copying invite link:", e);
+    }
+  };
+
+  const openFriendsModal = (tab?: FriendsModalTab) => {
     HapticFeedback.light();
     dismissKeyboard();
-    if (id === "invite") {
-      try {
-        const inviteLink = `https://mingla.app/invite/${user?.id || ""}`;
-        Clipboard.setString(inviteLink);
-        Alert.alert("", t('connections:invite_link_copied'));
-        mixpanelService.trackReferralLinkShared({ method: 'copy' });
-      } catch (e) {
-        console.error("Error copying invite link:", e);
-      }
-      return;
-    }
-    if (id === "friends") {
-      setFriendsModalTab("friends");
-    }
-    setActivePanel((prev) => (prev === id ? null : id));
+    setFriendsModalTab(tab ?? "friend-list");
+    setShowFriendsModal(true);
+    setBadgeDismissed(true);
   };
 
   // ── Auto-open panel from external navigation (e.g. Profile "Friends" stat) ──
@@ -470,10 +828,10 @@ export default function ConnectionsPageRefactored({
   // isTabVisible is undefined in switch-case layout (always visible when rendered).
   useEffect(() => {
     if (initialPanel && isTabVisible !== false) {
-      if (initialPanel === "friends") {
-        setFriendsModalTab("friends");
-      }
-      setActivePanel(initialPanel);
+      setShowFriendsModal(true);
+      if (initialPanel === "friends") setFriendsModalTab("friend-list");
+      else if (initialPanel === "add") setFriendsModalTab("friend-list");
+      else if (initialPanel === "blocked") setFriendsModalTab("blocked");
       onInitialPanelHandled?.();
     }
   }, [initialPanel, onInitialPanelHandled, isTabVisible]);
@@ -1698,22 +2056,17 @@ export default function ConnectionsPageRefactored({
             <Text style={styles.title}>{t('connections:title')}</Text>
             <View style={styles.headerActions}>
               <TouchableOpacity
-                onPress={() => handleActionPress("add")}
-                style={[styles.headerIconBtn, activePanel === "add" && styles.headerIconBtnActive]}
+                onPress={() => openFriendsModal()}
+                style={styles.headerIconBtn}
                 activeOpacity={0.7}
               >
-                <Icon name="person-add-outline" size={18} color={activePanel === "add" ? "#ffffff" : "#eb7825"} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleActionPress("friends")}
-                style={[styles.headerIconBtn, activePanel === "friends" && styles.headerIconBtnActive]}
-                activeOpacity={0.7}
-              >
-                <Icon name="people-outline" size={18} color={activePanel === "friends" ? "#ffffff" : "#eb7825"} />
-                {incomingRequests.length > 0 && (
+                <Icon name="people-outline" size={18} color="#eb7825" />
+                {!badgeDismissed && (incomingRequests.length + incomingPairRequests.length) > 0 && (
                   <View style={styles.headerBadge}>
                     <Text style={styles.headerBadgeText}>
-                      {incomingRequests.length > 9 ? "9+" : incomingRequests.length}
+                      {(incomingRequests.length + incomingPairRequests.length) > 9
+                        ? "9+"
+                        : incomingRequests.length + incomingPairRequests.length}
                     </Text>
                   </View>
                 )}
@@ -1738,110 +2091,7 @@ export default function ConnectionsPageRefactored({
           </View>
         </View>
 
-        {/* Action Panel Bottom Sheet (accessible even in error state) */}
-        <Modal
-          visible={activePanel !== null}
-          animationType="slide"
-          transparent
-          onRequestClose={() => { dismissKeyboard(); setActivePanel(null); }}
-        >
-          <View style={styles.sheetOverlay}>
-            <TouchableWithoutFeedback onPress={() => { dismissKeyboard(); setActivePanel(null); }}>
-              <View style={styles.backdropFill} />
-            </TouchableWithoutFeedback>
-
-            <View
-              style={[styles.sheetContainer, { height: sheetHeight, paddingBottom: keyboardVisible ? 0 : 32, marginBottom: keyboardVisible ? keyboardHeight : 0 }]}
-              onStartShouldSetResponder={() => true}
-            >
-              <View style={styles.sheetHandle} />
-              <View style={styles.sheetHeader}>
-                <Text style={styles.sheetTitle}>
-                  {activePanel === "add" ? t('connections:add_friend') : t('connections:friends')}
-                </Text>
-                <TouchableOpacity onPress={() => { dismissKeyboard(); setActivePanel(null); }} activeOpacity={0.7}>
-                  <Icon name="close" size={24} color="#6b7280" />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView
-                style={styles.sheetBody}
-                contentContainerStyle={styles.sheetBodyContent}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
-                showsVerticalScrollIndicator={false}
-              >
-                {activePanel === "add" && (
-                  <AddFriendView
-                    currentUserId={user?.id || ""}
-                    onRequestSent={() => loadFriendRequests()}
-                    outgoingRequests={outgoingRequests}
-                    outgoingRequestsLoading={requestsLoading}
-                    onCancelRequest={cancelFriendRequest}
-                    onAddFriend={addFriend}
-                  />
-                )}
-                {activePanel === "friends" && (
-                  <>
-                    {/* Tab Bar */}
-                    <View style={styles.tabBar}>
-                      <TouchableOpacity
-                        onPress={() => setFriendsModalTab("friends")}
-                        style={[styles.tab, friendsModalTab === "friends" && styles.tabActive]}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[styles.tabText, friendsModalTab === "friends" && styles.tabTextActive]}>
-                          {t('connections:friends')}
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => setFriendsModalTab("requests")}
-                        style={[styles.tab, friendsModalTab === "requests" && styles.tabActive]}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[styles.tabText, friendsModalTab === "requests" && styles.tabTextActive]}>
-                          {t('connections:requests')}
-                        </Text>
-                        {incomingRequests.length > 0 && (
-                          <View style={styles.tabBadge}>
-                            <Text style={styles.tabBadgeText}>
-                              {incomingRequests.length}
-                            </Text>
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-
-                    {/* Tab Content */}
-                    {friendsModalTab === "friends" ? (
-                      <FriendsManagementList
-                        friends={dbFriends}
-                        loading={friendsLoading}
-                        onRemoveFriend={handleRemoveFriendFromModal}
-                        onBlockUser={handleBlockFromModal}
-                        onReportUser={handleReportFromModal}
-                        onMuteUser={handleMuteUserFromModal}
-                        muteLoadingFriendId={muteLoadingFriendId}
-                        mutedUserIds={mutedUserIds}
-                        currentUserId={user?.id || ""}
-                      />
-                    ) : (
-                      <View>
-                        <RequestsView
-                          requests={incomingRequests}
-                          loading={friendsLoading || requestsLoading}
-                          onAccept={handleAcceptRequest}
-                          onDecline={handleDeclineRequest}
-                        />
-                      </View>
-                    )}
-                  </>
-                )}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+        {/* Friends Modal rendered below (shared across all render paths) */}
 
         <ReportUserModal
           isOpen={showReportModal}
@@ -1955,55 +2205,64 @@ export default function ConnectionsPageRefactored({
             <Text style={styles.title}>{t('connections:title')}</Text>
             <View style={styles.headerActions}>
               <TouchableOpacity
-                onPress={() => handleActionPress("add")}
-                style={[styles.headerIconBtn, activePanel === "add" && styles.headerIconBtnActive]}
+                onPress={() => openFriendsModal()}
+                style={styles.headerIconBtn}
                 activeOpacity={0.7}
               >
-                <Icon name="person-add-outline" size={18} color={activePanel === "add" ? "#ffffff" : "#eb7825"} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => handleActionPress("friends")}
-                style={[styles.headerIconBtn, activePanel === "friends" && styles.headerIconBtnActive]}
-                activeOpacity={0.7}
-              >
-                <Icon name="people-outline" size={18} color={activePanel === "friends" ? "#ffffff" : "#eb7825"} />
-                {incomingRequests.length > 0 && (
+                <Icon name="people-outline" size={18} color="#eb7825" />
+                {!badgeDismissed && (incomingRequests.length + incomingPairRequests.length) > 0 && (
                   <View style={styles.headerBadge}>
                     <Text style={styles.headerBadgeText}>
-                      {incomingRequests.length > 9 ? "9+" : incomingRequests.length}
+                      {(incomingRequests.length + incomingPairRequests.length) > 9
+                        ? "9+"
+                        : incomingRequests.length + incomingPairRequests.length}
                     </Text>
                   </View>
                 )}
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => handleActionPress("blocked")}
-                style={[styles.headerIconBtn, activePanel === "blocked" && styles.headerIconBtnActive]}
-                activeOpacity={0.7}
-              >
-                <Icon name="ban-outline" size={18} color={activePanel === "blocked" ? "#ffffff" : "#eb7825"} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => handleActionPress("invite")}
+                onPress={handleInvitePress}
                 style={styles.headerIconBtn}
                 activeOpacity={0.7}
               >
                 <Icon name="link-outline" size={18} color="#eb7825" />
               </TouchableOpacity>
 
-              <View style={styles.headerDivider} />
-
-              <TouchableOpacity
-                onPress={() => setFriendPickerVisible(true)}
-                style={styles.composeBtn}
-                activeOpacity={0.7}
-              >
-                <Icon name="create-outline" size={18} color="#ffffff" />
-              </TouchableOpacity>
             </View>
           </View>
+
+          {/* Paired friends pills — ORCH-0435 */}
+          {activePairedPeople.length > 0 && (
+            <PairedPillsBar
+              people={activePairedPeople}
+              onSelectPerson={(person) => onNavigateToFriendProfile?.(person.pairedUserId)}
+              onAddPress={() => setShowPairRequestModal(true)}
+              onPendingPress={(person) => {
+                const pill = pairingPills.find(p => p.pairedUserId === person.pairedUserId && p.pillState !== 'active');
+                if (!pill) return;
+                Alert.alert(
+                  'Cancel Pair Request',
+                  `Cancel your pair request to ${person.displayName}?`,
+                  [
+                    { text: 'Keep', style: 'cancel' },
+                    {
+                      text: 'Cancel Request', style: 'destructive', onPress: () => {
+                        if (pill.pairRequestId) cancelPairRequestMutation.mutate(pill.pairRequestId);
+                        else if (pill.pendingInviteId) cancelPairInviteMutation.mutate(pill.pendingInviteId);
+                      },
+                    },
+                  ]
+                );
+              }}
+              onIncomingPress={(person) => {
+                if (person.incomingRequest) {
+                  setShowIncomingPairRequest(person.incomingRequest);
+                }
+              }}
+            />
+          )}
+          {/* Incoming pair requests now show as greyed pills in the bar above */}
 
           {/* Search bar */}
           <View style={styles.searchContainer}>
@@ -2028,6 +2287,43 @@ export default function ConnectionsPageRefactored({
             />
           </View>
 
+          {/* Archived chats section */}
+          {archivedConversations.length > 0 && (
+            <TouchableOpacity
+              style={styles.archivedSection}
+              onPress={() => setShowArchived(!showArchived)}
+              activeOpacity={0.7}
+            >
+              <Icon name="archive-outline" size={16} color="#6b7280" />
+              <Text style={styles.archivedSectionText}>
+                Archived ({archivedConversations.length})
+              </Text>
+              <Icon name={showArchived ? "chevron-up" : "chevron-down"} size={16} color="#9ca3af" />
+            </TouchableOpacity>
+          )}
+          {showArchived && archivedConversations.map((conv) => {
+            const otherP = conv.participants?.find((p) => p.id !== user?.id);
+            const convName = otherP ? getDisplayName(otherP) : 'Chat';
+            const cleanName = convName.includes("@") ? convName.substring(0, convName.indexOf("@")).trim() : convName;
+            return (
+              <View key={conv.id} style={styles.archivedRow}>
+                <View style={styles.archivedAvatar}>
+                  <Text style={styles.archivedAvatarText}>
+                    {cleanName.split(" ").map(n => n[0]).join("").toUpperCase().substring(0, 2)}
+                  </Text>
+                </View>
+                <Text style={styles.archivedName} numberOfLines={1}>{cleanName}</Text>
+                <TouchableOpacity
+                  onPress={() => handleUnarchiveChat(conv.id)}
+                  style={styles.unarchiveBtn}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.unarchiveBtnText}>Unarchive</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+
           {/* Chat list */}
           {conversationsLoading ? (
             <View style={styles.loadingContainer}>
@@ -2040,7 +2336,7 @@ export default function ConnectionsPageRefactored({
               <Text style={styles.emptyTitle}>{t('connections:empty_title')}</Text>
               <Text style={styles.emptySubtitle}>{t('connections:empty_subtitle')}</Text>
               <TouchableOpacity
-                onPress={() => setFriendPickerVisible(true)}
+                onPress={() => openFriendsModal()}
                 style={styles.emptyCtaButton}
                 activeOpacity={0.7}
               >
@@ -2064,6 +2360,8 @@ export default function ConnectionsPageRefactored({
                 const isMuted = item.participants?.some((p) =>
                   mutedUserIds.includes(p.id)
                 );
+                const otherParticipant = item.participants?.find((p) => p.id !== user?.id);
+                const participantPairStatus = otherParticipant?.id ? getPairStatus(otherParticipant.id) : 'not-friend' as const;
                 const chatItem = (
                   <ChatListItem
                     conversation={item}
@@ -2071,6 +2369,23 @@ export default function ConnectionsPageRefactored({
                     onPress={handleSelectConversation}
                     isMuted={isMuted}
                     onAvatarPress={onNavigateToFriendProfile}
+                    pairStatus={participantPairStatus}
+                    onPairPress={handlePairFriend}
+                    onUnpairPress={handleUnpairFriend}
+                    pairLoading={otherParticipant?.id ? pairLoadingUserId === otherParticipant.id : false}
+                    onPendingPairPress={(userId) => {
+                      const pill = pairingPills.find(p => p.pairedUserId === userId && p.pillState !== 'active');
+                      if (!pill) return;
+                      Alert.alert('Cancel Pair Request', 'Cancel your pair request?', [
+                        { text: 'Keep', style: 'cancel' },
+                        { text: 'Cancel Request', style: 'destructive', onPress: () => {
+                          if (pill.pairRequestId) cancelPairRequestMutation.mutate(pill.pairRequestId);
+                          else if (pill.pendingInviteId) cancelPairInviteMutation.mutate(pill.pendingInviteId);
+                        }},
+                      ]);
+                    }}
+                    onArchive={handleArchiveChat}
+                    onDelete={handleDeleteChat}
                   />
                 );
                 if (index === 0) {
@@ -2084,22 +2399,22 @@ export default function ConnectionsPageRefactored({
               }}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.chatListContent}
-              ItemSeparatorComponent={() => <View style={styles.chatSeparator} />}
+              ItemSeparatorComponent={null}
               refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
             />
           )}
         </View>
       </View>
 
-      {/* Action Panel Bottom Sheet */}
+      {/* ORCH-0435: Consolidated 4-tab Friends Modal */}
       <Modal
-        visible={activePanel !== null}
+        visible={showFriendsModal}
         animationType="slide"
         transparent
-        onRequestClose={() => { dismissKeyboard(); setActivePanel(null); }}
+        onRequestClose={() => { dismissKeyboard(); setShowFriendsModal(false); }}
       >
         <View style={styles.sheetOverlay}>
-          <TouchableWithoutFeedback onPress={() => { dismissKeyboard(); setActivePanel(null); }}>
+          <TouchableWithoutFeedback onPress={() => { dismissKeyboard(); setShowFriendsModal(false); }}>
             <View style={styles.backdropFill} />
           </TouchableWithoutFeedback>
 
@@ -2109,15 +2424,66 @@ export default function ConnectionsPageRefactored({
           >
             <View style={styles.sheetHandle} />
             <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>
-                {activePanel === "add"
-                  ? "Add Friend"
-                  : activePanel === "friends"
-                  ? "Friends"
-                  : "Blocked Users"}
-              </Text>
-              <TouchableOpacity onPress={() => { dismissKeyboard(); setActivePanel(null); }} activeOpacity={0.7}>
+              <Text style={styles.sheetTitle}>Friends</Text>
+              <TouchableOpacity onPress={() => { dismissKeyboard(); setShowFriendsModal(false); }} activeOpacity={0.7}>
                 <Icon name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* 4-Tab Bar */}
+            <View style={styles.tabBar}>
+              <TouchableOpacity
+                onPress={() => setFriendsModalTab("friend-list")}
+                style={[styles.tab, friendsModalTab === "friend-list" && styles.tabActive]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tabText, friendsModalTab === "friend-list" && styles.tabTextActive]}>
+                  Friends
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setFriendsModalTab("sent")}
+                style={[styles.tab, friendsModalTab === "sent" && styles.tabActive]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tabText, friendsModalTab === "sent" && styles.tabTextActive]}>
+                  Sent
+                </Text>
+                {(outgoingRequests.length + pairingPills.filter(p => p.pillState !== 'active').length) > 0 && (
+                  <View style={styles.tabBadge}>
+                    <Text style={styles.tabBadgeText}>
+                      {outgoingRequests.length + pairingPills.filter(p => p.pillState !== 'active').length}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setFriendsModalTab("requests")}
+                style={[styles.tab, friendsModalTab === "requests" && styles.tabActive]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tabText, friendsModalTab === "requests" && styles.tabTextActive]}>
+                  Requests
+                </Text>
+                {(incomingRequests.length + incomingPairRequests.length) > 0 && (
+                  <View style={styles.tabBadge}>
+                    <Text style={styles.tabBadgeText}>
+                      {incomingRequests.length + incomingPairRequests.length}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setFriendsModalTab("blocked")}
+                style={[styles.tab, friendsModalTab === "blocked" && styles.tabActive]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tabText, friendsModalTab === "blocked" && styles.tabTextActive]}>
+                  Blocked
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -2128,74 +2494,164 @@ export default function ConnectionsPageRefactored({
               keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={false}
             >
-              {activePanel === "add" && (
-                <AddFriendView
-                  currentUserId={user?.id || ""}
-                  onRequestSent={() => loadFriendRequests()}
-                  outgoingRequests={outgoingRequests}
-                  outgoingRequestsLoading={requestsLoading}
-                  onCancelRequest={cancelFriendRequest}
-                  onAddFriend={addFriend}
-                />
-              )}
-              {activePanel === "friends" && (
+              {/* Tab 1: Friend List = Add Friend + Friend List */}
+              {friendsModalTab === "friend-list" && (
                 <>
-                  {/* Tab Bar */}
-                  <View style={styles.tabBar}>
-                    <TouchableOpacity
-                      onPress={() => setFriendsModalTab("friends")}
-                      style={[styles.tab, friendsModalTab === "friends" && styles.tabActive]}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.tabText, friendsModalTab === "friends" && styles.tabTextActive]}>
-                        Friends
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => setFriendsModalTab("requests")}
-                      style={[styles.tab, friendsModalTab === "requests" && styles.tabActive]}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.tabText, friendsModalTab === "requests" && styles.tabTextActive]}>
-                        Requests
-                      </Text>
-                      {incomingRequests.length > 0 && (
-                        <View style={styles.tabBadge}>
-                          <Text style={styles.tabBadgeText}>
-                            {incomingRequests.length}
-                          </Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Tab Content */}
-                  {friendsModalTab === "friends" ? (
-                    <FriendsManagementList
-                      friends={dbFriends}
-                      loading={friendsLoading}
-                      onRemoveFriend={handleRemoveFriendFromModal}
-                      onBlockUser={handleBlockFromModal}
-                      onReportUser={handleReportFromModal}
-                      onMuteUser={handleMuteUserFromModal}
-                      muteLoadingFriendId={muteLoadingFriendId}
-                      mutedUserIds={mutedUserIds}
-                      currentUserId={user?.id || ""}
-                    />
-                  ) : (
-                    <View>
-                      <RequestsView
-                        requests={incomingRequests}
-                        loading={friendsLoading || requestsLoading}
-                        onAccept={handleAcceptRequest}
-                        onDecline={handleDeclineRequest}
-                      />
-                    </View>
-                  )}
+                  <AddFriendView
+                    currentUserId={user?.id || ""}
+                    onRequestSent={() => loadFriendRequests()}
+                    outgoingRequests={outgoingRequests}
+                    outgoingRequestsLoading={requestsLoading}
+                    onCancelRequest={cancelFriendRequest}
+                    onAddFriend={addFriend}
+                  />
+                  <View style={styles.friendListDivider} />
+                  <FriendsManagementList
+                    friends={dbFriends}
+                    loading={friendsLoading}
+                    onRemoveFriend={handleRemoveFriendFromModal}
+                    onBlockUser={handleBlockFromModal}
+                    onReportUser={handleReportFromModal}
+                    onMuteUser={handleMuteUserFromModal}
+                    muteLoadingFriendId={muteLoadingFriendId}
+                    mutedUserIds={mutedUserIds}
+                    currentUserId={user?.id || ""}
+                    pairedUserIds={pairedUserIds}
+                    pendingPairUserIds={pendingPairUserIds}
+                    onPairFriend={handlePairFriend}
+                    onUnpairFriend={handleUnpairFriend}
+                    pairLoadingUserId={pairLoadingUserId}
+                    onAvatarPress={(friendUserId) => {
+                      setShowFriendsModal(false);
+                      onNavigateToFriendProfile?.(friendUserId);
+                    }}
+                    onAddToSession={(friendUserId) => {
+                      setShowFriendsModal(false);
+                      // Find the friend and trigger collab invite
+                      const friend = dbFriends.find(f => {
+                        const fid = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
+                        return fid === friendUserId;
+                      });
+                      if (friend) onSendCollabInvite?.(friend);
+                    }}
+                    onFriendPress={(friendUserId) => {
+                      setShowFriendsModal(false);
+                      const friend = dbFriends.find(f => {
+                        const fid = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
+                        return fid === friendUserId;
+                      });
+                      if (friend) handlePickFriend(friend);
+                    }}
+                  />
                 </>
               )}
-              {activePanel === "blocked" && (
+
+              {/* Tab 2: Sent = Outgoing friend requests + outgoing pair requests */}
+              {friendsModalTab === "sent" && (
+                <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+                  {outgoingRequests.length === 0 && pairingPills.filter(p => p.pillState !== 'active').length === 0 ? (
+                    <View style={styles.modalEmptyState}>
+                      <Icon name="paper-plane-outline" size={32} color="#d1d5db" />
+                      <Text style={styles.modalEmptyText}>No sent requests</Text>
+                    </View>
+                  ) : (
+                    <>
+                      {/* Outgoing friend requests */}
+                      {outgoingRequests.map((req) => {
+                        const reqName = req.sender?.display_name || req.sender?.first_name || req.sender?.username || 'Unknown';
+                        return (
+                          <View key={req.id} style={styles.sentRequestRow}>
+                            <View style={styles.sentRequestAvatar}>
+                              <Text style={styles.sentRequestAvatarText}>
+                                {reqName[0].toUpperCase()}
+                              </Text>
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.sentRequestName}>{reqName}</Text>
+                              <Text style={styles.sentRequestType}>Friend request</Text>
+                            </View>
+                            <TouchableOpacity
+                              onPress={() => cancelFriendRequest(req.id)}
+                              style={styles.sentCancelBtn}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.sentCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                      {/* Outgoing pair requests */}
+                      {pairingPills.filter(p => p.pillState !== 'active').map((pill) => (
+                        <View key={pill.id} style={styles.sentRequestRow}>
+                          <View style={styles.sentRequestAvatar}>
+                            <Text style={styles.sentRequestAvatarText}>{pill.initials}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.sentRequestName}>{pill.displayName}</Text>
+                            <Text style={styles.sentRequestType}>
+                              Pair request · {pill.pillState === 'pending_active' ? 'Pending' : pill.pillState === 'greyed_waiting_friend' ? 'Waiting for friend' : pill.pillState === 'greyed_waiting_signup' ? 'Waiting for signup' : 'Pending'}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => {
+                              if (pill.pairRequestId) cancelPairRequestMutation.mutate(pill.pairRequestId);
+                              else if (pill.pendingInviteId) cancelPairInviteMutation.mutate(pill.pendingInviteId);
+                            }}
+                            style={styles.sentCancelBtn}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.sentCancelText}>Cancel</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </>
+                  )}
+                </View>
+              )}
+
+              {/* Tab 3: Requests = Incoming friend + pair requests */}
+              {friendsModalTab === "requests" && (
+                <View>
+                  {/* Incoming pair requests */}
+                  {incomingPairRequests.map((req) => (
+                    <View key={req.id} style={styles.sentRequestRow}>
+                      <View style={[styles.sentRequestAvatar, { backgroundColor: '#fff7ed' }]}>
+                        <Icon name="star" size={18} color="#eb7825" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.sentRequestName}>{req.senderName}</Text>
+                        <Text style={styles.sentRequestType}>Wants to pair with you</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          onPress={() => declinePairRequestMutation.mutate(req.id)}
+                          style={styles.sentCancelBtn}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.sentCancelText}>Decline</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => acceptPairRequestMutation.mutate(req.id)}
+                          style={[styles.sentCancelBtn, { backgroundColor: '#eb7825', borderColor: '#eb7825' }]}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.sentCancelText, { color: '#ffffff' }]}>Accept</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                  {/* Incoming friend requests */}
+                  <RequestsView
+                    requests={incomingRequests}
+                    loading={friendsLoading || requestsLoading}
+                    onAccept={handleAcceptRequest}
+                    onDecline={handleDeclineRequest}
+                  />
+                </View>
+              )}
+
+              {/* Tab 4: Blocked */}
+              {friendsModalTab === "blocked" && (
                 <BlockedUsersView
                   blockedUsers={blockedUsers}
                   loading={friendsLoading}
@@ -2240,6 +2696,29 @@ export default function ConnectionsPageRefactored({
         onConfirm={handleBlockConfirm}
         userName={selectedUserToBlock?.name || selectedUserToBlock?.username || "this user"}
         loading={blockLoading}
+      />
+
+      {/* ORCH-0435: Pairing modals */}
+      <PairRequestModal
+        visible={showPairRequestModal}
+        onClose={() => setShowPairRequestModal(false)}
+        onPairRequestSent={() => {
+          setShowPairRequestModal(false);
+          showToast({ message: 'Pair request sent!', type: 'info' });
+        }}
+      />
+
+      <IncomingPairRequestCard
+        visible={!!showIncomingPairRequest}
+        request={showIncomingPairRequest}
+        onAccept={() => {
+          setShowIncomingPairRequest(null);
+          showToast({ message: 'Pair request accepted!', type: 'info' });
+        }}
+        onDecline={() => {
+          setShowIncomingPairRequest(null);
+        }}
+        onClose={() => setShowIncomingPairRequest(null)}
       />
     </>
   );
@@ -2322,6 +2801,148 @@ backdropFill: {
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#eb7825",
+  },
+  // ── Archived section (ORCH-0435) ──────
+  archivedSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#f9fafb",
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#e5e7eb",
+  },
+  archivedSectionText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6b7280",
+  },
+  archivedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 10,
+  },
+  archivedAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#eb7825",
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: 0.6,
+  },
+  archivedAvatarText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+  archivedName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#9ca3af",
+  },
+  unarchiveBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "#f3f4f6",
+  },
+  unarchiveBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6b7280",
+  },
+  // ── Modal empty state (ORCH-0435) ──────
+  modalEmptyState: {
+    paddingVertical: 24,
+    alignItems: "center",
+    marginHorizontal: 16,
+  },
+  modalEmptyText: {
+    fontSize: 14,
+    color: "#9ca3af",
+    marginTop: 8,
+  },
+  // ── Friend list divider (ORCH-0435) ──────
+  friendListDivider: {
+    height: 1,
+    backgroundColor: "#e5e7eb",
+    marginVertical: 12,
+    marginHorizontal: 16,
+  },
+  // ── Sent request rows (ORCH-0435) ──────
+  sentRequestRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  sentRequestAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#eb7825",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  sentRequestAvatarText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  sentRequestName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  sentRequestType: {
+    fontSize: 12,
+    color: "#9ca3af",
+    marginTop: 2,
+  },
+  sentCancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
+  },
+  sentCancelText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6b7280",
+  },
+  // ── Incoming pair banner (ORCH-0435) ──────
+  incomingPairBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: "#fff7ed",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+  },
+  incomingPairBannerText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
   },
   // ── Search ────────────────────────────────
   searchContainer: {

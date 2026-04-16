@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,18 +7,32 @@ import {
   ActivityIndicator,
   StyleSheet,
   Platform,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Icon } from '../ui/Icon';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { useFriendProfile } from '../../hooks/useFriendProfile';
 import { s, vs } from '../../utils/responsive';
 import { getCountryByCode } from '../../constants/countries';
-import ProfileInterestsSection from './ProfileInterestsSection';
-import ProfileStatsRow from './ProfileStatsRow';
 import type { SubscriptionTier } from '../../types/subscription';
 import { useTranslation } from 'react-i18next';
+
+// ORCH-0435: Pairing + PersonHolidayView
+import { usePairingPills } from '../../hooks/usePairings';
+import { useAppStore } from '../../store/appStore';
+import { useUserLocation } from '../../hooks/useUserLocation';
+import PersonHolidayView from '../PersonHolidayView';
+import ExpandedCardModal from '../ExpandedCardModal';
+import CustomHolidayModal from '../CustomHolidayModal';
+import { getSharedCustomHolidaysByPairing, createCustomHolidayForPairing, deleteCustomHoliday as deleteCustomHolidayFromDb } from '../../services/customHolidayService';
+import { savedCardsService } from '../../services/savedCardsService';
+import { savedCardKeys } from '../../hooks/queryKeys';
+import { useQueryClient } from '@tanstack/react-query';
+import * as Haptics from 'expo-haptics';
+import { getCategoryIcon } from '../../utils/categoryUtils';
 
 const TIER_LABEL: Record<SubscriptionTier, string> = {
   free: 'Free',
@@ -58,34 +72,24 @@ function getInitials(first: string | null, last: string | null, username: string
   return u || '?';
 }
 
-function InfoRow({
-  icon,
-  label,
-  value,
-  muted,
-  rightSlot,
-}: {
-  icon: React.ComponentProps<typeof Icon>['name'];
-  label: string;
-  value?: string;
-  muted?: boolean;
-  rightSlot?: React.ReactNode;
-}) {
-  return (
-    <View style={styles.infoRow}>
-      <View style={styles.infoIconCircle}>
-        <Icon name={icon} size={s(20)} color="#eb7825" />
-      </View>
-      <View style={styles.infoRowText}>
-        <Text style={styles.infoRowLabel}>{label}</Text>
-        {rightSlot ?? (
-          <Text style={[styles.infoRowValue, muted && styles.infoRowValueMuted]} numberOfLines={2}>
-            {value}
-          </Text>
-        )}
-      </View>
-    </View>
-  );
+// AsyncStorage key for archived holidays
+const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
+
+// Category icon mapping for pill chips
+const CATEGORY_CHIP_ICONS: Record<string, string> = {
+  nature: 'leaf-outline',
+  icebreakers: 'chatbubbles-outline',
+  drinks_and_music: 'wine-outline',
+  brunch_lunch_casual: 'fast-food-outline',
+  upscale_fine_dining: 'restaurant-outline',
+  movies_theatre: 'film-outline',
+  creative_arts: 'color-palette-outline',
+  play: 'game-controller-outline',
+  flowers: 'flower-outline',
+};
+function getCategoryChipIcon(category: string): string {
+  const key = category.toLowerCase().replace(/[^a-z_]/g, '_');
+  return CATEGORY_CHIP_ICONS[key] ?? getCategoryIcon(key) ?? 'sparkles-outline';
 }
 
 const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
@@ -93,9 +97,172 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   onBack,
   onMessage,
 }) => {
-  const { t } = useTranslation(['profile', 'common']);
+  const { t } = useTranslation(['profile', 'common', 'discover']);
   const insets = useSafeAreaInsets();
   const { data: profile, isLoading, isError } = useFriendProfile(userId);
+  const queryClient = useQueryClient();
+
+  // ── ORCH-0435: Pairing detection ────────────────────────
+  const currentUserId = useAppStore((s) => s.user?.id);
+  const currentMode = 'solo';
+  const { data: pairingPills = [] } = usePairingPills(currentUserId);
+  const pairedPill = useMemo(() =>
+    pairingPills.find(p => p.pairedUserId === userId && p.pillState === 'active'),
+    [pairingPills, userId]
+  );
+  const isPaired = !!pairedPill;
+
+  // ── User location (for PersonHolidayView travel time) ───
+  const locationQuery = useUserLocation(currentUserId, currentMode as string, undefined);
+  const userLocation = useMemo(() => {
+    if (locationQuery?.data) {
+      return { latitude: locationQuery.data.lat, longitude: locationQuery.data.lng };
+    }
+    return { latitude: 0, longitude: 0 };
+  }, [locationQuery?.data]);
+
+  // ── Custom holidays + archived holidays ─────────────────
+  const [customHolidays, setCustomHolidays] = useState<Array<{ id: string; name: string; month: number; day: number; year: number }>>([]);
+  const [archivedHolidayIds, setArchivedHolidayIds] = useState<string[]>([]);
+  const [showCustomHolidayModal, setShowCustomHolidayModal] = useState(false);
+
+  // Load custom holidays for this pairing
+  useEffect(() => {
+    if (!isPaired || !pairedPill) return;
+    const pairingId = pairedPill.pairingId ?? pairedPill.id;
+    if (!pairingId) return;
+
+    getSharedCustomHolidaysByPairing(pairingId)
+      .then((holidays) => {
+        setCustomHolidays(holidays.map(h => ({
+          id: h.id,
+          name: h.name,
+          month: h.month,
+          day: h.day,
+          year: h.year,
+        })));
+      })
+      .catch((e) => {
+        console.warn('[ViewFriendProfile] Custom holidays fetch failed:', e);
+      });
+  }, [isPaired, pairedPill]);
+
+  // Load archived holidays from AsyncStorage
+  useEffect(() => {
+    if (!isPaired || !currentUserId || !userId) return;
+    const loadArchived = async () => {
+      try {
+        const key = `${HOLIDAY_ARCHIVE_STORAGE_KEY}_${currentUserId}`;
+        const stored = await AsyncStorage.getItem(key);
+        if (stored) {
+          const parsed = JSON.parse(stored) as Record<string, string[]>;
+          setArchivedHolidayIds(parsed[userId] ?? []);
+        }
+      } catch { /* ignore */ }
+    };
+    loadArchived();
+  }, [isPaired, currentUserId, userId]);
+
+  const handleArchiveHoliday = useCallback(async (holidayId: string) => {
+    if (!currentUserId || !userId) return;
+    const next = [...archivedHolidayIds, holidayId];
+    setArchivedHolidayIds(next);
+    try {
+      const key = `${HOLIDAY_ARCHIVE_STORAGE_KEY}_${currentUserId}`;
+      const stored = await AsyncStorage.getItem(key);
+      const map = stored ? JSON.parse(stored) as Record<string, string[]> : {};
+      map[userId] = next;
+      await AsyncStorage.setItem(key, JSON.stringify(map));
+    } catch { /* ignore */ }
+  }, [archivedHolidayIds, currentUserId, userId]);
+
+  const handleUnarchiveHoliday = useCallback(async (holidayId: string) => {
+    if (!currentUserId || !userId) return;
+    const next = archivedHolidayIds.filter(id => id !== holidayId);
+    setArchivedHolidayIds(next);
+    try {
+      const key = `${HOLIDAY_ARCHIVE_STORAGE_KEY}_${currentUserId}`;
+      const stored = await AsyncStorage.getItem(key);
+      const map = stored ? JSON.parse(stored) as Record<string, string[]> : {};
+      map[userId] = next;
+      await AsyncStorage.setItem(key, JSON.stringify(map));
+    } catch { /* ignore */ }
+  }, [archivedHolidayIds, currentUserId, userId]);
+
+  const handleAddCustomDay = useCallback(() => {
+    setShowCustomHolidayModal(true);
+  }, []);
+
+  const handleCustomHolidaySave = useCallback(async (holiday: { name: string; month: number; day: number; year: number }) => {
+    if (!isPaired || !pairedPill) return;
+    const pairingId = pairedPill.pairingId ?? pairedPill.id;
+    if (!pairingId || !currentUserId) return;
+    try {
+      const created = await createCustomHolidayForPairing({
+        pairing_id: pairingId,
+        user_id: currentUserId,
+        paired_user_id: userId,
+        name: holiday.name,
+        month: holiday.month,
+        day: holiday.day,
+        year: holiday.year,
+      });
+      if (created) {
+        setCustomHolidays(prev => [...prev, {
+          id: created.id,
+          name: created.name,
+          month: created.month,
+          day: created.day,
+          year: created.year,
+        }]);
+      }
+      setShowCustomHolidayModal(false);
+    } catch (e) {
+      console.warn('[ViewFriendProfile] Create custom holiday failed:', e);
+    }
+  }, [isPaired, pairedPill, currentUserId, userId]);
+
+  const handleDeleteCustomHoliday = useCallback((holidayId: string, holidayName: string) => {
+    Alert.alert(
+      t("discover:alerts.delete_holiday_title"),
+      t("discover:alerts.delete_holiday_message", { name: holidayName }),
+      [
+        { text: t("discover:alerts.cancel"), style: "cancel" },
+        {
+          text: t("discover:alerts.delete"),
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteCustomHolidayFromDb(holidayId);
+              setCustomHolidays(prev => prev.filter(h => h.id !== holidayId));
+            } catch (e) {
+              console.warn('[ViewFriendProfile] Delete custom holiday failed:', e);
+            }
+          },
+        },
+      ]
+    );
+  }, [t]);
+
+  // ── Expanded card modal ─────────────────────────────────
+  const [expandedCard, setExpandedCard] = useState<any>(null);
+
+  const handleCardPress = useCallback((card: any) => {
+    setExpandedCard(card);
+  }, []);
+
+  const handleSaveCard = useCallback(async (cardData: Record<string, unknown>) => {
+    if (!currentUserId) return;
+    try {
+      await savedCardsService.saveCard(currentUserId, cardData, "solo");
+      queryClient.invalidateQueries({ queryKey: savedCardKeys.list(currentUserId) });
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error: unknown) {
+      const errCode = (error as { code?: string })?.code;
+      if (errCode === '23505') return; // Duplicate — already saved
+      throw error;
+    }
+  }, [currentUserId, queryClient]);
 
   const headerTop = insets.top + vs(8);
 
@@ -174,6 +341,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
       >
         <View style={styles.heroWrap}>
           <LinearGradient
@@ -207,53 +375,33 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardSectionLabel}>{t('profile:friend.about')}</Text>
-          <InfoRow
-            icon="map-pin"
-            label={t('profile:friend.location_label')}
-            value={locationLine}
-            muted={locationMuted}
-          />
-          <View style={styles.rowDivider} />
-          <InfoRow
-            icon="sparkles-outline"
-            label={t('profile:friend.mingla_level')}
-            rightSlot={
-              <View
-                style={[
-                  styles.tierPill,
-                  {
-                    backgroundColor: tierBadge.bg,
-                    borderColor: tierBadge.border,
-                  },
-                ]}
-              >
-                <Text style={[styles.tierPillText, { color: tierBadge.text }]}>{levelLine}</Text>
-              </View>
-            }
-          />
-        </View>
+        {/* Pill chips — ORCH-0435 */}
+        <View style={styles.chipContainer}>
+          {/* City chip */}
+          <View style={styles.chip}>
+            <Icon name="location-outline" size={s(14)} color="#eb7825" />
+            <Text style={styles.chipText}>{locationLine}</Text>
+          </View>
 
-        <View style={styles.statsWrap}>
-          <ProfileStatsRow
-            savedCount={0}
-            connectionsCount={profile.friendCount}
-            scheduledCount={0}
-            placesVisited={0}
-            streakDays={0}
-            level={1}
-            levelProgress={0}
-          />
-        </View>
+          {/* Mingla Level chip */}
+          <View style={styles.chip}>
+            <Icon name="sparkles-outline" size={s(14)} color="#eb7825" />
+            <Text style={styles.chipText}>{levelLine}</Text>
+          </View>
 
-        <View style={styles.interestsWrap}>
-          <ProfileInterestsSection
-            intents={profile.intents}
-            categories={profile.categories}
-            isOwnProfile={false}
-            sectionTitle={t('profile:friend.interests')}
-          />
+          {/* Subscription chip */}
+          <View style={[styles.chip, { backgroundColor: tierBadge.bg, borderColor: tierBadge.border }]}>
+            <Icon name="diamond-outline" size={s(14)} color={tierBadge.text} />
+            <Text style={[styles.chipText, { color: tierBadge.text }]}>{TIER_LABEL[profile.tier]}</Text>
+          </View>
+
+          {/* Interest chips */}
+          {profile.categories.map(cat => (
+            <View key={cat} style={styles.chip}>
+              <Icon name={getCategoryChipIcon(cat) as any} size={s(14)} color="#eb7825" />
+              <Text style={styles.chipText}>{cat.replace(/_/g, ' ')}</Text>
+            </View>
+          ))}
         </View>
 
         {onMessage && profile.isFriend ? (
@@ -267,8 +415,57 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           </TouchableOpacity>
         ) : null}
 
+        {/* PersonHolidayView — paired friends only (ORCH-0435) */}
+        {isPaired && pairedPill && currentUserId && (
+          <View style={styles.pairedSection}>
+            <PersonHolidayView
+              pairedUserId={userId}
+              pairingId={pairedPill.pairingId ?? pairedPill.id}
+              displayName={name}
+              birthday={pairedPill.birthday ?? null}
+              gender={pairedPill.gender ?? null}
+              location={userLocation}
+              userId={currentUserId}
+              customHolidays={customHolidays}
+              onAddCustomDay={handleAddCustomDay}
+              archivedHolidayIds={archivedHolidayIds}
+              onArchiveHoliday={handleArchiveHoliday}
+              onUnarchiveHoliday={handleUnarchiveHoliday}
+              onCardPress={handleCardPress}
+              onSaveCardPress={handleSaveCard}
+              onDeleteCustomDay={handleDeleteCustomHoliday}
+            />
+          </View>
+        )}
+
         <View style={{ height: vs(40) + insets.bottom }} />
       </ScrollView>
+
+      {/* Expanded card modal — ORCH-0435 */}
+      {expandedCard && (
+        <ExpandedCardModal
+          visible={!!expandedCard}
+          card={expandedCard}
+          onClose={() => setExpandedCard(null)}
+          onSave={async (card: any) => {
+            await handleSaveCard(card);
+            setExpandedCard(null);
+          }}
+          onShare={() => {}}
+          isSaved={false}
+          currentMode="solo"
+          accountPreferences={{ currency: 'USD', measurementSystem: 'Imperial' }}
+        />
+      )}
+
+      {/* Custom holiday modal — ORCH-0435 */}
+      {showCustomHolidayModal && (
+        <CustomHolidayModal
+          visible={showCustomHolidayModal}
+          onClose={() => setShowCustomHolidayModal(false)}
+          onSave={handleCustomHolidaySave}
+        />
+      )}
     </View>
   );
 };
@@ -352,93 +549,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: s(24),
     lineHeight: s(22),
   },
-  card: {
-    marginHorizontal: s(20),
-    marginTop: vs(12),
-    backgroundColor: '#ffffff',
-    borderRadius: s(20),
-    paddingHorizontal: s(18),
-    paddingTop: vs(18),
-    paddingBottom: vs(10),
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#e5e7eb',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 10,
-      },
-      android: { elevation: 2 },
-    }),
-  },
-  cardSectionLabel: {
-    fontSize: s(13),
-    fontWeight: '700',
-    color: '#9ca3af',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: vs(14),
-  },
-  infoRow: {
+  chipContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: vs(12),
-  },
-  infoIconCircle: {
-    width: s(44),
-    height: s(44),
-    borderRadius: s(22),
-    backgroundColor: '#fff7ed',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: s(14),
-  },
-  infoRowText: {
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: s(44),
-    paddingTop: vs(2),
-  },
-  infoRowLabel: {
-    fontSize: s(12),
-    fontWeight: '600',
-    color: '#9ca3af',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginBottom: vs(4),
-  },
-  infoRowValue: {
-    fontSize: s(16),
-    fontWeight: '600',
-    color: '#111827',
-    lineHeight: s(22),
-  },
-  infoRowValueMuted: {
-    color: '#9ca3af',
-    fontWeight: '500',
-  },
-  rowDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#f3f4f6',
-    marginLeft: s(44) + s(14),
-  },
-  tierPill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: s(12),
-    paddingVertical: vs(6),
-    borderRadius: s(999),
-    borderWidth: 1,
-  },
-  tierPillText: {
-    fontSize: s(14),
-    fontWeight: '700',
-  },
-  statsWrap: {
+    flexWrap: 'wrap',
+    gap: s(8),
+    paddingHorizontal: s(20),
     marginTop: vs(16),
   },
-  interestsWrap: {
-    marginTop: vs(22),
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(6),
+    backgroundColor: '#f9fafb',
+    borderRadius: s(999),
+    paddingHorizontal: s(12),
+    paddingVertical: vs(8),
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  chipText: {
+    fontSize: s(13),
+    fontWeight: '600',
+    color: '#374151',
+  },
+  pairedSection: {
+    marginTop: vs(24),
+    paddingHorizontal: s(16),
   },
   messageButton: {
     flexDirection: 'row',

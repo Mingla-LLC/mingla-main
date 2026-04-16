@@ -1,10 +1,14 @@
-import React from "react";
+import React, { useRef, useCallback } from "react";
 import {
   Text,
   View,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
+  Animated,
+  Platform,
 } from "react-native";
+import { Swipeable } from "react-native-gesture-handler";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
 import { Conversation } from "../../hooks/useMessages";
@@ -16,12 +20,24 @@ interface ChatListItemProps {
   onPress: (conversation: Conversation) => void;
   isMuted?: boolean;
   onAvatarPress?: (userId: string) => void;
+  /** ORCH-0435: Pair status for the other participant */
+  pairStatus?: 'paired' | 'pending' | 'unpaired' | 'not-friend';
+  /** ORCH-0435: Send pair request */
+  onPairPress?: (userId: string) => void;
+  /** ORCH-0435: Unpair */
+  onUnpairPress?: (userId: string) => void;
+  /** ORCH-0435: Loading state for pair request */
+  pairLoading?: boolean;
+  /** ORCH-0435: Cancel pending pair request */
+  onPendingPairPress?: (userId: string) => void;
+  /** ORCH-0435: Archive chat */
+  onArchive?: (conversationId: string) => void;
+  /** ORCH-0435: Delete chat */
+  onDelete?: (conversationId: string) => void;
 }
 
 /**
- * Format a timestamp into a relative time string.
- * < 1min → "now", < 60min → "Xm", < 24h → "Xh",
- * < 7d → day name, else → short date.
+ * Format a timestamp into "seen X ago" string.
  */
 function formatRelativeTime(timestamp: string): string {
   if (!timestamp) return "";
@@ -32,13 +48,10 @@ function formatRelativeTime(timestamp: string): string {
   const hours = Math.floor(diffMs / 3600000);
   const days = Math.floor(diffMs / 86400000);
 
-  if (minutes < 1) return "now";
-  if (minutes < 60) return `${minutes}m`;
-  if (hours < 24) return `${hours}h`;
-  if (days < 7) {
-    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    return dayNames[date.getDay()];
-  }
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
@@ -56,18 +69,10 @@ function getInitials(name: string): string {
 }
 
 /**
- * Generate a consistent background color from a string (user ID or name).
+ * Consistent orange avatar background for all users without profile pictures.
  */
-function getAvatarColor(seed: string): string {
-  const colors = [
-    "#7c3aed", "#3b82f6", "#10b981", "#f59e0b",
-    "#ef4444", "#ec4899", "#6366f1", "#14b8a6",
-  ];
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return colors[Math.abs(hash) % colors.length];
+function getAvatarColor(_seed: string): string {
+  return "#eb7825";
 }
 
 export function ChatListItem({
@@ -76,6 +81,13 @@ export function ChatListItem({
   onPress,
   isMuted = false,
   onAvatarPress,
+  pairStatus,
+  onPairPress,
+  onUnpairPress,
+  pairLoading,
+  onPendingPairPress,
+  onArchive,
+  onDelete,
 }: ChatListItemProps) {
   const { t } = useTranslation(['chat', 'common']);
   // Find the other participant (for direct conversations)
@@ -113,77 +125,162 @@ export function ChatListItem({
     ? formatRelativeTime(lastMessage.created_at)
     : "";
 
+  const swipeableRef = useRef<Swipeable>(null);
+
+  const renderRightActions = useCallback(
+    (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+      const translateArchive = dragX.interpolate({
+        inputRange: [-160, -80, 0],
+        outputRange: [0, 0, 80],
+        extrapolate: 'clamp',
+      });
+      const translateDelete = dragX.interpolate({
+        inputRange: [-160, -80, 0],
+        outputRange: [0, 0, 160],
+        extrapolate: 'clamp',
+      });
+      return (
+        <View style={styles.swipeActions}>
+          <Animated.View style={{ transform: [{ translateX: translateArchive }] }}>
+            <TouchableOpacity
+              style={styles.swipeArchive}
+              onPress={() => {
+                swipeableRef.current?.close();
+                onArchive?.(conversation.id);
+              }}
+            >
+              <Icon name="archive-outline" size={20} color="#ffffff" />
+              <Text style={styles.swipeActionText}>Archive</Text>
+            </TouchableOpacity>
+          </Animated.View>
+          <Animated.View style={{ transform: [{ translateX: translateDelete }] }}>
+            <TouchableOpacity
+              style={styles.swipeDelete}
+              onPress={() => {
+                swipeableRef.current?.close();
+                onDelete?.(conversation.id);
+              }}
+            >
+              <Icon name="trash-outline" size={20} color="#ffffff" />
+              <Text style={styles.swipeActionText}>Delete</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      );
+    },
+    [conversation.id, onArchive, onDelete],
+  );
+
   return (
-    <TouchableOpacity
-      onPress={() => onPress(conversation)}
-      style={styles.container}
-      activeOpacity={0.7}
+    <Swipeable
+      ref={swipeableRef}
+      renderRightActions={renderRightActions}
+      overshootRight={false}
+      friction={2}
     >
-      {/* Avatar */}
       <TouchableOpacity
-        style={styles.avatarContainer}
-        onPress={() => {
-          if (onAvatarPress && otherParticipant?.id) {
-            onAvatarPress(otherParticipant.id);
-          } else {
-            onPress(conversation);
-          }
-        }}
+        onPress={() => onPress(conversation)}
+        style={styles.container}
         activeOpacity={0.7}
       >
-        <View
-          style={[
-            styles.avatar,
-            {
-              backgroundColor: getAvatarColor(
-                otherParticipant?.id || conversation.id
-              ),
-            },
-          ]}
+        {/* Avatar */}
+        <TouchableOpacity
+          style={styles.avatarContainer}
+          onPress={() => {
+            if (onAvatarPress && otherParticipant?.id) {
+              onAvatarPress(otherParticipant.id);
+            } else {
+              onPress(conversation);
+            }
+          }}
+          activeOpacity={0.7}
         >
-          <Text style={styles.avatarText}>{getInitials(cleanedName)}</Text>
-        </View>
-        {otherParticipant?.is_online && <View style={styles.onlineDot} />}
-      </TouchableOpacity>
-
-      {/* Content */}
-      <View style={styles.content}>
-        <View style={styles.topRow}>
-          <Text
-            style={[styles.name, hasUnread && styles.nameBold]}
-            numberOfLines={1}
+          <View
+            style={[
+              styles.avatar,
+              {
+                backgroundColor: getAvatarColor(
+                  otherParticipant?.id || conversation.id
+                ),
+              },
+            ]}
           >
-            {cleanedName}
-          </Text>
-          <View style={styles.metaRow}>
-            {isMuted && (
-              <Icon
-                name="volume-mute"
-                size={14}
-                color="#9ca3af"
-                style={styles.muteIcon}
-              />
-            )}
-            <Text style={styles.timestamp}>{timestamp}</Text>
+            <Text style={styles.avatarText}>{getInitials(cleanedName)}</Text>
           </View>
-        </View>
-        <View style={styles.bottomRow}>
+          {otherParticipant?.is_online && <View style={styles.onlineDot} />}
+        </TouchableOpacity>
+
+        {/* Content */}
+        <View style={styles.content}>
+          <View style={styles.nameRow}>
+            <Text
+              style={[styles.name, hasUnread && styles.nameBold]}
+              numberOfLines={1}
+            >
+              {cleanedName}
+            </Text>
+            {isMuted && (
+              <Icon name="volume-mute" size={13} color="#9ca3af" style={styles.muteIcon} />
+            )}
+            {hasUnread && (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadText}>
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Text>
+              </View>
+            )}
+          </View>
           <Text
             style={[styles.preview, hasUnread && styles.previewBold]}
             numberOfLines={1}
           >
             {messagePreview || t('chat:noMessagesYet')}
           </Text>
-          {hasUnread && (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadText}>
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </Text>
-            </View>
-          )}
+          {timestamp ? (
+            <Text style={styles.seenAgo}>{timestamp}</Text>
+          ) : null}
         </View>
-      </View>
-    </TouchableOpacity>
+
+        {/* Pair/Unpair button — centered in row (ORCH-0435) */}
+        {pairStatus === 'paired' && onUnpairPress && (
+          <TouchableOpacity
+            onPress={() => { if (otherParticipant?.id) onUnpairPress(otherParticipant.id); }}
+            style={styles.unpairBtn}
+            activeOpacity={0.7}
+          >
+            <Icon name="star" size={14} color="#10b981" />
+            <Text style={styles.unpairBtnText}>Unpair</Text>
+          </TouchableOpacity>
+        )}
+        {pairStatus === 'unpaired' && onPairPress && (
+          <TouchableOpacity
+            onPress={() => { if (otherParticipant?.id) onPairPress(otherParticipant.id); }}
+            disabled={pairLoading}
+            style={styles.pairBtn}
+            activeOpacity={0.7}
+          >
+            {pairLoading ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <>
+                <Icon name="star" size={14} color="#ffffff" />
+                <Text style={styles.pairBtnText}>Pair</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+        {pairStatus === 'pending' && (
+          <TouchableOpacity
+            style={styles.pendingPairBadge}
+            onPress={() => { if (otherParticipant?.id) onPendingPairPress?.(otherParticipant.id); }}
+            activeOpacity={0.7}
+          >
+            <Icon name="star" size={14} color="#9ca3af" />
+            <Text style={styles.pendingPairText}>Pending</Text>
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+    </Swipeable>
   );
 }
 
@@ -191,8 +288,27 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    height: 72,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginHorizontal: 12,
+    marginVertical: 4,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    ...Platform.select({
+      ios: {
+        backgroundColor: 'rgba(255, 255, 255, 0.70)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.45)',
+        shadowColor: 'rgba(0, 0, 0, 0.06)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 12,
+      },
+      android: {
+        backgroundColor: '#ffffff',
+        elevation: 2,
+      },
+    }),
   },
   avatarContainer: {
     position: "relative",
@@ -226,21 +342,70 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minWidth: 0,
   },
-  topRow: {
+  nameRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   name: {
     fontSize: 16,
     fontWeight: "500",
     color: "#111827",
     flex: 1,
-    marginRight: 8,
+    marginRight: 6,
   },
   nameBold: {
     fontWeight: "700",
+  },
+  pairBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "#eb7825",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 14,
+    marginLeft: 8,
+  },
+  pairBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+  unpairBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "#f0fdf4",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    marginLeft: 8,
+  },
+  unpairBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#10b981",
+  },
+  pendingPairBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "#f3f4f6",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 14,
+    marginLeft: 8,
+  },
+  pendingPairText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#9ca3af",
   },
   metaRow: {
     flexDirection: "row",
@@ -249,20 +414,15 @@ const styles = StyleSheet.create({
   muteIcon: {
     marginRight: 4,
   },
-  timestamp: {
-    fontSize: 12,
-    color: "#9ca3af",
-  },
-  bottomRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  seenAgo: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#b0b5bc",
+    marginTop: 2,
   },
   preview: {
     fontSize: 14,
     color: "#6b7280",
-    flex: 1,
-    marginRight: 8,
   },
   previewBold: {
     fontWeight: "600",
@@ -281,5 +441,37 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#ffffff",
     fontWeight: "700",
+  },
+  // Swipe actions
+  swipeActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 4,
+    marginRight: 12,
+  },
+  swipeArchive: {
+    backgroundColor: "#6366f1",
+    justifyContent: "center",
+    alignItems: "center",
+    width: 72,
+    height: "100%",
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+    gap: 4,
+  },
+  swipeDelete: {
+    backgroundColor: "#ef4444",
+    justifyContent: "center",
+    alignItems: "center",
+    width: 72,
+    height: "100%",
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
+    gap: 4,
+  },
+  swipeActionText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#ffffff",
   },
 });

@@ -261,10 +261,10 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
 
 const styles = StyleSheet.create({
   spacingGroupEnd: {
-    marginBottom: 12,
+    marginBottom: 6,
   },
   spacingGroupContinue: {
-    marginBottom: 2,
+    marginBottom: 1,
   },
   timestampContainer: {
     alignItems: 'center',
