@@ -962,7 +962,7 @@ export default function CollaborationSessions({
             ) : (
               <View style={[styles.inviteActions, { flexDirection: 'column' }]}>
                 <TouchableOpacity
-                  style={styles.modalCancelInviteButton}
+                  style={[styles.modalCancelInviteButton, { flex: 0 }]}
                   onPress={() => {
                     if (inviteModalSession) {
                       onCancelInvite(inviteModalSession.id);
@@ -975,7 +975,7 @@ export default function CollaborationSessions({
 
                 {/* ORCH-0437: Invite more people by phone to existing pending session */}
                 <View style={[styles.friendSelectionSection, { marginTop: 20 }]}>
-                  <Text style={styles.modalLabel}>{t('modals:collaboration.add_by_phone')}</Text>
+                  <Text style={styles.modalLabel}>Add more participants</Text>
                   <View style={styles.csPhoneRow}>
                     <TouchableOpacity
                       style={styles.csCountryPicker}
