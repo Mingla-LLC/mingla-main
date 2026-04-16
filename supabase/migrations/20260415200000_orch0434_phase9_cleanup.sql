@@ -16,7 +16,7 @@ UPDATE seeding_batches SET seeding_category = CASE seeding_category
   WHEN 'fine_dining'      THEN 'upscale_fine_dining'
   WHEN 'watch'            THEN 'movies_theatre'
   WHEN 'live_performance' THEN 'movies_theatre'
-  WHEN 'wellness'         THEN NULL
+  WHEN 'wellness'         THEN 'brunch_lunch_casual'
   ELSE seeding_category
 END WHERE seeding_category IS NOT NULL;
 
@@ -29,7 +29,7 @@ UPDATE seeding_operations SET seeding_category = CASE seeding_category
   WHEN 'fine_dining'      THEN 'upscale_fine_dining'
   WHEN 'watch'            THEN 'movies_theatre'
   WHEN 'live_performance' THEN 'movies_theatre'
-  WHEN 'wellness'         THEN NULL
+  WHEN 'wellness'         THEN 'brunch_lunch_casual'
   ELSE seeding_category
 END WHERE seeding_category IS NOT NULL;
 
