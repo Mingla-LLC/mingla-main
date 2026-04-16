@@ -1269,31 +1269,26 @@ export default function ConnectionsPageRefactored({
     };
 
     try {
-      const { conversation, error: convError } = await withTimeout(
-        messagingService.getOrCreateDirectConversation(currentUserId, friendUserId),
+      // ORCH-0436: Find existing conversation only — do NOT create.
+      // Conversation is created on first message send (handleSendMessage).
+      const { conversation } = await withTimeout(
+        messagingService.findExistingDirectConversation(currentUserId, friendUserId),
         8000,
-        'getOrCreateConversation'
+        'findExistingConversation'
       );
 
       if (latestSelectedChatRef.current !== capturedFriendId) return;
 
-      if (convError || !conversation) {
-        const found = await tryOpenFromCache();
-        if (!found && latestSelectedChatRef.current === capturedFriendId) {
-          showMutationError(
-            convError || new Error('Failed to create conversation'),
-            'starting conversation',
-            showToast
-          );
-          setShowMessageInterface(false);
-          setActiveChat(null);
-        }
-        return;
+      if (conversation) {
+        // Existing conversation — load normally
+        setCurrentConversationId(conversation.id);
+        loadMessagesInBackground(conversation.id);
+        setupRealtimeSubscription(conversation.id, currentUserId);
+      } else {
+        // No conversation yet — open empty chat UI, no DB row created
+        setCurrentConversationId(null);
+        setMessages([]);
       }
-
-      setCurrentConversationId(conversation.id);
-      loadMessagesInBackground(conversation.id);
-      setupRealtimeSubscription(conversation.id, currentUserId);
     } catch (e) {
       if (latestSelectedChatRef.current !== capturedFriendId) return;
 
@@ -1398,15 +1393,18 @@ export default function ConnectionsPageRefactored({
           await handleSelectConversation(adapted);
           return;
         }
-        // 4. Last resort: try creating via handlePickFriend with synthetic friend
-        await handlePickFriend({
+        // 4. ORCH-0436: Open empty chat UI without creating a conversation.
+        //    Conversation will be created when user sends their first message.
+        setActiveChat({
           id: targetId,
-          user_id: user.id,
-          friend_user_id: targetId,
+          name: 'Friend',
           username: 'user',
-          status: 'accepted',
-          created_at: new Date().toISOString(),
-        } as UseFriend);
+          status: 'offline',
+          isOnline: false,
+        });
+        setShowMessageInterface(true);
+        setCurrentConversationId(null);
+        setMessages([]);
       } finally {
         if (active) {
           onOpenDirectMessageHandled?.();
@@ -1648,7 +1646,75 @@ export default function ConnectionsPageRefactored({
     file?: any,
     replyToId?: string
   ) => {
-    if (!activeChat || !user?.id || !currentConversationId) return;
+    if (!activeChat || !user?.id) return;
+
+    // ORCH-0436: First message — create conversation + send atomically
+    if (!currentConversationId) {
+      // Handle file upload if needed — create conversation first for storage path
+      let firstFileUrl: string | undefined;
+      let firstFileName: string | undefined;
+      let firstFileSize: number | undefined;
+
+      const { conversationId: newConvId, error: convError } =
+        await messagingService.ensureConversation(user.id, activeChat.id);
+
+      if (convError || !newConvId) {
+        Alert.alert(
+          t('connections:message_not_sent'),
+          convError || t('connections:message_failed')
+        );
+        return;
+      }
+
+      if (file && type !== 'text') {
+        try {
+          const ext = file.name?.split('.').pop() || 'file';
+          const storagePath = `messages/${newConvId}/${Date.now()}.${ext}`;
+          const { error: uploadError } = await supabase.storage
+            .from('chat-files')
+            .upload(storagePath, file);
+          if (uploadError) throw uploadError;
+          const { data: urlData } = supabase.storage
+            .from('chat-files')
+            .getPublicUrl(storagePath);
+          firstFileUrl = urlData?.publicUrl;
+          firstFileName = file.name;
+          firstFileSize = file.size;
+        } catch (uploadErr) {
+          console.error('[ConnectionsPage] First message file upload failed:', uploadErr);
+          Alert.alert(t('connections:upload_error_title'), t('connections:upload_error_body'));
+          return;
+        }
+      }
+
+      const { message: sentMsg, error: sendError } = await messagingService.sendMessage(
+        newConvId, user.id, content, type, firstFileUrl, firstFileName, firstFileSize, replyToId
+      );
+
+      if (sendError || !sentMsg) {
+        Alert.alert(
+          t('connections:message_not_sent'),
+          sendError || t('connections:message_failed')
+        );
+        return;
+      }
+
+      // Set conversation ID + start Realtime
+      setCurrentConversationId(newConvId);
+      setupRealtimeSubscription(newConvId, user.id);
+
+      // Add the sent message to UI
+      const transformed = transformMessage(sentMsg, user.id);
+      setMessages([transformed]);
+      setMessagesCache(prev => ({ ...prev, [newConvId]: [transformed] }));
+
+      // Refresh conversations list to pick up the new conversation
+      fetchConversations(user.id);
+
+      return;
+    }
+
+    // ── Existing conversation: original logic below ──
 
     // Synchronous block check — uses cached list + background reconciliation state.
     // No network call on the send path. RLS enforces server-side as the real authority.
