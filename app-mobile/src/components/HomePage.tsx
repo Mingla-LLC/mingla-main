@@ -55,6 +55,7 @@ interface HomePageProps {
   onAcceptInvite?: (sessionId: string) => void;
   onDeclineInvite?: (sessionId: string) => void;
   onCancelInvite?: (sessionId: string) => void;
+  onInviteMoreToSession?: (sessionId: string, friend: Friend) => void;
   onSessionStateChanged?: () => void;
   availableFriends?: Friend[];
   isCreatingSession?: boolean;
@@ -92,6 +93,7 @@ export default function HomePage({
   onAcceptInvite,
   onDeclineInvite,
   onCancelInvite,
+  onInviteMoreToSession,
   onSessionStateChanged,
   availableFriends = [],
   isCreatingSession = false,
@@ -292,6 +294,7 @@ export default function HomePage({
                 onAcceptInvite={onAcceptInvite || noop}
                 onDeclineInvite={onDeclineInvite || noop}
                 onCancelInvite={onCancelInvite || noop}
+                onInviteMoreToSession={onInviteMoreToSession}
                 onSessionStateChanged={onSessionStateChanged}
                 availableFriends={availableFriends}
                 isCreatingSession={isCreatingSession}

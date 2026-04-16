@@ -1497,6 +1497,86 @@ function AppContent() {
     }
   };
 
+  // ORCH-0437: Invite more people to an existing pending session
+  const handleInviteMoreToSession = async (sessionId: string, friend: { id: string; name: string; username?: string; avatar?: string }) => {
+    if (!user?.id) return;
+    logger.action('Invite more to session', { sessionId, friendId: friend.id });
+    try {
+      const friendUserId = friend.id;
+
+      // Get friend's email
+      const { data: friendProfile } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('id', friendUserId)
+        .single();
+
+      // Add as participant (not accepted yet)
+      const { error: participantError } = await supabase
+        .from('session_participants')
+        .insert({
+          session_id: sessionId,
+          user_id: friendUserId,
+          has_accepted: false,
+        });
+
+      if (participantError) {
+        if (participantError.code === '23505') {
+          toastManager.info(`${friend.name} is already invited.`);
+        } else {
+          console.error('Error adding participant:', participantError);
+          toastManager.error('Failed to add collaborator.');
+        }
+        return;
+      }
+
+      // Create invite
+      const { data: sessionData } = await supabase
+        .from('collaboration_sessions')
+        .select('name')
+        .eq('id', sessionId)
+        .single();
+
+      const { data: inviteData, error: inviteError } = await supabase
+        .from('collaboration_invites')
+        .insert({
+          session_id: sessionId,
+          inviter_id: user.id,
+          invited_user_id: friendUserId,
+          status: 'pending',
+        })
+        .select('id')
+        .single();
+
+      if (inviteError) {
+        console.error('Error creating invite:', inviteError);
+      }
+
+      // Send notification
+      if (friendProfile?.email && inviteData) {
+        try {
+          await supabase.functions.invoke('send-collaboration-invite', {
+            body: {
+              inviterId: user.id,
+              invitedUserId: friendUserId,
+              invitedUserEmail: friendProfile.email,
+              sessionId,
+              sessionName: sessionData?.name || 'a session',
+              inviteId: inviteData.id,
+            },
+          });
+        } catch (emailErr) {
+          console.error('Failed to send invite notification:', emailErr);
+        }
+      }
+
+      await refreshAllSessions({ showLoading: false });
+      toastManager.success(`Invited ${friend.name}!`);
+    } catch (error) {
+      console.error('Error inviting to session:', error);
+      toastManager.error('Failed to send invite.');
+    }
+  };
 
   // Handle deep links for OAuth callback
   useEffect(() => {
@@ -1858,6 +1938,7 @@ function AppContent() {
             onAcceptInvite={handleAcceptInvite}
             onDeclineInvite={handleDeclineInvite}
             onCancelInvite={handleCancelInvite}
+            onInviteMoreToSession={handleInviteMoreToSession}
             onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
@@ -2025,6 +2106,7 @@ function AppContent() {
             onAcceptInvite={handleAcceptInvite}
             onDeclineInvite={handleDeclineInvite}
             onCancelInvite={handleCancelInvite}
+            onInviteMoreToSession={handleInviteMoreToSession}
             onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
@@ -2140,6 +2222,7 @@ function AppContent() {
                                 onAcceptInvite={handleAcceptInvite}
                                 onDeclineInvite={handleDeclineInvite}
                                 onCancelInvite={handleCancelInvite}
+                                onInviteMoreToSession={handleInviteMoreToSession}
                                 onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
                                 availableFriends={availableFriendsForSessions}
                                 isCreatingSession={isCreatingSession}

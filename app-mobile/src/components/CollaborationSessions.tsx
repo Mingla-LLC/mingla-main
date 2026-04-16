@@ -73,6 +73,7 @@ interface CollaborationSessionsProps {
   onAcceptInvite: (sessionId: string) => void;
   onDeclineInvite: (sessionId: string) => void;
   onCancelInvite: (sessionId: string) => void;
+  onInviteMoreToSession?: (sessionId: string, friend: Friend) => void;
   onSessionStateChanged?: () => void;
   availableFriends?: Friend[];
   isCreatingSession?: boolean;
@@ -103,6 +104,7 @@ export default function CollaborationSessions({
   onAcceptInvite,
   onDeclineInvite,
   onCancelInvite,
+  onInviteMoreToSession,
   onSessionStateChanged,
   availableFriends = [],
   isCreatingSession = false,
@@ -387,6 +389,62 @@ export default function CollaborationSessions({
       setPhoneActionStatus('error');
     }
   }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, user, selectedFriends, phoneInvitees]);
+
+  // ORCH-0437: Invite more people to an existing pending session
+  const handleInviteMorePhoneAction = useCallback(async () => {
+    if (!isPhoneValid || !debouncedPhoneE164 || !inviteModalSession) return;
+
+    setPhoneActionStatus('sending');
+    setPhoneActionError('');
+
+    try {
+      if (phoneLookupResult?.found && phoneLookupResult.user) {
+        const lookupUser = phoneLookupResult.user;
+
+        if (user && lookupUser.id === user.id) {
+          Alert.alert(t('modals:collaboration.thats_you_title'), t('modals:collaboration.thats_you_body'));
+          setPhoneActionStatus('idle');
+          return;
+        }
+
+        // Invite this user to the existing session
+        if (onInviteMoreToSession) {
+          const friendData: Friend = {
+            id: lookupUser.id,
+            name: getDisplayName(lookupUser, 'User'),
+            username: lookupUser.username,
+            avatar: lookupUser.avatar_url || undefined,
+          };
+          onInviteMoreToSession(inviteModalSession.id, friendData);
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setPhoneActionStatus('sent');
+        setTimeout(() => {
+          setPhoneNumber('');
+          setPhoneActionStatus('idle');
+        }, 1500);
+      } else {
+        // Not on Mingla — create pending invite + share
+        if (user) {
+          await createPendingInvite(user.id, debouncedPhoneE164);
+        }
+
+        await Share.share({
+          message: `Hey! Join me on Mingla and let's find amazing experiences together. https://usemingla.com`,
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setPhoneActionStatus('sent');
+        setTimeout(() => {
+          setPhoneNumber('');
+          setPhoneActionStatus('idle');
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('[CollaborationSessions] Invite-more phone action error:', err);
+      setPhoneActionError(err instanceof Error ? err.message : 'Something went wrong');
+      setPhoneActionStatus('error');
+    }
+  }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, user, inviteModalSession, onInviteMoreToSession]);
 
   const getPhoneActionLabel = (): string => {
     if (phoneLookupLoading) return t('modals:collaboration.looking_up');
@@ -817,7 +875,7 @@ export default function CollaborationSessions({
         visible={showInviteModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowInviteModal(false)}
+        onRequestClose={() => { setShowInviteModal(false); setPhoneNumber(''); setPhoneActionStatus('idle'); setPhoneActionError(''); }}
         statusBarTranslucent
       >
         <View style={styles.inviteSheetOverlay}>
@@ -903,6 +961,98 @@ export default function CollaborationSessions({
               </View>
             ) : (
               <View style={styles.inviteActions}>
+                {/* ORCH-0437: Invite more people by phone to existing pending session */}
+                <View style={styles.friendSelectionSection}>
+                  <Text style={styles.modalLabel}>{t('modals:collaboration.add_by_phone')}</Text>
+                  <View style={styles.csPhoneRow}>
+                    <TouchableOpacity
+                      style={styles.csCountryPicker}
+                      onPress={() => setShowCountryPicker(true)}
+                      activeOpacity={0.6}
+                    >
+                      <Text style={styles.csCountryFlag}>{selectedCountry.flag}</Text>
+                      <Text style={styles.csCountryDial}>{selectedCountry.dialCode}</Text>
+                      <Icon name="chevron-down" size={14} color="#9ca3af" />
+                    </TouchableOpacity>
+                    <View style={styles.csPhoneDivider} />
+                    <TextInput
+                      style={styles.csPhoneInput}
+                      value={phoneNumber}
+                      onChangeText={(text) => {
+                        setPhoneNumber(text);
+                        if (phoneActionStatus !== 'idle' && phoneActionStatus !== 'sending') {
+                          setPhoneActionStatus('idle');
+                          setPhoneActionError('');
+                        }
+                      }}
+                      placeholder={t('modals:collaboration.phone_placeholder')}
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="phone-pad"
+                      autoCorrect={false}
+                      maxLength={15}
+                    />
+                    {phoneLookupLoading && (
+                      <ActivityIndicator size="small" color="#eb7825" style={{ marginRight: 10 }} />
+                    )}
+                  </View>
+
+                  {isPhoneValid && !phoneLookupLoading && phoneLookupResult && (
+                    <View style={styles.csLookupResult}>
+                      {phoneLookupResult.found ? (
+                        <View style={styles.csLookupRow}>
+                          <Icon name="checkmark-circle" size={14} color="#22c55e" />
+                          <Text style={styles.csLookupTextGreen}>
+                            {t('modals:collaboration.is_on_mingla', { name: getDisplayName(phoneLookupResult.user, 'Someone') })}
+                          </Text>
+                        </View>
+                      ) : (
+                        <View style={styles.csLookupRow}>
+                          <Icon name="person-add-outline" size={14} color="#6b7280" />
+                          <Text style={styles.csLookupTextMuted}>{t('modals:collaboration.not_on_mingla')}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {phoneActionStatus === 'sent' && (
+                    <View style={styles.csStatusRow}>
+                      <Icon name="checkmark-circle" size={16} color="#22c55e" />
+                      <Text style={styles.csStatusSuccess}>
+                        {phoneLookupResult?.found
+                          ? t('modals:collaboration.added_as_collaborator')
+                          : t('modals:collaboration.invite_shared')}
+                      </Text>
+                    </View>
+                  )}
+                  {phoneActionStatus === 'error' && (
+                    <View style={styles.csStatusRow}>
+                      <Icon name="alert-circle" size={16} color="#ef4444" />
+                      <Text style={styles.csStatusError}>{phoneActionError}</Text>
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={[styles.csActionButton, isPhoneActionDisabled && styles.csActionButtonDisabled]}
+                    onPress={handleInviteMorePhoneAction}
+                    activeOpacity={0.7}
+                    disabled={!!isPhoneActionDisabled}
+                  >
+                    {phoneActionStatus === 'sending' ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <>
+                        <Icon
+                          name={phoneLookupResult?.found ? 'person-add' : 'paper-plane-outline'}
+                          size={14}
+                          color="#ffffff"
+                          style={{ marginRight: 5 }}
+                        />
+                        <Text style={styles.csActionButtonText}>{getPhoneActionLabel()}</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
                 <TouchableOpacity
                   style={styles.modalCancelInviteButton}
                   onPress={() => {
