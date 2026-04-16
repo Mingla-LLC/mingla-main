@@ -411,30 +411,17 @@ function AppContent() {
       });
 
       // Navigate via deep link
+      // ORCH-0435: paired_user_saved_card → open friend profile
       if (data.type === 'paired_user_saved_card' && notificationId) {
         supabase
           .from('notifications')
-          .select('related_id')
+          .select('actor_id')
           .eq('id', notificationId)
           .maybeSingle()
           .then(({ data: notification }) => {
-            const cardId = notification?.related_id;
-            if (typeof cardId === 'string' && cardId) {
-              setDeepLinkParams({ paired: 'true', cardId });
-              setCurrentPage('connections');
-              return;
-            }
-
-            if (deepLink) {
-              const action = parseDeepLink(deepLink);
-              executeDeepLink(action, {
-                setCurrentPage: setCurrentPage as (page: string) => void,
-                setPendingSessionOpen,
-                setShowPaywall: (show: boolean) => setShowPaywall(show),
-                setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
-              });
-            } else if (navigationTarget) {
-              setCurrentPage(navigationTarget as any);
+            setCurrentPage('connections');
+            if (notification?.actor_id) {
+              setViewingFriendProfileId(notification.actor_id);
             }
           });
       } else if (deepLink) {
@@ -741,26 +728,18 @@ function AppContent() {
     if (user?.id && pendingDeepLinkRef.current) {
       const action = parseDeepLink(pendingDeepLinkRef.current);
 
-      if (action?.page === 'discover' && action.params?.notificationId) {
+      // ORCH-0435: paired notification deep link → open friend profile
+      if (action?.page === 'connections' && action.params?.paired === 'true' && action.params?.notificationId) {
         supabase
           .from('notifications')
-          .select('related_id')
+          .select('actor_id')
           .eq('id', action.params.notificationId)
           .maybeSingle()
           .then(({ data: notification }) => {
-            const cardId = notification?.related_id;
-            if (typeof cardId === 'string' && cardId) {
-              setDeepLinkParams({ paired: 'true', cardId });
-              setCurrentPage('connections');
-              return;
+            setCurrentPage('connections');
+            if (notification?.actor_id) {
+              setViewingFriendProfileId(notification.actor_id);
             }
-
-            executeDeepLink(action, {
-              setCurrentPage: setCurrentPage as (page: string) => void,
-              setPendingSessionOpen,
-              setShowPaywall: (show: boolean) => setShowPaywall(show),
-              setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
-            });
           });
       } else {
         executeDeepLink(action, {
@@ -991,8 +970,27 @@ function AppContent() {
     const deepLink = notification.data?.deepLink as string | undefined;
     logger.action('Notification tapped', { type: notification.type, deepLink });
 
-    if (notification.type === 'paired_user_saved_card' && notification.related_id) {
-      setDeepLinkParams({ paired: 'true', cardId: notification.related_id });
+    // ORCH-0435: Pair notifications → Friends tab + open friend profile
+    if (notification.type === 'paired_user_saved_card' && notification.actor_id) {
+      setCurrentPage('connections');
+      setViewingFriendProfileId(notification.actor_id);
+      return;
+    }
+    if ((notification.type === 'paired_user_visited' || notification.type === 'holiday_reminder') && notification.actor_id) {
+      setCurrentPage('connections');
+      setViewingFriendProfileId(notification.actor_id);
+      return;
+    }
+
+    // ORCH-0435: Friend request received → Friends tab + open modal to Requests tab
+    if (notification.type === 'friend_request_received' || notification.type === 'friend_request') {
+      setCurrentPage('connections');
+      setPendingConnectionsPanel('friends');
+      return;
+    }
+
+    // Pair request notifications → Friends tab (pills show incoming/accepted)
+    if (notification.type === 'pair_request_received' || notification.type === 'pair_request_accepted') {
       setCurrentPage('connections');
       return;
     }
@@ -1868,16 +1866,11 @@ function AppContent() {
       case "discover":
         return (
           <DiscoverScreen
-            onAddFriend={() => {
-              // Navigate to connections or show add friend modal
-              setCurrentPage("connections");
-            }}
             onOpenChatWithUser={(friendUserId) => {
               setPendingOpenDmUserId(friendUserId);
               setCurrentPage("connections");
             }}
             onViewFriendProfile={(friendUserId) => setViewingFriendProfileId(friendUserId)}
-            onUpgradePress={() => setShowPaywall(true)}
             accountPreferences={{
               currency: accountPreferences?.currency || "USD",
               measurementSystem:
@@ -2155,9 +2148,6 @@ function AppContent() {
                             <View style={currentPage === 'discover' ? styles.tabVisible : styles.tabHidden}>
                               <DiscoverScreen
                                 isTabVisible={currentPage === 'discover'}
-                                onAddFriend={() => {
-                                  setCurrentPage("connections");
-                                }}
                                 onOpenChatWithUser={(friendUserId) => {
                                   setPendingOpenDmUserId(friendUserId);
                                   setCurrentPage("connections");
@@ -2165,7 +2155,6 @@ function AppContent() {
                                 onViewFriendProfile={(friendUserId) =>
                                   setViewingFriendProfileId(friendUserId)
                                 }
-                                onUpgradePress={() => setShowPaywall(true)}
                                 accountPreferences={{
                                   currency: accountPreferences?.currency || "USD",
                                   measurementSystem:

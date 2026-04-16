@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { Icon } from "./ui/Icon";
 import { useAcceptPairRequest, useDeclinePairRequest } from "../hooks/usePairings";
 import type { PairRequest } from "../services/pairingService";
 import { useTranslation } from 'react-i18next';
@@ -165,8 +166,10 @@ export default function IncomingPairRequestCard({
         >
           {showSuccess ? (
             <>
-              {/* Success state */}
-              <Text style={styles.successIcon}>&#x2705;</Text>
+              {/* Success state — premium */}
+              <View style={styles.successIconWrap}>
+                <Icon name="star" size={s(28)} color="#ffffff" />
+              </View>
               <Text style={styles.successTitle}>{t('social:youArePaired')}</Text>
               <Text style={styles.successSubtitle}>
                 {t('social:startDiscovering')}
@@ -360,20 +363,33 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: s(12),
   },
-  successIcon: {
-    fontSize: s(40),
-    marginBottom: s(12),
+  successIconWrap: {
+    width: s(64),
+    height: s(64),
+    borderRadius: s(32),
+    backgroundColor: "#eb7825",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: s(16),
+    shadowColor: "#eb7825",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
   },
   successTitle: {
-    fontSize: s(18),
+    fontSize: s(20),
     fontWeight: "700",
     color: colors.text.primary,
-    marginBottom: s(4),
+    marginBottom: s(6),
     textAlign: "center",
+    letterSpacing: -0.3,
   },
   successSubtitle: {
     fontSize: s(14),
+    fontWeight: "500",
     color: colors.gray[500],
     textAlign: "center",
+    lineHeight: s(20),
   },
 });

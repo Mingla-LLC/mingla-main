@@ -10,63 +10,41 @@ import {
   ScrollView,
   Image,
   Modal,
-  TextInput,
   Platform,
   Animated,
   ActivityIndicator,
-  Alert,
   AppState,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "./ui/Icon";
 import * as Haptics from "expo-haptics";
-import DateTimePicker from "@react-native-community/datetimepicker";
+// ORCH-0435 Phase B: DateTimePicker import removed
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { formatPriceRange, parseAndFormatDistance, getCurrencyRate } from "./utils/formatters";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
-import { useRecommendations, Recommendation } from "../contexts/RecommendationsContext";
+import { Recommendation } from "../contexts/RecommendationsContext";
 import { ExperienceGenerationService } from "../services/experienceGenerationService";
-import { HolidayExperiencesService, HolidayExperience } from "../services/holidayExperiencesService";
+// ORCH-0435 Phase B: HolidayExperiencesService import removed (pairing-only)
 import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
 import { useAppStore } from "../store/appStore";
 import { useUserLocation } from "../hooks/useUserLocation";
-import { useCalendarHolidays, CalendarHoliday } from "../hooks/useCalendarHolidays";
+// ORCH-0435 Phase B: useCalendarHolidays import removed (pairing-only)
 import { enhancedLocationService } from "../services/enhancedLocationService";
 import { PreferencesService } from "../services/preferencesService";
 import { mixpanelService } from "../services/mixpanelService";
-import { usePairingPills, useIncomingPairRequests, useSendPairRequest, useCancelPairRequest, useCancelPairInvite, useUnpair, pairingKeys } from "../hooks/usePairings";
-import type { PairingPill, PairRequest } from "../services/pairingService";
-import PairRequestModal from "./PairRequestModal";
-import PairingInfoCard from "./PairingInfoCard";
-import IncomingPairRequestCard from "./IncomingPairRequestCard";
-import PairedPeopleRow from "./PairedPeopleRow";
-import { useFeatureGate } from '../hooks/useFeatureGate';
-import { CustomPaywallScreen } from './CustomPaywallScreen';
-import type { GatedFeature } from '../hooks/useFeatureGate';
-import PersonHolidayView from "./PersonHolidayView";
-import CustomHolidayModal from "./CustomHolidayModal";
-import { STANDARD_HOLIDAYS, DEFAULT_PERSON_SECTIONS } from "../constants/holidays";
+// ORCH-0435 Phase B: Pairing imports removed — pairing UI now lives on Friends page
+import { useFeatureGate, GatedFeature } from "../hooks/useFeatureGate";
+import { CustomPaywallScreen } from "./CustomPaywallScreen";
 import { DiscoverMap } from "./map/DiscoverMap";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { savedCardsService } from "../services/savedCardsService";
 import { savedCardKeys } from "../hooks/queryKeys";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { useQueryClient } from '@tanstack/react-query';
-import { fetchPersonHeroCards } from '../services/personHeroCardsService';
-import { personCardKeys } from '../hooks/queryKeys';
-import { sectionsToSlugsAndType } from '../hooks/usePairedCards';
-import {
-  getSharedCustomHolidaysByPairing,
-  createCustomHolidayForPairing,
-  deleteCustomHoliday as deleteCustomHolidayFromDb,
-} from "../services/customHolidayService";
+// ORCH-0435 Phase B: Person hero cards + custom holiday imports removed
 
-// Storage key for custom holidays
-const CUSTOM_HOLIDAYS_STORAGE_KEY = "mingla_custom_holidays";
-
-// Storage key for archived holiday visibility per person
-const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
+// ORCH-0435 Phase B: Custom holiday storage keys removed
 
 // Storage key for cached discover experiences (refreshes daily)
 const DISCOVER_CACHE_KEY = "mingla_discover_cache_v7";
@@ -77,67 +55,18 @@ const DISCOVER_CACHE_MIGRATION_VERSION = "2026-03-15-website-field-v7";
 // Storage key for cached night-out venues (refreshes daily)
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
 
-// Custom Holiday interface (user-created holidays attached to a person)
-interface CustomHoliday {
-  id: string;
-  personId: string; // The person this holiday is attached to
-  name: string;
-  date: string; // "MM-DD" format (recurring yearly)
-  description: string;
-  category: string;
-  categories?: string[];
-  createdAt: string;
-  year?: number; // Original year the event occurred
-}
+// ORCH-0435 Phase B: CustomHoliday interface removed
 
 import { SCREEN_WIDTH, s } from "../utils/responsive";
-import { computeTravelInfo } from "../utils/travelTime";
-import { getCategoryIcon } from "../utils/categoryUtils";
-import { PriceTierSlug, PRICE_TIERS, googleLevelToTierSlug, tierLabel, tierRangeLabel, TIER_BY_SLUG } from '../constants/priceTiers';
+// ORCH-0435 Phase B: computeTravelInfo + getCategoryIcon imports removed (pairing-only)
+import { PRICE_TIERS } from '../constants/priceTiers';
 
 const CARD_WIDTH = SCREEN_WIDTH - s(32); // 16px padding on each side
 const GRID_CARD_WIDTH = (SCREEN_WIDTH - s(48)) / 2; // 16px padding + 16px gap between cards
 const HERO_CARD_WIDTH = (SCREEN_WIDTH - s(44)) / 2; // 16px padding + 12px gap between hero cards
 const ANIMATION_DURATION = 400;
 
-// Month names for custom day picker
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-// Get max days for a given month (29 for Feb to allow leap year dates)
-const getDaysInMonth = (month: number): number => {
-  const daysPerMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return daysPerMonth[month - 1] || 31;
-};
-
-// Calculate next occurrence of a MM-DD date from today
-const getNextOccurrence = (dateStr: string): { date: Date; daysAway: number } => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  let month: number, day: number;
-  if (dateStr.match(/^\d{2}-\d{2}$/)) {
-    // MM-DD format
-    [month, day] = dateStr.split("-").map(Number);
-  } else {
-    // Legacy ISO format - extract month and day
-    const legacyDate = new Date(dateStr);
-    month = legacyDate.getMonth() + 1;
-    day = legacyDate.getDate();
-  }
-  
-  let holidayDate = new Date(today.getFullYear(), month - 1, day);
-  holidayDate.setHours(0, 0, 0, 0);
-  if (holidayDate < today) {
-    holidayDate.setFullYear(holidayDate.getFullYear() + 1);
-  }
-  
-  const diffTime = holidayDate.getTime() - today.getTime();
-  const daysAway = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return { date: holidayDate, daysAway };
-};
+// ORCH-0435 Phase B: Holiday helper functions removed
 
 // Category icons mapping (v3 category system)
 const categoryIcons: { [key: string]: string } = {
@@ -207,71 +136,7 @@ const usDateFormatter = new Intl.DateTimeFormat("en-CA", {
 
 const getUsDateKey = (): string => usDateFormatter.format(new Date());
 
-// HARDCODED: Holiday name to experience categories mapping (v3 category names)
-// This maps each holiday to the categories of experiences that should display in its dropdown
-const HOLIDAY_CATEGORY_MAP: { [holidayName: string]: string[] } = {
-  // New Year's Day -> Wellness + Fine Dining
-  "new year's day": ["Wellness", "Fine Dining", "Casual Eats"],
-  "new year": ["Wellness", "Fine Dining", "Casual Eats"],
-  // Valentine's Day -> Fine Dining only
-  "valentine's day": ["Fine Dining", "Casual Eats"],
-  "valentine": ["Fine Dining", "Casual Eats"],
-  // International Women's Day -> Fine Dining
-  "international women's day": ["Fine Dining", "Casual Eats"],
-  "women's day": ["Fine Dining", "Casual Eats"],
-  // First Day of Spring -> Nature + Fine Dining
-  "first day of spring": ["Nature", "Fine Dining", "Casual Eats"],
-  "spring": ["Nature", "Fine Dining", "Casual Eats"],
-  // Mother's Day -> Fine Dining
-  "mother's day": ["Fine Dining", "Casual Eats"],
-  // Father's Day -> Fine Dining
-  "father's day": ["Fine Dining", "Casual Eats"],
-  // Juneteenth / Summer -> Nature + Fine Dining
-  "juneteenth": ["Nature", "Fine Dining", "Casual Eats"],
-  "start of summer": ["Nature", "Fine Dining", "Casual Eats"],
-  "summer": ["Nature", "Fine Dining", "Casual Eats"],
-  // International Day of Peace -> Picnic + Fine Dining
-  "international day of peace": ["Picnic", "Fine Dining", "Casual Eats"],
-  "day of peace": ["Picnic", "Fine Dining", "Casual Eats"],
-  "peace": ["Picnic", "Fine Dining", "Casual Eats"],
-  // Sweetest Day -> Drink + Fine Dining
-  "sweetest day": ["Drink", "Fine Dining", "Casual Eats"],
-  "sweetest": ["Drink", "Fine Dining", "Casual Eats"],
-  // Halloween -> Watch + Fine Dining
-  "halloween": ["Watch", "Fine Dining", "Casual Eats"],
-  // International Men's Day -> Play + Fine Dining
-  "international men's day": ["Play", "Fine Dining", "Casual Eats"],
-  "men's day": ["Play", "Fine Dining", "Casual Eats"],
-  // Thanksgiving -> Play + Fine Dining
-  "thanksgiving": ["Play", "Fine Dining", "Casual Eats"],
-  // Christmas Eve -> Creative & Arts + Fine Dining
-  "christmas eve": ["Creative & Arts", "Fine Dining", "Casual Eats"],
-  // Christmas Day -> Nature + Fine Dining
-  "christmas day": ["Nature", "Fine Dining", "Casual Eats"],
-  "christmas": ["Nature", "Fine Dining", "Casual Eats"],
-  // New Year's Eve -> Fine Dining
-  "new year's eve": ["Fine Dining", "Casual Eats"],
-};
-
-// Helper to get categories for a holiday by name
-const getCategoriesForHolidayName = (holidayName: string): string[] => {
-  const nameLower = holidayName.toLowerCase();
-  
-  // Try exact match first
-  if (HOLIDAY_CATEGORY_MAP[nameLower]) {
-    return HOLIDAY_CATEGORY_MAP[nameLower];
-  }
-  
-  // Try partial match
-  for (const [key, categories] of Object.entries(HOLIDAY_CATEGORY_MAP)) {
-    if (nameLower.includes(key) || key.includes(nameLower)) {
-      return categories;
-    }
-  }
-  
-  // Default fallback: Fine Dining + Casual Eats (works for most holidays)
-  return ["Fine Dining", "Casual Eats"];
-};
+// ORCH-0435 Phase B: HOLIDAY_CATEGORY_MAP + getCategoriesForHolidayName removed (pairing-only)
 
 // Tab types for Discover screen
 export type DiscoverTab = "for-you" | "night-out";
@@ -281,8 +146,6 @@ interface DiscoverTabsProps {
   onTabChange: (tab: DiscoverTab) => void;
 }
 
-// Extended calendar holiday with custom + categories fields
-type ExtendedHoliday = CalendarHoliday & { isCustom?: boolean; categories?: string[] };
 
 // Featured card data interface
 interface FeaturedCardData {
@@ -456,13 +319,10 @@ function getDateRange(filter: DateFilter): { startDate: string; endDate: string 
 
 interface DiscoverScreenProps {
   isTabVisible?: boolean;
-  onAddFriend?: () => void;
-  /** Open Chats tab and start/open DM with this user (paired friend on map). */
+  /** Open Chats tab and start/open DM with this user. */
   onOpenChatWithUser?: (userId: string) => void;
   /** Full-screen friend profile (same as Connections → view profile). */
   onViewFriendProfile?: (userId: string) => void;
-  /** App-root paywall (e.g. index.tsx); when set, pairing gates call this instead of local paywall only. */
-  onUpgradePress?: () => void;
   accountPreferences?: {
     currency: string;
     measurementSystem: "Metric" | "Imperial";
@@ -746,10 +606,8 @@ const NightOutCard: React.FC<NightOutCardProps> = ({ card, currency = "USD", onP
 
 export default function DiscoverScreen({
   isTabVisible = true,
-  onAddFriend,
   onOpenChatWithUser,
   onViewFriendProfile,
-  onUpgradePress,
   accountPreferences,
   preferencesRefreshKey,
   deepLinkParams,
@@ -758,7 +616,6 @@ export default function DiscoverScreen({
   const { t } = useTranslation(['discover', 'common']);
   const insets = useSafeAreaInsets();
   const coachMap = useCoachMark(7, 0);
-  const coachPair = useCoachMark(9, 20);
   const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
@@ -774,17 +631,6 @@ export default function DiscoverScreen({
   const gridCardsRightOpacity = useRef(new Animated.Value(0)).current;
   const gridCardsRightSlide = useRef(new Animated.Value(30)).current;
 
-  // Birthday hero recommendation animation values
-  const birthdayHeroOpacity = useRef(new Animated.Value(0)).current;
-  const birthdayHeroSlide = useRef(new Animated.Value(30)).current;
-
-  // Holiday items staggered animation values (up to 20 holidays for full year)
-  const holidayItemAnimations = useRef(
-    Array.from({ length: 20 }, () => ({
-      opacity: new Animated.Value(0),
-      translateX: new Animated.Value(-50),
-    }))
-  ).current;
 
   // Run entrance animations on mount
   useEffect(() => {
@@ -835,234 +681,20 @@ export default function DiscoverScreen({
     }, 230); // 80ms after left column starts
   }, []);
   
-  // Pairing modal state
-  const [isPairModalVisible, setIsPairModalVisible] = useState(false);
-  const [infoPill, setInfoPill] = useState<PairingPill | null>(null);
-  const [incomingRequestPill, setIncomingRequestPill] = useState<PairRequest | null>(null);
-
-
-  // Pairing selector
-  const [selectedPillId, setSelectedPillId] = useState<string>("for-you");
-  const [autoOpenSaves, setAutoOpenSaves] = useState(false);
-  // Person experiences removed — replaced by pairing system
-
-  // Expanded holidays state (track which holiday dropdowns are open)
-  const [expandedHolidayIds, setExpandedHolidayIds] = useState<Set<string>>(new Set());
-  const [holidayCardsById, setHolidayCardsById] = useState<Record<string, GridCardData[]>>({});
-  const [holidayCardsLoadingById, setHolidayCardsLoadingById] = useState<Record<string, boolean>>({});
-
-  // Custom holidays state
-  const [customHolidays, setCustomHolidays] = useState<CustomHoliday[]>([]);
-  const [archivedHolidayKeysByPerson, setArchivedHolidayKeysByPerson] = useState<Record<string, string[]>>({});
-  const [isArchivedHolidaysExpanded, setIsArchivedHolidaysExpanded] = useState(false);
-  
-  // Add Custom Day Modal state
-  const [isAddCustomDayModalVisible, setIsAddCustomDayModalVisible] = useState(false);
-
-  // Toggle holiday expansion
-  const toggleHolidayExpansion = (holidayId: string) => {
-    setExpandedHolidayIds((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(holidayId)) {
-        newSet.delete(holidayId);
-      } else {
-        newSet.add(holidayId);
-      }
-      return newSet;
-    });
-  };
-
-  // Reset holiday expansion/cards when selected person changes
-  useEffect(() => {
-    setExpandedHolidayIds(new Set());
-    setHolidayCardsById({});
-    setHolidayCardsLoadingById({});
-  }, [selectedPillId]);
-
-  // ScrollView refs for holiday card navigation
-  const holidayScrollRefs = useRef<{ [key: string]: ScrollView | null }>({});
-  const [holidayScrollPositions, setHolidayScrollPositions] = useState<{ [key: string]: number }>({});
-
-  // Handle holiday card scroll navigation
-  const scrollHolidayCards = (holidayId: string, direction: 'left' | 'right') => {
-    const scrollRef = holidayScrollRefs.current[holidayId];
-    if (!scrollRef) return;
-    
-    const currentPosition = holidayScrollPositions[holidayId] || 0;
-    const scrollAmount = 160; // About 1.5 cards width
-    const newPosition = direction === 'right' 
-      ? currentPosition + scrollAmount 
-      : Math.max(0, currentPosition - scrollAmount);
-    
-    scrollRef.scrollTo({ x: newPosition, animated: true });
-  };
-
-  // Track scroll position for each holiday
-  const handleHolidayScroll = (holidayId: string, event: any) => {
-    const position = event.nativeEvent.contentOffset.x;
-    setHolidayScrollPositions((prev) => ({
-      ...prev,
-      [holidayId]: position,
-    }));
-  };
+  // ORCH-0435 Phase B: Pairing UI removed — pairing now lives on Friends page
 
   // Get auth for Discover features
   const user = useAppStore((s) => s.user);
   const { canAccess } = useFeatureGate();
   const [showPaywall, setShowPaywall] = useState(false);
-  const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('pairing');
-  const { data: pairingPills = [] } = usePairingPills(user?.id);
-  const { data: incomingPairRequests = [] } = useIncomingPairRequests(user?.id);
+  const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('curated_cards');
   const prefetchQueryClient = useQueryClient();
   const { data: mapSavedCards } = useSavedCards(user?.id);
   const { data: mapCalendarEntries } = useCalendarEntries(user?.id);
   const mapSavedCardIds = useMemo(() => new Set((mapSavedCards ?? []).map(c => c.id)), [mapSavedCards]);
   const mapScheduledCardIds = useMemo(() => new Set((mapCalendarEntries ?? []).map((e: any) => e.card_id).filter(Boolean)), [mapCalendarEntries]);
-  const activePairedUserIds = useMemo(
-    () => pairingPills
-      .filter((pill) => pill.pillState === 'active' && pill.pairedUserId)
-      .map((pill) => pill.pairedUserId!)
-      .sort(),
-    [pairingPills],
-  );
 
-  // Auto-close incoming request sheet if the request vanishes (e.g. sender cancelled,
-  // or optimistic update removed it after accept/decline).
-  useEffect(() => {
-    if (!incomingRequestPill) return;
-    if (!incomingPairRequests.some((r) => r.id === incomingRequestPill.id)) {
-      setIncomingRequestPill(null);
-    }
-  }, [incomingPairRequests, incomingRequestPill]);
 
-  // Pairing mutation hooks
-  const cancelRequestMutation = useCancelPairRequest();
-  const cancelInviteMutation = useCancelPairInvite();
-  const unpairMutation = useUnpair();
-
-  const handleUnpair = (pairingId: string) => {
-    unpairMutation.mutate(pairingId, {
-      onSuccess: () => {
-        setSelectedPillId("for-you");
-      },
-    });
-  };
-
-  // Get the currently selected pill (null if "for-you" is selected)
-  const selectedPill = useMemo(() => {
-    if (selectedPillId === "for-you") return null;
-    return pairingPills?.find((p) => p.id === selectedPillId) || null;
-  }, [selectedPillId, pairingPills]);
-
-  // Animate birthday hero section when paired pill is selected
-  useEffect(() => {
-    if (selectedPill?.pillState === 'active') {
-      // Reset animation values
-      birthdayHeroOpacity.setValue(0);
-      birthdayHeroSlide.setValue(30);
-
-      // Run slide-up and fade-in animation with slight delay
-      setTimeout(() => {
-        Animated.parallel([
-          Animated.timing(birthdayHeroOpacity, {
-            toValue: 1,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-          Animated.timing(birthdayHeroSlide, {
-            toValue: 0,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      }, 200);
-    }
-  }, [selectedPill, birthdayHeroOpacity, birthdayHeroSlide]);
-
-  // Memoized birthday countdown for the selected paired person
-  const birthdayInfo = useMemo(() => {
-    if (!selectedPill?.birthday) return null;
-    const bDate = new Date(selectedPill.birthday);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const thisYear = today.getFullYear();
-    let nextBday = new Date(thisYear, bDate.getMonth(), bDate.getDate());
-    nextBday.setHours(0, 0, 0, 0);
-    if (nextBday < today) nextBday = new Date(thisYear + 1, bDate.getMonth(), bDate.getDate());
-    const daysAway = Math.ceil((nextBday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    return { daysAway, label: `${MONTH_NAMES[bDate.getMonth()]} ${bDate.getDate()}` };
-  }, [selectedPill?.birthday]);
-
-  // Holiday detection helper - checks for upcoming holidays relevant to selected pill
-  const getUpcomingHolidays = useCallback((pill: PairingPill | null): string[] => {
-    const holidays: string[] = [];
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentDay = now.getDate();
-
-    // Check for Valentine's Day (Feb 14) - within 2 weeks before
-    if (currentMonth === 1 && currentDay >= 1 && currentDay <= 14) {
-      holidays.push("valentines");
-    }
-
-    // Check for Mother's Day (2nd Sunday of May) - within 2 weeks before
-    if (currentMonth === 4 && currentDay >= 1 && currentDay <= 14 && pill?.gender === "woman") {
-      holidays.push("mothers-day");
-    }
-
-    // Check for Father's Day (3rd Sunday of June) - within 2 weeks before
-    if (currentMonth === 5 && currentDay >= 7 && currentDay <= 21 && pill?.gender === "man") {
-      holidays.push("fathers-day");
-    }
-
-    // Check if paired user's birthday is upcoming (within 2 weeks)
-    if (pill?.birthday) {
-      const birthday = new Date(pill.birthday);
-      const birthdayThisYear = new Date(now.getFullYear(), birthday.getMonth(), birthday.getDate());
-      const diffDays = Math.ceil((birthdayThisYear.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      if (diffDays >= 0 && diffDays <= 14) {
-        holidays.push("birthday");
-      }
-    }
-
-    // Christmas (Dec 25) - within 3 weeks before
-    if (currentMonth === 11 && currentDay >= 4 && currentDay <= 25) {
-      holidays.push("christmas");
-    }
-
-    // New Year (Jan 1) - within 2 weeks before
-    if ((currentMonth === 11 && currentDay >= 18) || (currentMonth === 0 && currentDay <= 1)) {
-      holidays.push("new-year");
-    }
-
-    return holidays;
-  }, []);
-
-  // Get holiday-themed tags based on upcoming holidays
-  const getHolidayTags = useCallback((holidays: string[]): string[] => {
-    const tags: string[] = [];
-    if (holidays.includes("valentines")) tags.push("Romantic", "Date Night", "Couples");
-    if (holidays.includes("mothers-day")) tags.push("Wellness", "Spa", "Brunch", "Family");
-    if (holidays.includes("fathers-day")) tags.push("Sports", "Outdoor", "BBQ", "Family");
-    if (holidays.includes("birthday")) tags.push("Celebration", "Special Occasion", "Party");
-    if (holidays.includes("christmas")) tags.push("Festive", "Holiday", "Family", "Cozy");
-    if (holidays.includes("new-year")) tags.push("Party", "Celebration", "New Beginnings");
-    return tags;
-  }, []);
-
-  // Get gender-appropriate categories
-  const getGenderCategories = useCallback((gender: string | null): string[] | null => {
-    if (!gender) return null;
-    // Return categories that tend to resonate more with specific genders
-    // null means no filter (show all)
-    if (gender === "woman") {
-      return ["Wellness", "Drink", "Creative & Arts", "Fine Dining", "Picnic"];
-    }
-    if (gender === "man") {
-      return ["Play", "Casual Eats", "Fine Dining", "Drink", "Watch"];
-    }
-    return null; // all other genders - show all
-  }, []);
 
   // ── User preference categories (drives which categories the Discover API fetches) ──
   const [userSelectedCategories, setUserSelectedCategories] = useState<string[] | null>(null);
@@ -1123,36 +755,6 @@ export default function DiscoverScreen({
   const fallbackLat = userLocationData?.lat;
   const fallbackLng = userLocationData?.lng;
 
-  // Prefetch hero cards for active paired people so tapping a pill is instant.
-  // Fires once when pills + location are available. Prefetches birthday section only.
-  useEffect(() => {
-    if (!pairingPills.length || !fallbackLat || !fallbackLng) return;
-
-    const activePeople = pairingPills
-      .filter(p => p.pillState === 'active' && p.pairedUserId)
-      .slice(0, 3); // Limit to top 3 to avoid burst
-
-    if (!activePeople.length) return;
-
-    const location = { latitude: fallbackLat, longitude: fallbackLng };
-    const locKey = `${fallbackLat.toFixed(1)},${fallbackLng.toFixed(1)}`;
-    const { categorySlugs, curatedExperienceType } = sectionsToSlugsAndType(DEFAULT_PERSON_SECTIONS);
-
-    for (const person of activePeople) {
-      prefetchQueryClient.prefetchQuery({
-        queryKey: personCardKeys.paired(person.pairedUserId!, 'birthday', locKey),
-        queryFn: () => fetchPersonHeroCards({
-          pairedUserId: person.pairedUserId!,
-          holidayKey: 'birthday',
-          categorySlugs,
-          curatedExperienceType,
-          location,
-          mode: 'default',
-        }),
-        staleTime: Infinity,
-      });
-    }
-  }, [pairingPills, fallbackLat, fallbackLng, prefetchQueryClient]);
 
   // Device GPS location - used by BOTH "For You" and "Night Out" tabs
   const [deviceGpsLat, setDeviceGpsLat] = useState<number | null>(null);
@@ -1223,136 +825,6 @@ export default function DiscoverScreen({
   );
   const discoverMapAccountPreferences = accountPreferences ?? defaultDiscoverMapAccountPrefs;
 
-  // Note: Saved people migration removed — replaced by pairing system
-
-  // Save custom holidays to AsyncStorage
-  const saveCustomHolidaysToStorage = async (holidays: CustomHoliday[]) => {
-    if (!user?.id) {
-      console.warn("Cannot save custom holidays: no user ID available");
-      return;
-    }
-    try {
-      const userStorageKey = `${CUSTOM_HOLIDAYS_STORAGE_KEY}_${user.id}`;
-      await AsyncStorage.setItem(userStorageKey, JSON.stringify(holidays));
-    } catch (error) {
-      console.error("Error saving custom holidays to storage:", error);
-    }
-  };
-
-  // Load custom holidays — Supabase is source of truth, AsyncStorage is cache
-  const loadCustomHolidays = async () => {
-    if (!user?.id) {
-      setCustomHolidays([]);
-      return;
-    }
-
-    // 1. Load AsyncStorage cache first for instant display
-    const userStorageKey = `${CUSTOM_HOLIDAYS_STORAGE_KEY}_${user.id}`;
-    try {
-      const stored = await AsyncStorage.getItem(userStorageKey);
-      if (stored) {
-        setCustomHolidays(JSON.parse(stored) as CustomHoliday[]);
-      }
-    } catch {
-      // Cache miss is fine — Supabase will provide
-    }
-
-    // 2. Fetch from Supabase (all pairings, shared holidays from both users)
-    try {
-      const allPairingHolidays: CustomHoliday[] = [];
-      const pills = pairingPills?.filter((p) => p.pillState === "active" && p.pairingId) ?? [];
-
-      // Fetch holidays for each active pairing in parallel
-      const results = await Promise.all(
-        pills.map((pill) => getSharedCustomHolidaysByPairing(pill.pairingId!).catch((e) => { console.warn('[DiscoverScreen] Shared custom holidays fetch failed:', e); return []; }))
-      );
-
-      for (let i = 0; i < pills.length; i++) {
-        const pill = pills[i];
-        const dbHolidays = results[i];
-        for (const h of dbHolidays) {
-          allPairingHolidays.push({
-            id: h.id,
-            personId: `pairing-${pill.pairingId}`,
-            name: h.name,
-            date: `${String(h.month).padStart(2, "0")}-${String(h.day).padStart(2, "0")}`,
-            description: h.description || "",
-            category: (h.categories?.[0]) || "Fine Dining",
-            categories: h.categories || ["Fine Dining"],
-            createdAt: h.created_at,
-            year: h.year,
-          });
-        }
-      }
-
-      if (allPairingHolidays.length > 0 || pills.length > 0) {
-        // Merge: keep local-only holidays (no pairing) + replace pairing holidays with DB
-        const localOnly = (await (async () => {
-          try {
-            const stored = await AsyncStorage.getItem(userStorageKey);
-            if (!stored) return [];
-            return (JSON.parse(stored) as CustomHoliday[]).filter(
-              (h) => !h.personId.startsWith("pairing-")
-            );
-          } catch { return []; }
-        })());
-
-        const merged = [...localOnly, ...allPairingHolidays];
-        setCustomHolidays(merged);
-        await AsyncStorage.setItem(userStorageKey, JSON.stringify(merged)).catch(() => {});
-      }
-    } catch (error) {
-      console.warn("[DiscoverScreen] Failed to load shared holidays from Supabase:", error);
-      // AsyncStorage cache already displayed above — graceful degradation
-    }
-  };
-
-  // Save archived holiday keys by person to AsyncStorage
-  const saveArchivedHolidaysToStorage = async (archiveMap: Record<string, string[]>) => {
-    if (!user?.id) {
-      console.warn("Cannot save archived holidays: no user ID available");
-      return;
-    }
-    try {
-      const userStorageKey = `${HOLIDAY_ARCHIVE_STORAGE_KEY}_${user.id}`;
-      await AsyncStorage.setItem(userStorageKey, JSON.stringify(archiveMap));
-    } catch (error) {
-      console.error("Error saving archived holidays to storage:", error);
-    }
-  };
-
-  // Load archived holiday keys by person from AsyncStorage
-  const loadArchivedHolidaysFromStorage = async () => {
-    if (!user?.id) {
-      setArchivedHolidayKeysByPerson({});
-      return;
-    }
-    try {
-      const userStorageKey = `${HOLIDAY_ARCHIVE_STORAGE_KEY}_${user.id}`;
-      const stored = await AsyncStorage.getItem(userStorageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as Record<string, string[]>;
-        setArchivedHolidayKeysByPerson(parsed || {});
-      } else {
-        setArchivedHolidayKeysByPerson({});
-      }
-    } catch (error) {
-      console.error("Error loading archived holidays from storage:", error);
-      setArchivedHolidayKeysByPerson({});
-    }
-  };
-
-  // Load custom holidays on mount and when user changes.
-  // pairingPills removed from deps — it's a new array reference every render,
-  // causing an infinite loop. Custom holidays don't depend on pairing data.
-  const hasLoadedHolidaysRef = useRef(false);
-  useEffect(() => {
-    if (!user?.id) { hasLoadedHolidaysRef.current = false; return; }
-    if (hasLoadedHolidaysRef.current) return;
-    hasLoadedHolidaysRef.current = true;
-    loadCustomHolidays();
-    loadArchivedHolidaysFromStorage();
-  }, [user?.id]);
 
   // Night Out Filter Modal state
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
@@ -2037,8 +1509,8 @@ export default function DiscoverScreen({
   // Use Discover-specific recommendations
   const recommendations = discoverRecommendations;
   const recommendationsLoading = discoverLoading;
-  // Map is showing when For You tab is active and no person is selected
-  const isMapShowing = activeTab === 'for-you' && !(selectedPill?.pillState === 'active' && user?.id);
+  // Map is showing when For You tab is active
+  const isMapShowing = activeTab === 'for-you';
   const recommendationsError = discoverError;
   const hasCompletedInitialFetch = hasCompletedDiscoverFetch;
 
@@ -2585,108 +2057,8 @@ export default function DiscoverScreen({
     return symbols[currencyCode] || "$";
   };
 
-  // Calculate days until birthday
-  const getDaysUntilBirthday = (birthdayString: string | null): number => {
-    if (!birthdayString) return -1;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset to midnight for accurate day comparison
-    const birthday = new Date(birthdayString);
-    const thisYearBirthday = new Date(today.getFullYear(), birthday.getMonth(), birthday.getDate());
-    thisYearBirthday.setHours(0, 0, 0, 0);
-    
-    // If birthday has passed this year, check next year
-    if (thisYearBirthday < today) {
-      thisYearBirthday.setFullYear(today.getFullYear() + 1);
-    }
-    
-    const diffTime = thisYearBirthday.getTime() - today.getTime();
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
 
-  // Calculate age person is turning
-  const getAgeTurning = (birthdayString: string | null): number => {
-    if (!birthdayString) return -1;
-    const today = new Date();
-    const birthday = new Date(birthdayString);
-    let age = today.getFullYear() - birthday.getFullYear();
-    const thisYearBirthday = new Date(today.getFullYear(), birthday.getMonth(), birthday.getDate());
-    
-    // If birthday hasn't happened yet this year, they're turning that age
-    // If birthday has passed, they're turning age + 1 next year
-    if (thisYearBirthday <= today) {
-      age = age + 1;
-    }
-    return age;
-  };
 
-  // Format birthday date for display (e.g., "September 10")
-  const formatBirthdayDate = (birthdayString: string | null): string => {
-    if (!birthdayString) return "";
-    const birthday = new Date(birthdayString);
-    const months = [
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December"
-    ];
-    return `${months[birthday.getMonth()]} ${birthday.getDate()}`;
-  };
-
-  // Use the calendar holidays hook for dynamic holidays from device calendar (365 days ahead - rest of year)
-  const { 
-    holidays: calendarHolidays, 
-    loading: holidaysLoading, 
-    hasCalendarAccess 
-  } = useCalendarHolidays(365);
-
-  // Get experiences filtered by multiple categories (with variety for different holidays)
-  const getExperiencesForCategories = useCallback((categories: string[], holidayId?: string): GridCardData[] => {
-    const minCards = 2;
-    const maxCards = 3;
-    
-    // Normalize categories for matching
-    const normalizedCategories = categories.map(c => c.toLowerCase().trim());
-    
-    // Filter gridCards by any of the categories
-    let filteredCards = gridCards.filter((card) => {
-      const cardCat = card.category.toLowerCase().trim();
-      // Check for exact match with any category
-      if (normalizedCategories.includes(cardCat)) return true;
-      // Check for partial match (e.g., "Stroll" matches "Take a Stroll")
-      return normalizedCategories.some(nc => cardCat.includes(nc) || nc.includes(cardCat));
-    });
-    
-    // If we have enough cards, return them prioritized by category order
-    if (filteredCards.length >= minCards) {
-      // Sort to prioritize cards matching earlier categories
-      filteredCards.sort((a, b) => {
-        const aIndex = normalizedCategories.findIndex(nc => {
-          const aCat = a.category.toLowerCase().trim();
-          return aCat === nc || aCat.includes(nc) || nc.includes(aCat);
-        });
-        const bIndex = normalizedCategories.findIndex(nc => {
-          const bCat = b.category.toLowerCase().trim();
-          return bCat === nc || bCat.includes(nc) || nc.includes(bCat);
-        });
-        return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
-      });
-      return filteredCards.slice(0, Math.min(maxCards, filteredCards.length));
-    }
-    
-    // If not enough cards, fill with deterministic selection from other cards
-    const seed = (categories.join("") + (holidayId || "")).split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const allCards = [...gridCards];
-    allCards.sort((a, b) => {
-      const aHash = (a.id.charCodeAt(0) + seed) % 100;
-      const bHash = (b.id.charCodeAt(0) + seed) % 100;
-      return aHash - bHash;
-    });
-    
-    const otherCards = allCards.filter(
-      (card) => !filteredCards.find((fc) => fc.id === card.id)
-    );
-    const combined = [...filteredCards, ...otherCards];
-    return combined.slice(0, Math.min(maxCards, Math.max(minCards, combined.length)));
-  }, [gridCards]);
 
   const currencySymbol = getCurrencySymbol(accountPreferences?.currency);
 
@@ -2726,595 +2098,17 @@ export default function DiscoverScreen({
     { id: "acoustic-indie", label: t('discover:filters.acoustic_indie') },
   ];
 
-  // Handle pill selection ("for-you" or pill.id)
-  const handlePillSelect = (pillId: string) => {
-    setSelectedPillId(pillId);
-  };
-
-  // Handle "For You" selection
   const [mapCenterTrigger, setMapCenterTrigger] = useState(0);
-  const handleForYouSelect = () => {
-    setSelectedPillId("for-you");
-    setMapCenterTrigger(p => p + 1);
-  };
 
-  const handleBirthdayChange = (_event: unknown, _selectedDate?: Date) => {
-    // Birthday picker state was removed — handler kept for future use
-  };
 
-  const formatBirthdayForDisplay = (date: Date): string => {
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${month}/${day}/${year}`;
-  };
 
-  // Add Custom Day Modal handlers
-  const handleOpenAddCustomDayModal = () => {
-    if (selectedPillId === "for-you") return;
-    setIsAddCustomDayModalVisible(true);
-  };
 
-  const handleCloseAddCustomDayModal = () => {
-    setIsAddCustomDayModalVisible(false);
-  };
 
-  // Handle save from CustomHolidayModal — write to Supabase + local state
-  const handleCustomHolidaySave = useCallback(
-    async (holiday: { name: string; month: number; day: number; year: number }) => {
-      if (selectedPillId === "for-you" || !user?.id) return;
-      const dateStr = `${String(holiday.month).padStart(2, "0")}-${String(holiday.day).padStart(2, "0")}`;
 
-      // Find the pairingId and pairedUserId for the selected pill
-      const pill = pairingPills?.find((p) => p.id === selectedPillId);
-      const pairingId = pill?.pairingId;
-      const pairedUserId = pill?.pairedUserId;
 
-      let newId: string;
 
-      if (pairingId && pairedUserId) {
-        // Write to Supabase — shared with paired user
-        try {
-          const created = await createCustomHolidayForPairing({
-            user_id: user.id,
-            pairing_id: pairingId,
-            paired_user_id: pairedUserId,
-            name: holiday.name,
-            month: holiday.month,
-            day: holiday.day,
-            year: holiday.year,
-          });
-          newId = created.id;
-        } catch (error) {
-          console.error("[DiscoverScreen] Failed to save custom holiday to Supabase:", error);
-          // Fall back to local-only ID
-          newId = `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        }
-      } else {
-        newId = `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      }
 
-      const newCustomHoliday: CustomHoliday = {
-        id: newId,
-        personId: selectedPillId,
-        name: holiday.name,
-        date: dateStr,
-        description: "",
-        category: "Fine Dining",
-        categories: ["Fine Dining"],
-        createdAt: new Date().toISOString(),
-        year: holiday.year,
-      };
 
-      const updatedHolidays = [...customHolidays, newCustomHoliday];
-      setCustomHolidays(updatedHolidays);
-      await saveCustomHolidaysToStorage(updatedHolidays);
-
-      mixpanelService.trackDiscoverCustomHolidayAdded({
-        holidayName: holiday.name,
-        date: dateStr,
-        categories: ["Fine Dining"],
-        personId: selectedPillId,
-      });
-    },
-    [customHolidays, selectedPillId, user?.id, pairingPills, saveCustomHolidaysToStorage]
-  );
-
-  // Location for PersonHolidayView — use GPS first, fall back to saved preference
-  // Returns {0,0} when neither source is available yet; CardRow will show
-  // a "Getting your location" state and the query won't fire until real coords arrive.
-  const personViewLocation = useMemo(
-    () => ({
-      latitude: deviceGpsLat ?? fallbackLat ?? 0,
-      longitude: deviceGpsLng ?? fallbackLng ?? 0,
-    }),
-    [deviceGpsLat, deviceGpsLng, fallbackLat, fallbackLng]
-  );
-
-  // Transform custom holidays from DiscoverScreen format to PersonHolidayView format
-  const personCustomHolidays = useMemo(() => {
-    if (selectedPillId === "for-you") return undefined;
-    const filtered = customHolidays.filter((h) => h.personId === selectedPillId);
-    if (filtered.length === 0) return undefined;
-    return filtered.map((h) => {
-      const [month, day] = h.date.split("-").map(Number);
-      return {
-        id: h.id,
-        name: h.name,
-        month: month || 1,
-        day: day || 1,
-        year: h.year ?? new Date().getFullYear(),
-      };
-    });
-  }, [customHolidays, selectedPillId]);
-
-  // Archive/unarchive handlers for PersonHolidayView (persisted via AsyncStorage)
-  // Migrates old-format keys (calendar:valentine's day:02-14) to holiday IDs (valentines_day)
-  const personArchivedHolidayIds = useMemo(() => {
-    if (selectedPillId === "for-you") return [];
-    const raw = archivedHolidayKeysByPerson[selectedPillId] ?? [];
-    if (raw.length === 0) return raw;
-
-    // Build reverse lookup: normalized "name:MM-DD" → holiday ID
-    const oldKeyToId = new Map<string, string>();
-    for (const h of STANDARD_HOLIDAYS) {
-      const yr = new Date().getFullYear();
-      const d = h.getDate(yr);
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      const normName = h.name.trim().toLowerCase();
-      oldKeyToId.set(`calendar:${normName}:${mm}-${dd}`, h.id);
-    }
-
-    return raw.map((key) => {
-      // Already a holiday ID (new format)? Keep as-is.
-      if (!key.startsWith("calendar:") && !key.startsWith("custom:")) return key;
-      // Old format → look up matching holiday ID
-      return oldKeyToId.get(key) ?? key;
-    });
-  }, [archivedHolidayKeysByPerson, selectedPillId]);
-
-  const handlePersonArchiveHoliday = useCallback(async (holidayId: string) => {
-    if (selectedPillId === "for-you") return;
-    const current = archivedHolidayKeysByPerson[selectedPillId] || [];
-    if (current.includes(holidayId)) return;
-    const nextMap = {
-      ...archivedHolidayKeysByPerson,
-      [selectedPillId]: [...current, holidayId],
-    };
-    setArchivedHolidayKeysByPerson(nextMap);
-    await saveArchivedHolidaysToStorage(nextMap);
-  }, [archivedHolidayKeysByPerson, selectedPillId]);
-
-  const handlePersonUnarchiveHoliday = useCallback(async (holidayId: string) => {
-    if (selectedPillId === "for-you") return;
-    const current = archivedHolidayKeysByPerson[selectedPillId] || [];
-    if (!current.includes(holidayId)) return;
-    const nextMap = {
-      ...archivedHolidayKeysByPerson,
-      [selectedPillId]: current.filter((k) => k !== holidayId),
-    };
-    setArchivedHolidayKeysByPerson(nextMap);
-    await saveArchivedHolidaysToStorage(nextMap);
-  }, [archivedHolidayKeysByPerson, selectedPillId]);
-
-  // Handle card press from PersonHolidayView — open ExpandedCardModal
-  const handlePersonCardPress = useCallback(
-    (card: {
-      id: string;
-      title: string;
-      category: string;
-      imageUrl: string | null;
-      rating: number | null;
-      address: string | null;
-      priceRange: string | null;
-      cardType: "single" | "curated";
-      experienceType: string | null;
-      website: string | null;
-      description: string | null;
-      lat: number | null;
-      lng: number | null;
-      googlePlaceId: string | null;
-      priceTier: string | null;
-      tagline: string | null;
-      stops: number;
-      stopsData: unknown[] | null;
-      totalPriceMin: number | null;
-      totalPriceMax: number | null;
-      estimatedDurationMinutes: number | null;
-      shoppingList: unknown[] | null;
-      travelTime?: string;
-      distance?: string;
-      travelMode?: string;
-    }) => {
-      const expanded: ExpandedCardData = {
-        id: card.id,
-        placeId: card.googlePlaceId || card.id,
-        title: card.title,
-        category: card.category,
-        categoryIcon: categoryIcons[card.category] || "ellipse-outline",
-        description: card.description || "",
-        fullDescription: card.description || "",
-        image: card.imageUrl || "",
-        images: card.imageUrl ? [card.imageUrl] : [],
-        rating: card.rating ?? 0,
-        reviewCount: 0,
-        priceRange: card.priceRange || "",
-        distance: card.distance || "",
-        travelTime: card.travelTime || "",
-        address: card.address || "",
-        website: card.website || undefined,
-        location: card.lat && card.lng ? { lat: card.lat, lng: card.lng } : undefined,
-        highlights: [],
-        tags: [],
-        matchScore: 0,
-        matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
-        socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
-        selectedDateTime: new Date(),
-        priceTier: card.priceTier as ExpandedCardData["priceTier"],
-        // Curated card fields
-        ...(card.cardType === "curated"
-          ? {
-              cardType: "curated" as const,
-              stops: Array.isArray(card.stopsData) ? card.stopsData as ExpandedCardData["stops"] : undefined,
-              tagline: card.tagline || undefined,
-              totalPriceMin: card.totalPriceMin ?? undefined,
-              totalPriceMax: card.totalPriceMax ?? undefined,
-              estimatedDurationMinutes: card.estimatedDurationMinutes ?? undefined,
-              experienceType: card.experienceType || undefined,
-              shoppingList: Array.isArray(card.shoppingList) ? card.shoppingList as string[] : undefined,
-            }
-          : {}),
-      };
-      setSelectedCardForExpansion(expanded);
-      setIsExpandedModalVisible(true);
-    },
-    []
-  );
-
-  // Transform discover recommendations into fallback cards for PersonHolidayView
-  // These are real Google Places that already loaded on the For You tab
-  const fallbackCardsForPerson = useMemo(() => {
-    if (discoverRecommendations.length === 0) return undefined;
-    return discoverRecommendations.slice(0, 30).map((rec) => ({
-      id: rec.id,
-      title: rec.title,
-      category: rec.category,
-      image: rec.image,
-      rating: rec.rating,
-      address: rec.address,
-      priceRange: rec.priceRange,
-    }));
-  }, [discoverRecommendations]);
-
-  // Delete a custom holiday — from Supabase + local state
-  const handleDeleteCustomHoliday = async (holidayId: string) => {
-    const deletedHoliday = customHolidays.find((h) => h.id === holidayId);
-    const updatedHolidays = customHolidays.filter((h) => h.id !== holidayId);
-    setCustomHolidays(updatedHolidays);
-    await saveCustomHolidaysToStorage(updatedHolidays);
-
-    // Delete from Supabase if it's a real UUID (not a local-only ID)
-    if (holidayId && !holidayId.startsWith("custom-")) {
-      deleteCustomHolidayFromDb(holidayId).catch((err) =>
-        console.warn("[DiscoverScreen] Failed to delete holiday from Supabase:", err)
-      );
-    }
-
-    if (deletedHoliday) {
-      const archiveKeyToRemove = `custom:${holidayId}`;
-      const personArchiveKeys = archivedHolidayKeysByPerson[deletedHoliday.personId] || [];
-      if (personArchiveKeys.includes(archiveKeyToRemove)) {
-        const nextArchiveMap = {
-          ...archivedHolidayKeysByPerson,
-          [deletedHoliday.personId]: personArchiveKeys.filter((key) => key !== archiveKeyToRemove),
-        };
-        setArchivedHolidayKeysByPerson(nextArchiveMap);
-        await saveArchivedHolidaysToStorage(nextArchiveMap);
-      }
-    }
-  };
-
-  const handleConfirmDeleteCustomHoliday = (holidayId: string, holidayName: string) => {
-    Alert.alert(
-      t("discover:alerts.delete_holiday_title"),
-      t("discover:alerts.delete_holiday_message", { name: holidayName }),
-      [
-        { text: t("discover:alerts.cancel"), style: "cancel" },
-        {
-          text: t("discover:alerts.delete"),
-          style: "destructive",
-          onPress: () => {
-            void handleDeleteCustomHoliday(holidayId);
-          },
-        },
-      ]
-    );
-  };
-
-  const getHolidayArchiveKey = useCallback((holiday: CalendarHoliday & { isCustom?: boolean }): string => {
-    if ((holiday as ExtendedHoliday).isCustom) {
-      return `custom:${holiday.id}`;
-    }
-
-    const holidayDate = new Date(holiday.date);
-    const month = String(holidayDate.getMonth() + 1).padStart(2, "0");
-    const day = String(holidayDate.getDate()).padStart(2, "0");
-    const normalizedName = (holiday.name || "").trim().toLowerCase();
-    return `calendar:${normalizedName}:${month}-${day}`;
-  }, []);
-
-  const handleArchiveHoliday = useCallback(async (holiday: CalendarHoliday & { isCustom?: boolean }) => {
-    if (selectedPillId === "for-you") return;
-
-    const holidayKey = getHolidayArchiveKey(holiday);
-    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPillId] || [];
-    if (currentPersonKeys.includes(holidayKey)) return;
-
-    const nextArchiveMap = {
-      ...archivedHolidayKeysByPerson,
-      [selectedPillId]: [...currentPersonKeys, holidayKey],
-    };
-
-    setArchivedHolidayKeysByPerson(nextArchiveMap);
-    await saveArchivedHolidaysToStorage(nextArchiveMap);
-
-    setExpandedHolidayIds((prev) => {
-      const next = new Set(prev);
-      next.delete(holiday.id);
-      return next;
-    });
-  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
-
-  const handleUnarchiveHoliday = useCallback(async (holiday: CalendarHoliday & { isCustom?: boolean }) => {
-    if (selectedPillId === "for-you") return;
-
-    const holidayKey = getHolidayArchiveKey(holiday);
-    const currentPersonKeys = archivedHolidayKeysByPerson[selectedPillId] || [];
-    if (!currentPersonKeys.includes(holidayKey)) return;
-
-    const nextArchiveMap = {
-      ...archivedHolidayKeysByPerson,
-      [selectedPillId]: currentPersonKeys.filter((key) => key !== holidayKey),
-    };
-
-    setArchivedHolidayKeysByPerson(nextArchiveMap);
-    await saveArchivedHolidaysToStorage(nextArchiveMap);
-  }, [archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
-
-  const formatHolidayDateForDisplay = useCallback((dateValue: Date | string): string => {
-    const holidayDate = new Date(dateValue);
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    return `${monthNames[holidayDate.getMonth()]} ${holidayDate.getDate()}`;
-  }, []);
-
-  // Get custom holidays for the currently selected person, formatted as CalendarHoliday
-  const getPersonCustomHolidays = useMemo((): CalendarHoliday[] => {
-    if (selectedPillId === "for-you") return [];
-    
-    const personHolidays = customHolidays.filter((h) => h.personId === selectedPillId);
-    
-    return personHolidays.map((h) => {
-      // Calculate next occurrence - treats date as recurring (MM-DD or legacy ISO)
-      const { date: holidayDate, daysAway } = getNextOccurrence(h.date);
-
-      const selectedCategories = (h.categories && h.categories.length > 0)
-        ? h.categories
-        : (h.category ? [h.category] : ["Fine Dining"]);
-      
-      // Custom holidays show primary category + Fine Dining
-      const categories = Array.from(new Set([...selectedCategories, "Fine Dining"]));
-      
-      return {
-        id: h.id,
-        name: h.name,
-        description: h.description,
-        date: holidayDate,
-        daysAway,
-        category: selectedCategories[0],
-        categories: categories,
-        isFromCalendar: false,
-        isCustom: true, // Mark as custom holiday
-      } as ExtendedHoliday;
-    });
-  }, [customHolidays, selectedPillId]);
-
-  // Transform HolidayExperience to GridCardData for display
-  const transformHolidayExperienceToCard = useCallback((exp: HolidayExperience): GridCardData => {
-    // Map priceLevel to actual dollar ranges (matches discover-experiences edge function)
-    const priceTier = googleLevelToTierSlug(exp.priceLevel);
-
-    return {
-      id: exp.id,
-      title: exp.name,
-      category: exp.category,
-      description: exp.address || "",
-      image: exp.imageUrl || "",
-      images: exp.images,
-      priceRange: `${tierLabel(priceTier)} · ${tierRangeLabel(priceTier)}`,
-      rating: exp.rating,
-      reviewCount: exp.reviewCount,
-      address: exp.address,
-      location: exp.location,
-      openingHours: exp.openingHours || null,
-    };
-  }, []);
-
-  // Load cards for a single holiday only when user expands it
-  const loadHolidayCardsOnDemand = useCallback(async (
-    holiday: {
-      id: string;
-      name: string;
-      daysAway: number;
-      categories?: string[];
-      category?: string;
-      isCustom?: boolean;
-    }
-  ) => {
-    if (holidayCardsById[holiday.id] || holidayCardsLoadingById[holiday.id]) {
-      return;
-    }
-
-    setHolidayCardsLoadingById((prev) => ({ ...prev, [holiday.id]: true }));
-
-    const holidayCategories = holiday.categories || (holiday.category ? [holiday.category] : getCategoriesForHolidayName(holiday.name));
-
-    try {
-      let cards: GridCardData[] = [];
-
-      if (locationLat && locationLng && selectedPillId !== "for-you") {
-        const personGender = selectedPill?.gender;
-        const gender: "male" | "female" | null =
-          personGender === "man" ? "male" : personGender === "woman" ? "female" : null;
-
-        const personCustomHolidays = customHolidays
-          .filter((h) => h.personId === selectedPillId)
-          .map((h) => ({
-            id: h.id,
-            name: h.name,
-            description: h.description,
-            date: h.date,
-            category: h.category,
-            categories: h.categories,
-          }));
-
-        const response = await HolidayExperiencesService.getHolidayExperiences({
-          location: { lat: locationLat, lng: locationLng },
-          radius: 10000,
-          gender,
-          days: Math.min(365, Math.max(7, (holiday.daysAway || 0) + 2)),
-          customHolidays: personCustomHolidays,
-        });
-
-        const merged = [...response.holidays, ...(response.customHolidays || [])];
-        const matchedHoliday = merged.find(
-          (h) => h.id === holiday.id || h.name.toLowerCase() === holiday.name.toLowerCase()
-        );
-
-        if (matchedHoliday?.experiences?.length) {
-          cards = matchedHoliday.experiences
-            .map(transformHolidayExperienceToCard)
-            .slice(0, 3);
-        }
-      }
-
-      if (cards.length === 0) {
-        cards = getExperiencesForCategories(holidayCategories, holiday.id).slice(0, 3);
-      }
-
-      setHolidayCardsById((prev) => ({ ...prev, [holiday.id]: cards }));
-    } catch (error) {
-      console.error("Error loading holiday cards on demand:", error);
-      const fallbackCards = getExperiencesForCategories(holidayCategories, holiday.id).slice(0, 3);
-      setHolidayCardsById((prev) => ({ ...prev, [holiday.id]: fallbackCards }));
-    } finally {
-      setHolidayCardsLoadingById((prev) => ({ ...prev, [holiday.id]: false }));
-    }
-  }, [
-    customHolidays,
-    getExperiencesForCategories,
-    holidayCardsById,
-    holidayCardsLoadingById,
-    locationLat,
-    locationLng,
-    selectedPill?.gender,
-    selectedPillId,
-    transformHolidayExperienceToCard,
-  ]);
-
-  // Merge calendar holidays with custom holidays for display, filtered by selected person's gender
-  const allHolidays = useMemo(() => {
-    const customHolidaysList = getPersonCustomHolidays.map((h) => ({
-      id: h.id,
-      name: h.name,
-      description: h.description,
-      date: new Date(h.date),
-      daysAway: h.daysAway,
-      category: h.category,
-      categories: (h as ExtendedHoliday).categories || [h.category],
-      isFromCalendar: false,
-      isCustom: true,
-    }));
-
-    const calendar = calendarHolidays || [];
-    const custom = getPersonCustomHolidays;
-    
-    // Get selected person's gender for filtering
-    const personGender = selectedPill?.gender || null;
-    
-    // Combine and filter
-    return [...calendar, ...custom]
-      .filter((h) => {
-        // Only show upcoming holidays (within 365 days - rest of year)
-        if (h.daysAway < 0 || h.daysAway > 365) return false;
-        
-        // Filter by gender if holiday is gender-specific
-        const holidayGender = (h as any).gender;
-        if (holidayGender && personGender && holidayGender !== personGender) {
-          return false;
-        }
-        
-        return true;
-      })
-      .sort((a, b) => a.daysAway - b.daysAway);
-  }, [calendarHolidays, getPersonCustomHolidays, selectedPill?.gender]);
-
-  const visibleHolidays = useMemo(() => {
-    if (selectedPillId === "for-you") {
-      return allHolidays;
-    }
-
-    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPillId] || []);
-    return allHolidays.filter(
-      (holiday) => !archivedKeys.has(getHolidayArchiveKey(holiday as ExtendedHoliday))
-    );
-  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
-
-  const archivedHolidays = useMemo(() => {
-    if (selectedPillId === "for-you") {
-      return [] as CalendarHoliday[];
-    }
-
-    const archivedKeys = new Set(archivedHolidayKeysByPerson[selectedPillId] || []);
-    return allHolidays.filter((holiday) =>
-      archivedKeys.has(getHolidayArchiveKey(holiday as ExtendedHoliday))
-    );
-  }, [allHolidays, archivedHolidayKeysByPerson, getHolidayArchiveKey, selectedPillId]);
-
-  // Animate holiday items with staggered entrance when holidays are available
-  useEffect(() => {
-    if (selectedPill?.pillState === 'active' && visibleHolidays.length > 0 && !holidaysLoading) {
-      // Reset all holiday animations
-      holidayItemAnimations.forEach((anim) => {
-        anim.opacity.setValue(0);
-        anim.translateX.setValue(-50);
-      });
-
-      // Staggered animation - each holiday pops in 100ms after the previous
-      const staggerDelay = 100;
-      const baseDelay = 400; // Start after birthday hero animation
-
-      visibleHolidays.slice(0, 20).forEach((_, index) => {
-        if (!holidayItemAnimations[index]) return; // Skip if no animation slot
-        setTimeout(() => {
-          Animated.parallel([
-            Animated.spring(holidayItemAnimations[index].opacity, {
-              toValue: 1,
-              useNativeDriver: true,
-              tension: 50,
-              friction: 8,
-            }),
-            Animated.spring(holidayItemAnimations[index].translateX, {
-              toValue: 0,
-              useNativeDriver: true,
-              tension: 50,
-              friction: 8,
-            }),
-          ]).start();
-        }, baseDelay + index * staggerDelay);
-      });
-    }
-  }, [selectedPill, visibleHolidays, holidaysLoading, holidayItemAnimations]);
 
   return (
     <View style={styles.safeArea}>
@@ -3335,232 +2129,8 @@ export default function DiscoverScreen({
         >
           {activeTab === "for-you" && (
             <>
-              {/* For You Tab Header with People Pills */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={[styles.tabHeaderScrollView, isMapShowing && styles.floatingPillBar]}
-                contentContainerStyle={styles.tabHeaderContent}
-              >
-                {/* For You Pill - Always First */}
-                <TouchableOpacity
-                  style={[
-                    styles.personPill,
-                    selectedPillId === "for-you" && styles.personPillSelectedGradient,
-                  ]}
-                  onPress={handleForYouSelect}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.personPillName,
-                      selectedPillId === "for-you" && styles.personPillNameSelectedGradient,
-                    ]}
-                  >
-                    For You
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Add Pair Button */}
-                <TouchableOpacity
-                  ref={coachPair.targetRef as any}
-                  style={styles.addUserButtonPill}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setIsPairModalVisible(true);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Icon
-                    name="person-add-outline"
-                    size={18}
-                    color="#eb7825"
-                  />
-                </TouchableOpacity>
-
-                {/* Incoming Pair Request Pills */}
-                {incomingPairRequests.map((request) => {
-                  const initials = request.senderName
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")
-                    .toUpperCase()
-                    .slice(0, 2);
-
-                  return (
-                    <TouchableOpacity
-                      key={`incoming-${request.id}`}
-                      style={[styles.personPill, styles.incomingRequestPill]}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setIncomingRequestPill(request);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.personPillAvatar}>
-                        {request.senderAvatar ? (
-                          <Image source={{ uri: request.senderAvatar }} style={styles.pillAvatarImage} />
-                        ) : (
-                          <Text style={styles.personPillInitials}>{initials}</Text>
-                        )}
-                      </View>
-                      {/* Notification dot */}
-                      <View style={styles.incomingDot} />
-                    </TouchableOpacity>
-                  );
-                })}
-
-                {/* Pairing Pills */}
-                {pairingPills.map((pill) => {
-                  const isSelected = selectedPillId === pill.id;
-                  const isGreyed = pill.pillState.startsWith('greyed');
-                  const isPending = pill.pillState === 'pending_active';
-
-                  return (
-                    <TouchableOpacity
-                      key={pill.id}
-                      style={[
-                        styles.personPill,
-                        isSelected && !isGreyed && styles.personPillSelectedGradient,
-                        isGreyed && { opacity: 0.4 },
-                      ]}
-                      onPress={() => {
-                        if (pill.pillState === 'active') {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setSelectedPillId(pill.id);
-                        } else {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setInfoPill(pill);
-                        }
-                      }}
-                      onLongPress={() => {
-                        if (pill.pillState === 'active') {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                          Alert.alert(
-                            t('discover:alerts.unpair_title'),
-                            t('discover:alerts.unpair_message', { name: pill.displayName }),
-                            [
-                              { text: t('discover:alerts.cancel'), style: "cancel" },
-                              { text: t('discover:alerts.unpair'), style: "destructive", onPress: () => handleUnpair(pill.pairingId!) },
-                            ]
-                          );
-                        } else {
-                          setInfoPill(pill);
-                        }
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <View
-                        style={[
-                          styles.personPillAvatar,
-                          isSelected && !isGreyed && styles.personPillAvatarSelectedGradient,
-                        ]}
-                      >
-                        {pill.avatarUrl ? (
-                          <Image source={{ uri: pill.avatarUrl }} style={styles.pillAvatarImage} />
-                        ) : (
-                          <Text
-                            style={[
-                              styles.personPillInitials,
-                              isSelected && styles.personPillInitialsSelected,
-                            ]}
-                          >
-                            {pill.initials}
-                          </Text>
-                        )}
-                      </View>
-                      {isPending && (
-                        <View style={styles.pendingPillBadge}>
-                          <View style={styles.pendingPillBadgeDot} />
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-
-              {/* Person-specific view when a person is selected */}
-              {selectedPill?.pillState === 'active' && user?.id && (
-                <PersonHolidayView
-                  pairedUserId={selectedPill.pairedUserId!}
-                  pairingId={selectedPill.pairingId!}
-                  displayName={selectedPill.displayName}
-                  birthday={selectedPill.birthday}
-                  gender={selectedPill.gender}
-                  location={personViewLocation}
-                  userId={user.id}
-                  customHolidays={personCustomHolidays}
-                  onAddCustomDay={handleOpenAddCustomDayModal}
-                  fallbackCards={fallbackCardsForPerson}
-                  archivedHolidayIds={personArchivedHolidayIds}
-                  onArchiveHoliday={handlePersonArchiveHoliday}
-                  onUnarchiveHoliday={handlePersonUnarchiveHoliday}
-                  onCardPress={handlePersonCardPress}
-                  onSaveCardPress={(cardData, index, allCardData) => {
-                    // Build ExpandedCardData from raw cardData — preserves ALL fields
-                    const viewerLat = personViewLocation.latitude;
-                    const viewerLng = personViewLocation.longitude;
-                    const buildExpanded = (cd: Record<string, any>): ExpandedCardData => {
-                      const placeLat = cd.lat ?? cd.location?.lat;
-                      const placeLng = cd.lng ?? cd.location?.lng;
-                      // Personalize travel time/distance to the VIEWING user
-                      const travel = (placeLat && placeLng && viewerLat && viewerLng)
-                        ? computeTravelInfo(viewerLat, viewerLng, placeLat, placeLng, userTravelMode || 'walking')
-                        : { travelTime: '', distance: '' };
-                      return {
-                        id: cd.id || '',
-                        placeId: cd.placeId || cd.googlePlaceId || cd.id || '',
-                        title: cd.title || '',
-                        category: cd.category || '',
-                        categoryIcon: cd.categoryIcon || getCategoryIcon(cd.category) || 'leaf-outline',
-                        description: cd.description || '',
-                        fullDescription: cd.fullDescription || cd.description || '',
-                        image: cd.image || cd.images?.[0] || '',
-                        images: cd.images || (cd.image ? [cd.image] : []),
-                        rating: cd.rating ?? 0,
-                        reviewCount: cd.reviewCount ?? 0,
-                        priceRange: cd.priceRange || '',
-                        distance: travel.distance,
-                        travelTime: travel.travelTime,
-                        address: cd.address || '',
-                        openingHours: cd.openingHours || null,
-                        website: cd.website || undefined,
-                        phone: cd.phone || undefined,
-                        location: (placeLat && placeLng) ? { lat: placeLat, lng: placeLng } : undefined,
-                        highlights: cd.highlights || [],
-                        tags: cd.tags || [],
-                        matchScore: cd.matchScore ?? 0,
-                        matchFactors: cd.matchFactors || { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
-                        socialStats: cd.socialStats || { views: 0, likes: 0, saves: 0, shares: 0 },
-                        selectedDateTime: new Date(),
-                        priceTier: cd.priceTier,
-                        ...(cd.cardType === 'curated' ? {
-                          cardType: 'curated' as const,
-                          stops: cd.stops,
-                          tagline: cd.tagline,
-                          totalPriceMin: cd.totalPriceMin,
-                          totalPriceMax: cd.totalPriceMax,
-                          estimatedDurationMinutes: cd.estimatedDurationMinutes,
-                          experienceType: cd.experienceType,
-                          shoppingList: cd.shoppingList,
-                        } : {}),
-                      } as ExpandedCardData;
-                    };
-                    const allExpanded = allCardData.map(buildExpanded);
-                    expandedCardListRef.current = allExpanded;
-                    setExpandedCardIndex(index);
-                    setSelectedCardForExpansion(allExpanded[index]);
-                    setIsExpandedModalVisible(true);
-                  }}
-                  onDeleteCustomDay={handleConfirmDeleteCustomHoliday}
-                  travelMode={userTravelMode}
-                  autoOpenSaves={autoOpenSaves}
-                  onAutoOpenSavesConsumed={() => setAutoOpenSaves(false)}
-                />
-              )}
-
-              {/* Map — always mounted, hidden when PersonHolidayView active */}
-              <View ref={coachMap.targetRef as any} style={isMapShowing ? styles.mapFullscreen : styles.mapHidden}>
+              {/* Map — always visible in For You tab */}
+              <View ref={coachMap.targetRef as any} style={styles.mapFullscreen}>
               <View style={{ flex: 1 }}>
                 <DiscoverMap
                   cards={recommendations}
@@ -3676,163 +2246,22 @@ export default function DiscoverScreen({
                   onPersonMessage={(userId) => {
                     if (onOpenChatWithUser) {
                       onOpenChatWithUser(userId);
-                      return;
-                    }
-                    const pill = pairingPills.find((p) => p.pairedUserId === userId);
-                    if (pill) setSelectedPillId(pill.id);
-                  }}
-                  onPersonCards={(userId) => {
-                    const pill = pairingPills.find(p => p.pairedUserId === userId);
-                    if (pill) {
-                      setSelectedPillId(pill.id);
-                      setAutoOpenSaves(true);
                     }
                   }}
+                  onPersonCards={() => {}}
                   onPersonProfile={(userId) => onViewFriendProfile?.(userId)}
                   accountPreferences={discoverMapAccountPreferences}
                   userLocation={discoverMapUserLocation}
                   isLoading={recommendationsLoading}
                   centerTrigger={mapCenterTrigger}
                   paused={!isTabVisible}
-                  activePairedUserIds={activePairedUserIds}
+                  activePairedUserIds={[]}
                   pendingFocusCardId={deepLinkParams?.cardId ?? null}
                   onFocusCardHandled={onDeepLinkHandled}
                 />
               </View>
               </View>
 
-              {/* Legacy ForYou grid content — hidden while map is active */}
-              {false && (
-                <>
-                  {/* Paired People Row — horizontal scroll of paired people cards */}
-                  <PairedPeopleRow
-                    people={pairingPills
-                      .filter((p) => p.pillState === "active" && p.pairedUserId)
-                      .map((p) => ({
-                        pairedUserId: p.pairedUserId!,
-                        pairingId: p.pairingId!,
-                        displayName: p.displayName,
-                        firstName: p.firstName,
-                        avatarUrl: p.avatarUrl,
-                        initials: p.initials,
-                        birthday: p.birthday,
-                        gender: p.gender,
-                      }))}
-                    onSelectPerson={(person) => {
-                      // Find the matching pill and select it
-                      const pill = pairingPills.find(
-                        (p) => p.pairedUserId === person.pairedUserId
-                      );
-                      if (pill) {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setSelectedPillId(pill.id);
-                      }
-                    }}
-                  />
-
-                  {/* Loading State */}
-                  {recommendationsLoading && !hasCompletedInitialFetch && (
-                    <View style={styles.loadingContainer}>
-                      <ActivityIndicator size="large" color="#eb7825" />
-                      <Text style={styles.loadingText}>{t('discover:loading.for_you')}</Text>
-                    </View>
-                  )}
-
-                  {/* Error State */}
-                  {recommendationsError && !recommendationsLoading && (
-                    <View style={styles.emptyStateContainer}>
-                      <Icon name="alert-circle-outline" size={48} color="#ef4444" />
-                      <Text style={styles.emptyStateTitle}>{t('discover:error.title')}</Text>
-                      <Text style={styles.emptyStateSubtitle}>{recommendationsError}</Text>
-                      <TouchableOpacity
-                        onPress={() => setDiscoverRetryKey(k => k + 1)}
-                        style={styles.retryButton}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.retryButtonText}>{t('discover:error.try_again')}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {/* Empty State */}
-                  {!recommendationsLoading && !recommendationsError && !featuredCard && gridCards.length === 0 && recommendations.length === 0 && hasCompletedInitialFetch && (
-                    <View style={styles.emptyStateContainer}>
-                      <Icon name="compass-outline" size={48} color="#eb7825" />
-                      <Text style={styles.emptyStateTitle}>{t('discover:empty.no_experiences')}</Text>
-                      <Text style={styles.emptyStateSubtitle}>
-                        {t('discover:empty.adjust_preferences')}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Content - Hero Cards and Grid */}
-                  {(selectedHeroCards.length > 0 || featuredCard || gridCards.length > 0) && (
-                    <>
-                      {/* Hero Cards — 2 side-by-side at the top (Fine Dining + Play) */}
-                      {selectedHeroCards.length > 0 ? (
-                        <Animated.View
-                          style={{
-                            opacity: featuredCardOpacity,
-                            transform: [{ translateY: featuredCardSlide }],
-                          }}
-                        >
-                          <View style={styles.heroCardsRow}>
-                            {selectedHeroCards.slice(0, 2).map((heroCard) => (
-                              <HeroCard
-                                key={heroCard.id}
-                                card={heroCard}
-                                currency={accountPreferences?.currency}
-                                measurementSystem={accountPreferences?.measurementSystem}
-                                onPress={() => handleCardPress(heroCard)}
-                              />
-                            ))}
-                          </View>
-                        </Animated.View>
-                      ) : featuredCard ? (
-                        <Animated.View
-                          style={{
-                            opacity: featuredCardOpacity,
-                            transform: [{ translateY: featuredCardSlide }],
-                          }}
-                        >
-                          <FeaturedCard
-                            card={featuredCard!}
-                            currency={accountPreferences?.currency}
-                            measurementSystem={accountPreferences?.measurementSystem}
-                            onPress={() => handleCardPress(featuredCard!)}
-                          />
-                        </Animated.View>
-                      ) : null}
-
-                      {/* Grid Cards Section */}
-                      <View style={styles.gridCardsContainer}>
-                        {gridCards.map((card, index) => {
-                          // Right column (odd indices) lag slightly behind left column
-                          const isRightColumn = index % 2 === 1;
-                          
-                          return (
-                            <Animated.View
-                              key={`${card.id}-${index}`}
-                              style={{
-                                opacity: isRightColumn ? gridCardsRightOpacity : gridCardsLeftOpacity,
-                                transform: [
-                                  { translateY: isRightColumn ? gridCardsRightSlide : gridCardsLeftSlide },
-                                ],
-                              }}
-                            >
-                              <GridCard
-                                card={card}
-                                currency={accountPreferences?.currency}
-                                onPress={() => handleGridCardPress(card)}
-                              />
-                            </Animated.View>
-                          );
-                        })}
-                      </View>
-                    </>
-                  )}
-                </>
-              )}
             </>
           )}
 
@@ -3995,57 +2424,11 @@ export default function DiscoverScreen({
         }}
       />
 
-      {/* Pair Request Modal */}
-      <PairRequestModal
-        visible={isPairModalVisible}
-        onClose={() => setIsPairModalVisible(false)}
-        onPairRequestSent={() => {
-          setIsPairModalVisible(false);
-        }}
-        onPairingLimitReached={() => {
-          setIsPairModalVisible(false);
-          setPaywallFeature('pairing');
-          if (onUpgradePress) onUpgradePress();
-          else setShowPaywall(true);
-        }}
-      />
-
-      {/* Incoming Pair Request Card (tap on incoming request pill) */}
-      <IncomingPairRequestCard
-        visible={!!incomingRequestPill}
-        request={incomingRequestPill}
-        onAccept={() => setIncomingRequestPill(null)}
-        onDecline={() => setIncomingRequestPill(null)}
-        onClose={() => setIncomingRequestPill(null)}
-      />
-
-      {/* Pairing Info Card (tap on greyed/pending pill) */}
-      <PairingInfoCard
-        visible={!!infoPill}
-        pill={infoPill}
-        onCancel={() => {
-          if (infoPill?.type === 'pending_invite') {
-            cancelInviteMutation.mutate(infoPill.pendingInviteId!);
-          } else if (infoPill?.pairRequestId) {
-            cancelRequestMutation.mutate(infoPill.pairRequestId);
-          }
-          setInfoPill(null);
-        }}
-        onClose={() => setInfoPill(null)}
-      />
-
       <CustomPaywallScreen
         isVisible={showPaywall}
         onClose={() => setShowPaywall(false)}
         userId={user?.id ?? ''}
         feature={paywallFeature}
-      />
-
-      {/* Add Custom Day Modal */}
-      <CustomHolidayModal
-        visible={isAddCustomDayModalVisible}
-        onClose={handleCloseAddCustomDayModal}
-        onSave={handleCustomHolidaySave}
       />
 
       {/* Night Out Filter Modal */}
