@@ -89,10 +89,13 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
     }
   }, [participants]);
 
-  // Sync local name when sheet opens or sessionName changes
+  // Sync local name from props — but NOT while actively saving (prevents
+  // realtime UPDATE events from fighting with the user's input).
   useEffect(() => {
-    setEditSessionName(sessionName);
-  }, [sessionName, visible]);
+    if (!savingName) {
+      setEditSessionName(sessionName);
+    }
+  }, [sessionName, visible]); // savingName intentionally excluded — we only want to gate, not re-trigger
 
   const canManageSession =
     currentUserId &&
@@ -418,7 +421,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                       activeOpacity={0.7}
                     >
                       <Icon
-                        name={notificationsEnabled ? "bell-off" : "bell"}
+                        name={notificationsEnabled ? "notifications-off" : "notifications"}
                         size={18}
                         color="#6B7280"
                       />
