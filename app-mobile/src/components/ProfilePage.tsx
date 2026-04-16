@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useQuery } from '@tanstack/react-query';
 import { useCoachMarkContext } from "../contexts/CoachMarkContext";
 import {
   Text,
@@ -24,6 +25,8 @@ import { useProfileInterests, useUpdateProfileInterests } from "../hooks/useProf
 import ProfileHeroSection from "./profile/ProfileHeroSection";
 import ProfileInterestsSection from "./profile/ProfileInterestsSection";
 import ProfileStatsRow from "./profile/ProfileStatsRow";
+import { leaderboardService } from "../services/leaderboardService";
+import { leaderboardKeys } from "../hooks/queryKeys";
 import SettingsRow from "./profile/SettingsRow";
 import EditBioSheet from "./profile/EditBioSheet";
 import EditInterestsSheet from "./profile/EditInterestsSheet";
@@ -84,6 +87,23 @@ export default function ProfilePage({
   const [isUploading, setIsUploading] = useState(false);
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
+
+  // ORCH-0437: Fetch real user level from user_levels table
+  const { data: levelData } = useQuery({
+    queryKey: leaderboardKeys.userLevel(user?.id ?? ''),
+    queryFn: () => leaderboardService.fetchUserLevel(user!.id),
+    enabled: !!user?.id,
+    staleTime: 60_000,
+  });
+  const userLevel = levelData?.level ?? 1;
+  const userXp = levelData?.xp_score ?? 0;
+  // Progress to next level: ln-based curve — level = floor(10*ln(xp+1))+1
+  // Next level XP = e^((level)/10) - 1
+  const nextLevelXp = Math.exp((userLevel) / 10) - 1;
+  const currentLevelXp = Math.exp((userLevel - 1) / 10) - 1;
+  const levelProgress = nextLevelXp > currentLevelXp
+    ? Math.min(1, (userXp - currentLevelXp) / (nextLevelXp - currentLevelXp))
+    : 0;
   // onUserIdentityUpdate comes via props — no more useAppState() call.
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -337,8 +357,8 @@ export default function ProfilePage({
               scheduledCount={scheduledCount}
               placesVisited={0}
               streakDays={0}
-              level={1}
-              levelProgress={0.35}
+              level={userLevel}
+              levelProgress={levelProgress}
               onStatPress={(stat) => {
                 if (stat === "saved") onNavigateToActivity?.("saved");
                 else if (stat === "scheduled") onNavigateToActivity?.("calendar");

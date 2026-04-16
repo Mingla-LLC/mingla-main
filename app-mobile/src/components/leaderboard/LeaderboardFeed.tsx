@@ -3,15 +3,17 @@
  * Assembles all leaderboard components + wires hooks.
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { View, FlatList, StyleSheet, Dimensions, Text } from 'react-native';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { View, FlatList, StyleSheet, Dimensions, Text, Keyboard, Pressable, Alert } from 'react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLeaderboardPresence } from '../../hooks/useLeaderboardPresence';
 import { useTagAlongRequests } from '../../hooks/useTagAlongRequests';
 import { useMapSettings } from '../../hooks/useMapSettings';
 import { leaderboardService } from '../../services/leaderboardService';
+import { PreferencesService } from '../../services/preferencesService';
 import { useAppStore } from '../../store/appStore';
 import { AmbientGradient } from './AmbientGradient';
-import { LeaderboardProfileHeader } from './LeaderboardProfileHeader';
+import { LeaderboardProfileHeader, type LeaderboardProfileHeaderHandle } from './LeaderboardProfileHeader';
 import { LeaderboardFilters, type LeaderboardFilterState } from './LeaderboardFilters';
 import { LeaderboardCard } from './LeaderboardCard';
 import { LeaderboardSkeleton } from './LeaderboardSkeleton';
@@ -19,7 +21,8 @@ import { LeaderboardEmptyState } from './LeaderboardEmptyState';
 import { TagAlongBanner } from './TagAlongBanner';
 import { TagAlongMatchOverlay } from './TagAlongMatchOverlay';
 import { colors } from '../../constants/designSystem';
-import type { LeaderboardUser, AcceptTagAlongResponse } from '../../types/leaderboard';
+import type { LeaderboardUser, LeaderboardPresenceRow, AcceptTagAlongResponse } from '../../types/leaderboard';
+import { leaderboardKeys } from '../../hooks/queryKeys';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -27,15 +30,19 @@ interface LeaderboardFeedProps {
   userLocation: { lat: number; lng: number } | null;
   onOpenPreferences: () => void;
   onOpenSession?: (sessionId: string) => void;
+  onDeckPreferencesChanged?: () => void;
 }
 
 export function LeaderboardFeed({
   userLocation,
   onOpenPreferences,
   onOpenSession,
+  onDeckPreferencesChanged,
 }: LeaderboardFeedProps): React.ReactElement {
   const user = useAppStore((s) => s.user);
-  const { settings } = useMapSettings();
+  const { settings, isLoading: settingsLoading, updateSettings: updateMapSettings } = useMapSettings();
+  const headerRef = useRef<LeaderboardProfileHeaderHandle>(null);
+  const queryClient = useQueryClient();
 
   const {
     users,
@@ -54,18 +61,7 @@ export function LeaderboardFeed({
   } = useTagAlongRequests(user?.id);
 
   // ORCH-0437: Register on leaderboard when tab opens (if discoverable)
-  useEffect(() => {
-    if (userLocation && settings?.is_discoverable) {
-      leaderboardService.upsertPresence({
-        lat: userLocation.lat,
-        lng: userLocation.lng,
-        is_discoverable: true,
-        visibility_level: settings.visibility_level,
-        activity_status: settings.activity_status ?? undefined,
-        available_seats: settings.available_seats,
-      }).catch((err) => console.warn('[LeaderboardFeed] Initial presence registration failed:', err));
-    }
-  }, [userLocation?.lat, userLocation?.lng, settings?.is_discoverable]);
+  // Initial presence registration moved after allPreferenceCategories declaration
 
   // Filters
   const [filters, setFilters] = useState<LeaderboardFilterState>({
@@ -74,6 +70,7 @@ export function LeaderboardFeed({
     categories: [],
     minSeats: 0,
   });
+  const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
 
   // Match overlay state
   const [matchData, setMatchData] = useState<{
@@ -83,12 +80,27 @@ export function LeaderboardFeed({
     sessionId: string;
   }>({ visible: false, theirAvatarUrl: null, theirName: '', sessionId: '' });
 
+  // Active filter count for the badge
+  const activeFilterCount = useMemo((): number => {
+    return (filters.radiusKm !== 5 ? 1 : 0) +
+      filters.statuses.length +
+      filters.categories.length +
+      (filters.minSeats > 0 ? 1 : 0);
+  }, [filters]);
+
   // Apply client-side filters
   const filteredUsers = useMemo((): LeaderboardUser[] => {
     return users.filter((u) => {
       if (u.distance_km > filters.radiusKm) return false;
       if (filters.statuses.length > 0 && u.activity_status && !filters.statuses.includes(u.activity_status)) return false;
-      if (filters.minSeats > 0 && u.available_seats < filters.minSeats) return false;
+      if (filters.minSeats > 0) {
+        // 5 = "5+" filter (5 or more), others = exact match
+        if (filters.minSeats >= 5) {
+          if (u.available_seats < 5) return false;
+        } else {
+          if (u.available_seats !== filters.minSeats) return false;
+        }
+      }
       if (filters.categories.length > 0) {
         const hasMatch = u.preference_categories.some((c) => filters.categories.includes(c));
         if (!hasMatch) return false;
@@ -103,7 +115,6 @@ export function LeaderboardFeed({
 
   const handleAcceptRequest = useCallback(async (requestId: string): Promise<void> => {
     const result: AcceptTagAlongResponse = await acceptRequest(requestId);
-    // Show match overlay
     const req = incomingRequests.find((r) => r.id === requestId);
     setMatchData({
       visible: true,
@@ -114,8 +125,9 @@ export function LeaderboardFeed({
   }, [acceptRequest, incomingRequests]);
 
   const handleExpandRadius = useCallback((): void => {
-    const currentIdx = [1, 5, 10, 25, 50, 100].indexOf(filters.radiusKm);
-    const nextKm = [1, 5, 10, 25, 50, 100][Math.min(currentIdx + 1, 5)] ?? 100;
+    const opts = [5, 10, 25, 50, 100];
+    const currentIdx = opts.indexOf(filters.radiusKm);
+    const nextKm = opts[Math.min(currentIdx + 1, opts.length - 1)] ?? 100;
     setFilters((prev) => ({ ...prev, radiusKm: nextKm }));
   }, [filters.radiusKm]);
 
@@ -124,7 +136,7 @@ export function LeaderboardFeed({
     onOpenSession?.(sessionId);
   }, [onOpenSession]);
 
-  const cardWidth = SCREEN_WIDTH - 32; // 16px margins each side
+  const cardWidth = SCREEN_WIDTH - 32;
 
   const renderCard = useCallback(({ item }: { item: LeaderboardUser }): React.ReactElement => (
     <LeaderboardCard
@@ -138,12 +150,131 @@ export function LeaderboardFeed({
 
   const keyExtractor = useCallback((item: LeaderboardUser): string => item.user_id, []);
 
-  // Profile header data
   const myPresence = users.find((u) => u.user_id === user?.id);
-  const profile = useAppStore((s) => s.user);
+  const profile = useAppStore((s) => s.profile);
+
+  // Fetch accurate level from user_levels table (authoritative, not from presence cache)
+  const { data: myLevelData } = useQuery({
+    queryKey: leaderboardKeys.userLevel(user?.id ?? ''),
+    queryFn: () => leaderboardService.fetchUserLevel(user!.id),
+    enabled: !!user?.id,
+    staleTime: 60_000,
+  });
+  const myLevel = myLevelData?.level ?? myPresence?.user_level ?? 1;
+
+  // Read user preferences for header display (intents + categories)
+  const { data: userPrefs } = useQuery({
+    queryKey: ['userPreferences', user?.id],
+    queryFn: () => PreferencesService.getUserPreferences(user!.id),
+    enabled: !!user?.id,
+    staleTime: Infinity, // Same staleTime as DiscoverScreen — cached from preference load
+  });
+
+  const userIntents = useMemo((): string[] => {
+    if (!userPrefs?.intents) return [];
+    return Array.isArray(userPrefs.intents) ? userPrefs.intents : [];
+  }, [userPrefs?.intents]);
+
+  const userCategories = useMemo((): string[] => {
+    if (!userPrefs?.categories) return [];
+    const intentIds = new Set(['adventurous', 'first-date', 'romantic', 'group-fun', 'picnic-dates', 'take-a-stroll']);
+    return (Array.isArray(userPrefs.categories) ? userPrefs.categories : []).filter((c: string) => !intentIds.has(c));
+  }, [userPrefs?.categories]);
+
+  // Combine intents + categories for presence registration
+  const allPreferenceCategories = useMemo((): string[] => {
+    return [...userIntents, ...userCategories];
+  }, [userIntents, userCategories]);
+
+  // Register on leaderboard when tab opens (if discoverable)
+  useEffect(() => {
+    if (userLocation && settings?.is_discoverable) {
+      leaderboardService.upsertPresence({
+        lat: userLocation.lat,
+        lng: userLocation.lng,
+        is_discoverable: true,
+        visibility_level: settings.visibility_level,
+        activity_status: settings.activity_status ?? undefined,
+        available_seats: settings.available_seats,
+        preference_categories: allPreferenceCategories,
+      }).then((res) => {
+        if (res?.user_level && user?.id) {
+          // Update presence cache with accurate level
+          queryClient.setQueryData<LeaderboardPresenceRow[]>(
+            leaderboardKeys.presence(),
+            (old) => old?.map((u) =>
+              u.user_id === user.id ? { ...u, user_level: res.user_level } : u
+            ) ?? old,
+          );
+          // Also refresh the level query
+          queryClient.invalidateQueries({ queryKey: leaderboardKeys.userLevel(user.id) });
+        }
+      }).catch((err) => console.warn('[LeaderboardFeed] Initial presence registration failed:', err));
+    }
+  }, [userLocation?.lat, userLocation?.lng, settings?.is_discoverable, allPreferenceCategories]);
+
+  // ── Inline save handlers (auto-save on change) ──
+
+  const handleVisibilityChange = useCallback((val: boolean): void => {
+    updateMapSettings({ is_discoverable: val }).catch((err) =>
+      console.warn('[LeaderboardFeed] Visibility save failed:', err));
+  }, [updateMapSettings]);
+
+  const handleStatusChange = useCallback((val: string | null): void => {
+    updateMapSettings({ activity_status: val }).catch((err) =>
+      console.warn('[LeaderboardFeed] Status save failed:', err));
+  }, [updateMapSettings]);
+
+  const handleSeatsChange = useCallback((val: number): void => {
+    updateMapSettings({ available_seats: val }).catch((err) =>
+      console.warn('[LeaderboardFeed] Seats save failed:', err));
+  }, [updateMapSettings]);
+
+  const applyDeckChange = useCallback((updater: () => void): void => {
+    Alert.alert(
+      'Update your deck?',
+      'Changing this will refresh your swipeable cards to match your new preferences.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Update',
+          style: 'default',
+          onPress: () => {
+            updater();
+            onDeckPreferencesChanged?.();
+          },
+        },
+      ],
+    );
+  }, [onDeckPreferencesChanged]);
+
+  const handleIntentsChange = useCallback((newIntents: string[]): void => {
+    if (!user?.id) return;
+    applyDeckChange(() => {
+      queryClient.setQueryData(['userPreferences', user.id], (old: Record<string, unknown> | undefined) => {
+        if (!old) return old;
+        return { ...old, intents: newIntents };
+      });
+      PreferencesService.updateUserPreferences(user.id, { intents: newIntents } as never)
+        .catch((err) => console.warn('[LeaderboardFeed] Intents save failed:', err));
+    });
+  }, [user?.id, queryClient, applyDeckChange]);
+
+  const handleCategoriesChange = useCallback((newCategories: string[]): void => {
+    if (!user?.id) return;
+    applyDeckChange(() => {
+      const merged = [...newCategories, ...userIntents];
+      queryClient.setQueryData(['userPreferences', user.id], (old: Record<string, unknown> | undefined) => {
+        if (!old) return old;
+        return { ...old, categories: merged };
+      });
+      PreferencesService.updateUserPreferences(user.id, { categories: merged } as never)
+        .catch((err) => console.warn('[LeaderboardFeed] Categories save failed:', err));
+    });
+  }, [user?.id, userIntents, queryClient, applyDeckChange]);
 
   return (
-    <View style={styles.container}>
+    <Pressable style={styles.container} onPress={() => { Keyboard.dismiss(); headerRef.current?.collapse(); }}>
       <AmbientGradient />
 
       {/* Tag-along banners (overlay at top) */}
@@ -159,26 +290,29 @@ export function LeaderboardFeed({
         ))}
       </View>
 
-      {/* Self-profile header */}
+      {/* Self-profile header — wait for settings to load to avoid toggle flicker */}
+      {!settingsLoading && (
       <View style={styles.headerSection}>
         <LeaderboardProfileHeader
+          ref={headerRef}
           avatarUrl={profile?.avatar_url ?? null}
           displayName={profile?.display_name ?? profile?.first_name ?? 'You'}
-          level={myPresence?.user_level ?? 1}
+          level={myLevel}
           status={settings?.activity_status ?? null}
-          categories={myPresence?.preference_categories ?? []}
+          categories={userCategories}
+          intents={userIntents}
           availableSeats={settings?.available_seats ?? 1}
-          activeMinutes={myPresence?.active_for_minutes ?? 0}
           isDiscoverable={settings?.is_discoverable ?? false}
-          swipeCount={myPresence?.swipe_count ?? 0}
-          onPress={onOpenPreferences}
+          activeFilterCount={activeFilterCount}
+          onVisibilityChange={handleVisibilityChange}
+          onStatusChange={handleStatusChange}
+          onIntentsChange={handleIntentsChange}
+          onCategoriesChange={handleCategoriesChange}
+          onSeatsChange={handleSeatsChange}
+          onFilterPress={() => setIsFilterModalVisible(true)}
         />
       </View>
-
-      {/* Filters */}
-      <View style={styles.filterSection}>
-        <LeaderboardFilters filters={filters} onFiltersChange={setFilters} />
-      </View>
+      )}
 
       {/* Main list */}
       {isLoading ? (
@@ -189,7 +323,7 @@ export function LeaderboardFeed({
           <Text style={styles.errorRetry}>Pull down to retry.</Text>
         </View>
       ) : filteredUsers.length === 0 ? (
-        <LeaderboardEmptyState onExpandRadius={handleExpandRadius} />
+        <LeaderboardEmptyState onExpandRadius={() => setIsFilterModalVisible(true)} />
       ) : (
         <FlatList
           data={filteredUsers}
@@ -197,9 +331,18 @@ export function LeaderboardFeed({
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          // [TRANSITIONAL] Using FlatList — FlashList not installed. Exit: install @shopify/flash-list
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={() => { Keyboard.dismiss(); headerRef.current?.collapse(); }}
         />
       )}
+
+      {/* Filter bottom sheet modal */}
+      <LeaderboardFilters
+        visible={isFilterModalVisible}
+        filters={filters}
+        onFiltersChange={setFilters}
+        onClose={() => setIsFilterModalVisible(false)}
+      />
 
       {/* Match overlay */}
       <TagAlongMatchOverlay
@@ -210,7 +353,7 @@ export function LeaderboardFeed({
         sessionId={matchData.sessionId}
         onGoToSession={handleGoToSession}
       />
-    </View>
+    </Pressable>
   );
 }
 
@@ -229,11 +372,8 @@ const styles = StyleSheet.create({
   headerSection: {
     paddingTop: 8,
   },
-  filterSection: {
-    marginTop: 8,
-  },
   listContent: {
-    paddingTop: 10,
+    paddingTop: 12,
     paddingBottom: 100,
   },
   errorContainer: {

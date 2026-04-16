@@ -1,281 +1,327 @@
 /**
- * ORCH-0437: Horizontal scrollable filter pills bar for the leaderboard.
- * Radius, Status, Categories, Seats — with glassmorphic dropdowns.
+ * ORCH-0437: Leaderboard filter bottom sheet modal.
+ * Compact, no-scroll layout. Deep orange selections.
  */
 
-import React, { useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Pressable, StyleSheet } from 'react-native';
+import React from 'react';
+import { View, Text, TouchableOpacity, Modal, Pressable, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../ui/Icon';
-import { colors, glass } from '../../constants/designSystem';
+import { colors } from '../../constants/designSystem';
 
 export interface LeaderboardFilterState {
   radiusKm: number;
   statuses: string[];
   categories: string[];
-  minSeats: number; // 0 = any, 1+ = filter
+  minSeats: number;
 }
 
 interface LeaderboardFiltersProps {
+  visible: boolean;
   filters: LeaderboardFilterState;
   onFiltersChange: (filters: LeaderboardFilterState) => void;
+  onClose: () => void;
 }
 
-const RADIUS_OPTIONS = [1, 5, 10, 25, 50, 100];
-const STATUS_OPTIONS = ['Exploring', 'Looking for plans', 'Open to meet', 'Busy'];
+const RADIUS_OPTIONS = [5, 10, 25, 50, 100];
+const STATUS_OPTIONS = ['Exploring', 'Looking for plans', 'Open to meet'];
+const CATEGORY_OPTIONS = [
+  { slug: 'Nature & Views', label: 'Nature', icon: 'leaf-outline' },
+  { slug: 'Icebreakers', label: 'Social', icon: 'sparkles' },
+  { slug: 'Drinks & Music', label: 'Drinks', icon: 'wine-outline' },
+  { slug: 'Brunch Lunch & Casual', label: 'Casual', icon: 'fast-food-outline' },
+  { slug: 'Upscale & Fine Dining', label: 'Dining', icon: 'restaurant-outline' },
+  { slug: 'Movies & Theatre', label: 'Movies', icon: 'film-outline' },
+  { slug: 'Creative & Arts', label: 'Arts', icon: 'color-palette-outline' },
+  { slug: 'Play', label: 'Play', icon: 'game-controller-outline' },
+];
 const SEATS_OPTIONS = [
   { label: 'Any', value: 0 },
-  { label: 'Has open seats', value: 1 },
-  { label: '2+ seats', value: 2 },
-  { label: '3+ seats', value: 3 },
+  { label: '1', value: 1 },
+  { label: '2', value: 2 },
+  { label: '3', value: 3 },
+  { label: '4', value: 4 },
+  { label: '5+', value: 5 },
 ];
 
-type ActiveDropdown = 'radius' | 'status' | 'categories' | 'seats' | null;
+export function LeaderboardFilters({
+  visible,
+  filters,
+  onFiltersChange,
+  onClose,
+}: LeaderboardFiltersProps): React.ReactElement | null {
+  const insets = useSafeAreaInsets();
 
-export function LeaderboardFilters({ filters, onFiltersChange }: LeaderboardFiltersProps): React.ReactElement {
-  const [activeDropdown, setActiveDropdown] = useState<ActiveDropdown>(null);
+  const activeCount =
+    (filters.radiusKm !== 5 ? 1 : 0) +
+    filters.statuses.length +
+    filters.categories.length +
+    (filters.minSeats > 0 ? 1 : 0);
 
-  const toggleDropdown = useCallback((dropdown: ActiveDropdown): void => {
-    setActiveDropdown((prev) => (prev === dropdown ? null : dropdown));
-  }, []);
-
-  const closeDropdown = useCallback((): void => {
-    setActiveDropdown(null);
-  }, []);
-
-  const hasActiveFilters = (type: string): boolean => {
-    switch (type) {
-      case 'radius': return filters.radiusKm !== 5;
-      case 'status': return filters.statuses.length > 0;
-      case 'categories': return filters.categories.length > 0;
-      case 'seats': return filters.minSeats > 0;
-      default: return false;
-    }
-  };
+  if (!visible) return null;
 
   return (
-    <View style={styles.container}>
-      {activeDropdown && (
-        <Pressable style={StyleSheet.absoluteFillObject} onPress={closeDropdown} />
-      )}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Radius pill */}
-        <FilterPill
-          label={`${filters.radiusKm} km`}
-          active={hasActiveFilters('radius')}
-          onPress={() => toggleDropdown('radius')}
-        />
-        {/* Status pill */}
-        <FilterPill
-          label={filters.statuses.length > 0 ? `${filters.statuses.length} status` : 'Any Status'}
-          active={hasActiveFilters('status')}
-          onPress={() => toggleDropdown('status')}
-          badge={filters.statuses.length > 0 ? filters.statuses.length : undefined}
-        />
-        {/* Categories pill */}
-        <FilterPill
-          label={filters.categories.length > 0 ? `${filters.categories.length} categories` : 'All'}
-          active={hasActiveFilters('categories')}
-          onPress={() => toggleDropdown('categories')}
-          badge={filters.categories.length > 0 ? filters.categories.length : undefined}
-        />
-        {/* Seats pill */}
-        <FilterPill
-          label={filters.minSeats > 0 ? `${filters.minSeats}+ seats` : 'Seats'}
-          active={hasActiveFilters('seats')}
-          onPress={() => toggleDropdown('seats')}
-        />
-      </ScrollView>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <Pressable style={styles.backdrop} onPress={onClose} />
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}>
+          {/* Handle bar */}
+          <View style={styles.handleBar} />
 
-      {/* Dropdown overlays */}
-      {activeDropdown === 'radius' && (
-        <View style={[styles.dropdown, styles.dropdownRadius]}>
-          {RADIUS_OPTIONS.map((km) => (
-            <TouchableOpacity
-              key={km}
-              style={[styles.dropdownOption, filters.radiusKm === km && styles.dropdownOptionActive]}
-              onPress={() => { onFiltersChange({ ...filters, radiusKm: km }); closeDropdown(); }}
-            >
-              <Text style={[styles.dropdownOptionText, filters.radiusKm === km && styles.dropdownOptionTextActive]}>
-                {km} km
-              </Text>
-              {filters.radiusKm === km && <Icon name="checkmark" size={10} color={colors.accent} />}
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>Filter who you see</Text>
+            <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
+              <Icon name="close" size={18} color={colors.gray[500]} />
             </TouchableOpacity>
-          ))}
-        </View>
-      )}
+          </View>
 
-      {activeDropdown === 'status' && (
-        <View style={[styles.dropdown, styles.dropdownStatus]}>
-          {STATUS_OPTIONS.map((status) => {
-            const isSelected = filters.statuses.includes(status);
-            return (
+          {/* Distance */}
+          <View style={styles.section}>
+            <Text style={styles.label}>Distance</Text>
+            <View style={styles.chipRow}>
+              {RADIUS_OPTIONS.map((km) => {
+                const active = filters.radiusKm === km;
+                return (
+                  <TouchableOpacity
+                    key={km}
+                    style={[styles.chip, active && styles.chipActive]}
+                    onPress={() => onFiltersChange({ ...filters, radiusKm: km })}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{km} km</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Status */}
+          <View style={styles.section}>
+            <Text style={styles.label}>Status</Text>
+            <View style={styles.chipRow}>
+              {STATUS_OPTIONS.map((s) => {
+                const active = filters.statuses.includes(s);
+                return (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.chip, active && styles.chipActive]}
+                    onPress={() => {
+                      const next = active
+                        ? filters.statuses.filter((x) => x !== s)
+                        : [...filters.statuses, s];
+                      onFiltersChange({ ...filters, statuses: next });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{s}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Categories */}
+          <View style={styles.section}>
+            <Text style={styles.label}>Categories</Text>
+            <View style={styles.chipRow}>
+              {CATEGORY_OPTIONS.map(({ slug, label, icon }) => {
+                const active = filters.categories.includes(slug);
+                return (
+                  <TouchableOpacity
+                    key={slug}
+                    style={[styles.catChip, active && styles.chipActive]}
+                    onPress={() => {
+                      const next = active
+                        ? filters.categories.filter((c) => c !== slug)
+                        : [...filters.categories, slug];
+                      onFiltersChange({ ...filters, categories: next });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Icon name={icon} size={13} color={active ? '#fff' : colors.gray[500]} />
+                    <Text style={[styles.catChipText, active && styles.catChipTextActive]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Seats */}
+          <View style={styles.sectionLast}>
+            <Text style={styles.label}>Open seats</Text>
+            <View style={styles.chipRow}>
+              {SEATS_OPTIONS.map((opt) => {
+                const active = filters.minSeats === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[styles.chip, active && styles.chipActive]}
+                    onPress={() => onFiltersChange({ ...filters, minSeats: opt.value })}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Footer: Reset + Done */}
+          <View style={styles.footer}>
+            {activeCount > 0 ? (
               <TouchableOpacity
-                key={status}
-                style={[styles.dropdownOption, isSelected && styles.dropdownOptionActive]}
-                onPress={() => {
-                  const next = isSelected
-                    ? filters.statuses.filter((s) => s !== status)
-                    : [...filters.statuses, status];
-                  onFiltersChange({ ...filters, statuses: next });
-                }}
+                onPress={() => onFiltersChange({ radiusKm: 5, statuses: [], categories: [], minSeats: 0 })}
+                activeOpacity={0.7}
+                style={styles.resetBtn}
               >
-                <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
-                  {isSelected && <Icon name="checkmark" size={10} color="#fff" />}
-                </View>
-                <Text style={[styles.dropdownOptionText, isSelected && styles.dropdownOptionTextActive]}>
-                  {status}
-                </Text>
+                <Text style={styles.resetText}>Reset</Text>
               </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
-
-      {activeDropdown === 'seats' && (
-        <View style={[styles.dropdown, styles.dropdownSeats]}>
-          {SEATS_OPTIONS.map((opt) => (
-            <TouchableOpacity
-              key={opt.value}
-              style={[styles.dropdownOption, filters.minSeats === opt.value && styles.dropdownOptionActive]}
-              onPress={() => { onFiltersChange({ ...filters, minSeats: opt.value }); closeDropdown(); }}
-            >
-              <Text style={[styles.dropdownOptionText, filters.minSeats === opt.value && styles.dropdownOptionTextActive]}>
-                {opt.label}
-              </Text>
-              {filters.minSeats === opt.value && <Icon name="checkmark" size={10} color={colors.accent} />}
+            ) : (
+              <View />
+            )}
+            <TouchableOpacity style={styles.doneBtn} onPress={onClose} activeOpacity={0.8}>
+              <Text style={styles.doneText}>Done</Text>
             </TouchableOpacity>
-          ))}
+          </View>
         </View>
-      )}
-    </View>
-  );
-}
-
-function FilterPill({
-  label,
-  active,
-  onPress,
-  badge,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  badge?: number;
-}): React.ReactElement {
-  return (
-    <TouchableOpacity
-      style={[styles.pill, active && styles.pillActive]}
-      onPress={onPress}
-      activeOpacity={0.7}
-      accessibilityRole="button"
-      accessibilityLabel={`${label} filter`}
-    >
-      <Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text>
-      {badge !== undefined && badge > 0 && (
-        <View style={styles.pillBadge}>
-          <Text style={styles.pillBadgeText}>{badge}</Text>
-        </View>
-      )}
-      <Icon name="chevron-down" size={10} color={active ? colors.accent : colors.gray[400]} />
-    </TouchableOpacity>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    height: 44,
-    zIndex: 10,
+  overlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
   },
-  scrollContent: {
-    paddingHorizontal: 16,
-    gap: 8,
-    alignItems: 'center',
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  pill: {
-    ...glass.leaderboard.filterPill,
-    height: 32,
-    paddingHorizontal: 12,
+  sheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 6,
+  },
+  handleBar: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.gray[300],
+    alignSelf: 'center',
+    marginBottom: 10,
+  },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 12,
   },
-  pillActive: {
-    ...glass.leaderboard.filterPillActive,
+  title: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text.primary,
   },
-  pillText: {
+  closeBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  section: {
+    paddingHorizontal: 20,
+    marginBottom: 14,
+  },
+  sectionLast: {
+    paddingHorizontal: 20,
+    marginBottom: 6,
+  },
+  label: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.gray[600],
+    color: colors.gray[400],
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 8,
   },
-  pillTextActive: {
-    color: colors.accent,
-  },
-  pillBadge: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pillBadgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  dropdown: {
-    position: 'absolute',
-    top: 40,
-    ...glass.leaderboard.dropdown,
-    ...glass.shadow,
-    zIndex: 100,
-  },
-  dropdownRadius: {
-    left: 16,
-    width: 140,
-  },
-  dropdownStatus: {
-    left: 100,
-    width: 200,
-  },
-  dropdownSeats: {
-    right: 16,
-    width: 160,
-  },
-  dropdownOption: {
+  chipRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    height: 36,
+    flexWrap: 'wrap',
+    gap: 6,
   },
-  dropdownOptionActive: {
-    backgroundColor: 'rgba(235, 120, 37, 0.06)',
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: colors.gray[50],
+    borderWidth: 1,
+    borderColor: colors.gray[200],
   },
-  dropdownOptionText: {
-    fontSize: 13,
-    color: colors.text.primary,
-    flex: 1,
-  },
-  dropdownOptionTextActive: {
-    color: colors.accent,
-    fontWeight: '600',
-  },
-  checkbox: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: colors.gray[300],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: {
+  chipActive: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.gray[600],
+  },
+  chipTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  catChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: colors.gray[50],
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  catChipText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.gray[600],
+  },
+  catChipTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[100],
+  },
+  resetBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  resetText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.gray[500],
+  },
+  doneBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+  },
+  doneText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
   },
 });

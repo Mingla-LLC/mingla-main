@@ -194,6 +194,7 @@ export default function PreferencesSheet({
   const [leaderboardStatus, setLeaderboardStatus] = useState<string | null>(null);
   const [availableSeats, setAvailableSeats] = useState(1);
   const [customStatusText, setCustomStatusText] = useState('');
+  const [isEditingCustomStatus, setIsEditingCustomStatus] = useState(false);
 
   // Starting Point
   const [useLocation, setUseLocation] = useState<"gps" | "search">("gps");
@@ -687,10 +688,14 @@ export default function PreferencesSheet({
 
     const hasTravel = typeof constraintValue === 'number' && constraintValue >= 5;
 
-    return hasLocation && hasPills && hasDate && hasDateDetails && hasTravel;
+    // ORCH-0437: If discoverable, status must be set
+    const leaderboardOk = !isDiscoverable || (leaderboardStatus !== null && leaderboardStatus.trim().length > 0);
+
+    return hasLocation && hasPills && hasDate && hasDateDetails && hasTravel && leaderboardOk;
   }, [useGpsLocation, searchLocation, selectedCoords,
       intentToggle, categoryToggle, selectedIntents, selectedCategories,
-      selectedDateOption, selectedDates, constraintValue]);
+      selectedDateOption, selectedDates, constraintValue,
+      isDiscoverable, leaderboardStatus]);
 
   // Per-section warnings — shown as orange pills on incomplete sections
   const sectionWarnings = useMemo(() => {
@@ -1192,17 +1197,20 @@ export default function PreferencesSheet({
               transform: [{ translateY: sectionAnims[6].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
             }}>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Near You Leaderboard</Text>
-
-              {/* Master toggle */}
+              {/* Title + toggle on same line */}
               <View style={styles.lbToggleRow}>
-                <View style={styles.lbToggleTextArea}>
-                  <Text style={styles.lbToggleLabel}>Appear on the leaderboard</Text>
-                  <Text style={styles.lbToggleDescription}>Let nearby explorers find you</Text>
-                </View>
+                <Text style={styles.sectionTitle}>Let nearby explorers find you</Text>
                 <Switch
                   value={isDiscoverable}
-                  onValueChange={setIsDiscoverable}
+                  onValueChange={(val) => {
+                    setIsDiscoverable(val);
+                    if (val) {
+                      // Enforce defaults: one selection per section
+                      if (!leaderboardStatus) setLeaderboardStatus('Open to meet');
+                      if (!leaderboardVisibility || leaderboardVisibility === 'off') setLeaderboardVisibility('everyone');
+                      if (!availableSeats || availableSeats < 1) setAvailableSeats(1);
+                    }
+                  }}
                   trackColor={{ true: '#eb7825', false: '#e5e7eb' }}
                   thumbColor="#fff"
                   accessibilityLabel={`Appear on the Near You leaderboard. Currently ${isDiscoverable ? 'on' : 'off'}.`}
@@ -1229,7 +1237,7 @@ export default function PreferencesSheet({
                         <TouchableOpacity
                           key={level}
                           style={[styles.lbVisOption, isActive && styles.lbVisOptionActive]}
-                          onPress={() => setLeaderboardVisibility(level)}
+                          onPress={() => { if (level !== leaderboardVisibility) setLeaderboardVisibility(level); }}
                           activeOpacity={0.7}
                           accessibilityRole="radio"
                           accessibilityState={{ selected: isActive }}
@@ -1242,69 +1250,103 @@ export default function PreferencesSheet({
                     })}
                   </View>
 
-                  {/* Your status */}
-                  <Text style={styles.lbSubLabel}>Your status</Text>
-                  {['None', 'Exploring', 'Looking for plans', 'Open to meet', 'Busy'].map((status) => {
-                    const value = status === 'None' ? null : status;
-                    const isActive = leaderboardStatus === value;
-                    return (
+                  {/* Status — GPS-toggle style: toggle row OR chip OR input (mutually exclusive) */}
+                  <View style={styles.lbStatusSpacer} />
+                  {customStatusText.trim() && !isEditingCustomStatus ? (
+                    /* Custom chip — replaces the toggle row entirely */
+                    <View style={styles.lbCustomChip}>
+                      <Icon name="chatbubble-ellipses" size={14} color="#ffffff" />
+                      <Text style={styles.lbCustomChipText} numberOfLines={1}>{customStatusText}</Text>
                       <TouchableOpacity
-                        key={status}
-                        style={styles.lbStatusOption}
-                        onPress={() => { setLeaderboardStatus(value); setCustomStatusText(''); }}
-                        activeOpacity={0.7}
-                        accessibilityRole="radio"
-                        accessibilityState={{ selected: isActive }}
+                        onPress={() => {
+                          setCustomStatusText('');
+                          setLeaderboardStatus('Open to meet');
+                        }}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >
-                        <View style={[styles.lbRadio, isActive && styles.lbRadioActive]} />
-                        <Text style={[styles.lbStatusText, isActive && styles.lbStatusTextActive]}>{status}</Text>
+                        <Icon name="close-circle" size={16} color="rgba(255,255,255,0.7)" />
                       </TouchableOpacity>
-                    );
-                  })}
-                  {/* Custom status */}
-                  <View style={styles.lbStatusOption}>
-                    <View style={[
-                      styles.lbRadio,
-                      leaderboardStatus !== null &&
-                      !['Exploring', 'Looking for plans', 'Open to meet', 'Busy'].includes(leaderboardStatus) &&
-                      styles.lbRadioActive
-                    ]} />
+                    </View>
+                  ) : isEditingCustomStatus ? (
+                    /* Editing input — replaces the toggle row */
                     <TextInput
                       style={styles.lbCustomInput}
                       value={customStatusText}
-                      onChangeText={(text) => {
-                        setCustomStatusText(text);
-                        if (text.trim()) setLeaderboardStatus(text.trim());
-                      }}
-                      placeholder="Custom status..."
+                      onChangeText={setCustomStatusText}
+                      placeholder="What are you up to?"
                       placeholderTextColor="#9ca3af"
                       maxLength={30}
                       returnKeyType="done"
+                      autoFocus
+                      onSubmitEditing={() => {
+                        if (customStatusText.trim()) {
+                          setLeaderboardStatus(customStatusText.trim());
+                        } else {
+                          setLeaderboardStatus('Open to meet');
+                        }
+                        setIsEditingCustomStatus(false);
+                      }}
+                      onBlur={() => {
+                        if (customStatusText.trim()) {
+                          setLeaderboardStatus(customStatusText.trim());
+                        } else {
+                          setLeaderboardStatus('Open to meet');
+                        }
+                        setIsEditingCustomStatus(false);
+                      }}
                     />
-                  </View>
+                  ) : (
+                    /* Toggle row — "Open to meet" with switch */
+                    <View style={[styles.lbStatusToggleRow, leaderboardStatus === 'Open to meet' && styles.lbStatusToggleRowActive]}>
+                      <Icon
+                        name={leaderboardStatus === 'Open to meet' ? 'hand-right' : 'hand-right-outline'}
+                        size={16}
+                        color={leaderboardStatus === 'Open to meet' ? '#ffffff' : '#6b7280'}
+                      />
+                      <Text style={[styles.lbStatusToggleLabel, leaderboardStatus === 'Open to meet' && styles.lbStatusToggleLabelActive]}>
+                        {leaderboardStatus === 'Open to meet' ? 'Open to meet' : 'Type a custom status'}
+                      </Text>
+                      <Switch
+                        value={leaderboardStatus === 'Open to meet'}
+                        onValueChange={(val) => {
+                          if (val) {
+                            setLeaderboardStatus('Open to meet');
+                            setCustomStatusText('');
+                            setIsEditingCustomStatus(false);
+                          } else {
+                            setLeaderboardStatus(null);
+                            setIsEditingCustomStatus(true);
+                          }
+                        }}
+                        trackColor={{ false: '#d1d5db', true: 'rgba(255,255,255,0.3)' }}
+                        thumbColor="#ffffff"
+                        ios_backgroundColor={leaderboardStatus === 'Open to meet' ? 'rgba(255,255,255,0.3)' : '#d1d5db'}
+                      />
+                    </View>
+                  )}
 
-                  {/* Available seats */}
-                  <Text style={styles.lbSubLabel}>Available seats</Text>
-                  <Text style={styles.lbSubDescription}>How many people can tag along?</Text>
-                  <View style={styles.lbStepperRow}>
+                  {/* Seats */}
+                  <Text style={styles.lbSubLabel}>How many can tag along?</Text>
+                  <View style={styles.lbSeatsGrid}>
+                    {[1, 2, 3, 4, 5].map((n) => {
+                      const active = availableSeats === n;
+                      return (
+                        <TouchableOpacity
+                          key={n}
+                          style={[styles.lbSeatChip, active && styles.lbSeatChipActive]}
+                          onPress={() => setAvailableSeats(n)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.lbSeatChipText, active && styles.lbSeatChipTextActive]}>{n}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                     <TouchableOpacity
-                      style={[styles.lbStepperBtn, availableSeats <= 1 && styles.lbStepperBtnDisabled]}
-                      onPress={() => setAvailableSeats(Math.max(1, availableSeats - 1))}
-                      disabled={availableSeats <= 1}
+                      style={[styles.lbSeatChip, availableSeats >= 99 && styles.lbSeatChipActive]}
+                      onPress={() => setAvailableSeats(99)}
                       activeOpacity={0.7}
-                      accessibilityLabel="Decrease seats"
                     >
-                      <Icon name="remove" size={18} color={availableSeats <= 1 ? '#9ca3af' : '#374151'} />
-                    </TouchableOpacity>
-                    <Text style={styles.lbStepperValue}>{availableSeats}</Text>
-                    <TouchableOpacity
-                      style={[styles.lbStepperBtn, styles.lbStepperBtnPlus, availableSeats >= 5 && styles.lbStepperBtnDisabled]}
-                      onPress={() => setAvailableSeats(Math.min(5, availableSeats + 1))}
-                      disabled={availableSeats >= 5}
-                      activeOpacity={0.7}
-                      accessibilityLabel="Increase seats"
-                    >
-                      <Icon name="add" size={18} color={availableSeats >= 5 ? '#9ca3af' : '#fff'} />
+                      <Text style={[styles.lbSeatChipText, availableSeats >= 99 && styles.lbSeatChipTextActive]}>No limit</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1703,42 +1745,52 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   lbSubLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '500',
     color: '#6b7280',
-    marginTop: 14,
-    marginBottom: 6,
+    marginTop: 16,
+    marginBottom: 8,
   },
   lbSubDescription: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '400',
     color: '#9ca3af',
-    marginBottom: 8,
+    marginBottom: 10,
+    marginTop: -4,
   },
   lbVisibilityOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   lbVisOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    height: 42,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: '#f3f4f6',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
   },
   lbVisOptionActive: {
-    backgroundColor: 'rgba(235, 120, 37, 0.1)',
-    borderColor: 'rgba(235, 120, 37, 0.3)',
+    backgroundColor: '#eb7825',
+    borderColor: '#eb7825',
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   lbVisOptionText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
-    color: '#374151',
+    color: '#4b5563',
   },
   lbVisOptionTextActive: {
-    color: '#eb7825',
+    color: '#ffffff',
     fontWeight: '600',
   },
   lbStatusOption: {
@@ -1767,41 +1819,101 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#eb7825',
   },
-  lbCustomInput: {
-    flex: 1,
-    fontSize: 13,
-    color: '#111827',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  lbStepperRow: {
+  lbCustomChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    justifyContent: 'center',
-    marginTop: 4,
-  },
-  lbStepperBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#f3f4f6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lbStepperBtnPlus: {
+    gap: 8,
     backgroundColor: '#eb7825',
+    borderWidth: 1,
+    borderColor: '#eb7825',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 8,
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
-  lbStepperBtnDisabled: {
-    opacity: 0.4,
+  lbCustomChipText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#ffffff',
   },
-  lbStepperValue: {
-    fontSize: 20,
-    fontWeight: '700',
+  lbCustomInput: {
+    fontSize: 14,
     color: '#111827',
-    minWidth: 30,
-    textAlign: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginTop: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderWidth: 1.5,
+    borderColor: '#eb7825',
+  },
+  lbStatusSpacer: {
+    height: 16,
+  },
+  lbStatusToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+  },
+  lbStatusToggleRowActive: {
+    backgroundColor: '#eb7825',
+    borderColor: '#eb7825',
+  },
+  lbStatusToggleLabel: {
+    flex: 1,
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  lbStatusToggleLabelActive: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  lbSeatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  lbSeatChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    height: 42,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+  },
+  lbSeatChipActive: {
+    backgroundColor: '#eb7825',
+    borderColor: '#eb7825',
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  lbSeatChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#4b5563',
+  },
+  lbSeatChipTextActive: {
+    color: '#ffffff',
+    fontWeight: '600',
   },
 });

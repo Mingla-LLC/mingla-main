@@ -174,9 +174,9 @@ export const LocationInputSection = memo(
             }
             onToggleGps(val);
           }}
-          trackColor={{ false: '#d1d5db', true: 'rgba(255,255,255,0.3)' }}
-          thumbColor="#ffffff"
-          ios_backgroundColor={useGpsLocation ? 'rgba(255,255,255,0.3)' : '#d1d5db'}
+          trackColor={{ false: '#e5e7eb', true: '#ffffff' }}
+          thumbColor={useGpsLocation ? '#eb7825' : '#ffffff'}
+          ios_backgroundColor={useGpsLocation ? '#ffffff' : '#e5e7eb'}
         />
       </View>
 

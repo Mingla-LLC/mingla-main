@@ -2110,22 +2110,46 @@ export default function DiscoverScreen({
           mixpanelService.trackTabViewed({ screen: "Discover", tab: tab === "near-you" ? "Near You" : "Night Out" });
         }} />
 
-        {/* Content */}
+        {/* Near You tab — rendered outside ScrollView to avoid VirtualizedList nesting */}
+        {activeTab === "near-you" && (
+          <View style={styles.nearYouContainer}>
+            <LeaderboardFeed
+              userLocation={locationLat && locationLng ? { lat: locationLat, lng: locationLng } : null}
+              onOpenPreferences={onOpenPreferences ?? (() => {})}
+              onOpenSession={onOpenSession}
+              onDeckPreferencesChanged={() => {
+                // Same effect as Lock In — re-load categories and reset fetch guard
+                hasFetchedRef.current = false;
+                discoverSessionCache.clear();
+                const loadCategories = async (): Promise<void> => {
+                  if (!user?.id) return;
+                  try {
+                    const prefs = await PreferencesService.getUserPreferences(user.id);
+                    if (prefs?.categories && prefs.categories.length > 0) {
+                      const intentIds = new Set(['adventurous', 'first-date', 'romantic', 'group-fun', 'picnic-dates', 'take-a-stroll']);
+                      const categories = prefs.categories.filter((c: string) => !intentIds.has(c));
+                      setUserSelectedCategories(categories.length > 0 ? categories : null);
+                    } else {
+                      setUserSelectedCategories(null);
+                    }
+                    if (prefs?.travel_mode) setUserTravelMode(prefs.travel_mode);
+                  } catch (err) {
+                    console.warn('[Discover] Failed to reload categories after header change:', err);
+                  }
+                };
+                loadCategories();
+              }}
+            />
+          </View>
+        )}
+
+        {/* Night Out tab content — uses ScrollView */}
+        {activeTab === "night-out" && (
         <ScrollView
           style={styles.content}
-          contentContainerStyle={[styles.contentContainer, activeTab === 'near-you' && { flex: 1, padding: 0, paddingBottom: 0 }]}
+          contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
-          scrollEnabled={activeTab !== 'near-you'}
         >
-          {activeTab === "near-you" && (
-            <View style={styles.mapFullscreen}>
-              <LeaderboardFeed
-                userLocation={locationLat && locationLng ? { lat: locationLat, lng: locationLng } : null}
-                onOpenPreferences={onOpenPreferences ?? (() => {})}
-                onOpenSession={onOpenSession}
-              />
-            </View>
-          )}
 
           {activeTab === "night-out" && (
             <View style={styles.nightOutContent}>
@@ -2239,6 +2263,7 @@ export default function DiscoverScreen({
             </View>
           )}
         </ScrollView>
+        )}
       </View>
 
       {/* Expanded Card Modal */}
@@ -2538,6 +2563,9 @@ const styles = StyleSheet.create({
   tabHeaderScrollView: {
     marginBottom: 16,
     marginHorizontal: -16,
+  },
+  nearYouContainer: {
+    flex: 1,
   },
   mapFullscreen: {
     ...StyleSheet.absoluteFillObject,

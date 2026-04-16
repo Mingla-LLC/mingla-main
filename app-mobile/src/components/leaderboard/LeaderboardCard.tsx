@@ -1,6 +1,6 @@
 /**
- * ORCH-0437: Individual leaderboard user card.
- * Compact 88px glass card with slide-to-interest gesture.
+ * ORCH-0437: Leaderboard user card.
+ * Premium white card. Orange-only color scheme. Shows all user selections.
  */
 
 import React, { useCallback, useMemo } from 'react';
@@ -16,37 +16,42 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Icon } from '../ui/Icon';
-import { ActivityRing } from './ActivityRing';
-import { colors, glass } from '../../constants/designSystem';
+import { colors } from '../../constants/designSystem';
 import type { LeaderboardUser, ProximityTier } from '../../types/leaderboard';
 
 const CATEGORY_ICONS: Record<string, string> = {
-  'Nature & Views': 'leaf-outline',
-  'Icebreakers': 'sparkles',
-  'Drinks & Music': 'wine-outline',
-  'Brunch Lunch & Casual': 'fast-food-outline',
-  'Upscale & Fine Dining': 'restaurant-outline',
-  'Movies & Theatre': 'film-outline',
-  'Creative & Arts': 'color-palette-outline',
-  'Play': 'game-controller-outline',
-  'Wellness': 'body-outline',
-  'Flowers': 'flower-outline',
-  'Drink': 'wine-outline',
-  'Nature': 'leaf-outline',
-  'Picnic Park': 'basket-outline',
-  'First Meet': 'chatbubbles-outline',
-  'Live Performance': 'musical-notes-outline',
-  'Watch': 'film-outline',
-  'Fine Dining': 'restaurant-outline',
-  'Casual Eats': 'fast-food-outline',
+  'Nature & Views': 'leaf-outline', 'nature': 'leaf-outline',
+  'Icebreakers': 'sparkles', 'icebreakers': 'sparkles',
+  'Drinks & Music': 'wine-outline', 'drinks_and_music': 'wine-outline',
+  'Brunch Lunch & Casual': 'fast-food-outline', 'brunch_lunch_casual': 'fast-food-outline',
+  'Upscale & Fine Dining': 'restaurant-outline', 'upscale_fine_dining': 'restaurant-outline',
+  'Movies & Theatre': 'film-outline', 'movies_theatre': 'film-outline',
+  'Creative & Arts': 'color-palette-outline', 'creative_arts': 'color-palette-outline',
+  'Play': 'game-controller-outline', 'play': 'game-controller-outline',
+  // Intents
+  'adventurous': 'compass-outline',
+  'first-date': 'heart-outline',
+  'romantic': 'rose-outline',
+  'group-fun': 'people-outline',
+  'picnic-dates': 'basket-outline',
+  'take-a-stroll': 'walk-outline',
 };
 
-const PROXIMITY_COLORS: Record<ProximityTier, string> = {
-  very_close: colors.success[500],
-  nearby: colors.primary[500],
-  in_your_area: colors.warning[500],
-  further_out: colors.gray[400],
-  far_away: colors.gray[300],
+const PILL_LABELS: Record<string, string> = {
+  'Nature & Views': 'Nature', 'nature': 'Nature',
+  'Icebreakers': 'Icebreakers', 'icebreakers': 'Icebreakers',
+  'Drinks & Music': 'Drinks', 'drinks_and_music': 'Drinks',
+  'Brunch Lunch & Casual': 'Casual', 'brunch_lunch_casual': 'Casual',
+  'Upscale & Fine Dining': 'Dining', 'upscale_fine_dining': 'Dining',
+  'Movies & Theatre': 'Movies', 'movies_theatre': 'Movies',
+  'Creative & Arts': 'Arts', 'creative_arts': 'Arts',
+  'Play': 'Play', 'play': 'Play',
+  'adventurous': 'Adventurous',
+  'first-date': 'First Date',
+  'romantic': 'Romantic',
+  'group-fun': 'Group Fun',
+  'picnic-dates': 'Picnic',
+  'take-a-stroll': 'Stroll',
 };
 
 const PROXIMITY_LABELS: Record<ProximityTier, string> = {
@@ -93,7 +98,7 @@ export function LeaderboardCard({
     .failOffsetY([-10, 10])
     .enabled(!interestSent)
     .onUpdate((e) => {
-      if (e.translationX < 0) return; // right-only
+      if (e.translationX < 0) return;
       translateX.value = e.translationX;
       if (e.translationX >= threshold40 && !hasTriggeredHaptic.value) {
         hasTriggeredHaptic.value = true;
@@ -119,27 +124,23 @@ export function LeaderboardCard({
     opacity: interpolate(translateX.value, [0, threshold40], [0, 1], Extrapolation.CLAMP),
   }));
 
-  const proxColor = PROXIMITY_COLORS[user.proximity_tier];
-  const seatColor = user.available_seats >= 2 ? colors.success[600] : colors.warning[600];
   const activeMinLabel = user.active_for_minutes < 60
-    ? `${user.active_for_minutes} min`
-    : `${Math.floor(user.active_for_minutes / 60)}h ${user.active_for_minutes % 60}m`;
-
-  const cardOpacity = interestSent ? glass.leaderboard.cardSent.opacity : 1;
+    ? `Active ${user.active_for_minutes}m`
+    : `Active ${Math.floor(user.active_for_minutes / 60)}h`;
 
   return (
     <View style={styles.outerWrapper}>
-      {/* Behind-card surface (revealed on slide) */}
+      {/* Behind-card */}
       <Animated.View style={[styles.behindCard, behindCardStyle]}>
-        <Icon name="sparkles" size={16} color="#fff" />
-        <Text style={styles.behindCardText}>Tag Along</Text>
+        <Icon name="hand-right" size={20} color="#fff" />
+        <Text style={styles.behindCardText}>Interested</Text>
       </Animated.View>
 
-      {/* Main card */}
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.card, cardAnimatedStyle, { opacity: cardOpacity }]}>
-          {/* Left: Avatar with ring */}
-          <ActivityRing size={44} swipeCount={user.swipe_count} isActive={user.parsed_swiped_category !== null}>
+        <Animated.View style={[styles.card, cardAnimatedStyle, interestSent && styles.cardSent]}>
+
+          {/* ── Row 1: Identity ── */}
+          <View style={styles.identityRow}>
             {user.avatar_url ? (
               <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
             ) : (
@@ -149,86 +150,99 @@ export function LeaderboardCard({
                 </Text>
               </View>
             )}
-          </ActivityRing>
 
-          {/* Content area */}
-          <View style={styles.content}>
-            {/* Row 1: Name + Level + Proximity */}
-            <View style={styles.topRow}>
+            <View style={styles.identityInfo}>
               <View style={styles.nameRow}>
                 <Text style={styles.name} numberOfLines={1}>{user.display_name}</Text>
-                <View style={styles.levelPill}>
+                <View style={styles.levelBadge}>
+                  <Icon name="trophy" size={8} color={colors.accent} />
                   <Text style={styles.levelText}>Lvl {user.user_level}</Text>
                 </View>
               </View>
-              <View style={styles.proximityRow}>
-                <View style={[styles.proximityDot, { backgroundColor: proxColor }]} />
-                <Text style={[styles.proximityText, { color: proxColor }]}>
-                  {PROXIMITY_LABELS[user.proximity_tier]}
-                </Text>
-              </View>
-            </View>
 
-            {/* Row 2: Status */}
-            {user.activity_status && (
-              <View style={styles.statusRow}>
-                <Icon name="search-outline" size={12} color={colors.accent} />
-                <Text style={styles.statusText} numberOfLines={1}>{user.activity_status}</Text>
-              </View>
-            )}
+              {user.activity_status && (
+                <View style={styles.statusRow}>
+                  <Icon name="hand-right-outline" size={12} color={colors.accent} />
+                  <Text style={styles.statusText} numberOfLines={1}>{user.activity_status}</Text>
+                </View>
+              )}
 
-            {/* Row 3: Categories + Seats + Active time */}
-            <View style={styles.bottomRow}>
-              <View style={styles.categoriesRow}>
-                {user.preference_categories.slice(0, 4).map((cat) => (
-                  <Icon
-                    key={cat}
-                    name={CATEGORY_ICONS[cat] || 'ellipse-outline'}
-                    size={16}
-                    color={user.parsed_swiped_category === cat ? colors.accent : colors.gray[400]}
-                  />
-                ))}
+              {/* Meta: proximity + active + seats */}
+              <View style={styles.metaRow}>
+                <View style={styles.metaPill}>
+                  <Icon name="location-outline" size={10} color={colors.accent} />
+                  <Text style={styles.metaPillText}>{PROXIMITY_LABELS[user.proximity_tier]}</Text>
+                </View>
+                <Text style={styles.metaDot}>·</Text>
+                <Text style={styles.metaText}>{activeMinLabel}</Text>
                 {user.available_seats > 0 && (
                   <>
-                    <Text style={styles.separator}>·</Text>
-                    <Text style={[styles.seatText, { color: seatColor }]}>
-                      {user.available_seats} seat{user.available_seats !== 1 ? 's' : ''}
+                    <Text style={styles.metaDot}>·</Text>
+                    <Text style={styles.metaText}>
+                      {user.available_seats >= 99 ? 'Open' : `${user.available_seats} seat${user.available_seats !== 1 ? 's' : ''}`}
                     </Text>
                   </>
                 )}
               </View>
-              <Text style={styles.activeTime}>Active for {activeMinLabel}</Text>
             </View>
           </View>
+
+          {/* ── Row 2: All preferences as pills ── */}
+          <View style={styles.pillsSection}>
+            <View style={styles.pillsRow}>
+              {user.preference_categories.map((cat) => (
+                <View
+                  key={cat}
+                  style={[
+                    styles.prefPill,
+                    user.parsed_swiped_category === cat && styles.prefPillLive,
+                  ]}
+                >
+                  <Icon
+                    name={CATEGORY_ICONS[cat] || 'ellipse-outline'}
+                    size={11}
+                    color={user.parsed_swiped_category === cat ? '#fff' : colors.accent}
+                  />
+                  <Text
+                    style={[
+                      styles.prefPillText,
+                      user.parsed_swiped_category === cat && styles.prefPillTextLive,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {PILL_LABELS[cat] || cat}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* ── Row 3: Action ── */}
+          <TouchableOpacity
+            style={[styles.actionButton, interestSent && styles.actionButtonSent]}
+            onPress={() => !interestSent && onSendInterest(user.user_id)}
+            disabled={interestSent || isSending}
+            activeOpacity={0.8}
+            accessibilityLabel={interestSent ? `Interest sent to ${user.display_name}` : `Interested in ${user.display_name}`}
+            accessibilityRole={interestSent ? 'text' : 'button'}
+          >
+            {isSending ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Icon
+                  name={interestSent ? 'checkmark-circle' : 'hand-right-outline'}
+                  size={15}
+                  color={interestSent ? colors.gray[400] : '#fff'}
+                />
+                <Text style={[styles.actionText, interestSent && styles.actionTextSent]}>
+                  {interestSent ? 'Interest Sent' : 'Interested'}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
         </Animated.View>
       </GestureDetector>
-
-      {/* Interest button (below card content) */}
-      <View style={[styles.buttonWrapper, interestSent && styles.buttonWrapperSent]}>
-        <TouchableOpacity
-          style={[styles.interestButton, interestSent && styles.interestButtonSent]}
-          onPress={() => !interestSent && onSendInterest(user.user_id)}
-          disabled={interestSent || isSending}
-          activeOpacity={0.8}
-          accessibilityLabel={interestSent ? `Interest sent to ${user.display_name}` : `Indicate interest in ${user.display_name}`}
-          accessibilityRole={interestSent ? 'text' : 'button'}
-        >
-          {isSending ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
-              <Icon
-                name={interestSent ? 'checkmark' : 'sparkles'}
-                size={14}
-                color={interestSent ? colors.gray[500] : '#fff'}
-              />
-              <Text style={[styles.interestButtonText, interestSent && styles.interestButtonTextSent]}>
-                {interestSent ? 'Interest Sent' : 'Indicate Interest'}
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -236,100 +250,91 @@ export function LeaderboardCard({
 const styles = StyleSheet.create({
   outerWrapper: {
     marginHorizontal: 16,
-    marginBottom: 10,
+    marginBottom: 12,
     position: 'relative',
   },
   behindCard: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 88,
+    top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: colors.accent,
-    borderRadius: 16,
+    borderRadius: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingRight: 24,
-    gap: 6,
+    paddingRight: 28,
+    gap: 8,
   },
   behindCardText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
   },
   card: {
-    height: 88,
-    ...glass.leaderboard.card,
-    ...glass.shadowLight,
-    padding: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.gray[100],
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  cardSent: {
+    opacity: 0.4,
+  },
+
+  // ── Identity ──
+  identityRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
   },
   avatarFallback: {
-    backgroundColor: colors.primary[200],
+    backgroundColor: colors.primary[50],
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitials: {
-    fontSize: 14,
+    fontSize: 20,
     fontWeight: '700',
-    color: colors.primary[700],
+    color: colors.accent,
   },
-  content: {
+  identityInfo: {
     flex: 1,
-    justifyContent: 'center',
-    gap: 2,
-  },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: 3,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    flex: 1,
   },
   name: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.text.primary,
-    maxWidth: 120,
+    maxWidth: 150,
   },
-  levelPill: {
-    backgroundColor: '#fffbeb',
-    borderColor: '#fde68a',
+  levelBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(235, 120, 37, 0.08)',
     borderWidth: 1,
+    borderColor: 'rgba(235, 120, 37, 0.15)',
     borderRadius: 999,
     paddingHorizontal: 6,
-    paddingVertical: 1,
+    paddingVertical: 2,
   },
   levelText: {
     fontSize: 10,
-    fontWeight: '700',
-    color: '#92400e',
-  },
-  proximityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  proximityDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  proximityText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '800',
+    color: colors.accent,
   },
   statusRow: {
     flexDirection: 'row',
@@ -337,58 +342,99 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
-    color: colors.gray[600],
+    color: colors.accent,
   },
-  bottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  categoriesRow: {
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
   },
-  separator: {
-    fontSize: 11,
-    color: colors.gray[300],
-    marginHorizontal: 2,
+  metaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
   },
-  seatText: {
-    fontSize: 11,
+  metaPillText: {
+    fontSize: 10,
     fontWeight: '600',
+    color: colors.accent,
   },
-  activeTime: {
+  metaDot: {
+    fontSize: 10,
+    color: colors.gray[300],
+  },
+  metaText: {
     fontSize: 10,
     fontWeight: '500',
-    color: colors.gray[400],
+    color: colors.gray[500],
   },
-  buttonWrapper: {
-    marginTop: 4,
+
+  // ── Preference pills ──
+  pillsSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[100],
   },
-  buttonWrapperSent: {
-    opacity: 0.55,
+  pillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
   },
-  interestButton: {
+  prefPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(235, 120, 37, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(235, 120, 37, 0.12)',
+  },
+  prefPillLive: {
     backgroundColor: colors.accent,
-    borderRadius: 10,
-    height: 34,
+    borderColor: colors.accent,
+  },
+  prefPillText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.accent,
+  },
+  prefPillTextLive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+
+  // ── Action ──
+  actionButton: {
+    backgroundColor: colors.accent,
+    borderRadius: 14,
+    paddingVertical: 11,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
+    marginTop: 12,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
-  interestButtonSent: {
+  actionButtonSent: {
     backgroundColor: colors.gray[100],
+    shadowOpacity: 0,
+    elevation: 0,
   },
-  interestButtonText: {
-    fontSize: 13,
+  actionText: {
+    fontSize: 14,
     fontWeight: '700',
     color: '#fff',
   },
-  interestButtonTextSent: {
-    color: colors.gray[500],
+  actionTextSent: {
+    color: colors.gray[400],
   },
 });

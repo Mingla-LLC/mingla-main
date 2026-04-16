@@ -30,7 +30,9 @@ import CustomHolidayModal from '../CustomHolidayModal';
 import { getSharedCustomHolidaysByPairing, createCustomHolidayForPairing, deleteCustomHoliday as deleteCustomHolidayFromDb } from '../../services/customHolidayService';
 import { savedCardsService } from '../../services/savedCardsService';
 import { savedCardKeys } from '../../hooks/queryKeys';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { leaderboardService } from '../../services/leaderboardService';
+import { leaderboardKeys } from '../../hooks/queryKeys';
 import * as Haptics from 'expo-haptics';
 import { getCategoryIcon } from '../../utils/categoryUtils';
 
@@ -104,6 +106,15 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
 
   // ── ORCH-0435: Pairing detection ────────────────────────
   const currentUserId = useAppStore((s) => s.user?.id);
+
+  // ORCH-0437: Fetch real Mingla level (must be before early returns)
+  const { data: friendLevelData } = useQuery({
+    queryKey: leaderboardKeys.userLevel(userId),
+    queryFn: () => leaderboardService.fetchUserLevel(userId),
+    enabled: !!userId,
+    staleTime: 60_000,
+  });
+  const friendLevel = friendLevelData?.level ?? 1;
   const currentMode = 'solo';
   const { data: pairingPills = [] } = usePairingPills(currentUserId);
   const pairedPill = useMemo(() =>
@@ -330,8 +341,10 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   const countryName = profile.country
     ? getCountryByCode(profile.country)?.name ?? profile.country
     : null;
-  const locationLine = profile.location ?? countryName ?? t('profile:friend.not_shared');
+  const fullLocation = profile.location ?? countryName ?? t('profile:friend.not_shared');
+  const locationLine = fullLocation.split(',')[0].trim();
   const levelLine = TIER_LABEL[profile.tier] ?? profile.tier;
+
   const tierBadge = TIER_BADGE_STYLES[profile.tier] ?? TIER_BADGE_STYLES.free;
   const locationMuted = locationLine === t('profile:friend.not_shared');
 
@@ -347,7 +360,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           <LinearGradient
             colors={['#fef3e2', '#fef9f3', '#ffffff']}
             locations={[0, 0.35, 1]}
-            style={{ width: '100%', height: vs(152) + insets.top }}
+            style={{ width: '100%', height: vs(90) + insets.top }}
           />
           {renderBack()}
 
@@ -375,24 +388,21 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           </View>
         </View>
 
-        {/* Pill chips — ORCH-0435 */}
+        {/* City · Level · Tier — pills on one line */}
         <View style={styles.chipContainer}>
-          {/* City chip */}
-          <View style={styles.chip}>
-            <Icon name="location-outline" size={s(14)} color="#eb7825" />
-            <Text style={styles.chipText}>{locationLine}</Text>
-          </View>
-
-          {/* Mingla Level chip */}
-          <View style={styles.chip}>
-            <Icon name="sparkles-outline" size={s(14)} color="#eb7825" />
-            <Text style={styles.chipText}>{levelLine}</Text>
-          </View>
-
-          {/* Subscription chip */}
-          <View style={[styles.chip, { backgroundColor: tierBadge.bg, borderColor: tierBadge.border }]}>
-            <Icon name="diamond-outline" size={s(14)} color={tierBadge.text} />
-            <Text style={[styles.chipText, { color: tierBadge.text }]}>{TIER_LABEL[profile.tier]}</Text>
+          <View style={styles.infoLine}>
+            <View style={styles.chip}>
+              <Icon name="location-outline" size={s(13)} color="#eb7825" />
+              <Text style={styles.chipText} numberOfLines={1}>{locationLine}</Text>
+            </View>
+            <View style={styles.chip}>
+              <Icon name="trophy" size={s(13)} color="#eb7825" />
+              <Text style={styles.chipText}>Lvl {friendLevel}</Text>
+            </View>
+            <View style={[styles.chip, { backgroundColor: tierBadge.bg, borderColor: tierBadge.border }]}>
+              <Icon name="diamond-outline" size={s(13)} color={tierBadge.text} />
+              <Text style={[styles.chipText, { color: tierBadge.text }]}>{TIER_LABEL[profile.tier]}</Text>
+            </View>
           </View>
 
           {/* Interest chips */}
@@ -550,11 +560,14 @@ const styles = StyleSheet.create({
     lineHeight: s(22),
   },
   chipContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: s(8),
     paddingHorizontal: s(20),
     marginTop: vs(16),
+  },
+  infoLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: s(6),
   },
   chip: {
     flexDirection: 'row',
