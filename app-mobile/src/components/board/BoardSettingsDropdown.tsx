@@ -122,20 +122,10 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
     }
   }, [exitingBoard, onClose, onExitBoard, t]);
 
+  // No local Alert — parent (SessionViewModal.handleExitBoard) owns the confirmation dialog.
   const handleLeaveBoard = useCallback(() => {
-    Alert.alert(
-      "Leave Board",
-      `Are you sure you want to leave "${sessionName}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Leave",
-          style: "destructive",
-          onPress: handleExitBoardWithRules,
-        },
-      ]
-    );
-  }, [sessionName, handleExitBoardWithRules]);
+    handleExitBoardWithRules();
+  }, [handleExitBoardWithRules]);
 
   const handleDeleteSession = useCallback(async () => {
     if (deletingSession) return;
