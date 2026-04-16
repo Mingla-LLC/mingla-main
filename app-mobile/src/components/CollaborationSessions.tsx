@@ -957,36 +957,33 @@ export default function CollaborationSessions({
                     {t('modals:collaboration.waiting_for_response')}
                   </Text>
                   {inviteModalSession.participantDetails && inviteModalSession.participantDetails.length > 0 && (
-                    <View style={{ marginTop: 12, gap: 8 }}>
-                      {inviteModalSession.participantDetails.map((p) => (
-                        <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      {inviteModalSession.participantDetails.map((p, i) => (
+                        <View key={p.id} style={{ alignItems: 'center', marginHorizontal: i > 0 ? -4 : 0 }}>
                           <View style={{
-                            width: 32, height: 32, borderRadius: 16,
+                            width: 40, height: 40, borderRadius: 20,
                             backgroundColor: p.hasAccepted ? '#D1FAE5' : '#F3F4F6',
                             alignItems: 'center', justifyContent: 'center',
+                            borderWidth: 2, borderColor: p.hasAccepted ? '#059669' : '#D1D5DB',
                           }}>
                             {p.avatar ? (
-                              <Image source={{ uri: p.avatar }} style={{ width: 32, height: 32, borderRadius: 16 }} />
+                              <Image source={{ uri: p.avatar }} style={{ width: 36, height: 36, borderRadius: 18 }} />
                             ) : (
-                              <Text style={{ fontSize: 12, fontWeight: '600', color: p.hasAccepted ? '#059669' : '#6B7280' }}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: p.hasAccepted ? '#059669' : '#6B7280' }}>
                                 {p.name.substring(0, 2).toUpperCase()}
                               </Text>
                             )}
                           </View>
-                          <Text style={{ fontSize: 14, color: '#1F2937', flex: 1 }}>{p.name}</Text>
-                          <View style={{
-                            paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
-                            backgroundColor: p.hasAccepted ? '#D1FAE5' : '#FEF3C7',
-                          }}>
-                            <Text style={{
-                              fontSize: 11, fontWeight: '600',
-                              color: p.hasAccepted ? '#059669' : '#D97706',
-                            }}>
-                              {p.hasAccepted ? 'Joined' : 'Pending'}
-                            </Text>
-                          </View>
                         </View>
                       ))}
+                      {inviteModalSession.participantDetails.some(p => !p.hasAccepted) && (
+                        <View style={{
+                          paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
+                          backgroundColor: '#FEF3C7', marginLeft: 8,
+                        }}>
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: '#D97706' }}>Pending</Text>
+                        </View>
+                      )}
                     </View>
                   )}
                 </>
