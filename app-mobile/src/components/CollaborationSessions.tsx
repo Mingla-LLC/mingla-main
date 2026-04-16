@@ -135,6 +135,18 @@ export default function CollaborationSessions({
   const [showSessionViewModal, setShowSessionViewModal] = useState(false);
   const [sessionToView, setSessionToView] = useState<CollaborationSession | null>(null);
   const [inviteModalSession, setInviteModalSession] = useState<CollaborationSession | null>(null);
+
+  // Keep modal session in sync with live sessions data so newly added
+  // participants appear immediately without closing/reopening the modal.
+  useEffect(() => {
+    if (inviteModalSession && showInviteModal) {
+      const updated = sessions.find(s => s.id === inviteModalSession.id);
+      if (updated && updated !== inviteModalSession) {
+        setInviteModalSession(updated);
+      }
+    }
+  }, [sessions, inviteModalSession?.id, showInviteModal]);
+
   const [newSessionName, setNewSessionName] = useState('');
   const [selectedFriends, setSelectedFriends] = useState<Friend[]>([]);
   const [contentWidth, setContentWidth] = useState(0);
