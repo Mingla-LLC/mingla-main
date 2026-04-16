@@ -264,20 +264,28 @@ serve(async (req: Request) => {
     // ── Aggregate preferences ──
     let aggregated = aggregateAllPrefs(allPrefs || []);
 
+    console.log(`[generate-session-deck] BSP rows: ${(allPrefs || []).length}, aggregated cats: ${aggregated.categories.length}, intents: ${aggregated.intents.length}`);
+
     // ORCH-0443: If no collab prefs exist, fall back to solo prefs of accepted participants
     if (aggregated.categories.length === 0 && aggregated.intents.length === 0) {
-      const { data: participants } = await supabaseAdmin
+      console.log(`[generate-session-deck] ORCH-0443: No collab prefs, attempting solo fallback...`);
+
+      const { data: participants, error: partErr } = await supabaseAdmin
         .from('session_participants')
         .select('user_id')
         .eq('session_id', sessionId)
         .eq('has_accepted', true);
 
+      console.log(`[generate-session-deck] ORCH-0443: Found ${participants?.length ?? 0} accepted participants (error: ${partErr?.message ?? 'none'})`);
+
       if (participants && participants.length > 0) {
         const userIds = participants.map((p: { user_id: string }) => p.user_id);
-        const { data: soloPrefs } = await supabaseAdmin
+        const { data: soloPrefs, error: soloErr } = await supabaseAdmin
           .from('preferences')
           .select('*')
           .in('profile_id', userIds);
+
+        console.log(`[generate-session-deck] ORCH-0443: Found ${soloPrefs?.length ?? 0} solo prefs (error: ${soloErr?.message ?? 'none'}), cats: ${soloPrefs?.map((s: any) => s.categories?.length ?? 0)}`);
 
         if (soloPrefs && soloPrefs.length > 0) {
           const mappedPrefs = soloPrefs.map((solo: any) => ({
@@ -293,7 +301,7 @@ serve(async (req: Request) => {
             selected_dates: solo.selected_dates || null,
           }));
           aggregated = aggregateAllPrefs(mappedPrefs);
-          console.log(`[generate-session-deck] ORCH-0443: Using solo fallback for ${userIds.length} participants`);
+          console.log(`[generate-session-deck] ORCH-0443: After solo fallback — cats: ${aggregated.categories.length}, intents: ${aggregated.intents.length}`);
         }
       }
 
@@ -306,6 +314,12 @@ serve(async (req: Request) => {
             hasMore: false,
             deckStatus: 'waiting_for_preferences',
             preferencesHash: '',
+            _debug: {
+              bspRows: (allPrefs || []).length,
+              acceptedParticipants: participants?.length ?? 0,
+              soloPrefsFound: 0,
+              version: 'orch0443-v3-diagnostic',
+            },
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );

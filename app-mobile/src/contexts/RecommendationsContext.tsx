@@ -864,6 +864,9 @@ export const RecommendationsProvider: React.FC<
       // Also clear the persisted value for belt-and-suspenders safety.
       suppressExhaustionReadRef.current = true;
       AsyncStorage.removeItem(`deck_exhausted_${user?.id}_${currentMode}`).catch(() => {});
+      // ORCH-0443: Remove cached session-deck data so a fresh fetch fires.
+      // The 30-min staleTime was preventing retries after a waiting_for_preferences response.
+      queryClient.removeQueries({ queryKey: ['session-deck'] });
       setHasMoreCards(true);
       setDismissedCards([]);
       accumulatedCardsRef.current = [];
