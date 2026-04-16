@@ -960,7 +960,7 @@ export default function CollaborationSessions({
                 </TouchableOpacity>
               </View>
             ) : (
-              <View style={styles.inviteActions}>
+              <View style={[styles.inviteActions, { flexDirection: 'column' }]}>
                 <TouchableOpacity
                   style={styles.modalCancelInviteButton}
                   onPress={() => {
