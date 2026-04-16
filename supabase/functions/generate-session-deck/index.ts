@@ -390,7 +390,8 @@ serve(async (req: Request) => {
     const curatedPromise: Promise<any[][]> = (async () => {
       if (aggregated.intents.length === 0) return [];
       const curatedUrl = `${SUPABASE_URL}/functions/v1/generate-curated-experiences`;
-      const curatedLimit = Math.ceil(20 / (aggregated.categories.length + aggregated.intents.length) || 5);
+      // ORCH-0437: Match solo — give each intent the same generous limit, interleave balances them
+      const curatedLimit = 20;
       return Promise.all(
         aggregated.intents.map(async (intent: string): Promise<any[]> => {
           try {
@@ -435,34 +436,65 @@ serve(async (req: Request) => {
     const categoryHasMore = categoryPayload.hasMore;
     const curatedArrays = curatedResult.status === 'fulfilled' ? curatedResult.value : [];
 
-    // Flatten curated arrays into a single stream
-    const curatedCards: any[] = [];
-    for (const arr of curatedArrays) {
-      curatedCards.push(...arr);
+    // ── ORCH-0437: Match solo interleaving — group by category, round-robin, no cap ──
+
+    // Round-robin helper (same algorithm as cardConverters.ts roundRobinInterleave)
+    function roundRobin(arrays: any[][]): any[] {
+      const result: any[] = [];
+      const seen = new Set<string>();
+      const maxLen = Math.max(0, ...arrays.map((a: any[]) => a.length));
+      for (let round = 0; round < maxLen; round++) {
+        for (let a = 0; a < arrays.length; a++) {
+          if (round < arrays[a].length) {
+            const card = arrays[a][round];
+            const id = card.placeId || card.id || '';
+            if (!seen.has(id)) {
+              seen.add(id);
+              result.push(card);
+            }
+          }
+        }
+      }
+      return result;
     }
 
-    // 1:1 interleave: alternate category and curated cards (mirrors solo deckService)
+    // Step 1: Group category cards by category (mirrors solo deckService lines 374-383)
+    const byCategory: Record<string, any[]> = {};
+    for (const card of categoryCards) {
+      const cat = card.category || 'Other';
+      if (!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(card);
+    }
+    const categoryArrays: any[][] = Object.values(byCategory);
+
+    // Step 2: Round-robin across category groups
+    const regularStream = roundRobin(categoryArrays);
+
+    // Step 3: Round-robin across curated intent arrays (preserves per-intent identity)
+    const curatedStream = roundRobin(curatedArrays);
+
+    // Step 4: 1:1 zip — alternate regular and curated, no cap
     const cards: any[] = [];
-    const maxLen = Math.max(categoryCards.length, curatedCards.length);
+    const zipMaxLen = Math.max(regularStream.length, curatedStream.length);
     const seen = new Set<string>();
-    for (let i = 0; i < maxLen && cards.length < 20; i++) {
-      if (i < categoryCards.length) {
-        const id = categoryCards[i].placeId || categoryCards[i].id || `cat_${i}`;
+    for (let i = 0; i < zipMaxLen; i++) {
+      if (i < regularStream.length) {
+        const id = regularStream[i].placeId || regularStream[i].id || '';
         if (!seen.has(id)) {
           seen.add(id);
-          cards.push(categoryCards[i]);
+          cards.push(regularStream[i]);
         }
       }
-      if (i < curatedCards.length && cards.length < 20) {
-        const id = curatedCards[i].id || `cur_${i}`;
+      if (i < curatedStream.length) {
+        const id = curatedStream[i].id || '';
         if (!seen.has(id)) {
           seen.add(id);
-          cards.push(curatedCards[i]);
+          cards.push(curatedStream[i]);
         }
       }
     }
 
-    if (categoryCards.length === 0 && curatedCards.length === 0) {
+    if (categoryCards.length === 0 && curatedStream.length === 0) {
       return new Response(
         JSON.stringify({ error: 'No cards generated from either pipeline' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -474,7 +506,7 @@ serve(async (req: Request) => {
     // instead of the batch-size heuristic (categoryCards.length >= 20).
     // The old heuristic reported false when the post-filter reduced a large
     // pool to <20 cards, causing the client to declare "entire deck seen."
-    const hasMore = categoryHasMore || curatedCards.length > 0;
+    const hasMore = categoryHasMore || curatedStream.length > 0;
 
     // ── Determine new deck version (single query, fixes MED-001) ──
     const { data: latestForSession } = await supabaseAdmin
@@ -540,7 +572,7 @@ serve(async (req: Request) => {
       }
     }
 
-    console.log(`[generate-session-deck] Stored deck: version=${newVersion}, batch=${batchSeed}, cards=${cards.length}, curated=${curatedCards.length}`);
+    console.log(`[generate-session-deck] Stored deck: version=${newVersion}, batch=${batchSeed}, cards=${cards.length}, curated=${curatedStream.length}`);
 
     return new Response(
       JSON.stringify({
