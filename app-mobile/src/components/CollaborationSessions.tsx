@@ -18,6 +18,7 @@ import {
   Share,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { Icon } from './ui/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -889,7 +890,7 @@ export default function CollaborationSessions({
             activeOpacity={1}
             onPress={() => setShowInviteModal(false)}
           />
-          <View style={[styles.inviteSheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <View style={[styles.inviteSheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]} onStartShouldSetResponder={() => { Keyboard.dismiss(); return false; }}>
             <View style={styles.inviteDragHandleContainer}>
               <View style={styles.inviteDragHandle} />
             </View>
