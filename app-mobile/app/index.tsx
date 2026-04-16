@@ -1196,8 +1196,12 @@ function AppContent() {
           };
         });
 
-      // Combine and deduplicate by id
-      const allSessions = [...activeBoards, ...pendingCreatedSessions, ...pendingInvitedSessions];
+      // Combine and deduplicate by id.
+      // ORCH-0437: pendingCreatedSessions and pendingInvitedSessions come FIRST so their
+      // status='pending' wins dedup over activeBoards (which maps pending→active).
+      // Without this, the creator's pending session appears as 'active' and can be opened
+      // before any invitee has accepted.
+      const allSessions = [...pendingCreatedSessions, ...pendingInvitedSessions, ...activeBoards];
       const uniqueSessions = allSessions.reduce((acc: any[], session: any) => {
         if (!acc.find((s: any) => s.id === session.id)) {
           acc.push(session);
