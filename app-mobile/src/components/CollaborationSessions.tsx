@@ -16,6 +16,8 @@ import {
   ActivityIndicator,
   Image,
   Share,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Icon } from './ui/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -878,7 +880,10 @@ export default function CollaborationSessions({
         onRequestClose={() => { setShowInviteModal(false); setPhoneNumber(''); setPhoneActionStatus('idle'); setPhoneActionError(''); }}
         statusBarTranslucent
       >
-        <View style={styles.inviteSheetOverlay}>
+        <KeyboardAvoidingView
+          style={styles.inviteSheetOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <TouchableOpacity
             style={styles.inviteSheetBackdrop}
             activeOpacity={1}
@@ -1067,7 +1072,7 @@ export default function CollaborationSessions({
               </View>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Session View Modal */}
