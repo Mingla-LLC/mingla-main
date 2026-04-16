@@ -339,6 +339,11 @@ export const useBoardSession = (sessionId?: string) => {
               participants: [...existing, participant],
             };
           });
+          // ORCH-0438: New participant → re-evaluate deck (may cross ≥2 accepted threshold)
+          if (sessionId) {
+            queryClient.invalidateQueries({ queryKey: ['session-deck', sessionId] });
+            loadSession(sessionId);
+          }
         },
         onParticipantLeft: (participant: { user_id: string; [key: string]: unknown }) => {
           if (capturedSessionId !== stableSessionIdRef.current) {

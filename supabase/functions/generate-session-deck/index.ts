@@ -228,6 +228,26 @@ serve(async (req: Request) => {
       );
     }
 
+    // ── ORCH-0438: Require ≥2 accepted participants before generating ──
+    const { count: acceptedCount } = await supabaseAdmin
+      .from('session_participants')
+      .select('id', { count: 'exact', head: true })
+      .eq('session_id', sessionId)
+      .eq('has_accepted', true);
+
+    if ((acceptedCount ?? 0) < 2) {
+      return new Response(
+        JSON.stringify({
+          cards: [],
+          totalCards: 0,
+          hasMore: false,
+          deckStatus: 'waiting_for_participants',
+          preferencesHash: '',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // ── Load all participants' preferences ──
     const { data: allPrefs, error: prefsError } = await supabaseAdmin
       .from('board_session_preferences')
@@ -244,10 +264,17 @@ serve(async (req: Request) => {
     // ── Aggregate preferences ──
     const aggregated = aggregateAllPrefs(allPrefs || []);
 
+    // ORCH-0438: Return 200 with deckStatus instead of 400 — this is a recoverable state
     if (aggregated.categories.length === 0 && aggregated.intents.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'No participants have set preferences yet' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          cards: [],
+          totalCards: 0,
+          hasMore: false,
+          deckStatus: 'waiting_for_preferences',
+          preferencesHash: '',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -276,6 +303,7 @@ serve(async (req: Request) => {
           totalCards: cachedDeck.total_cards,
           hasMore: cachedDeck.has_more,
           preferencesHash: cachedDeck.preferences_hash,
+          deckStatus: (cachedDeck.cards?.length ?? 0) > 0 ? 'ready' : 'empty_pool',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -494,11 +522,10 @@ serve(async (req: Request) => {
       }
     }
 
+    // ORCH-0438: Empty pool is a valid state, not a server error.
+    // Fall through to cache write with 1h TTL so we don't hammer discover-cards.
     if (categoryCards.length === 0 && curatedStream.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'No cards generated from either pipeline' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.log(`[generate-session-deck] Empty pool for session ${sessionId} — caching empty deck`);
     }
 
     const totalCards = cards.length;
@@ -535,7 +562,8 @@ serve(async (req: Request) => {
         total_cards: totalCards,
         has_more: hasMore,
         generated_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        // ORCH-0438: Empty pool → 1h TTL (allows pool seeding to take effect); cards → 24h
+        expires_at: new Date(Date.now() + (cards.length > 0 ? 24 : 1) * 60 * 60 * 1000).toISOString(),
       }, {
         onConflict: 'session_id,deck_version,batch_seed',
         ignoreDuplicates: true,
@@ -566,6 +594,7 @@ serve(async (req: Request) => {
             totalCards: existingDeck.total_cards,
             hasMore: existingDeck.has_more,
             preferencesHash: existingDeck.preferences_hash,
+            deckStatus: (existingDeck.cards?.length ?? 0) > 0 ? 'ready' : 'empty_pool',
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -582,6 +611,7 @@ serve(async (req: Request) => {
         totalCards,
         hasMore,
         preferencesHash,
+        deckStatus: cards.length > 0 ? 'ready' : 'empty_pool',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

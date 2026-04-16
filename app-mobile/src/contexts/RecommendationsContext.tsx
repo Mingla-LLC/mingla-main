@@ -42,7 +42,10 @@ export type DeckUIState =
   | { type: 'MODE_TRANSITIONING' }
   | { type: 'EXHAUSTED' }
   | { type: 'EMPTY' }
-  | { type: 'ERROR'; message: string };
+  | { type: 'ERROR'; message: string }
+  | { type: 'WAITING_FOR_PARTICIPANTS' }
+  | { type: 'WAITING_FOR_PREFERENCES' }
+  | { type: 'EMPTY_POOL' };
 
 // Stable empty arrays — prevent new references on every render that trigger
 // useEffect dependency changes and cause infinite render loops.
@@ -516,17 +519,25 @@ export const RecommendationsProvider: React.FC<
     data: sessionDeckData,
     isLoading: isSessionDeckLoading,
     isFetching: isSessionDeckFetching,
+    error: sessionDeckError,
   } = useSessionDeck(
     isCollaborationMode ? resolvedSessionId ?? undefined : undefined,
     batchSeed,
     isCollaborationMode && !!resolvedSessionId && !isWaitingForSessionResolution && batchSeedReady,
-    excludeCardIds,
+    [], // ORCH-0438: excludeCardIds no longer sent — session decks are shared, filtered client-side below
   );
 
   // ── Unified deck output (branch by mode) ─────────────────────────────
-  const deckCards = isCollaborationMode
-    ? (sessionDeckData?.cards ?? EMPTY_CARDS)
-    : soloDeckCards;
+  // Solo: excludeCardIds handled server-side (per-user deck)
+  // Collab: excludeCardIds filtered client-side (shared deck, per-user exclusions)
+  const rawSessionCards = sessionDeckData?.cards ?? EMPTY_CARDS;
+  const filteredSessionCards = isCollaborationMode
+    ? rawSessionCards.filter((c: Recommendation) => {
+        const key = c.placeId || c.id;
+        return !excludeCardIds.includes(key);
+      })
+    : EMPTY_CARDS;
+  const deckCards = isCollaborationMode ? filteredSessionCards : soloDeckCards;
   const deckMode = isCollaborationMode ? 'mixed' : soloDeckMode;
   const activePills = isCollaborationMode ? EMPTY_PILLS : soloActivePills;
   const isDeckLoading = isCollaborationMode ? isSessionDeckLoading : isSoloDeckLoading;
@@ -1043,6 +1054,29 @@ export const RecommendationsProvider: React.FC<
       return { type: 'ERROR', message: 'Something went wrong loading experiences' };
     }
 
+    // ORCH-0438: Session deck error (collab mode) — real errors (401, 403, network failure)
+    if (
+      isCollaborationMode &&
+      sessionDeckError &&
+      recommendations.length === 0 &&
+      hasCompletedFetchForCurrentMode
+    ) {
+      return { type: 'ERROR', message: 'Couldn\'t load the session deck. Tap to retry.' };
+    }
+
+    // ORCH-0438: Session deck lifecycle states — server reports why deck is empty
+    if (isCollaborationMode && sessionDeckData?.deckStatus && hasCompletedFetchForCurrentMode) {
+      if (sessionDeckData.deckStatus === 'waiting_for_participants') {
+        return { type: 'WAITING_FOR_PARTICIPANTS' };
+      }
+      if (sessionDeckData.deckStatus === 'waiting_for_preferences') {
+        return { type: 'WAITING_FOR_PREFERENCES' };
+      }
+      if (sessionDeckData.deckStatus === 'empty_pool' && recommendations.length === 0) {
+        return { type: 'EMPTY_POOL' };
+      }
+    }
+
     // MODE_TRANSITIONING
     if (isModeTransitioning || isWaitingForSessionResolution) {
       return { type: 'MODE_TRANSITIONING' };
@@ -1082,9 +1116,9 @@ export const RecommendationsProvider: React.FC<
     // once the fetch cycle completes, the EMPTY branch above catches it.
     return { type: 'INITIAL_LOADING' };
   }, [
-    locationError, soloDeckError, isModeTransitioning, isWaitingForSessionResolution,
-    hasCompletedFetchForCurrentMode, recommendations,
-    isExhausted,
+    locationError, soloDeckError, sessionDeckError, isModeTransitioning, isWaitingForSessionResolution,
+    hasCompletedFetchForCurrentMode, recommendations, isCollaborationMode,
+    sessionDeckData?.deckStatus, isExhausted,
     // NOTE: `loading` intentionally removed — the EMPTY check no longer depends on it.
     // Keeping it here caused unnecessary recomputation on every background refetch.
   ]);

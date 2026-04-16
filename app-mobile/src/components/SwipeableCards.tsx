@@ -1680,6 +1680,39 @@ export default function SwipeableCards({
         </>
       );
 
+    case 'WAITING_FOR_PARTICIPANTS':
+      return (
+        <View style={styles.noCardsContainer}>
+          <Icon name="people-outline" size={48} color="#9CA3AF" />
+          <Text style={styles.noCardsTitle}>Waiting for friends to join</Text>
+          <Text style={styles.noCardsSubtitle}>
+            Once someone accepts your invite, the deck will load automatically.
+          </Text>
+        </View>
+      );
+
+    case 'WAITING_FOR_PREFERENCES':
+      return (
+        <View style={styles.noCardsContainer}>
+          <Icon name="options-outline" size={48} color="#9CA3AF" />
+          <Text style={styles.noCardsTitle}>Setting up preferences</Text>
+          <Text style={styles.noCardsSubtitle}>
+            Participants are choosing their preferences. The deck will appear once ready.
+          </Text>
+        </View>
+      );
+
+    case 'EMPTY_POOL':
+      return (
+        <View style={styles.noCardsContainer}>
+          <Icon name="location-outline" size={48} color="#9CA3AF" />
+          <Text style={styles.noCardsTitle}>No places found nearby</Text>
+          <Text style={styles.noCardsSubtitle}>
+            Try changing your location or adding more categories.
+          </Text>
+        </View>
+      );
+
     case 'LOADED':
       // Falls through to the main card render below
       break;

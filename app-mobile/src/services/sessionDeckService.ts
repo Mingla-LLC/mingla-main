@@ -4,6 +4,8 @@ import { curatedToRecommendation } from '../utils/cardConverters';
 import { Recommendation } from '../types/recommendation';
 import { extractFunctionError } from '../utils/edgeFunctionError';
 
+export type DeckStatus = 'ready' | 'waiting_for_participants' | 'waiting_for_preferences' | 'empty_pool';
+
 export interface SessionDeckResponse {
   cards: Recommendation[];
   deckMode: string;
@@ -12,15 +14,16 @@ export interface SessionDeckResponse {
   hasMore: boolean;
   deckVersion: number;
   preferencesHash: string;
+  deckStatus?: DeckStatus;
 }
 
 export async function fetchSessionDeck(
   sessionId: string,
   batchSeed: number = 0,
-  excludeCardIds: string[] = [],
+  _excludeCardIds: string[] = [], // ORCH-0438: No longer sent — session decks are shared, per-user exclusions filtered client-side
 ): Promise<SessionDeckResponse> {
   const { data, error } = await trackedInvoke('generate-session-deck', {
-    body: { sessionId, batchSeed, excludeCardIds },
+    body: { sessionId, batchSeed },
   });
 
   if (error) {
@@ -46,5 +49,6 @@ export async function fetchSessionDeck(
     hasMore: data.hasMore ?? false,
     deckVersion: data.deckVersion ?? 1,
     preferencesHash: data.preferencesHash ?? '',
+    deckStatus: data.deckStatus,
   };
 }
