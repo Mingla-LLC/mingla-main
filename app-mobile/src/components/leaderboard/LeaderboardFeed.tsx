@@ -3,11 +3,12 @@
  * Assembles all leaderboard components + wires hooks.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { View, FlatList, StyleSheet, Dimensions, Text } from 'react-native';
 import { useLeaderboardPresence } from '../../hooks/useLeaderboardPresence';
 import { useTagAlongRequests } from '../../hooks/useTagAlongRequests';
 import { useMapSettings } from '../../hooks/useMapSettings';
+import { leaderboardService } from '../../services/leaderboardService';
 import { useAppStore } from '../../store/appStore';
 import { AmbientGradient } from './AmbientGradient';
 import { LeaderboardProfileHeader } from './LeaderboardProfileHeader';
@@ -51,6 +52,20 @@ export function LeaderboardFeed({
     isSending,
     isAccepting,
   } = useTagAlongRequests(user?.id);
+
+  // ORCH-0437: Register on leaderboard when tab opens (if discoverable)
+  useEffect(() => {
+    if (userLocation && settings?.is_discoverable) {
+      leaderboardService.upsertPresence({
+        lat: userLocation.lat,
+        lng: userLocation.lng,
+        is_discoverable: true,
+        visibility_level: settings.visibility_level,
+        activity_status: settings.activity_status ?? undefined,
+        available_seats: settings.available_seats,
+      }).catch((err) => console.warn('[LeaderboardFeed] Initial presence registration failed:', err));
+    }
+  }, [userLocation?.lat, userLocation?.lng, settings?.is_discoverable]);
 
   // Filters
   const [filters, setFilters] = useState<LeaderboardFilterState>({
@@ -151,7 +166,7 @@ export function LeaderboardFeed({
           displayName={profile?.display_name ?? profile?.first_name ?? 'You'}
           level={myPresence?.user_level ?? 1}
           status={settings?.activity_status ?? null}
-          categories={settings ? [] : []} // [TRANSITIONAL] Need to read preference_categories from presence — exit: Phase 3 polish
+          categories={myPresence?.preference_categories ?? []}
           availableSeats={settings?.available_seats ?? 1}
           activeMinutes={myPresence?.active_for_minutes ?? 0}
           isDiscoverable={settings?.is_discoverable ?? false}

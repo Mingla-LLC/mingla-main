@@ -2016,6 +2016,8 @@ function AppContent() {
             preferencesRefreshKey={preferencesRefreshKey}
             deepLinkParams={currentPage === 'discover' ? deepLinkParams : null}
             onDeepLinkHandled={() => setDeepLinkParams(null)}
+            onOpenPreferences={() => setShowPreferences(true)}
+            onOpenSession={(sessionId) => setCurrentSessionId(sessionId)}
           />
         );
       case "saved":

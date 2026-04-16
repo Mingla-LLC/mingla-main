@@ -15,6 +15,7 @@ import {
   Animated,
   Easing,
   AccessibilityInfo,
+  Switch,
 } from "react-native";
 import {
   SafeAreaView,
@@ -57,6 +58,10 @@ import { ToggleSection } from './PreferencesSheet/ToggleSection';
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
+// ORCH-0437: Leaderboard settings — saves via useMapSettings, NOT via onSave
+import { useMapSettings } from '../hooks/useMapSettings';
+import { leaderboardService } from '../services/leaderboardService';
+import type { VisibilityLevel } from '../types/leaderboard';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
 import { colors } from '../constants/designSystem';
 
@@ -182,6 +187,14 @@ export default function PreferencesSheet({
   const constraintType = 'time' as const;
   const [constraintValue, setConstraintValue] = useState<number | "">(30);
 
+  // ORCH-0437: Leaderboard settings (saved via useMapSettings, NOT via onSave)
+  const { settings: mapSettings, updateSettings: updateMapSettings } = useMapSettings();
+  const [isDiscoverable, setIsDiscoverable] = useState(false);
+  const [leaderboardVisibility, setLeaderboardVisibility] = useState<VisibilityLevel>('friends');
+  const [leaderboardStatus, setLeaderboardStatus] = useState<string | null>(null);
+  const [availableSeats, setAvailableSeats] = useState(1);
+  const [customStatusText, setCustomStatusText] = useState('');
+
   // Starting Point
   const [useLocation, setUseLocation] = useState<"gps" | "search">("gps");
   const [searchLocation, setSearchLocation] = useState<string>("");
@@ -227,7 +240,7 @@ export default function PreferencesSheet({
   // Sequential section stagger animation (ORCH-0434 Phase 6B)
   const [reduceMotion, setReduceMotion] = useState(false);
   const sectionAnims = useRef(
-    Array.from({ length: 6 }, () => new Animated.Value(0))
+    Array.from({ length: 7 }, () => new Animated.Value(0))
   ).current;
 
   useEffect(() => {
@@ -243,7 +256,7 @@ export default function PreferencesSheet({
       // Reset
       sectionAnims.forEach(anim => anim.setValue(0));
       // Stagger: 80ms between each section, 300ms duration
-      const delays = [0, 70, 140, 210, 280, 350];
+      const delays = [0, 70, 140, 210, 280, 350, 420];
       const timers = delays.map((delay, i) =>
         setTimeout(() => {
           Animated.timing(sectionAnims[i], {
@@ -434,6 +447,16 @@ export default function PreferencesSheet({
     }
   }, [loadedPreferences, preferencesLoading, visible, isCollaborationMode]);
 
+  // ORCH-0437: Load leaderboard settings from map settings (separate from deck preferences)
+  useEffect(() => {
+    if (!visible || !mapSettings) return;
+    setIsDiscoverable(mapSettings.is_discoverable);
+    setLeaderboardVisibility(mapSettings.visibility_level as VisibilityLevel);
+    setLeaderboardStatus(mapSettings.activity_status);
+    setAvailableSeats(mapSettings.available_seats);
+    setCustomStatusText('');
+  }, [visible, mapSettings]);
+
   // All categories always visible — curated pills are independent of category pills
   const filteredCategories = categories;
 
@@ -616,6 +639,14 @@ export default function PreferencesSheet({
     if (constraintValue !== initialPreferences.constraintValue) return true;
     if (searchLocation !== initialPreferences.searchLocation) return true;
 
+    // ORCH-0437: Leaderboard settings changes (separate from deck prefs)
+    if (!isCollaborationMode) {
+      if (isDiscoverable !== (mapSettings?.is_discoverable ?? false)) return true;
+      if (leaderboardVisibility !== (mapSettings?.visibility_level ?? 'friends')) return true;
+      if (leaderboardStatus !== (mapSettings?.activity_status ?? null)) return true;
+      if (availableSeats !== (mapSettings?.available_seats ?? 1)) return true;
+    }
+
     return false;
   }, [
     initialPreferences,
@@ -629,6 +660,12 @@ export default function PreferencesSheet({
     travelMode,
     constraintValue,
     searchLocation,
+    isCollaborationMode,
+    isDiscoverable,
+    leaderboardVisibility,
+    leaderboardStatus,
+    availableSeats,
+    mapSettings,
   ]);
 
   // ORCH-0434: Form completion logic — location + date + pills + travel
@@ -717,6 +754,14 @@ export default function PreferencesSheet({
     if (constraintValue !== initialPreferences.constraintValue) changes++;
     if (searchLocation !== initialPreferences.searchLocation) changes++;
 
+    // ORCH-0437: Leaderboard settings changes
+    if (!isCollaborationMode) {
+      if (isDiscoverable !== (mapSettings?.is_discoverable ?? false)) changes++;
+      if (leaderboardVisibility !== (mapSettings?.visibility_level ?? 'friends')) changes++;
+      if (leaderboardStatus !== (mapSettings?.activity_status ?? null)) changes++;
+      if (availableSeats !== (mapSettings?.available_seats ?? 1)) changes++;
+    }
+
     return changes;
   }, [
     initialPreferences,
@@ -730,6 +775,12 @@ export default function PreferencesSheet({
     travelMode,
     constraintValue,
     searchLocation,
+    isCollaborationMode,
+    isDiscoverable,
+    leaderboardVisibility,
+    leaderboardStatus,
+    availableSeats,
+    mapSettings,
   ]);
 
   const handleReset = useCallback(() => {
@@ -869,6 +920,42 @@ export default function PreferencesSheet({
         toastManager.error(t('preferences:sheet.save_error'), 4000);
       }
 
+      // ORCH-0437: Leaderboard settings save via useMapSettings — NEVER via onSave or board prefs
+      if (!isCollaborationMode) {
+        const lbChanged =
+          isDiscoverable !== (mapSettings?.is_discoverable ?? false) ||
+          leaderboardVisibility !== (mapSettings?.visibility_level ?? 'friends') ||
+          leaderboardStatus !== (mapSettings?.activity_status ?? null) ||
+          availableSeats !== (mapSettings?.available_seats ?? 1);
+
+        if (lbChanged) {
+          try {
+            await updateMapSettings({
+              is_discoverable: isDiscoverable,
+              visibility_level: leaderboardVisibility,
+              activity_status: leaderboardStatus,
+              available_seats: availableSeats,
+            });
+            // Sync transient copy to leaderboard_presence (fire-and-forget)
+            const gpsLat = selectedCoords?.lat ?? null;
+            const gpsLng = selectedCoords?.lng ?? null;
+            if (isDiscoverable && gpsLat && gpsLng) {
+              leaderboardService.upsertPresence({
+                lat: gpsLat,
+                lng: gpsLng,
+                is_discoverable: isDiscoverable,
+                visibility_level: leaderboardVisibility,
+                activity_status: leaderboardStatus || undefined,
+                available_seats: availableSeats,
+                preference_categories: selectedCategories,
+              }).catch((err: unknown) => console.warn('[PreferencesSheet] Presence sync failed:', err));
+            }
+          } catch (err) {
+            console.warn('[PreferencesSheet] Leaderboard settings save failed:', err);
+          }
+        }
+      }
+
       // RELIABILITY: DO NOT add invalidateQueries here. AppHandlers.handleSavePreferences
       // already handles via: (1) optimistic cache set, (2) preferencesRefreshKey bump,
       // (3) deck history reset on hash change. Adding invalidateQueries(["userPreferences"])
@@ -901,6 +988,12 @@ export default function PreferencesSheet({
     queryClient,
     onSave,
     onClose,
+    isDiscoverable,
+    leaderboardVisibility,
+    leaderboardStatus,
+    availableSeats,
+    mapSettings,
+    updateMapSettings,
   ]);
 
   const sheetContent = (
@@ -1091,6 +1184,134 @@ export default function PreferencesSheet({
             )}
           </View>
           </Animated.View>
+
+          {/* 7. Near You Leaderboard — solo mode only (ORCH-0437) */}
+          {!isCollaborationMode && (
+            <Animated.View style={{
+              opacity: sectionAnims[6],
+              transform: [{ translateY: sectionAnims[6].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+            }}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Near You Leaderboard</Text>
+
+              {/* Master toggle */}
+              <View style={styles.lbToggleRow}>
+                <View style={styles.lbToggleTextArea}>
+                  <Text style={styles.lbToggleLabel}>Appear on the leaderboard</Text>
+                  <Text style={styles.lbToggleDescription}>Let nearby explorers find you</Text>
+                </View>
+                <Switch
+                  value={isDiscoverable}
+                  onValueChange={setIsDiscoverable}
+                  trackColor={{ true: '#eb7825', false: '#e5e7eb' }}
+                  thumbColor="#fff"
+                  accessibilityLabel={`Appear on the Near You leaderboard. Currently ${isDiscoverable ? 'on' : 'off'}.`}
+                  accessibilityRole="switch"
+                />
+              </View>
+
+              {/* Sub-controls — only when discoverable */}
+              {isDiscoverable && (
+                <View style={styles.lbSubControls}>
+                  {/* Who sees you */}
+                  <Text style={styles.lbSubLabel}>Who sees you</Text>
+                  <View style={styles.lbVisibilityOptions}>
+                    {(['everyone', 'friends_of_friends', 'friends', 'paired', 'off'] as VisibilityLevel[]).map((level) => {
+                      const labels: Record<string, string> = {
+                        everyone: 'Everyone',
+                        friends_of_friends: 'Friends of Friends',
+                        friends: 'Friends',
+                        paired: 'Paired',
+                        off: 'Nobody',
+                      };
+                      const isActive = leaderboardVisibility === level;
+                      return (
+                        <TouchableOpacity
+                          key={level}
+                          style={[styles.lbVisOption, isActive && styles.lbVisOptionActive]}
+                          onPress={() => setLeaderboardVisibility(level)}
+                          activeOpacity={0.7}
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected: isActive }}
+                        >
+                          <Text style={[styles.lbVisOptionText, isActive && styles.lbVisOptionTextActive]}>
+                            {labels[level]}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Your status */}
+                  <Text style={styles.lbSubLabel}>Your status</Text>
+                  {['None', 'Exploring', 'Looking for plans', 'Open to meet', 'Busy'].map((status) => {
+                    const value = status === 'None' ? null : status;
+                    const isActive = leaderboardStatus === value;
+                    return (
+                      <TouchableOpacity
+                        key={status}
+                        style={styles.lbStatusOption}
+                        onPress={() => { setLeaderboardStatus(value); setCustomStatusText(''); }}
+                        activeOpacity={0.7}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: isActive }}
+                      >
+                        <View style={[styles.lbRadio, isActive && styles.lbRadioActive]} />
+                        <Text style={[styles.lbStatusText, isActive && styles.lbStatusTextActive]}>{status}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {/* Custom status */}
+                  <View style={styles.lbStatusOption}>
+                    <View style={[
+                      styles.lbRadio,
+                      leaderboardStatus !== null &&
+                      !['Exploring', 'Looking for plans', 'Open to meet', 'Busy'].includes(leaderboardStatus) &&
+                      styles.lbRadioActive
+                    ]} />
+                    <TextInput
+                      style={styles.lbCustomInput}
+                      value={customStatusText}
+                      onChangeText={(text) => {
+                        setCustomStatusText(text);
+                        if (text.trim()) setLeaderboardStatus(text.trim());
+                      }}
+                      placeholder="Custom status..."
+                      placeholderTextColor="#9ca3af"
+                      maxLength={30}
+                      returnKeyType="done"
+                    />
+                  </View>
+
+                  {/* Available seats */}
+                  <Text style={styles.lbSubLabel}>Available seats</Text>
+                  <Text style={styles.lbSubDescription}>How many people can tag along?</Text>
+                  <View style={styles.lbStepperRow}>
+                    <TouchableOpacity
+                      style={[styles.lbStepperBtn, availableSeats <= 1 && styles.lbStepperBtnDisabled]}
+                      onPress={() => setAvailableSeats(Math.max(1, availableSeats - 1))}
+                      disabled={availableSeats <= 1}
+                      activeOpacity={0.7}
+                      accessibilityLabel="Decrease seats"
+                    >
+                      <Icon name="remove" size={18} color={availableSeats <= 1 ? '#9ca3af' : '#374151'} />
+                    </TouchableOpacity>
+                    <Text style={styles.lbStepperValue}>{availableSeats}</Text>
+                    <TouchableOpacity
+                      style={[styles.lbStepperBtn, styles.lbStepperBtnPlus, availableSeats >= 5 && styles.lbStepperBtnDisabled]}
+                      onPress={() => setAvailableSeats(Math.min(5, availableSeats + 1))}
+                      disabled={availableSeats >= 5}
+                      activeOpacity={0.7}
+                      accessibilityLabel="Increase seats"
+                    >
+                      <Icon name="add" size={18} color={availableSeats >= 5 ? '#9ca3af' : '#fff'} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+            </Animated.View>
+          )}
 
           </KeyboardAwareScrollView>
         {/* Apply Button */}
@@ -1455,5 +1676,132 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "600",
     color: "#111827",
+  },
+  // ORCH-0437: Leaderboard Section 7 styles
+  lbToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  lbToggleTextArea: {
+    flex: 1,
+    marginRight: 12,
+  },
+  lbToggleLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  lbToggleDescription: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  lbSubControls: {
+    marginTop: 12,
+  },
+  lbSubLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  lbSubDescription: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: '#9ca3af',
+    marginBottom: 8,
+  },
+  lbVisibilityOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  lbVisOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  lbVisOptionActive: {
+    backgroundColor: 'rgba(235, 120, 37, 0.1)',
+    borderColor: 'rgba(235, 120, 37, 0.3)',
+  },
+  lbVisOptionText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  lbVisOptionTextActive: {
+    color: '#eb7825',
+    fontWeight: '600',
+  },
+  lbStatusOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 36,
+  },
+  lbRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+  },
+  lbRadioActive: {
+    borderColor: '#eb7825',
+    backgroundColor: '#eb7825',
+  },
+  lbStatusText: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: '#374151',
+  },
+  lbStatusTextActive: {
+    fontWeight: '600',
+    color: '#eb7825',
+  },
+  lbCustomInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#111827',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  lbStepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  lbStepperBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lbStepperBtnPlus: {
+    backgroundColor: '#eb7825',
+  },
+  lbStepperBtnDisabled: {
+    opacity: 0.4,
+  },
+  lbStepperValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    minWidth: 30,
+    textAlign: 'center',
   },
 });

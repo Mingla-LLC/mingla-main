@@ -331,6 +331,9 @@ interface DiscoverScreenProps {
   preferencesRefreshKey?: number; // Incremented when user saves preferences
   deepLinkParams?: Record<string, string> | null;
   onDeepLinkHandled?: () => void;
+  // ORCH-0437: Leaderboard integration
+  onOpenPreferences?: () => void;
+  onOpenSession?: (sessionId: string) => void;
 }
 
 // Tabs component similar to BoardTabs
@@ -613,6 +616,8 @@ export default function DiscoverScreen({
   preferencesRefreshKey,
   deepLinkParams,
   onDeepLinkHandled,
+  onOpenPreferences,
+  onOpenSession,
 }: DiscoverScreenProps) {
   const { t } = useTranslation(['discover', 'common']);
   const insets = useSafeAreaInsets();
@@ -2116,9 +2121,8 @@ export default function DiscoverScreen({
             <View style={styles.mapFullscreen}>
               <LeaderboardFeed
                 userLocation={locationLat && locationLng ? { lat: locationLat, lng: locationLng } : null}
-                onOpenPreferences={() => {
-                  // [TRANSITIONAL] Open preferences sheet — wire to PreferencesSheet visible prop
-                }}
+                onOpenPreferences={onOpenPreferences ?? (() => {})}
+                onOpenSession={onOpenSession}
               />
             </View>
           )}
