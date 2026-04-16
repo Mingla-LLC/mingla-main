@@ -1006,10 +1006,21 @@ export const RecommendationsProvider: React.FC<
 
   // ── Collab params change detector ─────────────────────────────────────
   const prevCollabParamsRef = useRef<string | null>(null);
+  const prevCollabModeRef = useRef(false);
   useEffect(() => {
-    if (!isCollaborationMode || !collabDeckParams) return;
+    if (!isCollaborationMode || !collabDeckParams) {
+      prevCollabModeRef.current = false;
+      return;
+    }
     const paramsKey = JSON.stringify(collabDeckParams);
-    if (prevCollabParamsRef.current !== null && prevCollabParamsRef.current !== paramsKey) {
+
+    // ORCH-0437: When entering collab mode (solo→collab transition), always
+    // invalidate session-deck to clear any cached errors from prior attempts
+    // where the other participant hadn't set preferences yet.
+    if (!prevCollabModeRef.current) {
+      queryClient.invalidateQueries({ queryKey: ['session-deck'] });
+      prevCollabModeRef.current = true;
+    } else if (prevCollabParamsRef.current !== null && prevCollabParamsRef.current !== paramsKey) {
       // Collab params changed (preference update) — invalidate session deck
       queryClient.invalidateQueries({ queryKey: ['session-deck'] });
       setBatchSeed(0);
