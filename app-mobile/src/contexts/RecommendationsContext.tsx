@@ -523,7 +523,7 @@ export const RecommendationsProvider: React.FC<
   } = useSessionDeck(
     isCollaborationMode ? resolvedSessionId ?? undefined : undefined,
     batchSeed,
-    isCollaborationMode && !!resolvedSessionId && !isWaitingForSessionResolution && batchSeedReady,
+    isCollaborationMode && !!resolvedSessionId && !isWaitingForSessionResolution && batchSeedReady && !!collabDeckParams,
     [], // ORCH-0438: excludeCardIds no longer sent — session decks are shared, filtered client-side below
   );
 
