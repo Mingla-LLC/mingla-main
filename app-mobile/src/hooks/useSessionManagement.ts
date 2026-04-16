@@ -1183,6 +1183,40 @@ export const useSessionManagement = () => {
     loadUserSessions();
   }, [user, loadUserSessions]);
 
+  // Realtime: refetch sessions when invites or participations change for this user.
+  // Covers: session deleted (cascade deletes invite), invite accepted/declined externally, etc.
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel(`session_pills:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'collaboration_invites',
+          filter: `invited_user_id=eq.${user.id}`,
+        },
+        () => { loadUserSessions(); }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'session_participants',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => { loadUserSessions(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, loadUserSessions]);
+
   return {
     ...sessionState,
     switchToSolo,

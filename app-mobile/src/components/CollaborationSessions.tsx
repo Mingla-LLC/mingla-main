@@ -540,13 +540,6 @@ export default function CollaborationSessions({
 
   return (
     <View style={styles.container}>
-      {/* Left scroll indicator */}
-      {showLeftArrow && (
-        <TouchableOpacity style={styles.scrollArrowLeft} onPress={scrollLeft}>
-          <Icon name="chevron-back" size={16} color="#6B7280" />
-        </TouchableOpacity>
-      )}
-
       {/* Fixed pills */}
       <View collapsable={false}>
         <TouchableOpacity
@@ -583,6 +576,13 @@ export default function CollaborationSessions({
           <Icon name="add" size={16} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
+
+      {/* Left scroll indicator — after fixed pills, before scrollable area */}
+      {showLeftArrow && (
+        <TouchableOpacity style={styles.scrollArrowLeft} onPress={scrollLeft}>
+          <Icon name="chevron-back" size={16} color="#6B7280" />
+        </TouchableOpacity>
+      )}
 
       {/* Scrollable session pills */}
       <View style={styles.scrollViewWrapper}>
@@ -1178,20 +1178,21 @@ const styles = StyleSheet.create({
   },
   scrollViewWrapper: {
     flex: 1,
-    overflow: 'hidden',
   },
   scrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    paddingVertical: 4,
   },
   scrollArrowLeft: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'center',
     zIndex: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -1200,12 +1201,13 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   scrollArrowRight: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'center',
     zIndex: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },

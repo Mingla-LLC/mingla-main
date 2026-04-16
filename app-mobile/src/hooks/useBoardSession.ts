@@ -383,6 +383,12 @@ export const useBoardSession = (sessionId?: string) => {
             queryClient.invalidateQueries({ queryKey: ["session-deck", sessionId] });
           }
         },
+        onSessionDeleted: () => {
+          if (capturedSessionId !== stableSessionIdRef.current) return;
+          setSession(null);
+          setSessionValid(false);
+          setError('This session has been deleted.');
+        },
       };
       boardCallbacksRef.current = callbacks;
       realtimeService.subscribeToBoardSession(sessionId, callbacks);

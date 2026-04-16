@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-14
+> Last updated: 2026-04-16
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 
@@ -13,7 +13,7 @@
 | Auth & Session | Mobile + Backend | useAuthSimple.ts, session management | Mixed (2A, 4B, 1C) | 7 | Partial |
 | Onboarding | Mobile | OnboardingFlow.tsx, useOnboardingStateMachine.ts | Mixed (3A, 9F) | 12 | Weak |
 | Discovery / Explore | Mobile + Backend | SwipeableCards.tsx, deckService.ts, RecommendationsContext.tsx | Strong (38A, 5B, 0C, 12F) | 55 | Strong |
-| Collaboration Sessions | Mobile + Backend | SessionViewModal, CollaborationSessions.tsx | Mixed (3A, 4F) | 7 | Weak |
+| Collaboration Sessions | Mobile + Backend | SessionViewModal, CollaborationSessions.tsx, BoardSettingsDropdown.tsx | Mixed (3A, 4B, 4F) | 11 | Partial |
 | Social / Friends | Mobile + Backend | friendsService.ts, ConnectionsPage.tsx | Mixed (1A, 1B, 5F) | 7 | Weak |
 | Notifications | Mobile + Backend | notify-dispatch, NotificationsModal.tsx | Mixed (7A, 2B, 3F) | 12 | Partial |
 | Saved / Boards | Mobile | LikesPage.tsx, boardService.ts | All F | 5 | Unaudited |
@@ -201,7 +201,13 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0320 | Legacy time_of_day / time_slot — collab load reads time_slot||time_of_day | Collaboration | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — Prefers time_slot, falls back to time_of_day. Both written on save. 14/14 PASS. |
 | ORCH-0321 | PreferencesSheet collab load restores date_option with kebab + legacy compat | Collaboration | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — KEBAB_TO_DATE_OPTION map handles both formats. 14/14 PASS. |
 | ORCH-0322 | RLS policy gap — board_session_preferences has no INSERT policy for non-creator participants | Collaboration | S1 | security | open | F | — | INVESTIGATION_COLLAB_PREF_PARITY_REPORT.md Finding 8 — Original migration only has SELECT + UPDATE (creator only). Needs separate investigation. |
+| ORCH-0439 | Board settings UX — consolidate floating dropdown + manage modal + edit modal into single bottom sheet | Collaboration | S2 | design-debt | implemented | B | 2026-04-16 | BoardSettingsDropdown.tsx rewritten: bottom sheet with inline-editable name, members list (admin toggle + remove), leave/delete buttons. ManageBoardModal.tsx deleted. Needs device verification. |
+| ORCH-0440 | Session deletion not broadcast to other users — no realtime DELETE listener, no notification, stale UI | Collaboration | S1 | bug | implemented | B | 2026-04-16 | realtimeService.ts: DELETE listener on collaboration_sessions. SessionViewModal: auto-close + toast. boardNotificationService: notifySessionDeleted(). notify-dispatch: session_deleted type. Migration: REPLICA IDENTITY FULL. Needs device verification. |
+| ORCH-0441 | Stale session pills after deletion — invited user still sees greyed-out pill for deleted session | Collaboration | S1 | bug | implemented | B | 2026-04-16 | useSessionManagement.ts: Realtime subscription on collaboration_invites + session_participants for current user. Cascade DELETE triggers refetch → pill disappears. REPLICA IDENTITY FULL on both tables. Needs device verification. |
+| ORCH-0442 | Collaboration pill bar — greyed-out pills clipped at top (overflow:hidden) + scroll arrows mispositioned | Collaboration | S2 | bug | implemented | B | 2026-04-16 | CollaborationSessions.tsx: removed overflow:hidden, added paddingVertical to scrollContent. Left arrow moved after + button. Arrows sized to 24px, alignSelf:center. Needs device verification. |
 | ORCH-0323 | generate-curated-experiences standalone aggregation stale — MIN, no time_slot, legacy location parse | Collaboration | S2 | design-debt | open | F | — | INVESTIGATION_COLLAB_PREF_PARITY_REPORT.md Findings 9+10 — Not used in deck flow but will break if called with session_id. |
+| ORCH-0437 | Per-category interleaved deck with strict category/intent alternation — both solo and collab | Discovery + Collaboration | S2 | design-debt | in-progress | F | — | User request 2026-04-15. Collab interleaving fixed (commit 2bb3a91f). Pending: testing + OTA. |
+| ORCH-0438 | Collab session lifecycle — stale error cache, missing state machine, premature deck generation | Collaboration | S1 | architecture-flaw | open | F | — | 2026-04-15. Creator opens session before invitee accepts → deck fails → error cached → invitee later sees cards but creator stuck on error. Band-aid applied (commit 881db8fe). Structural investigation dispatched. |
 
 ### Section 5: Social / Friends
 

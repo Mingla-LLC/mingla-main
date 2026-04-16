@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  ScrollView,
   Modal,
   TextInput,
   ActivityIndicator,
@@ -12,8 +13,28 @@ import {
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
-import { useKeyboard } from "../../hooks/useKeyboard";
 import { useTranslation } from "react-i18next";
+import { getDisplayName } from "../../utils/getDisplayName";
+import { truncateString } from "../../utils/general";
+import { notifyMemberLeft, notifySessionDeleted } from "../../services/boardNotificationService";
+import { colors } from "../../constants/colors";
+
+interface Participant {
+  id?: string;
+  user_id: string;
+  session_id: string;
+  joined_at?: string;
+  has_accepted?: boolean;
+  is_admin?: boolean;
+  profiles?: {
+    id: string;
+    username?: string;
+    display_name?: string;
+    first_name?: string;
+    last_name?: string;
+    avatar_url?: string;
+  };
+}
 
 interface BoardSettingsDropdownProps {
   visible: boolean;
@@ -24,16 +45,13 @@ interface BoardSettingsDropdownProps {
   currentUserId?: string;
   isAdmin?: boolean;
   notificationsEnabled?: boolean;
+  participants?: Participant[];
   onToggleNotifications?: () => void;
-  onManageMembers?: () => void;
   onInviteParticipants?: () => void;
   onExitBoard?: () => void;
   onSessionDeleted?: () => void;
   onSessionNameUpdated?: (newName: string) => void;
-  // For positioning (used when rendering as absolute positioned dropdown)
-  position?: { x: number; y: number };
-  // Style variant: 'overlay' for full-screen overlay, 'positioned' for absolute positioned
-  variant?: "overlay" | "positioned";
+  onParticipantsChange?: () => void;
 }
 
 export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
@@ -45,528 +63,727 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   currentUserId,
   isAdmin = false,
   notificationsEnabled = true,
+  participants = [],
   onToggleNotifications,
-  onManageMembers,
   onInviteParticipants,
   onExitBoard,
   onSessionDeleted,
   onSessionNameUpdated,
-  position,
-  variant = "overlay",
+  onParticipantsChange,
 }) => {
-  const { t } = useTranslation(['board', 'common']);
-  const [showEditSessionModal, setShowEditSessionModal] = useState(false);
-  const [editSessionName, setEditSessionName] = useState("");
-  const [savingSessionName, setSavingSessionName] = useState(false);
+  const { t } = useTranslation(["board", "common"]);
+  const [editSessionName, setEditSessionName] = useState(sessionName);
+  const [savingName, setSavingName] = useState(false);
   const [deletingSession, setDeletingSession] = useState(false);
   const [exitingBoard, setExitingBoard] = useState(false);
-  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
-  const editNameInputRef = useRef<TextInput>(null);
+  const [adminUsers, setAdminUsers] = useState<Set<string>>(new Set());
+  const nameInputRef = useRef<TextInput>(null);
 
-  // Deferred focus: autoFocus inside Modal crashes on iOS Fabric.
-  // Focus manually after the Modal's native view hierarchy has committed.
+  // Sync admin users from participants
   useEffect(() => {
-    if (showEditSessionModal) {
-      const timer = setTimeout(() => editNameInputRef.current?.focus(), 400);
-      return () => clearTimeout(timer);
+    if (participants.length > 0) {
+      const admins = participants
+        .filter((p) => p.is_admin)
+        .map((p) => p.user_id);
+      setAdminUsers(new Set(admins));
     }
-  }, [showEditSessionModal]);
+  }, [participants]);
 
-  // Check if current user can manage session (is creator or admin)
-  const canManageSession = currentUserId && (sessionCreatorId === currentUserId || isAdmin);
+  // Sync local name when sheet opens or sessionName changes
+  useEffect(() => {
+    setEditSessionName(sessionName);
+  }, [sessionName, visible]);
 
-  // Handle exit board by delegating to parent handler
-  // Parent owns source-of-truth leave logic and post-exit refresh behavior.
+  const canManageSession =
+    currentUserId &&
+    (sessionCreatorId === currentUserId || isAdmin);
+
+  const isUserAdmin =
+    currentUserId === sessionCreatorId || adminUsers.has(currentUserId || "");
+
+  // --- Handlers: Board actions ---
+
   const handleExitBoardWithRules = useCallback(async () => {
     if (exitingBoard) return;
-
     try {
       setExitingBoard(true);
       onClose();
-
       if (onExitBoard) {
         await Promise.resolve(onExitBoard());
       }
     } catch (error: any) {
       console.error("Error exiting board:", error);
       Alert.alert(
-        t('board:boardSettingsDropdown.errorGeneric'),
-        error?.message || t('board:boardSettingsDropdown.errorLeave')
+        t("board:boardSettingsDropdown.errorGeneric"),
+        error?.message || t("board:boardSettingsDropdown.errorLeave")
       );
     } finally {
       setExitingBoard(false);
     }
-  }, [exitingBoard, onClose, onExitBoard]);
+  }, [exitingBoard, onClose, onExitBoard, t]);
 
-  // Handle edit session name
-  const handleEditSessionName = useCallback(() => {
-    if (!canManageSession) {
-      Alert.alert(t('board:boardSettingsDropdown.permissionDenied'), t('board:boardSettingsDropdown.permissionEditName'));
-      return;
-    }
-    setEditSessionName(sessionName);
-    setShowEditSessionModal(true);
-    onClose();
-  }, [canManageSession, sessionName, onClose]);
+  const handleLeaveBoard = useCallback(() => {
+    Alert.alert(
+      "Leave Board",
+      `Are you sure you want to leave "${sessionName}"?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Leave",
+          style: "destructive",
+          onPress: handleExitBoardWithRules,
+        },
+      ]
+    );
+  }, [sessionName, handleExitBoardWithRules]);
 
-  // Handle save session name
-  const handleSaveSessionName = useCallback(async () => {
-    if (!sessionId || !editSessionName.trim()) {
-      Alert.alert(t('board:boardSettingsDropdown.errorGeneric'), t('board:boardSettingsDropdown.errorEmptyName'));
-      return;
-    }
-
-    try {
-      setSavingSessionName(true);
-      const { error } = await supabase
-        .from("collaboration_sessions")
-        .update({ name: editSessionName.trim() })
-        .eq("id", sessionId);
-
-      if (error) throw error;
-
-      setShowEditSessionModal(false);
-      
-      // Notify parent of the update
-      if (onSessionNameUpdated) {
-        onSessionNameUpdated(editSessionName.trim());
-      }
-      
-      // Show success toast
-      Alert.alert(t('board:boardSettingsDropdown.success'), t('board:boardSettingsDropdown.nameUpdated'));
-    } catch (error: any) {
-      console.error("Error updating session name:", error);
-      Alert.alert(
-        t('board:boardSettingsDropdown.updateFailed'),
-        error?.message || t('board:boardSettingsDropdown.updateFailedMsg')
-      );
-    } finally {
-      setSavingSessionName(false);
-    }
-  }, [sessionId, editSessionName, onSessionNameUpdated]);
-
-  // Handle delete session
   const handleDeleteSession = useCallback(async () => {
     if (deletingSession) return;
     if (!sessionId || !currentUserId) return;
-    if (!isAdmin && sessionCreatorId !== currentUserId) {
-      Alert.alert(t('board:boardSettingsDropdown.permissionDenied'), t('board:boardSettingsDropdown.permissionDelete'));
-      return;
-    }
-
     try {
       setDeletingSession(true);
+
+      // Notify participants BEFORE delete (they still exist in DB)
+      notifySessionDeleted({
+        sessionId,
+        sessionName: sessionName || "Session",
+        userId: currentUserId,
+        userName: getDisplayName(
+          participants.find((p) => p.user_id === currentUserId)?.profiles,
+          "Someone"
+        ),
+      });
+
       const { error } = await supabase
         .from("collaboration_sessions")
         .delete()
         .eq("id", sessionId);
-
       if (error) throw error;
 
-      // Show success toast
-      Alert.alert(t('board:boardSettingsDropdown.success'), t('board:boardSettingsDropdown.sessionDeleted'));
-
-      // Notify parent
-      if (onSessionDeleted) {
-        onSessionDeleted();
-      }
+      if (onSessionDeleted) onSessionDeleted();
     } catch (error: any) {
       console.error("Error deleting session:", error);
       Alert.alert(
-        t('board:boardSettingsDropdown.deleteFailed'),
-        error?.message || t('board:boardSettingsDropdown.deleteFailedMsg')
+        t("board:boardSettingsDropdown.deleteFailed"),
+        error?.message || t("board:boardSettingsDropdown.deleteFailedMsg")
       );
     } finally {
       setDeletingSession(false);
     }
-  }, [deletingSession, sessionId, currentUserId, isAdmin, sessionCreatorId, onSessionDeleted]);
+  }, [deletingSession, sessionId, currentUserId, sessionName, participants, onSessionDeleted, t]);
 
-  // Handle delete session with confirmation
   const handleDeleteSessionWithConfirmation = useCallback(() => {
-    if (!canManageSession) {
-      Alert.alert(t('board:boardSettingsDropdown.permissionDenied'), t('board:boardSettingsDropdown.permissionDeleteBoard'));
-      return;
-    }
-
     onClose();
-
     Alert.alert(
-      t('board:boardSettingsDropdown.deleteSessionTitle'),
-      t('board:boardSettingsDropdown.deleteSessionMsg', { name: sessionName }),
+      t("board:boardSettingsDropdown.deleteSessionTitle"),
+      t("board:boardSettingsDropdown.deleteSessionMsg", { name: sessionName }),
       [
+        { text: t("common:cancel"), style: "cancel" },
         {
-          text: t('common:cancel'),
-          style: "cancel",
-        },
-        {
-          text: t('common:delete'),
+          text: t("common:delete"),
           style: "destructive",
           onPress: handleDeleteSession,
         },
       ]
     );
-  }, [canManageSession, sessionName, onClose, handleDeleteSession]);
+  }, [sessionName, onClose, handleDeleteSession, t]);
 
-  const renderDropdownContent = () => (
-    <View style={styles.dropdownMenu}>
-      {/* Admin Privileges header - only for creator/admin */}
-      {canManageSession && (
-        <View style={styles.adminHeader}>
-          <View style={styles.adminHeaderIcon}>
-            <Icon name="shield" size={16} color="#eb7825" />
-          </View>
-          <Text style={styles.adminHeaderText}>Admin Privileges</Text>
-        </View>
-      )}
+  // --- Handlers: Inline name save ---
 
-      {/* Manage Board - only for creator/admin */}
-      {canManageSession && onManageMembers && (
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => {
-            onManageMembers();
-            onClose();
-          }}
-          activeOpacity={0.7}
-        >
-          <Icon name="settings" size={18} color="#6B7280" />
-          <Text style={styles.menuItemText}>Manage Board</Text>
-        </TouchableOpacity>
-      )}
+  const handleSaveName = useCallback(async () => {
+    const trimmed = editSessionName.trim();
+    // No change or empty — revert silently
+    if (!trimmed || trimmed === sessionName) {
+      setEditSessionName(sessionName);
+      return;
+    }
+    if (!sessionId) return;
+    try {
+      setSavingName(true);
+      const { error } = await supabase
+        .from("collaboration_sessions")
+        .update({ name: trimmed })
+        .eq("id", sessionId);
+      if (error) throw error;
+      if (onSessionNameUpdated) onSessionNameUpdated(trimmed);
+    } catch (error: any) {
+      console.error("Error updating session name:", error);
+      setEditSessionName(sessionName); // revert on failure
+      Alert.alert(
+        t("board:boardSettingsDropdown.updateFailed"),
+        error?.message || t("board:boardSettingsDropdown.updateFailedMsg")
+      );
+    } finally {
+      setSavingName(false);
+    }
+  }, [sessionId, editSessionName, sessionName, onSessionNameUpdated, t]);
 
-      {/* Rename Board - only for creator/admin */}
-      {canManageSession && (
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={handleEditSessionName}
-          activeOpacity={0.7}
-        >
-          <Icon name="edit-2" size={18} color="#6B7280" />
-          <Text style={styles.menuItemText}>Rename Board</Text>
-        </TouchableOpacity>
-      )}
+  // --- Handlers: Member management ---
 
-      {/* Invite Participants - only for creator/admin */}
-      {canManageSession && onInviteParticipants && (
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => {
-            onInviteParticipants();
-            onClose();
-          }}
-          activeOpacity={0.7}
-        >
-          <Icon name="user-plus" size={18} color="#6B7280" />
-          <Text style={styles.menuItemText}>Invite Participants</Text>
-        </TouchableOpacity>
-      )}
+  const handleToggleAdmin = useCallback(
+    async (memberUserId: string, memberDisplayName: string, isCurrentlyAdmin: boolean) => {
+      if (!currentUserId || !sessionId) return;
 
-      {/* Turn off notifications */}
-      {onToggleNotifications && (
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => {
-            onToggleNotifications();
-            onClose();
-          }}
-          activeOpacity={0.7}
-        >
-          <Icon 
-            name={notificationsEnabled ? "bell-off" : "bell"} 
-            size={18} 
-            color="#6B7280" 
-          />
-          <Text style={styles.menuItemText}>
-            {notificationsEnabled ? "Turn Off Notifications" : "Turn On Notifications"}
-          </Text>
-        </TouchableOpacity>
-      )}
+      if (memberUserId === sessionCreatorId) {
+        Alert.alert(
+          t("board:manageBoardModal.cannotModifyCreator"),
+          t("board:manageBoardModal.cannotModifyCreatorMsg")
+        );
+        return;
+      }
 
-      {/* Divider */}
-      <View style={styles.menuDivider} />
-
-      {/* Leave Board */}
-      <TouchableOpacity
-        style={styles.menuItem}
-        onPress={() => {
-          onClose();
-          Alert.alert(
-            "Leave Board",
-            `Are you sure you want to leave "${sessionName}"?`,
-            [
-              { text: "Cancel", style: "cancel" },
-              {
-                text: "Leave",
-                style: "destructive",
-                onPress: handleExitBoardWithRules,
+      if (isCurrentlyAdmin) {
+        Alert.alert(
+          "Remove Admin",
+          `Remove admin privileges from ${memberDisplayName}?`,
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Remove",
+              style: "destructive",
+              onPress: async () => {
+                try {
+                  const { error } = await supabase
+                    .from("session_participants")
+                    .update({ is_admin: false })
+                    .eq("session_id", sessionId)
+                    .eq("user_id", memberUserId);
+                  if (error) throw error;
+                  setAdminUsers((prev) => {
+                    const s = new Set(prev);
+                    s.delete(memberUserId);
+                    return s;
+                  });
+                  onParticipantsChange?.();
+                } catch (err: any) {
+                  console.error("Error demoting member:", err);
+                  Alert.alert("Error", err?.message || "Could not remove admin privileges.");
+                }
               },
-            ]
-          );
-        }}
-        activeOpacity={0.7}
-        disabled={exitingBoard}
-      >
-        <Icon name="log-out" size={18} color="#6B7280" />
-        <Text style={styles.menuItemText}>
-          {exitingBoard ? "Leaving..." : "Leave Board"}
-        </Text>
-      </TouchableOpacity>
-
-      {/* Delete Board - only for creator/admin */}
-      {canManageSession && (
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={handleDeleteSessionWithConfirmation}
-          activeOpacity={0.7}
-        >
-          <Icon name="x" size={18} color="#EF4444" />
-          <Text style={styles.menuItemTextDanger}>Delete Board</Text>
-        </TouchableOpacity>
-      )}
-    </View>
+            },
+          ]
+        );
+      } else {
+        try {
+          const { error } = await supabase
+            .from("session_participants")
+            .update({ is_admin: true })
+            .eq("session_id", sessionId)
+            .eq("user_id", memberUserId);
+          if (error) throw error;
+          setAdminUsers((prev) => new Set([...prev, memberUserId]));
+          onParticipantsChange?.();
+        } catch (err: any) {
+          console.error("Error promoting member:", err);
+          Alert.alert("Error", err?.message || "Could not promote to admin.");
+        }
+      }
+    },
+    [currentUserId, sessionId, sessionCreatorId, onParticipantsChange, t]
   );
 
-  if (!visible && !showEditSessionModal) return null;
+  const handleRemoveMember = useCallback(
+    (memberUserId: string, memberDisplayName: string) => {
+      if (!currentUserId || !sessionId) return;
+
+      if (memberUserId === sessionCreatorId) {
+        Alert.alert(
+          t("board:manageBoardModal.cannotRemoveCreator"),
+          t("board:manageBoardModal.cannotRemoveCreatorMsg")
+        );
+        return;
+      }
+      if (memberUserId === currentUserId) {
+        Alert.alert(
+          t("board:manageBoardModal.cannotRemoveSelf"),
+          t("board:manageBoardModal.cannotRemoveSelfMsg")
+        );
+        return;
+      }
+
+      Alert.alert(
+        "Remove Member",
+        `Remove ${memberDisplayName} from this board?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Remove",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await supabase
+                  .from("collaboration_invites")
+                  .delete()
+                  .eq("session_id", sessionId)
+                  .eq("invited_user_id", memberUserId);
+
+                const { error } = await supabase
+                  .from("session_participants")
+                  .delete()
+                  .eq("session_id", sessionId)
+                  .eq("user_id", memberUserId);
+                if (error) throw error;
+
+                notifyMemberLeft({
+                  sessionId,
+                  sessionName: sessionName || "Session",
+                  userId: memberUserId,
+                  userName: memberDisplayName,
+                });
+
+                onParticipantsChange?.();
+                Alert.alert("Done", `${memberDisplayName} has been removed.`);
+              } catch (err: any) {
+                console.error("Error removing member:", err);
+                Alert.alert("Error", err?.message || "Could not remove member.");
+              }
+            },
+          },
+        ]
+      );
+    },
+    [currentUserId, sessionId, sessionCreatorId, sessionName, onParticipantsChange, t]
+  );
+
+  if (!visible) return null;
 
   return (
     <>
-      {/* Dropdown Menu */}
+      {/* Bottom Sheet */}
       {visible && (
         <Modal
           visible={visible}
           transparent
-          animationType="fade"
+          animationType="slide"
           onRequestClose={onClose}
         >
-          <TouchableOpacity
-            style={styles.overlay}
-            activeOpacity={1}
-            onPress={onClose}
-          >
-            {renderDropdownContent()}
-          </TouchableOpacity>
+          <Pressable style={styles.sheetOverlay} onPress={onClose}>
+            <Pressable style={styles.sheetContainer} onPress={() => {}}>
+              {/* Handle */}
+              <View style={styles.sheetHandleRow}>
+                <View style={styles.sheetHandle} />
+              </View>
+
+              {/* Board Name — inline editable */}
+              <View style={styles.boardNameRow}>
+                {canManageSession ? (
+                  <View style={styles.boardNameInputWrapper}>
+                    <TextInput
+                      ref={nameInputRef}
+                      style={styles.boardNameInput}
+                      value={editSessionName}
+                      onChangeText={setEditSessionName}
+                      onBlur={handleSaveName}
+                      onSubmitEditing={handleSaveName}
+                      returnKeyType="done"
+                      maxLength={100}
+                      selectTextOnFocus
+                    />
+                    {savingName && (
+                      <ActivityIndicator
+                        size="small"
+                        color="#eb7825"
+                        style={styles.savingIndicator}
+                      />
+                    )}
+                  </View>
+                ) : (
+                  <Text style={styles.boardNameStatic} numberOfLines={1}>
+                    {sessionName}
+                  </Text>
+                )}
+              </View>
+
+              <ScrollView
+                style={styles.sheetScroll}
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                {/* Settings Menu Items */}
+                <View style={styles.menuSection}>
+                  {/* Invite Participants - admin only */}
+                  {canManageSession && onInviteParticipants && (
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        onInviteParticipants();
+                        onClose();
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Icon name="user-plus" size={18} color="#6B7280" />
+                      <Text style={styles.menuItemText}>Invite Participants</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Toggle notifications */}
+                  {onToggleNotifications && (
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        onToggleNotifications();
+                        onClose();
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Icon
+                        name={notificationsEnabled ? "bell-off" : "bell"}
+                        size={18}
+                        color="#6B7280"
+                      />
+                      <Text style={styles.menuItemText}>
+                        {notificationsEnabled
+                          ? "Turn Off Notifications"
+                          : "Turn On Notifications"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Divider */}
+                <View style={styles.menuDivider} />
+
+                {/* Members Section */}
+                <View style={styles.membersSection}>
+                  <Text style={styles.membersSectionTitle}>
+                    Members ({participants.length})
+                  </Text>
+                  {participants.map((participant) => {
+                    const profile = participant.profiles;
+                    const isCurrentUser = participant.user_id === currentUserId;
+                    const originalName = getDisplayName(profile, "Unknown");
+                    const displayName = isCurrentUser ? "You" : originalName;
+                    const isCreator = participant.user_id === sessionCreatorId;
+                    const isParticipantAdmin =
+                      isCreator || adminUsers.has(participant.user_id);
+
+                    return (
+                      <View
+                        key={participant.user_id || participant.id}
+                        style={styles.memberRow}
+                      >
+                        <View style={styles.memberLeft}>
+                          <View style={styles.memberAvatar}>
+                            <Text style={styles.memberAvatarText}>
+                              {originalName.charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={styles.memberInfo}>
+                            <View style={styles.memberNameRow}>
+                              <Text style={styles.memberName}>
+                                {truncateString(displayName, 15)}
+                              </Text>
+                              {isCreator && (
+                                <View style={styles.creatorBadge}>
+                                  <Icon name="crown-outline" size={10} color="white" />
+                                  <Text style={styles.badgeText}>Creator</Text>
+                                </View>
+                              )}
+                              {!isCreator && isParticipantAdmin && (
+                                <View style={styles.adminBadge}>
+                                  <Icon name="shield" size={9} color="white" />
+                                  <Text style={styles.badgeText}>Admin</Text>
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                        </View>
+
+                        {/* Action buttons — admin can manage non-creator, non-self */}
+                        {isUserAdmin && !isCreator && !isCurrentUser && (
+                          <View style={styles.memberActions}>
+                            <TouchableOpacity
+                              style={[
+                                styles.memberActionBtn,
+                                isParticipantAdmin && styles.memberActionBtnActive,
+                              ]}
+                              onPress={() =>
+                                handleToggleAdmin(
+                                  participant.user_id,
+                                  originalName,
+                                  isParticipantAdmin
+                                )
+                              }
+                            >
+                              <Icon
+                                name="shield"
+                                size={16}
+                                color={isParticipantAdmin ? "#eb7825" : "#9CA3AF"}
+                              />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.memberActionBtn}
+                              onPress={() =>
+                                handleRemoveMember(participant.user_id, originalName)
+                              }
+                            >
+                              <Icon name="user-minus" size={16} color="#EF4444" />
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+
+                {/* Divider */}
+                <View style={styles.menuDivider} />
+
+                {/* Leave & Delete Buttons */}
+                <View style={styles.actionButtonsRow}>
+                  <TouchableOpacity
+                    style={styles.leaveButton}
+                    onPress={handleLeaveBoard}
+                    activeOpacity={0.8}
+                    disabled={exitingBoard}
+                  >
+                    <Icon name="log-out" size={16} color="#EF4444" />
+                    <Text style={styles.leaveButtonText}>
+                      {exitingBoard ? "Leaving..." : "Leave"}
+                    </Text>
+                  </TouchableOpacity>
+                  {canManageSession && (
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={handleDeleteSessionWithConfirmation}
+                      activeOpacity={0.8}
+                      disabled={deletingSession}
+                    >
+                      <Icon name="trash-outline" size={16} color="white" />
+                      <Text style={styles.deleteButtonText}>
+                        {deletingSession ? "Deleting..." : "Delete"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
         </Modal>
       )}
 
-      {/* Edit Session Name Modal */}
-      <Modal
-        visible={showEditSessionModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowEditSessionModal(false)}
-      >
-        <TouchableOpacity
-          style={styles.editModalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowEditSessionModal(false)}
-        >
-          <View style={[styles.editModalContainer, keyboardHeight > 0 && { marginBottom: keyboardHeight }]} onStartShouldSetResponder={() => true}>
-            <View style={styles.editModalHeader}>
-              <Text style={styles.editModalTitle}>Edit Session Name</Text>
-              <TouchableOpacity
-                onPress={() => setShowEditSessionModal(false)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Icon name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              ref={editNameInputRef}
-              style={styles.editModalInput}
-              value={editSessionName}
-              onChangeText={setEditSessionName}
-              placeholder={t('board:boardSettingsDropdown.namePlaceholder')}
-              placeholderTextColor="#9ca3af"
-              maxLength={100}
-            />
-
-            <View style={styles.editModalButtons}>
-              <TouchableOpacity
-                style={styles.editModalCancelButton}
-                onPress={() => setShowEditSessionModal(false)}
-              >
-                <Text style={styles.editModalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.editModalSaveButton,
-                  (!editSessionName.trim() || savingSessionName) && styles.editModalSaveButtonDisabled
-                ]}
-                onPress={handleSaveSessionName}
-                disabled={!editSessionName.trim() || savingSessionName}
-              >
-                {savingSessionName ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text style={styles.editModalSaveText}>Save</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
+  // --- Bottom sheet ---
+  sheetOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.1)",
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    justifyContent: "flex-end",
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
-  },
-  dropdownMenu: {
-    position: "absolute",
-    top: 50,
-    right: 16,
+  sheetContainer: {
     backgroundColor: "white",
-    borderRadius: 12,
-    paddingVertical: 8,
-    minWidth: 240,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "80%",
+    paddingBottom: 34,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
     shadowRadius: 12,
-    elevation: 10,
+    elevation: 20,
   },
-  positionedDropdown: {
-    position: "absolute",
-    backgroundColor: "white",
-    borderRadius: 12,
-    paddingVertical: 8,
-    minWidth: 220,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  adminHeader: {
-    flexDirection: "row",
+  sheetHandleRow: {
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderLeftWidth: 3,
-    borderLeftColor: "#eb7825",
-    backgroundColor: "#FEF3E7",
-    marginHorizontal: 8,
-    marginBottom: 4,
-    borderRadius: 4,
-    gap: 8,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
-  adminHeaderIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#eb7825",
-    alignItems: "center",
-    justifyContent: "center",
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#d1d5db",
   },
-  adminHeaderText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#eb7825",
+  sheetScroll: {
+    paddingHorizontal: 4,
+  },
+
+  // --- Menu items ---
+  menuSection: {
+    paddingVertical: 4,
   },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
   },
   menuItemText: {
     fontSize: 15,
     color: "#374151",
     fontWeight: "400",
   },
-  menuItemTextDanger: {
-    fontSize: 15,
-    color: "#EF4444",
-    fontWeight: "400",
-  },
   menuDivider: {
     height: 1,
     backgroundColor: "#E5E7EB",
-    marginVertical: 4,
-    marginHorizontal: 16,
+    marginVertical: 6,
+    marginHorizontal: 20,
   },
-  // Edit session name modal styles
-  editModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
+
+  // --- Members ---
+  membersSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 4,
   },
-  editModalContainer: {
-    backgroundColor: "white",
-    borderRadius: 16,
-    padding: 20,
-    width: "100%",
-    maxWidth: 400,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 10,
+  membersSectionTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#9CA3AF",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 10,
+    paddingHorizontal: 4,
   },
-  editModalHeader: {
+  memberRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 10,
+    marginBottom: 6,
   },
-  editModalTitle: {
-    fontSize: 18,
+  memberLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  memberAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#eb7825",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  memberAvatarText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "white",
+  },
+  memberInfo: {
+    marginLeft: 10,
+    flex: 1,
+  },
+  memberNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  memberName: {
+    fontSize: 14,
     fontWeight: "600",
     color: "#111827",
   },
-  editModalInput: {
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: "#111827",
-    backgroundColor: "#F9FAFB",
-    marginBottom: 20,
-  },
-  editModalButtons: {
+  creatorBadge: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 12,
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
   },
-  editModalCancelButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  adminBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#6B7280",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "white",
+  },
+  memberActions: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  memberActionBtn: {
+    padding: 7,
     borderRadius: 8,
     backgroundColor: "#F3F4F6",
   },
-  editModalCancelText: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#6B7280",
+  memberActionBtnActive: {
+    backgroundColor: "#FEF3C7",
   },
-  editModalSaveButton: {
+
+  // --- Action buttons ---
+  actionButtonsRow: {
+    flexDirection: "row",
+    gap: 10,
     paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: "#eb7825",
-    minWidth: 80,
+    paddingVertical: 12,
+  },
+  leaveButton: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#EF4444",
+    backgroundColor: "white",
   },
-  editModalSaveButtonDisabled: {
-    backgroundColor: "#FCD5B5",
+  leaveButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#EF4444",
   },
-  editModalSaveText: {
-    fontSize: 16,
+  deleteButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 12,
+    backgroundColor: "#EF4444",
+  },
+  deleteButtonText: {
+    fontSize: 14,
     fontWeight: "600",
     color: "white",
+  },
+
+  // --- Board name ---
+  boardNameRow: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
+  boardNameInputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderBottomWidth: 1.5,
+    borderBottomColor: "#E5E7EB",
+  },
+  boardNameInput: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+    paddingVertical: 6,
+    paddingHorizontal: 0,
+  },
+  savingIndicator: {
+    marginLeft: 8,
+  },
+  boardNameStatic: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+    paddingVertical: 6,
   },
 });
 

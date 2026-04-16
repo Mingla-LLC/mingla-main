@@ -35,7 +35,6 @@ import { BoardTabs, BoardTab } from "./board/BoardTabs";
 import { SwipeableSessionCards } from "./board/SwipeableSessionCards";
 import { BoardDiscussionTab } from "./board/BoardDiscussionTab";
 import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
-import { ManageBoardModal } from "./board/ManageBoardModal";
 import { InviteParticipantsModal } from "./board/InviteParticipantsModal";
 import { CardDiscussionModal } from "./board/CardDiscussionModal";
 import ExpandedCardModal from "./ExpandedCardModal";
@@ -155,10 +154,15 @@ export default function SessionViewModal({
   // Participants derived from useBoardSession data — no separate query needed.
   const participants = (session?.participants || []) as Participant[];
 
+  // Local display name — updates immediately on rename, falls back to prop/session
+  const [localName, setLocalName] = useState(sessionName);
+  useEffect(() => {
+    setLocalName(sessionName || session?.name || "");
+  }, [sessionName, session?.name]);
+
   // Settings dropdown state
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [showManageMembersModal, setShowManageMembersModal] = useState(false);
   const [showInviteParticipantsModal, setShowInviteParticipantsModal] = useState(false);
 
   // Card discussion modal state
@@ -422,6 +426,13 @@ export default function SessionViewModal({
       onCardMessage: () => loadCardMessageCountsRef.current(),
       onParticipantJoined: () => refreshParticipantsRef.current(),
       onParticipantLeft: () => refreshParticipantsRef.current(),
+      onSessionDeleted: () => {
+        showToast({
+          type: 'info',
+          message: `"${localName}" was deleted by an admin.`,
+        });
+        onClose();
+      },
     });
 
     return () => {
@@ -594,7 +605,7 @@ export default function SessionViewModal({
 
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle} numberOfLines={1}>
-              {sessionName || session?.name || t('modals:session_view.session_fallback')}
+              {localName || t('modals:session_view.session_fallback')}
             </Text>
             <View style={styles.headerParticipantsRow}>
               <View style={styles.participantAvatarsSmall}>
@@ -725,13 +736,13 @@ export default function SessionViewModal({
           visible={showSettingsDropdown}
           onClose={() => setShowSettingsDropdown(false)}
           sessionId={sessionId}
-          sessionName={sessionName || session?.name || ""}
+          sessionName={localName}
           sessionCreatorId={session?.created_by}
           currentUserId={user?.id}
           isAdmin={isAdmin}
           notificationsEnabled={notificationsEnabled}
+          participants={participants}
           onToggleNotifications={() => setNotificationsEnabled(!notificationsEnabled)}
-          onManageMembers={() => setShowManageMembersModal(true)}
           onInviteParticipants={() => setShowInviteParticipantsModal(true)}
           onExitBoard={handleExitBoard}
           onSessionDeleted={() => {
@@ -739,20 +750,9 @@ export default function SessionViewModal({
             onClose();
           }}
           onSessionNameUpdated={(newName) => {
+            setLocalName(newName);
             loadSession(sessionId);
           }}
-          variant="overlay"
-        />
-
-        {/* Manage Board Modal */}
-        <ManageBoardModal
-          visible={showManageMembersModal}
-          sessionId={sessionId}
-          sessionName={sessionName || session?.name || t('modals:session_view.session_fallback')}
-          sessionCreatorId={session?.created_by}
-          participants={participants}
-          onClose={() => setShowManageMembersModal(false)}
-          onExitBoard={handleExitBoard}
           onParticipantsChange={refreshParticipants}
         />
 
@@ -760,7 +760,7 @@ export default function SessionViewModal({
         <InviteParticipantsModal
           visible={showInviteParticipantsModal}
           sessionId={sessionId}
-          sessionName={sessionName || session?.name || t('modals:session_view.session_fallback')}
+          sessionName={localName || t('modals:session_view.session_fallback')}
           existingParticipantIds={participants.map((p) => p.user_id)}
           onClose={() => setShowInviteParticipantsModal(false)}
           onInvitesSent={refreshParticipants}
@@ -803,7 +803,7 @@ export default function SessionViewModal({
             }}
             accountPreferences={accountPreferences}
             isSaved={true}
-            currentMode={sessionName || "board"}
+            currentMode={localName || "board"}
           />
         )}
 
