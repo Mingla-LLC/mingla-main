@@ -247,9 +247,11 @@ export const useBoardSession = (sessionId?: string) => {
           return [...list, updatedUserPrefs];
         });
 
-        // ORCH-0446: No session-deck invalidation needed. Deck re-fetch is triggered by
-        // collabDeckParams changing in RecommendationsContext (React Query key change → auto-fetch).
-        // Realtime UPDATE on collaboration_sessions fires loadSession → allParticipantPreferences updates.
+        // ORCH-0446B: Re-read session from DB so ALL instances of useBoardSession
+        // (including RecommendationsContext's) see the updated participant_prefs.
+        // The optimistic update above only affects THIS instance. The realtime path
+        // (onSessionUpdated) is a backup but has ~200-500ms latency.
+        loadSession(sessionId);
       } catch (err: any) {
         setError(err.message || "Failed to update preferences");
         throw err;
@@ -309,6 +311,17 @@ export const useBoardSession = (sessionId?: string) => {
             return;
           }
           setSession((prev) => (prev ? { ...prev, ...updatedSession } : null));
+          // ORCH-0446B: Extract participant_prefs from realtime payload.
+          // The old board_session_preferences table was deleted — onPreferencesChanged
+          // no longer fires. This is now the only path for pref-change propagation.
+          if (updatedSession.participant_prefs) {
+            const rawPrefs = updatedSession.participant_prefs;
+            const allPrefs = Object.entries(rawPrefs).map(([uid, prefs]: [string, any]) => ({
+              user_id: uid,
+              ...prefs,
+            }));
+            setAllParticipantPreferences(allPrefs);
+          }
         },
         onParticipantJoined: (participant: { user_id: string; [key: string]: unknown }) => {
           if (capturedSessionId !== stableSessionIdRef.current) {

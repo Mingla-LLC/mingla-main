@@ -2672,6 +2672,10 @@ function AppContent() {
               onClose={() => {
                 logger.action('Close collab preferences');
                 setShowCollabPreferences(false);
+                // ORCH-0446B: Bump refreshKey so RecommendationsContext re-reads
+                // the updated participant_prefs from DB (its useBoardSession instance
+                // is separate from PreferencesSheet's — needs an explicit signal).
+                setPreferencesRefreshKey((k: number) => k + 1);
               }}
               sessionId={currentSessionId}
               sessionName={currentMode ?? "solo"}

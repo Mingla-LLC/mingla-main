@@ -642,6 +642,13 @@ export const RecommendationsProvider: React.FC<
       consecutiveSkipCountRef.current = 0;
       // DO NOT call queryClient.invalidateQueries — the query key change
       // from updated categories/intents handles refetching automatically
+
+      // ORCH-0446B: In collab mode, re-read session from DB so this instance's
+      // allParticipantPreferences updates with the new prefs. Without this,
+      // collabDeckParams stays stale (PreferencesSheet uses a separate useBoardSession).
+      if (isCollaborationMode && resolvedSessionId) {
+        boardSessionResult.loadSession(resolvedSessionId);
+      }
     }
     previousRefreshKeyRef.current = refreshKey;
   }, [refreshKey, user?.id]);
@@ -1127,8 +1134,8 @@ export const RecommendationsProvider: React.FC<
     // invalidate session-deck to clear any cached errors from prior attempts
     // where the other participant hadn't set preferences yet.
     if (!prevCollabModeRef.current) {
-      // ORCH-0446: session-deck queries no longer exist. Deck uses deck-cards key.
-      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
+      // Initial collab entry — mode transition effect already invalidated deck-cards.
+      // Don't double-invalidate here (causes duplicate fetch). Just mark collab active.
       prevCollabModeRef.current = true;
     } else if (prevCollabParamsRef.current !== null && prevCollabParamsRef.current !== paramsKey) {
       // Collab params changed (preference update) — invalidate session deck
