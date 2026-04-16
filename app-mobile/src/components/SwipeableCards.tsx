@@ -37,6 +37,7 @@ import { ExpandedCardData } from "../types/expandedCardTypes";
 import { CuratedExperienceSwipeCard } from "./CuratedExperienceSwipeCard";
 import type { CuratedExperienceCard } from "../types/curatedExperience";
 import { mixpanelService } from "../services/mixpanelService";
+import { leaderboardService } from "../services/leaderboardService";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { BoardCardService } from "../services/boardCardService";
 import { notifyMatch } from "../services/boardNotificationService";
@@ -1213,6 +1214,17 @@ export default function SwipeableCards({
         is_curated: isCurated,
         source: 'swipe',
       });
+
+      // ORCH-0437: Update leaderboard presence on right-swipe (fire-and-forget)
+      if (userLocation) {
+        leaderboardService.upsertPresence({
+          lat: userLocation.lat,
+          lng: userLocation.lng,
+          swiped_category: card.category,
+        }).catch((err) => {
+          console.warn('[SwipeableCards] Leaderboard presence upsert failed:', err);
+        });
+      }
     } else {
       logAppsFlyerEvent('card_dismissed', {
         af_content_type: card.category,
