@@ -11,6 +11,7 @@
  */
 import { supabase } from './supabase';
 import { getDisplayName } from '../utils/getDisplayName';
+import { seedCollabPrefsFromSolo } from './collabPreferenceSeedService';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -162,7 +163,17 @@ export async function acceptCollaborationInvite(
     };
   }
 
-  // ── Step 3: Upsert user as accepted participant ─────────────────────────
+  // ── Step 3: Seed preferences BEFORE participant insert (ORCH-0443) ─────
+  // Seeding first ensures prefs exist when the Realtime event fires
+  // from the participant insert below. Eliminates the race condition.
+  try {
+    await seedCollabPrefsFromSolo(userId, sessionId);
+  } catch (err) {
+    console.error('[collaborationInviteService] Preference seeding failed:', err);
+    // Non-blocking: deck generator has solo fallback (ORCH-0443 Layer 3)
+  }
+
+  // ── Step 4: Upsert user as accepted participant ─────────────────────────
 
   const { error: participantError } = await supabase
     .from('session_participants')
@@ -312,40 +323,7 @@ export async function acceptCollaborationInvite(
     }
   }
 
-  // ── Step 6: Seed board_session_preferences from solo prefs ──────────────
-
-  const { data: soloPrefs } = await supabase
-    .from('preferences')
-    .select(
-      'categories, intents, travel_mode, travel_constraint_type, travel_constraint_value, date_option, datetime_pref, use_gps_location, custom_location, custom_lat, custom_lng'
-    )
-    .eq('profile_id', userId)
-    .single();
-
-  const { error: preferencesError } = await supabase
-    .from('board_session_preferences')
-    .upsert(
-      {
-        session_id: sessionId,
-        user_id: userId,
-        categories: soloPrefs?.categories ?? [],
-        intents: soloPrefs?.intents ?? [],
-        travel_mode: soloPrefs?.travel_mode ?? 'walking',
-        travel_constraint_type: 'time',
-        travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
-        date_option: soloPrefs?.date_option ?? null,
-        datetime_pref: soloPrefs?.datetime_pref ?? null,
-        use_gps_location: soloPrefs?.use_gps_location ?? true,
-        custom_location: soloPrefs?.custom_location ?? null,
-        custom_lat: soloPrefs?.custom_lat ?? null,
-        custom_lng: soloPrefs?.custom_lng ?? null,
-      },
-      { onConflict: 'session_id,user_id' }
-    );
-
-  if (preferencesError) {
-    console.error('[collaborationInviteService] Error creating preferences:', preferencesError);
-  }
+  // Seeding already done in Step 3 (ORCH-0443)
 
   return {
     success: true,

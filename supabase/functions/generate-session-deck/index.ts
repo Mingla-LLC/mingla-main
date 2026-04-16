@@ -262,20 +262,54 @@ serve(async (req: Request) => {
     }
 
     // ── Aggregate preferences ──
-    const aggregated = aggregateAllPrefs(allPrefs || []);
+    let aggregated = aggregateAllPrefs(allPrefs || []);
 
-    // ORCH-0438: Return 200 with deckStatus instead of 400 — this is a recoverable state
+    // ORCH-0443: If no collab prefs exist, fall back to solo prefs of accepted participants
     if (aggregated.categories.length === 0 && aggregated.intents.length === 0) {
-      return new Response(
-        JSON.stringify({
-          cards: [],
-          totalCards: 0,
-          hasMore: false,
-          deckStatus: 'waiting_for_preferences',
-          preferencesHash: '',
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      const { data: participants } = await supabaseAdmin
+        .from('session_participants')
+        .select('user_id')
+        .eq('session_id', sessionId)
+        .eq('has_accepted', true);
+
+      if (participants && participants.length > 0) {
+        const userIds = participants.map((p: { user_id: string }) => p.user_id);
+        const { data: soloPrefs } = await supabaseAdmin
+          .from('preferences')
+          .select('*')
+          .in('profile_id', userIds);
+
+        if (soloPrefs && soloPrefs.length > 0) {
+          const mappedPrefs = soloPrefs.map((solo: any) => ({
+            categories: solo.categories || [],
+            intents: solo.intents || [],
+            travel_mode: solo.travel_mode || 'walking',
+            travel_constraint_value: solo.travel_constraint_value || 30,
+            datetime_pref: solo.datetime_pref || null,
+            date_option: solo.date_option || null,
+            custom_lat: solo.custom_lat || null,
+            custom_lng: solo.custom_lng || null,
+            use_gps_location: solo.use_gps_location ?? true,
+            selected_dates: solo.selected_dates || null,
+          }));
+          aggregated = aggregateAllPrefs(mappedPrefs);
+          console.log(`[generate-session-deck] ORCH-0443: Using solo fallback for ${userIds.length} participants`);
+        }
+      }
+
+      // If STILL empty after solo fallback, truly no prefs exist
+      if (aggregated.categories.length === 0 && aggregated.intents.length === 0) {
+        return new Response(
+          JSON.stringify({
+            cards: [],
+            totalCards: 0,
+            hasMore: false,
+            deckStatus: 'waiting_for_preferences',
+            preferencesHash: '',
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // ── Compute preferences hash ──

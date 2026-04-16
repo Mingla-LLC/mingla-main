@@ -155,49 +155,9 @@ export const useBoardSession = (sessionId?: string) => {
 
         if (prefsResult.data) {
           setPreferences(prefsResult.data as BoardSessionPreferences);
-        } else if (prefsResult.error?.code === 'PGRST116' && user?.id) {
-          // ORCH-0438: No prefs row for this user in this session — seed from solo prefs.
-          // This handles the creator (who never goes through acceptCollaborationInvite)
-          // and any participant entering for the first time.
-          const { data: soloPrefs } = await supabase
-            .from('preferences')
-            .select('categories, intents, travel_mode, travel_constraint_type, travel_constraint_value, date_option, datetime_pref, use_gps_location, custom_location, custom_lat, custom_lng')
-            .eq('profile_id', user.id)
-            .single();
-
-          if (soloPrefs) {
-            const seededPrefs = {
-              session_id: id,
-              user_id: user.id,
-              categories: soloPrefs.categories ?? [],
-              intents: soloPrefs.intents ?? [],
-              travel_mode: soloPrefs.travel_mode ?? 'walking',
-              travel_constraint_type: 'time' as const,
-              travel_constraint_value: soloPrefs.travel_constraint_value ?? 30,
-              date_option: soloPrefs.date_option ?? null,
-              datetime_pref: soloPrefs.datetime_pref ?? null,
-              use_gps_location: soloPrefs.use_gps_location ?? true,
-              custom_location: soloPrefs.custom_location ?? null,
-              custom_lat: soloPrefs.custom_lat ?? null,
-              custom_lng: soloPrefs.custom_lng ?? null,
-            };
-
-            const { error: seedError } = await supabase
-              .from('board_session_preferences')
-              .upsert(seededPrefs, { onConflict: 'session_id,user_id' });
-
-            if (!seedError) {
-              setPreferences(seededPrefs as BoardSessionPreferences);
-              // Update allParticipantPreferences so deck params recompute immediately
-              setAllParticipantPreferences((prev) => [...(prev ?? []), seededPrefs as BoardSessionPreferences]);
-              // Invalidate session-deck so it re-fetches with the now-seeded prefs
-              queryClient.invalidateQueries({ queryKey: ['session-deck', id] });
-              if (__DEV__) console.log('[useBoardSession] Seeded session prefs from solo prefs');
-            } else {
-              console.warn('[useBoardSession] Failed to seed session prefs:', seedError.message);
-            }
-          }
         }
+        // ORCH-0443: Fallback seeding removed. Seeding happens at acceptance time
+        // (via seedCollabPrefsFromSolo). Deck generator has solo fallback as defense-in-depth.
 
         // --- Derive session validity and user permission from fetched data ---
         // Eliminates 3 sequential BoardErrorHandler queries that re-fetched

@@ -238,78 +238,7 @@ export class BoardInviteService {
     }
   }
 
-  /**
-   * Accept an invite
-   */
-  static async acceptInvite(inviteId: string, userId: string): Promise<{ success: boolean; sessionId?: string; error?: string }> {
-    try {
-      // Get invite details
-      const { data: invite, error: inviteError } = await supabase
-        .from('collaboration_invites')
-        .select('session_id, status')
-        .eq('id', inviteId)
-        .eq('invited_user_id', userId)
-        .single();
-
-      if (inviteError || !invite) {
-        return { success: false, error: 'Invite not found' };
-      }
-
-      if (invite.status !== 'pending') {
-        return { success: false, error: 'Invite already processed' };
-      }
-
-      // Check if user is already a participant
-      const { data: existingParticipant } = await supabase
-        .from('session_participants')
-        .select('id')
-        .eq('session_id', invite.session_id)
-        .eq('user_id', userId)
-        .single();
-
-      if (!existingParticipant) {
-        // Add user as participant
-        const { error: participantError } = await supabase
-          .from('session_participants')
-          .insert({
-            session_id: invite.session_id,
-            user_id: userId,
-          });
-
-        if (participantError) throw participantError;
-      }
-
-      // Update invite status
-      const { error: updateError } = await supabase
-        .from('collaboration_invites')
-        .update({
-          status: 'accepted',
-          accepted_at: new Date().toISOString(),
-        })
-        .eq('id', inviteId);
-
-      if (updateError) throw updateError;
-
-      const { data: session } = await supabase
-        .from('collaboration_sessions')
-        .select('name')
-        .eq('id', invite.session_id)
-        .single();
-
-      await userActivityService.recordActivity(userId, {
-        activity_type: 'joined_board',
-        title: session?.name || 'Board',
-        tag: 'Board',
-        reference_id: invite.session_id,
-        reference_type: 'board',
-      });
-
-      return { success: true, sessionId: invite.session_id };
-    } catch (error: any) {
-      console.error('Error accepting invite:', error);
-      return { success: false, error: error.message || 'Failed to accept invite' };
-    }
-  }
+  // ORCH-0443: acceptInvite deleted. Use collaborationInviteService.acceptCollaborationInvite instead.
 
   /**
    * Decline an invite
