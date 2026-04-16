@@ -961,8 +961,20 @@ export default function CollaborationSessions({
               </View>
             ) : (
               <View style={styles.inviteActions}>
+                <TouchableOpacity
+                  style={styles.modalCancelInviteButton}
+                  onPress={() => {
+                    if (inviteModalSession) {
+                      onCancelInvite(inviteModalSession.id);
+                    }
+                    setShowInviteModal(false);
+                  }}
+                >
+                  <Text style={styles.modalCancelInviteButtonText}>{t('modals:collaboration.cancel_invite')}</Text>
+                </TouchableOpacity>
+
                 {/* ORCH-0437: Invite more people by phone to existing pending session */}
-                <View style={styles.friendSelectionSection}>
+                <View style={[styles.friendSelectionSection, { marginTop: 20 }]}>
                   <Text style={styles.modalLabel}>{t('modals:collaboration.add_by_phone')}</Text>
                   <View style={styles.csPhoneRow}>
                     <TouchableOpacity
@@ -1052,18 +1064,6 @@ export default function CollaborationSessions({
                     )}
                   </TouchableOpacity>
                 </View>
-
-                <TouchableOpacity
-                  style={styles.modalCancelInviteButton}
-                  onPress={() => {
-                    if (inviteModalSession) {
-                      onCancelInvite(inviteModalSession.id);
-                    }
-                    setShowInviteModal(false);
-                  }}
-                >
-                  <Text style={styles.modalCancelInviteButtonText}>{t('modals:collaboration.cancel_invite')}</Text>
-                </TouchableOpacity>
               </View>
             )}
           </View>
