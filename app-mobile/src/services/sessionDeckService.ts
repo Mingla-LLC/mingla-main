@@ -21,9 +21,10 @@ export async function fetchSessionDeck(
   sessionId: string,
   batchSeed: number = 0,
   _excludeCardIds: string[] = [], // ORCH-0438: No longer sent — session decks are shared, per-user exclusions filtered client-side
+  location?: { lat: number; lng: number },
 ): Promise<SessionDeckResponse> {
   const { data, error } = await trackedInvoke('generate-session-deck', {
-    body: { sessionId, batchSeed },
+    body: { sessionId, batchSeed, location },
   });
 
   if (error) {

@@ -535,6 +535,7 @@ export const RecommendationsProvider: React.FC<
     batchSeed,
     isCollaborationMode && !!resolvedSessionId && !isWaitingForSessionResolution && batchSeedReady && !!collabDeckParams,
     [], // ORCH-0438: excludeCardIds no longer sent — session decks are shared, filtered client-side below
+    activeDeckLocation, // ORCH-0443: Pass GPS location so edge function doesn't need to derive it from DB
   );
 
   // ── Unified deck output (branch by mode) ─────────────────────────────

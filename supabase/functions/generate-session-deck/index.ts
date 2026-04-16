@@ -174,7 +174,7 @@ serve(async (req: Request) => {
       });
     }
 
-    const { sessionId, batchSeed = 0, excludeCardIds: rawExcludeCardIds = [] } = body;
+    const { sessionId, batchSeed = 0, excludeCardIds: rawExcludeCardIds = [], location: clientLocation } = body;
 
     // Accept all string IDs — can be Google Place IDs or card_pool UUIDs
     const excludeCardIds: string[] = Array.isArray(rawExcludeCardIds)
@@ -358,8 +358,15 @@ serve(async (req: Request) => {
     }
 
     // ── No cache hit — resolve location ──
-    // Use aggregated location if available, otherwise fall back to first participant with GPS
-    let location = aggregated.location;
+    // ORCH-0443: Client-provided GPS location is the primary source.
+    // Falls back to aggregated/DB location if not provided.
+    let location: { lat: number; lng: number } | null = null;
+    if (clientLocation?.lat && clientLocation?.lng) {
+      location = { lat: clientLocation.lat, lng: clientLocation.lng };
+    }
+    if (!location) {
+      location = aggregated.location;
+    }
     if (!location) {
       // Try to get location from preferences with GPS enabled
       const gpsPrefs = (allPrefs || []).find((p: any) => p.use_gps_location === true);
