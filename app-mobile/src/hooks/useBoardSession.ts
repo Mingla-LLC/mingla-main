@@ -287,6 +287,12 @@ export const useBoardSession = (sessionId?: string) => {
     // If sessionId is the same as what we're already subscribed to, skip
     if (sessionId === stableSessionIdRef.current) return;
 
+    // ORCH-0446B: ALWAYS clear stale prefs when sessionId changes — even if coming
+    // from solo (stableSessionIdRef undefined). Without this, the previous session's
+    // allParticipantPreferences leaks into the new session for 1-2 renders, causing
+    // a stale-category deck fetch before loadSession completes.
+    setAllParticipantPreferences(null);
+
     // Immediately unsubscribe from previous session to prevent stale events
     // from corrupting state during the debounce window (HIGH-001 fix).
     // Only the subscribe is debounced — unsubscribe is always instant.
@@ -296,7 +302,6 @@ export const useBoardSession = (sessionId?: string) => {
         boardCallbacksRef.current = null;
       }
       stableSessionIdRef.current = undefined;
-      setAllParticipantPreferences([]);
     }
 
     // Debounce: wait 300ms before subscribing to avoid thrashing

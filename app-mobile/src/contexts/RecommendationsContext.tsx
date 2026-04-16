@@ -917,8 +917,10 @@ export const RecommendationsProvider: React.FC<
   // isModeTransitioning blocks isDeckParamsStable's fast path, preventing
   // the collab deck from fetching. The 5s timeout is too slow — clear as
   // soon as collabDeckParams is available (loadSession completed).
+  // Guard: boardSessionResult.loading must be false — prevents firing on STALE
+  // prefs from a previous session before loadSession has read the current one.
   useEffect(() => {
-    if (isCollaborationMode && collabDeckParams && isModeTransitioning) {
+    if (isCollaborationMode && collabDeckParams && isModeTransitioning && !boardSessionResult.loading) {
       setIsModeTransitioning(false);
       setHasCompletedFetchForCurrentMode(false); // Let it complete naturally
       if (completionTimeoutRef.current) {
