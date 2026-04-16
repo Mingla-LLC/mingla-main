@@ -200,7 +200,14 @@ export const RecommendationsProvider: React.FC<
   // Persist exhaustion state so "That's a Wrap" survives app restart.
   // Scoped per user+mode. Resets on preference change (refreshKey change).
   const exhaustionKey = `deck_exhausted_${user?.id}_${currentMode}`;
+  // ORCH-0443: Guard prevents the AsyncStorage read from overriding a mode-change reset.
+  // Set to true during mode transition, cleared after the read effect runs.
+  const suppressExhaustionReadRef = useRef(false);
   useEffect(() => {
+    if (suppressExhaustionReadRef.current) {
+      suppressExhaustionReadRef.current = false;
+      return;
+    }
     AsyncStorage.getItem(exhaustionKey).then(val => {
       if (val === 'true') setIsExhausted(true);
     }).catch(() => {});
@@ -850,6 +857,10 @@ export const RecommendationsProvider: React.FC<
       setBatchSeed(0);
       prefetchFiredRef.current = false;
       setIsExhausted(false);
+      // ORCH-0443: Suppress the next AsyncStorage read so it can't override this reset.
+      // Also clear the persisted value for belt-and-suspenders safety.
+      suppressExhaustionReadRef.current = true;
+      AsyncStorage.removeItem(`deck_exhausted_${user?.id}_${currentMode}`).catch(() => {});
       setHasMoreCards(true);
       setDismissedCards([]);
       accumulatedCardsRef.current = [];
