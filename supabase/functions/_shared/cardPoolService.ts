@@ -532,7 +532,7 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
 
 const TRAVEL_CONFIG: Record<string, { speed: number; factor: number }> = {
   walking:        { speed: 4.5, factor: 1.3 },
-  driving:        { speed: 35,  factor: 1.4 },
+  driving:        { speed: 100, factor: 1.3 },
   transit:        { speed: 20,  factor: 1.3 },
   public_transit: { speed: 20,  factor: 1.3 },
   biking:         { speed: 14,  factor: 1.3 },

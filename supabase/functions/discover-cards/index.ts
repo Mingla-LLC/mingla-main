@@ -46,7 +46,7 @@ const corsHeaders = {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const SPEED_KMH: Record<string, number> = {
   walking: 4.5,
-  driving: 35,
+  driving: 100,
   transit: 20,
   public_transit: 20,
   bicycling: 14,
