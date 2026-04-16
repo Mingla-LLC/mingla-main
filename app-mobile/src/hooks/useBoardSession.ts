@@ -190,6 +190,8 @@ export const useBoardSession = (sessionId?: string) => {
               setPreferences(seededPrefs as BoardSessionPreferences);
               // Update allParticipantPreferences so deck params recompute immediately
               setAllParticipantPreferences((prev) => [...(prev ?? []), seededPrefs as BoardSessionPreferences]);
+              // Invalidate session-deck so it re-fetches with the now-seeded prefs
+              queryClient.invalidateQueries({ queryKey: ['session-deck', id] });
               if (__DEV__) console.log('[useBoardSession] Seeded session prefs from solo prefs');
             } else {
               console.warn('[useBoardSession] Failed to seed session prefs:', seedError.message);
