@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useTranslation } from 'react-i18next';
-import { useCoachMark } from "../hooks/useCoachMark";
+// ORCH-0436: useCoachMark import removed — map coach mark no longer needed
 import {
   View,
   Text,
@@ -36,11 +36,13 @@ import { mixpanelService } from "../services/mixpanelService";
 // ORCH-0435 Phase B: Pairing imports removed — pairing UI now lives on Friends page
 import { useFeatureGate, GatedFeature } from "../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "./CustomPaywallScreen";
-import { DiscoverMap } from "./map/DiscoverMap";
+// ORCH-0436: DiscoverMap import removed — map no longer rendered in Near You tab
+import { ActivityStatusPicker } from "./map/ActivityStatusPicker";
+import { useMapSettings } from "../hooks/useMapSettings";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { savedCardsService } from "../services/savedCardsService";
 import { savedCardKeys } from "../hooks/queryKeys";
-import { useCalendarEntries } from "../hooks/useCalendarEntries";
+// ORCH-0436: useCalendarEntries import removed — only used for map
 import { useQueryClient } from '@tanstack/react-query';
 // ORCH-0435 Phase B: Person hero cards + custom holiday imports removed
 
@@ -139,7 +141,7 @@ const getUsDateKey = (): string => usDateFormatter.format(new Date());
 // ORCH-0435 Phase B: HOLIDAY_CATEGORY_MAP + getCategoriesForHolidayName removed (pairing-only)
 
 // Tab types for Discover screen
-export type DiscoverTab = "for-you" | "night-out";
+export type DiscoverTab = "near-you" | "night-out";
 
 interface DiscoverTabsProps {
   activeTab: DiscoverTab;
@@ -339,7 +341,7 @@ const DiscoverTabs: React.FC<DiscoverTabsProps> = ({
 }) => {
   const { t } = useTranslation(['discover', 'common']);
   const tabs: Array<{ id: DiscoverTab; label: string; icon: string }> = [
-    { id: "for-you", label: t('discover:tabs.for_you'), icon: "map-pin" },
+    { id: "near-you", label: t('discover:tabs.near_you'), icon: "map-pin" },
     { id: "night-out", label: t('discover:tabs.night_out'), icon: "music" },
   ];
 
@@ -615,8 +617,9 @@ export default function DiscoverScreen({
 }: DiscoverScreenProps) {
   const { t } = useTranslation(['discover', 'common']);
   const insets = useSafeAreaInsets();
-  const coachMap = useCoachMark(7, 0);
-  const [activeTab, setActiveTab] = useState<DiscoverTab>("for-you");
+  // ORCH-0436: coachMap removed — map no longer rendered
+  const { settings: mapSettings, updateSettings: updateMapSettings } = useMapSettings();
+  const [activeTab, setActiveTab] = useState<DiscoverTab>("near-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
   // Navigation state for scrolling between expanded cards (e.g., paired saves list)
@@ -690,9 +693,8 @@ export default function DiscoverScreen({
   const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('curated_cards');
   const prefetchQueryClient = useQueryClient();
   const { data: mapSavedCards } = useSavedCards(user?.id);
-  const { data: mapCalendarEntries } = useCalendarEntries(user?.id);
+  // ORCH-0436: mapCalendarEntries + mapScheduledCardIds removed — only used for map
   const mapSavedCardIds = useMemo(() => new Set((mapSavedCards ?? []).map(c => c.id)), [mapSavedCards]);
-  const mapScheduledCardIds = useMemo(() => new Set((mapCalendarEntries ?? []).map((e: any) => e.card_id).filter(Boolean)), [mapCalendarEntries]);
 
 
 
@@ -808,22 +810,7 @@ export default function DiscoverScreen({
   const locationLat = deviceGpsLat;
   const locationLng = deviceGpsLng;
 
-  /** Stable reference — inline `{ lat, lng }` on every DiscoverScreen re-render forced DiscoverMap → ClusteredMapView to rebuild SuperCluster and remount markers (flicker while panning). */
-  const discoverMapUserLocation = useMemo(() => {
-    if (deviceGpsLat != null && deviceGpsLng != null) {
-      return { latitude: deviceGpsLat, longitude: deviceGpsLng };
-    }
-    if (fallbackLat != null && fallbackLng != null) {
-      return { latitude: fallbackLat, longitude: fallbackLng };
-    }
-    return null;
-  }, [deviceGpsLat, deviceGpsLng, fallbackLat, fallbackLng]);
-
-  const defaultDiscoverMapAccountPrefs = useMemo(
-    () => ({ currency: 'USD' as const, measurementSystem: 'metric' as const }),
-    [],
-  );
-  const discoverMapAccountPreferences = accountPreferences ?? defaultDiscoverMapAccountPrefs;
+  // ORCH-0436: discoverMapUserLocation + discoverMapAccountPreferences removed — map no longer rendered
 
 
   // Night Out Filter Modal state
@@ -1509,8 +1496,7 @@ export default function DiscoverScreen({
   // Use Discover-specific recommendations
   const recommendations = discoverRecommendations;
   const recommendationsLoading = discoverLoading;
-  // Map is showing when For You tab is active
-  const isMapShowing = activeTab === 'for-you';
+  // Map removed — Near You tab is now a blank slate (ORCH-0436)
   const recommendationsError = discoverError;
   const hasCompletedInitialFetch = hasCompletedDiscoverFetch;
 
@@ -2098,7 +2084,7 @@ export default function DiscoverScreen({
     { id: "acoustic-indie", label: t('discover:filters.acoustic_indie') },
   ];
 
-  const [mapCenterTrigger, setMapCenterTrigger] = useState(0);
+  // ORCH-0436: mapCenterTrigger removed — map no longer rendered
 
 
 
@@ -2117,152 +2103,34 @@ export default function DiscoverScreen({
         {/* Tabs */}
         <DiscoverTabs activeTab={activeTab} onTabChange={(tab) => {
           setActiveTab(tab);
-          mixpanelService.trackTabViewed({ screen: "Discover", tab: tab === "for-you" ? "For You" : "Night Out" });
+          mixpanelService.trackTabViewed({ screen: "Discover", tab: tab === "near-you" ? "Near You" : "Night Out" });
         }} />
 
         {/* Content */}
         <ScrollView
           style={styles.content}
-          contentContainerStyle={[styles.contentContainer, isMapShowing && { flex: 1, padding: 0, paddingBottom: 0 }]}
+          contentContainerStyle={[styles.contentContainer, activeTab === 'near-you' && { flex: 1, padding: 0, paddingBottom: 0 }]}
           showsVerticalScrollIndicator={false}
-          scrollEnabled={!isMapShowing}
+          scrollEnabled={activeTab !== 'near-you'}
         >
-          {activeTab === "for-you" && (
-            <>
-              {/* Map — always visible in For You tab */}
-              <View ref={coachMap.targetRef as any} style={styles.mapFullscreen}>
-              <View style={{ flex: 1 }}>
-                <DiscoverMap
-                  cards={recommendations}
-                  savedCardIds={mapSavedCardIds}
-                  scheduledCardIds={mapScheduledCardIds}
-                  onCardExpand={(card) => {
-                    if (card.strollData) {
-                      // Curated card — use raw stops from edge function if available
-                      const edgeStops = (card as any)._rawStops;
-                      const curatedStops = edgeStops
-                        ? edgeStops.map((s: any) => ({
-                            stopNumber: s.stopNumber || 1,
-                            stopLabel: s.stopLabel || 'Explore',
-                            placeId: s.placeId || '',
-                            placeName: s.placeName || s.name || 'Stop',
-                            placeType: s.placeType || s.role || 'place',
-                            address: s.address || '',
-                            rating: s.rating || 0,
-                            reviewCount: s.reviewCount || 0,
-                            imageUrl: s.imageUrl || s.imageUrls?.[0] || '',
-                            imageUrls: s.imageUrls || (s.imageUrl ? [s.imageUrl] : []),
-                            priceLevelLabel: s.priceLevelLabel || s.priceTier || 'chill',
-                            priceTier: s.priceTier || 'chill',
-                            priceMin: s.priceMin || 0,
-                            priceMax: s.priceMax || 0,
-                            openingHours: s.openingHours || {},
-                            isOpenNow: s.isOpenNow ?? true,
-                            website: s.website || null,
-                            lat: s.lat || 0,
-                            lng: s.lng || 0,
-                            distanceFromUserKm: s.distanceFromUserKm || 0,
-                            travelTimeFromUserMin: s.travelTimeFromUserMin || 0,
-                            travelTimeFromPreviousStopMin: s.travelTimeFromPreviousStopMin ?? null,
-                            travelModeFromPreviousStop: s.travelModeFromPreviousStop || null,
-                            aiDescription: s.aiDescription || '',
-                            estimatedDurationMinutes: s.estimatedDurationMinutes || 30,
-                            role: s.role || 'Activity',
-                          }))
-                        : [card.strollData.anchor, ...card.strollData.companionStops].map((s: any, i: number, arr: any[]) => ({
-                            stopNumber: i + 1,
-                            stopLabel: i === 0 ? 'Start Here' : i === arr.length - 1 ? 'End With' : 'Then',
-                            placeId: s.placeId || s.id || '',
-                            placeName: s.name || 'Stop',
-                            placeType: s.type || 'place',
-                            address: s.address || '',
-                            rating: s.rating || 0,
-                            reviewCount: s.reviewCount || 0,
-                            imageUrl: s.imageUrl || '',
-                            imageUrls: [],
-                            priceLevelLabel: 'chill',
-                            priceTier: 'chill',
-                            priceMin: 0,
-                            priceMax: 0,
-                            openingHours: {},
-                            isOpenNow: true,
-                            website: null,
-                            lat: s.location?.lat ?? 0,
-                            lng: s.location?.lng ?? 0,
-                            distanceFromUserKm: 0,
-                            travelTimeFromUserMin: 0,
-                            travelTimeFromPreviousStopMin: null,
-                            travelModeFromPreviousStop: null,
-                            aiDescription: '',
-                            estimatedDurationMinutes: 30,
-                            role: s.type || 'Activity',
-                          }));
-                      // Build as CuratedExperienceCard — the ExpandedCardModal casts to this type
-                      const totalPriceMin = curatedStops.reduce((s: number, st: any) => s + (st.priceMin || 0), 0);
-                      const totalPriceMax = curatedStops.reduce((s: number, st: any) => s + (st.priceMax || 0), 0);
-                      const totalDuration = curatedStops.reduce((s: number, st: any) => s + (st.estimatedDurationMinutes || 30), 0);
-
-                      const expandedCardData: any = {
-                        id: card.id,
-                        placeId: card.placeId || card.id,
-                        title: card.title,
-                        category: card.category,
-                        categoryIcon: 'map-outline',
-                        description: card.description || card.oneLiner || '',
-                        fullDescription: card.fullDescription || card.description || '',
-                        image: card.image,
-                        images: card.images?.length ? card.images : [card.image].filter(Boolean),
-                        rating: card.rating || 0,
-                        reviewCount: card.reviewCount || 0,
-                        priceRange: card.priceRange || '',
-                        distance: card.distance || '',
-                        travelTime: card.travelTime || '',
-                        address: card.address || '',
-                        highlights: card.highlights || [],
-                        tags: card.tags || [],
-                        matchScore: card.matchScore || 75,
-                        matchFactors: card.matchFactors || { location: 85, budget: 85, category: 85, time: 85, popularity: 85 },
-                        socialStats: card.socialStats || { views: 0, likes: 0, saves: 0, shares: 0 },
-                        openingHours: card.openingHours,
-                        selectedDateTime: new Date(),
-                        // CuratedExperienceCard fields — required by ExpandedCardModal
-                        cardType: 'curated',
-                        experienceType: card.experienceType || card.category || 'adventurous',
-                        pairingKey: '',
-                        tagline: card.oneLiner || card.description || '',
-                        categoryLabel: card.category,
-                        stops: curatedStops,
-                        totalPriceMin,
-                        totalPriceMax,
-                        estimatedDurationMinutes: totalDuration,
-                        strollData: card.strollData,
-                      };
-                      setSelectedCardForExpansion(expandedCardData);
-                      setIsExpandedModalVisible(true);
-                    } else {
-                      handleCardPress(featuredFromRecommendation(card));
-                    }
-                  }}
-                  onPersonMessage={(userId) => {
-                    if (onOpenChatWithUser) {
-                      onOpenChatWithUser(userId);
-                    }
-                  }}
-                  onPersonCards={() => {}}
-                  onPersonProfile={(userId) => onViewFriendProfile?.(userId)}
-                  accountPreferences={discoverMapAccountPreferences}
-                  userLocation={discoverMapUserLocation}
-                  isLoading={recommendationsLoading}
-                  centerTrigger={mapCenterTrigger}
-                  paused={!isTabVisible}
-                  activePairedUserIds={[]}
-                  pendingFocusCardId={deepLinkParams?.cardId ?? null}
-                  onFocusCardHandled={onDeepLinkHandled}
-                />
-              </View>
-              </View>
-
-            </>
+          {activeTab === "near-you" && (
+            <View style={styles.mapFullscreen}>
+              {/* ORCH-0436: Blank slate — future content TBD */}
+              <View style={{ flex: 1 }} />
+              <ActivityStatusPicker
+                currentStatus={mapSettings?.activity_status || null}
+                visibility={mapSettings?.visibility_level || 'friends'}
+                onVisibilityChange={async (level) => {
+                  await updateMapSettings({ visibility_level: level });
+                }}
+                onSetStatus={async (status) => {
+                  await updateMapSettings({
+                    activity_status: status,
+                    activity_status_expires_at: null,
+                  });
+                }}
+              />
+            </View>
           )}
 
           {activeTab === "night-out" && (
