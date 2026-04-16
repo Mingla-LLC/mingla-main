@@ -37,8 +37,7 @@ import { mixpanelService } from "../services/mixpanelService";
 import { useFeatureGate, GatedFeature } from "../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "./CustomPaywallScreen";
 // ORCH-0436: DiscoverMap import removed — map no longer rendered in Near You tab
-import { ActivityStatusPicker } from "./map/ActivityStatusPicker";
-import { useMapSettings } from "../hooks/useMapSettings";
+import { LeaderboardFeed } from "./leaderboard/LeaderboardFeed";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { savedCardsService } from "../services/savedCardsService";
 import { savedCardKeys } from "../hooks/queryKeys";
@@ -618,7 +617,7 @@ export default function DiscoverScreen({
   const { t } = useTranslation(['discover', 'common']);
   const insets = useSafeAreaInsets();
   // ORCH-0436: coachMap removed — map no longer rendered
-  const { settings: mapSettings, updateSettings: updateMapSettings } = useMapSettings();
+  // ORCH-0437: mapSettings moved into LeaderboardFeed component
   const [activeTab, setActiveTab] = useState<DiscoverTab>("near-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
@@ -2115,19 +2114,10 @@ export default function DiscoverScreen({
         >
           {activeTab === "near-you" && (
             <View style={styles.mapFullscreen}>
-              {/* ORCH-0436: Blank slate — future content TBD */}
-              <View style={{ flex: 1 }} />
-              <ActivityStatusPicker
-                currentStatus={mapSettings?.activity_status || null}
-                visibility={mapSettings?.visibility_level || 'friends'}
-                onVisibilityChange={async (level) => {
-                  await updateMapSettings({ visibility_level: level });
-                }}
-                onSetStatus={async (status) => {
-                  await updateMapSettings({
-                    activity_status: status,
-                    activity_status_expires_at: null,
-                  });
+              <LeaderboardFeed
+                userLocation={locationLat && locationLng ? { lat: locationLat, lng: locationLng } : null}
+                onOpenPreferences={() => {
+                  // [TRANSITIONAL] Open preferences sheet — wire to PreferencesSheet visible prop
                 }}
               />
             </View>
