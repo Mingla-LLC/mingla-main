@@ -358,10 +358,17 @@ serve(async (req: Request) => {
       }
     }
 
+    // ORCH-0438: No location is a recoverable state — participants may not have set location yet
     if (!location) {
       return new Response(
-        JSON.stringify({ error: 'No location available for deck generation' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          cards: [],
+          totalCards: 0,
+          hasMore: false,
+          deckStatus: 'waiting_for_preferences',
+          preferencesHash: '',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
