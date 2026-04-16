@@ -620,12 +620,23 @@ function AppContent() {
         sessionType = isCreator ? 'sent-invite' : 'received-invite';
       }
 
+      // Build participant details for the invite modal
+      const participantDetails = (board.participants || [])
+        .filter((p: any) => p.id !== user?.id && p.user_id !== user?.id)
+        .map((p: any) => ({
+          id: p.id || p.user_id,
+          name: p.name || 'Invited',
+          avatar: p.avatar || p.avatar_url || undefined,
+          hasAccepted: p.has_accepted ?? (p.status === 'online'),
+        }));
+
       return {
         id: board.id || board.session_id,
         name: board.name,
         initials: getInitials(board.name),
         type: sessionType,
         participants: board.participants?.length || 0,
+        participantDetails: participantDetails.length > 0 ? participantDetails : undefined,
         createdAt: board.createdAt ? new Date(board.createdAt) : undefined,
         invitedBy: board.inviterProfile || undefined,
       };
@@ -1116,6 +1127,25 @@ function AppContent() {
       const createdPendingSessions = createdResult.data;
       const invitedSessions = invitedResult.data;
 
+      // ORCH-0437: Fetch profiles for pending session participants so the invite
+      // modal can show names and acceptance status.
+      const allPendingParticipantIds = new Set<string>();
+      for (const s of (createdPendingSessions || [])) {
+        for (const p of (s.session_participants || [])) {
+          if (p.user_id !== user.id) allPendingParticipantIds.add(p.user_id);
+        }
+      }
+      let pendingParticipantProfiles: Record<string, any> = {};
+      if (allPendingParticipantIds.size > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, username, avatar_url')
+          .in('id', Array.from(allPendingParticipantIds));
+        for (const p of (profiles || [])) {
+          pendingParticipantProfiles[p.id] = p;
+        }
+      }
+
       // Transform pending created sessions
       // Only include sessions where the user is actually a participant (prevents ghost sessions
       // from failed creation attempts from appearing as duplicate pills)
@@ -1123,15 +1153,35 @@ function AppContent() {
         .filter((s: any) =>
           (s.session_participants || []).some((p: any) => p.user_id === user.id)
         )
-        .map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          status: s.status,
-          creatorId: s.created_by,
-          created_by: s.created_by,
-          participants: s.session_participants || [],
-          createdAt: s.created_at,
-        }));
+        .map((s: any) => {
+          const participantsWithProfiles = (s.session_participants || [])
+            .filter((p: any) => p.user_id !== user.id)
+            .map((p: any) => {
+              const profile = pendingParticipantProfiles[p.user_id];
+              const name = profile
+                ? (profile.first_name && profile.last_name
+                    ? `${profile.first_name} ${profile.last_name}`
+                    : profile.first_name || profile.username || 'Invited')
+                : 'Invited';
+              return {
+                user_id: p.user_id,
+                id: p.user_id,
+                name,
+                avatar_url: profile?.avatar_url,
+                has_accepted: p.has_accepted,
+              };
+            });
+
+          return {
+            id: s.id,
+            name: s.name,
+            status: s.status,
+            creatorId: s.created_by,
+            created_by: s.created_by,
+            participants: participantsWithProfiles,
+            createdAt: s.created_at,
+          };
+        });
 
       // Fetch inviter profiles for invited sessions.
       // Note: the Supabase query above already filters by status='pending', so the

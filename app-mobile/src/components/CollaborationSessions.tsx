@@ -51,12 +51,20 @@ export interface Friend {
   status?: 'online' | 'offline';
 }
 
+export interface SessionParticipantDetail {
+  id: string;
+  name: string;
+  avatar?: string;
+  hasAccepted: boolean;
+}
+
 export interface CollaborationSession {
   id: string;
   name: string;
   initials: string;
   type: SessionType;
   participants?: number;
+  participantDetails?: SessionParticipantDetail[];
   createdAt?: Date;
   invitedBy?: {
     id: string;
@@ -932,9 +940,44 @@ export default function CollaborationSessions({
                 </Text>
               )}
               {inviteModalSession?.type === 'sent-invite' && (
-                <Text style={styles.inviteFromText}>
-                  {t('modals:collaboration.waiting_for_response')}
-                </Text>
+                <>
+                  <Text style={styles.inviteFromText}>
+                    {t('modals:collaboration.waiting_for_response')}
+                  </Text>
+                  {inviteModalSession.participantDetails && inviteModalSession.participantDetails.length > 0 && (
+                    <View style={{ marginTop: 12, gap: 8 }}>
+                      {inviteModalSession.participantDetails.map((p) => (
+                        <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <View style={{
+                            width: 32, height: 32, borderRadius: 16,
+                            backgroundColor: p.hasAccepted ? '#D1FAE5' : '#F3F4F6',
+                            alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {p.avatar ? (
+                              <Image source={{ uri: p.avatar }} style={{ width: 32, height: 32, borderRadius: 16 }} />
+                            ) : (
+                              <Text style={{ fontSize: 12, fontWeight: '600', color: p.hasAccepted ? '#059669' : '#6B7280' }}>
+                                {p.name.substring(0, 2).toUpperCase()}
+                              </Text>
+                            )}
+                          </View>
+                          <Text style={{ fontSize: 14, color: '#1F2937', flex: 1 }}>{p.name}</Text>
+                          <View style={{
+                            paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
+                            backgroundColor: p.hasAccepted ? '#D1FAE5' : '#FEF3C7',
+                          }}>
+                            <Text style={{
+                              fontSize: 11, fontWeight: '600',
+                              color: p.hasAccepted ? '#059669' : '#D97706',
+                            }}>
+                              {p.hasAccepted ? 'Joined' : 'Pending'}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </>
               )}
             </View>
 
