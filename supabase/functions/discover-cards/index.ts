@@ -539,8 +539,14 @@ serve(async (req: Request) => {
           const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();
           const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
 
-          const scoredPoolCards = scorePoolCards(hoursFilteredCards);
-          console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (${poolResult.cards.length} pre-filter, batch=${batchSeed}) in ${elapsed}ms`);
+          // ORCH-0446C: Collab mode uses deterministic sort (place ID) instead of
+          // matchScore ranking. Both devices get identical card order. Solo unchanged.
+          const scoredPoolCards = sessionId
+            ? hoursFilteredCards
+                .sort((a: any, b: any) => (a.id ?? '').localeCompare(b.id ?? ''))
+                .map((card: any) => ({ ...card, matchScore: 0 }))
+            : scorePoolCards(hoursFilteredCards);
+          console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (${poolResult.cards.length} pre-filter, batch=${batchSeed}, mode=${sessionId ? 'collab-deterministic' : 'solo-scored'}) in ${elapsed}ms`);
 
           return new Response(JSON.stringify({
             cards: scoredPoolCards,

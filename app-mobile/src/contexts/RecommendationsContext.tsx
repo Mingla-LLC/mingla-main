@@ -494,7 +494,9 @@ export const RecommendationsProvider: React.FC<
       isDeckParamsStable &&
       !isWaitingForSessionResolution &&
       batchSeedReady,
-    excludeCardIds,
+    // ORCH-0446C: No personal exclusions in collab — both users must see the full
+    // shared pool so the deck is identical. Solo keeps per-user exclusions.
+    excludeCardIds: isCollaborationMode ? [] : excludeCardIds,
     lastKnownQueryKey: lastDeckKey,
     // ORCH-0446: Pass dateWindows and sessionId for collab mode
     dateWindows: isCollaborationMode ? (collabDeckParams as any)?.dateWindows : undefined,
