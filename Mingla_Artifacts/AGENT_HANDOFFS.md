@@ -1,18 +1,26 @@
 # Agent Handoffs
 
-> Last updated: 2026-04-11
-> Total: 0 active | 90 completed
+> Last updated: 2026-04-17 (post ORCH-0460 bundle close)
+> Total: 1 active (user smoke-test) | 104 completed
 
 ## Active Dispatches
 
 | ID | Issue | Agent Role | Dispatched | Prompt File | Status |
 |----|-------|-----------|------------|-------------|--------|
-| — | — | — | — | — | — |
+| AH-099 | ORCH-0466 | User (manual smoke) | 2026-04-17 | SMOKE_ORCH-0466_ADMIN_SEED_PLACES.md | Awaiting admin-UI "Create Run" click |
 
 ## Completed Dispatches
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-105 | ORCH-0460 | Tester (retest cycle 1) | 2026-04-17 | QA_ORCH-0460_SEEDING_VALIDATION_ACCURACY_REPORT_RETEST_1.md | **PASS** — 11/11 SC. P0 resolved (180→11 flower strips, 139 supermarkets preserved, 175/175 food_store-in-types preserved). Constitutional #13 restored FAIL→PASS. 1-cycle retest. |
+| AH-104 | ORCH-0460 | Implementor (rework v2) | 2026-04-17 | IMPLEMENTATION_ORCH-0460_REWORK_V2_REPORT.md | APPROVED — 2 surgical fixes: FLOWERS_BLOCKED_TYPES split + 40 types added to on-demand exclusions. All 6 SC self-verified + orchestrator independent spot-checks passed. |
+| AH-103 | ORCH-0460 | Tester (cycle 0) | 2026-04-17 | QA_ORCH-0460_SEEDING_VALIDATION_ACCURACY_REPORT.md | **FAIL** — P0-1 (food_store kills 168 supermarkets) + P1-2 (40 invariant #13 gaps). Surgical rework dispatched. |
+| AH-102 | ORCH-0460 | Implementor (v1) | 2026-04-17 | IMPLEMENTATION_ORCH-0460_SEEDING_VALIDATION_ACCURACY_REPORT.md | APPROVED structurally — 3 files changed (seedingCategories, categoryPlaceTypes, ai-verify-pipeline), +467/-59 LOC, 14 configs all under Google's 50-type limit, AST clean. Runtime verification deferred to tester. |
+| AH-101 | ORCH-0460 | Orchestrator (spec + dispatch) | 2026-04-17 | IMPL_ORCH-0460_SEEDING_VALIDATION_ACCURACY.md | APPROVED — 3 files scoped, 5 change types, 9 success criteria, 8 sub-items (ORCH-0461-0465, 0471, 0477). |
+| AH-100 | ORCH-0460 | Orchestrator (audit) | 2026-04-17 | AUDIT_SEEDING_AND_VALIDATION_ACCURACY.md (20 sections) | APPROVED — full Google Table A gap analysis, category-by-category leak trace, 16 prioritized recommendations, categorizer verdict. |
+| AH-098 | ORCH-0466 | Implementor | 2026-04-17 | IMPLEMENTATION_ADMIN_SEED_PLACES_500_FIX_REPORT.md | APPROVED — 1-line fix, edge fn deployed v82, structural verification passed, runtime smoke pending |
+| AH-097 | ORCH-0466 | Investigator (forensics) | 2026-04-17 | INVESTIGATION_ADMIN_SEED_PLACES_500_REPORT.md | APPROVED — root cause proven (ReferenceError from 4365082c) |
 | AH-096 | ORCH-0434 Phase 3B | Tester | 2026-04-15 | QA_ORCH-0434_PHASE3B_SLUGS.md | PASS — 12/12 criteria, 0 P0 |
 | AH-095 | ORCH-0434 Phase 3B | Implementor | 2026-04-15 | IMPLEMENTATION_ORCH-0434_PHASE3B_SLUGS.md | APPROVED — 10 edge functions, 21 combos, GPT prompt rewrite |
 | AH-094 | ORCH-0434 Phase 3A | Tester | 2026-04-15 | QA_ORCH-0434_PHASE3A_EDGE_FN.md | PASS — 11/11 criteria, 3/3 regressions, 0 P0 |

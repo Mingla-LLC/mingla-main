@@ -1,10 +1,13 @@
 # Master Bug List
 
-> Last updated: 2026-04-14
-> Total: 326 | Open: 141 | Closed: 114 | Verified (B grade): 21 | Partial: 1 | Deferred: 1
+> Last updated: 2026-04-17 (ORCH-0460 bundle close)
+> Total: 341 | Open: 146 | Closed: 122 | Verified (B grade): 21 | Partial: 1 | Deferred: 1
 >
-> Recently closed: ORCH-0431 (deck loading skeleton on pref change — QA PASS 16/16), ORCH-0419 (real-time data stack: Mapbox + Open-Meteo + venue heuristic — QA PASS 17/17), ORCH-0250, ORCH-0251
-> Recently added: ORCH-0431 (Deck stuck on exhausted screen after pref change — no loading skeleton), ORCH-0429 (Android map markers rendering as lines — bitmap regression)
+> Recently closed (2026-04-17): **ORCH-0460** (place pipeline accuracy overhaul — QA retest PASS 11/11 SC), ORCH-0461 (casual_eats 50-type split), ORCH-0462 (Upscale & Fine Dining expansion), ORCH-0463 (garden store flowers leak — FLOWERS_BLOCKED_TYPES split primary/secondary, live SQL: 180→11 strips, 139 supermarkets preserved), ORCH-0464 (venue name keyword sync), ORCH-0465 (brunch-restaurants-only), ORCH-0471 (mutual exclusivity upscale↔casual REMOVED — supersedes ORCH-0428), ORCH-0477 (invariant #13 drift — constitutional #13 restored FAIL→PASS)
+> Previously closed: ORCH-0431 (deck loading skeleton on pref change — QA PASS 16/16), ORCH-0419 (real-time data stack: Mapbox + Open-Meteo + venue heuristic — QA PASS 17/17), ORCH-0250, ORCH-0251
+> Recently added: ORCH-0476 (category-mapping.md stale — doc debt), ORCH-0478 (pre-flight pool-impact dry-run — S2, high-value guardrail), ORCH-0479 (TopGolf non-idempotent classification — S3), ORCH-0469 (brunch/lunch/casual false "seen everything" in warm app — implementation complete, awaiting test), ORCH-0470 (generate-single-cards seeding-ID vs app-slug mismatch — awaiting spec dispatch), ORCH-0472 (EMPTY and EXHAUSTED deck states share identical copy — absorbed into ORCH-0469 implementation), ORCH-0473 (dead-code TS errors in RecommendationsContext — implementor discovery, not urgent), ORCH-0466 (admin-seed-places create_run 500 regression — fixed, pending smoke), ORCH-0467 (edge-function deploy pipeline lacks type-check gate), ORCH-0468 (admin-seed-places duplicated batch logic — tech debt)
+> ID correction 2026-04-17 (first): UX EMPTY/EXHAUSTED split was mis-registered as ORCH-0471 (collision with pre-existing Place-Pipeline ORCH-0471 at line 478 of WORLD_MAP). Corrected to ORCH-0472. TS-debt discovery shifted to ORCH-0473.
+> ID correction 2026-04-17 (second): Place-pipeline side discoveries initially took 0472/0473/0474/0475, colliding with UX session's prior 0472/0473 allocation. Renumbered to 0476 (category-mapping.md stale), 0477 (invariant #13 drift — closed), 0478 (pre-flight dry-run), 0479 (TopGolf). QA/implementation reports for ORCH-0460 retain the original IDs as historical artifacts; the WORLD_MAP entries carry the new canonical IDs with cross-references.
 > Previously closed: ORCH-0402 (calendar button visibility + birthday push notifications — QA PASS 17/17)
 
 ## Summary by Status

@@ -31,6 +31,10 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'nature_preserve', 'park', 'scenic_spot', 'state_park', 'observation_deck',
     'tourist_attraction',
     'picnic_ground', // absorbed from former Picnic Park category
+    // ORCH-0460: sync with seedingCategories.ts — these are seeded but were missing
+    // from on-demand search, making them invisible to experience generation.
+    'vineyard', 'wildlife_park', 'wildlife_refuge', 'woods', 'mountain_peak',
+    'river', 'island', 'city_park', 'fountain', 'lake', 'marina',
   ],
   'Icebreakers': [
     // Interleaved: Group1 (café), Group2 (activity), Group3 (culture/outdoor)
@@ -60,7 +64,7 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'karaoke',          // ORCH-0434: added for Drinks & Music
   ],
   'Brunch, Lunch & Casual': [
-    'restaurant', 'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
+    'restaurant', 'hamburger_restaurant', 'pizza_restaurant',
     'ramen_restaurant', 'sandwich_shop', 'sushi_restaurant', 'diner',
     'brunch_restaurant', 'buffet_restaurant', 'breakfast_restaurant',
     'american_restaurant', 'asian_restaurant', 'barbecue_restaurant',
@@ -72,12 +76,29 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'vegetarian_restaurant', 'vietnamese_restaurant', 'italian_restaurant',
     'steak_house', 'french_restaurant', 'greek_restaurant',
     'afghani_restaurant', 'african_restaurant',
+    // ORCH-0460: real restaurants only — removed 'fast_food_restaurant'. Added
+    // world cuisines + core casual types that were previously missing from on-demand.
+    'bistro', 'gastropub', 'noodle_shop', 'hot_pot_restaurant', 'dim_sum_restaurant',
+    'argentinian_restaurant', 'basque_restaurant', 'persian_restaurant',
+    'scandinavian_restaurant', 'filipino_restaurant', 'soul_food_restaurant',
+    'cuban_restaurant', 'hawaiian_restaurant', 'ethiopian_restaurant',
+    'moroccan_restaurant', 'peruvian_restaurant', 'cajun_restaurant',
+    'fusion_restaurant', 'korean_barbecue_restaurant', 'tapas_restaurant',
   ],
   'Upscale & Fine Dining': [
     'fine_dining_restaurant', 'french_restaurant', 'steak_house',
     'seafood_restaurant', 'mediterranean_restaurant', 'spanish_restaurant',
     'tapas_restaurant', 'oyster_bar_restaurant', 'italian_restaurant',
     'japanese_restaurant', 'greek_restaurant',
+    // ORCH-0460: sync with expanded fine_dining seeding. High-end versions of
+    // these cuisines exist and should be surfaceable in on-demand experiences.
+    'fondue_restaurant', 'persian_restaurant', 'scandinavian_restaurant',
+    'basque_restaurant', 'argentinian_restaurant', 'swiss_restaurant',
+    'european_restaurant', 'australian_restaurant', 'british_restaurant',
+    'indian_restaurant', 'korean_restaurant', 'thai_restaurant',
+    'turkish_restaurant', 'vietnamese_restaurant', 'brazilian_restaurant',
+    'peruvian_restaurant', 'moroccan_restaurant', 'fusion_restaurant',
+    'gastropub', 'bistro',
   ],
   'Movies & Theatre': [
     // Merged: Watch + Live Performance
@@ -93,10 +114,13 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
   ],
   'Play': [
     'amusement_center', 'amusement_park', 'bowling_alley', 'miniature_golf_course',
-    'go_karting_venue', 'paintball_center', 'video_arcade', 'skateboard_park',
-    'indoor_playground', 'karaoke', 'dance_hall', 'ice_skating_rink',
-    'cycling_park', 'roller_coaster', 'water_park', 'ferris_wheel',
+    'go_karting_venue', 'paintball_center', 'video_arcade',
+    'karaoke', 'dance_hall', 'ice_skating_rink',
+    'roller_coaster', 'water_park', 'ferris_wheel',
     'casino', 'planetarium',
+    // ORCH-0460: removed indoor_playground (almost always kids), skateboard_park
+    // and cycling_park (sports/fitness, not adult date activities). Added golf.
+    'golf_course', 'indoor_golf_course', 'adventure_sports_center',
   ],
   'Flowers': [
     'florist', 'grocery_store', 'supermarket',
@@ -426,6 +450,16 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
   'Brunch, Lunch & Casual': [
     'fine_dining_restaurant', 'bar', 'night_club', 'spa',
     'grocery_store', 'supermarket',
+    // ORCH-0460: restaurants only — exclude bars, play, sports, tobacco, farms
+    'hookah_bar', 'sports_bar', 'irish_pub', 'brewery', 'brewpub', 'beer_garden',
+    'pub', 'cocktail_bar', 'lounge_bar', 'wine_bar', 'winery', 'bar_and_grill',
+    'amusement_center', 'amusement_park', 'bowling_alley', 'video_arcade',
+    'go_karting_venue', 'paintball_center', 'miniature_golf_course', 'karaoke',
+    'casino', 'adventure_sports_center',
+    'community_center', 'sports_complex', 'sports_club', 'athletic_field',
+    'stadium', 'arena', 'swimming_pool',
+    'food_court', 'cafeteria', 'tobacco_shop',
+    'farm', 'ranch', 'campground',
     ...RETAIL_EXCLUSIONS,
   ],
   'Upscale & Fine Dining': [
@@ -448,6 +482,17 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     'gas_station', 'car_repair', 'car_wash',
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
+    // ORCH-0460: dedicated performance venues only — no cafes/bars/restaurants
+    'restaurant', 'fine_dining_restaurant', 'fast_food_restaurant',
+    'cafe', 'coffee_shop', 'tea_house', 'bakery',
+    'bar', 'cocktail_bar', 'wine_bar', 'lounge_bar', 'pub', 'brewery', 'brewpub',
+    'beer_garden', 'sports_bar', 'hookah_bar', 'irish_pub', 'night_club',
+    'gastropub', 'bistro', 'diner',
+    'convenience_store', 'hotel', 'motel', 'gym', 'fitness_center',
+    // ORCH-0460 v2 (rework): sync on-demand exclusion list to pipeline
+    // MOVIES_THEATRE_BLOCKED_TYPES set per invariant #13 (exclusion consistency).
+    'brunch_restaurant', 'breakfast_restaurant', 'ice_cream_shop',
+    'winery', 'bar_and_grill', 'amusement_center', 'bowling_alley', 'video_arcade',
     ...RETAIL_EXCLUSIONS,
   ],
   'Creative & Arts': [
@@ -458,6 +503,24 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     'stadium', 'race_course', 'tennis_court', 'swimming_pool',
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
+    // ORCH-0460: a restaurant/bar/cafe in a historic building is NOT creative_arts
+    'restaurant', 'fine_dining_restaurant', 'wine_bar', 'cafe', 'coffee_shop',
+    'cocktail_bar', 'lounge_bar', 'pub', 'brewery', 'brewpub', 'beer_garden',
+    'sports_bar', 'hookah_bar', 'irish_pub', 'convenience_store', 'grocery_store',
+    'supermarket', 'hotel', 'motel', 'gas_station', 'bistro', 'diner',
+    'brunch_restaurant', 'breakfast_restaurant',
+    // ORCH-0460 v2 (rework): sync on-demand exclusion list to pipeline
+    // CREATIVE_ARTS_BLOCKED_TYPES set per invariant #13 (exclusion consistency).
+    'american_restaurant', 'asian_restaurant', 'barbecue_restaurant',
+    'brazilian_restaurant', 'chinese_restaurant', 'french_restaurant',
+    'german_restaurant', 'greek_restaurant', 'indian_restaurant',
+    'italian_restaurant', 'japanese_restaurant', 'korean_restaurant',
+    'mexican_restaurant', 'seafood_restaurant', 'spanish_restaurant',
+    'thai_restaurant', 'turkish_restaurant', 'vietnamese_restaurant',
+    'hamburger_restaurant', 'pizza_restaurant', 'ramen_restaurant',
+    'sushi_restaurant', 'steak_house', 'buffet_restaurant', 'gastropub',
+    'winery', 'bar_and_grill', 'tea_house', 'bakery', 'ice_cream_shop',
+    'gym', 'fitness_center',
     ...RETAIL_EXCLUSIONS,
   ],
   'Play': [
@@ -467,6 +530,11 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
     'sandwich_shop', 'food_court', 'buffet_restaurant',
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
+    // ORCH-0460: no kids venues, sports complexes, farms, community centers
+    'indoor_playground', 'playground', 'childrens_camp', 'sports_complex',
+    'sports_club', 'athletic_field', 'swimming_pool', 'tennis_court',
+    'sports_coaching', 'sports_school', 'farm', 'ranch', 'community_center',
+    'dog_park', 'campground',
     ...RETAIL_EXCLUSIONS,
   ],
   'Flowers': [
@@ -557,6 +625,10 @@ export const EXCLUDED_VENUE_NAME_KEYWORDS: string[] = [
   'jungle gym',
   'fun zone', 'funzone',
   'kidzone', 'kid zone',
+  // ORCH-0460: sync with ai-verify-pipeline EXCLUSION_KEYWORDS.kids list —
+  // these patterns were only caught by AI validation, not by the on-demand filter.
+  'indoor playground', 'chuck e. cheese', 'enfants', 'kinder',
+  'bambini', 'infantil', 'splash pad', 'soft play',
   // Educational institutions
   'school', 'academy', 'institute',
   'training center', 'learning center',
