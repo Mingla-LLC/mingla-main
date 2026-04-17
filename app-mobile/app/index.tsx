@@ -1523,6 +1523,12 @@ function AppContent() {
       // Refresh all sessions so the pill bar reflects the new active session
       await refreshAllSessions({ showLoading: true });
       toastManager.success(`Joined "${result.sessionName}" successfully!`);
+
+      // Auto-enter the session and open the modal
+      if (result.sessionId) {
+        handleSessionSelect(result.sessionId);
+        setPendingSessionOpen(result.sessionId);
+      }
     } catch (error) {
       console.error('Error accepting invite:', error);
       toastManager.error('Failed to accept invite.');
