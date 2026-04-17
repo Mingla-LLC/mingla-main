@@ -11,6 +11,7 @@ import {
   Alert,
   Pressable,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
 import { useTranslation } from "react-i18next";
@@ -72,6 +73,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   onParticipantsChange,
 }) => {
   const { t } = useTranslation(["board", "common"]);
+  const insets = useSafeAreaInsets();
   const [editSessionName, setEditSessionName] = useState(sessionName);
   const [savingName, setSavingName] = useState(false);
   const [deletingSession, setDeletingSession] = useState(false);
@@ -536,7 +538,7 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                 <View style={styles.menuDivider} />
 
                 {/* Leave & Delete Buttons */}
-                <View style={styles.actionButtonsRow}>
+                <View style={[styles.actionButtonsRow, { paddingBottom: Math.max(12, insets.bottom) }]}>
                   <TouchableOpacity
                     style={styles.leaveButton}
                     onPress={handleLeaveBoard}
