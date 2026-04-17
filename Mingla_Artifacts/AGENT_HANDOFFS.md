@@ -1,18 +1,21 @@
 # Agent Handoffs
 
-> Last updated: 2026-04-17 (post ORCH-0469+0472 close)
-> Total: 1 active (user smoke-test) | 110 completed
+> Last updated: 2026-04-17 (post ORCH-0480 implementor return)
+> Total: 2 active | 113 completed
 
 ## Active Dispatches
 
 | ID | Issue | Agent Role | Dispatched | Prompt File | Status |
 |----|-------|-----------|------------|-------------|--------|
+| AH-114 | ORCH-0480 | Tester (post-db-push verification) | 2026-04-17 | prompts/TESTER_ORCH-0480_ADMIN_RPC_PERF.md | **Ready to dispatch** — blocks on user running `supabase db push` first. |
 | AH-099 | ORCH-0466 | User (manual smoke) | 2026-04-17 | SMOKE_ORCH-0466_ADMIN_SEED_PLACES.md | Awaiting admin-UI "Create Run" click |
 
 ## Completed Dispatches
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-113 | ORCH-0480 | Implementor | 2026-04-17 | reports/IMPLEMENTATION_ORCH-0480_ADMIN_RPC_PERF_REPORT.md | **APPROVED STRUCTURALLY** — 1 new migration file (182 lines), 0 code changes. Expression index `idx_place_pool_ai_category_first` added; `admin_place_country_overview` rewritten from 49-scans correlated-subquery pattern to single-pass 3-CTE aggregate; `admin_place_pool_overview` left as-is per spec (new index accelerates DISTINCT sub-clause). Function signature byte-identical, admin UI untouched, 6/6 invariants preserved, rollback is `DROP INDEX` + restore. 3 discoveries flagged (D-1: overview follow-up if still >3s, D-2 → ORCH-0484 registered, D-3: timestamp convention note). Runtime verification deferred to tester after `supabase db push`. |
+| AH-112 | ORCH-0480 | Orchestrator (diagnostic + spec + dispatch) | 2026-04-17 | prompts/IMPL_ORCH-0480_ADMIN_RPC_TIMEOUT.md | APPROVED — EXPLAIN ANALYZE proved 16.8s on category_breakdown + 49 scans on country_overview; 6 success criteria; scoped to 3 interventions; sister ORCH-0481 scoped in parallel for systemic MV fix. |
 | AH-111 | ORCH-0469+0472 | Tester (retest cycle 1) | 2026-04-17 | QA_ORCH-0469-0472_REPORT_RETEST_1.md | **PASS** — 6/6 tests, 0 P0-P3, 2 P4 praise. Cycle #0 P1 swipe-through regression CLOSED. Constitutional #9 restored. I-EMPTY-CACHE-NONPERSIST established. 1-cycle retest. |
 | AH-110 | ORCH-0469+0472 | Implementor (rework v2) | 2026-04-17 | IMPLEMENTATION_ORCH-0469-0472_REPORT_v2.md | APPROVED — single-file 2-line behavior change in SwipeableCards.tsx:616-631. All 3 EXHAUSTED/EMPTY scenarios trace correctly. Zero new TS errors. Do-not-touch list verified via timestamps. |
 | AH-109 | ORCH-0469+0472 | Tester (cycle 0) | 2026-04-17 | QA_ORCH-0469-0472_REPORT.md | **FAIL** — 1 P1 regression (swipe-through renders EMPTY instead of EXHAUSTED). Constitutional #9 violation. 2-line rework dispatched. |
