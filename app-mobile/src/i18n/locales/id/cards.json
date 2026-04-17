@@ -3,6 +3,8 @@
   "swipeable.error_title": "Itu tidak berhasil",
   "swipeable.try_again": "Coba Lagi",
   "swipeable.seen_everything": "Kamu sudah melihat semua yang tersedia",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "Ubah selera untuk membuka tempat baru, atau lihat kembali yang sudah kamu lewati.",
   "swipeable.shift_preferences": "Ubah preferensi",
   "swipeable.review_all_cards": "Tinjau semua kartu",

@@ -1,7 +1,7 @@
 # Agent Handoffs
 
-> Last updated: 2026-04-17 (post ORCH-0460 bundle close)
-> Total: 1 active (user smoke-test) | 104 completed
+> Last updated: 2026-04-17 (post ORCH-0469+0472 close)
+> Total: 1 active (user smoke-test) | 110 completed
 
 ## Active Dispatches
 
@@ -13,6 +13,12 @@
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-111 | ORCH-0469+0472 | Tester (retest cycle 1) | 2026-04-17 | QA_ORCH-0469-0472_REPORT_RETEST_1.md | **PASS** — 6/6 tests, 0 P0-P3, 2 P4 praise. Cycle #0 P1 swipe-through regression CLOSED. Constitutional #9 restored. I-EMPTY-CACHE-NONPERSIST established. 1-cycle retest. |
+| AH-110 | ORCH-0469+0472 | Implementor (rework v2) | 2026-04-17 | IMPLEMENTATION_ORCH-0469-0472_REPORT_v2.md | APPROVED — single-file 2-line behavior change in SwipeableCards.tsx:616-631. All 3 EXHAUSTED/EMPTY scenarios trace correctly. Zero new TS errors. Do-not-touch list verified via timestamps. |
+| AH-109 | ORCH-0469+0472 | Tester (cycle 0) | 2026-04-17 | QA_ORCH-0469-0472_REPORT.md | **FAIL** — 1 P1 regression (swipe-through renders EMPTY instead of EXHAUSTED). Constitutional #9 violation. 2-line rework dispatched. |
+| AH-108 | ORCH-0469+0472 | Implementor (v1) | 2026-04-17 | IMPLEMENTATION_ORCH-0469-0472_REPORT.md | APPROVED structurally — 6 files + 29 locales. Dehydrate guard, context gate, UI split, i18n, analytics. Zero new TS errors. Side-benefit fix: session_mode hardcode corrected. |
+| AH-107 | ORCH-0469+0472 | Forensics (spec) | 2026-04-17 | SPEC_ORCH-0469-0472_DECK_CACHE_AND_EMPTY_VS_EXHAUSTED.md | APPROVED — 10 success criteria, 12 test cases, combined ORCH-0469 + ORCH-0472. |
+| AH-106 | ORCH-0469 | Forensics (investigation) | 2026-04-17 | INVESTIGATION_ORCH-0469_DECK_STATE_POLLUTION.md | APPROVED — root cause class HIGH (cache poisoning), exact mechanism MEDIUM (3 candidate mechanisms, all addressed by fix). Side discovery: ORCH-0470 proven inline. |
 | AH-105 | ORCH-0460 | Tester (retest cycle 1) | 2026-04-17 | QA_ORCH-0460_SEEDING_VALIDATION_ACCURACY_REPORT_RETEST_1.md | **PASS** — 11/11 SC. P0 resolved (180→11 flower strips, 139 supermarkets preserved, 175/175 food_store-in-types preserved). Constitutional #13 restored FAIL→PASS. 1-cycle retest. |
 | AH-104 | ORCH-0460 | Implementor (rework v2) | 2026-04-17 | IMPLEMENTATION_ORCH-0460_REWORK_V2_REPORT.md | APPROVED — 2 surgical fixes: FLOWERS_BLOCKED_TYPES split + 40 types added to on-demand exclusions. All 6 SC self-verified + orchestrator independent spot-checks passed. |
 | AH-103 | ORCH-0460 | Tester (cycle 0) | 2026-04-17 | QA_ORCH-0460_SEEDING_VALIDATION_ACCURACY_REPORT.md | **FAIL** — P0-1 (food_store kills 168 supermarkets) + P1-2 (40 invariant #13 gaps). Surgical rework dispatched. |

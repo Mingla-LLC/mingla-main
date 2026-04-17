@@ -3,6 +3,8 @@
   "swipeable.error_title": "Κάτι δεν πήγε καλά",
   "swipeable.try_again": "Δοκίμασε Ξανά",
   "swipeable.seen_everything": "Τα είδες όλα",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "Άλλαξε τη διάθεσή σου για να ξεκλειδώσεις νέα μέρη, ή κοίτα πίσω σε όσα έχεις δει.",
   "swipeable.shift_preferences": "Άλλαξε προτιμήσεις",
   "swipeable.review_all_cards": "Δες όλες τις κάρτες",

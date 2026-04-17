@@ -3,6 +3,8 @@
   "swipeable.error_title": "うまくいきませんでした",
   "swipeable.try_again": "再試行",
   "swipeable.seen_everything": "利用可能なすべてを見ました",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "好みを変えて新しいスポットを発見するか、これまでのものを振り返りましょう。",
   "swipeable.shift_preferences": "好みを変更",
   "swipeable.review_all_cards": "すべてのカードを確認",

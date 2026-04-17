@@ -3,6 +3,8 @@
   "swipeable.error_title": "문제가 발생했습니다",
   "swipeable.try_again": "다시 시도",
   "swipeable.seen_everything": "모든 콘텐츠를 확인했습니다",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "새로운 장소를 발견하려면 취향을 바꾸거나, 이전에 본 것들을 다시 살펴보세요.",
   "swipeable.shift_preferences": "취향 변경",
   "swipeable.review_all_cards": "모든 카드 보기",

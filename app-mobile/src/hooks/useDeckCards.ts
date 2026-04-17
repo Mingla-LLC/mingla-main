@@ -151,7 +151,13 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
         },
       );
     },
-    staleTime: Infinity,            // Deck only refreshes on explicit preference change (query key changes). Never auto-refetch — deck is an active swipe session, not a feed.
+    // staleTime: Infinity is SAFE ONLY because empty deck-cards responses are
+    // blocked from AsyncStorage persistence in app/index.tsx:shouldDehydrateQuery
+    // (ORCH-0469). Do not pair Infinity + persistence + response-can-be-empty
+    // without that guard — it produces permanent warm-session poisoning.
+    // Deck only refreshes on explicit preference change (query key changes).
+    // Never auto-refetch — deck is an active swipe session, not a feed.
+    staleTime: Infinity,
     gcTime: 24 * 60 * 60 * 1000,   // 24 hours — matches AsyncStorage maxAge so persisted data stays usable
     enabled: isEnabled,
     retry: 1,

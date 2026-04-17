@@ -575,7 +575,14 @@ export const RecommendationsProvider: React.FC<
   // ── Sync hasMore and exhaustion from deck hook ──────────────────────────
   useEffect(() => {
     setHasMoreCards(deckHasMore);
+    // ORCH-0469 / ORCH-0472: "Exhausted" requires the user to have actually been
+    // served cards in this pref session. An empty first page (batchSeed === 0 with
+    // no accumulated cards) is EMPTY, not EXHAUSTED. Without this gate, any
+    // category that returns zero server results on entry is mislabelled as
+    // "You've seen everything available" — a lie.
+    const userHasBeenServedCards = batchSeed > 0 || accumulatedCardsRef.current.length > 0;
     if (
+      userHasBeenServedCards &&
       deckCards.length === 0 &&
       !deckHasMore &&
       isDeckBatchLoaded &&
@@ -585,7 +592,7 @@ export const RecommendationsProvider: React.FC<
     ) {
       setIsExhausted(true);
     }
-  }, [deckHasMore, deckCards.length, isDeckBatchLoaded, isDeckFetching, isModeTransitioning, isRefreshingAfterPrefChange]);
+  }, [deckHasMore, deckCards.length, isDeckBatchLoaded, isDeckFetching, isModeTransitioning, isRefreshingAfterPrefChange, batchSeed]);
 
   // Reset prefetchFiredRef when batchSeed changes
   useEffect(() => {
@@ -1186,7 +1193,10 @@ export const RecommendationsProvider: React.FC<
       return { type: 'INITIAL_LOADING' };
     }
 
-    // EXHAUSTED (server returned hasMore: false AND user has swiped through all accumulated cards)
+    // EXHAUSTED — user has been served AND swiped through all accumulated cards.
+    // The exhaustion effect at line 576 enforces "has been served" via a
+    // batchSeed > 0 || accumulatedCardsRef.current.length > 0 gate. Empty first page
+    // (server returned zero for this filter) resolves to EMPTY below, not here.
     if (isExhausted && recommendations.length === 0) {
       return { type: 'EXHAUSTED' };
     }

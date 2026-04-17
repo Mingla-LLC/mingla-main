@@ -2964,6 +2964,17 @@ function App() {
                   ) {
                     return false;
                   }
+
+                  // ORCH-0469: Never persist empty deck-cards results. staleTime: Infinity
+                  // means a persisted empty would be served forever across warm sessions —
+                  // the cold-start escape would be the only repair. In-memory empties for
+                  // the current session are fine; across-session persistence is not.
+                  if (firstKey === "deck-cards") {
+                    const data = query.state.data as { cards?: unknown[] } | undefined;
+                    if (!data || !Array.isArray(data.cards) || data.cards.length === 0) {
+                      return false;
+                    }
+                  }
                 }
                 // Never persist queries that are still fetching — their promises
                 // can't be serialized and cause "promise.then is not a function"

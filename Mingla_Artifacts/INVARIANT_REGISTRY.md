@@ -1,12 +1,13 @@
 # Invariant Registry
 
-> Last updated: 2026-03-30
+> Last updated: 2026-04-17
 > Source: Mingla Orchestrator skill references
 
 ## Data Integrity Invariants
 
 | ID | Invariant | Layer | Enforcement | Status |
 |----|-----------|-------|-------------|--------|
+| **I-EMPTY-CACHE-NONPERSIST** | `deck-cards` React Query responses with `cards.length === 0` MUST NOT be dehydrated to AsyncStorage. `staleTime: Infinity` is only safe because of this guard. Pairing Infinity staleTime + persistence + response-can-be-empty without the guard produces permanent warm-session cache poisoning. | App root + Hook | `shouldDehydrateQuery` at `app-mobile/app/index.tsx:2968-2977`; protective comment at `app-mobile/src/hooks/useDeckCards.ts:154-159` | Enforced (ORCH-0469, 2026-04-17) |
 | INV-D01 | Every card in card_pool has at least one photo URL | DB + Edge | NOT NULL + validation | Enforced |
 | INV-D02 | Every card_pool entry has city and country TEXT populated | DB | NOT NULL + backfill migration | Enforced (Commit 5db8dbe8) |
 | INV-D03 | Curated cards reference only active place_pool entries | DB | FK + cascade deactivation | Enforced |

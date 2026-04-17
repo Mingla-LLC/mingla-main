@@ -697,6 +697,22 @@ class MixpanelService {
     this.track("Deck Exhausted", props);
   }
 
+  /**
+   * ORCH-0472: Fired when the deck reaches EMPTY state — user picked a filter that
+   * returned zero results from the server. Distinct from trackDeckExhausted (which
+   * fires when the user has swiped through everything). Used to monitor seeding-gap
+   * and filter-narrowness patterns in production.
+   */
+  trackDeckEmptyFilter(props: {
+    categories: string[];
+    date_option: string;
+    travel_mode: string;
+    travel_constraint_value: number;
+    session_mode: string;
+  }): void {
+    this.track("Deck Empty Filter", props);
+  }
+
   // ─── Revenue helpers ─────────────────────────────────────────────────
 
   trackPaywallViewed(props: { trigger: string; gated_feature?: string }): void {

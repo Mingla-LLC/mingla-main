@@ -3,6 +3,8 @@
   "swipeable.error_title": "That didn't land",
   "swipeable.try_again": "Try Again",
   "swipeable.seen_everything": "You've seen everything available",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "Shift your vibe to unlock new spots, or look back at what you've been through.",
   "swipeable.shift_preferences": "Shift preferences",
   "swipeable.review_all_cards": "Review all cards",

@@ -3,6 +3,8 @@
   "swipeable.error_title": "Không thành công",
   "swipeable.try_again": "Thử lại",
   "swipeable.seen_everything": "Bạn đã xem hết tất cả",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "Thay đổi sở thích để mở khóa địa điểm mới, hoặc xem lại những gì đã qua.",
   "swipeable.shift_preferences": "Thay đổi sở thích",
   "swipeable.review_all_cards": "Xem lại tất cả thẻ",

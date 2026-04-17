@@ -3,6 +3,8 @@
   "swipeable.error_title": "Algo salió mal",
   "swipeable.try_again": "Reintentar",
   "swipeable.seen_everything": "Ya viste todo lo disponible",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "Cambia tu estilo para desbloquear nuevos lugares, o revisa lo que ya viste.",
   "swipeable.shift_preferences": "Cambiar preferencias",
   "swipeable.review_all_cards": "Revisar todas las tarjetas",

@@ -3,6 +3,8 @@
   "swipeable.error_title": "সেটা কাজ করেনি",
   "swipeable.try_again": "আবার চেষ্টা করুন",
   "swipeable.seen_everything": "আপনি সব উপলব্ধ কন্টেন্ট দেখে ফেলেছেন",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "নতুন জায়গা আনলক করতে আপনার পছন্দ পরিবর্তন করুন, অথবা আগের দেখাগুলো রিভিউ করুন।",
   "swipeable.shift_preferences": "পছন্দ পরিবর্তন করুন",
   "swipeable.review_all_cards": "সব কার্ড রিভিউ করুন",

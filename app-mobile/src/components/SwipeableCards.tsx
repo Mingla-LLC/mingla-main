@@ -615,11 +615,20 @@ export default function SwipeableCards({
   // out removedCards locally. effectiveUIState accounts for that local filtering.
   const effectiveUIState: DeckUIState = React.useMemo(() => {
     if (deckUIState.type === 'LOADED' && availableRecommendations.length === 0) {
-      if (isExhausted) return { type: 'EXHAUSTED' };
-      return { type: 'EMPTY' };
+      // ORCH-0469 / ORCH-0472: If context reports LOADED, recommendations.length > 0
+      // (see RecommendationsContext.tsx:1218). When every served card is in
+      // removedCards, the user has swiped through everything they were served — that
+      // IS exhaustion, regardless of the context-level isExhausted flag (which only
+      // fires on server-side empty responses / pagination-exhaustion, not on local
+      // swipe-through of a single-batch pool). The dead-state auto-recovery at
+      // ~line 651 handles stale-persistence removedCards pollution; it clears after
+      // 1.5s, so genuine EXHAUSTED persists past that window. Genuine EMPTY (server
+      // returned zero for the filter) never enters this branch because
+      // deckUIState.type is 'EMPTY' not 'LOADED' — see context line 1204.
+      return { type: 'EXHAUSTED' };
     }
     return deckUIState;
-  }, [deckUIState, availableRecommendations.length, isExhausted]);
+  }, [deckUIState, availableRecommendations.length]);
 
   // ── Prefetch next 2 card images for instant swipe transitions ──
   // When the current card changes, prefetch the images for the next 2 cards.
@@ -1561,36 +1570,60 @@ export default function SwipeableCards({
       );
 
     case 'EMPTY':
-    case 'EXHAUSTED':
-      // Fire deck exhausted once per deck load
-      if (lastViewedCardIdRef.current !== '__deck_exhausted__') {
-        mixpanelService.trackDeckExhausted({
-          cards_seen: currentCardIndex,
-          cards_saved: savedCards.length,
-          cards_dismissed: Math.max(0, currentCardIndex - savedCards.length),
-          session_mode: 'solo',
-        });
-        lastViewedCardIdRef.current = '__deck_exhausted__';
+    case 'EXHAUSTED': {
+      // ORCH-0469 / ORCH-0472: EMPTY and EXHAUSTED are two distinct user states.
+      // EMPTY = user picked a filter that has no results. EXHAUSTED = user has
+      // swiped through everything. Fire separate analytics events, render separate
+      // copy, show/hide the "Review all cards" CTA accordingly.
+      const isEmpty = effectiveUIState.type === 'EMPTY';
+      const analyticsSentinel = isEmpty ? '__deck_empty__' : '__deck_exhausted__';
+      if (lastViewedCardIdRef.current !== analyticsSentinel) {
+        if (isEmpty) {
+          mixpanelService.trackDeckEmptyFilter({
+            categories: cachedPreferences?.categories ?? [],
+            date_option: cachedPreferences?.date_option ?? 'today',
+            travel_mode: cachedPreferences?.travel_mode ?? 'walking',
+            travel_constraint_value: cachedPreferences?.travel_constraint_value ?? 30,
+            session_mode: currentMode === 'solo' ? 'solo' : 'collab',
+          });
+        } else {
+          mixpanelService.trackDeckExhausted({
+            cards_seen: currentCardIndex,
+            cards_saved: savedCards.length,
+            cards_dismissed: Math.max(0, currentCardIndex - savedCards.length),
+            session_mode: currentMode === 'solo' ? 'solo' : 'collab',
+          });
+        }
+        lastViewedCardIdRef.current = analyticsSentinel;
       }
+
+      const titleKey = isEmpty
+        ? 'cards:swipeable.no_matches_title'
+        : 'cards:swipeable.seen_everything';
+
       return (
         <>
           <View style={styles.emptyDeckContainer}>
             <View style={styles.emptyDeckContent}>
               <View style={styles.emptyDeckIconCircle}>
-                <Icon name="earth-outline" size={24} color="#eb7825" />
+                <Icon
+                  name={isEmpty ? 'filter-outline' : 'earth-outline'}
+                  size={24}
+                  color="#eb7825"
+                />
               </View>
-              <Text style={styles.emptyDeckTitle}>
-                {t('cards:swipeable.seen_everything')}
-              </Text>
+              <Text style={styles.emptyDeckTitle}>{t(titleKey)}</Text>
               <Text style={styles.emptyDeckSubtitle}>
-                {(() => {
-                  const hour = new Date().getHours();
-                  const isLateNight = hour >= 21 || hour < 6;
-                  // ORCH-0446 R8.3: Smart late night suggestion
-                  return isLateNight
-                    ? 'Most places are closing soon. Try "This Weekend" for more options.'
-                    : t('cards:swipeable.shift_vibe');
-                })()}
+                {isEmpty
+                  ? t('cards:swipeable.no_matches_subtitle')
+                  : (() => {
+                      const hour = new Date().getHours();
+                      const isLateNight = hour >= 21 || hour < 6;
+                      // ORCH-0446 R8.3: Smart late night suggestion (EXHAUSTED only)
+                      return isLateNight
+                        ? 'Most places are closing soon. Try "This Weekend" for more options.'
+                        : t('cards:swipeable.shift_vibe');
+                    })()}
               </Text>
 
               <View style={styles.emptyDeckActions}>
@@ -1603,7 +1636,8 @@ export default function SwipeableCards({
                   <Text style={styles.emptyDeckButtonText}>{t('cards:swipeable.shift_preferences')}</Text>
                 </TouchableOpacity>
 
-                {sessionSwipedCards.length > 0 && (
+                {/* Only EXHAUSTED shows "Review all cards" — EMPTY has nothing to review. */}
+                {!isEmpty && sessionSwipedCards.length > 0 && (
                   <TouchableOpacity
                     style={styles.emptyDeckOutlineButton}
                     onPress={() => setDismissedSheetVisible(true)}
@@ -1680,6 +1714,7 @@ export default function SwipeableCards({
           />
         </>
       );
+    }
 
     case 'WAITING_FOR_PARTICIPANTS':
       return (

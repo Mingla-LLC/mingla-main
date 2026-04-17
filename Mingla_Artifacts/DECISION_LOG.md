@@ -1,6 +1,6 @@
 # Decision Log
 
-> Last updated: 2026-04-11
+> Last updated: 2026-04-17
 
 | ID | Date | Decision | Context | Alternatives Rejected | Tradeoff Accepted | Exit Condition |
 |----|------|---------|---------|----------------------|-------------------|----------------|
@@ -23,3 +23,4 @@
 | DEC-017 | 2026-04-11 | Analytics strategy: product-first scope — define what questions matter before wiring events | Mixpanel is dead (no token), AppsFlyer has 25 events but never dashboard-verified, services don't talk to each other. | Quick-win (just set the token), full integration sweep (build unified layer first) | Delays analytics activation until product skill defines requirements | When product skill completes analytics strategy |
 | DEC-018 | 2026-04-11 | Queue docs (SPEC/IMPL/TEST/RETEST) deprecated in favor of AGENT_HANDOFFS.md | Queue docs were skeletal and 12 days stale. AGENT_HANDOFFS tracks the full pipeline in a single dispatch model with 79+ completed dispatches. | Populate retroactively (too much work), delete (lose structure) | Lose per-stage tracking granularity | If pipeline model changes |
 | DEC-019 | 2026-04-11 | Dead code elimination before documentation sweep — subtract first, document what survives | Constitution rule #8: subtract before adding. Can't document accurately if dead code inflates counts. | Document first then clean (risk documenting things that get deleted) | Extra session of work before docs start | One-time |
+| DEC-020 | 2026-04-17 | `place_pool.ai_categories` column canonically stores **app slugs** (e.g. `brunch_lunch_casual`), not seeding IDs (e.g. `casual_eats`). Fix the consumer (`generate-single-cards`), not the data. | ORCH-0470 — `generate-single-cards` queries using the seeding ID while `ai-verify-pipeline` writes the app slug. Silent zero-card failure on every re-seed of Brunch/Lunch/Casual. Two identifiers exist because seeding splits one app category across multiple Google API calls (casual_eats + casual_eats_world + casual_eats_extended). | Direction B (migrate column to seeding IDs, update all writers + readers) — cost/benefit unfavorable | Lose the ability to preserve which sub-recipe produced a place in the column. No current consumer needs that distinction. | When any consumer requires sub-recipe provenance — re-evaluate then |
