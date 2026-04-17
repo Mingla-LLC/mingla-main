@@ -9,7 +9,7 @@
  */
 import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { deckService, DeckResponse } from '../services/deckService';
+import { deckService, DeckResponse, DeckServerPath } from '../services/deckService';
 import type { Recommendation } from '../types/recommendation';
 import { normalizeDateTime } from '../utils/cardConverters';
 
@@ -96,6 +96,13 @@ export interface UseDeckCardsResult {
   hasMore: boolean;
   error: Error | null;
   refetch: () => void;
+  /** ORCH-0474: Which server code path produced this result. Consumers branch
+   *  UI on this value (AUTH_REQUIRED banner, PIPELINE_ERROR toast, EMPTY, etc.)
+   *  rather than inferring state from (cards.length, hasMore). Derived from
+   *  query.data?.serverPath on success, or from the tagged DeckFetchError
+   *  on failure. Undefined when the query has no result yet (still loading,
+   *  or disabled). */
+  serverPath?: DeckServerPath;
 }
 
 export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
@@ -146,6 +153,10 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
               activePills: prev?.activePills ?? [],
               total: singlesCards.length,
               hasMore: true,
+              // ORCH-0474: Partial (singles-only) cache update is a successful
+              // pipeline response by definition — full categoryPromise is still
+              // in flight and will overwrite with the final serverPath.
+              serverPath: prev?.serverPath ?? 'pipeline',
             }));
           }
         },
@@ -153,8 +164,11 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     },
     // staleTime: Infinity is SAFE ONLY because empty deck-cards responses are
     // blocked from AsyncStorage persistence in app/index.tsx:shouldDehydrateQuery
-    // (ORCH-0469). Do not pair Infinity + persistence + response-can-be-empty
-    // without that guard — it produces permanent warm-session poisoning.
+    // (ORCH-0469). The ORCH-0474 extension covers ALL three non-populated paths
+    // (pool-empty, auth-required, pipeline-error) — each returns cards:[] and
+    // each is already excluded by the existing length-check guard. Do not pair
+    // Infinity + persistence + response-can-be-empty without that guard — it
+    // produces permanent warm-session poisoning.
     // Deck only refreshes on explicit preference change (query key changes).
     // Never auto-refetch — deck is an active swipe session, not a feed.
     staleTime: Infinity,
@@ -168,6 +182,14 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   const activePills = query.data?.activePills ?? EMPTY_PILLS;
   const hasData = query.data !== undefined;
 
+  // ORCH-0474: serverPath comes from query.data on success, or from the
+  // tagged DeckFetchError on failure. DeckFetchError.serverPath is 'auth-required'
+  // or 'pipeline-error'; normal error (e.g. React Query retry envelope) falls
+  // through as undefined.
+  const resolvedServerPath: DeckServerPath | undefined =
+    query.data?.serverPath ??
+    (query.error as (Error & { serverPath?: DeckServerPath }) | null)?.serverPath;
+
   return useMemo(() => ({
     cards,
     deckMode: query.data?.deckMode ?? 'curated',
@@ -179,5 +201,6 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     hasMore: query.data?.hasMore ?? true,
     error: query.error as Error | null,
     refetch: query.refetch,
-  }), [cards, activePills, query.data?.deckMode, query.data?.hasMore, query.isLoading, query.isFetching, query.isPlaceholderData, hasData, query.error, query.refetch]);
+    serverPath: resolvedServerPath,
+  }), [cards, activePills, query.data?.deckMode, query.data?.hasMore, query.isLoading, query.isFetching, query.isPlaceholderData, hasData, query.error, query.refetch, resolvedServerPath]);
 }

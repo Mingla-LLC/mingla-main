@@ -2965,10 +2965,16 @@ function App() {
                     return false;
                   }
 
-                  // ORCH-0469: Never persist empty deck-cards results. staleTime: Infinity
-                  // means a persisted empty would be served forever across warm sessions —
-                  // the cold-start escape would be the only repair. In-memory empties for
-                  // the current session are fine; across-session persistence is not.
+                  // ORCH-0469 + ORCH-0474: Never persist non-populated deck-cards results.
+                  // Covers FOUR distinct edge-function paths — all return cards:[]:
+                  //   - path:'pool-empty'      (genuine empty seeding gap)
+                  //   - path:'pipeline' + filtered-to-zero (date/hours filter kills all)
+                  //   - path:'auth-required'   (JWT sub unreadable — SPEC_ORCH-0474 §7)
+                  //   - path:'pipeline-error'  (serveCardsFromPipeline threw)
+                  // All four land here with cards.length===0; the length check blocks
+                  // cross-session persistence uniformly. In-memory caching within the
+                  // current warm session is still allowed — cold start always fetches
+                  // fresh. staleTime: Infinity is safe ONLY because of this guard.
                   if (firstKey === "deck-cards") {
                     const data = query.state.data as { cards?: unknown[] } | undefined;
                     if (!data || !Array.isArray(data.cards) || data.cards.length === 0) {

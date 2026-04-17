@@ -1,6 +1,6 @@
 # Coverage Map
 
-> Last updated: 2026-04-17 (post ORCH-0469+0472 close)
+> Last updated: 2026-04-17 (post ORCH-0474 close — discover-cards fall-through split, Grade B)
 
 ## Surface Coverage
 
@@ -8,7 +8,7 @@
 |---------|-------|---|---|---|---|---|-------------|---------|------------|
 | Auth & Session | 7 | 2 | 4 | 1 | 0 | 0 | 0% | 0% | Partial |
 | Onboarding | 11 | 2 | 0 | 0 | 0 | 9 | 82% | 0% | Weak |
-| Discovery / Explore | 55 | 39 | 9 | 0 | 0 | 7 | 13% | 0% | Strong (↑ ORCH-0469, ORCH-0472 closed B) |
+| Discovery / Explore | 55 | 39 | 10 | 0 | 0 | 6 | 11% | 0% | Strong (↑ ORCH-0474 closed B — ORCH-0469, ORCH-0472 previously B) |
 | **Place Pipeline (Seeding + AI Validation)** | **11** | **8** | **0** | **0** | **0** | **3** | **27%** | **0%** | **Strong (NEW 2026-04-17)** |
 | Collaboration Sessions | 7 | 3 | 0 | 0 | 0 | 4 | 57% | 0% | Weak |
 | Social / Friends | 7 | 1 | 1 | 0 | 0 | 5 | 71% | 0% | Weak |

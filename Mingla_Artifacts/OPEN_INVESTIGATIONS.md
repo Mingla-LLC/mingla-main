@@ -1,7 +1,7 @@
 # Open Investigations
 
 > Last updated: 2026-04-17
-> Total: 0 active | 13 completed (historical) | 1 retracted-premise
+> Total: 0 active | 14 completed (historical) | 1 retracted-premise
 
 ## Active Investigations
 
@@ -13,6 +13,7 @@
 
 | ID | Issue | Completed | Artifact | Next |
 |----|-------|-----------|----------|------|
+| ORCH-0474 | `discover-cards` silently degrades 3 failure modes into one "pool-empty" response (collab multi-category 0-card bug) | 2026-04-17 | `outputs/INVESTIGATION_ORCH-0474_COLLAB_MULTICATEGORY_EMPTY.md` | **Spec COMPLETED + APPROVED 2026-04-17.** Artifact: `outputs/SPEC_ORCH-0474_DISCOVER_CARDS_FALLTHROUGH_SPLIT.md`. Implementor dispatch pending at `prompts/IMPL_ORCH-0474_DISCOVER_CARDS_FALLTHROUGH_SPLIT.md`. Root cause class HIGH, exact trigger MEDIUM — structural fix closes both auth-flake and pipeline-throw modes uniformly. |
 | ORCH-0469 | Brunch/Lunch/Casual false "seen everything" in warm app | 2026-04-17 | `outputs/INVESTIGATION_ORCH-0469_DECK_STATE_POLLUTION.md` | **CLOSED Grade B 2026-04-17** — QA retest #1 PASS (6/6). Joint close with ORCH-0472. Evidence: `outputs/QA_ORCH-0469-0472_REPORT_RETEST_1.md`. I-EMPTY-CACHE-NONPERSIST invariant established. |
 | ORCH-0470 | generate-single-cards seeding-ID vs app-slug mismatch | 2026-04-17 | Line-level evidence in `outputs/INVESTIGATION_ORCH-0469_DECK_STATE_POLLUTION.md` | User decision locked (DEC-020 Direction A). Spec dispatch ready: `prompts/SPEC_ORCH-0470_GENERATE_SINGLE_CARDS_SLUG_FIX.md`. |
 

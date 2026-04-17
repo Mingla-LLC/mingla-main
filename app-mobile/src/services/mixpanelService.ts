@@ -702,6 +702,12 @@ class MixpanelService {
    * returned zero results from the server. Distinct from trackDeckExhausted (which
    * fires when the user has swiped through everything). Used to monitor seeding-gap
    * and filter-narrowness patterns in production.
+   *
+   * ORCH-0474: Added `server_path` dimension. `pool-empty` = RPC succeeded with
+   * zero rows (seeding gap — recoverable by running generate-single-cards).
+   * `pipeline` = server had rows but date/hours filters zeroed the deck (filter
+   * narrowness — recoverable by widening user prefs). Auth / pipeline errors
+   * route through `trackDeckServerError` instead and never land in EMPTY.
    */
   trackDeckEmptyFilter(props: {
     categories: string[];
@@ -709,8 +715,29 @@ class MixpanelService {
     travel_mode: string;
     travel_constraint_value: number;
     session_mode: string;
+    server_path: 'pool-empty' | 'pipeline';
   }): void {
     this.track("Deck Empty Filter", props);
+  }
+
+  /**
+   * ORCH-0474: Fired when the deck hits a server-side failure distinct from a
+   * genuine empty pool — auth flake or pipeline exception. Splits what used to
+   * be a single "EMPTY" signal into three honest cohorts so on-call can
+   * distinguish "seeding gap" from "runtime error."
+   *
+   * Contains NO PII — no user id, no lat/lng, no email. The `error_class`
+   * field is the JS error class name (e.g. 'TypeError', 'AbortError') or
+   * 'auth' for auth-required. Messages are sanitized at the edge function
+   * before reaching the client.
+   */
+  trackDeckServerError(props: {
+    server_path: 'auth-required' | 'pipeline-error';
+    error_class: string;
+    elapsed_ms: number;
+    session_mode: string;
+  }): void {
+    this.track("Deck Server Error", props);
   }
 
   // ─── Revenue helpers ─────────────────────────────────────────────────

@@ -36,12 +36,43 @@ export interface DeckParams {
   sessionId?: string;      // ORCH-0446: optional, for analytics tracking (collab only)
 }
 
+/**
+ * ORCH-0474: Discriminant from the `discover-cards` edge function's
+ * sourceBreakdown.path. Consumers branch UI on this field rather than
+ * inferring state from (cards.length, hasMore).
+ *   - 'pipeline'       — normal populated or filtered-to-zero deck response
+ *   - 'pool-empty'     — RPC succeeded with zero rows (genuine seeding gap)
+ *   - 'auth-required'  — JWT sub unreadable; retry with a refreshed token
+ *   - 'pipeline-error' — exception during server pipeline; retry
+ * For curated-only decks the server doesn't run — serverPath is 'pipeline'.
+ */
+export type DeckServerPath =
+  | 'pipeline'
+  | 'pool-empty'
+  | 'auth-required'
+  | 'pipeline-error';
+
 export interface DeckResponse {
   cards: Recommendation[];
   deckMode: 'nature' | 'icebreakers' | 'drinks_and_music' | 'brunch_lunch_casual' | 'upscale_fine_dining' | 'movies_theatre' | 'creative_arts' | 'play' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
   hasMore: boolean;
+  serverPath: DeckServerPath;
+}
+
+/**
+ * ORCH-0474: Error class thrown by fetchDeck when the category fetch fails
+ * in a way the UI must distinguish (auth vs pipeline). Carries the tagged
+ * serverPath so the hook's onError can route into the right UI state.
+ */
+export class DeckFetchError extends Error {
+  readonly serverPath: DeckServerPath;
+  constructor(message: string, serverPath: DeckServerPath) {
+    super(message);
+    this.name = 'DeckFetchError';
+    this.serverPath = serverPath;
+  }
 }
 
 interface DeckPill {
@@ -234,6 +265,10 @@ class DeckService {
     const { pills, categoryFilters } = this.resolvePills(params.categories, params.intents);
     const limit = params.limit ?? 20;
     let hasMoreFromEdge = true;
+    // ORCH-0474: Capture the server's path discriminant so the hook can route
+    // UI on it. Category fetch wins over curated — curated-only decks end up
+    // 'pipeline' (server didn't run for the deck-cards key).
+    let categoryServerPath: DeckServerPath = 'pipeline';
 
     if (__DEV__) {
       console.log('[DeckService] Input categories:', JSON.stringify(params.categories));
@@ -293,6 +328,19 @@ class DeckService {
           if (!error && data?.cards) {
             const cards = (data.cards as any[]).map(unifiedCardToRecommendation);
             hasMoreFromEdge = data.metadata?.hasMore ?? true;
+            // ORCH-0474: Capture serverPath discriminant from the response.
+            const rawPath = data.sourceBreakdown?.path;
+            if (
+              rawPath === 'pipeline' ||
+              rawPath === 'pool-empty' ||
+              rawPath === 'auth-required' ||
+              rawPath === 'pipeline-error'
+            ) {
+              categoryServerPath = rawPath;
+            } else {
+              // Unknown / legacy path — treat as pipeline (populated or filtered).
+              categoryServerPath = 'pipeline';
+            }
             if (__DEV__) {
               console.log(`[DeckService] discover-cards → ${cards.length} cards (source: ${data.source}, hasMore: ${hasMoreFromEdge})`);
               if (data.sourceBreakdown) {
@@ -309,23 +357,39 @@ class DeckService {
             }
             return cards;
           } else {
+            // ORCH-0474: Classify the failure as auth-required vs pipeline-error
+            // using the HTTP status code from FunctionsHttpError.context.status.
+            // Status 401 → auth (matches edge fn's path:'auth-required').
+            // Anything else (500 pipeline-error, timeout, network) → pipeline-error.
             const msg = typeof error === 'string' ? error : (error as any)?.message || 'Unknown error';
-            console.warn('[DeckService] discover-cards error:', msg);
-            throw new Error(`Deck fetch failed: ${msg}`);
+            const status = (error as any)?.context?.status;
+            const serverPath: DeckServerPath = status === 401 ? 'auth-required' : 'pipeline-error';
+            console.warn(`[DeckService] discover-cards error (serverPath=${serverPath}):`, msg);
+            throw new DeckFetchError(`Deck fetch failed: ${msg}`, serverPath);
           }
         } catch (err) {
           if ((err as any)?.name === 'AbortError') {
             console.warn('[DeckService] discover-cards timed out after 15s');
-          } else {
-            console.warn('[DeckService] discover-cards failed:', (err as any)?.message || err);
+            // ORCH-0474: Timeout is a pipeline failure, not an auth issue.
+            throw new DeckFetchError('discover-cards timed out after 15s', 'pipeline-error');
           }
-          throw err;
+          // Re-throw DeckFetchError unchanged so the discriminant survives.
+          if (err instanceof DeckFetchError) throw err;
+          console.warn('[DeckService] discover-cards failed:', (err as any)?.message || err);
+          throw new DeckFetchError(
+            (err as Error)?.message || 'discover-cards failed',
+            'pipeline-error',
+          );
         } finally {
           clearTimeout(fetchTimer);
         }
       } catch (err) {
+        if (err instanceof DeckFetchError) throw err;
         console.warn('[DeckService] discover-cards outer error:', (err as any)?.message || err);
-        throw err;
+        throw new DeckFetchError(
+          (err as Error)?.message || 'discover-cards outer error',
+          'pipeline-error',
+        );
       }
     })();
 
@@ -402,11 +466,19 @@ class DeckService {
     }
     const curatedStream = roundRobinInterleave(curatedArrays);
 
-    // If both fetches failed, throw so React Query sees the error
+    // If both fetches failed, throw so React Query sees the error.
+    // ORCH-0474: Preserve DeckFetchError's serverPath discriminant so the hook
+    // can route UI correctly. If singles error wasn't already a DeckFetchError,
+    // wrap it as 'pipeline-error' (conservative — the client gets a retry path).
     const regularFailed = !singlesResult.ok;
     const curatedFailed = !curatedResult.ok;
     if (regularFailed && curatedFailed) {
-      throw (singlesResult.error as Error) || new Error('All deck fetches failed');
+      const singlesErr = singlesResult.error;
+      if (singlesErr instanceof DeckFetchError) throw singlesErr;
+      throw new DeckFetchError(
+        (singlesErr as Error)?.message || 'All deck fetches failed',
+        'pipeline-error',
+      );
     }
 
     // 1:1 interleave: alternate regular and curated
@@ -450,6 +522,7 @@ class DeckService {
       activePills: pills.map(p => p.id),
       total: interleaved.length,
       hasMore: hasMoreFromEdge,
+      serverPath: categoryServerPath,
     };
   }
 

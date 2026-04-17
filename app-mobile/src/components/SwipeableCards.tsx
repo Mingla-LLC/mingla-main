@@ -424,6 +424,10 @@ export default function SwipeableCards({
     isExhausted,
     deckUIState,
     collabTravelMode,
+    // ORCH-0474: pipeline-error toast overlay on LOADED + serverPath for
+    // analytics dimension + retry routing in the new UI states.
+    showPipelineErrorToast,
+    serverPath,
   } = useRecommendations();
 
   const isAnyLoading = loading || isModeTransitioning || isWaitingForSessionResolution;
@@ -1579,12 +1583,18 @@ export default function SwipeableCards({
       const analyticsSentinel = isEmpty ? '__deck_empty__' : '__deck_exhausted__';
       if (lastViewedCardIdRef.current !== analyticsSentinel) {
         if (isEmpty) {
+          // ORCH-0474: `server_path` splits genuine empty pools from filtered-
+          // to-empty responses. 'pool-empty' = seeding gap (run generate-
+          // single-cards). 'pipeline' = server found cards but date/hours
+          // filter killed all of them (filter narrowness). Auth/pipeline-error
+          // never reach the EMPTY branch — they have their own UI states.
           mixpanelService.trackDeckEmptyFilter({
             categories: cachedPreferences?.categories ?? [],
             date_option: cachedPreferences?.date_option ?? 'today',
             travel_mode: cachedPreferences?.travel_mode ?? 'walking',
             travel_constraint_value: cachedPreferences?.travel_constraint_value ?? 30,
             session_mode: currentMode === 'solo' ? 'solo' : 'collab',
+            server_path: serverPath === 'pool-empty' ? 'pool-empty' : 'pipeline',
           });
         } else {
           mixpanelService.trackDeckExhausted({
@@ -1758,6 +1768,93 @@ export default function SwipeableCards({
         </View>
       );
 
+    case 'AUTH_REQUIRED':
+      // ORCH-0474: JWT sub unreadable — surface an honest retry banner
+      // instead of the misleading EMPTY "no spots match" copy. Fire a
+      // deck_server_error analytics event once per state entry.
+      if (lastViewedCardIdRef.current !== '__deck_auth_required__') {
+        mixpanelService.trackDeckServerError({
+          server_path: 'auth-required',
+          error_class: 'auth',
+          elapsed_ms: 0,
+          session_mode: currentMode === 'solo' ? 'solo' : 'collab',
+        });
+        lastViewedCardIdRef.current = '__deck_auth_required__';
+      }
+      return (
+        <View style={styles.emptyDeckContainer}>
+          <View style={styles.emptyDeckContent}>
+            <View style={styles.emptyDeckIconCircle}>
+              <Icon name="lock-closed-outline" size={24} color="#eb7825" />
+            </View>
+            <Text style={styles.emptyDeckTitle}>
+              {t('cards:swipeable.auth_error_title')}
+            </Text>
+            <Text style={styles.emptyDeckSubtitle}>
+              {t('cards:swipeable.auth_error_subtitle')}
+            </Text>
+            <View style={styles.emptyDeckActions}>
+              <TouchableOpacity
+                style={styles.emptyDeckButton}
+                onPress={() => refreshRecommendations(refreshKey)}
+                activeOpacity={0.7}
+                accessibilityLabel={t('cards:swipeable.try_again')}
+              >
+                <Icon name="refresh-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.emptyDeckButtonText}>
+                  {t('cards:swipeable.try_again')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      );
+
+    case 'PIPELINE_ERROR':
+      // ORCH-0474: Server pipeline threw and we have no stale cards to keep
+      // visible. Full-screen retry — distinct from EMPTY (seeding gap) and
+      // from ERROR (location/unknown). Fires deck_server_error with the
+      // sanitized error class carried in the state's `message` field.
+      if (lastViewedCardIdRef.current !== '__deck_pipeline_error__') {
+        mixpanelService.trackDeckServerError({
+          server_path: 'pipeline-error',
+          error_class: deckUIState.type === 'PIPELINE_ERROR'
+            ? (deckUIState.message || 'unknown')
+            : 'unknown',
+          elapsed_ms: 0,
+          session_mode: currentMode === 'solo' ? 'solo' : 'collab',
+        });
+        lastViewedCardIdRef.current = '__deck_pipeline_error__';
+      }
+      return (
+        <View style={styles.emptyDeckContainer}>
+          <View style={styles.emptyDeckContent}>
+            <View style={styles.emptyDeckIconCircle}>
+              <Icon name="cloud-offline-outline" size={24} color="#eb7825" />
+            </View>
+            <Text style={styles.emptyDeckTitle}>
+              {t('cards:swipeable.pipeline_error_title')}
+            </Text>
+            <Text style={styles.emptyDeckSubtitle}>
+              {t('cards:swipeable.pipeline_error_subtitle')}
+            </Text>
+            <View style={styles.emptyDeckActions}>
+              <TouchableOpacity
+                style={styles.emptyDeckButton}
+                onPress={() => refreshRecommendations(refreshKey)}
+                activeOpacity={0.7}
+                accessibilityLabel={t('cards:swipeable.try_again')}
+              >
+                <Icon name="refresh-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.emptyDeckButtonText}>
+                  {t('cards:swipeable.try_again')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      );
+
     case 'LOADED':
       // Falls through to the main card render below
       break;
@@ -1781,6 +1878,31 @@ export default function SwipeableCards({
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         <View style={styles.cardContainer}>
+          {/* ORCH-0474: Pipeline-error toast — only when stale cards remain
+              visible. Deck continues to render underneath so the user can keep
+              swiping what they have while they retry. Dismissible via retry. */}
+          {showPipelineErrorToast && (
+            <View
+              style={styles.pipelineErrorToast}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+            >
+              <Icon name="cloud-offline-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.pipelineErrorToastText} numberOfLines={2}>
+                {t('cards:swipeable.pipeline_error_toast')}
+              </Text>
+              <TouchableOpacity
+                onPress={() => refreshRecommendations(refreshKey)}
+                accessibilityLabel={t('cards:swipeable.retry')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.pipelineErrorToastAction}>
+                  {t('cards:swipeable.retry')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* View Previous overlay — appears after first swipe */}
           {sessionSwipedCards.length > 0 && (
             <TouchableOpacity
@@ -2775,6 +2897,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#6b7280",
+  },
+  // ORCH-0474: Pipeline-error toast overlay (shown above cards when stale
+  // cards are still visible and server threw on refresh). Non-blocking —
+  // user can keep swiping; tapping "Retry" re-fires the deck fetch.
+  pipelineErrorToast: {
+    position: "absolute",
+    top: 56,
+    left: 16,
+    right: 16,
+    zIndex: 100,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  pipelineErrorToastText: {
+    flex: 1,
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  pipelineErrorToastAction: {
+    color: "#eb7825",
+    fontSize: 13,
+    fontWeight: "600",
   },
   savedBadge: {
     flexDirection: "row",

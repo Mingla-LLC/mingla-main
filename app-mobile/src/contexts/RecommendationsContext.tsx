@@ -43,7 +43,15 @@ export type DeckUIState =
   | { type: 'ERROR'; message: string }
   | { type: 'WAITING_FOR_PARTICIPANTS' }
   | { type: 'WAITING_FOR_PREFERENCES' }
-  | { type: 'EMPTY_POOL' };
+  | { type: 'EMPTY_POOL' }
+  // ORCH-0474: Two new variants for edge-function failures that were previously
+  // misclassified as EMPTY. AUTH_REQUIRED fires when the JWT sub is unreadable
+  // (platform misconfiguration or token refresh race); PIPELINE_ERROR fires when
+  // the server pipeline throws an exception (transient runtime failure). See
+  // SPEC_ORCH-0474 §10. Render: retry banner for auth, toast overlay on LOADED
+  // or full-screen retry for pipeline error.
+  | { type: 'AUTH_REQUIRED' }
+  | { type: 'PIPELINE_ERROR'; message: string };
 
 // Stable empty arrays — prevent new references on every render that trigger
 // useEffect dependency changes and cause infinite render loops.
@@ -93,6 +101,16 @@ interface RecommendationsContextType {
   deckUIState: DeckUIState;
   /** Aggregated travel mode from collaboration session (majority vote). null in solo mode. */
   collabTravelMode: string | null;
+  /** ORCH-0474: true when the last deck fetch failed with pipeline-error AND
+   *  stale accumulated cards are still being shown. SwipeableCards overlays a
+   *  dismissible retry toast in this state. Self-clears when serverPath becomes
+   *  'pipeline' again on the next successful fetch. */
+  showPipelineErrorToast: boolean;
+  /** ORCH-0474: Which `discover-cards` path produced the last observed result.
+   *  Exposed for analytics dimension (Mixpanel server_path) and for UI state
+   *  machine routing inside SwipeableCards. Undefined when the hook hasn't
+   *  resolved yet (loading, disabled, or pre-first-fetch). */
+  serverPath?: import('../services/deckService').DeckServerPath;
   onOpenPreferences?: () => void;
   onOpenSessionHistory?: () => void;
 }
@@ -450,6 +468,7 @@ export const RecommendationsProvider: React.FC<
     isFullBatchLoaded: isSoloDeckBatchLoaded,
     hasMore: soloDeckHasMore,
     error: soloDeckError,
+    serverPath: soloServerPath,
   } = useDeckCards({
     location: activeDeckLocation,
     categories: activeDeckParams?.categories ?? [],
@@ -1165,8 +1184,30 @@ export const RecommendationsProvider: React.FC<
       return { type: 'ERROR', message: 'Failed to load location' };
     }
 
+    // ORCH-0474: AUTH_REQUIRED routes BEFORE the generic ERROR catch. The
+    // DeckFetchError is tagged via serverPath by deckService → useDeckCards;
+    // we surface the sign-in retry banner here instead of a generic
+    // "something went wrong." Only fires after first fetch completed — avoids
+    // flickering the banner during the initial warm-up window.
+    if (soloServerPath === 'auth-required' && hasCompletedFetchForCurrentMode) {
+      return { type: 'AUTH_REQUIRED' };
+    }
+
+    // ORCH-0474: PIPELINE_ERROR routes BEFORE the generic ERROR catch.
+    // Two sub-cases:
+    //   - Stale cards present: render LOADED (cards stay visible), toast
+    //     overlays via showPipelineErrorToast (read by SwipeableCards).
+    //   - No stale cards: full-screen PIPELINE_ERROR with retry.
+    if (soloServerPath === 'pipeline-error' && hasCompletedFetchForCurrentMode) {
+      if (recommendations.length > 0) {
+        return { type: 'LOADED', cards: recommendations };
+      }
+      return { type: 'PIPELINE_ERROR', message: 'We had trouble loading the deck.' };
+    }
+
     // DECK FETCH ERROR — only when no cards exist (don't overwrite visible cards
-    // with an error for a background refetch failure)
+    // with an error for a background refetch failure). ORCH-0474-tagged errors
+    // already routed above; this is the fallback for untagged errors.
     if (soloDeckError && recommendations.length === 0 && hasCompletedFetchForCurrentMode) {
       return { type: 'ERROR', message: 'Something went wrong loading experiences' };
     }
@@ -1228,6 +1269,7 @@ export const RecommendationsProvider: React.FC<
     locationError, soloDeckError, isModeTransitioning, isWaitingForSessionResolution,
     hasCompletedFetchForCurrentMode, recommendations, isCollaborationMode,
     allParticipantPrefs?.length, isExhausted,
+    soloServerPath, // ORCH-0474: drives AUTH_REQUIRED + PIPELINE_ERROR routing
     // NOTE: `loading` intentionally removed — the EMPTY check no longer depends on it.
     // Keeping it here caused unnecessary recomputation on every background refetch.
   ]);
@@ -1246,6 +1288,16 @@ export const RecommendationsProvider: React.FC<
       );
     }
   }
+
+  // ── ORCH-0474: Pipeline-error toast overlay signal ──────────────────────
+  // Fires when the last deck fetch returned path:'pipeline-error' AND stale
+  // accumulated cards are still being shown. SwipeableCards consumes this in
+  // its LOADED branch to overlay a retry toast. Self-clears when serverPath
+  // becomes 'pipeline' again on the next successful fetch.
+  const showPipelineErrorToast =
+    soloServerPath === 'pipeline-error' &&
+    recommendations.length > 0 &&
+    hasCompletedFetchForCurrentMode;
 
   // ── Context Value ───────────────────────────────────────────────────────
   const value: RecommendationsContextType = {
@@ -1273,6 +1325,9 @@ export const RecommendationsProvider: React.FC<
     isExhausted,
     deckUIState,
     collabTravelMode: isCollaborationMode ? (collabDeckParams?.travelMode ?? null) : null,
+    // ORCH-0474
+    showPipelineErrorToast,
+    serverPath: soloServerPath,
   };
 
   return (

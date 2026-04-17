@@ -13,22 +13,19 @@ import { scoreCards } from '../_shared/scoringService.ts';
  * discover-cards  –  Pool-Only Card Serving Edge Function
  *
  * Serves cards exclusively from card_pool. Zero external API calls.
- * Card generation is handled by separate admin-triggered functions:
- *   - generate-single-cards (single place cards from place_pool)
- *   - generate-curated-experiences (multi-stop curated cards)
  *
- * Pipeline:
- *   1. Query card_pool for ALL requested categories at once
- *   2. Filter by datetime, score against user preferences
- *   3. Record user impressions for served cards
- *   4. If pool is empty, return { cards: [], hasMore: false } (HTTP 200)
+ * INV-043 (ORCH-0474): Every response path returns explicitly. There is NO
+ * unconditional fall-through. If you add a new exit condition, add an explicit
+ * return with a unique sourceBreakdown.path value. The four non-populated paths
+ * are mutually exclusive:
+ *   - path:'pool-empty'     — RPC succeeded, zero rows (seeding gap)
+ *   - path:'auth-required'  — JWT sub unreadable (platform misconfiguration)
+ *   - path:'pipeline-error' — serveCardsFromPipeline threw (runtime failure)
+ *   - source:'disabled'     — body.warmPool legacy path
  *
- * Supports:
- *   - Multi-category in one request (e.g. ["Nature", "Drink", "Casual Eats"])
- *   - Offset pagination via batchSeed * limit
- *   - Travel constraint-based radius calculation
- *   - Date-based filtering (today/this_weekend/pick_dates) via Google opening hours
- *   - 5-factor scoring personalized per user
+ * INV-042 (ORCH-0474): Runtime failures and data-absence signals MUST use
+ * distinct paths. A client cannot diagnose "server crashed" from "no data"
+ * if they share a response shape.
  *
  * ORCH-0434: Removed time-slot filtering, budget filtering, price tier filtering.
  *            filterByDateTime simplified to 3 date modes only.
@@ -451,27 +448,57 @@ serve(async (req: Request) => {
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // ── Extract userId from auth header ───────────────────────────────────
+    // ── Extract userId from JWT sub claim ──────────────────────────────────
+    // ORCH-0474: verify_jwt:true at the platform gate already validated signature,
+    // expiry, and issuer. Decoding sub locally avoids a redundant GoTrue round-trip
+    // that was a known flake surface — its failure silently produced a misleading
+    // "pool empty" response. See SPEC_ORCH-0474 §7.3.
     const authHeader = req.headers.get('Authorization');
     const token = authHeader?.replace('Bearer ', '') ?? '';
     let userId: string | undefined;
+    let authErrorClass: string | undefined;
 
     if (!token) {
-      console.warn('[discover-cards] No Authorization header — pool path will be skipped');
+      authErrorClass = 'MissingAuthorizationHeader';
     } else {
-      const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
-      if (authError) {
-        console.warn('[discover-cards] Auth failed:', authError.message, '— pool path will be skipped');
-      } else {
-        userId = userData?.user?.id;
+      try {
+        const parts = token.split('.');
+        if (parts.length !== 3) {
+          authErrorClass = 'MalformedJWT';
+        } else {
+          // Base64URL → UTF-8 JSON. Handle URL-safe chars and padding.
+          const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+          const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+          const json = atob(b64 + pad);
+          const payload = JSON.parse(json);
+          const sub = typeof payload?.sub === 'string' ? payload.sub : undefined;
+          if (!sub) {
+            authErrorClass = 'JWTMissingSub';
+          } else {
+            userId = sub;
+          }
+        }
+      } catch (err) {
+        authErrorClass = `JWTDecodeFailed:${(err as Error).name || 'Error'}`;
       }
     }
 
-    // --- TIER GATING: Effective tier ---
-    let effectiveTier = 'free';
+    // ── TIER GATING (tolerant) ─────────────────────────────────────────────
+    // ORCH-0474: Tier failure MUST NEVER degrade to path:'pool-empty' or
+    // path:'pipeline-error'. Fall back to 'free' on any failure. Tier gating
+    // is a UX enhancement, not a correctness gate for the pool serve.
+    let effectiveTier: string = 'free';
     if (userId) {
-      const { data: tierData } = await supabaseAdmin.rpc('get_effective_tier', { p_user_id: userId });
-      effectiveTier = tierData ?? 'free';
+      try {
+        const { data: tierData, error: tierError } = await supabaseAdmin.rpc('get_effective_tier', { p_user_id: userId });
+        if (tierError) {
+          console.warn(`[discover-cards] get_effective_tier error (tolerating as 'free'): ${tierError.message}`);
+        } else if (typeof tierData === 'string') {
+          effectiveTier = tierData;
+        }
+      } catch (err) {
+        console.warn(`[discover-cards] get_effective_tier threw (tolerating as 'free'): ${(err as Error).message}`);
+      }
     }
 
     // Note: curated cards are now fully visible to all tiers.
@@ -497,9 +524,42 @@ serve(async (req: Request) => {
       }));
     }
 
-    // ── Pool-first serving (ALL categories in ONE query) ──────────────────
+    // ── Response helper for the three non-populated paths ────────────────
+    // ORCH-0474: Single builder avoids drift between pool-empty / auth-required /
+    // pipeline-error. Keeps sourceBreakdown shape consistent. Closes over
+    // batchSeed, categories, corsHeaders — must stay inside the serve() handler.
+    function buildEmptyResponse(args: {
+      path: 'pool-empty' | 'auth-required' | 'pipeline-error';
+      reason: string;
+      errorClass?: string;
+      errorKey?: string;
+      httpStatus: number;
+    }): Response {
+      const body: Record<string, any> = {
+        cards: [],
+        total: 0,
+        source: 'pool',
+        metadata: { hasMore: false, poolSize: 0, batchSeed: batchSeed ?? 0 },
+        sourceBreakdown: {
+          fromPool: 0,
+          fromApi: 0,
+          totalServed: 0,
+          apiCallsMade: 0,
+          cacheHits: 0,
+          gapCategories: categories,
+          reason: args.reason,
+          path: args.path,
+        },
+      };
+      if (args.errorClass) body.sourceBreakdown.errorClass = args.errorClass;
+      if (args.errorKey) body.error = args.errorKey;
+      return new Response(JSON.stringify(body), {
+        status: args.httpStatus,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    // ── Warm-pool: return immediately (pool is admin-managed) ──
+    // ── Warm-pool short-circuit (unchanged) ──────────────────────────────
     if (userId && body.warmPool) {
       return new Response(
         JSON.stringify({ cards: [], total: 0, source: 'disabled', message: 'Warm pool is disabled. Pool is admin-managed.' }),
@@ -507,95 +567,126 @@ serve(async (req: Request) => {
       );
     }
 
-    if (userId && !body.warmPool) {
-      try {
-        const poolParams = {
-          supabaseAdmin,
-          userId,
-          lat: location.lat,
-          lng: location.lng,
-          radiusMeters,
-          categories,
-          limit,
-          cardType: 'single' as const,
-          excludePlaceIds: excludeCardIds,
-        };
-
-        const poolResult = await serveCardsFromPipeline(
-          poolParams,
-          '', // No Google API key needed — pool-only serving
-          { travelMode, travelConstraintValue },
-        );
-
-        if (poolResult.cards.length > 0) {
-          const elapsed = Date.now() - t0;
-          // Apply date/time filter to pool-served cards
-          // ORCH-0446: Use AND intersection when collab dateWindows provided, else solo single-mode
-          const timeFilteredCards = dateWindows && dateWindows.length > 0
-            ? filterByDateWindows(poolResult.cards, dateWindows, datetimePref, selectedDates)
-            : filterByDateTime(poolResult.cards, datetimePref, dateOption, selectedDates);
-
-          // Apply cascading hours filter to curated cards (timezone-aware via utcNow + card offset)
-          const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();
-          const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
-
-          // ORCH-0446C: Collab mode uses deterministic sort (place ID) instead of
-          // matchScore ranking. Both devices get identical card order. Solo unchanged.
-          const scoredPoolCards = sessionId
-            ? hoursFilteredCards
-                .sort((a: any, b: any) => (a.id ?? '').localeCompare(b.id ?? ''))
-                .map((card: any) => ({ ...card, matchScore: 0 }))
-            : scorePoolCards(hoursFilteredCards);
-          console.log(`[discover-cards] Served ${scoredPoolCards.length} from pipeline (${poolResult.cards.length} pre-filter, batch=${batchSeed}, mode=${sessionId ? 'collab-deterministic' : 'solo-scored'}) in ${elapsed}ms`);
-
-          return new Response(JSON.stringify({
-            cards: scoredPoolCards,
-            total: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
-            source: 'pool',
-            metadata: {
-              hasMore: poolResult.hasMore,
-              poolSize: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
-              batchSeed: batchSeed ?? 0,
-            },
-            sourceBreakdown: {
-              fromPool: poolResult.fromPool,
-              fromApi: 0,
-              totalServed: scoredPoolCards.length,
-              apiCallsMade: 0,
-              cacheHits: 0,
-              gapCategories: poolResult.diagnostics?.gapCategories ?? [],
-              reason: poolResult.diagnostics?.reason ?? 'Served from pipeline',
-              path: 'pipeline',
-            },
-          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-
-        console.log(`[discover-cards] Pool had ${poolResult.cards.length}/${limit} cards — pool empty`);
-      } catch (poolErr) {
-        console.warn('[discover-cards] Pool serve failed:', poolErr);
-      }
+    // ── AUTH-REQUIRED exit ─────────────────────────────────────────────────
+    // ORCH-0474 / INV-042: Never degrade auth failure to 'pool-empty'. With
+    // verify_jwt:true this should not happen in production — its occurrence
+    // indicates platform-level misconfiguration or JWT tampering. HTTP 401
+    // surfaces that to the client honestly so it can trigger a retry.
+    if (!userId) {
+      const elapsed = Date.now() - t0;
+      console.warn(`[discover-cards] exit path=auth-required userId=absent elapsed_ms=${elapsed} errorClass=${authErrorClass ?? 'Unknown'}`);
+      return buildEmptyResponse({
+        path: 'auth-required',
+        reason: 'Authentication required — token missing, malformed, or sub claim absent',
+        errorClass: authErrorClass,
+        errorKey: 'auth_required',
+        httpStatus: 401,
+      });
     }
 
-    // ── Pool returned 0 cards — return empty (admin needs to run generate-single-cards) ──
-    const elapsed = Date.now() - t0;
-    console.log(`[discover-cards] Pool empty for categories=[${categories}] at [${location.lat},${location.lng}] — returning empty (${elapsed}ms)`);
+    // ── POOL block with structural try/catch ───────────────────────────────
+    // ORCH-0474 / INV-042, INV-043: The catch MUST NOT fall through to
+    // pool-empty. Any exception reaching here is a runtime failure, not a
+    // data gap. Surface it with path:'pipeline-error' + HTTP 500.
+    try {
+      const poolParams = {
+        supabaseAdmin,
+        userId,
+        lat: location.lat,
+        lng: location.lng,
+        radiusMeters,
+        categories,
+        limit,
+        cardType: 'single' as const,
+        excludePlaceIds: excludeCardIds,
+      };
 
-    return new Response(JSON.stringify({
-      cards: [],
-      total: 0,
-      source: 'pool',
-      metadata: { hasMore: false, poolSize: 0, batchSeed: batchSeed ?? 0 },
-      sourceBreakdown: {
-        fromPool: 0,
-        fromApi: 0,
-        totalServed: 0,
-        apiCallsMade: 0,
-        cacheHits: 0,
-        gapCategories: categories,
-        reason: 'Pool empty for this area — run generate-single-cards to populate',
+      const poolResult = await serveCardsFromPipeline(
+        poolParams,
+        '', // No Google API key needed — pool-only serving
+        { travelMode, travelConstraintValue },
+      );
+
+      if (poolResult.cards.length > 0) {
+        // Apply date/time filter to pool-served cards
+        // ORCH-0446: Use AND intersection when collab dateWindows provided, else solo single-mode
+        const timeFilteredCards = dateWindows && dateWindows.length > 0
+          ? filterByDateWindows(poolResult.cards, dateWindows, datetimePref, selectedDates)
+          : filterByDateTime(poolResult.cards, datetimePref, dateOption, selectedDates);
+
+        // Apply cascading hours filter to curated cards (timezone-aware via utcNow + card offset)
+        const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();
+        const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
+
+        // ORCH-0446C: Collab mode uses deterministic sort (place ID) instead of
+        // matchScore ranking. Both devices get identical card order. Solo unchanged.
+        const scoredPoolCards = sessionId
+          ? hoursFilteredCards
+              .sort((a: any, b: any) => (a.id ?? '').localeCompare(b.id ?? ''))
+              .map((card: any) => ({ ...card, matchScore: 0 }))
+          : scorePoolCards(hoursFilteredCards);
+
+        const elapsed = Date.now() - t0;
+        console.log(`[discover-cards] exit path=pipeline userId=present elapsed_ms=${elapsed} rows=${scoredPoolCards.length} preFilter=${poolResult.cards.length} mode=${sessionId ? 'collab-deterministic' : 'solo-scored'}`);
+
+        return new Response(JSON.stringify({
+          cards: scoredPoolCards,
+          total: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
+          source: 'pool',
+          metadata: {
+            hasMore: poolResult.hasMore,
+            poolSize: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
+            batchSeed: batchSeed ?? 0,
+          },
+          sourceBreakdown: {
+            fromPool: poolResult.fromPool,
+            fromApi: 0,
+            totalServed: scoredPoolCards.length,
+            apiCallsMade: 0,
+            cacheHits: 0,
+            gapCategories: poolResult.diagnostics?.gapCategories ?? [],
+            reason: poolResult.diagnostics?.reason ?? 'Served from pipeline',
+            path: 'pipeline',
+          },
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // ── POOL-EMPTY exit (genuine — RPC succeeded, zero rows) ─────────────
+      // ORCH-0474 / INV-042: This is the ONLY code path that may return
+      // path:'pool-empty'. Auth failures route to 'auth-required' above;
+      // pipeline exceptions route to 'pipeline-error' in the catch below.
+      // Do NOT add a fall-through here.
+      const elapsed = Date.now() - t0;
+      console.log(`[discover-cards] exit path=pool-empty userId=present elapsed_ms=${elapsed} rows=0`);
+      return buildEmptyResponse({
         path: 'pool-empty',
-      },
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        reason: 'Pool empty for this area — run generate-single-cards to populate',
+        httpStatus: 200,
+      });
+
+    } catch (poolErr) {
+      // ── PIPELINE-ERROR exit ───────────────────────────────────────────────
+      // ORCH-0474 / INV-042: Any exception in serveCardsFromPipeline or
+      // downstream lands here. MUST NOT fall through to pool-empty.
+      const err = poolErr as Error;
+      const errorClass = err?.name || 'Error';
+      // Sanitize: whitelist class + first 140 chars of message; redact
+      // UUIDs and emails so PII doesn't leak into response bodies.
+      const rawMsg = String(err?.message ?? 'unknown error').slice(0, 140);
+      const sanitizedMsg = rawMsg
+        .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '[REDACTED_UUID]')
+        .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[REDACTED_EMAIL]');
+      const reason = `${errorClass}: ${sanitizedMsg}`;
+      const elapsed = Date.now() - t0;
+      console.error(`[discover-cards] exit path=pipeline-error userId=present elapsed_ms=${elapsed} errorClass=${errorClass} msg="${sanitizedMsg}"`);
+      return buildEmptyResponse({
+        path: 'pipeline-error',
+        reason,
+        errorClass,
+        errorKey: 'pipeline_error',
+        httpStatus: 500,
+      });
+    }
 
   } catch (err) {
     console.error('[discover-cards] Unhandled error:', err);

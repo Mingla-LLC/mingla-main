@@ -1,20 +1,22 @@
 # Agent Handoffs
 
-> Last updated: 2026-04-17 (ORCH-0481 implementor APPROVED structurally; tester + deploy pending)
-> Total: 3 active | 118 completed
+> Last updated: 2026-04-17 (ORCH-0481 tester cycle 0 FAIL — rework cycle 1 dispatched)
+> Total: 2 active | 121 completed
 
 ## Active Dispatches
 
 | ID | Issue | Agent Role | Dispatched | Prompt File | Status |
 |----|-------|-----------|------------|-------------|--------|
-| AH-120 | ORCH-0481 | Tester (admin MV layer verification) | 2026-04-17 | prompts/TESTER_ORCH-0481_ADMIN_MV_LAYER.md | **Ready to dispatch after `supabase db push` against Mingla-dev.** Primary target: 20 rewritten RPCs timing + semantic parity + freshness test. |
-| AH-119 | ORCH-0474 | Tester (full T-01 through T-28 matrix) | 2026-04-17 | prompts/TESTER_ORCH-0474_DISCOVER_CARDS_FALLTHROUGH_SPLIT.md | **Ready to dispatch after edge-fn deploy.** Requires `npx supabase functions deploy discover-cards --project-ref gqnoajqerqhnvulmnyvv` first. |
+| AH-121 | ORCH-0481 | Implementor (rework cycle 1) | 2026-04-17 | prompts/IMPL_ORCH-0481_REWORK_V2.md | **Ready to dispatch.** Surgical: substitute `COUNT(mv.*)` → `COUNT(mv.id)` in admin_place_country_overview + admin_place_city_overview (~10 lines) to resolve P0-1. Design decision required for P0-2 (admin_place_pool_overview global path 4.9s). |
 | AH-099 | ORCH-0466 | User (manual smoke) | 2026-04-17 | SMOKE_ORCH-0466_ADMIN_SEED_PLACES.md | Awaiting admin-UI "Create Run" click |
 
 ## Completed Dispatches
 
 | ID | Issue | Agent Role | Completed | Artifact | Verdict |
 |----|-------|-----------|-----------|----------|---------|
+| AH-120 | ORCH-0481 | Tester (admin MV layer cycle 0) | 2026-04-17 | reports/QA_ORCH-0481_ADMIN_MV_LAYER_REPORT.md | **FAIL** — 2 P0 / 1 P1 / 2 P2 / 3 P4. Big win: `admin_place_category_breakdown` = 107ms (84× faster than ORCH-0480's 9s — MV architecture PROVEN). P0-1: `admin_place_country_overview` = 53,875ms warm, 6× WORSE than ORCH-0480 due to `COUNT(mv.*)` anti-pattern forcing 624-byte row materialization + 318MB external disk sort. P0-2: `admin_place_pool_overview` global = 4,932ms (under 8s timeout but 25× over <200ms target). T-1 PASS (20 read from MV, 2 deferred correctly). SC-25 PASS (signatures byte-identical). 572 rows affected by D-3 sentinel tightening. 776 orphan rows correctly isolated via `primary_category='uncategorized'`. Surgical `COUNT(mv.*) → COUNT(mv.id)` fix recommended for P0-1. P0-2 needs design decision. |
+| AH-119-retest | ORCH-0474 | Tester (cycle 1 — runtime matrix on live v118) | 2026-04-17 | outputs/QA_ORCH-0474_REPORT_RETEST_1.md | **PASS.** Deploy verified: discover-cards v118 `ezbr_sha256: 3cf3ae84…`, 12/12 ORCH-0474 markers in deployed bundle. Runtime: T-04 (no auth HTTP 401), T-05/T-05b (malformed JWT HTTP 401), **T-06 (anon JWT no sub → HTTP 401 with spec-compliant `{path:'auth-required', errorClass:'JWTMissingSub', error:'auth_required'}` — core fix empirically proven live)**, T-11 partial (HTTP summary confirms v118 invocations). 0 P0/P1/P2. Invariants INV-042 + INV-043 runtime-enforced. Graded B (device-layer T-12-T-15/T-27 remain user-executed pre-submission; structural exhaustive). ORCH-0474 CLOSED. |
+| AH-119 | ORCH-0474 | Tester (cycle 0 — structural audit) | 2026-04-17 | outputs/QA_ORCH-0474_DISCOVER_CARDS_FALLTHROUGH_SPLIT_REPORT.md | **CONDITIONAL PASS — structural.** Halted runtime on v117 (pre-deploy); superseded by AH-119-retest PASS. 1 P3 flagged → registered as ORCH-0486. |
 | AH-115 | ORCH-0481 | Implementor (admin MV layer — systemic fix) | 2026-04-17 | reports/IMPLEMENTATION_ORCH-0481_ADMIN_MV_LAYER_REPORT.md | **APPROVED STRUCTURALLY** — 1 new migration file (1080 lines), 0 code changes. Creates `admin_place_pool_mv` (27 cols — expanded from spec's 17 after body audit), 5 indexes, pg_cron 10-min refresh, `admin_refresh_place_pool_mv()` RPC, rewrites 20 of 22 admin RPCs (`CREATE OR REPLACE`, signatures byte-identical, auth gates first). 2 deferred with documented rationale (`admin_city_picker_data` — empty-cities semantic; `admin_ai_validation_preview` — GIN-indexable). 7 discoveries (D-1 through D-7). Rollback is `DROP MATERIALIZED VIEW ... CASCADE` + git restore. Runtime verification deferred to tester after `supabase db push`. |
 | AH-118 | ORCH-0474 | Implementor (discover-cards fall-through split) | 2026-04-17 | outputs/IMPLEMENTATION_ORCH-0474_DISCOVER_CARDS_FALLTHROUGH_SPLIT.md | **APPROVED STRUCTURALLY** — 9 app-mobile files + 1 edge fn + 29 locale files. TS compile clean (zero new errors; only pre-existing ORCH-0473 remain). Independent spot-checks all pass: 4 exit paths wired, 0 `auth.getUser` calls, 0 silent-catch remnants, `DeckServerPath` + `DeckFetchError` threaded through 7 sites, 29/29 locales have 6 new keys. Self-audit against all 10 dispatch common mistakes clean. Runtime verification (deploy + cURL smoke + device render) deferred to tester per sandbox infrastructure-guard. |
 | AH-117 | ORCH-0474 | Forensics (SPEC) | 2026-04-17 | outputs/SPEC_ORCH-0474_DISCOVER_CARDS_FALLTHROUGH_SPLIT.md | **APPROVED** — 16 success criteria, 28 test cases, tight non-goals (no RPC change, no ORCH-0469/0472 regression, no codemod sweep). Establishes INV-042 + INV-043. Rollback safety LOW. Solo-collab parity explicit. |

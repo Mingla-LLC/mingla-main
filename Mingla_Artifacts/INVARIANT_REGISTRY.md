@@ -1,13 +1,20 @@
 # Invariant Registry
 
-> Last updated: 2026-04-17
+> Last updated: 2026-04-17 (ORCH-0474 closed — INV-042 + INV-043 locked in)
 > Source: Mingla Orchestrator skill references
+
+## Architecture / Response-Shape Invariants
+
+| ID | Invariant | Layer | Enforcement | Status |
+|----|-----------|-------|-------------|--------|
+| **INV-042** | No edge-function response may conflate runtime failures with data-absence signals. Runtime errors (auth, exceptions, timeouts) and data signals (empty pool, filtered to zero) must use mutually-exclusive `path` values. A client that cannot distinguish "server crashed" from "no data" cannot implement correct retry/recovery UX. | Edge function | Per-path explicit `return` branches in `discover-cards/index.ts` (`auth-required` / `pool-empty` / `pipeline-error` / `pipeline`). Protective comment at `pool-empty` return prohibits fall-through additions. Tester T-06 runtime-verified the response shape. | **Enforced (ORCH-0474, 2026-04-17, QA cycle 1 PASS)** |
+| **INV-043** | Every edge-function code path must `return` explicitly. No unconditional fall-throughs that hide which upstream branch is responsible. If a new exit condition is added, it must have its own explicit `return` with a unique `sourceBreakdown.path` value. | Edge function | Structural comment at `discover-cards/index.ts` file header names INV-043 and ORCH-0474. Current deployed code (v118) has zero fall-throughs — every exit returns. | **Enforced (ORCH-0474, 2026-04-17, QA cycle 1 PASS)** |
 
 ## Data Integrity Invariants
 
 | ID | Invariant | Layer | Enforcement | Status |
 |----|-----------|-------|-------------|--------|
-| **I-EMPTY-CACHE-NONPERSIST** | `deck-cards` React Query responses with `cards.length === 0` MUST NOT be dehydrated to AsyncStorage. `staleTime: Infinity` is only safe because of this guard. Pairing Infinity staleTime + persistence + response-can-be-empty without the guard produces permanent warm-session cache poisoning. | App root + Hook | `shouldDehydrateQuery` at `app-mobile/app/index.tsx:2968-2977`; protective comment at `app-mobile/src/hooks/useDeckCards.ts:154-159` | Enforced (ORCH-0469, 2026-04-17) |
+| **I-EMPTY-CACHE-NONPERSIST** | `deck-cards` React Query responses with `cards.length === 0` MUST NOT be dehydrated to AsyncStorage. `staleTime: Infinity` is only safe because of this guard. Pairing Infinity staleTime + persistence + response-can-be-empty without the guard produces permanent warm-session cache poisoning. Extended by ORCH-0474 to cover all four non-populated paths (pool-empty, filtered pipeline, auth-required, pipeline-error). | App root + Hook | `shouldDehydrateQuery` at `app-mobile/app/index.tsx:2968-2983`; protective comment at `app-mobile/src/hooks/useDeckCards.ts:165-174` | Enforced (ORCH-0469 2026-04-17; ORCH-0474 coverage extension 2026-04-17) |
 | INV-D01 | Every card in card_pool has at least one photo URL | DB + Edge | NOT NULL + validation | Enforced |
 | INV-D02 | Every card_pool entry has city and country TEXT populated | DB | NOT NULL + backfill migration | Enforced (Commit 5db8dbe8) |
 | INV-D03 | Curated cards reference only active place_pool entries | DB | FK + cascade deactivation | Enforced |
