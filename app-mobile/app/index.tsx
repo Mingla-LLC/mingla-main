@@ -55,6 +55,7 @@ import {
   loginToOneSignal,
   logoutOneSignal,
   onNotificationClicked,
+  onForegroundNotification,
 } from "../src/services/oneSignalService";
 import { initializeAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent } from "../src/services/appsFlyerService";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
@@ -243,6 +244,8 @@ function AppContent() {
   // like isAuthenticated are not.
   const userIdRef = useRef<string | undefined>(undefined);
   userIdRef.current = user?.id;
+  const currentSessionIdRef = useRef<string | null>(null);
+  currentSessionIdRef.current = currentSessionId;
   // Generation counter for refreshAllSessions() concurrency protection.
   // Declared here (top of component) so it persists stably across renders and is
   // visible to any future developer extracting refreshAllSessions to a custom hook.
@@ -557,6 +560,7 @@ function AppContent() {
       collaboration_invite_sent: "home",
       session_member_joined: "home",
       session_member_left: "home",
+      session_deleted: "home",
       board_card_saved: "home",
       board_card_voted: "home",
       board_card_rsvp: "home",
@@ -606,8 +610,28 @@ function AppContent() {
       processNotification(data, NAV_TARGETS[data.type as string]);
     });
 
+    // ORCH-0448D: Foreground push handler — reacts to pushes while app is active.
+    // Handles session_deleted: switches partner to solo immediately.
+    // Uses refs to avoid stale closure over state.
+    const removeForeground = onForegroundNotification((data, prevent, display) => {
+      if (data.type === 'session_deleted') {
+        const deletedSessionId = data.sessionId as string | undefined;
+        // Only switch if we're in the deleted session
+        if (deletedSessionId && currentSessionIdRef.current === deletedSessionId) {
+          prevent(); // Suppress system banner — we handle it in-app
+          const senderName = (data.senderName as string) || 'Someone';
+          toastManager.info(`${senderName} deleted the session`);
+          handleSoloSelect();
+          return;
+        }
+      }
+      // All other notification types: show the system banner as normal
+      display();
+    });
+
     return () => {
       removeClicked();
+      removeForeground();
     };
   }, []);
 

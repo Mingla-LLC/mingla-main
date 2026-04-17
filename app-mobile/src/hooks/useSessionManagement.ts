@@ -287,6 +287,7 @@ export const useSessionManagement = () => {
       });
 
 
+      console.log('[SESSION_PILLS] loadUserSessions complete:', formattedSessions.map(s => s.id));
       setSessionState(prev => ({
         ...prev,
         availableSessions: formattedSessions,
@@ -898,7 +899,7 @@ export const useSessionManagement = () => {
           table: 'session_participants',
           filter: `user_id=eq.${user.id}`,
         },
-        () => { loadUserSessions(); }
+        (payload) => { console.log('[SESSION_PILLS] session_participants changed:', payload.eventType, payload.old?.session_id || payload.new?.session_id); loadUserSessions(); }
       )
       .subscribe();
 

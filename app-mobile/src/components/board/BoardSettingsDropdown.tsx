@@ -147,6 +147,18 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
         ),
       });
 
+      // ORCH-0448: Delete partner participants BEFORE the session row.
+      // CASCADE would delete them in the same transaction as the session,
+      // but Supabase Realtime checks RLS after CASCADE runs — by then
+      // is_session_participant() returns false and the DELETE event is
+      // never sent to partners. Deleting participants first fires the
+      // realtime event while the session still exists and RLS passes.
+      await supabase
+        .from("session_participants")
+        .delete()
+        .eq("session_id", sessionId)
+        .neq("user_id", currentUserId);
+
       const { error } = await supabase
         .from("collaboration_sessions")
         .delete()

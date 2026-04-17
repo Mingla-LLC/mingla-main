@@ -970,25 +970,24 @@ export const RecommendationsProvider: React.FC<
   }, [resolvedSessionId]);
 
   useEffect(() => {
+    console.log('[HEALTH_MONITOR] check:', { isCollaborationMode, resolvedSessionId: resolvedSessionId?.slice(0, 8), sessionsLoading, sessionCount: availableSessions.length, seenRef: sessionSeenInListRef.current });
     if (!isCollaborationMode || !resolvedSessionId) return;
-    if (sessionsLoading) return; // Don't react while sessions are loading
+    if (sessionsLoading) { console.log('[HEALTH_MONITOR] skipping — sessions loading'); return; }
 
     const currentSessionExists = availableSessions.some(
       (s) => s.id === resolvedSessionId,
     );
 
+    console.log('[HEALTH_MONITOR] sessionExists:', currentSessionExists, 'seenBefore:', sessionSeenInListRef.current, 'sessionIds:', availableSessions.map(s => s.id.slice(0, 8)));
+
     if (currentSessionExists) {
-      // Session is in the list — mark as seen
       sessionSeenInListRef.current = true;
     } else if (sessionSeenInListRef.current) {
-      // Session WAS in the list but no longer is — it was deleted
-      console.log(
-        '[RecommendationsContext] Current session no longer exists — switching to solo',
-      );
+      console.log('[HEALTH_MONITOR] Session GONE — calling onSessionLost');
       onSessionLost?.();
+    } else {
+      console.log('[HEALTH_MONITOR] Session not in list but never seen — waiting');
     }
-    // If !currentSessionExists && !sessionSeenInListRef.current:
-    // Session hasn't appeared in the list yet (initial load). Do nothing — wait.
   }, [isCollaborationMode, resolvedSessionId, availableSessions, sessionsLoading, onSessionLost]);
 
   // ── Loading & Fetching States ───────────────────────────────────────────
