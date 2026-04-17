@@ -88,6 +88,10 @@ export interface UseDeckCardsResult {
   activePills: string[];
   isLoading: boolean;
   isFetching: boolean;
+  /** ORCH-0451: true when displayed data comes from placeholderData (previous query key),
+   *  false when it's genuine cached data or fresh fetch results. Consumers must NOT
+   *  treat placeholder data as trustworthy — it may be from a different preference set. */
+  isPlaceholderData: boolean;
   isFullBatchLoaded: boolean;
   hasMore: boolean;
   error: Error | null;
@@ -164,9 +168,10 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     activePills,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
+    isPlaceholderData: query.isPlaceholderData,
     isFullBatchLoaded: !query.isLoading && !query.isFetching && hasData,
     hasMore: query.data?.hasMore ?? true,
     error: query.error as Error | null,
     refetch: query.refetch,
-  }), [cards, activePills, query.data?.deckMode, query.data?.hasMore, query.isLoading, query.isFetching, hasData, query.error, query.refetch]);
+  }), [cards, activePills, query.data?.deckMode, query.data?.hasMore, query.isLoading, query.isFetching, query.isPlaceholderData, hasData, query.error, query.refetch]);
 }

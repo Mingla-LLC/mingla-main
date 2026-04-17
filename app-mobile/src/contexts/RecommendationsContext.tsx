@@ -446,6 +446,7 @@ export const RecommendationsProvider: React.FC<
     activePills: soloActivePills,
     isLoading: isSoloDeckLoading,
     isFetching: isSoloDeckFetching,
+    isPlaceholderData: isSoloDeckPlaceholder,
     isFullBatchLoaded: isSoloDeckBatchLoaded,
     hasMore: soloDeckHasMore,
     error: soloDeckError,
@@ -522,6 +523,9 @@ export const RecommendationsProvider: React.FC<
   // ORCH-0446: Both solo and collab use useDeckCards now. No branching needed.
   const isDeckBatchLoaded = isSoloDeckBatchLoaded;
   const deckHasMore = soloDeckHasMore;
+  // ORCH-0451: true when deckCards comes from placeholderData (stale, from a previous
+  // query key). Must not be synced to recommendations — would show the user old cards.
+  const isDeckPlaceholder = isSoloDeckPlaceholder;
 
   // batchSeed race guard: re-enable queries once batchSeed has settled to 0
   useEffect(() => {
@@ -577,7 +581,7 @@ export const RecommendationsProvider: React.FC<
       isDeckBatchLoaded &&
       !isDeckFetching &&
       !isModeTransitioning &&
-      !isRefreshingAfterPrefChange
+      !isRefreshingAfterPrefChange  // ORCH-0451: guard now effective — flag no longer prematurely cleared
     ) {
       setIsExhausted(true);
     }
@@ -591,9 +595,17 @@ export const RecommendationsProvider: React.FC<
   // ── Refresh Key Handler ─────────────────────────────────────────────────
   // When preferences change (refreshKey increments), reset state.
   // The query key change from updated categories/intents handles refetching automatically.
-  // ORCH-0431: This reset set must mirror the mode transition handler (~line 868).
-  // Both represent "old deck invalid, new fetch needed." If you add a reset to one,
-  // check whether the other needs it too.
+  // ORCH-0431 + ORCH-0451: This reset set MUST mirror the mode transition handler (~line 838).
+  // Both represent "old deck invalid, new fetch needed." VERIFIED PARITY:
+  // - setBatchSeed(0)             ✓ both
+  // - setIsExhausted(false)       ✓ both
+  // - setHasCompletedFetch(false) ✓ both
+  // - setRecommendations(EMPTY)   ✓ pref-change only (mode transition relies on sync)
+  // - previousDeckIdsRef = ''     ✓ both (ORCH-0451 fix)
+  // - accumulatedCardsRef = []    ✓ both
+  // - sessionServedIdsRef.clear() ✓ both
+  // - AsyncStorage exhaustion rm  ✓ both
+  // If you add a reset to one, ADD IT TO THE OTHER.
   useEffect(() => {
     if (previousRefreshKeyRef.current !== undefined && previousRefreshKeyRef.current !== refreshKey) {
       // Reset page to 0 — the query key change from new params will
@@ -610,9 +622,17 @@ export const RecommendationsProvider: React.FC<
       // HF-003 fix: clear dismissed cards from AsyncStorage on preference change
       if (user?.id) {
         AsyncStorage.removeItem(`dismissed_cards_${user.id}_${currentMode}`).catch(() => {});
+        // ORCH-0451: Clear persisted exhaustion state on preference change.
+        // Without this, a cold-start AsyncStorage read of deck_exhausted_* can
+        // re-set isExhausted=true AFTER the refresh handler cleared it, causing
+        // "You've seen everything" to flash for preferences the user just set.
+        AsyncStorage.removeItem(`deck_exhausted_${user.id}_${currentMode}`).catch(() => {});
       }
       sessionServedIdsRef.current.clear();
       consecutiveSkipCountRef.current = 0;
+      // ORCH-0451: Reset dedup guard so stale placeholder cards from the old query
+      // key don't pass the "new data" check. Mirrors mode transition handler.
+      previousDeckIdsRef.current = '';
       // DO NOT call queryClient.invalidateQueries — the query key change
       // from updated categories/intents handles refetching automatically
 
@@ -634,7 +654,10 @@ export const RecommendationsProvider: React.FC<
   // OR batchSeedReady confirms the new query cycle has fully settled.
   useEffect(() => {
     if (!isRefreshingAfterPrefChange) return;
-    // New cards have arrived — safe to clear
+    // ORCH-0451: Don't clear the flag while data is still placeholder.
+    // Real data hasn't arrived yet — the skeleton must keep showing.
+    if (isDeckPlaceholder) return;
+    // New cards have arrived (from real fetch, not placeholder) — safe to clear
     if (recommendations.length > 0) {
       setIsRefreshingAfterPrefChange(false);
       return;
@@ -645,7 +668,7 @@ export const RecommendationsProvider: React.FC<
     if (batchSeedReady && isDeckBatchLoaded && !isDeckFetching) {
       setIsRefreshingAfterPrefChange(false);
     }
-  }, [isRefreshingAfterPrefChange, recommendations.length, batchSeedReady, isDeckBatchLoaded, isDeckFetching]);
+  }, [isRefreshingAfterPrefChange, recommendations.length, batchSeedReady, isDeckBatchLoaded, isDeckFetching, isDeckPlaceholder]);
 
   // Pref refresh safety timeout REMOVED — state machine handles this:
   // pref change → INITIAL_LOADING → query resolves → LOADED/EMPTY.
@@ -749,6 +772,12 @@ export const RecommendationsProvider: React.FC<
 
   useEffect(() => {
     if (isSoloMode || isCollaborationMode) {
+      // ORCH-0451: Do NOT sync placeholder (stale) data into recommendations.
+      // During a preference change, placeholderData provides old cards from the
+      // previous query key. Writing them to recommendations would show the user
+      // stale cards and suppress the skeleton. Only sync REAL data.
+      if (isDeckPlaceholder) return;
+
       if (deckCards.length > 0) {
         const deckIdsKey = `${batchSeed}:${deckCards.map(c => c.id).sort().join(',')}`;
         if (previousDeckIdsRef.current !== deckIdsKey) {
@@ -801,7 +830,7 @@ export const RecommendationsProvider: React.FC<
         }
       }
     }
-  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning, deckHasMore]);
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning, deckHasMore, isDeckPlaceholder]);
 
   // ── Mode Transition Handling ────────────────────────────────────────────
   const previousModeRef = useRef<string | undefined>(undefined);

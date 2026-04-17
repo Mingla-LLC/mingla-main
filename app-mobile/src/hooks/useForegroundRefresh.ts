@@ -5,10 +5,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onlineManager, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
 import { resetAuth401Counter, enterAuth401GracePeriod } from '../config/queryClient';
 import { toastManager } from '../components/ui/Toast';
+import { PreferencesService } from '../services/preferencesService';
 import { friendsKeys } from './useFriendsQuery';
 import { boardKeys } from './useBoardQueries';
 import { savedCardKeys } from './queryKeys';
@@ -171,6 +173,19 @@ export function useForegroundRefresh(
           for (const key of CRITICAL_QUERY_KEYS) {
             queryClient.invalidateQueries({ queryKey: key });
           }
+          // ORCH-0453: Sync any pending preference save (same as long-background path)
+          try {
+            const pendingKey = `@mingla/pendingPrefsSync_${userId}`;
+            const pending = await AsyncStorage.getItem(pendingKey);
+            if (pending) {
+              const prefs = JSON.parse(pending);
+              await PreferencesService.updateUserPreferences(userId, prefs);
+              await AsyncStorage.removeItem(pendingKey);
+              if (__DEV__) logger.lifecycle('[RESUME] Synced pending preferences to DB (short bg)');
+            }
+          } catch {
+            // Will retry next resume
+          }
           onResumeRef.current?.();
           // Fire-and-forget OTA check — never blocks resume
           onCheckOtaUpdateRef.current?.().catch(() => {});
@@ -278,6 +293,23 @@ export function useForegroundRefresh(
           logger.lifecycle(
             `[RESUME] Invalidated ${CRITICAL_QUERY_KEYS.length} query families after auth-first sequence`,
           );
+        }
+
+        // Step 5b: ORCH-0453 — Sync any pending preference save that failed earlier.
+        // If a previous handleSavePreferences DB write failed (network blip), the prefs
+        // were stashed in AsyncStorage. Retry now that we're back online.
+        try {
+          const pendingKey = `@mingla/pendingPrefsSync_${userId}`;
+          const pending = await AsyncStorage.getItem(pendingKey);
+          if (pending) {
+            const prefs = JSON.parse(pending);
+            await PreferencesService.updateUserPreferences(userId, prefs);
+            await AsyncStorage.removeItem(pendingKey);
+            if (__DEV__) logger.lifecycle('[RESUME] Synced pending preferences to DB');
+          }
+        } catch (prefsSyncErr: any) {
+          // Still failing — leave stashed for next resume
+          console.warn('[RESUME] Pending prefs sync still failing — will retry next resume:', prefsSyncErr?.message ?? prefsSyncErr);
         }
 
         // Step 6: Fire the callback for non-React-Query refreshes.

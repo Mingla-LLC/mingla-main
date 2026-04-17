@@ -524,9 +524,35 @@ export function useAppHandlers(state: any) {
       // In-app notification
       inAppNotificationService.notifyPreferencesUpdated("solo");
 
-      // === DB write — fire and forget (local state is already correct) ===
-      PreferencesService.updateUserPreferences(user.id, dbPreferences)
-        .catch((e: any) => console.warn("[handleSavePreferences] Background DB write failed:", e));
+      // === DB write — resilient background sync (ORCH-0453) ===
+      // Optimistic cache is already set (line 493). This background write syncs to
+      // Supabase so cold starts read correct prefs. Retry once on failure, stash
+      // for foreground retry if both attempts fail.
+      const userId = user.id;
+      (async () => {
+        try {
+          await PreferencesService.updateUserPreferences(userId, dbPreferences);
+          // Clear any stale pending sync from a previous failure
+          AsyncStorage.removeItem(`@mingla/pendingPrefsSync_${userId}`).catch(() => {});
+        } catch (firstError: any) {
+          console.warn("[handleSavePreferences] DB write failed, retrying once:", firstError?.message ?? firstError);
+          try {
+            await PreferencesService.updateUserPreferences(userId, dbPreferences);
+            AsyncStorage.removeItem(`@mingla/pendingPrefsSync_${userId}`).catch(() => {});
+          } catch (retryError: any) {
+            console.error("[handleSavePreferences] DB write failed after retry:", retryError?.message ?? retryError);
+            toastManager.warning(
+              "Preferences saved on this device. They'll sync when you're back online.",
+              4000,
+            );
+            // Stash for foreground retry (useForegroundRefresh picks this up on next resume)
+            AsyncStorage.setItem(
+              `@mingla/pendingPrefsSync_${userId}`,
+              JSON.stringify(dbPreferences),
+            ).catch(() => {});
+          }
+        }
+      })();
 
       // Offline cache
       offlineService.cacheUserPreferences({
