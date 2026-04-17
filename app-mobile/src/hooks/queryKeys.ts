@@ -20,12 +20,9 @@ export const savedCardKeys = {
   board: (sessionId: string) => [...savedCardKeys.all, 'board', sessionId] as const,
 };
 
-export const leaderboardKeys = {
-  all: ['leaderboard'] as const,
-  presence: () => [...leaderboardKeys.all, 'presence'] as const,
-  tagAlongRequests: (userId: string) => [...leaderboardKeys.all, 'tag-along', userId] as const,
-  incomingRequests: (userId: string) => [...leaderboardKeys.all, 'incoming', userId] as const,
-  userLevel: (userId: string) => [...leaderboardKeys.all, 'level', userId] as const,
+export const userLevelKeys = {
+  all: ['userLevel'] as const,
+  level: (userId: string) => [...userLevelKeys.all, userId] as const,
 };
 
 export const personCardKeys = {

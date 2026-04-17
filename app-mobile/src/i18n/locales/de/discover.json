@@ -1,21 +1,14 @@
 {
-  "tabs.near_you": "Für dich",
-  "tabs.night_out": "Abend aus",
-
   "featured.badge": "Empfohlen",
-
   "nightout.on_sale": "Im Angebot",
   "nightout.sold_out": "Ausverkauft",
   "nightout.soon": "Bald",
   "nightout.tba": "Noch offen",
-
   "loading.for_you": "Erlebnisse für dich werden entdeckt...",
   "loading.nightlife": "Nachtleben in der Nähe wird entdeckt...",
-
   "error.title": "Etwas ist schiefgelaufen",
   "error.try_again": "Erneut versuchen",
   "error.retry": "Erneut versuchen",
-
   "empty.no_experiences": "Keine Erlebnisse gefunden",
   "empty.adjust_preferences": "Passe deine Einstellungen an, um neue Aktivitäten zu entdecken",
   "empty.no_events": "Keine Veranstaltungen gefunden",
@@ -23,7 +16,6 @@
   "empty.no_matching": "Keine passenden Veranstaltungen",
   "empty.no_matching_filters": "Keine Veranstaltungen entsprechen deinen ausgewählten Filtern",
   "empty.show_all_parties": "Alle Partys anzeigen",
-
   "filters.title": "Filter",
   "filters.button": "Filtern",
   "filters.showing": "Anzeige: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "Reggae",
   "filters.kpop": "K-Pop",
   "filters.acoustic_indie": "Akustik / Indie",
-
   "alerts.delete_holiday_title": "Eigenen Feiertag löschen?",
   "alerts.delete_holiday_message": "\"{{name}}\" löschen? Das kann nicht rückgängig gemacht werden.",
   "alerts.cancel": "Abbrechen",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "Entkoppeln",
   "alerts.unpair_message": "Von {{name}} entkoppeln? Eigene Feiertage und gespeicherte Karten werden entfernt.",
   "alerts.unpair": "Entkoppeln",
-
   "errors.unable_to_load": "Erlebnisse können momentan nicht geladen werden. Bitte versuche es erneut.",
   "errors.session_expired": "Sitzung abgelaufen. Ziehe nach unten, um es erneut zu versuchen.",
   "errors.failed_recommendations": "Empfehlungen konnten nicht geladen werden",

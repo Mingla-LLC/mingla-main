@@ -1,21 +1,14 @@
 {
-  "tabs.near_you": "आपके लिए",
-  "tabs.night_out": "नाइट आउट",
-
   "featured.badge": "विशेष",
-
   "nightout.on_sale": "सेल पर",
   "nightout.sold_out": "बिक गया",
   "nightout.soon": "जल्द ही",
   "nightout.tba": "बाद में बताया जाएगा",
-
   "loading.for_you": "आपके लिए अनुभव खोज रहे हैं...",
   "loading.nightlife": "आपके पास नाइटलाइफ़ खोज रहे हैं...",
-
   "error.title": "कुछ गड़बड़ हो गई",
   "error.try_again": "फिर से कोशिश करें",
   "error.retry": "पुनः प्रयास",
-
   "empty.no_experiences": "कोई अनुभव नहीं मिला",
   "empty.adjust_preferences": "नई गतिविधियाँ खोजने के लिए अपनी प्राथमिकताएँ बदलकर देखें",
   "empty.no_events": "कोई इवेंट नहीं मिला",
@@ -23,7 +16,6 @@
   "empty.no_matching": "कोई मेल खाता इवेंट नहीं",
   "empty.no_matching_filters": "चयनित फ़िल्टर से कोई इवेंट मेल नहीं खाता",
   "empty.show_all_parties": "सभी पार्टियाँ दिखाएँ",
-
   "filters.title": "फ़िल्टर",
   "filters.button": "फ़िल्टर",
   "filters.showing": "दिखा रहे हैं: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "रेगे",
   "filters.kpop": "के-पॉप",
   "filters.acoustic_indie": "अकूस्टिक / इंडी",
-
   "alerts.delete_holiday_title": "कस्टम दिन हटाएँ?",
   "alerts.delete_holiday_message": "\"{{name}}\" हटाएँ? यह पूर्ववत नहीं किया जा सकता।",
   "alerts.cancel": "रद्द करें",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "अनपेयर",
   "alerts.unpair_message": "{{name}} से अनपेयर करें? कस्टम दिन और सहेजे गए कार्ड हटा दिए जाएँगे।",
   "alerts.unpair": "अनपेयर",
-
   "errors.unable_to_load": "अभी अनुभव लोड नहीं हो सके। कृपया फिर से कोशिश करें।",
   "errors.session_expired": "सत्र समाप्त हो गया। रीफ्रेश के लिए नीचे खींचें।",
   "errors.failed_recommendations": "सुझाव लोड करने में विफल",

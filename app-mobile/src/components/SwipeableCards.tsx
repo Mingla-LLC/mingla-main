@@ -37,7 +37,6 @@ import { ExpandedCardData } from "../types/expandedCardTypes";
 import { CuratedExperienceSwipeCard } from "./CuratedExperienceSwipeCard";
 import type { CuratedExperienceCard } from "../types/curatedExperience";
 import { mixpanelService } from "../services/mixpanelService";
-import { leaderboardService } from "../services/leaderboardService";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { BoardCardService } from "../services/boardCardService";
 import { notifyMatch } from "../services/boardNotificationService";
@@ -56,6 +55,7 @@ import { getReadableCategoryName } from "../utils/categoryUtils";
 import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
 import { SkeletonCard } from './SkeletonCard';
 import { useFeatureGate } from '../hooks/useFeatureGate';
+import { useCalendarEntries } from '../hooks/useCalendarEntries';
 import { getTierLimits } from '../constants/tierLimits';
 import { useCreatorTier } from '../hooks/useCreatorTier';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
@@ -459,6 +459,7 @@ export default function SwipeableCards({
   } = useSessionManagement();
   const user = useAppStore((state) => state.user);
   const { data: cachedPreferences } = useUserPreferences(user?.id);
+  const { data: calendarEntries } = useCalendarEntries(user?.id);
   // In collaboration mode, use the group's aggregated travel mode (majority vote).
   // In solo mode, fall back to the user's own cached preferences.
   const effectiveTravelMode = collabTravelMode ?? cachedPreferences?.travel_mode ?? userPreferences?.travelMode;
@@ -729,6 +730,9 @@ export default function SwipeableCards({
   const currentRec = availableRecommendations[currentCardIndex];
   const isCurrentCardSaved = currentRec ? savedCards.some(
     (s: any) => s?.id === currentRec.id || s === currentRec.id
+  ) : false;
+  const isCurrentCardScheduled = currentRec ? (calendarEntries ?? []).some(
+    (e) => (e.status === 'pending' || e.status === 'confirmed') && e.card_id === currentRec.id
   ) : false;
 
   // Track card viewed when the current card changes
@@ -1215,16 +1219,6 @@ export default function SwipeableCards({
         source: 'swipe',
       });
 
-      // ORCH-0437: Update leaderboard presence on right-swipe (fire-and-forget)
-      if (userLocation) {
-        leaderboardService.upsertPresence({
-          lat: userLocation.lat,
-          lng: userLocation.lng,
-          swiped_category: card.category,
-        }).catch((err) => {
-          console.warn('[SwipeableCards] Leaderboard presence upsert failed:', err);
-        });
-      }
     } else {
       logAppsFlyerEvent('card_dismissed', {
         af_content_type: card.category,
@@ -2000,6 +1994,12 @@ export default function SwipeableCards({
                             <Text style={styles.savedBadgeText}>{t('cards:swipeable.saved')}</Text>
                           </View>
                         )}
+                        {isCurrentCardScheduled && (
+                          <View style={styles.scheduledBadge}>
+                            <Icon name="calendar" size={10} color="white" />
+                            <Text style={styles.scheduledBadgeText}>{t('cards:swipeable.scheduled')}</Text>
+                          </View>
+                        )}
                       </View>
 
                       {/* View more badge */}
@@ -2751,6 +2751,20 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   savedBadgeText: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  scheduledBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(99, 102, 241, 0.85)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  scheduledBadgeText: {
     color: "white",
     fontSize: 11,
     fontWeight: "600",

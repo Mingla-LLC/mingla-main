@@ -25,8 +25,8 @@ import { useProfileInterests, useUpdateProfileInterests } from "../hooks/useProf
 import ProfileHeroSection from "./profile/ProfileHeroSection";
 import ProfileInterestsSection from "./profile/ProfileInterestsSection";
 import ProfileStatsRow from "./profile/ProfileStatsRow";
-import { leaderboardService } from "../services/leaderboardService";
-import { leaderboardKeys } from "../hooks/queryKeys";
+import { fetchUserLevel } from "../services/userLevelService";
+import { userLevelKeys } from "../hooks/queryKeys";
 import SettingsRow from "./profile/SettingsRow";
 import EditBioSheet from "./profile/EditBioSheet";
 import EditInterestsSheet from "./profile/EditInterestsSheet";
@@ -90,8 +90,8 @@ export default function ProfilePage({
 
   // ORCH-0437: Fetch real user level from user_levels table
   const { data: levelData } = useQuery({
-    queryKey: leaderboardKeys.userLevel(user?.id ?? ''),
-    queryFn: () => leaderboardService.fetchUserLevel(user!.id),
+    queryKey: userLevelKeys.level(user?.id ?? ''),
+    queryFn: () => fetchUserLevel(user!.id),
     enabled: !!user?.id,
     staleTime: 60_000,
   });

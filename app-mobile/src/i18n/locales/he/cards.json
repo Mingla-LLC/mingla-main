@@ -15,7 +15,7 @@
   "swipeable.like": "לייק",
   "swipeable.pass": "דלג",
   "swipeable.saved": "נשמר",
-
+  "swipeable.scheduled": "Scheduled",
   "expanded.customized": "מותאם אישית",
   "expanded.avg": "{{rating}} ממוצע",
   "expanded.suggested": "מוצע",
@@ -56,7 +56,6 @@
   "expanded.collapse_stop_details": "כווץ פרטי תחנה",
   "expanded.expand_stop_details": "הרחב פרטי תחנה",
   "expanded.close_paywall": "סגור paywall",
-
   "board.session_cards": "כרטיסי סשן",
   "board.of": "{{current}} מתוך {{total}}",
   "board.no_cards": "אין כרטיסים בסשן זה עדיין",

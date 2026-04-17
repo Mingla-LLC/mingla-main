@@ -1,21 +1,14 @@
 {
-  "tabs.near_you": "Don kai",
-  "tabs.night_out": "Fita dare",
-
   "featured.badge": "Na musamman",
-
   "nightout.on_sale": "Ana Sayarwa",
   "nightout.sold_out": "An Sayar",
   "nightout.soon": "Ba da jimawa ba",
   "nightout.tba": "Za a sanar",
-
   "loading.for_you": "Ana nemo gogewa don kai...",
   "loading.nightlife": "Ana nemo nishaɗin dare kusa da kai...",
-
   "error.title": "Wani abu bai yi daidai ba",
   "error.try_again": "Sake Gwadawa",
   "error.retry": "Sake gwadawa",
-
   "empty.no_experiences": "Babu gogewa da aka samu",
   "empty.adjust_preferences": "Gwada canja zaɓin ka don gano sababbin ayyuka",
   "empty.no_events": "Babu abubuwa da aka samu",
@@ -23,7 +16,6 @@
   "empty.no_matching": "Babu abubuwa masu dacewa",
   "empty.no_matching_filters": "Babu abubuwa da suka dace da zaɓin ka",
   "empty.show_all_parties": "Nuna Duk Bukukuwa",
-
   "filters.title": "Tacewa",
   "filters.button": "Tace",
   "filters.showing": "Ana nuna: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "Reggae",
   "filters.kpop": "K-Pop",
   "filters.acoustic_indie": "Acoustic / Indie",
-
   "alerts.delete_holiday_title": "Share hutu na musamman?",
   "alerts.delete_holiday_message": "Share \"{{name}}\"? Ba za a iya warwarewa ba.",
   "alerts.cancel": "Soke",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "Raba",
   "alerts.unpair_message": "Raba daga {{name}}? Za a cire hututtuka na musamman da katuna da aka ajiye don su.",
   "alerts.unpair": "Raba",
-
   "errors.unable_to_load": "Ba a iya lodi gogewa a yanzu. Da fatan a sake gwadawa.",
   "errors.session_expired": "Zamun ya ƙare. Ja ƙasa don sake gwadawa.",
   "errors.failed_recommendations": "An kasa lodi shawarwari",

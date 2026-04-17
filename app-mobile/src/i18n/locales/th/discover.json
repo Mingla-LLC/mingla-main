@@ -1,21 +1,14 @@
 {
-  "tabs.near_you": "สำหรับคุณ",
-  "tabs.night_out": "ไปเที่ยวกลางคืน",
-
   "featured.badge": "แนะนำ",
-
   "nightout.on_sale": "ลดราคา",
   "nightout.sold_out": "ขายหมดแล้ว",
   "nightout.soon": "เร็วๆ นี้",
   "nightout.tba": "แจ้งภายหลัง",
-
   "loading.for_you": "กำลังค้นหาประสบการณ์สำหรับคุณ...",
   "loading.nightlife": "กำลังค้นหาไนท์ไลฟ์ใกล้คุณ...",
-
   "error.title": "เกิดข้อผิดพลาด",
   "error.try_again": "ลองอีกครั้ง",
   "error.retry": "ลองใหม่",
-
   "empty.no_experiences": "ไม่พบประสบการณ์",
   "empty.adjust_preferences": "ลองปรับความชอบของคุณเพื่อค้นพบกิจกรรมใหม่ๆ",
   "empty.no_events": "ไม่พบกิจกรรม",
@@ -23,7 +16,6 @@
   "empty.no_matching": "ไม่มีกิจกรรมที่ตรงกัน",
   "empty.no_matching_filters": "ไม่มีกิจกรรมที่ตรงกับตัวกรองที่เลือก",
   "empty.show_all_parties": "แสดงปาร์ตี้ทั้งหมด",
-
   "filters.title": "ตัวกรอง",
   "filters.button": "กรอง",
   "filters.showing": "กำลังแสดง: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "เร็กเก้",
   "filters.kpop": "K-Pop",
   "filters.acoustic_indie": "อะคูสติก / อินดี้",
-
   "alerts.delete_holiday_title": "ลบวันพิเศษ?",
   "alerts.delete_holiday_message": "ลบ \"{{name}}\"? การกระทำนี้ไม่สามารถย้อนกลับได้",
   "alerts.cancel": "ยกเลิก",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "ยกเลิกการจับคู่",
   "alerts.unpair_message": "ยกเลิกการจับคู่กับ {{name}}? วันพิเศษและการ์ดที่บันทึกไว้จะถูกลบ",
   "alerts.unpair": "ยกเลิกการจับคู่",
-
   "errors.unable_to_load": "ไม่สามารถโหลดประสบการณ์ได้ในขณะนี้ กรุณาลองอีกครั้ง",
   "errors.session_expired": "เซสชันหมดอายุ ดึงลงเพื่อลองใหม่",
   "errors.failed_recommendations": "ไม่สามารถโหลดคำแนะนำได้",

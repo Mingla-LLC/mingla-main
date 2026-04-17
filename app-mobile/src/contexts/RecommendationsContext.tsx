@@ -24,8 +24,6 @@ import { computePrefsHash, normalizeDateTime } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
 import { Recommendation } from "../types/recommendation";
-import { useSavedCards } from "../hooks/useSavedCards";
-import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { aggregateCollabPrefs } from '../utils/sessionPrefsUtils';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
 // ORCH-0446: useSessionDeck and sessionDeckService deleted. Collab uses useDeckCards (same as solo).
@@ -228,35 +226,9 @@ export const RecommendationsProvider: React.FC<
     loading: sessionsLoading,
   } = useSessionManagement();
 
-  // ── Exclusion IDs: saved + scheduled cards ─────────────────────────────
-  const { data: savedCards } = useSavedCards(user?.id);
-  const { data: calendarEntries } = useCalendarEntries(user?.id);
-
-  const excludeCardIds = useMemo(() => {
-    const ids = new Set<string>();
-    // Saved card IDs (Google Place IDs like "ChIJwSz...")
-    if (savedCards) {
-      for (const card of savedCards) {
-        if (card.id) ids.add(card.id);
-      }
-    }
-    // Scheduled card IDs (pending/confirmed only — can be Place IDs or UUIDs)
-    if (calendarEntries) {
-      for (const entry of calendarEntries) {
-        if (
-          (entry.status === 'pending' || entry.status === 'confirmed') &&
-          entry.card_id
-        ) {
-          ids.add(entry.card_id);
-        }
-      }
-    }
-    // NOTE: Session-served IDs are NOT included here. Cross-page dedup is handled
-    // by the server-side impression system which has a rotation fallback. Including
-    // session-served IDs in p_exclude_place_ids (hard filter, no rotation) causes
-    // 0 cards after swiping through a small pool.
-    return Array.from(ids);
-  }, [savedCards, calendarEntries]);
+  // Saved/scheduled cards are NOT excluded from the deck. They reappear
+  // on preference refresh with "Saved" / "Scheduled" labels. Immediate
+  // removal on save/schedule is handled by removedCards in SwipeableCards.
 
   // HF-003 fix: Load dismissed cards from AsyncStorage on mount / mode change.
   // Key is mode-specific so solo and collab dismissed cards don't cross-contaminate.
@@ -494,9 +466,8 @@ export const RecommendationsProvider: React.FC<
       isDeckParamsStable &&
       !isWaitingForSessionResolution &&
       batchSeedReady,
-    // ORCH-0446C: No personal exclusions in collab — both users must see the full
-    // shared pool so the deck is identical. Solo keeps per-user exclusions.
-    excludeCardIds: isCollaborationMode ? [] : excludeCardIds,
+    // No exclusions — saved/scheduled cards reappear in deck with labels.
+    excludeCardIds: [],
     lastKnownQueryKey: lastDeckKey,
     // ORCH-0446: Pass dateWindows and sessionId for collab mode
     dateWindows: isCollaborationMode ? (collabDeckParams as any)?.dateWindows : undefined,
@@ -526,7 +497,7 @@ export const RecommendationsProvider: React.FC<
         datetimePref: effectiveDatetimePref,
         dateOption: effectiveDateOption,
         batchSeed,
-        excludeCardIds,
+        excludeCardIds: [],
       });
       AsyncStorage.setItem(DECK_LAST_KEY, JSON.stringify(key)).catch(() => {});
       AsyncStorage.setItem(DECK_LAST_LOCATION_KEY, JSON.stringify({
@@ -720,7 +691,7 @@ export const RecommendationsProvider: React.FC<
       if (isCollaborationMode && resolvedSessionId) {
         queryClient.prefetchQuery({
           queryKey: ['session-deck', resolvedSessionId, nextSeed],
-          queryFn: () => fetchSessionDeck(resolvedSessionId, nextSeed, excludeCardIds),
+          queryFn: () => fetchSessionDeck(resolvedSessionId, nextSeed, []),
           staleTime: 30 * 60 * 1000,
         });
       } else {
@@ -751,7 +722,7 @@ export const RecommendationsProvider: React.FC<
             prefetchDatetimePref,
             prefetchDateOption,
             nextSeed,
-            excludeCardIds.sort().join(','),
+            '', // no exclusions
           ],
           queryFn: () => deckService.fetchDeck({
             location: activeDeckLocation,
@@ -764,13 +735,13 @@ export const RecommendationsProvider: React.FC<
             dateOption: prefetchDateOption,
             batchSeed: nextSeed,
             limit: 10000,
-            excludeCardIds,
+            excludeCardIds: [],
           }),
           staleTime: 5 * 60 * 1000,
         });
       }
     }
-  }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, isCollaborationMode, resolvedSessionId, userPrefs, queryClient, excludeCardIds]);
+  }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, isCollaborationMode, resolvedSessionId, userPrefs, queryClient]);
 
   // ── Sync deck cards to recommendations state (unified for solo + collab) ──
   // Infinite deck: APPEND new page results to accumulated cards instead of replacing.

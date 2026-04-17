@@ -289,56 +289,6 @@ export const glass = {
     elevation: 6,
   },
 
-  // ORCH-0437: Near You leaderboard surfaces
-  leaderboard: {
-    card: {
-      backgroundColor: 'rgba(255, 255, 255, 0.60)',
-      borderColor: 'rgba(255, 255, 255, 0.40)',
-      borderWidth: 1,
-      borderRadius: 16,
-    },
-    cardActive: {
-      borderColor: 'rgba(235, 120, 37, 0.30)',
-    },
-    cardSent: {
-      opacity: 0.55,
-    },
-    header: {
-      backgroundColor: 'rgba(255, 255, 255, 0.72)',
-      borderColor: 'rgba(255, 255, 255, 0.50)',
-      borderWidth: 1,
-      borderRadius: 20,
-    },
-    filterPill: {
-      backgroundColor: 'rgba(255, 255, 255, 0.50)',
-      borderColor: 'rgba(255, 255, 255, 0.35)',
-      borderWidth: 1,
-      borderRadius: 999,
-    },
-    filterPillActive: {
-      backgroundColor: 'rgba(235, 120, 37, 0.12)',
-      borderColor: 'rgba(235, 120, 37, 0.30)',
-    },
-    dropdown: {
-      backgroundColor: 'rgba(255, 255, 255, 0.92)',
-      borderColor: 'rgba(255, 255, 255, 0.60)',
-      borderWidth: 1,
-      borderRadius: 12,
-    },
-    banner: {
-      backgroundColor: 'rgba(255, 255, 255, 0.88)',
-      borderColor: 'rgba(255, 255, 255, 0.55)',
-      borderWidth: 1,
-      borderRadius: 20,
-    },
-    matchCard: {
-      backgroundColor: 'rgba(255, 255, 255, 0.85)',
-      borderColor: 'rgba(255, 255, 255, 0.60)',
-      borderWidth: 1,
-      borderRadius: 28,
-    },
-  },
-
   blur: {
     card: 30,
     header: 40,

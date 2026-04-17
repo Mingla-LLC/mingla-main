@@ -31,8 +31,8 @@ import { getSharedCustomHolidaysByPairing, createCustomHolidayForPairing, delete
 import { savedCardsService } from '../../services/savedCardsService';
 import { savedCardKeys } from '../../hooks/queryKeys';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { leaderboardService } from '../../services/leaderboardService';
-import { leaderboardKeys } from '../../hooks/queryKeys';
+import { fetchUserLevel } from '../../services/userLevelService';
+import { userLevelKeys } from '../../hooks/queryKeys';
 import * as Haptics from 'expo-haptics';
 import { getCategoryIcon } from '../../utils/categoryUtils';
 
@@ -109,8 +109,8 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
 
   // ORCH-0437: Fetch real Mingla level (must be before early returns)
   const { data: friendLevelData } = useQuery({
-    queryKey: leaderboardKeys.userLevel(userId),
-    queryFn: () => leaderboardService.fetchUserLevel(userId),
+    queryKey: userLevelKeys.level(userId),
+    queryFn: () => fetchUserLevel(userId),
     enabled: !!userId,
     staleTime: 60_000,
   });

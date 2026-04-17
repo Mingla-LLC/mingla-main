@@ -1,21 +1,14 @@
 {
-  "tabs.near_you": "Voor jou",
-  "tabs.night_out": "Avondje uit",
-
   "featured.badge": "Uitgelicht",
-
   "nightout.on_sale": "In de uitverkoop",
   "nightout.sold_out": "Uitverkocht",
   "nightout.soon": "Binnenkort",
   "nightout.tba": "Nog te bevestigen",
-
   "loading.for_you": "Ervaringen voor jou ontdekken...",
   "loading.nightlife": "Nachtleven in de buurt ontdekken...",
-
   "error.title": "Er is iets misgegaan",
   "error.try_again": "Opnieuw proberen",
   "error.retry": "Opnieuw proberen",
-
   "empty.no_experiences": "Geen ervaringen gevonden",
   "empty.adjust_preferences": "Probeer je voorkeuren aan te passen om nieuwe activiteiten te ontdekken",
   "empty.no_events": "Geen evenementen gevonden",
@@ -23,7 +16,6 @@
   "empty.no_matching": "Geen overeenkomende evenementen",
   "empty.no_matching_filters": "Geen evenementen komen overeen met je geselecteerde filters",
   "empty.show_all_parties": "Alle feesten tonen",
-
   "filters.title": "Filters",
   "filters.button": "Filteren",
   "filters.showing": "Tonen: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "Reggae",
   "filters.kpop": "K-Pop",
   "filters.acoustic_indie": "Akoestisch / Indie",
-
   "alerts.delete_holiday_title": "Aangepaste feestdag verwijderen?",
   "alerts.delete_holiday_message": "\"{{name}}\" verwijderen? Dit kan niet ongedaan worden gemaakt.",
   "alerts.cancel": "Annuleren",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "Ontkoppelen",
   "alerts.unpair_message": "Ontkoppelen van {{name}}? Aangepaste feestdagen en opgeslagen kaarten worden verwijderd.",
   "alerts.unpair": "Ontkoppelen",
-
   "errors.unable_to_load": "Kan ervaringen momenteel niet laden. Probeer het opnieuw.",
   "errors.session_expired": "Sessie verlopen. Trek naar beneden om opnieuw te proberen.",
   "errors.failed_recommendations": "Aanbevelingen konden niet worden geladen",

@@ -15,7 +15,7 @@
   "swipeable.like": "FẸRAN",
   "swipeable.pass": "KỌJÁ",
   "swipeable.saved": "A ti tọ́jú",
-
+  "swipeable.scheduled": "Scheduled",
   "expanded.customized": "A ti ṣàtúnṣe",
   "expanded.avg": "àpapọ̀ {{rating}}",
   "expanded.suggested": "A dábàá",
@@ -56,7 +56,6 @@
   "expanded.collapse_stop_details": "Pa àlàyé ìdúró",
   "expanded.expand_stop_details": "Ṣí àlàyé ìdúró",
   "expanded.close_paywall": "Pa ògiri owó",
-
   "board.session_cards": "Àwọn Káàdì Ìgbà",
   "board.of": "{{current}} nínú {{total}}",
   "board.no_cards": "Kò sí káàdì nínú ìgbà yìí sí i",

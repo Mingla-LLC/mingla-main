@@ -1,21 +1,14 @@
 {
-  "tabs.near_you": "בשבילך",
-  "tabs.night_out": "יציאה בלילה",
-
   "featured.badge": "מומלץ",
-
   "nightout.on_sale": "במבצע",
   "nightout.sold_out": "אזל",
   "nightout.soon": "בקרוב",
   "nightout.tba": "יפורסם",
-
   "loading.for_you": "מגלים חוויות בשבילך...",
   "loading.nightlife": "מגלים חיי לילה בקרבתך...",
-
   "error.title": "משהו השתבש",
   "error.try_again": "נסה שוב",
   "error.retry": "נסה שוב",
-
   "empty.no_experiences": "לא נמצאו חוויות",
   "empty.adjust_preferences": "נסה לשנות את ההעדפות כדי לגלות פעילויות חדשות",
   "empty.no_events": "לא נמצאו אירועים",
@@ -23,7 +16,6 @@
   "empty.no_matching": "אין אירועים מתאימים",
   "empty.no_matching_filters": "אין אירועים שתואמים למסננים שנבחרו",
   "empty.show_all_parties": "הצג את כל המסיבות",
-
   "filters.title": "מסננים",
   "filters.button": "סנן",
   "filters.showing": "מציג: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "Reggae",
   "filters.kpop": "K-Pop",
   "filters.acoustic_indie": "Acoustic / Indie",
-
   "alerts.delete_holiday_title": "למחוק חג מותאם?",
   "alerts.delete_holiday_message": "למחוק את \"{{name}}\"? לא ניתן לבטל.",
   "alerts.cancel": "ביטול",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "בטל זיווג",
   "alerts.unpair_message": "לבטל זיווג מ-{{name}}? חגים מותאמים וכרטיסים שמורים יוסרו.",
   "alerts.unpair": "בטל זיווג",
-
   "errors.unable_to_load": "לא ניתן לטעון חוויות כרגע. נסה שוב.",
   "errors.session_expired": "הסשן פג. משוך למטה כדי לנסות שוב.",
   "errors.failed_recommendations": "טעינת ההמלצות נכשלה",

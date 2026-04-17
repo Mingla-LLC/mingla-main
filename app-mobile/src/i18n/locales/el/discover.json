@@ -1,21 +1,14 @@
 {
-  "tabs.near_you": "Για σένα",
-  "tabs.night_out": "Βραδινή έξοδος",
-
   "featured.badge": "Προτεινόμενο",
-
   "nightout.on_sale": "Σε Προσφορά",
   "nightout.sold_out": "Εξαντλήθηκε",
   "nightout.soon": "Σύντομα",
   "nightout.tba": "TBA",
-
   "loading.for_you": "Ανακαλύπτουμε εμπειρίες για σένα...",
   "loading.nightlife": "Ανακαλύπτουμε νυχτερινή ζωή κοντά σου...",
-
   "error.title": "Κάτι πήγε στραβά",
   "error.try_again": "Δοκίμασε Ξανά",
   "error.retry": "Επανάληψη",
-
   "empty.no_experiences": "Δεν βρέθηκαν εμπειρίες",
   "empty.adjust_preferences": "Δοκίμασε να προσαρμόσεις τις προτιμήσεις σου για να ανακαλύψεις νέες δραστηριότητες",
   "empty.no_events": "Δεν βρέθηκαν εκδηλώσεις",
@@ -23,7 +16,6 @@
   "empty.no_matching": "Δεν ταιριάζουν εκδηλώσεις",
   "empty.no_matching_filters": "Καμία εκδήλωση δεν ταιριάζει με τα φίλτρα σου",
   "empty.show_all_parties": "Εμφάνιση Όλων των Πάρτι",
-
   "filters.title": "Φίλτρα",
   "filters.button": "Φίλτρο",
   "filters.showing": "Εμφάνιση: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "Reggae",
   "filters.kpop": "K-Pop",
   "filters.acoustic_indie": "Acoustic / Indie",
-
   "alerts.delete_holiday_title": "Διαγραφή προσαρμοσμένης γιορτής;",
   "alerts.delete_holiday_message": "Διαγραφή \"{{name}}\"; Αυτό δεν μπορεί να αναιρεθεί.",
   "alerts.cancel": "Ακύρωση",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "Αποσύζευξη",
   "alerts.unpair_message": "Αποσύζευξη από {{name}}; Οι προσαρμοσμένες γιορτές και αποθηκευμένες κάρτες θα αφαιρεθούν.",
   "alerts.unpair": "Αποσύζευξη",
-
   "errors.unable_to_load": "Αδυναμία φόρτωσης εμπειριών αυτή τη στιγμή. Δοκίμασε ξανά.",
   "errors.session_expired": "Η συνεδρία έληξε. Σύρε προς τα κάτω για να δοκιμάσεις ξανά.",
   "errors.failed_recommendations": "Αποτυχία φόρτωσης προτάσεων",

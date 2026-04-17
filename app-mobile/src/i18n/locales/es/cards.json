@@ -15,7 +15,7 @@
   "swipeable.like": "ME GUSTA",
   "swipeable.pass": "PASO",
   "swipeable.saved": "Guardado",
-
+  "swipeable.scheduled": "Scheduled",
   "expanded.customized": "Personalizado",
   "expanded.avg": "{{rating}} prom",
   "expanded.suggested": "Sugerido",
@@ -56,7 +56,6 @@
   "expanded.collapse_stop_details": "Ocultar detalles de parada",
   "expanded.expand_stop_details": "Ver detalles de parada",
   "expanded.close_paywall": "Cerrar muro de pago",
-
   "board.session_cards": "Tarjetas de sesión",
   "board.of": "{{current}} de {{total}}",
   "board.no_cards": "Aún no hay tarjetas en esta sesión",

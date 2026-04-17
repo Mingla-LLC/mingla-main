@@ -1,21 +1,14 @@
 {
-  "tabs.near_you": "Ne ọ",
-  "tabs.night_out": "Irrie ason",
-
   "featured.badge": "Ọ sẹ",
-
   "nightout.on_sale": "A Ya Hia",
   "nightout.sold_out": "A Te Hia",
   "nightout.soon": "Ọ fẹ rre",
   "nightout.tba": "A ma kẹ",
-
   "loading.for_you": "A ya wa emwi ne ọ sẹ ẹre...",
   "loading.nightlife": "A ya wa emwi ason ne ọ vbe iyeke ẹre...",
-
   "error.title": "Emwi ọkpa i gha khin vbe ọ ma",
   "error.try_again": "Ke Gberra",
   "error.retry": "Ke gberra",
-
   "empty.no_experiences": "Emwi i re ne a mwẹ",
   "empty.adjust_preferences": "Gberra rhan emwi ne u rhie ne u gha mwẹ emwi nọhọ",
   "empty.no_events": "Emwi i re ne a mwẹ",
@@ -23,7 +16,6 @@
   "empty.no_matching": "Emwi ne ọ sẹ i re",
   "empty.no_matching_filters": "Emwi ne ọ sẹ ne u rhie i re",
   "empty.show_all_parties": "Kẹ Uki Hia",
-
   "filters.title": "Iyẹ",
   "filters.button": "Yẹ",
   "filters.showing": "A ya kẹ: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "Reggae",
   "filters.kpop": "K-Pop",
   "filters.acoustic_indie": "Acoustic / Indie",
-
   "alerts.delete_holiday_title": "Rhan ẹdẹ ne u ya kpa kua?",
   "alerts.delete_holiday_message": "Rhan \"{{name}}\" kua? I gha rhan ẹre gha.",
   "alerts.cancel": "Giẹ",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "Gberra kua",
   "alerts.unpair_message": "Gberra kua vbe {{name}}? Ẹdẹ ne u ya kpa ne ọ khin kaadi ne a sẹ, a ma ya rhan iran kua.",
   "alerts.unpair": "Gberra kua",
-
   "errors.unable_to_load": "I gha rhan emwi nẹ nẹ. Kpaye ke gberra.",
   "errors.session_expired": "Ẹghẹ te khin. Fa ne u gha ke gberra.",
   "errors.failed_recommendations": "I gha rhan emwi ne a kẹ",

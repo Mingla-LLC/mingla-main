@@ -37,7 +37,6 @@ import { mixpanelService } from "../services/mixpanelService";
 import { useFeatureGate, GatedFeature } from "../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "./CustomPaywallScreen";
 // ORCH-0436: DiscoverMap import removed — map no longer rendered in Near You tab
-import { LeaderboardFeed } from "./leaderboard/LeaderboardFeed";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { savedCardsService } from "../services/savedCardsService";
 import { savedCardKeys } from "../hooks/queryKeys";
@@ -138,15 +137,6 @@ const usDateFormatter = new Intl.DateTimeFormat("en-CA", {
 const getUsDateKey = (): string => usDateFormatter.format(new Date());
 
 // ORCH-0435 Phase B: HOLIDAY_CATEGORY_MAP + getCategoriesForHolidayName removed (pairing-only)
-
-// Tab types for Discover screen
-export type DiscoverTab = "near-you" | "night-out";
-
-interface DiscoverTabsProps {
-  activeTab: DiscoverTab;
-  onTabChange: (tab: DiscoverTab) => void;
-}
-
 
 // Featured card data interface
 interface FeaturedCardData {
@@ -335,48 +325,6 @@ interface DiscoverScreenProps {
   onOpenPreferences?: () => void;
   onOpenSession?: (sessionId: string) => void;
 }
-
-// Tabs component similar to BoardTabs
-const DiscoverTabs: React.FC<DiscoverTabsProps> = ({
-  activeTab,
-  onTabChange,
-}) => {
-  const { t } = useTranslation(['discover', 'common']);
-  const tabs: Array<{ id: DiscoverTab; label: string; icon: string }> = [
-    { id: "near-you", label: t('discover:tabs.near_you'), icon: "map-pin" },
-    { id: "night-out", label: t('discover:tabs.night_out'), icon: "music" },
-  ];
-
-  return (
-    <View style={styles.tabsWrapper}>
-      <View style={styles.tabsContainer}>
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.id;
-
-          return (
-            <TouchableOpacity
-              key={tab.id}
-              style={[styles.tab, isActive && styles.tabActive]}
-              onPress={() => onTabChange(tab.id)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.tabContent}>
-                <Icon
-                  name={tab.icon}
-                  size={18}
-                  color={isActive ? "#eb7825" : "#6B7280"}
-                />
-                <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                  {tab.label}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
-};
 
 // Featured Card Component
 const FeaturedCard: React.FC<FeaturedCardProps> = ({ card, currency = "USD", measurementSystem = "Imperial", onPress }) => {
@@ -622,8 +570,6 @@ export default function DiscoverScreen({
   const { t } = useTranslation(['discover', 'common']);
   const insets = useSafeAreaInsets();
   // ORCH-0436: coachMap removed — map no longer rendered
-  // ORCH-0437: mapSettings moved into LeaderboardFeed component
-  const [activeTab, setActiveTab] = useState<DiscoverTab>("near-you");
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
   // Navigation state for scrolling between expanded cards (e.g., paired saves list)
@@ -1803,9 +1749,7 @@ export default function DiscoverScreen({
       clearTimeout(nightOutFetchTimeoutRef.current);
     }
     nightOutFetchTimeoutRef.current = setTimeout(() => {
-      if (activeTab === "night-out" || nightOutGpsLat) {
-        fetchNightOutEvents();
-      }
+      fetchNightOutEvents();
     }, 300);
 
     return () => {
@@ -1813,7 +1757,7 @@ export default function DiscoverScreen({
         clearTimeout(nightOutFetchTimeoutRef.current);
       }
     };
-  }, [nightOutGpsLat, nightOutGpsLng, activeTab, selectedFilters.genre, selectedFilters.date]);
+  }, [nightOutGpsLat, nightOutGpsLng, selectedFilters.genre, selectedFilters.date]);
 
   // Transform FeaturedCardData to ExpandedCardData
   const handleCardPress = (card: FeaturedCardData) => {
@@ -2104,54 +2048,16 @@ export default function DiscoverScreen({
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
-        {/* Tabs */}
-        <DiscoverTabs activeTab={activeTab} onTabChange={(tab) => {
-          setActiveTab(tab);
-          mixpanelService.trackTabViewed({ screen: "Discover", tab: tab === "near-you" ? "Near You" : "Night Out" });
-        }} />
-
-        {/* Near You tab — rendered outside ScrollView to avoid VirtualizedList nesting */}
-        {activeTab === "near-you" && (
-          <View style={styles.nearYouContainer}>
-            <LeaderboardFeed
-              userLocation={locationLat && locationLng ? { lat: locationLat, lng: locationLng } : null}
-              onOpenPreferences={onOpenPreferences ?? (() => {})}
-              onOpenSession={onOpenSession}
-              onDeckPreferencesChanged={() => {
-                // Same effect as Lock In — re-load categories and reset fetch guard
-                hasFetchedRef.current = false;
-                discoverSessionCache.clear();
-                const loadCategories = async (): Promise<void> => {
-                  if (!user?.id) return;
-                  try {
-                    const prefs = await PreferencesService.getUserPreferences(user.id);
-                    if (prefs?.categories && prefs.categories.length > 0) {
-                      const intentIds = new Set(['adventurous', 'first-date', 'romantic', 'group-fun', 'picnic-dates', 'take-a-stroll']);
-                      const categories = prefs.categories.filter((c: string) => !intentIds.has(c));
-                      setUserSelectedCategories(categories.length > 0 ? categories : null);
-                    } else {
-                      setUserSelectedCategories(null);
-                    }
-                    if (prefs?.travel_mode) setUserTravelMode(prefs.travel_mode);
-                  } catch (err) {
-                    console.warn('[Discover] Failed to reload categories after header change:', err);
-                  }
-                };
-                loadCategories();
-              }}
-            />
-          </View>
-        )}
-
-        {/* Night Out tab content — uses ScrollView */}
-        {activeTab === "night-out" && (
+        {/* Page Header */}
+        <View style={styles.pageHeader}>
+          <Text style={styles.pageHeaderTitle}>Concerts & Events</Text>
+        </View>
         <ScrollView
           style={styles.content}
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
         >
 
-          {activeTab === "night-out" && (
             <View style={styles.nightOutContent}>
               {/* Filter Button */}
               <TouchableOpacity
@@ -2261,9 +2167,7 @@ export default function DiscoverScreen({
                 />
               ))}
             </View>
-          )}
         </ScrollView>
-        )}
       </View>
 
       {/* Expanded Card Modal */}
@@ -2564,9 +2468,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     marginHorizontal: -16,
   },
-  nearYouContainer: {
-    flex: 1,
-  },
   mapFullscreen: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 0,
@@ -2619,41 +2520,20 @@ const styles = StyleSheet.create({
   addUserButton: {
     padding: 8,
   },
-  // Tabs styles
-  tabsWrapper: {
-    backgroundColor: "#FFFFFF",
-  },
-  tabsContainer: {
+  pageHeader: {
     flexDirection: "row",
-    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 62,
+    backgroundColor: "#ffffff",
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
   },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  tabActive: {
-    borderBottomColor: "#eb7825",
-  },
-  tabContent: {
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-  },
-  tabLabel: {
-    fontSize: 14,
-    fontWeight: "500",
+  pageHeaderTitle: {
+    fontSize: 20,
+    fontWeight: "700",
     color: "#6B7280",
-  },
-  tabLabelActive: {
-    color: "#eb7825",
   },
   // Content styles
   content: {

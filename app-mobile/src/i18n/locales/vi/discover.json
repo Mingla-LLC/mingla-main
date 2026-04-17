@@ -1,21 +1,14 @@
 {
-  "tabs.near_you": "Dành cho bạn",
-  "tabs.night_out": "Đi chơi đêm",
-
   "featured.badge": "Nổi bật",
-
   "nightout.on_sale": "Đang giảm giá",
   "nightout.sold_out": "Đã bán hết",
   "nightout.soon": "Sắp diễn ra",
   "nightout.tba": "Sẽ thông báo sau",
-
   "loading.for_you": "Đang khám phá trải nghiệm dành cho bạn...",
   "loading.nightlife": "Đang khám phá cuộc sống về đêm gần bạn...",
-
   "error.title": "Đã xảy ra lỗi",
   "error.try_again": "Thử lại",
   "error.retry": "Thử lại",
-
   "empty.no_experiences": "Không tìm thấy trải nghiệm",
   "empty.adjust_preferences": "Hãy thử điều chỉnh sở thích để khám phá hoạt động mới",
   "empty.no_events": "Không tìm thấy sự kiện",
@@ -23,7 +16,6 @@
   "empty.no_matching": "Không có sự kiện phù hợp",
   "empty.no_matching_filters": "Không có sự kiện nào khớp với bộ lọc đã chọn",
   "empty.show_all_parties": "Hiển thị tất cả bữa tiệc",
-
   "filters.title": "Bộ lọc",
   "filters.button": "Lọc",
   "filters.showing": "Đang hiển thị: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "Reggae",
   "filters.kpop": "K-Pop",
   "filters.acoustic_indie": "Acoustic / Indie",
-
   "alerts.delete_holiday_title": "Xóa ngày kỷ niệm?",
   "alerts.delete_holiday_message": "Xóa \"{{name}}\"? Không thể hoàn tác.",
   "alerts.cancel": "Hủy",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "Hủy ghép đôi",
   "alerts.unpair_message": "Hủy ghép đôi với {{name}}? Ngày kỷ niệm và thẻ đã lưu sẽ bị xóa.",
   "alerts.unpair": "Hủy ghép đôi",
-
   "errors.unable_to_load": "Không thể tải trải nghiệm lúc này. Vui lòng thử lại.",
   "errors.session_expired": "Phiên đã hết hạn. Kéo xuống để thử lại.",
   "errors.failed_recommendations": "Không thể tải đề xuất",

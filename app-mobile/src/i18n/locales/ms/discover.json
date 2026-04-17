@@ -1,21 +1,14 @@
 {
-  "tabs.near_you": "Untuk anda",
-  "tabs.night_out": "Keluar malam",
-
   "featured.badge": "Pilihan",
-
   "nightout.on_sale": "Sedang Dijual",
   "nightout.sold_out": "Habis Dijual",
   "nightout.soon": "Tidak Lama Lagi",
   "nightout.tba": "Akan Dimaklumkan",
-
   "loading.for_you": "Mencari pengalaman untuk anda...",
   "loading.nightlife": "Mencari kehidupan malam berdekatan...",
-
   "error.title": "Sesuatu tidak kena",
   "error.try_again": "Cuba Lagi",
   "error.retry": "Cuba Semula",
-
   "empty.no_experiences": "Tiada pengalaman ditemui",
   "empty.adjust_preferences": "Cuba laraskan pilihan anda untuk menemui aktiviti baharu",
   "empty.no_events": "Tiada acara ditemui",
@@ -23,7 +16,6 @@
   "empty.no_matching": "Tiada acara sepadan",
   "empty.no_matching_filters": "Tiada acara sepadan dengan penapis pilihan anda",
   "empty.show_all_parties": "Tunjukkan Semua Parti",
-
   "filters.title": "Penapis",
   "filters.button": "Tapis",
   "filters.showing": "Menunjukkan: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "Reggae",
   "filters.kpop": "K-Pop",
   "filters.acoustic_indie": "Akustik / Indie",
-
   "alerts.delete_holiday_title": "Padam hari istimewa?",
   "alerts.delete_holiday_message": "Padam \"{{name}}\"? Tindakan ini tidak boleh dibuat asal.",
   "alerts.cancel": "Batal",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "Nyahpasang",
   "alerts.unpair_message": "Nyahpasang daripada {{name}}? Hari istimewa dan kad tersimpan akan dibuang.",
   "alerts.unpair": "Nyahpasang",
-
   "errors.unable_to_load": "Tidak dapat memuatkan pengalaman sekarang. Sila cuba lagi.",
   "errors.session_expired": "Sesi tamat tempoh. Tarik ke bawah untuk cuba semula.",
   "errors.failed_recommendations": "Gagal memuatkan cadangan",

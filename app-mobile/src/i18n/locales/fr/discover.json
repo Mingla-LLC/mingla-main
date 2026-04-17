@@ -1,21 +1,14 @@
 {
-  "tabs.near_you": "Pour vous",
-  "tabs.night_out": "Soirée",
-
   "featured.badge": "En vedette",
-
   "nightout.on_sale": "En vente",
   "nightout.sold_out": "Épuisé",
   "nightout.soon": "Bientôt",
   "nightout.tba": "À confirmer",
-
   "loading.for_you": "Recherche d'expériences pour vous...",
   "loading.nightlife": "Recherche de sorties nocturnes près de vous...",
-
   "error.title": "Une erreur est survenue",
   "error.try_again": "Réessayer",
   "error.retry": "Réessayer",
-
   "empty.no_experiences": "Aucune expérience trouvée",
   "empty.adjust_preferences": "Essayez de modifier vos préférences pour découvrir de nouvelles activités",
   "empty.no_events": "Aucun événement trouvé",
@@ -23,7 +16,6 @@
   "empty.no_matching": "Aucun événement correspondant",
   "empty.no_matching_filters": "Aucun événement ne correspond à vos filtres sélectionnés",
   "empty.show_all_parties": "Afficher toutes les soirées",
-
   "filters.title": "Filtres",
   "filters.button": "Filtrer",
   "filters.showing": "Affichage : {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "Reggae",
   "filters.kpop": "K-Pop",
   "filters.acoustic_indie": "Acoustique / Indie",
-
   "alerts.delete_holiday_title": "Supprimer la fête personnalisée ?",
   "alerts.delete_holiday_message": "Supprimer « {{name}} » ? Cette action est irréversible.",
   "alerts.cancel": "Annuler",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "Dissocier",
   "alerts.unpair_message": "Dissocier de {{name}} ? Les fêtes personnalisées et les cartes enregistrées seront supprimées.",
   "alerts.unpair": "Dissocier",
-
   "errors.unable_to_load": "Impossible de charger les expériences pour le moment. Veuillez réessayer.",
   "errors.session_expired": "Session expirée. Faites glisser vers le bas pour réessayer.",
   "errors.failed_recommendations": "Échec du chargement des recommandations",
