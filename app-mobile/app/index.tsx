@@ -618,7 +618,7 @@ function AppContent() {
         const deletedSessionId = data.sessionId as string | undefined;
         // Only switch if we're in the deleted session
         if (deletedSessionId && currentSessionIdRef.current === deletedSessionId) {
-          prevent(); // Suppress system banner — DB notification handles the toast
+          display(); // Show the push notification so user knows why they were switched
           handleSoloSelect();
           return;
         }
