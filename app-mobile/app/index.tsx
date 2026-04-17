@@ -618,9 +618,7 @@ function AppContent() {
         const deletedSessionId = data.sessionId as string | undefined;
         // Only switch if we're in the deleted session
         if (deletedSessionId && currentSessionIdRef.current === deletedSessionId) {
-          prevent(); // Suppress system banner — we handle it in-app
-          const senderName = (data.senderName as string) || 'Someone';
-          toastManager.info(`${senderName} deleted the session`);
+          prevent(); // Suppress system banner — DB notification handles the toast
           handleSoloSelect();
           return;
         }
