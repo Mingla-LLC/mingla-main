@@ -67,7 +67,7 @@ export function AddFriendView({
   const { t } = useTranslation(['social', 'common']);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<Tab>("add");
+  // Tab state removed — sent requests now in separate tab (ORCH-0435)
 
   // Pending phone invites (non-Mingla users)
   const { data: pendingInvites = [], isLoading: invitesLoading } =
@@ -209,8 +209,11 @@ export function AddFriendView({
     onRequestSent,
   ]);
 
+  // True when phone input has changed but debounced lookup hasn't fired yet
+  const isDebouncing = isPhoneValid && phoneE164 !== debouncedPhoneE164;
+
   const getActionLabel = (): string => {
-    if (phoneLookupLoading) return t('social:lookingUp');
+    if (phoneLookupLoading || isDebouncing) return t('social:lookingUp');
     if (!isPhoneValid) return t('social:enterPhoneNumber');
     if (phoneLookupResult?.found) {
       if (phoneLookupResult.friendship_status === "friends")
@@ -224,6 +227,7 @@ export function AddFriendView({
   const isActionDisabled =
     !isPhoneValid ||
     phoneLookupLoading ||
+    isDebouncing ||
     actionStatus === "sending" ||
     actionStatus === "sent" ||
     (phoneLookupResult?.found &&
@@ -377,45 +381,8 @@ export function AddFriendView({
 
   return (
     <View style={styles.container}>
-      {/* Tab bar */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "add" && styles.tabActive]}
-          onPress={() => setActiveTab("add")}
-          activeOpacity={0.7}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "add" && styles.tabTextActive,
-            ]}
-          >
-            {t('social:addFriend')}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "sent" && styles.tabActive]}
-          onPress={() => setActiveTab("sent")}
-          activeOpacity={0.7}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "sent" && styles.tabTextActive,
-            ]}
-          >
-            {sentTabCount > 0 ? t('social:sentWithCount', { count: sentTabCount }) : t('social:sent')}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Add Friend tab */}
-      {activeTab === "add" && (
-        <KeyboardAwareScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 20 }}
-          keyboardShouldPersistTaps="handled"
-        >
+      {/* Add Friend — glassmorphism card (ORCH-0435) */}
+      <View style={styles.glassCard}>
           {/* Compact single-line phone input */}
           <View style={styles.phoneRow}>
             <TouchableOpacity
@@ -542,41 +509,7 @@ export function AddFriendView({
               </>
             )}
           </TouchableOpacity>
-        </KeyboardAwareScrollView>
-      )}
-
-      {/* Sent Requests + Invites tab */}
-      {activeTab === "sent" && (
-        <>
-          {sentTabLoading ? (
-            <View style={styles.sentLoadingState}>
-              <ActivityIndicator size="small" color="#eb7825" />
-            </View>
-          ) : sentItems.length === 0 ? (
-            <View style={styles.sentEmptyState}>
-              <Icon
-                name="paper-plane-outline"
-                size={32}
-                color="#d1d5db"
-              />
-              <Text style={styles.sentEmptyText}>
-                {t('social:noPendingRequestsOrInvites')}
-              </Text>
-            </View>
-          ) : (
-            <FlatList
-              data={sentItems}
-              keyExtractor={(item) =>
-                item.kind === "request"
-                  ? `req-${item.data.id}`
-                  : `inv-${item.data.id}`
-              }
-              renderItem={renderSentItem}
-              scrollEnabled={false}
-            />
-          )}
-        </>
-      )}
+      </View>
 
       {/* Country picker modal */}
       <CountryPickerModal
@@ -592,10 +525,20 @@ export function AddFriendView({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: s(16),
-    paddingVertical: vs(12),
-    backgroundColor: "#f9fafb",
-    borderRadius: s(12),
-    marginHorizontal: s(16),
+    paddingVertical: vs(8),
+  },
+  glassCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.70)',
+    borderWidth: 1,
+    borderTopWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.45)',
+    borderRadius: 24,
+    padding: 16,
+    shadowColor: 'rgba(0, 0, 0, 0.08)',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    elevation: 6,
   },
   tabBar: {
     flexDirection: "row",

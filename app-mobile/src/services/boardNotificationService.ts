@@ -239,6 +239,35 @@ export function notifyMemberLeft(
 }
 
 /**
+ * Notify other session participants that the session was deleted by an admin.
+ * Must be called BEFORE the actual delete (participants still exist in DB).
+ */
+export function notifySessionDeleted(
+  payload: Omit<BoardActivityPayload, 'savedCardId' | 'cardName'>
+): void {
+  const { sessionId, sessionName, userId, userName } = payload;
+  if (!sessionId || !userId) return;
+
+  getOtherParticipants(sessionId, userId).then((recipients) => {
+    if (recipients.length === 0) return;
+    notifyUsers(recipients, {
+      type: 'session_deleted',
+      title: `${sessionName} was deleted`,
+      body: `${userName} deleted the board.`,
+      data: {
+        sessionId,
+        senderName: userName,
+      },
+      actorId: userId,
+      relatedId: sessionId,
+      relatedType: 'session',
+      idempotencyPrefix: `session_deleted:${sessionId}`,
+      sessionId,
+    });
+  });
+}
+
+/**
  * Notify all session participants that a mutual-like match occurred (ORCH-0395).
  * Calls the notify-session-match edge function which handles push + DB insert
  * for all participants (including the matchers themselves).

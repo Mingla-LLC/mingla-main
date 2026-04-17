@@ -271,16 +271,16 @@ export class ExperiencesService {
         if (error.code === 'PGRST116') {
           const defaultPreferences: UserPreferences = {
             mode: 'explore',
-            budget_min: 0,
-            budget_max: 1000,
             people_count: 1,
-            categories: ['nature', 'casual_eats', 'drink'],
+            categories: ['nature', 'drinks_and_music', 'icebreakers'],
             travel_mode: 'walking',
             travel_constraint_type: 'time',
             travel_constraint_value: 30,
             datetime_pref: new Date().toISOString(),
             use_gps_location: true,
-            price_tiers: ['chill', 'comfy', 'bougie', 'lavish'],
+            intent_toggle: true,
+            category_toggle: true,
+            selected_dates: null,
           };
 
           // Try to create preferences, but don't fail if there are trigger issues
@@ -290,8 +290,6 @@ export class ExperiencesService {
               .insert({
                 profile_id: userId,
                 mode: defaultPreferences.mode,
-                budget_min: defaultPreferences.budget_min,
-                budget_max: defaultPreferences.budget_max,
                 people_count: defaultPreferences.people_count,
                 categories: defaultPreferences.categories,
                 travel_mode: defaultPreferences.travel_mode,

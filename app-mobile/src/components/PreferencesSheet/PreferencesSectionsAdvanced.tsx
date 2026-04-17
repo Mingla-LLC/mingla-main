@@ -42,10 +42,6 @@ export const TravelLimitSection = memo(
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('preferences:travel_limit.title')}</Text>
-        <Text style={styles.sectionQuestion}>
-          {t('preferences:travel_limit.question')}
-        </Text>
         <View style={styles.travelPresetsContainer}>
           {TRAVEL_TIME_PRESETS.map((mins) => {
             const selected = isPresetSelected(mins);
@@ -132,6 +128,7 @@ export const LocationInputSection = memo(
     suggestions,
     isLoadingSuggestions,
     onSuggestionSelect,
+    onClearLocation,
     isInputFocused,
     useGpsLocation,
     onToggleGps,
@@ -146,6 +143,7 @@ export const LocationInputSection = memo(
     suggestions: any[];
     isLoadingSuggestions: boolean;
     onSuggestionSelect: (suggestion: any) => void;
+    onClearLocation?: () => void;
     isInputFocused: boolean;
     useGpsLocation: boolean;
     onToggleGps: (value: boolean) => void;
@@ -155,13 +153,15 @@ export const LocationInputSection = memo(
     const { t } = useTranslation(['preferences', 'common']);
     return (
     <View>
-      <View style={styles.gpsSwitchRow}>
+      <View style={[styles.gpsSwitchRow, useGpsLocation && styles.gpsSwitchRowActive]}>
         <Icon
           name={useGpsLocation ? "navigate" : "navigate-outline"}
           size={16}
-          color={useGpsLocation ? "#eb7825" : "#6b7280"}
+          color={useGpsLocation ? "#ffffff" : "#6b7280"}
         />
-        <Text style={styles.gpsSwitchLabel}>{t('preferences:location.use_current')}</Text>
+        <Text style={[styles.gpsSwitchLabel, useGpsLocation && styles.gpsSwitchLabelActive]}>
+          {useGpsLocation ? "Using your current location" : "Use my current location"}
+        </Text>
         {isLocked && (
           <Icon name="lock-closed" size={14} color="#9CA3AF" style={{ marginRight: 4 }} />
         )}
@@ -174,13 +174,28 @@ export const LocationInputSection = memo(
             }
             onToggleGps(val);
           }}
-          trackColor={{ false: '#d1d5db', true: '#eb7825' }}
-          thumbColor="#ffffff"
+          trackColor={{ false: '#e5e7eb', true: '#ffffff' }}
+          thumbColor={useGpsLocation ? '#eb7825' : '#ffffff'}
+          ios_backgroundColor={useGpsLocation ? '#ffffff' : '#e5e7eb'}
         />
       </View>
 
       {!useGpsLocation && !isLocked && (
         <>
+          {/* Show chip when location is selected and not editing */}
+          {searchLocation.length > 0 && !isInputFocused ? (
+            <View style={styles.locationChip}>
+              <Icon name="location" size={14} color="#ffffff" />
+              <Text style={styles.locationChipText} numberOfLines={1}>{searchLocation}</Text>
+              <TouchableOpacity
+                onPress={onClearLocation}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel="Clear location"
+              >
+                <Icon name="close-circle" size={18} color="rgba(255,255,255,0.7)" />
+              </TouchableOpacity>
+            </View>
+          ) : (
           <View
             style={[
               styles.locationInputContainer,
@@ -205,7 +220,7 @@ export const LocationInputSection = memo(
               returnKeyType="done"
             />
           </View>
-
+          )}
         </>
       )}
 
@@ -289,26 +304,32 @@ export const LocationInputSection = memo(
 LocationInputSection.displayName = "LocationInputSection";
 
 const styles = StyleSheet.create({
+  // Content container — glass card is provided by parent Animated.View in PreferencesSheet
   section: {
-    backgroundColor: "#ffffff",
-    marginHorizontal: 16,
-    marginBottom: 10,
-    padding: 16,
-    borderRadius: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: "#f0ebe6",
+    backgroundColor: 'transparent',
   },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 4,
-    letterSpacing: -0.2,
+  locationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#eb7825',
+    borderWidth: 1,
+    borderColor: '#eb7825',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 8,
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  locationChipText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   sectionQuestion: {
     fontSize: 13,
@@ -329,11 +350,11 @@ const styles = StyleSheet.create({
   constraintInputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fafafa",
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    borderRadius: 999,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     marginBottom: 6,
   },
@@ -359,13 +380,22 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#fafafa",
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    shadowColor: 'rgba(0, 0, 0, 0.04)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 1,
   },
   travelPresetPillSelected: {
     backgroundColor: "#eb7825",
     borderColor: "#eb7825",
-    borderWidth: 1.5,
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   travelPresetPillText: {
     fontSize: 12,
@@ -385,30 +415,38 @@ const styles = StyleSheet.create({
   gpsSwitchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderRadius: 999,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     marginBottom: 12,
     gap: 8,
     borderWidth: 1,
-    borderColor: '#f0ebe6',
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+  },
+  gpsSwitchRowActive: {
+    backgroundColor: '#eb7825',
+    borderColor: '#eb7825',
   },
   gpsSwitchLabel: {
     flex: 1,
     fontSize: 13,
     color: '#374151',
+    fontWeight: '500',
+  },
+  gpsSwitchLabelActive: {
+    color: '#ffffff',
     fontWeight: '600',
   },
   locationInputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fafafa",
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     marginBottom: 6,
   },
   locationInputContainerFocused: {

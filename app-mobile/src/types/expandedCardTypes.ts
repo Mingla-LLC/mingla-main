@@ -196,7 +196,6 @@ export interface BookingOption {
   phone?: string;
   message: string;
   price?: string;
-  timeSlots?: string[];
 }
 
 export interface TimelineStep {

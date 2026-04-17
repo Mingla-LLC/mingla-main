@@ -52,16 +52,10 @@ export const Toast: React.FC<ToastProps> = ({
         break;
     }
 
-    // Animate in
-    translateY.value = withSpring(0, {
-      damping: 15,
-      stiffness: 150,
-    });
-    opacity.value = withTiming(1, { duration: 300 });
-    scale.value = withSpring(1, {
-      damping: 12,
-      stiffness: 200,
-    });
+    // Animate in — simple slide, no bounce
+    translateY.value = withTiming(0, { duration: 250 });
+    opacity.value = withTiming(1, { duration: 200 });
+    scale.value = withTiming(1, { duration: 200 });
 
     // Progress animation for auto-hide
     progress.value = withTiming(1, { duration: 3000 });

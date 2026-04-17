@@ -1,21 +1,14 @@
 {
-  "tabs.for_you": "لك",
-  "tabs.night_out": "سهرة",
-
   "featured.badge": "مميز",
-
   "nightout.on_sale": "عرض خاص",
   "nightout.sold_out": "نفد",
   "nightout.soon": "قريباً",
   "nightout.tba": "يُحدد لاحقاً",
-
   "loading.for_you": "نكتشف تجارب مناسبة لك...",
   "loading.nightlife": "نكتشف الحياة الليلية القريبة منك...",
-
   "error.title": "حدث خطأ ما",
   "error.try_again": "حاول مرة أخرى",
   "error.retry": "إعادة المحاولة",
-
   "empty.no_experiences": "لم يتم العثور على تجارب",
   "empty.adjust_preferences": "حاول تعديل تفضيلاتك لاكتشاف أنشطة جديدة",
   "empty.no_events": "لم يتم العثور على فعاليات",
@@ -23,7 +16,6 @@
   "empty.no_matching": "لا توجد فعاليات مطابقة",
   "empty.no_matching_filters": "لا توجد فعاليات تطابق الفلاتر المحددة",
   "empty.show_all_parties": "عرض جميع الحفلات",
-
   "filters.title": "الفلاتر",
   "filters.button": "تصفية",
   "filters.showing": "عرض: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "ريغي",
   "filters.kpop": "كي-بوب",
   "filters.acoustic_indie": "أكوستيك / إندي",
-
   "alerts.delete_holiday_title": "حذف المناسبة المخصصة؟",
   "alerts.delete_holiday_message": "حذف \"{{name}}\"؟ لا يمكن التراجع عن هذا.",
   "alerts.cancel": "إلغاء",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "إلغاء الاقتران",
   "alerts.unpair_message": "إلغاء الاقتران مع {{name}}؟ سيتم حذف المناسبات المخصصة والبطاقات المحفوظة.",
   "alerts.unpair": "إلغاء الاقتران",
-
   "errors.unable_to_load": "تعذّر تحميل التجارب حالياً. يرجى المحاولة مرة أخرى.",
   "errors.session_expired": "انتهت الجلسة. اسحب للأسفل لإعادة المحاولة.",
   "errors.failed_recommendations": "فشل تحميل التوصيات",

@@ -93,7 +93,7 @@ function derivePriceTier(priceTier: string | null, priceLevel: string | null): s
 function validateCategory(input: string): string {
   const resolved = resolveCategory(input);
   if (resolved && ALL_CATEGORY_NAMES.includes(resolved)) return resolved;
-  return "Casual Eats";
+  return "Brunch, Lunch & Casual"; // ORCH-0434: updated fallback
 }
 
 function mapPoolCardToResponseCard(
@@ -301,7 +301,7 @@ serve(async (req: Request) => {
       const descMatchIdx = resolvedSlugs.indexOf("description_match");
       if (descMatchIdx !== -1) {
         // Deterministic fallback — no GPT needed
-        const fallbacks = ["Casual Eats", "Drink", "Nature"];
+        const fallbacks = ["Brunch, Lunch & Casual", "Drinks & Music", "Nature & Views"];
         const matchedCategory = fallbacks[Math.floor(Math.random() * fallbacks.length)];
         resolvedSlugs[descMatchIdx] = matchedCategory.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/(^_|_$)/g, "");
       }
@@ -429,7 +429,7 @@ serve(async (req: Request) => {
 
         // If still empty, use default set
         if (resolvedCategories.length === 0) {
-          resolvedCategories = ["Casual Eats", "Nature", "Drink"];
+          resolvedCategories = ["Brunch, Lunch & Casual", "Nature & Views", "Drinks & Music"];
         }
       }
 

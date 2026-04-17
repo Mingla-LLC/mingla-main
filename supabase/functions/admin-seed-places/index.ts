@@ -5,6 +5,8 @@ import {
   SEEDING_CATEGORIES,
   SEEDING_CATEGORY_MAP,
   ALL_SEEDING_CATEGORY_IDS,
+  resolveCategoriesToConfigs,
+  resolveSeedingCategory,
   type SeedingCategoryConfig,
 } from "../_shared/seedingCategories.ts";
 // Phase 2: type exclusion imports removed — AI is the sole quality gate
@@ -370,11 +372,11 @@ async function handlePreviewCost(body: any, supabase: any) {
   const { cityId, categories, tileIds, skipSeededCategories } = body;
   if (!cityId) throw new Error("cityId is required");
 
-  // Resolve categories
-  let categoryIds: string[] =
+  // Resolve categories — accepts both old seeding IDs and new app slugs (ORCH-0434)
+  let validConfigs: SeedingCategoryConfig[] =
     !categories || categories[0] === "all"
-      ? ALL_SEEDING_CATEGORY_IDS
-      : categories;
+      ? [...SEEDING_CATEGORIES]
+      : resolveCategoriesToConfigs(categories);
 
   // If skipSeededCategories, exclude categories that already have completed ops with places
   if (skipSeededCategories) {
@@ -388,8 +390,10 @@ async function handlePreviewCost(body: any, supabase: any) {
     const seededCategorySet = new Set(
       (completedOps || []).map((o: { seeding_category: string }) => o.seeding_category)
     );
-    categoryIds = categoryIds.filter((id) => !seededCategorySet.has(id));
+    // Filter by both old ID and new app slug to handle legacy + migrated rows
+    validConfigs = validConfigs.filter((c) => !seededCategorySet.has(c.id) && !seededCategorySet.has(c.appCategorySlug));
   }
+  const categoryIds = validConfigs.map(c => c.id);
 
   // Load tiles
   let tileQuery = supabase
@@ -411,7 +415,7 @@ async function handlePreviewCost(body: any, supabase: any) {
   const estimatedTotalCost = estimatedSearchCost + estimatedPhotoCost;
 
   const breakdown = categoryIds.map((catId) => {
-    const config = SEEDING_CATEGORY_MAP[catId];
+    const config = resolveSeedingCategory(catId);
     return {
       category: config?.label ?? catId,
       tiles: tileCount,
@@ -458,14 +462,28 @@ async function handleCoverageCheck(body: any, supabase: any) {
     counts[cat] = (counts[cat] || 0) + 1;
   }
 
-  // Build coverage report with all 13 categories
-  const coverage = ALL_SEEDING_CATEGORY_IDS.map((catId) => {
-    const config = SEEDING_CATEGORY_MAP[catId];
-    const count = counts[catId] || 0;
+  // Build coverage report grouped by app category slug (ORCH-0434: 10 categories, not 13)
+  // Multiple seeding configs may share one app slug (e.g. nature_views + picnic_park → nature)
+  const appSlugSet = new Set<string>();
+  const appSlugConfigs: { slug: string; label: string; appCategory: string }[] = [];
+  for (const cat of SEEDING_CATEGORIES) {
+    if (!appSlugSet.has(cat.appCategorySlug)) {
+      appSlugSet.add(cat.appCategorySlug);
+      appSlugConfigs.push({ slug: cat.appCategorySlug, label: cat.label, appCategory: cat.appCategory });
+    }
+  }
+  const coverage = appSlugConfigs.map(({ slug, label, appCategory }) => {
+    // Count places that have the new app slug in seeding_category (post-migration)
+    // Also count any legacy old IDs that map to this app slug
+    const configs = SEEDING_CATEGORIES.filter(c => c.appCategorySlug === slug);
+    let count = counts[slug] || 0;
+    for (const c of configs) {
+      if (c.id !== slug) count += counts[c.id] || 0;
+    }
     return {
-      categoryId: catId,
-      label: config?.label ?? catId,
-      appCategory: config?.appCategory ?? "",
+      categoryId: slug,
+      label,
+      appCategory,
       placeCount: count,
       hasGap: count < 10,
     };
@@ -492,15 +510,10 @@ async function handleCreateRun(body: any, supabase: any) {
     .single();
   if (cityErr || !city) throw new Error(`City not found: ${cityId}`);
 
-  // Resolve categories
-  const categoryIds: string[] =
-    !categories || categories[0] === "all"
-      ? ALL_SEEDING_CATEGORY_IDS
-      : categories;
-
-  const validConfigs = categoryIds
-    .map((id: string) => SEEDING_CATEGORY_MAP[id])
-    .filter(Boolean) as SeedingCategoryConfig[];
+  // Resolve categories — accepts both old seeding IDs and new app slugs (ORCH-0434)
+  const validConfigs = !categories || categories[0] === "all"
+    ? [...SEEDING_CATEGORIES]
+    : resolveCategoriesToConfigs(categories);
 
   if (validConfigs.length === 0) {
     throw new Error("No valid seeding categories provided");
@@ -563,7 +576,7 @@ async function handleCreateRun(body: any, supabase: any) {
         city_id: cityId,
         tile_id: tile.id,
         tile_index: tile.tile_index,
-        seeding_category: config.id,
+        seeding_category: config.appCategorySlug,
         app_category: config.appCategory,
         batch_index: batchIndex++,
         status: "pending",
@@ -634,7 +647,7 @@ async function handleCreateRun(body: any, supabase: any) {
     batchIndex: b.batch_index,
     tileIndex: b.tile_index,
     category: b.seeding_category,
-    categoryLabel: SEEDING_CATEGORY_MAP[b.seeding_category]?.label ?? b.seeding_category,
+    categoryLabel: resolveSeedingCategory(b.seeding_category)?.label ?? b.seeding_category,
   }));
 
   return {
@@ -754,8 +767,8 @@ async function handleRunNextBatch(body: any, supabase: any) {
     };
   }
 
-  // Get category config
-  const config = SEEDING_CATEGORY_MAP[batch.seeding_category];
+  // Get category config — handles both old seeding IDs and new app slugs (ORCH-0434)
+  const config = resolveSeedingCategory(batch.seeding_category);
   if (!config) {
     await supabase
       .from("seeding_batches")
@@ -850,7 +863,7 @@ async function handleRunNextBatch(body: any, supabase: any) {
       // Upsert to place_pool
       if (uniquePlaces.size > 0) {
         const rows = Array.from(uniquePlaces.values()).map((p) =>
-          transformGooglePlaceForSeed(p, batch.city_id, config.id, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
+          transformGooglePlaceForSeed(p, batch.city_id, config.appCategorySlug, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
         );
 
         // Step 1: Insert new places only
@@ -1000,7 +1013,7 @@ async function handleRunNextBatch(body: any, supabase: any) {
         batchIndex: nextBatch.batch_index,
         tileIndex: nextBatch.tile_index,
         category: nextBatch.seeding_category,
-        categoryLabel: SEEDING_CATEGORY_MAP[nextBatch.seeding_category]?.label ?? nextBatch.seeding_category,
+        categoryLabel: resolveSeedingCategory(nextBatch.seeding_category)?.label ?? nextBatch.seeding_category,
       };
     }
   }
@@ -1147,7 +1160,7 @@ async function handleRetryBatch(body: any, supabase: any) {
     };
   }
 
-  const config = SEEDING_CATEGORY_MAP[batch.seeding_category];
+  const config = resolveSeedingCategory(batch.seeding_category);
   if (!config) {
     await supabase
       .from("seeding_batches")
@@ -1236,7 +1249,7 @@ async function handleRetryBatch(body: any, supabase: any) {
 
       if (uniquePlaces.size > 0) {
         const rows = Array.from(uniquePlaces.values()).map((p) =>
-          transformGooglePlaceForSeed(p, batch.city_id, config.id, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
+          transformGooglePlaceForSeed(p, batch.city_id, config.appCategorySlug, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
         );
 
         // Step 1: Insert new places only

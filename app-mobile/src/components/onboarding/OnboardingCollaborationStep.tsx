@@ -34,7 +34,6 @@ interface OnboardingCollaborationStepProps {
   initialSessions?: CreatedSession[]
   userPreferences: {
     categories: string[]
-    priceTiers: string[]
     intents: string[]
     travelMode: string
     travelTimeMinutes: number
@@ -192,7 +191,6 @@ export const OnboardingCollaborationStep: React.FC<OnboardingCollaborationStepPr
         {
           categories: userPreferences.categories,
           intents: userPreferences.intents,
-          priceTiers: userPreferences.priceTiers,
           travelMode: userPreferences.travelMode,
           travelTimeMinutes: userPreferences.travelTimeMinutes,
         }

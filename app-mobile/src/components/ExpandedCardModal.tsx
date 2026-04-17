@@ -684,7 +684,6 @@ function MultiStopPlanView({
       categoryId,
       location: { lat: userPreferences?.location?.lat ?? stops[0]?.lat ?? 0, lng: userPreferences?.location?.lng ?? stops[0]?.lng ?? 0 },
       travelMode: userPreferences?.travel_mode || 'walking',
-      budgetMax: userPreferences?.budget_max ?? 1000,
       excludePlaceIds,
       siblingStops,
       limit: 10,

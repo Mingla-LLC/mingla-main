@@ -28,14 +28,15 @@ const VISIBILITY_OPTIONS: { key: VisibilityLevel; labelKey: string; icon: string
 interface ActivityStatusPickerProps {
   currentStatus: string | null;
   onSetStatus: (status: string | null) => void;
-  peopleLayerOn: boolean;
-  onTogglePeople: () => void;
-  placesLayerOn: boolean;
-  onTogglePlaces: () => void;
-  feedOn: boolean;
-  onToggleFeed: () => void;
-  heatmapOn: boolean;
-  onToggleHeatmap: () => void;
+  /** Map-layer toggles — optional, only shown when provided */
+  peopleLayerOn?: boolean;
+  onTogglePeople?: () => void;
+  placesLayerOn?: boolean;
+  onTogglePlaces?: () => void;
+  feedOn?: boolean;
+  onToggleFeed?: () => void;
+  heatmapOn?: boolean;
+  onToggleHeatmap?: () => void;
   visibility: VisibilityLevel;
   onVisibilityChange: (level: VisibilityLevel) => void;
   /** Coach mark ref — attaches to the FAB button for spotlight measurement */
@@ -132,14 +133,17 @@ export function ActivityStatusPicker({
             </View>
           )}
 
-          <View style={styles.divider} />
-
-          {/* Map layers — toggles */}
-          <Text style={styles.sectionLabel}>{t('map:showOnMap')}</Text>
-          <ToggleRow label={t('map:people')} icon="people-outline" on={peopleLayerOn} onToggle={onTogglePeople} />
-          <ToggleRow label={t('map:places')} icon="location-outline" on={placesLayerOn} onToggle={onTogglePlaces} />
-          <ToggleRow label={t('map:feed')} icon="notifications-outline" on={feedOn} onToggle={onToggleFeed} />
-          <ToggleRow label={t('map:heatmap')} icon="flame-outline" on={heatmapOn} onToggle={onToggleHeatmap} />
+          {/* Map layers — toggles (only shown when map-layer props are provided) */}
+          {onTogglePeople && onTogglePlaces && onToggleFeed && onToggleHeatmap ? (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.sectionLabel}>{t('map:showOnMap')}</Text>
+              <ToggleRow label={t('map:people')} icon="people-outline" on={peopleLayerOn ?? false} onToggle={onTogglePeople} />
+              <ToggleRow label={t('map:places')} icon="location-outline" on={placesLayerOn ?? false} onToggle={onTogglePlaces} />
+              <ToggleRow label={t('map:feed')} icon="notifications-outline" on={feedOn ?? false} onToggle={onToggleFeed} />
+              <ToggleRow label={t('map:heatmap')} icon="flame-outline" on={heatmapOn ?? false} onToggle={onToggleHeatmap} />
+            </>
+          ) : null}
 
           <View style={styles.divider} />
 

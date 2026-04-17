@@ -1,158 +1,149 @@
 import type { BoardSessionPreferences } from '../hooks/useBoardSession';
 
-export interface AggregatedCollaborationPrefs {
+/**
+ * ORCH-0446: Corrected aggregation for collaboration sessions.
+ *
+ * Aggregation rules (all confirmed by user in 50-question design session):
+ * - categories:           UNION (R3.1)
+ * - intents:              UNION (R3.9)
+ * - travelMode:           MOST PERMISSIVE — driving > transit > biking > walking (R3.2)
+ * - travelConstraintValue: MAX — longest distance wins (R3.3)
+ * - dates:                INTERSECTION first, UNION fallback if 0 results (R3.4, R3.5)
+ * - location:             midpoint of all participants' GPS (R3.6)
+ * - selectedDates:        UNION for pick_dates participants
+ *
+ * Previous bugs fixed:
+ * - travelMode was majority vote → now most permissive
+ * - travelConstraintValue was median → now MAX
+ * - dateOption was "most permissive single window" → now dateWindows array for AND logic
+ */
+
+export interface AggregatedCollabPrefs {
   categories: string[];
   intents: string[];
-  priceTiers: string[];
-  budgetMin: number;
-  budgetMax: number;
   travelMode: string;
   travelConstraintType: 'time';
   travelConstraintValue: number;
   datetimePref: string | null;
+  dateOption: string;
+  dateWindows: string[];
+  selectedDates: string[];
   location: { lat: number; lng: number } | null;
 }
 
-/**
- * Aggregate ALL preferences across all participants using union logic.
- *
- * Aggregation rules:
- * - categories: union of all participants' categories (deduplicated)
- * - intents: union of all participants' intents (deduplicated)
- * - priceTiers: union
- * - budgetMin: Math.min()
- * - budgetMax: Math.max()
- * - travelMode: most common, default 'walking'
- * - travelConstraintType: always 'time' (distance option removed)
- * - travelConstraintValue: median (not min — avoids extreme restriction)
- * - datetimePref: earliest ISO string
- * - location: midpoint of all custom_lat/custom_lng, null if none
- */
-export function aggregateAllPrefs(
+const MODE_RANK: Record<string, number> = {
+  walking: 1,
+  biking: 2,
+  bicycling: 2,
+  transit: 3,
+  driving: 4,
+};
+
+const DATE_RANK: Record<string, number> = {
+  'now': 1, 'today': 2,
+  'this-weekend': 3, 'this weekend': 3, 'this_weekend': 3,
+  'pick-a-date': 4, 'pick_dates': 4,
+};
+
+export function aggregateCollabPrefs(
   rows: BoardSessionPreferences[]
-): AggregatedCollaborationPrefs {
+): AggregatedCollabPrefs {
   if (rows.length === 0) {
     return {
       categories: [],
       intents: [],
-      priceTiers: ['chill', 'comfy', 'bougie', 'lavish'],
-      budgetMin: 0,
-      budgetMax: 1000,
       travelMode: 'walking',
       travelConstraintType: 'time',
       travelConstraintValue: 30,
       datetimePref: null,
+      dateOption: 'today',
+      dateWindows: [],
+      selectedDates: [],
       location: null,
     };
   }
 
-  // Categories: union of all participants
+  // Categories: UNION (R3.1) — combine everyone's categories, deduplicate
   const categorySet = new Set<string>();
   for (const row of rows) {
     for (const cat of (row.categories || [])) {
       categorySet.add(cat);
     }
   }
-  const categories = Array.from(categorySet);
 
-  // Intents: union of all participants
+  // Intents: UNION (R3.9) — combine everyone's intents, deduplicate
   const intentSet = new Set<string>();
   for (const row of rows) {
     for (const intent of (row.intents || [])) {
       intentSet.add(intent);
     }
   }
-  const intents = Array.from(intentSet);
 
-  // Price tiers: union
-  const tierSet = new Set<string>();
-  for (const row of rows) {
-    for (const tier of (row.price_tiers || [])) {
-      tierSet.add(tier);
-    }
-  }
-  const priceTiers = tierSet.size > 0
-    ? Array.from(tierSet)
-    : ['chill', 'comfy', 'bougie', 'lavish'];
+  // Travel mode: MOST PERMISSIVE (R3.2) — highest MODE_RANK wins
+  const travelMode = rows
+    .map(r => r.travel_mode || 'walking')
+    .sort((a, b) => (MODE_RANK[b] ?? 0) - (MODE_RANK[a] ?? 0))[0] || 'walking';
 
-  // Budget: widest range
-  const budgetMin = Math.min(...rows.map((r) => r.budget_min ?? 0));
-  const budgetMax = Math.max(...rows.map((r) => r.budget_max ?? 1000));
-
-  // Travel mode: majority vote
-  const travelMode = majorityVote(
-    rows.map((r) => r.travel_mode || 'walking'),
-    'walking'
+  // Travel constraint: MAX (R3.3) — longest travel time wins
+  const travelConstraintValue = Math.max(
+    ...rows.map(r => r.travel_constraint_value ?? 30)
   );
 
-  // Travel constraint type: always 'time' (distance option removed)
-  const travelConstraintType = 'time' as const;
+  // Date windows: collect ALL unique date options for AND logic (R3.4)
+  const dateWindows: string[] = [];
+  for (const row of rows) {
+    const opt = row.date_option || 'today';
+    if (!dateWindows.includes(opt)) {
+      dateWindows.push(opt);
+    }
+  }
 
-  // Travel constraint value: MEDIAN (not min)
-  const constraintValues = rows
-    .map((r) => r.travel_constraint_value ?? 30)
-    .sort((a, b) => a - b);
-  const mid = Math.floor(constraintValues.length / 2);
-  const travelConstraintValue = constraintValues.length % 2 === 0
-    ? Math.round((constraintValues[mid - 1] + constraintValues[mid]) / 2)
-    : constraintValues[mid];
+  // Selected dates: UNION — combine all pick_dates participants' selected dates
+  const dateSet = new Set<string>();
+  for (const row of rows) {
+    const dates = row.selected_dates;
+    if (Array.isArray(dates)) {
+      for (const d of dates) dateSet.add(d);
+    }
+  }
 
-  // Datetime: earliest
+  // Datetime pref: earliest (for filtering reference)
   const datetimes = rows
-    .map((r) => r.datetime_pref)
+    .map(r => r.datetime_pref)
     .filter((d): d is string => d !== null && d !== undefined)
     .sort();
-  const datetimePref = datetimes.length > 0 ? datetimes[0] : null;
 
-  // Location: midpoint of custom coordinates
+  // Location: midpoint of all participants' GPS coordinates (R3.6)
   const coords = rows
-    .filter((r) => r.custom_lat != null && r.custom_lng != null)
-    .map((r) => ({ lat: r.custom_lat!, lng: r.custom_lng! }));
+    .filter(r => r.custom_lat != null && r.custom_lng != null)
+    .map(r => ({ lat: r.custom_lat!, lng: r.custom_lng! }));
 
   let location: { lat: number; lng: number } | null = null;
   if (coords.length > 0) {
-    const avgLat = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
-    const avgLng = coords.reduce((s, c) => s + c.lng, 0) / coords.length;
-    location = { lat: avgLat, lng: avgLng };
+    location = {
+      lat: coords.reduce((s, c) => s + c.lat, 0) / coords.length,
+      lng: coords.reduce((s, c) => s + c.lng, 0) / coords.length,
+    };
   }
 
-  // Note: dateOption, timeSlot, and exactTime are NOT aggregated.
-  // These are solo-mode UI concepts (date picker selections). In collab mode,
-  // the edge function falls back to datetimePref-based filtering, which IS aggregated
-  // above as the earliest participant's datetime preference.
+  // Date option: most permissive single window (backward compat for discover-cards solo mode)
+  const dateOption = rows
+    .map(r => r.date_option || 'today')
+    .sort((a, b) => (DATE_RANK[b] ?? 0) - (DATE_RANK[a] ?? 0))[0] || 'today';
 
   return {
-    categories,
-    intents,
-    priceTiers,
-    budgetMin,
-    budgetMax,
+    categories: Array.from(categorySet),
+    intents: Array.from(intentSet),
     travelMode,
-    travelConstraintType,
+    travelConstraintType: 'time',
     travelConstraintValue,
-    datetimePref,
+    datetimePref: datetimes.length > 0 ? datetimes[0] : null,
+    dateOption,
+    dateWindows,
+    selectedDates: Array.from(dateSet),
     location,
   };
 }
 
-/**
- * M7 FIX: Deterministic tie-breaking.
- * When two values have the same count, the previous implementation relied on
- * Object.entries() iteration order, which is insertion-order and thus
- * non-deterministic when values arrive in different orders across clients.
- * Fix: on tie, sort alphabetically so all clients pick the same winner.
- */
-function majorityVote(values: string[], fallback: string): string {
-  const counts: Record<string, number> = {};
-  for (const v of values) {
-    counts[v] = (counts[v] || 0) + 1;
-  }
-
-  // Sort entries by count descending, then alphabetically for deterministic tie-breaking
-  const sorted = Object.entries(counts).sort((a, b) => {
-    if (b[1] !== a[1]) return b[1] - a[1]; // higher count first
-    return a[0].localeCompare(b[0]);        // alphabetical tie-break
-  });
-
-  return sorted.length > 0 ? sorted[0][0] : fallback;
-}
+// Legacy export for any remaining callers (will be removed in cleanup)
+export const aggregateAllPrefs = aggregateCollabPrefs;

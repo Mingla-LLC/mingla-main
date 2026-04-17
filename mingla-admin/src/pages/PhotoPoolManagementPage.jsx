@@ -17,28 +17,16 @@ import { StatCardSkeleton } from "../components/ui/Skeleton";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { logAdminAction } from "../lib/auditLog";
+import { CATEGORY_LABELS, ALL_CATEGORIES } from "../constants/categories";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const CATEGORY_NAMES = {
-  nature: "Nature",
-  first_meet: "First Meet",
-  picnic_park: "Picnic & Park",
-  drink: "Drink",
-  casual_eats: "Casual Eats",
-  fine_dining: "Fine Dining",
-  watch: "Watch",
-  creative_arts: "Creative Arts",
-  play: "Play",
-  wellness: "Wellness",
-  groceries_flowers: "Groceries & Flowers",
-  work_business: "Work & Business",
-};
-
+// ORCH-0434: Category icons (page-specific emoji set)
 const CATEGORY_ICONS = {
-  nature: "🌿", first_meet: "☕", picnic_park: "🌳", drink: "🍷",
-  casual_eats: "🍔", fine_dining: "🍽️", watch: "🎬", creative_arts: "🎨",
-  play: "🎮", wellness: "🧘", groceries_flowers: "🌸", work_business: "💼",
+  nature: "🌿", icebreakers: "☕", drinks_and_music: "🍷",
+  brunch_lunch_casual: "🍔", upscale_fine_dining: "🍽️",
+  movies_theatre: "🎬", creative_arts: "🎨", play: "🎮",
+  flowers: "🌸", groceries: "🛒",
 };
 
 const HEALTH_COLORS = {
@@ -720,7 +708,7 @@ export function PhotoPoolManagementPage() {
             <div>
               <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">Category</label>
               <div className="flex flex-wrap gap-2">
-                {Object.entries(CATEGORY_NAMES).map(([slug, name]) => (
+                {Object.entries(CATEGORY_LABELS).map(([slug, name]) => (
                   <button
                     key={slug}
                     onClick={() => setFillTarget(f => ({ ...f, category: slug }))}
@@ -944,7 +932,7 @@ function CategoriesSection({ categories, selectedCategory, setSelectedCategory, 
                 <span className={`w-3 h-3 rounded-full ${health.dot}`} title={`Health: ${cat.health}`} />
               </div>
               <p className="text-sm font-semibold text-[var(--color-text-primary)]">
-                {CATEGORY_NAMES[cat.slug] || cat.slug}
+                {CATEGORY_LABELS[cat.slug] || cat.slug}
               </p>
               <div className="mt-2 space-y-1">
                 <div className="flex justify-between text-xs text-[var(--color-text-secondary)]">
@@ -968,7 +956,7 @@ function CategoriesSection({ categories, selectedCategory, setSelectedCategory, 
       {/* Drill-down */}
       {selectedCategory && (
         <SectionCard
-          title={`${CATEGORY_ICONS[selectedCategory]} ${CATEGORY_NAMES[selectedCategory] || selectedCategory} — Location Buckets`}
+          title={`${CATEGORY_ICONS[selectedCategory]} ${CATEGORY_LABELS[selectedCategory] || selectedCategory} — Location Buckets`}
           action={
             <Button variant="primary" size="sm" onClick={() => onFillCategory(selectedCategory)}>
               <Play className="h-4 w-4 mr-1" />
@@ -1275,7 +1263,7 @@ function LogSection({ logData, logPage, setLogPage, logLoading, expandedLogRow, 
       key: "target_category",
       label: "Target",
       render: (val, row) => val ? (
-        <span>{CATEGORY_ICONS[val]} {CATEGORY_NAMES[val] || val}</span>
+        <span>{CATEGORY_ICONS[val]} {CATEGORY_LABELS[val] || val}</span>
       ) : (
         <span className="text-[var(--color-text-tertiary)]">All missing</span>
       ),

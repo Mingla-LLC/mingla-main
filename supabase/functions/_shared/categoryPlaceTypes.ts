@@ -9,11 +9,19 @@
  *      Google Places API fallback when pool coverage is thin.
  *      Both are pool-first — they only hit Google as a fallback.
  *
- * 13 categories: 12 visible + 1 hidden (Groceries).
+ * 10 categories: 8 visible + 2 hidden (Groceries, Flowers).
  *
  * NOTE: The type lists here are for on-demand experience generation.
  * For admin seeding type lists (Google → place_pool), see seedingCategories.ts.
  * These are separate systems that serve different pipeline steps.
+ *
+ * ORCH-0434: Restructured from 13 to 10 categories.
+ *   Merged: nature + picnic_park → Nature & Views
+ *   Merged: watch + live_performance → Movies & Theatre
+ *   Renamed: First Meet → Icebreakers, Drink → Drinks & Music,
+ *            Casual Eats → Brunch Lunch & Casual, Fine Dining → Upscale & Fine Dining
+ *   Removed: Wellness
+ *   Hidden: Flowers (was visible, now backend-only like Groceries)
  */
 
 // ── Primary mapping: Display Name → Google Place types ──────────────────────
@@ -22,8 +30,9 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'beach', 'botanical_garden', 'garden', 'hiking_area', 'national_park',
     'nature_preserve', 'park', 'scenic_spot', 'state_park', 'observation_deck',
     'tourist_attraction',
+    'picnic_ground', // absorbed from former Picnic Park category
   ],
-  'First Meet': [
+  'Icebreakers': [
     // Interleaved: Group1 (café), Group2 (activity), Group3 (culture/outdoor)
     'cafe', 'bowling_alley', 'park',
     'coffee_shop', 'miniature_golf_course', 'art_gallery',
@@ -36,10 +45,7 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'donut_shop', 'dance_hall', 'garden',
     'breakfast_restaurant', 'brunch_restaurant',
   ],
-  'Picnic Park': [
-    'picnic_ground', 'park',
-  ],
-  'Drink': [
+  'Drinks & Music': [
     // Interleaved: Group1 (alcohol), Group2 (non-alcohol)
     'bar',             'coffee_shop',
     'cocktail_bar',    'coffee_roastery',
@@ -50,8 +56,10 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'brewpub',
     'lounge_bar',
     'night_club',
+    'live_music_venue', // ORCH-0434: added for Drinks & Music
+    'karaoke',          // ORCH-0434: added for Drinks & Music
   ],
-  'Casual Eats': [
+  'Brunch, Lunch & Casual': [
     'restaurant', 'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
     'ramen_restaurant', 'sandwich_shop', 'sushi_restaurant', 'diner',
     'brunch_restaurant', 'buffet_restaurant', 'breakfast_restaurant',
@@ -65,16 +73,15 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'steak_house', 'french_restaurant', 'greek_restaurant',
     'afghani_restaurant', 'african_restaurant',
   ],
-  'Fine Dining': [
+  'Upscale & Fine Dining': [
     'fine_dining_restaurant', 'french_restaurant', 'steak_house',
     'seafood_restaurant', 'mediterranean_restaurant', 'spanish_restaurant',
     'tapas_restaurant', 'oyster_bar_restaurant', 'italian_restaurant',
     'japanese_restaurant', 'greek_restaurant',
   ],
-  'Watch': [
+  'Movies & Theatre': [
+    // Merged: Watch + Live Performance
     'movie_theater',
-  ],
-  'Live Performance': [
     'performing_arts_theater', 'concert_hall', 'opera_house',
     'philharmonic_hall', 'amphitheatre',
   ],
@@ -90,9 +97,6 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'indoor_playground', 'karaoke', 'dance_hall', 'ice_skating_rink',
     'cycling_park', 'roller_coaster', 'water_park', 'ferris_wheel',
     'casino', 'planetarium',
-  ],
-  'Wellness': [
-    'spa', 'massage_spa', 'massage', 'sauna', 'resort_hotel',
   ],
   'Flowers': [
     'florist', 'grocery_store', 'supermarket',
@@ -124,85 +128,95 @@ export const GLOBAL_EXCLUDED_PLACE_TYPES: string[] = [
 
 // ── Alias mapping: handles all case/format variations ────────────────────────
 // Maps every known variation to the canonical display name above.
+// ORCH-0434: Old slugs kept as backward-compat aliases resolving to new display names.
 const CATEGORY_ALIASES: Record<string, string> = {
-  // ── New canonical slug → display name ──────────────────────────
+  // ── New canonical slugs → display names ───────────────────────
   'nature': 'Nature & Views',
-  'nature_views': 'Nature & Views',
+  'nature_views': 'Nature & Views',       // backward compat
   'nature-views': 'Nature & Views',
   'nature & views': 'Nature & Views',
   'nature_and_views': 'Nature & Views',
-  'first_meet': 'First Meet',
-  'first-meet': 'First Meet',
-  'firstmeet': 'First Meet',
-  'picnic_park': 'Picnic Park',
-  'picnic-park': 'Picnic Park',
-  'picnic park': 'Picnic Park',
-  'picnic': 'Picnic Park',        // legacy "Picnic" resolves to "Picnic Park"
-  'drink': 'Drink',
-  'casual_eats': 'Casual Eats',
-  'casual-eats': 'Casual Eats',
-  'casualeats': 'Casual Eats',
-  'casual eats': 'Casual Eats',
-  'fine_dining': 'Fine Dining',
-  'fine-dining': 'Fine Dining',
-  'finedining': 'Fine Dining',
-  'fine dining': 'Fine Dining',
-  'watch': 'Watch',
-  'live_performance': 'Live Performance',
-  'live-performance': 'Live Performance',
-  'live performance': 'Live Performance',
-  'liveperformance': 'Live Performance',
+  'icebreakers': 'Icebreakers',
+  'first_meet': 'Icebreakers',            // backward compat
+  'first-meet': 'Icebreakers',
+  'firstmeet': 'Icebreakers',
+  'picnic_park': 'Nature & Views',        // merged into Nature
+  'picnic-park': 'Nature & Views',
+  'picnic park': 'Nature & Views',
+  'picnic': 'Nature & Views',
+  'drinks_and_music': 'Drinks & Music',
+  'drinks-and-music': 'Drinks & Music',
+  'drink': 'Drinks & Music',              // backward compat
+  'brunch_lunch_casual': 'Brunch, Lunch & Casual',
+  'brunch-lunch-casual': 'Brunch, Lunch & Casual',
+  'casual_eats': 'Brunch, Lunch & Casual', // backward compat
+  'casual-eats': 'Brunch, Lunch & Casual',
+  'casualeats': 'Brunch, Lunch & Casual',
+  'casual eats': 'Brunch, Lunch & Casual',
+  'upscale_fine_dining': 'Upscale & Fine Dining',
+  'upscale-fine-dining': 'Upscale & Fine Dining',
+  'fine_dining': 'Upscale & Fine Dining',  // backward compat
+  'fine-dining': 'Upscale & Fine Dining',
+  'finedining': 'Upscale & Fine Dining',
+  'fine dining': 'Upscale & Fine Dining',
+  'movies_theatre': 'Movies & Theatre',
+  'movies-theatre': 'Movies & Theatre',
+  'watch': 'Movies & Theatre',             // backward compat
+  'live_performance': 'Movies & Theatre',   // backward compat
+  'live-performance': 'Movies & Theatre',
+  'live performance': 'Movies & Theatre',
+  'liveperformance': 'Movies & Theatre',
   'creative_arts': 'Creative & Arts',
   'creative-arts': 'Creative & Arts',
   'creativearts': 'Creative & Arts',
   'creative & arts': 'Creative & Arts',
   'play': 'Play',
-  'wellness': 'Wellness',
+  'wellness': 'Brunch, Lunch & Casual',    // removed → orphan fallback
   'flowers': 'Flowers',
   'groceries': 'Groceries',
 
   // ── Backward compat: old combined category ─────────────────────
-  'groceries_flowers': 'Flowers',   // old slug resolves to Flowers (visible)
+  'groceries_flowers': 'Flowers',
   'groceries & flowers': 'Flowers',
   'groceries-flowers': 'Flowers',
   'groceriesflowers': 'Flowers',
 
   // ── Removed categories → best match ────────────────────────────
-  'work_business': 'First Meet',    // Work removed; coworking-like → First Meet
-  'work-business': 'First Meet',
-  'workbusiness': 'First Meet',
-  'work & business': 'First Meet',
-  'work and business': 'First Meet',
-  'work_and_business': 'First Meet',
+  'work_business': 'Icebreakers',
+  'work-business': 'Icebreakers',
+  'workbusiness': 'Icebreakers',
+  'work & business': 'Icebreakers',
+  'work and business': 'Icebreakers',
+  'work_and_business': 'Icebreakers',
 
   // ── Old display names → new display names ─────────────────────
   'Nature': 'Nature & Views',
-  'Picnic': 'Picnic Park',
+  'Picnic': 'Nature & Views',
   'Groceries & Flowers': 'Flowers',
-  'Work & Business': 'First Meet',
+  'Work & Business': 'Icebreakers',
 
   // ── Old category system (backwards compat) ─────────────────────
-  'sip & chill': 'Drink',
-  'sip_and_chill': 'Drink',
-  'sip-and-chill': 'Drink',
-  'sip&chill': 'Drink',
-  'sip_&_chill': 'Drink',
-  'sip-&-chill': 'Drink',
-  'sipchill': 'Drink',
+  'sip & chill': 'Drinks & Music',
+  'sip_and_chill': 'Drinks & Music',
+  'sip-and-chill': 'Drinks & Music',
+  'sip&chill': 'Drinks & Music',
+  'sip_&_chill': 'Drinks & Music',
+  'sip-&-chill': 'Drinks & Music',
+  'sipchill': 'Drinks & Music',
   'stroll': 'Nature & Views',
   'take a stroll': 'Nature & Views',
   'take-a-stroll': 'Nature & Views',
   'take_a_stroll': 'Nature & Views',
-  'dining experiences': 'Fine Dining',
-  'dining_experiences': 'Fine Dining',
-  'dining-experiences': 'Fine Dining',
-  'dining': 'Fine Dining',
-  'screen & relax': 'Watch',
-  'screen_and_relax': 'Watch',
-  'screen-and-relax': 'Watch',
-  'screen&relax': 'Watch',
-  'screenrelax': 'Watch',
-  'screen_&_relax': 'Watch',
+  'dining experiences': 'Upscale & Fine Dining',
+  'dining_experiences': 'Upscale & Fine Dining',
+  'dining-experiences': 'Upscale & Fine Dining',
+  'dining': 'Upscale & Fine Dining',
+  'screen & relax': 'Movies & Theatre',
+  'screen_and_relax': 'Movies & Theatre',
+  'screen-and-relax': 'Movies & Theatre',
+  'screen&relax': 'Movies & Theatre',
+  'screenrelax': 'Movies & Theatre',
+  'screen_&_relax': 'Movies & Theatre',
   'creative & hands-on': 'Creative & Arts',
   'creative_and_hands_on': 'Creative & Arts',
   'creative-and-hands-on': 'Creative & Arts',
@@ -214,15 +228,15 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'play&move': 'Play',
   'playmove': 'Play',
   'play_&_move': 'Play',
-  'picnics': 'Picnic Park',
-  'wellness dates': 'Wellness',
-  'wellness_dates': 'Wellness',
+  'picnics': 'Nature & Views',
+  'wellness dates': 'Brunch, Lunch & Casual',
+  'wellness_dates': 'Brunch, Lunch & Casual',
   'freestyle': 'Nature & Views',
 
   // Short forms used by legacy recommendation endpoints
-  'sip': 'Drink',
+  'sip': 'Drinks & Music',
   'play_move': 'Play',
-  'screen_relax': 'Watch',
+  'screen_relax': 'Movies & Theatre',
   'creative': 'Creative & Arts',
 };
 
@@ -304,18 +318,16 @@ export const ALL_CATEGORY_NAMES = Object.keys(MINGLA_CATEGORY_PLACE_TYPES);
 // ── Display name ↔ DB slug mapping ────────────────────────────────────────
 // card_pool.category stores slugs; edge functions use display names from
 // MINGLA_CATEGORY_PLACE_TYPES keys. These maps bridge the gap.
+// ORCH-0434: Rewritten — all slugs now match Phase 1 migrated database.
 export const DISPLAY_TO_SLUG: Record<string, string> = {
-  'Nature & Views': 'nature_views',
-  'First Meet': 'first_meet',
-  'Picnic Park': 'picnic_park',
-  'Drink': 'drink',
-  'Casual Eats': 'casual_eats',
-  'Fine Dining': 'fine_dining',
-  'Watch': 'watch',
-  'Live Performance': 'live_performance',
+  'Nature & Views': 'nature',
+  'Icebreakers': 'icebreakers',
+  'Drinks & Music': 'drinks_and_music',
+  'Brunch, Lunch & Casual': 'brunch_lunch_casual',
+  'Upscale & Fine Dining': 'upscale_fine_dining',
+  'Movies & Theatre': 'movies_theatre',
   'Creative & Arts': 'creative_arts',
   'Play': 'play',
-  'Wellness': 'wellness',
   'Flowers': 'flowers',
   'Groceries': 'groceries',
 };
@@ -335,7 +347,7 @@ export function toDisplay(slug: string): string {
 }
 
 /** Categories that exist in the system but are never shown to users */
-export const HIDDEN_CATEGORIES: Set<string> = new Set(['Groceries']);
+export const HIDDEN_CATEGORIES: Set<string> = new Set(['Groceries', 'Flowers']);
 
 /** Visible categories only — use for user-facing lists */
 export const VISIBLE_CATEGORY_NAMES = ALL_CATEGORY_NAMES.filter(
@@ -344,18 +356,11 @@ export const VISIBLE_CATEGORY_NAMES = ALL_CATEGORY_NAMES.filter(
 
 // ── Per-category search strategy override ─────────────────────────────────────
 // Categories listed here use Text Search instead of Nearby Search.
-// Text Search finds places by concept/intent rather than rigid type tags,
-// which is critical for quality-dependent categories like Fine Dining.
 export const CATEGORY_TEXT_KEYWORDS: Partial<Record<string, string[]>> = {
-  'Fine Dining': [
+  'Upscale & Fine Dining': [
     'fine dining restaurant',
     'upscale restaurant',
     'tasting menu restaurant',
-  ],
-  'Wellness': [
-    'day spa',
-    'resort hotel spa',
-    'hot spring spa',
   ],
 };
 
@@ -391,72 +396,56 @@ const RETAIL_EXCLUSIONS = [
  * Per-category excluded types — venues that are inappropriate
  * for a specific category context even if Google returns them.
  * Applied as post-fetch filter alongside GLOBAL_EXCLUDED_PLACE_TYPES.
+ *
+ * ORCH-0434: Merged Picnic Park into Nature & Views, Watch + Live Performance
+ * into Movies & Theatre, removed Wellness.
  */
 export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
   'Nature & Views': [
+    // Original Nature exclusions
     'movie_theater', 'video_arcade', 'bowling_alley', 'casino',
     'night_club', 'karaoke', 'amusement_center', 'amusement_park',
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
     'store',
+    // Merged from Picnic Park exclusions
+    'dog_park', 'water_park',
+    'bar',
     ...RETAIL_EXCLUSIONS,
   ],
-  'First Meet': [
+  'Icebreakers': [
     'night_club', 'bar', 'cocktail_bar', 'lounge_bar', 'brewery', 'brewpub',
     'fine_dining_restaurant', 'french_restaurant', 'steak_house',
     'indoor_playground', 'water_park',
     ...RETAIL_EXCLUSIONS,
   ],
-  'Picnic Park': [
-    'dog_park', 'amusement_park', 'water_park',
-    'bar', 'night_club', 'casino', 'movie_theater', 'video_arcade',
-    ...RETAIL_EXCLUSIONS,
-  ],
-  'Drink': [
+  'Drinks & Music': [
     'fine_dining_restaurant', 'spa', 'sauna', 'amusement_park', 'water_park',
     ...RETAIL_EXCLUSIONS,
   ],
-  'Casual Eats': [
+  'Brunch, Lunch & Casual': [
     'fine_dining_restaurant', 'bar', 'night_club', 'spa',
     'grocery_store', 'supermarket',
     ...RETAIL_EXCLUSIONS,
   ],
-  'Fine Dining': [
+  'Upscale & Fine Dining': [
     'fast_food_restaurant', 'food_court', 'bar', 'bowling_alley',
     'amusement_park', 'water_park', 'video_arcade', 'night_club',
-    // Casual dining types that should never appear in Fine Dining
     'hamburger_restaurant', 'pizza_restaurant', 'ramen_restaurant',
     'sandwich_shop', 'diner', 'buffet_restaurant', 'breakfast_restaurant',
     'brunch_restaurant', 'donut_shop', 'ice_cream_shop',
-    // Pub / casual bar types
     'bistro', 'gastropub', 'pub', 'brewpub', 'beer_garden',
-    // Romantic exclusions (fine dining is often romantic context)
     'indoor_playground', 'amusement_center', 'playground',
     'children_store', 'child_care_agency', 'preschool',
     ...RETAIL_EXCLUSIONS,
   ],
-  'Watch': [
+  'Movies & Theatre': [
+    // Merged: Watch + Live Performance exclusions (deduplicated)
     'store',
-    // Sports / active — wrong context for seated entertainment
     'sports_complex', 'sports_club', 'stadium', 'race_course',
     'tennis_court', 'swimming_pool', 'skateboard_park',
-    // Grocery / utility
     'grocery_store', 'supermarket',
     'gas_station', 'car_repair', 'car_wash',
-    // Transit / infrastructure
-    'parking', 'parking_lot', 'parking_garage',
-    'bus_station', 'train_station', 'transit_station', 'airport',
-    ...RETAIL_EXCLUSIONS,
-  ],
-  'Live Performance': [
-    'store',
-    // Sports / active
-    'sports_complex', 'sports_club', 'stadium', 'race_course',
-    'tennis_court', 'swimming_pool', 'skateboard_park',
-    // Grocery / utility
-    'grocery_store', 'supermarket',
-    'gas_station', 'car_repair', 'car_wash',
-    // Transit / infrastructure
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
     ...RETAIL_EXCLUSIONS,
@@ -473,74 +462,37 @@ export const CATEGORY_EXCLUDED_PLACE_TYPES: Record<string, string[]> = {
   ],
   'Play': [
     'store',
-    // Culture venues (belong in Creative & Arts)
     'art_gallery', 'museum', 'cultural_center', 'art_museum', 'history_museum',
-    // Low-end food
     'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
     'sandwich_shop', 'food_court', 'buffet_restaurant',
-    // Transport
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
-    ...RETAIL_EXCLUSIONS,
-  ],
-  'Wellness': [
-    // Sports/fitness
-    'gym', 'fitness_center', 'sports_complex', 'sports_club',
-    'stadium', 'tennis_court', 'swimming_pool', 'race_course',
-    // Play venues
-    'amusement_park', 'amusement_center', 'video_arcade', 'bowling_alley',
-    'paintball_center', 'go_karting_venue', 'miniature_golf_course', 'skateboard_park',
-    // Nightlife
-    'night_club', 'karaoke',
-    'store', 'grocery_store', 'supermarket',
-    // Transport
-    'parking', 'parking_lot', 'parking_garage',
-    'bus_station', 'train_station', 'transit_station', 'airport',
-    // Medical
-    'doctor', 'dentist', 'medical_clinic', 'medical_center',
-    'medical_lab', 'hospital', 'general_hospital',
     ...RETAIL_EXCLUSIONS,
   ],
   'Flowers': [
-    // Low-end food / restaurants
     'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
     'sandwich_shop', 'buffet_restaurant', 'food_court', 'diner', 'restaurant',
-    // Play venues
     'amusement_park', 'amusement_center', 'video_arcade', 'bowling_alley',
     'paintball_center', 'go_karting_venue', 'miniature_golf_course', 'skateboard_park',
-    // Entertainment
     'movie_theater',
-    // Wellness
     'spa', 'massage_spa', 'massage', 'sauna', 'wellness_center',
-    // Personal care
     'hair_salon', 'beauty_salon',
-    // Sports/fitness
     'gym', 'fitness_center', 'sports_complex', 'sports_club', 'stadium',
-    // Transport
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
-    // Convenience/general (not focused grocery destinations)
     'convenience_store', 'general_store',
   ],
   'Groceries': [
-    // Low-end food / restaurants
     'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
     'sandwich_shop', 'buffet_restaurant', 'food_court', 'diner', 'restaurant',
-    // Play venues
     'amusement_park', 'amusement_center', 'video_arcade', 'bowling_alley',
     'paintball_center', 'go_karting_venue', 'miniature_golf_course', 'skateboard_park',
-    // Entertainment
     'movie_theater',
-    // Wellness
     'spa', 'massage_spa', 'massage', 'sauna', 'wellness_center',
-    // Personal care
     'hair_salon', 'beauty_salon',
-    // Sports/fitness
     'gym', 'fitness_center', 'sports_complex', 'sports_club', 'stadium',
-    // Transport
     'parking', 'parking_lot', 'parking_garage',
     'bus_station', 'train_station', 'transit_station', 'airport',
-    // Convenience/general (not focused grocery destinations)
     'convenience_store', 'general_store',
   ],
 };

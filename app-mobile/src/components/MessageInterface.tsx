@@ -160,6 +160,7 @@ export default function MessageInterface({
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
   const [showBoardSelection, setShowBoardSelection] = useState(false);
+  const [revealedTimestampId, setRevealedTimestampId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     messageId: string;
@@ -703,14 +704,29 @@ export default function MessageInterface({
             {isOtherOnline && <View style={styles.onlineIndicator} />}
           </TouchableOpacity>
 
-          <View style={styles.userInfo}>
+          <TouchableOpacity
+            style={styles.userInfo}
+            onPress={() => onViewProfile?.(friend.id)}
+            disabled={!onViewProfile}
+            activeOpacity={0.7}
+          >
             <Text style={styles.userName}>{cleanName(friend.name)}</Text>
             <ChatStatusLine
               isOnline={isOtherOnline}
               isTyping={isOtherTyping}
               lastSeenAt={otherLastSeen}
             />
-          </View>
+          </TouchableOpacity>
+
+          {/* More button — far right */}
+          <TouchableOpacity
+            onPress={() => setShowMoreOptionsMenu(!showMoreOptionsMenu)}
+            style={styles.headerMoreBtn}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Icon name="ellipsis-vertical" size={20} color="#6b7280" />
+          </TouchableOpacity>
         </View>
 
         {/* Bottom Row: Action Icons */}
@@ -791,7 +807,31 @@ export default function MessageInterface({
         <FlatList
           ref={flatListRef}
           data={groupedMessages}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => {
+            // Day separator — inverted list: show AFTER the message when the
+            // next item (older) is on a different day, or this is the last item.
+            // Visually this places the date header ABOVE that day's messages.
+            const currDate = new Date(item.message.timestamp).toDateString();
+            const isLastItem = index === groupedMessages.length - 1;
+            const nextMsg = !isLastItem ? groupedMessages[index + 1] : null;
+            const nextDate = nextMsg ? new Date(nextMsg.message.timestamp).toDateString() : null;
+            const showDaySeparator = isLastItem || currDate !== nextDate;
+
+            const today = new Date().toDateString();
+            const yesterday = new Date(Date.now() - 86400000).toDateString();
+            const dateLabel = currDate === today ? 'Today'
+              : currDate === yesterday ? 'Yesterday'
+              : new Date(item.message.timestamp).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+
+            const daySeparator = showDaySeparator ? (
+              <View style={styles.daySeparator}>
+                <View style={styles.daySeparatorLine} />
+                <Text style={styles.daySeparatorText}>{dateLabel}</Text>
+                <View style={styles.daySeparatorLine} />
+              </View>
+            ) : null;
+            return (
+            <>
             <SwipeableMessage
               onReply={() => {
                 setReplyingTo({
@@ -811,6 +851,9 @@ export default function MessageInterface({
               >
               <TouchableOpacity
                 activeOpacity={1}
+                onPress={() => {
+                  setRevealedTimestampId(prev => prev === item.message.id ? null : item.message.id);
+                }}
                 onLongPress={(e) => {
                   setContextMenu({
                     visible: true,
@@ -836,7 +879,7 @@ export default function MessageInterface({
                   }}
                   isMe={item.message.isMe}
                   groupPosition={item.groupPosition}
-                  showTimestamp={item.showTimestamp}
+                  showTimestamp={revealedTimestampId === item.message.id}
                   isRead={item.message.isMe && !item.message.id.startsWith("temp-") && (item.message.isRead === true)}
                   replyTo={item.message.replyToId ? (() => {
                     const ref = messageMap.get(item.message.replyToId!);
@@ -852,7 +895,10 @@ export default function MessageInterface({
               </TouchableOpacity>
               </DoubleTapHeart>
             </SwipeableMessage>
-          )}
+            {daySeparator}
+            </>
+            );
+          }}
           keyExtractor={(item) => item.message.id}
           inverted={true}
           style={styles.messagesContainer}
@@ -1216,6 +1262,80 @@ export default function MessageInterface({
           </View>
         </View>
       )}
+
+      {/* More options bottom sheet — ORCH-0435 */}
+      <Modal
+        visible={showMoreOptionsMenu}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowMoreOptionsMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.chatSheetOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMoreOptionsMenu(false)}
+        />
+        <View style={styles.chatSheetContainer}>
+          <View style={styles.chatSheetHandle} />
+          <Text style={styles.chatSheetTitle}>{cleanName(friend.name)}</Text>
+
+          <TouchableOpacity
+            style={styles.chatSheetItem}
+            onPress={() => { setShowMoreOptionsMenu(false); onViewProfile?.(friend.id); }}
+            activeOpacity={0.7}
+          >
+            <Icon name="person-outline" size={20} color="#111827" style={styles.chatSheetIcon} />
+            <Text style={styles.chatSheetText}>View Profile</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.chatSheetItem}
+            onPress={() => { setShowMoreOptionsMenu(false); handleAddToBoard(); }}
+            activeOpacity={0.7}
+          >
+            <Icon name="people-outline" size={20} color="#111827" style={styles.chatSheetIcon} />
+            <Text style={styles.chatSheetText}>Add to Session</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.chatSheetItem}
+            onPress={() => { setShowMoreOptionsMenu(false); handleShareSavedCard(); }}
+            activeOpacity={0.7}
+          >
+            <Icon name="bookmark-outline" size={20} color="#111827" style={styles.chatSheetIcon} />
+            <Text style={styles.chatSheetText}>Share Saved Card</Text>
+          </TouchableOpacity>
+
+          <View style={styles.chatSheetDivider} />
+
+          <TouchableOpacity
+            style={styles.chatSheetItem}
+            onPress={() => { setShowMoreOptionsMenu(false); handleRemoveFriend(); }}
+            activeOpacity={0.7}
+          >
+            <Icon name="person-remove" size={20} color="#ef4444" style={styles.chatSheetIcon} />
+            <Text style={styles.chatSheetTextDanger}>Remove Friend</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.chatSheetItem}
+            onPress={() => { setShowMoreOptionsMenu(false); handleBlockUser(); }}
+            activeOpacity={0.7}
+          >
+            <Icon name="shield" size={20} color="#ef4444" style={styles.chatSheetIcon} />
+            <Text style={styles.chatSheetTextDanger}>Block User</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.chatSheetItem}
+            onPress={() => { setShowMoreOptionsMenu(false); handleReportUser(); }}
+            activeOpacity={0.7}
+          >
+            <Icon name="flag" size={20} color="#ef4444" style={styles.chatSheetIcon} />
+            <Text style={styles.chatSheetTextDanger}>Report User</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
 
       {/* Local Notifications */}
       {notifications.length > 0 && (
@@ -1953,5 +2073,84 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+  },
+  // ORCH-0435: Day separator
+  daySeparator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  daySeparatorLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#e5e7eb',
+  },
+  daySeparatorText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9ca3af',
+  },
+  // ORCH-0435: Header more button + bottom sheet
+  headerMoreBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: "auto",
+  },
+  chatSheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.3)",
+  },
+  chatSheetContainer: {
+    backgroundColor: "#ffffff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 40,
+  },
+  chatSheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#d1d5db",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  chatSheetTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  chatSheetItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+  },
+  chatSheetIcon: {
+    width: 28,
+    textAlign: "center",
+    marginRight: 14,
+  },
+  chatSheetText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#111827",
+  },
+  chatSheetTextDanger: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#ef4444",
+  },
+  chatSheetDivider: {
+    height: 1,
+    backgroundColor: "#f3f4f6",
+    marginVertical: 4,
   },
 });

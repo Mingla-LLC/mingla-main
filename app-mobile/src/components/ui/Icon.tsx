@@ -293,6 +293,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'grid-outline':               Grid3x3,
 
   // ─── H ───
+  'hand-right':                 Hand,
   'hand-right-outline':         Hand,
   'handshake':                  Handshake,
   'heart':                      Heart,

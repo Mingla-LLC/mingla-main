@@ -23,7 +23,7 @@ export interface ScoringFactors {
 
 export interface ScoringParams {
   categories: string[];       // user's selected categories
-  priceTiers: string[];       // user's selected price tiers
+  // ORCH-0434: priceTiers removed — was accepted but never used in any scoring function.
 }
 
 export interface ScoredCard {

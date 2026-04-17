@@ -288,6 +288,22 @@ export const glass = {
     shadowRadius: 24,
     elevation: 6,
   },
+
+  blur: {
+    card: 30,
+    header: 40,
+    banner: 50,
+    match: 60,
+    dropdown: 35,
+  },
+
+  shadowLight: {
+    shadowColor: 'rgba(0, 0, 0, 0.06)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
 } as const;
 
 // Export commonly used combinations

@@ -28,6 +28,7 @@ import { BoardMessageService } from "../services/boardMessageService";
 import { BoardErrorHandler } from "../services/boardErrorHandler";
 import { withTimeout } from "../utils/withTimeout";
 import { showMutationError } from "../utils/showMutationError";
+import { notifySessionDeleted } from "../services/boardNotificationService";
 import { useTranslation } from 'react-i18next';
 import { useToast } from "./ToastManager";
 import { Participant } from "./board/ParticipantAvatars";
@@ -35,7 +36,6 @@ import { BoardTabs, BoardTab } from "./board/BoardTabs";
 import { SwipeableSessionCards } from "./board/SwipeableSessionCards";
 import { BoardDiscussionTab } from "./board/BoardDiscussionTab";
 import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
-import { ManageBoardModal } from "./board/ManageBoardModal";
 import { InviteParticipantsModal } from "./board/InviteParticipantsModal";
 import { CardDiscussionModal } from "./board/CardDiscussionModal";
 import ExpandedCardModal from "./ExpandedCardModal";
@@ -155,10 +155,15 @@ export default function SessionViewModal({
   // Participants derived from useBoardSession data — no separate query needed.
   const participants = (session?.participants || []) as Participant[];
 
+  // Local display name — updates immediately on rename, falls back to prop/session
+  const [localName, setLocalName] = useState(sessionName);
+  useEffect(() => {
+    setLocalName(sessionName || session?.name || "");
+  }, [sessionName, session?.name]);
+
   // Settings dropdown state
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [showManageMembersModal, setShowManageMembersModal] = useState(false);
   const [showInviteParticipantsModal, setShowInviteParticipantsModal] = useState(false);
 
   // Card discussion modal state
@@ -291,12 +296,31 @@ export default function SessionViewModal({
         {
           text: t('modals:session_view.exit'),
           style: "destructive",
-          onPress: () => {
+          onPress: async () => {
             // Close modal immediately — user sees instant feedback
             onClose();
 
             const currentUserId = user.id;
             const currentSessionId = sessionId;
+
+            // ORCH-0448: Check participant count BEFORE leaving.
+            // Must notify while still a participant (RLS blocks query after removal).
+            const { count: participantCount } = await supabase
+              .from('session_participants')
+              .select('id', { count: 'exact', head: true })
+              .eq('session_id', currentSessionId);
+
+            const willAutoDelete = participantCount !== null && participantCount <= 2;
+
+            if (willAutoDelete) {
+              // Notify remaining user BEFORE we remove ourselves (RLS requires membership)
+              notifySessionDeleted({
+                sessionId: currentSessionId,
+                sessionName: sessionName || 'Session',
+                userId: currentUserId,
+                userName: profile?.display_name || profile?.first_name || 'Someone',
+              });
+            }
 
             // Op 1 (critical): delete participant
             withTimeout(
@@ -311,8 +335,27 @@ export default function SessionViewModal({
               5000,
               'exitBoard:deleteParticipant'
             )
-              .then(() => {
+              .then(async () => {
                 onSessionExited?.();
+
+                // ORCH-0448: Auto-delete session if < 2 participants remain (R6.1).
+                if (willAutoDelete) {
+                  try {
+                    // Delete remaining participants first (ORCH-0448 pattern)
+                    await supabase
+                      .from('session_participants')
+                      .delete()
+                      .eq('session_id', currentSessionId)
+                      .neq('user_id', currentUserId);
+                    // Delete the session
+                    await supabase
+                      .from('collaboration_sessions')
+                      .delete()
+                      .eq('id', currentSessionId);
+                  } catch (err) {
+                    console.warn('[SessionViewModal] Auto-delete after leave failed:', err);
+                  }
+                }
 
                 // Ops 2+3 (cleanup, sequential) and Op 4 (cleanup, parallel)
                 const cleanupBoardCollaborator = withTimeout(
@@ -369,7 +412,7 @@ export default function SessionViewModal({
         },
       ]
     );
-  }, [user?.id, sessionId, onClose, onSessionExited, showToast]);
+  }, [user?.id, sessionId, sessionName, profile, onClose, onSessionExited, showToast]);
 
   // Session validity and permissions are now derived inside useBoardSession
   // from the same data fetch — no separate validation queries needed.
@@ -407,9 +450,9 @@ export default function SessionViewModal({
   useEffect(() => {
     if (!visible || !sessionId) return;
 
-    const channel = realtimeService.subscribeToBoardSession(sessionId, {
-      onCardSaved: (card) => {
-        setSavedCards((prev) => {
+    const callbacks = {
+      onCardSaved: (card: any) => {
+        setSavedCards((prev: any[]) => {
           if (prev.some((c) => c.id === card.id)) return prev;
           return [card, ...prev];
         });
@@ -422,10 +465,26 @@ export default function SessionViewModal({
       onCardMessage: () => loadCardMessageCountsRef.current(),
       onParticipantJoined: () => refreshParticipantsRef.current(),
       onParticipantLeft: () => refreshParticipantsRef.current(),
-    });
+      onSessionDeleted: () => {
+        showToast({
+          type: 'info',
+          message: `"${localName}" was deleted by an admin.`,
+        });
+        // Trigger the same cleanup as explicit delete — switches to solo
+        if (onSessionDeleted) {
+          onSessionDeleted();
+        } else {
+          onClose();
+        }
+      },
+    };
+
+    realtimeService.subscribeToBoardSession(sessionId, callbacks);
 
     return () => {
-      realtimeService.unsubscribe(`board_session:${sessionId}`);
+      // ORCH-0446B: Unregister callbacks only — don't destroy the shared channel.
+      // Other hooks (useBoardSession, useSessionVoting) share this channel.
+      realtimeService.unregisterBoardCallbacks(sessionId, callbacks);
     };
   }, [visible, sessionId]);
 
@@ -594,7 +653,7 @@ export default function SessionViewModal({
 
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle} numberOfLines={1}>
-              {sessionName || session?.name || t('modals:session_view.session_fallback')}
+              {localName || t('modals:session_view.session_fallback')}
             </Text>
             <View style={styles.headerParticipantsRow}>
               <View style={styles.participantAvatarsSmall}>
@@ -725,13 +784,13 @@ export default function SessionViewModal({
           visible={showSettingsDropdown}
           onClose={() => setShowSettingsDropdown(false)}
           sessionId={sessionId}
-          sessionName={sessionName || session?.name || ""}
+          sessionName={localName}
           sessionCreatorId={session?.created_by}
           currentUserId={user?.id}
           isAdmin={isAdmin}
           notificationsEnabled={notificationsEnabled}
+          participants={participants}
           onToggleNotifications={() => setNotificationsEnabled(!notificationsEnabled)}
-          onManageMembers={() => setShowManageMembersModal(true)}
           onInviteParticipants={() => setShowInviteParticipantsModal(true)}
           onExitBoard={handleExitBoard}
           onSessionDeleted={() => {
@@ -739,20 +798,9 @@ export default function SessionViewModal({
             onClose();
           }}
           onSessionNameUpdated={(newName) => {
+            setLocalName(newName);
             loadSession(sessionId);
           }}
-          variant="overlay"
-        />
-
-        {/* Manage Board Modal */}
-        <ManageBoardModal
-          visible={showManageMembersModal}
-          sessionId={sessionId}
-          sessionName={sessionName || session?.name || t('modals:session_view.session_fallback')}
-          sessionCreatorId={session?.created_by}
-          participants={participants}
-          onClose={() => setShowManageMembersModal(false)}
-          onExitBoard={handleExitBoard}
           onParticipantsChange={refreshParticipants}
         />
 
@@ -760,7 +808,7 @@ export default function SessionViewModal({
         <InviteParticipantsModal
           visible={showInviteParticipantsModal}
           sessionId={sessionId}
-          sessionName={sessionName || session?.name || t('modals:session_view.session_fallback')}
+          sessionName={localName || t('modals:session_view.session_fallback')}
           existingParticipantIds={participants.map((p) => p.user_id)}
           onClose={() => setShowInviteParticipantsModal(false)}
           onInvitesSent={refreshParticipants}
@@ -803,7 +851,7 @@ export default function SessionViewModal({
             }}
             accountPreferences={accountPreferences}
             isSaved={true}
-            currentMode={sessionName || "board"}
+            currentMode={localName || "board"}
           />
         )}
 

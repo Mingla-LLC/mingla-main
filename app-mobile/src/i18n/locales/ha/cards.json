@@ -15,7 +15,7 @@
   "swipeable.like": "NA SO",
   "swipeable.pass": "WUCE",
   "swipeable.saved": "An ajiye",
-
+  "swipeable.scheduled": "Scheduled",
   "expanded.customized": "An tsara",
   "expanded.avg": "matsakaici {{rating}}",
   "expanded.suggested": "Shawarar",
@@ -56,7 +56,6 @@
   "expanded.collapse_stop_details": "Rufe bayanan tsayawa",
   "expanded.expand_stop_details": "Buɗe bayanan tsayawa",
   "expanded.close_paywall": "Rufe bangon biya",
-
   "board.session_cards": "Katuna na Zama",
   "board.of": "{{current}} cikin {{total}}",
   "board.no_cards": "Babu katuna a wannan zaman tukuna",

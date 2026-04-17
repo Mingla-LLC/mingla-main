@@ -55,6 +55,7 @@ import { getReadableCategoryName } from "../utils/categoryUtils";
 import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
 import { SkeletonCard } from './SkeletonCard';
 import { useFeatureGate } from '../hooks/useFeatureGate';
+import { useCalendarEntries } from '../hooks/useCalendarEntries';
 import { getTierLimits } from '../constants/tierLimits';
 import { useCreatorTier } from '../hooks/useCreatorTier';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
@@ -150,16 +151,16 @@ interface StrollData {
 
 const getDefaultPreferences = (): UserPreferences => ({
   mode: "explore",
-  budget_min: 0,
-  budget_max: 1000,
   people_count: 1,
-  categories: ["nature", "casual_eats", "drink"],
+  categories: ["nature", "drinks_and_music", "icebreakers"],
   travel_mode: "walking",
   travel_constraint_type: "time",
   travel_constraint_value: 30,
   datetime_pref: new Date().toISOString(),
   use_gps_location: true,
-  price_tiers: ['chill', 'comfy', 'bougie', 'lavish'],
+  intent_toggle: true,
+  category_toggle: true,
+  selected_dates: null,
 });
 
 // Recommendation interface is now imported from RecommendationsContext
@@ -458,6 +459,7 @@ export default function SwipeableCards({
   } = useSessionManagement();
   const user = useAppStore((state) => state.user);
   const { data: cachedPreferences } = useUserPreferences(user?.id);
+  const { data: calendarEntries } = useCalendarEntries(user?.id);
   // In collaboration mode, use the group's aggregated travel mode (majority vote).
   // In solo mode, fall back to the user's own cached preferences.
   const effectiveTravelMode = collabTravelMode ?? cachedPreferences?.travel_mode ?? userPreferences?.travelMode;
@@ -728,6 +730,9 @@ export default function SwipeableCards({
   const currentRec = availableRecommendations[currentCardIndex];
   const isCurrentCardSaved = currentRec ? savedCards.some(
     (s: any) => s?.id === currentRec.id || s === currentRec.id
+  ) : false;
+  const isCurrentCardScheduled = currentRec ? (calendarEntries ?? []).some(
+    (e) => (e.status === 'pending' || e.status === 'confirmed') && e.card_id === currentRec.id
   ) : false;
 
   // Track card viewed when the current card changes
@@ -1213,6 +1218,7 @@ export default function SwipeableCards({
         is_curated: isCurated,
         source: 'swipe',
       });
+
     } else {
       logAppsFlyerEvent('card_dismissed', {
         af_content_type: card.category,
@@ -1577,7 +1583,14 @@ export default function SwipeableCards({
                 {t('cards:swipeable.seen_everything')}
               </Text>
               <Text style={styles.emptyDeckSubtitle}>
-                {t('cards:swipeable.shift_vibe')}
+                {(() => {
+                  const hour = new Date().getHours();
+                  const isLateNight = hour >= 21 || hour < 6;
+                  // ORCH-0446 R8.3: Smart late night suggestion
+                  return isLateNight
+                    ? 'Most places are closing soon. Try "This Weekend" for more options.'
+                    : t('cards:swipeable.shift_vibe');
+                })()}
               </Text>
 
               <View style={styles.emptyDeckActions}>
@@ -1666,6 +1679,48 @@ export default function SwipeableCards({
             }}
           />
         </>
+      );
+
+    case 'WAITING_FOR_PARTICIPANTS':
+      return (
+        <View style={styles.noCardsContainer}>
+          <Icon name="people-outline" size={48} color="#9CA3AF" />
+          <Text style={styles.noCardsTitle}>Waiting for friends to join</Text>
+          <Text style={styles.noCardsSubtitle}>
+            Once someone accepts your invite, the deck will load automatically.
+          </Text>
+        </View>
+      );
+
+    case 'WAITING_FOR_PREFERENCES':
+      return (
+        <View style={styles.noCardsContainer}>
+          <Icon name="options-outline" size={48} color="#9CA3AF" />
+          <Text style={styles.noCardsTitle}>Setting up preferences</Text>
+          <Text style={styles.noCardsSubtitle}>
+            Participants are choosing their preferences. The deck will appear once ready.
+          </Text>
+        </View>
+      );
+
+    case 'EMPTY_POOL':
+      return (
+        <View style={styles.noCardsContainer}>
+          <Icon name="location-outline" size={48} color="#9CA3AF" />
+          <Text style={styles.noCardsTitle}>No places found nearby</Text>
+          <Text style={styles.noCardsSubtitle}>
+            Try adjusting your categories or travel distance.
+          </Text>
+          {onOpenPreferences && (
+            <TouchableOpacity
+              style={styles.emptyPoolButton}
+              onPress={onOpenPreferences}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.emptyPoolButtonText}>Adjust Preferences</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       );
 
     case 'LOADED':
@@ -1937,6 +1992,12 @@ export default function SwipeableCards({
                           <View style={styles.savedBadge}>
                             <Icon name="heart" size={10} color="white" />
                             <Text style={styles.savedBadgeText}>{t('cards:swipeable.saved')}</Text>
+                          </View>
+                        )}
+                        {isCurrentCardScheduled && (
+                          <View style={styles.scheduledBadge}>
+                            <Icon name="calendar" size={10} color="white" />
+                            <Text style={styles.scheduledBadgeText}>{t('cards:swipeable.scheduled')}</Text>
                           </View>
                         )}
                       </View>
@@ -2497,6 +2558,18 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingHorizontal: 8,
   },
+  emptyPoolButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: '#111827',
+    borderRadius: 12,
+  },
+  emptyPoolButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
   startOverButton: {
     backgroundColor: "#eb7825",
     paddingHorizontal: 24,
@@ -2678,6 +2751,20 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   savedBadgeText: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  scheduledBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(99, 102, 241, 0.85)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  scheduledBadgeText: {
     color: "white",
     fontSize: 11,
     fontWeight: "600",

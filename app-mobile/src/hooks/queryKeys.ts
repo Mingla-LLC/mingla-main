@@ -20,6 +20,11 @@ export const savedCardKeys = {
   board: (sessionId: string) => [...savedCardKeys.all, 'board', sessionId] as const,
 };
 
+export const userLevelKeys = {
+  all: ['userLevel'] as const,
+  level: (userId: string) => [...userLevelKeys.all, userId] as const,
+};
+
 export const personCardKeys = {
   all: ['personCards'] as const,
   hero: (pairedUserId: string, holidayKey: string) =>

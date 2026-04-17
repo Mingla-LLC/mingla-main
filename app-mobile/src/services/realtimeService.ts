@@ -54,6 +54,7 @@ interface BoardSessionCallbacks {
   onPreferencesChanged?: (newPrefs: any, oldPrefs: any) => void;
   onDeckRegenerated?: (deckPayload: any) => void;
   onCardLocked?: (savedCardId: string, lockedAt: string) => void;
+  onSessionDeleted?: (session: any) => void;
 }
 
 export class RealtimeService {
@@ -605,6 +606,20 @@ export class RealtimeService {
           if (__DEV__) logger.realtime(`${sessionId} | UPDATE collaboration_sessions`);
           const newSession = payload.new as any;
           dispatch('onSessionUpdated', newSession);
+        }
+      )
+      // Session deleted
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "collaboration_sessions",
+          filter: `id=eq.${sessionId}`,
+        },
+        (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | DELETE collaboration_sessions`);
+          dispatch('onSessionDeleted', payload.old);
         }
       )
       .subscribe();

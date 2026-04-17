@@ -53,11 +53,7 @@ export const ExperienceTypesSection = memo(
       : null;
 
     return (
-      <View style={[styles.section, { marginTop: 20 }]}>
-        <Text style={styles.sectionTitle}>{t('preferences:experience_types.title')}</Text>
-        <Text style={styles.sectionSubtitle}>
-          {t('preferences:experience_types.subtitle')}
-        </Text>
+      <View style={styles.section}>
         {isCuratedLocked && (
           <TouchableOpacity
             onPress={onLockedTap}
@@ -84,7 +80,7 @@ export const ExperienceTypesSection = memo(
               >
                 <Icon
                   name={type.icon}
-                  size={14}
+                  size={16}
                   color={isSelected ? "#ffffff" : "#6b7280"}
                 />
                 <Text
@@ -109,7 +105,9 @@ export const ExperienceTypesSection = memo(
           </View>
         )}
         {minMessage && (
-          <Text style={styles.capMessage}>{t('preferences:experience_types.min_message')}</Text>
+          <View style={styles.funnyWarning}>
+            <Text style={styles.funnyWarningText}>You need at least one — we can't read minds yet 😄</Text>
+          </View>
         )}
       </View>
     );
@@ -126,23 +124,17 @@ export const ExperienceTypesSection = memo(
 ExperienceTypesSection.displayName = "ExperienceTypesSection";
 
 // Keys for each category description in the preferences namespace
+// ORCH-0434: Updated to 8 new canonical slugs
 const CATEGORY_DESCRIPTION_KEYS: Record<string, string> = {
   nature: "category_descriptions.nature",
-  first_meet: "category_descriptions.first_meet",
-  picnic_park: "category_descriptions.picnic_park",
-  drink: "category_descriptions.drink",
-  casual_eats: "category_descriptions.casual_eats",
-  fine_dining: "category_descriptions.fine_dining",
-  watch: "category_descriptions.watch",
-  live_performance: "category_descriptions.live_performance",
+  icebreakers: "category_descriptions.icebreakers",
+  drinks_and_music: "category_descriptions.drinks_and_music",
+  brunch_lunch_casual: "category_descriptions.brunch_lunch_casual",
+  upscale_fine_dining: "category_descriptions.upscale_fine_dining",
+  movies_theatre: "category_descriptions.movies_theatre",
   creative_arts: "category_descriptions.creative_arts",
   play: "category_descriptions.play",
-  wellness: "category_descriptions.wellness",
-  flowers: "category_descriptions.flowers",
 };
-
-// IDs of categories that need wider pills due to long labels
-const WIDE_CATEGORY_IDS = new Set(["live_performance", "creative_arts"]);
 
 /**
  * Memoized Categories Section
@@ -177,24 +169,21 @@ export const CategoriesSection = memo(
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('preferences:categories.title')}</Text>
         <View style={styles.categoriesContainer}>
           {filteredCategories.map((category) => {
             const isSelected = selectedCategories.includes(category.id);
-            const isWide = WIDE_CATEGORY_IDS.has(category.id);
             return (
               <TouchableOpacity
                 key={category.id}
                 onPress={() => handlePress(category.id)}
                 style={[
                   styles.categoryButton,
-                  isWide && styles.categoryButtonWide,
                   isSelected && styles.categoryButtonSelected,
                 ]}
               >
                 <Icon
                   name={isSelected ? (category.icon as string).replace('-outline', '') : category.icon}
-                  size={14}
+                  size={16}
                   color={isSelected ? "#ffffff" : "#6b7280"}
                 />
                 <Text
@@ -202,7 +191,6 @@ export const CategoriesSection = memo(
                     styles.categoryText,
                     isSelected && styles.categoryTextSelected,
                   ]}
-                  numberOfLines={1}
                 >
                   {t(`common:category_${category.id}`)}
                 </Text>
@@ -219,11 +207,10 @@ export const CategoriesSection = memo(
             </Text>
           </View>
         )}
-        {capMessage && (
-          <Text style={styles.capMessage}>{t('preferences:categories.cap_message')}</Text>
-        )}
         {minMessage && (
-          <Text style={styles.capMessage}>{t('preferences:categories.min_message')}</Text>
+          <View style={styles.funnyWarning}>
+            <Text style={styles.funnyWarningText}>Keep at least one — gotta have something to explore! 🧭</Text>
+          </View>
         )}
       </View>
     );
@@ -240,145 +227,8 @@ export const CategoriesSection = memo(
 
 CategoriesSection.displayName = "CategoriesSection";
 
-/**
- * Memoized Date & Time Section
- */
-// Time slots — defined here for rendering in DateTimeSection
-const TIME_SLOT_KEYS = [
-  { id: "brunch", labelKey: "time_slots.brunch", timeKey: "time_slots.brunch_time", icon: "cafe-outline" },
-  { id: "afternoon", labelKey: "time_slots.afternoon", timeKey: "time_slots.afternoon_time", icon: "sunny-outline" },
-  { id: "dinner", labelKey: "time_slots.dinner", timeKey: "time_slots.dinner_time", icon: "restaurant-outline" },
-  { id: "lateNight", labelKey: "time_slots.late_night", timeKey: "time_slots.late_night_time", icon: "moon-outline" },
-  { id: "anytime", labelKey: "time_slots.anytime", timeKey: "time_slots.anytime_time", icon: "time-outline" },
-];
+// ORCH-0434: DateTimeSection deleted — replaced by WhenSection in PreferencesSheet/WhenSection.tsx
 
-export const DateTimeSection = memo(
-  ({
-    dateOptions,
-    selectedDateOption,
-    onDateOptionSelect,
-    showWeekendInfo,
-    showCalendarInput,
-    selectedDate,
-    onShowCalendar,
-    showTimeSection,
-    selectedTimeSlots,
-    onTimeSlotSelect,
-    formatDateForDisplay,
-  }: any) => {
-    const { t } = useTranslation(['preferences', 'common']);
-    return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{t('preferences:datetime.title')}</Text>
-      <Text style={styles.sectionQuestion}>{t('preferences:datetime.question')}</Text>
-      <View style={styles.dateOptionsGrid}>
-        {dateOptions.map((option: any) => {
-          const isSelected = selectedDateOption === option.id;
-          return (
-            <TouchableOpacity
-              key={option.id}
-              onPress={() => onDateOptionSelect(option.id)}
-              style={[
-                styles.dateOptionPill,
-                isSelected && styles.dateOptionPillSelected,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.dateOptionPillLabel,
-                  isSelected && styles.dateOptionPillLabelSelected,
-                ]}
-              >
-                {t(`preferences:date_options.${option.id === 'Now' ? 'now' : option.id === 'Today' ? 'today' : option.id === 'This Weekend' ? 'this_weekend' : 'pick_a_date'}`)}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {showWeekendInfo && (
-        <TouchableOpacity style={styles.weekendInfoCard}>
-          <Icon
-            name="calendar"
-            size={20}
-            color="#0369a1"
-            style={styles.weekendInfoIcon}
-          />
-          <View style={styles.weekendInfoContent}>
-            <Text style={styles.weekendInfoLabel}>{t('preferences:datetime.this_weekend')}</Text>
-            <Text style={styles.weekendInfoDescription}>
-              {t('preferences:datetime.friday_through_sunday')}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      )}
-
-      {showCalendarInput && (
-        <TouchableOpacity
-          style={styles.dateInputField}
-          onPress={onShowCalendar}
-        >
-          <Icon name="calendar" size={16} color="#eb7825" />
-          {selectedDate ? (
-            <Text style={styles.dateInputText}>
-              {formatDateForDisplay(selectedDate)}
-            </Text>
-          ) : (
-            <Text style={styles.dateInputPlaceholder}>{t('preferences:datetime.date_placeholder')}</Text>
-          )}
-        </TouchableOpacity>
-      )}
-
-      {showTimeSection && (
-        <View style={styles.timeSlotSection}>
-          <Text style={styles.timeSlotLabel}>{t('preferences:datetime.time_label')}</Text>
-          <View style={styles.timeSlotsGrid}>
-            {TIME_SLOT_KEYS.map((slot) => {
-              const isSelected = (selectedTimeSlots || []).includes(slot.id);
-              return (
-                <TouchableOpacity
-                  key={slot.id}
-                  onPress={() => onTimeSlotSelect(slot.id)}
-                  style={[
-                    styles.timeSlotPill,
-                    isSelected && styles.timeSlotPillSelected,
-                  ]}
-                >
-                  <Icon
-                    name={slot.icon}
-                    size={14}
-                    color={isSelected ? "#ffffff" : "#6b7280"}
-                  />
-                  <View>
-                    <Text
-                      style={[
-                        styles.timeSlotPillLabel,
-                        isSelected && styles.timeSlotPillLabelSelected,
-                      ]}
-                    >
-                      {t(`preferences:${slot.labelKey}`)}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.timeSlotPillTime,
-                        isSelected && styles.timeSlotPillTimeSelected,
-                      ]}
-                    >
-                      {t(`preferences:${slot.timeKey}`)}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-      )}
-    </View>
-    );
-  }
-);
-
-DateTimeSection.displayName = "DateTimeSection";
 
 /**
  * Memoized Travel Mode Section
@@ -396,8 +246,6 @@ export const TravelModeSection = memo(
     const { t } = useTranslation(['preferences', 'common']);
     return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{t('preferences:travel_mode.title')}</Text>
-      <Text style={styles.sectionQuestion}>{t('preferences:travel_mode.question')}</Text>
       <View style={styles.travelModesGrid}>
         {travelModes.map((mode) => {
           const isSelected = travelMode === mode.id;
@@ -451,36 +299,9 @@ export const LoadingShimmer = memo(() => {
 LoadingShimmer.displayName = "LoadingShimmer";
 
 const styles = StyleSheet.create({
+  // ORCH-0434 Phase 6D: Content container inside glass cards — no wrapper styling needed
   section: {
-    backgroundColor: "#ffffff",
-    marginHorizontal: 16,
-    marginBottom: 10,
-    padding: 16,
-    borderRadius: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: "#f0ebe6",
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 4,
-    letterSpacing: -0.2,
-  },
-  sectionSubtitle: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginBottom: 10,
-  },
-  sectionQuestion: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginBottom: 10,
+    backgroundColor: 'transparent',
   },
   curatedLockedBanner: {
     flexDirection: 'row',
@@ -503,28 +324,38 @@ const styles = StyleSheet.create({
   experienceTypesContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
   experienceTypeButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 7,
+    height: 42,
     paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 20,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#fafafa",
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    shadowColor: 'rgba(0, 0, 0, 0.04)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 1,
   },
   experienceTypeButtonSelected: {
     backgroundColor: "#eb7825",
     borderColor: "#eb7825",
-    borderWidth: 1.5,
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   experienceTypeText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "500",
-    color: "#374151",
+    color: "#4b5563",
   },
   experienceTypeTextSelected: {
     color: "#ffffff",
@@ -533,35 +364,42 @@ const styles = StyleSheet.create({
   categoriesContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
   categoryButton: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#fafafa",
+    gap: 7,
+    height: 42,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    shadowColor: 'rgba(0, 0, 0, 0.04)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 1,
   },
   categoryButtonSelected: {
     backgroundColor: "#eb7825",
     borderColor: "#eb7825",
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   categoryText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "500",
-    color: "#374151",
+    color: "#4b5563",
   },
   categoryTextSelected: {
     color: "#ffffff",
-    fontWeight: "700",
-  },
-  categoryButtonWide: {
-    // Natural flex wrap — no fixed width needed
+    fontWeight: "600",
   },
   helperTextContainer: {
     flexDirection: "row",
@@ -584,150 +422,25 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#eb7825",
   },
-  capMessage: {
-    color: "#dc2626",
-    fontSize: 12,
-    fontWeight: "600",
-    textAlign: "center",
-    marginTop: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: "#fef2f2",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-  dateOptionsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 12,
-  },
-  dateOptionPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  funnyWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(249, 115, 22, 0.10)',
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#fafafa",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginTop: 10,
+    alignSelf: 'flex-start',
   },
-  dateOptionPillSelected: {
-    backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-    borderWidth: 1.5,
-  },
-  dateOptionPillLabel: {
+  funnyWarningText: {
     fontSize: 11,
-    fontWeight: "500",
-    color: "#374151",
-  },
-  dateOptionPillLabelSelected: {
-    color: "#ffffff",
-    fontWeight: "600",
-  },
-  weekendInfoCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "#e0f2fe",
-    marginTop: 8,
-    borderWidth: 0,
-  },
-  weekendInfoIcon: {
-    marginRight: 12,
-  },
-  weekendInfoContent: {
-    flex: 1,
-  },
-  weekendInfoLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#0369a1",
-    marginBottom: 2,
-  },
-  weekendInfoDescription: {
-    fontSize: 12,
-    color: "#0c4a6e",
-    opacity: 0.9,
-  },
-  dateInputField: {
-    width: "100%",
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: "#eb7825",
-    backgroundColor: "#ffffff",
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 8,
-  },
-  dateInputText: {
-    fontSize: 14,
-    color: "#111827",
-    marginLeft: 8,
-    flex: 1,
-  },
-  dateInputPlaceholder: {
-    fontSize: 14,
-    color: "#9ca3af",
-    marginLeft: 8,
-    flex: 1,
-  },
-  timeSlotSection: {
-    marginTop: 12,
-  },
-  timeSlotLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 8,
-  },
-  timeSlotsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  timeSlotPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#fafafa",
-  },
-  timeSlotPillSelected: {
-    backgroundColor: "#eb7825",
-    borderColor: "#eb7825",
-    borderWidth: 1.5,
-  },
-  timeSlotPillLabel: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: "#374151",
-  },
-  timeSlotPillLabelSelected: {
-    color: "#ffffff",
-    fontWeight: "600",
-  },
-  timeSlotPillTime: {
-    fontSize: 9,
-    fontWeight: "400" as const,
-    color: "#9ca3af",
-    marginTop: 1,
-  },
-  timeSlotPillTimeSelected: {
-    color: "rgba(255, 255, 255, 0.75)",
+    fontWeight: '500',
+    color: '#ea580c',
   },
   travelModesGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
+    gap: 10,
   },
   travelModeCard: {
     flexDirection: "row",
@@ -737,19 +450,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#fafafa",
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    shadowColor: 'rgba(0, 0, 0, 0.04)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 1,
   },
   travelModeCardSelected: {
     backgroundColor: "#eb7825",
     borderColor: "#eb7825",
-    borderWidth: 1.5,
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   travelModeLabel: {
     fontSize: 12,
     fontWeight: "500",
-    color: "#374151",
+    color: "#4b5563",
   },
   travelModeLabelSelected: {
     color: "#ffffff",

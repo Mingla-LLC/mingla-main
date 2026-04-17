@@ -136,8 +136,6 @@ export function useMapCards(
       const curatedBody = (type: (typeof CURATED_TYPES)[number]) => ({
         experienceType: type,
         location: { lat: location.latitude, lng: location.longitude },
-        budgetMin: 0,
-        budgetMax: 1000,
         travelMode: 'driving',
         travelConstraintType: 'time' as const,
         travelConstraintValue: 30,

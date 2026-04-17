@@ -498,56 +498,14 @@ export class ExperienceGenerationService {
 
   /**
    * Calculate budget score (0-1)
+   * ORCH-0434: Budget removed from user preferences. All experiences score neutral.
+   * Price tiers remain on places/cards for display but are no longer a user filter.
    */
   private static calculateBudgetScore(
-    experience: any,
-    preferences: UserPreferences
+    _experience: any,
+    _preferences: UserPreferences
   ): number {
-    // Parse price range from experience
-    const expPrice = this.parsePriceRange(
-      experience.priceRange || experience.price
-    );
-    const userBudget = {
-      min: preferences.budget_min || 0,
-      max: preferences.budget_max || 1000,
-    };
-
-    if (!expPrice.min && !expPrice.max) {
-      return 0.5; // Neutral if no price info
-    }
-
-    // Perfect match if experience price is entirely within user budget
-    if (expPrice.min >= userBudget.min && expPrice.max <= userBudget.max) {
-      return 1.0;
-    }
-
-    // Calculate overlap
-    const overlapStart = Math.max(userBudget.min, expPrice.min);
-    const overlapEnd = Math.min(userBudget.max, expPrice.max);
-    const overlap = Math.max(0, overlapEnd - overlapStart);
-
-    if (overlap > 0) {
-      const experienceRange = expPrice.max - expPrice.min;
-      const overlapRatio = overlap / experienceRange;
-
-      if (expPrice.min < userBudget.min) {
-        return overlapRatio * 0.7;
-      } else if (expPrice.max > userBudget.max) {
-        return overlapRatio * 0.8;
-      }
-      return overlapRatio;
-    }
-
-    // No overlap: check proximity
-    if (expPrice.max < userBudget.min) {
-      const gap = userBudget.min - expPrice.max;
-      const budgetRange = userBudget.max - userBudget.min;
-      return Math.max(0, 0.3 - (gap / budgetRange) * 0.3);
-    } else {
-      const gap = expPrice.min - userBudget.max;
-      const budgetRange = userBudget.max - userBudget.min;
-      return Math.max(0, 0.2 - (gap / budgetRange) * 0.2);
-    }
+    return 0.5; // Neutral — budget filtering removed in ORCH-0434
   }
 
   /**

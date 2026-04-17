@@ -66,7 +66,6 @@ import {
   OnboardingStep,
   SubStep,
   ONBOARDING_INTENTS,
-  DEFAULT_PRICE_TIERS,
   TRAVEL_TIME_PRESETS,
   DEFAULT_TRAVEL_TIME,
   TRANSPORT_MODES,
@@ -75,7 +74,6 @@ import {
   GENDER_OPTIONS,
   GENDER_DISPLAY_LABELS,
 } from '../types/onboarding'
-import { PRICE_TIERS, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers'
 import { categories } from '../constants/categories'
 import { getCountryByCode } from '../constants/countries'
 import { getDefaultLanguageCode, getLanguageByCode } from '../constants/languages'
@@ -1568,12 +1566,7 @@ const OnboardingFlow = ({
   // ─── Save Preferences (Step 4 → 5 transition) ───
   const handleSavePreferences = useCallback(async () => {
     if (!user?.id) return
-    const highestTier = data.selectedPriceTiers.length > 0
-      ? PRICE_TIERS.slice().reverse().find(t => data.selectedPriceTiers.includes(t.slug))
-      : undefined
-    const backCompatBudgetMax = highestTier?.max ?? 1000
-
-    logger.action('Save preferences pressed', { categories: data.selectedCategories.length, priceTiers: data.selectedPriceTiers, transport: data.travelMode })
+    logger.action('Save preferences pressed', { categories: data.selectedCategories.length, transport: data.travelMode })
     setSavingPrefs(true)
     setPrefsSaveError(false)
     try {
@@ -1581,57 +1574,23 @@ const OnboardingFlow = ({
         PreferencesService.updateUserPreferences(user.id, {
           intents: data.selectedIntents,
           categories: data.selectedCategories,
-          price_tiers: data.selectedPriceTiers,
-          budget_min: 0,
-          budget_max: backCompatBudgetMax,
           travel_mode: data.travelMode,
           travel_constraint_type: 'time',
           travel_constraint_value: data.travelTimeMinutes,
           datetime_pref: new Date().toISOString(),
-          date_option: 'now',
+          date_option: 'this_weekend',
+          selected_dates: data.selectedDates?.length > 0 ? data.selectedDates : null,
           use_gps_location: data.useGpsLocation,
           custom_location: data.manualLocation,
+          intent_toggle: true,
+          category_toggle: true,
         } as any),
         8000,
         'saveOnboardingPreferences'
       )
 
-      // Backfill any collaboration preferences rows that were created with empty defaults
-      // (from invites accepted before onboarding completed)
-      try {
-        const { data: soloPrefs } = await supabase
-          .from("preferences")
-          .select("categories, intents, price_tiers, budget_min, budget_max, travel_mode, travel_constraint_value, date_option, time_slot, exact_time, datetime_pref, use_gps_location, custom_location, custom_lat, custom_lng")
-          .eq("profile_id", user.id)
-          .single()
-
-        if (soloPrefs && soloPrefs.categories?.length > 0) {
-          await supabase
-            .from("board_session_preferences")
-            .update({
-              categories: soloPrefs.categories,
-              intents: soloPrefs.intents ?? [],
-              price_tiers: soloPrefs.price_tiers ?? [],
-              budget_min: soloPrefs.budget_min ?? 0,
-              budget_max: soloPrefs.budget_max ?? 1000,
-              travel_mode: soloPrefs.travel_mode ?? "walking",
-              travel_constraint_value: soloPrefs.travel_constraint_value ?? 30,
-              date_option: soloPrefs.date_option ?? null,
-              time_slot: soloPrefs.time_slot ?? null,
-              exact_time: soloPrefs.exact_time ?? null,
-              datetime_pref: soloPrefs.datetime_pref ?? null,
-              use_gps_location: soloPrefs.use_gps_location ?? true,
-              custom_location: soloPrefs.custom_location ?? null,
-              custom_lat: soloPrefs.custom_lat ?? null,
-              custom_lng: soloPrefs.custom_lng ?? null,
-            })
-            .eq("user_id", user.id)
-            .filter("categories", "eq", "{}")
-        }
-      } catch (backfillErr) {
-        // Non-critical — log and continue
-        console.warn('[Onboarding] Collab prefs backfill failed:', backfillErr)
-      }
+      // ORCH-0443: Collab prefs backfill removed. Seeding happens at acceptance time
+      // via seedCollabPrefsFromSolo. Deck generator has solo fallback as defense-in-depth.
 
       persistStep(5).catch(() => {})
 
@@ -1642,19 +1601,18 @@ const OnboardingFlow = ({
       queryClient.setQueryData(['userPreferences', user.id], {
         categories: data.selectedCategories,
         intents: data.selectedIntents,
-        price_tiers: data.selectedPriceTiers ?? DEFAULT_PRICE_TIERS,
-        budget_min: 0,
-        budget_max: backCompatBudgetMax,
         travel_mode: data.travelMode,
         travel_constraint_type: 'time',
         travel_constraint_value: data.travelTimeMinutes,
         datetime_pref: datetimePref,
-        date_option: 'now',
-        time_slot: null,
+        date_option: 'this_weekend',
         use_gps_location: data.useGpsLocation,
         custom_location: data.manualLocation,
         custom_lat: data.coordinates?.lat ?? null,
         custom_lng: data.coordinates?.lng ?? null,
+        intent_toggle: true,
+        category_toggle: true,
+        selected_dates: data.selectedDates?.length > 0 ? data.selectedDates : null,
       })
 
       // ── Real deck prefetch (replaces dead warmDeckPool no-op) ──────────
@@ -1669,7 +1627,6 @@ const OnboardingFlow = ({
         // Apply identical normalization as RecommendationsContext stableDeckParams
         const normalizedCategories = normalizeCategoryArray(data.selectedCategories)
         const normalizedIntents = data.selectedIntents ?? []
-        const priceTiers = data.selectedPriceTiers ?? DEFAULT_PRICE_TIERS
 
         // Build the exact query key useDeckCards will look for post-transition
         const deckQueryKey = buildDeckQueryKey({
@@ -1677,15 +1634,11 @@ const OnboardingFlow = ({
           lng: coords.lng,
           categories: normalizedCategories,
           intents: normalizedIntents,
-          priceTiers,
-          budgetMin: 0,
-          budgetMax: backCompatBudgetMax,
           travelMode: data.travelMode,
           travelConstraintType: 'time',
           travelConstraintValue: data.travelTimeMinutes,
           datetimePref,
-          dateOption: 'now',
-          timeSlots: [],
+          dateOption: 'this_weekend',
           batchSeed: 0,
           excludeCardIds: [],
         })
@@ -1694,15 +1647,11 @@ const OnboardingFlow = ({
           location: coords,
           categories: normalizedCategories,
           intents: normalizedIntents,
-          priceTiers: priceTiers as import('../constants/priceTiers').PriceTierSlug[],
-          budgetMin: 0,
-          budgetMax: backCompatBudgetMax,
           travelMode: data.travelMode,
           travelConstraintType: 'time' as const,
           travelConstraintValue: data.travelTimeMinutes,
           datetimePref,
-          dateOption: 'now',
-          timeSlots: [],
+          dateOption: 'this_weekend',
           batchSeed: 0,
           limit: 200,
           excludeCardIds: [],
@@ -1973,14 +1922,8 @@ const OnboardingFlow = ({
         return { label: t('onboarding:location.cta_enable'), disabled: locationStatus === 'requesting', loading: locationStatus === 'requesting', onPress: handleLocationRequest, hide: true }
       case 'celebration':
         return { label: t('common:next'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
-      case 'manual_location':
-        return { label: t('common:next'), disabled: !selectedLocation, loading: savingPrefs, onPress: handleManualLocation, hide: false }
       case 'categories':
         return { label: t('common:next'), disabled: data.selectedCategories.length === 0, loading: false, onPress: () => {
-          handleGoNext()
-        }, hide: false }
-      case 'budget':
-        return { label: t('common:next'), disabled: data.selectedPriceTiers.length === 0, loading: false, onPress: () => {
           handleGoNext()
         }, hide: false }
       case 'transport':
@@ -2393,28 +2336,31 @@ const OnboardingFlow = ({
         { icon: 'people-outline' as const, headline: t('onboarding:value_prop.beat2_headline'), sub: t('onboarding:value_prop.beat2_sub') },
         { icon: 'flash-outline' as const, headline: t('onboarding:value_prop.beat3_headline'), sub: t('onboarding:value_prop.beat3_sub') },
       ]
-      const beat = beats[valuePropBeat]
-      const isLightning = valuePropBeat === 2
       return (
         <View style={styles.valuePropCenter}>
-          <Animated.View style={[
-            styles.vpIconWrap,
-            {
-              opacity: vpIconOpacity,
-              transform: [
-                { scale: Animated.multiply(vpIconScale, vpGlowScale) },
-              ],
-            },
-          ]}>
-            <Icon name={beat.icon} size={64} color={colors.primary[500]} />
-            {isLightning && (
-              <Animated.View style={[styles.vpFlashOverlay, { opacity: vpFlashOpacity }]}>
-                <Icon name="flash" size={64} color="#FFFFFF" />
-              </Animated.View>
-            )}
-          </Animated.View>
-          <Text style={[styles.headline, styles.textCenter]}>{beat.headline}</Text>
-          <Text style={[styles.body, styles.textCenter]}>{beat.sub}</Text>
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            style={{ width: SCREEN_WIDTH - 48 }}
+            contentContainerStyle={{ alignItems: 'center' }}
+            onMomentumScrollEnd={(e) => {
+              const idx = Math.round(e.nativeEvent.contentOffset.x / (SCREEN_WIDTH - 48))
+              if (idx >= 0 && idx < beats.length) {
+                setValuePropBeat(idx)
+              }
+            }}
+          >
+            {beats.map((beat, i) => (
+              <View key={i} style={{ width: SCREEN_WIDTH - 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 }}>
+                <View style={styles.vpIconWrap}>
+                  <Icon name={beat.icon} size={64} color={colors.primary[500]} />
+                </View>
+                <Text style={[styles.headline, styles.textCenter]}>{beat.headline}</Text>
+                <Text style={[styles.body, styles.textCenter]}>{beat.sub}</Text>
+              </View>
+            ))}
+          </ScrollView>
           <View style={styles.dotIndicator}>
             {beats.map((_, i) => (
               <View key={i} style={[styles.dot, i === valuePropBeat && styles.dotActive]} />
@@ -2538,18 +2484,8 @@ const OnboardingFlow = ({
                 <Text style={styles.locRetryText}>{isRequesting ? t('onboarding:location.retry_finding') : t('onboarding:location.retry_turned_on')}</Text>
               </Pressable>
             </Animated.View>
-            <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.sm }]}>
-              <Pressable
-                style={styles.locRetryButton}
-                onPress={() => {
-                  logger.action('Skip GPS from settings — entering city manually')
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                  goNextRef.current()
-                }}
-              >
-                <Icon name="create-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
-                <Text style={styles.locRetryText}>{t('onboarding:location.type_city')}</Text>
-              </Pressable>
+            <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
+              <Text style={styles.locDeniedHelper}>We need your location to find great spots near you</Text>
             </Animated.View>
           </View>
         )
@@ -2588,17 +2524,7 @@ const OnboardingFlow = ({
               </Pressable>
             </Animated.View>
             <Animated.View style={[{ opacity: locButtonAnim.opacity, marginTop: spacing.md }]}>
-              <Pressable
-                style={styles.locRetryButton}
-                onPress={() => {
-                  logger.action('Skip GPS — entering city manually')
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                  goNextRef.current()
-                }}
-              >
-                <Icon name="create-outline" size={18} color={colors.primary[500]} style={styles.locButtonIcon} />
-                <Text style={styles.locRetryText}>{t('onboarding:location.type_city')}</Text>
-              </Pressable>
+              <Text style={styles.locDeniedHelper}>We need your location to find great spots near you</Text>
             </Animated.View>
           </View>
         )
@@ -2654,120 +2580,6 @@ const OnboardingFlow = ({
       )
     }
 
-    if (subStep === 'manual_location') {
-      return (
-        <View>
-          <Text style={styles.headline}>{t('onboarding:manual_location.headline')}</Text>
-          <Text style={styles.body}>
-            {t('onboarding:manual_location.body')}
-          </Text>
-          <View style={styles.inputSpacing}>
-            {selectedLocation ? (
-              // ─── Confirmed Selection State (brand orange) ───
-              <Pressable
-                style={styles.locationSelectedCard}
-                onPress={handleClearLocationSelection}
-                accessibilityLabel={t('onboarding:manual_location.change_accessibility')}
-                accessibilityHint="Tap to search for a different location"
-              >
-                <View style={styles.locationSelectedContent}>
-                  <View style={styles.locationSelectedIconWrap}>
-                    <Icon name="location" size={20} color={colors.primary[500]} />
-                  </View>
-                  <View style={styles.locationSelectedTextWrap}>
-                    <Text style={styles.locationSelectedName} numberOfLines={1}>
-                      {selectedLocation.displayName}
-                    </Text>
-                    {selectedLocation.fullAddress !== selectedLocation.displayName && (
-                      <Text style={styles.locationSelectedAddress} numberOfLines={1}>
-                        {selectedLocation.fullAddress}
-                      </Text>
-                    )}
-                  </View>
-                  <Icon name="checkmark-circle" size={22} color={colors.primary[500]} />
-                </View>
-              </Pressable>
-            ) : (
-              // ─── Search Input + Dropdown ───
-              <View style={styles.locationSearchContainer}>
-                <View style={styles.locationSearchInputWrap}>
-                  <Icon
-                    name="search-outline"
-                    size={20}
-                    color={colors.text.tertiary}
-                  />
-                  <TextInput
-                    style={styles.locationSearchInput}
-                    value={manualLocationText}
-                    onChangeText={(text) => {
-                      setManualLocationText(text)
-                      if (selectedLocation) setSelectedLocation(null)
-                    }}
-                    placeholder={t('onboarding:manual_location.search_placeholder')}
-                    placeholderTextColor={colors.gray[400]}
-                    autoCapitalize="words"
-                    autoCorrect={false}
-                    returnKeyType="search"
-                  />
-                  {locationSearchLoading && (
-                    <ActivityIndicator size="small" color={colors.primary[500]} style={styles.locationSearchSpinner} />
-                  )}
-                </View>
-
-                {showLocationSuggestions && locationSuggestions.length > 0 && (
-                  <View style={styles.locationDropdown}>
-                    <ScrollView
-                      style={styles.locationDropdownScroll}
-                      keyboardShouldPersistTaps="handled"
-                      nestedScrollEnabled
-                    >
-                      {locationSuggestions.map((suggestion, index) => (
-                        <Pressable
-                          key={suggestion.placeId || `loc-${index}`}
-                          style={({ pressed }) => [
-                            styles.locationSuggestionRow,
-                            pressed && styles.locationSuggestionRowPressed,
-                          ]}
-                          onPress={() => handleSelectLocationSuggestion(suggestion)}
-                        >
-                          <View style={styles.locationSuggestionIconWrap}>
-                            <Icon name="location-outline" size={20} color={colors.gray[400]} />
-                          </View>
-                          <View style={styles.locationSuggestionTextWrap}>
-                            <Text style={styles.locationSuggestionName} numberOfLines={1}>
-                              {suggestion.displayName}
-                            </Text>
-                            {suggestion.fullAddress !== suggestion.displayName && (
-                              <Text style={styles.locationSuggestionAddress} numberOfLines={1}>
-                                {suggestion.fullAddress}
-                              </Text>
-                            )}
-                          </View>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-
-                {manualLocationText.trim().length >= 3 && !locationSearchLoading && locationHasSearched && locationSuggestions.length === 0 && (
-                  <View style={styles.locationNoResults}>
-                    <Icon name="search" size={16} color={colors.gray[400]} />
-                    <Text style={styles.locationNoResultsText}>{t('onboarding:manual_location.no_results')}</Text>
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-          <Text style={styles.locationHelperText}>
-            {t('onboarding:manual_location.helper')}
-          </Text>
-          <View style={styles.locPrivacyRow}>
-            <Icon name="shield-checkmark-outline" size={14} color={colors.text.tertiary} />
-            <Text style={styles.locPrivacyText}>{t('onboarding:manual_location.privacy')}</Text>
-          </View>
-        </View>
-      )
-    }
 
     if (subStep === 'categories') {
       return (
@@ -2780,7 +2592,16 @@ const OnboardingFlow = ({
                 key={cat.slug}
                 slug={cat.slug}
                 name={t(`common:category_${cat.slug}`)}
-                icon={cat.ux.activeColor ? getCategoryIcon(cat.slug) : 'ellipse-outline'}
+                icon={({
+                  nature: 'trees',
+                  icebreakers: 'cafe-outline',
+                  drinks_and_music: 'wine-outline',
+                  brunch_lunch_casual: 'restaurant-outline',
+                  upscale_fine_dining: 'chef-hat',
+                  movies_theatre: 'film-new',
+                  creative_arts: 'color-palette-outline',
+                  play: 'game-controller-outline',
+                } as Record<string, string>)[cat.slug] || 'compass-outline'}
                 activeColor={cat.ux.activeColor}
                 selected={data.selectedCategories.includes(cat.slug)}
                 onPress={() => {
@@ -2797,70 +2618,6 @@ const OnboardingFlow = ({
               />
             ))}
           </View>
-        </View>
-      )
-    }
-
-    if (subStep === 'budget') {
-      return (
-        <View style={styles.budgetContainer}>
-          <Text style={styles.headlineCentered}>{t('onboarding:budget.headline')}</Text>
-          <Text style={styles.bodyCentered}>{t('onboarding:budget.body')}</Text>
-          <View style={styles.budgetGrid}>
-            {PRICE_TIERS.map((tier) => {
-              const isActive = data.selectedPriceTiers.includes(tier.slug)
-              return (
-                <Pressable
-                  key={tier.slug}
-                  style={[
-                    styles.budgetTile,
-                    isActive && { backgroundColor: tier.color, borderColor: tier.color },
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-                    setData((p) => {
-                      const current = p.selectedPriceTiers
-                      // Mutual exclusion: "Any" vs specific tiers
-                      if (tier.slug === 'any') {
-                        // Selecting "Any" → replace all with ['any']
-                        return current.includes('any')
-                          ? p  // already selected, no-op (min 1)
-                          : { ...p, selectedPriceTiers: ['any'] }
-                      }
-                      // Selecting a specific tier → remove 'any' if present
-                      const withoutAny = current.filter((s) => s !== 'any')
-                      const next = withoutAny.includes(tier.slug)
-                        ? withoutAny.filter((s) => s !== tier.slug)
-                        : [...withoutAny, tier.slug]
-                      if (next.length === 0) return p
-                      return { ...p, selectedPriceTiers: next }
-                    })
-                  }}
-                >
-                  <Icon
-                    name={tier.icon}
-                    size={22}
-                    color={isActive ? colors.text.inverse : colors.text.tertiary}
-                    style={styles.tierIcon}
-                  />
-                  <Text style={[
-                    styles.budgetTileLabel,
-                    isActive && styles.budgetTileLabelActive,
-                  ]}>
-                    {t(`common:tier_${tier.slug}`)}
-                  </Text>
-                  <Text style={[
-                    styles.budgetTileRange,
-                    isActive && styles.budgetTileRangeActive,
-                  ]}>
-                    {t(`common:tier_range_${tier.slug}`)}
-                  </Text>
-                </Pressable>
-              )
-            })}
-          </View>
-
-          <Text style={styles.captionCentered}>{t('onboarding:budget.caption')}</Text>
         </View>
       )
     }
@@ -3062,7 +2819,6 @@ const OnboardingFlow = ({
           initialSessions={data.createdSessions}
           userPreferences={{
             categories: data.selectedCategories,
-            priceTiers: data.selectedPriceTiers,
             intents: data.selectedIntents,
             travelMode: data.travelMode,
             travelTimeMinutes: data.travelTimeMinutes,
@@ -3119,7 +2875,7 @@ const OnboardingFlow = ({
       hidePrimaryCta={ctaConfig.hide}
       hideBottomBar={navState.subStep === 'getting_experiences'}
       disableKeyboardAvoidance={navState.subStep === 'collaborations' || navState.subStep === 'welcome'}
-      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'budget' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations' && navState.subStep !== 'categories'}
+      scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations' && navState.subStep !== 'categories'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
       {renderContent()}
@@ -3325,50 +3081,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     textAlign: 'center',
   },
-  budgetContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  budgetGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-    justifyContent: 'center',
-    width: '100%',
-  },
-  budgetTile: {
-    width: (SCREEN_WIDTH - 48 - 8) / 2,
-    height: 84,
-    borderRadius: radius.md,
-    borderWidth: 1.5,
-    borderColor: colors.gray[200],
-    backgroundColor: colors.background.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
-  },
-  budgetTileLabel: {
-    ...typography.sm,
-    fontWeight: fontWeights.semibold,
-    color: colors.text.primary,
-    marginTop: 2,
-  },
-  budgetTileLabelActive: {
-    color: colors.text.inverse,
-  },
-  budgetTileRange: {
-    ...typography.xs,
-    color: colors.text.tertiary,
-    marginTop: 2,
-  },
-  budgetTileRangeActive: {
-    color: colors.text.inverse,
-  },
-  tierIcon: {
-    marginBottom: 2,
-  },
   errorText: {
     ...typography.sm,
     color: colors.error[500],
@@ -3508,16 +3220,19 @@ const styles = StyleSheet.create({
   },
   // ─── Category Grid (2 columns, full width — CategoryTile width matches this gap math) ───
   categoryStepRoot: {
+    flex: 1,
     width: '100%',
-    alignSelf: 'stretch',
   },
   categoryGrid: {
+    flex: 1,
     width: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 6,
-    marginTop: spacing.md,
+    alignContent: 'stretch',
+    gap: 10,
+    marginTop: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   // ─── Selection Tiles (Budget, Transport, Travel) ───
   tileGrid: {
@@ -3879,6 +3594,13 @@ const styles = StyleSheet.create({
     fontWeight: fontWeights.semibold,
     color: colors.primary[500],
     letterSpacing: 0.2,
+  },
+  locDeniedHelper: {
+    ...typography.sm,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xl,
+    lineHeight: 20,
   },
   locPrivacyRow: {
     flexDirection: 'row',

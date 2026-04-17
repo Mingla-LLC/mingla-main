@@ -137,14 +137,10 @@ export function computePrefsHash(prefs: any): string {
   const key = [
     Array.isArray(prefs.intents) ? [...prefs.intents].sort().join(',') : '',
     Array.isArray(prefs.categories) ? [...prefs.categories].sort().join(',') : '',
-    Array.isArray(prefs.price_tiers) ? [...prefs.price_tiers].sort().join(',') : '',
-    prefs.budget_min ?? '',
-    prefs.budget_max ?? '',
     prefs.travel_mode ?? '',
     prefs.travel_constraint_type ?? '',
     prefs.travel_constraint_value ?? '',
     prefs.date_option ?? '',
-    prefs.time_slot ?? '',
     // Normalize to ISO string so "Z" vs "+00:00" don't produce different hashes
     prefs.datetime_pref ? normalizeDateTime(prefs.datetime_pref) : '',
     prefs.custom_location ?? '',

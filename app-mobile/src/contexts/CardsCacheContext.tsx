@@ -145,15 +145,12 @@ export const CardsCacheProvider: React.FC<{ children: React.ReactNode }> = ({
       const prefsHash = preferences
         ? JSON.stringify({
             categories: preferences.categories || [],
-            budget_min: preferences.budget_min,
-            budget_max: preferences.budget_max,
             people_count: preferences.people_count,
             travel_constraint_type: preferences.travel_constraint_type,
             travel_constraint_value: preferences.travel_constraint_value,
             vibe: preferences.vibe,
             intent: preferences.intent,
             date_option: preferences.date_option,
-            time_slot: preferences.time_slot,
           })
         : "no-prefs";
 

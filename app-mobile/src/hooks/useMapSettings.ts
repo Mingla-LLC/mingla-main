@@ -13,6 +13,9 @@ export interface MapSettings {
   time_delay_enabled: boolean;
   go_dark_until: string | null;
   activity_status_expires_at: string | null;
+  // ORCH-0437: Leaderboard settings (persisted source of truth)
+  is_discoverable: boolean;
+  available_seats: number;
 }
 
 export function useMapSettings() {
@@ -24,7 +27,7 @@ export function useMapSettings() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('user_map_settings')
-        .select('visibility_level, show_saved_places, show_scheduled_places, activity_status, discovery_radius_km, time_delay_enabled, go_dark_until, activity_status_expires_at')
+        .select('visibility_level, show_saved_places, show_scheduled_places, activity_status, discovery_radius_km, time_delay_enabled, go_dark_until, activity_status_expires_at, is_discoverable, available_seats')
         .eq('user_id', user!.id)
         .maybeSingle();
       if (error) throw error;
@@ -37,6 +40,8 @@ export function useMapSettings() {
         time_delay_enabled: false,
         go_dark_until: null,
         activity_status_expires_at: null,
+        is_discoverable: false,
+        available_seats: 1,
       };
     },
     enabled: !!user?.id,
@@ -63,6 +68,8 @@ export function useMapSettings() {
           time_delay_enabled: false,
           go_dark_until: null,
           activity_status_expires_at: null,
+          is_discoverable: false,
+          available_seats: 1,
         };
         return { ...(old || defaults), ...updates };
       });

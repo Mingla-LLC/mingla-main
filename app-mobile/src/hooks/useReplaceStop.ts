@@ -6,7 +6,6 @@ interface GetAlternativesParams {
   categoryId: string;
   location: { lat: number; lng: number };
   travelMode: string;
-  budgetMax: number;
   excludePlaceIds: string[];
   siblingStops: Array<{ lat: number; lng: number }>;
   limit?: number;

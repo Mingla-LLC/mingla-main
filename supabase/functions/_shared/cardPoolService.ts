@@ -25,15 +25,14 @@ export interface PoolQueryParams {
   lat: number;
   lng: number;
   radiusMeters: number;
-  categories: string[];            // Mingla categories (e.g., "Nature", "Casual Eats")
-  budgetMin: number;
-  budgetMax: number;
+  categories: string[];            // Mingla categories (e.g., "Nature & Views", "Icebreakers")
   limit: number;                   // how many cards to return (e.g., 20)
   cardType?: 'single' | 'curated';
   experienceType?: string;         // for curated: 'adventurous', 'romantic', etc.
   excludeCardIds?: string[];       // additional UUID exclusions (card_pool.id)
   excludePlaceIds?: string[];      // Place ID exclusions (card_pool.google_place_id)
-  priceTiers?: PriceTierSlug[];    // price tier filter (e.g., ['chill', 'comfy'])
+  // ORCH-0434: priceTiers removed — price filtering no longer part of user preferences.
+  // Price tiers stay on places/cards for display, but are not used for filtering.
   // ORCH-0404: Haversine distance filter applied INSIDE the SQL query so the RPC
   // never returns cards that the JS post-filter would strip. Optional for backward compat.
   maxDistanceKm?: number;          // max haversine distance from (lat, lng) in km
@@ -133,7 +132,7 @@ async function queryPoolCards(
 ): Promise<{ poolCards: any[]; totalUnseenCount: number }> {
   const {
     supabaseAdmin, userId, lat, lng, radiusMeters,
-    categories, budgetMin, budgetMax, limit,
+    categories, limit,
     cardType = 'single', experienceType, excludeCardIds,
   } = params;
 
@@ -157,11 +156,9 @@ async function queryPoolCards(
     p_lat_max: lat + latDelta,
     p_lng_min: lng - lngDelta,
     p_lng_max: lng + lngDelta,
-    p_budget_max: budgetMax,
     p_card_type: cardType,
     p_experience_type: experienceType || null,
     p_exclude_card_ids: excludeCardIds || [],
-    p_price_tiers: params.priceTiers && params.priceTiers.length > 0 ? params.priceTiers : [],
     p_exclude_place_ids: params.excludePlaceIds || [],
     p_limit: limit,
     p_center_lat: params.maxDistanceKm != null ? lat : null,
@@ -535,7 +532,7 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
 
 const TRAVEL_CONFIG: Record<string, { speed: number; factor: number }> = {
   walking:        { speed: 4.5, factor: 1.3 },
-  driving:        { speed: 35,  factor: 1.4 },
+  driving:        { speed: 100, factor: 1.3 },
   transit:        { speed: 20,  factor: 1.3 },
   public_transit: { speed: 20,  factor: 1.3 },
   biking:         { speed: 14,  factor: 1.3 },
@@ -809,7 +806,7 @@ export async function serveCardsFromPipeline(
 ): Promise<PoolQueryResult> {
   const {
     supabaseAdmin, userId, lat, lng, radiusMeters,
-    categories, budgetMin, budgetMax, limit,
+    categories, limit,
     cardType = 'single', experienceType,
   } = params;
 

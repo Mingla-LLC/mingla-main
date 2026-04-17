@@ -9,13 +9,12 @@ import {
   OnboardingData,
   OnboardingStep,
   SubStep,
-  DEFAULT_PRICE_TIERS,
   DEFAULT_TRAVEL_TIME,
   DEFAULT_TRANSPORT,
   DEFAULT_CATEGORIES,
 } from '../types/onboarding'
 import { normalizeCategoryArray } from '../utils/categoryUtils'
-import { PriceTierSlug } from '../constants/priceTiers'
+
 
 // Shape of the profile fields this hook reads.
 // Defined here to avoid importing the full Profile type (prevents circular deps).
@@ -57,7 +56,8 @@ const BASE_INITIAL_DATA: OnboardingData = {
   useGpsLocation: false,
   manualLocation: null,
   selectedCategories: [...DEFAULT_CATEGORIES],
-  selectedPriceTiers: DEFAULT_PRICE_TIERS,
+  dateOption: 'this_weekend',
+  selectedDates: [],
   travelMode: DEFAULT_TRANSPORT,
   travelTimeMinutes: DEFAULT_TRAVEL_TIME,
   addedFriends: [],
@@ -151,10 +151,15 @@ export function useOnboardingResume(userId: string, profile: ResumeProfile): Onb
           const restoredUseGps = prefs.use_gps_location === true
 
           base.selectedCategories = prefs.categories?.length ? normalizeCategoryArray(prefs.categories) : DEFAULT_CATEGORIES
-          base.selectedPriceTiers = prefs.price_tiers?.length ? prefs.price_tiers as PriceTierSlug[] : DEFAULT_PRICE_TIERS
           base.travelMode = (prefs.travel_mode as typeof DEFAULT_TRANSPORT) || DEFAULT_TRANSPORT
           base.travelTimeMinutes = prefs.travel_constraint_value ?? DEFAULT_TRAVEL_TIME
           base.selectedIntents = prefs.intents ?? []
+          if (prefs.date_option) {
+            base.dateOption = prefs.date_option
+          }
+          if (Array.isArray((prefs as any).selected_dates)) {
+            base.selectedDates = (prefs as any).selected_dates
+          }
           base.locationGranted = restoredUseGps
           base.useGpsLocation = restoredUseGps
           base.manualLocation = prefs.custom_location ?? null

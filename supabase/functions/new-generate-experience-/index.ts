@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { batchSearchByCategory } from '../_shared/placesCache.ts';
 import { serveCardsFromPipeline, upsertPlaceToPool, insertCardToPool } from '../_shared/cardPoolService.ts';
-import { resolveCategories, getExcludedTypesForCategory, getCategoryTypeMap, GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForIntent } from '../_shared/categoryPlaceTypes.ts';
+import { resolveCategories, getExcludedTypesForCategory, getCategoryTypeMap, GLOBAL_EXCLUDED_PLACE_TYPES } from '../_shared/categoryPlaceTypes.ts';
 import { googleLevelToTierSlug, priceLevelToRange } from '../_shared/priceTiers.ts';
 
 const corsHeaders = {
@@ -62,11 +62,8 @@ serve(async (req) => {
 
     const { preferences, location } = request;
 
-    // Determine intent-specific exclusion rules (grocery types excluded from all intents)
-    const activeIntent = (preferences?.categories ?? []).find(
-      (t: string) => ['adventurous', 'first-date', 'romantic', 'friendly', 'group-fun', 'take-a-stroll'].includes(t.toLowerCase())
-    );
-    const excludedTypes = getExcludedTypesForIntent(activeIntent);
+    // ORCH-0434: Per-intent exclusions removed. Use global exclusions only.
+    const excludedTypes = GLOBAL_EXCLUDED_PLACE_TYPES;
 
     if (!preferences) {
       console.error("Preferences are required");
@@ -115,8 +112,6 @@ serve(async (req) => {
           lng: location.lng,
           radiusMeters,
           categories: resolveCategories(preferences.categories || []),
-          budgetMin: preferences.budget_min || 0,
-          budgetMax: preferences.budget_max || 1000,
           limit: 20,
           cardType: 'single',
         }, GOOGLE_API_KEY!);
@@ -673,13 +668,7 @@ function filterByConstraints(
       return true;
     }
 
-    // Apply budget filter for non-stroll cards
-    if (
-      place.price_min > preferences.budget_max ||
-      place.price_max < preferences.budget_min
-    ) {
-      return false;
-    }
+    // ORCH-0434: Budget filter removed — all price tiers are now included.
 
     return true;
   });

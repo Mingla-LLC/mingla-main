@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-14
+> Last updated: 2026-04-16
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 
@@ -13,7 +13,7 @@
 | Auth & Session | Mobile + Backend | useAuthSimple.ts, session management | Mixed (2A, 4B, 1C) | 7 | Partial |
 | Onboarding | Mobile | OnboardingFlow.tsx, useOnboardingStateMachine.ts | Mixed (3A, 9F) | 12 | Weak |
 | Discovery / Explore | Mobile + Backend | SwipeableCards.tsx, deckService.ts, RecommendationsContext.tsx | Strong (38A, 5B, 0C, 12F) | 55 | Strong |
-| Collaboration Sessions | Mobile + Backend | SessionViewModal, CollaborationSessions.tsx | Mixed (3A, 4F) | 7 | Weak |
+| Collaboration Sessions | Mobile + Backend | SessionViewModal, CollaborationSessions.tsx, BoardSettingsDropdown.tsx | Mixed (7A, 4F) | 11 | Partial |
 | Social / Friends | Mobile + Backend | friendsService.ts, ConnectionsPage.tsx | Mixed (1A, 1B, 5F) | 7 | Weak |
 | Notifications | Mobile + Backend | notify-dispatch, NotificationsModal.tsx | Mixed (7A, 2B, 3F) | 12 | Partial |
 | Saved / Boards | Mobile | LikesPage.tsx, boardService.ts | All F | 5 | Unaudited |
@@ -201,7 +201,14 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 | ORCH-0320 | Legacy time_of_day / time_slot — collab load reads time_slot||time_of_day | Collaboration | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — Prefers time_slot, falls back to time_of_day. Both written on save. 14/14 PASS. |
 | ORCH-0321 | PreferencesSheet collab load restores date_option with kebab + legacy compat | Collaboration | S1 | bug | closed | A | 2026-04-06 | QA_ORCH-0066_COLLAB_PREF_PARITY_REPORT.md — KEBAB_TO_DATE_OPTION map handles both formats. 14/14 PASS. |
 | ORCH-0322 | RLS policy gap — board_session_preferences has no INSERT policy for non-creator participants | Collaboration | S1 | security | open | F | — | INVESTIGATION_COLLAB_PREF_PARITY_REPORT.md Finding 8 — Original migration only has SELECT + UPDATE (creator only). Needs separate investigation. |
+| ORCH-0443 | Collab session blank deck — isBoardSession gate permanently false + 7 competing seeders + race condition | Collaboration | S0 | architecture-flaw | implemented | B | 2026-04-16 | ACTUAL root cause: `isBoardSession` checked `session_type==='board'` but sessions created with `'group_hangout'` — deck query NEVER fired. Fix: `e751c8f3` (gate fix) + `ec9bbbf4` (seeding consolidation) + `9d7a73a2` (exhaustion flag race) + backfill migration + edge function deployed. Needs device verification. |
+| ORCH-0439 | Board settings UX — consolidate floating dropdown + manage modal + edit modal into single bottom sheet | Collaboration | S2 | design-debt | closed | A | 2026-04-16 | QA CONDITIONAL PASS (P2 resolved). Commits 468c33bb + b5e49763. BoardSettingsDropdown.tsx: bottom sheet with inline-editable name, members list, leave/delete buttons. ManageBoardModal.tsx deleted. Double-confirm P2 fixed. |
+| ORCH-0440 | Session deletion not broadcast to other users — no realtime DELETE listener, no notification, stale UI | Collaboration | S1 | bug | closed | A | 2026-04-16 | QA CONDITIONAL PASS. Commit 468c33bb. realtimeService DELETE listener, SessionViewModal auto-close + toast, notifySessionDeleted(), REPLICA IDENTITY FULL migration applied. |
+| ORCH-0441 | Stale session pills after deletion — invited user still sees greyed-out pill for deleted session | Collaboration | S1 | bug | closed | A | 2026-04-16 | QA CONDITIONAL PASS. Commit 468c33bb. useSessionManagement Realtime subscription on invites + participants. REPLICA IDENTITY FULL on 3 tables. |
+| ORCH-0442 | Collaboration pill bar — greyed-out pills clipped at top (overflow:hidden) + scroll arrows mispositioned | Collaboration | S2 | bug | closed | A | 2026-04-16 | QA CONDITIONAL PASS. Commit 468c33bb. overflow:hidden removed, paddingVertical added, arrows repositioned after + button, 24px centered. |
 | ORCH-0323 | generate-curated-experiences standalone aggregation stale — MIN, no time_slot, legacy location parse | Collaboration | S2 | design-debt | open | F | — | INVESTIGATION_COLLAB_PREF_PARITY_REPORT.md Findings 9+10 — Not used in deck flow but will break if called with session_id. |
+| ORCH-0437 | Per-category interleaved deck with strict category/intent alternation — both solo and collab | Discovery + Collaboration | S2 | design-debt | in-progress | F | — | User request 2026-04-15. Collab interleaving fixed (commit 2bb3a91f). Pending: testing + OTA. |
+| ORCH-0438 | Collab session lifecycle — stale error cache, missing state machine, premature deck generation | Collaboration | S1 | architecture-flaw | open | F | — | 2026-04-15. Creator opens session before invitee accepts → deck fails → error cached → invitee later sees cards but creator stuck on error. Band-aid applied (commit 881db8fe). Structural investigation dispatched. |
 
 ### Section 5: Social / Friends
 
@@ -597,6 +604,7 @@ Friend discovery → Pair requests → DM → Map presence → Activity feed
 
 | ORCH-0432 | Pre-existing: blocked types gap — meal_takeaway (149), educational_institution (46), pizza_delivery (31), sports_complex (34) still approved | Discovery | S2 | data-integrity | open | F | — | Discovered by full session audit 2026-04-15. Deterministic filter catches keywords but not all Google primary_types. Add to BLOCKED_PRIMARY_TYPES or EXCLUSION_KEYWORDS. |
 | ORCH-0433 | Fine dining quality gap — INEXPENSIVE restaurants tagged fine_dining (Les Oiseaux Paris), event_venue tagged fine_dining (Marti's Bistro) | Discovery | S2 | data-integrity | open | F | — | Discovered by full session audit 2026-04-15. Add INEXPENSIVE demotion rule to deterministicFilter: if fine_dining AND INEXPENSIVE → strip fine_dining. Manual override for event_venue edge cases. |
+| ORCH-0434 | **Preferences Simplification Initiative** — Restructure categories (12→8), remove budget+time slot filters, bake time into Google hours, redesign preferences sheet order+toggles, redesign onboarding to match, migrate all users | Discovery / Onboarding / Admin | S0 | architecture-flaw | in-progress | C | 2026-04-15 | **Phase 1+2+3 PASS.** Entire backend complete: DB migrated (P1), shared libs (P2), all 15 edge functions updated (P3A+3B) — filterByDateTime rewritten, GPT prompt rewritten, 21 combos updated, budget/time removed. Phase 4 (mobile constants/types) next. |
 
 ### Cross-Cutting: UI Components & Design System
 

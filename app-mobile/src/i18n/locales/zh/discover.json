@@ -1,21 +1,14 @@
 {
-  "tabs.for_you": "为你推荐",
-  "tabs.night_out": "夜生活",
-
   "featured.badge": "精选",
-
   "nightout.on_sale": "特价",
   "nightout.sold_out": "已售罄",
   "nightout.soon": "即将开始",
   "nightout.tba": "待定",
-
   "loading.for_you": "正在为你发现体验...",
   "loading.nightlife": "正在发现附近夜生活...",
-
   "error.title": "出了点问题",
   "error.try_again": "重试",
   "error.retry": "重试",
-
   "empty.no_experiences": "未找到体验",
   "empty.adjust_preferences": "尝试调整偏好以发现新活动",
   "empty.no_events": "未找到活动",
@@ -23,7 +16,6 @@
   "empty.no_matching": "没有匹配的活动",
   "empty.no_matching_filters": "没有活动匹配所选筛选条件",
   "empty.show_all_parties": "显示所有派对",
-
   "filters.title": "筛选",
   "filters.button": "筛选",
   "filters.showing": "显示：{{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "雷鬼",
   "filters.kpop": "韩流",
   "filters.acoustic_indie": "原声 / 独立",
-
   "alerts.delete_holiday_title": "删除自定义纪念日？",
   "alerts.delete_holiday_message": "删除 \"{{name}}\"？此操作无法撤销。",
   "alerts.cancel": "取消",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "取消配对",
   "alerts.unpair_message": "取消与 {{name}} 的配对？自定义纪念日和保存的卡片将被删除。",
   "alerts.unpair": "取消配对",
-
   "errors.unable_to_load": "暂时无法加载体验，请重试。",
   "errors.session_expired": "会话已过期。下拉重试。",
   "errors.failed_recommendations": "加载推荐失败",

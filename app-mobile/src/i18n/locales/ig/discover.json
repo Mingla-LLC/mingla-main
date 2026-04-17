@@ -1,21 +1,14 @@
 {
-  "tabs.for_you": "Maka gị",
-  "tabs.night_out": "Njem abalị",
-
   "featured.badge": "A kpọpụtara",
-
   "nightout.on_sale": "Na-ere",
   "nightout.sold_out": "Eresịchara",
   "nightout.soon": "N'oge adịghị anya",
   "nightout.tba": "A ga-ekwu",
-
   "loading.for_you": "Na-achọpụta ahụmịhe maka gị...",
   "loading.nightlife": "Na-achọpụta ndụ abalị nso gị...",
-
   "error.title": "Ihe ụfọdụ agaghị nke ọma",
   "error.try_again": "Nwaa Ọzọ",
   "error.retry": "Nwaa ọzọ",
-
   "empty.no_experiences": "Ahụghị ahụmịhe ọ bụla",
   "empty.adjust_preferences": "Gbalịa ịgbanwe nhọrọ gị iji chọpụta ihe ọhụrụ",
   "empty.no_events": "Ahụghị ihe omume ọ bụla",
@@ -23,7 +16,6 @@
   "empty.no_matching": "Enweghị ihe omume dabara",
   "empty.no_matching_filters": "Enweghị ihe omume dabara na nhọrọ gị",
   "empty.show_all_parties": "Gosi Pati Niile",
-
   "filters.title": "Nhọrọ",
   "filters.button": "Nyochaa",
   "filters.showing": "Na-egosi: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "Reggae",
   "filters.kpop": "K-Pop",
   "filters.acoustic_indie": "Acoustic / Indie",
-
   "alerts.delete_holiday_title": "Hichapụ ụbọchị pụrụ iche?",
   "alerts.delete_holiday_message": "Hichapụ \"{{name}}\"? Enweghị ike ịweghachi ya.",
   "alerts.cancel": "Kagbuo",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "Kewapụ",
   "alerts.unpair_message": "Kewapụ na {{name}}? A ga-ewepụ ụbọchị pụrụ iche na kaadị echekwara maka ha.",
   "alerts.unpair": "Kewapụ",
-
   "errors.unable_to_load": "Enweghị ike ịbugo ahụmịhe ugbu a. Biko nwaa ọzọ.",
   "errors.session_expired": "Oge agwụla. Dọrọ n'ala iji nwaa ọzọ.",
   "errors.failed_recommendations": "Enweghị ike ịbugo atụmatụ",

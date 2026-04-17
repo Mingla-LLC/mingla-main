@@ -15,17 +15,12 @@ import {
   Sandwich,
   Footprints,
   Trees,
-  Handshake,
-  TreePine,
   UtensilsCrossed,
   Wine,
   ChefHat,
   Film,
-  Music,
   Palette,
   Gamepad2,
-  HeartPulse,
-  Flower2,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -41,18 +36,15 @@ export const INTENT_ICON_MAP: Record<string, LucideIcon> = {
 };
 
 // ─── Category slug → Lucide Icon ───────────────────────────────────────────
+// ORCH-0434: Updated to 8 visible categories with new slugs.
 
 export const CATEGORY_ICON_MAP: Record<string, LucideIcon> = {
   nature: Trees,
-  first_meet: Handshake,
-  picnic_park: TreePine,
-  drink: Wine,
-  casual_eats: UtensilsCrossed,
-  fine_dining: ChefHat,
-  watch: Film,
-  live_performance: Music,
+  drinks_and_music: Wine,
+  icebreakers: Sparkles,
+  brunch_lunch_casual: UtensilsCrossed,
+  upscale_fine_dining: ChefHat,
+  movies_theatre: Film,
   creative_arts: Palette,
   play: Gamepad2,
-  wellness: HeartPulse,
-  flowers: Flower2,
 };

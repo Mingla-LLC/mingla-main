@@ -13,6 +13,7 @@ import {
 } from "../services/experiencesService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
+import { supabase } from "../services/supabase";
 import { useCardsCache } from "./CardsCacheContext";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
@@ -23,13 +24,9 @@ import { computePrefsHash, normalizeDateTime } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
 import { Recommendation } from "../types/recommendation";
-import { useSavedCards } from "../hooks/useSavedCards";
-import { useCalendarEntries } from "../hooks/useCalendarEntries";
-import { aggregateAllPrefs } from '../utils/sessionPrefsUtils';
+import { aggregateCollabPrefs } from '../utils/sessionPrefsUtils';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
-import { PriceTierSlug } from '../constants/priceTiers';
-import { useSessionDeck } from '../hooks/useSessionDeck';
-import { fetchSessionDeck, SessionDeckResponse } from '../services/sessionDeckService';
+// ORCH-0446: useSessionDeck and sessionDeckService deleted. Collab uses useDeckCards (same as solo).
 
 // Re-export so all existing consumer imports keep working
 export type { Recommendation };
@@ -43,7 +40,10 @@ export type DeckUIState =
   | { type: 'MODE_TRANSITIONING' }
   | { type: 'EXHAUSTED' }
   | { type: 'EMPTY' }
-  | { type: 'ERROR'; message: string };
+  | { type: 'ERROR'; message: string }
+  | { type: 'WAITING_FOR_PARTICIPANTS' }
+  | { type: 'WAITING_FOR_PREFERENCES' }
+  | { type: 'EMPTY_POOL' };
 
 // Stable empty arrays — prevent new references on every render that trigger
 // useEffect dependency changes and cause infinite render loops.
@@ -52,16 +52,16 @@ const EMPTY_PILLS: string[] = [];
 
 const getDefaultPreferences = (): UserPreferences => ({
   mode: "explore",
-  budget_min: 0,
-  budget_max: 1000,
   people_count: 1,
-  categories: ["nature", "casual_eats", "drink"],
+  categories: ["nature", "drinks_and_music", "icebreakers"],
   travel_mode: "walking",
   travel_constraint_type: "time",
   travel_constraint_value: 30,
   datetime_pref: null,
   use_gps_location: true,
-  price_tiers: ['chill', 'comfy', 'bougie', 'lavish'] as string[],
+  intent_toggle: true,
+  category_toggle: true,
+  selected_dates: null,
 });
 
 interface RecommendationsContextType {
@@ -108,6 +108,9 @@ interface RecommendationsProviderProps {
   /** Pre-resolved session UUID from AsyncStorage — enables instant session resolution
    *  without waiting for the full loadUserSessions() network round-trip. */
   persistedSessionId?: string | null;
+  /** ORCH-0444 INV-DEL-1: Called when the current collab session is detected as
+   *  deleted/removed while the user is on the deck. Triggers solo mode switch. */
+  onSessionLost?: () => void;
 }
 
 export const RecommendationsProvider: React.FC<
@@ -117,6 +120,7 @@ export const RecommendationsProvider: React.FC<
   currentMode: propCurrentMode = "solo",
   refreshKey: propRefreshKey,
   persistedSessionId: propPersistedSessionId = null,
+  onSessionLost,
 }) => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [batchSeed, setBatchSeed] = useState(0);
@@ -198,7 +202,14 @@ export const RecommendationsProvider: React.FC<
   // Persist exhaustion state so "That's a Wrap" survives app restart.
   // Scoped per user+mode. Resets on preference change (refreshKey change).
   const exhaustionKey = `deck_exhausted_${user?.id}_${currentMode}`;
+  // ORCH-0443: Guard prevents the AsyncStorage read from overriding a mode-change reset.
+  // Set to true during mode transition, cleared after the read effect runs.
+  const suppressExhaustionReadRef = useRef(false);
   useEffect(() => {
+    if (suppressExhaustionReadRef.current) {
+      suppressExhaustionReadRef.current = false;
+      return;
+    }
     AsyncStorage.getItem(exhaustionKey).then(val => {
       if (val === 'true') setIsExhausted(true);
     }).catch(() => {});
@@ -215,35 +226,9 @@ export const RecommendationsProvider: React.FC<
     loading: sessionsLoading,
   } = useSessionManagement();
 
-  // ── Exclusion IDs: saved + scheduled cards ─────────────────────────────
-  const { data: savedCards } = useSavedCards(user?.id);
-  const { data: calendarEntries } = useCalendarEntries(user?.id);
-
-  const excludeCardIds = useMemo(() => {
-    const ids = new Set<string>();
-    // Saved card IDs (Google Place IDs like "ChIJwSz...")
-    if (savedCards) {
-      for (const card of savedCards) {
-        if (card.id) ids.add(card.id);
-      }
-    }
-    // Scheduled card IDs (pending/confirmed only — can be Place IDs or UUIDs)
-    if (calendarEntries) {
-      for (const entry of calendarEntries) {
-        if (
-          (entry.status === 'pending' || entry.status === 'confirmed') &&
-          entry.card_id
-        ) {
-          ids.add(entry.card_id);
-        }
-      }
-    }
-    // NOTE: Session-served IDs are NOT included here. Cross-page dedup is handled
-    // by the server-side impression system which has a rotation fallback. Including
-    // session-served IDs in p_exclude_place_ids (hard filter, no rotation) causes
-    // 0 cards after swiping through a small pool.
-    return Array.from(ids);
-  }, [savedCards, calendarEntries]);
+  // Saved/scheduled cards are NOT excluded from the deck. They reappear
+  // on preference refresh with "Saved" / "Scheduled" labels. Immediate
+  // removal on save/schedule is handled by removedCards in SwipeableCards.
 
   // HF-003 fix: Load dismissed cards from AsyncStorage on mount / mode change.
   // Key is mode-specific so solo and collab dismissed cards don't cross-contaminate.
@@ -304,22 +289,25 @@ export const RecommendationsProvider: React.FC<
     sessionsLoading &&
     !hasTimedOutWaitingForSession;
 
-  const isBoardSession =
-    !isInSolo && (currentSession as any)?.session_type === "board";
-
-  const boardSessionResult = useBoardSession(
-    isBoardSession && currentSession?.id ? currentSession.id : undefined
-  );
-  const boardPreferences = boardSessionResult?.preferences || null;
-
-  // Read all participants' prefs from board session
-  const allParticipantPrefs = boardSessionResult?.allParticipantPreferences ?? null;
-
   // ── Collaboration mode flag ──
   const isCollaborationMode: boolean = Boolean(
     currentMode !== "solo" && resolvedSessionId
   );
   const isSoloMode = currentMode === "solo";
+
+  // ORCH-0443: Use isCollaborationMode instead of isInSolo from useSessionManagement.
+  // isInSolo is never set to false because switchToCollaborative is not called
+  // from the pill-bar select handler. isCollaborationMode derives from currentMode
+  // which IS set correctly.
+  const isBoardSession = isCollaborationMode;
+
+  const boardSessionResult = useBoardSession(
+    isBoardSession ? resolvedSessionId ?? undefined : undefined
+  );
+  const boardPreferences = boardSessionResult?.preferences || null;
+
+  // Read all participants' prefs from board session
+  const allParticipantPrefs = boardSessionResult?.allParticipantPreferences ?? null;
 
   // ── Location & Preferences ──────────────────────────────────────────────
   const {
@@ -360,7 +348,7 @@ export const RecommendationsProvider: React.FC<
         ? cats
         : hasAnySignal
           ? []                                      // user chose intents only — respect that
-          : ["nature", "casual_eats", "drink"],     // true empty state — sensible default
+          : ["nature", "drinks_and_music", "icebreakers"],     // true empty state — sensible default
       intents: ints,
     };
   }, [
@@ -378,20 +366,20 @@ export const RecommendationsProvider: React.FC<
       return null;
     }
 
-    const aggregated = aggregateAllPrefs(allParticipantPrefs);
+    // ORCH-0446: Corrected aggregation with proper algorithms
+    const aggregated = aggregateCollabPrefs(allParticipantPrefs);
 
     if (aggregated.categories.length === 0 && aggregated.intents.length === 0) return null;
 
     return {
       categories: aggregated.categories,
       intents: aggregated.intents,
-      priceTiers: aggregated.priceTiers,
-      budgetMin: aggregated.budgetMin,
-      budgetMax: aggregated.budgetMax,
       travelMode: aggregated.travelMode,
       travelConstraintType: aggregated.travelConstraintType,
       travelConstraintValue: aggregated.travelConstraintValue,
       datetimePref: aggregated.datetimePref,
+      dateOption: aggregated.dateOption,
+      dateWindows: aggregated.dateWindows, // ORCH-0446: for AND date logic
       location: aggregated.location,
     };
   }, [isCollaborationMode, allParticipantPrefs]);
@@ -436,18 +424,6 @@ export const RecommendationsProvider: React.FC<
   // Categories and intents already come from activeDeckParams — this extends
   // the same pattern to budget, travel, and datetime fields.
 
-  const effectivePriceTiers = isCollaborationMode && collabDeckParams?.priceTiers
-    ? collabDeckParams.priceTiers
-    : userPrefs?.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'];
-
-  const effectiveBudgetMin = isCollaborationMode && collabDeckParams
-    ? collabDeckParams.budgetMin
-    : userPrefs?.budget_min ?? 0;
-
-  const effectiveBudgetMax = isCollaborationMode && collabDeckParams
-    ? collabDeckParams.budgetMax
-    : userPrefs?.budget_max ?? 1000;
-
   const effectiveTravelMode = isCollaborationMode && collabDeckParams
     ? collabDeckParams.travelMode
     : userPrefs?.travel_mode ?? 'walking';
@@ -460,17 +436,9 @@ export const RecommendationsProvider: React.FC<
     ? (collabDeckParams.datetimePref ?? undefined)
     : userPrefs?.datetime_pref ?? undefined;
 
-  // dateOption, timeSlot: collab aggregation doesn't compute these
-  // (they're solo-only UI concepts). For collab, pass defaults so the edge
-  // function falls back to datetimePref-based filtering.
-  const effectiveDateOption = isCollaborationMode ? 'now' : (userPrefs?.date_option ?? 'now');
-  const effectiveTimeSlots: string[] = isCollaborationMode
-    ? []
-    : (userPrefs?.time_slots && Array.isArray(userPrefs.time_slots) && userPrefs.time_slots.length > 0)
-      ? userPrefs.time_slots
-      : userPrefs?.time_slot
-        ? [userPrefs.time_slot]
-        : [];
+  // dateOption: collab aggregation doesn't compute this (solo-only UI concept).
+  // For collab, pass 'today' so the edge function uses datetimePref-based filtering.
+  const effectiveDateOption = isCollaborationMode ? 'today' : (userPrefs?.date_option ?? 'today');
 
   const {
     cards: soloDeckCards,
@@ -485,24 +453,25 @@ export const RecommendationsProvider: React.FC<
     location: activeDeckLocation,
     categories: activeDeckParams?.categories ?? [],
     intents: activeDeckParams?.intents ?? [],
-    priceTiers: effectivePriceTiers as PriceTierSlug[],
-    budgetMin: effectiveBudgetMin, // Always 0 — kept for interface compat
-    budgetMax: effectiveBudgetMax,
     travelMode: effectiveTravelMode,
     travelConstraintType: 'time' as const,
     travelConstraintValue: effectiveTravelConstraintValue,
     datetimePref: effectiveDatetimePref,
     dateOption: effectiveDateOption,
-    timeSlots: effectiveTimeSlots,
     batchSeed,
-    enabled: isSoloMode &&
+    // ORCH-0446: Enable for BOTH solo and collab. Collab uses aggregated params via activeDeckParams.
+    enabled: (isSoloMode || isCollaborationMode) &&
       !!activeDeckLocation &&
       activeDeckParams !== null &&
       isDeckParamsStable &&
       !isWaitingForSessionResolution &&
       batchSeedReady,
-    excludeCardIds,
+    // No exclusions — saved/scheduled cards reappear in deck with labels.
+    excludeCardIds: [],
     lastKnownQueryKey: lastDeckKey,
+    // ORCH-0446: Pass dateWindows and sessionId for collab mode
+    dateWindows: isCollaborationMode ? (collabDeckParams as any)?.dateWindows : undefined,
+    sessionId: isCollaborationMode ? resolvedSessionId ?? undefined : undefined,
   });
 
   // ── ORCH-0391: Persist deck key + location on first successful solo load ──
@@ -522,17 +491,13 @@ export const RecommendationsProvider: React.FC<
         lng: activeDeckLocation.lng,
         categories: activeDeckParams.categories,
         intents: activeDeckParams.intents,
-        priceTiers: effectivePriceTiers as string[],
-        budgetMin: effectiveBudgetMin,
-        budgetMax: effectiveBudgetMax,
         travelMode: effectiveTravelMode,
         travelConstraintType: 'time',
         travelConstraintValue: effectiveTravelConstraintValue,
         datetimePref: effectiveDatetimePref,
         dateOption: effectiveDateOption,
-        timeSlots: effectiveTimeSlots,
         batchSeed,
-        excludeCardIds,
+        excludeCardIds: [],
       });
       AsyncStorage.setItem(DECK_LAST_KEY, JSON.stringify(key)).catch(() => {});
       AsyncStorage.setItem(DECK_LAST_LOCATION_KEY, JSON.stringify({
@@ -543,32 +508,20 @@ export const RecommendationsProvider: React.FC<
     }
   }, [soloDeckCards.length, activeDeckLocation?.lat, activeDeckLocation?.lng, isSoloMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Collaboration Deck Hook (server-side synchronized deck) ──────────
-  const {
-    data: sessionDeckData,
-    isLoading: isSessionDeckLoading,
-    isFetching: isSessionDeckFetching,
-  } = useSessionDeck(
-    isCollaborationMode ? resolvedSessionId ?? undefined : undefined,
-    batchSeed,
-    isCollaborationMode && !!resolvedSessionId && !isWaitingForSessionResolution && batchSeedReady,
-    excludeCardIds,
-  );
+  // ORCH-0446: useSessionDeck DELETED. Collab deck now uses useDeckCards (above)
+  // with aggregated params from collabDeckParams. Same code path as solo.
+  // No server middleman. No session_decks cache. No generate-session-deck edge function.
 
-  // ── Unified deck output (branch by mode) ─────────────────────────────
-  const deckCards = isCollaborationMode
-    ? (sessionDeckData?.cards ?? EMPTY_CARDS)
-    : soloDeckCards;
-  const deckMode = isCollaborationMode ? 'mixed' : soloDeckMode;
-  const activePills = isCollaborationMode ? EMPTY_PILLS : soloActivePills;
-  const isDeckLoading = isCollaborationMode ? isSessionDeckLoading : isSoloDeckLoading;
-  const isDeckFetching = isCollaborationMode ? isSessionDeckFetching : isSoloDeckFetching;
-  const isDeckBatchLoaded = isCollaborationMode
-    ? (!isSessionDeckLoading && !isSessionDeckFetching)
-    : isSoloDeckBatchLoaded;
-  const deckHasMore = isCollaborationMode
-    ? (sessionDeckData?.hasMore ?? false)
-    : soloDeckHasMore;
+  // ── ORCH-0446: Unified deck output — both modes use useDeckCards ─────
+  // No branching needed. Solo and collab use the same hook with different params.
+  const deckCards = soloDeckCards;
+  const deckMode = soloDeckMode;
+  const activePills = soloActivePills;
+  const isDeckLoading = isSoloDeckLoading;
+  const isDeckFetching = isSoloDeckFetching;
+  // ORCH-0446: Both solo and collab use useDeckCards now. No branching needed.
+  const isDeckBatchLoaded = isSoloDeckBatchLoaded;
+  const deckHasMore = soloDeckHasMore;
 
   // batchSeed race guard: re-enable queries once batchSeed has settled to 0
   useEffect(() => {
@@ -662,18 +615,37 @@ export const RecommendationsProvider: React.FC<
       consecutiveSkipCountRef.current = 0;
       // DO NOT call queryClient.invalidateQueries — the query key change
       // from updated categories/intents handles refetching automatically
+
+      // ORCH-0446B: In collab mode, re-read session from DB so this instance's
+      // allParticipantPreferences updates with the new prefs. Without this,
+      // collabDeckParams stays stale (PreferencesSheet uses a separate useBoardSession).
+      if (isCollaborationMode && resolvedSessionId) {
+        boardSessionResult.loadSession(resolvedSessionId);
+      }
     }
     previousRefreshKeyRef.current = refreshKey;
   }, [refreshKey, user?.id]);
 
-  // ── Clear isRefreshingAfterPrefChange once deck settles ─────────────────
+  // ── Clear isRefreshingAfterPrefChange once NEW deck data arrives ─────────
+  // ORCH-0444: The old check (isDeckBatchLoaded && !isDeckFetching) could be
+  // satisfied by stale React Query cache state before the new fetch completed.
+  // This caused premature completion → EXHAUSTED flash → "You've seen everything"
+  // while new cards were still loading. Now we wait until cards actually arrive
+  // OR batchSeedReady confirms the new query cycle has fully settled.
   useEffect(() => {
     if (!isRefreshingAfterPrefChange) return;
-    const allSettled = isDeckBatchLoaded && !isDeckFetching;
-    if (allSettled) {
+    // New cards have arrived — safe to clear
+    if (recommendations.length > 0) {
+      setIsRefreshingAfterPrefChange(false);
+      return;
+    }
+    // No cards, but new fetch cycle has genuinely completed (not stale cache)
+    // batchSeedReady gates the new query; once it + isDeckBatchLoaded are both true
+    // AND isDeckFetching is false, the new fetch is truly done with 0 results.
+    if (batchSeedReady && isDeckBatchLoaded && !isDeckFetching) {
       setIsRefreshingAfterPrefChange(false);
     }
-  }, [isRefreshingAfterPrefChange, isDeckBatchLoaded, isDeckFetching]);
+  }, [isRefreshingAfterPrefChange, recommendations.length, batchSeedReady, isDeckBatchLoaded, isDeckFetching]);
 
   // Pref refresh safety timeout REMOVED — state machine handles this:
   // pref change → INITIAL_LOADING → query resolves → LOADED/EMPTY.
@@ -719,27 +691,17 @@ export const RecommendationsProvider: React.FC<
       if (isCollaborationMode && resolvedSessionId) {
         queryClient.prefetchQuery({
           queryKey: ['session-deck', resolvedSessionId, nextSeed],
-          queryFn: () => fetchSessionDeck(resolvedSessionId, nextSeed, excludeCardIds),
+          queryFn: () => fetchSessionDeck(resolvedSessionId, nextSeed, []),
           staleTime: 30 * 60 * 1000,
         });
       } else {
         // Solo mode: prefetch via client-side deckService
         const prefetchCategories = activeDeckParams.categories ?? [];
         const prefetchIntents = activeDeckParams.intents ?? [];
-        const prefetchPriceTiers = isSoloMode
-          ? (userPrefs?.price_tiers ?? ['chill', 'comfy', 'bougie', 'lavish'])
-          : (collabDeckParams?.priceTiers ?? ['chill', 'comfy', 'bougie', 'lavish']);
-        const prefetchBudgetMin = isSoloMode ? (userPrefs?.budget_min ?? 0) : (collabDeckParams?.budgetMin ?? 0);
-        const prefetchBudgetMax = isSoloMode ? (userPrefs?.budget_max ?? 1000) : (collabDeckParams?.budgetMax ?? 1000);
         const prefetchTravelMode = isSoloMode ? (userPrefs?.travel_mode ?? 'walking') : (collabDeckParams?.travelMode ?? 'walking');
         const prefetchConstraintType = 'time' as const;
         const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (collabDeckParams?.travelConstraintValue ?? 30);
-        const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'now') : 'now';
-        const prefetchTimeSlots: string[] = isSoloMode
-          ? ((userPrefs?.time_slots && Array.isArray(userPrefs.time_slots) && userPrefs.time_slots.length > 0)
-            ? userPrefs.time_slots
-            : userPrefs?.time_slot ? [userPrefs.time_slot] : [])
-          : [];
+        const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'today') : 'today';
         const rawDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (collabDeckParams?.datetimePref ?? undefined);
         // Normalize to ISO string to match useDeckCards query key format
         const prefetchDatetimePref = rawDatetimePref
@@ -754,40 +716,32 @@ export const RecommendationsProvider: React.FC<
             prefetchLat, prefetchLng,
             prefetchCategories.sort().join(','),
             prefetchIntents.sort().join(','),
-            prefetchPriceTiers.sort().join(','),
-            prefetchBudgetMin,
-            prefetchBudgetMax,
             prefetchTravelMode,
             prefetchConstraintType,
             prefetchConstraintValue,
             prefetchDatetimePref,
             prefetchDateOption,
-            [...prefetchTimeSlots].sort().join(','),
             nextSeed,
-            excludeCardIds.sort().join(','),
+            '', // no exclusions
           ],
           queryFn: () => deckService.fetchDeck({
             location: activeDeckLocation,
             categories: prefetchCategories,
             intents: prefetchIntents,
-            priceTiers: prefetchPriceTiers as PriceTierSlug[],
-            budgetMin: prefetchBudgetMin,
-            budgetMax: prefetchBudgetMax,
             travelMode: prefetchTravelMode,
             travelConstraintType: prefetchConstraintType,
             travelConstraintValue: prefetchConstraintValue,
             datetimePref: prefetchDatetimePref,
             dateOption: prefetchDateOption,
-            timeSlots: prefetchTimeSlots,
             batchSeed: nextSeed,
-            limit: 10000, // Phase 5: match main fetch — return all matching cards
-            excludeCardIds,
+            limit: 10000,
+            excludeCardIds: [],
           }),
           staleTime: 5 * 60 * 1000,
         });
       }
     }
-  }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, isCollaborationMode, resolvedSessionId, userPrefs, queryClient, excludeCardIds]);
+  }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, isCollaborationMode, resolvedSessionId, userPrefs, queryClient]);
 
   // ── Sync deck cards to recommendations state (unified for solo + collab) ──
   // Infinite deck: APPEND new page results to accumulated cards instead of replacing.
@@ -889,6 +843,17 @@ export const RecommendationsProvider: React.FC<
       setBatchSeed(0);
       prefetchFiredRef.current = false;
       setIsExhausted(false);
+      // ORCH-0443: Suppress the next AsyncStorage read so it can't override this reset.
+      // Also clear the persisted value for belt-and-suspenders safety.
+      suppressExhaustionReadRef.current = true;
+      AsyncStorage.removeItem(`deck_exhausted_${user?.id}_${currentMode}`).catch(() => {});
+      // ORCH-0444: Mark session-deck cache as stale but don't trigger immediate re-fetch.
+      // Using invalidateQueries instead of removeQueries prevents the dual-fetch race (RC-4):
+      // removeQueries caused React Query to re-mount and auto-fetch (call #1) while
+      // collabDeckParams changing enabled → true triggered call #2. invalidateQueries
+      // marks stale and waits for the enabled gate (which includes !!activeDeckLocation).
+      // ORCH-0446: session-deck queries no longer exist. Deck uses deck-cards key.
+      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
       setHasMoreCards(true);
       setDismissedCards([]);
       accumulatedCardsRef.current = [];
@@ -920,6 +885,81 @@ export const RecommendationsProvider: React.FC<
       }
     };
   }, [currentMode, queryClient]);
+
+  // ── ORCH-0446B: Clear mode transition once collab params resolve ───────
+  // isModeTransitioning blocks isDeckParamsStable's fast path, preventing
+  // the collab deck from fetching. The 5s timeout is too slow — clear as
+  // soon as collabDeckParams is available (loadSession completed).
+  // Guard: boardSessionResult.loading must be false — prevents firing on STALE
+  // prefs from a previous session before loadSession has read the current one.
+  useEffect(() => {
+    if (isCollaborationMode && collabDeckParams && isModeTransitioning && !boardSessionResult.loading) {
+      setIsModeTransitioning(false);
+      setHasCompletedFetchForCurrentMode(false); // Let it complete naturally
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current);
+        completionTimeoutRef.current = null;
+      }
+    }
+  }, [isCollaborationMode, collabDeckParams, isModeTransitioning]);
+
+  // ── ORCH-0444 INV-DEL-1: Session health monitor ──────────────────────────
+  // Detects when the current collab session is deleted by another participant.
+  // The session_pills Realtime channel fires loadUserSessions() on participant
+  // deletion, which updates availableSessions. This effect detects when the
+  // current session disappears and forces a switch to solo.
+  //
+  // CRITICAL: We must NOT fire during the initial mode transition. When a user
+  // taps a session pill, currentMode changes instantly (synchronous) but
+  // availableSessions hasn't refreshed yet — the session may not be in the list
+  // until loadUserSessions() completes. Without this guard, the monitor
+  // ── ORCH-0446 R3.8: Update GPS on each collab session entry ──────────
+  useEffect(() => {
+    if (!isCollaborationMode || !resolvedSessionId || !userLocation || !user?.id) return;
+
+    // Atomic GPS update via RPC — deep merge preserves all other pref fields
+    void Promise.resolve(supabase.rpc('upsert_participant_prefs', {
+      p_session_id: resolvedSessionId,
+      p_user_id: user.id,
+      p_prefs: {
+        custom_lat: userLocation.lat,
+        custom_lng: userLocation.lng,
+      },
+    })).catch(() => { /* Non-blocking GPS update */ });
+  }, [isCollaborationMode, resolvedSessionId, userLocation?.lat, userLocation?.lng, user?.id]);
+
+  // immediately kicks back to solo, creating an enter→exit→enter loop.
+  //
+  // The sessionSeenInListRef tracks whether we've EVER seen the current session
+  // in availableSessions. We only trigger the "session lost" path after the
+  // session was previously present and then disappeared — a true deletion.
+  const sessionSeenInListRef = useRef(false);
+
+  // Reset the "seen" flag when the target session changes
+  useEffect(() => {
+    sessionSeenInListRef.current = false;
+  }, [resolvedSessionId]);
+
+  useEffect(() => {
+    console.log('[HEALTH_MONITOR] check:', { isCollaborationMode, resolvedSessionId: resolvedSessionId?.slice(0, 8), sessionsLoading, sessionCount: availableSessions.length, seenRef: sessionSeenInListRef.current });
+    if (!isCollaborationMode || !resolvedSessionId) return;
+    if (sessionsLoading) { console.log('[HEALTH_MONITOR] skipping — sessions loading'); return; }
+
+    const currentSessionExists = availableSessions.some(
+      (s) => s.id === resolvedSessionId,
+    );
+
+    console.log('[HEALTH_MONITOR] sessionExists:', currentSessionExists, 'seenBefore:', sessionSeenInListRef.current, 'sessionIds:', availableSessions.map(s => s.id.slice(0, 8)));
+
+    if (currentSessionExists) {
+      sessionSeenInListRef.current = true;
+    } else if (sessionSeenInListRef.current) {
+      console.log('[HEALTH_MONITOR] Session GONE — calling onSessionLost');
+      onSessionLost?.();
+    } else {
+      console.log('[HEALTH_MONITOR] Session not in list but never seen — waiting');
+    }
+  }, [isCollaborationMode, resolvedSessionId, availableSessions, sessionsLoading, onSessionLost]);
 
   // ── Loading & Fetching States ───────────────────────────────────────────
   const loading = isLoadingLocation || isLoadingPreferences || isDeckLoading;
@@ -1056,12 +1096,25 @@ export const RecommendationsProvider: React.FC<
 
   // ── Collab params change detector ─────────────────────────────────────
   const prevCollabParamsRef = useRef<string | null>(null);
+  const prevCollabModeRef = useRef(false);
   useEffect(() => {
-    if (!isCollaborationMode || !collabDeckParams) return;
+    if (!isCollaborationMode || !collabDeckParams) {
+      prevCollabModeRef.current = false;
+      return;
+    }
     const paramsKey = JSON.stringify(collabDeckParams);
-    if (prevCollabParamsRef.current !== null && prevCollabParamsRef.current !== paramsKey) {
+
+    // ORCH-0437: When entering collab mode (solo→collab transition), always
+    // invalidate session-deck to clear any cached errors from prior attempts
+    // where the other participant hadn't set preferences yet.
+    if (!prevCollabModeRef.current) {
+      // Initial collab entry — mode transition effect already invalidated deck-cards.
+      // Don't double-invalidate here (causes duplicate fetch). Just mark collab active.
+      prevCollabModeRef.current = true;
+    } else if (prevCollabParamsRef.current !== null && prevCollabParamsRef.current !== paramsKey) {
       // Collab params changed (preference update) — invalidate session deck
-      queryClient.invalidateQueries({ queryKey: ['session-deck'] });
+      // ORCH-0446: session-deck queries no longer exist. Deck uses deck-cards key.
+      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
       setBatchSeed(0);
     }
     prevCollabParamsRef.current = paramsKey;
@@ -1080,6 +1133,18 @@ export const RecommendationsProvider: React.FC<
     // with an error for a background refetch failure)
     if (soloDeckError && recommendations.length === 0 && hasCompletedFetchForCurrentMode) {
       return { type: 'ERROR', message: 'Something went wrong loading experiences' };
+    }
+
+    // ORCH-0446: Collab now uses useDeckCards (same as solo). Errors are unified.
+    // The soloDeckError check above covers both modes.
+
+    // ORCH-0446: Collab-specific waiting state — ≥2 participants required
+    if (isCollaborationMode && hasCompletedFetchForCurrentMode && recommendations.length === 0) {
+      // Check if the session has fewer than 2 accepted participants
+      const acceptedCount = allParticipantPrefs?.length ?? 0;
+      if (acceptedCount < 2) {
+        return { type: 'WAITING_FOR_PARTICIPANTS' };
+      }
     }
 
     // MODE_TRANSITIONING
@@ -1122,8 +1187,8 @@ export const RecommendationsProvider: React.FC<
     return { type: 'INITIAL_LOADING' };
   }, [
     locationError, soloDeckError, isModeTransitioning, isWaitingForSessionResolution,
-    hasCompletedFetchForCurrentMode, recommendations,
-    isExhausted,
+    hasCompletedFetchForCurrentMode, recommendations, isCollaborationMode,
+    allParticipantPrefs?.length, isExhausted,
     // NOTE: `loading` intentionally removed — the EMPTY check no longer depends on it.
     // Keeping it here caused unnecessary recomputation on every background refetch.
   ]);

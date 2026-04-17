@@ -33,26 +33,27 @@ interface HolidayDefinition {
   gender: "male" | "female" | null;
 }
 
+// ORCH-0434: Updated display names — Wellness removed, all categories use new names.
 const HOLIDAYS: HolidayDefinition[] = [
-  { date: "01-01", name: "New Year's Day", description: 'The "Fresh Start" date', categories: ["Wellness", "Fine Dining"], gender: null },
-  { date: "02-14", name: "Valentine's Day", description: "The biggest high-pressure day", categories: ["Fine Dining", "Drink"], gender: null },
-  { date: "03-08", name: "International Women's Day", description: "Celebrate the women in your life", categories: ["Fine Dining", "Wellness"], gender: "female" },
-  { date: "03-20", name: "First Day of Spring", description: "Great for nature dates", categories: ["Nature", "Picnic"], gender: null },
-  { date: "04-20", name: "Easter", description: "Spring celebration", categories: ["Casual Eats", "Fine Dining"], gender: null },
-  { date: "05-11", name: "Mother's Day", description: "Crucial if they have kids or to remind about partner's mom", categories: ["Fine Dining", "Wellness"], gender: "female" },
-  { date: "05-26", name: "Memorial Day", description: "Honor and remember", categories: ["Picnic", "Nature"], gender: null },
-  { date: "06-15", name: "Father's Day", description: "Honor the father figures in your life", categories: ["Play", "Fine Dining"], gender: "male" },
-  { date: "06-19", name: "Juneteenth / Start of Summer", description: "Summer celebration", categories: ["Nature", "Picnic"], gender: null },
-  { date: "07-04", name: "Independence Day", description: 'The "Big Night Out"', categories: ["Nature", "Picnic"], gender: null },
-  { date: "09-01", name: "Labor Day", description: "End of summer celebration", categories: ["Picnic", "Casual Eats"], gender: null },
-  { date: "09-21", name: "International Day of Peace", description: 'A "Relationship Reset" day', categories: ["Picnic", "Wellness"], gender: null },
-  { date: "10-17", name: "Sweetest Day", description: 'A popular "second Valentine\'s"', categories: ["Drink", "Fine Dining"], gender: null },
-  { date: "10-31", name: "Halloween", description: "Perfect for a spooky movie night or costumes", categories: ["Watch", "Creative & Arts"], gender: null },
-  { date: "11-19", name: "International Men's Day", description: "Celebrate the men in your life", categories: ["Play", "Fine Dining"], gender: "male" },
-  { date: "11-27", name: "Thanksgiving", description: 'Focus on "Gratitude"', categories: ["Fine Dining", "Casual Eats"], gender: null },
-  { date: "12-24", name: "Christmas Eve", description: "High gift-giving expectation", categories: ["Creative & Arts", "Fine Dining"], gender: null },
-  { date: "12-25", name: "Christmas Day", description: "Holiday celebration", categories: ["Nature", "Fine Dining"], gender: null },
-  { date: "12-31", name: "New Year's Eve", description: 'The "Big Night Out"', categories: ["Fine Dining", "Drink"], gender: null },
+  { date: "01-01", name: "New Year's Day", description: 'The "Fresh Start" date', categories: ["Upscale & Fine Dining", "Nature & Views"], gender: null },
+  { date: "02-14", name: "Valentine's Day", description: "The biggest high-pressure day", categories: ["Upscale & Fine Dining", "Drinks & Music"], gender: null },
+  { date: "03-08", name: "International Women's Day", description: "Celebrate the women in your life", categories: ["Upscale & Fine Dining", "Creative & Arts"], gender: "female" },
+  { date: "03-20", name: "First Day of Spring", description: "Great for nature dates", categories: ["Nature & Views"], gender: null },
+  { date: "04-20", name: "Easter", description: "Spring celebration", categories: ["Brunch, Lunch & Casual", "Upscale & Fine Dining"], gender: null },
+  { date: "05-11", name: "Mother's Day", description: "Crucial if they have kids or to remind about partner's mom", categories: ["Upscale & Fine Dining", "Creative & Arts"], gender: "female" },
+  { date: "05-26", name: "Memorial Day", description: "Honor and remember", categories: ["Nature & Views", "Brunch, Lunch & Casual"], gender: null },
+  { date: "06-15", name: "Father's Day", description: "Honor the father figures in your life", categories: ["Play", "Upscale & Fine Dining"], gender: "male" },
+  { date: "06-19", name: "Juneteenth / Start of Summer", description: "Summer celebration", categories: ["Nature & Views"], gender: null },
+  { date: "07-04", name: "Independence Day", description: 'The "Big Night Out"', categories: ["Nature & Views", "Drinks & Music"], gender: null },
+  { date: "09-01", name: "Labor Day", description: "End of summer celebration", categories: ["Nature & Views", "Brunch, Lunch & Casual"], gender: null },
+  { date: "09-21", name: "International Day of Peace", description: 'A "Relationship Reset" day', categories: ["Nature & Views", "Creative & Arts"], gender: null },
+  { date: "10-17", name: "Sweetest Day", description: 'A popular "second Valentine\'s"', categories: ["Drinks & Music", "Upscale & Fine Dining"], gender: null },
+  { date: "10-31", name: "Halloween", description: "Perfect for a spooky movie night or costumes", categories: ["Movies & Theatre", "Creative & Arts"], gender: null },
+  { date: "11-19", name: "International Men's Day", description: "Celebrate the men in your life", categories: ["Play", "Upscale & Fine Dining"], gender: "male" },
+  { date: "11-27", name: "Thanksgiving", description: 'Focus on "Gratitude"', categories: ["Upscale & Fine Dining", "Brunch, Lunch & Casual"], gender: null },
+  { date: "12-24", name: "Christmas Eve", description: "High gift-giving expectation", categories: ["Creative & Arts", "Upscale & Fine Dining"], gender: null },
+  { date: "12-25", name: "Christmas Day", description: "Holiday celebration", categories: ["Nature & Views", "Upscale & Fine Dining"], gender: null },
+  { date: "12-31", name: "New Year's Eve", description: 'The "Big Night Out"', categories: ["Upscale & Fine Dining", "Drinks & Music"], gender: null },
 ];
 
 interface HolidayExperienceRequest {
@@ -274,8 +275,6 @@ serve(async (req) => {
             lng: location.lng,
             radiusMeters: radius,
             categories: allHolidayCategories,
-            budgetMin: 0,
-            budgetMax: 500,
             limit: totalNeeded + 20, // extra buffer
             cardType: 'single',
           },

@@ -1,10 +1,7 @@
 import type { RecommendationsRequest } from '../types';
-import { PriceTierSlug, TIER_BY_SLUG } from '../constants/priceTiers';
 
+// ORCH-0434: Removed priceTiers, budgetRange. Added intentToggle, categoryToggle, selectedDates.
 interface PreferencesSheetState {
-  priceTiers: PriceTierSlug[];
-  /** @deprecated Use priceTiers instead */
-  budgetRange?: [number, number];
   categories: string[];
   experienceTypes?: string[];
   time: string;
@@ -16,6 +13,9 @@ interface PreferencesSheetState {
   custom_lat?: number | null;
   custom_lng?: number | null;
   groupSize: number;
+  intentToggle: boolean;
+  categoryToggle: boolean;
+  selectedDates: string[] | null;
 }
 
 export const convertPreferencesToRequest = (
@@ -52,7 +52,6 @@ export const convertPreferencesToRequest = (
   };
 
   return {
-    priceTiers: preferences.priceTiers,
     categories: preferences.categories,
     experienceTypes: preferences.experienceTypes || [],
     timeWindow,
@@ -119,11 +118,9 @@ const convertTimePreference = (time: string) => {
  * Normalize preference fields to enforce consistency before saving to DB.
  * Eliminates conflicting combinations of date/time fields and location fields.
  */
+// ORCH-0434: time_slot/time_slots/time_of_day rules removed. Only location consistency remains.
 export function normalizePreferencesForSave(prefs: {
   date_option?: string | null;
-  time_slot?: string | null;
-  time_slots?: string[] | null;
-  time_of_day?: string | null;
   datetime_pref?: string | null;
   use_gps_location?: boolean;
   custom_location?: string | null;
@@ -131,21 +128,6 @@ export function normalizePreferencesForSave(prefs: {
   custom_lng?: number | null;
 }): typeof prefs {
   const normalized = { ...prefs };
-
-  // Date/time consistency: clear irrelevant fields based on date_option
-  const dateOpt = (normalized.date_option || '').toLowerCase();
-  if (dateOpt === 'now') {
-    normalized.time_slot = null;
-    normalized.time_slots = null;
-    normalized.time_of_day = null;
-    normalized.datetime_pref = null;
-  } else if (dateOpt === 'today') {
-    normalized.datetime_pref = null;
-  } else if (dateOpt === 'weekend' || dateOpt === 'this weekend' || dateOpt === 'this-weekend') {
-    // Weekend can have a time slot but not an exact datetime
-    normalized.datetime_pref = null;
-  }
-  // "Pick a Date" / "custom" keeps datetime_pref as-is
 
   // Location consistency: GPS and custom are mutually exclusive
   if (normalized.use_gps_location === true) {

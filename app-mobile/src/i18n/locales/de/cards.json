@@ -15,7 +15,7 @@
   "swipeable.like": "LIKE",
   "swipeable.pass": "WEITER",
   "swipeable.saved": "Gespeichert",
-
+  "swipeable.scheduled": "Scheduled",
   "expanded.customized": "Angepasst",
   "expanded.avg": "{{rating}} Ø",
   "expanded.suggested": "Vorgeschlagen",
@@ -56,7 +56,6 @@
   "expanded.collapse_stop_details": "Stopp-Details einklappen",
   "expanded.expand_stop_details": "Stopp-Details ausklappen",
   "expanded.close_paywall": "Paywall schließen",
-
   "board.session_cards": "Sitzungskarten",
   "board.of": "{{current}} von {{total}}",
   "board.no_cards": "Noch keine Karten in dieser Sitzung",

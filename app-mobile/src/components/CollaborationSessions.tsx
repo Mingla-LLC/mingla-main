@@ -16,8 +16,12 @@ import {
   ActivityIndicator,
   Image,
   Share,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
 } from 'react-native';
 import { Icon } from './ui/Icon';
+import { useToast } from './ToastManager';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { HapticFeedback } from '../utils/hapticFeedback';
@@ -48,12 +52,20 @@ export interface Friend {
   status?: 'online' | 'offline';
 }
 
+export interface SessionParticipantDetail {
+  id: string;
+  name: string;
+  avatar?: string;
+  hasAccepted: boolean;
+}
+
 export interface CollaborationSession {
   id: string;
   name: string;
   initials: string;
   type: SessionType;
   participants?: number;
+  participantDetails?: SessionParticipantDetail[];
   createdAt?: Date;
   invitedBy?: {
     id: string;
@@ -73,6 +85,7 @@ interface CollaborationSessionsProps {
   onAcceptInvite: (sessionId: string) => void;
   onDeclineInvite: (sessionId: string) => void;
   onCancelInvite: (sessionId: string) => void;
+  onInviteMoreToSession?: (sessionId: string, friend: Friend) => void;
   onSessionStateChanged?: () => void;
   availableFriends?: Friend[];
   isCreatingSession?: boolean;
@@ -103,6 +116,7 @@ export default function CollaborationSessions({
   onAcceptInvite,
   onDeclineInvite,
   onCancelInvite,
+  onInviteMoreToSession,
   onSessionStateChanged,
   availableFriends = [],
   isCreatingSession = false,
@@ -112,6 +126,7 @@ export default function CollaborationSessions({
 }: CollaborationSessionsProps) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation(['modals', 'common']);
+  const { showToast } = useToast();
   const scrollViewRef = useRef<ScrollView>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const coachCreate = useCoachMark(4, 20);
@@ -122,6 +137,38 @@ export default function CollaborationSessions({
   const [showSessionViewModal, setShowSessionViewModal] = useState(false);
   const [sessionToView, setSessionToView] = useState<CollaborationSession | null>(null);
   const [inviteModalSession, setInviteModalSession] = useState<CollaborationSession | null>(null);
+
+  // Keep modal session in sync with live sessions data so newly added
+  // participants appear immediately without closing/reopening the modal.
+  useEffect(() => {
+    if (inviteModalSession && showInviteModal) {
+      const updated = sessions.find(s => s.id === inviteModalSession.id);
+      if (updated && updated !== inviteModalSession) {
+        setInviteModalSession(updated);
+      }
+    }
+  }, [sessions, inviteModalSession?.id, showInviteModal]);
+
+  // ORCH-0444: Detect when a session disappears (deleted by another participant).
+  // Case 2: User is a member but viewing a different session — show toast + pill disappears.
+  // Case 1 (user ON the deleted session) is handled by RecommendationsContext.onSessionLost.
+  const prevSessionIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const currentIds = new Set(sessions.map(s => s.id));
+    const prevIds = prevSessionIdsRef.current;
+
+    if (prevIds.size > 0) {
+      for (const id of prevIds) {
+        if (!currentIds.has(id) && id !== selectedSessionId) {
+          showToast({ message: 'A session was ended', type: 'info', duration: 2000 });
+          break; // One toast is enough even if multiple sessions disappeared
+        }
+      }
+    }
+
+    prevSessionIdsRef.current = currentIds;
+  }, [sessions, selectedSessionId, showToast]);
+
   const [newSessionName, setNewSessionName] = useState('');
   const [selectedFriends, setSelectedFriends] = useState<Friend[]>([]);
   const [contentWidth, setContentWidth] = useState(0);
@@ -388,6 +435,62 @@ export default function CollaborationSessions({
     }
   }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, user, selectedFriends, phoneInvitees]);
 
+  // ORCH-0437: Invite more people to an existing pending session
+  const handleInviteMorePhoneAction = useCallback(async () => {
+    if (!isPhoneValid || !debouncedPhoneE164 || !inviteModalSession) return;
+
+    setPhoneActionStatus('sending');
+    setPhoneActionError('');
+
+    try {
+      if (phoneLookupResult?.found && phoneLookupResult.user) {
+        const lookupUser = phoneLookupResult.user;
+
+        if (user && lookupUser.id === user.id) {
+          Alert.alert(t('modals:collaboration.thats_you_title'), t('modals:collaboration.thats_you_body'));
+          setPhoneActionStatus('idle');
+          return;
+        }
+
+        // Invite this user to the existing session
+        if (onInviteMoreToSession) {
+          const friendData: Friend = {
+            id: lookupUser.id,
+            name: getDisplayName(lookupUser, 'User'),
+            username: lookupUser.username,
+            avatar: lookupUser.avatar_url || undefined,
+          };
+          onInviteMoreToSession(inviteModalSession.id, friendData);
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setPhoneActionStatus('sent');
+        setTimeout(() => {
+          setPhoneNumber('');
+          setPhoneActionStatus('idle');
+        }, 1500);
+      } else {
+        // Not on Mingla — create pending invite + share
+        if (user) {
+          await createPendingInvite(user.id, debouncedPhoneE164);
+        }
+
+        await Share.share({
+          message: `Hey! Join me on Mingla and let's find amazing experiences together. https://usemingla.com`,
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setPhoneActionStatus('sent');
+        setTimeout(() => {
+          setPhoneNumber('');
+          setPhoneActionStatus('idle');
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('[CollaborationSessions] Invite-more phone action error:', err);
+      setPhoneActionError(err instanceof Error ? err.message : 'Something went wrong');
+      setPhoneActionStatus('error');
+    }
+  }, [isPhoneValid, debouncedPhoneE164, phoneLookupResult, user, inviteModalSession, onInviteMoreToSession]);
+
   const getPhoneActionLabel = (): string => {
     if (phoneLookupLoading) return t('modals:collaboration.looking_up');
     if (!isPhoneValid) return t('modals:collaboration.enter_phone_number');
@@ -459,13 +562,6 @@ export default function CollaborationSessions({
 
   return (
     <View style={styles.container}>
-      {/* Left scroll indicator */}
-      {showLeftArrow && (
-        <TouchableOpacity style={styles.scrollArrowLeft} onPress={scrollLeft}>
-          <Icon name="chevron-back" size={16} color="#6B7280" />
-        </TouchableOpacity>
-      )}
-
       {/* Fixed pills */}
       <View collapsable={false}>
         <TouchableOpacity
@@ -502,6 +598,13 @@ export default function CollaborationSessions({
           <Icon name="add" size={16} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
+
+      {/* Left scroll indicator — after fixed pills, before scrollable area */}
+      {showLeftArrow && (
+        <TouchableOpacity style={styles.scrollArrowLeft} onPress={scrollLeft}>
+          <Icon name="chevron-back" size={16} color="#6B7280" />
+        </TouchableOpacity>
+      )}
 
       {/* Scrollable session pills */}
       <View style={styles.scrollViewWrapper}>
@@ -817,16 +920,19 @@ export default function CollaborationSessions({
         visible={showInviteModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowInviteModal(false)}
+        onRequestClose={() => { setShowInviteModal(false); setPhoneNumber(''); setPhoneActionStatus('idle'); setPhoneActionError(''); }}
         statusBarTranslucent
       >
-        <View style={styles.inviteSheetOverlay}>
+        <KeyboardAvoidingView
+          style={styles.inviteSheetOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <TouchableOpacity
             style={styles.inviteSheetBackdrop}
             activeOpacity={1}
             onPress={() => setShowInviteModal(false)}
           />
-          <View style={[styles.inviteSheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <View style={[styles.inviteSheetContent, { paddingBottom: Math.max(insets.bottom, 16) }]} onStartShouldSetResponder={() => { Keyboard.dismiss(); return false; }}>
             <View style={styles.inviteDragHandleContainer}>
               <View style={styles.inviteDragHandle} />
             </View>
@@ -868,9 +974,41 @@ export default function CollaborationSessions({
                 </Text>
               )}
               {inviteModalSession?.type === 'sent-invite' && (
-                <Text style={styles.inviteFromText}>
-                  {t('modals:collaboration.waiting_for_response')}
-                </Text>
+                <>
+                  <Text style={styles.inviteFromText}>
+                    {t('modals:collaboration.waiting_for_response')}
+                  </Text>
+                  {inviteModalSession.participantDetails && inviteModalSession.participantDetails.length > 0 && (
+                    <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                      {inviteModalSession.participantDetails.map((p, i) => (
+                        <View key={p.id} style={{ alignItems: 'center', marginHorizontal: i > 0 ? -4 : 0 }}>
+                          <View style={{
+                            width: 40, height: 40, borderRadius: 20,
+                            backgroundColor: p.hasAccepted ? '#D1FAE5' : '#F3F4F6',
+                            alignItems: 'center', justifyContent: 'center',
+                            borderWidth: 2, borderColor: p.hasAccepted ? '#059669' : '#D1D5DB',
+                          }}>
+                            {p.avatar ? (
+                              <Image source={{ uri: p.avatar }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+                            ) : (
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: p.hasAccepted ? '#059669' : '#6B7280' }}>
+                                {p.name.substring(0, 2).toUpperCase()}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                      ))}
+                      {inviteModalSession.participantDetails.some(p => !p.hasAccepted) && (
+                        <View style={{
+                          paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
+                          backgroundColor: '#FEF3C7', marginLeft: 8,
+                        }}>
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: '#D97706' }}>Pending</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </>
               )}
             </View>
 
@@ -902,9 +1040,9 @@ export default function CollaborationSessions({
                 </TouchableOpacity>
               </View>
             ) : (
-              <View style={styles.inviteActions}>
+              <View style={[styles.inviteActions, { flexDirection: 'column' }]}>
                 <TouchableOpacity
-                  style={styles.modalCancelInviteButton}
+                  style={[styles.modalCancelInviteButton, { flex: 0 }]}
                   onPress={() => {
                     if (inviteModalSession) {
                       onCancelInvite(inviteModalSession.id);
@@ -914,10 +1052,102 @@ export default function CollaborationSessions({
                 >
                   <Text style={styles.modalCancelInviteButtonText}>{t('modals:collaboration.cancel_invite')}</Text>
                 </TouchableOpacity>
+
+                {/* ORCH-0437: Invite more people by phone to existing pending session */}
+                <View style={[styles.friendSelectionSection, { marginTop: 20 }]}>
+                  <Text style={styles.modalLabel}>Add more participants</Text>
+                  <View style={styles.csPhoneRow}>
+                    <TouchableOpacity
+                      style={styles.csCountryPicker}
+                      onPress={() => setShowCountryPicker(true)}
+                      activeOpacity={0.6}
+                    >
+                      <Text style={styles.csCountryFlag}>{selectedCountry.flag}</Text>
+                      <Text style={styles.csCountryDial}>{selectedCountry.dialCode}</Text>
+                      <Icon name="chevron-down" size={14} color="#9ca3af" />
+                    </TouchableOpacity>
+                    <View style={styles.csPhoneDivider} />
+                    <TextInput
+                      style={styles.csPhoneInput}
+                      value={phoneNumber}
+                      onChangeText={(text) => {
+                        setPhoneNumber(text);
+                        if (phoneActionStatus !== 'idle' && phoneActionStatus !== 'sending') {
+                          setPhoneActionStatus('idle');
+                          setPhoneActionError('');
+                        }
+                      }}
+                      placeholder={t('modals:collaboration.phone_placeholder')}
+                      placeholderTextColor="#9ca3af"
+                      keyboardType="phone-pad"
+                      autoCorrect={false}
+                      maxLength={15}
+                    />
+                    {phoneLookupLoading && (
+                      <ActivityIndicator size="small" color="#eb7825" style={{ marginRight: 10 }} />
+                    )}
+                  </View>
+
+                  {isPhoneValid && !phoneLookupLoading && phoneLookupResult && (
+                    <View style={styles.csLookupResult}>
+                      {phoneLookupResult.found ? (
+                        <View style={styles.csLookupRow}>
+                          <Icon name="checkmark-circle" size={14} color="#22c55e" />
+                          <Text style={styles.csLookupTextGreen}>
+                            {t('modals:collaboration.is_on_mingla', { name: getDisplayName(phoneLookupResult.user, 'Someone') })}
+                          </Text>
+                        </View>
+                      ) : (
+                        <View style={styles.csLookupRow}>
+                          <Icon name="person-add-outline" size={14} color="#6b7280" />
+                          <Text style={styles.csLookupTextMuted}>{t('modals:collaboration.not_on_mingla')}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {phoneActionStatus === 'sent' && (
+                    <View style={styles.csStatusRow}>
+                      <Icon name="checkmark-circle" size={16} color="#22c55e" />
+                      <Text style={styles.csStatusSuccess}>
+                        {phoneLookupResult?.found
+                          ? t('modals:collaboration.added_as_collaborator')
+                          : t('modals:collaboration.invite_shared')}
+                      </Text>
+                    </View>
+                  )}
+                  {phoneActionStatus === 'error' && (
+                    <View style={styles.csStatusRow}>
+                      <Icon name="alert-circle" size={16} color="#ef4444" />
+                      <Text style={styles.csStatusError}>{phoneActionError}</Text>
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={[styles.csActionButton, isPhoneActionDisabled && styles.csActionButtonDisabled]}
+                    onPress={handleInviteMorePhoneAction}
+                    activeOpacity={0.7}
+                    disabled={!!isPhoneActionDisabled}
+                  >
+                    {phoneActionStatus === 'sending' ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <>
+                        <Icon
+                          name={phoneLookupResult?.found ? 'person-add' : 'paper-plane-outline'}
+                          size={14}
+                          color="#ffffff"
+                          style={{ marginRight: 5 }}
+                        />
+                        <Text style={styles.csActionButtonText}>{getPhoneActionLabel()}</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Session View Modal */}
@@ -970,20 +1200,21 @@ const styles = StyleSheet.create({
   },
   scrollViewWrapper: {
     flex: 1,
-    overflow: 'hidden',
   },
   scrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    paddingVertical: 4,
   },
   scrollArrowLeft: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'center',
     zIndex: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -992,12 +1223,13 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   scrollArrowRight: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'center',
     zIndex: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },

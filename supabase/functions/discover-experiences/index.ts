@@ -9,7 +9,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
-const HIDDEN_CATEGORIES = new Set(['groceries']);
+const HIDDEN_CATEGORIES = new Set(['groceries', 'flowers']); // ORCH-0434: flowers now hidden
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {

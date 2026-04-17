@@ -30,42 +30,56 @@ import { Input, Toggle } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
 import { Breadcrumbs } from "../components/ui/Breadcrumbs";
 import { Spinner } from "../components/ui/Spinner";
+import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from "../constants/categories";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 // Tabs are computed dynamically in the main page component based on registration state
 
-const CATEGORY_COLORS = {
-  nature_views: "#22c55e", first_meet: "#f97316", picnic_park: "#84cc16",
-  drink: "#a855f7", casual_eats: "#ef4444", fine_dining: "#dc2626",
-  watch: "#3b82f6", live_performance: "#8b5cf6", creative_arts: "#ec4899",
-  play: "#f59e0b", wellness: "#14b8a6", flowers: "#f472b6", groceries: "#6b7280",
-};
-
-const CATEGORY_LABELS = {
-  nature_views: "Nature & Views", first_meet: "First Meet", picnic_park: "Picnic Park",
-  drink: "Drink", casual_eats: "Casual Eats", fine_dining: "Fine Dining",
-  watch: "Watch", live_performance: "Live Performance", creative_arts: "Creative & Arts",
-  play: "Play", wellness: "Wellness", flowers: "Flowers", groceries: "Groceries",
-};
-
-const ALL_CATEGORIES = Object.keys(CATEGORY_LABELS);
-
-// Client-side mapping from Google types → Mingla seeding category (mirrors seedingCategories.ts)
+// Client-side mapping from Google types → Mingla category slug (ORCH-0434: new slugs)
 const TYPE_TO_CATEGORY = {
-  spa: "wellness", massage_spa: "wellness", sauna: "wellness", wellness_center: "wellness", yoga_studio: "wellness",
-  fine_dining_restaurant: "fine_dining", french_restaurant: "fine_dining", italian_restaurant: "fine_dining", steak_house: "fine_dining", seafood_restaurant: "fine_dining",
-  movie_theater: "watch",
-  performing_arts_theater: "live_performance", concert_hall: "live_performance", opera_house: "live_performance", philharmonic_hall: "live_performance", amphitheatre: "live_performance", comedy_club: "live_performance", event_venue: "live_performance", arena: "live_performance", live_music_venue: "live_performance",
-  art_gallery: "creative_arts", art_museum: "creative_arts", art_studio: "creative_arts", museum: "creative_arts", history_museum: "creative_arts", cultural_center: "creative_arts", cultural_landmark: "creative_arts", sculpture: "creative_arts", library: "creative_arts",
-  amusement_center: "play", bowling_alley: "play", miniature_golf_course: "play", go_karting_venue: "play", paintball_center: "play", video_arcade: "play", karaoke: "play", amusement_park: "play", ice_skating_rink: "play", indoor_playground: "play",
+  // Nature & Views
+  beach: "nature", botanical_garden: "nature", garden: "nature", hiking_area: "nature",
+  national_park: "nature", nature_preserve: "nature", park: "nature", scenic_spot: "nature",
+  state_park: "nature", observation_deck: "nature", tourist_attraction: "nature",
+  garden_center: "nature", farm: "nature", picnic_ground: "nature",
+  // Icebreakers
+  book_store: "icebreakers", cafe: "icebreakers", coffee_shop: "icebreakers",
+  tea_house: "icebreakers", bakery: "icebreakers", dessert_shop: "icebreakers",
+  juice_shop: "icebreakers", bistro: "icebreakers", ice_cream_shop: "icebreakers",
+  // Drinks & Music
+  bar: "drinks_and_music", cocktail_bar: "drinks_and_music", lounge_bar: "drinks_and_music",
+  wine_bar: "drinks_and_music", pub: "drinks_and_music", brewery: "drinks_and_music",
+  beer_garden: "drinks_and_music", brewpub: "drinks_and_music", night_club: "drinks_and_music",
+  // Brunch, Lunch & Casual
+  restaurant: "brunch_lunch_casual", brunch_restaurant: "brunch_lunch_casual",
+  breakfast_restaurant: "brunch_lunch_casual", diner: "brunch_lunch_casual",
+  sandwich_shop: "brunch_lunch_casual", pizza_restaurant: "brunch_lunch_casual",
+  hamburger_restaurant: "brunch_lunch_casual", mexican_restaurant: "brunch_lunch_casual",
+  mediterranean_restaurant: "brunch_lunch_casual", thai_restaurant: "brunch_lunch_casual",
+  vegetarian_restaurant: "brunch_lunch_casual",
+  // Upscale & Fine Dining
+  fine_dining_restaurant: "upscale_fine_dining", french_restaurant: "upscale_fine_dining",
+  italian_restaurant: "upscale_fine_dining", steak_house: "upscale_fine_dining",
+  seafood_restaurant: "upscale_fine_dining",
+  // Movies & Theatre
+  movie_theater: "movies_theatre", performing_arts_theater: "movies_theatre",
+  concert_hall: "movies_theatre", opera_house: "movies_theatre",
+  philharmonic_hall: "movies_theatre", amphitheatre: "movies_theatre",
+  comedy_club: "movies_theatre", event_venue: "movies_theatre",
+  arena: "movies_theatre", live_music_venue: "movies_theatre",
+  // Creative & Arts
+  art_gallery: "creative_arts", art_museum: "creative_arts", art_studio: "creative_arts",
+  museum: "creative_arts", history_museum: "creative_arts", cultural_center: "creative_arts",
+  cultural_landmark: "creative_arts", sculpture: "creative_arts", library: "creative_arts",
+  // Play
+  amusement_center: "play", bowling_alley: "play", miniature_golf_course: "play",
+  go_karting_venue: "play", paintball_center: "play", video_arcade: "play",
+  karaoke: "play", amusement_park: "play", ice_skating_rink: "play", indoor_playground: "play",
+  // Flowers
   florist: "flowers",
+  // Groceries
   grocery_store: "groceries", supermarket: "groceries",
-  bar: "drink", cocktail_bar: "drink", lounge_bar: "drink", wine_bar: "drink", pub: "drink", brewery: "drink", beer_garden: "drink", brewpub: "drink", night_club: "drink",
-  book_store: "first_meet", cafe: "first_meet", coffee_shop: "first_meet", tea_house: "first_meet", bakery: "first_meet", dessert_shop: "first_meet", juice_shop: "first_meet", bistro: "first_meet", ice_cream_shop: "first_meet",
-  picnic_ground: "picnic_park",
-  beach: "nature_views", botanical_garden: "nature_views", garden: "nature_views", hiking_area: "nature_views", national_park: "nature_views", nature_preserve: "nature_views", park: "nature_views", scenic_spot: "nature_views", state_park: "nature_views", observation_deck: "nature_views", tourist_attraction: "nature_views", garden_center: "nature_views", farm: "nature_views",
-  restaurant: "casual_eats", brunch_restaurant: "casual_eats", breakfast_restaurant: "casual_eats", diner: "casual_eats", sandwich_shop: "casual_eats", pizza_restaurant: "casual_eats", hamburger_restaurant: "casual_eats", mexican_restaurant: "casual_eats", mediterranean_restaurant: "casual_eats", thai_restaurant: "casual_eats", vegetarian_restaurant: "casual_eats",
 };
 
 function guessCategory(place) {

@@ -13,8 +13,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Brain, Globe, ShieldCheck, ShieldAlert, Shield, CheckCircle, XCircle,
   Zap, RefreshCw, Play, Pause, ChevronDown, ChevronRight, Clock,
-  UtensilsCrossed, Wine, Coffee, Flower2, Eye, Music, Palette, TreePine,
-  Gamepad2, Heart, ShoppingBag, MapPin, Sparkles, AlertTriangle,
+  UtensilsCrossed, Wine, Coffee, Flower2, Film, Palette, TreePine,
+  Gamepad2, ShoppingBag, Sparkles, AlertTriangle,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
@@ -24,34 +24,23 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Tabs } from "../components/ui/Tabs";
 import { Spinner } from "../components/ui/Spinner";
+import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from "../constants/categories";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const CATEGORIES = [
-  "nature_views", "first_meet", "picnic_park", "drink", "casual_eats",
-  "fine_dining", "watch", "live_performance", "creative_arts", "play",
-  "wellness", "flowers", "groceries",
-];
-
-const CAT_LABELS = {
-  nature_views: "Nature", first_meet: "1st Meet", picnic_park: "Picnic",
-  drink: "Drink", casual_eats: "Casual", fine_dining: "Fine Din.",
-  watch: "Watch", live_performance: "Live", creative_arts: "Arts",
-  play: "Play", wellness: "Wellness", flowers: "Flowers", groceries: "Grocery",
-};
-
-const CAT_COLORS = {
-  nature_views: "#22c55e", first_meet: "#f97316", picnic_park: "#84cc16",
-  drink: "#a855f7", casual_eats: "#ef4444", fine_dining: "#dc2626",
-  watch: "#3b82f6", live_performance: "#8b5cf6", creative_arts: "#ec4899",
-  play: "#f59e0b", wellness: "#14b8a6", flowers: "#f472b6", groceries: "#6b7280",
+// Short labels for the heatmap (space-constrained columns)
+const CAT_SHORT_LABELS = {
+  nature: "Nature", icebreakers: "Ice", drinks_and_music: "Drinks",
+  brunch_lunch_casual: "Casual", upscale_fine_dining: "Fine",
+  movies_theatre: "Movies", creative_arts: "Arts",
+  play: "Play", flowers: "Flowers", groceries: "Grocery",
 };
 
 const CAT_ICONS = {
-  casual_eats: UtensilsCrossed, fine_dining: Sparkles, drink: Wine,
-  first_meet: Coffee, flowers: Flower2, watch: Eye, live_performance: Music,
-  creative_arts: Palette, play: Gamepad2, wellness: Heart,
-  nature_views: TreePine, picnic_park: MapPin, groceries: ShoppingBag,
+  brunch_lunch_casual: UtensilsCrossed, upscale_fine_dining: Sparkles,
+  drinks_and_music: Wine, icebreakers: Coffee, flowers: Flower2,
+  movies_theatre: Film, creative_arts: Palette, play: Gamepad2,
+  nature: TreePine, groceries: ShoppingBag,
 };
 
 const STATUS_BADGE = {
@@ -168,7 +157,7 @@ function CoverageHeatmap({ data, selectedCityId, cityStats }) {
 
   // Column totals
   const colTotals = {};
-  for (const cat of CATEGORIES) {
+  for (const cat of ALL_CATEGORIES) {
     colTotals[cat] = cities.reduce((sum, c) => sum + (c.cats[cat]?.approved || 0), 0);
   }
 
@@ -178,9 +167,9 @@ function CoverageHeatmap({ data, selectedCityId, cityStats }) {
         <thead>
           <tr>
             <th className="text-left py-2 px-2 font-semibold text-[var(--color-text-secondary)] sticky left-0 bg-[var(--color-background-primary)] min-w-[120px]">City</th>
-            {CATEGORIES.map((cat) => (
-              <th key={cat} className="py-2 px-1 font-medium text-[var(--color-text-tertiary)] text-center min-w-[52px]" title={cat}>
-                {CAT_LABELS[cat]}
+            {ALL_CATEGORIES.map((cat) => (
+              <th key={cat} className="py-2 px-1 font-medium text-[var(--color-text-tertiary)] text-center min-w-[52px]" title={CATEGORY_LABELS[cat]}>
+                {CAT_SHORT_LABELS[cat] || cat}
               </th>
             ))}
             <th className="py-2 px-2 font-semibold text-[var(--color-text-secondary)] text-center min-w-[52px]">Total</th>
@@ -188,7 +177,7 @@ function CoverageHeatmap({ data, selectedCityId, cityStats }) {
         </thead>
         <tbody>
           {cities.map((city) => {
-            const rowTotal = CATEGORIES.reduce((sum, cat) => sum + (city.cats[cat]?.approved || 0), 0);
+            const rowTotal = ALL_CATEGORIES.reduce((sum, cat) => sum + (city.cats[cat]?.approved || 0), 0);
             // Get unvalidated count from cityStats RPC (accurate server-side data)
             const cityStatRow = (cityStats || []).find((s) => s.city_id === city.city_id);
             const unvalidatedCount = cityStatRow?.unvalidated || 0;
@@ -200,7 +189,7 @@ function CoverageHeatmap({ data, selectedCityId, cityStats }) {
                     <span className="ml-1 text-[10px] text-[var(--color-warning-600)]">({unvalidatedCount.toLocaleString()} pending)</span>
                   )}
                 </td>
-                {CATEGORIES.map((cat) => {
+                {ALL_CATEGORIES.map((cat) => {
                   const count = city.cats[cat]?.approved || 0;
                   return (
                     <td key={cat} className="py-1.5 px-1 text-center" title={`${city.city_name} × ${cat}: ${count} approved`}>
@@ -218,7 +207,7 @@ function CoverageHeatmap({ data, selectedCityId, cityStats }) {
           {/* Column totals row */}
           <tr className="border-t-2 border-[var(--gray-300)]">
             <td className="py-2 px-2 font-bold text-[var(--color-text-primary)] sticky left-0 bg-[var(--color-background-primary)]">All Cities</td>
-            {CATEGORIES.map((cat) => (
+            {ALL_CATEGORIES.map((cat) => (
               <td key={cat} className="py-2 px-1 text-center font-bold text-[var(--color-text-primary)] text-[11px]">
                 {colTotals[cat]}
               </td>
@@ -705,8 +694,8 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
                     <div className="flex gap-1 flex-wrap">
                       {(item.new_categories || []).map((cat) => (
                         <span key={cat} className="px-1.5 py-0.5 text-[10px] rounded-full font-medium text-white"
-                          style={{ backgroundColor: CAT_COLORS[cat] || "#6b7280" }}>
-                          {CAT_LABELS[cat] || cat}
+                          style={{ backgroundColor: CATEGORY_COLORS[cat] || "#6b7280" }}>
+                          {CATEGORY_LABELS[cat] || cat}
                         </span>
                       ))}
                     </div>
@@ -756,7 +745,7 @@ function PipelineTab({ invoke, selectedCityId, cities, toast, onRefresh, onSwitc
               <select value={category} onChange={(e) => setCategory(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)] text-sm">
                 <option value="">All categories</option>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+                {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>)}
               </select>
             </div>
           )}
@@ -981,7 +970,7 @@ function ReviewQueueTab({ invoke, toast }) {
         {/* Header */}
         <div className="px-3 pt-3 pb-1">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-text-tertiary)]">Review Queue</p>
-          <p className="text-[13px] text-[var(--color-text-secondary)]">{totalCount} items{catFilter ? ` · ${CAT_LABELS[catFilter] || catFilter}` : ""}</p>
+          <p className="text-[13px] text-[var(--color-text-secondary)]">{totalCount} items{catFilter ? ` · ${CATEGORY_LABELS[catFilter] || catFilter}` : ""}</p>
         </div>
 
         {/* Filter tabs — decision type */}
@@ -1003,7 +992,7 @@ function ReviewQueueTab({ invoke, toast }) {
           <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)}
             className="w-full px-2 py-1 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] text-[12px] text-[var(--color-text-secondary)]">
             <option value="">All Categories</option>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{CAT_LABELS[c] || c}</option>)}
+            {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c] || c}</option>)}
           </select>
         </div>
 
@@ -1032,8 +1021,8 @@ function ReviewQueueTab({ invoke, toast }) {
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {primaryCat && (
                         <span className="px-1.5 py-0.5 text-[9px] rounded-full font-medium text-white shrink-0"
-                          style={{ backgroundColor: CAT_COLORS[primaryCat] || "#6b7280" }}>
-                          {CAT_LABELS[primaryCat] || primaryCat}
+                          style={{ backgroundColor: CATEGORY_COLORS[primaryCat] || "#6b7280" }}>
+                          {CATEGORY_LABELS[primaryCat] || primaryCat}
                         </span>
                       )}
                       <p className="text-[11px] text-[var(--color-text-tertiary)] truncate">{item.place_address}</p>
@@ -1092,8 +1081,8 @@ function ReviewQueueTab({ invoke, toast }) {
                   <Badge variant={CONF_BADGE[selected.confidence] || "default"}>{selected.confidence}</Badge>
                   {(selected.new_categories || []).map((cat) => (
                     <span key={cat} className="px-2 py-0.5 text-[11px] rounded-full font-medium text-white"
-                      style={{ backgroundColor: CAT_COLORS[cat] || "#6b7280" }}>
-                      {CAT_LABELS[cat] || cat}
+                      style={{ backgroundColor: CATEGORY_COLORS[cat] || "#6b7280" }}>
+                      {CATEGORY_LABELS[cat] || cat}
                     </span>
                   ))}
                 </div>
@@ -1130,7 +1119,7 @@ function ReviewQueueTab({ invoke, toast }) {
                   <div className="flex gap-1 flex-wrap">
                     {selected.previous_categories.map((cat) => (
                       <span key={cat} className="px-2 py-0.5 text-[11px] rounded-full font-medium bg-[var(--gray-200)] text-[var(--color-text-secondary)]">
-                        {CAT_LABELS[cat] || cat}
+                        {CATEGORY_LABELS[cat] || cat}
                       </span>
                     ))}
                   </div>
@@ -1171,15 +1160,15 @@ function ReviewQueueTab({ invoke, toast }) {
                 <div>
                   <p className="text-[11px] text-[var(--color-text-tertiary)] mb-1.5">Categories</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {CATEGORIES.map((cat) => {
+                    {ALL_CATEGORIES.map((cat) => {
                       const active = overrideCats.has(cat);
                       return (
                         <button key={cat} onClick={() => toggleCat(cat)}
                           className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
                             active ? "text-white border-transparent" : "bg-transparent border-[var(--gray-300)] text-[var(--color-text-secondary)]"
                           }`}
-                          style={active ? { backgroundColor: CAT_COLORS[cat] } : {}}>
-                          {CAT_LABELS[cat] || cat}
+                          style={active ? { backgroundColor: CATEGORY_COLORS[cat] } : {}}>
+                          {CATEGORY_LABELS[cat] || cat}
                         </button>
                       );
                     })}

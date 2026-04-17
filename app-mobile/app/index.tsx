@@ -55,6 +55,7 @@ import {
   loginToOneSignal,
   logoutOneSignal,
   onNotificationClicked,
+  onForegroundNotification,
 } from "../src/services/oneSignalService";
 import { initializeAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent } from "../src/services/appsFlyerService";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
@@ -243,6 +244,8 @@ function AppContent() {
   // like isAuthenticated are not.
   const userIdRef = useRef<string | undefined>(undefined);
   userIdRef.current = user?.id;
+  const currentSessionIdRef = useRef<string | null>(null);
+  currentSessionIdRef.current = currentSessionId;
   // Generation counter for refreshAllSessions() concurrency protection.
   // Declared here (top of component) so it persists stably across renders and is
   // visible to any future developer extracting refreshAllSessions to a custom hook.
@@ -369,7 +372,7 @@ function AppContent() {
       if (!userIdRef.current) {
         // Stash the deep link for after auth
         if (data.type === 'paired_user_saved_card' && data.notificationId) {
-          pendingDeepLinkRef.current = `mingla://discover?paired=true&notificationId=${data.notificationId as string}`;
+          pendingDeepLinkRef.current = `mingla://connections?paired=true&notificationId=${data.notificationId as string}`;
         } else if (data.deepLink) {
           pendingDeepLinkRef.current = data.deepLink as string;
         }
@@ -411,30 +414,17 @@ function AppContent() {
       });
 
       // Navigate via deep link
+      // ORCH-0435: paired_user_saved_card → open friend profile
       if (data.type === 'paired_user_saved_card' && notificationId) {
         supabase
           .from('notifications')
-          .select('related_id')
+          .select('actor_id')
           .eq('id', notificationId)
           .maybeSingle()
           .then(({ data: notification }) => {
-            const cardId = notification?.related_id;
-            if (typeof cardId === 'string' && cardId) {
-              setDeepLinkParams({ paired: 'true', cardId });
-              setCurrentPage('discover');
-              return;
-            }
-
-            if (deepLink) {
-              const action = parseDeepLink(deepLink);
-              executeDeepLink(action, {
-                setCurrentPage: setCurrentPage as (page: string) => void,
-                setPendingSessionOpen,
-                setShowPaywall: (show: boolean) => setShowPaywall(show),
-                setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
-              });
-            } else if (navigationTarget) {
-              setCurrentPage(navigationTarget as any);
+            setCurrentPage('connections');
+            if (notification?.actor_id) {
+              setViewingFriendProfileId(notification.actor_id);
             }
           });
       } else if (deepLink) {
@@ -558,10 +548,10 @@ function AppContent() {
       friend_request_accepted: "connections",
       friend_request: "connections", // legacy
       friend_accepted: "connections", // legacy
-      pair_request_received: "discover",
-      pair_request_accepted: "discover",
-      paired_user_saved_card: "discover",
-      paired_user_visited: "discover",
+      pair_request_received: "connections",
+      pair_request_accepted: "connections",
+      paired_user_saved_card: "connections",
+      paired_user_visited: "connections",
       // Collaboration / Sessions
       collaboration_invite_received: "home",
       collaboration_invite_accepted: "home",
@@ -570,6 +560,7 @@ function AppContent() {
       collaboration_invite_sent: "home",
       session_member_joined: "home",
       session_member_left: "home",
+      session_deleted: "home",
       board_card_saved: "home",
       board_card_voted: "home",
       board_card_rsvp: "home",
@@ -594,7 +585,7 @@ function AppContent() {
       // Feedback
       visit_feedback_prompt: "likes",
       // Holiday reminders (Block 3 Pass 2)
-      holiday_reminder: "discover",
+      holiday_reminder: "connections",
     };
 
     // ORCH-0407: NO foreground listener registered. Without a listener, the
@@ -619,8 +610,26 @@ function AppContent() {
       processNotification(data, NAV_TARGETS[data.type as string]);
     });
 
+    // ORCH-0448D: Foreground push handler — reacts to pushes while app is active.
+    // Handles session_deleted: switches partner to solo immediately.
+    // Uses refs to avoid stale closure over state.
+    const removeForeground = onForegroundNotification((data, prevent, display) => {
+      if (data.type === 'session_deleted') {
+        const deletedSessionId = data.sessionId as string | undefined;
+        // Only switch if we're in the deleted session
+        if (deletedSessionId && currentSessionIdRef.current === deletedSessionId) {
+          display(); // Show the push notification so user knows why they were switched
+          handleSoloSelect();
+          return;
+        }
+      }
+      // All other notification types: show the system banner as normal
+      display();
+    });
+
     return () => {
       removeClicked();
+      removeForeground();
     };
   }, []);
 
@@ -633,12 +642,23 @@ function AppContent() {
         sessionType = isCreator ? 'sent-invite' : 'received-invite';
       }
 
+      // Build participant details for the invite modal
+      const participantDetails = (board.participants || [])
+        .filter((p: any) => p.id !== user?.id && p.user_id !== user?.id)
+        .map((p: any) => ({
+          id: p.id || p.user_id,
+          name: p.name || 'Invited',
+          avatar: p.avatar || p.avatar_url || undefined,
+          hasAccepted: p.has_accepted ?? (p.status === 'online'),
+        }));
+
       return {
         id: board.id || board.session_id,
         name: board.name,
         initials: getInitials(board.name),
         type: sessionType,
         participants: board.participants?.length || 0,
+        participantDetails: participantDetails.length > 0 ? participantDetails : undefined,
         createdAt: board.createdAt ? new Date(board.createdAt) : undefined,
         invitedBy: board.inviterProfile || undefined,
       };
@@ -741,26 +761,18 @@ function AppContent() {
     if (user?.id && pendingDeepLinkRef.current) {
       const action = parseDeepLink(pendingDeepLinkRef.current);
 
-      if (action?.page === 'discover' && action.params?.notificationId) {
+      // ORCH-0435: paired notification deep link → open friend profile
+      if (action?.page === 'connections' && action.params?.paired === 'true' && action.params?.notificationId) {
         supabase
           .from('notifications')
-          .select('related_id')
+          .select('actor_id')
           .eq('id', action.params.notificationId)
           .maybeSingle()
           .then(({ data: notification }) => {
-            const cardId = notification?.related_id;
-            if (typeof cardId === 'string' && cardId) {
-              setDeepLinkParams({ paired: 'true', cardId });
-              setCurrentPage('discover');
-              return;
+            setCurrentPage('connections');
+            if (notification?.actor_id) {
+              setViewingFriendProfileId(notification.actor_id);
             }
-
-            executeDeepLink(action, {
-              setCurrentPage: setCurrentPage as (page: string) => void,
-              setPendingSessionOpen,
-              setShowPaywall: (show: boolean) => setShowPaywall(show),
-              setDeepLinkParams: (params: Record<string, string>) => setDeepLinkParams(params),
-            });
           });
       } else {
         executeDeepLink(action, {
@@ -991,9 +1003,28 @@ function AppContent() {
     const deepLink = notification.data?.deepLink as string | undefined;
     logger.action('Notification tapped', { type: notification.type, deepLink });
 
-    if (notification.type === 'paired_user_saved_card' && notification.related_id) {
-      setDeepLinkParams({ paired: 'true', cardId: notification.related_id });
-      setCurrentPage('discover');
+    // ORCH-0435: Pair notifications → Friends tab + open friend profile
+    if (notification.type === 'paired_user_saved_card' && notification.actor_id) {
+      setCurrentPage('connections');
+      setViewingFriendProfileId(notification.actor_id);
+      return;
+    }
+    if ((notification.type === 'paired_user_visited' || notification.type === 'holiday_reminder') && notification.actor_id) {
+      setCurrentPage('connections');
+      setViewingFriendProfileId(notification.actor_id);
+      return;
+    }
+
+    // ORCH-0435: Friend request received → Friends tab + open modal to Requests tab
+    if (notification.type === 'friend_request_received' || notification.type === 'friend_request') {
+      setCurrentPage('connections');
+      setPendingConnectionsPanel('friends');
+      return;
+    }
+
+    // Pair request notifications → Friends tab (pills show incoming/accepted)
+    if (notification.type === 'pair_request_received' || notification.type === 'pair_request_accepted') {
+      setCurrentPage('connections');
       return;
     }
 
@@ -1118,6 +1149,25 @@ function AppContent() {
       const createdPendingSessions = createdResult.data;
       const invitedSessions = invitedResult.data;
 
+      // ORCH-0437: Fetch profiles for pending session participants so the invite
+      // modal can show names and acceptance status.
+      const allPendingParticipantIds = new Set<string>();
+      for (const s of (createdPendingSessions || [])) {
+        for (const p of (s.session_participants || [])) {
+          if (p.user_id !== user.id) allPendingParticipantIds.add(p.user_id);
+        }
+      }
+      let pendingParticipantProfiles: Record<string, any> = {};
+      if (allPendingParticipantIds.size > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, username, avatar_url')
+          .in('id', Array.from(allPendingParticipantIds));
+        for (const p of (profiles || [])) {
+          pendingParticipantProfiles[p.id] = p;
+        }
+      }
+
       // Transform pending created sessions
       // Only include sessions where the user is actually a participant (prevents ghost sessions
       // from failed creation attempts from appearing as duplicate pills)
@@ -1125,15 +1175,35 @@ function AppContent() {
         .filter((s: any) =>
           (s.session_participants || []).some((p: any) => p.user_id === user.id)
         )
-        .map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          status: s.status,
-          creatorId: s.created_by,
-          created_by: s.created_by,
-          participants: s.session_participants || [],
-          createdAt: s.created_at,
-        }));
+        .map((s: any) => {
+          const participantsWithProfiles = (s.session_participants || [])
+            .filter((p: any) => p.user_id !== user.id)
+            .map((p: any) => {
+              const profile = pendingParticipantProfiles[p.user_id];
+              const name = profile
+                ? (profile.first_name && profile.last_name
+                    ? `${profile.first_name} ${profile.last_name}`
+                    : profile.first_name || profile.username || 'Invited')
+                : 'Invited';
+              return {
+                user_id: p.user_id,
+                id: p.user_id,
+                name,
+                avatar_url: profile?.avatar_url,
+                has_accepted: p.has_accepted,
+              };
+            });
+
+          return {
+            id: s.id,
+            name: s.name,
+            status: s.status,
+            creatorId: s.created_by,
+            created_by: s.created_by,
+            participants: participantsWithProfiles,
+            createdAt: s.created_at,
+          };
+        });
 
       // Fetch inviter profiles for invited sessions.
       // Note: the Supabase query above already filters by status='pending', so the
@@ -1198,8 +1268,12 @@ function AppContent() {
           };
         });
 
-      // Combine and deduplicate by id
-      const allSessions = [...activeBoards, ...pendingCreatedSessions, ...pendingInvitedSessions];
+      // Combine and deduplicate by id.
+      // ORCH-0437: pendingCreatedSessions and pendingInvitedSessions come FIRST so their
+      // status='pending' wins dedup over activeBoards (which maps pending→active).
+      // Without this, the creator's pending session appears as 'active' and can be opened
+      // before any invitee has accepted.
+      const allSessions = [...pendingCreatedSessions, ...pendingInvitedSessions, ...activeBoards];
       const uniqueSessions = allSessions.reduce((acc: any[], session: any) => {
         if (!acc.find((s: any) => s.id === session.id)) {
           acc.push(session);
@@ -1283,6 +1357,39 @@ function AppContent() {
         });
 
       if (participantError) throw participantError;
+
+      // ORCH-0446B: Write creator's solo prefs to session JSONB
+      try {
+        const { data: soloPrefs } = await supabase
+          .from('preferences')
+          .select('*')
+          .eq('profile_id', user.id)
+          .maybeSingle();
+
+        const { error: rpcError } = await supabase.rpc('upsert_participant_prefs', {
+          p_session_id: session.id,
+          p_user_id: user.id,
+          p_prefs: {
+            categories: soloPrefs?.categories?.length ? soloPrefs.categories : ['nature', 'drinks_and_music', 'icebreakers'],
+            intents: soloPrefs?.intents ?? [],
+            travel_mode: soloPrefs?.travel_mode ?? 'walking',
+            travel_constraint_type: 'time',
+            travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
+            date_option: soloPrefs?.date_option ?? null,
+            datetime_pref: soloPrefs?.datetime_pref ?? null,
+            selected_dates: soloPrefs?.selected_dates ?? null,
+            use_gps_location: soloPrefs?.use_gps_location ?? true,
+            custom_location: soloPrefs?.custom_location ?? null,
+            custom_lat: soloPrefs?.custom_lat ?? null,
+            custom_lng: soloPrefs?.custom_lng ?? null,
+            intent_toggle: soloPrefs?.intent_toggle ?? true,
+            category_toggle: soloPrefs?.category_toggle ?? true,
+          },
+        });
+        if (rpcError) console.error('[index] Creator pref RPC error:', rpcError.message);
+      } catch (err) {
+        console.error('[index] Creator pref write failed:', err);
+      }
 
       // Add selected friends as participants and send invites
       for (const friend of selectedFriends) {
@@ -1416,6 +1523,12 @@ function AppContent() {
       // Refresh all sessions so the pill bar reflects the new active session
       await refreshAllSessions({ showLoading: true });
       toastManager.success(`Joined "${result.sessionName}" successfully!`);
+
+      // Auto-enter the session and open the modal
+      if (result.sessionId) {
+        handleSessionSelect(result.sessionId);
+        setPendingSessionOpen(result.sessionId);
+      }
     } catch (error) {
       console.error('Error accepting invite:', error);
       toastManager.error('Failed to accept invite.');
@@ -1495,6 +1608,86 @@ function AppContent() {
     }
   };
 
+  // ORCH-0437: Invite more people to an existing pending session
+  const handleInviteMoreToSession = async (sessionId: string, friend: { id: string; name: string; username?: string; avatar?: string }) => {
+    if (!user?.id) return;
+    logger.action('Invite more to session', { sessionId, friendId: friend.id });
+    try {
+      const friendUserId = friend.id;
+
+      // Get friend's email
+      const { data: friendProfile } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('id', friendUserId)
+        .single();
+
+      // Add as participant (not accepted yet)
+      const { error: participantError } = await supabase
+        .from('session_participants')
+        .insert({
+          session_id: sessionId,
+          user_id: friendUserId,
+          has_accepted: false,
+        });
+
+      if (participantError) {
+        if (participantError.code === '23505') {
+          toastManager.info(`${friend.name} is already invited.`);
+        } else {
+          console.error('Error adding participant:', participantError);
+          toastManager.error('Failed to add collaborator.');
+        }
+        return;
+      }
+
+      // Create invite
+      const { data: sessionData } = await supabase
+        .from('collaboration_sessions')
+        .select('name')
+        .eq('id', sessionId)
+        .single();
+
+      const { data: inviteData, error: inviteError } = await supabase
+        .from('collaboration_invites')
+        .insert({
+          session_id: sessionId,
+          inviter_id: user.id,
+          invited_user_id: friendUserId,
+          status: 'pending',
+        })
+        .select('id')
+        .single();
+
+      if (inviteError) {
+        console.error('Error creating invite:', inviteError);
+      }
+
+      // Send notification
+      if (friendProfile?.email && inviteData) {
+        try {
+          await supabase.functions.invoke('send-collaboration-invite', {
+            body: {
+              inviterId: user.id,
+              invitedUserId: friendUserId,
+              invitedUserEmail: friendProfile.email,
+              sessionId,
+              sessionName: sessionData?.name || 'a session',
+              inviteId: inviteData.id,
+            },
+          });
+        } catch (emailErr) {
+          console.error('Failed to send invite notification:', emailErr);
+        }
+      }
+
+      await refreshAllSessions({ showLoading: false });
+      toastManager.success(`Invited ${friend.name}!`);
+    } catch (error) {
+      console.error('Error inviting to session:', error);
+      toastManager.error('Failed to send invite.');
+    }
+  };
 
   // Handle deep links for OAuth callback
   useEffect(() => {
@@ -1856,6 +2049,7 @@ function AppContent() {
             onAcceptInvite={handleAcceptInvite}
             onDeclineInvite={handleDeclineInvite}
             onCancelInvite={handleCancelInvite}
+            onInviteMoreToSession={handleInviteMoreToSession}
             onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
@@ -1868,16 +2062,11 @@ function AppContent() {
       case "discover":
         return (
           <DiscoverScreen
-            onAddFriend={() => {
-              // Navigate to connections or show add friend modal
-              setCurrentPage("connections");
-            }}
             onOpenChatWithUser={(friendUserId) => {
               setPendingOpenDmUserId(friendUserId);
               setCurrentPage("connections");
             }}
             onViewFriendProfile={(friendUserId) => setViewingFriendProfileId(friendUserId)}
-            onUpgradePress={() => setShowPaywall(true)}
             accountPreferences={{
               currency: accountPreferences?.currency || "USD",
               measurementSystem:
@@ -1888,6 +2077,8 @@ function AppContent() {
             preferencesRefreshKey={preferencesRefreshKey}
             deepLinkParams={currentPage === 'discover' ? deepLinkParams : null}
             onDeepLinkHandled={() => setDeepLinkParams(null)}
+            onOpenPreferences={() => setShowPreferences(true)}
+            onOpenSession={(sessionId) => setCurrentSessionId(sessionId)}
           />
         );
       case "saved":
@@ -2028,6 +2219,7 @@ function AppContent() {
             onAcceptInvite={handleAcceptInvite}
             onDeclineInvite={handleDeclineInvite}
             onCancelInvite={handleCancelInvite}
+            onInviteMoreToSession={handleInviteMoreToSession}
             onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
             availableFriends={availableFriendsForSessions}
             isCreatingSession={isCreatingSession}
@@ -2068,6 +2260,7 @@ function AppContent() {
             currentMode={currentMode ?? "solo"}
             refreshKey={preferencesRefreshKey}
             persistedSessionId={currentSessionId}
+            onSessionLost={handleSoloSelect}
           >
             <MobileFeaturesProvider>
               <NavigationProvider>
@@ -2143,6 +2336,7 @@ function AppContent() {
                                 onAcceptInvite={handleAcceptInvite}
                                 onDeclineInvite={handleDeclineInvite}
                                 onCancelInvite={handleCancelInvite}
+                                onInviteMoreToSession={handleInviteMoreToSession}
                                 onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
                                 availableFriends={availableFriendsForSessions}
                                 isCreatingSession={isCreatingSession}
@@ -2155,9 +2349,6 @@ function AppContent() {
                             <View style={currentPage === 'discover' ? styles.tabVisible : styles.tabHidden}>
                               <DiscoverScreen
                                 isTabVisible={currentPage === 'discover'}
-                                onAddFriend={() => {
-                                  setCurrentPage("connections");
-                                }}
                                 onOpenChatWithUser={(friendUserId) => {
                                   setPendingOpenDmUserId(friendUserId);
                                   setCurrentPage("connections");
@@ -2165,7 +2356,6 @@ function AppContent() {
                                 onViewFriendProfile={(friendUserId) =>
                                   setViewingFriendProfileId(friendUserId)
                                 }
-                                onUpgradePress={() => setShowPaywall(true)}
                                 accountPreferences={{
                                   currency: accountPreferences?.currency || "USD",
                                   measurementSystem:
@@ -2346,7 +2536,7 @@ function AppContent() {
                           >
                             <View style={styles.navIconContainer}>
                               <Ionicons
-                                name="chatbubbles-outline"
+                                name="people-outline"
                                 size={TAB_BAR_ICON_SIZE}
                                 color={
                                   currentPage === "connections"
@@ -2372,7 +2562,7 @@ function AppContent() {
                                   : styles.navTextInactive,
                               ]}
                             >
-                              {t('navigation:tabs.chats')}
+                              {t('navigation:tabs.friends')}
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
@@ -2510,6 +2700,10 @@ function AppContent() {
               onClose={() => {
                 logger.action('Close collab preferences');
                 setShowCollabPreferences(false);
+                // ORCH-0446B: Bump refreshKey so RecommendationsContext re-reads
+                // the updated participant_prefs from DB (its useBoardSession instance
+                // is separate from PreferencesSheet's — needs an explicit signal).
+                setPreferencesRefreshKey((k: number) => k + 1);
               }}
               sessionId={currentSessionId}
               sessionName={currentMode ?? "solo"}

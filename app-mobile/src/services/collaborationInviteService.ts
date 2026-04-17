@@ -11,6 +11,7 @@
  */
 import { supabase } from './supabase';
 import { getDisplayName } from '../utils/getDisplayName';
+// ORCH-0446: seedCollabPrefsFromSolo deleted. Seeding is now inline via RPC.
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -163,6 +164,7 @@ export async function acceptCollaborationInvite(
   }
 
   // ── Step 3: Upsert user as accepted participant ─────────────────────────
+  // MUST happen before prefs RPC — the RPC validates has_accepted = true.
 
   const { error: participantError } = await supabase
     .from('session_participants')
@@ -178,6 +180,41 @@ export async function acceptCollaborationInvite(
 
   if (participantError) {
     console.error('[collaborationInviteService] Error adding participant:', participantError);
+  }
+
+  // ── Step 4: Write acceptor's prefs to session JSONB (ORCH-0446) ─────
+  // Atomic RPC merge — safe for concurrent writes, no read-modify-write race.
+  // Runs after participant upsert so the RPC's has_accepted validation passes.
+  try {
+    const { data: soloPrefs } = await supabase
+      .from('preferences')
+      .select('*')
+      .eq('profile_id', userId)
+      .maybeSingle();
+
+    await supabase.rpc('upsert_participant_prefs', {
+      p_session_id: sessionId,
+      p_user_id: userId,
+      p_prefs: {
+        categories: soloPrefs?.categories?.length ? soloPrefs.categories : ['nature', 'drinks_and_music', 'icebreakers'],
+        intents: soloPrefs?.intents ?? [],
+        travel_mode: soloPrefs?.travel_mode ?? 'walking',
+        travel_constraint_type: 'time',
+        travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
+        date_option: soloPrefs?.date_option ?? null,
+        datetime_pref: soloPrefs?.datetime_pref ?? null,
+        selected_dates: soloPrefs?.selected_dates ?? null,
+        use_gps_location: soloPrefs?.use_gps_location ?? true,
+        custom_location: soloPrefs?.custom_location ?? null,
+        custom_lat: soloPrefs?.custom_lat ?? null,
+        custom_lng: soloPrefs?.custom_lng ?? null,
+        intent_toggle: soloPrefs?.intent_toggle ?? true,
+        category_toggle: soloPrefs?.category_toggle ?? true,
+      },
+    });
+  } catch (err) {
+    console.error('[collaborationInviteService] Preference write failed:', err);
+    // Non-blocking: deck aggregation falls back to empty prefs for this user
   }
 
   // Notify other participants that this user joined (fire-and-forget).
@@ -312,45 +349,7 @@ export async function acceptCollaborationInvite(
     }
   }
 
-  // ── Step 6: Seed board_session_preferences from solo prefs ──────────────
-
-  const { data: soloPrefs } = await supabase
-    .from('preferences')
-    .select(
-      'categories, intents, price_tiers, budget_min, budget_max, travel_mode, travel_constraint_type, travel_constraint_value, date_option, time_slot, exact_time, datetime_pref, use_gps_location, custom_location, custom_lat, custom_lng'
-    )
-    .eq('profile_id', userId)
-    .single();
-
-  const { error: preferencesError } = await supabase
-    .from('board_session_preferences')
-    .upsert(
-      {
-        session_id: sessionId,
-        user_id: userId,
-        categories: soloPrefs?.categories ?? [],
-        intents: soloPrefs?.intents ?? [],
-        price_tiers: soloPrefs?.price_tiers ?? [],
-        budget_min: soloPrefs?.budget_min ?? 0,
-        budget_max: soloPrefs?.budget_max ?? 1000,
-        travel_mode: soloPrefs?.travel_mode ?? 'walking',
-        travel_constraint_type: 'time',
-        travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
-        date_option: soloPrefs?.date_option ?? null,
-        time_slot: soloPrefs?.time_slot ?? null,
-        exact_time: soloPrefs?.exact_time ?? null,
-        datetime_pref: soloPrefs?.datetime_pref ?? null,
-        use_gps_location: soloPrefs?.use_gps_location ?? true,
-        custom_location: soloPrefs?.custom_location ?? null,
-        custom_lat: soloPrefs?.custom_lat ?? null,
-        custom_lng: soloPrefs?.custom_lng ?? null,
-      },
-      { onConflict: 'session_id,user_id' }
-    );
-
-  if (preferencesError) {
-    console.error('[collaborationInviteService] Error creating preferences:', preferencesError);
-  }
+  // Prefs written to JSONB in Step 3 (ORCH-0446)
 
   return {
     success: true,

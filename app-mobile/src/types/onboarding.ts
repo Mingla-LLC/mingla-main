@@ -5,11 +5,10 @@ export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7
 export type Step1SubStep = 'language' | 'welcome' | 'phone' | 'otp' | 'gender_identity' | 'details'
 export type Step2SubStep = 'value_prop' | 'intents'
 export type Step3SubStep = 'location'
+// ORCH-0434: 'budget', 'manual_location', 'when' removed — GPS mandatory, date defaults to this_weekend
 export type Step4SubStep =
   | 'celebration'
-  | 'manual_location'  // only shown when GPS was denied/skipped
   | 'categories'
-  | 'budget'
   | 'transport'
   | 'travel_time'
 
@@ -38,9 +37,7 @@ export interface OnboardingNavState {
 
 // ─── Collected Data ───
 
-import { PriceTierSlug } from '../constants/priceTiers';
-
-export const DEFAULT_PRICE_TIERS: PriceTierSlug[] = ['comfy', 'bougie'];
+// ORCH-0434: DEFAULT_PRICE_TIERS removed — no price tier selection in onboarding.
 
 export interface AddedFriend {
   type: 'existing' | 'invited'
@@ -96,8 +93,9 @@ export interface OnboardingData {
 
   // Step 4
   manualLocation: string | null  // city name typed by user (when GPS denied)
-  selectedCategories: string[]   // slug IDs: 'nature', 'drink', etc.
-  selectedPriceTiers: PriceTierSlug[]  // selected price tier slugs
+  selectedCategories: string[]   // slug IDs: 'nature', 'drinks_and_music', etc.
+  dateOption: string             // ORCH-0434: 'today' | 'this_weekend' | 'pick_dates'
+  selectedDates: string[]        // ORCH-0434: ISO date strings for pick_dates mode
   travelMode: 'walking' | 'biking' | 'transit' | 'driving'
   travelTimeMinutes: number      // 15, 30, 45, or 60
 
@@ -177,4 +175,5 @@ export const DEFAULT_TRANSPORT = 'walking'
 // ─── Default Categories ───
 // Synced with PostgreSQL default in supabase/migrations/20260228000001_update_categories.sql
 // If you change this list, update the DB default too (and vice versa).
-export const DEFAULT_CATEGORIES = ['nature', 'casual_eats', 'drink']
+// ORCH-0434: Updated to new canonical slugs.
+export const DEFAULT_CATEGORIES = ['nature', 'drinks_and_music', 'icebreakers']

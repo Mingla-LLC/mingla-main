@@ -7,10 +7,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ORCH-0434: Updated to new canonical slugs.
 const VALID_CATEGORIES = new Set([
-  'nature_views', 'first_meet', 'picnic_park', 'drink', 'casual_eats',
-  'fine_dining', 'watch', 'live_performance', 'creative_arts', 'play',
-  'wellness', 'flowers', 'groceries',
+  'nature', 'icebreakers', 'drinks_and_music', 'brunch_lunch_casual',
+  'upscale_fine_dining', 'movies_theatre', 'creative_arts', 'play',
+  'flowers', 'groceries',
 ]);
 
 serve(async (req) => {

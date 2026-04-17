@@ -1,5 +1,3 @@
-import { PriceTierSlug } from '../constants/priceTiers';
-
 export interface User {
   id: string;
   email: string;
@@ -34,7 +32,6 @@ export interface User {
 
 // Lovable recommendation types
 export interface RecommendationsRequest {
-  priceTiers: PriceTierSlug[];
   categories: string[];
   experienceTypes?: string[];
   timeWindow: {
@@ -167,7 +164,6 @@ export interface SessionState {
 
 // Preferences types for Lovable compatibility
 export interface ActivePreferences {
-  priceTiers: PriceTierSlug[];
   categories: string[];
   experienceTypes: string[];
   time: string;
@@ -184,17 +180,13 @@ export interface ActivePreferences {
 export interface Preferences {
   profile_id: string;
   mode: string;
-  budget_min: number;
-  budget_max: number;
-  price_tiers: PriceTierSlug[];
   people_count: number;
   categories: string[];
   travel_mode: string;
   travel_constraint_type: 'time';
   travel_constraint_value: number;
   datetime_pref: string | null;
-  date_option?: string | null; // "now", "today", "weekend", "custom"
-  time_slot?: string | null; // "brunch", "afternoon", "dinner", "lateNight"
+  date_option?: string | null; // "today" | "this_weekend" | "pick_dates"
   created_at: string;
   updated_at: string;
 }

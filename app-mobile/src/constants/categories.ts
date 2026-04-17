@@ -80,12 +80,12 @@ export const categories: Category[] = [
     },
     activityType: 'mobile',
     duration: 'medium',
-    compatibleWith: ['picnic_park', 'wellness', 'creative_arts'],
-    incompatibleWith: ['watch', 'fine_dining', 'play']
+    compatibleWith: ['creative_arts'],
+    incompatibleWith: ['movies_theatre', 'upscale_fine_dining', 'play']
   },
   {
-    slug: 'first_meet',
-    name: 'First Meet',
+    slug: 'icebreakers',
+    name: 'Icebreakers',
     icon: '🤝',
     description: 'Cafés, activities, and cultural spots — perfect for meeting someone new',
     detailedDescription: 'Coffee shops, bookstores, bowling alleys, arcades, art galleries, parks, museums, and more. Low-pressure venues mixing conversation, fun activities, and cultural outings for a memorable first meeting.',
@@ -133,55 +133,12 @@ export const categories: Category[] = [
     },
     activityType: 'mixed',
     duration: 'short',
-    compatibleWith: ['drink', 'watch', 'creative_arts'],
-    incompatibleWith: ['wellness', 'picnic_park']
+    compatibleWith: ['drinks_and_music', 'movies_theatre', 'creative_arts'],
+    incompatibleWith: []
   },
   {
-    slug: 'picnic_park',
-    name: 'Picnic Park',
-    icon: '🧺',
-    description: 'Parks, picnic grounds, botanical gardens, and nature preserves for outdoor dining',
-    detailedDescription: 'Parks, city parks, picnic grounds, state parks, botanical gardens, gardens, and nature preserves. Perfect for a relaxed outdoor meal with scenic views, walking trails, and open green spaces.',
-    expectedActivities: [
-      'Parks and picnic grounds with tables and shelters',
-      'Botanical gardens and nature preserves for scenic picnics',
-      'State parks and city parks with open green spaces',
-    ],
-    apiMapping: {
-      googleMaps: {
-        coreAnchors: ['park', 'city_park', 'picnic_ground', 'state_park', 'botanical_garden', 'garden', 'nature_preserve'],
-        attributes: ['outdoor', 'open_space', 'family_friendly'],
-        excludedAttributes: [
-          'gym', 'fitness_center', 'sports_complex', 'stadium',
-          'amusement_park', 'amusement_center', 'casino', 'night_club',
-          'shopping_mall', 'parking', 'zoo', 'aquarium',
-        ],
-      },
-      eventbrite: {
-        eventTypes: ['outdoor_events', 'picnics', 'garden_events']
-      }
-    },
-    logic: {
-      hardFilter: 'Must be an outdoor park, garden, or nature preserve suitable for picnics',
-      hierarchy: {
-        broad: 'Picnic Park',
-        niche: ['Parks', 'Picnic Grounds', 'Botanical Gardens', 'Nature Preserves']
-      },
-      fallbackBehavior: 'If no park or picnic ground nearby, show closest available outdoor venue.'
-    },
-    ux: {
-      activeColor: '#84CC16',
-      subcategories: ['Parks', 'Picnic Grounds', 'Botanical Gardens', 'Nature Preserves'],
-      contextualPreview: 'Scenic park with picnic tables — perfect for an outdoor meal.'
-    },
-    activityType: 'mixed',
-    duration: 'medium',
-    compatibleWith: ['nature', 'drink', 'casual_eats'],
-    incompatibleWith: ['fine_dining', 'watch', 'wellness']
-  },
-  {
-    slug: 'drink',
-    name: 'Drink',
+    slug: 'drinks_and_music',
+    name: 'Drinks & Music',
     icon: '🍹',
     description: 'Bars, cocktail bars, breweries, coffee shops, tea houses, and more',
     detailedDescription: 'Drink-focused venues — bars, cocktail bars, beer gardens, breweries, coffee shops, coffee roasteries, tea houses, and juice bars. Works for first dates, group hangs, and casual social outings.',
@@ -219,12 +176,12 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'short',
-    compatibleWith: ['first_meet', 'casual_eats', 'fine_dining', 'watch', 'play', 'creative_arts', 'picnic_park'],
-    incompatibleWith: ['wellness', 'nature']
+    compatibleWith: ['icebreakers', 'brunch_lunch_casual', 'upscale_fine_dining', 'movies_theatre', 'play', 'creative_arts'],
+    incompatibleWith: ['nature']
   },
   {
-    slug: 'casual_eats',
-    name: 'Casual Eats',
+    slug: 'brunch_lunch_casual',
+    name: 'Brunch, Lunch & Casual',
     icon: '🍔',
     description: 'Affordable, informal dining — burgers, ramen, tacos, pizza, and more',
     detailedDescription: 'Low-stakes, easygoing food outings across a wide range of cuisines. Fast food, diners, sandwich shops, ramen bars, pizza spots, and everything in between.',
@@ -268,12 +225,12 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'short',
-    compatibleWith: ['drink', 'watch', 'play', 'picnic_park'],
-    incompatibleWith: ['wellness', 'fine_dining']
+    compatibleWith: ['drinks_and_music', 'movies_theatre', 'play'],
+    incompatibleWith: ['upscale_fine_dining']
   },
   {
-    slug: 'fine_dining',
-    name: 'Fine Dining',
+    slug: 'upscale_fine_dining',
+    name: 'Upscale & Fine Dining',
     icon: '🍽️',
     description: 'Elevated dining — steakhouses, French, seafood, Mediterranean, Spanish, tapas, bistros, and fine dining restaurants',
     detailedDescription: 'Curated, sit-down dining experiences centered on quality. Fine dining restaurants, steakhouses, French, seafood, Mediterranean, Spanish, tapas, oyster bars, bistros, gastropubs, and wine bars for special occasions and refined outings.',
@@ -312,12 +269,12 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'long',
-    compatibleWith: ['drink', 'watch'],
-    incompatibleWith: ['casual_eats', 'picnic_park', 'play', 'nature']
+    compatibleWith: ['drinks_and_music', 'movies_theatre'],
+    incompatibleWith: ['brunch_lunch_casual', 'play', 'nature']
   },
   {
-    slug: 'watch',
-    name: 'Watch',
+    slug: 'movies_theatre',
+    name: 'Movies & Theatre',
     icon: '🎬',
     description: 'Movie theaters for a fun shared evening',
     detailedDescription: 'Movie theaters for a classic, low-effort outing. Grab popcorn and enjoy the latest releases or indie screenings together.',
@@ -365,52 +322,8 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'medium',
-    compatibleWith: ['drink', 'casual_eats', 'fine_dining', 'first_meet'],
-    incompatibleWith: ['nature', 'picnic_park', 'wellness']
-  },
-  {
-    slug: 'live_performance',
-    name: 'Live Performance',
-    icon: '🎭',
-    description: 'Concert halls, theaters, opera houses, and live shows',
-    detailedDescription: 'Live entertainment venues — performing arts theaters, concert halls, opera houses, philharmonic halls, and amphitheatres for unforgettable shared experiences.',
-    expectedActivities: [
-      'Concert halls and live music',
-      'Opera houses and performing arts theaters',
-      'Amphitheatres and philharmonic halls',
-    ],
-    apiMapping: {
-      googleMaps: {
-        coreAnchors: [
-          'performing_arts_theater', 'concert_hall', 'opera_house',
-          'philharmonic_hall', 'amphitheatre',
-        ],
-        attributes: ['live', 'performance', 'entertainment'],
-        excludedAttributes: [
-          'museum', 'art_gallery', 'bar', 'restaurant', 'gym',
-        ],
-      },
-      eventbrite: {
-        eventTypes: ['concerts', 'theater', 'opera', 'live_music'],
-      },
-    },
-    logic: {
-      hardFilter: 'Must be a live performance venue',
-      hierarchy: {
-        broad: 'Live Performance',
-        niche: ['Concert Halls', 'Theaters', 'Opera Houses', 'Amphitheatres'],
-      },
-      fallbackBehavior: 'If no live performance venue found, show nearest concert hall or theater.',
-    },
-    ux: {
-      activeColor: '#8B5CF6',
-      subcategories: ['Concert Halls', 'Theaters', 'Opera Houses', 'Amphitheatres'],
-      contextualPreview: 'Live show at the theater tonight — doors at 7pm.',
-    },
-    activityType: 'stationary',
-    duration: 'medium',
-    compatibleWith: ['drink', 'fine_dining', 'casual_eats'],
-    incompatibleWith: ['nature', 'picnic_park', 'wellness'],
+    compatibleWith: ['drinks_and_music', 'brunch_lunch_casual', 'upscale_fine_dining', 'icebreakers'],
+    incompatibleWith: ['nature']
   },
   {
     slug: 'creative_arts',
@@ -458,8 +371,8 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'medium',
-    compatibleWith: ['drink', 'first_meet', 'nature', 'play'],
-    incompatibleWith: ['wellness', 'fine_dining']
+    compatibleWith: ['drinks_and_music', 'icebreakers', 'nature', 'play'],
+    incompatibleWith: ['upscale_fine_dining']
   },
   {
     slug: 'play',
@@ -507,93 +420,9 @@ export const categories: Category[] = [
     },
     activityType: 'mixed',
     duration: 'medium',
-    compatibleWith: ['drink', 'casual_eats', 'creative_arts'],
-    incompatibleWith: ['wellness', 'fine_dining', 'nature']
+    compatibleWith: ['drinks_and_music', 'brunch_lunch_casual', 'creative_arts'],
+    incompatibleWith: ['upscale_fine_dining', 'nature']
   },
-  {
-    slug: 'wellness',
-    name: 'Wellness',
-    icon: '🧘',
-    description: 'Spas, massage spas, saunas, and resort hotels for relaxation and rejuvenation',
-    detailedDescription: 'Restorative experiences centered on calm and self-care. Spas, massage spas, saunas, and resort hotels for solo or shared relaxation.',
-    expectedActivities: [
-      'Spas and massage spas',
-      'Saunas and steam rooms',
-      'Resort hotel wellness packages',
-    ],
-    apiMapping: {
-      googleMaps: {
-        coreAnchors: ['spa', 'massage_spa', 'massage', 'sauna', 'resort_hotel'],
-        attributes: ['relaxing', 'restorative', 'mindful'],
-        excludedAttributes: [
-          'gym', 'fitness_center', 'night_club', 'casino',
-          'bowling_alley', 'amusement_park', 'shopping_mall',
-          'doctor', 'hospital', 'medical_clinic',
-        ]
-      },
-      eventbrite: {
-        eventTypes: ['wellness_events', 'spa_days', 'mindfulness_workshops']
-      }
-    },
-    logic: {
-      hardFilter: 'Must be a wellness or spa venue',
-      hierarchy: {
-        broad: 'Wellness',
-        niche: ['Spas', 'Massage Spas', 'Saunas', 'Resort Wellness']
-      },
-      fallbackBehavior: 'If no spa found, suggest nearest massage spa, sauna, or resort hotel.'
-    },
-    ux: {
-      activeColor: '#14B8A6',
-      subcategories: ['Spas', 'Massage Spas', 'Saunas', 'Resort Wellness'],
-      contextualPreview: 'Spa day with sauna access — book a couples package.'
-    },
-    activityType: 'stationary',
-    duration: 'long',
-    compatibleWith: ['nature'],
-    incompatibleWith: ['play', 'drink', 'watch', 'casual_eats', 'fine_dining']
-  },
-  {
-    slug: 'flowers',
-    name: 'Flowers',
-    icon: '💐',
-    description: 'Florists, flower shops, and fresh bouquets',
-    detailedDescription: 'Florists and flower shops for fresh bouquets, arrangements, and surprise gifts. Perfect as a stop before a date or special occasion.',
-    expectedActivities: [
-      'Florists and flower shops',
-      'Fresh bouquets and arrangements',
-      'Gift flowers for special occasions',
-    ],
-    apiMapping: {
-      googleMaps: {
-        coreAnchors: ['florist', 'grocery_store', 'supermarket'],
-        attributes: ['flowers', 'fresh', 'gifts'],
-        excludedAttributes: [
-          'restaurant', 'bar', 'gym', 'shopping_mall',
-        ],
-      },
-      eventbrite: {
-        eventTypes: [],
-      },
-    },
-    logic: {
-      hardFilter: 'Must be a florist or store with fresh flowers',
-      hierarchy: {
-        broad: 'Flowers',
-        niche: ['Florists', 'Flower Shops'],
-      },
-      fallbackBehavior: 'If no florist found, show nearest grocery store with a floral department.',
-    },
-    ux: {
-      activeColor: '#F472B6',
-      subcategories: ['Florists', 'Flower Shops'],
-      contextualPreview: 'Fresh roses from a local florist — 5 minutes away.',
-    },
-    activityType: 'stationary',
-    duration: 'short',
-    compatibleWith: ['fine_dining', 'first_meet', 'nature', 'picnic_park'],
-    incompatibleWith: ['play', 'watch'],
-  }
 ];
 
 export const getCategoryBySlug = (slug: string): Category | undefined => {
@@ -671,7 +500,7 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
       'picnic-dates': 'Picnic blanket in the botanical garden with a cheese board.',
       'take-a-stroll': 'Nature trail loop with café bookend at the trailhead.'
     },
-    'drink': {
+    'drinks_and_music': {
       'first-date': 'Speakeasy with soft lighting and quiet booths — great for conversation.',
       'romantic': 'Wine bar with a 6-glass tasting flight and live acoustic music.',
       'adventurous': 'Specialty coffee roastery — perfect for journaling or reading.',
@@ -679,7 +508,7 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
       'picnic-dates': 'Grab-and-go juice bar near the park.',
       'take-a-stroll': 'Coffee shop with a scenic walk to get there.'
     },
-    'casual_eats': {
+    'brunch_lunch_casual': {
       'first-date': 'Casual ramen shop — low-key and easy for a first meet.',
       'romantic': 'Late-night taco truck crawl for two under string lights.',
       'adventurous': 'Hole-in-the-wall noodle shop — counter seating, quick service.',
@@ -687,7 +516,7 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
       'picnic-dates': 'Deli sandwich pickup before heading to the park.',
       'take-a-stroll': 'Casual café — grab a bite, walk, and come back for dessert.'
     },
-    'watch': {
+    'movies_theatre': {
       'first-date': 'Indie cinema showing a cult classic at 7pm.',
       'romantic': 'Drive-in double feature — bring blankets and snacks.',
       'adventurous': 'Arthouse screening — perfect for solo movie lovers.',
@@ -711,7 +540,7 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
       'picnic-dates': 'Frisbee in the park followed by a picnic spread.',
       'take-a-stroll': 'Playground park with a food truck loop.'
     },
-    'fine_dining': {
+    'upscale_fine_dining': {
       'first-date': 'Modern bistro with prix fixe menu, $65 per person.',
       'romantic': 'Omakase counter with 10 seats — chef\'s choice, candlelit ambience.',
       'adventurous': 'Seasonal tasting menu at chef\'s counter — perfect for solo foodies.',
@@ -719,45 +548,13 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
       'picnic-dates': 'Charcuterie board to-go from the bistro, eaten parkside.',
       'take-a-stroll': 'Fine dining with a scenic waterfront walk to get there.'
     },
-    'wellness': {
-      'first-date': 'Couples yoga followed by herbal tea lounge.',
-      'romantic': 'Day spa package with sauna + massage for two.',
-      'adventurous': 'Sunset yoga in the park — solo mats welcome.',
-      'group-fun': 'Wellness retreat day pass — yoga, meditation, and healthy lunch.',
-      'picnic-dates': 'Outdoor yoga session then picnic under the trees.',
-      'take-a-stroll': 'Mindfulness walk through the gardens with tea afterward.'
-    },
-    'first_meet': {
+    'icebreakers': {
       'first-date': 'Cozy café with board games — low-stakes and easy to chat.',
       'romantic': 'Wine-and-cheese tasting in a candlelit cellar.',
       'adventurous': 'Quirky themed café — conversation starters built in.',
       'group-fun': 'Trivia night at the local pub — team up and compete.',
       'picnic-dates': 'Farmers market browse then park bench chat.',
       'take-a-stroll': 'Coffee walk through the neighborhood — keep it casual.'
-    },
-    'picnic_park': {
-      'first-date': 'Picnic blanket by the lake with sandwiches and lemonade.',
-      'romantic': 'Sunset picnic with wine, cheese, and fairy lights.',
-      'adventurous': 'Solo picnic with a good book at the botanical garden.',
-      'group-fun': 'BBQ picnic at the park pavilion — games and grilling.',
-      'picnic-dates': 'Full picnic spread at the nicest park in town.',
-      'take-a-stroll': 'Picnic spot with a walking trail loop nearby.'
-    },
-    'live_performance': {
-      'first-date': 'Comedy show with great energy — perfect ice breaker.',
-      'romantic': 'Orchestra concert followed by a late-night drink.',
-      'adventurous': 'Open-mic night — you might even get on stage.',
-      'group-fun': 'Concert with the crew — grab floor tickets.',
-      'picnic-dates': 'Outdoor amphitheatre show with blankets and snacks.',
-      'take-a-stroll': 'Evening walk to the theater district for a live show.'
-    },
-    'flowers': {
-      'first-date': 'Farmers market stroll — sample together, buy flowers.',
-      'romantic': 'Pick up a bouquet on the way to surprise your date.',
-      'adventurous': 'Artisan florist workshop — arrange your own bouquet.',
-      'group-fun': 'Flower market haul then brunch with the crew.',
-      'picnic-dates': 'Grab fresh flowers for the picnic spread.',
-      'take-a-stroll': 'Flower shop visit on a neighborhood walk.'
     }
   };
 
@@ -766,210 +563,16 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
 
 // Date Selection Types
 export interface DateSelection {
-  type: 'now' | 'today' | 'this_weekend' | 'pick_date';
+  id: 'today' | 'this_weekend' | 'pick_dates';
   label: string;
   description: string;
-  icon: string;
-  timeRange?: {
-    start: string;
-    end: string;
-  };
 }
 
 export const dateSelections: DateSelection[] = [
-  {
-    type: 'now',
-    label: 'Now',
-    description: 'What\'s open right this minute',
-    icon: '⚡',
-    timeRange: {
-      start: 'now',
-      end: '+30min'
-    }
-  },
-  {
-    type: 'today',
-    label: 'Today',
-    description: 'From afternoon into evening',
-    icon: '☀️',
-    timeRange: {
-      start: 'afternoon',
-      end: '11:59pm'
-    }
-  },
-  {
-    type: 'this_weekend',
-    label: 'This Weekend',
-    description: 'Great for Fri–Sun planning',
-    icon: '📅',
-    timeRange: {
-      start: 'friday_12pm',
-      end: 'sunday_11:59pm'
-    }
-  },
-  {
-    type: 'pick_date',
-    label: 'Pick a Date',
-    description: 'Choose exact day & time',
-    icon: '🗓️'
-  }
+  { id: 'today', label: 'Today', description: 'Open from now onwards' },
+  { id: 'this_weekend', label: 'This Weekend', description: 'Saturday & Sunday' },
+  { id: 'pick_dates', label: 'Pick Date(s)', description: 'Choose specific days' },
 ];
-
-// Time Slot Presets for "Pick a Date"
-export interface TimeSlot {
-  label: string;
-  icon: string;
-  startTime: string;
-  endTime: string;
-  description: string;
-}
-
-export const timeSlots: TimeSlot[] = [
-  {
-    label: 'Brunch',
-    icon: '🍳',
-    startTime: '11:00',
-    endTime: '13:00',
-    description: 'Perfect for morning meetups'
-  },
-  {
-    label: 'Afternoon',
-    icon: '☀️',
-    startTime: '14:00',
-    endTime: '17:00',
-    description: 'Great for daytime activities'
-  },
-  {
-    label: 'Dinner',
-    icon: '🍽️',
-    startTime: '18:00',
-    endTime: '21:00',
-    description: 'Ideal for evening experiences'
-  },
-  {
-    label: 'Late Night',
-    icon: '🌙',
-    startTime: '22:00',
-    endTime: '00:00',
-    description: 'Perfect for night owls'
-  }
-];
-
-// Enhanced Time Slot with Best Time Guidance
-export interface EnhancedTimeSlot extends TimeSlot {
-  bestTime?: string;
-  avoidTime?: string;
-  crowdLevel?: 'low' | 'moderate' | 'high' | 'peak';
-  weatherSuggestion?: string;
-}
-
-export const enhancedTimeSlots: EnhancedTimeSlot[] = [
-  {
-    label: 'Brunch',
-    icon: '🍳',
-    startTime: '11:00',
-    endTime: '13:00',
-    description: 'Perfect for morning meetups',
-    bestTime: '11:30am',
-    avoidTime: '12:30pm',
-    crowdLevel: 'moderate',
-    weatherSuggestion: 'Great for outdoor seating'
-  },
-  {
-    label: 'Afternoon',
-    icon: '☀️',
-    startTime: '14:00',
-    endTime: '17:00',
-    description: 'Great for daytime activities',
-    bestTime: '3:00pm',
-    avoidTime: '4:00pm',
-    crowdLevel: 'low',
-    weatherSuggestion: 'Perfect for outdoor activities'
-  },
-  {
-    label: 'Dinner',
-    icon: '🍽️',
-    startTime: '18:00',
-    endTime: '21:00',
-    description: 'Ideal for evening experiences',
-    bestTime: '7:00pm',
-    avoidTime: '8:00pm',
-    crowdLevel: 'high',
-    weatherSuggestion: 'Cozy indoor dining recommended'
-  },
-  {
-    label: 'Late Night',
-    icon: '🌙',
-    startTime: '22:00',
-    endTime: '00:00',
-    description: 'Perfect for night owls',
-    bestTime: '10:30pm',
-    avoidTime: '11:30pm',
-    crowdLevel: 'peak',
-    weatherSuggestion: 'Indoor venues preferred'
-  }
-];
-
-// Exact Time Selection Interface
-export interface ExactTimeSelection {
-  hour: number;
-  minute: number;
-  period: 'AM' | 'PM';
-}
-
-// Time Slot Logic Functions
-export const getTimeSlotLogic = (timeSlot: string) => {
-  const logic: Record<string, { filter: string; description: string }> = {
-    'Brunch': {
-      filter: 'venues open + events active between 11am–1pm',
-      description: 'Show venues open + events active between 11am–1pm'
-    },
-    'Afternoon': {
-      filter: 'venues open + events active between 2pm–5pm',
-      description: 'Show venues open + events active between 2pm–5pm'
-    },
-    'Dinner': {
-      filter: 'venues open + events active between 6pm–9pm',
-      description: 'Show venues open + events active between 6pm–9pm'
-    },
-    'Late Night': {
-      filter: 'venues open + events active between 10pm–12am',
-      description: 'Show venues open + events active between 10pm–12am'
-    }
-  };
-  
-  return logic[timeSlot] || { filter: 'all available times', description: 'Show all available times' };
-};
-
-// Best Time to Go Suggestions
-export const getBestTimeSuggestion = (timeSlot: string, weatherCondition?: string) => {
-  const suggestions: Record<string, string> = {
-    'Brunch': 'Best at 11:30am (not too crowded)',
-    'Afternoon': 'Avoid 3pm (peak busy). Try 4pm instead.',
-    'Dinner': 'Best at 7pm (not too crowded)',
-    'Late Night': 'Best at 10:30pm (prime time)'
-  };
-  
-  const baseSuggestion = suggestions[timeSlot] || 'Good time to go';
-  
-  if (weatherCondition) {
-    return `${baseSuggestion} • Weather: ${weatherCondition}`;
-  }
-  
-  return baseSuggestion;
-};
-
-// Fallback Smart Suggestions
-export const getFallbackSuggestion = (timeSlot: string) => {
-  const fallbacks: Record<string, string> = {
-    'Brunch': 'No brunch options available — but here are great coffee shops and breakfast spots nearby.',
-    'Afternoon': 'Limited afternoon activities — try these indoor options or consider an earlier time.',
-    'Dinner': 'No dinner reservations available — but here are great casual dining spots with walk-in availability.',
-    'Late Night': 'No late-night options available — but here are great dinner spots earlier in the evening.'
-  };
-  
-  return fallbacks[timeSlot] || 'Limited options for this time — here are some alternatives nearby.';
-};
 
 // Travel Mode System
 export interface TravelMode {

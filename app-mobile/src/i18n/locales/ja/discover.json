@@ -1,21 +1,14 @@
 {
-  "tabs.for_you": "あなたへ",
-  "tabs.night_out": "ナイトアウト",
-
   "featured.badge": "注目",
-
   "nightout.on_sale": "セール中",
   "nightout.sold_out": "完売",
   "nightout.soon": "もうすぐ",
   "nightout.tba": "未定",
-
   "loading.for_you": "あなたにぴったりの体験を探しています...",
   "loading.nightlife": "近くのナイトライフを探しています...",
-
   "error.title": "問題が発生しました",
   "error.try_again": "もう一度試す",
   "error.retry": "再試行",
-
   "empty.no_experiences": "体験が見つかりません",
   "empty.adjust_preferences": "好みを調整して新しいアクティビティを発見しましょう",
   "empty.no_events": "イベントが見つかりません",
@@ -23,7 +16,6 @@
   "empty.no_matching": "一致するイベントはありません",
   "empty.no_matching_filters": "選択したフィルターに一致するイベントはありません",
   "empty.show_all_parties": "すべてのパーティーを表示",
-
   "filters.title": "フィルター",
   "filters.button": "フィルター",
   "filters.showing": "表示中: {{genre}}",
@@ -50,7 +42,6 @@
   "filters.reggae": "レゲエ",
   "filters.kpop": "K-Pop",
   "filters.acoustic_indie": "アコースティック / インディー",
-
   "alerts.delete_holiday_title": "カスタム記念日を削除しますか？",
   "alerts.delete_holiday_message": "「{{name}}」を削除しますか？元に戻すことはできません。",
   "alerts.cancel": "キャンセル",
@@ -58,7 +49,6 @@
   "alerts.unpair_title": "ペア解除",
   "alerts.unpair_message": "{{name}}とのペアを解除しますか？カスタム記念日と保存したカードが削除されます。",
   "alerts.unpair": "ペア解除",
-
   "errors.unable_to_load": "現在、体験を読み込めません。もう一度お試しください。",
   "errors.session_expired": "セッションが期限切れです。下に引いて再試行してください。",
   "errors.failed_recommendations": "おすすめの読み込みに失敗しました",

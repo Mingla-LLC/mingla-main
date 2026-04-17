@@ -3,9 +3,6 @@ import { supabase } from '../services/supabase';
 import { useAppStore } from '../store/appStore';
 import { CollaborationSession, SessionInvite, SessionState } from '../types';
 import { createPendingSessionInvite } from '../services/phoneLookupService';
-import { PreferencesService } from '../services/preferencesService';
-import { normalizePreferencesForSave } from '../utils/preferencesConverter';
-import { getDisplayName } from '../utils/getDisplayName';
 
 export interface SessionParticipantInput {
   type: 'existing_user' | 'phone_invite'
@@ -55,95 +52,8 @@ interface ParticipationRow {
   collaboration_sessions?: SessionRow | SessionRow[]
 }
 
-/**
- * Fetch the user's solo preferences and map them to the board_session_preferences
- * column shape. Used once at onboarding (session creation / invite acceptance) so
- * collaboration preferences start with at least one value per field.
- * Returns a safe default payload if solo prefs cannot be loaded.
- */
-async function buildSeedFromSoloPrefs(
-  userId: string,
-  sessionId: string
-): Promise<Record<string, unknown>> {
-  const solo = await PreferencesService.getUserPreferences(userId);
-
-  // Safe defaults if solo prefs are missing (new user edge case)
-  const defaults = {
-    session_id: sessionId,
-    user_id: userId,
-    categories: ['nature', 'casual_eats', 'drink'],
-    intents: [] as string[],
-    price_tiers: ['chill', 'comfy', 'bougie', 'lavish'],
-    budget_min: 0,
-    budget_max: 1000,
-    travel_mode: 'walking',
-    travel_constraint_type: 'time' as const,
-    travel_constraint_value: 30,
-    date_option: null as string | null,
-    time_slot: null as string | null,
-    exact_time: null as string | null,
-    datetime_pref: null as string | null,
-    use_gps_location: true,
-    custom_location: null as string | null,
-    location: null as string | null,
-    custom_lat: null as number | null,
-    custom_lng: null as number | null,
-  };
-
-  if (!solo) return defaults;
-
-  // Map solo → board columns and normalize
-  const raw = {
-    ...defaults,
-    categories: solo.categories?.length ? solo.categories : defaults.categories,
-    intents: solo.intents ?? defaults.intents,
-    budget_min: solo.budget_min ?? defaults.budget_min,
-    budget_max: solo.budget_max ?? defaults.budget_max,
-    travel_mode: solo.travel_mode ?? defaults.travel_mode,
-    travel_constraint_type: 'time' as const,
-    travel_constraint_value: solo.travel_constraint_value ?? defaults.travel_constraint_value,
-    date_option: solo.date_option ?? defaults.date_option,
-    time_slot: solo.time_slot ?? defaults.time_slot,
-    exact_time: solo.exact_time ?? defaults.exact_time,
-    datetime_pref: solo.datetime_pref ?? defaults.datetime_pref,
-  };
-
-  // Read price_tiers from solo if it exists (field was added later, may be absent on type)
-  const soloAny = solo as unknown as Record<string, unknown>;
-  if (Array.isArray(soloAny.price_tiers) && soloAny.price_tiers.length > 0) {
-    raw.price_tiers = soloAny.price_tiers as string[];
-  }
-  if (typeof soloAny.use_gps_location === 'boolean') {
-    raw.use_gps_location = soloAny.use_gps_location;
-  }
-  if (typeof soloAny.custom_location === 'string') {
-    raw.custom_location = soloAny.custom_location;
-  }
-  if (typeof soloAny.custom_lat === 'number') {
-    raw.custom_lat = soloAny.custom_lat;
-  }
-  if (typeof soloAny.custom_lng === 'number') {
-    raw.custom_lng = soloAny.custom_lng;
-  }
-
-  // Apply normalization to eliminate conflicting date/time/location combos
-  const normalized = normalizePreferencesForSave({
-    date_option: raw.date_option,
-    time_slot: raw.time_slot,
-    datetime_pref: raw.datetime_pref,
-    use_gps_location: raw.use_gps_location,
-    custom_location: raw.custom_location,
-  });
-
-  return {
-    ...raw,
-    date_option: normalized.date_option,
-    time_slot: normalized.time_slot,
-    datetime_pref: normalized.datetime_pref,
-    use_gps_location: normalized.use_gps_location,
-    custom_location: normalized.custom_location,
-  };
-}
+// ORCH-0443: buildSeedFromSoloPrefs deleted. Replaced by
+// collabPreferenceSeedService.seedCollabPrefsFromSolo — single source of truth.
 
 export const useSessionManagement = () => {
   const [sessionState, setSessionState] = useState<SessionState>(() => {
@@ -377,6 +287,7 @@ export const useSessionManagement = () => {
       });
 
 
+      console.log('[SESSION_PILLS] loadUserSessions complete:', formattedSessions.map(s => s.id));
       setSessionState(prev => ({
         ...prev,
         availableSessions: formattedSessions,
@@ -483,16 +394,44 @@ export const useSessionManagement = () => {
         throw creatorParticipantError;
       }
 
-      // Seed collaboration preferences from the creator's solo preferences
-      // so there is at least one value per field from the start.
-      const seedPayload = await buildSeedFromSoloPrefs(user.id, sessionData.id);
-      const { error: preferencesError } = await supabase
-        .from('board_session_preferences')
-        .insert(seedPayload);
+      // ORCH-0446: Write creator's solo prefs to session JSONB via atomic RPC
+      try {
+        const { data: soloPrefs } = await supabase
+          .from('preferences')
+          .select('*')
+          .eq('profile_id', user.id)
+          .maybeSingle();
 
-      if (preferencesError) {
-        console.error('Error creating preferences for creator:', preferencesError);
-        // Don't throw - preferences can be created later when user opens preferences sheet
+        const creatorPrefsPayload = {
+            categories: soloPrefs?.categories?.length ? soloPrefs.categories : ['nature', 'drinks_and_music', 'icebreakers'],
+            intents: soloPrefs?.intents ?? [],
+            travel_mode: soloPrefs?.travel_mode ?? 'walking',
+            travel_constraint_type: 'time',
+            travel_constraint_value: soloPrefs?.travel_constraint_value ?? 30,
+            date_option: soloPrefs?.date_option ?? null,
+            datetime_pref: soloPrefs?.datetime_pref ?? null,
+            selected_dates: soloPrefs?.selected_dates ?? null,
+            use_gps_location: soloPrefs?.use_gps_location ?? true,
+            custom_location: soloPrefs?.custom_location ?? null,
+            custom_lat: soloPrefs?.custom_lat ?? null,
+            custom_lng: soloPrefs?.custom_lng ?? null,
+            intent_toggle: soloPrefs?.intent_toggle ?? true,
+            category_toggle: soloPrefs?.category_toggle ?? true,
+        };
+        console.log('[useSessionManagement] Writing creator prefs:', JSON.stringify({ sessionId: sessionData.id, userId: user.id, categories: creatorPrefsPayload.categories }));
+        const { error: rpcError } = await supabase.rpc('upsert_participant_prefs', {
+          p_session_id: sessionData.id,
+          p_user_id: user.id,
+          p_prefs: creatorPrefsPayload,
+        });
+        if (rpcError) {
+          console.error('[useSessionManagement] Creator pref RPC error:', rpcError.message, rpcError);
+        } else {
+          console.log('[useSessionManagement] Creator prefs written successfully');
+        }
+      } catch (seedErr) {
+        console.error('[useSessionManagement] Creator pref write failed:', seedErr);
+        // Non-blocking: deck aggregation works with remaining participants' prefs
       }
 
       // Process participants
@@ -631,7 +570,6 @@ export const useSessionManagement = () => {
       preferences?: {
         categories: string[]
         intents: string[]
-        priceTiers: string[]
         travelMode: string
         travelTimeMinutes: number
       }
@@ -664,29 +602,11 @@ export const useSessionManagement = () => {
         }
       }
 
-      // Overwrite the seeded preferences with the explicit values passed in.
-      // createCollaborativeSession already seeded from solo prefs; this upsert
-      // applies any overrides the caller specified (e.g. from onboarding flow).
-      if (preferences) {
-        const { error: prefError } = await supabase
-          .from('board_session_preferences')
-          .upsert({
-            session_id: sessionId,
-            user_id: authUser.id,
-            categories: preferences.categories,
-            intents: preferences.intents,
-            price_tiers: preferences.priceTiers,
-            budget_min: 0,
-            budget_max: 1000,
-            travel_mode: preferences.travelMode,
-            travel_constraint_type: 'time',
-            travel_constraint_value: preferences.travelTimeMinutes,
-          }, { onConflict: 'session_id,user_id' })
-
-        if (prefError) {
-          console.error('[useSessionManagement] Failed to copy preferences:', prefError)
-        }
-      }
+      // ORCH-0446: Seeding is handled by createCollaborativeSession via
+      // upsert_participant_prefs RPC. The `preferences` parameter is kept in the
+      // signature for API compat with OnboardingCollaborationStep but is ignored.
+      // All writes to participant_prefs go through atomic RPCs.
+      // and useBoardSession.updatePreferences. Do not add a third.
 
       return sessionId
     },
@@ -694,291 +614,27 @@ export const useSessionManagement = () => {
   );
 
   // Accept specific invite (from notification)
+  // ORCH-0443: Delegate to the single acceptance service.
+  // Preserves the hook's public API so callers (OnboardingCollaborationStep) don't break.
   const acceptInvite = useCallback(async (inviteId: string) => {
+    if (!user) {
+      console.error('❌ No user found for invite acceptance');
+      return;
+    }
     try {
-      
-      if (!user) {
-        console.error('❌ No user found for invite acceptance');
-        return;
-      }
-
-      // Find invite in current state OR fetch from database
-      let invite = sessionState.pendingInvites.find(i => i.id === inviteId);
-      
-      if (!invite) {
-        
-        // Fetch invite directly from database
-        const { data: dbInvite, error: inviteError } = await supabase
-          .from('collaboration_invites')
-          .select('*')
-          .eq('id', inviteId)
-          .eq('status', 'pending')
-          .single();
-
-        if (inviteError || !dbInvite) {
-          console.error('❌ Invite not found in database:', inviteError);
-          return;
-        }
-
-        // Get session name separately
-        const { data: sessionData, error: sessionError } = await supabase
-          .from('collaboration_sessions')
-          .select('name')
-          .eq('id', dbInvite.session_id)
-          .single();
-
-        // Get inviter profile separately  
-        const { data: inviterProfile, error: profileError } = await supabase
-          .from('profiles')
-          .select('id, username, display_name, first_name, last_name, avatar_url')
-          .eq('id', dbInvite.inviter_id)
-          .single();
-
-        // Convert database invite to our format
-        invite = {
-          id: dbInvite.id,
-          sessionId: dbInvite.session_id,
-          sessionName: sessionData?.name || 'Collaboration Session',
-          invitedBy: {
-            id: dbInvite.inviter_id,
-            name: getDisplayName(inviterProfile, 'Unknown'),
-            username: inviterProfile?.username || 'unknown',
-            avatar: inviterProfile?.avatar_url
-          },
-          message: dbInvite.message,
-          status: 'pending',
-          createdAt: dbInvite.created_at
-        };
-      }
-
-
-      // Step 1: Update invite status to accepted
-      const { error: inviteUpdateError } = await supabase
-        .from('collaboration_invites')
-        .update({ 
-          status: 'accepted',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', inviteId)
-        .eq('invited_user_id', user.id);
-
-      if (inviteUpdateError) {
-        console.error('❌ Error updating invite status:', inviteUpdateError);
-        return;
-      }
-
-
-      // Step 2: Add user as participant or update existing participation
-      const { data: existingParticipant, error: checkError } = await supabase
-        .from('session_participants')
-        .select('*')
-        .eq('session_id', invite.sessionId)
-        .eq('user_id', user.id)
-        .single();
-
-      if (checkError && checkError.code !== 'PGRST116') {
-        console.error('❌ Error checking existing participation:', checkError);
-      }
-
-      if (existingParticipant) {
-        // Update existing participant
-        const { error: updateError } = await supabase
-          .from('session_participants')
-          .update({ 
-            has_accepted: true, 
-            joined_at: new Date().toISOString() 
-          })
-          .eq('id', existingParticipant.id);
-
-        if (updateError) {
-          console.error('❌ Error updating participant:', updateError);
-          return;
-        }
-      } else {
-        // Create new participant record
-      const { error: participantError } = await supabase
-        .from('session_participants')
-        .insert({
-            session_id: invite.sessionId,
-          user_id: user.id,
-          has_accepted: true,
-            joined_at: new Date().toISOString()
-          });
-
-        if (participantError) {
-          console.error('❌ Error creating participant:', participantError);
-          return;
-        }
-      }
-
-      // Seed collaboration preferences from the accepting user's solo preferences
-      // so there is at least one value per field from the start.
-      const seedPayload = await buildSeedFromSoloPrefs(user.id, invite.sessionId);
-      const { error: preferencesError } = await supabase
-        .from('board_session_preferences')
-        .insert(seedPayload);
-
-      if (preferencesError && preferencesError.code !== '23505') {
-        // 23505 is unique violation - preferences might already exist, which is fine
-        console.error('❌ Error creating preferences for accepting user:', preferencesError);
-        // Don't return - this is not critical, preferences can be created later
-      }
-
-
-      // Step 3: Check membership count (source of truth for state transitions)
-      // Count accepted members to determine if session should become active
-      const { data: allParticipants, error: participantsError } = await supabase
-        .from('session_participants')
-        .select('has_accepted, user_id, is_admin')
-        .eq('session_id', invite.sessionId);
-
-      if (participantsError) {
-        console.error('❌ Error fetching participants:', participantsError);
-        
-        // Remove invite from UI and reload
-        setSessionState(prevState => ({
-          ...prevState,
-          pendingInvites: prevState.pendingInvites.filter(i => i.id !== inviteId)
-        }));
-        await loadUserSessions();
-        return;
-      }
-
-      // Membership count is the source of truth for state transitions
-      const acceptedMembers = allParticipants?.filter(p => p.has_accepted) || [];
-      const acceptedCount = acceptedMembers.length;
-
-      // Session becomes active when at least 2 members have accepted
-      if (acceptedCount >= 2) {
-        
-        // Get session details for board creation
-        const { data: sessionData, error: sessionError } = await supabase
-          .from('collaboration_sessions')
-          .select('*')
-          .eq('id', invite.sessionId)
-          .single();
-
-        if (sessionError || !sessionData) {
-          console.error('❌ Error fetching session:', sessionError);
-        } else {
-          // IDEMPOTENT BOARD CREATION: Use session's board_id (the actual relationship)
-          // collaboration_sessions.board_id points to boards.id — NOT boards.session_id
-          let boardId: string | null = sessionData.board_id || null;
-          let createdBoardId: string | null = null;
-
-          // Only create board if session doesn't already have one
-          if (!boardId) {
-            // Use current user as created_by — RLS requires auth.uid() = created_by.
-            // The accepting user triggers board creation; session ownership is tracked
-            // separately in collaboration_sessions.created_by.
-            const { data: boardData, error: boardError } = await supabase
-              .from('boards')
-              .insert({
-                name: sessionData.name,
-                description: `Collaborative board for ${sessionData.name}`,
-                created_by: user.id,
-                is_public: false,
-              })
-              .select()
-              .single();
-
-            if (boardError) {
-              console.error('❌ Error creating board:', boardError);
-            } else {
-              boardId = boardData.id;
-              createdBoardId = boardData.id;
-              console.log('✅ Board created successfully:', boardId);
-            }
-          } else {
-            console.log('✅ Board already exists for session, skipping creation:', boardId);
-          }
-
-          // Update session status and board_id if we have a board
-          if (boardId) {
-            // Only update if session is not already active (idempotent)
-            if (sessionData.status !== 'active') {
-              const { error: sessionUpdateError } = await supabase
-                .from('collaboration_sessions')
-                .update({
-                  status: 'active',
-                  board_id: boardId,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', invite.sessionId)
-                .eq('status', 'pending'); // Only update if still pending (optimistic locking)
-
-              if (sessionUpdateError) {
-                console.error('❌ Error updating session status:', sessionUpdateError);
-              } else {
-                console.log('✅ Session status updated to active');
-              }
-            }
-
-            // RELIABILITY: Re-read the session to get the ACTUAL board_id.
-            // The optimistic lock (.eq('status', 'pending')) may have matched zero rows
-            // if a concurrent accept already activated the session with a different board.
-            // Supabase .update() returns no error for zero affected rows, so we must
-            // re-read to discover the real board_id linked to this session.
-            const { data: refreshedSession } = await supabase
-              .from('collaboration_sessions')
-              .select('board_id')
-              .eq('id', invite.sessionId)
-              .single();
-
-            const actualBoardId = refreshedSession?.board_id;
-
-            if (!actualBoardId) {
-              console.error('❌ Session has no board_id after update — cannot add collaborators');
-            } else {
-              // Clean up orphaned board if a concurrent accept won the race
-              if (createdBoardId && actualBoardId !== createdBoardId) {
-                console.warn('⚠️ Concurrent accept detected — cleaning up orphaned board:', createdBoardId);
-                await supabase.from('boards').delete().eq('id', createdBoardId).eq('created_by', user.id);
-              }
-
-              // Add all accepted participants as board collaborators using the ACTUAL board_id.
-              // One round-trip regardless of participant count — avoids the N+1 serial-await pattern.
-              const collaboratorRows = acceptedMembers.map((participant) => ({
-                board_id: actualBoardId,
-                user_id: participant.user_id,
-                role: (sessionData.created_by && participant.user_id === sessionData.created_by)
-                  ? 'owner'
-                  : (participant.is_admin ? 'owner' : 'collaborator'),
-              }));
-
-              const { error: collaboratorError } = await supabase
-                .from('board_collaborators')
-                .upsert(collaboratorRows, {
-                  onConflict: 'board_id,user_id',
-                  ignoreDuplicates: true,
-                });
-
-              if (collaboratorError && collaboratorError.code !== '23505') {
-                console.error('❌ Error adding collaborators:', collaboratorError);
-              }
-            }
-          }
-        }
-
-      } else {
-        console.log(`Session still pending: ${acceptedCount}/2 members accepted`);
-      }
-
-      // Step 4: Remove from UI and reload sessions
+      const { acceptCollaborationInvite } = await import('../services/collaborationInviteService');
+      const result = await acceptCollaborationInvite({ userId: user.id, inviteId });
+      if (!result.success) throw new Error(result.error || 'Failed to accept invite');
+    } catch (error) {
+      console.error('❌ Error accepting invite:', error);
+    } finally {
       setSessionState(prevState => ({
         ...prevState,
         pendingInvites: prevState.pendingInvites.filter(i => i.id !== inviteId)
       }));
-      
-      await loadUserSessions();
-
-    } catch (error) {
-      console.error('❌ Error accepting invite:', error);
-      
-      // Reload sessions to restore correct state
       await loadUserSessions();
     }
-  }, [user, sessionState.pendingInvites, loadUserSessions]);
+  }, [user, loadUserSessions]);
 
   // Decline specific invite (from notification)
   const declineInvite = useCallback(async (inviteId: string) => {
@@ -1107,6 +763,14 @@ export const useSessionManagement = () => {
     try {
       // If user is currently in this active session, leave it
       if (sessionState.currentSession?.id === sessionId) {
+        // ORCH-0446 R6.4: Remove leaver's prefs from session JSONB (atomic)
+        try {
+          await supabase.rpc('remove_participant_prefs', {
+            p_session_id: sessionId,
+            p_user_id: user.id,
+          });
+        } catch { /* Non-blocking cleanup */ }
+
         // Remove user from session participants (this will trigger cleanup)
         await supabase
           .from('session_participants')
@@ -1173,6 +837,14 @@ export const useSessionManagement = () => {
           .eq('session_id', sessionId)
           .eq('invited_user_id', user.id);
 
+        // ORCH-0446 R6.4: Remove leaver's prefs from session JSONB
+        try {
+          await supabase.rpc('remove_participant_prefs', {
+            p_session_id: sessionId,
+            p_user_id: user.id,
+          });
+        } catch { /* Non-blocking cleanup */ }
+
         // Remove user from participants (this may trigger session cleanup)
         await supabase
           .from('session_participants')
@@ -1200,6 +872,40 @@ export const useSessionManagement = () => {
   useEffect(() => {
     if (!user) return;
     loadUserSessions();
+  }, [user, loadUserSessions]);
+
+  // Realtime: refetch sessions when invites or participations change for this user.
+  // Covers: session deleted (cascade deletes invite), invite accepted/declined externally, etc.
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel(`session_pills:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'collaboration_invites',
+          filter: `invited_user_id=eq.${user.id}`,
+        },
+        () => { loadUserSessions(); }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'session_participants',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => { console.log('[SESSION_PILLS] session_participants changed:', payload.eventType, payload.old?.session_id || payload.new?.session_id); loadUserSessions(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user, loadUserSessions]);
 
   return {

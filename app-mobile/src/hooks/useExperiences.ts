@@ -4,8 +4,6 @@ import { Experience } from '../types';
 
 export interface ExperienceFilters {
   categories?: string[];
-  budgetMin?: number;
-  budgetMax?: number;
   lat?: number;
   lng?: number;
   radiusMeters?: number;
@@ -30,14 +28,6 @@ export const useExperiences = (filters?: ExperienceFilters) => {
       // Apply filters
       if (filters?.categories && filters.categories.length > 0) {
         query = query.in('category_slug', filters.categories);
-      }
-
-      if (filters?.budgetMin !== undefined) {
-        query = query.gte('price_min', filters.budgetMin);
-      }
-
-      if (filters?.budgetMax !== undefined) {
-        query = query.lte('price_max', filters.budgetMax);
       }
 
       const { data, error } = await query;

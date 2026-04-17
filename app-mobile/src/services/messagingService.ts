@@ -86,7 +86,9 @@ export class MessagingService {
   }
 
   /**
-   * Get or create a direct conversation between two users
+   * @deprecated Use ensureConversation() + sendFirstMessage() instead (ORCH-0436).
+   * This method creates conversations eagerly (on chat open), causing ghost conversations.
+   * Kept for backward compatibility — callers should migrate to the new pattern.
    */
   async getOrCreateDirectConversation(userId1: string, userId2: string): Promise<{ conversation: Conversation | null; error: string | null }> {
     try {
@@ -199,6 +201,64 @@ export class MessagingService {
       console.error('Error creating conversation:', error);
       return { conversation: null, error: error.message };
     }
+  }
+
+  /**
+   * ORCH-0436: Atomic find-or-create via database RPC.
+   * Does NOT create ghost conversations — only called when a message is about to be sent.
+   */
+  async ensureConversation(userId1: string, userId2: string): Promise<{
+    conversationId: string | null;
+    error: string | null;
+  }> {
+    try {
+      // Block check first
+      const isBlocked = await blockService.hasBlockBetween(userId2);
+      if (isBlocked) return { conversationId: null, error: 'Cannot message this user' };
+
+      // Atomic find-or-create via RPC (single transaction, no race condition)
+      const { data, error } = await supabase.rpc('get_or_create_direct_conversation', {
+        p_user1_id: userId1,
+        p_user2_id: userId2,
+      });
+
+      if (error) return { conversationId: null, error: error.message };
+      return { conversationId: data as string, error: null };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Failed to ensure conversation';
+      console.error('[messagingService] ensureConversation failed:', error);
+      return { conversationId: null, error: msg };
+    }
+  }
+
+  /**
+   * ORCH-0436: Create conversation AND send first message in one flow.
+   * Used when currentConversationId is null (new chat, no prior conversation).
+   */
+  async sendFirstMessage(
+    senderId: string,
+    recipientId: string,
+    content: string,
+    messageType: 'text' | 'image' | 'video' | 'file' = 'text',
+    fileUrl?: string,
+    fileName?: string,
+    fileSize?: number,
+    replyToId?: string
+  ): Promise<{
+    conversationId: string | null;
+    message: DirectMessage | null;
+    error: string | null;
+  }> {
+    const { conversationId, error: convError } = await this.ensureConversation(senderId, recipientId);
+    if (convError || !conversationId) {
+      return { conversationId: null, message: null, error: convError || 'Failed to create conversation' };
+    }
+
+    const { message, error: sendError } = await this.sendMessage(
+      conversationId, senderId, content, messageType, fileUrl, fileName, fileSize, replyToId
+    );
+
+    return { conversationId, message, error: sendError };
   }
 
   /**
