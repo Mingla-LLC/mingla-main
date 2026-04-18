@@ -181,7 +181,7 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
     includedTypes: [
       // Existing
       'bar', 'cocktail_bar', 'lounge_bar', 'wine_bar', 'pub', 'brewery',
-      'beer_garden', 'brewpub'
+      'beer_garden', 'brewpub',
       // New
       'bar_and_grill', 'hookah_bar', 'irish_pub', 'night_club', 'winery', 'sports_bar',
       // ORCH-0434: Added for Drinks & Music
