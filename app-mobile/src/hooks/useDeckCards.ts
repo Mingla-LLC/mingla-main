@@ -9,7 +9,7 @@
  */
 import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { deckService, DeckResponse, DeckServerPath } from '../services/deckService';
+import { deckService, DeckResponse, DeckServerPath, mergeCardsByIdPreservingOrder } from '../services/deckService';
 import type { Recommendation } from '../types/recommendation';
 import { normalizeDateTime } from '../utils/cardConverters';
 
@@ -134,7 +134,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   const query = useQuery<DeckResponse>({
     queryKey,
     queryFn: () => {
-      // Use the same queryKey for onSinglesReady partial cache updates
+      // Use the same queryKey for onPartialReady progressive cache merges
       const qk = queryKey;
 
       return deckService.fetchDeck(
@@ -143,21 +143,32 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
           location: location!,
           limit: 10000, // Phase 5: return all matching cards, no artificial cap
         },
-        // onSinglesReady: deliver partial results to cache immediately.
-        // User sees cards in ~1s while curated continues loading. ORCH-0340.
-        (singlesCards) => {
-          if (singlesCards.length > 0) {
-            queryClient.setQueryData<DeckResponse>(qk, (prev) => ({
-              cards: singlesCards,
-              deckMode: prev?.deckMode ?? 'mixed',
-              activePills: prev?.activePills ?? [],
-              total: singlesCards.length,
-              hasMore: true,
-              // ORCH-0474: Partial (singles-only) cache update is a successful
-              // pipeline response by definition — full categoryPromise is still
-              // in flight and will overwrite with the final serverPath.
-              serverPath: prev?.serverPath ?? 'pipeline',
-            }));
+        // ORCH-0490 Phase 2.2: onPartialReady fires up to TWICE per fetchDeck
+        // — once when singles settles (if ok, non-empty), once when curated
+        // settles. Order is race-determined. Each arrival MERGES into the
+        // cache via mergeCardsByIdPreservingOrder (not replace) so existing
+        // card positions are preserved through the second arrival.
+        // The final fetchDeck promise resolution produces the authoritative
+        // interleaved return value — React Query writes that on success,
+        // overwriting the merged intermediate state. (Phase 2.3 will add an
+        // expansion signal so the SwipeableCards first-5-IDs wipe doesn't
+        // fire on this intermediate→final transition.)
+        (cards, meta) => {
+          if (cards.length === 0) return;
+          queryClient.setQueryData<DeckResponse>(qk, (prev) => ({
+            cards: mergeCardsByIdPreservingOrder(prev?.cards ?? [], cards),
+            deckMode: prev?.deckMode ?? 'mixed',
+            activePills: prev?.activePills ?? [],
+            total: (prev?.cards?.length ?? 0) + cards.length,
+            hasMore: prev?.hasMore ?? true,
+            // ORCH-0474 + ORCH-0486: serverPath from prev is preserved — the
+            // final fetchDeck return replaces this with the authoritative
+            // discriminant. During partial delivery we default to 'pipeline'
+            // since partial success implies the pipeline responded with data.
+            serverPath: prev?.serverPath ?? 'pipeline',
+          }));
+          if (__DEV__) {
+            console.log(`[useDeckCards] partial delivery: +${cards.length} cards from ${meta.source}`);
           }
         },
       );

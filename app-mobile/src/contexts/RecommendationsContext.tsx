@@ -827,7 +827,7 @@ export const RecommendationsProvider: React.FC<
           } else if (batchSeed === 0) {
             // First page: replace (fresh session or pref change).
             // Clear sessionServedIdsRef and use the FULL deckCards — not deduped.
-            // onSinglesReady may have already added partial IDs to sessionServedIdsRef,
+            // onPartialReady (ORCH-0490 Phase 2.2) may have already added partial IDs to sessionServedIdsRef,
             // which would strip singles from the final interleaved result. Clearing
             // ensures the complete interleaved deck is what the user sees. See ORCH-0345.
             consecutiveSkipCountRef.current = 0;

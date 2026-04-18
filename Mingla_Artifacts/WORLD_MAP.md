@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-17
+> Last updated: 2026-04-19 (ORCH-0490 Phase 2.2 CONDITIONAL PASS — ORCH-0485 RC#2 + RC#3 CLOSED + ORCH-0486 CLOSED; progressive-delivery race path live in DEV, prod ships DARK behind FEATURE_FLAG_PROGRESSIVE_DELIVERY until 1-week clean telemetry)
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 

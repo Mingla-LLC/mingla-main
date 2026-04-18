@@ -1,6 +1,6 @@
 # Open Investigations
 
-> Last updated: 2026-04-17
+> Last updated: 2026-04-19 (Phase 2.2 close did not open any new investigations — tester reported 0 P0/P1/P2/P3 and 2 P4 doc-nits only; Phase 0-A/0-B/0-C for ORCH-0490 remain as completed historical entries)
 > Total: 0 active | 14 completed (historical) | 1 retracted-premise
 
 ## Active Investigations

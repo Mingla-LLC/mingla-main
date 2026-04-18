@@ -1,6 +1,6 @@
 # Coverage Map
 
-> Last updated: 2026-04-17 (post ORCH-0474 close — discover-cards fall-through split, Grade B)
+> Last updated: 2026-04-19 (post Phase 2.2 CONDITIONAL PASS — ORCH-0485 RC#2/RC#3 + ORCH-0486 closed; Discovery surface grades unchanged — progressive-delivery race path is a latency refactor inside already-Strong-graded deck pipeline, not a new surface)
 
 ## Surface Coverage
 

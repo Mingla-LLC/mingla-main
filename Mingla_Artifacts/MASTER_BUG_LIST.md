@@ -1,7 +1,13 @@
 # Master Bug List
 
-> Last updated: 2026-04-18 late (Phase 2.1 CONDITIONAL PASS — ORCH-0494 closed A, ORCH-0485 RC#1 closed; Post-PASS artifacts synced; Phase 2.2 dispatch prep next)
-> Total: 360 | Open: 160 | Closed: 124 | Verified (B grade): 24 | Partial: 1 | Deferred: 1 | Partially-shipped: 1 | Program charter: 1 | Phase-0-verified: 3 | Phase-2.1-shipped: 1
+> Last updated: 2026-04-19 (Phase 2.2 CONDITIONAL PASS — ORCH-0485 RC#2 + RC#3 CLOSED, ORCH-0486 CLOSED; Post-PASS artifacts synced; Phase 2.3 dispatch prep next)
+> Total: 360 | Open: 157 | Closed: 127 | Verified (B grade): 24 | Partial: 1 | Deferred: 1 | Partially-shipped: 1 | Program charter: 1 | Phase-0-verified: 3 | Phase-2.1-shipped: 1 | Phase-2.2-shipped: 1
+
+> **Phase 2.2 CLOSURES (2026-04-19):**
+> - **ORCH-0485 RC#2 closed:** `deckService.fetchDeck` no longer hardcodes singles-first. `Promise.race([singlesRacer, curatedRacer])` now lets curated win when it resolves first (cold-isolate / slow-singles scenarios). `useDeckCards.onPartialReady` callback signature changed from `(cards) => void` to `(cards, {source}) => void`; cache merges via `mergeCardsByIdPreservingOrder` preserving existing positions.
+> - **ORCH-0485 RC#3 closed:** Zero-singles no longer skips `onSinglesReady`. When singles settles with `value:[]`, the race path awaits curated's actual settle time (not the 20s ceiling), then fires `deliverCuratedPartial`. Zero-singles + non-empty-curated now delivers at curated's resolution time. New invariants `I-PROGRESSIVE-DELIVERY-FIRST-WIN` + `I-ZERO-SINGLES-NOT-20S-WAIT` established.
+> - **ORCH-0486 closed:** mixed-deck serverPath carry-through — when singles rejects with tagged `DeckFetchError` (auth-required / pipeline-error) and curated succeeds, final return's `serverPath` carries singles' discriminant. Previously leaked `'pipeline'` default. Fix at `deckService.ts:612-618`. INV-042 + INV-043 preserved.
+> - **Ship posture:** code shipped, production gated via `FEATURE_FLAG_PROGRESSIVE_DELIVERY` (defaults to `__DEV__`, so prod runs sequential-await fallback until 1-week clean telemetry). DEV builds get race path immediately. Rollback = flip constant to `false` + OTA. QA: `outputs/QA_ORCH-0490_PHASE_2.2_PROGRESSIVE_DELIVERY_REPORT.md` (0 P0/P1/P2/P3, 2 P4 doc-nits). Phase 2.3 (per-context deck state + ORCH-0498 double-wipe closure) is next.
 >
 > **ORCH-0494 CLOSED A (2026-04-18):** False EMPTY race eliminated via Phase 2.1. 20s safety timer + `hasStartedRef` deleted. EMPTY branch rewritten to require server verdict (`soloServerPath === 'pool-empty'` or `isDeckBatchLoaded && !deckHasMore`). `trackDeckEmptyFilter` analytic gated on `serverPath === 'pool-empty'` only (expected 60-90% event volume drop — product team notified). New invariant `I-DECK-EMPTY-IS-SERVER-VERDICT` established. QA: `outputs/QA_ORCH-0490_PHASE_2.1_DECOUPLE_LOCATION_REPORT.md` (CONDITIONAL PASS, 0 P0/P1/P2/P3).
 >
