@@ -89,15 +89,17 @@ These don't displace the top 10 (all S0/S1 user-facing) but enter the "Fix Next"
 | ID | Title | Score | Severity | Status |
 |----|-------|-------|----------|--------|
 | ORCH-0490 | **PROGRAM — Deck reliability & session persistence master initiative** | **88** | S1 | **Charter — Phase 0 verification dispatches pending** (3 investigator prompts next). Bundles ORCH-0485/0491/0492/0493/0494 under 4-phase pipeline. User-aligned 2026-04-17. |
-| ORCH-0485 | Deck pref-change latency (3 root causes proven) | 82 | S1 | Investigated — absorbed into ORCH-0490 Phase 2.1 + 2.2 |
+| ORCH-0485 | Deck pref-change latency (3 root causes proven) | 82 | S1 | **RC#1 CLOSED 2026-04-18 via Phase 2.1 CONDITIONAL PASS** — refreshKey removed from location query key. RC#2 + RC#3 pending Phase 2.2. |
+| ORCH-0494 | False EMPTY race (20s safety timer) + polluted analytics | — | S1 | **CLOSED A 2026-04-18 via Phase 2.1 CONDITIONAL PASS.** QA report PASS; new invariant I-DECK-EMPTY-IS-SERVER-VERDICT established. |
 | ORCH-0491 | Solo↔Collab switch: preserve progress, parallel live decks | 78 | S1 | Charter — ORCH-0490 Phase 2.3 |
 | ORCH-0492 | Session persistence: last-card position across app close + mode switch | 78 | S1 | Charter — baseline investigation Phase 0-B, design Phase 2.5 |
 | ORCH-0493 | Collab multi-participant pref-change pressure — **verified ⚠️ PARTIAL 2026-04-18** | 76 | S1 | Phase 0-C complete. In-flight position + dedup memory wiped on pref-change propagation. RC#1 H, RC#2 M. Phase 2.6 scope CONFIRMED ON. |
-| ORCH-0494 | False EMPTY race (20s safety timer) + polluted analytics | 70 | S1 | Charter — ORCH-0490 Phase 2.1 |
 | ORCH-0495 | Client warm-ping of discover-cards on foreground | 42 | S2 | Open (renumbered from colliding 0488) |
 | ORCH-0496 | Zombie realtime subscriptions + dead query-key lookups after ORCH-0446 partial rebuild | 18 | S3 | Open 2026-04-18. Bundle into ORCH-0490 Phase 2.6 as ~10-line cleanup. |
 | ORCH-0497 | `useBoardSession.updatePreferences` triple-writes author-device state | 12 | S3 | Open 2026-04-18. Benign, defer to post-ORCH-0490. |
 | ORCH-0498 | Mixed-deck progressive-delivery double-wipe on solo pref change (SOLO analog of ORCH-0493 RC#1) | 74 | S1 | Charter 2026-04-18 via Phase 0-A §12.2. H on code mechanism. Same fix as ORCH-0491 + ORCH-0493 RC#1. Absorb into ORCH-0490 Phase 2.3 or dedicated slice. |
+| ORCH-0499 | `currentMode` + `currentSession` not persisted — cold launch always lands in Solo | 75 | S1 | Charter 2026-04-18 via Phase 0-B RC#2. Intentional ORCH-0209-era design now contradicts JTBD-3. Core of ORCH-0490 Phase 2.5. Product tradeoff: freshness vs resumption. |
+| ORCH-0500 | Dead React Query cache entries accumulate after pref changes | 14 | S3 | Charter 2026-04-18 via Phase 0-B HF#3. Not critical until 1.5MB Android CursorWindow cap hit. Defer to post-ORCH-0490 unless beta testing surfaces it. |
 
 **Why ORCH-0490 ranks 88 even without being a launch blocker:** core-loop discovery reliability. Every user hits the deck every session. Current state lies (false EMPTY), loses state (swipe position), and punishes pref changes with 2–10s blank screens. Does not block first ship but does block delightful UX. Sequenced AFTER the S0 launch-blocker top three (ORCH-0336, 0008, 0102).
 

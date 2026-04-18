@@ -1583,19 +1583,23 @@ export default function SwipeableCards({
       const analyticsSentinel = isEmpty ? '__deck_empty__' : '__deck_exhausted__';
       if (lastViewedCardIdRef.current !== analyticsSentinel) {
         if (isEmpty) {
-          // ORCH-0474: `server_path` splits genuine empty pools from filtered-
-          // to-empty responses. 'pool-empty' = seeding gap (run generate-
-          // single-cards). 'pipeline' = server found cards but date/hours
-          // filter killed all of them (filter narrowness). Auth/pipeline-error
-          // never reach the EMPTY branch — they have their own UI states.
-          mixpanelService.trackDeckEmptyFilter({
-            categories: cachedPreferences?.categories ?? [],
-            date_option: cachedPreferences?.date_option ?? 'today',
-            travel_mode: cachedPreferences?.travel_mode ?? 'walking',
-            travel_constraint_value: cachedPreferences?.travel_constraint_value ?? 30,
-            session_mode: currentMode === 'solo' ? 'solo' : 'collab',
-            server_path: serverPath === 'pool-empty' ? 'pool-empty' : 'pipeline',
-          });
+          // ORCH-0490 Phase 2.1 + I-DECK-EMPTY-IS-SERVER-VERDICT: fire the
+          // analytic ONLY for genuine server-verdict pool-empty responses.
+          // Filter-to-empty (serverPath === 'pipeline' with zero cards after
+          // client-side date/hours filtering) is a different UX signal — the
+          // filter was too narrow, not the pool. Previously we fired for both
+          // and the ORCH-0494 false-EMPTY race overcounted "no matches"
+          // events from populated server responses. Now: truthful only.
+          if (serverPath === 'pool-empty') {
+            mixpanelService.trackDeckEmptyFilter({
+              categories: cachedPreferences?.categories ?? [],
+              date_option: cachedPreferences?.date_option ?? 'today',
+              travel_mode: cachedPreferences?.travel_mode ?? 'walking',
+              travel_constraint_value: cachedPreferences?.travel_constraint_value ?? 30,
+              session_mode: currentMode === 'solo' ? 'solo' : 'collab',
+              server_path: 'pool-empty',
+            });
+          }
         } else {
           mixpanelService.trackDeckExhausted({
             cards_seen: currentCardIndex,

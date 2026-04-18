@@ -156,7 +156,8 @@ export const RecommendationsProvider: React.FC<
   // condition where page 2 starts before page 1's impressions are committed.
   const sessionServedIdsRef = useRef<Set<string>>(new Set());
   const consecutiveSkipCountRef = useRef(0);
-  const hasStartedRef = useRef(false);
+  // Note: `hasStartedRef` removed in ORCH-0490 Phase 2.1 along with the 20s
+  // first-mount safety timer (see ORCH-0494 + I-DECK-EMPTY-IS-SERVER-VERDICT).
   // Accumulated cards from all pages (flat array, not per-batch)
   const accumulatedCardsRef = useRef<Recommendation[]>([]);
   // Guard: prevents stale batchSeed from firing a query during pref-change reset.
@@ -332,7 +333,7 @@ export const RecommendationsProvider: React.FC<
     data: userLocationData,
     isLoading: isLoadingLocation,
     error: locationError,
-  } = useUserLocation(user?.id, currentMode, refreshKey);
+  } = useUserLocation(user?.id, currentMode);
 
   const userLocation: { lat: number; lng: number } | null = useMemo(
     () => userLocationData
@@ -555,6 +556,13 @@ export const RecommendationsProvider: React.FC<
 
   // Safety timeout: if batchSeedReady stays false for 3s, force it true.
   // Prevents permanent deck freeze if the reset effect doesn't fire.
+  //
+  // ORCH-0490 Phase 2.1 audit (OBS-0A-1): this timer does NOT contribute to the
+  // ORCH-0494 false-EMPTY race. It unblocks `useDeckCards`'s `enabled` gate —
+  // it does NOT set `hasCompletedFetchForCurrentMode` and does NOT set
+  // `recommendations=[]`. When it fires, the deck query starts fetching; EMPTY
+  // renders only if the server genuinely returns zero cards (real server
+  // verdict). Safe to keep as a freeze prevention guard. Kept.
   useEffect(() => {
     if (batchSeedReady) return;
     const timer = setTimeout(() => {
@@ -700,25 +708,15 @@ export const RecommendationsProvider: React.FC<
   // pref change → INITIAL_LOADING → query resolves → LOADED/EMPTY.
   // The settle effect above (isDeckBatchLoaded && !isDeckFetching) clears the flag.
 
-  // First-mount safety timeout: 20s guard for the edge case where GPS never resolves
-  // on first launch (user denies permission, device has no location services, etc.).
-  // Unlike the old 15s timeout, this works correctly because the EMPTY check no longer
-  // requires !loading — so forcing hasCompletedFetchForCurrentMode=true actually
-  // resolves to EMPTY state instead of falling through to the INITIAL_LOADING fallback.
-  useEffect(() => {
-    if (hasStartedRef.current) return;
-    hasStartedRef.current = true;
-
-    const safetyTimer = setTimeout(() => {
-      if (!hasCompletedFetchForCurrentMode) {
-        console.warn('[RecommendationsContext] 20s first-mount safety timeout — forcing complete');
-        setHasCompletedFetchForCurrentMode(true);
-        setIsModeTransitioning(false);
-      }
-    }, 20000);
-
-    return () => clearTimeout(safetyTimer);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // ORCH-0490 Phase 2.1 + ORCH-0494: The 20-second first-mount safety timer was
+  // REMOVED here. It force-set `hasCompletedFetchForCurrentMode=true` before real
+  // cards arrived, producing false EMPTY renders during in-flight preference-change
+  // fetches. EMPTY is now server-verdict-only per I-DECK-EMPTY-IS-SERVER-VERDICT —
+  // the EMPTY branch in deckUIState requires either (a) serverPath==='pool-empty'
+  // or (b) the final paginated batch resolved with zero cards. No timer shortcut.
+  // Edge case the old timer protected (GPS never resolves, no device location) is
+  // now handled gracefully: deck stays in INITIAL_LOADING indefinitely and the
+  // user sees the location permission prompt / location resolution UX flow.
 
   // (Batch history and navigation removed — cards accumulate in flat array)
 
@@ -1242,15 +1240,23 @@ export const RecommendationsProvider: React.FC<
       return { type: 'EXHAUSTED' };
     }
 
-    // EMPTY (server returned 0 cards for location/prefs)
-    // When hasCompletedFetchForCurrentMode is true, we trust the completion signal
-    // regardless of background loading state. Previously required !loading which
-    // caused infinite spinners when background refetches kept loading=true after
-    // the fetch cycle had genuinely completed.
+    // EMPTY (server returned 0 cards for location/prefs).
+    //
+    // ORCH-0490 Phase 2.1 + I-DECK-EMPTY-IS-SERVER-VERDICT: EMPTY is server-verdict
+    // only. Two acceptable conditions:
+    //   (a) soloServerPath === 'pool-empty' — server explicitly reported empty pool
+    //       (genuine seeding gap, or auth-ok-but-empty result for these filters).
+    //   (b) isDeckBatchLoaded && !deckHasMore — the final paginated batch resolved
+    //       with no more pages, and recommendations is empty (filter killed all
+    //       cards the pipeline returned).
+    // `hasCompletedFetchForCurrentMode` is intentionally NOT in this condition —
+    // it was the hook the old 20s safety timer used to force false EMPTY. With
+    // the timer removed, we require a REAL server signal here.
     if (
-      hasCompletedFetchForCurrentMode &&
       recommendations.length === 0 &&
-      !isModeTransitioning
+      !isModeTransitioning &&
+      (soloServerPath === 'pool-empty' ||
+        (isDeckBatchLoaded && !deckHasMore))
     ) {
       return { type: 'EMPTY' };
     }
@@ -1270,6 +1276,7 @@ export const RecommendationsProvider: React.FC<
     hasCompletedFetchForCurrentMode, recommendations, isCollaborationMode,
     allParticipantPrefs?.length, isExhausted,
     soloServerPath, // ORCH-0474: drives AUTH_REQUIRED + PIPELINE_ERROR routing
+    isDeckBatchLoaded, deckHasMore, // ORCH-0490 Phase 2.1: drive server-verdict EMPTY branch
     // NOTE: `loading` intentionally removed — the EMPTY check no longer depends on it.
     // Keeping it here caused unnecessary recomputation on every background refetch.
   ]);
