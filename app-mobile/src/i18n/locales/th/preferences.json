@@ -30,8 +30,6 @@
   "travel_limit.custom_placeholder": "5 – 120 นาที",
   "location.use_current": "ใช้ตำแหน่งปัจจุบัน",
   "location.search_placeholder": "ค้นหาจุดเริ่มต้น...",
-  "location.gps_helper": "ได้ตำแหน่งแล้ว สบายๆ",
-  "location.manual_helper": "ปักหมุดที่ไหนก็ได้ หรือสลับกลับไปใช้ GPS",
   "location.pro_feature": "ฟีเจอร์ Pro — สำรวจจากที่ไหนก็ได้",
   "location.searching": "กำลังค้นหา...",
   "sheet.title": "ไวบ์ของคุณ",

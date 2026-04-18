@@ -30,8 +30,6 @@
   "travel_limit.custom_placeholder": "5 – 120 λεπτά",
   "location.use_current": "Χρήση τρέχουσας τοποθεσίας",
   "location.search_placeholder": "Αναζήτηση σημείου εκκίνησης...",
-  "location.gps_helper": "Σε εντοπίσαμε. Χαλάρωσε.",
-  "location.manual_helper": "Βάλε μια πινέζα οπουδήποτε. Ή επιστροφή σε GPS.",
   "location.pro_feature": "Pro λειτουργία — εξερεύνησε από οπουδήποτε",
   "location.searching": "Αναζήτηση...",
   "sheet.title": "Το Vibe σου",

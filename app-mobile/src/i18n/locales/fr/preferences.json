@@ -30,8 +30,6 @@
   "travel_limit.custom_placeholder": "5 – 120 minutes",
   "location.use_current": "Utiliser ma position actuelle",
   "location.search_placeholder": "Rechercher un point de départ...",
-  "location.gps_helper": "On vous a localisé. Tout va bien.",
-  "location.manual_helper": "Placez une épingle n'importe où. Ou revenez au GPS.",
   "location.pro_feature": "Fonction Pro — explorez depuis n'importe où",
   "location.searching": "Recherche...",
   "sheet.title": "Votre ambiance",
