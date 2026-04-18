@@ -241,6 +241,37 @@ function filterByDateTime(
     return false;
   }
 
+  // Helper: check if place is open at ANY point on the given day.
+  // Used by "this_weekend" and "pick_dates" modes so dinner-only venues
+  // (fine dining, bars, evening theater) aren't dropped by a noon probe.
+  function isOpenAnyTimeOnDay(place: any, day: number): boolean {
+    const pType = place.placeType || '';
+    if (ALWAYS_OPEN_TYPES.has(pType)) return true;
+
+    // Path A: Google API format — regularOpeningHours.periods
+    const periods = place.regularOpeningHours?.periods;
+    if (periods && periods.length > 0) {
+      return periods.some((period: any) => period.open?.day === day);
+    }
+
+    // Path B: Pool format — openingHours
+    const oh = place.openingHours;
+    if (oh && typeof oh === 'object') {
+      // Path B.1: Structured periods preserved from Google
+      if (oh._periods && Array.isArray(oh._periods) && oh._periods.length > 0) {
+        return oh._periods.some((period: any) => period.open?.day === day);
+      }
+      // Path B.2: Text-based hours — parseable non-"Closed" text means open
+      const dayName = DAY_NAMES[day];
+      const dayText = oh[dayName];
+      if (!dayText) return false;
+      const parsed = parseHoursText(dayText);
+      return parsed !== null && parsed.length > 0;
+    }
+
+    return false;
+  }
+
   // Normalize dateOption for backward compat
   const dOpt = (dateOption || '').toLowerCase().replace(/-/g, '_').replace(/ /g, '_');
 
@@ -265,14 +296,12 @@ function filterByDateTime(
   }
 
   // ── Mode 2: THIS WEEKEND ──
-  // Show cards open on Saturday OR Sunday.
-  // If today is Saturday: check today (Sat) + Sunday.
+  // Show cards open at ANY point on Saturday OR Sunday.
   // Backward compat: 'weekend' treated as 'this_weekend'.
   if (dOpt === 'this_weekend' || dOpt === 'weekend') {
     return places.filter(place => {
       if (!hasOpeningData(place)) return false;
-      // Check Saturday (day 6) at noon and Sunday (day 0) at noon
-      return isOpenAtHour(place, 6, 12) || isOpenAtHour(place, 0, 12);
+      return isOpenAnyTimeOnDay(place, 6) || isOpenAnyTimeOnDay(place, 0);
     });
   }
 
@@ -291,12 +320,12 @@ function filterByDateTime(
 
     return places.filter(place => {
       if (!hasOpeningData(place)) return false;
-      // Card passes if open on ANY selected date (at noon as representative hour)
+      // Card passes if open at ANY point on any selected date
       return dates.some(dateStr => {
         const d = new Date(dateStr);
         const noonUtc = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0);
         const dayOfWeek = noonUtc.getDay();
-        return isOpenAtHour(place, dayOfWeek, 12);
+        return isOpenAnyTimeOnDay(place, dayOfWeek);
       });
     });
   }
