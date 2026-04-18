@@ -22,7 +22,17 @@
  * Updated 2026-04-08: Major keyword expansion — added cuisine-specific
  * restaurant types, nature landmarks, performance venues, and improved
  * exclusion lists for cleaner results.
+ *
+ * Updated 2026-04-18: Invariant validator added (runs at module load). Removed
+ * invalid `tobacco_shop` type; trimmed BRUNCH and play exclusion lists to fit
+ * Google's 50-item cap; removed drink self-contradiction (karaoke +
+ * live_music_venue appearing in both includedTypes and excludedPrimaryTypes).
  */
+
+import {
+  GOOGLE_PLACE_TYPES_TABLE_A,
+  GOOGLE_TYPE_RESTRICTION_MAX,
+} from './googlePlaceTypes.ts';
 
 // ── Interface ─────────────────────────────────────────────────────────────────
 
@@ -40,10 +50,15 @@ export interface SeedingCategoryConfig {
 // ORCH-0460: Brunch, Lunch & Casual is split across 3 configs (casual_eats +
 // casual_eats_world + casual_eats_extended) to fit Google's 50-type limit per
 // Nearby Search request. All 3 share this exclusion list verbatim to prevent drift.
+//
+// Google caps excludedPrimaryTypes at 50 items (same cap as includedTypes). This
+// list must stay ≤50. Removed from prior revision: `tobacco_shop` (not a valid
+// Google type), `paintball_center`, `sports_complex`, `sports_club`,
+// `athletic_field`, `stadium`, `arena`, `swimming_pool` — sports/arena types
+// that Google does not return as the primary type of any venue a restaurant-
+// includedTypes search would surface. Current length: 49.
 const BRUNCH_LUNCH_CASUAL_EXCLUDED: string[] = [
-  // Fine dining (separate category)
-  'fine_dining_restaurant',
-  // Drink-primary (not food-focused)
+   // Drink-primary (not food-focused)
   'bar', 'cocktail_bar', 'lounge_bar', 'wine_bar', 'night_club',
   'sports_bar', 'hookah_bar', 'brewery', 'brewpub', 'beer_garden', 'pub',
   'bar_and_grill',
@@ -51,21 +66,17 @@ const BRUNCH_LUNCH_CASUAL_EXCLUDED: string[] = [
   'fast_food_restaurant',
   // Non-restaurant food (ORCH-0460)
   'food_court', 'cafeteria', 'snack_bar',
-  // Tobacco (ORCH-0460)
-  'tobacco_shop',
   // Entertainment / play (ORCH-0460: play venues must not leak in)
   'movie_theater', 'bowling_alley', 'karaoke', 'concert_hall',
   'live_music_venue', 'amusement_center', 'amusement_park',
   'video_arcade', 'casino', 'adventure_sports_center',
-  'go_karting_venue', 'paintball_center', 'miniature_golf_course',
-  // Sports / civic (ORCH-0460: sports parks, community centers must not leak in)
-  'community_center', 'sports_complex', 'sports_club', 'athletic_field',
-  'stadium', 'arena', 'swimming_pool',
+  'go_karting_venue', 'miniature_golf_course',
   // Outdoors (ORCH-0460: farms, ranches, campgrounds must not leak in)
   'campground', 'farm', 'ranch',
   // Fitness / corporate / civic
   'gym', 'fitness_center', 'shopping_mall', 'corporate_office',
   'coworking_space', 'convention_center', 'wedding_venue', 'banquet_hall',
+  'community_center',
   // Retail / services (misclassified by Google)
   'gas_station', 'convenience_store', 'grocery_store', 'supermarket',
   'department_store', 'clothing_store', 'hotel', 'motel',
@@ -104,7 +115,7 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
       // Civic / corporate
       'banquet_hall', 'community_center', 'convention_center', 'wedding_venue',
       // Food / drink (not nature)
-      'bar', 'restaurant', 'fast_food_restaurant', 'cafe', 'night_club',
+      'bar', 'restaurant', 'fast_food_restaurant', 'cafe',
     ],
   },
   {
@@ -170,7 +181,7 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
     includedTypes: [
       // Existing
       'bar', 'cocktail_bar', 'lounge_bar', 'wine_bar', 'pub', 'brewery',
-      'beer_garden', 'brewpub',
+      'beer_garden', 'brewpub'
       // New
       'bar_and_grill', 'hookah_bar', 'irish_pub', 'night_club', 'winery', 'sports_bar',
       // ORCH-0434: Added for Drinks & Music
@@ -182,9 +193,11 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
       'cafe', 'coffee_shop', 'tea_house', 'bakery', 'dessert_shop',
       'juice_shop', 'gastropub', 'buffet_restaurant', 'food_court', 'snack_bar',
       'deli', 'ice_cream_shop',
-      // Entertainment (not drink)
-      'movie_theater', 'bowling_alley', 'karaoke', 'concert_hall',
-      'live_music_venue', 'amusement_center', 'video_arcade', 'casino',
+      // Entertainment NOT in Drinks & Music (karaoke + live_music_venue are
+      // intentionally included above per ORCH-0434 and must NOT appear here —
+      // excludedPrimaryTypes would cancel the inclusion)
+      'movie_theater', 'bowling_alley', 'concert_hall',
+      'amusement_center', 'video_arcade', 'casino',
       // Fitness / corporate / civic
       'gym', 'fitness_center', 'shopping_mall', 'corporate_office',
       'coworking_space', 'convention_center', 'wedding_venue', 'banquet_hall',
@@ -412,28 +425,33 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
       // are date-worthy per category-mapping.md definition of play.
       'golf_course', 'indoor_golf_course',
     ],
+    // Google caps excludedPrimaryTypes at 50 items. This list must stay ≤50.
+    // Removed from prior revision: `wine_bar` (covered by bar/cocktail_bar/lounge_bar),
+    // `art_museum` (covered by museum+art_gallery), `park`/`beach`/`scenic_spot`/
+    // `hiking_area`/`national_park` (not in this config's includedTypes so a place
+    // primarily typed as one will only match if it also hits an includedType —
+    // acceptable), `arena` (play venues are not returned as arena-primary).
+    // Current length: 49.
     excludedPrimaryTypes: [
       // Performance (different category)
       'movie_theater', 'performing_arts_theater', 'concert_hall', 'opera_house',
       'philharmonic_hall', 'comedy_club', 'live_music_venue', 'dance_hall',
       // Drink / food
-      'bar', 'cocktail_bar', 'lounge_bar', 'wine_bar', 'night_club',
+      'bar', 'cocktail_bar', 'lounge_bar', 'night_club',
       'restaurant', 'fine_dining_restaurant', 'fast_food_restaurant',
       'cafe', 'coffee_shop',
       // Arts / museums
-      'museum', 'art_gallery', 'art_museum',
+      'museum', 'art_gallery',
       // Fitness / corporate / civic
       'gym', 'fitness_center', 'shopping_mall', 'corporate_office',
       'coworking_space', 'convention_center', 'wedding_venue', 'banquet_hall',
       'community_center',
-      // Nature (different category)
-      'park', 'beach', 'scenic_spot', 'hiking_area', 'national_park',
       // Retail / services
       'hotel', 'motel', 'store', 'department_store',
       // ORCH-0460: Sports/recreation (not adult date activities — Bethesda Park type)
       'sports_club', 'sports_activity_location', 'sports_complex',
       'athletic_field', 'swimming_pool', 'tennis_court', 'playground',
-      'sports_coaching', 'sports_school', 'arena', 'stadium', 'race_course',
+      'sports_coaching', 'sports_school', 'stadium', 'race_course',
       // ORCH-0460: Farms/seasonal (Phillips Farms type) + kids venues
       'farm', 'ranch', 'childrens_camp', 'indoor_playground', 'dog_park',
       'campground',
@@ -562,3 +580,56 @@ export function resolveSeedingCategory(categoryValue: string): SeedingCategoryCo
   return SEEDING_CATEGORY_MAP[categoryValue]
     ?? SEEDING_CATEGORY_MAP_BY_APP_SLUG[categoryValue]?.[0];
 }
+
+// ── Invariant validator (runs at module load) ─────────────────────────────────
+
+/**
+ * Fail-fast validator. Enforces INV-1..INV-4 at module load so any violation
+ * throws before a single seeding batch runs — turning a silent Google 400 or
+ * truncation or self-contradiction into a visible deploy-time error.
+ *
+ *   INV-1: every type ∈ GOOGLE_PLACE_TYPES_TABLE_A
+ *   INV-2: array length ≤ GOOGLE_TYPE_RESTRICTION_MAX (50)
+ *   INV-3: includedTypes ∩ excludedPrimaryTypes = ∅
+ *   INV-4: no duplicate entries within any array
+ */
+function validateSeedingCategories(configs: readonly SeedingCategoryConfig[]): void {
+  const errors: string[] = [];
+  for (const c of configs) {
+    for (const [field, arr] of [
+      ['includedTypes', c.includedTypes] as const,
+      ['excludedPrimaryTypes', c.excludedPrimaryTypes] as const,
+    ]) {
+      if (arr.length > GOOGLE_TYPE_RESTRICTION_MAX) {
+        errors.push(
+          `[${c.id}] ${field} has ${arr.length} items (max ${GOOGLE_TYPE_RESTRICTION_MAX})`
+        );
+      }
+      const seen = new Set<string>();
+      for (const t of arr) {
+        if (seen.has(t)) {
+          errors.push(`[${c.id}] ${field} contains duplicate: "${t}"`);
+        }
+        seen.add(t);
+        if (!GOOGLE_PLACE_TYPES_TABLE_A.has(t)) {
+          errors.push(`[${c.id}] ${field} contains invalid Google type: "${t}"`);
+        }
+      }
+    }
+    const includedSet = new Set(c.includedTypes);
+    for (const t of c.excludedPrimaryTypes) {
+      if (includedSet.has(t)) {
+        errors.push(
+          `[${c.id}] "${t}" appears in BOTH includedTypes and excludedPrimaryTypes`
+        );
+      }
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(
+      `SEEDING_CATEGORIES invariant violation(s):\n  - ${errors.join('\n  - ')}`
+    );
+  }
+}
+
+validateSeedingCategories(SEEDING_CATEGORIES);
