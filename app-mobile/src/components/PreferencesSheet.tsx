@@ -1299,7 +1299,13 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: 8,
-    paddingBottom: 200,
+    // Footer is absolute-positioned (~108px: paddingTop 12 + button ~47 +
+    // paddingBottom 48 + border 1). 120 leaves ~12px of visible breathing room
+    // above the footer's top border, plus the footer's own 12px paddingTop, for
+    // ~24px total between the last section and the button — tight but not flush.
+    // Keyboard avoidance is unaffected — KeyboardAwareScrollView appends
+    // `keyboardHeight + 40` on top of this dynamically when the keyboard opens.
+    paddingBottom: 120,
   },
   header: {
     flexDirection: "row",

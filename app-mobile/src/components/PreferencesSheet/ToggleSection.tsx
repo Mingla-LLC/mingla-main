@@ -101,7 +101,7 @@ const toggleStyles = StyleSheet.create({
     marginRight: spacing.md,
   },
   content: {
-    marginTop: 16,
+    marginTop: 20,
   },
   warningPill: {
     alignSelf: 'flex-start',
