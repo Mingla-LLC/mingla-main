@@ -25,6 +25,8 @@ import { Button } from "../components/ui/Button";
 import { Tabs } from "../components/ui/Tabs";
 import { Spinner } from "../components/ui/Spinner";
 import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from "../constants/categories";
+import { RulesFilterTab } from "../components/rules-filter/RulesFilterTab";
+import { isFlagEnabled } from "../lib/featureFlags";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -1213,6 +1215,7 @@ export function AIValidationPage() {
   const [recentRuns, setRecentRuns] = useState([]);
   const [cities, setCities] = useState([]);
   const [selectedCityId, setSelectedCityId] = useState(null);
+  const [rulesTabFlagEnabled, setRulesTabFlagEnabled] = useState(false);
 
   // Edge function invoke helper
   const invoke = useCallback(async (body) => {
@@ -1260,6 +1263,14 @@ export function AIValidationPage() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  useEffect(() => {
+    let alive = true;
+    isFlagEnabled('enable_rules_filter_tab').then((enabled) => {
+      if (alive) setRulesTabFlagEnabled(enabled);
+    });
+    return () => { alive = false; };
+  }, []);
+
   const handleValidateCity = (cityId) => {
     setSelectedCityId(cityId);
     setTab("pipeline");
@@ -1268,6 +1279,7 @@ export function AIValidationPage() {
 
   const tabs = [
     { id: "command", label: "Command Center" },
+    { id: "rules", label: "Rules Filter" },
     { id: "pipeline", label: "Pipeline" },
     { id: "review", label: "Review Queue" },
   ];
@@ -1342,6 +1354,14 @@ export function AIValidationPage() {
               toast={addToast}
               onRefresh={loadAll}
               onSwitchTab={setTab}
+            />
+          )}
+          {tab === "rules" && (
+            <RulesFilterTab
+              selectedCityId={selectedCityId}
+              invoke={invoke}
+              toast={addToast}
+              flagEnabled={rulesTabFlagEnabled}
             />
           )}
           {tab === "review" && <ReviewQueueTab invoke={invoke} toast={addToast} />}
