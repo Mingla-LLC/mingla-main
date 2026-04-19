@@ -2,20 +2,25 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Brain } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-import { AlertCard, SectionCard } from "../ui/Card";
+import { AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { RulesHealthRow } from "./RulesHealthRow";
 import { RuleSetGrid } from "./RuleSetGrid";
 import { RuleSidePanel } from "./RuleSidePanel";
+import { RunHistoryList } from "./RunHistoryList";
+import { RunDetailPanel } from "./RunDetailPanel";
+import { DriftDetailBanner } from "./DriftDetailBanner";
 
 const SEARCH_DEBOUNCE_MS = 300;
+const RUN_POLL_INTERVAL_MS = 1500;
 
-export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled }) {
+export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled, cityName }) {
+  // ── Overview ──
   const [overview, setOverview] = useState(null);
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [overviewError, setOverviewError] = useState(null);
-  const [driftLoading, setDriftLoading] = useState(false);
 
+  // ── Rules list ──
   const [rules, setRules] = useState([]);
   const [rulesLoading, setRulesLoading] = useState(true);
   const [rulesError, setRulesError] = useState(null);
@@ -27,7 +32,18 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled }) {
   const [groupBy, setGroupBy] = useState("category");
   const [neverFiredOnly, setNeverFiredOnly] = useState(false);
 
-  // Debounce search → debouncedSearch (drives the RPC)
+  // ── Drift ──
+  const [driftLoading, setDriftLoading] = useState(false);
+  const [driftResult, setDriftResult] = useState(null);
+
+  // ── Runs ──
+  const [runs, setRuns] = useState([]);
+  const [runsLoading, setRunsLoading] = useState(true);
+  const [runsError, setRunsError] = useState(null);
+  const [selectedRunId, setSelectedRunId] = useState(null);
+  const [runInflight, setRunInflight] = useState(false);
+
+  // ── Debounce search → debouncedSearch ──
   const debounceRef = useRef(null);
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -35,6 +51,7 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled }) {
     return () => debounceRef.current && clearTimeout(debounceRef.current);
   }, [search]);
 
+  // ── Loaders ──
   const loadOverview = useCallback(async () => {
     setOverviewLoading(true);
     setOverviewError(null);
@@ -57,7 +74,7 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled }) {
         p_scope_filter: null,
         p_kind_filter: kindFilter || null,
         p_search: debouncedSearch || null,
-        p_show_only_never_fired: false, // kept client-side for instant toggle
+        p_show_only_never_fired: false,
       });
       if (rpcErr) throw rpcErr;
       setRules(Array.isArray(data) ? data : []);
@@ -68,42 +85,71 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled }) {
     }
   }, [debouncedSearch, kindFilter]);
 
+  const loadRuns = useCallback(async () => {
+    setRunsLoading(true);
+    setRunsError(null);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc("admin_rules_runs", {
+        p_city_id: selectedCityId || null,
+        p_limit: 20,
+        p_offset: 0,
+      });
+      if (rpcErr) throw rpcErr;
+      setRuns(data?.runs || []);
+    } catch (err) {
+      setRunsError(err.message || "Couldn't load run history.");
+    } finally {
+      setRunsLoading(false);
+    }
+  }, [selectedCityId]);
+
+  // ── Initial + reload effects ──
   useEffect(() => {
     if (flagEnabled) {
       loadOverview();
       loadRulesList();
+      loadRuns();
     }
-  }, [flagEnabled, loadOverview, loadRulesList]);
+  }, [flagEnabled, loadOverview, loadRulesList, loadRuns]);
 
-  // Reload list when search/kind change (but not on every keystroke — debouncedSearch handles that)
   useEffect(() => {
     if (flagEnabled) loadRulesList();
   }, [flagEnabled, debouncedSearch, kindFilter, loadRulesList]);
 
+  useEffect(() => {
+    if (flagEnabled) loadRuns();
+  }, [flagEnabled, selectedCityId, loadRuns]);
+
+  // ── Poll for active runs (every 1500ms while any run is 'running') ──
+  const pollTimerRef = useRef(null);
+  useEffect(() => {
+    if (!flagEnabled) return;
+    const hasActiveRun = runs.some((r) => r.status === "running");
+    if (!hasActiveRun) {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      return;
+    }
+    pollTimerRef.current = setTimeout(() => {
+      loadRuns();
+      loadOverview();
+    }, RUN_POLL_INTERVAL_MS);
+    return () => pollTimerRef.current && clearTimeout(pollTimerRef.current);
+  }, [flagEnabled, runs, loadRuns, loadOverview]);
+
+  // ── Handlers ──
   const handleDriftClick = useCallback(async () => {
     if (driftLoading) return;
     setDriftLoading(true);
+    setDriftResult(null);
     try {
       const result = await invoke({ action: "run_drift_check" });
-      const status = result?.status || "unknown";
-      const diffCount = Array.isArray(result?.diffs) ? result.diffs.length : 0;
-      toast({
-        variant: status === "in_sync" ? "success" : status === "drift" ? "warning" : "error",
-        title:
-          status === "in_sync"
-            ? "Sources in sync"
-            : status === "drift"
-            ? `Drift found in ${diffCount} place(s)`
-            : status === "contradiction"
-            ? `Contradiction in ${diffCount} place(s)`
-            : "Drift check complete",
-        description:
-          status === "in_sync"
-            ? "Filter, on-demand, and display all agree."
-            : "Drift detail panel ships in M3.4.",
-      });
+      setDriftResult(result);
       await loadOverview();
     } catch (err) {
+      setDriftResult({
+        status: "error",
+        error: err.message || "Couldn't run drift check. Try again.",
+      });
       toast({
         variant: "error",
         title: "Drift check failed",
@@ -114,29 +160,58 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled }) {
     }
   }, [driftLoading, invoke, toast, loadOverview]);
 
-  const handleRuleClick = useCallback((ruleId) => {
-    setSelectedRuleId(ruleId);
-  }, []);
-
-  const handlePanelClose = useCallback(() => {
-    setSelectedRuleId(null);
-  }, []);
-
+  const handleRuleClick = useCallback((ruleId) => setSelectedRuleId(ruleId), []);
+  const handlePanelClose = useCallback(() => setSelectedRuleId(null), []);
   const handleSaveSuccess = useCallback(() => {
     setSelectedRuleId(null);
     loadOverview();
     loadRulesList();
-  }, [loadOverview, loadRulesList]);
+    loadRuns();
+  }, [loadOverview, loadRulesList, loadRuns]);
 
-  const handleRunRuleClick = useCallback((rule) => {
-    // M3.4 will dispatch a per-rule run on the selected city.
-    toast({
-      variant: "info",
-      title: `Run ${rule.name} on city`,
-      description: "Per-rule run dispatch ships in M3.4.",
-    });
-  }, [toast]);
+  const handleRunRulesClick = useCallback(async () => {
+    if (!selectedCityId || runInflight) return;
+    setRunInflight(true);
+    try {
+      const result = await invoke({
+        action: "run_rules_filter",
+        city_id: selectedCityId,
+        scope: "all",
+      });
+      if (result?.status === "already_running") {
+        toast({
+          variant: "warning",
+          title: "Already running",
+          description: "A rules-filter run is already active for this city.",
+        });
+      } else if (result?.status === "nothing_to_do") {
+        toast({
+          variant: "info",
+          title: "Nothing to do",
+          description: "No places matched the current scope.",
+        });
+      } else {
+        toast({
+          variant: "success",
+          title: "Run started",
+          description: `Processing ${result?.total_places || "places"} in ${cityName || "selected city"}…`,
+        });
+      }
+      await loadRuns();
+    } catch (err) {
+      toast({
+        variant: "error",
+        title: "Couldn't start run",
+        description: err.message || "Run failed to start. Try again.",
+      });
+    } finally {
+      setRunInflight(false);
+    }
+  }, [selectedCityId, runInflight, invoke, toast, cityName, loadRuns]);
 
+  const handleRunDetailClose = useCallback(() => setSelectedRunId(null), []);
+
+  // ── Gate: flag-off ──
   if (!flagEnabled) {
     return (
       <div className="space-y-6">
@@ -146,6 +221,8 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled }) {
       </div>
     );
   }
+
+  const cityScopeLabel = selectedCityId ? (cityName || "Selected city") : "All cities";
 
   return (
     <motion.div
@@ -184,6 +261,13 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled }) {
         </div>
       )}
 
+      {driftResult && (
+        <DriftDetailBanner
+          result={driftResult}
+          onDismiss={() => setDriftResult(null)}
+        />
+      )}
+
       {rulesError && (
         <AlertCard
           variant="error"
@@ -198,9 +282,9 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled }) {
         rules={rules}
         selectedRuleId={selectedRuleId}
         onRuleClick={handleRuleClick}
-        onRunClick={handleRunRuleClick}
+        onRunClick={null /* ORCH-0538: per-rule runs need edge fn param — v2 */}
         loading={rulesLoading}
-        cityIsSelected={!!selectedCityId}
+        cityIsSelected={false /* suppresses per-rule Run button; use global Run Rules Filter instead */}
         search={search}
         onSearchChange={setSearch}
         kindFilter={kindFilter}
@@ -211,25 +295,35 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled }) {
         onNeverFiredToggle={setNeverFiredOnly}
       />
 
-      <SectionCard
-        title="Run History"
-        subtitle="Coming in M3.4"
-      >
-        <p className="text-[13px] text-[var(--color-text-tertiary)]">
-          Per-city run history and the [+ Run Rules Filter] button land in M3.4.
-          Use the Pipeline tab today to trigger rules-only runs.
-        </p>
-      </SectionCard>
+      <RunHistoryList
+        runs={runs}
+        loading={runsLoading}
+        error={runsError}
+        selectedRunId={selectedRunId}
+        onRunClick={setSelectedRunId}
+        cityScopeLabel={cityScopeLabel}
+        cityIsSelected={!!selectedCityId}
+        onRunRulesClick={handleRunRulesClick}
+        runInflight={runInflight}
+      />
 
       <AnimatePresence>
         {selectedRuleId && (
           <RuleSidePanel
-            key={selectedRuleId}
+            key={`rule-${selectedRuleId}`}
             ruleSetId={selectedRuleId}
             onClose={handlePanelClose}
             onSaveSuccess={handleSaveSuccess}
             toast={toast}
             selectedCityId={selectedCityId}
+          />
+        )}
+        {selectedRunId && (
+          <RunDetailPanel
+            key={`run-${selectedRunId}`}
+            jobId={selectedRunId}
+            onClose={handleRunDetailClose}
+            allRunsOnCity={runs}
           />
         )}
       </AnimatePresence>

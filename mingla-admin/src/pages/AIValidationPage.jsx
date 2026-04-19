@@ -1359,6 +1359,7 @@ export function AIValidationPage() {
           {tab === "rules" && (
             <RulesFilterTab
               selectedCityId={selectedCityId}
+              cityName={cities.find((c) => c.id === selectedCityId)?.name || null}
               invoke={invoke}
               toast={addToast}
               flagEnabled={rulesTabFlagEnabled}
