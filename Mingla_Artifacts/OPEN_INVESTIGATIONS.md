@@ -1,7 +1,7 @@
 # Open Investigations
 
-> Last updated: 2026-04-19 (**AH-148 Phase 2.5 verification CLOSED** — HIGH confidence NARROW SCOPE verdict; only 3 of 9 spec items real pending work; `mingla_last_mode` AsyncStorage key supersedes items 4/5/9; ORCH-0525 registered as S1 for flag-flip; DEC-031 locks mingla_last_mode design, DEC-026 retracted) + 2026-04-18 (AH-147 Phase 2.4 + ORCH-0511 vibe audit + AH-143 ORCH-0503 growing-branch investigations closed)
-> Total: 0 active | 18 completed (historical) | 1 retracted-premise
+> Last updated: 2026-04-19 15:29 UTC (**ORCH-0526 Phase 1 audit CLOSED** — deterministic filter forensic audit, charter now fully shipped. Evidence: outputs/INVESTIGATION_ORCH-0526_DETERMINISTIC_FILTER_AUDIT.md + outputs/REVIEW_ORCH-0526_VIBE_TO_RULE_MAP.md. Reconciled against v1 ship: all 18 filter rules now DB-backed + versioned + admin-visible.) + 2026-04-19 (**AH-148 Phase 2.5 verification CLOSED** — HIGH confidence NARROW SCOPE verdict; only 3 of 9 spec items real pending work; `mingla_last_mode` AsyncStorage key supersedes items 4/5/9; ORCH-0525 registered as S1 for flag-flip; DEC-031 locks mingla_last_mode design, DEC-026 retracted) + 2026-04-18 (AH-147 Phase 2.4 + ORCH-0511 vibe audit + AH-143 ORCH-0503 growing-branch investigations closed)
+> Total: 0 active | 19 completed (historical; ORCH-0526 added) | 1 retracted-premise
 
 ## Active Investigations
 
