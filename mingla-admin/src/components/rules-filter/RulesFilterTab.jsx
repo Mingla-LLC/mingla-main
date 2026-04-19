@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Brain } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { AlertCard, SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { RulesHealthRow } from "./RulesHealthRow";
 import { RuleSetGrid } from "./RuleSetGrid";
+import { RuleSidePanel } from "./RuleSidePanel";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -115,16 +116,17 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled }) {
 
   const handleRuleClick = useCallback((ruleId) => {
     setSelectedRuleId(ruleId);
-    // M3.3 will open the side panel here. For M3.2: surface what was clicked.
-    const rule = rules.find((r) => r.id === ruleId);
-    if (rule) {
-      toast({
-        variant: "info",
-        title: rule.name,
-        description: `Side panel editor lands in M3.3. (kind: ${rule.kind} · ${rule.entry_count || 0} entries)`,
-      });
-    }
-  }, [rules, toast]);
+  }, []);
+
+  const handlePanelClose = useCallback(() => {
+    setSelectedRuleId(null);
+  }, []);
+
+  const handleSaveSuccess = useCallback(() => {
+    setSelectedRuleId(null);
+    loadOverview();
+    loadRulesList();
+  }, [loadOverview, loadRulesList]);
 
   const handleRunRuleClick = useCallback((rule) => {
     // M3.4 will dispatch a per-rule run on the selected city.
@@ -218,6 +220,19 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled }) {
           Use the Pipeline tab today to trigger rules-only runs.
         </p>
       </SectionCard>
+
+      <AnimatePresence>
+        {selectedRuleId && (
+          <RuleSidePanel
+            key={selectedRuleId}
+            ruleSetId={selectedRuleId}
+            onClose={handlePanelClose}
+            onSaveSuccess={handleSaveSuccess}
+            toast={toast}
+            selectedCityId={selectedCityId}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
