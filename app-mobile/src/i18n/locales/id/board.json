@@ -55,7 +55,7 @@
     "qrCode": "Kode QR", "qrCodeDesc": "Buat kode QR untuk dipindai",
     "inviteCode": "Kode Undangan", "inviteCodeDesc": "Bagikan kode sederhana"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Undang Peserta", "addFriendsTo": "Tambah teman ke \"{{name}}\"",
     "searchPlaceholder": "Cari teman...", "loadingFriends": "Memuat teman...", "noUsersFound": "Tidak ada pengguna ditemukan",
     "allFriendsInBoard": "Semua teman sudah ada di papan ini", "noFriendsAvailable": "Tidak ada teman tersedia",

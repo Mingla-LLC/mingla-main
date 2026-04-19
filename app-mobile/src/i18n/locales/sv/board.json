@@ -126,7 +126,7 @@
     "inviteCode": "Bjud in Code",
     "inviteCodeDesc": "Dela a simple code"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Bjud in Participants",
     "addFriendsTo": "Lägg till friends to \"{{name}}\"",
     "searchPlaceholder": "Sök friends...",

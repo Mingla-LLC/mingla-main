@@ -126,7 +126,7 @@
     "inviteCode": "Koodu Ọkpụkpọ",
     "inviteCodeDesc": "Kekọrịta koodu dị mfe"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Kpọọ Ndị Otu",
     "addFriendsTo": "Tinye ndị enyi na \"{{name}}\"",
     "searchPlaceholder": "Chọọ ndị enyi...",

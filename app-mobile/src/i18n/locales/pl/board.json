@@ -126,7 +126,7 @@
     "inviteCode": "Zaproś Code",
     "inviteCodeDesc": "Udostępnij a simple code"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Zaproś Participants",
     "addFriendsTo": "Dodaj friends to \"{{name}}\"",
     "searchPlaceholder": "Szukaj friends...",

@@ -55,7 +55,7 @@
     "qrCode": "QR 코드", "qrCodeDesc": "스캔용 QR 코드 생성",
     "inviteCode": "초대 코드", "inviteCodeDesc": "간단한 코드 공유"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "참가자 초대", "addFriendsTo": "\"{{name}}\"에 친구 추가",
     "searchPlaceholder": "친구 검색...", "loadingFriends": "친구 불러오는 중...", "noUsersFound": "사용자를 찾을 수 없음",
     "allFriendsInBoard": "모든 친구가 이미 이 보드에 있습니다", "noFriendsAvailable": "사용 가능한 친구 없음",

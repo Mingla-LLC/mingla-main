@@ -126,7 +126,7 @@
     "inviteCode": "Davet Et Code",
     "inviteCodeDesc": "Paylaş a simple code"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Davet Et Participants",
     "addFriendsTo": "Ekle friends to \"{{name}}\"",
     "searchPlaceholder": "Ara friends...",

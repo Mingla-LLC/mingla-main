@@ -126,7 +126,7 @@
     "inviteCode": "K\u1ecddi Ik\u1ecdl\u1ecd",
     "inviteCodeDesc": "Rhi\u1eb9 k\u1ecddi n\u1eb9 if\u1eb9nrekh\u1ecde"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "K\u1ecdl\u1ecd Ememba",
     "addFriendsTo": "Mu enyi rrie \"{{name}}\"",
     "searchPlaceholder": "Saki enyi...",

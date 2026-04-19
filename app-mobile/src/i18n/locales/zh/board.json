@@ -55,7 +55,7 @@
     "qrCode": "二维码", "qrCodeDesc": "生成二维码供扫描",
     "inviteCode": "邀请码", "inviteCodeDesc": "分享一个简单的邀请码"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "邀请参与者", "addFriendsTo": "添加好友到\"{{name}}\"",
     "searchPlaceholder": "搜索好友...", "loadingFriends": "正在加载好友...", "noUsersFound": "未找到用户",
     "allFriendsInBoard": "所有好友已在此面板中", "noFriendsAvailable": "没有可用的好友",

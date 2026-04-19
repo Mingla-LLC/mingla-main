@@ -126,7 +126,7 @@
     "inviteCode": "رمز الدعوة",
     "inviteCodeDesc": "شارك رمزاً بسيطاً"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "دعوة المشاركين",
     "addFriendsTo": "إضافة أصدقاء إلى \"{{name}}\"",
     "searchPlaceholder": "البحث عن أصدقاء...",

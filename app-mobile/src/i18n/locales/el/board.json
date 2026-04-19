@@ -126,7 +126,7 @@
     "inviteCode": "Κωδικός Πρόσκλησης",
     "inviteCodeDesc": "Μοιράσου έναν απλό κωδικό"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Πρόσκληση Συμμετεχόντων",
     "addFriendsTo": "Πρόσθεσε φίλους στο \"{{name}}\"",
     "searchPlaceholder": "Αναζήτηση φίλων...",

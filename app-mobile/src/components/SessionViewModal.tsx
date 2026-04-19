@@ -36,7 +36,6 @@ import { BoardTabs, BoardTab } from "./board/BoardTabs";
 import { SwipeableSessionCards } from "./board/SwipeableSessionCards";
 import { BoardDiscussionTab } from "./board/BoardDiscussionTab";
 import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
-import { InviteParticipantsModal } from "./board/InviteParticipantsModal";
 import { CardDiscussionModal } from "./board/CardDiscussionModal";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
@@ -155,16 +154,20 @@ export default function SessionViewModal({
   // Participants derived from useBoardSession data — no separate query needed.
   const participants = (session?.participants || []) as Participant[];
 
-  // Local display name — updates immediately on rename, falls back to prop/session
+  // Local display name — initialized from the parent prop at mount, then owned by
+  // the DB-backed session object.
+  //
+  // ORCH-0520: Do NOT add sessionName to this effect's deps.
+  // The parent prop is captured at modal-open and does not refresh live. Including
+  // it caused ORCH-0520 root cause #1 where fresh renames were overwritten by the
+  // stale prop. See INVESTIGATION_ORCH-0520_REPORT.md §Investigation 2.
   const [localName, setLocalName] = useState(sessionName);
   useEffect(() => {
-    setLocalName(sessionName || session?.name || "");
-  }, [sessionName, session?.name]);
+    if (session?.name) setLocalName(session.name);
+  }, [session?.name]);
 
   // Settings dropdown state
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [showInviteParticipantsModal, setShowInviteParticipantsModal] = useState(false);
 
   // Card discussion modal state
   const [selectedCardForDiscussion, setSelectedCardForDiscussion] = useState<{
@@ -788,10 +791,12 @@ export default function SessionViewModal({
           sessionCreatorId={session?.created_by}
           currentUserId={user?.id}
           isAdmin={isAdmin}
-          notificationsEnabled={notificationsEnabled}
+          // ORCH-0520: server-truth mute from session_participants.notifications_muted.
+          // DEFAULT false enforces invariant I-SESSION-MUTE-DEFAULT-UNMUTED.
+          notificationsMuted={
+            participants.find((p) => p.user_id === user?.id)?.notifications_muted ?? false
+          }
           participants={participants}
-          onToggleNotifications={() => setNotificationsEnabled(!notificationsEnabled)}
-          onInviteParticipants={() => setShowInviteParticipantsModal(true)}
           onExitBoard={handleExitBoard}
           onSessionDeleted={() => {
             if (onSessionDeleted) onSessionDeleted();
@@ -802,16 +807,6 @@ export default function SessionViewModal({
             loadSession(sessionId);
           }}
           onParticipantsChange={refreshParticipants}
-        />
-
-        {/* Invite Participants Modal */}
-        <InviteParticipantsModal
-          visible={showInviteParticipantsModal}
-          sessionId={sessionId}
-          sessionName={localName || t('modals:session_view.session_fallback')}
-          existingParticipantIds={participants.map((p) => p.user_id)}
-          onClose={() => setShowInviteParticipantsModal(false)}
-          onInvitesSent={refreshParticipants}
         />
 
         {/* Card Discussion Modal */}

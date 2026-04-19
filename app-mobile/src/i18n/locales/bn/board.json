@@ -60,7 +60,7 @@
     "qrCode": "QR কোড", "qrCodeDesc": "স্ক্যানের জন্য QR কোড তৈরি করুন",
     "inviteCode": "আমন্ত্রণ কোড", "inviteCodeDesc": "একটি সহজ কোড শেয়ার করুন"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "অংশগ্রহণকারী আমন্ত্রণ", "addFriendsTo": "\"{{name}}\"-এ বন্ধু যোগ করুন",
     "searchPlaceholder": "বন্ধু খুঁজুন...", "loadingFriends": "বন্ধু লোড হচ্ছে...", "noUsersFound": "কোনো ব্যবহারকারী পাওয়া যায়নি",
     "allFriendsInBoard": "সব বন্ধু ইতিমধ্যে এই বোর্ডে আছে", "noFriendsAvailable": "কোনো বন্ধু উপলব্ধ নেই",

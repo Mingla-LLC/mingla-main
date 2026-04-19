@@ -50,6 +50,8 @@ interface BoardSessionCallbacks {
   onTypingStop?: (userId: string, savedCardId?: string) => void;
   onParticipantJoined?: (participant: any) => void;
   onParticipantLeft?: (participant: any) => void;
+  // ORCH-0520: fires on UPDATE to session_participants (e.g., notifications_muted toggle)
+  onParticipantUpdated?: (participant: any) => void;
   onSessionUpdated?: (session: any) => void;
   onPreferencesChanged?: (newPrefs: any, oldPrefs: any) => void;
   onDeckRegenerated?: (deckPayload: any) => void;
@@ -545,6 +547,22 @@ export class RealtimeService {
         (payload) => {
           if (__DEV__) logger.realtime(`${sessionId} | DELETE session_participants`, { old: payload.old });
           dispatch('onParticipantLeft', payload.old);
+        }
+      )
+      // ORCH-0520: session_participants UPDATE — mute toggles, is_admin promotions,
+      // has_accepted flips. Consumers merge the new row into their local state so
+      // mute state syncs across a user's devices and admin promotions propagate live.
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "session_participants",
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          if (__DEV__) logger.realtime(`${sessionId} | UPDATE session_participants`, { new: payload.new });
+          dispatch('onParticipantUpdated', payload.new);
         }
       )
       // Preference changes — triggers deck refresh for all participants

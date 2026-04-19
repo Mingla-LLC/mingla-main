@@ -166,7 +166,11 @@ export const useBoardSession = (sessionId?: string) => {
 
         setSessionValid(isValid);
         setHasPermission(isMember || isCreator);
-        setIsAdmin(isCreator);
+        // ORCH-0520: isAdmin includes BOTH the session creator AND promoted admins
+        // (session_participants.is_admin=true, set via BoardSettingsDropdown's admin-toggle
+        // UI). Without this, the canManageSession gate in BoardSettingsDropdown silently
+        // excluded non-creator admins from invite capability even after promotion.
+        setIsAdmin(isCreator || userParticipant?.is_admin === true);
 
         if (!isValid) {
           setError(fetchedSession?.archived_at ? 'This session has been archived.' : 'This session is no longer active.');
@@ -363,6 +367,29 @@ export const useBoardSession = (sessionId?: string) => {
                 (p) => p.user_id !== participant.user_id
               ),
             };
+          });
+        },
+        // ORCH-0520: column UPDATEs on session_participants (mute toggle, is_admin
+        // promotion, has_accepted flip). Merge the new row fields into our local
+        // participant while preserving the joined `profiles` relation (which isn't
+        // in the realtime payload).
+        onParticipantUpdated: (updatedParticipant: { user_id: string; [key: string]: unknown }) => {
+          if (capturedSessionId !== stableSessionIdRef.current) {
+            console.warn('[useBoardSession] Ignoring stale event for session:', capturedSessionId);
+            return;
+          }
+          setSession((prev) => {
+            if (!prev) return null;
+            const existingIndex = (prev.participants || []).findIndex(
+              (p) => p.user_id === updatedParticipant.user_id
+            );
+            if (existingIndex === -1) return prev;
+            const nextParticipants = [...(prev.participants || [])];
+            nextParticipants[existingIndex] = {
+              ...nextParticipants[existingIndex],
+              ...updatedParticipant,
+            };
+            return { ...prev, participants: nextParticipants };
           });
         },
         onPreferencesChanged: () => {

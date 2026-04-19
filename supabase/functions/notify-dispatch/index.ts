@@ -16,6 +16,23 @@ function jsonResponse(body: object, status = 200) {
   });
 }
 
+// ── Session-scoped types (ORCH-0520) ────────────────────────────────────────
+// Push types that fire INSIDE an active session to an existing participant.
+// These pass through the session mute check below. Adding a new push type that
+// fires during session activity? Add it here. Firing to a non-participant
+// (e.g., invite-stage)? Do NOT add — no mute row exists for them.
+const SESSION_SCOPED_TYPES = new Set<string>([
+  "session_member_joined",
+  "session_member_left",
+  "board_card_saved",
+  "board_card_voted",
+  "board_card_rsvp",
+  "board_card_matched",
+  "board_message_received",
+  "board_message_mention",
+  "board_card_message",
+]);
+
 // ── Type-to-preference mapping ──────────────────────────────────────────────
 const typeToPreference: Record<string, string> = {
   "friend_request_received": "friend_requests",
@@ -228,6 +245,39 @@ serve(async (req) => {
         pushSent: false,
         reason: "user_disabled",
       });
+    }
+
+    // ── Session-scoped mute check (ORCH-0520) ───────────────────────────────
+    // Session-scoped types are suppressed for the recipient if they have muted
+    // the session via BoardSettingsDropdown's bell icon. The in-app notifications
+    // row was already inserted above — this only gates the push delivery.
+    //
+    // session_deleted is INTENTIONALLY excluded — users must learn when their
+    // session is gone regardless of mute.
+    // collaboration_invite_* are NOT included — they fire before the recipient
+    // is a participant (no mute row exists) or to the inviter (different context).
+    if (SESSION_SCOPED_TYPES.has(type)) {
+      const sessionId = (data as Record<string, unknown>)?.sessionId as string | undefined;
+      if (sessionId) {
+        const { data: muteRow } = await adminClient
+          .from("session_participants")
+          .select("notifications_muted")
+          .eq("session_id", sessionId)
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (muteRow?.notifications_muted === true) {
+          console.info(
+            `[notify-dispatch] session muted, skipping push for user ${userId} session ${sessionId} type ${type}`
+          );
+          return jsonResponse({
+            success: true,
+            notificationId,
+            pushSent: false,
+            reason: "session_muted",
+          });
+        }
+      }
     }
 
     // ── Quiet hours check ───────────────────────────────────────────────────

@@ -15,6 +15,9 @@ export interface Participant {
   session_id: string;
   has_accepted: boolean;
   joined_at?: string;
+  is_admin?: boolean;
+  // ORCH-0520: per-participant session mute (DEFAULT false; unmuted on new-join)
+  notifications_muted?: boolean;
   profiles?: {
     id: string;
     username: string;

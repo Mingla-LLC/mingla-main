@@ -55,7 +55,7 @@
     "qrCode": "QRコード", "qrCodeDesc": "スキャン用QRコードを生成",
     "inviteCode": "招待コード", "inviteCodeDesc": "シンプルなコードを共有"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "参加者を招待", "addFriendsTo": "\"{{name}}\"に友達を追加",
     "searchPlaceholder": "友達を検索...", "loadingFriends": "友達を読み込み中...", "noUsersFound": "ユーザーが見つかりません",
     "allFriendsInBoard": "すべての友達がすでにこのボードにいます", "noFriendsAvailable": "利用可能な友達がいません",

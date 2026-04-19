@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,15 @@ import { getDisplayName } from "../../utils/getDisplayName";
 import { truncateString } from "../../utils/general";
 import { notifyMemberLeft, notifySessionDeleted } from "../../services/boardNotificationService";
 import { colors } from "../../constants/colors";
+// ORCH-0520: inline phone invite + accordion friend picker
+import { PhoneInput } from "../onboarding/PhoneInput";
+import { getCountryByCode } from "../../constants/countries";
+import { inviteByPhone } from "../../services/sessionInviteService";
+import { setSessionMute } from "../../services/sessionMuteService";
+import { InlineInviteFriendsList } from "./InlineInviteFriendsList";
+// ORCH-0520 v2: reuse existing phone-lookup hook for live warm/cold visual
+// (same pattern as AddFriendView.tsx:121 + CollaborationSessions.tsx:216)
+import { usePhoneLookup, useDebouncedValue } from "../../hooks/usePhoneLookup";
 
 interface Participant {
   id?: string;
@@ -27,6 +36,8 @@ interface Participant {
   joined_at?: string;
   has_accepted?: boolean;
   is_admin?: boolean;
+  // ORCH-0520 — per-participant session mute (DEFAULT false; unmuted on new-join)
+  notifications_muted?: boolean;
   profiles?: {
     id: string;
     username?: string;
@@ -45,10 +56,9 @@ interface BoardSettingsDropdownProps {
   sessionCreatorId?: string;
   currentUserId?: string;
   isAdmin?: boolean;
-  notificationsEnabled?: boolean;
+  // ORCH-0520: server-truth mute (derived from session_participants.notifications_muted)
+  notificationsMuted: boolean;
   participants?: Participant[];
-  onToggleNotifications?: () => void;
-  onInviteParticipants?: () => void;
   onExitBoard?: () => void;
   onSessionDeleted?: () => void;
   onSessionNameUpdated?: (newName: string) => void;
@@ -63,10 +73,8 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   sessionCreatorId,
   currentUserId,
   isAdmin = false,
-  notificationsEnabled = true,
+  notificationsMuted,
   participants = [],
-  onToggleNotifications,
-  onInviteParticipants,
   onExitBoard,
   onSessionDeleted,
   onSessionNameUpdated,
@@ -80,6 +88,57 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
   const [exitingBoard, setExitingBoard] = useState(false);
   const [adminUsers, setAdminUsers] = useState<Set<string>>(new Set());
   const nameInputRef = useRef<TextInput>(null);
+
+  // ORCH-0520: inline phone invite state
+  const [invitePhoneInput, setInvitePhoneInput] = useState("");
+  const [inviteCountryCode, setInviteCountryCode] = useState("US");
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [friendListExpanded, setFriendListExpanded] = useState(false);
+
+  // ORCH-0520: optimistic mute state (null = no override, use prop)
+  const [optimisticMute, setOptimisticMute] = useState<boolean | null>(null);
+  const currentUserIsMuted =
+    optimisticMute !== null ? optimisticMute : notificationsMuted;
+
+  // Reset optimistic override whenever server truth changes to match it —
+  // realtime update or prop re-render means we've caught up to server.
+  useEffect(() => {
+    setOptimisticMute(null);
+  }, [notificationsMuted]);
+
+  // Derived E.164 + validity for inline invite
+  const invitePhoneE164 = useMemo(() => {
+    const country = getCountryByCode(inviteCountryCode);
+    if (!country) return "";
+    const digits = invitePhoneInput.replace(/\D/g, "");
+    if (!digits) return "";
+    return `${country.dialCode}${digits}`;
+  }, [invitePhoneInput, inviteCountryCode]);
+
+  const isInvitePhoneValid = useMemo(() => {
+    // Minimum 7 digits after the dial code — permissive to match PhoneInput's
+    // freeform acceptance; edge functions do strict E.164 validation.
+    const digits = invitePhoneInput.replace(/\D/g, "");
+    return digits.length >= 7;
+  }, [invitePhoneInput]);
+
+  // ORCH-0520 v2: Debounced phone + live lookup. Shows warm/cold visual as
+  // the user types so the Invite button reflects whether they're inviting a
+  // Mingla user (warm in-app invite) or sending an SMS (cold).
+  const debouncedPhoneE164 = useDebouncedValue(invitePhoneE164, 500);
+  const digitCount = invitePhoneInput.replace(/\D/g, "").length;
+  const debouncedDigitCount = useDebouncedValue(digitCount, 500);
+  const {
+    data: phoneLookupResult,
+    isLoading: phoneLookupLoading,
+  } = usePhoneLookup(debouncedPhoneE164, debouncedDigitCount >= 7);
+
+  // Debounce still resolving (user is mid-typing)
+  const lookupDebouncing = isInvitePhoneValid && invitePhoneE164 !== debouncedPhoneE164;
+  const lookupResolved =
+    isInvitePhoneValid && !lookupDebouncing && !phoneLookupLoading && !!phoneLookupResult;
+  const lookupFound = lookupResolved && phoneLookupResult?.found === true;
 
   // Sync admin users from participants
   useEffect(() => {
@@ -224,6 +283,63 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
       setSavingName(false);
     }
   }, [sessionId, editSessionName, sessionName, onSessionNameUpdated, t]);
+
+  // --- Handlers: Mute toggle (ORCH-0520) ---
+
+  const handleToggleMute = useCallback(async (): Promise<void> => {
+    if (!sessionId || !currentUserId) return;
+    const previous = currentUserIsMuted;
+    setOptimisticMute(!previous);
+    const result = await setSessionMute(sessionId, !previous);
+    if (!result.success) {
+      setOptimisticMute(previous); // rollback
+      Alert.alert(
+        t("board:boardSettingsDropdown.muteUpdateFailed"),
+        result.error || t("board:boardSettingsDropdown.pleaseTryAgain")
+      );
+    }
+    // Success: realtime UPDATE will eventually overwrite optimistic state
+    // with server truth via useBoardSession's onParticipantUpdated callback.
+  }, [sessionId, currentUserId, currentUserIsMuted, t]);
+
+  // --- Handlers: Phone invite (ORCH-0520) ---
+
+  const handlePhoneInvite = useCallback(async (): Promise<void> => {
+    if (!sessionId || !currentUserId || !isInvitePhoneValid) return;
+    setInviting(true);
+    setInviteError(null);
+    try {
+      const outcome = await inviteByPhone(
+        sessionId,
+        currentUserId,
+        sessionName,
+        invitePhoneE164
+      );
+      if (outcome.kind === "warm") {
+        setInvitePhoneInput("");
+        Alert.alert(
+          t("board:boardSettingsDropdown.invited"),
+          outcome.displayName
+            ? t("board:boardSettingsDropdown.invitedUser", { name: outcome.displayName })
+            : t("board:boardSettingsDropdown.inviteSent")
+        );
+        onParticipantsChange?.();
+      } else if (outcome.kind === "cold") {
+        setInvitePhoneInput("");
+        Alert.alert(
+          t("board:boardSettingsDropdown.invited"),
+          t("board:boardSettingsDropdown.invitedTextSent", { phone: outcome.phoneE164 })
+        );
+        onParticipantsChange?.();
+      } else {
+        setInviteError(outcome.message);
+      }
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : "Failed to send invite");
+    } finally {
+      setInviting(false);
+    }
+  }, [sessionId, currentUserId, sessionName, invitePhoneE164, isInvitePhoneValid, onParticipantsChange, t]);
 
   // --- Handlers: Member management ---
 
@@ -371,13 +487,16 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                 <View style={styles.sheetHandle} />
               </View>
 
-              {/* Board Name — inline editable */}
-              <View style={styles.boardNameRow}>
+              {/* Header row — editable name (creators/admins) + mute bell (all participants).
+                  ORCH-0520 v2: title+pencil wrapped in a tight self-sized row with a
+                  solid orange underline (cross-platform reliable); spacer pushes bell
+                  to the far right so the pencil hugs the title. */}
+              <View style={styles.headerRow}>
                 {canManageSession ? (
-                  <View style={styles.boardNameInputWrapper}>
+                  <View style={styles.titleAndPencil}>
                     <TextInput
                       ref={nameInputRef}
-                      style={styles.boardNameInput}
+                      style={styles.titleInput}
                       value={editSessionName}
                       onChangeText={setEditSessionName}
                       onBlur={handleSaveName}
@@ -385,6 +504,14 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                       returnKeyType="done"
                       maxLength={100}
                       selectTextOnFocus
+                      accessibilityLabel={t("board:boardSettingsDropdown.editName")}
+                      accessibilityHint={t("board:boardSettingsDropdown.editNameHint")}
+                    />
+                    <Icon
+                      name="pencil"
+                      size={14}
+                      color="#9CA3AF"
+                      style={styles.pencilIcon}
                     />
                     {savingName && (
                       <ActivityIndicator
@@ -395,10 +522,34 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                     )}
                   </View>
                 ) : (
-                  <Text style={styles.boardNameStatic} numberOfLines={1}>
+                  <Text style={styles.titleStatic} numberOfLines={1}>
                     {sessionName}
                   </Text>
                 )}
+
+                {/* Spacer pushes the bell to the far right while the title+pencil
+                    stay anchored on the left, hugging the text. */}
+                <View style={styles.headerSpacer} />
+
+                {/* Mute bell — visible to all participants, server-truth state */}
+                <TouchableOpacity
+                  style={styles.bellButton}
+                  onPress={handleToggleMute}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    currentUserIsMuted
+                      ? t("board:boardSettingsDropdown.unmuteNotifications")
+                      : t("board:boardSettingsDropdown.muteNotifications")
+                  }
+                  accessibilityState={{ selected: currentUserIsMuted }}
+                >
+                  <Icon
+                    name={currentUserIsMuted ? "notifications-off" : "notifications"}
+                    size={22}
+                    color={currentUserIsMuted ? "#9CA3AF" : "#374151"}
+                  />
+                </TouchableOpacity>
               </View>
 
               <ScrollView
@@ -407,46 +558,122 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                 bounces={false}
                 keyboardShouldPersistTaps="handled"
               >
-                {/* Settings Menu Items */}
-                <View style={styles.menuSection}>
-                  {/* Invite Participants - admin only */}
-                  {canManageSession && onInviteParticipants && (
-                    <TouchableOpacity
-                      style={styles.menuItem}
-                      onPress={() => {
-                        onInviteParticipants();
-                        onClose();
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Icon name="user-plus" size={18} color="#6B7280" />
-                      <Text style={styles.menuItemText}>Invite Participants</Text>
-                    </TouchableOpacity>
-                  )}
+                {/* ORCH-0520: Invite section — creators + admins only */}
+                {canManageSession && (
+                  <View style={styles.inviteSection}>
+                    <Text style={styles.sectionLabel}>
+                      {t("board:boardSettingsDropdown.inviteByPhone")}
+                    </Text>
+                    <PhoneInput
+                      value={invitePhoneInput}
+                      countryCode={inviteCountryCode}
+                      onChangePhone={setInvitePhoneInput}
+                      onChangeCountry={setInviteCountryCode}
+                      error={inviteError}
+                      disabled={inviting}
+                    />
 
-                  {/* Toggle notifications */}
-                  {onToggleNotifications && (
+                    {/* ORCH-0520 v2: live lookup result (mirrors AddFriendView pattern) */}
+                    {isInvitePhoneValid && (lookupDebouncing || phoneLookupLoading) && (
+                      <View style={styles.lookupRow}>
+                        <ActivityIndicator size="small" color="#eb7825" />
+                        <Text style={styles.lookupTextMuted}>
+                          {t("board:boardSettingsDropdown.checkingNumber")}
+                        </Text>
+                      </View>
+                    )}
+                    {lookupResolved && lookupFound && (
+                      <View style={styles.lookupRow}>
+                        <Icon name="checkmark-circle" size={14} color="#22c55e" />
+                        <Text style={styles.lookupTextGreen}>
+                          {t("social:isOnMingla", {
+                            name: getDisplayName(phoneLookupResult?.user, "User"),
+                          })}
+                        </Text>
+                      </View>
+                    )}
+                    {lookupResolved && !lookupFound && (
+                      <View style={styles.lookupRow}>
+                        <Icon name="person-add-outline" size={14} color="#6b7280" />
+                        <Text style={styles.lookupTextMuted}>
+                          {t("social:notOnMinglaYet")}
+                        </Text>
+                      </View>
+                    )}
+
                     <TouchableOpacity
-                      style={styles.menuItem}
-                      onPress={() => {
-                        onToggleNotifications();
-                        onClose();
-                      }}
-                      activeOpacity={0.7}
+                      style={[
+                        styles.inviteButton,
+                        (!isInvitePhoneValid || inviting || lookupDebouncing || phoneLookupLoading) &&
+                          styles.inviteButtonDisabled,
+                      ]}
+                      onPress={handlePhoneInvite}
+                      disabled={
+                        !isInvitePhoneValid || inviting || lookupDebouncing || phoneLookupLoading
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={t("board:boardSettingsDropdown.sendInviteByPhone")}
                     >
-                      <Icon
-                        name={notificationsEnabled ? "notifications-off" : "notifications"}
-                        size={18}
-                        color="#6B7280"
-                      />
-                      <Text style={styles.menuItemText}>
-                        {notificationsEnabled
-                          ? "Turn Off Notifications"
-                          : "Turn On Notifications"}
-                      </Text>
+                      {inviting ? (
+                        <ActivityIndicator size="small" color="white" />
+                      ) : (
+                        <View style={styles.inviteButtonContent}>
+                          <Icon
+                            name={
+                              lookupResolved && lookupFound
+                                ? "person-add"
+                                : lookupResolved && !lookupFound
+                                ? "chatbubble-ellipses-outline"
+                                : "send"
+                            }
+                            size={16}
+                            color="white"
+                          />
+                          <Text style={styles.inviteButtonText}>
+                            {lookupResolved && lookupFound
+                              ? t("board:boardSettingsDropdown.inviteUser", {
+                                  name: getDisplayName(phoneLookupResult?.user, "User"),
+                                })
+                              : lookupResolved && !lookupFound
+                              ? t("board:boardSettingsDropdown.sendSmsInvite")
+                              : t("board:boardSettingsDropdown.invite")}
+                          </Text>
+                        </View>
+                      )}
                     </TouchableOpacity>
-                  )}
-                </View>
+
+                    {/* Collapsible friend-picker accordion */}
+                    <TouchableOpacity
+                      style={styles.friendAccordionHeader}
+                      onPress={() => setFriendListExpanded((v) => !v)}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: friendListExpanded }}
+                      accessibilityLabel={t("board:boardSettingsDropdown.inviteFromFriends")}
+                    >
+                      <Icon name="users" size={18} color="#6B7280" />
+                      <Text style={styles.friendAccordionTitle}>
+                        {t("board:boardSettingsDropdown.inviteFromFriends")}
+                      </Text>
+                      <Icon
+                        name={friendListExpanded ? "chevron-up" : "chevron-down"}
+                        size={18}
+                        color="#9CA3AF"
+                      />
+                    </TouchableOpacity>
+
+                    {friendListExpanded && (
+                      <InlineInviteFriendsList
+                        sessionId={sessionId}
+                        sessionName={sessionName}
+                        existingParticipantIds={participants.map((p) => p.user_id)}
+                        onInvitesSent={() => {
+                          onParticipantsChange?.();
+                          setFriendListExpanded(false);
+                        }}
+                      />
+                    )}
+                  </View>
+                )}
 
                 {/* Divider */}
                 <View style={styles.menuDivider} />
@@ -535,36 +762,37 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
                 </View>
 
                 {/* Divider */}
-                <View style={styles.menuDivider} />
+              </ScrollView>
 
-                {/* Leave & Delete Buttons */}
-                <View style={[styles.actionButtonsRow, { paddingBottom: Math.max(12, insets.bottom) }]}>
+              {/* ORCH-0520 v2: Leave & Delete fixed footer — outside ScrollView.
+                  Prevents action buttons from shifting when the friend accordion
+                  expands. Safe-area-aware bottom padding. */}
+              <View style={[styles.actionButtonsRow, { paddingBottom: Math.max(12, insets.bottom) }]}>
+                <TouchableOpacity
+                  style={styles.leaveButton}
+                  onPress={handleLeaveBoard}
+                  activeOpacity={0.8}
+                  disabled={exitingBoard}
+                >
+                  <Icon name="log-out" size={16} color="#EF4444" />
+                  <Text style={styles.leaveButtonText}>
+                    {exitingBoard ? "Leaving..." : "Leave"}
+                  </Text>
+                </TouchableOpacity>
+                {canManageSession && (
                   <TouchableOpacity
-                    style={styles.leaveButton}
-                    onPress={handleLeaveBoard}
+                    style={styles.deleteButton}
+                    onPress={handleDeleteSessionWithConfirmation}
                     activeOpacity={0.8}
-                    disabled={exitingBoard}
+                    disabled={deletingSession}
                   >
-                    <Icon name="log-out" size={16} color="#EF4444" />
-                    <Text style={styles.leaveButtonText}>
-                      {exitingBoard ? "Leaving..." : "Leave"}
+                    <Icon name="trash-outline" size={16} color="white" />
+                    <Text style={styles.deleteButtonText}>
+                      {deletingSession ? "Deleting..." : "Delete"}
                     </Text>
                   </TouchableOpacity>
-                  {canManageSession && (
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={handleDeleteSessionWithConfirmation}
-                      activeOpacity={0.8}
-                      disabled={deletingSession}
-                    >
-                      <Icon name="trash-outline" size={16} color="white" />
-                      <Text style={styles.deleteButtonText}>
-                        {deletingSession ? "Deleting..." : "Delete"}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </ScrollView>
+                )}
+              </View>
             </Pressable>
           </Pressable>
         </Modal>
@@ -723,12 +951,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEF3C7",
   },
 
-  // --- Action buttons ---
+  // --- Action buttons (ORCH-0520 v2): fixed footer outside ScrollView ---
   actionButtonsRow: {
     flexDirection: "row",
     gap: 10,
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    backgroundColor: "white",
   },
   leaveButton: {
     flex: 1,
@@ -763,34 +994,127 @@ const styles = StyleSheet.create({
     color: "white",
   },
 
-  // --- Board name ---
-  boardNameRow: {
+  // --- Header row (ORCH-0520 v2): tight title+pencil + spacer + bell ---
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingTop: 4,
     paddingBottom: 8,
   },
-  boardNameInputWrapper: {
+  // Tight self-sized wrapper. No flex:1 — so the pencil stays next to the text,
+  // not pushed to the far right. Solid orange underline (cross-platform reliable;
+  // borderStyle:'dashed' is iOS-flaky per spec OQ-1).
+  titleAndPencil: {
     flexDirection: "row",
     alignItems: "center",
     borderBottomWidth: 1.5,
-    borderBottomColor: "#E5E7EB",
+    borderBottomColor: "#eb7825",
+    paddingBottom: 2,
+    maxWidth: "75%",
   },
-  boardNameInput: {
-    flex: 1,
+  titleInput: {
     fontSize: 18,
     fontWeight: "700",
     color: "#111827",
     paddingVertical: 6,
     paddingHorizontal: 0,
+    minWidth: 80,
+  },
+  pencilIcon: {
+    marginLeft: 6,
   },
   savingIndicator: {
     marginLeft: 8,
   },
-  boardNameStatic: {
+  titleStatic: {
     fontSize: 18,
     fontWeight: "700",
     color: "#111827",
     paddingVertical: 6,
+    maxWidth: "75%",
+  },
+  headerSpacer: {
+    flex: 1,
+  },
+  bellButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // --- Invite section (ORCH-0520) ---
+  inviteSection: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
+    gap: 10,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#9CA3AF",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  inviteButton: {
+    backgroundColor: "#eb7825",
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+  },
+  inviteButtonDisabled: {
+    backgroundColor: "#D1D5DB",
+  },
+  // ORCH-0520 v2: icon + label pairing inside the button (warm/cold/default states)
+  inviteButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  inviteButtonText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 15,
+  },
+  // ORCH-0520 v2: live phone-lookup result row (mirrors AddFriendView pattern)
+  lookupRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  lookupTextGreen: {
+    fontSize: 13,
+    color: "#22c55e",
+    fontWeight: "500",
+  },
+  lookupTextMuted: {
+    fontSize: 13,
+    color: "#6b7280",
+  },
+  friendAccordionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    marginTop: 8,
+  },
+  friendAccordionTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "500",
+    color: "#374151",
   },
 });
 

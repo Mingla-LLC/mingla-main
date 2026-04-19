@@ -55,7 +55,7 @@
     "qrCode": "คิวอาร์โค้ด", "qrCodeDesc": "สร้างคิวอาร์โค้ดเพื่อสแกน",
     "inviteCode": "รหัสเชิญ", "inviteCodeDesc": "แชร์รหัสง่ายๆ"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "เชิญผู้เข้าร่วม", "addFriendsTo": "เพิ่มเพื่อนไปยัง \"{{name}}\"",
     "searchPlaceholder": "ค้นหาเพื่อน...", "loadingFriends": "กำลังโหลดเพื่อน...", "noUsersFound": "ไม่พบผู้ใช้",
     "allFriendsInBoard": "เพื่อนทุกคนอยู่ในบอร์ดนี้แล้ว", "noFriendsAvailable": "ไม่มีเพื่อนที่พร้อม",
