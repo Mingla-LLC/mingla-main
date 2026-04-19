@@ -759,6 +759,403 @@ function deterministicFilter(place: any): PreFilterResult {
   return { verdict: "pass" };
 }
 
+// ── DB-Backed Rule Loading (ORCH-0526 M2) ───────────────────────────────────
+// Loads the 18 rule_sets from the new tables (per M1) so deterministicFilter
+// can run against admin-edited rules instead of the in-code constants above.
+//
+// TRANSITION GUARD (I-RULES-FALLBACK-SAFE): if rules_versions table is empty,
+// returns null and the caller falls back to the in-code constants. This keeps
+// the cutover safe and protects against accidental rule deletion.
+
+interface LoadedRuleEntry {
+  value: string;
+  sub_category: string | null;
+}
+
+interface LoadedRule {
+  rule_set_id: string;
+  rule_set_version_id: string;
+  name: string;
+  kind: string;
+  scope_kind: string;
+  scope_value: string | null;
+  thresholds: Record<string, unknown> | null;
+  entries: LoadedRuleEntry[];
+  is_active: boolean;
+}
+
+interface LoadedRules {
+  rulesVersionId: string;
+  manifestLabel: string | null;
+  byName: Record<string, LoadedRule>;
+}
+
+// deno-lint-ignore no-explicit-any
+async function loadRulesFromDb(db: any, rulesVersionId: string | null): Promise<LoadedRules | null> {
+  // 1. Resolve manifest: caller-pinned OR latest deployed
+  let manifest: { id: string; manifest_label: string | null; snapshot: Record<string, string> } | null = null;
+  if (rulesVersionId) {
+    const { data } = await db.from("rules_versions")
+      .select("id, manifest_label, snapshot")
+      .eq("id", rulesVersionId)
+      .maybeSingle();
+    manifest = data;
+  } else {
+    const { data } = await db.from("rules_versions")
+      .select("id, manifest_label, snapshot")
+      .order("deployed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    manifest = data;
+  }
+  if (!manifest) return null;
+
+  const versionIds = Object.values(manifest.snapshot);
+  if (versionIds.length === 0) return null;
+
+  // 2. Load rule_set_versions (with parent rule_sets via inner join)
+  const { data: versions, error: vErr } = await db.from("rule_set_versions")
+    .select("id, rule_set_id, thresholds, rule_sets!inner(name, kind, scope_kind, scope_value, is_active)")
+    .in("id", versionIds);
+  if (vErr) {
+    console.error("loadRulesFromDb versions error:", vErr.message);
+    return null;
+  }
+
+  // 3. Load entries
+  const { data: entries, error: eErr } = await db.from("rule_entries")
+    .select("rule_set_version_id, value, sub_category")
+    .in("rule_set_version_id", versionIds);
+  if (eErr) {
+    console.error("loadRulesFromDb entries error:", eErr.message);
+    return null;
+  }
+
+  // 4. Group entries by version
+  const entriesByVersion: Record<string, LoadedRuleEntry[]> = {};
+  for (const e of (entries || [])) {
+    if (!entriesByVersion[e.rule_set_version_id]) entriesByVersion[e.rule_set_version_id] = [];
+    entriesByVersion[e.rule_set_version_id].push({ value: e.value, sub_category: e.sub_category });
+  }
+
+  // 5. Build the byName lookup
+  const byName: Record<string, LoadedRule> = {};
+  for (const v of (versions || [])) {
+    // deno-lint-ignore no-explicit-any
+    const rs = (v as any).rule_sets;
+    byName[rs.name] = {
+      rule_set_id: v.rule_set_id,
+      rule_set_version_id: v.id,
+      name: rs.name,
+      kind: rs.kind,
+      scope_kind: rs.scope_kind,
+      scope_value: rs.scope_value,
+      thresholds: v.thresholds,
+      entries: entriesByVersion[v.id] || [],
+      is_active: rs.is_active,
+    };
+  }
+
+  return {
+    rulesVersionId: manifest.id,
+    manifestLabel: manifest.manifest_label,
+    byName,
+  };
+}
+
+interface PreFilterResultDb extends PreFilterResult {
+  ruleSetVersionId?: string | null;
+}
+
+// 1:1 translation of deterministicFilter (lines 545-760) but reads from
+// DB-loaded rules instead of in-code constants. Tags every verdict with the
+// rule_set_version_id of the rule that produced it (V6 gap close: per-place
+// rule attribution stored on ai_validation_results).
+//
+// Same firing order, same short-circuit semantics, same accumulative strip rules.
+// ORCH-0526 M2.
+//
+// deno-lint-ignore no-explicit-any
+function deterministicFilterFromDb(place: any, loaded: LoadedRules): PreFilterResultDb {
+  const name = place.name || "";
+  const primaryType = place.primary_type || "";
+  const normalizedType = primaryType.replace(/_/g, " ");
+  const checkText = `${name} ${normalizedType}`.toLowerCase();
+
+  const lookupActive = (n: string): LoadedRule | null => {
+    const r = loaded.byName[n];
+    return r && r.is_active ? r : null;
+  };
+
+  // 1. BLOCKED_PRIMARY_TYPES — instant reject
+  const r1 = lookupActive("BLOCKED_PRIMARY_TYPES");
+  if (r1 && r1.entries.some((e) => e.value === primaryType)) {
+    return {
+      verdict: "reject",
+      reason: `Rules: blocked primary_type '${primaryType}' — not a date venue`,
+      categories: [],
+      stageResolved: 2,
+      ruleSetVersionId: r1.rule_set_version_id,
+    };
+  }
+
+  // 2. MIN_DATA_GUARD (threshold-based, 0 entries)
+  const r2 = lookupActive("MIN_DATA_GUARD");
+  if (r2) {
+    // deno-lint-ignore no-explicit-any
+    const t = (r2.thresholds || {}) as any;
+    const requireRating = t.require_rating !== false;
+    const requireReviews = t.require_reviews !== false;
+    const requireWebsite = t.require_website !== false;
+    const noRating = place.rating == null && requireRating;
+    const noReviews = (place.review_count || 0) === 0 && requireReviews;
+    const noWebsite = !place.website && requireWebsite;
+    if (noRating && noReviews && noWebsite) {
+      return {
+        verdict: "reject",
+        reason: "Rules: no rating, no reviews, no website — insufficient data",
+        categories: [],
+        stageResolved: 2,
+        ruleSetVersionId: r2.rule_set_version_id,
+      };
+    }
+  }
+
+  // 3. FAST_FOOD_BLACKLIST
+  const r3 = lookupActive("FAST_FOOD_BLACKLIST");
+  if (r3 && r3.entries.some((e) => name.toLowerCase().includes(e.value))) {
+    return {
+      verdict: "reject",
+      reason: "Pipeline: fast food chain — rejected",
+      categories: [],
+      stageResolved: 2,
+      ruleSetVersionId: r3.rule_set_version_id,
+    };
+  }
+
+  // 4. EXCLUSION_KEYWORDS (sub-category aware)
+  const r4 = lookupActive("EXCLUSION_KEYWORDS");
+  if (r4) {
+    const bySub: Record<string, string[]> = {};
+    for (const e of r4.entries) {
+      const sub = e.sub_category || "unknown";
+      if (!bySub[sub]) bySub[sub] = [];
+      bySub[sub].push(e.value);
+    }
+    for (const [subCategory, keywords] of Object.entries(bySub)) {
+      if (keywords.some((kw) => checkText.includes(kw.toLowerCase()))) {
+        return {
+          verdict: "reject",
+          reason: `Pipeline: excluded type (${subCategory}) — rejected`,
+          categories: [],
+          stageResolved: 2,
+          ruleSetVersionId: r4.rule_set_version_id,
+        };
+      }
+    }
+  }
+
+  // 5. CASUAL_CHAIN_DEMOTION (guarded by UPSCALE_CHAIN_PROTECTION)
+  const r5 = lookupActive("CASUAL_CHAIN_DEMOTION");
+  const r5Guard = lookupActive("UPSCALE_CHAIN_PROTECTION");
+  if (r5) {
+    const matchesCasual = r5.entries.some((e) => name.toLowerCase().includes(e.value));
+    const isProtected = r5Guard
+      ? r5Guard.entries.some((e) => name.toLowerCase().includes(e.value))
+      : false;
+    if (matchesCasual && !isProtected) {
+      const cats = [...(place.ai_categories || [])];
+      if (cats.includes("upscale_fine_dining")) {
+        const newCats = cats.filter((c: string) => c !== "upscale_fine_dining");
+        if (!newCats.includes("brunch_lunch_casual")) newCats.push("brunch_lunch_casual");
+        return {
+          verdict: "accept",
+          reason: "Pipeline: sit-down chain — downgraded from upscale_fine_dining to brunch_lunch_casual",
+          categories: newCats,
+          stageResolved: 2,
+          ruleSetVersionId: r5.rule_set_version_id,
+        };
+      }
+    }
+  }
+
+  // 6. FINE_DINING_PROMOTION_T1 (VERY_EXPENSIVE + 4.0+ + RESTAURANT_TYPES)
+  const r6Restaurants = lookupActive("RESTAURANT_TYPES");
+  const r6 = lookupActive("FINE_DINING_PROMOTION_T1");
+  if (r6 && r6Restaurants) {
+    // deno-lint-ignore no-explicit-any
+    const t = (r6.thresholds || {}) as any;
+    const priceLevels: string[] = t.price_levels || ["PRICE_LEVEL_VERY_EXPENSIVE"];
+    const ratingMin: number = t.rating_min ?? 4.0;
+    if (
+      priceLevels.includes(place.price_level) &&
+      place.rating != null && place.rating >= ratingMin &&
+      r6Restaurants.entries.some((e) => e.value === primaryType)
+    ) {
+      const cats = [...(place.ai_categories || [])];
+      if (!cats.includes("upscale_fine_dining")) {
+        cats.push("upscale_fine_dining");
+        return {
+          verdict: "modify",
+          reason: "Rules: VERY_EXPENSIVE + high rating restaurant — promoted to upscale_fine_dining",
+          categories: cats,
+          stageResolved: 2,
+          ruleSetVersionId: r6.rule_set_version_id,
+        };
+      }
+    }
+  }
+
+  // 6b. FINE_DINING_PROMOTION_T2 (EXPENSIVE)
+  const r7 = lookupActive("FINE_DINING_PROMOTION_T2");
+  if (r7 && r6Restaurants) {
+    // deno-lint-ignore no-explicit-any
+    const t = (r7.thresholds || {}) as any;
+    const priceLevels: string[] = t.price_levels || ["PRICE_LEVEL_EXPENSIVE"];
+    const ratingMin: number = t.rating_min ?? 4.0;
+    if (
+      priceLevels.includes(place.price_level) &&
+      place.rating != null && place.rating >= ratingMin &&
+      r6Restaurants.entries.some((e) => e.value === primaryType)
+    ) {
+      const cats = [...(place.ai_categories || [])];
+      if (!cats.includes("upscale_fine_dining")) {
+        cats.push("upscale_fine_dining");
+        return {
+          verdict: "modify",
+          reason: "Rules: EXPENSIVE + high rating restaurant — promoted to upscale_fine_dining",
+          categories: cats,
+          stageResolved: 2,
+          ruleSetVersionId: r7.rule_set_version_id,
+        };
+      }
+    }
+  }
+
+  // 7. Per-category strip rules (accumulative, not short-circuit)
+  const cats = [...(place.ai_categories || [])];
+  const typesArray: string[] = place.types || [];
+  let modified = false;
+  let modifyReason = "";
+  let modifyVersionId: string | null = null;
+
+  // 7a. CREATIVE_ARTS_BLOCKED_TYPES
+  const r8 = lookupActive("CREATIVE_ARTS_BLOCKED_TYPES");
+  if (r8 && cats.includes("creative_arts")) {
+    if (r8.entries.some((e) => e.value === primaryType)) {
+      const idx = cats.indexOf("creative_arts");
+      cats.splice(idx, 1);
+      modified = true;
+      modifyReason = `Rules: stripped 'creative_arts' — primary_type '${primaryType}' is not an arts venue`;
+      modifyVersionId = r8.rule_set_version_id;
+    }
+  }
+
+  // 7b. MOVIES_THEATRE_BLOCKED_TYPES
+  const r9 = lookupActive("MOVIES_THEATRE_BLOCKED_TYPES");
+  if (r9 && cats.includes("movies_theatre")) {
+    if (r9.entries.some((e) => e.value === primaryType)) {
+      const idx = cats.indexOf("movies_theatre");
+      cats.splice(idx, 1);
+      modified = true;
+      modifyReason = `Rules: stripped 'movies_theatre' — primary_type '${primaryType}' is not a cinema or performance venue`;
+      modifyVersionId = r9.rule_set_version_id;
+    }
+  }
+
+  // 7c. BRUNCH_CASUAL_BLOCKED_TYPES (with RESTAURANT_TYPES exemption)
+  const r10 = lookupActive("BRUNCH_CASUAL_BLOCKED_TYPES");
+  if (r10 && cats.includes("brunch_lunch_casual")) {
+    const blockedSet = new Set(r10.entries.map((e) => e.value));
+    const hasBlocked = typesArray.some((t) => blockedSet.has(t));
+    const isRealRestaurant = (r6Restaurants?.entries.some((e) => e.value === primaryType) ?? false)
+      || ["brunch_restaurant", "breakfast_restaurant", "bistro", "diner", "family_restaurant"].includes(primaryType);
+    if (hasBlocked && !isRealRestaurant) {
+      const idx = cats.indexOf("brunch_lunch_casual");
+      cats.splice(idx, 1);
+      modified = true;
+      modifyReason = `Rules: stripped 'brunch_lunch_casual' — types array contains non-restaurant type, primary is '${primaryType}'`;
+      modifyVersionId = r10.rule_set_version_id;
+    }
+  }
+
+  // 7d. PLAY_BLOCKED_SECONDARY_TYPES
+  const r11 = lookupActive("PLAY_BLOCKED_SECONDARY_TYPES");
+  if (r11 && cats.includes("play")) {
+    const blockedSet = new Set(r11.entries.map((e) => e.value));
+    if (typesArray.some((t) => blockedSet.has(t))) {
+      const idx = cats.indexOf("play");
+      cats.splice(idx, 1);
+      modified = true;
+      modifyReason = `Rules: stripped 'play' — types array contains non-play type`;
+      modifyVersionId = r11.rule_set_version_id;
+    }
+  }
+
+  // 7e. FLOWERS strip (multiple combined rules)
+  const r12pri = lookupActive("FLOWERS_BLOCKED_PRIMARY_TYPES");
+  const r12sec = lookupActive("FLOWERS_BLOCKED_SECONDARY_TYPES");
+  const r12garden = lookupActive("GARDEN_STORE_PATTERNS");
+  if (cats.includes("flowers")) {
+    let hasBlockedFlowerType = false;
+    let isGardenStore = false;
+    if (r12pri && r12pri.entries.some((e) => e.value === primaryType)) hasBlockedFlowerType = true;
+    if (r12sec) {
+      const sec = new Set(r12sec.entries.map((e) => e.value));
+      if (typesArray.some((t) => sec.has(t))) hasBlockedFlowerType = true;
+    }
+    if (r12garden && r12garden.entries.some((e) => name.toLowerCase().includes(e.value))) {
+      isGardenStore = true;
+    }
+    if (hasBlockedFlowerType || (isGardenStore && primaryType !== "florist")) {
+      const idx = cats.indexOf("flowers");
+      if (idx >= 0) {
+        cats.splice(idx, 1);
+        modified = true;
+        modifyReason = hasBlockedFlowerType
+          ? `Rules: stripped 'flowers' — blocked type (primary: '${primaryType}')`
+          : `Rules: stripped 'flowers' — garden store name pattern detected`;
+        modifyVersionId = (r12pri || r12sec || r12garden)?.rule_set_version_id || null;
+      }
+    }
+  }
+
+  // 8. DELIVERY_ONLY_PATTERNS
+  const r13 = lookupActive("DELIVERY_ONLY_PATTERNS");
+  if (r13 && cats.includes("flowers") && primaryType !== "florist") {
+    if (r13.entries.some((e) => name.toLowerCase().includes(e.value))) {
+      const idx = cats.indexOf("flowers");
+      if (idx >= 0) {
+        cats.splice(idx, 1);
+        modified = true;
+        modifyReason = `Rules: delivery-only pattern in name, not a florist — stripped 'flowers'`;
+        modifyVersionId = r13.rule_set_version_id;
+      }
+    }
+  }
+
+  if (modified) {
+    if (cats.length === 0) {
+      return {
+        verdict: "reject",
+        reason: modifyReason + " — no remaining categories, rejected",
+        categories: [],
+        stageResolved: 2,
+        ruleSetVersionId: modifyVersionId,
+      };
+    }
+    return {
+      verdict: "modify",
+      reason: modifyReason,
+      categories: cats,
+      stageResolved: 2,
+      ruleSetVersionId: modifyVersionId,
+    };
+  }
+
+  return { verdict: "pass", ruleSetVersionId: null };
+}
+
 // ── Process Single Place (Stages 2-5) ────────────────────────────────────────
 
 interface PlaceResult {
@@ -1461,16 +1858,52 @@ async function handleResumeRun(body: any): Promise<Response> {
 
 // ── Rules-Only Filter Handler ────────────────────────────────────────────────
 
+// ── Rules-only run handler (refactored ORCH-0526 M2) ────────────────────────
+// Bundles 5 bug fixes: ORCH-0512 retraction (stage='rules_only_complete' preserved),
+// ORCH-0527 (unchanged counter populated, approved stays 0), ORCH-0529 (concurrency
+// check via status='running' for same city — see implementation note), ORCH-0530
+// (city_id FK populated alongside city_filter), and the core ORCH-0526 work
+// (read rules from DB via loadRulesFromDb with in-code-constants fallback,
+// per-place rule_set_version_id attribution).
+//
+// CONCURRENCY (ORCH-0529): the M1 advisory lock helpers (try/release_advisory_
+// _lock_rules_run) were built but pg advisory locks don't span multiple HTTP
+// calls cleanly in Deno + Supabase JS (each db.* is its own transaction).
+// Using the same status='running'-for-same-city pattern as handleCreateRun
+// (line 944-950) instead. Same effect: 409 on contention. The advisory lock
+// RPCs remain available for future use.
 async function handleRunRulesFilter(body: any, userId: string): Promise<Response> {
   const db = getDb();
   const scope = body.scope || "all";
   const batchSize = Math.min(body.batch_size || 100, 200); // larger batches OK — no API calls
+  const lockToken = crypto.randomUUID();
 
-  // Build query for matching places
+  // ORCH-0529: concurrency check — refuse if another rules-only run is active
+  // for the same city (or the same global scope when no city specified).
+  let activeQuery = db.from("ai_validation_jobs")
+    .select("id, status, city_id, city_filter, started_at")
+    .in("stage", ["rules_only", "rules_only_complete"])
+    .in("status", ["ready", "running", "paused"]);
+  if (body.city_id) activeQuery = activeQuery.eq("city_id", body.city_id);
+  else activeQuery = activeQuery.is("city_id", null);
+  const { data: activeRun } = await activeQuery.limit(1).maybeSingle();
+  if (activeRun) {
+    return json({
+      status: "already_running",
+      message: "A rules-filter run is already active for this scope.",
+      active_job_id: activeRun.id,
+    }, 409);
+  }
+
+  // ORCH-0526: load rules from DB. Falls back to in-code constants if empty
+  // (I-RULES-FALLBACK-SAFE — transition guard).
+  const loaded = await loadRulesFromDb(db, body.rules_version_id || null);
+  const rulesVersionId = loaded ? loaded.rulesVersionId : null;
+
+  // Build query for matching places (count first)
   let countQuery = db.from("place_pool")
     .select("id", { count: "exact", head: true })
     .eq("is_active", true);
-
   if (scope === "unvalidated") countQuery = countQuery.is("ai_approved", null);
   else if (scope === "failed") countQuery = countQuery.not("ai_validated_at", "is", null).is("ai_approved", null);
   if (body.category) countQuery = countQuery.contains("ai_categories", [body.category]);
@@ -1481,7 +1914,7 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
   if (countErr) return json({ error: countErr.message }, 500);
   if (!totalPlaces || totalPlaces === 0) return json({ status: "nothing_to_do", total_places: 0 });
 
-  // Create a job record for audit trail
+  // Create a job record for audit trail (ORCH-0530: city_id FK; ORCH-0527: unchanged=0 init)
   const { data: job, error: jobErr } = await db
     .from("ai_validation_jobs")
     .insert({
@@ -1489,12 +1922,16 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
       scope,
       total_places: totalPlaces,
       processed: 0,
-      approved: 0,
+      approved: 0,    // rules-only NEVER approves (ORCH-0527 — was misused as unchanged counter)
       rejected: 0,
       reclassified: 0,
+      unchanged: 0,   // ORCH-0527: new column; tracks places left as-is
       failed: 0,
       category_filter: body.category || null,
       city_filter: body.city || null,
+      city_id: body.city_id || null,         // ORCH-0530
+      lock_token: lockToken,                 // ORCH-0529 (traceability — not used as actual lock per concurrency note above)
+      rules_version_id: rulesVersionId,      // ORCH-0526 — null if loaded was null (transition guard)
       dry_run: body.dry_run || false,
       batch_size: batchSize,
       total_batches: Math.ceil(totalPlaces / batchSize),
@@ -1535,7 +1972,12 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
     if (!places || places.length === 0) break;
 
     for (const place of places) {
-      const result = deterministicFilter(place);
+      // ORCH-0526: prefer DB-loaded rules; fall back to in-code constants if loadedRules
+      // is null (transition guard — empty rule_sets table). Both paths produce identical
+      // verdicts for v1; DB path additionally tags result with rule_set_version_id.
+      const result: PreFilterResultDb = loaded
+        ? deterministicFilterFromDb(place, loaded)
+        : { ...deterministicFilter(place), ruleSetVersionId: null };
       totalProcessed++;
 
       if (result.verdict === "pass") {
@@ -1570,7 +2012,7 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
           }).eq("id", place.id);
         }
 
-        // Audit trail in ai_validation_results
+        // Audit trail in ai_validation_results — ORCH-0526: ADD rule_set_version_id (V6 gap close)
         await db.from("ai_validation_results").insert({
           job_id: job.id,
           place_id: place.id,
@@ -1585,6 +2027,7 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
           website_verified: false,
           search_results: null,
           cost_usd: 0,
+          rule_set_version_id: result.ruleSetVersionId || null,
         });
       } else {
         // Dry run — still count
@@ -1596,14 +2039,18 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
     offset += batchSize;
   }
 
-  // Finalize job
+  // Finalize job (ORCH-0512 retraction: stage='rules_only_complete' preserves discriminator;
+  // ORCH-0527: unchanged populated separately, approved stays 0 for rules-only runs).
+  // DO NOT simplify stage to 'complete' — that destroys the rules-only-vs-AI distinction
+  // used by admin Recent Runs filtering. Verified by spec test T-05.
   await db.from("ai_validation_jobs").update({
     status: "completed",
-    stage: "complete",
+    stage: "rules_only_complete",
     processed: totalProcessed,
     rejected: totalRejected,
     reclassified: totalModified,
-    approved: totalProcessed - totalRejected - totalModified,
+    approved: 0,                  // ORCH-0527: rules-only never approves
+    unchanged: totalUnchanged,    // ORCH-0527: new column carries the no-op count
     cost_usd: 0,
     completed_at: new Date().toISOString(),
   }).eq("id", job.id);
@@ -1611,12 +2058,233 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
   return json({
     status: "completed",
     run_id: job.id,
+    rules_version_id: rulesVersionId,
     total_processed: totalProcessed,
     rejected: totalRejected,
     modified: totalModified,
     unchanged: totalUnchanged,
     cost_usd: 0,
     dry_run: body.dry_run || false,
+  });
+}
+
+// ── ORCH-0526 M2: New action handlers ──────────────────────────────────────
+
+// preview_rule_impact — delegates to admin_rules_preview_impact RPC
+// (DRY: the PL/pgSQL RPC already implements per-rule isolated impact per
+// Option 1 chosen 2026-04-19. Edge fn version exposes the same logic to
+// non-admin-UI callers if needed in v2.)
+//
+// AUTH CONTEXT: admin_rules_preview_impact's first statement is an admin gate
+// that checks auth.email(). The service-role client from getDb() would make
+// auth.email() return NULL inside the RPC → gate fails. We create an
+// auth-context client forwarding the user's JWT so the RPC sees the admin's
+// email. (Note: checkAdmin has already validated the caller is active admin
+// BEFORE this handler runs, so the RPC gate is belt-and-suspenders.)
+async function handlePreviewRuleImpact(req: Request, body: any): Promise<Response> {
+  if (!body.rule_set_id) return json({ error: "Missing rule_set_id" }, 400);
+  if (!Array.isArray(body.proposed_entries)) return json({ error: "proposed_entries must be array" }, 400);
+
+  const authHeader = req.headers.get("Authorization") || "";
+  const token = authHeader.replace("Bearer ", "");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  const authedDb = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+
+  const { data, error } = await authedDb.rpc("admin_rules_preview_impact", {
+    p_rule_set_id: body.rule_set_id,
+    p_proposed_entries: body.proposed_entries,
+    p_proposed_thresholds: body.proposed_thresholds || null,
+    p_city_id: body.city_id || null,
+  });
+  if (error) return json({ error: error.message }, 500);
+  return json(data);
+}
+
+// get_rules_for_run — returns the full rule body for a specific manifest version
+// (used by JSON export, run-diff, and any non-admin-UI consumer that needs the
+// authoritative rule set for a specific job)
+async function handleGetRulesForRun(body: any): Promise<Response> {
+  const db = getDb();
+  const loaded = await loadRulesFromDb(db, body.rules_version_id || null);
+  if (!loaded) {
+    return json({
+      error: "No manifest found",
+      hint: "rules_versions table is empty (transition guard); seed M2 may not have run",
+    }, 404);
+  }
+
+  // Project to a flat shape for HTTP response
+  const ruleSets = Object.values(loaded.byName).map((r) => ({
+    id: r.rule_set_id,
+    name: r.name,
+    kind: r.kind,
+    scope_kind: r.scope_kind,
+    scope_value: r.scope_value,
+    version_id: r.rule_set_version_id,
+    is_active: r.is_active,
+    thresholds: r.thresholds,
+    entries: r.entries,
+  }));
+
+  return json({
+    rules_version_id: loaded.rulesVersionId,
+    manifest_label: loaded.manifestLabel,
+    rule_sets: ruleSets,
+  });
+}
+
+// run_drift_check (ORCH-0528, scoped to 3 sources per Amendment 1) — compares:
+//   A: filter rules in DB (rule_sets.scope_value for category-scoped rules)
+//   B: on-demand types from _shared/categoryPlaceTypes.ts (display-name keys)
+//   C: display constants — hardcoded mirror of mingla-admin/src/constants/categories.js
+//      (edge fn cannot see admin/, so the canonical 10 are mirrored here. The CI script
+//      `scripts/validate-category-consistency.ts` (Amendment 1) catches drift here at
+//      PR time. Together: two safety nets at the two moments drift can happen.)
+async function handleRunDriftCheck(_body: any): Promise<Response> {
+  const start = Date.now();
+  const db = getDb();
+
+  // C — canonical 10 slugs (mirror of mingla-admin/src/constants/categories.js).
+  // Bundled at edge fn deploy. CI validates this matches the admin file.
+  const DISPLAY_SLUGS: string[] = [
+    "nature", "icebreakers", "drinks_and_music", "brunch_lunch_casual",
+    "upscale_fine_dining", "movies_theatre", "creative_arts", "play",
+    "flowers", "groceries",
+  ];
+
+  // Display-name → slug map for B (on-demand uses display names as keys)
+  const DISPLAY_TO_SLUG: Record<string, string> = {
+    "Nature & Views": "nature",
+    "Icebreakers": "icebreakers",
+    "Drinks & Music": "drinks_and_music",
+    "Brunch, Lunch & Casual": "brunch_lunch_casual",
+    "Upscale & Fine Dining": "upscale_fine_dining",
+    "Movies & Theatre": "movies_theatre",
+    "Creative & Arts": "creative_arts",
+    "Play": "play",
+    "Flowers": "flowers",
+    "Groceries": "groceries",
+  };
+
+  // Load B (on-demand types) — dynamic import keeps drift_check failure non-fatal
+  // if the shared file is missing/renamed.
+  let ON_DEMAND: Record<string, string[]> = {};
+  try {
+    // deno-lint-ignore no-explicit-any
+    const mod: any = await import("../_shared/categoryPlaceTypes.ts");
+    ON_DEMAND = mod.MINGLA_CATEGORY_PLACE_TYPES || {};
+  } catch (err) {
+    return json({
+      status: "error",
+      error: `Could not load on-demand source: ${(err as Error).message}`,
+      computed_in_ms: Date.now() - start,
+    }, 500);
+  }
+
+  // Convert B's display-name keys to slugs
+  const onDemandBySlug: Record<string, string[]> = {};
+  for (const [displayName, types] of Object.entries(ON_DEMAND)) {
+    const slug = DISPLAY_TO_SLUG[displayName];
+    if (slug) onDemandBySlug[slug] = types;
+  }
+
+  // Load A — filter rules from DB (just need scope_value distribution + entries for
+  // category-scoped strip/blacklist rules)
+  const loaded = await loadRulesFromDb(db, null);
+  if (!loaded) {
+    return json({
+      status: "error",
+      error: "Filter rules empty (transition guard); cannot compute drift",
+      computed_in_ms: Date.now() - start,
+    }, 500);
+  }
+
+  // Filter category-scoped rules + their entries (only those types matter for drift comparison)
+  const filterCatScopedRules = Object.values(loaded.byName).filter(
+    (r) => r.scope_kind === "category" && r.scope_value !== null,
+  );
+
+  // Build a map of category-slug → set-of-types-on-strip-or-blacklist-rules
+  const filterBlockedByCategory: Record<string, Set<string>> = {};
+  for (const r of filterCatScopedRules) {
+    if (!r.scope_value) continue;
+    if (r.kind !== "strip" && r.kind !== "blacklist") continue;
+    if (!filterBlockedByCategory[r.scope_value]) filterBlockedByCategory[r.scope_value] = new Set();
+    for (const e of r.entries) {
+      filterBlockedByCategory[r.scope_value].add(e.value);
+    }
+  }
+
+  // Drift detection
+  const diffs: Array<{
+    category_slug: string;
+    google_type: string | null;
+    sources: { filter: string; on_demand: string; display: string };
+    severity: "info" | "warning" | "error";
+    suggestion: string;
+  }> = [];
+
+  // Check 1: every display category should exist in on-demand
+  for (const slug of DISPLAY_SLUGS) {
+    if (!(slug in onDemandBySlug)) {
+      diffs.push({
+        category_slug: slug,
+        google_type: null,
+        sources: { filter: "n/a", on_demand: "absent", display: "present" },
+        severity: "warning",
+        suggestion: `Display category '${slug}' has no on-demand fetch list. Add to _shared/categoryPlaceTypes.ts.`,
+      });
+    }
+  }
+
+  // Check 2: every on-demand category should be in display
+  for (const slug of Object.keys(onDemandBySlug)) {
+    if (!DISPLAY_SLUGS.includes(slug)) {
+      diffs.push({
+        category_slug: slug,
+        google_type: null,
+        sources: { filter: "n/a", on_demand: "present", display: "absent" },
+        severity: "warning",
+        suggestion: `On-demand category '${slug}' is not in admin display constants. Add or remove.`,
+      });
+    }
+  }
+
+  // Check 3: types fetched on-demand for category X should NOT be on a strip/blacklist
+  // rule for the same category X (the contradiction case)
+  for (const [slug, fetchedTypes] of Object.entries(onDemandBySlug)) {
+    const blockedHere = filterBlockedByCategory[slug];
+    if (!blockedHere) continue;
+    for (const t of fetchedTypes) {
+      if (blockedHere.has(t)) {
+        diffs.push({
+          category_slug: slug,
+          google_type: t,
+          sources: { filter: "blocked", on_demand: "present", display: "present" },
+          severity: "error",
+          suggestion: `Type '${t}' is fetched on-demand for '${slug}' but stripped by a filter rule for the same category. Pick one.`,
+        });
+      }
+    }
+  }
+
+  let status: "in_sync" | "drift" | "contradiction" = "in_sync";
+  if (diffs.some((d) => d.severity === "error")) status = "contradiction";
+  else if (diffs.length > 0) status = "drift";
+
+  return json({
+    status,
+    checked_at: new Date().toISOString(),
+    source_versions: {
+      filter_rules_version_id: loaded.rulesVersionId,
+      on_demand_bundle: "categoryPlaceTypes.ts (current edge fn deploy)",
+      display_bundle: "categories.js (mirror in edge fn)",
+    },
+    diffs,
+    computed_in_ms: Date.now() - start,
   });
 }
 
@@ -1645,7 +2313,11 @@ serve(async (req: Request) => {
       case "stop_run":     return handleStopRun(body);
       case "pause_run":    return handlePauseRun(body);
       case "resume_run":   return handleResumeRun(body);
-      case "run_rules_filter": return handleRunRulesFilter(body, authResult.userId);
+      case "run_rules_filter":   return handleRunRulesFilter(body, authResult.userId);
+      // ORCH-0526 M2: 3 new actions powering the Rules Filter admin tab
+      case "preview_rule_impact": return handlePreviewRuleImpact(req, body);
+      case "get_rules_for_run":   return handleGetRulesForRun(body);
+      case "run_drift_check":     return handleRunDriftCheck(body);
       default:
         return json({ error: `Unknown action: ${action}` }, 400);
     }
