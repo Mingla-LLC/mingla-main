@@ -16,7 +16,7 @@ import {
   UtensilsCrossed, Wine, Coffee, Flower2, Film, Palette, TreePine,
   Gamepad2, ShoppingBag, Sparkles, AlertTriangle,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { supabase, invokeWithRefresh } from "../lib/supabase";
 import { useToast } from "../context/ToastContext";
 import { StatCard, SectionCard, AlertCard } from "../components/ui/Card";
 import { DataTable } from "../components/ui/Table";
@@ -1217,9 +1217,9 @@ export function AIValidationPage() {
   const [selectedCityId, setSelectedCityId] = useState(null);
   const [rulesTabFlagEnabled, setRulesTabFlagEnabled] = useState(false);
 
-  // Edge function invoke helper
+  // Edge function invoke helper — wrapped with session pre-refresh + 401 retry (ORCH-0541)
   const invoke = useCallback(async (body) => {
-    const { data, error: fnErr } = await supabase.functions.invoke("ai-verify-pipeline", { body });
+    const { data, error: fnErr } = await invokeWithRefresh("ai-verify-pipeline", { body });
     if (fnErr) {
       // Try to extract error message from response body (Supabase wraps it)
       const msg = data?.error || fnErr.message || "Edge function error";
