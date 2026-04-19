@@ -126,7 +126,7 @@
     "inviteCode": "Uitnodigingscode",
     "inviteCodeDesc": "Deel een eenvoudige code"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Deelnemers uitnodigen",
     "addFriendsTo": "Vrienden toevoegen aan \"{{name}}\"",
     "searchPlaceholder": "Vrienden zoeken...",

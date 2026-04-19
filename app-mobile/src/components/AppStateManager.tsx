@@ -178,7 +178,16 @@ export function useAppState() {
   }>({});
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [preferencesRefreshKey, setPreferencesRefreshKey] = useState(0); // Key to trigger experience refresh
+  // [ORCH-0504] Hoisted from local useState(0) to Zustand so the value is
+  // persisted across cold launches via `mingla-mobile-storage.partialize`.
+  // Pre-fix: this was useState → reset to 0 on app restart → SwipeableCards'
+  // AsyncStorage keys `mingla_card_state_${mode}_${refreshKey}_*` were
+  // orphaned across sessions → deck came back from card 1 after any prior
+  // prefs save. Now persisted; exported downstream identifiers unchanged —
+  // all call sites (app/index.tsx prefs save, DiscoverScreen, SwipeableCards
+  // via refreshKey prop) continue using the same names.
+  const preferencesRefreshKey = useAppStore((s) => s.preferencesRefreshKey);
+  const setPreferencesRefreshKey = useAppStore((s) => s.setPreferencesRefreshKey);
 
   const [activityNavigation, setActivityNavigation] = useState<{
     selectedBoard?: any;

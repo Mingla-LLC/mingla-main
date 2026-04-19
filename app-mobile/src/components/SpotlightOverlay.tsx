@@ -19,7 +19,6 @@ import { useTranslation } from 'react-i18next';
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const OVERLAY_COLOR = 'rgba(0,0,0,0.65)';
-const OVERLAY_MAP_COLOR = 'rgba(0,0,0,0.45)';
 const CUTOUT_PADDING = 4;
 const CUTOUT_EXTRA_RADIUS = 4;
 const GLOW_COLOR = 'rgba(235,120,37,0.4)';
@@ -34,8 +33,6 @@ const ENTRY_DELAY = 1500;
 const FADE_IN_DURATION = 300;
 const FADE_OUT_DURATION = 250;
 const BUBBLE_ENTRY_DURATION = 200;
-
-const MAP_STEP = 7;
 
 // ── Component ───────────────────────────────────────────────────────────────
 
@@ -139,18 +136,17 @@ export default function SpotlightOverlay(): React.ReactElement | null {
   if (!isCoachActive || keyboardVisible) return null;
   if (!currentStepConfig) return null;
 
-  const isMapStep = currentStep === MAP_STEP;
   const isFirstStep = currentStep === 1;
   const isLastStep = currentStep === COACH_STEP_COUNT;
   const target: TargetRect | undefined = targetMeasurements.get(currentStep);
   const hasTarget = target && target.width > 0 && target.height > 0;
 
   if (__DEV__) {
-    console.log(`[Spotlight] Step ${currentStep}: target=${JSON.stringify(target)}, hasTarget=${hasTarget}, isMap=${isMapStep}`);
+    console.log(`[Spotlight] Step ${currentStep}: target=${JSON.stringify(target)}, hasTarget=${hasTarget}`);
   }
 
   // ── Cutout calculation ──────────────────────────────────────────────────
-  const cutout = hasTarget && !isMapStep ? {
+  const cutout = hasTarget ? {
     x: target.x - CUTOUT_PADDING,
     y: target.y - CUTOUT_PADDING,
     width: target.width + CUTOUT_PADDING * 2,
@@ -167,8 +163,8 @@ export default function SpotlightOverlay(): React.ReactElement | null {
   let arrowDirection: 'up' | 'down' | 'none' = 'none';
   let arrowX = 0;
 
-  if (isMapStep || !cutout) {
-    // Centered bubble (map step or no measurement)
+  if (!cutout) {
+    // Centered bubble (no measurement)
     bubbleTop = (screenHeight - (bubbleHeight || 180)) / 2;
     bubbleLeft = (screenWidth - bubbleWidth) / 2;
     arrowDirection = 'none';
@@ -211,8 +207,6 @@ export default function SpotlightOverlay(): React.ReactElement | null {
       Math.min(targetCenterX, bubbleLeft + bubbleWidth - ARROW_MIN_OFFSET)
     );
   }
-
-  const overlayColor = isMapStep ? OVERLAY_MAP_COLOR : OVERLAY_COLOR;
 
   return (
     <Animated.View
@@ -261,7 +255,7 @@ export default function SpotlightOverlay(): React.ReactElement | null {
             y="0"
             width={screenWidth}
             height={screenHeight}
-            fill={overlayColor}
+            fill={OVERLAY_COLOR}
             mask="url(#spotlight-mask)"
           />
           {cutout && (

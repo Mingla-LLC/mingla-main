@@ -55,7 +55,7 @@
     "qrCode": "Kod QR", "qrCodeDesc": "Jana kod QR untuk diimbas",
     "inviteCode": "Kod Jemputan", "inviteCodeDesc": "Kongsi kod mudah"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Jemput Peserta", "addFriendsTo": "Tambah rakan ke \"{{name}}\"",
     "searchPlaceholder": "Cari rakan...", "loadingFriends": "Memuatkan rakan...", "noUsersFound": "Tiada pengguna dijumpai",
     "allFriendsInBoard": "Semua rakan sudah berada dalam papan ini", "noFriendsAvailable": "Tiada rakan tersedia",

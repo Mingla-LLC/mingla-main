@@ -30,8 +30,6 @@
   "travel_limit.custom_placeholder": "5〜120分",
   "location.use_current": "現在地を使用",
   "location.search_placeholder": "出発地を検索...",
-  "location.gps_helper": "位置を確認しました。安心してください。",
-  "location.manual_helper": "どこでもピンを落とせます。GPSに戻すことも可能。",
   "location.pro_feature": "Proの機能 — どこからでも探索",
   "location.searching": "検索中...",
   "sheet.title": "あなたのバイブ",

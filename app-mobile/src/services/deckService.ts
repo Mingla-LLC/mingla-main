@@ -19,6 +19,46 @@ import {
 import { getCategoryIcon } from '../utils/categoryUtils';
 import { PriceTierSlug, googleLevelToTierSlug, tierLabel } from '../constants/priceTiers';
 import type { Recommendation } from '../types/recommendation';
+import { FEATURE_FLAG_PROGRESSIVE_DELIVERY } from '../config/featureFlags';
+
+/**
+ * ORCH-0490 Phase 2.2 — Source discriminant for progressive delivery.
+ * Fired with each partial cache update so consumers can branch (e.g. analytics,
+ * dev logging) by which side of the race delivered first. The singles/curated
+ * race is non-deterministic — either may win depending on network state.
+ */
+export type PartialDeliverySource = 'singles' | 'curated';
+
+/**
+ * ORCH-0490 Phase 2.2 — Merge helper for progressive delivery.
+ *
+ * Used by `useDeckCards.onPartialReady` to populate the React Query cache
+ * incrementally as singles and curated settle. Dedupes by card `id`,
+ * PRESERVES existing card positions, appends new cards to the tail.
+ *
+ * Example:
+ *   mergeCardsByIdPreservingOrder([A, B, C], [B, D, E]) === [A, B, C, D, E]
+ *   (B is deduplicated in-place, D and E appended; A and C keep positions 0, 2.)
+ *
+ * This preservation is load-bearing for I-PROGRESSIVE-DELIVERY-EXPANSION-NOT-REPLACEMENT
+ * (Phase 2.3). Changing positions on merge would break the expansion-signal
+ * invariant the SwipeableCards first-5-IDs check relies on.
+ */
+export function mergeCardsByIdPreservingOrder(
+  prev: Recommendation[],
+  incoming: Recommendation[],
+): Recommendation[] {
+  if (prev.length === 0) return incoming;
+  if (incoming.length === 0) return prev;
+  const prevIds = new Set<string>();
+  for (const card of prev) prevIds.add(card.id);
+  const toAppend: Recommendation[] = [];
+  for (const card of incoming) {
+    if (!prevIds.has(card.id)) toAppend.push(card);
+  }
+  if (toAppend.length === 0) return prev;
+  return [...prev, ...toAppend];
+}
 
 export interface DeckParams {
   location: { lat: number; lng: number };
@@ -36,12 +76,43 @@ export interface DeckParams {
   sessionId?: string;      // ORCH-0446: optional, for analytics tracking (collab only)
 }
 
+/**
+ * ORCH-0474: Discriminant from the `discover-cards` edge function's
+ * sourceBreakdown.path. Consumers branch UI on this field rather than
+ * inferring state from (cards.length, hasMore).
+ *   - 'pipeline'       — normal populated or filtered-to-zero deck response
+ *   - 'pool-empty'     — RPC succeeded with zero rows (genuine seeding gap)
+ *   - 'auth-required'  — JWT sub unreadable; retry with a refreshed token
+ *   - 'pipeline-error' — exception during server pipeline; retry
+ * For curated-only decks the server doesn't run — serverPath is 'pipeline'.
+ */
+export type DeckServerPath =
+  | 'pipeline'
+  | 'pool-empty'
+  | 'auth-required'
+  | 'pipeline-error';
+
 export interface DeckResponse {
   cards: Recommendation[];
   deckMode: 'nature' | 'icebreakers' | 'drinks_and_music' | 'brunch_lunch_casual' | 'upscale_fine_dining' | 'movies_theatre' | 'creative_arts' | 'play' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
   hasMore: boolean;
+  serverPath: DeckServerPath;
+}
+
+/**
+ * ORCH-0474: Error class thrown by fetchDeck when the category fetch fails
+ * in a way the UI must distinguish (auth vs pipeline). Carries the tagged
+ * serverPath so the hook's onError can route into the right UI state.
+ */
+export class DeckFetchError extends Error {
+  readonly serverPath: DeckServerPath;
+  constructor(message: string, serverPath: DeckServerPath) {
+    super(message);
+    this.name = 'DeckFetchError';
+    this.serverPath = serverPath;
+  }
 }
 
 interface DeckPill {
@@ -224,16 +295,34 @@ class DeckService {
     return { pills, categoryFilters };
   }
 
-  // onSinglesReady fires BEFORE the full result when singles resolve first.
-  // This lets the UI show cards in ~1s while curated loads in the background.
-  // Do NOT remove — users see cards in ~1s instead of waiting for curated. See ORCH-0340.
+  /**
+   * ORCH-0490 Phase 2.2 — Progressive delivery contract.
+   *
+   * `onPartialReady(cards, { source })` fires up to TWICE per fetchDeck call:
+   *   - Once when singles (category) resolves with ≥1 card.
+   *   - Once when curated resolves with ≥1 card.
+   * Order is RACE-DETERMINED — either may win on any given call. The second
+   * arrival does NOT replace the first; `useDeckCards` merges via
+   * `mergeCardsByIdPreservingOrder` to preserve existing card positions.
+   *
+   * When `FEATURE_FLAG_PROGRESSIVE_DELIVERY` is false, the old sequential
+   * `await singlesSettled → fire if non-empty → await curatedSettled` path
+   * runs for rollback parity. In that mode, `onPartialReady` fires at most
+   * ONCE with `source: 'singles'` — identical to pre-Phase-2.2 behavior.
+   *
+   * ORCH-0485 RC#2 + RC#3 + ORCH-0486 closed by this rewrite.
+   */
   async fetchDeck(
     params: DeckParams,
-    onSinglesReady?: (cards: Recommendation[]) => void,
+    onPartialReady?: (cards: Recommendation[], meta: { source: PartialDeliverySource }) => void,
   ): Promise<DeckResponse> {
     const { pills, categoryFilters } = this.resolvePills(params.categories, params.intents);
     const limit = params.limit ?? 20;
     let hasMoreFromEdge = true;
+    // ORCH-0474: Capture the server's path discriminant so the hook can route
+    // UI on it. Category fetch wins over curated — curated-only decks end up
+    // 'pipeline' (server didn't run for the deck-cards key).
+    let categoryServerPath: DeckServerPath = 'pipeline';
 
     if (__DEV__) {
       console.log('[DeckService] Input categories:', JSON.stringify(params.categories));
@@ -293,6 +382,19 @@ class DeckService {
           if (!error && data?.cards) {
             const cards = (data.cards as any[]).map(unifiedCardToRecommendation);
             hasMoreFromEdge = data.metadata?.hasMore ?? true;
+            // ORCH-0474: Capture serverPath discriminant from the response.
+            const rawPath = data.sourceBreakdown?.path;
+            if (
+              rawPath === 'pipeline' ||
+              rawPath === 'pool-empty' ||
+              rawPath === 'auth-required' ||
+              rawPath === 'pipeline-error'
+            ) {
+              categoryServerPath = rawPath;
+            } else {
+              // Unknown / legacy path — treat as pipeline (populated or filtered).
+              categoryServerPath = 'pipeline';
+            }
             if (__DEV__) {
               console.log(`[DeckService] discover-cards → ${cards.length} cards (source: ${data.source}, hasMore: ${hasMoreFromEdge})`);
               if (data.sourceBreakdown) {
@@ -309,23 +411,39 @@ class DeckService {
             }
             return cards;
           } else {
+            // ORCH-0474: Classify the failure as auth-required vs pipeline-error
+            // using the HTTP status code from FunctionsHttpError.context.status.
+            // Status 401 → auth (matches edge fn's path:'auth-required').
+            // Anything else (500 pipeline-error, timeout, network) → pipeline-error.
             const msg = typeof error === 'string' ? error : (error as any)?.message || 'Unknown error';
-            console.warn('[DeckService] discover-cards error:', msg);
-            throw new Error(`Deck fetch failed: ${msg}`);
+            const status = (error as any)?.context?.status;
+            const serverPath: DeckServerPath = status === 401 ? 'auth-required' : 'pipeline-error';
+            console.warn(`[DeckService] discover-cards error (serverPath=${serverPath}):`, msg);
+            throw new DeckFetchError(`Deck fetch failed: ${msg}`, serverPath);
           }
         } catch (err) {
           if ((err as any)?.name === 'AbortError') {
             console.warn('[DeckService] discover-cards timed out after 15s');
-          } else {
-            console.warn('[DeckService] discover-cards failed:', (err as any)?.message || err);
+            // ORCH-0474: Timeout is a pipeline failure, not an auth issue.
+            throw new DeckFetchError('discover-cards timed out after 15s', 'pipeline-error');
           }
-          throw err;
+          // Re-throw DeckFetchError unchanged so the discriminant survives.
+          if (err instanceof DeckFetchError) throw err;
+          console.warn('[DeckService] discover-cards failed:', (err as any)?.message || err);
+          throw new DeckFetchError(
+            (err as Error)?.message || 'discover-cards failed',
+            'pipeline-error',
+          );
         } finally {
           clearTimeout(fetchTimer);
         }
       } catch (err) {
+        if (err instanceof DeckFetchError) throw err;
         console.warn('[DeckService] discover-cards outer error:', (err as any)?.message || err);
-        throw err;
+        throw new DeckFetchError(
+          (err as Error)?.message || 'discover-cards outer error',
+          'pipeline-error',
+        );
       }
     })();
 
@@ -359,10 +477,10 @@ class DeckService {
       );
     })();
 
-    // ── Singles-first pattern: deliver partial results early ──────────
-    // Fire both in parallel but await singles FIRST so onSinglesReady can
-    // deliver partial results to the UI within ~1s. Curated settles later.
-    // Catches convert rejections to tagged objects so we can await without throwing.
+    // ── Settlement wrappers: convert rejections to tagged objects ─────
+    // Both promises kick off in parallel (categoryPromise + curatedPromise
+    // already started above). The wrappers let us await without throwing so
+    // the race logic below can reason about ok/err uniformly.
     const singlesSettled = categoryPromise
       .then((cards): { ok: true; value: Recommendation[] } => ({ ok: true, value: cards }))
       .catch((err): { ok: false; error: unknown } => ({ ok: false, error: err }));
@@ -371,9 +489,86 @@ class DeckService {
       .then((arrays): { ok: true; value: Recommendation[][] } => ({ ok: true, value: arrays }))
       .catch((err): { ok: false; error: unknown } => ({ ok: false, error: err }));
 
-    // Await singles first — deliver partial results immediately
-    const singlesResult = await singlesSettled;
+    // ── Progressive delivery: fire onPartialReady when each side settles ─
+    // ORCH-0490 Phase 2.2 + I-PROGRESSIVE-DELIVERY-FIRST-WIN +
+    // I-ZERO-SINGLES-NOT-20S-WAIT. When FEATURE_FLAG_PROGRESSIVE_DELIVERY is
+    // true (default __DEV__; prod flipped after 1-week clean telemetry):
+    //   - Each settled side fires onPartialReady independently with its source.
+    //   - Singles empty + curated non-empty no longer waits 20s for curated.
+    //   - Whichever of singles/curated settles first with ≥1 card wins the
+    //     first UI paint.
+    // When flag is false, the old sequential behavior runs for rollback parity
+    // — onPartialReady fires at most once with source:'singles'.
+    let singlesResult: { ok: true; value: Recommendation[] } | { ok: false; error: unknown };
+    let curatedResult: { ok: true; value: Recommendation[][] } | { ok: false; error: unknown };
 
+    const deliverSinglesPartial = (cards: Recommendation[]): Recommendation[][] => {
+      if (cards.length === 0) return [];
+      const byCategory: Record<string, Recommendation[]> = {};
+      for (const card of cards) {
+        const cat = card.category || 'Other';
+        if (!byCategory[cat]) byCategory[cat] = [];
+        byCategory[cat].push(card);
+      }
+      const arrays: Recommendation[][] = Object.values(byCategory);
+      const interleaved = roundRobinInterleave(arrays);
+      if (interleaved.length > 0) {
+        onPartialReady?.(interleaved, { source: 'singles' });
+      }
+      return arrays;
+    };
+
+    const deliverCuratedPartial = (arrays: Recommendation[][]): void => {
+      const interleaved = roundRobinInterleave(arrays);
+      if (interleaved.length > 0) {
+        onPartialReady?.(interleaved, { source: 'curated' });
+      }
+    };
+
+    if (FEATURE_FLAG_PROGRESSIVE_DELIVERY) {
+      // ── Race path: whichever resolves first delivers first ──
+      // Tag each side so we can tell which won the race when Promise.race
+      // returns. Both continue settling so we still get the final results.
+      type RacerTag =
+        | { tag: 'singles'; result: typeof singlesResult }
+        | { tag: 'curated'; result: typeof curatedResult };
+
+      const singlesRacer: Promise<RacerTag> = singlesSettled.then((r) => ({ tag: 'singles' as const, result: r }));
+      const curatedRacer: Promise<RacerTag> = curatedSettled.then((r) => ({ tag: 'curated' as const, result: r }));
+
+      const first = await Promise.race([singlesRacer, curatedRacer]);
+      if (first.tag === 'singles') {
+        singlesResult = first.result;
+        if (singlesResult.ok) deliverSinglesPartial(singlesResult.value);
+        // ORCH-0485 RC#3: if singles empty, we do NOT skip. Curated will
+        // deliver on its own branch when it settles — no 20s ceiling wait.
+        curatedResult = await curatedSettled;
+        if (curatedResult.ok) deliverCuratedPartial(curatedResult.value);
+      } else {
+        curatedResult = first.result;
+        if (curatedResult.ok) deliverCuratedPartial(curatedResult.value);
+        // ORCH-0485 RC#2: curated won the race and delivered first even
+        // though singles-first was the old hardcoded order. This is the
+        // valid outcome on cold-isolate / slow-singles scenarios.
+        singlesResult = await singlesSettled;
+        if (singlesResult.ok) deliverSinglesPartial(singlesResult.value);
+      }
+    } else {
+      // ── Sequential fallback: pre-2.2 behavior (flag off — kill switch) ──
+      // Preserve the exact old semantics so rollback via flag flip is instant.
+      // Only fires onPartialReady once, for singles, and only when non-empty.
+      singlesResult = await singlesSettled;
+      if (singlesResult.ok && singlesResult.value.length > 0) {
+        deliverSinglesPartial(singlesResult.value);
+      }
+      curatedResult = await curatedSettled;
+    }
+
+    // ── Build final interleaved array (unchanged semantics) ──────────
+    // The final return is the authoritative cache write. Partial deliveries
+    // above were intermediate UX states that React Query will overwrite with
+    // this return value. The interleaved order alternates regular+curated 1:1
+    // as today — same positional result as pre-2.2.
     const categoryArrays: Recommendation[][] = [];
     if (singlesResult.ok && singlesResult.value.length > 0) {
       const byCategory: Record<string, Recommendation[]> = {};
@@ -385,16 +580,8 @@ class DeckService {
       for (const group of Object.values(byCategory)) {
         categoryArrays.push(group);
       }
-      // Deliver singles to UI immediately — user sees cards in ~1s
-      const partialStream = roundRobinInterleave(categoryArrays);
-      if (partialStream.length > 0) {
-        onSinglesReady?.(partialStream);
-      }
     }
     const regularStream = roundRobinInterleave(categoryArrays);
-
-    // Now await curated (may already be settled)
-    const curatedResult = await curatedSettled;
 
     const curatedArrays: Recommendation[][] = [];
     if (curatedResult.ok) {
@@ -402,11 +589,32 @@ class DeckService {
     }
     const curatedStream = roundRobinInterleave(curatedArrays);
 
-    // If both fetches failed, throw so React Query sees the error
-    const regularFailed = !singlesResult.ok;
-    const curatedFailed = !curatedResult.ok;
-    if (regularFailed && curatedFailed) {
-      throw (singlesResult.error as Error) || new Error('All deck fetches failed');
+    // ── Error handling: both-failed throws preserved ────────────────────
+    // ORCH-0474 + INV-042 + INV-043: if BOTH sides failed, throw so React
+    // Query sees the error and the hook routes to PIPELINE_ERROR state.
+    if (!singlesResult.ok && !curatedResult.ok) {
+      const singlesErr = singlesResult.error;
+      if (singlesErr instanceof DeckFetchError) throw singlesErr;
+      throw new DeckFetchError(
+        (singlesErr as Error)?.message || 'All deck fetches failed',
+        'pipeline-error',
+      );
+    }
+
+    // ── ORCH-0486: mixed-deck serverPath carry-through ──────────────────
+    // When singles failed with a tagged DeckFetchError (auth-required or
+    // pipeline-error) but curated succeeded, the final return's serverPath
+    // must carry the singles error's discriminant — not the default
+    // 'pipeline' from the uninitialized categoryServerPath. Without this,
+    // the UI renders curated-only cards with no retry affordance for the
+    // failed category side. Rare in practice (auth/pipeline failures
+    // typically hit both calls at once), but INV-042 / INV-043 require it.
+    let finalServerPath: DeckServerPath = categoryServerPath;
+    if (!singlesResult.ok && curatedResult.ok) {
+      const singlesErr = singlesResult.error;
+      if (singlesErr instanceof DeckFetchError) {
+        finalServerPath = singlesErr.serverPath;
+      }
     }
 
     // 1:1 interleave: alternate regular and curated
@@ -450,6 +658,7 @@ class DeckService {
       activePills: pills.map(p => p.id),
       total: interleaved.length,
       hasMore: hasMoreFromEdge,
+      serverPath: finalServerPath,
     };
   }
 

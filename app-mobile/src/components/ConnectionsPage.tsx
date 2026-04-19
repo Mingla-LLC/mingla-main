@@ -306,7 +306,7 @@ export default function ConnectionsPageRefactored({
 }: ConnectionsPageProps) {
   useScreenLogger('connections');
   const { t } = useTranslation(['connections', 'common']);
-  const coachChatHeader = useCoachMark(10, 0);
+  const coachChatHeader = useCoachMark(8, 0);
   const user = useAppStore((state) => state.user);
   const { height: screenHeight } = useWindowDimensions();
 

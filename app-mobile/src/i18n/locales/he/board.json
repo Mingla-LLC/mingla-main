@@ -126,7 +126,7 @@
     "inviteCode": "קוד הזמנה",
     "inviteCodeDesc": "שתף קוד פשוט"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "הזמן משתתפים",
     "addFriendsTo": "הוסף חברים ל-\"{{name}}\"",
     "searchPlaceholder": "חפש חברים...",

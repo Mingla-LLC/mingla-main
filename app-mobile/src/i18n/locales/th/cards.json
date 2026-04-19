@@ -3,6 +3,8 @@
   "swipeable.error_title": "ไม่สำเร็จ",
   "swipeable.try_again": "ลองใหม่",
   "swipeable.seen_everything": "คุณดูทุกอย่างที่มีแล้ว",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "เปลี่ยนความชอบเพื่อปลดล็อกสถานที่ใหม่ หรือย้อนดูที่ผ่านมา",
   "swipeable.shift_preferences": "เปลี่ยนความชอบ",
   "swipeable.review_all_cards": "ดูการ์ดทั้งหมด",
@@ -79,5 +81,11 @@
   "board.responses": "{{responded}}/{{total}} การตอบกลับ",
   "board.vote_yes": "โหวตใช่",
   "board.vote_no": "โหวตไม่",
-  "board.discuss": "พูดคุย ({{count}})"
+  "board.discuss": "พูดคุย ({{count}})",
+  "swipeable.auth_error_title": "Trouble signing in @needs_translation",
+  "swipeable.auth_error_subtitle": "We couldn't confirm your session. Tap retry to refresh. @needs_translation",
+  "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
+  "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
+  "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
+  "swipeable.retry": "Retry @needs_translation"
 }

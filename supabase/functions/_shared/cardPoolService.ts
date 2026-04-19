@@ -17,6 +17,43 @@ import {
 import { priceLevelToRange, googleLevelToTierSlug, PriceTierSlug } from './priceTiers.ts';
 import { resolvePhotoUrl, resolveAllPhotoUrls } from './photoStorageService.ts';
 
+// ── Error classes ───────────────────────────────────────────────────────────
+
+/**
+ * ORCH-0490 Phase 2.1 + Constitutional #3 (no silent failures):
+ * Thrown by `queryPoolCards` when the `query_pool_cards` RPC fails. The caller
+ * (`serveCardsFromPipeline`) re-raises to `discover-cards`, whose outer catch
+ * at serve time maps the exception to a `path:'pipeline-error'` response with
+ * `errorClass: 'RPCError'` — preserving INV-042 (no conflating errors with
+ * empty-data signals) and INV-043 (no unconditional fall-throughs).
+ *
+ * Previously, this error was swallowed (`return { poolCards: [], totalUnseenCount: 0 }`),
+ * causing the serving pipeline to fall through to `path:'pool-empty'` and the
+ * client to render the EMPTY deck state on a database-layer failure. The UI
+ * had no retry affordance and no visibility into the underlying RPC problem.
+ *
+ * `name = 'RPCError'` so downstream `err.name` extraction tags the response
+ * body's `errorClass` field as `'RPCError'`.
+ */
+export class QueryPoolCardsError extends Error {
+  public readonly rpcErrorCode: string | undefined;
+  public readonly rpcErrorDetails: string | undefined;
+  public readonly rpcErrorHint: string | undefined;
+
+  constructor(
+    rpcMessage: string,
+    rpcErrorCode?: string,
+    rpcErrorDetails?: string,
+    rpcErrorHint?: string,
+  ) {
+    super(`query_pool_cards RPC failed: ${rpcMessage}`);
+    this.name = 'RPCError';
+    this.rpcErrorCode = rpcErrorCode;
+    this.rpcErrorDetails = rpcErrorDetails;
+    this.rpcErrorHint = rpcErrorHint;
+  }
+}
+
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
 export interface PoolQueryParams {
@@ -168,7 +205,17 @@ async function queryPoolCards(
 
   if (error) {
     console.error(`[cardPoolService] query_pool_cards RPC FAILED: ${error.message} (code: ${error.code}, hint: ${error.hint ?? 'none'}, details: ${error.details ?? 'none'})`);
-    return { poolCards: [], totalUnseenCount: 0 };
+    // ORCH-0490 Phase 2.1 + Constitutional #3: THROW on RPC error. Previously
+    // swallowed as empty, which routed the user to a false EMPTY deck state
+    // with no retry. Now the exception propagates to serveCardsFromPipeline →
+    // discover-cards's outer catch → path:'pipeline-error' response → client
+    // renders PIPELINE_ERROR with retry affordance. INV-042 + INV-043 preserved.
+    throw new QueryPoolCardsError(
+      error.message,
+      error.code,
+      error.details ?? undefined,
+      error.hint ?? undefined,
+    );
   }
 
   if (!data || data.length === 0) {

@@ -224,20 +224,6 @@ export const LocationInputSection = memo(
         </>
       )}
 
-      {/* Helper text — always visible, state-aware */}
-      <View style={styles.locationHelperContainer}>
-        <Icon
-          name="information-circle-outline"
-          size={14}
-          color="#9ca3af"
-        />
-        <Text style={styles.locationHelperText}>
-          {useGpsLocation
-            ? t('preferences:location.gps_helper')
-            : t('preferences:location.manual_helper')}
-        </Text>
-      </View>
-
       {/* Locked hint for free users */}
       {isLocked && (
         <TouchableOpacity onPress={onLockedTap} activeOpacity={0.7}>
@@ -461,16 +447,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#111827",
     padding: 0,
-  },
-  locationHelperContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 6,
-  },
-  locationHelperText: {
-    fontSize: 11,
-    color: "#6b7280",
   },
   suggestionsContainer: {
     backgroundColor: "white",

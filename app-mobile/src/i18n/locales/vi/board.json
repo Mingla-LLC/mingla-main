@@ -55,7 +55,7 @@
     "qrCode": "Mã QR", "qrCodeDesc": "Tạo mã QR để quét",
     "inviteCode": "Mã mời", "inviteCodeDesc": "Chia sẻ mã đơn giản"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Mời người tham gia", "addFriendsTo": "Thêm bạn bè vào \"{{name}}\"",
     "searchPlaceholder": "Tìm bạn bè...", "loadingFriends": "Đang tải bạn bè...", "noUsersFound": "Không tìm thấy người dùng",
     "allFriendsInBoard": "Tất cả bạn bè đã ở trong bảng này", "noFriendsAvailable": "Không có bạn bè khả dụng",

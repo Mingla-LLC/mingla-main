@@ -1,6 +1,6 @@
 # Coverage Map
 
-> Last updated: 2026-04-11
+> Last updated: 2026-04-18 (**ORCH-0503 CLOSED A** — v3 fix PASS; Discovery surface grade distribution unchanged: the fix restores correctness inside an already-Strong-graded deck pipeline, so no grade-count movement; new invariant `I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE` reinforces Constitutional #2 "One owner per truth" at the deck-sync-effect boundary)
 
 ## Surface Coverage
 
@@ -8,7 +8,8 @@
 |---------|-------|---|---|---|---|---|-------------|---------|------------|
 | Auth & Session | 7 | 2 | 4 | 1 | 0 | 0 | 0% | 0% | Partial |
 | Onboarding | 11 | 2 | 0 | 0 | 0 | 9 | 82% | 0% | Weak |
-| Discovery / Explore | 55 | 39 | 7 | 0 | 0 | 9 | 16% | 0% | Strong |
+| Discovery / Explore | 55 | 39 | 10 | 0 | 0 | 6 | 11% | 0% | Strong (↑ ORCH-0474 closed B — ORCH-0469, ORCH-0472 previously B) |
+| **Place Pipeline (Seeding + AI Validation)** | **11** | **8** | **0** | **0** | **0** | **3** | **27%** | **0%** | **Strong (NEW 2026-04-17)** |
 | Collaboration Sessions | 7 | 3 | 0 | 0 | 0 | 4 | 57% | 0% | Weak |
 | Social / Friends | 7 | 1 | 1 | 0 | 0 | 5 | 71% | 0% | Weak |
 | Notifications | 11 | 6 | 2 | 0 | 0 | 3 | 27% | 0% | Partial |
@@ -35,7 +36,7 @@
 | Analytics & Tracking | 11 | 1 | 0 | 2 | 2 | 6 | 55% | 0% | Weak |
 | Weather & External | 6 | 0 | 0 | 0 | 0 | 6 | 100% | 0% | Unaudited |
 | UI Components | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
-| **TOTAL** | **292** | **92** | **24** | **4** | **4** | **168** | **58%** | **0%** | **Weak** |
+| **TOTAL** | **303** | **100** | **24** | **4** | **4** | **171** | **56%** | **0%** | **Weak → Slightly improving** |
 
 ## Heatmap Summary
 

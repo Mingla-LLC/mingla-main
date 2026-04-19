@@ -16,7 +16,9 @@ import {
   Easing,
   AccessibilityInfo,
   Switch,
+  LayoutAnimation,
 } from "react-native";
+import * as Haptics from 'expo-haptics';
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -53,13 +55,21 @@ import {
   TravelLimitSection,
   LocationInputSection,
 } from "./PreferencesSheet/PreferencesSectionsAdvanced";
-import { WhenSection, DateOptionId } from './PreferencesSheet/WhenSection';
+import { MultiDayCalendar } from './ui/MultiDayCalendar';
 import { ToggleSection } from './PreferencesSheet/ToggleSection';
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
 import { colors } from '../constants/designSystem';
+
+type DateOptionId = 'today' | 'this_weekend' | 'pick_dates';
+
+const DATE_OPTIONS: { id: DateOptionId; labelKey: string }[] = [
+  { id: 'today', labelKey: 'date_options.today' },
+  { id: 'this_weekend', labelKey: 'date_options.this_weekend' },
+  { id: 'pick_dates', labelKey: 'date_options.pick_dates' },
+];
 
 interface PreferencesSheetProps {
   visible?: boolean;
@@ -262,7 +272,7 @@ export default function PreferencesSheet({
   // Sequential section stagger animation (ORCH-0434 Phase 6B)
   const [reduceMotion, setReduceMotion] = useState(false);
   const sectionAnims = useRef(
-    Array.from({ length: 6 }, () => new Animated.Value(0))
+    Array.from({ length: 5 }, () => new Animated.Value(0))
   ).current;
 
   useEffect(() => {
@@ -278,7 +288,7 @@ export default function PreferencesSheet({
       // Reset
       sectionAnims.forEach(anim => anim.setValue(0));
       // Stagger: 80ms between each section, 300ms duration
-      const delays = [0, 70, 140, 210, 280, 350];
+      const delays = [0, 70, 140, 210, 280];
       const timers = delays.map((delay, i) =>
         setTimeout(() => {
           Animated.timing(sectionAnims[i], {
@@ -515,6 +525,8 @@ export default function PreferencesSheet({
 
   // ORCH-0434: Date option handler (simplified — 3 options, no time slots)
   const handleDateOptionChange = useCallback((option: DateOptionId) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedDateOption(option);
     if (option !== 'pick_dates') {
       setSelectedDates([]);
@@ -991,7 +1003,7 @@ export default function PreferencesSheet({
               locationSectionY.current = y;
             }}
           >
-            <Text style={styles.sectionTitle}>Where should we start looking?</Text>
+            <Text style={styles.sectionTitle}>Where should we look, and when?</Text>
 
             <LocationInputSection
               searchLocation={searchLocation}
@@ -1022,29 +1034,59 @@ export default function PreferencesSheet({
                 <Text style={styles.sectionWarningText}>{sectionWarnings.location}</Text>
               </View>
             )}
+
+            {/* Date option pills — today / this weekend / pick dates */}
+            <View style={styles.datePillsRow}>
+              {DATE_OPTIONS.map(option => {
+                const isSelected = selectedDateOption === option.id;
+                return (
+                  <TouchableOpacity
+                    key={option.id}
+                    onPress={() => handleDateOptionChange(option.id)}
+                    style={[
+                      styles.datePill,
+                      isSelected && styles.datePillSelected,
+                    ]}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={t(`preferences:${option.labelKey}`)}
+                  >
+                    <Text
+                      style={[
+                        styles.datePillText,
+                        isSelected && styles.datePillTextSelected,
+                      ]}
+                    >
+                      {t(`preferences:${option.labelKey}`)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {selectedDateOption === 'pick_dates' && (
+              <View style={styles.calendarWrapper}>
+                <MultiDayCalendar
+                  selectedDates={selectedDates}
+                  onDatesChange={setSelectedDates}
+                />
+              </View>
+            )}
+
+            {sectionWarnings.when && (
+              <View style={styles.sectionWarningPill}>
+                <Text style={styles.sectionWarningText}>{sectionWarnings.when}</Text>
+              </View>
+            )}
           </View>
 
           </Animated.View>
 
-          {/* 2. When */}
+          {/* 2. Intents (with toggle) */}
           <Animated.View style={{
             opacity: sectionAnims[1],
             transform: [{ translateY: sectionAnims[1].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
-          }}>
-          <WhenSection
-            dateOption={selectedDateOption}
-            onDateOptionChange={handleDateOptionChange}
-            selectedDates={selectedDates}
-            onDatesChange={setSelectedDates}
-            warning={sectionWarnings.when}
-          />
-
-          </Animated.View>
-
-          {/* 3. Intents (with toggle) */}
-          <Animated.View style={{
-            opacity: sectionAnims[2],
-            transform: [{ translateY: sectionAnims[2].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
           <ToggleSection
             title="See curated experiences?"
@@ -1068,10 +1110,10 @@ export default function PreferencesSheet({
 
           </Animated.View>
 
-          {/* 4. Categories (with toggle) */}
+          {/* 3. Categories (with toggle) */}
           <Animated.View style={{
-            opacity: sectionAnims[3],
-            transform: [{ translateY: sectionAnims[3].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+            opacity: sectionAnims[2],
+            transform: [{ translateY: sectionAnims[2].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
           <ToggleSection
             title="See popular options?"
@@ -1090,10 +1132,10 @@ export default function PreferencesSheet({
 
           </Animated.View>
 
-          {/* 5. How are you rolling? */}
+          {/* 4. How are you rolling? */}
           <Animated.View style={{
-            opacity: sectionAnims[4],
-            transform: [{ translateY: sectionAnims[4].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+            opacity: sectionAnims[3],
+            transform: [{ translateY: sectionAnims[3].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>How are you rolling?</Text>
@@ -1105,10 +1147,10 @@ export default function PreferencesSheet({
           </View>
           </Animated.View>
 
-          {/* 6. How far? */}
+          {/* 5. How far? */}
           <Animated.View style={{
-            opacity: sectionAnims[5],
-            transform: [{ translateY: sectionAnims[5].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+            opacity: sectionAnims[4],
+            transform: [{ translateY: sectionAnims[4].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
           }}>
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>How far?</Text>
@@ -1299,7 +1341,13 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: 8,
-    paddingBottom: 200,
+    // Footer is absolute-positioned (~108px: paddingTop 12 + button ~47 +
+    // paddingBottom 48 + border 1). 120 leaves ~12px of visible breathing room
+    // above the footer's top border, plus the footer's own 12px paddingTop, for
+    // ~24px total between the last section and the button — tight but not flush.
+    // Keyboard avoidance is unaffected — KeyboardAwareScrollView appends
+    // `keyboardHeight + 40` on top of this dynamically when the keyboard opens.
+    paddingBottom: 120,
   },
   header: {
     flexDirection: "row",
@@ -1382,6 +1430,48 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#ea580c',
+  },
+  // --- Date option pills (merged into Where/When section) ---
+  datePillsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  datePill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    shadowColor: 'rgba(0, 0, 0, 0.04)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  datePillSelected: {
+    backgroundColor: '#eb7825',
+    borderColor: '#eb7825',
+    shadowColor: '#eb7825',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  datePillText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.text.secondary,
+  },
+  datePillTextSelected: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  calendarWrapper: {
+    marginTop: 14,
   },
   sectionSubtitle: {
     fontSize: 14,

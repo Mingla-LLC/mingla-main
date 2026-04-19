@@ -3,6 +3,8 @@
   "swipeable.error_title": "সেটা কাজ করেনি",
   "swipeable.try_again": "আবার চেষ্টা করুন",
   "swipeable.seen_everything": "আপনি সব উপলব্ধ কন্টেন্ট দেখে ফেলেছেন",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "নতুন জায়গা আনলক করতে আপনার পছন্দ পরিবর্তন করুন, অথবা আগের দেখাগুলো রিভিউ করুন।",
   "swipeable.shift_preferences": "পছন্দ পরিবর্তন করুন",
   "swipeable.review_all_cards": "সব কার্ড রিভিউ করুন",
@@ -79,5 +81,11 @@
   "board.responses": "{{responded}}/{{total}} প্রতিক্রিয়া",
   "board.vote_yes": "হ্যাঁ ভোট",
   "board.vote_no": "না ভোট",
-  "board.discuss": "আলোচনা ({{count}})"
+  "board.discuss": "আলোচনা ({{count}})",
+  "swipeable.auth_error_title": "Trouble signing in @needs_translation",
+  "swipeable.auth_error_subtitle": "We couldn't confirm your session. Tap retry to refresh. @needs_translation",
+  "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
+  "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
+  "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
+  "swipeable.retry": "Retry @needs_translation"
 }

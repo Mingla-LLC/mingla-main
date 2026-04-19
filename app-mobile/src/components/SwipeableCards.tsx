@@ -50,6 +50,8 @@ import {
   Recommendation,
   DeckUIState,
 } from "../contexts/RecommendationsContext";
+import { FEATURE_FLAG_PER_CONTEXT_DECK_STATE } from "../config/featureFlags";
+import { deckContextKey } from "../contexts/deckStateRegistry";
 import { DismissedCardsSheet } from "./DismissedCardsSheet";
 import { getReadableCategoryName } from "../utils/categoryUtils";
 import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
@@ -424,6 +426,21 @@ export default function SwipeableCards({
     isExhausted,
     deckUIState,
     collabTravelMode,
+    // ORCH-0474: pipeline-error toast overlay on LOADED + serverPath for
+    // analytics dimension + retry routing in the new UI states.
+    showPipelineErrorToast,
+    serverPath,
+    // ORCH-0490 Phase 2.3: expansion signal. True when a deck swap is a
+    // same-context pref-change expansion (new cards streaming into the same
+    // mode+session), so the wipe below is suppressed even when new IDs are
+    // not a strict superset of previous. Undefined when flag-off — wipe uses
+    // legacy first-5-IDs comparison.
+    isDeckExpandingWithinContext,
+    // ORCH-0490 Phase 2.3 rework (AH-138): registry + active context for
+    // per-context swipe-state preservation (SC-2.3-01). Null/undefined
+    // under flag-off — SwipeableCards falls through to legacy AsyncStorage.
+    deckStateRegistry,
+    activeDeckContext,
   } = useRecommendations();
 
   const isAnyLoading = loading || isModeTransitioning || isWaitingForSessionResolution;
@@ -564,6 +581,35 @@ export default function SwipeableCards({
   const removedCardsRef = useRef<Set<string>>(new Set());
   const currentCardIndexRef = useRef(0);
   const previousBatchIdsRef = useRef<string>('');
+  // ORCH-0490 Phase 2.3: full-set version of previousBatchIdsRef. Used by the
+  // expansion signal under FEATURE_FLAG_PER_CONTEXT_DECK_STATE. Flag-off
+  // continues to use previousBatchIdsRef (first-5-IDs compare).
+  const previousCardIdsSetRef = useRef<Set<string>>(new Set());
+
+  // ORCH-0490 Phase 2.3 rework (AH-138): per-context swipe state bridge.
+  // - activeDeckContextKey: stable string key for the current context.
+  // - prevDeckContextKeyRef: last context we restored for. Drives the
+  //   restore effect to fire on genuine context changes only.
+  // - lastSavedContextKeyRef: last context we saved-to. Guards the save
+  //   effect from firing on the first render after a context change, where
+  //   removedCards closure is still the PREVIOUS context's value while
+  //   activeDeckContext already points to the new context (would corrupt
+  //   the new context's registry entry with stale data).
+  const activeDeckContextKey = activeDeckContext
+    ? deckContextKey(activeDeckContext)
+    : null;
+  const prevDeckContextKeyRef = useRef<string | null>(activeDeckContextKey);
+  const lastSavedContextKeyRef = useRef<string | null>(null);
+  // ORCH-0490 Phase 2.3 rework (AH-138): separate context-key ref for the
+  // expansion effect. The RESTORE effect fires at the render where
+  // activeDeckContextKey changes but `recommendations` is still the PREVIOUS
+  // context's cards. If the expansion effect ran its full diff on that same
+  // render, it would lock in wrong-context IDs into previousCardIdsSetRef,
+  // and the NEXT render (when new-context recommendations arrive) would see
+  // non-superset and wipe. This ref lets expansion detect the context change
+  // and early-return without updating previousCardIdsSetRef — preserving
+  // RESTORE's `Set()` reset so the next render hits the INIT branch.
+  const expansionPrevContextKeyRef = useRef<string | null>(activeDeckContextKey);
   const handleSwipeRef = useRef<((direction: "left" | "right", card: Recommendation) => Promise<void>) | null>(null);
   const handleCardExpandRef = useRef<(() => Promise<void>) | null>(null);
   const removedCardIdsRef = useRef<string[]>(removedCardIds);
@@ -615,11 +661,20 @@ export default function SwipeableCards({
   // out removedCards locally. effectiveUIState accounts for that local filtering.
   const effectiveUIState: DeckUIState = React.useMemo(() => {
     if (deckUIState.type === 'LOADED' && availableRecommendations.length === 0) {
-      if (isExhausted) return { type: 'EXHAUSTED' };
-      return { type: 'EMPTY' };
+      // ORCH-0469 / ORCH-0472: If context reports LOADED, recommendations.length > 0
+      // (see RecommendationsContext.tsx:1218). When every served card is in
+      // removedCards, the user has swiped through everything they were served — that
+      // IS exhaustion, regardless of the context-level isExhausted flag (which only
+      // fires on server-side empty responses / pagination-exhaustion, not on local
+      // swipe-through of a single-batch pool). The dead-state auto-recovery at
+      // ~line 651 handles stale-persistence removedCards pollution; it clears after
+      // 1.5s, so genuine EXHAUSTED persists past that window. Genuine EMPTY (server
+      // returned zero for the filter) never enters this branch because
+      // deckUIState.type is 'EMPTY' not 'LOADED' — see context line 1204.
+      return { type: 'EXHAUSTED' };
     }
     return deckUIState;
-  }, [deckUIState, availableRecommendations.length, isExhausted]);
+  }, [deckUIState, availableRecommendations.length]);
 
   // ── Prefetch next 2 card images for instant swipe transitions ──
   // When the current card changes, prefetch the images for the next 2 cards.
@@ -797,6 +852,73 @@ export default function SwipeableCards({
     }
   }, [availableRecommendations.length, currentCardIndex]);
 
+  // ── ORCH-0490 Phase 2.3 rework (AH-138): RESTORE from registry on context change ──
+  // When the active DeckContext changes (Solo↔Collab or session→different session),
+  // read the NEW context's saved DeckState.removedCards + .currentCardIndex from
+  // the registry and apply to local component state. Previous context's state was
+  // saved by the SAVE effect below; nothing is lost on toggle.
+  //
+  // Also sets `previousCardIdsSetRef.current = new Set()` so the next expansion-
+  // effect fire treats the transition as INIT (prev.size === 0 → no wipe). Without
+  // this, the expansion effect would see the previous context's card IDs as
+  // `prev` and the new context's as `new`, trigger the non-superset RESET branch,
+  // and clobber the just-restored removedCards.
+  //
+  // Flag-off: no-op; legacy AsyncStorage-backed restoration in checkAndRestoreState
+  // below runs unchanged.
+  useEffect(() => {
+    if (!FEATURE_FLAG_PER_CONTEXT_DECK_STATE) return;
+    if (!deckStateRegistry || !activeDeckContext || !activeDeckContextKey) return;
+    if (prevDeckContextKeyRef.current === activeDeckContextKey) return;
+
+    const state = deckStateRegistry.get(activeDeckContext);
+    const restoredRemoved = new Set(state.removedCards);
+    setRemovedCards(restoredRemoved);
+    setCurrentCardIndex(state.currentCardIndex);
+    // Mirror to PanResponder refs — those read fresh values on swipe and
+    // would otherwise see stale state until the next component render.
+    removedCardsRef.current = new Set(restoredRemoved);
+    currentCardIndexRef.current = state.currentCardIndex;
+    // Force expansion effect to treat next recommendations update as INIT.
+    previousCardIdsSetRef.current = new Set();
+
+    prevDeckContextKeyRef.current = activeDeckContextKey;
+  }, [activeDeckContextKey, deckStateRegistry, activeDeckContext]);
+
+  // ── ORCH-0490 Phase 2.3 rework (AH-138): SAVE to registry on state change ──
+  // Mirror SwipeableCards' local swipe state (`removedCards`, `currentCardIndex`)
+  // into the registry entry for the currently-active DeckContext. Runs whenever
+  // either local state value changes.
+  //
+  // Context-change race guard: on the render AFTER a context change, this
+  // effect's closure captures the PREVIOUS context's removedCards value while
+  // `activeDeckContext` already points to the NEW context. Writing that closure
+  // would corrupt the new context's entry with stale data. The
+  // `lastSavedContextKeyRef` check detects this first-fire-post-change and
+  // skips; the RESTORE effect above updates state to the new context's values,
+  // which triggers this effect again in the subsequent render (now closing
+  // over the correct, restored state) and the save proceeds normally.
+  //
+  // Flag-off: no-op.
+  useEffect(() => {
+    if (!FEATURE_FLAG_PER_CONTEXT_DECK_STATE) return;
+    if (!deckStateRegistry || !activeDeckContext || !activeDeckContextKey) return;
+    // Guard against first-fire-after-context-change race.
+    if (lastSavedContextKeyRef.current !== activeDeckContextKey) {
+      lastSavedContextKeyRef.current = activeDeckContextKey;
+      return;
+    }
+    const state = deckStateRegistry.get(activeDeckContext);
+    state.removedCards = new Set(removedCards);
+    state.currentCardIndex = currentCardIndex;
+  }, [
+    removedCards,
+    currentCardIndex,
+    deckStateRegistry,
+    activeDeckContext,
+    activeDeckContextKey,
+  ]);
+
   // Load saved state from AsyncStorage when recommendations are ready
   useEffect(() => {
     // Wait for recommendations to be available
@@ -809,13 +931,28 @@ export default function SwipeableCards({
       const preferencesChanged = previousRefreshKeyRef.current !== refreshKey;
       const modeChanged = previousModeRef.current !== currentMode;
 
-      if (preferencesChanged || modeChanged) {
-        // Preferences or mode changed - full state reset
+      // ORCH-0490 Phase 2.3 rework (AH-138): under flag-on, `modeChanged`
+      // alone no longer triggers a wipe — per-context state is preserved in
+      // the DeckStateRegistry and restored by the RESTORE effect above. The
+      // old mode's AsyncStorage keys must ALSO be preserved (they are the
+      // cold-launch fallback pending Phase 2.5's Zustand persist). Under
+      // flag-off, the legacy wipe still fires exactly as before.
+      //
+      // `preferencesChanged` STILL triggers a wipe in both flag states —
+      // same-context pref change is a user-initiated fresh deck; they
+      // expect position to reset. The RESTORE effect runs on CONTEXT key
+      // change only; it doesn't misfire on refreshKey change.
+      const effectiveModeChanged = FEATURE_FLAG_PER_CONTEXT_DECK_STATE
+        ? false
+        : modeChanged;
+
+      if (preferencesChanged || effectiveModeChanged) {
+        // Preferences or (flag-off) mode changed - full state reset
         console.log(
           "🔄 State reset - Preferences changed:",
           preferencesChanged,
           "Mode changed:",
-          modeChanged
+          effectiveModeChanged
         );
         setRemovedCards(new Set());
         setCurrentCardIndex(0);
@@ -943,14 +1080,82 @@ export default function SwipeableCards({
     refreshKey,
   ]);
 
-  // Detect full deck replacement vs batch append.
-  // Only clear removedCards when the FIRST 5 card IDs change (full replacement).
-  // When new cards are appended to the end (batch 2+), the first 5 IDs stay the
-  // same — the user keeps their swipe progress.
-  // Preference/mode change resets are already handled at line ~798.
+  // ORCH-0490 Phase 2.3: deck replacement vs expansion signal.
+  //
+  // Flag-on path (FEATURE_FLAG_PER_CONTEXT_DECK_STATE):
+  //   Two signals gate the reset. RESET fires only when BOTH:
+  //     (a) new IDs are NOT a strict superset of previous (real replacement), AND
+  //     (b) `isDeckExpandingWithinContext` is false (not a same-context pref
+  //         change — context actually changed).
+  //   Strict superset means: every ID in previous is also in new, and new is
+  //   at least as large. Covers both:
+  //     - batch append (prev=[A,B,C], new=[A,B,C,D,E]) → superset, EXPANSION.
+  //     - progressive-delivery final interleave (prev=[A,B,C,D,E,F] from merge,
+  //       new=[A,D,B,E,C,F] from final) → same IDs, different order, still
+  //       superset since size is equal → EXPANSION (ORCH-0498 fix).
+  //   Same-context pref change (prev=[A,B,C], new=[X,Y,Z] via different
+  //   category filter) is NOT a superset, but context didn't change — the
+  //   provider signals `isDeckExpandingWithinContext=true` → EXPANSION.
+  //
+  // Flag-off path:
+  //   Legacy first-5-IDs comparison preserved. [TRANSITIONAL] — removed when
+  //   flag flips to unconditional true per exit condition in featureFlags.ts.
   useEffect(() => {
     if (!recommendations || recommendations.length === 0) return;
 
+    if (FEATURE_FLAG_PER_CONTEXT_DECK_STATE) {
+      // Context-change gate (AH-138): if activeDeckContextKey changed since
+      // this effect's last fire, RESTORE has already (a) set removedCards +
+      // currentCardIndex from the new context's registry entry, and (b)
+      // reset previousCardIdsSetRef to Set(). On this render, recommendations
+      // may still be the PREVIOUS context's cards (provider's
+      // setRecommendations call is queued, not yet applied). Running the
+      // diff now would update previousCardIdsSetRef to wrong-context IDs and
+      // trigger a wipe on the NEXT render when new recommendations arrive.
+      // Early-return WITHOUT updating previousCardIdsSetRef — leave RESTORE's
+      // Set() in place so the next fire hits the INIT branch cleanly.
+      if (expansionPrevContextKeyRef.current !== activeDeckContextKey) {
+        expansionPrevContextKeyRef.current = activeDeckContextKey;
+        return;
+      }
+
+      const newCardIdsSet = new Set(recommendations.map((r) => r.id));
+      const prevSet = previousCardIdsSetRef.current;
+
+      if (prevSet.size === 0) {
+        // INIT — first population, no reset needed. Just record.
+        previousCardIdsSetRef.current = newCardIdsSet;
+        return;
+      }
+
+      // Strict superset: every prev ID is in new AND new.size >= prev.size.
+      let isStrictSuperset = newCardIdsSet.size >= prevSet.size;
+      if (isStrictSuperset) {
+        for (const id of prevSet) {
+          if (!newCardIdsSet.has(id)) {
+            isStrictSuperset = false;
+            break;
+          }
+        }
+      }
+
+      // Reset gate: both signals must permit reset.
+      const shouldReset =
+        !isStrictSuperset && isDeckExpandingWithinContext !== true;
+
+      if (shouldReset) {
+        setRemovedCards(new Set());
+        setCurrentCardIndex(0);
+      }
+      // Else: EXPANSION — preserve removedCards + currentCardIndex. The
+      // availableRecommendations memo (ID-to-position tracking via filter)
+      // keeps the current top card stable across the transition.
+
+      previousCardIdsSetRef.current = newCardIdsSet;
+      return;
+    }
+
+    // Flag-off: pre-2.3 first-5-IDs comparison.
     const newFirstIds = recommendations
       .slice(0, 5)
       .map((r) => r.id)
@@ -970,7 +1175,7 @@ export default function SwipeableCards({
     // append — do NOT clear removedCards or reset currentCardIndex.
 
     previousBatchIdsRef.current = newFirstIds;
-  }, [recommendations]);
+  }, [recommendations, isDeckExpandingWithinContext, activeDeckContextKey]);
 
   // PanResponder for swipe gestures
   // CLOSURE INVARIANT: This PanResponder is created once and never recreated.
@@ -1561,36 +1766,70 @@ export default function SwipeableCards({
       );
 
     case 'EMPTY':
-    case 'EXHAUSTED':
-      // Fire deck exhausted once per deck load
-      if (lastViewedCardIdRef.current !== '__deck_exhausted__') {
-        mixpanelService.trackDeckExhausted({
-          cards_seen: currentCardIndex,
-          cards_saved: savedCards.length,
-          cards_dismissed: Math.max(0, currentCardIndex - savedCards.length),
-          session_mode: 'solo',
-        });
-        lastViewedCardIdRef.current = '__deck_exhausted__';
+    case 'EXHAUSTED': {
+      // ORCH-0469 / ORCH-0472: EMPTY and EXHAUSTED are two distinct user states.
+      // EMPTY = user picked a filter that has no results. EXHAUSTED = user has
+      // swiped through everything. Fire separate analytics events, render separate
+      // copy, show/hide the "Review all cards" CTA accordingly.
+      const isEmpty = effectiveUIState.type === 'EMPTY';
+      const analyticsSentinel = isEmpty ? '__deck_empty__' : '__deck_exhausted__';
+      if (lastViewedCardIdRef.current !== analyticsSentinel) {
+        if (isEmpty) {
+          // ORCH-0490 Phase 2.1 + I-DECK-EMPTY-IS-SERVER-VERDICT: fire the
+          // analytic ONLY for genuine server-verdict pool-empty responses.
+          // Filter-to-empty (serverPath === 'pipeline' with zero cards after
+          // client-side date/hours filtering) is a different UX signal — the
+          // filter was too narrow, not the pool. Previously we fired for both
+          // and the ORCH-0494 false-EMPTY race overcounted "no matches"
+          // events from populated server responses. Now: truthful only.
+          if (serverPath === 'pool-empty') {
+            mixpanelService.trackDeckEmptyFilter({
+              categories: cachedPreferences?.categories ?? [],
+              date_option: cachedPreferences?.date_option ?? 'today',
+              travel_mode: cachedPreferences?.travel_mode ?? 'walking',
+              travel_constraint_value: cachedPreferences?.travel_constraint_value ?? 30,
+              session_mode: currentMode === 'solo' ? 'solo' : 'collab',
+              server_path: 'pool-empty',
+            });
+          }
+        } else {
+          mixpanelService.trackDeckExhausted({
+            cards_seen: currentCardIndex,
+            cards_saved: savedCards.length,
+            cards_dismissed: Math.max(0, currentCardIndex - savedCards.length),
+            session_mode: currentMode === 'solo' ? 'solo' : 'collab',
+          });
+        }
+        lastViewedCardIdRef.current = analyticsSentinel;
       }
+
+      const titleKey = isEmpty
+        ? 'cards:swipeable.no_matches_title'
+        : 'cards:swipeable.seen_everything';
+
       return (
         <>
           <View style={styles.emptyDeckContainer}>
             <View style={styles.emptyDeckContent}>
               <View style={styles.emptyDeckIconCircle}>
-                <Icon name="earth-outline" size={24} color="#eb7825" />
+                <Icon
+                  name={isEmpty ? 'filter-outline' : 'earth-outline'}
+                  size={24}
+                  color="#eb7825"
+                />
               </View>
-              <Text style={styles.emptyDeckTitle}>
-                {t('cards:swipeable.seen_everything')}
-              </Text>
+              <Text style={styles.emptyDeckTitle}>{t(titleKey)}</Text>
               <Text style={styles.emptyDeckSubtitle}>
-                {(() => {
-                  const hour = new Date().getHours();
-                  const isLateNight = hour >= 21 || hour < 6;
-                  // ORCH-0446 R8.3: Smart late night suggestion
-                  return isLateNight
-                    ? 'Most places are closing soon. Try "This Weekend" for more options.'
-                    : t('cards:swipeable.shift_vibe');
-                })()}
+                {isEmpty
+                  ? t('cards:swipeable.no_matches_subtitle')
+                  : (() => {
+                      const hour = new Date().getHours();
+                      const isLateNight = hour >= 21 || hour < 6;
+                      // ORCH-0446 R8.3: Smart late night suggestion (EXHAUSTED only)
+                      return isLateNight
+                        ? 'Most places are closing soon. Try "This Weekend" for more options.'
+                        : t('cards:swipeable.shift_vibe');
+                    })()}
               </Text>
 
               <View style={styles.emptyDeckActions}>
@@ -1603,7 +1842,8 @@ export default function SwipeableCards({
                   <Text style={styles.emptyDeckButtonText}>{t('cards:swipeable.shift_preferences')}</Text>
                 </TouchableOpacity>
 
-                {sessionSwipedCards.length > 0 && (
+                {/* Only EXHAUSTED shows "Review all cards" — EMPTY has nothing to review. */}
+                {!isEmpty && sessionSwipedCards.length > 0 && (
                   <TouchableOpacity
                     style={styles.emptyDeckOutlineButton}
                     onPress={() => setDismissedSheetVisible(true)}
@@ -1680,6 +1920,7 @@ export default function SwipeableCards({
           />
         </>
       );
+    }
 
     case 'WAITING_FOR_PARTICIPANTS':
       return (
@@ -1692,17 +1933,10 @@ export default function SwipeableCards({
         </View>
       );
 
-    case 'WAITING_FOR_PREFERENCES':
-      return (
-        <View style={styles.noCardsContainer}>
-          <Icon name="options-outline" size={48} color="#9CA3AF" />
-          <Text style={styles.noCardsTitle}>Setting up preferences</Text>
-          <Text style={styles.noCardsSubtitle}>
-            Participants are choosing their preferences. The deck will appear once ready.
-          </Text>
-        </View>
-      );
-
+    // ORCH-0507.c: 'WAITING_FOR_PREFERENCES' case removed; was dead code —
+    // declared in the union + rendered here but never returned by any selector.
+    // Load-in-progress now falls through to INITIAL_LOADING via the Layer 4
+    // null-check on allParticipantPrefs.
     case 'EMPTY_POOL':
       return (
         <View style={styles.noCardsContainer}>
@@ -1720,6 +1954,93 @@ export default function SwipeableCards({
               <Text style={styles.emptyPoolButtonText}>Adjust Preferences</Text>
             </TouchableOpacity>
           )}
+        </View>
+      );
+
+    case 'AUTH_REQUIRED':
+      // ORCH-0474: JWT sub unreadable — surface an honest retry banner
+      // instead of the misleading EMPTY "no spots match" copy. Fire a
+      // deck_server_error analytics event once per state entry.
+      if (lastViewedCardIdRef.current !== '__deck_auth_required__') {
+        mixpanelService.trackDeckServerError({
+          server_path: 'auth-required',
+          error_class: 'auth',
+          elapsed_ms: 0,
+          session_mode: currentMode === 'solo' ? 'solo' : 'collab',
+        });
+        lastViewedCardIdRef.current = '__deck_auth_required__';
+      }
+      return (
+        <View style={styles.emptyDeckContainer}>
+          <View style={styles.emptyDeckContent}>
+            <View style={styles.emptyDeckIconCircle}>
+              <Icon name="lock-closed-outline" size={24} color="#eb7825" />
+            </View>
+            <Text style={styles.emptyDeckTitle}>
+              {t('cards:swipeable.auth_error_title')}
+            </Text>
+            <Text style={styles.emptyDeckSubtitle}>
+              {t('cards:swipeable.auth_error_subtitle')}
+            </Text>
+            <View style={styles.emptyDeckActions}>
+              <TouchableOpacity
+                style={styles.emptyDeckButton}
+                onPress={() => refreshRecommendations(refreshKey)}
+                activeOpacity={0.7}
+                accessibilityLabel={t('cards:swipeable.try_again')}
+              >
+                <Icon name="refresh-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.emptyDeckButtonText}>
+                  {t('cards:swipeable.try_again')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      );
+
+    case 'PIPELINE_ERROR':
+      // ORCH-0474: Server pipeline threw and we have no stale cards to keep
+      // visible. Full-screen retry — distinct from EMPTY (seeding gap) and
+      // from ERROR (location/unknown). Fires deck_server_error with the
+      // sanitized error class carried in the state's `message` field.
+      if (lastViewedCardIdRef.current !== '__deck_pipeline_error__') {
+        mixpanelService.trackDeckServerError({
+          server_path: 'pipeline-error',
+          error_class: deckUIState.type === 'PIPELINE_ERROR'
+            ? (deckUIState.message || 'unknown')
+            : 'unknown',
+          elapsed_ms: 0,
+          session_mode: currentMode === 'solo' ? 'solo' : 'collab',
+        });
+        lastViewedCardIdRef.current = '__deck_pipeline_error__';
+      }
+      return (
+        <View style={styles.emptyDeckContainer}>
+          <View style={styles.emptyDeckContent}>
+            <View style={styles.emptyDeckIconCircle}>
+              <Icon name="cloud-offline-outline" size={24} color="#eb7825" />
+            </View>
+            <Text style={styles.emptyDeckTitle}>
+              {t('cards:swipeable.pipeline_error_title')}
+            </Text>
+            <Text style={styles.emptyDeckSubtitle}>
+              {t('cards:swipeable.pipeline_error_subtitle')}
+            </Text>
+            <View style={styles.emptyDeckActions}>
+              <TouchableOpacity
+                style={styles.emptyDeckButton}
+                onPress={() => refreshRecommendations(refreshKey)}
+                activeOpacity={0.7}
+                accessibilityLabel={t('cards:swipeable.try_again')}
+              >
+                <Icon name="refresh-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.emptyDeckButtonText}>
+                  {t('cards:swipeable.try_again')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       );
 
@@ -1746,6 +2067,31 @@ export default function SwipeableCards({
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
         <View style={styles.cardContainer}>
+          {/* ORCH-0474: Pipeline-error toast — only when stale cards remain
+              visible. Deck continues to render underneath so the user can keep
+              swiping what they have while they retry. Dismissible via retry. */}
+          {showPipelineErrorToast && (
+            <View
+              style={styles.pipelineErrorToast}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+            >
+              <Icon name="cloud-offline-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.pipelineErrorToastText} numberOfLines={2}>
+                {t('cards:swipeable.pipeline_error_toast')}
+              </Text>
+              <TouchableOpacity
+                onPress={() => refreshRecommendations(refreshKey)}
+                accessibilityLabel={t('cards:swipeable.retry')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.pipelineErrorToastAction}>
+                  {t('cards:swipeable.retry')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* View Previous overlay — appears after first swipe */}
           {sessionSwipedCards.length > 0 && (
             <TouchableOpacity
@@ -2740,6 +3086,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#6b7280",
+  },
+  // ORCH-0474: Pipeline-error toast overlay (shown above cards when stale
+  // cards are still visible and server threw on refresh). Non-blocking —
+  // user can keep swiping; tapping "Retry" re-fires the deck fetch.
+  pipelineErrorToast: {
+    position: "absolute",
+    top: 56,
+    left: 16,
+    right: 16,
+    zIndex: 100,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  pipelineErrorToastText: {
+    flex: 1,
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  pipelineErrorToastAction: {
+    color: "#eb7825",
+    fontSize: 13,
+    fontWeight: "600",
   },
   savedBadge: {
     flexDirection: "row",

@@ -29,7 +29,6 @@ AsyncStorage.getItem(LOCATION_CACHE_KEY).then(raw => {
 const fetchLocationCore = async (
   userId: string | undefined,
   currentMode: string,
-  refreshKey: number | string | undefined,
   customLat: number | null,
   customLng: number | null,
   customLocation: string | null | undefined,
@@ -109,7 +108,6 @@ const fetchLocationCore = async (
 const fetchUserLocation = async (
   userId: string | undefined,
   currentMode: string,
-  refreshKey: number | string | undefined,
   customLat: number | null,
   customLng: number | null,
   customLocation: string | null | undefined,
@@ -122,15 +120,14 @@ const fetchUserLocation = async (
     )
   );
   return Promise.race([
-    fetchLocationCore(userId, currentMode, refreshKey, customLat, customLng, customLocation, useGpsFlag),
+    fetchLocationCore(userId, currentMode, customLat, customLng, customLocation, useGpsFlag),
     timeoutPromise,
   ]);
 };
 
 export const useUserLocation = (
   userId: string | undefined,
-  currentMode: string,
-  refreshKey: number | string | undefined
+  currentMode: string
 ) => {
   // Read current preferences from React Query cache to get location fields.
   // CRITICAL: Normalize undefined → stable defaults so the query key does NOT change
@@ -145,9 +142,15 @@ export const useUserLocation = (
   const customLocation = cachedPrefs?.custom_location ?? null;
   const useGpsFlag = cachedPrefs?.use_gps_location ?? true;
 
+  // DO NOT add refreshKey (or any non-location preference signal) to this query key.
+  // See ORCH-0485 + I-LOCATION-INVALIDATE-ON-LOCATION-ONLY (Phase 2.1 of ORCH-0490).
+  // Location must only invalidate when a location-affecting field changes:
+  // customLat, customLng, customLocation, useGpsFlag. Adding refreshKey causes
+  // every preference change (category toggle, datetime, travel mode) to fire a
+  // fresh GPS resolve — 1-3s warm, up to 13s cold — blocking the deck fetch.
   const query = useQuery({
-    queryKey: ['userLocation', userId, currentMode, refreshKey, customLat, customLng, customLocation, useGpsFlag],
-    queryFn: () => fetchUserLocation(userId, currentMode, refreshKey, customLat, customLng, customLocation, useGpsFlag),
+    queryKey: ['userLocation', userId, currentMode, customLat, customLng, customLocation, useGpsFlag],
+    queryFn: () => fetchUserLocation(userId, currentMode, customLat, customLng, customLocation, useGpsFlag),
     enabled: true,
     staleTime: useGpsFlag ? 5 * 60 * 1000 : Infinity, // GPS: 5 min (re-resolve on city change); custom: never (address doesn't change)
     gcTime: 24 * 60 * 60 * 1000,

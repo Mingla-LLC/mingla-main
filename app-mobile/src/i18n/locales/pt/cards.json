@@ -3,6 +3,8 @@
   "swipeable.error_title": "Não funcionou",
   "swipeable.try_again": "Tentar novamente",
   "swipeable.seen_everything": "Você viu tudo que está disponível",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "Mude sua vibe para descobrir novos lugares, ou reveja o que já passou.",
   "swipeable.shift_preferences": "Alterar preferências",
   "swipeable.review_all_cards": "Rever todos os cards",
@@ -79,5 +81,11 @@
   "board.responses": "{{responded}}/{{total}} respostas",
   "board.vote_yes": "Votar Sim",
   "board.vote_no": "Votar Não",
-  "board.discuss": "Discutir ({{count}})"
+  "board.discuss": "Discutir ({{count}})",
+  "swipeable.auth_error_title": "Trouble signing in @needs_translation",
+  "swipeable.auth_error_subtitle": "We couldn't confirm your session. Tap retry to refresh. @needs_translation",
+  "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
+  "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
+  "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
+  "swipeable.retry": "Retry @needs_translation"
 }

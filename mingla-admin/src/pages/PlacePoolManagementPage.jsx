@@ -209,6 +209,7 @@ function OverviewTab({ scope, onScopeChange, pickerCities }) {
   const [catBreakdown, setCatBreakdown] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const mountedRef = useRef(true);
 
   const fetchData = useCallback(() => {
@@ -252,6 +253,37 @@ function OverviewTab({ scope, onScopeChange, pickerCities }) {
     fetchData();
     return () => { mountedRef.current = false; };
   }, [fetchData]);
+
+  // ORCH-0489: user-controlled MV refresh, replaces silently-failing pg_cron.
+  // admin_refresh_place_pool_mv() returns jsonb { success, row_count, duration_ms }.
+  // Expected RPC runtime: 30s–2min on the full 63k-row MV.
+  const handleRefreshStats = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const { data: result, error: rpcError } = await supabase.rpc("admin_refresh_place_pool_mv");
+      if (rpcError) {
+        const isAuthError = /not authorized/i.test(rpcError.message || "");
+        addToast({
+          variant: "error",
+          title: isAuthError ? "Admin access required" : "Couldn't refresh stats",
+          description: isAuthError
+            ? "Only active admin users can refresh stats."
+            : "The refresh didn't complete. It may still be running in the background.",
+        });
+        return;
+      }
+      const rowCount = (result?.row_count ?? 0).toLocaleString();
+      const durationSec = ((result?.duration_ms ?? 0) / 1000).toFixed(1);
+      addToast({
+        variant: "success",
+        title: "Stats refreshed",
+        description: `${rowCount} places in ${durationSec}s`,
+      });
+      fetchData();
+    } finally {
+      if (mountedRef.current) setRefreshing(false);
+    }
+  }, [addToast, fetchData]);
 
   if (loading) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Loading pool data...</div>;
   if (error) return <div className="text-sm text-[var(--color-error-700)] bg-[var(--color-error-50)] p-3 rounded-lg">{error}</div>;
@@ -305,7 +337,19 @@ function OverviewTab({ scope, onScopeChange, pickerCities }) {
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-[var(--color-text-secondary)]">Showing {scopeLabel}</p>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-[var(--color-text-secondary)]">Showing {scopeLabel}</p>
+        <Button
+          size="sm"
+          variant="secondary"
+          icon={RotateCcw}
+          loading={refreshing}
+          onClick={handleRefreshStats}
+          aria-label="Refresh admin stats now"
+        >
+          {refreshing ? "Refreshing…" : "Refresh stats"}
+        </Button>
+      </div>
 
       <div className="grid grid-cols-4 gap-4">
         <StatCard icon={Globe} label="Active Places" value={data.active_places} />

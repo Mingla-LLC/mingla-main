@@ -52,14 +52,14 @@ const CoachMarkContext = createContext<CoachMarkContextType | undefined>(undefin
 
 const LOADING_SENTINEL = -2;
 const TOUR_NOT_STARTED = 0;
-const TOUR_COMPLETED = 13;
+const TOUR_COMPLETED = 11;
 const TOUR_SKIPPED = -1;
 const START_DELAY_MS = 1500;
 const TAB_NAVIGATE_DELAY_MS = 400;
 const SCROLL_SETTLE_MS = 500;
 
 // Steps that need known-position scrolling (inside a ScrollView on profile tab)
-const SCROLL_STEPS = new Set([11, 12]);
+const SCROLL_STEPS = new Set([9, 10]);
 
 // ── Provider ────────────────────────────────────────────────────────────────
 

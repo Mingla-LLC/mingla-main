@@ -126,7 +126,7 @@
     "inviteCode": "Запросити Code",
     "inviteCodeDesc": "Поділитися a simple code"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Запросити Participants",
     "addFriendsTo": "Додати friends to \"{{name}}\"",
     "searchPlaceholder": "Пошук friends...",

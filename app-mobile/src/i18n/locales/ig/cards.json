@@ -3,6 +3,8 @@
   "swipeable.error_title": "Ọ naghị arụ ọrụ",
   "swipeable.try_again": "Nwaa Ọzọ",
   "swipeable.seen_everything": "Ị hụla ihe niile dịnụ",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "Gbanwee ụdị gị iji mepe ebe ọhụrụ, ma ọ bụ leghachi ihe ị gafere.",
   "swipeable.shift_preferences": "Gbanwee nhọrọ",
   "swipeable.review_all_cards": "Lelee kaadị niile",
@@ -79,5 +81,11 @@
   "board.responses": "{{responded}}/{{total}} nzaghachi",
   "board.vote_yes": "Vootu Ee",
   "board.vote_no": "Vootu Mba",
-  "board.discuss": "Kparịta ụka ({{count}})"
+  "board.discuss": "Kparịta ụka ({{count}})",
+  "swipeable.auth_error_title": "Trouble signing in @needs_translation",
+  "swipeable.auth_error_subtitle": "We couldn't confirm your session. Tap retry to refresh. @needs_translation",
+  "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
+  "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
+  "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
+  "swipeable.retry": "Retry @needs_translation"
 }

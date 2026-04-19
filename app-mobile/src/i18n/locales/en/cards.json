@@ -3,6 +3,8 @@
   "swipeable.error_title": "That didn't land",
   "swipeable.try_again": "Try Again",
   "swipeable.seen_everything": "You've seen everything available",
+  "swipeable.no_matches_title": "No spots match right now",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options.",
   "swipeable.shift_vibe": "Shift your vibe to unlock new spots, or look back at what you've been through.",
   "swipeable.shift_preferences": "Shift preferences",
   "swipeable.review_all_cards": "Review all cards",
@@ -16,7 +18,6 @@
   "swipeable.pass": "PASS",
   "swipeable.saved": "Saved",
   "swipeable.scheduled": "Scheduled",
-
   "expanded.customized": "Customized",
   "expanded.avg": "{{rating}} avg",
   "expanded.suggested": "Suggested",
@@ -57,7 +58,6 @@
   "expanded.collapse_stop_details": "Collapse stop details",
   "expanded.expand_stop_details": "Expand stop details",
   "expanded.close_paywall": "Close paywall",
-
   "board.session_cards": "Session Cards",
   "board.of": "{{current}} of {{total}}",
   "board.no_cards": "No cards in this session yet",
@@ -81,5 +81,11 @@
   "board.responses": "{{responded}}/{{total}} responses",
   "board.vote_yes": "Vote Yes",
   "board.vote_no": "Vote No",
-  "board.discuss": "Discuss ({{count}})"
+  "board.discuss": "Discuss ({{count}})",
+  "swipeable.auth_error_title": "Trouble signing in",
+  "swipeable.auth_error_subtitle": "We couldn't confirm your session. Tap retry to refresh.",
+  "swipeable.pipeline_error_title": "Couldn't load your deck",
+  "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try.",
+  "swipeable.pipeline_error_toast": "We had trouble loading fresh cards.",
+  "swipeable.retry": "Retry"
 }

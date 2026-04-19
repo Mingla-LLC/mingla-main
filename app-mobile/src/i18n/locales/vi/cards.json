@@ -3,6 +3,8 @@
   "swipeable.error_title": "Không thành công",
   "swipeable.try_again": "Thử lại",
   "swipeable.seen_everything": "Bạn đã xem hết tất cả",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "Thay đổi sở thích để mở khóa địa điểm mới, hoặc xem lại những gì đã qua.",
   "swipeable.shift_preferences": "Thay đổi sở thích",
   "swipeable.review_all_cards": "Xem lại tất cả thẻ",
@@ -79,5 +81,11 @@
   "board.responses": "{{responded}}/{{total}} phản hồi",
   "board.vote_yes": "Bình chọn Có",
   "board.vote_no": "Bình chọn Không",
-  "board.discuss": "Thảo luận ({{count}})"
+  "board.discuss": "Thảo luận ({{count}})",
+  "swipeable.auth_error_title": "Trouble signing in @needs_translation",
+  "swipeable.auth_error_subtitle": "We couldn't confirm your session. Tap retry to refresh. @needs_translation",
+  "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
+  "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
+  "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
+  "swipeable.retry": "Retry @needs_translation"
 }

@@ -3,6 +3,8 @@
   "swipeable.error_title": "Bai yi ba",
   "swipeable.try_again": "Sake Gwadawa",
   "swipeable.seen_everything": "Ka ga duk abin da ke akwai",
+  "swipeable.no_matches_title": "No spots match right now @needs_translation",
+  "swipeable.no_matches_subtitle": "Try widening your categories, distance, or date to see more options. @needs_translation",
   "swipeable.shift_vibe": "Canja yanayin ka don buɗe sababbin wurare, ko duba abin da ka wuce.",
   "swipeable.shift_preferences": "Canja zaɓinka",
   "swipeable.review_all_cards": "Duba duk katuna",
@@ -79,5 +81,11 @@
   "board.responses": "{{responded}}/{{total}} amsa",
   "board.vote_yes": "Jefa Eh",
   "board.vote_no": "Jefa A'a",
-  "board.discuss": "Tattauna ({{count}})"
+  "board.discuss": "Tattauna ({{count}})",
+  "swipeable.auth_error_title": "Trouble signing in @needs_translation",
+  "swipeable.auth_error_subtitle": "We couldn't confirm your session. Tap retry to refresh. @needs_translation",
+  "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
+  "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
+  "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
+  "swipeable.retry": "Retry @needs_translation"
 }

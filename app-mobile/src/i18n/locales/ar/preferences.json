@@ -30,8 +30,6 @@
   "travel_limit.custom_placeholder": "5 – 120 دقيقة",
   "location.use_current": "استخدم موقعي الحالي",
   "location.search_placeholder": "ابحث عن نقطة انطلاق...",
-  "location.gps_helper": "حددنا موقعك. استرخِ.",
-  "location.manual_helper": "ضع دبوساً في أي مكان. أو ارجع لـ GPS.",
   "location.pro_feature": "ميزة Pro — استكشف من أي مكان",
   "location.searching": "جارٍ البحث...",
   "sheet.title": "أجواؤك",

@@ -1,12 +1,20 @@
 # Invariant Registry
 
-> Last updated: 2026-03-30
+> Last updated: 2026-04-19 (AH-148 Phase 2.5 verification — added `I-REFRESHKEY-PERSISTED` (AH-142 documentation backfill) and `I-MODE-SESSION-PERSISTS-COLD-LAUNCH` enforced via `mingla_last_mode` per DEC-031)
 > Source: Mingla Orchestrator skill references
+
+## Architecture / Response-Shape Invariants
+
+| ID | Invariant | Layer | Enforcement | Status |
+|----|-----------|-------|-------------|--------|
+| **INV-042** | No edge-function response may conflate runtime failures with data-absence signals. Runtime errors (auth, exceptions, timeouts) and data signals (empty pool, filtered to zero) must use mutually-exclusive `path` values. A client that cannot distinguish "server crashed" from "no data" cannot implement correct retry/recovery UX. | Edge function | Per-path explicit `return` branches in `discover-cards/index.ts` (`auth-required` / `pool-empty` / `pipeline-error` / `pipeline`). Protective comment at `pool-empty` return prohibits fall-through additions. Tester T-06 runtime-verified the response shape. | **Enforced (ORCH-0474, 2026-04-17, QA cycle 1 PASS)** |
+| **INV-043** | Every edge-function code path must `return` explicitly. No unconditional fall-throughs that hide which upstream branch is responsible. If a new exit condition is added, it must have its own explicit `return` with a unique `sourceBreakdown.path` value. | Edge function | Structural comment at `discover-cards/index.ts` file header names INV-043 and ORCH-0474. Current deployed code (v118) has zero fall-throughs — every exit returns. | **Enforced (ORCH-0474, 2026-04-17, QA cycle 1 PASS)** |
 
 ## Data Integrity Invariants
 
 | ID | Invariant | Layer | Enforcement | Status |
 |----|-----------|-------|-------------|--------|
+| **I-EMPTY-CACHE-NONPERSIST** | `deck-cards` React Query responses with `cards.length === 0` MUST NOT be dehydrated to AsyncStorage. `staleTime: Infinity` is only safe because of this guard. Pairing Infinity staleTime + persistence + response-can-be-empty without the guard produces permanent warm-session cache poisoning. Extended by ORCH-0474 to cover all four non-populated paths (pool-empty, filtered pipeline, auth-required, pipeline-error). | App root + Hook | `shouldDehydrateQuery` at `app-mobile/app/index.tsx:2968-2983`; protective comment at `app-mobile/src/hooks/useDeckCards.ts:165-174` | Enforced (ORCH-0469 2026-04-17; ORCH-0474 coverage extension 2026-04-17) |
 | INV-D01 | Every card in card_pool has at least one photo URL | DB + Edge | NOT NULL + validation | Enforced |
 | INV-D02 | Every card_pool entry has city and country TEXT populated | DB | NOT NULL + backfill migration | Enforced (Commit 5db8dbe8) |
 | INV-D03 | Curated cards reference only active place_pool entries | DB | FK + cascade deactivation | Enforced |
@@ -30,6 +38,32 @@
 | INV-S06 | Preferences to deck pipeline has no race condition | Code | No invalidateQueries; prefsHash matching | Enforced (Commit 79d0905b) |
 | INV-S07 | Query keys contain ALL parameters that affect result | Code | Key factory with all dependencies | Enforced (Commit 846e7cce) |
 | INV-S08 | Optimistic updates rollback on mutation failure | Code | onError handlers | Partial (16 mutations covered) |
+| **I-REFRESHKEY-PERSISTED** | `preferencesRefreshKey` (the AsyncStorage swipe-state key discriminant for `mingla_card_state_${mode}_${refreshKey}_*`) MUST be persisted across cold launches. Previous pattern (local `useState(0)` in AppStateManager) reset to 0 on cold launch, orphaning prior swipe-state AsyncStorage keys → deck reset to card 1. | Code | Zustand `partialize` includes `preferencesRefreshKey` at `appStore.ts:255`; `onRehydrateStorage` null-default guard at `appStore.ts:277-279`; `clearUserData` resets to 0 per Constitutional #6 at `appStore.ts:232`. | **Enforced (ORCH-0504 via AH-142, 2026-04-20; documentation backfill 2026-04-19 per AH-148 §6 Discovery 4)** |
+| **I-MODE-SESSION-PERSISTS-COLD-LAUNCH** | User's `currentMode` (`'solo'` or collab-session name) and active `sessionId` MUST survive app kill + cold launch so the user reopens into the mode+session they left. Must NOT compromise ORCH-0209's DB-authoritative `currentSession` object model — only the mode name + session UUID persist; the full `CollaborationSession` object is re-fetched from DB on every open. | Code | `safeAsyncStorageSet("mingla_last_mode", { mode, sessionId })` at `AppStateManager.tsx:168,437`; read at line 391; verified against live DB via `SessionService.getActiveSession` at lines 429-453 with graceful fallback to Solo on deleted session. Logout swept via prefix match `key.startsWith("mingla_")` at `AppStateManager.tsx:792`. | **Enforced (existing — formalized 2026-04-19 via DEC-031 replacing retracted DEC-026)** |
+
+### I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE
+
+**Established:** 2026-04-18 (ORCH-0503 v3)
+**Location:** `RecommendationsContext.tsx` sync-effect flag-on `batchSeed === 0` branch
+
+**Statement:** When the provider's deck-sync effect processes a non-placeholder
+`deckCards` array whose ID set is a strict superset of the accumulated prior ID
+set (including the equal-cardinality and growing-cardinality sub-cases), it
+MUST adopt `deckCards` verbatim as the new `recommendations` /
+`accumulatedCardsRef`. Prev-preserving merge fallbacks (e.g.,
+`[...prev, ...toAppend]`) are INVALID in this branch because React Query
+collapses partial-2 and queryFn-resolve notifications under React 18 batching —
+cardinality alone cannot distinguish mid-partial growth from final-interleave
+arrival.
+
+**Preserved by:**
+- `const merged = deckCards` inside the strict-superset branch (single-line adoption)
+- `__DEV__` runtime guard comparing `merged[0..3]` to `deckCards[0..3]`
+- Grep invariant: `grep '\[\.\.\.prev, \.\.\.toAppend\]' RecommendationsContext.tsx` → 0 matches
+
+**Verified by:** SC-0503v3-02 (device), SC-0503v3-09 (structural grep), SC-0503v3-11 (dev runtime guard present)
+**Closed ORCH-ID:** ORCH-0503
+**Related:** I-PROGRESSIVE-DELIVERY-EXPANSION-NOT-REPLACEMENT (ORCH-0498)
 
 ## Auth & Session Invariants
 

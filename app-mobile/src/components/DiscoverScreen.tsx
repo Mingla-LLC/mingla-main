@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useTranslation } from 'react-i18next';
-// ORCH-0436: useCoachMark import removed — map coach mark no longer needed
+import { useCoachMark } from "../hooks/useCoachMark";
 import {
   View,
   Text,
@@ -569,7 +569,7 @@ export default function DiscoverScreen({
 }: DiscoverScreenProps) {
   const { t } = useTranslation(['discover', 'common']);
   const insets = useSafeAreaInsets();
-  // ORCH-0436: coachMap removed — map no longer rendered
+  const coachDiscoverFeed = useCoachMark(7, 0);
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
   // Navigation state for scrolling between expanded cards (e.g., paired saves list)
@@ -703,7 +703,10 @@ export default function DiscoverScreen({
   }, [preferencesRefreshKey]);
 
   // Fallback: saved location preference (only used if device GPS is unavailable)
-  const { data: userLocationData } = useUserLocation(user?.id, "solo", preferencesRefreshKey);
+  // ORCH-0490 Phase 2.1: `preferencesRefreshKey` removed from useUserLocation call.
+  // Location no longer invalidates on non-location preference changes. See
+  // I-LOCATION-INVALIDATE-ON-LOCATION-ONLY.
+  const { data: userLocationData } = useUserLocation(user?.id, "solo");
   const fallbackLat = userLocationData?.lat;
   const fallbackLng = userLocationData?.lng;
 
@@ -2061,6 +2064,7 @@ export default function DiscoverScreen({
             <View style={styles.nightOutContent}>
               {/* Filter Button */}
               <TouchableOpacity
+                ref={coachDiscoverFeed.targetRef as any}
                 style={styles.filterButton}
                 onPress={handleOpenFilterModal}
                 activeOpacity={0.7}

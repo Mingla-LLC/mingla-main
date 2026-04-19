@@ -30,8 +30,6 @@
   "travel_limit.custom_placeholder": "5 – 120분",
   "location.use_current": "현재 위치 사용",
   "location.search_placeholder": "출발 장소 검색...",
-  "location.gps_helper": "위치를 잡았어요. 편하게 계세요.",
-  "location.manual_helper": "아무 곳이나 핀을 놓으세요. GPS로 돌아갈 수도 있어요.",
   "location.pro_feature": "Pro 기능 — 어디서든 탐색",
   "location.searching": "검색 중...",
   "sheet.title": "내 바이브",

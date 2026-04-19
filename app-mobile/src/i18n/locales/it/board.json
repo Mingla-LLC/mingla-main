@@ -126,7 +126,7 @@
     "inviteCode": "Codice Invito",
     "inviteCodeDesc": "Condividi un codice semplice"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Invita Partecipanti",
     "addFriendsTo": "Aggiungi friends to \"{{name}}\"",
     "searchPlaceholder": "Cerca amici...",

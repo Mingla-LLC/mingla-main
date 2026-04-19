@@ -40,13 +40,53 @@ const EXCLUSION_KEYWORDS: Record<string, string[]> = {
   education: ["school","daycare","preschool","tutoring","university campus"],
   grooming: ["threading","waxing studio","lash extension","microblading","permanent makeup","nail salon","hair salon","barber","kosmetikstudio","institut de beauté","beauty parlour","tanning studio","brow bar","beauty salon","beauty lounge","beauty world","beauty bar","med spa","medspa","aesthetics spa","aesthetic clinic","beauty studio"],
   fitness: ["gym","fitness center","crossfit","yoga studio","pilates","martial arts dojo","boxing gym"],
-  kids: ["kids play","children's","indoor playground","kidz","chuck e. cheese","kidzone","enfants","kinder","bambini","infantil","splash pad","soft play"],
+  // ORCH-0460: kids list expanded from 12 to 37 patterns. Catches "Adventure Play Centre",
+  // "Toddler Bounce World", "Jungle Gym", "Fun Zone" etc. that were slipping through.
+  kids: [
+    "kids play","children's","indoor playground","kidz","chuck e. cheese","kidzone",
+    "enfants","kinder","bambini","infantil","splash pad","soft play",
+    "toddler","baby","babies","bounce house","bouncy castle",
+    "bounce ","bouncy","trampoline park","ball pit",
+    "play center","play centre","playland","play land",
+    "play zone","play world","play park","funland",
+    "jungle gym","adventure playground","play space","playspace",
+    "little ones","mommy and me","mommy & me","fun zone","funzone",
+    "discovery zone","little explorers","tiny town","sensory play",
+    "kids kingdom","imagination station",
+  ],
   utilitarian: ["gas station","car wash","laundromat","storage unit","parking garage","auto repair","car dealership"],
   delivery: ["ghost kitchen","delivery only","cloud kitchen","virtual kitchen"],
   food_truck: ["food truck","food cart","mobile kitchen"],
   not_venue: ["real estate","insurance","accounting","law firm","consulting","contractor","plumber","electrician","production company","booking agency","talent agency","event management"],
   gambling: ["spielhalle","betting shop","slot machine","gambling hall"],
   allotment: ["kleingartenanlage","kleingarten","kolonie","schrebergarten","allotment garden","jardin partagé","community garden","volkstuinen"],
+  // ORCH-0460: Sports parks / recreation centers (Bethesda Park type).
+  // These match venue names that reveal athletic/recreation purpose regardless of Google type.
+  sports_recreation: [
+    "sports park","recreation center","rec center","recreation centre",
+    "athletic center","athletic complex","sports complex",
+    "community pool","public pool","sports field","ball field",
+    "baseball field","softball field","soccer field","football field",
+    "tennis center","swim center","aquatic center","fitness park",
+    "sportplatz","polideportivo","centro deportivo","complexe sportif",
+    "leisure centre","leisure center","recreation ground","sports ground",
+    "playing field",
+  ],
+  // ORCH-0460: Community / civic venues (not date spots).
+  community_civic: [
+    "community center","community centre","civic center","civic centre",
+    "recreation department","parks and recreation","parks & recreation",
+    "senior center","senior centre","youth center","youth centre",
+    "community hall","town hall","village hall","gemeindezentrum",
+    "maison de quartier","centro comunitario","centre communautaire",
+    "neighborhood center","neighbourhood centre",
+  ],
+  // ORCH-0460: Tobacco / hookah lounges (not date spots even with food service).
+  tobacco_hookah: [
+    "tobacco","cigar lounge","cigar bar","hookah lounge",
+    "shisha","shisha lounge","hookah cafe","nargile",
+    "chicha","tabak","tabac",
+  ],
 };
 
 const CASUAL_CHAIN_DEMOTION = [
@@ -64,9 +104,33 @@ const BLOCKED_PRIMARY_TYPES = new Set([
 ]);
 
 // ── Flowers: primary_types that must NEVER get the flowers category ─────────
-const FLOWERS_BLOCKED_TYPES = new Set([
+// ORCH-0460 rework v2 (2026-04-17): Split into PRIMARY vs SECONDARY sets.
+// Root cause of P0 in v1: `food_store` is a Google generic secondary type on every
+// supermarket (Whole Foods, Trader Joe's, Carrefour, Waitrose, Safeway, Publix).
+// When v1 expanded the FLOWERS_BLOCKED_TYPES check to the full `types` array, it
+// stripped flowers from 168 legitimate supermarkets — the exact ones the GPT prompt
+// names as canonical "keep flowers" examples. Only 1 actual garden store was caught.
+//
+// Fix: keep the broad list for `primary_type` checks (unchanged behavior for places
+// where the food/garden identity IS primary), but use a TIGHT list for types-array
+// matching that excludes generic parent types appearing on every supermarket.
+const FLOWERS_BLOCKED_PRIMARY_TYPES = new Set([
   "garden_center", "garden", "farm", "supplier", "cemetery", "funeral_home",
   "restaurant", "meal_takeaway", "bar", "food_store",
+]);
+
+// For types-array check only. Every entry here MUST be a type that NEVER appears
+// on a legitimate supermarket-with-florals. The excluded entries below (commented)
+// are kept out deliberately — adding any of them re-introduces the P0.
+const FLOWERS_BLOCKED_SECONDARY_TYPES = new Set([
+  "garden_center", "farm", "cemetery", "funeral_home",
+  // Deliberately NOT included (would false-positive on legit supermarkets):
+  //   "food_store"    — on every supermarket (168 false positives caught by QA in v1)
+  //   "garden"        — too generic (matches botanical_garden, rose_garden etc.)
+  //   "supplier"      — too generic
+  //   "restaurant"    — some supermarket/florist hybrids have it
+  //   "meal_takeaway" — same as above
+  //   "bar"           — ambiguous; wine bars with florals exist internationally
 ]);
 
 // ── Delivery-only patterns (strip flowers if matched + not a florist) ───────
@@ -76,7 +140,102 @@ const DELIVERY_ONLY_PATTERNS = [
   "blumen lieferung", "entrega de flores",
 ];
 
+// ── ORCH-0460: Garden store name patterns (strip flowers from non-florist garden stores) ──
+// Garden centers often get primary_type='florist' from Google because they sell cut
+// flowers as a side business. Real florists don't have these name patterns.
+const GARDEN_STORE_PATTERNS = [
+  "garden center", "garden centre", "garden store",
+  "nursery", "plant nursery", "garden nursery",
+  "lawn and garden", "lawn & garden",
+  "landscaping", "landscape supply",
+  "home and garden", "home & garden",
+  "gartencenter", "jardinerie",
+  "vivero", "vivaio", "tuincentrum",
+  "baumarkt", "home depot", "lowe's", "lowes",
+  "bunnings", "b&q", "leroy merlin", "hornbach",
+  "obi ", "castorama", "gamm vert",
+];
+
+// ── ORCH-0460: Category-specific types-array checks ─────────────────────────
+// These sets power the "check the full types array, not just primary_type" fix.
+// Root cause of all category leaks: Google returns primary_type=X but the `types`
+// array also contains Y (e.g. restaurant + cultural_landmark). The old logic only
+// checked primary_type, missing the secondary identity. These sets detect that drift.
+
+// Creative Arts: a restaurant/bar/cafe/store is NEVER arts, even in a historic building.
+const CREATIVE_ARTS_BLOCKED_TYPES = new Set([
+  // Restaurants (any cuisine)
+  "restaurant", "american_restaurant", "asian_restaurant", "barbecue_restaurant",
+  "brazilian_restaurant", "chinese_restaurant", "french_restaurant",
+  "german_restaurant", "greek_restaurant", "indian_restaurant",
+  "italian_restaurant", "japanese_restaurant", "korean_restaurant",
+  "mexican_restaurant", "seafood_restaurant", "spanish_restaurant",
+  "thai_restaurant", "turkish_restaurant", "vietnamese_restaurant",
+  "fine_dining_restaurant", "fast_food_restaurant", "brunch_restaurant",
+  "breakfast_restaurant", "hamburger_restaurant", "pizza_restaurant",
+  "ramen_restaurant", "sushi_restaurant", "steak_house", "bistro",
+  "diner", "buffet_restaurant", "gastropub",
+  // Bars / drink
+  "bar", "cocktail_bar", "wine_bar", "lounge_bar", "pub", "brewery",
+  "brewpub", "beer_garden", "sports_bar", "hookah_bar", "irish_pub",
+  "night_club", "winery", "bar_and_grill",
+  // Cafes
+  "cafe", "coffee_shop", "tea_house", "bakery", "ice_cream_shop",
+  // Retail
+  "convenience_store", "grocery_store", "supermarket", "store",
+  "department_store", "shopping_mall",
+  // Other non-arts
+  "hotel", "motel", "gas_station", "gym", "fitness_center",
+]);
+
+// Movies & Theatre: a bar with live music is NOT movies_theatre, it's drinks_and_music.
+const MOVIES_THEATRE_BLOCKED_TYPES = new Set([
+  "restaurant", "fine_dining_restaurant", "fast_food_restaurant",
+  "brunch_restaurant", "breakfast_restaurant", "bistro", "diner",
+  "cafe", "coffee_shop", "tea_house", "bakery", "ice_cream_shop",
+  "bar", "cocktail_bar", "wine_bar", "lounge_bar", "pub", "brewery",
+  "brewpub", "beer_garden", "sports_bar", "hookah_bar", "irish_pub",
+  "night_club", "winery", "bar_and_grill", "gastropub",
+  "convenience_store", "grocery_store", "supermarket", "store",
+  "department_store", "shopping_mall",
+  "hotel", "motel", "gas_station", "gym", "fitness_center",
+  "amusement_center", "bowling_alley", "video_arcade",
+]);
+
+// Brunch, Lunch & Casual: if types array reveals bar/play/tobacco/sports/farm,
+// strip unless primary_type is a REAL restaurant type. Keeps restaurants with
+// bar inside, strips bars-with-food.
+const BRUNCH_CASUAL_BLOCKED_TYPES = new Set([
+  // Bars
+  "bar", "cocktail_bar", "wine_bar", "lounge_bar", "pub", "brewery",
+  "brewpub", "beer_garden", "sports_bar", "hookah_bar", "irish_pub",
+  "night_club", "winery", "bar_and_grill",
+  // Play/entertainment
+  "amusement_center", "amusement_park", "bowling_alley", "video_arcade",
+  "go_karting_venue", "paintball_center", "miniature_golf_course",
+  "adventure_sports_center", "casino", "karaoke",
+  // Sports/civic
+  "community_center", "sports_complex", "sports_club", "athletic_field",
+  "stadium", "arena", "swimming_pool",
+  // Tobacco/non-restaurant food
+  "tobacco_shop",
+  "food_court", "cafeteria",
+  // Farms
+  "farm", "ranch",
+]);
+
+// Play: sports parks (Bethesda), farms (Phillips), kids' centers, community centers.
+const PLAY_BLOCKED_SECONDARY_TYPES = new Set([
+  "community_center", "sports_complex", "sports_club",
+  "athletic_field", "swimming_pool", "playground",
+  "indoor_playground", "childrens_camp", "farm", "ranch",
+  "sports_coaching", "sports_school", "dog_park",
+]);
+
 // ── Restaurant primary_types (for fine_dining promotion) ────────────────────
+// ORCH-0460: Expanded with 15 world cuisine types + gastropub/bistro so they can
+// qualify for auto-promotion to upscale_fine_dining when EXPENSIVE+4.0 or
+// VERY_EXPENSIVE+4.0 thresholds are met.
 const RESTAURANT_TYPES = new Set([
   "restaurant", "fine_dining_restaurant", "american_restaurant",
   "asian_restaurant", "asian_fusion_restaurant", "barbecue_restaurant",
@@ -92,22 +251,44 @@ const RESTAURANT_TYPES = new Set([
   "vegan_restaurant", "vegetarian_restaurant", "vietnamese_restaurant",
   "steak_house", "bistro", "british_restaurant", "belgian_restaurant",
   "fondue_restaurant", "oyster_bar_restaurant",
+  // ORCH-0460: new cuisine types for auto-promotion eligibility
+  "basque_restaurant", "persian_restaurant", "scandinavian_restaurant",
+  "argentinian_restaurant", "swiss_restaurant", "european_restaurant",
+  "australian_restaurant", "tapas_restaurant",
+  "gastropub", "dim_sum_restaurant", "filipino_restaurant",
+  "soul_food_restaurant", "cuban_restaurant", "hawaiian_restaurant",
 ]);
 
-// ── Category Exclusivity: upscale_fine_dining and brunch_lunch_casual are mutually exclusive ─
-// ORCH-0434: Updated from fine_dining/casual_eats to new slug names.
-function enforceExclusivity(categories: string[]): string[] {
-  if (categories.includes("upscale_fine_dining")) {
-    return categories.filter(c => c !== "brunch_lunch_casual");
-  }
-  return categories;
-}
+// ── ORCH-0460: Mutual exclusivity REMOVED ───────────────────────────────────
+// A restaurant that qualifies for both upscale_fine_dining AND brunch_lunch_casual
+// now gets BOTH categories. Example: Nobu (upscale dinner + casual lunch service).
+// Previous enforceExclusivity() function deleted. Its 3 call sites were modified
+// to pass categories through directly.
+
+// ── ORCH-0460: Upscale Chain Protection ─────────────────────────────────────
+// These chains are documented in category-mapping.md as pass-the-quality-test
+// fine dining chains. This whitelist prevents the casual chain demotion logic
+// from accidentally stripping upscale_fine_dining if someone adds one of these
+// to CASUAL_CHAIN_DEMOTION by mistake.
+const UPSCALE_CHAIN_PROTECTION = [
+  "nobu", "morton's", "nusr-et", "salt bae", "perry's steakhouse",
+  "capital grille", "ruth's chris", "fleming's", "eddie v's",
+  "del frisco's", "mastro's", "stk ", "boa steakhouse",
+  "peter luger", "smith & wollensky", "the palm",
+  "lawry's", "cut by wolfgang", "bazaar", "jean-georges",
+  "le bernardin", "eleven madison", "alinea", "per se",
+];
 
 const SOCIAL_DOMAINS = [
   "google.com","maps.google.com","facebook.com","instagram.com","twitter.com","x.com","yelp.com","tripadvisor.com","foursquare.com","youtube.com","tiktok.com","linkedin.com","pinterest.com","fresha.com","treatwell.com","treatwell.co.uk","treatwell.de","groupon.com","booksy.com","planity.com","vagaro.com","classpass.com","mindbody.com","wikipedia.org","wikidata.org","yellowpages.com","yell.com","pagesjaunes.fr","dasoertliche.de",
 ];
 
 // ORCH-0434: GPT prompt rewritten with new 10-category system.
+// ORCH-0460: 5 category definitions updated (brunch/casual tightened to real restaurants only,
+// upscale loosened to allow high-end tapas/bistros/wine bars, creative_arts excludes food/drink,
+// movies_theatre requires DEDICATED venue not bars-with-music, play excludes sports/farms/community).
+// Mutual exclusivity between upscale_fine_dining and brunch_lunch_casual REMOVED — a restaurant
+// can qualify for both if it serves both casual lunch and upscale dinner (e.g. Nobu, Spago).
 const SYSTEM_PROMPT = `You classify places for Mingla, a dating app, into 10 categories.
 
 CATEGORIES (* = must have candidate_website to qualify):
@@ -119,30 +300,31 @@ CORE RULES:
 - A museum with a cafe is creative_arts, NOT brunch_lunch_casual.
 - A park with a kiosk is nature, NOT drinks_and_music.
 - If a place fits a category, ASSIGN it. Do not reject places that clearly match a category definition.
+- A place CAN qualify for multiple categories if it genuinely fits each — assign all that apply.
 
 CATEGORY DEFINITIONS:
 
-UPSCALE_FINE_DINING: A restaurant that feels like a special occasion. The combination of: upscale ambience, high-end cuisine, reservation culture, and elevated service. You do NOT need to find the chef's name in the search results — many acclaimed restaurants don't lead with the chef in Google snippets. Signals: very high ratings (4.5+) with upscale reviews, $$$/$$$$ pricing, words like "upscale", "elegant", "tasting menu", "sommelier", "Michelin", "acclaimed", "refined". Examples that ARE upscale_fine_dining: Zuma, Manhatta, Nobu, Le Bernardin, Alinea, any Michelin-starred restaurant, any restaurant described as upscale/elegant/refined with high ratings. Examples that are NOT upscale_fine_dining: wine bars, tapas bars, bistros, brasseries, gastropubs, charming but casual restaurants. PRICE_LEVEL_VERY_EXPENSIVE is a very strong signal. Unless clearly casual, a VERY_EXPENSIVE restaurant with 4.0+ rating should get upscale_fine_dining. When genuinely uncertain AND price is MODERATE or INEXPENSIVE or unknown, default to brunch_lunch_casual. IMPORTANT: upscale_fine_dining and brunch_lunch_casual are MUTUALLY EXCLUSIVE. If a place qualifies for upscale_fine_dining, do NOT also assign brunch_lunch_casual. If it also has a bar, it can be upscale_fine_dining + drinks_and_music, but never upscale_fine_dining + brunch_lunch_casual.
+UPSCALE_FINE_DINING: A restaurant, tapas bar, bistro, or wine bar that feels lavish, bougie, special-occasion. The combination of: upscale ambience, high-end cuisine, reservation culture, and elevated service. The question is not "what type of venue is this?" but "does this feel lavish, bougie, special-occasion?" High-end tapas bars, acclaimed bistros, and upscale wine bars with substantial food menus CAN qualify if they pass the special-occasion test. Signals: very high ratings (4.5+) with upscale reviews, $$$/$$$$ pricing, words like "upscale", "elegant", "tasting menu", "sommelier", "Michelin", "acclaimed", "refined". Examples that ARE upscale_fine_dining: Zuma, Manhatta, Nobu, Le Bernardin, Alinea, Tickets (Barcelona tapas), Bazaar by José Andrés, Bistro Paul Bert, any Michelin-starred restaurant, any restaurant described as upscale/elegant/refined with high ratings. Examples that are NOT upscale_fine_dining: casual neighborhood bistros with $15 mains, standard-price brasseries, basic gastropubs, pure cocktail bars with no food menu, charming but casual restaurants. The venue MUST serve food — a pure cocktail bar with no food menu is drinks_and_music regardless of how upscale it is. PRICE_LEVEL_VERY_EXPENSIVE is a very strong signal. Unless clearly casual, a VERY_EXPENSIVE restaurant with 4.0+ rating should get upscale_fine_dining. When genuinely uncertain AND price is MODERATE or INEXPENSIVE or unknown, default to brunch_lunch_casual. A restaurant can qualify for BOTH upscale_fine_dining AND brunch_lunch_casual if it serves both a special-occasion experience AND a casual lunch/brunch menu. Example: Nobu serves fine dining dinner and casual lunch — assign both categories. If both apply, use both.
 
-BRUNCH_LUNCH_CASUAL: Any real sit-down restaurant where you'd grab a meal. Includes chain restaurants with table service (Olive Garden, IHOP, Outback). Includes food halls and food markets with vendors. NO fast food/counter-service/grab-and-go chains (McDonald's, Subway, Starbucks). Wine bars and tapas bars with food → brunch_lunch_casual + drinks_and_music.
+BRUNCH_LUNCH_CASUAL: A REAL sit-down restaurant with tables, waiters, and a menu. The kind of place you'd say "let's grab dinner" or "let's do brunch." Includes chain restaurants with table service (Olive Garden, IHOP, Outback, Denny's, Chili's, TGI Fridays). Includes ALL cuisines (Persian, Filipino, Cuban, dim sum, soul food, etc.). NO fast food/counter-service/grab-and-go chains (McDonald's, Subway, Starbucks). NO food trucks. NO food courts. NO market stalls or food halls (those are markets, not restaurants). NO delis/counter-service spots. NO cafeterias. NO campus dining halls. A bar or pub that serves food is drinks_and_music, NOT brunch_lunch_casual — the test is whether the PRIMARY identity is a restaurant. A hookah lounge or cigar bar with appetizers is NOT brunch_lunch_casual (that's tobacco/drinks, reject or drinks_and_music). A bowling alley with a restaurant inside is play, NOT brunch_lunch_casual. A wine bar with tapas is drinks_and_music, NOT brunch_lunch_casual. A tobacco shop with a kitchen is NOT brunch_lunch_casual. Only assign brunch_lunch_casual if you would describe the place as "a restaurant" first and foremost.
 
 DRINKS_AND_MUSIC: Bars, cocktail bars, wine bars, breweries, beer gardens, pubs, speakeasies, rooftop bars, nightclubs, live music venues, karaoke bars, hookah bars, wineries. If the primary draw is drinks, music, or social nightlife atmosphere, it's drinks_and_music.
 
-ICEBREAKERS: Cafes, coffee shops, tea houses, bakeries with seating, bookstore cafes, ice cream parlors, juice bars. Any casual low-pressure spot for a 45-minute conversation. Perfect for first dates or getting to know someone.
+ICEBREAKERS: Cafes, coffee shops, tea houses, bakeries with seating, bookstore cafes, ice cream parlors, juice bars, donut shops and pastry shops with seating. Any casual low-pressure spot for a 45-minute conversation. Perfect for first dates or getting to know someone.
 
-MOVIES_THEATRE: Real cinemas with screens and scheduled movies — movie theaters, indie cinemas, drive-ins, IMAX, AMC, Regal, Cinemark, Alamo Drafthouse. Also includes performing arts venues: concert halls, theaters, opera houses, comedy clubs, jazz clubs, amphitheaters. Stage + scheduled performers + audience = movies_theatre. NO film production companies, NO booking agencies, NO dance studios.
+MOVIES_THEATRE: Real cinemas with screens and scheduled movies — movie theaters, indie cinemas, drive-ins, IMAX, AMC, Regal, Cinemark, Alamo Drafthouse. Also includes DEDICATED performing arts venues: concert halls, theaters, opera houses, comedy clubs, jazz clubs, amphitheaters. The venue must be PRIMARILY a cinema or performance space. Stage + scheduled performers + audience = movies_theatre. A bar that hosts live music on weekends is drinks_and_music, NOT movies_theatre. A pub with a comedy night is drinks_and_music, NOT movies_theatre. A cafe near a theater is icebreakers, NOT movies_theatre. Only assign movies_theatre if the place IS a cinema, theater, or concert hall — not if it merely hosts occasional entertainment. NO film production companies, NO booking agencies, NO dance studios.
 
-PLAY: Active fun for adults — bowling, arcades, escape rooms (indoor AND outdoor), go-karts, laser tag, karaoke, mini golf, axe throwing, TopGolf/golf simulators, trampoline parks (adult-friendly), VR experiences, rock climbing, kayaking, skydiving, scavenger hunts, outdoor adventure games. NO kids-only venues, NO gyms, NO gambling halls (exception: upscale casinos like Bellagio).
+PLAY: Active fun for adults — bowling, arcades, escape rooms (indoor AND outdoor), go-karts, laser tag, karaoke, mini golf, axe throwing, TopGolf/golf simulators, golf courses, trampoline parks (adult-friendly), VR experiences, rock climbing, kayaking, skydiving, scavenger hunts, outdoor adventure games, amusement parks. NO kids-only venues. NO gyms. NO gambling halls (exception: upscale casinos like Bellagio). NO sports parks or recreation centers (athletic fields, community pools, tennis courts, rec centers — these are fitness/recreation infrastructure, not adult date venues). NO farms or seasonal agricultural attractions (pumpkin patches, corn mazes, berry picking — seasonal and unpredictable). NO community centers or civic facilities.
 
-CREATIVE_ARTS: Museums (all types), art galleries, cultural centers with exhibits, sculpture parks, immersive art (teamLab, Meow Wolf), pottery/paint-and-sip studios open to public, planetariums, aquariums, visitable castles/landmarks. Aquarium → creative_arts + play.
+CREATIVE_ARTS: Museums (all types), art galleries, cultural centers with exhibits, sculpture parks, immersive art (teamLab, Meow Wolf), pottery/paint-and-sip studios open to public, planetariums, aquariums, visitable castles/landmarks. Aquarium → creative_arts + play. A restaurant, bar, cafe, wine bar, or store is NEVER creative_arts — even if it's in a historic building, near a landmark, or has art on the walls. The place must BE an arts/culture venue, not just be located near one.
 
-NATURE: Parks, trails, beaches, botanical gardens, scenic viewpoints, observation decks, waterfronts, bridges, harbors, nature preserves, picnic grounds, hiking areas. Any outdoor natural space.
+NATURE: Parks, trails, beaches, botanical gardens, scenic viewpoints, observation decks, waterfronts, bridges, harbors, nature preserves, picnic grounds, hiking areas, vineyards. Any outdoor natural space.
 
 GROCERIES: Grocery stores, supermarkets, specialty food stores, gourmet markets, butcher shops, cheese shops. Places where you buy food to take home or for a picnic.
 
-FLOWERS: Florists, flower shops, flower bars. Large supermarkets with staffed floral departments (like Whole Foods) qualify for BOTH flowers and groceries.
+FLOWERS: Florists, flower shops, flower bars. Large supermarkets with staffed floral departments (like Whole Foods, Wegmans, Publix) qualify for BOTH flowers and groceries. Garden centers, nurseries, and landscaping stores are NOT flowers (they sell potted plants, soil, tools — not date-worthy bouquets).
 
-REJECT if AND ONLY IF the place fits NO category at all: kids-only venue, fast food chain, permanently closed, not a venue (offices/consultants/contractors), personal grooming (salons/barbers/waxing/beauty/aesthetics/lash/brow/nail/hair/med spa), fitness (gyms/yoga), wellness spas, gambling halls, production companies, booking agencies.
+REJECT if AND ONLY IF the place fits NO category at all: kids-only venue, fast food chain, permanently closed, not a venue (offices/consultants/contractors), personal grooming (salons/barbers/waxing/beauty/aesthetics/lash/brow/nail/hair/med spa), fitness (gyms/yoga), wellness spas, gambling halls, production companies, booking agencies, community centers, recreation centers, farms/ranches with seasonal attractions only, tobacco/hookah lounges, sports parks, campus dining halls.
 
 NEVER reject a place for having a low rating. A bar with 3.2 stars is still a bar. A restaurant with 2.8 stars is still a restaurant. Ratings measure quality, not category fitness. If it fits a category, ACCEPT it regardless of rating.
 
@@ -160,9 +342,9 @@ Example 2: "TopGolf" type:restaurant → {"d":"accept","c":["play","brunch_lunch
 
 Example 3: "AMC Southpoint 17" type:movie_theater → {"d":"accept","c":["movies_theatre"],"pi":"movie theater","w":true,"r":"Real cinema chain with multiple screens","f":"high"}
 
-Example 4: "Barcelona Wine Bar" type:wine_bar → {"d":"accept","c":["brunch_lunch_casual","drinks_and_music"],"pi":"tapas wine bar","w":true,"r":"Tapas wine bar — brunch_lunch_casual + drinks_and_music","f":"high"}
+Example 4: "Barcelona Wine Bar" type:wine_bar → {"d":"accept","c":["drinks_and_music"],"pi":"tapas wine bar","w":true,"r":"Wine bar with tapas — drinks_and_music. Bar is primary identity, not restaurant.","f":"high"}
 
-Example 5: "Morgan Street Food Hall" type:food_court → {"d":"accept","c":["brunch_lunch_casual"],"pi":"food hall","w":true,"r":"Food hall with multiple vendors — brunch_lunch_casual","f":"high"}
+Example 5: "Morgan Street Food Hall" type:food_court → {"d":"reject","c":[],"pi":"food hall","w":true,"r":"Food hall with vendors — not a real sit-down restaurant. brunch_lunch_casual requires tables, waiters, menu.","f":"high"}
 
 Example 6: "KidZania" type:amusement_center → {"d":"reject","c":[],"pi":"children's entertainment center","w":true,"r":"Kids-only venue — reject","f":"high"}
 
@@ -182,9 +364,25 @@ Example 13: "Painting with a Twist" type:art_studio → {"d":"accept","c":["crea
 
 Example 14: "The Ruxton Steakhouse" type:steak_house price:PRICE_LEVEL_VERY_EXPENSIVE rating:4.4 → {"d":"accept","c":["upscale_fine_dining"],"pi":"upscale steakhouse","w":true,"r":"VERY_EXPENSIVE steakhouse with high rating — upscale_fine_dining","f":"high"}
 
-Example 15: "Fogo de Chão Brazilian Steakhouse" type:brazilian_restaurant price:PRICE_LEVEL_EXPENSIVE rating:4.8 → {"d":"accept","c":["upscale_fine_dining"],"pi":"upscale Brazilian steakhouse chain","w":true,"r":"EXPENSIVE chain with exceptional rating — upscale_fine_dining","f":"high"}
+Example 15: "Fogo de Chão Brazilian Steakhouse" type:brazilian_restaurant price:PRICE_LEVEL_EXPENSIVE rating:4.8 → {"d":"accept","c":["upscale_fine_dining","brunch_lunch_casual"],"pi":"upscale Brazilian steakhouse chain","w":true,"r":"EXPENSIVE chain with exceptional rating and table service — qualifies for both upscale_fine_dining (special occasion) and brunch_lunch_casual (real sit-down restaurant)","f":"high"}
 
 Example 16: "Jazz at Lincoln Center" type:performing_arts_theater → {"d":"accept","c":["movies_theatre"],"pi":"jazz concert venue","w":true,"r":"Live performance venue with scheduled shows — movies_theatre","f":"high"}
+
+Example 17: "Riverside Community Center" type:amusement_center → {"d":"reject","c":[],"pi":"community center","w":false,"r":"Community center — civic facility, not a date venue","f":"high"}
+
+Example 18: "Phillips Farms" type:amusement_park → {"d":"reject","c":[],"pi":"seasonal farm attraction","w":true,"r":"Farm with seasonal activities (pumpkin patch, corn maze) — seasonal/unpredictable, reject","f":"high"}
+
+Example 19: "Bethesda Park Recreation Center" type:amusement_center → {"d":"reject","c":[],"pi":"sports recreation center","w":true,"r":"Recreation center with athletic fields/pool — not an adult play venue","f":"high"}
+
+Example 20: "Adventure Play Centre" type:amusement_center → {"d":"reject","c":[],"pi":"children's play center","w":true,"r":"Indoor play center for children — not adult date venue","f":"high"}
+
+Example 21: "The Wine Gallery" type:wine_bar → {"d":"accept","c":["drinks_and_music"],"pi":"wine bar","w":true,"r":"Wine bar — drinks_and_music. 'Gallery' in name does NOT make it creative_arts.","f":"high"}
+
+Example 22: "Stadium Bar & Grill" type:bar → {"d":"accept","c":["drinks_and_music"],"pi":"sports bar","w":true,"r":"Bar primary identity despite food service — drinks_and_music, not brunch_lunch_casual","f":"high"}
+
+Example 23: "Nobu Downtown" type:japanese_restaurant price:PRICE_LEVEL_VERY_EXPENSIVE rating:4.6 → {"d":"accept","c":["upscale_fine_dining","brunch_lunch_casual"],"pi":"upscale Japanese restaurant","w":true,"r":"Special-occasion dinner AND casual lunch service — qualifies for both categories","f":"high"}
+
+Example 24: "Le Bernardin" type:seafood_restaurant price:PRICE_LEVEL_VERY_EXPENSIVE rating:4.7 (dinner-only) → {"d":"accept","c":["upscale_fine_dining"],"pi":"Michelin-starred seafood restaurant","w":true,"r":"Michelin-starred, dinner only — upscale_fine_dining only","f":"high"}
 
 Return ONLY valid JSON.`;
 
@@ -320,9 +518,8 @@ async function classifyPlace(factSheet: Record<string, unknown>): Promise<ClassR
       "flowers","upscale_fine_dining","nature","icebreakers","drinks_and_music",
       "brunch_lunch_casual","movies_theatre","creative_arts","play","groceries",
     ]);
-    parsed.c = enforceExclusivity(
-      (parsed.c || []).filter((s: string) => VALID_SLUGS.has(s))
-    );
+    // ORCH-0460: no exclusivity filter — upscale and casual can coexist
+    parsed.c = (parsed.c || []).filter((s: string) => VALID_SLUGS.has(s));
     return {
       decision: parsed.d,
       categories: parsed.c,
@@ -398,7 +595,9 @@ function deterministicFilter(place: any): PreFilterResult {
   }
 
   // 5. Casual chain demotion (ORCH-0434: updated slugs)
-  if (nameMatches(name, CASUAL_CHAIN_DEMOTION)) {
+  // ORCH-0460: Guard — protected upscale chains (Nobu, Morton's, Ruth's Chris etc.)
+  // must NEVER be demoted even if their name matches a casual chain pattern.
+  if (nameMatches(name, CASUAL_CHAIN_DEMOTION) && !nameMatches(name, UPSCALE_CHAIN_PROTECTION)) {
     const cats = [...(place.ai_categories || [])];
     if (cats.includes("upscale_fine_dining")) {
       const newCats = cats.filter((c: string) => c !== "upscale_fine_dining");
@@ -412,7 +611,7 @@ function deterministicFilter(place: any): PreFilterResult {
     }
   }
 
-  // 6. Fine dining promotion: VERY_EXPENSIVE + 4.0+ rating + restaurant type (ORCH-0434: updated slugs)
+  // 6. Fine dining promotion — tier 1: VERY_EXPENSIVE + 4.0+ rating + restaurant type
   if (
     place.price_level === "PRICE_LEVEL_VERY_EXPENSIVE" &&
     rating != null && rating >= 4.0 &&
@@ -424,22 +623,110 @@ function deterministicFilter(place: any): PreFilterResult {
       return {
         verdict: "modify",
         reason: "Rules: VERY_EXPENSIVE + high rating restaurant — promoted to upscale_fine_dining",
-        categories: enforceExclusivity(cats),
+        // ORCH-0460: no exclusivity enforcement — place can be both upscale and casual
+        categories: cats,
         stageResolved: 2,
       };
     }
   }
 
-  // 7. Per-category type blocking: strip flowers from non-flower types
+  // 6b. ORCH-0460: Fine dining promotion — tier 2: EXPENSIVE + 4.0+ rating + restaurant type.
+  // Catches acclaimed restaurants at the EXPENSIVE tier that don't hit VERY_EXPENSIVE.
+  if (
+    place.price_level === "PRICE_LEVEL_EXPENSIVE" &&
+    rating != null && rating >= 4.0 &&
+    RESTAURANT_TYPES.has(primaryType)
+  ) {
+    const cats = [...(place.ai_categories || [])];
+    if (!cats.includes("upscale_fine_dining")) {
+      cats.push("upscale_fine_dining");
+      return {
+        verdict: "modify",
+        reason: "Rules: EXPENSIVE + high rating restaurant — promoted to upscale_fine_dining",
+        categories: cats,
+        stageResolved: 2,
+      };
+    }
+  }
+
+  // 7. Per-category type blocking
+  // ORCH-0460: Core fix — check the FULL `types` array, not just primary_type.
+  // Every category leak (garden stores → flowers, restaurants → creative_arts,
+  // bars → movies_theatre, bars/play/tobacco → brunch_lunch_casual, sports parks
+  // → play) shared one root cause: filters only checked primary_type while the
+  // disqualifying type sat in the secondary `types` array.
   const cats = [...(place.ai_categories || [])];
+  const typesArray: string[] = place.types || [];
   let modified = false;
   let modifyReason = "";
 
-  if (cats.includes("flowers") && FLOWERS_BLOCKED_TYPES.has(primaryType)) {
-    const idx = cats.indexOf("flowers");
+  // 7a. Creative Arts: strip if primary_type is food/drink/retail.
+  // "A restaurant, bar, cafe, or store is NEVER creative_arts, even in a historic building."
+  if (cats.includes("creative_arts") && CREATIVE_ARTS_BLOCKED_TYPES.has(primaryType)) {
+    const idx = cats.indexOf("creative_arts");
     cats.splice(idx, 1);
     modified = true;
-    modifyReason = `Rules: stripped 'flowers' from primary_type '${primaryType}'`;
+    modifyReason = `Rules: stripped 'creative_arts' — primary_type '${primaryType}' is not an arts venue`;
+  }
+
+  // 7b. Movies & Theatre: strip if primary_type is food/drink/retail.
+  // "A bar with live music is drinks_and_music, NOT movies_theatre."
+  if (cats.includes("movies_theatre") && MOVIES_THEATRE_BLOCKED_TYPES.has(primaryType)) {
+    const idx = cats.indexOf("movies_theatre");
+    cats.splice(idx, 1);
+    modified = true;
+    modifyReason = `Rules: stripped 'movies_theatre' — primary_type '${primaryType}' is not a cinema or performance venue`;
+  }
+
+  // 7c. Brunch, Lunch & Casual: strip if types array reveals bar/play/tobacco/sports.
+  // CRITICAL: preserve if primary_type IS a real restaurant type — a restaurant
+  // with a bar inside keeps the category; a bar with food doesn't.
+  if (cats.includes("brunch_lunch_casual")) {
+    const hasBlockedType = typesArray.some((t: string) => BRUNCH_CASUAL_BLOCKED_TYPES.has(t));
+    const isRealRestaurant = RESTAURANT_TYPES.has(primaryType)
+      || ["brunch_restaurant", "breakfast_restaurant", "bistro", "diner", "family_restaurant"].includes(primaryType);
+    if (hasBlockedType && !isRealRestaurant) {
+      const idx = cats.indexOf("brunch_lunch_casual");
+      cats.splice(idx, 1);
+      modified = true;
+      modifyReason = `Rules: stripped 'brunch_lunch_casual' — types array contains non-restaurant type, primary is '${primaryType}'`;
+    }
+  }
+
+  // 7d. Play: strip if types array reveals sports/farm/kids/community center.
+  // Catches Bethesda Park (sports_complex in types), Phillips Farms (farm in types),
+  // children's play centers (indoor_playground in types), community centers.
+  if (cats.includes("play")) {
+    const hasBlockedPlayType = typesArray.some((t: string) => PLAY_BLOCKED_SECONDARY_TYPES.has(t));
+    if (hasBlockedPlayType) {
+      const idx = cats.indexOf("play");
+      cats.splice(idx, 1);
+      modified = true;
+      modifyReason = `Rules: stripped 'play' — types array contains non-play type`;
+    }
+  }
+
+  // 7e. Flowers: expanded to check the types array + garden store name patterns.
+  // Catches garden centers that Google tags with primary_type='florist' (because
+  // they sell cut flowers) but also have 'garden_center' in the types array.
+  // ORCH-0460 v2: primary check uses broad PRIMARY set; types-array check uses
+  // tight SECONDARY set to avoid false-positive stripping on every supermarket.
+  if (cats.includes("flowers")) {
+    const hasBlockedFlowerType = FLOWERS_BLOCKED_PRIMARY_TYPES.has(primaryType)
+      || typesArray.some((t: string) => FLOWERS_BLOCKED_SECONDARY_TYPES.has(t));
+    const isGardenStore = GARDEN_STORE_PATTERNS.some((p) =>
+      name.toLowerCase().includes(p)
+    );
+    if (hasBlockedFlowerType || (isGardenStore && primaryType !== "florist")) {
+      const idx = cats.indexOf("flowers");
+      if (idx >= 0) {
+        cats.splice(idx, 1);
+        modified = true;
+        modifyReason = hasBlockedFlowerType
+          ? `Rules: stripped 'flowers' — blocked type (primary: '${primaryType}')`
+          : `Rules: stripped 'flowers' — garden store name pattern detected`;
+      }
+    }
   }
 
   // 8. Delivery-only florist detection (conservative: must match pattern AND not be a florist)
@@ -470,6 +757,432 @@ function deterministicFilter(place: any): PreFilterResult {
   }
 
   return { verdict: "pass" };
+}
+
+// ── DB-Backed Rule Loading (ORCH-0526 M2) ───────────────────────────────────
+// Loads the 18 rule_sets from the new tables (per M1) so deterministicFilter
+// can run against admin-edited rules instead of the in-code constants above.
+//
+// TRANSITION GUARD (I-RULES-FALLBACK-SAFE): if rules_versions table is empty,
+// returns null and the caller falls back to the in-code constants. This keeps
+// the cutover safe and protects against accidental rule deletion.
+
+interface LoadedRuleEntry {
+  value: string;
+  sub_category: string | null;
+}
+
+interface LoadedRule {
+  rule_set_id: string;
+  rule_set_version_id: string;
+  name: string;
+  kind: string;
+  scope_kind: string;
+  scope_value: string | null;
+  thresholds: Record<string, unknown> | null;
+  entries: LoadedRuleEntry[];
+  is_active: boolean;
+}
+
+interface LoadedRules {
+  rulesVersionId: string;
+  manifestLabel: string | null;
+  byName: Record<string, LoadedRule>;
+}
+
+// deno-lint-ignore no-explicit-any
+async function loadRulesFromDb(db: any, rulesVersionId: string | null): Promise<LoadedRules | null> {
+  // 1. Resolve manifest: caller-pinned OR latest deployed
+  let manifest: { id: string; manifest_label: string | null; snapshot: Record<string, string> } | null = null;
+  if (rulesVersionId) {
+    const { data } = await db.from("rules_versions")
+      .select("id, manifest_label, snapshot")
+      .eq("id", rulesVersionId)
+      .maybeSingle();
+    manifest = data;
+  } else {
+    const { data } = await db.from("rules_versions")
+      .select("id, manifest_label, snapshot")
+      .order("deployed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    manifest = data;
+  }
+  if (!manifest) return null;
+
+  const versionIds = Object.values(manifest.snapshot);
+  if (versionIds.length === 0) return null;
+
+  // 2. Load rule_set_versions (no embedded resource — avoids PostgREST FK
+  //    auto-detection cache flake; ORCH-0526 M2 rework Path B).
+  const { data: versions, error: vErr } = await db.from("rule_set_versions")
+    .select("id, rule_set_id, thresholds")
+    .in("id", versionIds);
+  if (vErr) {
+    console.error("loadRulesFromDb versions error:", vErr.message);
+    return null;
+  }
+  if (!versions || versions.length === 0) {
+    console.warn("loadRulesFromDb: no versions found for manifest", manifest.id);
+    return null;
+  }
+
+  // 3. Load parent rule_sets for those versions
+  // deno-lint-ignore no-explicit-any
+  const ruleSetIds = [...new Set(versions.map((v: any) => v.rule_set_id))];
+  const { data: ruleSets, error: rsErr } = await db.from("rule_sets")
+    .select("id, name, kind, scope_kind, scope_value, is_active")
+    .in("id", ruleSetIds);
+  if (rsErr) {
+    console.error("loadRulesFromDb rule_sets error:", rsErr.message);
+    return null;
+  }
+  if (!ruleSets || ruleSets.length === 0) {
+    console.warn("loadRulesFromDb: no rule_sets found for versions");
+    return null;
+  }
+
+  // 4. Load entries
+  const { data: entries, error: eErr } = await db.from("rule_entries")
+    .select("rule_set_version_id, value, sub_category")
+    .in("rule_set_version_id", versionIds);
+  if (eErr) {
+    console.error("loadRulesFromDb entries error:", eErr.message);
+    return null;
+  }
+
+  // 5. Build lookups: rule_sets by id, entries by version
+  // deno-lint-ignore no-explicit-any
+  const ruleSetById: Record<string, any> = {};
+  for (const rs of ruleSets) ruleSetById[rs.id] = rs;
+
+  const entriesByVersion: Record<string, LoadedRuleEntry[]> = {};
+  for (const e of (entries || [])) {
+    if (!entriesByVersion[e.rule_set_version_id]) entriesByVersion[e.rule_set_version_id] = [];
+    entriesByVersion[e.rule_set_version_id].push({ value: e.value, sub_category: e.sub_category });
+  }
+
+  // 6. Build the byName lookup (joining in JS, no FK auto-detection needed)
+  const byName: Record<string, LoadedRule> = {};
+  for (const v of versions) {
+    const rs = ruleSetById[v.rule_set_id];
+    if (!rs) {
+      console.warn(`loadRulesFromDb: rule_set ${v.rule_set_id} not found for version ${v.id}`);
+      continue;
+    }
+    byName[rs.name] = {
+      rule_set_id: v.rule_set_id,
+      rule_set_version_id: v.id,
+      name: rs.name,
+      kind: rs.kind,
+      scope_kind: rs.scope_kind,
+      scope_value: rs.scope_value,
+      thresholds: v.thresholds,
+      entries: entriesByVersion[v.id] || [],
+      is_active: rs.is_active,
+    };
+  }
+
+  console.log(`loadRulesFromDb: loaded ${Object.keys(byName).length} rules from manifest ${manifest.manifest_label}`);
+
+  return {
+    rulesVersionId: manifest.id,
+    manifestLabel: manifest.manifest_label,
+    byName,
+  };
+}
+
+interface PreFilterResultDb extends PreFilterResult {
+  ruleSetVersionId?: string | null;
+}
+
+// 1:1 translation of deterministicFilter (lines 545-760) but reads from
+// DB-loaded rules instead of in-code constants. Tags every verdict with the
+// rule_set_version_id of the rule that produced it (V6 gap close: per-place
+// rule attribution stored on ai_validation_results).
+//
+// Same firing order, same short-circuit semantics, same accumulative strip rules.
+// ORCH-0526 M2.
+//
+// deno-lint-ignore no-explicit-any
+function deterministicFilterFromDb(place: any, loaded: LoadedRules): PreFilterResultDb {
+  const name = place.name || "";
+  const primaryType = place.primary_type || "";
+  const normalizedType = primaryType.replace(/_/g, " ");
+  const checkText = `${name} ${normalizedType}`.toLowerCase();
+
+  const lookupActive = (n: string): LoadedRule | null => {
+    const r = loaded.byName[n];
+    return r && r.is_active ? r : null;
+  };
+
+  // 1. BLOCKED_PRIMARY_TYPES — instant reject
+  const r1 = lookupActive("BLOCKED_PRIMARY_TYPES");
+  if (r1 && r1.entries.some((e) => e.value === primaryType)) {
+    return {
+      verdict: "reject",
+      reason: `Rules: blocked primary_type '${primaryType}' — not a date venue`,
+      categories: [],
+      stageResolved: 2,
+      ruleSetVersionId: r1.rule_set_version_id,
+    };
+  }
+
+  // 2. MIN_DATA_GUARD (threshold-based, 0 entries)
+  const r2 = lookupActive("MIN_DATA_GUARD");
+  if (r2) {
+    // deno-lint-ignore no-explicit-any
+    const t = (r2.thresholds || {}) as any;
+    const requireRating = t.require_rating !== false;
+    const requireReviews = t.require_reviews !== false;
+    const requireWebsite = t.require_website !== false;
+    const noRating = place.rating == null && requireRating;
+    const noReviews = (place.review_count || 0) === 0 && requireReviews;
+    const noWebsite = !place.website && requireWebsite;
+    if (noRating && noReviews && noWebsite) {
+      return {
+        verdict: "reject",
+        reason: "Rules: no rating, no reviews, no website — insufficient data",
+        categories: [],
+        stageResolved: 2,
+        ruleSetVersionId: r2.rule_set_version_id,
+      };
+    }
+  }
+
+  // 3. FAST_FOOD_BLACKLIST
+  const r3 = lookupActive("FAST_FOOD_BLACKLIST");
+  if (r3 && r3.entries.some((e) => name.toLowerCase().includes(e.value))) {
+    return {
+      verdict: "reject",
+      reason: "Pipeline: fast food chain — rejected",
+      categories: [],
+      stageResolved: 2,
+      ruleSetVersionId: r3.rule_set_version_id,
+    };
+  }
+
+  // 4. EXCLUSION_KEYWORDS (sub-category aware)
+  const r4 = lookupActive("EXCLUSION_KEYWORDS");
+  if (r4) {
+    const bySub: Record<string, string[]> = {};
+    for (const e of r4.entries) {
+      const sub = e.sub_category || "unknown";
+      if (!bySub[sub]) bySub[sub] = [];
+      bySub[sub].push(e.value);
+    }
+    for (const [subCategory, keywords] of Object.entries(bySub)) {
+      if (keywords.some((kw) => checkText.includes(kw.toLowerCase()))) {
+        return {
+          verdict: "reject",
+          reason: `Pipeline: excluded type (${subCategory}) — rejected`,
+          categories: [],
+          stageResolved: 2,
+          ruleSetVersionId: r4.rule_set_version_id,
+        };
+      }
+    }
+  }
+
+  // 5. CASUAL_CHAIN_DEMOTION (guarded by UPSCALE_CHAIN_PROTECTION)
+  const r5 = lookupActive("CASUAL_CHAIN_DEMOTION");
+  const r5Guard = lookupActive("UPSCALE_CHAIN_PROTECTION");
+  if (r5) {
+    const matchesCasual = r5.entries.some((e) => name.toLowerCase().includes(e.value));
+    const isProtected = r5Guard
+      ? r5Guard.entries.some((e) => name.toLowerCase().includes(e.value))
+      : false;
+    if (matchesCasual && !isProtected) {
+      const cats = [...(place.ai_categories || [])];
+      if (cats.includes("upscale_fine_dining")) {
+        const newCats = cats.filter((c: string) => c !== "upscale_fine_dining");
+        if (!newCats.includes("brunch_lunch_casual")) newCats.push("brunch_lunch_casual");
+        return {
+          verdict: "accept",
+          reason: "Pipeline: sit-down chain — downgraded from upscale_fine_dining to brunch_lunch_casual",
+          categories: newCats,
+          stageResolved: 2,
+          ruleSetVersionId: r5.rule_set_version_id,
+        };
+      }
+    }
+  }
+
+  // 6. FINE_DINING_PROMOTION_T1 (VERY_EXPENSIVE + 4.0+ + RESTAURANT_TYPES)
+  const r6Restaurants = lookupActive("RESTAURANT_TYPES");
+  const r6 = lookupActive("FINE_DINING_PROMOTION_T1");
+  if (r6 && r6Restaurants) {
+    // deno-lint-ignore no-explicit-any
+    const t = (r6.thresholds || {}) as any;
+    const priceLevels: string[] = t.price_levels || ["PRICE_LEVEL_VERY_EXPENSIVE"];
+    const ratingMin: number = t.rating_min ?? 4.0;
+    if (
+      priceLevels.includes(place.price_level) &&
+      place.rating != null && place.rating >= ratingMin &&
+      r6Restaurants.entries.some((e) => e.value === primaryType)
+    ) {
+      const cats = [...(place.ai_categories || [])];
+      if (!cats.includes("upscale_fine_dining")) {
+        cats.push("upscale_fine_dining");
+        return {
+          verdict: "modify",
+          reason: "Rules: VERY_EXPENSIVE + high rating restaurant — promoted to upscale_fine_dining",
+          categories: cats,
+          stageResolved: 2,
+          ruleSetVersionId: r6.rule_set_version_id,
+        };
+      }
+    }
+  }
+
+  // 6b. FINE_DINING_PROMOTION_T2 (EXPENSIVE)
+  const r7 = lookupActive("FINE_DINING_PROMOTION_T2");
+  if (r7 && r6Restaurants) {
+    // deno-lint-ignore no-explicit-any
+    const t = (r7.thresholds || {}) as any;
+    const priceLevels: string[] = t.price_levels || ["PRICE_LEVEL_EXPENSIVE"];
+    const ratingMin: number = t.rating_min ?? 4.0;
+    if (
+      priceLevels.includes(place.price_level) &&
+      place.rating != null && place.rating >= ratingMin &&
+      r6Restaurants.entries.some((e) => e.value === primaryType)
+    ) {
+      const cats = [...(place.ai_categories || [])];
+      if (!cats.includes("upscale_fine_dining")) {
+        cats.push("upscale_fine_dining");
+        return {
+          verdict: "modify",
+          reason: "Rules: EXPENSIVE + high rating restaurant — promoted to upscale_fine_dining",
+          categories: cats,
+          stageResolved: 2,
+          ruleSetVersionId: r7.rule_set_version_id,
+        };
+      }
+    }
+  }
+
+  // 7. Per-category strip rules (accumulative, not short-circuit)
+  const cats = [...(place.ai_categories || [])];
+  const typesArray: string[] = place.types || [];
+  let modified = false;
+  let modifyReason = "";
+  let modifyVersionId: string | null = null;
+
+  // 7a. CREATIVE_ARTS_BLOCKED_TYPES
+  const r8 = lookupActive("CREATIVE_ARTS_BLOCKED_TYPES");
+  if (r8 && cats.includes("creative_arts")) {
+    if (r8.entries.some((e) => e.value === primaryType)) {
+      const idx = cats.indexOf("creative_arts");
+      cats.splice(idx, 1);
+      modified = true;
+      modifyReason = `Rules: stripped 'creative_arts' — primary_type '${primaryType}' is not an arts venue`;
+      modifyVersionId = r8.rule_set_version_id;
+    }
+  }
+
+  // 7b. MOVIES_THEATRE_BLOCKED_TYPES
+  const r9 = lookupActive("MOVIES_THEATRE_BLOCKED_TYPES");
+  if (r9 && cats.includes("movies_theatre")) {
+    if (r9.entries.some((e) => e.value === primaryType)) {
+      const idx = cats.indexOf("movies_theatre");
+      cats.splice(idx, 1);
+      modified = true;
+      modifyReason = `Rules: stripped 'movies_theatre' — primary_type '${primaryType}' is not a cinema or performance venue`;
+      modifyVersionId = r9.rule_set_version_id;
+    }
+  }
+
+  // 7c. BRUNCH_CASUAL_BLOCKED_TYPES (with RESTAURANT_TYPES exemption)
+  const r10 = lookupActive("BRUNCH_CASUAL_BLOCKED_TYPES");
+  if (r10 && cats.includes("brunch_lunch_casual")) {
+    const blockedSet = new Set(r10.entries.map((e) => e.value));
+    const hasBlocked = typesArray.some((t) => blockedSet.has(t));
+    const isRealRestaurant = (r6Restaurants?.entries.some((e) => e.value === primaryType) ?? false)
+      || ["brunch_restaurant", "breakfast_restaurant", "bistro", "diner", "family_restaurant"].includes(primaryType);
+    if (hasBlocked && !isRealRestaurant) {
+      const idx = cats.indexOf("brunch_lunch_casual");
+      cats.splice(idx, 1);
+      modified = true;
+      modifyReason = `Rules: stripped 'brunch_lunch_casual' — types array contains non-restaurant type, primary is '${primaryType}'`;
+      modifyVersionId = r10.rule_set_version_id;
+    }
+  }
+
+  // 7d. PLAY_BLOCKED_SECONDARY_TYPES
+  const r11 = lookupActive("PLAY_BLOCKED_SECONDARY_TYPES");
+  if (r11 && cats.includes("play")) {
+    const blockedSet = new Set(r11.entries.map((e) => e.value));
+    if (typesArray.some((t) => blockedSet.has(t))) {
+      const idx = cats.indexOf("play");
+      cats.splice(idx, 1);
+      modified = true;
+      modifyReason = `Rules: stripped 'play' — types array contains non-play type`;
+      modifyVersionId = r11.rule_set_version_id;
+    }
+  }
+
+  // 7e. FLOWERS strip (multiple combined rules)
+  const r12pri = lookupActive("FLOWERS_BLOCKED_PRIMARY_TYPES");
+  const r12sec = lookupActive("FLOWERS_BLOCKED_SECONDARY_TYPES");
+  const r12garden = lookupActive("GARDEN_STORE_PATTERNS");
+  if (cats.includes("flowers")) {
+    let hasBlockedFlowerType = false;
+    let isGardenStore = false;
+    if (r12pri && r12pri.entries.some((e) => e.value === primaryType)) hasBlockedFlowerType = true;
+    if (r12sec) {
+      const sec = new Set(r12sec.entries.map((e) => e.value));
+      if (typesArray.some((t) => sec.has(t))) hasBlockedFlowerType = true;
+    }
+    if (r12garden && r12garden.entries.some((e) => name.toLowerCase().includes(e.value))) {
+      isGardenStore = true;
+    }
+    if (hasBlockedFlowerType || (isGardenStore && primaryType !== "florist")) {
+      const idx = cats.indexOf("flowers");
+      if (idx >= 0) {
+        cats.splice(idx, 1);
+        modified = true;
+        modifyReason = hasBlockedFlowerType
+          ? `Rules: stripped 'flowers' — blocked type (primary: '${primaryType}')`
+          : `Rules: stripped 'flowers' — garden store name pattern detected`;
+        modifyVersionId = (r12pri || r12sec || r12garden)?.rule_set_version_id || null;
+      }
+    }
+  }
+
+  // 8. DELIVERY_ONLY_PATTERNS
+  const r13 = lookupActive("DELIVERY_ONLY_PATTERNS");
+  if (r13 && cats.includes("flowers") && primaryType !== "florist") {
+    if (r13.entries.some((e) => name.toLowerCase().includes(e.value))) {
+      const idx = cats.indexOf("flowers");
+      if (idx >= 0) {
+        cats.splice(idx, 1);
+        modified = true;
+        modifyReason = `Rules: delivery-only pattern in name, not a florist — stripped 'flowers'`;
+        modifyVersionId = r13.rule_set_version_id;
+      }
+    }
+  }
+
+  if (modified) {
+    if (cats.length === 0) {
+      return {
+        verdict: "reject",
+        reason: modifyReason + " — no remaining categories, rejected",
+        categories: [],
+        stageResolved: 2,
+        ruleSetVersionId: modifyVersionId,
+      };
+    }
+    return {
+      verdict: "modify",
+      reason: modifyReason,
+      categories: cats,
+      stageResolved: 2,
+      ruleSetVersionId: modifyVersionId,
+    };
+  }
+
+  return { verdict: "pass", ruleSetVersionId: null };
 }
 
 // ── Process Single Place (Stages 2-5) ────────────────────────────────────────
@@ -1108,7 +1821,7 @@ async function handleOverride(body: any): Promise<Response> {
   const approved = decision === "accept" || (decision === "reclassify" && body.categories?.length > 0);
   await db.from("place_pool").update({
     ai_approved: approved,
-    ai_categories: enforceExclusivity(body.categories || []),
+    ai_categories: body.categories || [], // ORCH-0460: no exclusivity enforcement
     ai_reason: body.reason || "Admin override",
     ai_validated_at: new Date().toISOString(),
   }).eq("id", result.place_id);
@@ -1174,16 +1887,55 @@ async function handleResumeRun(body: any): Promise<Response> {
 
 // ── Rules-Only Filter Handler ────────────────────────────────────────────────
 
+// ── Rules-only run handler (refactored ORCH-0526 M2) ────────────────────────
+// Bundles 5 bug fixes: ORCH-0512 retraction (stage='rules_only_complete' preserved),
+// ORCH-0527 (unchanged counter populated, approved stays 0), ORCH-0529 (concurrency
+// check via status='running' for same city — see implementation note), ORCH-0530
+// (city_id FK populated alongside city_filter), and the core ORCH-0526 work
+// (read rules from DB via loadRulesFromDb with in-code-constants fallback,
+// per-place rule_set_version_id attribution).
+//
+// CONCURRENCY (ORCH-0529): the M1 advisory lock helpers (try/release_advisory_
+// _lock_rules_run) were built but pg advisory locks don't span multiple HTTP
+// calls cleanly in Deno + Supabase JS (each db.* is its own transaction).
+// Using the same status='running'-for-same-city pattern as handleCreateRun
+// (line 944-950) instead. Same effect: 409 on contention. The advisory lock
+// RPCs remain available for future use.
 async function handleRunRulesFilter(body: any, userId: string): Promise<Response> {
   const db = getDb();
   const scope = body.scope || "all";
   const batchSize = Math.min(body.batch_size || 100, 200); // larger batches OK — no API calls
+  const lockToken = crypto.randomUUID();
 
-  // Build query for matching places
+  // ORCH-0529: concurrency check — refuse if another rules-only run is active
+  // for the same city (or the same global scope when no city specified).
+  let activeQuery = db.from("ai_validation_jobs")
+    .select("id, status, city_id, city_filter, started_at")
+    .in("stage", ["rules_only", "rules_only_complete"])
+    .in("status", ["ready", "running", "paused"]);
+  if (body.city_id) activeQuery = activeQuery.eq("city_id", body.city_id);
+  else activeQuery = activeQuery.is("city_id", null);
+  const { data: activeRun } = await activeQuery.limit(1).maybeSingle();
+  if (activeRun) {
+    return json({
+      status: "already_running",
+      message: "A rules-filter run is already active for this scope.",
+      active_job_id: activeRun.id,
+    }, 409);
+  }
+
+  // ORCH-0526: load rules from DB. Falls back to in-code constants if empty
+  // (I-RULES-FALLBACK-SAFE — transition guard).
+  const loaded = await loadRulesFromDb(db, body.rules_version_id || null);
+  if (!loaded) {
+    console.warn("ORCH-0526 M2: loadRulesFromDb returned null; using in-code constants fallback");
+  }
+  const rulesVersionId = loaded ? loaded.rulesVersionId : null;
+
+  // Build query for matching places (count first)
   let countQuery = db.from("place_pool")
     .select("id", { count: "exact", head: true })
     .eq("is_active", true);
-
   if (scope === "unvalidated") countQuery = countQuery.is("ai_approved", null);
   else if (scope === "failed") countQuery = countQuery.not("ai_validated_at", "is", null).is("ai_approved", null);
   if (body.category) countQuery = countQuery.contains("ai_categories", [body.category]);
@@ -1194,7 +1946,7 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
   if (countErr) return json({ error: countErr.message }, 500);
   if (!totalPlaces || totalPlaces === 0) return json({ status: "nothing_to_do", total_places: 0 });
 
-  // Create a job record for audit trail
+  // Create a job record for audit trail (ORCH-0530: city_id FK; ORCH-0527: unchanged=0 init)
   const { data: job, error: jobErr } = await db
     .from("ai_validation_jobs")
     .insert({
@@ -1202,12 +1954,16 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
       scope,
       total_places: totalPlaces,
       processed: 0,
-      approved: 0,
+      approved: 0,    // rules-only NEVER approves (ORCH-0527 — was misused as unchanged counter)
       rejected: 0,
       reclassified: 0,
+      unchanged: 0,   // ORCH-0527: new column; tracks places left as-is
       failed: 0,
       category_filter: body.category || null,
       city_filter: body.city || null,
+      city_id: body.city_id || null,         // ORCH-0530
+      lock_token: lockToken,                 // ORCH-0529 (traceability — not used as actual lock per concurrency note above)
+      rules_version_id: rulesVersionId,      // ORCH-0526 — null if loaded was null (transition guard)
       dry_run: body.dry_run || false,
       batch_size: batchSize,
       total_batches: Math.ceil(totalPlaces / batchSize),
@@ -1248,7 +2004,12 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
     if (!places || places.length === 0) break;
 
     for (const place of places) {
-      const result = deterministicFilter(place);
+      // ORCH-0526: prefer DB-loaded rules; fall back to in-code constants if loadedRules
+      // is null (transition guard — empty rule_sets table). Both paths produce identical
+      // verdicts for v1; DB path additionally tags result with rule_set_version_id.
+      const result: PreFilterResultDb = loaded
+        ? deterministicFilterFromDb(place, loaded)
+        : { ...deterministicFilter(place), ruleSetVersionId: null };
       totalProcessed++;
 
       if (result.verdict === "pass") {
@@ -1283,7 +2044,7 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
           }).eq("id", place.id);
         }
 
-        // Audit trail in ai_validation_results
+        // Audit trail in ai_validation_results — ORCH-0526: ADD rule_set_version_id (V6 gap close)
         await db.from("ai_validation_results").insert({
           job_id: job.id,
           place_id: place.id,
@@ -1298,6 +2059,7 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
           website_verified: false,
           search_results: null,
           cost_usd: 0,
+          rule_set_version_id: result.ruleSetVersionId || null,
         });
       } else {
         // Dry run — still count
@@ -1309,14 +2071,18 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
     offset += batchSize;
   }
 
-  // Finalize job
+  // Finalize job (ORCH-0512 retraction: stage='rules_only_complete' preserves discriminator;
+  // ORCH-0527: unchanged populated separately, approved stays 0 for rules-only runs).
+  // DO NOT simplify stage to 'complete' — that destroys the rules-only-vs-AI distinction
+  // used by admin Recent Runs filtering. Verified by spec test T-05.
   await db.from("ai_validation_jobs").update({
     status: "completed",
-    stage: "complete",
+    stage: "rules_only_complete",
     processed: totalProcessed,
     rejected: totalRejected,
     reclassified: totalModified,
-    approved: totalProcessed - totalRejected - totalModified,
+    approved: 0,                  // ORCH-0527: rules-only never approves
+    unchanged: totalUnchanged,    // ORCH-0527: new column carries the no-op count
     cost_usd: 0,
     completed_at: new Date().toISOString(),
   }).eq("id", job.id);
@@ -1324,12 +2090,233 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
   return json({
     status: "completed",
     run_id: job.id,
+    rules_version_id: rulesVersionId,
     total_processed: totalProcessed,
     rejected: totalRejected,
     modified: totalModified,
     unchanged: totalUnchanged,
     cost_usd: 0,
     dry_run: body.dry_run || false,
+  });
+}
+
+// ── ORCH-0526 M2: New action handlers ──────────────────────────────────────
+
+// preview_rule_impact — delegates to admin_rules_preview_impact RPC
+// (DRY: the PL/pgSQL RPC already implements per-rule isolated impact per
+// Option 1 chosen 2026-04-19. Edge fn version exposes the same logic to
+// non-admin-UI callers if needed in v2.)
+//
+// AUTH CONTEXT: admin_rules_preview_impact's first statement is an admin gate
+// that checks auth.email(). The service-role client from getDb() would make
+// auth.email() return NULL inside the RPC → gate fails. We create an
+// auth-context client forwarding the user's JWT so the RPC sees the admin's
+// email. (Note: checkAdmin has already validated the caller is active admin
+// BEFORE this handler runs, so the RPC gate is belt-and-suspenders.)
+async function handlePreviewRuleImpact(req: Request, body: any): Promise<Response> {
+  if (!body.rule_set_id) return json({ error: "Missing rule_set_id" }, 400);
+  if (!Array.isArray(body.proposed_entries)) return json({ error: "proposed_entries must be array" }, 400);
+
+  const authHeader = req.headers.get("Authorization") || "";
+  const token = authHeader.replace("Bearer ", "");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  const authedDb = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+
+  const { data, error } = await authedDb.rpc("admin_rules_preview_impact", {
+    p_rule_set_id: body.rule_set_id,
+    p_proposed_entries: body.proposed_entries,
+    p_proposed_thresholds: body.proposed_thresholds || null,
+    p_city_id: body.city_id || null,
+  });
+  if (error) return json({ error: error.message }, 500);
+  return json(data);
+}
+
+// get_rules_for_run — returns the full rule body for a specific manifest version
+// (used by JSON export, run-diff, and any non-admin-UI consumer that needs the
+// authoritative rule set for a specific job)
+async function handleGetRulesForRun(body: any): Promise<Response> {
+  const db = getDb();
+  const loaded = await loadRulesFromDb(db, body.rules_version_id || null);
+  if (!loaded) {
+    return json({
+      error: "No manifest found",
+      hint: "rules_versions table is empty (transition guard); seed M2 may not have run",
+    }, 404);
+  }
+
+  // Project to a flat shape for HTTP response
+  const ruleSets = Object.values(loaded.byName).map((r) => ({
+    id: r.rule_set_id,
+    name: r.name,
+    kind: r.kind,
+    scope_kind: r.scope_kind,
+    scope_value: r.scope_value,
+    version_id: r.rule_set_version_id,
+    is_active: r.is_active,
+    thresholds: r.thresholds,
+    entries: r.entries,
+  }));
+
+  return json({
+    rules_version_id: loaded.rulesVersionId,
+    manifest_label: loaded.manifestLabel,
+    rule_sets: ruleSets,
+  });
+}
+
+// run_drift_check (ORCH-0528, scoped to 3 sources per Amendment 1) — compares:
+//   A: filter rules in DB (rule_sets.scope_value for category-scoped rules)
+//   B: on-demand types from _shared/categoryPlaceTypes.ts (display-name keys)
+//   C: display constants — hardcoded mirror of mingla-admin/src/constants/categories.js
+//      (edge fn cannot see admin/, so the canonical 10 are mirrored here. The CI script
+//      `scripts/validate-category-consistency.ts` (Amendment 1) catches drift here at
+//      PR time. Together: two safety nets at the two moments drift can happen.)
+async function handleRunDriftCheck(_body: any): Promise<Response> {
+  const start = Date.now();
+  const db = getDb();
+
+  // C — canonical 10 slugs (mirror of mingla-admin/src/constants/categories.js).
+  // Bundled at edge fn deploy. CI validates this matches the admin file.
+  const DISPLAY_SLUGS: string[] = [
+    "nature", "icebreakers", "drinks_and_music", "brunch_lunch_casual",
+    "upscale_fine_dining", "movies_theatre", "creative_arts", "play",
+    "flowers", "groceries",
+  ];
+
+  // Display-name → slug map for B (on-demand uses display names as keys)
+  const DISPLAY_TO_SLUG: Record<string, string> = {
+    "Nature & Views": "nature",
+    "Icebreakers": "icebreakers",
+    "Drinks & Music": "drinks_and_music",
+    "Brunch, Lunch & Casual": "brunch_lunch_casual",
+    "Upscale & Fine Dining": "upscale_fine_dining",
+    "Movies & Theatre": "movies_theatre",
+    "Creative & Arts": "creative_arts",
+    "Play": "play",
+    "Flowers": "flowers",
+    "Groceries": "groceries",
+  };
+
+  // Load B (on-demand types) — dynamic import keeps drift_check failure non-fatal
+  // if the shared file is missing/renamed.
+  let ON_DEMAND: Record<string, string[]> = {};
+  try {
+    // deno-lint-ignore no-explicit-any
+    const mod: any = await import("../_shared/categoryPlaceTypes.ts");
+    ON_DEMAND = mod.MINGLA_CATEGORY_PLACE_TYPES || {};
+  } catch (err) {
+    return json({
+      status: "error",
+      error: `Could not load on-demand source: ${(err as Error).message}`,
+      computed_in_ms: Date.now() - start,
+    }, 500);
+  }
+
+  // Convert B's display-name keys to slugs
+  const onDemandBySlug: Record<string, string[]> = {};
+  for (const [displayName, types] of Object.entries(ON_DEMAND)) {
+    const slug = DISPLAY_TO_SLUG[displayName];
+    if (slug) onDemandBySlug[slug] = types;
+  }
+
+  // Load A — filter rules from DB (just need scope_value distribution + entries for
+  // category-scoped strip/blacklist rules)
+  const loaded = await loadRulesFromDb(db, null);
+  if (!loaded) {
+    return json({
+      status: "error",
+      error: "Filter rules empty (transition guard); cannot compute drift",
+      computed_in_ms: Date.now() - start,
+    }, 500);
+  }
+
+  // Filter category-scoped rules + their entries (only those types matter for drift comparison)
+  const filterCatScopedRules = Object.values(loaded.byName).filter(
+    (r) => r.scope_kind === "category" && r.scope_value !== null,
+  );
+
+  // Build a map of category-slug → set-of-types-on-strip-or-blacklist-rules
+  const filterBlockedByCategory: Record<string, Set<string>> = {};
+  for (const r of filterCatScopedRules) {
+    if (!r.scope_value) continue;
+    if (r.kind !== "strip" && r.kind !== "blacklist") continue;
+    if (!filterBlockedByCategory[r.scope_value]) filterBlockedByCategory[r.scope_value] = new Set();
+    for (const e of r.entries) {
+      filterBlockedByCategory[r.scope_value].add(e.value);
+    }
+  }
+
+  // Drift detection
+  const diffs: Array<{
+    category_slug: string;
+    google_type: string | null;
+    sources: { filter: string; on_demand: string; display: string };
+    severity: "info" | "warning" | "error";
+    suggestion: string;
+  }> = [];
+
+  // Check 1: every display category should exist in on-demand
+  for (const slug of DISPLAY_SLUGS) {
+    if (!(slug in onDemandBySlug)) {
+      diffs.push({
+        category_slug: slug,
+        google_type: null,
+        sources: { filter: "n/a", on_demand: "absent", display: "present" },
+        severity: "warning",
+        suggestion: `Display category '${slug}' has no on-demand fetch list. Add to _shared/categoryPlaceTypes.ts.`,
+      });
+    }
+  }
+
+  // Check 2: every on-demand category should be in display
+  for (const slug of Object.keys(onDemandBySlug)) {
+    if (!DISPLAY_SLUGS.includes(slug)) {
+      diffs.push({
+        category_slug: slug,
+        google_type: null,
+        sources: { filter: "n/a", on_demand: "present", display: "absent" },
+        severity: "warning",
+        suggestion: `On-demand category '${slug}' is not in admin display constants. Add or remove.`,
+      });
+    }
+  }
+
+  // Check 3: types fetched on-demand for category X should NOT be on a strip/blacklist
+  // rule for the same category X (the contradiction case)
+  for (const [slug, fetchedTypes] of Object.entries(onDemandBySlug)) {
+    const blockedHere = filterBlockedByCategory[slug];
+    if (!blockedHere) continue;
+    for (const t of fetchedTypes) {
+      if (blockedHere.has(t)) {
+        diffs.push({
+          category_slug: slug,
+          google_type: t,
+          sources: { filter: "blocked", on_demand: "present", display: "present" },
+          severity: "error",
+          suggestion: `Type '${t}' is fetched on-demand for '${slug}' but stripped by a filter rule for the same category. Pick one.`,
+        });
+      }
+    }
+  }
+
+  let status: "in_sync" | "drift" | "contradiction" = "in_sync";
+  if (diffs.some((d) => d.severity === "error")) status = "contradiction";
+  else if (diffs.length > 0) status = "drift";
+
+  return json({
+    status,
+    checked_at: new Date().toISOString(),
+    source_versions: {
+      filter_rules_version_id: loaded.rulesVersionId,
+      on_demand_bundle: "categoryPlaceTypes.ts (current edge fn deploy)",
+      display_bundle: "categories.js (mirror in edge fn)",
+    },
+    diffs,
+    computed_in_ms: Date.now() - start,
   });
 }
 
@@ -1358,7 +2345,11 @@ serve(async (req: Request) => {
       case "stop_run":     return handleStopRun(body);
       case "pause_run":    return handlePauseRun(body);
       case "resume_run":   return handleResumeRun(body);
-      case "run_rules_filter": return handleRunRulesFilter(body, authResult.userId);
+      case "run_rules_filter":   return handleRunRulesFilter(body, authResult.userId);
+      // ORCH-0526 M2: 3 new actions powering the Rules Filter admin tab
+      case "preview_rule_impact": return handlePreviewRuleImpact(req, body);
+      case "get_rules_for_run":   return handleGetRulesForRun(body);
+      case "run_drift_check":     return handleRunDriftCheck(body);
       default:
         return json({ error: `Unknown action: ${action}` }, 400);
     }

@@ -519,6 +519,8 @@ async function handleCreateRun(body: any, supabase: any) {
     throw new Error("No valid seeding categories provided");
   }
 
+  const categoryIds = validConfigs.map((c) => c.appCategorySlug);
+
   // Load tiles ordered by tile_index
   const { data: tiles, error: tileErr } = await supabase
     .from("seeding_tiles")

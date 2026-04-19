@@ -126,7 +126,7 @@
     "inviteCode": "Invită Code",
     "inviteCodeDesc": "Distribuie a simple code"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Invită Participants",
     "addFriendsTo": "Adaugă friends to \"{{name}}\"",
     "searchPlaceholder": "Caută friends...",

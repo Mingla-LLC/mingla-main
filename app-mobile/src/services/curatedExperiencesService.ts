@@ -33,6 +33,15 @@ class CuratedExperiencesService {
     // Timeout handled by global fetchWithTimeout (20s) in supabase.ts.
     // Previous 15s Promise.race wrapper was dead code — the global timeout
     // always fired first. Removed in ORCH-0366.
+    //
+    // ORCH-0490 Phase 2.2: the 20s ceiling is no longer a UX blocker on the
+    // deck-render path. When FEATURE_FLAG_PROGRESSIVE_DELIVERY is true, the
+    // fetchDeck race delivers singles (if non-empty and faster) at ~1s while
+    // this call can complete up to 20s later — the user sees cards already,
+    // and curated merges in when it arrives. On the zero-singles branch,
+    // curated delivers as soon as THIS call returns; no 20s dead-wait.
+    // The ceiling only matters for curated-only decks; shrinking it further
+    // is ORCH-0495 territory (client warm-ping of discover-cards, deferred).
     const { data, error } = await trackedInvoke('generate-curated-experiences', { body });
     if (error) throw error;
     return (data?.cards ?? []) as CuratedExperienceCard[];

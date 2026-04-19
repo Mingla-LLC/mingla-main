@@ -126,7 +126,7 @@
     "inviteCode": "Lambar Gayyata",
     "inviteCodeDesc": "Raba lambar mai sauƙi"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Gayyaci Mahalarta",
     "addFriendsTo": "Ƙara abokai zuwa \"{{name}}\"",
     "searchPlaceholder": "Binciki abokai...",

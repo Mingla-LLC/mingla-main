@@ -55,7 +55,7 @@
     "qrCode": "QR कोड", "qrCodeDesc": "स्कैन करने के लिए QR कोड बनाएं",
     "inviteCode": "आमंत्रण कोड", "inviteCodeDesc": "एक सरल कोड साझा करें"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "प्रतिभागियों को आमंत्रित करें", "addFriendsTo": "\"{{name}}\" में दोस्त जोड़ें",
     "searchPlaceholder": "दोस्त खोजें...", "loadingFriends": "दोस्त लोड हो रहे हैं...", "noUsersFound": "कोई उपयोगकर्ता नहीं मिला",
     "allFriendsInBoard": "सभी दोस्त पहले से इस बोर्ड में हैं", "noFriendsAvailable": "कोई दोस्त उपलब्ध नहीं",

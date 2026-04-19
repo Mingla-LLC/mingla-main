@@ -126,7 +126,7 @@
     "inviteCode": "Àmì Ìpè",
     "inviteCodeDesc": "Pin àmì tí ó rọrùn"
   },
-  "inviteParticipantsModal": {
+  "inlineInviteFriendsList": {
     "title": "Pe Àwọn Olùkópa",
     "addFriendsTo": "Fi àwọn ọ̀rẹ́ sí \"{{name}}\"",
     "searchPlaceholder": "Wá àwọn ọ̀rẹ́...",
