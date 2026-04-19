@@ -813,16 +813,36 @@ async function loadRulesFromDb(db: any, rulesVersionId: string | null): Promise<
   const versionIds = Object.values(manifest.snapshot);
   if (versionIds.length === 0) return null;
 
-  // 2. Load rule_set_versions (with parent rule_sets via inner join)
+  // 2. Load rule_set_versions (no embedded resource — avoids PostgREST FK
+  //    auto-detection cache flake; ORCH-0526 M2 rework Path B).
   const { data: versions, error: vErr } = await db.from("rule_set_versions")
-    .select("id, rule_set_id, thresholds, rule_sets!inner(name, kind, scope_kind, scope_value, is_active)")
+    .select("id, rule_set_id, thresholds")
     .in("id", versionIds);
   if (vErr) {
     console.error("loadRulesFromDb versions error:", vErr.message);
     return null;
   }
+  if (!versions || versions.length === 0) {
+    console.warn("loadRulesFromDb: no versions found for manifest", manifest.id);
+    return null;
+  }
 
-  // 3. Load entries
+  // 3. Load parent rule_sets for those versions
+  // deno-lint-ignore no-explicit-any
+  const ruleSetIds = [...new Set(versions.map((v: any) => v.rule_set_id))];
+  const { data: ruleSets, error: rsErr } = await db.from("rule_sets")
+    .select("id, name, kind, scope_kind, scope_value, is_active")
+    .in("id", ruleSetIds);
+  if (rsErr) {
+    console.error("loadRulesFromDb rule_sets error:", rsErr.message);
+    return null;
+  }
+  if (!ruleSets || ruleSets.length === 0) {
+    console.warn("loadRulesFromDb: no rule_sets found for versions");
+    return null;
+  }
+
+  // 4. Load entries
   const { data: entries, error: eErr } = await db.from("rule_entries")
     .select("rule_set_version_id, value, sub_category")
     .in("rule_set_version_id", versionIds);
@@ -831,18 +851,25 @@ async function loadRulesFromDb(db: any, rulesVersionId: string | null): Promise<
     return null;
   }
 
-  // 4. Group entries by version
+  // 5. Build lookups: rule_sets by id, entries by version
+  // deno-lint-ignore no-explicit-any
+  const ruleSetById: Record<string, any> = {};
+  for (const rs of ruleSets) ruleSetById[rs.id] = rs;
+
   const entriesByVersion: Record<string, LoadedRuleEntry[]> = {};
   for (const e of (entries || [])) {
     if (!entriesByVersion[e.rule_set_version_id]) entriesByVersion[e.rule_set_version_id] = [];
     entriesByVersion[e.rule_set_version_id].push({ value: e.value, sub_category: e.sub_category });
   }
 
-  // 5. Build the byName lookup
+  // 6. Build the byName lookup (joining in JS, no FK auto-detection needed)
   const byName: Record<string, LoadedRule> = {};
-  for (const v of (versions || [])) {
-    // deno-lint-ignore no-explicit-any
-    const rs = (v as any).rule_sets;
+  for (const v of versions) {
+    const rs = ruleSetById[v.rule_set_id];
+    if (!rs) {
+      console.warn(`loadRulesFromDb: rule_set ${v.rule_set_id} not found for version ${v.id}`);
+      continue;
+    }
     byName[rs.name] = {
       rule_set_id: v.rule_set_id,
       rule_set_version_id: v.id,
@@ -855,6 +882,8 @@ async function loadRulesFromDb(db: any, rulesVersionId: string | null): Promise<
       is_active: rs.is_active,
     };
   }
+
+  console.log(`loadRulesFromDb: loaded ${Object.keys(byName).length} rules from manifest ${manifest.manifest_label}`);
 
   return {
     rulesVersionId: manifest.id,
@@ -1898,6 +1927,9 @@ async function handleRunRulesFilter(body: any, userId: string): Promise<Response
   // ORCH-0526: load rules from DB. Falls back to in-code constants if empty
   // (I-RULES-FALLBACK-SAFE — transition guard).
   const loaded = await loadRulesFromDb(db, body.rules_version_id || null);
+  if (!loaded) {
+    console.warn("ORCH-0526 M2: loadRulesFromDb returned null; using in-code constants fallback");
+  }
   const rulesVersionId = loaded ? loaded.rulesVersionId : null;
 
   // Build query for matching places (count first)
