@@ -8,13 +8,94 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Two modes:
 //   1. POST { action: "process" }        — picks up pending backfill log entries
 //   2. POST { action: "refresh_single", placePoolId: UUID } — refreshes one place
+//
+// ── INVARIANTS (ORCH-0550.1) ────────────────────────────────────────────────
+//   I-REFRESH-NEVER-DEGRADES     DETAIL_FIELD_MASK below MUST be a superset of
+//                                admin-seed-places.FIELD_MASK. Refresh that asks
+//                                for fewer fields than seed will null out columns
+//                                that seed populated — that's data loss.
+//   I-FIELD-MASK-SINGLE-OWNER    admin-seed-places holds the authoritative list.
+//                                This file mirrors it field-for-field (same 48
+//                                entries, minus the `places.` prefix because the
+//                                detail endpoint returns a flat object).
+// If you add a field to admin-seed-places.FIELD_MASK, add it here AND add it to
+// the UPDATE statement inside refreshPlace().
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const DETAIL_FIELD_MASK =
-  "id,displayName,formattedAddress,location,types,primaryType,rating,userRatingCount,priceLevel,regularOpeningHours,photos,websiteUri";
+// Mirrors admin-seed-places.FIELD_MASK (48 fields), without the `places.` prefix
+// because the detail endpoint returns a single flat place object.
+const DETAIL_FIELD_MASK = [
+  // Identity
+  "id",
+  "displayName",
+  "primaryTypeDisplayName",
+  "formattedAddress",
+  "location",
+  "types",
+  "primaryType",
+
+  // Ratings & price
+  "rating",
+  "userRatingCount",
+  "priceLevel",
+  "priceRange",
+
+  // Hours & photos
+  "regularOpeningHours",
+  "secondaryOpeningHours",
+  "utcOffsetMinutes",
+  "photos",
+
+  // Links
+  "websiteUri",
+  "googleMapsUri",
+  "nationalPhoneNumber",
+
+  // Operational state
+  "businessStatus",
+
+  // Content (AI-heavy)
+  "editorialSummary",
+  "generativeSummary",
+  "reviews",
+
+  // Meal service booleans
+  "servesBrunch",
+  "servesLunch",
+  "servesDinner",
+  "servesBreakfast",
+  "servesBeer",
+  "servesWine",
+  "servesCocktails",
+  "servesCoffee",
+  "servesDessert",
+  "servesVegetarianFood",
+
+  // Ambience & amenities
+  "outdoorSeating",
+  "liveMusic",
+  "goodForGroups",
+  "goodForChildren",
+  "goodForWatchingSports",
+  "allowsDogs",
+  "restroom",
+  "reservable",
+  "menuForChildren",
+
+  // Service options
+  "dineIn",
+  "takeout",
+  "delivery",
+  "curbsidePickup",
+
+  // Access & facilities
+  "accessibilityOptions",
+  "parkingOptions",
+  "paymentOptions",
+].join(",");
 
 // RELIABILITY: These ranges MUST match app-mobile/src/constants/priceTiers.ts
 // and supabase/functions/_shared/priceTiers.ts. All three are the same source of truth.
@@ -83,6 +164,34 @@ async function refreshPlace(
     const location = gPlace.location as { latitude?: number; longitude?: number } | undefined;
     const photos = (gPlace.photos ?? []) as Array<{ name?: string; widthPx?: number; heightPx?: number }>;
 
+    // ORCH-0550.1 — nested extractors, identical to admin-seed-places.transformGooglePlaceForSeed
+    const editorialSummaryText =
+      (gPlace.editorialSummary as { text?: string } | undefined)?.text ?? null;
+    const generativeSummaryText =
+      (gPlace.generativeSummary as { overview?: { text?: string } } | undefined)?.overview?.text ?? null;
+    const primaryTypeDisplayNameText =
+      (gPlace.primaryTypeDisplayName as { text?: string } | undefined)?.text ?? null;
+
+    const priceRange = gPlace.priceRange as
+      | {
+          startPrice?: { currencyCode?: string; units?: string };
+          endPrice?: { currencyCode?: string; units?: string };
+        }
+      | undefined;
+    const priceRangeCurrency =
+      priceRange?.startPrice?.currencyCode ?? priceRange?.endPrice?.currencyCode ?? null;
+    const priceRangeStartCents = priceRange?.startPrice?.units
+      ? parseInt(priceRange.startPrice.units, 10) * 100
+      : null;
+    const priceRangeEndCents = priceRange?.endPrice?.units
+      ? parseInt(priceRange.endPrice.units, 10) * 100
+      : null;
+
+    // ORCH-0550.1 — refresh writes every column the seed transform writes.
+    // Using `?? null` (not `?? undefined`) for new fields so that when Google
+    // stops returning a previously-present boolean/field, we explicitly null it
+    // rather than silently preserve stale data. Identity + price_min/max keep
+    // `?? undefined` so refresh never wipes known-good scalars with 0.
     await supabase
       .from("place_pool")
       .update({
@@ -92,6 +201,7 @@ async function refreshPlace(
         lng: location?.longitude ?? undefined,
         types: (gPlace.types as string[]) ?? undefined,
         primary_type: (gPlace.primaryType as string) ?? undefined,
+        primary_type_display_name: primaryTypeDisplayNameText,
         rating: (gPlace.rating as number) ?? undefined,
         review_count: (gPlace.userRatingCount as number) ?? 0,
         price_level: priceLevel ?? undefined,
@@ -99,9 +209,55 @@ async function refreshPlace(
         price_max: priceInfo.max,
         price_tier: priceInfo.tier ?? undefined,
         price_tiers: priceInfo.tier ? [priceInfo.tier] : undefined,
+        price_range_currency: priceRangeCurrency,
+        price_range_start_cents: priceRangeStartCents,
+        price_range_end_cents: priceRangeEndCents,
         opening_hours: gPlace.regularOpeningHours ?? undefined,
+        secondary_opening_hours: gPlace.secondaryOpeningHours ?? null,
         photos: photos.map((p) => ({ name: p.name, widthPx: p.widthPx, heightPx: p.heightPx })),
         website: (gPlace.websiteUri as string) ?? undefined,
+        google_maps_uri: (gPlace.googleMapsUri as string) ?? null,
+        national_phone_number: (gPlace.nationalPhoneNumber as string) ?? null,
+        business_status: (gPlace.businessStatus as string) ?? null,
+        editorial_summary: editorialSummaryText,
+        generative_summary: generativeSummaryText,
+        reviews: gPlace.reviews ?? null,
+        utc_offset_minutes: (gPlace.utcOffsetMinutes as number) ?? undefined,
+
+        // Meal service booleans
+        serves_brunch: gPlace.servesBrunch ?? null,
+        serves_lunch: gPlace.servesLunch ?? null,
+        serves_dinner: gPlace.servesDinner ?? null,
+        serves_breakfast: gPlace.servesBreakfast ?? null,
+        serves_beer: gPlace.servesBeer ?? null,
+        serves_wine: gPlace.servesWine ?? null,
+        serves_cocktails: gPlace.servesCocktails ?? null,
+        serves_coffee: gPlace.servesCoffee ?? null,
+        serves_dessert: gPlace.servesDessert ?? null,
+        serves_vegetarian_food: gPlace.servesVegetarianFood ?? null,
+
+        // Ambience & amenities
+        outdoor_seating: gPlace.outdoorSeating ?? null,
+        live_music: gPlace.liveMusic ?? null,
+        good_for_groups: gPlace.goodForGroups ?? null,
+        good_for_children: gPlace.goodForChildren ?? null,
+        good_for_watching_sports: gPlace.goodForWatchingSports ?? null,
+        allows_dogs: gPlace.allowsDogs ?? null,
+        has_restroom: gPlace.restroom ?? null,
+        reservable: gPlace.reservable ?? null,
+        menu_for_children: gPlace.menuForChildren ?? null,
+
+        // Service options
+        dine_in: gPlace.dineIn ?? null,
+        takeout: gPlace.takeout ?? null,
+        delivery: gPlace.delivery ?? null,
+        curbside_pickup: gPlace.curbsidePickup ?? null,
+
+        // Access & facilities (JSONB)
+        accessibility_options: gPlace.accessibilityOptions ?? null,
+        parking_options: gPlace.parkingOptions ?? null,
+        payment_options: gPlace.paymentOptions ?? null,
+
         raw_google_data: gPlace,
         fetched_via: "detail_refresh",
         last_detail_refresh: new Date().toISOString(),

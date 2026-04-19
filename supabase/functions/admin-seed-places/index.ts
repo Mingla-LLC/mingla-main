@@ -35,22 +35,81 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const NEARBY_SEARCH_URL =
   "https://places.googleapis.com/v1/places:searchNearby";
 
+// ORCH-0550.1 — Authoritative Google Places v1 FieldMask (48 fields).
+// Invariants enforced:
+//   I-FIELD-MASK-SINGLE-OWNER   — this list is the source of truth; admin-refresh-places
+//                                 and admin-place-search mirror it field-for-field.
+//   I-REFRESH-NEVER-DEGRADES    — refresh mask must be a SUPERSET of this list. Never trim.
+// If you add fields here, also add corresponding columns (place_pool) and persistence
+// logic in transformGooglePlaceForSeed + handleRunNextBatch + handleRetryBatch updates.
 const FIELD_MASK = [
+  // Identity
   "places.id",
   "places.displayName",
+  "places.primaryTypeDisplayName",
   "places.formattedAddress",
   "places.location",
   "places.types",
   "places.primaryType",
+
+  // Ratings & price
   "places.rating",
   "places.userRatingCount",
   "places.priceLevel",
+  "places.priceRange",
+
+  // Hours & photos
   "places.regularOpeningHours",
+  "places.secondaryOpeningHours",
   "places.utcOffsetMinutes",
   "places.photos",
+
+  // Links
   "places.websiteUri",
+  "places.googleMapsUri",
+  "places.nationalPhoneNumber",
+
+  // Operational state
   "places.businessStatus",
+
+  // Content (AI-heavy)
   "places.editorialSummary",
+  "places.generativeSummary",
+  "places.reviews",
+
+  // Meal service booleans
+  "places.servesBrunch",
+  "places.servesLunch",
+  "places.servesDinner",
+  "places.servesBreakfast",
+  "places.servesBeer",
+  "places.servesWine",
+  "places.servesCocktails",
+  "places.servesCoffee",
+  "places.servesDessert",
+  "places.servesVegetarianFood",
+
+  // Ambience & amenities
+  "places.outdoorSeating",
+  "places.liveMusic",
+  "places.goodForGroups",
+  "places.goodForChildren",
+  "places.goodForWatchingSports",
+  "places.allowsDogs",
+  "places.restroom",
+  "places.reservable",
+  "places.menuForChildren",
+
+  // Service options
+  "places.dineIn",
+  "places.takeout",
+  "places.delivery",
+  "places.curbsidePickup",
+
+  // Access & facilities
+  "places.accessibilityOptions",
+  "places.parkingOptions",
+  "places.paymentOptions",
 ].join(",");
 
 const COST_PER_NEARBY_SEARCH = 0.032;
@@ -202,6 +261,31 @@ function transformGooglePlaceForSeed(gPlace: any, cityId: string, seedingCategor
     heightPx?: number;
   }>;
 
+  // ORCH-0550.1 — Nested field extractors. Google v1 returns some fields as
+  // { text: "..." } objects or as nested structures; pull to flat primitives here.
+  const editorialSummaryText = (gPlace.editorialSummary as { text?: string } | undefined)?.text ?? null;
+  const generativeSummaryText =
+    (gPlace.generativeSummary as { overview?: { text?: string } } | undefined)?.overview?.text ?? null;
+  const primaryTypeDisplayNameText =
+    (gPlace.primaryTypeDisplayName as { text?: string } | undefined)?.text ?? null;
+
+  // priceRange is { startPrice: { currencyCode, units }, endPrice: { currencyCode, units } }
+  // units is a string in Google's response (e.g. "50"); parseInt then ×100 to store cents.
+  const priceRange = gPlace.priceRange as
+    | {
+        startPrice?: { currencyCode?: string; units?: string };
+        endPrice?: { currencyCode?: string; units?: string };
+      }
+    | undefined;
+  const priceRangeCurrency =
+    priceRange?.startPrice?.currencyCode ?? priceRange?.endPrice?.currencyCode ?? null;
+  const priceRangeStartCents = priceRange?.startPrice?.units
+    ? parseInt(priceRange.startPrice.units, 10) * 100
+    : null;
+  const priceRangeEndCents = priceRange?.endPrice?.units
+    ? parseInt(priceRange.endPrice.units, 10) * 100
+    : null;
+
   return {
     google_place_id: gPlace.id as string,
     name: displayName?.text ?? "Unknown",
@@ -210,6 +294,7 @@ function transformGooglePlaceForSeed(gPlace: any, cityId: string, seedingCategor
     lng: location?.longitude ?? 0,
     types: gPlace.types ?? [],
     primary_type: gPlace.primaryType ?? null,
+    primary_type_display_name: primaryTypeDisplayNameText,
     rating: gPlace.rating ?? null,
     review_count: gPlace.userRatingCount ?? 0,
     price_level: priceLevel ?? null,
@@ -217,14 +302,58 @@ function transformGooglePlaceForSeed(gPlace: any, cityId: string, seedingCategor
     price_max: priceInfo.max,
     price_tier: priceInfo.tier,
     price_tiers: priceInfo.tier ? [priceInfo.tier] : [],
+    price_range_currency: priceRangeCurrency,
+    price_range_start_cents: priceRangeStartCents,
+    price_range_end_cents: priceRangeEndCents,
     opening_hours: gPlace.regularOpeningHours ?? null,
+    secondary_opening_hours: gPlace.secondaryOpeningHours ?? null,
     photos: photos.map((p) => ({
       name: p.name,
       widthPx: p.widthPx,
       heightPx: p.heightPx,
     })),
     website: gPlace.websiteUri ?? null,
-    editorial_summary: (gPlace.editorialSummary as { text?: string })?.text ?? null,
+    google_maps_uri: gPlace.googleMapsUri ?? null,
+    national_phone_number: gPlace.nationalPhoneNumber ?? null,
+    business_status: gPlace.businessStatus ?? null,
+    editorial_summary: editorialSummaryText,
+    generative_summary: generativeSummaryText,
+    reviews: gPlace.reviews ?? null,
+
+    // Meal service booleans (null = unknown; false = Google confirms not served)
+    serves_brunch: gPlace.servesBrunch ?? null,
+    serves_lunch: gPlace.servesLunch ?? null,
+    serves_dinner: gPlace.servesDinner ?? null,
+    serves_breakfast: gPlace.servesBreakfast ?? null,
+    serves_beer: gPlace.servesBeer ?? null,
+    serves_wine: gPlace.servesWine ?? null,
+    serves_cocktails: gPlace.servesCocktails ?? null,
+    serves_coffee: gPlace.servesCoffee ?? null,
+    serves_dessert: gPlace.servesDessert ?? null,
+    serves_vegetarian_food: gPlace.servesVegetarianFood ?? null,
+
+    // Ambience & amenities
+    outdoor_seating: gPlace.outdoorSeating ?? null,
+    live_music: gPlace.liveMusic ?? null,
+    good_for_groups: gPlace.goodForGroups ?? null,
+    good_for_children: gPlace.goodForChildren ?? null,
+    good_for_watching_sports: gPlace.goodForWatchingSports ?? null,
+    allows_dogs: gPlace.allowsDogs ?? null,
+    has_restroom: gPlace.restroom ?? null,
+    reservable: gPlace.reservable ?? null,
+    menu_for_children: gPlace.menuForChildren ?? null,
+
+    // Service options
+    dine_in: gPlace.dineIn ?? null,
+    takeout: gPlace.takeout ?? null,
+    delivery: gPlace.delivery ?? null,
+    curbside_pickup: gPlace.curbsidePickup ?? null,
+
+    // Access & facilities (JSONB — stored as Google returns them)
+    accessibility_options: gPlace.accessibilityOptions ?? null,
+    parking_options: gPlace.parkingOptions ?? null,
+    payment_options: gPlace.paymentOptions ?? null,
+
     raw_google_data: gPlace,
     fetched_via: "nearby_search",
     last_detail_refresh: new Date().toISOString(),
@@ -897,18 +1026,59 @@ async function handleRunNextBatch(body: any, supabase: any) {
               supabase
                 .from("place_pool")
                 .update({
+                  // ORCH-0550.1 — re-seed must write every new column so a repeat
+                  // tile pass cannot degrade a previously-enriched row
+                  // (I-REFRESH-NEVER-DEGRADES).
                   name: row.name,
                   address: row.address,
                   lat: row.lat,
                   lng: row.lng,
                   types: row.types,
                   primary_type: row.primary_type,
+                  primary_type_display_name: row.primary_type_display_name,
                   rating: row.rating,
                   review_count: row.review_count,
                   price_level: row.price_level,
+                  price_range_currency: row.price_range_currency,
+                  price_range_start_cents: row.price_range_start_cents,
+                  price_range_end_cents: row.price_range_end_cents,
                   opening_hours: row.opening_hours,
+                  secondary_opening_hours: row.secondary_opening_hours,
                   photos: row.photos,
                   website: row.website,
+                  google_maps_uri: row.google_maps_uri,
+                  national_phone_number: row.national_phone_number,
+                  business_status: row.business_status,
+                  editorial_summary: row.editorial_summary,
+                  generative_summary: row.generative_summary,
+                  reviews: row.reviews,
+                  utc_offset_minutes: row.utc_offset_minutes,
+                  serves_brunch: row.serves_brunch,
+                  serves_lunch: row.serves_lunch,
+                  serves_dinner: row.serves_dinner,
+                  serves_breakfast: row.serves_breakfast,
+                  serves_beer: row.serves_beer,
+                  serves_wine: row.serves_wine,
+                  serves_cocktails: row.serves_cocktails,
+                  serves_coffee: row.serves_coffee,
+                  serves_dessert: row.serves_dessert,
+                  serves_vegetarian_food: row.serves_vegetarian_food,
+                  outdoor_seating: row.outdoor_seating,
+                  live_music: row.live_music,
+                  good_for_groups: row.good_for_groups,
+                  good_for_children: row.good_for_children,
+                  good_for_watching_sports: row.good_for_watching_sports,
+                  allows_dogs: row.allows_dogs,
+                  has_restroom: row.has_restroom,
+                  reservable: row.reservable,
+                  menu_for_children: row.menu_for_children,
+                  dine_in: row.dine_in,
+                  takeout: row.takeout,
+                  delivery: row.delivery,
+                  curbside_pickup: row.curbside_pickup,
+                  accessibility_options: row.accessibility_options,
+                  parking_options: row.parking_options,
+                  payment_options: row.payment_options,
                   raw_google_data: row.raw_google_data,
                   last_detail_refresh: row.last_detail_refresh,
                   refresh_failures: 0,
@@ -1282,18 +1452,59 @@ async function handleRetryBatch(body: any, supabase: any) {
               supabase
                 .from("place_pool")
                 .update({
+                  // ORCH-0550.1 — re-seed must write every new column so a repeat
+                  // tile pass cannot degrade a previously-enriched row
+                  // (I-REFRESH-NEVER-DEGRADES).
                   name: row.name,
                   address: row.address,
                   lat: row.lat,
                   lng: row.lng,
                   types: row.types,
                   primary_type: row.primary_type,
+                  primary_type_display_name: row.primary_type_display_name,
                   rating: row.rating,
                   review_count: row.review_count,
                   price_level: row.price_level,
+                  price_range_currency: row.price_range_currency,
+                  price_range_start_cents: row.price_range_start_cents,
+                  price_range_end_cents: row.price_range_end_cents,
                   opening_hours: row.opening_hours,
+                  secondary_opening_hours: row.secondary_opening_hours,
                   photos: row.photos,
                   website: row.website,
+                  google_maps_uri: row.google_maps_uri,
+                  national_phone_number: row.national_phone_number,
+                  business_status: row.business_status,
+                  editorial_summary: row.editorial_summary,
+                  generative_summary: row.generative_summary,
+                  reviews: row.reviews,
+                  utc_offset_minutes: row.utc_offset_minutes,
+                  serves_brunch: row.serves_brunch,
+                  serves_lunch: row.serves_lunch,
+                  serves_dinner: row.serves_dinner,
+                  serves_breakfast: row.serves_breakfast,
+                  serves_beer: row.serves_beer,
+                  serves_wine: row.serves_wine,
+                  serves_cocktails: row.serves_cocktails,
+                  serves_coffee: row.serves_coffee,
+                  serves_dessert: row.serves_dessert,
+                  serves_vegetarian_food: row.serves_vegetarian_food,
+                  outdoor_seating: row.outdoor_seating,
+                  live_music: row.live_music,
+                  good_for_groups: row.good_for_groups,
+                  good_for_children: row.good_for_children,
+                  good_for_watching_sports: row.good_for_watching_sports,
+                  allows_dogs: row.allows_dogs,
+                  has_restroom: row.has_restroom,
+                  reservable: row.reservable,
+                  menu_for_children: row.menu_for_children,
+                  dine_in: row.dine_in,
+                  takeout: row.takeout,
+                  delivery: row.delivery,
+                  curbside_pickup: row.curbside_pickup,
+                  accessibility_options: row.accessibility_options,
+                  parking_options: row.parking_options,
+                  payment_options: row.payment_options,
                   raw_google_data: row.raw_google_data,
                   last_detail_refresh: row.last_detail_refresh,
                   refresh_failures: 0,
