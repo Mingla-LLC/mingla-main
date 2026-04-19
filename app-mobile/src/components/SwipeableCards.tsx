@@ -50,6 +50,8 @@ import {
   Recommendation,
   DeckUIState,
 } from "../contexts/RecommendationsContext";
+import { FEATURE_FLAG_PER_CONTEXT_DECK_STATE } from "../config/featureFlags";
+import { deckContextKey } from "../contexts/deckStateRegistry";
 import { DismissedCardsSheet } from "./DismissedCardsSheet";
 import { getReadableCategoryName } from "../utils/categoryUtils";
 import { SCREEN_WIDTH, SCREEN_HEIGHT } from "../utils/responsive";
@@ -428,6 +430,17 @@ export default function SwipeableCards({
     // analytics dimension + retry routing in the new UI states.
     showPipelineErrorToast,
     serverPath,
+    // ORCH-0490 Phase 2.3: expansion signal. True when a deck swap is a
+    // same-context pref-change expansion (new cards streaming into the same
+    // mode+session), so the wipe below is suppressed even when new IDs are
+    // not a strict superset of previous. Undefined when flag-off — wipe uses
+    // legacy first-5-IDs comparison.
+    isDeckExpandingWithinContext,
+    // ORCH-0490 Phase 2.3 rework (AH-138): registry + active context for
+    // per-context swipe-state preservation (SC-2.3-01). Null/undefined
+    // under flag-off — SwipeableCards falls through to legacy AsyncStorage.
+    deckStateRegistry,
+    activeDeckContext,
   } = useRecommendations();
 
   const isAnyLoading = loading || isModeTransitioning || isWaitingForSessionResolution;
@@ -568,6 +581,35 @@ export default function SwipeableCards({
   const removedCardsRef = useRef<Set<string>>(new Set());
   const currentCardIndexRef = useRef(0);
   const previousBatchIdsRef = useRef<string>('');
+  // ORCH-0490 Phase 2.3: full-set version of previousBatchIdsRef. Used by the
+  // expansion signal under FEATURE_FLAG_PER_CONTEXT_DECK_STATE. Flag-off
+  // continues to use previousBatchIdsRef (first-5-IDs compare).
+  const previousCardIdsSetRef = useRef<Set<string>>(new Set());
+
+  // ORCH-0490 Phase 2.3 rework (AH-138): per-context swipe state bridge.
+  // - activeDeckContextKey: stable string key for the current context.
+  // - prevDeckContextKeyRef: last context we restored for. Drives the
+  //   restore effect to fire on genuine context changes only.
+  // - lastSavedContextKeyRef: last context we saved-to. Guards the save
+  //   effect from firing on the first render after a context change, where
+  //   removedCards closure is still the PREVIOUS context's value while
+  //   activeDeckContext already points to the new context (would corrupt
+  //   the new context's registry entry with stale data).
+  const activeDeckContextKey = activeDeckContext
+    ? deckContextKey(activeDeckContext)
+    : null;
+  const prevDeckContextKeyRef = useRef<string | null>(activeDeckContextKey);
+  const lastSavedContextKeyRef = useRef<string | null>(null);
+  // ORCH-0490 Phase 2.3 rework (AH-138): separate context-key ref for the
+  // expansion effect. The RESTORE effect fires at the render where
+  // activeDeckContextKey changes but `recommendations` is still the PREVIOUS
+  // context's cards. If the expansion effect ran its full diff on that same
+  // render, it would lock in wrong-context IDs into previousCardIdsSetRef,
+  // and the NEXT render (when new-context recommendations arrive) would see
+  // non-superset and wipe. This ref lets expansion detect the context change
+  // and early-return without updating previousCardIdsSetRef — preserving
+  // RESTORE's `Set()` reset so the next render hits the INIT branch.
+  const expansionPrevContextKeyRef = useRef<string | null>(activeDeckContextKey);
   const handleSwipeRef = useRef<((direction: "left" | "right", card: Recommendation) => Promise<void>) | null>(null);
   const handleCardExpandRef = useRef<(() => Promise<void>) | null>(null);
   const removedCardIdsRef = useRef<string[]>(removedCardIds);
@@ -810,6 +852,73 @@ export default function SwipeableCards({
     }
   }, [availableRecommendations.length, currentCardIndex]);
 
+  // ── ORCH-0490 Phase 2.3 rework (AH-138): RESTORE from registry on context change ──
+  // When the active DeckContext changes (Solo↔Collab or session→different session),
+  // read the NEW context's saved DeckState.removedCards + .currentCardIndex from
+  // the registry and apply to local component state. Previous context's state was
+  // saved by the SAVE effect below; nothing is lost on toggle.
+  //
+  // Also sets `previousCardIdsSetRef.current = new Set()` so the next expansion-
+  // effect fire treats the transition as INIT (prev.size === 0 → no wipe). Without
+  // this, the expansion effect would see the previous context's card IDs as
+  // `prev` and the new context's as `new`, trigger the non-superset RESET branch,
+  // and clobber the just-restored removedCards.
+  //
+  // Flag-off: no-op; legacy AsyncStorage-backed restoration in checkAndRestoreState
+  // below runs unchanged.
+  useEffect(() => {
+    if (!FEATURE_FLAG_PER_CONTEXT_DECK_STATE) return;
+    if (!deckStateRegistry || !activeDeckContext || !activeDeckContextKey) return;
+    if (prevDeckContextKeyRef.current === activeDeckContextKey) return;
+
+    const state = deckStateRegistry.get(activeDeckContext);
+    const restoredRemoved = new Set(state.removedCards);
+    setRemovedCards(restoredRemoved);
+    setCurrentCardIndex(state.currentCardIndex);
+    // Mirror to PanResponder refs — those read fresh values on swipe and
+    // would otherwise see stale state until the next component render.
+    removedCardsRef.current = new Set(restoredRemoved);
+    currentCardIndexRef.current = state.currentCardIndex;
+    // Force expansion effect to treat next recommendations update as INIT.
+    previousCardIdsSetRef.current = new Set();
+
+    prevDeckContextKeyRef.current = activeDeckContextKey;
+  }, [activeDeckContextKey, deckStateRegistry, activeDeckContext]);
+
+  // ── ORCH-0490 Phase 2.3 rework (AH-138): SAVE to registry on state change ──
+  // Mirror SwipeableCards' local swipe state (`removedCards`, `currentCardIndex`)
+  // into the registry entry for the currently-active DeckContext. Runs whenever
+  // either local state value changes.
+  //
+  // Context-change race guard: on the render AFTER a context change, this
+  // effect's closure captures the PREVIOUS context's removedCards value while
+  // `activeDeckContext` already points to the NEW context. Writing that closure
+  // would corrupt the new context's entry with stale data. The
+  // `lastSavedContextKeyRef` check detects this first-fire-post-change and
+  // skips; the RESTORE effect above updates state to the new context's values,
+  // which triggers this effect again in the subsequent render (now closing
+  // over the correct, restored state) and the save proceeds normally.
+  //
+  // Flag-off: no-op.
+  useEffect(() => {
+    if (!FEATURE_FLAG_PER_CONTEXT_DECK_STATE) return;
+    if (!deckStateRegistry || !activeDeckContext || !activeDeckContextKey) return;
+    // Guard against first-fire-after-context-change race.
+    if (lastSavedContextKeyRef.current !== activeDeckContextKey) {
+      lastSavedContextKeyRef.current = activeDeckContextKey;
+      return;
+    }
+    const state = deckStateRegistry.get(activeDeckContext);
+    state.removedCards = new Set(removedCards);
+    state.currentCardIndex = currentCardIndex;
+  }, [
+    removedCards,
+    currentCardIndex,
+    deckStateRegistry,
+    activeDeckContext,
+    activeDeckContextKey,
+  ]);
+
   // Load saved state from AsyncStorage when recommendations are ready
   useEffect(() => {
     // Wait for recommendations to be available
@@ -822,13 +931,28 @@ export default function SwipeableCards({
       const preferencesChanged = previousRefreshKeyRef.current !== refreshKey;
       const modeChanged = previousModeRef.current !== currentMode;
 
-      if (preferencesChanged || modeChanged) {
-        // Preferences or mode changed - full state reset
+      // ORCH-0490 Phase 2.3 rework (AH-138): under flag-on, `modeChanged`
+      // alone no longer triggers a wipe — per-context state is preserved in
+      // the DeckStateRegistry and restored by the RESTORE effect above. The
+      // old mode's AsyncStorage keys must ALSO be preserved (they are the
+      // cold-launch fallback pending Phase 2.5's Zustand persist). Under
+      // flag-off, the legacy wipe still fires exactly as before.
+      //
+      // `preferencesChanged` STILL triggers a wipe in both flag states —
+      // same-context pref change is a user-initiated fresh deck; they
+      // expect position to reset. The RESTORE effect runs on CONTEXT key
+      // change only; it doesn't misfire on refreshKey change.
+      const effectiveModeChanged = FEATURE_FLAG_PER_CONTEXT_DECK_STATE
+        ? false
+        : modeChanged;
+
+      if (preferencesChanged || effectiveModeChanged) {
+        // Preferences or (flag-off) mode changed - full state reset
         console.log(
           "🔄 State reset - Preferences changed:",
           preferencesChanged,
           "Mode changed:",
-          modeChanged
+          effectiveModeChanged
         );
         setRemovedCards(new Set());
         setCurrentCardIndex(0);
@@ -956,14 +1080,82 @@ export default function SwipeableCards({
     refreshKey,
   ]);
 
-  // Detect full deck replacement vs batch append.
-  // Only clear removedCards when the FIRST 5 card IDs change (full replacement).
-  // When new cards are appended to the end (batch 2+), the first 5 IDs stay the
-  // same — the user keeps their swipe progress.
-  // Preference/mode change resets are already handled at line ~798.
+  // ORCH-0490 Phase 2.3: deck replacement vs expansion signal.
+  //
+  // Flag-on path (FEATURE_FLAG_PER_CONTEXT_DECK_STATE):
+  //   Two signals gate the reset. RESET fires only when BOTH:
+  //     (a) new IDs are NOT a strict superset of previous (real replacement), AND
+  //     (b) `isDeckExpandingWithinContext` is false (not a same-context pref
+  //         change — context actually changed).
+  //   Strict superset means: every ID in previous is also in new, and new is
+  //   at least as large. Covers both:
+  //     - batch append (prev=[A,B,C], new=[A,B,C,D,E]) → superset, EXPANSION.
+  //     - progressive-delivery final interleave (prev=[A,B,C,D,E,F] from merge,
+  //       new=[A,D,B,E,C,F] from final) → same IDs, different order, still
+  //       superset since size is equal → EXPANSION (ORCH-0498 fix).
+  //   Same-context pref change (prev=[A,B,C], new=[X,Y,Z] via different
+  //   category filter) is NOT a superset, but context didn't change — the
+  //   provider signals `isDeckExpandingWithinContext=true` → EXPANSION.
+  //
+  // Flag-off path:
+  //   Legacy first-5-IDs comparison preserved. [TRANSITIONAL] — removed when
+  //   flag flips to unconditional true per exit condition in featureFlags.ts.
   useEffect(() => {
     if (!recommendations || recommendations.length === 0) return;
 
+    if (FEATURE_FLAG_PER_CONTEXT_DECK_STATE) {
+      // Context-change gate (AH-138): if activeDeckContextKey changed since
+      // this effect's last fire, RESTORE has already (a) set removedCards +
+      // currentCardIndex from the new context's registry entry, and (b)
+      // reset previousCardIdsSetRef to Set(). On this render, recommendations
+      // may still be the PREVIOUS context's cards (provider's
+      // setRecommendations call is queued, not yet applied). Running the
+      // diff now would update previousCardIdsSetRef to wrong-context IDs and
+      // trigger a wipe on the NEXT render when new recommendations arrive.
+      // Early-return WITHOUT updating previousCardIdsSetRef — leave RESTORE's
+      // Set() in place so the next fire hits the INIT branch cleanly.
+      if (expansionPrevContextKeyRef.current !== activeDeckContextKey) {
+        expansionPrevContextKeyRef.current = activeDeckContextKey;
+        return;
+      }
+
+      const newCardIdsSet = new Set(recommendations.map((r) => r.id));
+      const prevSet = previousCardIdsSetRef.current;
+
+      if (prevSet.size === 0) {
+        // INIT — first population, no reset needed. Just record.
+        previousCardIdsSetRef.current = newCardIdsSet;
+        return;
+      }
+
+      // Strict superset: every prev ID is in new AND new.size >= prev.size.
+      let isStrictSuperset = newCardIdsSet.size >= prevSet.size;
+      if (isStrictSuperset) {
+        for (const id of prevSet) {
+          if (!newCardIdsSet.has(id)) {
+            isStrictSuperset = false;
+            break;
+          }
+        }
+      }
+
+      // Reset gate: both signals must permit reset.
+      const shouldReset =
+        !isStrictSuperset && isDeckExpandingWithinContext !== true;
+
+      if (shouldReset) {
+        setRemovedCards(new Set());
+        setCurrentCardIndex(0);
+      }
+      // Else: EXPANSION — preserve removedCards + currentCardIndex. The
+      // availableRecommendations memo (ID-to-position tracking via filter)
+      // keeps the current top card stable across the transition.
+
+      previousCardIdsSetRef.current = newCardIdsSet;
+      return;
+    }
+
+    // Flag-off: pre-2.3 first-5-IDs comparison.
     const newFirstIds = recommendations
       .slice(0, 5)
       .map((r) => r.id)
@@ -983,7 +1175,7 @@ export default function SwipeableCards({
     // append — do NOT clear removedCards or reset currentCardIndex.
 
     previousBatchIdsRef.current = newFirstIds;
-  }, [recommendations]);
+  }, [recommendations, isDeckExpandingWithinContext, activeDeckContextKey]);
 
   // PanResponder for swipe gestures
   // CLOSURE INVARIANT: This PanResponder is created once and never recreated.
@@ -1741,17 +1933,10 @@ export default function SwipeableCards({
         </View>
       );
 
-    case 'WAITING_FOR_PREFERENCES':
-      return (
-        <View style={styles.noCardsContainer}>
-          <Icon name="options-outline" size={48} color="#9CA3AF" />
-          <Text style={styles.noCardsTitle}>Setting up preferences</Text>
-          <Text style={styles.noCardsSubtitle}>
-            Participants are choosing their preferences. The deck will appear once ready.
-          </Text>
-        </View>
-      );
-
+    // ORCH-0507.c: 'WAITING_FOR_PREFERENCES' case removed; was dead code —
+    // declared in the union + rendered here but never returned by any selector.
+    // Load-in-progress now falls through to INITIAL_LOADING via the Layer 4
+    // null-check on allParticipantPrefs.
     case 'EMPTY_POOL':
       return (
         <View style={styles.noCardsContainer}>

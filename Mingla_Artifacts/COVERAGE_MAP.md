@@ -1,6 +1,6 @@
 # Coverage Map
 
-> Last updated: 2026-04-19 (post Phase 2.2 CONDITIONAL PASS — ORCH-0485 RC#2/RC#3 + ORCH-0486 closed; Discovery surface grades unchanged — progressive-delivery race path is a latency refactor inside already-Strong-graded deck pipeline, not a new surface)
+> Last updated: 2026-04-18 (**ORCH-0503 CLOSED A** — v3 fix PASS; Discovery surface grade distribution unchanged: the fix restores correctness inside an already-Strong-graded deck pipeline, so no grade-count movement; new invariant `I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE` reinforces Constitutional #2 "One owner per truth" at the deck-sync-effect boundary)
 
 ## Surface Coverage
 

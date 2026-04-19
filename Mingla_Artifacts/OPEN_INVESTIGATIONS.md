@@ -1,7 +1,7 @@
 # Open Investigations
 
-> Last updated: 2026-04-19 (Phase 2.2 close did not open any new investigations — tester reported 0 P0/P1/P2/P3 and 2 P4 doc-nits only; Phase 0-A/0-B/0-C for ORCH-0490 remain as completed historical entries)
-> Total: 0 active | 14 completed (historical) | 1 retracted-premise
+> Last updated: 2026-04-18 (**AH-143 ORCH-0503 growing-branch-interleave-loss** investigation CLOSED — root cause proven twice independently; v3 fix landed and PASSED user device retest 6/6; see `outputs/INVESTIGATION_ORCH-0503_GROWING_BRANCH_INTERLEAVE_LOSS.md`)
+> Total: 0 active | 15 completed (historical) | 1 retracted-premise
 
 ## Active Investigations
 
@@ -13,6 +13,7 @@
 
 | ID | Issue | Completed | Artifact | Next |
 |----|-------|-----------|----------|------|
+| ORCH-0503 (v3) | Mixed-deck partial→final ordering — growing-branch interleave loss | 2026-04-18 | `outputs/INVESTIGATION_ORCH-0503_GROWING_BRANCH_INTERLEAVE_LOSS.md` | **CLOSED A 2026-04-18.** Root cause proven twice independently (mingla-forensics + user's parallel investigation cross-verified via TanStack source references). Spec AH-144 APPROVED → implementor AH-145 APPROVED STRUCTURALLY → user device retest AH-146 PASS 6/6. New invariant `I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE` registered. H1 PROVEN, H2 + H3 DISPROVEN. Two follow-up ORCH-IDs filed: ORCH-0510 (silent catches at RecommendationsContext.tsx:263,336, S3) + concrete test requirement added to ORCH-0508 (no test framework in app-mobile). |
 | ORCH-0474 | `discover-cards` silently degrades 3 failure modes into one "pool-empty" response (collab multi-category 0-card bug) | 2026-04-17 | `outputs/INVESTIGATION_ORCH-0474_COLLAB_MULTICATEGORY_EMPTY.md` | **Spec COMPLETED + APPROVED 2026-04-17.** Artifact: `outputs/SPEC_ORCH-0474_DISCOVER_CARDS_FALLTHROUGH_SPLIT.md`. Implementor dispatch pending at `prompts/IMPL_ORCH-0474_DISCOVER_CARDS_FALLTHROUGH_SPLIT.md`. Root cause class HIGH, exact trigger MEDIUM — structural fix closes both auth-flake and pipeline-throw modes uniformly. |
 | ORCH-0469 | Brunch/Lunch/Casual false "seen everything" in warm app | 2026-04-17 | `outputs/INVESTIGATION_ORCH-0469_DECK_STATE_POLLUTION.md` | **CLOSED Grade B 2026-04-17** — QA retest #1 PASS (6/6). Joint close with ORCH-0472. Evidence: `outputs/QA_ORCH-0469-0472_REPORT_RETEST_1.md`. I-EMPTY-CACHE-NONPERSIST invariant established. |
 | ORCH-0470 | generate-single-cards seeding-ID vs app-slug mismatch | 2026-04-17 | Line-level evidence in `outputs/INVESTIGATION_ORCH-0469_DECK_STATE_POLLUTION.md` | User decision locked (DEC-020 Direction A). Spec dispatch ready: `prompts/SPEC_ORCH-0470_GENERATE_SINGLE_CARDS_SLUG_FIX.md`. |

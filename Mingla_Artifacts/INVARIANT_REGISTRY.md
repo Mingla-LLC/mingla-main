@@ -39,6 +39,30 @@
 | INV-S07 | Query keys contain ALL parameters that affect result | Code | Key factory with all dependencies | Enforced (Commit 846e7cce) |
 | INV-S08 | Optimistic updates rollback on mutation failure | Code | onError handlers | Partial (16 mutations covered) |
 
+### I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE
+
+**Established:** 2026-04-18 (ORCH-0503 v3)
+**Location:** `RecommendationsContext.tsx` sync-effect flag-on `batchSeed === 0` branch
+
+**Statement:** When the provider's deck-sync effect processes a non-placeholder
+`deckCards` array whose ID set is a strict superset of the accumulated prior ID
+set (including the equal-cardinality and growing-cardinality sub-cases), it
+MUST adopt `deckCards` verbatim as the new `recommendations` /
+`accumulatedCardsRef`. Prev-preserving merge fallbacks (e.g.,
+`[...prev, ...toAppend]`) are INVALID in this branch because React Query
+collapses partial-2 and queryFn-resolve notifications under React 18 batching —
+cardinality alone cannot distinguish mid-partial growth from final-interleave
+arrival.
+
+**Preserved by:**
+- `const merged = deckCards` inside the strict-superset branch (single-line adoption)
+- `__DEV__` runtime guard comparing `merged[0..3]` to `deckCards[0..3]`
+- Grep invariant: `grep '\[\.\.\.prev, \.\.\.toAppend\]' RecommendationsContext.tsx` → 0 matches
+
+**Verified by:** SC-0503v3-02 (device), SC-0503v3-09 (structural grep), SC-0503v3-11 (dev runtime guard present)
+**Closed ORCH-ID:** ORCH-0503
+**Related:** I-PROGRESSIVE-DELIVERY-EXPANSION-NOT-REPLACEMENT (ORCH-0498)
+
 ## Auth & Session Invariants
 
 | ID | Invariant | Layer | Enforcement | Status |

@@ -97,6 +97,17 @@ interface AppState {
   deckPrefsHash: string;
   deckSchemaVersion: number;
 
+  // [ORCH-0504] Deck preferences refresh counter — incremented each time the
+  // user saves preferences. Used as part of the AsyncStorage key schema in
+  // SwipeableCards (mingla_card_state_{mode}_{refreshKey}_*). MUST be
+  // persisted so cross-session lookups find their keys; previously lived as
+  // local useState in AppStateManager → reset on cold launch → AsyncStorage
+  // orphans and the deck came back from card 1 after any prior pref save.
+  // Phase 2.5 is expected to migrate full swipe state into a Zustand-persisted
+  // registry; until then this counter is the persistence unit that keeps
+  // swipe state keys stable across cold launches.
+  preferencesRefreshKey: number;
+
   // UI overlay state (not persisted)
   showAccountSettings: boolean;
 
@@ -116,6 +127,11 @@ interface AppState {
   // Deck session actions
   addSwipedCard: (card: Recommendation) => void;
   resetDeckHistory: (newPrefsHash: string) => void;
+
+  // [ORCH-0504] Mutator for preferencesRefreshKey. Accepts either a new value
+  // or an updater function (to support `setPreferencesRefreshKey((k) => k + 1)`
+  // idiom used at AppStateManager + app/index.tsx pref-save call sites).
+  setPreferencesRefreshKey: (updater: number | ((prev: number) => number)) => void;
 
   // Utilities
   clearUserData: () => void;
@@ -141,6 +157,7 @@ export const useAppStore = create<AppState>()(
       sessionSwipedCards: [],
       deckPrefsHash: '',
       deckSchemaVersion: DECK_SCHEMA_VERSION,
+      preferencesRefreshKey: 0, // [ORCH-0504] persisted refresh counter
       showAccountSettings: false,
 
       // Auth actions
@@ -168,6 +185,18 @@ export const useAppStore = create<AppState>()(
       setCurrentCardIndex: (currentCardIndex) => set({ currentCardIndex }),
       setShowAccountSettings: (showAccountSettings) =>
         set({ showAccountSettings }),
+
+      // [ORCH-0504] Updater supports both raw number and (prev) => next forms.
+      // Mirrors React's useState setter shape so call sites using
+      // `setPreferencesRefreshKey((k: number) => k + 1)` continue to work
+      // unchanged after lifting from AppStateManager useState into Zustand.
+      setPreferencesRefreshKey: (updater) =>
+        set((state: AppState) => ({
+          preferencesRefreshKey:
+            typeof updater === 'function'
+              ? updater(state.preferencesRefreshKey)
+              : updater,
+        })),
 
       // Deck session actions
       addSwipedCard: (card) => set((state: AppState) => {
@@ -198,6 +227,9 @@ export const useAppStore = create<AppState>()(
           sessionSwipedCards: [],
           deckPrefsHash: '',
           deckSchemaVersion: DECK_SCHEMA_VERSION,
+          // [ORCH-0504] Constitutional #6: logout clears everything. The next
+          // user starts at refreshKey=0, producing fresh AsyncStorage keys.
+          preferencesRefreshKey: 0,
         }),
     })),  // end of state definition + devLoggerMiddleware
     {
@@ -215,6 +247,12 @@ export const useAppStore = create<AppState>()(
         sessionSwipedCards: state.sessionSwipedCards,
         deckPrefsHash: state.deckPrefsHash,
         deckSchemaVersion: state.deckSchemaVersion,
+        // [ORCH-0504] I-REFRESHKEY-PERSISTED — the AsyncStorage swipe-state key
+        // schema `mingla_card_state_${mode}_${refreshKey}_*` depends on this
+        // value being stable across cold launches. Pre-fix: local useState in
+        // AppStateManager → reset to 0 on cold launch → orphan AsyncStorage
+        // keys → deck reset to card 1.
+        preferencesRefreshKey: state.preferencesRefreshKey,
       }),
       onRehydrateStorage: () => (state) => {
         // Migration safety: clear old data when schema version changes.
@@ -228,6 +266,16 @@ export const useAppStore = create<AppState>()(
         // Ensure sessionSwipedCards exists even if hydrated from old state
         if (state && !Array.isArray(state.sessionSwipedCards)) {
           state.sessionSwipedCards = [];
+        }
+        // [ORCH-0504] Backward-compat guard — pre-fix storage did not persist
+        // `preferencesRefreshKey`; hydrated state from those users will have
+        // `undefined` here. Default to 0 (same as fresh cold launch). Next
+        // pref save writes a correctly-keyed AsyncStorage entry and
+        // subsequent cold launches restore from it. No DECK_SCHEMA_VERSION
+        // bump needed — the failure mode of pre-fix hydration is graceful
+        // (missing field → 0 default), not corrupting.
+        if (state && typeof state.preferencesRefreshKey !== 'number') {
+          state.preferencesRefreshKey = 0;
         }
         // RELIABILITY: Signal that Zustand has finished restoring persisted state.
         // Components can now trust that `profile`, `user`, `isAuthenticated`

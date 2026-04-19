@@ -22,8 +22,27 @@ const EMPTY_PILLS: string[] = [];
  * onboarding prefetch can pre-seed the cache with the identical key shape.
  * Any divergence between this function and the hook's queryKey means a silent
  * cache miss — never construct the key independently. ORCH-0386.
+ *
+ * ORCH-0490 Phase 2.3: `mode` + optional `sessionId` are the first two
+ * positional discriminants of the new key shape when provided:
+ *   `['deck-cards', mode, sessionId ?? null, roundedLat, roundedLng, ...]`
+ *
+ * When `mode` is omitted (flag-off path / legacy callers), the pre-2.3 key
+ * shape is used:
+ *   `['deck-cards', roundedLat, roundedLng, ...]`
+ *
+ * This dual shape is intentional for the flag-gated rollout. The persister
+ * gate at `app/index.tsx:2978` checks `firstKey === 'deck-cards'` which
+ * matches both shapes. Orphan entries under the old shape evict via
+ * `gcTime: 24h` once the flag flips to unconditional true; the pre-2.3 key
+ * construction will be removed in the cleanup commit.
  */
 export interface DeckQueryKeyParams {
+  /** ORCH-0490 Phase 2.3: context discriminant. Optional for backward compat
+   *  with flag-off callers. When present, drives the new key shape. */
+  mode?: 'solo' | 'collab';
+  /** ORCH-0490 Phase 2.3: required when mode === 'collab'. Ignored otherwise. */
+  sessionId?: string;
   lat: number;
   lng: number;
   categories: string[];
@@ -44,8 +63,7 @@ export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[
     ? normalizeDateTime(params.datetimePref)
     : undefined;
 
-  return [
-    'deck-cards',
+  const tail = [
     roundedLat,
     roundedLng,
     [...params.categories].sort().join(','),
@@ -57,7 +75,20 @@ export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[
     params.dateOption ?? 'today',
     params.batchSeed,
     [...(params.excludeCardIds ?? [])].sort().join(','),
-  ] as const;
+  ];
+
+  // ORCH-0490 Phase 2.3: new key shape when mode is provided.
+  if (params.mode !== undefined) {
+    return [
+      'deck-cards',
+      params.mode,
+      params.mode === 'collab' ? params.sessionId ?? null : null,
+      ...tail,
+    ] as const;
+  }
+
+  // Pre-2.3 legacy key shape — preserved for flag-off callers.
+  return ['deck-cards', ...tail] as const;
 }
 
 interface UseDeckCardsParams {
@@ -78,8 +109,13 @@ interface UseDeckCardsParams {
   lastKnownQueryKey?: readonly unknown[] | null;
   /** ORCH-0446: Array of date windows for AND intersection (collab only). */
   dateWindows?: string[];
-  /** ORCH-0446: Session ID for analytics tracking (collab only). */
+  /** ORCH-0446: Session ID for analytics tracking (collab only). Also serves as
+   *  the key discriminant when `mode === 'collab'` under Phase 2.3 flag-on. */
   sessionId?: string;
+  /** ORCH-0490 Phase 2.3: context discriminant. When provided, drives the new
+   *  key shape (`['deck-cards', mode, sessionId ?? null, ...]`). Absent for
+   *  flag-off callers — key shape reverts to pre-2.3 legacy. */
+  mode?: 'solo' | 'collab';
 }
 
 export interface UseDeckCardsResult {
@@ -117,6 +153,10 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   // session state, proximity-checked) to read hydrated cache instantly. ORCH-0391.
   const queryKey = location
     ? buildDeckQueryKey({
+        // ORCH-0490 Phase 2.3: thread mode + sessionId for new key shape.
+        // Undefined when flag-off caller doesn't provide them — legacy shape.
+        mode: params.mode,
+        sessionId: params.sessionId,
         lat: location.lat,
         lng: location.lng,
         categories: params.categories,

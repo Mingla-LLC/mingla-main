@@ -26,6 +26,13 @@ import { useAppStore } from "../store/appStore";
 import { Recommendation } from "../types/recommendation";
 import { aggregateCollabPrefs } from '../utils/sessionPrefsUtils';
 import { normalizeCategoryArray } from '../utils/categoryUtils';
+// ORCH-0490 Phase 2.3: per-context deck state registry + feature flag.
+import { FEATURE_FLAG_PER_CONTEXT_DECK_STATE } from "../config/featureFlags";
+import {
+  DeckStateRegistry,
+  type DeckContext,
+  deckContextKey,
+} from "./deckStateRegistry";
 // ORCH-0446: useSessionDeck and sessionDeckService deleted. Collab uses useDeckCards (same as solo).
 
 // Re-export so all existing consumer imports keep working
@@ -42,7 +49,11 @@ export type DeckUIState =
   | { type: 'EMPTY' }
   | { type: 'ERROR'; message: string }
   | { type: 'WAITING_FOR_PARTICIPANTS' }
-  | { type: 'WAITING_FOR_PREFERENCES' }
+  // ORCH-0507.c (2026-04-20): removed dead 'WAITING_FOR_PREFERENCES' union
+  // variant + matching SwipeableCards render branch. Was declared + rendered
+  // but never returned by any selector. If a future flow legitimately needs
+  // "participant prefs loading but participants accepted" as a distinct UI
+  // state, re-introduce here with a concrete trigger and render branch.
   | { type: 'EMPTY_POOL' }
   // ORCH-0474: Two new variants for edge-function failures that were previously
   // misclassified as EMPTY. AUTH_REQUIRED fires when the JWT sub is unreadable
@@ -111,6 +122,26 @@ interface RecommendationsContextType {
    *  machine routing inside SwipeableCards. Undefined when the hook hasn't
    *  resolved yet (loading, disabled, or pre-first-fetch). */
   serverPath?: import('../services/deckService').DeckServerPath;
+  /** ORCH-0490 Phase 2.3: expansion signal. True when the current deck swap
+   *  is a same-context pref expansion (not a mode/session switch). Drives
+   *  SwipeableCards' decision to preserve swipe state vs reset on deck
+   *  replacement. Undefined when flag is off or when no transition is live.
+   *  Phase 2.3 default behavior: false on context change, false on non-
+   *  superset deck arrival; strict-superset transitions are EXPANSION
+   *  regardless of this flag. Phase 2.6 will set true for collab realtime
+   *  pref propagation to realize I-COLLAB-LIVE-POSITION-STABLE fully. */
+  isDeckExpandingWithinContext?: boolean;
+  /** ORCH-0490 Phase 2.3 rework (AH-138): stable reference to the per-context
+   *  DeckState registry. SwipeableCards uses this to save/restore
+   *  `removedCards` + `currentCardIndex` across mode toggles — closes
+   *  SC-2.3-01 which failed user device retest because the DeckState type
+   *  had those fields but nothing wrote or read them. Null when flag-off —
+   *  consumers must guard. */
+  deckStateRegistry?: DeckStateRegistry | null;
+  /** ORCH-0490 Phase 2.3 rework (AH-138): the active DeckContext tuple.
+   *  SwipeableCards reads this to key its registry lookups on context
+   *  change. Undefined under flag-off. */
+  activeDeckContext?: DeckContext;
   onOpenPreferences?: () => void;
   onOpenSessionHistory?: () => void;
 }
@@ -169,6 +200,31 @@ export const RecommendationsProvider: React.FC<
   const currentCacheKeyRef = useRef<string | null>(null);
   const queryClient = useQueryClient();
 
+  // ── ORCH-0490 Phase 2.3: Per-context deck state registry ──────────────
+  // Holds one DeckState per (mode, sessionId) tuple. Mode/session toggle
+  // swaps the active-context pointer instead of wiping state. Flag-gated;
+  // when off, the legacy single-state path continues unchanged. See
+  // `contexts/deckStateRegistry.ts` for the invariant contract.
+  const registryRef = useRef<DeckStateRegistry | null>(null);
+  if (registryRef.current === null) {
+    registryRef.current = new DeckStateRegistry();
+  }
+  const registry = registryRef.current;
+
+  // Expansion signal — true when the current deck change is a same-context
+  // pref expansion (not a mode/session switch). Phase 2.3 sets to false on
+  // context change and on non-superset deck arrival; SwipeableCards'
+  // strict-superset check handles the EXPANSION case without needing this
+  // flag. Phase 2.6 will wire this to true on collab realtime pref
+  // propagation. Under flag-off this value is never read by consumers.
+  const [isDeckExpandingWithinContext, setIsDeckExpandingWithinContext] =
+    useState<boolean>(false);
+
+  // ORCH-0490 Phase 2.3: declared here (hoisted from sync effect) so the
+  // context-change detector below can reset it when the active context
+  // changes. Previously lived inline beside the sync effect.
+  const previousDeckIdsRef = useRef<string>('');
+
   // ── ORCH-0391: Persisted deck key for instant cold-start render ─────
   // On cold start, loads the last-used deck query key from AsyncStorage.
   // Only set if the persisted location matches current GPS hint (within 3dp
@@ -217,6 +273,22 @@ export const RecommendationsProvider: React.FC<
   } = useAppStore();
 
   const user = useAppStore((state) => state.user);
+
+  // ── ORCH-0490 Phase 2.3: Logout / user-swap registry clear ──────────
+  // Constitutional #6: logout must clear all private state. The registry
+  // holds per-context DeckState in memory for the signed-in user; on user
+  // change (logout → null, or rare user swap) we wipe all entries. Flag-
+  // gated — under flag-off the registry is not populated and this is a
+  // cheap no-op.
+  const prevUserIdRef = useRef<string | null>(user?.id ?? null);
+  useEffect(() => {
+    if (!FEATURE_FLAG_PER_CONTEXT_DECK_STATE) return;
+    const currentUserId = user?.id ?? null;
+    if (prevUserIdRef.current !== currentUserId) {
+      registry.clearAll();
+      prevUserIdRef.current = currentUserId;
+    }
+  }, [user?.id, registry]);
 
   // Persist exhaustion state so "That's a Wrap" survives app restart.
   // Scoped per user+mode. Resets on preference change (refreshKey change).
@@ -313,6 +385,68 @@ export const RecommendationsProvider: React.FC<
     currentMode !== "solo" && resolvedSessionId
   );
   const isSoloMode = currentMode === "solo";
+
+  // ── ORCH-0490 Phase 2.3: Current DeckContext ─────────────────────────
+  // Derived from mode + resolvedSessionId. Drives registry lookups, query
+  // key mode discriminant, and the context-change detection effect below.
+  // Collab with no resolved session (still loading) falls back to solo —
+  // the useDeckCards hooks gate on `enabled` to avoid fetching in that
+  // transitional state.
+  const currentContext: DeckContext = useMemo(() => {
+    if (currentMode === "solo" || !resolvedSessionId) {
+      return { kind: "solo" };
+    }
+    return { kind: "collab", sessionId: resolvedSessionId };
+  }, [currentMode, resolvedSessionId]);
+  const currentContextKey = deckContextKey(currentContext);
+
+  // ── ORCH-0490 Phase 2.3: Context-change detector ─────────────────────
+  // Swaps the registry's active-context pointer AND saves-then-restores
+  // accumulated state across contexts. Flow on toggle:
+  //   1. Capture current ref state into the OLD context's DeckState record.
+  //   2. Flip the registry's active-context pointer.
+  //   3. Read the NEW context's DeckState and restore refs + recommendations.
+  //      If the new context has never been visited, the factory returns a
+  //      fresh empty DeckState → refs reset + setRecommendations([]) → the
+  //      new context's useDeckCards hook fetches.
+  //   4. Clear expansion signal — context actually changed, not a same-
+  //      context pref expansion. SwipeableCards may reset (or restore from
+  //      its own per-mode AsyncStorage under the existing pattern).
+  //
+  // Flag-off: effect is a full no-op; legacy mode-transition handler wipes
+  //   state as before.
+  const prevContextKeyRef = useRef<string>(currentContextKey);
+  const prevContextRef = useRef<DeckContext>(currentContext);
+  useEffect(() => {
+    if (!FEATURE_FLAG_PER_CONTEXT_DECK_STATE) return;
+    if (prevContextKeyRef.current !== currentContextKey) {
+      // 1. Save current ref state into OLD context.
+      const oldCtx = prevContextRef.current;
+      const oldState = registry.get(oldCtx);
+      oldState.accumulatedCards = accumulatedCardsRef.current;
+      oldState.servedIds = new Set(sessionServedIdsRef.current);
+      oldState.batchSeed = batchSeed;
+      oldState.isExhausted = isExhausted;
+
+      // 2. Swap active context.
+      registry.setActiveContext(currentContext);
+
+      // 3. Restore new context from registry (lazy-creates empty if first visit).
+      const newState = registry.get(currentContext);
+      accumulatedCardsRef.current = newState.accumulatedCards;
+      sessionServedIdsRef.current = new Set(newState.servedIds);
+      // Reset previousDeckIdsRef so the sync effect re-processes deckCards
+      // for the new context rather than skipping because the string matches.
+      previousDeckIdsRef.current = '';
+      setRecommendations(newState.accumulatedCards);
+
+      // 4. Expansion signal off — genuine context change.
+      setIsDeckExpandingWithinContext(false);
+
+      prevContextKeyRef.current = currentContextKey;
+      prevContextRef.current = currentContext;
+    }
+  }, [currentContextKey, currentContext, registry, batchSeed, isExhausted]);
 
   // ORCH-0443: Use isCollaborationMode instead of isInSolo from useSessionManagement.
   // isInSolo is never set to false because switchToCollaborative is not called
@@ -459,18 +593,24 @@ export const RecommendationsProvider: React.FC<
   // For collab, pass 'today' so the edge function uses datetimePref-based filtering.
   const effectiveDateOption = isCollaborationMode ? 'today' : (userPrefs?.date_option ?? 'today');
 
-  const {
-    cards: soloDeckCards,
-    deckMode: soloDeckMode,
-    activePills: soloActivePills,
-    isLoading: isSoloDeckLoading,
-    isFetching: isSoloDeckFetching,
-    isPlaceholderData: isSoloDeckPlaceholder,
-    isFullBatchLoaded: isSoloDeckBatchLoaded,
-    hasMore: soloDeckHasMore,
-    error: soloDeckError,
-    serverPath: soloServerPath,
-  } = useDeckCards({
+  // ── ORCH-0490 Phase 2.3: Parallel deck hooks (flag-on) + legacy hook (flag-off) ──
+  //
+  // Three hook calls total. Exactly one pair is actively fetching at any time:
+  //   - Flag-on + solo mode  → flag-solo active, flag-collab disabled, legacy disabled
+  //   - Flag-on + collab     → flag-solo may be cached-alive (registry.has), flag-collab active, legacy disabled
+  //   - Flag-off             → legacy active, flag-solo + flag-collab both disabled
+  //
+  // React Query does not fetch disabled queries; the disabled hook calls are
+  // effectively free. The flag-on solo hook is kept `enabled` when the user
+  // is in a collab session but has ever visited solo — so the cached solo
+  // entry survives toggle-back at zero latency. (`registry.has` check.)
+  //
+  // Spec §3 Phase 2.3 items 3 + 5. Kill switch: flip FEATURE_FLAG_PER_CONTEXT_DECK_STATE
+  // to false → legacy path runs verbatim pre-2.3.
+
+  // Legacy hook — flag-off path. Preserves pre-2.3 unified solo+collab behavior.
+  // [TRANSITIONAL] deletable on flag exit condition per featureFlags.ts.
+  const legacyDeck = useDeckCards({
     location: activeDeckLocation,
     categories: activeDeckParams?.categories ?? [],
     intents: activeDeckParams?.intents ?? [],
@@ -480,20 +620,92 @@ export const RecommendationsProvider: React.FC<
     datetimePref: effectiveDatetimePref,
     dateOption: effectiveDateOption,
     batchSeed,
-    // ORCH-0446: Enable for BOTH solo and collab. Collab uses aggregated params via activeDeckParams.
-    enabled: (isSoloMode || isCollaborationMode) &&
+    enabled: !FEATURE_FLAG_PER_CONTEXT_DECK_STATE &&
+      (isSoloMode || isCollaborationMode) &&
       !!activeDeckLocation &&
       activeDeckParams !== null &&
       isDeckParamsStable &&
       !isWaitingForSessionResolution &&
       batchSeedReady,
-    // No exclusions — saved/scheduled cards reappear in deck with labels.
     excludeCardIds: [],
     lastKnownQueryKey: lastDeckKey,
-    // ORCH-0446: Pass dateWindows and sessionId for collab mode
     dateWindows: isCollaborationMode ? (collabDeckParams as any)?.dateWindows : undefined,
     sessionId: isCollaborationMode ? resolvedSessionId ?? undefined : undefined,
+    // No `mode` field — legacy key shape.
   });
+
+  // Flag-on SOLO hook. Always enabled when solo is active OR when the
+  // registry has a solo entry (means user previously visited solo and we
+  // want the cache warm for instant toggle-back).
+  const flagSoloDeck = useDeckCards({
+    mode: 'solo',
+    location: isSoloMode ? userLocation : null,
+    categories: isSoloMode ? (stableDeckParams?.categories ?? []) : [],
+    intents: isSoloMode ? (stableDeckParams?.intents ?? []) : [],
+    travelMode: userPrefs?.travel_mode ?? 'walking',
+    travelConstraintType: 'time' as const,
+    travelConstraintValue: userPrefs?.travel_constraint_value ?? 30,
+    datetimePref: userPrefs?.datetime_pref ?? undefined,
+    dateOption: userPrefs?.date_option ?? 'today',
+    batchSeed,
+    enabled: FEATURE_FLAG_PER_CONTEXT_DECK_STATE &&
+      isSoloMode &&
+      !!userLocation &&
+      stableDeckParams !== null &&
+      isDeckParamsStable &&
+      batchSeedReady,
+    excludeCardIds: [],
+    lastKnownQueryKey: isSoloMode ? lastDeckKey : null,
+  });
+
+  // Flag-on COLLAB hook. Enabled when we're actively in a collab session
+  // with resolved params. One hook instance serves whichever collab session
+  // is active — the query key's sessionId discriminant keeps cache entries
+  // separate across sessions.
+  const flagCollabDeck = useDeckCards({
+    mode: 'collab',
+    sessionId: resolvedSessionId ?? undefined,
+    location: isCollaborationMode
+      ? (collabDeckParams?.location ?? userLocation)
+      : null,
+    categories: isCollaborationMode ? (collabDeckParams?.categories ?? []) : [],
+    intents: isCollaborationMode ? (collabDeckParams?.intents ?? []) : [],
+    travelMode: collabDeckParams?.travelMode ?? 'walking',
+    travelConstraintType: 'time' as const,
+    travelConstraintValue: collabDeckParams?.travelConstraintValue ?? 30,
+    datetimePref: collabDeckParams?.datetimePref ?? undefined,
+    dateOption: 'today',
+    batchSeed,
+    enabled: FEATURE_FLAG_PER_CONTEXT_DECK_STATE &&
+      isCollaborationMode &&
+      !!resolvedSessionId &&
+      !!collabDeckParams &&
+      !isWaitingForSessionResolution &&
+      isDeckParamsStable &&
+      batchSeedReady,
+    excludeCardIds: [],
+    dateWindows: (collabDeckParams as any)?.dateWindows,
+  });
+
+  // Active-deck selection: one flag branch, one mode branch within the flag-on.
+  const activeDeck = FEATURE_FLAG_PER_CONTEXT_DECK_STATE
+    ? (isSoloMode ? flagSoloDeck : flagCollabDeck)
+    : legacyDeck;
+
+  // Alias to the existing identifier names so downstream consumers (effects,
+  // memos, context value) don't need to change. Phase 2.3's scope is
+  // architectural plumbing — renaming would multiply the diff with no user
+  // benefit. Cleanup commit post-flag-exit will collapse these.
+  const soloDeckCards = activeDeck.cards;
+  const soloDeckMode = activeDeck.deckMode;
+  const soloActivePills = activeDeck.activePills;
+  const isSoloDeckLoading = activeDeck.isLoading;
+  const isSoloDeckFetching = activeDeck.isFetching;
+  const isSoloDeckPlaceholder = activeDeck.isPlaceholderData;
+  const isSoloDeckBatchLoaded = activeDeck.isFullBatchLoaded;
+  const soloDeckHasMore = activeDeck.hasMore;
+  const soloDeckError = activeDeck.error;
+  const soloServerPath = activeDeck.serverPath;
 
   // ── ORCH-0391: Persist deck key + location on first successful solo load ──
   // Enables instant cold-start render on next app open (if location matches).
@@ -507,7 +719,14 @@ export const RecommendationsProvider: React.FC<
       !deckPersistFiredRef.current
     ) {
       deckPersistFiredRef.current = true;
+      // ORCH-0490 Phase 2.3: pass `mode: 'solo'` when flag-on so the persisted
+      // key shape matches the hook's key shape. Flag-off omits `mode` to
+      // preserve the pre-2.3 legacy shape. If the flag flips between sessions
+      // (e.g. OTA rolling the flag to true for prod), the first cold launch
+      // post-flip sees a shape mismatch and cold-starts through the fetch
+      // path (one-time skeleton). Acceptable for dark-ship rollout.
       const key = buildDeckQueryKey({
+        ...(FEATURE_FLAG_PER_CONTEXT_DECK_STATE ? { mode: 'solo' as const } : {}),
         lat: activeDeckLocation.lat,
         lng: activeDeckLocation.lng,
         categories: activeDeckParams.categories,
@@ -792,7 +1011,8 @@ export const RecommendationsProvider: React.FC<
 
   // ── Sync deck cards to recommendations state (unified for solo + collab) ──
   // Infinite deck: APPEND new page results to accumulated cards instead of replacing.
-  const previousDeckIdsRef = useRef<string>('');
+  // ORCH-0490 Phase 2.3: previousDeckIdsRef hoisted to top-of-provider so the
+  // context-change detector can reset it on context swap.
 
   useEffect(() => {
     if (isSoloMode || isCollaborationMode) {
@@ -803,7 +1023,20 @@ export const RecommendationsProvider: React.FC<
       if (isDeckPlaceholder) return;
 
       if (deckCards.length > 0) {
-        const deckIdsKey = `${batchSeed}:${deckCards.map(c => c.id).sort().join(',')}`;
+        // [ORCH-0503] Order-preserving canonical key. Same-IDs-different-order
+        // must register as a change so the partial→final transition (Phase 2.2
+        // progressive delivery) hits the expansion branch and
+        // setRecommendations(deckCards) adopts the authoritative interleaved
+        // order from fetchDeck's queryFn return. Identical-reference re-writes
+        // from React Query still produce the same string (array is traversed
+        // in order; IDs are the same; string matches), preserving idempotency
+        // for cache refreshes that carry no new information.
+        //
+        // [ORCH-0503] DO NOT re-introduce .sort() on this key. The sort masks
+        // partial→final reorder arrivals (same IDs, different order) as "no
+        // change" and prevents setRecommendations from adopting fetchDeck's
+        // authoritative interleaved order. Fix verified by T-REM-09 + T-REM-10.
+        const deckIdsKey = `${batchSeed}:${deckCards.map(c => c.id).join(',')}`;
         if (previousDeckIdsRef.current !== deckIdsKey) {
           previousDeckIdsRef.current = deckIdsKey;
           // Deduplicate against already-served cards in this session
@@ -825,20 +1058,132 @@ export const RecommendationsProvider: React.FC<
             }
             // Don't overwrite accumulatedCardsRef — keep existing cards visible
           } else if (batchSeed === 0) {
-            // First page: replace (fresh session or pref change).
-            // Clear sessionServedIdsRef and use the FULL deckCards — not deduped.
-            // onPartialReady (ORCH-0490 Phase 2.2) may have already added partial IDs to sessionServedIdsRef,
-            // which would strip singles from the final interleaved result. Clearing
-            // ensures the complete interleaved deck is what the user sees. See ORCH-0345.
+            // First page behavior differs by flag:
+            //
+            // Flag-on (CF-2.3-8): strict-superset check. If prev was empty OR
+            //   new deckCards is a strict superset of accumulated, APPEND via
+            //   merge-preserving order — keeps user's position + removedCards
+            //   intact across progressive-delivery partial→final transitions
+            //   (ORCH-0498) AND across any same-context pref-change expansion
+            //   where new cards are a superset of old. If NOT a superset, this
+            //   is a fresh-context seed — REPLACE the accumulated cards and
+            //   signal `isDeckExpandingWithinContext=false` so SwipeableCards
+            //   resets (user conceptually wants a fresh deck).
+            //
+            // Flag-off: pre-2.3 unconditional replace. [TRANSITIONAL].
             consecutiveSkipCountRef.current = 0;
-            sessionServedIdsRef.current = new Set(deckCards.map(c => c.id));
-            accumulatedCardsRef.current = deckCards;
-            setRecommendations(deckCards);
+
+            if (FEATURE_FLAG_PER_CONTEXT_DECK_STATE) {
+              const prev = accumulatedCardsRef.current;
+              const newIdSet = new Set(deckCards.map(c => c.id));
+
+              let isStrictSuperset = newIdSet.size >= prev.length;
+              if (isStrictSuperset) {
+                for (const card of prev) {
+                  if (!newIdSet.has(card.id)) {
+                    isStrictSuperset = false;
+                    break;
+                  }
+                }
+              }
+
+              if (prev.length === 0 || isStrictSuperset) {
+                // ORCH-0503 v3 — I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE.
+                //
+                // When React Query's cache holds a non-placeholder `deckCards`
+                // whose ID set is a strict superset of our accumulator,
+                // `deckCards` is the authoritative view — adopt it verbatim.
+                // DO NOT reintroduce a prev-preserving merge fallback here
+                // (e.g., `[...prev, ...toAppend]`).
+                //
+                // Why this matters: React Query + React 18 collapse partial-2
+                // setQueryData + queryFn-resolve into a SINGLE observer
+                // notification when both happen in the same microtask. The
+                // sync effect then sees only two fires (not three): Fire 1
+                // with partial-1, Fire 2 with the final interleaved result.
+                // Any branch that tries to distinguish "partial still growing"
+                // from "final arrived" by cardinality will mis-classify Fire 2
+                // as growing and destroy fetchDeck's 1:1 interleave. See:
+                //   - outputs/INVESTIGATION_ORCH-0503_GROWING_BRANCH_INTERLEAVE_LOSS.md
+                //   - outputs/IMPLEMENTATION_ORCH-0503_MIXED_DECK_FINAL_INTERLEAVE_REPORT.md §4
+                //     (AH-139's 3-fire trace that turned out to be 2 fires on device)
+                //
+                // ORCH-0498 mid-swipe stability is preserved: `removedCards`
+                // is an ID-keyed Set (SwipeableCards filters via
+                // `removedCards.has(id)`, not position), so any card the user
+                // rejected stays filtered even if deckCards reorders.
+                // `currentCardIndex` indexes into `availableRecommendations`
+                // (post-filter), so a full-array reorder that preserves the
+                // filtered set keeps the user pointed at the same card.
+                const merged = deckCards;
+
+                if (__DEV__) {
+                  // I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE runtime
+                  // guard. If a future edit reintroduces a prev-preserving
+                  // merge, the first few IDs of `merged` will diverge from
+                  // `deckCards` on the partial→final transition. Fires loudly
+                  // in dev; no-op in prod.
+                  if (prev.length > 0 && merged.length >= 4 && deckCards.length >= 4) {
+                    for (let i = 0; i < 4; i++) {
+                      if (merged[i].id !== deckCards[i].id) {
+                        console.error(
+                          '[ORCH-0503] Invariant I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE violated: ' +
+                          'strict-superset transition did not adopt deckCards verbatim',
+                          {
+                            prevLen: prev.length,
+                            newLen: deckCards.length,
+                            mergedHead: merged.slice(0, 4).map(c => c.id),
+                            deckCardsHead: deckCards.slice(0, 4).map(c => c.id),
+                          }
+                        );
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                accumulatedCardsRef.current = merged;
+                sessionServedIdsRef.current = new Set(merged.map(c => c.id));
+                setRecommendations(merged);
+              } else {
+                // Fresh-context seed: non-superset means the user's prior cards
+                // are NOT all still in the deck. Replace and signal RESET.
+                sessionServedIdsRef.current = new Set(deckCards.map(c => c.id));
+                accumulatedCardsRef.current = deckCards;
+                setRecommendations(deckCards);
+                setIsDeckExpandingWithinContext(false);
+              }
+
+              // Mirror into registry for context-switch restoration.
+              const regState = registry.get(currentContext);
+              regState.accumulatedCards = accumulatedCardsRef.current;
+              regState.servedIds = new Set(sessionServedIdsRef.current);
+              regState.batchSeed = batchSeed;
+              regState.isExhausted = isExhausted;
+            } else {
+              // Legacy (flag-off): unconditional replace on first page.
+              // onPartialReady (ORCH-0490 Phase 2.2) may have already added
+              // partial IDs to sessionServedIdsRef, which would strip singles
+              // from the final interleaved result. Clearing ensures the full
+              // interleaved deck is what the user sees. See ORCH-0345.
+              sessionServedIdsRef.current = new Set(deckCards.map(c => c.id));
+              accumulatedCardsRef.current = deckCards;
+              setRecommendations(deckCards);
+            }
           } else {
             // Subsequent pages: append new unique cards
             consecutiveSkipCountRef.current = 0;
             accumulatedCardsRef.current = [...accumulatedCardsRef.current, ...dedupedCards];
             setRecommendations(accumulatedCardsRef.current);
+
+            // Flag-on: mirror into registry after append too.
+            if (FEATURE_FLAG_PER_CONTEXT_DECK_STATE) {
+              const regState = registry.get(currentContext);
+              regState.accumulatedCards = accumulatedCardsRef.current;
+              regState.servedIds = new Set(sessionServedIdsRef.current);
+              regState.batchSeed = batchSeed;
+              regState.isExhausted = isExhausted;
+            }
           }
         }
 
@@ -854,7 +1199,7 @@ export const RecommendationsProvider: React.FC<
         }
       }
     }
-  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning, deckHasMore, isDeckPlaceholder]);
+  }, [deckCards, isDeckBatchLoaded, isDeckFetching, isExhausted, isSoloMode, isCollaborationMode, batchSeed, isModeTransitioning, deckHasMore, isDeckPlaceholder, currentContextKey, registry, currentContext]);
 
   // ── Mode Transition Handling ────────────────────────────────────────────
   const previousModeRef = useRef<string | undefined>(undefined);
@@ -866,7 +1211,29 @@ export const RecommendationsProvider: React.FC<
       prevMode !== undefined &&
       prevMode !== currentMode;
 
+    // [ORCH-0505 C-1] hasCompletedFetchForCurrentMode reset must fire outside
+    // the FEATURE_FLAG_PER_CONTEXT_DECK_STATE gate. Do NOT move this inside
+    // the legacy modeChanged block. Pre-2.3: this was set inside that block
+    // below. Phase 2.3's CF-2.3-4 gated the block, silently stopping the
+    // reset under flag-on and leaving the flag stuck from the prior mode —
+    // which caused the WAITING_FOR_PARTICIPANTS selector branch to misfire
+    // on collab entry. Lifted here so it fires regardless of flag state. The
+    // legacy modeChanged block below keeps its existing wipe semantics
+    // (accumulatedCardsRef, sessionServedIdsRef, etc.) for flag-off rollback
+    // parity. Verified by T-REM-03 + T-REM-04.
     if (modeChanged) {
+      setHasCompletedFetchForCurrentMode(false);
+    }
+
+    // ORCH-0490 Phase 2.3 (CF-2.3-4 + CF-2.3-10): under flag-on, mode change
+    // does NOT wipe state. The context-change detector effect swaps the
+    // registry's active context pointer; previous context's DeckState is
+    // preserved. No setBatchSeed(0), no accumulatedCardsRef clear, no
+    // sessionServedIdsRef clear, no invalidateQueries. The previous mode's
+    // React Query cache stays alive under its own (mode, sessionId) key and
+    // is instantly available on toggle-back. Flag-off preserves the legacy
+    // wipe. [TRANSITIONAL] — legacy branch removed at flag exit condition.
+    if (modeChanged && !FEATURE_FLAG_PER_CONTEXT_DECK_STATE) {
       if (completionTimeoutRef.current) {
         clearTimeout(completionTimeoutRef.current);
         completionTimeoutRef.current = null;
@@ -1038,7 +1405,7 @@ export const RecommendationsProvider: React.FC<
       const hasQueryResult = deckCards.length > 0 || isDeckBatchLoaded;
       const hasRecommendationsInState = recommendations.length > 0;
 
-      const shouldMarkComplete =
+      const rawShouldMarkComplete =
         (queryEnabled && queryFinished && hasQueryResult) ||
         (hasRecommendationsInState && !isModeTransitioning && !loading) ||
         (locationError && queryFinished) ||
@@ -1055,6 +1422,21 @@ export const RecommendationsProvider: React.FC<
         // without it, placeholderData keeps isDeckLoading false after a pref change,
         // causing premature completion before new cards arrive.
         (!isLoadingLocation && !isLoadingPreferences && !isDeckLoading && !isModeTransitioning && !isRefreshingAfterPrefChange);
+
+      // [ORCH-0507.a] Collab gate — do NOT mark complete until all collab-side
+      // data is ready. Without this, the composite above can evaluate true
+      // while useBoardSession is still loading participants or
+      // collabDeckParams is still null (board session loaded but aggregation
+      // pending). That race lets the WAITING_FOR_PARTICIPANTS selector
+      // branch fire before any real "is the session short-handed?" answer is
+      // available. Establishes I-COLLAB-COMPLETION-GATES-ON-PARTICIPANT-LOAD.
+      const collabDataReady = !isCollaborationMode || (
+        !boardSessionResult.loading &&
+        allParticipantPrefs !== null &&
+        collabDeckParams !== null
+      );
+
+      const shouldMarkComplete = rawShouldMarkComplete && collabDataReady;
 
       if (shouldMarkComplete) {
         setHasCompletedFetchForCurrentMode(true);
@@ -1083,6 +1465,14 @@ export const RecommendationsProvider: React.FC<
     isLoadingLocation,
     isLoadingPreferences,
     isRefreshingAfterPrefChange,
+    // [ORCH-0507.a] Dependencies for the collabDataReady gate added so the
+    // effect re-evaluates when collab-side data resolves. Without these, the
+    // effect would stay at its pre-load closure and never transition the
+    // completion flag once participant + params data actually lands.
+    isCollaborationMode,
+    boardSessionResult.loading,
+    allParticipantPrefs,
+    collabDeckParams,
   ]);
 
   // ── Update Card Stroll Data ─────────────────────────────────────────────
@@ -1145,7 +1535,14 @@ export const RecommendationsProvider: React.FC<
     setRecommendations(EMPTY_CARDS);
     queryClient.removeQueries({ queryKey: ["deck-cards"] });
     queryClient.removeQueries({ queryKey: ["session-deck"] });
-  }, [queryClient]);
+    // ORCH-0490 Phase 2.3: clearRecommendations() is called from logout /
+    // full-clear paths. Wipe the per-context registry so private deck state
+    // from the previous user doesn't leak into the next session.
+    // Constitutional #6. Flag-gated (no-op when flag off — registry unused).
+    if (FEATURE_FLAG_PER_CONTEXT_DECK_STATE) {
+      registry.clearAll();
+    }
+  }, [queryClient, registry]);
 
   // ── Collab params change detector ─────────────────────────────────────
   const prevCollabParamsRef = useRef<string | null>(null);
@@ -1167,8 +1564,20 @@ export const RecommendationsProvider: React.FC<
     } else if (prevCollabParamsRef.current !== null && prevCollabParamsRef.current !== paramsKey) {
       // Collab params changed (preference update) — invalidate session deck
       // ORCH-0446: session-deck queries no longer exist. Deck uses deck-cards key.
-      queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
-      setBatchSeed(0);
+      //
+      // ORCH-0490 Phase 2.3 (CF-2.3-9): under flag-on the invalidate + batchSeed
+      // reset are NO-OPs. New aggregated params produce a different query key,
+      // which naturally causes a cache miss in React Query; `placeholderData`
+      // keepPrevious keeps old cards visible during fetch; the sync effect
+      // (CF-2.3-8) does append-not-replace on superset, fresh-seed on non-
+      // superset. Phase 2.6 will add a realtime signal here that sets
+      // `isDeckExpandingWithinContext=true` so non-superset collab realtime
+      // pref propagation preserves position. Flag-off preserves legacy wipe.
+      // [TRANSITIONAL] — deletable at flag exit condition.
+      if (!FEATURE_FLAG_PER_CONTEXT_DECK_STATE) {
+        queryClient.invalidateQueries({ queryKey: ['deck-cards'] });
+        setBatchSeed(0);
+      }
     }
     prevCollabParamsRef.current = paramsKey;
   }, [isCollaborationMode, collabDeckParams, queryClient]);
@@ -1213,10 +1622,28 @@ export const RecommendationsProvider: React.FC<
     // ORCH-0446: Collab now uses useDeckCards (same as solo). Errors are unified.
     // The soloDeckError check above covers both modes.
 
-    // ORCH-0446: Collab-specific waiting state — ≥2 participants required
-    if (isCollaborationMode && hasCompletedFetchForCurrentMode && recommendations.length === 0) {
-      // Check if the session has fewer than 2 accepted participants
-      const acceptedCount = allParticipantPrefs?.length ?? 0;
+    // ORCH-0446: Collab-specific waiting state — ≥2 participants required.
+    //
+    // [ORCH-0507.b] WAITING_FOR_PARTICIPANTS must distinguish "participant
+    // data is still loading" (allParticipantPrefs === null) from "participant
+    // data loaded and genuinely < 2 accepted" (length check). Without the
+    // null check, the branch misfires during the useBoardSession load window
+    // as a lying state (surface Constitutional #3 violation). Load-in-
+    // progress falls through to INITIAL_LOADING below via the existing
+    // `!hasCompletedFetchForCurrentMode && recommendations.length === 0`
+    // branch. Establishes I-WAITING-STATE-LOADING-AWARE.
+    //
+    // Belt-and-suspenders with Layer 3 (Mark-Fetch-Complete collab gate):
+    // Layer 3 prevents hasCompletedFetchForCurrentMode from flipping true
+    // during the load window; this null-check defends against any residual
+    // race that Layer 3's gate might miss.
+    if (
+      isCollaborationMode &&
+      hasCompletedFetchForCurrentMode &&
+      recommendations.length === 0 &&
+      allParticipantPrefs !== null  // [ORCH-0507.b] only decide once data is loaded
+    ) {
+      const acceptedCount = allParticipantPrefs.length;
       if (acceptedCount < 2) {
         return { type: 'WAITING_FOR_PARTICIPANTS' };
       }
@@ -1274,7 +1701,11 @@ export const RecommendationsProvider: React.FC<
   }, [
     locationError, soloDeckError, isModeTransitioning, isWaitingForSessionResolution,
     hasCompletedFetchForCurrentMode, recommendations, isCollaborationMode,
-    allParticipantPrefs?.length, isExhausted,
+    // [ORCH-0507.b] Full reference needed so `allParticipantPrefs !== null`
+    // transitions (null → loaded) re-evaluate the selector. `?.length` alone
+    // would not change when transitioning from null to an empty-but-loaded
+    // array (both read 0 / undefined); the null-check requires the reference.
+    allParticipantPrefs, isExhausted,
     soloServerPath, // ORCH-0474: drives AUTH_REQUIRED + PIPELINE_ERROR routing
     isDeckBatchLoaded, deckHasMore, // ORCH-0490 Phase 2.1: drive server-verdict EMPTY branch
     // NOTE: `loading` intentionally removed — the EMPTY check no longer depends on it.
@@ -1335,6 +1766,22 @@ export const RecommendationsProvider: React.FC<
     // ORCH-0474
     showPipelineErrorToast,
     serverPath: soloServerPath,
+    // ORCH-0490 Phase 2.3: expansion signal consumed by SwipeableCards.
+    // Undefined under flag-off (Phase 2.3 feature flag off) — consumers
+    // must handle undefined as "no signal, use legacy heuristic."
+    isDeckExpandingWithinContext: FEATURE_FLAG_PER_CONTEXT_DECK_STATE
+      ? isDeckExpandingWithinContext
+      : undefined,
+    // ORCH-0490 Phase 2.3 rework (AH-138): expose registry + active context
+    // so SwipeableCards can save/restore its swipe state (removedCards +
+    // currentCardIndex) per context. The registry ref is stable across
+    // renders (useRef); currentContext is useMemo-stable unless mode/session
+    // actually change. Under flag-off, both undefined/null — SwipeableCards
+    // falls through to its legacy AsyncStorage-backed restoration.
+    deckStateRegistry: FEATURE_FLAG_PER_CONTEXT_DECK_STATE ? registry : null,
+    activeDeckContext: FEATURE_FLAG_PER_CONTEXT_DECK_STATE
+      ? currentContext
+      : undefined,
   };
 
   return (

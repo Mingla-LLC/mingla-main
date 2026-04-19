@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
-import { spacing, radius, colors, animations } from '../constants/designSystem';
+import { spacing, radius, colors } from '../constants/designSystem';
 
 interface SkeletonCardProps {
   width?: number;
@@ -16,24 +16,20 @@ export const SkeletonCard: React.FC<SkeletonCardProps> = ({
   const shimmerAnimation = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const startShimmer = () => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(shimmerAnimation, {
-            toValue: 1,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(shimmerAnimation, {
-            toValue: 0,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    };
-
-    startShimmer();
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnimation, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnimation, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   }, [shimmerAnimation]);
 
   const shimmerTranslateX = shimmerAnimation.interpolate({
@@ -46,21 +42,21 @@ export const SkeletonCard: React.FC<SkeletonCardProps> = ({
       <View style={styles.content}>
         {/* Image skeleton */}
         <View style={[styles.imageSkeleton, { borderRadius: radius.md }]} />
-        
+
         {/* Title skeleton */}
         <View style={styles.titleSkeleton} />
         <View style={[styles.titleSkeleton, { width: '70%' }]} />
-        
+
         {/* Subtitle skeleton */}
         <View style={styles.subtitleSkeleton} />
-        
+
         {/* Action buttons skeleton */}
         <View style={styles.actionsContainer}>
           <View style={styles.actionButtonSkeleton} />
           <View style={styles.actionButtonSkeleton} />
         </View>
       </View>
-      
+
       {/* Shimmer effect */}
       <Animated.View
         style={[
@@ -174,7 +170,7 @@ export const SkeletonListItem: React.FC = () => {
           <View style={[extendedStyles.listItemSubtitle, { width: '70%' }]} />
         </View>
       </View>
-      
+
       <Animated.View
         style={[
           extendedStyles.shimmer,

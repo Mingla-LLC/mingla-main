@@ -1,6 +1,6 @@
 # Mingla World Map
 
-> Last updated: 2026-04-19 (ORCH-0490 Phase 2.2 CONDITIONAL PASS — ORCH-0485 RC#2 + RC#3 CLOSED + ORCH-0486 CLOSED; progressive-delivery race path live in DEV, prod ships DARK behind FEATURE_FLAG_PROGRESSIVE_DELIVERY until 1-week clean telemetry)
+> Last updated: 2026-04-18 (**ORCH-0503 CLOSED A** — v3 fix user device retest 6/6 PASS; mixed-deck interleave correct; new invariant `I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE` established; commit + two-platform OTA pending user action; Phase 2.4 dispatch next) + 2026-04-19 late (Phase 2.3 rework shipped — ORCH-0491 + ORCH-0498 closed; ORCH-0493 RC#1 partial) + 2026-04-18 (**ORCH-0511 Vibes-Future** program charter registered DEFERRED)
 > Orchestrator version: 1.0
 > This is the single source of truth for all Mingla product reality.
 

@@ -119,7 +119,7 @@ export default function ProfilePage({
   const accountSettingsRef = useRef<View>(null);
   const feedbackButtonRef = useRef<View>(null);
   const { currentStep, registerScrollRef, registerTargetScrollOffset, scrollLockActive } = useCoachMarkContext();
-  const isScrollStep = currentStep === 11 || currentStep === 12;
+  const isScrollStep = currentStep === 9 || currentStep === 10;
   const coachScrollPadding = isScrollStep ? Dimensions.get('window').height * 0.65 : 0;
 
   useEffect(() => {
@@ -136,7 +136,7 @@ export default function ProfilePage({
           (accountSettingsRef.current as any).measureLayout(
             contentRef.current,
             (x: number, y: number, width: number, height: number) => {
-              registerTargetScrollOffset(11, x, y, width, height);
+              registerTargetScrollOffset(9, x, y, width, height);
             },
             () => console.warn('[CoachMark] measureLayout failed for step 11'),
           );
@@ -145,7 +145,7 @@ export default function ProfilePage({
           (feedbackButtonRef.current as any).measureLayout(
             contentRef.current,
             (x: number, y: number, width: number, height: number) => {
-              registerTargetScrollOffset(12, x, y, width, height);
+              registerTargetScrollOffset(10, x, y, width, height);
             },
             () => console.warn('[CoachMark] measureLayout failed for step 12'),
           );
