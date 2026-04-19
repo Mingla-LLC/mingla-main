@@ -1,6 +1,6 @@
 # Invariant Registry
 
-> Last updated: 2026-04-17 (ORCH-0474 closed — INV-042 + INV-043 locked in)
+> Last updated: 2026-04-19 (AH-148 Phase 2.5 verification — added `I-REFRESHKEY-PERSISTED` (AH-142 documentation backfill) and `I-MODE-SESSION-PERSISTS-COLD-LAUNCH` enforced via `mingla_last_mode` per DEC-031)
 > Source: Mingla Orchestrator skill references
 
 ## Architecture / Response-Shape Invariants
@@ -38,6 +38,8 @@
 | INV-S06 | Preferences to deck pipeline has no race condition | Code | No invalidateQueries; prefsHash matching | Enforced (Commit 79d0905b) |
 | INV-S07 | Query keys contain ALL parameters that affect result | Code | Key factory with all dependencies | Enforced (Commit 846e7cce) |
 | INV-S08 | Optimistic updates rollback on mutation failure | Code | onError handlers | Partial (16 mutations covered) |
+| **I-REFRESHKEY-PERSISTED** | `preferencesRefreshKey` (the AsyncStorage swipe-state key discriminant for `mingla_card_state_${mode}_${refreshKey}_*`) MUST be persisted across cold launches. Previous pattern (local `useState(0)` in AppStateManager) reset to 0 on cold launch, orphaning prior swipe-state AsyncStorage keys → deck reset to card 1. | Code | Zustand `partialize` includes `preferencesRefreshKey` at `appStore.ts:255`; `onRehydrateStorage` null-default guard at `appStore.ts:277-279`; `clearUserData` resets to 0 per Constitutional #6 at `appStore.ts:232`. | **Enforced (ORCH-0504 via AH-142, 2026-04-20; documentation backfill 2026-04-19 per AH-148 §6 Discovery 4)** |
+| **I-MODE-SESSION-PERSISTS-COLD-LAUNCH** | User's `currentMode` (`'solo'` or collab-session name) and active `sessionId` MUST survive app kill + cold launch so the user reopens into the mode+session they left. Must NOT compromise ORCH-0209's DB-authoritative `currentSession` object model — only the mode name + session UUID persist; the full `CollaborationSession` object is re-fetched from DB on every open. | Code | `safeAsyncStorageSet("mingla_last_mode", { mode, sessionId })` at `AppStateManager.tsx:168,437`; read at line 391; verified against live DB via `SessionService.getActiveSession` at lines 429-453 with graceful fallback to Solo on deleted session. Logout swept via prefix match `key.startsWith("mingla_")` at `AppStateManager.tsx:792`. | **Enforced (existing — formalized 2026-04-19 via DEC-031 replacing retracted DEC-026)** |
 
 ### I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE
 

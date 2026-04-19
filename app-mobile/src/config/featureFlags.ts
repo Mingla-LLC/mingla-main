@@ -32,8 +32,18 @@
  * and the sequential-await fallback branch in `deckService.fetchDeck` is
  * deleted. See spec `outputs/SPEC_ORCH-0490_DECK_RELIABILITY_AND_PERSISTENCE.md`
  * §9 rollback strategy.
+ *
+ * FLIP COMPLETE — 2026-04-19 (ORCH-0525 AH-152).
+ * AH-151 Release-build gate skipped per DEC-033 — Sentry + 1-line revert = rollback.
+ * Kill-switch window: until 2026-05-03 (2 weeks post-flip).
+ * If prod regression surfaces → revert to `__DEV__` + OTA.
+ * After 2 weeks clean telemetry → ORCH-0525 Option B cleanup dispatch deletes
+ * the constant + collapses the 5 [TRANSITIONAL] branches (listed in
+ * Mingla_Artifacts/outputs/INVESTIGATION_ORCH-0525_FLAG_FLIP_RISK.md §5),
+ * deletes legacyDeck hook, and deletes deckService.ts:556-565 sequential-
+ * fallback else-branch.
  */
-export const FEATURE_FLAG_PROGRESSIVE_DELIVERY: boolean = __DEV__;
+export const FEATURE_FLAG_PROGRESSIVE_DELIVERY: boolean = true;
 
 /**
  * ORCH-0490 Phase 2.3 — Per-Context Deck State + Parallel Hooks + Expansion Signal.
@@ -63,5 +73,13 @@ export const FEATURE_FLAG_PROGRESSIVE_DELIVERY: boolean = __DEV__;
  *
  * Spec: `outputs/SPEC_ORCH-0490_DECK_RELIABILITY_AND_PERSISTENCE.md` §3
  *   Phase 2.3.
+ *
+ * FLIP COMPLETE — 2026-04-19 (ORCH-0525 AH-152).
+ * AH-151 Release-build gate skipped per DEC-033 — Sentry + 1-line revert = rollback.
+ * Kill-switch window: until 2026-05-03 (2 weeks post-flip).
+ * If prod regression surfaces → revert to `__DEV__` + OTA.
+ * After 2 weeks clean telemetry → ORCH-0525 Option B cleanup collapses flag
+ * gates + deletes legacyDeck hook + deletes the 5 [TRANSITIONAL] branches
+ * (listed in Mingla_Artifacts/outputs/INVESTIGATION_ORCH-0525_FLAG_FLIP_RISK.md §5).
  */
-export const FEATURE_FLAG_PER_CONTEXT_DECK_STATE: boolean = __DEV__;
+export const FEATURE_FLAG_PER_CONTEXT_DECK_STATE: boolean = true;
