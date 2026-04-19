@@ -5,27 +5,24 @@ const KNOWN_FLAGS = ['enable_rules_filter_tab'];
 let cache = null;
 let inflight = null;
 
-// [TRANSITIONAL] Reads admin_config directly. Current RLS only allows service_role,
-// so every authenticated-user attempt 401s and we fall back to all-false. That IS
-// the correct production state today (flag = false). M3.4 adds admin_get_feature_flags()
-// SECURITY DEFINER RPC; once that ships, switch this to call the RPC and remove the
-// fallback. Exit condition: ORCH-0526 M4 flag-flip dispatch lands.
+// Reads admin_config flags via admin_get_feature_flags() SECURITY DEFINER RPC.
+// RPC gate: active row in admin_users for the caller's auth.email(). Non-admins
+// get a Postgres error, which we convert to all-false so the UI renders its
+// flag-off state gracefully rather than crashing.
 export async function loadFeatureFlags() {
   if (cache) return cache;
   if (inflight) return inflight;
 
   inflight = (async () => {
     try {
-      const { data, error } = await supabase
-        .from('admin_config')
-        .select('key, value')
-        .in('key', KNOWN_FLAGS);
+      const { data, error } = await supabase.rpc('admin_get_feature_flags', {
+        p_keys: KNOWN_FLAGS,
+      });
       if (error) throw error;
+      const flags = data && typeof data === 'object' ? data : {};
       cache = Object.fromEntries(
         KNOWN_FLAGS.map((k) => {
-          const row = (data || []).find((r) => r.key === k);
-          if (!row) return [k, false];
-          const v = row.value;
+          const v = flags[k];
           return [k, v === true || v === 'true' || v === '"true"'];
         })
       );
