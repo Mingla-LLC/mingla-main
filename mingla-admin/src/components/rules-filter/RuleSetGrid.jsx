@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Filter, X } from "lucide-react";
 import { SectionCard } from "../ui/Card";
 import { SearchInput } from "../ui/SearchInput";
@@ -88,6 +88,7 @@ export function RuleSetGrid({
   onNeverFiredToggle,
 }) {
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+  const hasInitializedRef = useRef(false);
 
   const filtered = useMemo(() => {
     let r = rules || [];
@@ -96,6 +97,16 @@ export function RuleSetGrid({
   }, [rules, neverFiredOnly]);
 
   const grouped = useMemo(() => groupRules(filtered, groupBy), [filtered, groupBy]);
+
+  // ORCH-0543: default groups to collapsed on first data load. Runs once.
+  // After initial collapse, user's toggles are preserved across re-renders.
+  useEffect(() => {
+    if (hasInitializedRef.current) return;
+    if (!rules || rules.length === 0) return;
+    if (!grouped || grouped.length === 0) return;
+    setCollapsedGroups(new Set(grouped.map((g) => g.key)));
+    hasInitializedRef.current = true;
+  }, [rules, grouped]);
 
   const filterIsActive = !!search || !!kindFilter || !!neverFiredOnly;
 

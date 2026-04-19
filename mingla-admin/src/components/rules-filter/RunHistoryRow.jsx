@@ -23,7 +23,7 @@ const fmtRelative = (iso) => {
 
 const fmt = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
 
-export function RunHistoryRow({ run, selected, onClick }) {
+export function RunHistoryRow({ run, selected, onClick, cityNameFallback }) {
   const config = STATUS_CONFIG[run?.status] || { Icon: MinusCircle, color: "text-[var(--color-text-tertiary)]", label: run?.status || "Unknown" };
   const Icon = config.Icon;
   const when = run?.completed_at || run?.started_at || run?.created_at;
@@ -63,7 +63,7 @@ export function RunHistoryRow({ run, selected, onClick }) {
           )}
         </div>
         <div className="flex items-center gap-2 text-[11px] text-[var(--color-text-tertiary)]">
-          <span>{run?.city_filter || "All cities"}</span>
+          <span>{run?.city_filter || cityNameFallback || "All cities"}</span>
           <span>·</span>
           <span>{fmtRelative(when)}</span>
           {run?.triggered_by_email && (

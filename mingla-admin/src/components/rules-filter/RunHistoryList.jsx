@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Play, Loader2 } from "lucide-react";
 import { SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -13,8 +14,15 @@ export function RunHistoryList({
   cityIsSelected,
   onRunRulesClick,
   runInflight,
+  cities,
 }) {
   const activeRunCount = (runs || []).filter((r) => r.status === "running").length;
+
+  // ORCH-0542: fallback city name lookup by city_id for rows where city_filter is null
+  const cityById = useMemo(
+    () => Object.fromEntries((cities || []).map((c) => [c.id, c.name])),
+    [cities]
+  );
 
   const action = (
     <div className="flex items-center gap-2">
@@ -80,6 +88,7 @@ export function RunHistoryList({
                 run={r}
                 selected={selectedRunId === r.id}
                 onClick={() => onRunClick(r.id)}
+                cityNameFallback={r.city_id ? cityById[r.city_id] : null}
               />
             ))}
           </div>

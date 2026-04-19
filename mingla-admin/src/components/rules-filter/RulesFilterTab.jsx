@@ -14,7 +14,7 @@ import { DriftDetailBanner } from "./DriftDetailBanner";
 const SEARCH_DEBOUNCE_MS = 300;
 const RUN_POLL_INTERVAL_MS = 1500;
 
-export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled, cityName }) {
+export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled, cityName, cities }) {
   // ── Overview ──
   const [overview, setOverview] = useState(null);
   const [overviewLoading, setOverviewLoading] = useState(true);
@@ -176,6 +176,7 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled, cit
       const result = await invoke({
         action: "run_rules_filter",
         city_id: selectedCityId,
+        city: cityName || null, // ORCH-0542: populate city_filter column so future rows display city name
         scope: "all",
       });
       if (result?.status === "already_running") {
@@ -305,6 +306,7 @@ export function RulesFilterTab({ selectedCityId, invoke, toast, flagEnabled, cit
         cityIsSelected={!!selectedCityId}
         onRunRulesClick={handleRunRulesClick}
         runInflight={runInflight}
+        cities={cities}
       />
 
       <AnimatePresence>
