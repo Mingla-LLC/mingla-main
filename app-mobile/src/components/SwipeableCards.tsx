@@ -39,8 +39,12 @@ import type { CuratedExperienceCard } from "../types/curatedExperience";
 import { mixpanelService } from "../services/mixpanelService";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { BoardCardService } from "../services/boardCardService";
-import { notifyMatch } from "../services/boardNotificationService";
-import { inAppNotificationService } from "../services/inAppNotificationService";
+// ORCH-0532: notifyMatch and inAppNotificationService moved into collabSaveCard helper.
+// ORCH-0532: shared helper for collab right-swipe — writes board_user_swipe_states
+// via trackSwipeState, polls checkForMatch, shows provisional + match toasts.
+// Used by primary swipe gesture AND the 3 non-gesture save callsites (dismissed-sheet
+// re-save, expanded-modal onSave paths) so ALL collab saves go through one code path.
+import { collabSaveCard } from "./helpers/collabSaveCard";
 import { recordCardSwipe, recordCardExpand } from "../services/cardEngagementService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
@@ -170,6 +174,10 @@ const getDefaultPreferences = (): UserPreferences => ({
 interface SwipeableCardsProps {
   userPreferences?: any;
   currentMode?: string;
+  // ORCH-0532: authoritative session list from AppStateManager. MUST be passed
+  // from app/index.tsx via HomePage so SwipeableCards reads session state from
+  // the SAME source as AppHandlers, eliminating dual-source divergence (V2 §6).
+  boardsSessions?: any[];
   onCardLike: (card: any) => Promise<boolean>;
   accountPreferences?: {
     currency: string;
@@ -387,6 +395,7 @@ const indeterminateBarStyles = StyleSheet.create({
 export default function SwipeableCards({
   userPreferences,
   currentMode = "solo",
+  boardsSessions = [],
   onCardLike,
   accountPreferences,
   onAddToCalendar,
@@ -467,12 +476,13 @@ export default function SwipeableCards({
     refreshKey
   );
 
-  // Get current session for board saving
+  // ORCH-0532: currentSession + isInSolo retained for tier-inheritance logic
+  // (creatorId, isInCollab). availableSessions and sessionsLoading dropped —
+  // resolvedSessionId now derives from boardsSessions prop (AppStateManager)
+  // instead, eliminating the dual-source-of-truth race documented in V2 §6.
   const {
     currentSession,
     isInSolo,
-    availableSessions,
-    loading: sessionsLoading,
   } = useSessionManagement();
   const user = useAppStore((state) => state.user);
   const { data: cachedPreferences } = useUserPreferences(user?.id);
@@ -545,27 +555,37 @@ export default function SwipeableCards({
     return () => { cancelled = true; };
   }, [userLocation?.lat, userLocation?.lng]);
 
-  // Resolve session ID from currentMode if currentSession is not available
-  // currentMode can be either "solo", a session name, or a session ID
+  // ORCH-0532 (2026-04-19): resolvedSessionId MUST read from AppStateManager's
+  // `boardsSessions` (prop) — the SAME authoritative source used by
+  // AppHandlers.handleSaveCard via stateRef. Do NOT re-introduce a dependency
+  // on useSessionManagement.availableSessions here — that hook's state can lag
+  // behind AppStateManager's, producing dual-source divergence bugs (see V2
+  // report §6 CF-1..CF-8 for the 8 ways that divergence fires).
+  //
+  // Resolution logic matches AppHandlers.tsx:687-699 verbatim (creator joined
+  // via session.id, invitee via session.name, legacy rows via session_id field).
+  //
+  // currentMode can be: "solo", a session name, or a session ID.
   const resolvedSessionId = React.useMemo(() => {
     if (currentMode === "solo") return null;
-
-    // If we have currentSession, use its ID
-    if (currentSession?.id) return currentSession.id;
-
-    // Otherwise, try to find session by name or ID from availableSessions
-    const session = availableSessions.find(
-      (s) => s.id === currentMode || s.name === currentMode
+    const session = (boardsSessions || []).find(
+      (s: any) =>
+        s.id === currentMode ||
+        s.name === currentMode ||
+        (s as any).session_id === currentMode
     );
-    return session?.id || null;
-  }, [currentMode, currentSession, availableSessions]);
+    return session
+      ? ((session as any).session_id || session.id || null)
+      : null;
+  }, [currentMode, boardsSessions]);
 
   // isWaitingForSessionResolution is now provided by RecommendationsContext
 
   // Check if we're in a board/collab session.
-  // ORCH-0395: Use resolvedSessionId (derived from currentMode + availableSessions).
-  // NOT currentSession?.id — useSessionManagement.currentSession is always null because
-  // switchToCollaborative() is never called from the session selection flow.
+  // ORCH-0532: resolvedSessionId is now derived from boardsSessions (prop from
+  // AppStateManager) — NOT from useSessionManagement's availableSessions. This
+  // matches the source that AppHandlers uses, eliminating the dual-source race
+  // that caused the quorum-bypass bug.
   const isBoardSession =
     currentMode !== "solo" && !!resolvedSessionId;
 
@@ -1439,82 +1459,14 @@ export default function SwipeableCards({
     try {
       // Track interaction in Supabase (only if user is authenticated)
       if (user?.id) {
-        // Curated cards don't have a single place_id — skip Supabase operations
-        if ((card as any).cardType === 'curated') {
-          // ORCH-0408 Phase 4: ExperiencesService.trackInteraction removed — consolidated into record_card_interaction RPC
+        const isCuratedType = (card as any).cardType === 'curated';
 
-          if (direction === 'right') {
-            // ORCH-0395: In collab mode, skip onCardLike (direct save). The DB trigger
-            // check_mutual_like handles saving after 2+ right-swipes.
-            // Solo mode: save immediately via onCardLike as before.
-            if (!isBoardSession) {
-              const saveResult = await onCardLike(card);
-              if (saveResult === false) {
-                setRemovedCards((prev) => {
-                  const newSet = new Set(prev);
-                  newSet.delete(card.id);
-                  return newSet;
-                });
-                return;
-              }
-            }
-          }
-          // Left-swipe dismissal tracking handled in the shared block below
-        } else {
-
-        // ORCH-0408 Phase 4: ExperiencesService.trackInteraction removed — consolidated into record_card_interaction RPC
-
-        // Save to Supabase if swiped right (liked)
-        if (direction === "right") {
-          try {
-            await ExperiencesService.saveExperience(user.id, card.id, "liked", {
-              title: card.title,
-              category: card.category,
-              place_id: card.id,
-              lat: card.lat,
-              lng: card.lng,
-              image_url: card.image || card.images?.[0],
-              opening_hours: card.openingHours,
-              meta: {
-                matchScore: card.matchScore,
-                reviewCount: card.reviewCount,
-              },
-            });
-          } catch (saveError: any) {
-            if (saveError?.code === "23505") {
-              console.warn(
-                "Experience already saved for this user, skipping duplicate save"
-              );
-              // Don't throw - consider this a success (already saved)
-            } else {
-              console.error("Error saving experience:", saveError);
-              // Re-throw other errors so they can be handled by the caller
-              throw saveError;
-            }
-          }
-
-          // ORCH-0395: In collab mode, skip onCardLike (direct save). The DB trigger
-          // check_mutual_like handles saving after 2+ right-swipes.
-          // Solo mode: save immediately via onCardLike as before.
-          if (!isBoardSession) {
-            const saveResult = await onCardLike(card);
-            if (saveResult === false) {
-              setRemovedCards((prev) => {
-                const newSet = new Set(prev);
-                newSet.delete(card.id);
-                return newSet;
-              });
-              return;
-            }
-          }
-        } else {
-          // Track dislike
-          try {
-            await ExperiencesService.saveExperience(
-              user.id,
-              card.id,
-              "disliked",
-              {
+        // ── Non-curated: track like/dislike in saves table ───────────────
+        // Curated cards have no single place_id and skip this entirely.
+        if (!isCuratedType) {
+          if (direction === "right") {
+            try {
+              await ExperiencesService.saveExperience(user.id, card.id, "liked", {
                 title: card.title,
                 category: card.category,
                 place_id: card.id,
@@ -1526,55 +1478,96 @@ export default function SwipeableCards({
                   matchScore: card.matchScore,
                   reviewCount: card.reviewCount,
                 },
-              }
-            );
-          } catch (dislikeError) {
-            console.error("Error tracking dislike:", dislikeError);
-            // Continue without tracking dislike
-          }
-        }
-
-        // Track swipe state for board sessions
-        if (isBoardSession && resolvedSessionId) {
-          try {
-            await BoardCardService.trackSwipeState({
-              sessionId: resolvedSessionId,
-              experienceId: card.id,
-              userId: user.id,
-              swipeDirection: direction,
-            });
-
-            // ORCH-0395: After tracking swipe, check if the DB trigger created a match.
-            // Only check on right-swipe — left-swipes can't trigger a match.
-            if (direction === 'right') {
-              const matchResult = await BoardCardService.checkForMatch(
-                resolvedSessionId,
-                card.id
-              );
-              if (matchResult.matched && matchResult.savedCardId && matchResult.matchedUserIds) {
-                // Fire-and-forget: send push + in-app notification to all participants
-                notifyMatch({
-                  sessionId: resolvedSessionId,
-                  savedCardId: matchResult.savedCardId,
-                  experienceId: card.id,
-                  cardTitle: matchResult.cardTitle || card.title || 'a spot',
-                  matchedUserIds: matchResult.matchedUserIds,
-                });
-
-                // Local in-app notification for the current user
-                inAppNotificationService.add(
-                  'board_card_matched',
-                  "It's a match! 🎉",
-                  `You and others liked ${matchResult.cardTitle || card.title || 'a spot'}`,
-                  { page: 'home', sessionId: resolvedSessionId }
+              });
+            } catch (saveError: any) {
+              if (saveError?.code === "23505") {
+                console.warn(
+                  "Experience already saved for this user, skipping duplicate save"
                 );
+                // Don't throw — consider this a success (already saved)
+              } else {
+                console.error("Error saving experience:", saveError);
+                throw saveError;
               }
             }
-          } catch (swipeStateError) {
-            console.error("Error tracking swipe state:", swipeStateError);
-            // Continue even if swipe state tracking fails
+          } else {
+            // Track dislike
+            try {
+              await ExperiencesService.saveExperience(
+                user.id,
+                card.id,
+                "disliked",
+                {
+                  title: card.title,
+                  category: card.category,
+                  place_id: card.id,
+                  lat: card.lat,
+                  lng: card.lng,
+                  image_url: card.image || card.images?.[0],
+                  opening_hours: card.openingHours,
+                  meta: {
+                    matchScore: card.matchScore,
+                    reviewCount: card.reviewCount,
+                  },
+                }
+              );
+            } catch (dislikeError) {
+              console.error("Error tracking dislike:", dislikeError);
+              // Continue without tracking dislike
+            }
           }
         }
+
+        // ── Solo-only: right-swipe fires onCardLike (= handleSaveCard) ───
+        // ORCH-0532: handleSaveCard is now SOLO-ONLY. Only fire it when NOT
+        // in a collab session. Collab right-swipes go through collabSaveCard
+        // below. This applies to BOTH curated and non-curated cards.
+        if (direction === 'right' && !isBoardSession) {
+          const saveResult = await onCardLike(card);
+          if (saveResult === false) {
+            setRemovedCards((prev) => {
+              const newSet = new Set(prev);
+              newSet.delete(card.id);
+              return newSet;
+            });
+            return;
+          }
+        }
+
+        // ── Collab-only: route through shared helper (right) or just track
+        // swipe state (left). ORCH-0533: this block NOW fires for curated
+        // cards too (previously curated was skipped inside the else branch,
+        // producing zero swipe-state rows and no match-eligibility).
+        if (isBoardSession && resolvedSessionId) {
+          if (direction === 'right') {
+            // collabSaveCard handles: trackSwipeState → checkForMatch →
+            // provisional toast → match toast + notifyMatch + in-app notif.
+            // All toasts wrapped in try/catch internally; helper cannot throw.
+            await collabSaveCard({
+              card,
+              sessionId: resolvedSessionId,
+              userId: user.id,
+              t,
+            });
+          } else {
+            // Left-swipe: record swipe state so other participants see the
+            // user opted out (used for "N of M voted" displays). No match
+            // check — left-swipes cannot produce matches.
+            try {
+              await BoardCardService.trackSwipeState({
+                sessionId: resolvedSessionId,
+                experienceId: card.id,
+                userId: user.id,
+                swipeDirection: 'left',
+              });
+            } catch (leftErr) {
+              console.warn(
+                '[handleSwipe] trackSwipeState left-swipe failed:',
+                leftErr
+              );
+              // Non-fatal — continue with UI updates
+            }
+          }
         }
       } else {
         // User not authenticated - just handle locally
@@ -1629,9 +1622,27 @@ export default function SwipeableCards({
     }
   };
 
+  // ORCH-0532: dismissed-sheet re-save path. In collab mode, route through the
+  // shared helper (writes swipe-state, honors quorum trigger). In solo mode,
+  // fire onCardLike (= handleSaveCard, now solo-only). Previously this callsite
+  // was unguarded — it always called onCardLike, which used to write directly
+  // to board_saved_cards and bypass quorum. Now quorum is preserved on every path.
   const handleSaveDismissedCard = useCallback((card: Recommendation) => {
-    onCardLike(card);
-  }, [onCardLike]);
+    if (isBoardSession && resolvedSessionId && user?.id) {
+      // Fire-and-forget in collab — the helper handles its own toast/error UX.
+      // .catch() guards against unhandled rejections.
+      collabSaveCard({
+        card,
+        sessionId: resolvedSessionId,
+        userId: user.id,
+        t,
+      }).catch((err) =>
+        console.error('[handleSaveDismissedCard] collabSaveCard failed:', err)
+      );
+    } else {
+      onCardLike(card);
+    }
+  }, [onCardLike, isBoardSession, resolvedSessionId, user?.id, t]);
 
   const recommendationToExpanded = useCallback((card: Recommendation): ExpandedCardData => {
     if ((card as any).cardType === 'curated') {
@@ -1882,7 +1893,20 @@ export default function SwipeableCards({
             currentMode={currentMode}
             onSave={async (card) => {
               try {
-                onCardLike?.(card);
+                // ORCH-0532: in collab, route through shared helper (writes
+                // swipe-state, honors quorum). In solo, onCardLike = handleSaveCard
+                // (now solo-only). Previously this was unguarded — always called
+                // onCardLike, bypassing quorum in collab.
+                if (isBoardSession && resolvedSessionId && user?.id) {
+                  await collabSaveCard({
+                    card: card as unknown as Recommendation,
+                    sessionId: resolvedSessionId,
+                    userId: user.id,
+                    t,
+                  });
+                } else {
+                  onCardLike?.(card);
+                }
                 mixpanelService.trackCardSaved({
                   card_id: card.id,
                   card_title: card.title,
@@ -2410,11 +2434,24 @@ export default function SwipeableCards({
               // Move to next card
               setCurrentCardIndex(0);
 
-              // Handle swipe logic (tracking, saving, etc.) - await to catch errors
+              // Handle swipe logic (tracking, saving, etc.) - await to catch errors.
+              // ORCH-0532: handleSwipe now routes collab right-swipes through
+              // collabSaveCard internally, so this path is quorum-safe.
               await handleSwipe("right", currentRec);
             } else {
-              // Fallback: just call onCardLike if card doesn't match
-              onCardLike?.(card);
+              // ORCH-0532: fallback when expanded card doesn't match current deck card
+              // (e.g., modal opened from a different list). In collab, route through
+              // shared helper to preserve quorum. In solo, onCardLike = handleSaveCard.
+              if (isBoardSession && resolvedSessionId && user?.id) {
+                await collabSaveCard({
+                  card: card as unknown as Recommendation,
+                  sessionId: resolvedSessionId,
+                  userId: user.id,
+                  t,
+                });
+              } else {
+                onCardLike?.(card);
+              }
             }
 
             // Close the modal only on success

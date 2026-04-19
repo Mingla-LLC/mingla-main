@@ -18,7 +18,23 @@ export interface SwipeState {
 
 export class BoardCardService {
   /**
-   * Save a card to a board session
+   * Save a card to a board session.
+   *
+   * @deprecated ORCH-0532: This direct-save path bypassed the check_mutual_like
+   * quorum trigger. All user-context callers have been removed. This method is
+   * retained only for service-role / admin-tool use.
+   *
+   * Calling from a user-authenticated context will FAIL at RLS policy
+   * `bsc_insert_trigger_or_service_only` (see migration
+   * 20260420000006_tighten_board_saved_cards_rls.sql).
+   *
+   * For user-driven collab saves, use `BoardCardService.trackSwipeState` with
+   * `swipeDirection: 'right'` + the `check_mutual_like` trigger. Or call the
+   * `collabSaveCard` helper at `app-mobile/src/components/helpers/collabSaveCard.ts`
+   * which wraps the full flow (swipe-state write + checkForMatch + toast + notifyMatch).
+   *
+   * DO NOT RE-ADD user-context callers. Doing so re-introduces the ORCH-0532
+   * quorum-bypass bug.
    */
   static async saveCardToBoard({
     sessionId,

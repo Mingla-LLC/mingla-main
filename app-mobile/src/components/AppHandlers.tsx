@@ -6,14 +6,16 @@ import { useRef } from "react";
 import { formatCurrency } from "./utils/formatters";
 import { PreferencesService } from "../services/preferencesService";
 import { savedCardsService } from "../services/savedCardsService";
-import { BoardCardService } from "../services/boardCardService";
+// BoardCardService removed from AppHandlers imports (ORCH-0532) —
+// handleSaveCard is now solo-only. Collab saves route via collabSaveCard helper.
 import { toastManager } from "../components/ui/Toast";
 import { supabase } from "../services/supabase";
 import { offlineService } from "../services/offlineService";
 import { inAppNotificationService } from "../services/inAppNotificationService";
 import { useAppStore } from "../store/appStore";
 import { computePrefsHash } from "../utils/cardConverters";
-import { getDisplayName } from "../utils/getDisplayName";
+// getDisplayName removed from AppHandlers imports (ORCH-0532) —
+// was only used in the deleted collab notifyCardSaved path.
 
 import { normalizeCategoryArray } from '../utils/categoryUtils';
 import i18n from '../i18n';
@@ -665,6 +667,21 @@ export function useAppHandlers(state: any) {
     return suggestions;
   };
 
+  // ORCH-0532: This handler is SOLO-ONLY. It must never write to board_saved_cards,
+  // board_votes, or any collab-scoped table. Collab right-swipes (including save
+  // actions from ExpandedCardModal and DismissedCardsSheet) route exclusively
+  // through the collabSaveCard() helper → BoardCardService.trackSwipeState →
+  // check_mutual_like trigger (which enforces 2+ participant quorum).
+  //
+  // DO NOT re-add a collab branch here. If you think you need one, you're about
+  // to re-introduce the ORCH-0532 quorum-bypass bug (single-swipe lands on the
+  // Cards tab without partner agreement). Stop.
+  //
+  // See outputs/INVESTIGATION_ORCH-0532_V2_REAUDIT.md for the failure-mode
+  // analysis and outputs/SPEC_ORCH-0532_COLLAB_QUORUM_FIX.md for the contract.
+  // RLS policy bsc_insert_trigger_or_service_only (migration 20260420000006)
+  // also enforces this at the DB layer — direct user-context INSERTs into
+  // board_saved_cards will be rejected.
   const handleSaveCard = async (card: any): Promise<boolean> => {
     if (!user?.id) {
       Alert.alert(
@@ -674,249 +691,85 @@ export function useAppHandlers(state: any) {
       return false;
     }
 
-    // CRITICAL FIX: Read currentMode and boardsSessions from stateRef.current to get the absolute latest values
-    // stateRef is updated on every render, so stateRef.current always has the latest state
-    // This ensures we always get the current mode, even if the handler was created earlier
-    const latestState = stateRef.current;
-    const latestCurrentMode = latestState?.currentMode ?? "solo";
-    const latestBoardsSessions = latestState?.boardsSessions ?? [];
-
-    // Check if we're in a session (not solo mode)
-    const isInSession = latestCurrentMode !== "solo";
-
-    const currentSession = isInSession
-      ? latestBoardsSessions.find(
-          (s: any) =>
-            s.id === latestCurrentMode ||
-            s.name === latestCurrentMode ||
-            (s as any).session_id === latestCurrentMode
-        )
-      : null;
-
-    // Get the actual session_id (could be session_id field or id field)
-    const sessionId = currentSession
-      ? (currentSession as any).session_id || currentSession.id
-      : null;
-
-    // If in a session, check if card is already saved in that session
-    if (isInSession && currentSession && sessionId) {
+    // Duplicate check — solo mode only.
+    // Skip for curated cards: they can be modified (stop replacements) and the
+    // upsert on onConflict will correctly overwrite with the updated version.
+    const isCuratedCard = (card as any).cardType === 'curated';
+    if (!isCuratedCard) {
       try {
-        // Check if card already exists by querying card_data JSONB
-        const { data: existingCards } = await supabase
-          .from("board_saved_cards")
-          .select("id, card_data")
-          .eq("session_id", sessionId);
+        const { data: existingCard, error: checkError } = await supabase
+          .from("saved_card")
+          .select("id")
+          .eq("profile_id", user.id)
+          .eq("experience_id", card.id)
+          .maybeSingle();
 
-        // Check if any card has matching ID in card_data
-        const existing = existingCards?.find(
-          (savedCard: any) =>
-            savedCard.card_data?.id === card.id ||
-            savedCard.card_data?.experience_id === card.id
-        );
-
-        if (existing) {
-          toastManager.show(
-            `${card.title} is already saved in ${currentSession.name}`,
-            "info",
-            3000
-          );
+        if (existingCard && !checkError) {
+          // Card already exists
+          if (Platform.OS === "android") {
+            ToastAndroid.show(
+              `${card.title} is already in your saved experiences`,
+              ToastAndroid.SHORT
+            );
+          } else {
+            Alert.alert(
+              "Already saved",
+              `${card.title} is already in your saved experiences.`
+            );
+          }
           return true;
         }
       } catch (error) {
-        // Card doesn't exist, continue with save
-        console.error("Error checking existing card:", error);
-      }
-    } else {
-      // In solo mode, check general saved cards in database
-      // Skip duplicate check for curated cards — they can be modified (stop replacements)
-      // and the upsert on onConflict will correctly overwrite with the updated version
-      const isCuratedCard = (card as any).cardType === 'curated';
-      if (!isCuratedCard) {
-        try {
-          const { data: existingCard, error: checkError } = await supabase
-            .from("saved_card")
-            .select("id")
-            .eq("profile_id", user.id)
-            .eq("experience_id", card.id)
-            .maybeSingle();
-
-          if (existingCard && !checkError) {
-            // Card already exists
-            if (Platform.OS === "android") {
-              ToastAndroid.show(
-                `${card.title} is already in your saved experiences`,
-                ToastAndroid.SHORT
-              );
-            } else {
-              Alert.alert(
-                "Already saved",
-                `${card.title} is already in your saved experiences.`
-              );
-            }
-            return true;
-          }
-        } catch (error) {
-          // Error checking (continue with save)
-          console.error("Error checking existing saved card:", error);
-          // Continue with save even if check fails
-        }
+        // Error checking (continue with save)
+        console.error("Error checking existing saved card:", error);
+        // Continue with save even if check fails
       }
     }
 
     try {
-      // If in a session, save to board_saved_cards
-      if (isInSession && currentSession) {
-        const experienceData = {
-          id: card.id,
-          title: card.title,
-          category: card.category,
-          categoryIcon: card.categoryIcon,
-          image: card.image,
-          images: card.images,
-          rating: card.rating,
-          reviewCount: card.reviewCount,
-          travelTime: card.travelTime,
-          priceRange: card.priceRange,
-          priceTier: (card as any).priceTier,
-          description: card.description,
-          fullDescription: card.fullDescription,
-          address: card.address,
-          openingHours: card.openingHours,
-          highlights: card.highlights,
-          matchScore: card.matchScore,
-          socialStats: card.socialStats,
-          matchFactors: card.matchFactors,
-          lat: card.lat,
-          lng: card.lng,
-          // Contact & location fields for Policies & Reservations
-          website: (card as any).website || (card as any).websiteUri,
-          websiteUri: (card as any).websiteUri || (card as any).website,
-          phone: (card as any).phone,
-          placeId: (card as any).placeId,
-          googleMapsUri: (card as any).googleMapsUri,
-          location: (card as any).location,
-          distance: (card as any).distance,
-          tags: (card as any).tags,
-          // Special card type data
-          strollData: (card as any).strollData,
-          picnicData: (card as any).picnicData,
-          // Preserve curated card fields if this is a curated experience
-          ...((card as any).cardType === 'curated' ? {
-            cardType: (card as any).cardType,
-            stops: (card as any).stops,
-            tagline: (card as any).tagline,
-            totalPriceMin: (card as any).totalPriceMin,
-            totalPriceMax: (card as any).totalPriceMax,
-            estimatedDurationMinutes: (card as any).estimatedDurationMinutes,
-            pairingKey: (card as any).pairingKey,
-            experienceType: (card as any).experienceType,
-            shoppingList: (card as any).shoppingList,
-          } : {}),
-        };
+      // Solo mode: save to saved_card via service.
+      // IMPORTANT: Pass explicit source="solo" to ensure we use the current mode.
+      // Don't rely on card.source which might be stale from when card was created.
+      await savedCardsService.saveCard(user.id, card, "solo");
 
-      
-        const { data: savedCardData, error: boardError } = await BoardCardService.saveCardToBoard({
-          sessionId: sessionId!,
-          experienceId: card.id,
-          experienceData,
-          userId: user.id,
+      // Notify paired users about the save (fire-and-forget)
+      supabase
+        .from('pairings')
+        .select('user_a_id, user_b_id')
+        .or(`user_a_id.eq.${user.id},user_b_id.eq.${user.id}`)
+        .then(({ data: pairings }) => {
+          if (!pairings || pairings.length === 0) return;
+          for (const pairing of pairings) {
+            const partnerId = pairing.user_a_id === user.id
+              ? pairing.user_b_id
+              : pairing.user_a_id;
+            const uA = user.id < partnerId ? user.id : partnerId;
+            const uB = user.id < partnerId ? partnerId : user.id;
+            supabase.functions.invoke('notify-pair-activity', {
+              body: {
+                type: 'paired_user_saved_card',
+                pairId: `${uA}:${uB}`,
+                actorId: user.id,
+                recipientId: partnerId,
+                cardId: card.id,
+                cardName: card.title,
+              },
+            }).catch((e: any) => console.warn('[AppHandlers] Pair activity notification failed:', e));
+          }
         });
 
-        if (boardError) {
-          throw boardError;
-        }
+      // Invalidate savedCards query to trigger a refetch
+      queryClient.invalidateQueries({ queryKey: savedCardKeys.list(user.id) });
 
-        // Auto-vote "up" on swipe-right save (fire-and-forget)
-        if (savedCardData?.id) {
-          supabase
-            .from("board_votes")
-            .upsert(
-              {
-                session_id: sessionId!,
-                saved_card_id: savedCardData.id,
-                user_id: user.id,
-                vote_type: "up",
-              },
-              { onConflict: "session_id,saved_card_id,user_id" }
-            )
-            .then(({ error: voteError }) => {
-              if (voteError) {
-                console.warn("Auto-vote failed (non-blocking):", voteError.message);
-              }
-            });
-        }
+      // Show toast notification
+      toastManager.show(
+        `❤️ Saved! ${card.title} has been added to your saved experiences`,
+        "success",
+        3000
+      );
 
-        // Notify other participants that a card was saved (fire-and-forget)
-        if (savedCardData?.id) {
-          import('../services/boardNotificationService').then(({ notifyCardSaved }) => {
-            notifyCardSaved({
-              sessionId: sessionId!,
-              sessionName: currentSession.name || 'Session',
-              userId: user.id,
-              userName: getDisplayName(user),
-              savedCardId: savedCardData.id,
-              cardName: card.title,
-            });
-          }).catch((e: any) => console.warn('[AppHandlers] Board notification failed:', e));
-        }
-
-        // Invalidate savedCards query to trigger a refetch
-        queryClient.invalidateQueries({ queryKey: savedCardKeys.list(user.id) });
-
-        // Show toast notification matching UI: "Added to Board! [Card Name] has been added to [Session Name]"
-        toastManager.show(
-          `Added to Board! ${card.title} has been added to ${currentSession.name}`,
-          "success",
-          4000
-        );
-
-        // Log in-app notification
-        inAppNotificationService.notifyCardSaved(card.title, card.id);
-      } else {
-        // Solo mode: save to general saved_experiences
-        // IMPORTANT: Pass explicit source="solo" to ensure we use the current mode
-        // Don't rely on card.source which might be stale from when card was created
-        await savedCardsService.saveCard(user.id, card, "solo");
-
-        // Notify paired users about the save (fire-and-forget)
-        supabase
-          .from('pairings')
-          .select('user_a_id, user_b_id')
-          .or(`user_a_id.eq.${user.id},user_b_id.eq.${user.id}`)
-          .then(({ data: pairings }) => {
-            if (!pairings || pairings.length === 0) return;
-            for (const pairing of pairings) {
-              const partnerId = pairing.user_a_id === user.id
-                ? pairing.user_b_id
-                : pairing.user_a_id;
-              const uA = user.id < partnerId ? user.id : partnerId;
-              const uB = user.id < partnerId ? partnerId : user.id;
-              supabase.functions.invoke('notify-pair-activity', {
-                body: {
-                  type: 'paired_user_saved_card',
-                  pairId: `${uA}:${uB}`,
-                  actorId: user.id,
-                  recipientId: partnerId,
-                  cardId: card.id,
-                  cardName: card.title,
-                },
-              }).catch((e: any) => console.warn('[AppHandlers] Pair activity notification failed:', e));
-            }
-          });
-
-        // Invalidate savedCards query to trigger a refetch
-        queryClient.invalidateQueries({ queryKey: savedCardKeys.list(user.id) });
-
-        // Show toast notification
-        toastManager.show(
-          `❤️ Saved! ${card.title} has been added to your saved experiences`,
-          "success",
-          3000
-        );
-
-        // Log in-app notification
-        inAppNotificationService.notifyCardSaved(card.title, card.id);
-      }
+      // Log in-app notification
+      inAppNotificationService.notifyCardSaved(card.title, card.id);
       return true;
     } catch (error) {
       console.error("Error saving card:", error);

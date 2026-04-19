@@ -2019,6 +2019,7 @@ function AppContent() {
 
             onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
             currentMode={currentMode ?? "solo"}
+            boardsSessions={boardsSessions}
 
             userPreferences={userPreferences}
             accountPreferences={{
@@ -2190,6 +2191,7 @@ function AppContent() {
 
             onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
             currentMode={currentMode ?? "solo"}
+            boardsSessions={boardsSessions}
 
             userPreferences={userPreferences}
             accountPreferences={{
@@ -2307,6 +2309,7 @@ function AppContent() {
                                 }}
                                 onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
                                 currentMode={currentMode ?? "solo"}
+                                boardsSessions={boardsSessions}
                                 userPreferences={userPreferences}
                                 accountPreferences={{
                                   currency: accountPreferences?.currency || "USD",

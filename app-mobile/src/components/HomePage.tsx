@@ -30,6 +30,10 @@ interface HomePageProps {
   onOpenPreferences: () => void;
   onOpenCollabPreferences?: () => void;
   currentMode: "solo" | string;
+  // ORCH-0532: authoritative session list from AppStateManager. Forwarded to
+  // SwipeableCards so its `resolvedSessionId` reads from the SAME source as
+  // AppHandlers.handleSaveCard, eliminating dual-source divergence (V2 §6).
+  boardsSessions?: any[];
   userPreferences?: any;
   accountPreferences?: {
     currency: string;
@@ -71,6 +75,7 @@ export default function HomePage({
   onOpenPreferences,
   onOpenCollabPreferences,
   currentMode,
+  boardsSessions = [],
   userPreferences,
   accountPreferences,
   onAddToCalendar,
@@ -313,6 +318,7 @@ export default function HomePage({
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
             currentMode={currentMode}
+            boardsSessions={boardsSessions}
             onAddToCalendar={onAddToCalendar}
             onCardLike={onSaveCard || asyncNoop}
             onShareCard={onShareCard}
