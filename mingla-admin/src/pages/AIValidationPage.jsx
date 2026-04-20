@@ -1383,17 +1383,20 @@ export function AIValidationPage() {
             />
           )}
           {tab === "seed" && (
-            // ORCH-0553 — SeedTab on AIValidation page (gated by enable_refresh_tab).
-            // tiles=[] → SeedTab renders "Tile Grid: 0 tiles" header, which is correct
-            // UX (admin must go to Place Pool to generate tiles before seeding here).
+            // ORCH-0553 hotfix: AIValidation's `cities` array comes from
+            // admin_city_picker_data() which returns a SLIM shape (city_id +
+            // city_name + counts). It does NOT include the seeding_cities
+            // schema fields (tile_radius_m, bbox_*, center_lat) that SeedTab
+            // requires for its Tile Grid card + Regenerate flow.
+            // For v1, redirect users to Place Pool which has the full city row.
             refreshTabFlagEnabled ? (
-              <SeedTab
-                city={cities.find((c) => c.id === selectedCityId) || null}
-                tiles={[]}
-                onRefresh={loadAll}
-                onDeleteCity={() => {}}
-                onSeedingChange={() => {}}
-              />
+              <div className="text-center py-16 text-[var(--color-text-secondary)]">
+                <div className="text-sm font-medium">Seeding lives on the Place Pool page</div>
+                <div className="text-xs mt-1">
+                  AI Validation's slim city picker doesn&apos;t carry the tile/bbox metadata Seed needs.
+                  Open <strong>Place Pool → Seeding</strong> for the full flow.
+                </div>
+              </div>
             ) : (
               <div className="text-center py-16 text-[var(--color-text-secondary)]">
                 <div className="text-sm font-medium">Seeding tab — coming soon</div>
@@ -1403,15 +1406,21 @@ export function AIValidationPage() {
               </div>
             )
           )}
-          {tab === "refresh" && (
-            <RefreshTab
-              city={cities.find((c) => c.id === selectedCityId) || null}
-              cities={cities}
-              onRefresh={loadAll}
-              onRefreshChange={() => {}}
-              flagEnabled={refreshTabFlagEnabled}
-            />
-          )}
+          {tab === "refresh" && (() => {
+            // ORCH-0553 hotfix: map admin_city_picker_data row {city_id, city_name, ...}
+            // to the {id, name} shape RefreshTab consumes via city.id.
+            const slimRow = cities.find((c) => c.city_id === selectedCityId);
+            const cityForRefresh = slimRow ? { id: slimRow.city_id, name: slimRow.city_name } : null;
+            return (
+              <RefreshTab
+                city={cityForRefresh}
+                cities={cities}
+                onRefresh={loadAll}
+                onRefreshChange={() => {}}
+                flagEnabled={refreshTabFlagEnabled}
+              />
+            );
+          })()}
           {tab === "review" && <ReviewQueueTab invoke={invoke} toast={addToast} />}
         </motion.div>
       </AnimatePresence>
