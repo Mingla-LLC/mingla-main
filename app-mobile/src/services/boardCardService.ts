@@ -14,6 +14,13 @@ export interface SwipeState {
   userId: string;
   swipeDirection: 'left' | 'right';
   swipedAt: string;
+  // ORCH-0556: Card JSONB payload persisted on right-swipe. Read by the
+  // check_mutual_like trigger to populate board_saved_cards.card_data when
+  // quorum is reached (session_decks was dropped; trigger reads from
+  // board_user_swipe_states.card_data instead). Optional — left-swipes
+  // don't need a payload, and the trigger falls back to a minimal stub
+  // if no swiper provided card_data.
+  cardData?: Record<string, unknown>;
 }
 
 export class BoardCardService {
@@ -123,6 +130,7 @@ export class BoardCardService {
     experienceId,
     userId,
     swipeDirection,
+    cardData,
   }: Omit<SwipeState, 'swipedAt'>): Promise<{ data: any; error: any }> {
     try {
       // Upsert swipe state
@@ -138,6 +146,12 @@ export class BoardCardService {
             user_id: userId,
             swipe_state: swipeState,
             swiped_at: new Date().toISOString(),
+            // ORCH-0556: Persist card payload on right-swipes so
+            // check_mutual_like trigger can populate board_saved_cards.card_data
+            // when quorum is reached (session_decks was dropped). Only write
+            // on right-swipes — left-swipes don't promote and keep the column
+            // NULL. Callers pass the whole card object; we store as JSONB.
+            ...(cardData && swipeDirection === 'right' ? { card_data: cardData } : {}),
           },
           {
             // ORCH-0415: onConflict takes comma-separated COLUMN NAMES, not constraint names.
