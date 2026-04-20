@@ -667,11 +667,12 @@ export function useAppHandlers(state: any) {
     return suggestions;
   };
 
-  // ORCH-0532: This handler is SOLO-ONLY. It must never write to board_saved_cards,
-  // board_votes, or any collab-scoped table. Collab right-swipes (including save
-  // actions from ExpandedCardModal and DismissedCardsSheet) route exclusively
-  // through the collabSaveCard() helper → BoardCardService.trackSwipeState →
-  // check_mutual_like trigger (which enforces 2+ participant quorum).
+  // ORCH-0532 / ORCH-0558: This handler is SOLO-ONLY. It must never write to
+  // board_saved_cards, board_votes, or any collab-scoped table. Collab
+  // right-swipes (including save actions from ExpandedCardModal and
+  // DismissedCardsSheet) route exclusively through the collabSaveCard()
+  // helper → BoardCardService.recordSwipeAndCheckMatch RPC →
+  // check_mutual_like v3 trigger (advisory lock + unique constraint + 2+ quorum).
   //
   // DO NOT re-add a collab branch here. If you think you need one, you're about
   // to re-introduce the ORCH-0532 quorum-bypass bug (single-swipe lands on the

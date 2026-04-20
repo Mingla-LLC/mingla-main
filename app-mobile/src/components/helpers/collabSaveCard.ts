@@ -1,27 +1,26 @@
 import { BoardCardService } from '../../services/boardCardService';
 import { notifyMatch } from '../../services/boardNotificationService';
-import { inAppNotificationService } from '../../services/inAppNotificationService';
+import { mixpanelService } from '../../services/mixpanelService';
 import { toastManager } from '../ui/Toast';
 import type { Recommendation } from '../../types/recommendation';
 
 /**
- * ORCH-0556: Build the card_data JSONB payload persisted on
+ * ORCH-0558 v3: Build the card_data JSONB payload persisted on
  * board_user_swipe_states.card_data when a user right-swipes. The
  * check_mutual_like trigger reads this to populate
  * board_saved_cards.card_data when quorum (≥2 right-swipes) is reached.
  *
- * The payload shape MUST match what SessionViewModal's Cards tab expects
- * (same ~27-key CLIENT-SHAPE the V2 investigation identified as the
- * historical direct-save fingerprint), so Cards tab rendering works
- * unchanged. Curated experiences add extra fields (stops, tagline, etc.).
+ * Payload matches the ~27-key CLIENT-SHAPE the SessionViewModal's Cards tab
+ * expects (same historical direct-save fingerprint), so Cards tab
+ * rendering works unchanged. Curated experiences add extra fields.
  *
  * Undefined values are stripped from JSONB automatically by Supabase.
  */
 function buildCardDataPayload(card: Recommendation): Record<string, unknown> {
-  // Cast to any only for the optional fields that aren't in the Recommendation
-  // type but are commonly present on cards in practice (priceTier, website,
-  // placeId, curated-specific fields, etc.). These are the same optional
-  // fields AppHandlers.handleSaveCard used to read for the old direct-save path.
+  // Cast to any only for optional fields not in Recommendation type but
+  // commonly present on cards in practice (priceTier, website, placeId,
+  // curated-specific fields). These are the same optional fields the
+  // legacy direct-save path used to read.
   const c = card as Recommendation & Record<string, unknown>;
   return {
     id: card.id,
@@ -56,7 +55,6 @@ function buildCardDataPayload(card: Recommendation): Record<string, unknown> {
     tags: c.tags,
     strollData: c.strollData,
     picnicData: c.picnicData,
-    // Curated-experience extras (only present when cardType === 'curated')
     ...(c.cardType === 'curated'
       ? {
           cardType: c.cardType,
@@ -87,29 +85,44 @@ export interface CollabSaveCardResult {
   savedCardId?: string;
   cardTitle?: string;
   error?: Error;
+  reason?: string;
 }
 
 /**
- * ORCH-0532: THE ONLY path client-side collab right-swipe/save logic should take.
+ * ORCH-0558: Single authoritative client-side collab right-swipe path.
  *
- * Writes to `board_user_swipe_states` via `trackSwipeState`. The
- * `check_mutual_like` trigger (SECURITY DEFINER, enforced by RLS policy
- * `bsc_insert_trigger_or_service_only`) decides whether to promote to
- * `board_saved_cards` based on ≥2-participant quorum.
+ * Calls `rpc_record_swipe_and_check_match` which ATOMICALLY:
+ *   1. Upserts board_user_swipe_states (fires check_mutual_like v3 trigger)
+ *   2. Trigger acquires advisory lock on (session_id, experience_id) — serializes
+ *      concurrent triggers and closes the READ COMMITTED race
+ *   3. Trigger inserts to board_saved_cards with ON CONFLICT safety net
+ *   4. RPC returns {matched, saved_card_id, card_title, matched_user_ids, reason}
  *
- * DO NOT call `BoardCardService.saveCardToBoard` from this helper or anywhere
- * else in user-auth context. Direct INSERTs into `board_saved_cards` are
- * rejected by RLS policy (migration 20260420000006), AND they would bypass
- * quorum logic even if RLS were weaker.
+ * Replaces the legacy (trackSwipeState + checkForMatch) two-query pattern
+ * that produced silent match-misses when the ghost-row class was present
+ * and/or when quorum-reaching swipes happened concurrently.
  *
- * Toast semantics (Q1 Option B):
- *   - On successful swipe-right: show "Liked — waiting for others" (2s, info)
- *   - If checkForMatch returns matched: true: replace with "It's a match!"
- *     (4s, success) + fire notifyMatch + local in-app notification
- *   - On trackSwipeState error: show "Couldn't save — tap to retry" (3s, error)
+ * Toast semantics (unchanged from ORCH-0557):
+ *   - Provisional "Liked — waiting for others" (2s, success/green) on entry
+ *   - "It's a match!" (4s, success/green) when RPC returns matched:true
+ *   - "Couldn't save — tap to retry" (3s, error) on RPC error
  *
- * All toast calls are wrapped in try/catch — toast system unavailability
- * must never propagate and block the save flow.
+ * In-app notification: NOT written here. The `notifications` DB row is
+ * inserted by `notify-dispatch` (via `notifyMatch` → `notify-session-match`)
+ * for every matched participant BEFORE push is attempted. The
+ * `useNotifications` hook subscribes to that table via Supabase Realtime
+ * and surfaces the notification in the sheet. This removes the old
+ * `inAppNotificationService.add` call (AsyncStorage-only) per
+ * SPEC_ORCH-0558 SC-12 — single source of truth is the DB table.
+ *
+ * Telemetry: Mixpanel events mirror the server-side match_telemetry_events:
+ *   - "Collab Match Attempt"        — every right-swipe
+ *   - "Collab Match Promotion Success" — RPC returns matched=true
+ *   - "Collab Match Promotion Skipped" — RPC returns matched=false with reason
+ *   - "Collab Match RPC Error"       — RPC returned an error
+ *
+ * Toast calls are wrapped in try/catch — toast unavailability cannot
+ * block the save flow.
  */
 export async function collabSaveCard({
   card,
@@ -118,11 +131,6 @@ export async function collabSaveCard({
   t,
 }: CollabSaveCardParams): Promise<CollabSaveCardResult> {
   // 1. Provisional toast — fire-and-forget, must not throw.
-  // ORCH-0557: 'success' (green) instead of 'info' (blue) — user feedback
-  // that blue looked wrong; green communicates "your action registered"
-  // while the "waiting for others" copy clarifies the pending quorum state.
-  // Color stays continuous (success → success) across the provisional→match
-  // transition if quorum is reached, avoiding a jarring color swap.
   try {
     toastManager.show(
       t('swipeable.liked_waiting', { defaultValue: 'Liked — waiting for others' }),
@@ -130,25 +138,20 @@ export async function collabSaveCard({
       2000
     );
   } catch (toastErr) {
-    // Toast system unavailable — non-fatal. Log and continue.
     console.warn('[collabSaveCard] toast show failed (provisional):', toastErr);
   }
 
-  // 2. Write swipe-state row — the ONE authoritative client write for collab.
-  //    trackSwipeState catches internally and returns { data, error }.
-  //    ORCH-0556: pass cardData payload so check_mutual_like trigger can
-  //    populate board_saved_cards.card_data when quorum is reached
-  //    (session_decks was dropped — trigger now reads from swipe-state rows).
-  const { error: trackErr } = await BoardCardService.trackSwipeState({
+  // 2. Atomic RPC — swipe + match detection in one round-trip.
+  const result = await BoardCardService.recordSwipeAndCheckMatch({
     sessionId,
     experienceId: card.id,
     userId,
-    swipeDirection: 'right',
     cardData: buildCardDataPayload(card),
+    swipeDirection: 'right',
   });
 
-  if (trackErr) {
-    console.error('[collabSaveCard] trackSwipeState failed:', trackErr);
+  if (result.error) {
+    console.error('[collabSaveCard] RPC failed:', result.error);
     try {
       toastManager.show(
         t('swipeable.save_failed', { defaultValue: "Couldn't save — tap to retry" }),
@@ -158,36 +161,43 @@ export async function collabSaveCard({
     } catch (toastErr) {
       console.warn('[collabSaveCard] toast show failed (error path):', toastErr);
     }
-    return { tracked: false, matched: false, error: trackErr as Error };
+    try {
+      mixpanelService.track('Collab Match RPC Error', {
+        session_id: sessionId,
+        experience_id: card.id,
+        reason: result.reason ?? 'unknown',
+        error_message: result.error.message,
+      });
+    } catch (telErr) {
+      console.warn('[collabSaveCard] telemetry failed (error path):', telErr);
+    }
+    return { tracked: false, matched: false, error: result.error, reason: result.reason };
   }
 
-  // 3. Check if the trigger promoted to a match (quorum reached).
-  const matchResult = await BoardCardService.checkForMatch(sessionId, card.id);
+  // 3. Telemetry: attempt recorded by server; client mirrors the outcome.
+  try {
+    mixpanelService.track('Collab Match Attempt', {
+      session_id: sessionId,
+      experience_id: card.id,
+      swipe_direction: 'right',
+    });
+  } catch (telErr) {
+    console.warn('[collabSaveCard] telemetry failed (attempt):', telErr);
+  }
 
-  if (matchResult.matched && matchResult.savedCardId && matchResult.matchedUserIds) {
-    const cardTitle = matchResult.cardTitle || card.title || 'a spot';
+  // 4. On match: fire notifyMatch (writes in-app row via notify-dispatch +
+  //    push). Match toast upgrade for the matcher's own device.
+  if (result.matched && result.savedCardId && result.matchedUserIds) {
+    const cardTitle = result.cardTitle || card.title || 'a spot';
 
-    // Fire match push/analytics — fire-and-forget, must not block toast.
     notifyMatch({
       sessionId,
-      savedCardId: matchResult.savedCardId,
+      savedCardId: result.savedCardId,
       experienceId: card.id,
       cardTitle,
-      matchedUserIds: matchResult.matchedUserIds,
+      matchedUserIds: result.matchedUserIds,
     });
 
-    // Local in-app notification for the current user.
-    inAppNotificationService.add(
-      'board_card_matched',
-      t('swipeable.match_title', { defaultValue: "It's a match!" }),
-      t('swipeable.match_body', {
-        defaultValue: `You and others liked ${cardTitle}`,
-        cardTitle,
-      }),
-      { page: 'home', sessionId }
-    );
-
-    // Upgrade the provisional toast to the match toast.
     try {
       toastManager.show(
         t('swipeable.match_toast', {
@@ -200,13 +210,35 @@ export async function collabSaveCard({
     } catch (toastErr) {
       console.warn('[collabSaveCard] toast show failed (match):', toastErr);
     }
+
+    try {
+      mixpanelService.track('Collab Match Promotion Success', {
+        session_id: sessionId,
+        experience_id: card.id,
+        saved_card_id: result.savedCardId,
+        matched_user_ids_count: result.matchedUserIds.length,
+      });
+    } catch (telErr) {
+      console.warn('[collabSaveCard] telemetry failed (match):', telErr);
+    }
+  } else {
+    try {
+      mixpanelService.track('Collab Match Promotion Skipped', {
+        session_id: sessionId,
+        experience_id: card.id,
+        reason: result.reason ?? 'unknown',
+      });
+    } catch (telErr) {
+      console.warn('[collabSaveCard] telemetry failed (skipped):', telErr);
+    }
   }
 
   return {
     tracked: true,
-    matched: !!matchResult.matched,
-    matchedUserIds: matchResult.matchedUserIds,
-    savedCardId: matchResult.savedCardId,
-    cardTitle: matchResult.cardTitle,
+    matched: !!result.matched,
+    matchedUserIds: result.matchedUserIds,
+    savedCardId: result.savedCardId,
+    cardTitle: result.cardTitle,
+    reason: result.reason,
   };
 }

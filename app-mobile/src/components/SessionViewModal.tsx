@@ -453,6 +453,11 @@ export default function SessionViewModal({
   useEffect(() => {
     if (!visible || !sessionId) return;
 
+    // ORCH-0558: debounce window for onMatchPromoted. Vote INSERTs fire
+    // once per right-swiper on a fresh promotion (N votes in a FOR LOOP)
+    // — without debounce we'd refetch N times in quick succession.
+    let matchPromotedRefetchTimer: ReturnType<typeof setTimeout> | null = null;
+
     const callbacks = {
       onCardSaved: (card: any) => {
         setSavedCards((prev: any[]) => {
@@ -460,6 +465,16 @@ export default function SessionViewModal({
           return [card, ...prev];
         });
         loadCardMessageCountsRef.current();
+      },
+      // ORCH-0558: Belt for missed INSERT events. Fires on any board_votes
+      // INSERT tied to a saved_card — debounced to once per second to
+      // coalesce the N-vote post-promotion burst.
+      onMatchPromoted: () => {
+        if (matchPromotedRefetchTimer) return;
+        matchPromotedRefetchTimer = setTimeout(() => {
+          matchPromotedRefetchTimer = null;
+          loadSavedCards(0, false);
+        }, 1000);
       },
       onMessage: () => {
         loadUnreadCountRef.current();
@@ -488,6 +503,12 @@ export default function SessionViewModal({
       // ORCH-0446B: Unregister callbacks only — don't destroy the shared channel.
       // Other hooks (useBoardSession, useSessionVoting) share this channel.
       realtimeService.unregisterBoardCallbacks(sessionId, callbacks);
+      // ORCH-0558: clear pending debounced refetch so we don't leak timers
+      // or fire after unmount.
+      if (matchPromotedRefetchTimer) {
+        clearTimeout(matchPromotedRefetchTimer);
+        matchPromotedRefetchTimer = null;
+      }
     };
   }, [visible, sessionId]);
 

@@ -39,11 +39,12 @@ import type { CuratedExperienceCard } from "../types/curatedExperience";
 import { mixpanelService } from "../services/mixpanelService";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { BoardCardService } from "../services/boardCardService";
-// ORCH-0532: notifyMatch and inAppNotificationService moved into collabSaveCard helper.
-// ORCH-0532: shared helper for collab right-swipe — writes board_user_swipe_states
-// via trackSwipeState, polls checkForMatch, shows provisional + match toasts.
-// Used by primary swipe gesture AND the 3 non-gesture save callsites (dismissed-sheet
-// re-save, expanded-modal onSave paths) so ALL collab saves go through one code path.
+// ORCH-0532 / ORCH-0558: shared helper for collab right-swipe — calls
+// BoardCardService.recordSwipeAndCheckMatch (atomic RPC: upsert swipe_state +
+// fire check_mutual_like trigger under advisory lock + return match state),
+// shows provisional + match toasts, fires notifyMatch on matched:true.
+// Used by primary swipe gesture AND the 3 non-gesture save callsites so ALL
+// collab right-swipes go through one code path.
 import { collabSaveCard } from "./helpers/collabSaveCard";
 import { recordCardSwipe, recordCardExpand } from "../services/cardEngagementService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
@@ -1534,15 +1535,14 @@ export default function SwipeableCards({
           }
         }
 
-        // ── Collab-only: route through shared helper (right) or just track
+        // ── Collab-only: route through shared helper (right) or just record
         // swipe state (left). ORCH-0533: this block NOW fires for curated
-        // cards too (previously curated was skipped inside the else branch,
-        // producing zero swipe-state rows and no match-eligibility).
+        // cards too. ORCH-0558: both branches now go through
+        // BoardCardService.recordSwipeAndCheckMatch (atomic RPC).
         if (isBoardSession && resolvedSessionId) {
           if (direction === 'right') {
-            // collabSaveCard handles: trackSwipeState → checkForMatch →
-            // provisional toast → match toast + notifyMatch + in-app notif.
-            // All toasts wrapped in try/catch internally; helper cannot throw.
+            // collabSaveCard handles: RPC call → provisional toast → match
+            // toast + notifyMatch on matched:true. Helper is try/catch-sealed.
             await collabSaveCard({
               card,
               sessionId: resolvedSessionId,
@@ -1551,18 +1551,20 @@ export default function SwipeableCards({
             });
           } else {
             // Left-swipe: record swipe state so other participants see the
-            // user opted out (used for "N of M voted" displays). No match
-            // check — left-swipes cannot produce matches.
+            // user opted out. Uses the same atomic RPC with direction='left';
+            // the RPC short-circuits past the match-detection branch and
+            // returns `{matched: false, reason: 'left_swipe'}`.
             try {
-              await BoardCardService.trackSwipeState({
+              await BoardCardService.recordSwipeAndCheckMatch({
                 sessionId: resolvedSessionId,
                 experienceId: card.id,
                 userId: user.id,
+                cardData: {}, // left-swipes don't need payload
                 swipeDirection: 'left',
               });
             } catch (leftErr) {
               console.warn(
-                '[handleSwipe] trackSwipeState left-swipe failed:',
+                '[handleSwipe] left-swipe RPC failed:',
                 leftErr
               );
               // Non-fatal — continue with UI updates

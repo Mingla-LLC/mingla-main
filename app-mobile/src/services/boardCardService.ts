@@ -1,195 +1,141 @@
-import { supabase } from './supabase';
-import { realtimeService } from './realtimeService';
+// ORCH-0558: Collab swipe + match detection service.
+//
+// PREVIOUS shape (pre-ORCH-0558):
+//   - saveCardToBoard: direct INSERT into board_saved_cards bypassing the trigger.
+//     Removed. Replaced by the trigger-owned flow below.
+//   - trackSwipeState + checkForMatch: two-query pattern. Column-misalignment
+//     between checkForMatch's `.eq('experience_id')` and the trigger's
+//     dual-column OR-filter produced silent match-misses (INVESTIGATION
+//     ORCH-0558 RC-1). Both removed.
+//
+// CURRENT shape:
+//   - recordSwipeAndCheckMatch: single atomic RPC call. Server-authoritative
+//     match detection. No client-side board_saved_cards query. See
+//     SPEC_ORCH-0558_BULLETPROOF_COLLAB_MATCH §4.3.
+//
+// DO NOT re-introduce a direct-save path or a client-side match poll.
+// The trigger is the only writer; the RPC is the only reader for match state.
+// Re-doing that introduces the ORCH-0558 bug class.
 
-export interface SaveCardToBoardParams {
-  sessionId: string;
-  experienceId: string;
-  experienceData: any;
-  userId: string;
+import { supabase } from "./supabase";
+import { realtimeService } from "./realtimeService";
+
+export interface SwipeAndMatchResult {
+  /** True when the trigger promoted (or had previously promoted) this experience. */
+  matched: boolean;
+  /** Present on match; the board_saved_cards row id. */
+  savedCardId?: string;
+  /** Card title pulled from saved_card.card_data.title. */
+  cardTitle?: string;
+  /** User ids of everyone who right-swiped this experience in this session. */
+  matchedUserIds?: string[];
+  /** Server-reported reason — 'promoted' | 'quorum_not_met' | 'left_swipe' | etc. */
+  reason?: string;
+  /** Network / auth / validation error, if any. */
+  error?: Error;
 }
 
-export interface SwipeState {
+export interface RecordSwipeAndCheckMatchParams {
   sessionId: string;
   experienceId: string;
   userId: string;
-  swipeDirection: 'left' | 'right';
-  swipedAt: string;
-  // ORCH-0556: Card JSONB payload persisted on right-swipe. Read by the
-  // check_mutual_like trigger to populate board_saved_cards.card_data when
-  // quorum is reached (session_decks was dropped; trigger reads from
-  // board_user_swipe_states.card_data instead). Optional — left-swipes
-  // don't need a payload, and the trigger falls back to a minimal stub
-  // if no swiper provided card_data.
-  cardData?: Record<string, unknown>;
+  cardData: Record<string, unknown>;
+  swipeDirection: "left" | "right";
+}
+
+interface RpcRecordSwipeResponse {
+  matched: boolean;
+  saved_card_id?: string;
+  card_title?: string;
+  matched_user_ids?: string[];
+  reason?: string;
 }
 
 export class BoardCardService {
   /**
-   * Save a card to a board session.
+   * ORCH-0558: Record a swipe and receive match status atomically.
    *
-   * @deprecated ORCH-0532: This direct-save path bypassed the check_mutual_like
-   * quorum trigger. All user-context callers have been removed. This method is
-   * retained only for service-role / admin-tool use.
+   * Calls the `rpc_record_swipe_and_check_match` SECURITY DEFINER RPC which:
+   *   1. Validates auth + session participation
+   *   2. Upserts board_user_swipe_states (fires check_mutual_like v3 trigger)
+   *   3. Reads the trigger's outcome from board_saved_cards (server-side, same Tx)
+   *   4. Returns a fully-shaped match result in one round-trip
    *
-   * Calling from a user-authenticated context will FAIL at RLS policy
-   * `bsc_insert_trigger_or_service_only` (see migration
-   * 20260420000006_tighten_board_saved_cards_rls.sql).
-   *
-   * For user-driven collab saves, use `BoardCardService.trackSwipeState` with
-   * `swipeDirection: 'right'` + the `check_mutual_like` trigger. Or call the
-   * `collabSaveCard` helper at `app-mobile/src/components/helpers/collabSaveCard.ts`
-   * which wraps the full flow (swipe-state write + checkForMatch + toast + notifyMatch).
-   *
-   * DO NOT RE-ADD user-context callers. Doing so re-introduces the ORCH-0532
-   * quorum-bypass bug.
+   * Replaces the legacy (trackSwipeState + checkForMatch) two-query pattern
+   * that suffered from column-alignment bugs and cache-timing races.
    */
-  static async saveCardToBoard({
-    sessionId,
-    experienceId,
-    experienceData,
-    userId,
-  }: SaveCardToBoardParams): Promise<{ data: any; error: any }> {
+  static async recordSwipeAndCheckMatch(
+    params: RecordSwipeAndCheckMatchParams,
+  ): Promise<SwipeAndMatchResult> {
+    const { sessionId, experienceId, userId, cardData, swipeDirection } = params;
+
     try {
-      // Check if card already exists in this session by checking card_data JSONB
-      // Cards are identified by their ID stored in card_data->>'id'
-      const { data: existingCards, error: checkError } = await supabase
-        .from('board_saved_cards')
-        .select('id')
-        .eq('session_id', sessionId)
-        .eq('card_data->>id', experienceId);
+      const { data, error } = await supabase.rpc(
+        "rpc_record_swipe_and_check_match",
+        {
+          p_session_id: sessionId,
+          p_experience_id: experienceId,
+          p_user_id: userId,
+          p_card_data: cardData,
+          p_swipe_direction: swipeDirection,
+        },
+      );
 
-      if (checkError && checkError.code !== 'PGRST116') {
-        // PGRST116 is "not found" - that's fine, but other errors should be thrown
-        if (checkError.code !== '42703') { // 42703 is column doesn't exist, try alternative
-          throw checkError;
-        }
-      }
-
-      // If column doesn't exist error, try alternative check
-      if (checkError?.code === '42703' || (!checkError && existingCards && existingCards.length > 0)) {
-        // Try checking all cards and filtering in memory
-        const { data: allCards } = await supabase
-          .from('board_saved_cards')
-          .select('id, card_data')
-          .eq('session_id', sessionId);
-
-        const existing = allCards?.find((card: any) => 
-          card.card_data?.id === experienceId || card.card_data?.experience_id === experienceId
+      if (error) {
+        console.error(
+          "[BoardCardService] recordSwipeAndCheckMatch RPC error:",
+          error,
         );
-
-        if (existing) {
-          return { data: existing, error: null };
-        }
-      } else if (existingCards && existingCards.length > 0) {
-        // Card already saved, return existing
-        return { data: existingCards[0], error: null };
+        const err = new Error(error.message || "RPC failed");
+        return { matched: false, error: err, reason: "rpc_error" };
       }
 
-      // Insert new saved card
-      // Store the full card data in card_data JSONB
-      // experience_id can be NULL if the card doesn't exist in experiences table yet
-      const { data, error } = await supabase
-        .from('board_saved_cards')
-        .insert({
-          session_id: sessionId,
-          experience_id: null, // Can be NULL if card doesn't exist in experiences table
-          saved_experience_id: null, // Can be NULL if not from saved_experiences
-          card_data: {
-            ...experienceData,
-            id: experienceId, // Ensure ID is stored in card_data
-            experience_id: experienceId, // Also store as experience_id in JSONB for easy lookup
-          },
-          saved_by: userId,
-        })
-        .select()
-        .single();
+      const result = (data ?? {}) as RpcRecordSwipeResponse;
 
-      if (error) throw error;
+      // Broadcast swipe to realtime channel so other participants see "partner
+      // liked too" in near-real-time. Independent from match detection — even
+      // if this fails, match state is still correct server-side.
+      try {
+        realtimeService.broadcastCardSwipe(sessionId, {
+          experience_id: experienceId,
+          user_id: userId,
+          swipe_direction: swipeDirection,
+          swiped_at: new Date().toISOString(),
+        });
+      } catch (broadcastErr) {
+        console.warn(
+          "[BoardCardService] recordSwipeAndCheckMatch: realtime broadcast failed (non-fatal):",
+          broadcastErr,
+        );
+      }
 
-      // Broadcast real-time update
-      realtimeService.broadcastCardSave(sessionId, {
-        id: data.id,
-        session_id: sessionId,
-        saved_by: userId,
-        saved_at: data.saved_at,
-        experience_data: data.card_data,
-      });
-
-      return { data, error: null };
-    } catch (err: any) {
-      console.error('Error saving card to board:', err);
-      return { data: null, error: err };
+      return {
+        matched: !!result.matched,
+        savedCardId: result.saved_card_id,
+        cardTitle: result.card_title,
+        matchedUserIds: result.matched_user_ids,
+        reason: result.reason,
+      };
+    } catch (err: unknown) {
+      console.error(
+        "[BoardCardService] recordSwipeAndCheckMatch exception:",
+        err,
+      );
+      const error = err instanceof Error ? err : new Error(String(err));
+      return { matched: false, error, reason: "exception" };
     }
   }
 
   /**
-   * Track user swipe state for a card in a board session
-   */
-  static async trackSwipeState({
-    sessionId,
-    experienceId,
-    userId,
-    swipeDirection,
-    cardData,
-  }: Omit<SwipeState, 'swipedAt'>): Promise<{ data: any; error: any }> {
-    try {
-      // Upsert swipe state
-      // Map direction to DB enum: 'left' → 'swiped_left', 'right' → 'swiped_right'
-      const swipeState = swipeDirection === 'right' ? 'swiped_right' : 'swiped_left';
-
-      const { data, error } = await supabase
-        .from('board_user_swipe_states')
-        .upsert(
-          {
-            session_id: sessionId,
-            experience_id: experienceId,
-            user_id: userId,
-            swipe_state: swipeState,
-            swiped_at: new Date().toISOString(),
-            // ORCH-0556: Persist card payload on right-swipes so
-            // check_mutual_like trigger can populate board_saved_cards.card_data
-            // when quorum is reached (session_decks was dropped). Only write
-            // on right-swipes — left-swipes don't promote and keep the column
-            // NULL. Callers pass the whole card object; we store as JSONB.
-            ...(cardData && swipeDirection === 'right' ? { card_data: cardData } : {}),
-          },
-          {
-            // ORCH-0415: onConflict takes comma-separated COLUMN NAMES, not constraint names.
-            // The unique index board_user_swipe_states_session_experience_user_unique
-            // covers these 3 columns.
-            onConflict: 'session_id,experience_id,user_id',
-          }
-        )
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Broadcast swipe state update
-      realtimeService.broadcastCardSwipe(sessionId, {
-        experience_id: experienceId,
-        user_id: userId,
-        swipe_direction: swipeDirection,
-        swiped_at: data.swiped_at,
-      });
-
-      return { data, error: null };
-    } catch (err: any) {
-      console.error('Error tracking swipe state:', err);
-      return { data: null, error: err };
-    }
-  }
-
-  /**
-   * Get swipe states for a card in a session
+   * Get swipe states for a card in a session (used by UI for "liked by X, Y")
    */
   static async getCardSwipeStates(
     sessionId: string,
-    experienceId: string
-  ): Promise<{ data: any[]; error: any }> {
+    experienceId: string,
+  ): Promise<{ data: Array<Record<string, unknown>>; error: unknown }> {
     try {
       const { data, error } = await supabase
-        .from('board_user_swipe_states')
+        .from("board_user_swipe_states")
         .select(`
           *,
           profiles (
@@ -201,14 +147,13 @@ export class BoardCardService {
             avatar_url
           )
         `)
-        .eq('session_id', sessionId)
-        .eq('experience_id', experienceId);
+        .eq("session_id", sessionId)
+        .eq("experience_id", experienceId);
 
       if (error) throw error;
-
       return { data: data || [], error: null };
-    } catch (err: any) {
-      console.error('Error getting swipe states:', err);
+    } catch (err: unknown) {
+      console.error("Error getting swipe states:", err);
       return { data: [], error: err };
     }
   }
@@ -217,20 +162,19 @@ export class BoardCardService {
    * Get all saved cards for a session
    */
   static async getSessionSavedCards(
-    sessionId: string
-  ): Promise<{ data: any[]; error: any }> {
+    sessionId: string,
+  ): Promise<{ data: Array<Record<string, unknown>>; error: unknown }> {
     try {
       const { data, error } = await supabase
-        .from('board_saved_cards')
-        .select('*')
-        .eq('session_id', sessionId)
-        .order('saved_at', { ascending: false });
+        .from("board_saved_cards")
+        .select("*")
+        .eq("session_id", sessionId)
+        .order("saved_at", { ascending: false });
 
       if (error) throw error;
-
       return { data: data || [], error: null };
-    } catch (err: any) {
-      console.error('Error getting session saved cards:', err);
+    } catch (err: unknown) {
+      console.error("Error getting session saved cards:", err);
       return { data: [], error: err };
     }
   }
@@ -240,18 +184,17 @@ export class BoardCardService {
    */
   static async removeCardFromBoard(
     sessionId: string,
-    savedCardId: string
-  ): Promise<{ error: any }> {
+    savedCardId: string,
+  ): Promise<{ error: unknown }> {
     try {
       const { error } = await supabase
-        .from('board_saved_cards')
+        .from("board_saved_cards")
         .delete()
-        .eq('session_id', sessionId)
-        .eq('id', savedCardId);
+        .eq("session_id", sessionId)
+        .eq("id", savedCardId);
 
       if (error) throw error;
 
-      // Broadcast removal
       realtimeService.broadcastCardSave(sessionId, {
         id: savedCardId,
         session_id: sessionId,
@@ -259,60 +202,9 @@ export class BoardCardService {
       });
 
       return { error: null };
-    } catch (err: any) {
-      console.error('Error removing card from board:', err);
+    } catch (err: unknown) {
+      console.error("Error removing card from board:", err);
       return { error: err };
     }
   }
-
-  /**
-   * Check if a mutual-like match was created by the DB trigger (ORCH-0395).
-   * After trackSwipeState(), the check_mutual_like trigger may have inserted
-   * a board_saved_cards row. This method detects that and returns the match info.
-   */
-  static async checkForMatch(
-    sessionId: string,
-    experienceId: string
-  ): Promise<{ matched: boolean; savedCardId?: string; cardTitle?: string; matchedUserIds?: string[] }> {
-    try {
-      // Check if the trigger created a saved card for this experience
-      const { data: savedCard, error: savedError } = await supabase
-        .from('board_saved_cards')
-        .select('id, card_data')
-        .eq('session_id', sessionId)
-        .eq('experience_id', experienceId)
-        .limit(1)
-        .maybeSingle();
-
-      if (savedError || !savedCard) {
-        return { matched: false };
-      }
-
-      // Get all users who swiped right on this experience
-      const { data: swipers, error: swipeError } = await supabase
-        .from('board_user_swipe_states')
-        .select('user_id')
-        .eq('session_id', sessionId)
-        .eq('experience_id', experienceId)
-        .eq('swipe_state', 'swiped_right');
-
-      if (swipeError) {
-        console.warn('[BoardCardService] checkForMatch swiper query failed:', swipeError);
-      }
-
-      const matchedUserIds = (swipers || []).map((s: { user_id: string }) => s.user_id);
-      const cardTitle = savedCard.card_data?.title || savedCard.card_data?.name || 'a spot';
-
-      return {
-        matched: true,
-        savedCardId: savedCard.id,
-        cardTitle,
-        matchedUserIds,
-      };
-    } catch (err: unknown) {
-      console.error('[BoardCardService] checkForMatch error:', err);
-      return { matched: false };
-    }
-  }
 }
-

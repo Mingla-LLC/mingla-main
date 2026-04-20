@@ -57,6 +57,12 @@ interface BoardSessionCallbacks {
   onDeckRegenerated?: (deckPayload: any) => void;
   onCardLocked?: (savedCardId: string, lockedAt: string) => void;
   onSessionDeleted?: (session: any) => void;
+  // ORCH-0558: Fires on board_votes INSERT when a vote is attached to a
+  // saved_card. Consumers refetch their saved_cards list — catches the
+  // "match happened but I missed the INSERT realtime event" class of bug.
+  // Receivers SHOULD debounce (1s recommended) because vote INSERTs fire
+  // N times on a quorum-reached match (once per right-swiper).
+  onMatchPromoted?: (savedCardId: string, experienceId: string) => void;
 }
 
 export class RealtimeService {
@@ -361,6 +367,15 @@ export class RealtimeService {
               payload.new.saved_card_id,
               payload.new.user_id,
               payload.new.vote_type
+            );
+            // ORCH-0558: Belt for missed onCardSaved INSERT. A vote attached
+            // to a saved_card means either (a) a fresh promotion happened
+            // (trigger inserted saved_card + first vote in same Tx) or
+            // (b) a new participant voted on an existing match. Either way
+            // consumers should ensure their saved_cards list is fresh.
+            dispatch('onMatchPromoted',
+              payload.new.saved_card_id,
+              payload.new.experience_id ?? ''
             );
           }
         }
