@@ -1,5 +1,7 @@
 # Coverage Map
 
+> **2026-04-21 03:45 UTC — ORCH-0558 CLOSED Grade A.** Collaboration Sessions surface: 1 additional A from match promotion structural hardening (advisory lock + unique constraint + atomic RPC + telemetry observable). Surface distribution: 7 total → 4 A / 0 B / 0 C / 0 D / 3 F (was 3 A / 0 B / 0 C / 0 D / 4 F). Match-promotion path verified live via 10 MCP deploy probes + tester Tier A/B/F + device test on iOS + Android. 6 new invariants registered.
+
 > Last updated: 2026-04-18 (**ORCH-0503 CLOSED A** — v3 fix PASS; Discovery surface grade distribution unchanged: the fix restores correctness inside an already-Strong-graded deck pipeline, so no grade-count movement; new invariant `I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE` reinforces Constitutional #2 "One owner per truth" at the deck-sync-effect boundary)
 
 ## Surface Coverage
@@ -10,7 +12,7 @@
 | Onboarding | 11 | 2 | 0 | 0 | 0 | 9 | 82% | 0% | Weak |
 | Discovery / Explore | 55 | 39 | 10 | 0 | 0 | 6 | 11% | 0% | Strong (↑ ORCH-0474 closed B — ORCH-0469, ORCH-0472 previously B) |
 | **Place Pipeline (Seeding + AI Validation)** | **11** | **8** | **0** | **0** | **0** | **3** | **27%** | **0%** | **Strong (NEW 2026-04-17)** |
-| Collaboration Sessions | 7 | 3 | 0 | 0 | 0 | 4 | 57% | 0% | Weak |
+| Collaboration Sessions | 7 | 4 | 0 | 0 | 0 | 3 | 43% | 0% | Partial (↑ ORCH-0558 closed A — match promotion structurally proven deterministic + observable) |
 | Social / Friends | 7 | 1 | 1 | 0 | 0 | 5 | 71% | 0% | Weak |
 | Notifications | 11 | 6 | 2 | 0 | 0 | 3 | 27% | 0% | Partial |
 | Saved / Boards | 5 | 0 | 0 | 0 | 0 | 5 | 100% | 0% | Unaudited |
