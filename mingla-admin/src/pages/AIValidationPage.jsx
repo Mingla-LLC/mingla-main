@@ -27,6 +27,10 @@ import { Spinner } from "../components/ui/Spinner";
 import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from "../constants/categories";
 import { RulesFilterTab } from "../components/rules-filter/RulesFilterTab";
 import { isFlagEnabled } from "../lib/featureFlags";
+// ORCH-0553 — Day-one dual-mount of SeedTab + RefreshTab on AI Validation page.
+// Both tabs gate behind enable_refresh_tab admin_config flag.
+import { SeedTab } from "../components/seeding/SeedTab";
+import { RefreshTab } from "../components/seeding/RefreshTab";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -1216,6 +1220,8 @@ export function AIValidationPage() {
   const [cities, setCities] = useState([]);
   const [selectedCityId, setSelectedCityId] = useState(null);
   const [rulesTabFlagEnabled, setRulesTabFlagEnabled] = useState(false);
+  // ORCH-0553 — gates BOTH the new "Seeding" and "Refresh" tabs on this page.
+  const [refreshTabFlagEnabled, setRefreshTabFlagEnabled] = useState(false);
 
   // Edge function invoke helper — wrapped with session pre-refresh + 401 retry (ORCH-0541)
   const invoke = useCallback(async (body) => {
@@ -1265,8 +1271,15 @@ export function AIValidationPage() {
 
   useEffect(() => {
     let alive = true;
-    isFlagEnabled('enable_rules_filter_tab').then((enabled) => {
-      if (alive) setRulesTabFlagEnabled(enabled);
+    // ORCH-0553 — batch fetch both flags so we don't make two sequential RPC calls.
+    Promise.all([
+      isFlagEnabled('enable_rules_filter_tab'),
+      isFlagEnabled('enable_refresh_tab'),
+    ]).then(([rules, refresh]) => {
+      if (alive) {
+        setRulesTabFlagEnabled(rules);
+        setRefreshTabFlagEnabled(refresh);
+      }
     });
     return () => { alive = false; };
   }, []);
@@ -1280,6 +1293,9 @@ export function AIValidationPage() {
   const tabs = [
     { id: "command", label: "Command Center" },
     { id: "rules", label: "Rules Filter" },
+    // ORCH-0553 — Seeding + Refresh tabs (both gated on enable_refresh_tab flag)
+    { id: "seed", label: "Seeding" },
+    { id: "refresh", label: "Refresh" },
     { id: "pipeline", label: "Pipeline" },
     { id: "review", label: "Review Queue" },
   ];
@@ -1364,6 +1380,36 @@ export function AIValidationPage() {
               invoke={invoke}
               toast={addToast}
               flagEnabled={rulesTabFlagEnabled}
+            />
+          )}
+          {tab === "seed" && (
+            // ORCH-0553 — SeedTab on AIValidation page (gated by enable_refresh_tab).
+            // tiles=[] → SeedTab renders "Tile Grid: 0 tiles" header, which is correct
+            // UX (admin must go to Place Pool to generate tiles before seeding here).
+            refreshTabFlagEnabled ? (
+              <SeedTab
+                city={cities.find((c) => c.id === selectedCityId) || null}
+                tiles={[]}
+                onRefresh={loadAll}
+                onDeleteCity={() => {}}
+                onSeedingChange={() => {}}
+              />
+            ) : (
+              <div className="text-center py-16 text-[var(--color-text-secondary)]">
+                <div className="text-sm font-medium">Seeding tab — coming soon</div>
+                <div className="text-xs mt-1">
+                  Enable <code className="text-xs">enable_refresh_tab</code> in admin_config to use.
+                </div>
+              </div>
+            )
+          )}
+          {tab === "refresh" && (
+            <RefreshTab
+              city={cities.find((c) => c.id === selectedCityId) || null}
+              cities={cities}
+              onRefresh={loadAll}
+              onRefreshChange={() => {}}
+              flagEnabled={refreshTabFlagEnabled}
             />
           )}
           {tab === "review" && <ReviewQueueTab invoke={invoke} toast={addToast} />}
