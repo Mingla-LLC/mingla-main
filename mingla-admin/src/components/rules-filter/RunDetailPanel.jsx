@@ -387,12 +387,32 @@ function KV({ label, value, mono, hint }) {
   );
 }
 
+const DECISION_COLOR = {
+  reject: "text-[#ef4444]",
+  reclassify: "text-[#f59e0b]",
+  approve: "text-[#22c55e]",
+};
+
+function DecisionChip({ decision, muted }) {
+  const color = muted
+    ? "text-[var(--color-text-tertiary)]"
+    : DECISION_COLOR[decision] || "text-[var(--color-text-secondary)]";
+  return (
+    <span className={`text-[11px] font-semibold uppercase ${color}`}>
+      {decision || "—"}
+    </span>
+  );
+}
+
 function AffectedPlaceRow({ place }) {
-  const decisionColor = {
-    reject: "text-[#ef4444]",
-    reclassify: "text-[#f59e0b]",
-    approve: "text-[#22c55e]",
-  }[place?.decision] || "text-[var(--color-text-secondary)]";
+  // ORCH-0550.2 — prior-verdict delta rendering (I-PRIOR-VERDICT-COMPUTED-LIVE).
+  // RPC populates prior_decision / prior_reason / prior_created_at via LATERAL join.
+  // Three rendering states:
+  //   - prior_decision is null         → "First verdict" (no prior row exists)
+  //   - prior_decision === decision    → "No change from prior verdict" (muted)
+  //   - prior_decision !== decision    → "<prior chip> → <new chip>" + "Prior: <reason>"
+  const hasPrior = place?.prior_decision != null;
+  const changed = hasPrior && place.prior_decision !== place.decision;
 
   return (
     <div className="border border-[var(--gray-200)] rounded-lg p-3">
@@ -400,9 +420,15 @@ function AffectedPlaceRow({ place }) {
         <p className="text-[13px] font-medium text-[var(--color-text-primary)] truncate flex-1">
           {place?.place_name || "Unknown place"}
         </p>
-        <span className={`text-[11px] font-semibold uppercase ${decisionColor}`}>
-          {place?.decision}
-        </span>
+        {changed ? (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <DecisionChip decision={place.prior_decision} muted />
+            <span className="text-[var(--color-text-tertiary)]" aria-hidden="true">→</span>
+            <DecisionChip decision={place.decision} />
+          </div>
+        ) : (
+          <DecisionChip decision={place?.decision} />
+        )}
       </div>
       <p className="text-[11px] text-[var(--color-text-tertiary)] line-clamp-1 mb-1">
         {place?.place_address || "(no address)"} · {place?.primary_type}
@@ -412,6 +438,19 @@ function AffectedPlaceRow({ place }) {
           {place.reason}
         </p>
       )}
+      {!hasPrior ? (
+        <p className="text-[10px] text-[var(--color-text-tertiary)] italic">
+          First verdict
+        </p>
+      ) : !changed ? (
+        <p className="text-[10px] text-[var(--color-text-tertiary)] italic">
+          No change from prior verdict
+        </p>
+      ) : place?.prior_reason ? (
+        <p className="text-[10px] text-[var(--color-text-tertiary)] italic line-clamp-1">
+          Prior: {place.prior_reason}
+        </p>
+      ) : null}
       {place?.rule_set_name && (
         <p className="text-[10px] text-[var(--color-text-tertiary)] font-mono">
           by {place.rule_set_name} v{place.rule_set_version_number}

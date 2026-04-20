@@ -407,6 +407,16 @@ function nameMatches(name: string, list: string[]): boolean {
   return list.some((term) => lower.includes(term.toLowerCase()));
 }
 
+// ORCH-0550.2 — variant that returns the first matched term so reason strings
+// can echo the exact entry that fired. nameMatches() retained for boolean callers
+// (e.g. UPSCALE_CHAIN_PROTECTION guard where the matched term is not displayed).
+// Invariant I-RULES-REASON-ECHOES-ENTRY depends on this helper.
+function nameMatchesEntry(name: string, list: string[]): string | null {
+  const lower = name.toLowerCase();
+  const hit = list.find((term) => lower.includes(term.toLowerCase()));
+  return hit ?? null;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -542,6 +552,18 @@ interface PreFilterResult {
   stageResolved?: number;
 }
 
+// ORCH-0550.2 — Reason-string format invariants:
+// (I-RULES-REASON-PREFIX-UNIFIED) Every reason string returned from this function
+//    MUST begin with "Rules: ". The "Pipeline:" prefix is deprecated for the
+//    deterministic layer. The AI layer's "Pipeline v1:" wrapper at line ~1269
+//    is INTENTIONALLY DIFFERENT — do not unify it here.
+// (I-RULES-REASON-ECHOES-ENTRY) Any blacklist/keyword-list match MUST interpolate
+//    the matched entry into the reason string (use nameMatchesEntry / .find()
+//    instead of nameMatches / .some()). This rule applies to FAST_FOOD_BLACKLIST,
+//    EXCLUSION_KEYWORDS, and CASUAL_CHAIN_DEMOTION matches.
+// Both branches (deterministicFilter + deterministicFilterFromDb) must mirror
+// each other. Drift here re-introduces ORCH-0544. ORCH-0564 backlog refactors
+// away the duplication.
 function deterministicFilter(place: any): PreFilterResult {
   const name = place.name || "";
   const primaryType = place.primary_type || "";
@@ -572,22 +594,24 @@ function deterministicFilter(place: any): PreFilterResult {
     };
   }
 
-  // 3. Fast food blacklist
-  if (nameMatches(name, FAST_FOOD_BLACKLIST)) {
+  // 3. Fast food blacklist (ORCH-0550.2: echo matched entry)
+  const ffMatch = nameMatchesEntry(name, FAST_FOOD_BLACKLIST);
+  if (ffMatch) {
     return {
       verdict: "reject",
-      reason: "Pipeline: fast food chain — rejected",
+      reason: `Rules: fast food chain match '${ffMatch}' — rejected`,
       categories: [],
       stageResolved: 2,
     };
   }
 
-  // 4. Exclusion keywords (now with normalized underscores)
+  // 4. Exclusion keywords (ORCH-0550.2: echo matched keyword + sub-category)
   for (const [category, keywords] of Object.entries(EXCLUSION_KEYWORDS)) {
-    if (keywords.some((kw) => checkText.includes(kw.toLowerCase()))) {
+    const kwMatch = keywords.find((kw) => checkText.includes(kw.toLowerCase()));
+    if (kwMatch) {
       return {
         verdict: "reject",
-        reason: `Pipeline: excluded type (${category}) — rejected`,
+        reason: `Rules: excluded type '${kwMatch}' in ${category} — rejected`,
         categories: [],
         stageResolved: 2,
       };
@@ -597,14 +621,17 @@ function deterministicFilter(place: any): PreFilterResult {
   // 5. Casual chain demotion (ORCH-0434: updated slugs)
   // ORCH-0460: Guard — protected upscale chains (Nobu, Morton's, Ruth's Chris etc.)
   // must NEVER be demoted even if their name matches a casual chain pattern.
-  if (nameMatches(name, CASUAL_CHAIN_DEMOTION) && !nameMatches(name, UPSCALE_CHAIN_PROTECTION)) {
+  // ORCH-0550.2: echo matched chain in reason.
+  const ccMatch = nameMatchesEntry(name, CASUAL_CHAIN_DEMOTION);
+  const isProtected = nameMatches(name, UPSCALE_CHAIN_PROTECTION);
+  if (ccMatch && !isProtected) {
     const cats = [...(place.ai_categories || [])];
     if (cats.includes("upscale_fine_dining")) {
       const newCats = cats.filter((c: string) => c !== "upscale_fine_dining");
       if (!newCats.includes("brunch_lunch_casual")) newCats.push("brunch_lunch_casual");
       return {
         verdict: "accept",
-        reason: "Pipeline: sit-down chain — downgraded from upscale_fine_dining to brunch_lunch_casual",
+        reason: `Rules: sit-down chain match '${ccMatch}' — downgraded from upscale_fine_dining to brunch_lunch_casual`,
         categories: newCats,
         stageResolved: 2,
       };
@@ -904,6 +931,17 @@ interface PreFilterResultDb extends PreFilterResult {
 // Same firing order, same short-circuit semantics, same accumulative strip rules.
 // ORCH-0526 M2.
 //
+// ORCH-0550.2 — Reason-string format invariants (mirrored from deterministicFilter):
+// (I-RULES-REASON-PREFIX-UNIFIED) Every reason string MUST begin with "Rules: ".
+//    The "Pipeline:" prefix is deprecated for the deterministic layer. The AI
+//    layer's "Pipeline v1:" wrapper at line ~1269 is INTENTIONALLY DIFFERENT —
+//    do not unify it here.
+// (I-RULES-REASON-ECHOES-ENTRY) Any blacklist/keyword-list match MUST interpolate
+//    the matched entry into the reason string (use .find() instead of .some()).
+//    Applies to FAST_FOOD_BLACKLIST, EXCLUSION_KEYWORDS, CASUAL_CHAIN_DEMOTION.
+// Both branches (deterministicFilter + deterministicFilterFromDb) must mirror
+// each other. Drift here re-introduces ORCH-0544. ORCH-0564 backlog refactors
+// away the duplication.
 // deno-lint-ignore no-explicit-any
 function deterministicFilterFromDb(place: any, loaded: LoadedRules): PreFilterResultDb {
   const name = place.name || "";
@@ -950,19 +988,20 @@ function deterministicFilterFromDb(place: any, loaded: LoadedRules): PreFilterRe
     }
   }
 
-  // 3. FAST_FOOD_BLACKLIST
+  // 3. FAST_FOOD_BLACKLIST (ORCH-0550.2: echo matched entry)
   const r3 = lookupActive("FAST_FOOD_BLACKLIST");
-  if (r3 && r3.entries.some((e) => name.toLowerCase().includes(e.value))) {
+  const ffEntry = r3?.entries.find((e) => name.toLowerCase().includes(e.value));
+  if (r3 && ffEntry) {
     return {
       verdict: "reject",
-      reason: "Pipeline: fast food chain — rejected",
+      reason: `Rules: fast food chain match '${ffEntry.value}' — rejected`,
       categories: [],
       stageResolved: 2,
       ruleSetVersionId: r3.rule_set_version_id,
     };
   }
 
-  // 4. EXCLUSION_KEYWORDS (sub-category aware)
+  // 4. EXCLUSION_KEYWORDS (sub-category aware; ORCH-0550.2: echo matched keyword)
   const r4 = lookupActive("EXCLUSION_KEYWORDS");
   if (r4) {
     const bySub: Record<string, string[]> = {};
@@ -972,10 +1011,11 @@ function deterministicFilterFromDb(place: any, loaded: LoadedRules): PreFilterRe
       bySub[sub].push(e.value);
     }
     for (const [subCategory, keywords] of Object.entries(bySub)) {
-      if (keywords.some((kw) => checkText.includes(kw.toLowerCase()))) {
+      const kwMatch = keywords.find((kw) => checkText.includes(kw.toLowerCase()));
+      if (kwMatch) {
         return {
           verdict: "reject",
-          reason: `Pipeline: excluded type (${subCategory}) — rejected`,
+          reason: `Rules: excluded type '${kwMatch}' in ${subCategory} — rejected`,
           categories: [],
           stageResolved: 2,
           ruleSetVersionId: r4.rule_set_version_id,
@@ -985,21 +1025,22 @@ function deterministicFilterFromDb(place: any, loaded: LoadedRules): PreFilterRe
   }
 
   // 5. CASUAL_CHAIN_DEMOTION (guarded by UPSCALE_CHAIN_PROTECTION)
+  // ORCH-0550.2: echo matched chain in reason.
   const r5 = lookupActive("CASUAL_CHAIN_DEMOTION");
   const r5Guard = lookupActive("UPSCALE_CHAIN_PROTECTION");
   if (r5) {
-    const matchesCasual = r5.entries.some((e) => name.toLowerCase().includes(e.value));
+    const ccEntry = r5.entries.find((e) => name.toLowerCase().includes(e.value));
     const isProtected = r5Guard
       ? r5Guard.entries.some((e) => name.toLowerCase().includes(e.value))
       : false;
-    if (matchesCasual && !isProtected) {
+    if (ccEntry && !isProtected) {
       const cats = [...(place.ai_categories || [])];
       if (cats.includes("upscale_fine_dining")) {
         const newCats = cats.filter((c: string) => c !== "upscale_fine_dining");
         if (!newCats.includes("brunch_lunch_casual")) newCats.push("brunch_lunch_casual");
         return {
           verdict: "accept",
-          reason: "Pipeline: sit-down chain — downgraded from upscale_fine_dining to brunch_lunch_casual",
+          reason: `Rules: sit-down chain match '${ccEntry.value}' — downgraded from upscale_fine_dining to brunch_lunch_casual`,
           categories: newCats,
           stageResolved: 2,
           ruleSetVersionId: r5.rule_set_version_id,
