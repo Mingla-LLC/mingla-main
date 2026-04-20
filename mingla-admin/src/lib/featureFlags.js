@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 
-const KNOWN_FLAGS = ['enable_rules_filter_tab'];
+// ORCH-0553: added 'enable_refresh_tab' — gates Refresh tab + (on AIValidation) extracted Seeding tab.
+const KNOWN_FLAGS = ['enable_rules_filter_tab', 'enable_refresh_tab'];
 
 let cache = null;
 let inflight = null;
