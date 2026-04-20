@@ -45,7 +45,14 @@ const DETAIL_FIELD_MASK = [
 
   // Hours & photos
   "regularOpeningHours",
-  "secondaryOpeningHours",
+  // ORCH-0553 hotfix #4: `secondaryOpeningHours` removed — Google's
+  // places/{id} GET endpoint returns 400 INVALID_ARGUMENT
+  // ("Cannot find matching fields for path 'secondaryOpeningHours'").
+  // The field IS valid on searchNearby (silently dropped if SKU missing,
+  // which is why admin-seed-places' identical FIELD_MASK survives) but
+  // detail GET hard-fails. Refresh path therefore loses the ability to
+  // capture happy-hour / drive-through window data — acceptable since
+  // searchNearby never returned it for our project key anyway.
   "utcOffsetMinutes",
   "photos",
 
@@ -139,6 +146,12 @@ async function refreshPlace(
     );
 
     if (!response.ok) {
+      // ORCH-0553 hotfix #3 — capture Google response body so the error tells us
+      // exactly which field/SKU/etc. is rejected. Previous code returned only
+      // the status code, which made the 70/70 failure on first run undebuggable.
+      const respBody = await response.text();
+      console.error("[refreshPlace]", googlePlaceId, "Google", response.status, "body:", respBody.substring(0, 500));
+
       // Increment failure count
       const { data: existing } = await supabase
         .from("place_pool")
@@ -154,7 +167,7 @@ async function refreshPlace(
         })
         .eq("google_place_id", googlePlaceId);
 
-      return { success: false, error: `Google API ${response.status}` };
+      return { success: false, error: `Google API ${response.status}: ${respBody.substring(0, 2000)}` };
     }
 
     const gPlace = await response.json();
