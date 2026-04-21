@@ -10,7 +10,6 @@ import {
   Image,
   Alert,
   Platform,
-  Animated,
   Linking,
   Modal,
   Dimensions,
@@ -185,6 +184,13 @@ export default function MessageInterface({
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const { bottomNavTotalHeight } = useAppLayout();
+  // ORCH-0610 fix: Android overlap — the Mingla nav uses bottom: insets.bottom + 6
+  // (see app/index.tsx CoachMarkNavigationGate) so its TOP edge is higher than
+  // bottomNavTotalHeight alone implies. Add 19pt to the input capsule's bottom
+  // offset (and matching chat-list padding) so the capsule clears the nav top
+  // with an 8pt visual gap. iOS nav uses bottom: 11 which is already below
+  // bottomNavTotalHeight, so no adjustment needed.
+  const ANDROID_NAV_OVERLAP_FIX = Platform.OS === 'android' ? 19 : 0;
   const safeInsets = useSafeAreaInsets();
 
   // ── Keyboard handling via useKeyboard hook ─────────────────
@@ -192,56 +198,18 @@ export default function MessageInterface({
     disableLayoutAnimation: true, // We use animated values instead
   });
 
-  // Animated keyboard height (for smooth input bar transitions)
-  const animatedKeyboardHeight = useRef(new Animated.Value(0)).current;
-  /** IMEs often re-fire keyboard show with a smaller frame once typing starts; keep lift stable. */
-  const keyboardHeightMaxWhileOpenRef = useRef(0);
-  /** Android: avoid re-running Animated.timing on every keyboard frame (fights softwareKeyboardLayoutMode "pan"). */
-  const prevComposerLiftRef = useRef(0);
-  useEffect(() => {
-    // The keyboard height is measured from the screen bottom. The input bar sits above
-    // the bottom nav, so only the portion of the keyboard that extends above the bottom
-    // nav ("penetrationAboveTab") needs to be offset. bottomNavTotalHeight already
-    // accounts for content height + safe area, preventing any double-counting.
-    if (keyboardHeight <= 0) {
-      keyboardHeightMaxWhileOpenRef.current = 0;
-    } else {
-      keyboardHeightMaxWhileOpenRef.current = Math.max(
-        keyboardHeightMaxWhileOpenRef.current,
-        keyboardHeight
-      );
-    }
-    const effectiveKeyboardHeight =
-      keyboardHeight <= 0 ? 0 : keyboardHeightMaxWhileOpenRef.current;
-    const penetrationAboveTab = Math.max(0, effectiveKeyboardHeight - bottomNavTotalHeight);
-    const adjustedHeight = penetrationAboveTab;
-    const prevLift = prevComposerLiftRef.current;
-    prevComposerLiftRef.current = adjustedHeight;
-
-    if (Platform.OS === "android") {
-      if (adjustedHeight === 0) {
-        Animated.timing(animatedKeyboardHeight, {
-          toValue: 0,
-          duration: 220,
-          useNativeDriver: false,
-        }).start();
-      } else if (prevLift === 0) {
-        Animated.timing(animatedKeyboardHeight, {
-          toValue: adjustedHeight,
-          duration: 220,
-          useNativeDriver: false,
-        }).start();
-      } else {
-        animatedKeyboardHeight.setValue(adjustedHeight);
-      }
-    } else {
-      Animated.timing(animatedKeyboardHeight, {
-        toValue: adjustedHeight,
-        duration: 250,
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [keyboardHeight, bottomNavTotalHeight]);
+  // [REGRESSION GUARD] ORCH-0620 — Android keyboard handling relies on
+  // `softwareKeyboardLayoutMode: "resize"` in app.json. Switching back to "pan"
+  // reintroduces the OS-pan vs JS-lift race condition that clips the header and
+  // floats the composer mid-screen. See:
+  //   Mingla_Artifacts/outputs/INVESTIGATION_ANDROID_DM_KEYBOARD_BUG_REPORT.md
+  //
+  // Under "resize":
+  //   - Android OS shrinks the window when the keyboard opens. Absolute children
+  //     of MessageInterface (the input capsule) follow the shrunken bottom edge
+  //     naturally — no manual lift needed on Android.
+  //   - iOS does not resize/pan; we still manually lift the composer above the
+  //     keyboard using keyboardHeight.
 
   // ── Fallback broadcastSeenIds ref if not provided ─────────
   const localBroadcastSeenIds = useRef(new Set<string>());
@@ -675,6 +643,21 @@ export default function MessageInterface({
     );
   };
 
+  // ORCH-0620 composer position:
+  //   - inputBottomOffset: nav clearance so the composer floats above the bottom
+  //     nav when the keyboard is closed. On Android, + ANDROID_NAV_OVERLAP_FIX
+  //     because the nav uses bottom: insets.bottom + 6 (not 0).
+  //   - iosKeyboardLift: on iOS, add keyboardHeight when visible. iOS does not
+  //     resize/pan the window, so the composer must be manually lifted. Safe
+  //     because iOS fires keyboardWillShow BEFORE the animation, letting React
+  //     update the layout before the keyboard is painted.
+  //   - Android needs no lift because softwareKeyboardLayoutMode="resize"
+  //     shrinks the window — the composer's absolute `bottom: N` is measured
+  //     from the shrunken window's bottom edge (keyboard top when open).
+  const inputBottomOffset = bottomNavTotalHeight + INPUT_CAPSULE_MARGIN_BOTTOM + ANDROID_NAV_OVERLAP_FIX;
+  const iosKeyboardLift = Platform.OS === 'ios' && keyboardVisible ? keyboardHeight : 0;
+  const finalInputBottom = inputBottomOffset + iosKeyboardLift;
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -912,15 +895,11 @@ export default function MessageInterface({
           contentContainerStyle={[
             styles.messagesContentContainer,
             {
-              // ORCH-0600: inverted FlatList — paddingTop (pre-transform) becomes
-              // the VISUAL BOTTOM clearance after the scaleY:-1 flip. Tracks whatever
-              // is at the bottom (keyboard when open, bottom nav when closed) + the
-              // floating input capsule + a small breathing gap.
-              paddingTop:
-                (keyboardVisible ? keyboardHeight : bottomNavTotalHeight) +
-                INPUT_CAPSULE_HEIGHT +
-                INPUT_CAPSULE_MARGIN_BOTTOM +
-                8,
+              // ORCH-0620: inverted FlatList — paddingTop (pre-transform) becomes
+              // the VISUAL BOTTOM clearance after the scaleY:-1 flip. Clears the
+              // composer capsule (which sits at `finalInputBottom` above the
+              // window's bottom edge) + INPUT_CAPSULE_HEIGHT + 8pt breathing.
+              paddingTop: finalInputBottom + INPUT_CAPSULE_HEIGHT + 8,
             },
           ]}
           keyboardShouldPersistTaps="handled"
@@ -1079,22 +1058,17 @@ export default function MessageInterface({
         </View>
       )}
 
-      {/* Input Area - Floating glass capsule. Sits above the bottom nav; lifts above
-          the keyboard when open. Chat list scrolls underneath.
-          animatedKeyboardHeight = max(0, keyboardHeight - navHeight) (the penetration
-          above the nav). Adding navHeight + MARGIN always gives the correct bottom:
-          - keyboard closed: bottom = 0 + navHeight + 8 = just above nav
-          - keyboard open:   bottom = (kbHeight - navHeight) + navHeight + 8 = just above keyboard */}
+      {/* Input Area - Floating glass capsule. ORCH-0610 forensic fix: bottom
+          is a STATIC value keyed off keyboardVisible (not an Animated.add).
+          When keyboard opens, the capsule is positioned at keyboardHeight + 8
+          from screen bottom — above the keyboard. OS `adjustPan` sees the
+          focused input is already visible above the keyboard and does NOT pan
+          the window, so the header stays at its original position. */}
       {!isBlocked && !isUnfriended && !isDeletedAccount && (
-      <Animated.View
+      <View
         style={[
           styles.inputCapsuleWrap,
-          {
-            bottom: Animated.add(
-              animatedKeyboardHeight,
-              new Animated.Value(bottomNavTotalHeight + INPUT_CAPSULE_MARGIN_BOTTOM)
-            ),
-          },
+          { bottom: finalInputBottom },
         ]}
       >
         {/* Reply Preview Bar */}
@@ -1228,7 +1202,7 @@ export default function MessageInterface({
           </TouchableOpacity>
         </View>
         </View>
-      </Animated.View>
+      </View>
       )}
 
       {/* Hidden File Input - Not supported in React Native */}
