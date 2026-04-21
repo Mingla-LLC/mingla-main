@@ -8,6 +8,31 @@ import {
   HIDDEN_CATEGORIES,
 } from '../_shared/categoryPlaceTypes.ts';
 import { scoreCards } from '../_shared/scoringService.ts';
+import { isInCohort, stableHash } from '../_shared/signalScorer.ts';
+import { googleLevelToTierSlug } from '../_shared/priceTiers.ts';
+
+// ─── ORCH-0588 Slice 1: cohort cache for signal-serving rollout ───────────────
+// Module-scoped 60s cache for the admin-config cohort pct. 60s = balance between
+// admin slider responsiveness and DB load. Do NOT lower without measuring impact
+// under high QPS. Invariant I-COHORT-REVERSIBLE: flag=0 → all users on control.
+const SIGNAL_PCT_CACHE = new Map<string, { value: number; expiresAt: number }>();
+const COHORT_CACHE_TTL_MS = 60_000;
+
+async function getSignalServingPct(supabase: any, signalId: string): Promise<number> {
+  const key = `signal_serving_${signalId}_pct`;
+  const cached = SIGNAL_PCT_CACHE.get(key);
+  const now = Date.now();
+  if (cached && now < cached.expiresAt) return cached.value;
+  const { data } = await supabase
+    .from('admin_config')
+    .select('value')
+    .eq('key', key)
+    .maybeSingle();
+  const raw = data?.value;
+  const pct = raw != null ? Math.max(0, Math.min(100, Number(raw))) : 0;
+  SIGNAL_PCT_CACHE.set(key, { value: pct, expiresAt: now + COHORT_CACHE_TTL_MS });
+  return pct;
+}
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-cards  –  Pool-Only Card Serving Edge Function
@@ -408,6 +433,45 @@ function filterCuratedByStopHours(
   });
 }
 
+// ─── ORCH-0588 Slice 1: signal-serving response shape ────────────────────────
+// Maps the new query_servable_places_by_signal RPC row → the same card shape
+// mobile already expects (mirrors unifiedCardToRecommendation in deckService.ts).
+// Adds two underscore-prefixed debug fields (_signal_score, _signal_contributions)
+// the mobile parser ignores. ZERO mobile changes required.
+function transformServablePlaceToCard(row: any, categoryLabel: string): any {
+  const storedPhotos = Array.isArray(row.stored_photo_urls) ? row.stored_photo_urls : [];
+  const tier = googleLevelToTierSlug(row.price_level);
+  return {
+    id: row.place_id,
+    placeId: row.google_place_id,
+    title: row.name,
+    address: row.address,
+    lat: row.lat,
+    lng: row.lng,
+    rating: row.rating,
+    reviewCount: row.review_count,
+    priceLevel: row.price_level,
+    priceTier: tier,
+    image: storedPhotos[0] ?? null,
+    images: storedPhotos,
+    openingHours: row.opening_hours ?? null,
+    isOpenNow: null, // computed downstream — mirrors today's behavior
+    website: row.website,
+    placeType: row.primary_type,
+    placeTypeLabel: row.primary_type,
+    category: categoryLabel,
+    matchScore: Math.round(Number(row.signal_score ?? 0)),
+    description: '',
+    distanceKm: 0,
+    travelTimeMin: 0,
+    oneLiner: null,
+    tip: null,
+    // Debug-only fields — mobile parser ignores extra keys
+    _signal_score: row.signal_score,
+    _signal_contributions: row.signal_contributions,
+  };
+}
+
 // ── Main Handler ────────────────────────────────────────────────────────────
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -611,6 +675,98 @@ serve(async (req: Request) => {
         errorKey: 'auth_required',
         httpStatus: 401,
       });
+    }
+
+    // ─── ORCH-0588 Slice 1: signal-serving cohort branch ────────────────────
+    // Additive — control path (below) UNCHANGED for any user not in cohort.
+    // Single-category fine-dining requests are eligible. Multi-category requests
+    // always use control path to keep Slice 1 narrow. Rollback = flag-to-0.
+    const isFineDiningOnly =
+      categories.length === 1 &&
+      (categories[0] === 'Upscale & Fine Dining' || categories[0] === 'upscale_fine_dining');
+
+    if (isFineDiningOnly) {
+      try {
+        const pct = await getSignalServingPct(supabaseAdmin, 'fine_dining');
+        const useNewServing = isInCohort(userId, pct);
+        const userBucket = Math.abs(stableHash(userId)) % 100;
+        console.log(
+          `[signal-serving] cohort=${useNewServing ? 'NEW' : 'CONTROL'} user_bucket=${userBucket} pct=${pct} signal=fine_dining`,
+        );
+
+        if (useNewServing) {
+          // FILTER_MIN — paper-sim §F-9 indicated 120 surfaces a healthy depth of
+          // 50-70 Raleigh fine-dining places. Tunable post-Slice-1 by editing
+          // signal_definition_versions.config or this constant.
+          const FINE_DINING_FILTER_MIN = 120;
+          const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc(
+            'query_servable_places_by_signal',
+            {
+              p_signal_id: 'fine_dining',
+              p_filter_min: FINE_DINING_FILTER_MIN,
+              p_lat: location.lat,
+              p_lng: location.lng,
+              p_radius_m: radiusMeters,
+              p_exclude_place_ids: excludeCardIds,
+              p_limit: limit,
+            },
+          );
+
+          if (rpcError) {
+            console.warn(
+              `[signal-serving] RPC failed, falling through to control: ${rpcError.message}`,
+            );
+            // Intentionally fall through to control path below — no throw.
+          } else {
+            const rows = Array.isArray(rpcData) ? rpcData : [];
+            const cards = rows.map((r: any) =>
+              transformServablePlaceToCard(r, 'Upscale & Fine Dining'),
+            );
+            const topScore = rows.length > 0 ? Number(rows[0].signal_score ?? 0) : 0;
+            const elapsed = Date.now() - t0;
+            console.log(
+              `[signal-serving] NEW served=${cards.length} top_score=${topScore} elapsed_ms=${elapsed}`,
+            );
+
+            return new Response(
+              JSON.stringify({
+                success: true,
+                cards,
+                total: cards.length,
+                source: 'signal-serving-v1',
+                metadata: {
+                  hasMore: cards.length === limit,
+                  poolSize: cards.length,
+                  batchSeed: batchSeed ?? 0,
+                },
+                sourceBreakdown: {
+                  fromPool: cards.length,
+                  fromApi: 0,
+                  totalServed: cards.length,
+                  apiCallsMade: 0,
+                  cacheHits: 0,
+                  gapCategories: [],
+                  reason: `Signal-served: fine_dining ≥ ${FINE_DINING_FILTER_MIN}`,
+                  path: 'pipeline',
+                  signalId: 'fine_dining',
+                  cohort: 'NEW',
+                  cohortPct: pct,
+                  filterMin: FINE_DINING_FILTER_MIN,
+                  topScore,
+                },
+              }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            );
+          }
+        }
+        // useNewServing=false → fall through to control path below
+      } catch (signalErr) {
+        // Belt: if anything in the signal branch throws, fall through to control.
+        // Surface to logs (Constitutional #3 — no silent failures).
+        console.warn(
+          `[signal-serving] branch threw, falling through to control: ${(signalErr as Error)?.message}`,
+        );
+      }
     }
 
     // ── POOL block with structural try/catch ───────────────────────────────

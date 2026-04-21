@@ -23,6 +23,7 @@ import { EmailPage } from "./pages/EmailPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
 import { BetaFeedbackPage } from "./pages/BetaFeedbackPage";
 import { AIValidationPage } from "./pages/AIValidationPage";
+import { SignalLibraryPage } from "./pages/SignalLibraryPage"; // ORCH-0588 Slice 1
 
 const PAGES = {
   overview: OverviewPage,
@@ -40,6 +41,7 @@ const PAGES = {
   admin: AdminPage,
   settings: SettingsPage,
   "ai-validation": AIValidationPage,
+  signals: SignalLibraryPage, // ORCH-0588 Slice 1
 };
 
 function getTabFromHash() {
