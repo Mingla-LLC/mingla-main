@@ -740,3 +740,66 @@ Deno.test('T-28: casual_food — Chipotle (rating 3.4 below min 4.0) is ineligib
   assertEquals(r.score, 0);
   assertEquals(r.contributions._reason, 'min_rating');
 });
+
+// ───── T-29/30/31: ORCH-0597 CATEGORY_TO_SIGNAL routing tests ─────
+//
+// These tests mirror the CATEGORY_TO_SIGNAL shape inside
+// supabase/functions/discover-cards/index.ts (not exported to avoid the
+// Deno.serve() side effect that importing index.ts would trigger in tests).
+// Any change to the map in index.ts MUST be mirrored here — the 11-entry
+// count and the per-entry signalIds are the binding contract.
+//
+// Runtime verification of routing is performed via production edge-fn logs
+// (`[signal-serving] signalIds=...`), per feedback_headless_qa_rpc_gap.md.
+
+type RoutingEntry = { signalIds: string[]; filterMin: number; displayCategory: string };
+
+const CATEGORY_TO_SIGNAL_SPEC_MIRROR: Record<string, RoutingEntry> = {
+  // Slice 1 (fine_dining)
+  'Upscale & Fine Dining': { signalIds: ['fine_dining'], filterMin: 120, displayCategory: 'Fine Dining' },
+  'Fine Dining':           { signalIds: ['fine_dining'], filterMin: 120, displayCategory: 'Fine Dining' },
+  'upscale_fine_dining':   { signalIds: ['fine_dining'], filterMin: 120, displayCategory: 'Fine Dining' },
+  // Slice 2 (drinks)
+  'Drinks & Music':        { signalIds: ['drinks'], filterMin: 120, displayCategory: 'Drinks & Music' },
+  'drinks_and_music':      { signalIds: ['drinks'], filterMin: 120, displayCategory: 'Drinks & Music' },
+  // Slice 5 / ORCH-0597 — split chips (single-signal)
+  'Brunch':      { signalIds: ['brunch'],      filterMin: 120, displayCategory: 'Brunch' },
+  'brunch':      { signalIds: ['brunch'],      filterMin: 120, displayCategory: 'Brunch' },
+  'Casual':      { signalIds: ['casual_food'], filterMin: 120, displayCategory: 'Casual' },
+  'casual_food': { signalIds: ['casual_food'], filterMin: 120, displayCategory: 'Casual' },
+  // [TRANSITIONAL] pre-OTA union aliases (exit 2026-05-12)
+  'Brunch, Lunch & Casual': { signalIds: ['brunch', 'casual_food'], filterMin: 120, displayCategory: 'Brunch' },
+  'brunch_lunch_casual':    { signalIds: ['brunch', 'casual_food'], filterMin: 120, displayCategory: 'Brunch' },
+};
+
+Deno.test('T-29: ORCH-0597 — Brunch chip routes to single brunch signal', () => {
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Brunch'].signalIds, ['brunch']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['brunch'].signalIds, ['brunch']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Brunch'].displayCategory, 'Brunch');
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Brunch'].filterMin, 120);
+});
+
+Deno.test('T-30: ORCH-0597 — Casual chip routes to single casual_food signal', () => {
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Casual'].signalIds, ['casual_food']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['casual_food'].signalIds, ['casual_food']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Casual'].displayCategory, 'Casual');
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Casual'].filterMin, 120);
+});
+
+Deno.test('T-31: ORCH-0597 — pre-OTA Brunch, Lunch & Casual alias still unions brunch + casual_food (backward-compat)', () => {
+  assertEquals(
+    CATEGORY_TO_SIGNAL_SPEC_MIRROR['Brunch, Lunch & Casual'].signalIds,
+    ['brunch', 'casual_food'],
+  );
+  assertEquals(
+    CATEGORY_TO_SIGNAL_SPEC_MIRROR['brunch_lunch_casual'].signalIds,
+    ['brunch', 'casual_food'],
+  );
+  // I-SIGNALIDS-ALWAYS-ARRAY: every entry must be an array of length ≥ 1.
+  for (const [key, entry] of Object.entries(CATEGORY_TO_SIGNAL_SPEC_MIRROR)) {
+    assert(Array.isArray(entry.signalIds), `${key}: signalIds must be array`);
+    assert(entry.signalIds.length >= 1, `${key}: signalIds must have at least one id`);
+  }
+  // I-CATEGORY-SIGNAL-ALIAS-COMPLETE: must have exactly 11 entries post-Slice-5.
+  assertEquals(Object.keys(CATEGORY_TO_SIGNAL_SPEC_MIRROR).length, 11);
+});

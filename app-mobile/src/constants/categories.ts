@@ -176,35 +176,77 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'short',
-    compatibleWith: ['icebreakers', 'brunch_lunch_casual', 'upscale_fine_dining', 'movies_theatre', 'play', 'creative_arts'],
+    compatibleWith: ['icebreakers', 'brunch', 'casual_food', 'upscale_fine_dining', 'movies_theatre', 'play', 'creative_arts'],
     incompatibleWith: ['nature']
   },
   {
-    slug: 'brunch_lunch_casual',
-    name: 'Brunch, Lunch & Casual',
-    icon: '🍔',
-    description: 'Affordable, informal dining — burgers, ramen, tacos, pizza, and more',
-    detailedDescription: 'Low-stakes, easygoing food outings across a wide range of cuisines. Fast food, diners, sandwich shops, ramen bars, pizza spots, and everything in between.',
+    slug: 'brunch',
+    name: 'Brunch',
+    icon: '🥞',
+    description: 'Weekend brunch destinations — bistros, gastropubs, and upscale brunch service',
+    detailedDescription: 'Sit-down brunch spots with craft cocktails, mimosas, and full-service dining. Best for weekend mornings with company.',
     expectedActivities: [
-      'Burgers, tacos, pizza, ramen',
-      'Diners, delis, brunch spots',
-      'Fast casual and food courts'
+      'Weekend brunch service with bottomless options',
+      'Craft cocktails, mimosas, and espresso',
+      'Eggs benedict, waffles, avocado toast, shakshuka'
     ],
     apiMapping: {
       googleMaps: {
         coreAnchors: [
-          'buffet_restaurant', 'brunch_restaurant', 'diner', 'fast_food_restaurant', 'food_court',
-          'hamburger_restaurant', 'pizza_restaurant', 'ramen_restaurant', 'sandwich_shop', 'sushi_restaurant',
-          'afghani_restaurant', 'african_restaurant', 'american_restaurant', 'asian_restaurant',
-          'barbecue_restaurant', 'brazilian_restaurant', 'breakfast_restaurant', 'indian_restaurant',
-          'indonesian_restaurant', 'japanese_restaurant', 'korean_restaurant', 'lebanese_restaurant',
-          'mediterranean_restaurant', 'mexican_restaurant', 'middle_eastern_restaurant', 'seafood_restaurant',
-          'spanish_restaurant', 'thai_restaurant', 'turkish_restaurant', 'vegan_restaurant',
-          'vegetarian_restaurant', 'vietnamese_restaurant', 'chinese_restaurant', 'steak_house',
-          'french_restaurant', 'greek_restaurant', 'italian_restaurant'
+          'brunch_restaurant', 'breakfast_restaurant', 'cafe',
+          'american_restaurant', 'bistro', 'gastropub',
+        ],
+        attributes: ['brunch', 'moderate', 'reservable'],
+        excludedAttributes: ['fast_food_restaurant', 'night_club']
+      },
+      eventbrite: {
+        eventTypes: ['brunch_events']
+      }
+    },
+    logic: {
+      hardFilter: 'Must serve brunch',
+      hierarchy: {
+        broad: 'Brunch',
+        niche: ['Weekend Brunch', 'Breakfast', 'Morning Coffee']
+      },
+      fallbackBehavior: 'If no dedicated brunch spot, show highest-rated breakfast place.'
+    },
+    ux: {
+      activeColor: '#F59E0B',
+      subcategories: ['Weekend Brunch', 'Breakfast', 'Morning Coffee'],
+      contextualPreview: 'Brewery Bhavana 3 min away — dim sum brunch with cocktails.'
+    },
+    activityType: 'stationary',
+    duration: 'medium',
+    compatibleWith: ['drinks_and_music', 'movies_theatre', 'play', 'creative_arts', 'casual_food'],
+    incompatibleWith: ['upscale_fine_dining']
+  },
+  {
+    slug: 'casual_food',
+    name: 'Casual',
+    icon: '🍔',
+    description: 'Easy, affordable eats — burgers, pizza, tacos, ramen, and ethnic casual',
+    detailedDescription: 'Low-stakes, everyday food outings. Sandwich shops, taquerias, pizza joints, and neighborhood casual restaurants across a wide range of cuisines.',
+    expectedActivities: [
+      'Burgers, tacos, pizza, ramen',
+      'Ethnic casual (Mexican, Thai, Indian, Mediterranean)',
+      'Sandwich shops, delis, and neighborhood spots'
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: [
+          'mexican_restaurant', 'thai_restaurant', 'pizza_restaurant', 'sandwich_shop',
+          'mediterranean_restaurant', 'indian_restaurant', 'chinese_restaurant',
+          'vietnamese_restaurant', 'korean_restaurant', 'japanese_restaurant',
+          'lebanese_restaurant', 'greek_restaurant', 'italian_restaurant',
+          'ramen_restaurant', 'noodle_shop', 'taco_restaurant', 'hamburger_restaurant',
+          'deli', 'bakery', 'cafe', 'diner', 'american_restaurant', 'barbecue_restaurant',
+          'seafood_restaurant', 'vegan_restaurant', 'vegetarian_restaurant',
+          'turkish_restaurant', 'spanish_restaurant', 'french_restaurant',
+          'sushi_restaurant', 'buffet_restaurant', 'food_court', 'fast_food_restaurant',
         ],
         attributes: ['affordable', 'casual', 'informal'],
-        excludedAttributes: ['fine_dining_restaurant', 'bar', 'night_club', 'spa']
+        excludedAttributes: ['fine_dining_restaurant', 'night_club', 'spa']
       },
       eventbrite: {
         eventTypes: ['food_festivals', 'pop_up_dining', 'street_food_events']
@@ -214,18 +256,18 @@ export const categories: Category[] = [
       hardFilter: 'Must be food-centered and informal in pricing/setting',
       hierarchy: {
         broad: 'Casual Eats',
-        niche: ['Burgers', 'Pizza', 'Ramen', 'Tacos', 'Brunch', 'Asian Cuisine', 'Diners']
+        niche: ['Pizza', 'Tacos', 'Ramen', 'Sandwiches', 'Ethnic Casual']
       },
       fallbackBehavior: 'If no exact match, show nearest highly rated casual restaurant.'
     },
     ux: {
-      activeColor: '#F97316',
-      subcategories: ['Burgers', 'Pizza', 'Ramen', 'Tacos', 'Brunch', 'Asian Cuisine', 'Diners'],
-      contextualPreview: 'Ramen bar 8 minutes away — $14 bowls, open late.'
+      activeColor: '#EF4444',
+      subcategories: ['Pizza', 'Tacos', 'Ramen', 'Sandwiches', 'Ethnic Casual'],
+      contextualPreview: 'Neomonde Mediterranean 8 min away — $14 mezze platters.'
     },
     activityType: 'stationary',
     duration: 'short',
-    compatibleWith: ['drinks_and_music', 'movies_theatre', 'play'],
+    compatibleWith: ['drinks_and_music', 'movies_theatre', 'play', 'creative_arts', 'brunch'],
     incompatibleWith: ['upscale_fine_dining']
   },
   {
@@ -270,7 +312,7 @@ export const categories: Category[] = [
     activityType: 'stationary',
     duration: 'long',
     compatibleWith: ['drinks_and_music', 'movies_theatre'],
-    incompatibleWith: ['brunch_lunch_casual', 'play', 'nature']
+    incompatibleWith: ['brunch', 'casual_food', 'play', 'nature']
   },
   {
     slug: 'movies_theatre',
@@ -322,7 +364,7 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'medium',
-    compatibleWith: ['drinks_and_music', 'brunch_lunch_casual', 'upscale_fine_dining', 'icebreakers'],
+    compatibleWith: ['drinks_and_music', 'brunch', 'casual_food', 'upscale_fine_dining', 'icebreakers'],
     incompatibleWith: ['nature']
   },
   {
@@ -420,7 +462,7 @@ export const categories: Category[] = [
     },
     activityType: 'mixed',
     duration: 'medium',
-    compatibleWith: ['drinks_and_music', 'brunch_lunch_casual', 'creative_arts'],
+    compatibleWith: ['drinks_and_music', 'brunch', 'casual_food', 'creative_arts'],
     incompatibleWith: ['upscale_fine_dining', 'nature']
   },
 ];
@@ -508,7 +550,15 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
       'picnic-dates': 'Grab-and-go juice bar near the park.',
       'take-a-stroll': 'Coffee shop with a scenic walk to get there.'
     },
-    'brunch_lunch_casual': {
+    'brunch': {
+      'first-date': 'Weekend brunch with bottomless mimosas — easy morning conversation.',
+      'romantic': 'Sunny bistro patio with eggs benedict and espresso.',
+      'adventurous': 'New brunch spot you have not tried — discover the menu together.',
+      'group-fun': 'Long brunch table with a crew — shareables and mimosa pitchers.',
+      'picnic-dates': 'Bakery pastry pickup before heading to the park.',
+      'take-a-stroll': 'Brunch then a walk to work it off.'
+    },
+    'casual_food': {
       'first-date': 'Casual ramen shop — low-key and easy for a first meet.',
       'romantic': 'Late-night taco truck crawl for two under string lights.',
       'adventurous': 'Hole-in-the-wall noodle shop — counter seating, quick service.',

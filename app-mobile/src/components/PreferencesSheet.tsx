@@ -96,6 +96,8 @@ const experienceTypes = [
 ];
 
 // ORCH-0434: 8 categories — ordered for visual compactness (short labels paired)
+// ORCH-0597 (Slice 5): split "Brunch, Lunch & Casual" into two chips — "Brunch" + "Casual".
+// 9 chips total. Fine Dining pushed to row 9. Food chips clustered (rows 7-9).
 const categories = [
   { id: 'play',                label: 'Play',                   icon: 'game-controller-outline' },
   { id: 'icebreakers',         label: 'Icebreakers',            icon: 'sparkles' },
@@ -103,8 +105,9 @@ const categories = [
   { id: 'drinks_and_music',    label: 'Drinks & Music',         icon: 'wine-outline' },
   { id: 'creative_arts',       label: 'Creative & Arts',        icon: 'color-palette-outline' },
   { id: 'movies_theatre',      label: 'Movies & Theatre',       icon: 'film-new' },
-  { id: 'brunch_lunch_casual', label: 'Brunch, Lunch & Casual', icon: 'utensils-crossed' },
-  { id: 'upscale_fine_dining', label: 'Fine Dining',             icon: 'chef-hat' },
+  { id: 'brunch',              label: 'Brunch',                 icon: 'coffee' },
+  { id: 'casual_food',         label: 'Casual',                 icon: 'utensils-crossed' },
+  { id: 'upscale_fine_dining', label: 'Fine Dining',            icon: 'chef-hat' },
 ];
 
 // Travel modes matching database constraint
@@ -1358,8 +1361,8 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     backgroundColor: "#ffffff",
     zIndex: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0ebe6",
+    // ORCH-0589 v6 (U3): borderBottomWidth + borderBottomColor removed —
+    // user saw the hairline as a weird white line on the sheet.
   },
   titleContainer: {
     flex: 1,
@@ -1518,14 +1521,15 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   // --- Footer ---
+  // ORCH-0589 v6 (U3): borderTopWidth + borderTopColor removed — hairline read
+  // as weird white line. Footer's subtle shadow + cream tint still separate it
+  // from scroll content above.
   footer: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: 'rgba(255, 249, 245, 0.95)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.50)',
     paddingHorizontal: 16,
     paddingTop: 12,
     shadowColor: "#000",

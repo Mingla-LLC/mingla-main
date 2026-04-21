@@ -133,7 +133,8 @@ export const STANDARD_HOLIDAYS: HolidayDefinition[] = [
 
 // Intent → category slugs mapping for intent-based card sections
 // ORCH-0434: Updated to new canonical slugs.
+// ORCH-0597 (Slice 5): brunch_lunch_casual bundled chip split into brunch + casual_food.
 export const INTENT_CATEGORY_MAP: Record<string, string[]> = {
   romantic: ['icebreakers', 'drinks_and_music', 'nature'],
-  adventurous: ['nature', 'play', 'creative_arts', 'brunch_lunch_casual', 'drinks_and_music', 'icebreakers', 'movies_theatre'],
+  adventurous: ['nature', 'play', 'creative_arts', 'brunch', 'casual_food', 'drinks_and_music', 'icebreakers', 'movies_theatre'],
 }

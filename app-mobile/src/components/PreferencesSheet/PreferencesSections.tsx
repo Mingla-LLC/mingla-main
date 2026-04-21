@@ -124,12 +124,16 @@ export const ExperienceTypesSection = memo(
 ExperienceTypesSection.displayName = "ExperienceTypesSection";
 
 // Keys for each category description in the preferences namespace
-// ORCH-0434: Updated to 8 new canonical slugs
+// ORCH-0434: Updated to 8 new canonical slugs.
+// ORCH-0597 (Slice 5): split brunch_lunch_casual into brunch + casual_food.
+// Legacy key kept for pre-OTA resolution; remove after 2026-05-12.
 const CATEGORY_DESCRIPTION_KEYS: Record<string, string> = {
   nature: "category_descriptions.nature",
   icebreakers: "category_descriptions.icebreakers",
   drinks_and_music: "category_descriptions.drinks_and_music",
-  brunch_lunch_casual: "category_descriptions.brunch_lunch_casual",
+  brunch: "category_descriptions.brunch",
+  casual_food: "category_descriptions.casual",
+  brunch_lunch_casual: "category_descriptions.brunch_lunch_casual", // [TRANSITIONAL]
   upscale_fine_dining: "category_descriptions.upscale_fine_dining",
   movies_theatre: "category_descriptions.movies_theatre",
   creative_arts: "category_descriptions.creative_arts",

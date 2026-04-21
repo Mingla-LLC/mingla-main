@@ -55,10 +55,17 @@ const CATEGORY_TO_SIGNAL: Record<
   // Slice 2 (drinks)
   'Drinks & Music':        { signalIds: ['drinks'], filterMin: 120, displayCategory: 'Drinks & Music' },
   'drinks_and_music':      { signalIds: ['drinks'], filterMin: 120, displayCategory: 'Drinks & Music' },
-  // Slice 4 (brunch + casual_food UNION) — ORCH-0595.3 TRANSITIONAL resolved. Chip serves
-  // merged brunch + casual_food ranked by max(score) per place.
-  'Brunch, Lunch & Casual': { signalIds: ['brunch', 'casual_food'], filterMin: 120, displayCategory: 'Brunch, Lunch & Casual' },
-  'brunch_lunch_casual':    { signalIds: ['brunch', 'casual_food'], filterMin: 120, displayCategory: 'Brunch, Lunch & Casual' },
+  // Slice 5 / ORCH-0597 — brunch + casual_food chips split into TWO separate chips.
+  // Single-signal routing per chip; union retained only for pre-OTA clients (below).
+  'Brunch':      { signalIds: ['brunch'],      filterMin: 120, displayCategory: 'Brunch' },
+  'brunch':      { signalIds: ['brunch'],      filterMin: 120, displayCategory: 'Brunch' },
+  'Casual':      { signalIds: ['casual_food'], filterMin: 120, displayCategory: 'Casual' },
+  'casual_food': { signalIds: ['casual_food'], filterMin: 120, displayCategory: 'Casual' },
+  // [TRANSITIONAL] ORCH-0597 pre-OTA clients still send the old union chip label/slug.
+  // Serve the union (brunch + casual_food) via parallel-RPC merge, same as Slice 4 did.
+  // Exit condition: 2026-05-12 (14d post ORCH-0597 100% OTA adoption).
+  'Brunch, Lunch & Casual': { signalIds: ['brunch', 'casual_food'], filterMin: 120, displayCategory: 'Brunch' },
+  'brunch_lunch_casual':    { signalIds: ['brunch', 'casual_food'], filterMin: 120, displayCategory: 'Brunch' },
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────

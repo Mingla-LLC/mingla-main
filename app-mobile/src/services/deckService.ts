@@ -94,7 +94,7 @@ export type DeckServerPath =
 
 export interface DeckResponse {
   cards: Recommendation[];
-  deckMode: 'nature' | 'icebreakers' | 'drinks_and_music' | 'brunch_lunch_casual' | 'upscale_fine_dining' | 'movies_theatre' | 'creative_arts' | 'play' | 'curated' | 'mixed';
+  deckMode: 'nature' | 'icebreakers' | 'drinks_and_music' | 'brunch' | 'casual_food' | 'brunch_lunch_casual' | 'upscale_fine_dining' | 'movies_theatre' | 'creative_arts' | 'play' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
   hasMore: boolean;
@@ -122,11 +122,16 @@ interface DeckPill {
 
 // ── Pill ID → display name for the unified edge function ─────────────────
 // ORCH-0434: Updated to new canonical slugs.
+// ORCH-0597 (Slice 5): split brunch_lunch_casual into brunch + casual_food.
+// Legacy `brunch_lunch_casual` key retained for pre-OTA clients still sending the
+// old slug; backend CATEGORY_TO_SIGNAL serves the union until 2026-05-12.
 const PILL_TO_CATEGORY_NAME: Record<string, string> = {
   nature: 'Nature & Views',
   icebreakers: 'Icebreakers',
   drinks_and_music: 'Drinks & Music',
-  brunch_lunch_casual: 'Brunch, Lunch & Casual',
+  brunch: 'Brunch',
+  casual_food: 'Casual',
+  brunch_lunch_casual: 'Brunch, Lunch & Casual', // [TRANSITIONAL] legacy alias — remove after 2026-05-12
   upscale_fine_dining: 'Fine Dining',
   movies_theatre: 'Movies & Theatre',
   creative_arts: 'Creative & Arts',
@@ -222,8 +227,15 @@ class DeckService {
       'icebreakers': 'icebreakers',
       'drinks_and_music': 'drinks_and_music',
       'drinks & music': 'drinks_and_music',
-      'brunch_lunch_casual': 'brunch_lunch_casual',
-      'brunch, lunch & casual': 'brunch_lunch_casual',
+      // ORCH-0597 (Slice 5): new split chips
+      'brunch': 'brunch',
+      'casual_food': 'casual_food',
+      'casual': 'casual_food',
+      // [TRANSITIONAL] legacy chip slug + display name — resolved to Brunch (primary intent
+      // of the old bundled chip). Pre-OTA clients reading from old persisted prefs before
+      // migration lands still hit this path. Remove after 2026-05-12.
+      'brunch_lunch_casual': 'brunch',
+      'brunch, lunch & casual': 'brunch',
       'upscale_fine_dining': 'upscale_fine_dining',
       'upscale & fine dining': 'upscale_fine_dining',
       'movies_theatre': 'movies_theatre',
@@ -238,14 +250,14 @@ class DeckService {
       'picnic park': 'nature',
       'picnic': 'nature',
       'drink': 'drinks_and_music',
-      'casual_eats': 'brunch_lunch_casual',
-      'casual eats': 'brunch_lunch_casual',
+      'casual_eats': 'casual_food',
+      'casual eats': 'casual_food',
       'fine_dining': 'upscale_fine_dining',
       'fine dining': 'upscale_fine_dining',
       'watch': 'movies_theatre',
       'live_performance': 'movies_theatre',
       'live performance': 'movies_theatre',
-      'wellness': 'brunch_lunch_casual',
+      'wellness': 'casual_food',
       'flowers': 'nature',
       'nature_views': 'nature',
       // Legacy compat

@@ -77,12 +77,15 @@ function getInitials(first: string | null, last: string | null, username: string
 // AsyncStorage key for archived holidays
 const HOLIDAY_ARCHIVE_STORAGE_KEY = "mingla_archived_holidays";
 
-// Category icon mapping for pill chips
+// Category icon mapping for pill chips.
+// ORCH-0597 (Slice 5): split brunch_lunch_casual → brunch + casual_food.
 const CATEGORY_CHIP_ICONS: Record<string, string> = {
   nature: 'leaf-outline',
   icebreakers: 'chatbubbles-outline',
   drinks_and_music: 'wine-outline',
-  brunch_lunch_casual: 'fast-food-outline',
+  brunch: 'cafe-outline',
+  casual_food: 'fast-food-outline',
+  brunch_lunch_casual: 'fast-food-outline', // [TRANSITIONAL] legacy — remove after 2026-05-12
   upscale_fine_dining: 'restaurant-outline',
   movies_theatre: 'film-outline',
   creative_arts: 'color-palette-outline',

@@ -2596,7 +2596,10 @@ const OnboardingFlow = ({
                   nature: 'trees',
                   icebreakers: 'cafe-outline',
                   drinks_and_music: 'wine-outline',
-                  brunch_lunch_casual: 'restaurant-outline',
+                  // ORCH-0597: split brunch_lunch_casual → brunch + casual_food.
+                  brunch: 'coffee',
+                  casual_food: 'utensils-crossed',
+                  brunch_lunch_casual: 'restaurant-outline', // [TRANSITIONAL] legacy — remove after 2026-05-12
                   upscale_fine_dining: 'chef-hat',
                   movies_theatre: 'film-new',
                   creative_arts: 'color-palette-outline',
