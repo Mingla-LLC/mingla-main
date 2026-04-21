@@ -3,6 +3,7 @@ import { View, Text, Image, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
+import { GlassBadge } from './ui/GlassBadge';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 import { googleLevelToTierSlug, tierLabel, formatTierLabel } from '../constants/priceTiers';
 import { parseAndFormatDistance, formatCurrency, getCurrencySymbol, getCurrencyRate } from './utils/formatters';
@@ -88,8 +89,10 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
               <View style={[styles.stopImage, styles.imagePlaceholder]} />
             )}
             {!isSingleStop && (
-              <View style={styles.stopBadge}>
-                <Text style={styles.stopBadgeText}>{idx + 1}</Text>
+              <View style={styles.stopBadgeWrapper}>
+                <GlassBadge variant="circular" accessibilityLabel={`Stop ${idx + 1}`}>
+                  {idx + 1}
+                </GlassBadge>
               </View>
             )}
           </View>
@@ -164,21 +167,11 @@ const styles = StyleSheet.create({
   imagePlaceholder: {
     backgroundColor: '#2C2C2E',
   },
-  stopBadge: {
+  // ORCH-0566: position-only wrapper — GlassBadge (variant=circular) provides its own skin.
+  stopBadgeWrapper: {
     position: 'absolute',
     top: 8,
     left: 8,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stopBadgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
   },
   infoSection: {
     flex: 0.45,

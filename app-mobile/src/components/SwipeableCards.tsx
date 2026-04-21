@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { Icon } from "./ui/Icon";
+import { GlassBadge } from "./ui/GlassBadge";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
 
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -2160,13 +2161,10 @@ export default function SwipeableCards({
                   <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
                     <CardHeroImage uri={nextCard.image} style={styles.cardImage} />
 
-                    {/* Gallery Indicator if multiple images */}
+                    {/* Gallery Indicator if multiple images (ORCH-0566: glass) */}
                     {nextCard.images && nextCard.images.length > 1 && (
-                      <View style={styles.galleryIndicator}>
-                        <Icon name="images" size={16} color="white" />
-                        <Text style={styles.galleryText}>
-                          {nextCard.images.length}
-                        </Text>
+                      <View style={styles.galleryIndicatorWrapper}>
+                        <GlassBadge iconName="images">{nextCard.images.length}</GlassBadge>
                       </View>
                     )}
 
@@ -2174,51 +2172,29 @@ export default function SwipeableCards({
                     <View style={styles.titleOverlay}>
                       <Text style={styles.cardTitle}>{nextCard.title}</Text>
 
-                      {/* Info badges: distance, travel time, rating, price */}
+                      {/* ORCH-0566: glass info badges (preview layer — no entry motion, not pressable) */}
                       <View style={styles.detailsBadges}>
-                        <View style={styles.detailBadge}>
-                          <Icon name="location" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem) || t('cards:swipeable.nearby')}
-                          </Text>
-                        </View>
+                        <GlassBadge iconName="location">
+                          {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem) || t('cards:swipeable.nearby')}
+                        </GlassBadge>
                         {nextCard.travelTime && nextCard.travelTime !== '0 min' ? (
-                          <View style={styles.detailBadge}>
-                            <Icon name={getTravelModeIcon(nextCard.travelMode ?? effectiveTravelMode)} size={12} color="white" />
-                            <Text style={styles.detailBadgeText}>
-                              {nextCard.travelTime}
-                            </Text>
-                          </View>
+                          <GlassBadge iconName={getTravelModeIcon(nextCard.travelMode ?? effectiveTravelMode)}>
+                            {nextCard.travelTime}
+                          </GlassBadge>
                         ) : null}
                         {nextCard.rating != null && nextCard.rating > 0 && (
-                          <View style={styles.detailBadge}>
-                            <Icon name="star" size={12} color="white" />
-                            <Text style={styles.detailBadgeText}>
-                              {nextCard.rating.toFixed(1)}
-                            </Text>
-                          </View>
+                          <GlassBadge iconName="star">{nextCard.rating.toFixed(1)}</GlassBadge>
                         )}
-                        <View style={styles.detailBadge}>
-                          <Icon name="pricetag" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {nextCard.priceTier && TIER_BY_SLUG[nextCard.priceTier as PriceTierSlug]
-                              ? formatTierLabel(nextCard.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
-                              : formatPriceRange(nextCard.priceRange || t('cards:swipeable.free'), accountPreferences?.currency) || t('cards:swipeable.free')}
-                          </Text>
-                        </View>
-                        <View style={styles.detailBadge}>
-                          <Icon name={NextCategoryIcon} size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>{getReadableCategoryName(nextCard.category)}</Text>
-                        </View>
+                        <GlassBadge iconName="pricetag">
+                          {nextCard.priceTier && TIER_BY_SLUG[nextCard.priceTier as PriceTierSlug]
+                            ? formatTierLabel(nextCard.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
+                            : formatPriceRange(nextCard.priceRange || t('cards:swipeable.free'), accountPreferences?.currency) || t('cards:swipeable.free')}
+                        </GlassBadge>
+                        <GlassBadge iconName={NextCategoryIcon}>
+                          {getReadableCategoryName(nextCard.category)}
+                        </GlassBadge>
                       </View>
-
-                      {/* View more badge */}
-                      <View style={styles.viewMoreRow}>
-                        <View style={styles.viewMoreBadge}>
-                          <Icon name="eye" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>{t('cards:swipeable.view_more')}</Text>
-                        </View>
-                      </View>
+                      {/* ORCH-0566 follow-up: View-more chip removed. Preview has no saved/scheduled state. */}
                     </View>
                   </View>
 
@@ -2301,13 +2277,10 @@ export default function SwipeableCards({
                   <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
                     <CardHeroImage uri={currentRec.image} style={styles.cardImage} />
 
-                    {/* Gallery Indicator if multiple images */}
+                    {/* Gallery Indicator if multiple images (ORCH-0566: glass) */}
                     {currentRec.images && currentRec.images.length > 1 && (
-                      <View style={styles.galleryIndicator}>
-                        <Icon name="images" size={16} color="white" />
-                        <Text style={styles.galleryText}>
-                          {currentRec.images.length}
-                        </Text>
+                      <View style={styles.galleryIndicatorWrapper}>
+                        <GlassBadge iconName="images">{currentRec.images.length}</GlassBadge>
                       </View>
                     )}
 
@@ -2324,63 +2297,51 @@ export default function SwipeableCards({
                         <Text style={styles.oneLiner} numberOfLines={1}>{currentRec.oneLiner}</Text>
                       )}
 
-                      {/* Info badges: distance, travel time, rating, price */}
+                      {/* ORCH-0566: glass info badges (front card — entry motion via entryIndex) */}
+                      {/* Saved/scheduled state badges retain their brand-color semantic treatment (out of spec scope). */}
                       <View style={styles.detailsBadges}>
-                        <View style={styles.detailBadge}>
-                          <Icon name="location" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem) || t('cards:swipeable.nearby')}
-                          </Text>
-                        </View>
+                        <GlassBadge iconName="location" entryIndex={0}>
+                          {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem) || t('cards:swipeable.nearby')}
+                        </GlassBadge>
                         {currentRec.travelTime && currentRec.travelTime !== '0 min' ? (
-                          <View style={styles.detailBadge}>
-                            <Icon name={getTravelModeIcon(currentRec.travelMode ?? effectiveTravelMode)} size={12} color="white" />
-                            <Text style={styles.detailBadgeText}>
-                              {currentRec.travelTime}
-                            </Text>
-                          </View>
+                          <GlassBadge iconName={getTravelModeIcon(currentRec.travelMode ?? effectiveTravelMode)} entryIndex={1}>
+                            {currentRec.travelTime}
+                          </GlassBadge>
                         ) : null}
                         {currentRec.rating != null && currentRec.rating > 0 && (
-                          <View style={styles.detailBadge}>
-                            <Icon name="star" size={12} color="white" />
-                            <Text style={styles.detailBadgeText}>
-                              {currentRec.rating.toFixed(1)}
-                            </Text>
-                          </View>
+                          <GlassBadge iconName="star" entryIndex={2}>
+                            {currentRec.rating.toFixed(1)}
+                          </GlassBadge>
                         )}
-                        <View style={styles.detailBadge}>
-                          <Icon name="pricetag" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {currentRec.priceTier && TIER_BY_SLUG[currentRec.priceTier as PriceTierSlug]
-                              ? formatTierLabel(currentRec.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
-                              : formatPriceRange(currentRec.priceRange || t('cards:swipeable.free'), accountPreferences?.currency) || t('cards:swipeable.free')}
-                          </Text>
-                        </View>
-                        <View style={styles.detailBadge}>
-                          <Icon name={CategoryIcon} size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>{getReadableCategoryName(currentRec.category)}</Text>
-                        </View>
-                        {isCurrentCardSaved && (
-                          <View style={styles.savedBadge}>
-                            <Icon name="heart" size={10} color="white" />
-                            <Text style={styles.savedBadgeText}>{t('cards:swipeable.saved')}</Text>
-                          </View>
-                        )}
-                        {isCurrentCardScheduled && (
-                          <View style={styles.scheduledBadge}>
-                            <Icon name="calendar" size={10} color="white" />
-                            <Text style={styles.scheduledBadgeText}>{t('cards:swipeable.scheduled')}</Text>
-                          </View>
-                        )}
+                        <GlassBadge iconName="pricetag" entryIndex={3}>
+                          {currentRec.priceTier && TIER_BY_SLUG[currentRec.priceTier as PriceTierSlug]
+                            ? formatTierLabel(currentRec.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
+                            : formatPriceRange(currentRec.priceRange || t('cards:swipeable.free'), accountPreferences?.currency) || t('cards:swipeable.free')}
+                        </GlassBadge>
+                        <GlassBadge iconName={CategoryIcon} entryIndex={4}>
+                          {getReadableCategoryName(currentRec.category)}
+                        </GlassBadge>
                       </View>
 
-                      {/* View more badge */}
-                      <View style={styles.viewMoreRow}>
-                        <View style={styles.viewMoreBadge}>
-                          <Icon name="eye" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>{t('cards:swipeable.view_more')}</Text>
+                      {/* State badges row — saved/scheduled chips live here (moved down from the meta row
+                          so the brand-colored state signals get their own line, replacing the removed
+                          "View more" chip). Row is empty when neither flag is true — React renders nothing. */}
+                      {(isCurrentCardSaved || isCurrentCardScheduled) && (
+                        <View style={styles.stateBadgesRow}>
+                          {isCurrentCardSaved && (
+                            <View style={styles.savedBadge}>
+                              <Icon name="heart" size={10} color="white" />
+                              <Text style={styles.savedBadgeText}>{t('cards:swipeable.saved')}</Text>
+                            </View>
+                          )}
+                          {isCurrentCardScheduled && (
+                            <View style={styles.scheduledBadge}>
+                              <Icon name="calendar" size={10} color="white" />
+                              <Text style={styles.scheduledBadgeText}>{t('cards:swipeable.scheduled')}</Text>
+                            </View>
+                          )}
                         </View>
-                      </View>
+                      )}
                     </Animated.View>
                   </View>
 
@@ -2594,22 +2555,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
-  galleryIndicator: {
+  // ORCH-0566: position-only wrapper — GlassBadge provides its own skin.
+  galleryIndicatorWrapper: {
     position: "absolute",
     top: 16,
     right: 16,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  galleryText: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "500",
   },
   titleOverlay: {
     position: "absolute",
@@ -2643,32 +2593,12 @@ const styles = StyleSheet.create({
     gap: 8,
     flexWrap: "wrap",
   },
-  detailBadge: {
-    backgroundColor: "rgba(107, 114, 128, 0.8)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  viewMoreRow: {
+  // State badges row (saved/scheduled). Occupies the position formerly held by the
+  // removed "View more" chip — kept the marginTop separation, added gap for two chips.
+  stateBadgesRow: {
     flexDirection: "row",
     marginTop: 8,
-  },
-  viewMoreBadge: {
-    backgroundColor: "rgba(107, 114, 128, 0.8)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  detailBadgeText: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "500",
+    gap: 8,
   },
   addressRow: {
     flexDirection: "row",

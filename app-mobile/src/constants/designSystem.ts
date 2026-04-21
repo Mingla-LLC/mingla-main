@@ -304,6 +304,64 @@ export const glass = {
     shadowRadius: 12,
     elevation: 4,
   },
+
+  // ORCH-0566 — Premium glassmorphism for discovery-card labels.
+  // Sub-namespace to avoid collision with the onboarding-scoped glass.*
+  // tokens above. Consumed exclusively by components/ui/GlassBadge.tsx.
+  // Values locked by SPEC_ORCH-0566_GLASS_CARD_LABELS.md §12.
+  badge: {
+    blur: {
+      intensity: 24,
+      tint: 'dark' as const,
+    },
+    tint: {
+      floor: 'rgba(12, 14, 18, 0.42)',
+      pressed: 'rgba(12, 14, 18, 0.52)',
+    },
+    border: {
+      hairline: 'rgba(255, 255, 255, 0.14)',
+      topHighlight: 'rgba(255, 255, 255, 0.22)',
+    },
+    shadow: {
+      color: '#000000',
+      offset: { width: 0, height: 2 },
+      opacity: 0.25,
+      radius: 8,
+      elevation: 4,
+    },
+    fallback: {
+      solid: 'rgba(20, 22, 26, 0.92)',
+    },
+    padding: {
+      horizontal: 11,
+      vertical: 7,
+    },
+    radius: {
+      default: 9999,
+      circular: 13,
+    },
+    size: {
+      circular: 26,
+    },
+    text: {
+      color: '#FFFFFF',
+      opacity: 1.0,
+    },
+    icon: {
+      color: '#FFFFFF',
+      opacity: 0.92,
+      size: 13,
+    },
+    gap: 5,
+    hitSlop: { top: 12, bottom: 12, left: 8, right: 8 } as const,
+    motion: {
+      entryDurationMs: 220,
+      staggerMs: 40,
+      entryTranslateY: 8,
+      pressDurationMs: 120,
+      pressScale: 0.96,
+    },
+  },
 } as const;
 
 // Export commonly used combinations
