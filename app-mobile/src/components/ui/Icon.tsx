@@ -246,6 +246,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'copy-outline':               Copy,
   'create-outline':             SquarePen,
   'chef-hat':                   ChefHat,
+  'coffee':                     Coffee,
+  'coffee-outline':             Coffee,
+  'cafe':                       Coffee,
+  'cafe-outline':               Coffee,
   'credit-card':                CreditCard,
   'crown-outline':              Crown,
 
