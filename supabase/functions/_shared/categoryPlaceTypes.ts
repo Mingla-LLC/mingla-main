@@ -63,6 +63,35 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'live_music_venue', // ORCH-0434: added for Drinks & Music
     'karaoke',          // ORCH-0434: added for Drinks & Music
   ],
+  // ORCH-0597 (Slice 5): split "Brunch, Lunch & Casual" into two separate canonical
+  // categories. Old display name retained as [TRANSITIONAL] alias (below) for pre-OTA
+  // clients during the 14-day soak window ending 2026-05-12.
+  'Brunch': [
+    'brunch_restaurant', 'breakfast_restaurant', 'cafe',
+    'american_restaurant', 'bistro', 'gastropub',
+    'bakery', 'diner',
+  ],
+  'Casual': [
+    'mexican_restaurant', 'thai_restaurant', 'pizza_restaurant', 'sandwich_shop',
+    'mediterranean_restaurant', 'indian_restaurant', 'chinese_restaurant',
+    'vietnamese_restaurant', 'korean_restaurant', 'japanese_restaurant',
+    'lebanese_restaurant', 'greek_restaurant', 'italian_restaurant',
+    'ramen_restaurant', 'noodle_shop', 'hamburger_restaurant',
+    'deli', 'bakery', 'cafe', 'diner', 'american_restaurant', 'barbecue_restaurant',
+    'seafood_restaurant', 'vegan_restaurant', 'vegetarian_restaurant',
+    'turkish_restaurant', 'spanish_restaurant', 'french_restaurant',
+    'sushi_restaurant', 'buffet_restaurant', 'food_court',
+    'afghani_restaurant', 'african_restaurant', 'asian_restaurant',
+    'barbecue_restaurant', 'brazilian_restaurant', 'indonesian_restaurant',
+    'middle_eastern_restaurant', 'hot_pot_restaurant', 'dim_sum_restaurant',
+    'argentinian_restaurant', 'basque_restaurant', 'persian_restaurant',
+    'scandinavian_restaurant', 'filipino_restaurant', 'soul_food_restaurant',
+    'cuban_restaurant', 'hawaiian_restaurant', 'ethiopian_restaurant',
+    'moroccan_restaurant', 'peruvian_restaurant', 'cajun_restaurant',
+    'fusion_restaurant', 'korean_barbecue_restaurant', 'tapas_restaurant',
+  ],
+  // [TRANSITIONAL] — pre-ORCH-0597 clients still send this bundled display name.
+  // Union of Brunch + Casual types. Remove after 2026-05-12.
   'Brunch, Lunch & Casual': [
     'restaurant', 'hamburger_restaurant', 'pizza_restaurant',
     'ramen_restaurant', 'sandwich_shop', 'sushi_restaurant', 'diner',
@@ -171,12 +200,26 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'drinks_and_music': 'Drinks & Music',
   'drinks-and-music': 'Drinks & Music',
   'drink': 'Drinks & Music',              // backward compat
+  // ORCH-0597 (Slice 5): split chips — NEW canonical routing.
+  'brunch': 'Brunch',
+  'Brunch': 'Brunch',
+  'casual_food': 'Casual',
+  'casual-food': 'Casual',
+  'casualfood': 'Casual',
+  'casual food': 'Casual',
+  'casual': 'Casual',
+  'Casual': 'Casual',
+  'casual_eats': 'Casual',   // ORCH-0597: legacy alias redirected to new Casual chip
+  'casual-eats': 'Casual',
+  'casualeats': 'Casual',
+  'casual eats': 'Casual',
+  // [TRANSITIONAL] legacy bundled chip slug + display name — resolves to
+  // the old bundled canonical entry so that CATEGORY_TO_SIGNAL routes to the
+  // backward-compat UNION (brunch + casual_food). Pre-OTA clients still send
+  // these. Remove after 2026-05-12.
   'brunch_lunch_casual': 'Brunch, Lunch & Casual',
   'brunch-lunch-casual': 'Brunch, Lunch & Casual',
-  'casual_eats': 'Brunch, Lunch & Casual', // backward compat
-  'casual-eats': 'Brunch, Lunch & Casual',
-  'casualeats': 'Brunch, Lunch & Casual',
-  'casual eats': 'Brunch, Lunch & Casual',
+  'brunch, lunch & casual': 'Brunch, Lunch & Casual',
   'upscale_fine_dining': 'Upscale & Fine Dining',
   'upscale-fine-dining': 'Upscale & Fine Dining',
   'fine_dining': 'Upscale & Fine Dining',  // backward compat
