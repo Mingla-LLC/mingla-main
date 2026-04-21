@@ -667,9 +667,14 @@ export default function MessageInterface({
     maxWindowHeightRef.current = currentWindowHeight;
   }
   const windowShrinkAmount = Math.max(0, maxWindowHeightRef.current - currentWindowHeight);
+  // On Android with edgeToEdge, the Keyboard event's `keyboardHeight` measures
+  // from the keyboard top down to the TOP of the gesture/nav bar — NOT to the
+  // physical screen bottom. The gesture bar (safeInsets.bottom) still sits
+  // between keyboard and screen bottom visually. To position the composer above
+  // the actual visible keyboard, we need to account for it.
   const androidManualLift =
     Platform.OS === 'android' && keyboardVisible
-      ? Math.max(0, keyboardHeight - windowShrinkAmount)
+      ? Math.max(0, keyboardHeight + safeInsets.bottom - windowShrinkAmount)
       : 0;
   const iosKeyboardLift = Platform.OS === 'ios' && keyboardVisible ? keyboardHeight : 0;
 
