@@ -176,17 +176,21 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
     descriptionTone: 'firstdate',
   },
   {
+    // ORCH-0599.3: Romantic shrunk from 4 stops to 3; drops Drinks (user directive 2026-04-21).
+    // Stops now signal-powered: Flowers ranked by `flowers` signal (filters out balloon/plant/
+    // non-bouquet false positives); Experience/Dinner ranked by `romantic` signal over the
+    // chip-filter signal (fine_dining/creative_arts/theatre ≥120) so intimate/candlelit
+    // date-night venues surface over group steakhouses and chain restaurants.
     id: 'romantic',
     label: 'Romantic',
     stops: [
       { role: 'Flowers', optional: true, dismissible: true },
       { role: 'Experience' },
       { role: 'Dinner' },
-      { role: 'Drinks' },
     ],
     combos: [
-      ['flowers', 'creative_arts', 'upscale_fine_dining', 'drinks_and_music'],
-      ['flowers', 'movies_theatre', 'upscale_fine_dining', 'drinks_and_music'],
+      ['flowers', 'creative_arts', 'upscale_fine_dining'],
+      ['flowers', 'theatre', 'upscale_fine_dining'],
     ],
     taglines: [
       'A curated route for two',
@@ -304,6 +308,120 @@ async function fetchSinglesForCategory(
   // Shuffle to ensure variety across requests (all results are quality-filtered by DB query)
   return shuffle(filtered);
 }
+
+// ── ORCH-0599.3: Signal-aware picker for Romantic experience stops ────────
+// Queries card_pool JOINed with place_scores to:
+//   1. Filter places that score >= filterMin on filterSignal (e.g., fine_dining >= 120)
+//   2. Rank results by rankSignal score DESC (e.g., romantic score)
+// This replaces rating-based shuffle ordering for Romantic-experience stops,
+// surfacing the most date-night-appropriate fine-dining/creative-arts/theatre
+// venues instead of a random upscale_fine_dining place.
+async function fetchSinglesForSignalRank(
+  filterSignal: string,
+  filterMin: number,
+  rankSignal: string,
+  centerLat: number,
+  centerLng: number,
+  radiusMeters: number,
+  limit: number = 50,
+): Promise<any[]> {
+  const latDelta = radiusMeters / 111320;
+  const lngDelta = radiusMeters / (111320 * Math.cos(centerLat * Math.PI / 180));
+
+  // Step 1: find place_ids that pass the filter signal threshold
+  const { data: filterRows, error: filterErr } = await supabaseAdmin
+    .from('place_scores')
+    .select('place_id')
+    .eq('signal_id', filterSignal)
+    .gte('score', filterMin);
+
+  if (filterErr || !filterRows || filterRows.length === 0) return [];
+  const eligibleIds = filterRows.map((r: any) => r.place_id);
+
+  // Step 2: find their rank signal scores, ordered DESC
+  const { data: rankRows, error: rankErr } = await supabaseAdmin
+    .from('place_scores')
+    .select('place_id, score')
+    .eq('signal_id', rankSignal)
+    .in('place_id', eligibleIds)
+    .order('score', { ascending: false })
+    .limit(limit * 3); // over-fetch for lat/lng filter + card_pool join losses
+
+  if (rankErr || !rankRows || rankRows.length === 0) return [];
+  const rankedIds = rankRows.map((r: any) => r.place_id);
+  const rankScoreById = new Map<string, number>();
+  for (const r of rankRows) rankScoreById.set(r.place_id, Number(r.score));
+
+  // Step 3: fetch card_pool rows (presentation layer) for these place_ids in bounding box
+  const { data: cards, error: cardErr } = await supabaseAdmin
+    .from('card_pool')
+    .select('id, place_pool_id, google_place_id, title, address, lat, lng, rating, review_count, price_min, price_max, price_tier, price_tiers, opening_hours, website, images, image_url, city_id, city, country, utc_offset_minutes, ai_categories, category, categories')
+    .eq('is_active', true)
+    .eq('card_type', 'single')
+    .in('place_pool_id', rankedIds)
+    .gte('lat', centerLat - latDelta)
+    .lte('lat', centerLat + latDelta)
+    .gte('lng', centerLng - lngDelta)
+    .lte('lng', centerLng + lngDelta)
+    .limit(limit * 2);
+
+  if (cardErr || !cards) return [];
+
+  // Step 4: attach rank score + sort by rank signal DESC (preserves signal-aware ordering
+  // even though card_pool.in() doesn't preserve input order)
+  const withScore = cards
+    .filter((card: any) => (card.images?.length > 0 || card.image_url) && card.place_pool_id)
+    .map((card: any) => ({ ...card, _rankScore: rankScoreById.get(card.place_pool_id) ?? 0 }))
+    .sort((a: any, b: any) => b._rankScore - a._rankScore)
+    .slice(0, limit);
+
+  return withScore;
+}
+
+// Mapping from combo category slug → filter signal. Chip slugs sometimes differ
+// from signal ids (e.g., chip 'upscale_fine_dining' uses signal 'fine_dining').
+const COMBO_SLUG_TO_FILTER_SIGNAL: Record<string, string> = {
+  'upscale_fine_dining': 'fine_dining',
+  'drinks_and_music': 'drinks',
+  'brunch_lunch_casual': 'brunch',
+  'casual_food': 'casual_food',
+  'brunch': 'brunch',
+  'movies': 'movies',
+  'theatre': 'theatre',
+  'movies_theatre': 'movies', // legacy TRANSITIONAL — movies union handled upstream
+  'creative_arts': 'creative_arts',
+  'nature': 'nature',
+  'play': 'play',
+  'icebreakers': 'icebreakers',
+  'flowers': 'flowers',
+  'groceries': 'groceries',
+};
+
+// Mapping from experience type id → (combo slug → rank signal). When an experience
+// type wants to rank a stop by a "vibe" signal instead of the chip's own signal,
+// declare it here. E.g., Romantic ranks non-flowers stops by the `romantic` signal.
+const EXPERIENCE_RANK_SIGNAL_OVERRIDE: Record<string, Record<string, string>> = {
+  'romantic': {
+    // NOTE: Flowers stop intentionally NOT signal-overridden. card_pool.categories=[flowers]
+    // was manually curated to the correct set of "big-store bouquet sources" (Trader Joe's,
+    // Wegmans, Whole Foods, Harris Teeter) which Google's raw florist type tag misses. The
+    // signal-aware picker would be stricter than needed. Legacy fetchSinglesForCategory
+    // returns the 5 curated big stores — matches user directive "only at the big stores".
+    // Non-Flowers romantic stops get signal-aware ranking by romantic vibe.
+    'creative_arts': 'romantic',
+    'theatre': 'romantic',
+    'upscale_fine_dining': 'romantic',
+  },
+};
+
+// Per-stop filter_min override. Most signals use 120; movies is 80 (tiny universe);
+// flowers is 80 — keeps 2 boutique florists (Mio Kreations 155, Petal & Oak 102) + 12 Harris
+// Teeter locations with florist tag (97-136) while filtering out noise leaks: Fresh Market
+// (69, no florist tag), candy/chocolate/catering/bakery false positives scoring 50-66.
+const COMBO_SLUG_FILTER_MIN: Record<string, number> = {
+  'movies': 80,
+  'flowers': 80,
+};
 
 // ── Build stop from place_pool row ─────────────────────────────────────────
 
@@ -460,13 +578,28 @@ async function generateCardsForType(
   // Pre-fetch places from place_pool for all categories in parallel
   const categoryPlaces: Record<string, any[]> = {};
 
+  // ORCH-0599.3: resolve per-experience signal-aware picker. If this experience
+  // type has overrides (e.g., Romantic ranks by `romantic` signal), use the
+  // new fetchSinglesForSignalRank. Else keep legacy fetchSinglesForCategory
+  // (rating-based shuffle) for backward compatibility with unmodified experiences.
+  const signalOverride = EXPERIENCE_RANK_SIGNAL_OVERRIDE[typeDef.id];
+  const fetchForCombo = async (catId: string, fetchLat: number, fetchLng: number, fetchRadius: number, fetchLimit?: number): Promise<any[]> => {
+    if (signalOverride && signalOverride[catId]) {
+      const rankSignal = signalOverride[catId];
+      const filterSignal = COMBO_SLUG_TO_FILTER_SIGNAL[catId] ?? catId;
+      const filterMin = COMBO_SLUG_FILTER_MIN[catId] ?? 120;
+      return fetchSinglesForSignalRank(filterSignal, filterMin, rankSignal, fetchLat, fetchLng, fetchRadius, fetchLimit ?? 50);
+    }
+    return fetchSinglesForCategory(catId, fetchLat, fetchLng, fetchRadius, fetchLimit ?? 50);
+  };
+
   if (hasReverseAnchor) {
     // For reverse-anchor types: find anchor category first, then query others near it
     const anchorStopIdx = typeDef.stops.findIndex(s => s.reverseAnchor);
     const anchorCategoryId = typeDef.combos[0][anchorStopIdx];
 
     // Fetch anchor places near user
-    categoryPlaces[anchorCategoryId] = await fetchSinglesForCategory(anchorCategoryId, lat, lng, clampedRadius);
+    categoryPlaces[anchorCategoryId] = await fetchForCombo(anchorCategoryId, lat, lng, clampedRadius);
     console.log(`[generateCardsForType:${typeDef.id}] anchor(${anchorCategoryId}): ${categoryPlaces[anchorCategoryId].length} places`);
 
     // Other categories will be fetched per-card near the anchor
@@ -474,7 +607,7 @@ async function generateCardsForType(
     // Standard: fetch all categories near user in parallel
     await Promise.all(
       [...allCategoryIds].map(async (catId) => {
-        categoryPlaces[catId] = await fetchSinglesForCategory(catId, lat, lng, clampedRadius);
+        categoryPlaces[catId] = await fetchForCombo(catId, lat, lng, clampedRadius);
         console.log(`[generateCardsForType:${typeDef.id}] ${catId}: ${categoryPlaces[catId].length} places`);
       })
     );
@@ -522,7 +655,7 @@ async function generateCardsForType(
           if (i === anchorStopIdx) continue;
           const catId = combo[i];
           if (!categoryPlaces[`${catId}_near_${anchor.google_place_id}`]) {
-            categoryPlaces[`${catId}_near_${anchor.google_place_id}`] = await fetchSinglesForCategory(catId, anchorLat, anchorLng, 3000, 20);
+            categoryPlaces[`${catId}_near_${anchor.google_place_id}`] = await fetchForCombo(catId, anchorLat, anchorLng, 3000, 20);
           }
         }
 
