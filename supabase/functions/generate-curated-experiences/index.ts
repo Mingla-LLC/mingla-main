@@ -203,23 +203,26 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
   },
   {
     id: 'group-fun',
+    // ORCH-0600 — 2-stop structure, 5 combos mixing Activity-first and Food-first.
+    // Stop roles are slug-derived at build time (see SLUG_TO_STOP_ROLE) since position 0
+    // is sometimes Activity (play/movies/theatre) and sometimes Food (brunch).
     label: 'Group Fun',
     stops: [
-      { role: 'Activity' },
-      { role: 'Food' },
-      { role: 'Drinks' },
+      { role: 'auto' },  // slug-derived via SLUG_TO_STOP_ROLE (Group Fun only — mixed orderings)
+      { role: 'auto' },
     ],
     combos: [
-      ['play', 'brunch_lunch_casual', 'drinks_and_music'],
-      ['play', 'upscale_fine_dining', 'drinks_and_music'],
-      ['movies_theatre', 'brunch_lunch_casual', 'drinks_and_music'],
-      ['movies_theatre', 'upscale_fine_dining', 'drinks_and_music'],
+      ['play', 'upscale_fine_dining'],
+      ['play', 'casual_food'],
+      ['theatre', 'upscale_fine_dining'],
+      ['brunch', 'creative_arts'],
+      ['movies', 'upscale_fine_dining'],
     ],
     taglines: [
       'Rally the crew — adventure is calling',
-      'Three stops of pure group energy',
       'Good times are better together',
       'A plan the whole squad will love',
+      'Group energy, start to finish',
     ],
     descriptionTone: 'group',
   },
@@ -425,7 +428,50 @@ const EXPERIENCE_RANK_SIGNAL_OVERRIDE: Record<string, Record<string, string>> = 
     'upscale_fine_dining': 'icebreakers',
     'drinks_and_music': 'icebreakers',
   },
+  'group-fun': {
+    // ORCH-0600 — all stops rank by `lively` vibe signal. Surfaces bowling/arcade/
+    // sports-bar energy on Activity stop, group-friendly bistros over candlelit spots
+    // on Food stop, and lively upscale venues (Capital Grille, Sullivan's) over
+    // intimate ones (Second Empire) on Dinner stop.
+    'play': 'lively',
+    'theatre': 'lively',
+    'movies': 'lively',
+    'brunch': 'lively',
+    'creative_arts': 'lively',
+    'casual_food': 'lively',
+    'upscale_fine_dining': 'lively',
+  },
 };
+
+// Per-slug stop role label for dynamic role assignment (ORCH-0600). When a typeDef's
+// stop roles are generic placeholders and combos mix orderings (Activity-first vs
+// Food-first), the display label should reflect the actual slug. Falls back to
+// stopDef.role if slug not in map.
+const SLUG_TO_STOP_ROLE: Record<string, string> = {
+  play: 'Activity',
+  movies: 'Movie',
+  theatre: 'Show',
+  creative_arts: 'Experience',
+  nature: 'Nature',
+  brunch: 'Brunch',
+  brunch_lunch_casual: 'Brunch',
+  casual_food: 'Food',
+  upscale_fine_dining: 'Dinner',
+  drinks_and_music: 'Drinks',
+  flowers: 'Flowers',
+  groceries: 'Groceries',
+  icebreakers: 'Icebreaker',
+};
+
+// Resolves stop role label. Opt-in: only typeDefs with role='auto' get slug-derived
+// labels. Existing typeDefs (Romantic, First Date, Picnic Dates, etc.) keep their
+// curated role strings unchanged to preserve thematic copy ("Wind Down", "Experience").
+function resolveStopRole(slug: string, stopDef: StopDef): string {
+  if (stopDef.role === 'auto') {
+    return SLUG_TO_STOP_ROLE[slug] ?? 'Stop';
+  }
+  return stopDef.role;
+}
 
 // Per-stop filter_min override. Most signals use 120; movies is 80 (tiny universe);
 // flowers is 80 — keeps 2 boutique florists (Mio Kreations 155, Petal & Oak 102) + 12 Harris
@@ -679,7 +725,7 @@ async function generateCardsForType(
 
           if (i === anchorStopIdx) {
             const stop = buildCardStop(
-              anchor, stops.length + 1, typeDef.stops.length, stopDef.role,
+              anchor, stops.length + 1, typeDef.stops.length, resolveStopRole(catId, stopDef),
               lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
               travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId },
             );
@@ -702,7 +748,7 @@ async function generateCardsForType(
 
             comboUsedIds.add(place.google_place_id);
             const stop = buildCardStop(
-              place, stops.length + 1, typeDef.stops.length, stopDef.role,
+              place, stops.length + 1, typeDef.stops.length, resolveStopRole(catId, stopDef),
               lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
               travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId },
             );
@@ -749,7 +795,7 @@ async function generateCardsForType(
 
         comboUsedIds.add(place.google_place_id);
         const stop = buildCardStop(
-          place, stops.length + 1, typeDef.stops.length, stopDef.role,
+          place, stops.length + 1, typeDef.stops.length, resolveStopRole(catId, stopDef),
           lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
           travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId },
         );
