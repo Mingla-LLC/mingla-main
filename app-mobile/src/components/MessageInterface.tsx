@@ -46,7 +46,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 /** Vertical gap between composer border and input row; match bottom when keyboard is closed. */
 const INPUT_AREA_VERTICAL_PADDING = 6;
 /** ORCH-0600: breathing gap between floating glass input capsule and the bottom nav. */
-const INPUT_CAPSULE_MARGIN_BOTTOM = 8;
+const INPUT_CAPSULE_MARGIN_BOTTOM = 14;
 /** ORCH-0600: intrinsic height of the glass input capsule (padding + 40pt controls). */
 const INPUT_CAPSULE_HEIGHT = 56;
 
