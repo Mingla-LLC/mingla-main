@@ -74,6 +74,10 @@ const CATEGORY_TO_SIGNAL: Record<
   'movies':  { signalIds: ['movies'],  filterMin: 80,  displayCategory: 'Movies' },
   'Theatre': { signalIds: ['theatre'], filterMin: 120, displayCategory: 'Theatre' },
   'theatre': { signalIds: ['theatre'], filterMin: 120, displayCategory: 'Theatre' },
+  // Slice 7 / ORCH-0599 — Icebreakers chip routed via first-date-friendly `icebreakers`
+  // signal. Completes the "every visible chip uses signal serving" invariant.
+  'Icebreakers': { signalIds: ['icebreakers'], filterMin: 120, displayCategory: 'Icebreakers' },
+  'icebreakers': { signalIds: ['icebreakers'], filterMin: 120, displayCategory: 'Icebreakers' },
   // [TRANSITIONAL] ORCH-0597 pre-OTA clients still send the old union chip label/slug.
   // Serve the union (brunch + casual_food) via parallel-RPC merge, same as Slice 4 did.
   // Exit condition: 2026-05-12 (14d post ORCH-0597 100% OTA adoption).

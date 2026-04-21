@@ -183,9 +183,23 @@ export function computeScore(place: PlaceForScoring, config: SignalConfig): Scor
 
   // Text patterns
   const summaryText = `${place.editorial_summary ?? ''} ${place.generative_summary ?? ''}`.toLowerCase();
+  // ORCH-0598.12 fix: Google Places v1 returns reviews[i].text as an object
+  // {text: "...", languageCode: "en"}, not a plain string. Before this fix the
+  // extractor ran `(r?.text ?? '').toString()` which produced "[object Object]"
+  // and reviews_regex.test() never matched ANY review content across ANY signal.
+  // Handle both shapes (v1 object and legacy plain string) so reviews-based
+  // scoring actually works.
   const reviewsText = (place.reviews ?? [])
     .slice(0, 5)
-    .map((r) => (r?.text ?? '').toString())
+    .map((r) => {
+      const t: unknown = r?.text;
+      if (typeof t === 'string') return t;
+      if (t && typeof t === 'object' && 'text' in t) {
+        const inner = (t as { text?: unknown }).text;
+        return typeof inner === 'string' ? inner : '';
+      }
+      return '';
+    })
     .join(' ')
     .toLowerCase();
 
