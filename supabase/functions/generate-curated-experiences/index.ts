@@ -149,23 +149,24 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
     descriptionTone: 'adventure',
   },
   {
+    // ORCH-0599.4: First Date shrunk from 4 stops to 3; drops standalone Drinks stop
+    // (drinks is now one option at Stop 3). Replaces legacy movies_theatre + brunch_lunch_casual
+    // slugs with their split successors (movies, theatre, brunch, casual_food). All non-Flowers
+    // stops signal-ranked by `icebreakers` so conversation-friendly, low-pressure venues
+    // surface over high-intensity ones (eg. casual upscale bistros over Angus Barn).
     id: 'first-date',
     label: 'First Date',
     stops: [
       { role: 'Flowers', optional: true, dismissible: true },
       { role: 'Activity' },
-      { role: 'Dinner' },
-      { role: 'Drinks' },
+      { role: 'Wind Down' },
     ],
     combos: [
-      ['flowers', 'movies_theatre', 'upscale_fine_dining', 'drinks_and_music'],
-      ['flowers', 'movies_theatre', 'brunch_lunch_casual', 'drinks_and_music'],
-      ['flowers', 'creative_arts', 'upscale_fine_dining', 'drinks_and_music'],
-      ['flowers', 'creative_arts', 'brunch_lunch_casual', 'drinks_and_music'],
-      ['flowers', 'movies_theatre', 'upscale_fine_dining', 'drinks_and_music'],
-      ['flowers', 'movies_theatre', 'brunch_lunch_casual', 'drinks_and_music'],
-      ['flowers', 'icebreakers', 'upscale_fine_dining', 'drinks_and_music'],
-      ['flowers', 'icebreakers', 'brunch_lunch_casual', 'drinks_and_music'],
+      ['flowers', 'brunch',         'creative_arts'],
+      ['flowers', 'theatre',        'upscale_fine_dining'],
+      ['flowers', 'movies',         'upscale_fine_dining'],
+      ['flowers', 'play',           'drinks_and_music'],
+      ['flowers', 'play',           'upscale_fine_dining'],
     ],
     taglines: [
       'A thoughtful route for a great first impression',
@@ -411,6 +412,18 @@ const EXPERIENCE_RANK_SIGNAL_OVERRIDE: Record<string, Record<string, string>> = 
     'creative_arts': 'romantic',
     'theatre': 'romantic',
     'upscale_fine_dining': 'romantic',
+  },
+  'first-date': {
+    // All non-Flowers stops rank by `icebreakers` vibe signal — conversation-friendly,
+    // low-pressure, casual. Surfaces bistros/cafés/accessible upscale over intense
+    // candlelit venues. Flowers stop inherits legacy card_pool curated big-store list.
+    'brunch': 'icebreakers',
+    'theatre': 'icebreakers',
+    'movies': 'icebreakers',
+    'play': 'icebreakers',
+    'creative_arts': 'icebreakers',
+    'upscale_fine_dining': 'icebreakers',
+    'drinks_and_music': 'icebreakers',
   },
 };
 
