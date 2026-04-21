@@ -2838,12 +2838,12 @@ const styles = StyleSheet.create({
   emptyDeckTitle: {
     fontSize: 17,
     fontWeight: "600",
-    color: "#111827",
+    color: "#FFFFFF",
     textAlign: "center",
   },
   emptyDeckSubtitle: {
     fontSize: 13,
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
     lineHeight: 18,
     marginBottom: 8,
@@ -2885,7 +2885,7 @@ const styles = StyleSheet.create({
   },
   emptyDeckHint: {
     fontSize: 12,
-    color: "#9ca3af",
+    color: "rgba(255, 255, 255, 0.55)",
     textAlign: "center",
     lineHeight: 17,
     marginTop: 4,
@@ -2902,12 +2902,12 @@ const styles = StyleSheet.create({
   noCardsTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#111827",
+    color: "#FFFFFF",
     textAlign: "center",
   },
   noCardsSubtitle: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
     lineHeight: 21,
     marginBottom: 8,

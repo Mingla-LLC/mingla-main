@@ -1620,12 +1620,12 @@ const styles = StyleSheet.create({
   emptyStateTitle: {
     fontSize: 16,
     fontWeight: "500",
-    color: "#111827",
+    color: "#FFFFFF",
     marginBottom: 8,
   },
   emptyStateText: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
   },
   messagesList: {

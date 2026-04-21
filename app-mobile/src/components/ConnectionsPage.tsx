@@ -3273,12 +3273,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 17,
     fontWeight: "600",
-    color: "#111827",
+    color: "#FFFFFF",
     marginTop: 14,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: "#9ca3af",
+    color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
     marginTop: 6,
   },
