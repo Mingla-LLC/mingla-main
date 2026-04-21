@@ -34,30 +34,31 @@ async function getSignalServingPct(supabase: any, signalId: string): Promise<num
   return pct;
 }
 
-// ─── ORCH-0590 Slice 2: generalized cohort routing ────────────────────────────
+// ─── ORCH-0590 Slice 2 / ORCH-0596 Slice 4: generalized multi-signal cohort routing ─
 // Maps mobile chip label (display name or slug) → signal config for cohort serving.
 // Invariant I-CATEGORY-SIGNAL-ALIAS-COMPLETE: every cohort-eligible chip must have
 // BOTH its display name AND slug keyed here so pre-OTA + post-OTA clients both hit.
+// Invariant I-SIGNALIDS-ALWAYS-ARRAY: value.signalIds is ALWAYS an array (length ≥ 1).
+//   Length 1 = single-signal chip. Length > 1 = union chip served via parallel-RPC merge.
 // Add a new entry per slice. Remove old display-name aliases only after 14d soak @100%.
 //
 // [TRANSITIONAL] 'Upscale & Fine Dining' alias — remove after 2026-05-05 (14d post Slice 2 OTA @ 100%).
 // Exit condition: mobile OTA for Slice 2 has been at 100% adoption for ≥14 days.
 const CATEGORY_TO_SIGNAL: Record<
   string,
-  { signalId: string; filterMin: number; displayCategory: string }
+  { signalIds: string[]; filterMin: number; displayCategory: string }
 > = {
   // Slice 1 (fine_dining) — OLD display name kept as alias for pre-Slice-2-OTA clients
-  'Upscale & Fine Dining': { signalId: 'fine_dining', filterMin: 120, displayCategory: 'Fine Dining' },
-  'Fine Dining':           { signalId: 'fine_dining', filterMin: 120, displayCategory: 'Fine Dining' },
-  'upscale_fine_dining':   { signalId: 'fine_dining', filterMin: 120, displayCategory: 'Fine Dining' },
+  'Upscale & Fine Dining': { signalIds: ['fine_dining'], filterMin: 120, displayCategory: 'Fine Dining' },
+  'Fine Dining':           { signalIds: ['fine_dining'], filterMin: 120, displayCategory: 'Fine Dining' },
+  'upscale_fine_dining':   { signalIds: ['fine_dining'], filterMin: 120, displayCategory: 'Fine Dining' },
   // Slice 2 (drinks)
-  'Drinks & Music':        { signalId: 'drinks',      filterMin: 120, displayCategory: 'Drinks & Music' },
-  'drinks_and_music':      { signalId: 'drinks',      filterMin: 120, displayCategory: 'Drinks & Music' },
-  // Slice 3 (brunch) — [TRANSITIONAL] single-signal mapping. Exit condition: Slice 4
-  // (casual_food) lands → change value to union approach (either extend scorer to
-  // support multi-signal filters, or create a composite `brunch_or_casual` view).
-  'Brunch, Lunch & Casual': { signalId: 'brunch',     filterMin: 120, displayCategory: 'Brunch, Lunch & Casual' },
-  'brunch_lunch_casual':    { signalId: 'brunch',     filterMin: 120, displayCategory: 'Brunch, Lunch & Casual' },
+  'Drinks & Music':        { signalIds: ['drinks'], filterMin: 120, displayCategory: 'Drinks & Music' },
+  'drinks_and_music':      { signalIds: ['drinks'], filterMin: 120, displayCategory: 'Drinks & Music' },
+  // Slice 4 (brunch + casual_food UNION) — ORCH-0595.3 TRANSITIONAL resolved. Chip serves
+  // merged brunch + casual_food ranked by max(score) per place.
+  'Brunch, Lunch & Casual': { signalIds: ['brunch', 'casual_food'], filterMin: 120, displayCategory: 'Brunch, Lunch & Casual' },
+  'brunch_lunch_casual':    { signalIds: ['brunch', 'casual_food'], filterMin: 120, displayCategory: 'Brunch, Lunch & Casual' },
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -713,41 +714,76 @@ serve(async (req: Request) => {
 
     if (signalMatch) {
       try {
-        const pct = await getSignalServingPct(supabaseAdmin, signalMatch.signalId);
-        const useNewServing = isInCohort(userId, pct);
+        // ORCH-0596 Slice 4: multi-signal cohort decision. Check cohort pct for EACH
+        // signalId in parallel. "Any in-cohort fires" semantic: if ≥1 signal is in-cohort,
+        // the union path fires with just the active signals. If 0 are in-cohort, fall
+        // through to control path.
+        const cohortChecks = await Promise.all(
+          signalMatch.signalIds.map(async (signalId) => {
+            const pct = await getSignalServingPct(supabaseAdmin, signalId);
+            return { signalId, pct, inCohort: isInCohort(userId, pct) };
+          }),
+        );
+        const activeSignalIds = cohortChecks.filter((c) => c.inCohort).map((c) => c.signalId);
         const userBucket = Math.abs(stableHash(userId)) % 100;
         console.log(
-          `[signal-serving] cohort=${useNewServing ? 'NEW' : 'CONTROL'} user_bucket=${userBucket} pct=${pct} signal=${signalMatch.signalId}`,
+          `[signal-serving] cohort=${activeSignalIds.length > 0 ? 'NEW' : 'CONTROL'} user_bucket=${userBucket} active=${activeSignalIds.join('+') || 'none'} chip=${singleCategory}`,
         );
 
-        if (useNewServing) {
-          const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc(
-            'query_servable_places_by_signal',
-            {
-              p_signal_id: signalMatch.signalId,
-              p_filter_min: signalMatch.filterMin,
-              p_lat: location.lat,
-              p_lng: location.lng,
-              p_radius_m: radiusMeters,
-              p_exclude_place_ids: excludeCardIds,
-              p_limit: limit,
-            },
+        if (activeSignalIds.length > 0) {
+          // Fire parallel RPCs for each active signal. Over-fetch for dedupe headroom
+          // when merging > 1 signal.
+          const rpcLimit = activeSignalIds.length === 1 ? limit : limit * 2;
+          const rpcResults = await Promise.all(
+            activeSignalIds.map((signalId) =>
+              supabaseAdmin.rpc('query_servable_places_by_signal', {
+                p_signal_id: signalId,
+                p_filter_min: signalMatch.filterMin,
+                p_lat: location.lat,
+                p_lng: location.lng,
+                p_radius_m: radiusMeters,
+                p_exclude_place_ids: excludeCardIds,
+                p_limit: rpcLimit,
+              }),
+            ),
           );
 
-          if (rpcError) {
+          // If ALL RPCs errored, fall through to control. If some succeed, proceed.
+          const validResults = rpcResults.filter(({ error }) => !error);
+          if (validResults.length === 0) {
+            const errMsgs = rpcResults
+              .map(({ error }) => error?.message)
+              .filter(Boolean)
+              .join('; ');
             console.warn(
-              `[signal-serving] RPC failed for ${signalMatch.signalId}, falling through to control: ${rpcError.message}`,
+              `[signal-serving] all RPCs failed for ${activeSignalIds.join('+')}, falling through to control: ${errMsgs}`,
             );
             // Intentionally fall through to control path below — no throw.
           } else {
-            const rows = Array.isArray(rpcData) ? rpcData : [];
+            // Merge by place_id, keep max signal_score across signals.
+            const merged = new Map<string, any>();
+            for (const { data } of validResults) {
+              for (const row of (data as any[]) ?? []) {
+                const existing = merged.get(row.place_id);
+                if (!existing || Number(row.signal_score) > Number(existing.signal_score)) {
+                  merged.set(row.place_id, row);
+                }
+              }
+            }
+            const rows = [...merged.values()]
+              .sort((a, b) => Number(b.signal_score) - Number(a.signal_score))
+              .slice(0, limit);
             const cards = rows.map((r: any) =>
               transformServablePlaceToCard(r, signalMatch.displayCategory),
             );
             const topScore = rows.length > 0 ? Number(rows[0].signal_score ?? 0) : 0;
             const elapsed = Date.now() - t0;
+            const signalIdLabel = activeSignalIds.join('+');
+            const maxCohortPct = cohortChecks
+              .filter((c) => c.inCohort)
+              .reduce((max, c) => Math.max(max, c.pct), 0);
             console.log(
-              `[signal-serving] NEW signal=${signalMatch.signalId} served=${cards.length} top_score=${topScore} elapsed_ms=${elapsed}`,
+              `[signal-serving] NEW signal=${signalIdLabel} served=${cards.length} top_score=${topScore} elapsed_ms=${elapsed}`,
             );
 
             return new Response(
@@ -768,11 +804,11 @@ serve(async (req: Request) => {
                   apiCallsMade: 0,
                   cacheHits: 0,
                   gapCategories: [],
-                  reason: `Signal-served: ${signalMatch.signalId} ≥ ${signalMatch.filterMin}`,
+                  reason: `Signal-served: ${signalIdLabel} ≥ ${signalMatch.filterMin}`,
                   path: 'pipeline',
-                  signalId: signalMatch.signalId,
+                  signalId: signalIdLabel,
                   cohort: 'NEW',
-                  cohortPct: pct,
+                  cohortPct: maxCohortPct,
                   filterMin: signalMatch.filterMin,
                   topScore,
                 },
@@ -781,12 +817,12 @@ serve(async (req: Request) => {
             );
           }
         }
-        // useNewServing=false → fall through to control path below
+        // activeSignalIds.length===0 → fall through to control path below
       } catch (signalErr) {
         // Belt: if anything in the signal branch throws, fall through to control.
         // Surface to logs (Constitutional #3 — no silent failures).
         console.warn(
-          `[signal-serving] branch threw for ${signalMatch.signalId}, falling through to control: ${(signalErr as Error)?.message}`,
+          `[signal-serving] branch threw for ${signalMatch.signalIds.join('+')}, falling through to control: ${(signalErr as Error)?.message}`,
         );
       }
     }

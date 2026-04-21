@@ -581,3 +581,162 @@ Deno.test('T-25: brunch — dinner-only restaurant (no breakfast/brunch booleans
   // No type matches for brunch. No brunch booleans. No summary match for dinner-only blurb.
   assert(r.score < 120, `Dinner-only restaurant score=${r.score}, expected <120 (no brunch signals)`);
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ORCH-0596 Slice 4 — Casual Food signal tests (paper-sim anchors)
+// ═════════════════════════════════════════════════════════════════════════════
+
+const CASUAL_FOOD_CONFIG: SignalConfig = {
+  min_rating: 4.0,
+  min_reviews: 30,
+  bypass_rating: 4.6,
+  field_weights: {
+    types_includes_cafe: 50,
+    types_includes_sandwich_shop: 50,
+    types_includes_pizza_restaurant: 50,
+    types_includes_mexican_restaurant: 50,
+    types_includes_thai_restaurant: 50,
+    types_includes_chinese_restaurant: 50,
+    types_includes_vietnamese_restaurant: 50,
+    types_includes_korean_restaurant: 50,
+    types_includes_japanese_restaurant: 45,
+    types_includes_indian_restaurant: 50,
+    types_includes_mediterranean_restaurant: 50,
+    types_includes_greek_restaurant: 50,
+    types_includes_lebanese_restaurant: 50,
+    types_includes_italian_restaurant: 45,
+    types_includes_taco_restaurant: 50,
+    types_includes_burrito_restaurant: 40,
+    types_includes_ramen_restaurant: 40,
+    types_includes_noodle_shop: 40,
+    types_includes_sushi_restaurant: 35,
+    types_includes_hamburger_restaurant: 40,
+    types_includes_chicken_restaurant: 35,
+    types_includes_barbecue_restaurant: 40,
+    types_includes_deli: 40,
+    types_includes_bakery: 30,
+    types_includes_diner: 30,
+    types_includes_american_restaurant: 20,
+    types_includes_family_restaurant: 25,
+    types_includes_food_court: 25,
+    serves_lunch: 30,
+    serves_dinner: 15,
+    dine_in: 10,
+    takeout: 10,
+    good_for_groups: 10,
+    price_level_inexpensive: 25,
+    price_level_moderate: 15,
+    price_level_expensive: -15,
+    price_level_very_expensive: -40,
+    types_includes_fine_dining_restaurant: -40,
+    types_includes_steak_house: -30,
+    types_includes_cocktail_bar: -40,
+    types_includes_wine_bar: -40,
+    types_includes_night_club: -50,
+    types_includes_brewery: -15,
+    types_includes_bar: -5,
+    types_includes_sports_bar: -15,
+    types_includes_fast_food_restaurant: -25,
+    types_includes_golf_course: -80,
+    types_includes_indoor_golf_course: -80,
+    types_includes_athletic_field: -80,
+    types_includes_sports_activity_location: -80,
+    types_includes_food_store: -60,
+    types_includes_grocery_store: -60,
+  },
+  scale: {
+    rating_multiplier: 10,
+    rating_cap: 35,
+    reviews_log_multiplier: 5,
+    reviews_cap: 25,
+  },
+  text_patterns: {
+    summary_regex: 'casual|quick|easy|family-friendly|neighborhood|local favorite|hole-in-the-wall|cozy|laid-back|unpretentious|no-frills|relaxed|informal',
+    summary_weight: 20,
+    reviews_regex: 'casual|quick|easy|family-friendly|great for lunch|local spot|cozy|laid-back|low-key',
+    reviews_weight: 10,
+    atmosphere_regex: 'casual|cozy|welcoming|friendly',
+    atmosphere_weight: 8,
+  },
+  cap: 200,
+  clamp_min: 0,
+};
+
+// ───── T-26: casual_food — Neomonde Mediterranean (4.6/4378) ≥ 120 ─────
+
+Deno.test('T-26: casual_food — Neomonde (lebanese/mediterranean, moderate) scores ≥ 120', () => {
+  const r = computeScore(
+    {
+      rating: 4.6,
+      review_count: 4378,
+      types: ['lebanese_restaurant', 'mediterranean_restaurant', 'middle_eastern_restaurant', 'vegan_restaurant', 'vegetarian_restaurant', 'restaurant', 'food', 'point_of_interest', 'establishment'],
+      price_level: 'PRICE_LEVEL_MODERATE',
+      price_range_start_cents: null,
+      price_range_end_cents: null,
+      editorial_summary: null,
+      generative_summary: 'Cozy restaurant serving up traditional and contemporary Mediterranean fare with vegan options.',
+      reviews: null,
+      serves_lunch: true,
+      serves_dinner: true,
+      dine_in: true,
+      good_for_groups: true,
+    },
+    CASUAL_FOOD_CONFIG,
+  );
+  // +50 lebanese +50 mediterranean = +100. +30 lunch +15 dinner +10 dine_in +10 groups = +65.
+  // +15 price_mod. +35 rating. +18 reviews log. +20 "cozy" summary match. Total ~253 → cap 200.
+  assert(r.score >= 120, `Neomonde score=${r.score}, expected ≥120`);
+});
+
+// ───── T-27: casual_food — Angus Barn (steak_house, very_expensive) < 120 ─────
+
+Deno.test('T-27: casual_food — Angus Barn (steak_house, very_expensive, night_club) scores < 120', () => {
+  const r = computeScore(
+    {
+      rating: 4.6,
+      review_count: 10171,
+      types: ['steak_house', 'lounge_bar', 'banquet_hall', 'seafood_restaurant', 'fine_dining_restaurant', 'wedding_venue', 'event_venue', 'bar', 'night_club', 'restaurant', 'food', 'service', 'point_of_interest', 'establishment'],
+      price_level: 'PRICE_LEVEL_VERY_EXPENSIVE',
+      price_range_start_cents: 5000,
+      price_range_end_cents: 10000,
+      editorial_summary: null,
+      generative_summary: 'Long-standing restaurant serving steaks and seafood in a romantic setting with a fireplace and a wine cellar.',
+      reviews: null,
+      serves_lunch: false,
+      serves_dinner: true,
+      dine_in: true,
+      good_for_groups: true,
+    },
+    CASUAL_FOOD_CONFIG,
+  );
+  // Penalties: steak_house -30, fine_dining -40, bar -5, night_club -50 = -125.
+  // price_very_expensive -40. No lunch (0). +15 dinner +10 dine_in +10 groups. +35 rating. +20 reviews.
+  // No casual keyword match. Total ~-75 → clamps to 0.
+  assert(r.score < 120, `Angus Barn score=${r.score}, expected <120 (upscale steakhouse, not casual)`);
+});
+
+// ───── T-28: casual_food — Chipotle (rating 3.4) ineligible via min_rating ─────
+
+Deno.test('T-28: casual_food — Chipotle (rating 3.4 below min 4.0) is ineligible', () => {
+  const r = computeScore(
+    {
+      rating: 3.4,
+      review_count: 1051,
+      types: ['mexican_restaurant', 'fast_food_restaurant', 'catering_service', 'food_delivery', 'service', 'restaurant', 'point_of_interest', 'food', 'establishment'],
+      price_level: 'PRICE_LEVEL_INEXPENSIVE',
+      price_range_start_cents: null,
+      price_range_end_cents: null,
+      editorial_summary: null,
+      generative_summary: 'Popular chain serving burritos, bowls and tacos, plus options for vegetarians and vegans.',
+      reviews: null,
+      serves_lunch: true,
+      serves_dinner: true,
+      dine_in: true,
+      good_for_groups: true,
+    },
+    CASUAL_FOOD_CONFIG,
+  );
+  // Rating 3.4 < min_rating 4.0 → early-return ineligible, score = 0.
+  assertEquals(r.score, 0);
+  assertEquals(r.contributions._reason, 'min_rating');
+});
