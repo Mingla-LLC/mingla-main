@@ -312,3 +312,132 @@ Deno.test('stableHash — different inputs typically produce different outputs',
   for (const s of ['a', 'b', 'c', 'd', 'e']) seen.add(stableHash(s));
   assert(seen.size >= 4, `expected diversity, got ${seen.size}`);
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ORCH-0590 Slice 2 — Drinks signal tests (paper-sim anchors)
+// ═════════════════════════════════════════════════════════════════════════════
+
+const DRINKS_CONFIG: SignalConfig = {
+  min_rating: 4.0,
+  min_reviews: 30,
+  bypass_rating: 4.6,
+  field_weights: {
+    types_includes_bar: 40,
+    types_includes_cocktail_bar: 60,
+    types_includes_wine_bar: 50,
+    types_includes_brewery: 50,
+    types_includes_winery: 50,
+    types_includes_distillery: 50,
+    types_includes_pub: 40,
+    types_includes_irish_pub: 40,
+    types_includes_beer_garden: 40,
+    types_includes_lounge_bar: 35,
+    types_includes_sports_bar: 30,
+    types_includes_night_club: 30,
+    serves_cocktails: 20,
+    serves_wine: 10,
+    serves_beer: 10,
+    dine_in: 5,
+    live_music: 15,
+    outdoor_seating: 10,
+    good_for_groups: 15,
+    price_level_moderate: 5,
+    price_level_expensive: 10,
+    delivery: -10,
+    takeout: -5,
+    serves_breakfast: -10,
+    types_includes_fast_food_restaurant: -40,
+    types_includes_meal_takeaway: -30,
+    types_includes_meal_delivery: -30,
+    types_includes_chicken_wings_restaurant: -15,
+  },
+  scale: {
+    rating_multiplier: 10,
+    rating_cap: 35,
+    reviews_log_multiplier: 5,
+    reviews_cap: 25,
+  },
+  text_patterns: {
+    summary_regex: 'cocktail|brewery|beer garden|wine bar|taproom|bourbon|spirits|bartender|mixology|craft beer|wine list|pub|tavern|dive bar|speakeasy',
+    summary_weight: 25,
+    reviews_regex: 'great cocktails|craft beer|wine selection|bartender|mixology|bourbon|whiskey|speakeasy|happy hour|best drinks',
+    reviews_weight: 15,
+    atmosphere_regex: 'dimly lit|vintage|prohibition|live music|rooftop|patio|fireplace',
+    atmosphere_weight: 10,
+  },
+  cap: 200,
+  clamp_min: 0,
+};
+
+// ───── T-20: drinks — Foundation (pure cocktail bar) ≥ filter_min 120 ────
+
+Deno.test('T-20: drinks — Foundation (bar, cocktail-focused, 4.8/176) scores ≥ 120', () => {
+  const r = computeScore(
+    {
+      rating: 4.8,
+      review_count: 176,
+      types: ['bar', 'point_of_interest', 'establishment'],
+      price_level: null,
+      price_range_start_cents: 1000,
+      price_range_end_cents: null,
+      editorial_summary: null,
+      generative_summary: 'Popular cocktail bar with a focus on bourbon, plus other spirits and beer, offered in a dark space.',
+      reviews: null,
+      serves_cocktails: true,
+      serves_wine: true,
+      serves_beer: true,
+    },
+    DRINKS_CONFIG,
+  );
+  assert(r.score >= 120, `Foundation score=${r.score}, expected ≥120`);
+});
+
+// ───── T-21: drinks — Crawford and Son (restaurant with bar) < filter_min ──
+
+Deno.test('T-21: drinks — Crawford and Son (american_restaurant, 4.7/1062) scores < 120', () => {
+  const r = computeScore(
+    {
+      rating: 4.7,
+      review_count: 1062,
+      types: ['american_restaurant', 'restaurant', 'food', 'point_of_interest', 'establishment'],
+      price_level: 'PRICE_LEVEL_EXPENSIVE',
+      price_range_start_cents: 4000,
+      price_range_end_cents: null,
+      editorial_summary: null,
+      generative_summary: 'American plates with vegetarian options served in a casual venue with a bar.',
+      reviews: null,
+      serves_cocktails: true,
+      serves_wine: true,
+      serves_beer: true,
+      serves_dinner: true,
+      dine_in: true,
+      reservable: true,
+    },
+    DRINKS_CONFIG,
+  );
+  // Restaurant without bar/cocktail_bar type. Bare "bar" intentionally NOT in summary_regex
+  // so "casual venue with a bar" does NOT get a text_weight. Scores below filter_min.
+  assert(r.score < 120, `Crawford score=${r.score}, expected <120 (it's a restaurant, not a bar)`);
+});
+
+// ───── T-22: drinks — Trophy Brewing & Taproom (brewery, sparse data) ≥ 120 ──
+
+Deno.test('T-22: drinks — Trophy Brewing & Taproom (brewery, 4.6/447, sparse) scores ≥ 120', () => {
+  const r = computeScore(
+    {
+      rating: 4.6,
+      review_count: 447,
+      types: ['brewery', 'bar', 'manufacturer', 'food', 'point_of_interest', 'service', 'establishment'],
+      price_level: null,
+      price_range_start_cents: null,
+      price_range_end_cents: null,
+      editorial_summary: null,
+      generative_summary: null,
+      reviews: null,
+      serves_beer: true,
+    },
+    DRINKS_CONFIG,
+  );
+  // brewery +50 + bar +40 + serves_beer +10 + rating 35 (cap) + log10(448)*5 ≈ 13.3 = ~148
+  assert(r.score >= 120, `Trophy Taproom score=${r.score}, expected ≥120`);
+});

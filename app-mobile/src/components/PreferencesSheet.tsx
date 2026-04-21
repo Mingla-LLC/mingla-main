@@ -104,7 +104,7 @@ const categories = [
   { id: 'creative_arts',       label: 'Creative & Arts',        icon: 'color-palette-outline' },
   { id: 'movies_theatre',      label: 'Movies & Theatre',       icon: 'film-new' },
   { id: 'brunch_lunch_casual', label: 'Brunch, Lunch & Casual', icon: 'utensils-crossed' },
-  { id: 'upscale_fine_dining', label: 'Upscale & Fine Dining',  icon: 'chef-hat' },
+  { id: 'upscale_fine_dining', label: 'Fine Dining',             icon: 'chef-hat' },
 ];
 
 // Travel modes matching database constraint

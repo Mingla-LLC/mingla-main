@@ -34,6 +34,27 @@ async function getSignalServingPct(supabase: any, signalId: string): Promise<num
   return pct;
 }
 
+// ─── ORCH-0590 Slice 2: generalized cohort routing ────────────────────────────
+// Maps mobile chip label (display name or slug) → signal config for cohort serving.
+// Invariant I-CATEGORY-SIGNAL-ALIAS-COMPLETE: every cohort-eligible chip must have
+// BOTH its display name AND slug keyed here so pre-OTA + post-OTA clients both hit.
+// Add a new entry per slice. Remove old display-name aliases only after 14d soak @100%.
+//
+// [TRANSITIONAL] 'Upscale & Fine Dining' alias — remove after 2026-05-05 (14d post Slice 2 OTA @ 100%).
+// Exit condition: mobile OTA for Slice 2 has been at 100% adoption for ≥14 days.
+const CATEGORY_TO_SIGNAL: Record<
+  string,
+  { signalId: string; filterMin: number; displayCategory: string }
+> = {
+  // Slice 1 (fine_dining) — OLD display name kept as alias for pre-Slice-2-OTA clients
+  'Upscale & Fine Dining': { signalId: 'fine_dining', filterMin: 120, displayCategory: 'Fine Dining' },
+  'Fine Dining':           { signalId: 'fine_dining', filterMin: 120, displayCategory: 'Fine Dining' },
+  'upscale_fine_dining':   { signalId: 'fine_dining', filterMin: 120, displayCategory: 'Fine Dining' },
+  // Slice 2 (drinks)
+  'Drinks & Music':        { signalId: 'drinks',      filterMin: 120, displayCategory: 'Drinks & Music' },
+  'drinks_and_music':      { signalId: 'drinks',      filterMin: 120, displayCategory: 'Drinks & Music' },
+};
+
 /* ─────────────────────────────────────────────────────────────────────────────
  * discover-cards  –  Pool-Only Card Serving Edge Function
  *
@@ -677,33 +698,29 @@ serve(async (req: Request) => {
       });
     }
 
-    // ─── ORCH-0588 Slice 1: signal-serving cohort branch ────────────────────
+    // ─── ORCH-0590 Slice 2: signal-serving cohort branch (generalized) ──────
     // Additive — control path (below) UNCHANGED for any user not in cohort.
-    // Single-category fine-dining requests are eligible. Multi-category requests
-    // always use control path to keep Slice 1 narrow. Rollback = flag-to-0.
-    const isFineDiningOnly =
-      categories.length === 1 &&
-      (categories[0] === 'Upscale & Fine Dining' || categories[0] === 'upscale_fine_dining');
+    // Single-category requests map to a signal via CATEGORY_TO_SIGNAL (module-level).
+    // Multi-category requests always use control path to keep cohort scope narrow.
+    // Rollback = flag-to-0 for the relevant signal.
+    const singleCategory = categories.length === 1 ? categories[0] : null;
+    const signalMatch = singleCategory ? CATEGORY_TO_SIGNAL[singleCategory] : null;
 
-    if (isFineDiningOnly) {
+    if (signalMatch) {
       try {
-        const pct = await getSignalServingPct(supabaseAdmin, 'fine_dining');
+        const pct = await getSignalServingPct(supabaseAdmin, signalMatch.signalId);
         const useNewServing = isInCohort(userId, pct);
         const userBucket = Math.abs(stableHash(userId)) % 100;
         console.log(
-          `[signal-serving] cohort=${useNewServing ? 'NEW' : 'CONTROL'} user_bucket=${userBucket} pct=${pct} signal=fine_dining`,
+          `[signal-serving] cohort=${useNewServing ? 'NEW' : 'CONTROL'} user_bucket=${userBucket} pct=${pct} signal=${signalMatch.signalId}`,
         );
 
         if (useNewServing) {
-          // FILTER_MIN — paper-sim §F-9 indicated 120 surfaces a healthy depth of
-          // 50-70 Raleigh fine-dining places. Tunable post-Slice-1 by editing
-          // signal_definition_versions.config or this constant.
-          const FINE_DINING_FILTER_MIN = 120;
           const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc(
             'query_servable_places_by_signal',
             {
-              p_signal_id: 'fine_dining',
-              p_filter_min: FINE_DINING_FILTER_MIN,
+              p_signal_id: signalMatch.signalId,
+              p_filter_min: signalMatch.filterMin,
               p_lat: location.lat,
               p_lng: location.lng,
               p_radius_m: radiusMeters,
@@ -714,18 +731,18 @@ serve(async (req: Request) => {
 
           if (rpcError) {
             console.warn(
-              `[signal-serving] RPC failed, falling through to control: ${rpcError.message}`,
+              `[signal-serving] RPC failed for ${signalMatch.signalId}, falling through to control: ${rpcError.message}`,
             );
             // Intentionally fall through to control path below — no throw.
           } else {
             const rows = Array.isArray(rpcData) ? rpcData : [];
             const cards = rows.map((r: any) =>
-              transformServablePlaceToCard(r, 'Upscale & Fine Dining'),
+              transformServablePlaceToCard(r, signalMatch.displayCategory),
             );
             const topScore = rows.length > 0 ? Number(rows[0].signal_score ?? 0) : 0;
             const elapsed = Date.now() - t0;
             console.log(
-              `[signal-serving] NEW served=${cards.length} top_score=${topScore} elapsed_ms=${elapsed}`,
+              `[signal-serving] NEW signal=${signalMatch.signalId} served=${cards.length} top_score=${topScore} elapsed_ms=${elapsed}`,
             );
 
             return new Response(
@@ -746,12 +763,12 @@ serve(async (req: Request) => {
                   apiCallsMade: 0,
                   cacheHits: 0,
                   gapCategories: [],
-                  reason: `Signal-served: fine_dining ≥ ${FINE_DINING_FILTER_MIN}`,
+                  reason: `Signal-served: ${signalMatch.signalId} ≥ ${signalMatch.filterMin}`,
                   path: 'pipeline',
-                  signalId: 'fine_dining',
+                  signalId: signalMatch.signalId,
                   cohort: 'NEW',
                   cohortPct: pct,
-                  filterMin: FINE_DINING_FILTER_MIN,
+                  filterMin: signalMatch.filterMin,
                   topScore,
                 },
               }),
@@ -764,7 +781,7 @@ serve(async (req: Request) => {
         // Belt: if anything in the signal branch throws, fall through to control.
         // Surface to logs (Constitutional #3 — no silent failures).
         console.warn(
-          `[signal-serving] branch threw, falling through to control: ${(signalErr as Error)?.message}`,
+          `[signal-serving] branch threw for ${signalMatch.signalId}, falling through to control: ${(signalErr as Error)?.message}`,
         );
       }
     }

@@ -230,7 +230,7 @@ export const categories: Category[] = [
   },
   {
     slug: 'upscale_fine_dining',
-    name: 'Upscale & Fine Dining',
+    name: 'Fine Dining',
     icon: '🍽️',
     description: 'Elevated dining — steakhouses, French, seafood, Mediterranean, Spanish, tapas, bistros, and fine dining restaurants',
     detailedDescription: 'Curated, sit-down dining experiences centered on quality. Fine dining restaurants, steakhouses, French, seafood, Mediterranean, Spanish, tapas, oyster bars, bistros, gastropubs, and wine bars for special occasions and refined outings.',

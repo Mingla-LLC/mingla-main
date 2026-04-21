@@ -127,7 +127,7 @@ const PILL_TO_CATEGORY_NAME: Record<string, string> = {
   icebreakers: 'Icebreakers',
   drinks_and_music: 'Drinks & Music',
   brunch_lunch_casual: 'Brunch, Lunch & Casual',
-  upscale_fine_dining: 'Upscale & Fine Dining',
+  upscale_fine_dining: 'Fine Dining',
   movies_theatre: 'Movies & Theatre',
   creative_arts: 'Creative & Arts',
   play: 'Play',

@@ -106,6 +106,10 @@ export const getCategorySlug = (categoryKey: string): string => {
   // ORCH-0434: Updated to new canonical slugs. Old names resolve to new slugs.
   const nameToSlugMap: Record<string, string> = {
     // Current display names → new slugs
+    // ORCH-0590 Slice 2: renamed "Upscale & Fine Dining" → "Fine Dining" (display only).
+    // 'Fine Dining' is already mapped in the legacy section below, so we don't duplicate.
+    // 'Upscale & Fine Dining' kept here as [TRANSITIONAL] backward-compat for pre-OTA
+    // clients that still send the old string — remove after 2026-05-05 (14d post 100% OTA).
     'Nature & Views': 'nature',
     'Icebreakers': 'icebreakers',
     'Drinks & Music': 'drinks_and_music',
