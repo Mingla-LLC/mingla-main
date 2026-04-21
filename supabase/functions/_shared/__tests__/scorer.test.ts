@@ -441,3 +441,143 @@ Deno.test('T-22: drinks — Trophy Brewing & Taproom (brewery, 4.6/447, sparse) 
   // brewery +50 + bar +40 + serves_beer +10 + rating 35 (cap) + log10(448)*5 ≈ 13.3 = ~148
   assert(r.score >= 120, `Trophy Taproom score=${r.score}, expected ≥120`);
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ORCH-0595 Slice 3 — Brunch signal tests (paper-sim anchors)
+// ═════════════════════════════════════════════════════════════════════════════
+
+const BRUNCH_CONFIG: SignalConfig = {
+  min_rating: 4.0,
+  min_reviews: 30,
+  bypass_rating: 4.6,
+  field_weights: {
+    types_includes_brunch_restaurant: 80,
+    types_includes_breakfast_restaurant: 70,
+    types_includes_diner: 30,
+    types_includes_cafe: 15,
+    types_includes_bakery: 10,
+    types_includes_coffee_shop: 10,
+    serves_brunch: 50,
+    serves_breakfast: 30,
+    serves_lunch: 15,
+    dine_in: 5,
+    good_for_groups: 10,
+    outdoor_seating: 10,
+    reservable: 5,
+    delivery: 5,
+    takeout: 0,
+    serves_dinner: 0,
+    price_level_inexpensive: 5,
+    price_level_moderate: 10,
+    price_level_expensive: 5,
+    price_level_very_expensive: -15,
+    types_includes_fast_food_restaurant: -30,
+    types_includes_meal_takeaway: -20,
+    types_includes_meal_delivery: -20,
+    types_includes_night_club: -50,
+    types_includes_sports_bar: -30,
+    types_includes_brewery: -20,
+    types_includes_bar: -15,
+    types_includes_cocktail_bar: -15,
+    types_includes_pub: -15,
+    types_includes_wine_bar: -10,
+  },
+  scale: {
+    rating_multiplier: 10,
+    rating_cap: 35,
+    reviews_log_multiplier: 5,
+    reviews_cap: 25,
+  },
+  text_patterns: {
+    summary_regex: 'brunch|mimosa|eggs benedict|avocado toast|pancake|french toast|bloody mary|bottomless|weekend brunch|breakfast|waffle|omelet|biscuit|crepe',
+    summary_weight: 25,
+    reviews_regex: 'brunch|mimosa|eggs benedict|avocado toast|pancake|french toast|bloody mary|bottomless|great breakfast|best brunch|delicious pancakes',
+    reviews_weight: 15,
+    atmosphere_regex: 'bright|airy|sunny|weekend|sunday|morning|patio|garden',
+    atmosphere_weight: 10,
+  },
+  cap: 200,
+  clamp_min: 0,
+};
+
+// ───── T-23: brunch — First Watch (pure breakfast/brunch chain, 4.8/2168) ────
+
+Deno.test('T-23: brunch — First Watch (breakfast_restaurant primary, 4.8/2168) scores ≥ 120', () => {
+  const r = computeScore(
+    {
+      rating: 4.8,
+      review_count: 2168,
+      types: ['breakfast_restaurant', 'brunch_restaurant', 'family_restaurant', 'restaurant', 'point_of_interest', 'food', 'establishment'],
+      price_level: 'PRICE_LEVEL_MODERATE',
+      price_range_start_cents: null,
+      price_range_end_cents: null,
+      editorial_summary: null,
+      generative_summary: 'Relaxed eatery for brunch and lunch fare, such as pancakes, eggs and avocado toast.',
+      reviews: null,
+      serves_brunch: true,
+      serves_breakfast: true,
+      serves_lunch: true,
+      serves_dinner: false,
+      dine_in: true,
+      takeout: true,
+      delivery: true,
+      reservable: false,
+      good_for_groups: true,
+      outdoor_seating: true,
+    },
+    BRUNCH_CONFIG,
+  );
+  assert(r.score >= 120, `First Watch score=${r.score}, expected ≥120`);
+});
+
+// ───── T-24: brunch — pure coffee shop without food or brunch tags < 120 ─────
+
+Deno.test('T-24: brunch — pure coffee shop without food/brunch tags scores < 120', () => {
+  const r = computeScore(
+    {
+      rating: 4.6,
+      review_count: 500,
+      types: ['coffee_shop', 'point_of_interest', 'food', 'establishment'],
+      price_level: 'PRICE_LEVEL_INEXPENSIVE',
+      price_range_start_cents: null,
+      price_range_end_cents: null,
+      editorial_summary: null,
+      generative_summary: 'Specialty coffee bar serving single-origin espresso and pour-overs.',
+      reviews: null,
+      // No serves_brunch, serves_breakfast, serves_lunch — just coffee
+      dine_in: true,
+    },
+    BRUNCH_CONFIG,
+  );
+  // coffee_shop +10 + dine_in +5 + price_inx +5 + rating 35 + log10(501)*5 ≈ 13.5 = ~68 (no summary match)
+  assert(r.score < 120, `Pure coffee shop score=${r.score}, expected <120 (no brunch tags, no food service)`);
+});
+
+// ───── T-25: brunch — dinner-only restaurant < 120 ─────
+
+Deno.test('T-25: brunch — dinner-only restaurant (no breakfast/brunch booleans) scores < 120', () => {
+  const r = computeScore(
+    {
+      rating: 4.6,
+      review_count: 1000,
+      types: ['american_restaurant', 'restaurant', 'point_of_interest', 'food', 'establishment'],
+      price_level: 'PRICE_LEVEL_EXPENSIVE',
+      price_range_start_cents: 4000,
+      price_range_end_cents: null,
+      editorial_summary: null,
+      generative_summary: 'Dinner destination featuring seasonal American plates.',
+      reviews: null,
+      // Explicit absence of brunch/breakfast signals
+      serves_brunch: false,
+      serves_breakfast: false,
+      serves_lunch: false,
+      serves_dinner: true,
+      dine_in: true,
+      reservable: true,
+    },
+    BRUNCH_CONFIG,
+  );
+  // Rating 35 + reviews log10(1001)*5 ≈ 15 + dine_in 5 + reservable 5 + price_expensive 5 = ~65
+  // No type matches for brunch. No brunch booleans. No summary match for dinner-only blurb.
+  assert(r.score < 120, `Dinner-only restaurant score=${r.score}, expected <120 (no brunch signals)`);
+});

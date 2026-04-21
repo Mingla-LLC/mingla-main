@@ -53,6 +53,11 @@ const CATEGORY_TO_SIGNAL: Record<
   // Slice 2 (drinks)
   'Drinks & Music':        { signalId: 'drinks',      filterMin: 120, displayCategory: 'Drinks & Music' },
   'drinks_and_music':      { signalId: 'drinks',      filterMin: 120, displayCategory: 'Drinks & Music' },
+  // Slice 3 (brunch) — [TRANSITIONAL] single-signal mapping. Exit condition: Slice 4
+  // (casual_food) lands → change value to union approach (either extend scorer to
+  // support multi-signal filters, or create a composite `brunch_or_casual` view).
+  'Brunch, Lunch & Casual': { signalId: 'brunch',     filterMin: 120, displayCategory: 'Brunch, Lunch & Casual' },
+  'brunch_lunch_casual':    { signalId: 'brunch',     filterMin: 120, displayCategory: 'Brunch, Lunch & Casual' },
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
