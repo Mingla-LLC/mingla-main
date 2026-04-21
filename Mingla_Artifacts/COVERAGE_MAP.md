@@ -1,5 +1,7 @@
 # Coverage Map
 
+> **2026-04-21 ~07:45 UTC — ORCH-0590 Slice 2 (Drinks signal) CLOSED Grade A.** Discovery surface: signal-library architecture extended with second signal. Drinks scoring 1,449 Raleigh places (172 ≥120 filter_min, 53 at 200 cap), cohort-gated serving via generalized `CATEGORY_TO_SIGNAL` map in discover-cards. Surface grade distribution unchanged (Discovery was already Strong pre-Slice-2; second signal reinforces architecture but doesn't move grade buckets). New invariant registered: `I-CATEGORY-SIGNAL-ALIAS-COMPLETE` — every cohort-eligible chip has BOTH display name AND slug keyed in the map. Slice 1 (fine_dining) backward-compat aliases preserved as `[TRANSITIONAL]` until 2026-05-05.
+
 > **2026-04-21 03:45 UTC — ORCH-0558 CLOSED Grade A.** Collaboration Sessions surface: 1 additional A from match promotion structural hardening (advisory lock + unique constraint + atomic RPC + telemetry observable). Surface distribution: 7 total → 4 A / 0 B / 0 C / 0 D / 3 F (was 3 A / 0 B / 0 C / 0 D / 4 F). Match-promotion path verified live via 10 MCP deploy probes + tester Tier A/B/F + device test on iOS + Android. 6 new invariants registered.
 
 > Last updated: 2026-04-18 (**ORCH-0503 CLOSED A** — v3 fix PASS; Discovery surface grade distribution unchanged: the fix restores correctness inside an already-Strong-graded deck pipeline, so no grade-count movement; new invariant `I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE` reinforces Constitutional #2 "One owner per truth" at the deck-sync-effect boundary)
