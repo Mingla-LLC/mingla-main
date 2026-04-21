@@ -1,5 +1,4 @@
 import * as Sentry from "@sentry/react-native";
-import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -11,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { vs, ms, s } from "../src/utils/responsive";
+import { GlassBottomNav, type BottomNavPage } from "../src/components/GlassBottomNav";
 import { useAppLayout } from "../src/hooks/useAppLayout";
 import * as Linking from "expo-linking";
 import { useAppHandlers } from "../src/components/AppHandlers";
@@ -94,15 +94,18 @@ import {
 
 const TAB_BAR_ICON_SIZE = ms(20);
 
-/** Wraps the tab bar and disables it when the coach mark is loading, pending, or active */
-function CoachMarkNavigationGate({ layout, children }: { layout: any; children: React.ReactNode }) {
+/** Wraps the tab bar and disables it when the coach mark is loading, pending, or active.
+ *  ORCH-0589 v6 (U1) + v6.2 tune: paddingBottom: 6 — slim safety gap above the home
+ *  indicator zone. v6 had 0 (flush); v6.1 tried 5px; v6.2 bumped to 6px for a touch more
+ *  breathing room. `layout.bottomNavPadding` prop kept for rollback. */
+function CoachMarkNavigationGate({ layout: _layout, children }: { layout: any; children: React.ReactNode }) {
   const { isCoachLoading, isCoachPending, isCoachActive } = useCoachMarkContext();
   const locked = isCoachLoading || isCoachPending || isCoachActive;
   return (
     <View
       style={[
         styles.bottomNavigation,
-        { paddingBottom: layout.bottomNavPadding },
+        { paddingBottom: 6 },
       ]}
       pointerEvents={locked ? 'none' : 'auto'}
     >
@@ -2270,13 +2273,15 @@ function AppContent() {
                 <ErrorBoundary>
                   <View style={styles.safeArea}>
                     <StatusBar
-                      barStyle="dark-content"
+                      barStyle={currentPage === "home" || currentPage === "discover" || currentPage === "connections" ? "light-content" : "dark-content"}
                       translucent={true}
                       backgroundColor="transparent"
                     />
                     <View style={styles.container}>
-                      {/* Main Content — paddingTop for safe area; profile page manages its own for full-bleed gradient */}
-                      <View style={[styles.mainContent, { paddingTop: currentPage === "profile" ? 0 : layout.insets.top }]}>
+                      {/* ORCH-0589 v2 (G3) + ORCH-0590 Phase 3 + ORCH-0600: Swipe, Profile, Discover,
+                          and Connections all render full-bleed — paddingTop 0 so the glass header
+                          extends under the status bar. Other pages keep the safe-area inset. */}
+                      <View style={[styles.mainContent, { paddingTop: (currentPage === "profile" || currentPage === "home" || currentPage === "discover" || currentPage === "connections") ? 0 : layout.insets.top }]}>
                         {/* Full-screen overlays render ON TOP of tabs */}
                         {viewingFriendProfileId ? (
                           <ViewFriendProfileScreen
@@ -2470,200 +2475,28 @@ function AppContent() {
                       {/* Coach Mark Spotlight Overlay */}
                       <SpotlightOverlay />
 
-                      {/* Bottom Navigation — full-bleed: bg extends behind gesture bar */}
+                      {/* Bottom Navigation — ORCH-0589 floating glass capsule with orange spotlight. */}
                       <CoachMarkNavigationGate layout={layout}>
-                        <View style={styles.navigationContainer}>
-                          <TouchableOpacity
-                            onPress={() => {
-                              logger.action('Tab pressed: home');
+                        <View style={styles.glassNavWrapper}>
+                          <GlassBottomNav
+                            currentPage={currentPage as BottomNavPage}
+                            onNavigate={(page: BottomNavPage) => {
+                              logger.action(`Tab pressed: ${page}`);
                               closeProfileOverlays();
-                              setCurrentPage("home");
+                              setCurrentPage(page);
                             }}
-                            style={styles.navItem}
-                          >
-                            <View style={styles.navIconContainer}>
-                              <Ionicons
-                                name="home-outline"
-                                size={TAB_BAR_ICON_SIZE}
-                                color={
-                                  currentPage === "home" ? "#eb7825" : "#9CA3AF"
-                                }
-                              />
-                            </View>
-                            <Text
-                              style={[
-                                styles.navText,
-                                currentPage === "home"
-                                  ? styles.navTextActive
-                                  : styles.navTextInactive,
-                              ]}
-                            >
-                              {t('navigation:tabs.explore')}
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              logger.action('Tab pressed: discover');
-                              closeProfileOverlays();
-                              setCurrentPage("discover");
+                            labels={{
+                              home: t('navigation:tabs.explore'),
+                              discover: t('navigation:tabs.discover'),
+                              connections: t('navigation:tabs.friends'),
+                              likes: t('navigation:tabs.likes'),
+                              profile: t('navigation:tabs.profile'),
                             }}
-                            style={styles.navItem}
-                          >
-                            <View style={styles.navIconContainer}>
-                              <Ionicons
-                                name="compass-outline"
-                                size={TAB_BAR_ICON_SIZE}
-                                color={
-                                  currentPage === "discover" ? "#eb7825" : "#9CA3AF"
-                                }
-                              />
-                            </View>
-                            <Text
-                              style={[
-                                styles.navText,
-                                currentPage === "discover"
-                                  ? styles.navTextActive
-                                  : styles.navTextInactive,
-                              ]}
-                            >
-                              {t('navigation:tabs.discover')}
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              logger.action('Tab pressed: connections');
-                              closeProfileOverlays();
-                              setCurrentPage("connections");
+                            badges={{
+                              connections: totalUnreadMessages,
+                              likes: totalUnreadBoardMessages,
                             }}
-                            style={styles.navItem}
-                          >
-                            <View style={styles.navIconContainer}>
-                              <Ionicons
-                                name="people-outline"
-                                size={TAB_BAR_ICON_SIZE}
-                                color={
-                                  currentPage === "connections"
-                                    ? "#eb7825"
-                                    : "#9CA3AF"
-                                }
-                              />
-                              {totalUnreadMessages > 0 && (
-                                <View style={styles.tabBadge}>
-                                  <Text style={styles.tabBadgeText}>
-                                    {totalUnreadMessages > 99
-                                      ? "99+"
-                                      : totalUnreadMessages}
-                                  </Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text
-                              style={[
-                                styles.navText,
-                                currentPage === "connections"
-                                  ? styles.navTextActive
-                                  : styles.navTextInactive,
-                              ]}
-                            >
-                              {t('navigation:tabs.friends')}
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              logger.action('Tab pressed: likes');
-                              closeProfileOverlays();
-                              setCurrentPage("likes");
-                            }}
-                            style={styles.navItem}
-                          >
-                            <View style={styles.navIconContainer}>
-                              <Ionicons
-                                name="heart-outline"
-                                size={TAB_BAR_ICON_SIZE}
-                                color={
-                                  currentPage === "likes"
-                                    ? "#eb7825"
-                                    : "#9CA3AF"
-                                }
-                              />
-                              {totalUnreadBoardMessages > 0 && (
-                                <View style={styles.tabBadge}>
-                                  <Text style={styles.tabBadgeText}>
-                                    {totalUnreadBoardMessages > 99
-                                      ? "99+"
-                                      : totalUnreadBoardMessages}
-                                  </Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text
-                              style={[
-                                styles.navText,
-                                currentPage === "likes"
-                                  ? styles.navTextActive
-                                  : styles.navTextInactive,
-                              ]}
-                            >
-                              {t('navigation:tabs.likes')}
-                            </Text>
-                          </TouchableOpacity>
-                          {/*    <TouchableOpacity
-                              onPress={() => {
-                                console.log("Navigating to saved");
-                                setCurrentPage("saved");
-                              }}
-                              style={styles.navItem}
-                            >
-                              <Ionicons
-                                name="bookmark"
-                                size={24}
-                                color={
-                                  currentPage === "saved"
-                                    ? "#eb7825"
-                                    : "#9CA3AF"
-                                }
-                              />
-                              <Text
-                                style={[
-                                  styles.navText,
-                                  currentPage === "saved"
-                                    ? styles.navTextActive
-                                    : styles.navTextInactive,
-                                ]}
-                              >
-                                Saved
-                              </Text>
-                            </TouchableOpacity> */}
-                          <TouchableOpacity
-                            onPress={() => {
-                              logger.action('Tab pressed: profile');
-                              closeProfileOverlays();
-                              setCurrentPage("profile");
-                            }}
-                            style={styles.navItem}
-                          >
-                            <View style={styles.navIconContainer}>
-                              <Ionicons
-                                name="person-outline"
-                                size={TAB_BAR_ICON_SIZE}
-                                color={
-                                  currentPage === "profile"
-                                    ? "#eb7825"
-                                    : "#9CA3AF"
-                                }
-                              />
-                            </View>
-                            <Text
-                              style={[
-                                styles.navText,
-                                currentPage === "profile"
-                                  ? styles.navTextActive
-                                  : styles.navTextInactive,
-                              ]}
-                            >
-                              {t('navigation:tabs.profile')}
-                            </Text>
-                          </TouchableOpacity>
+                          />
                         </View>
                       </CoachMarkNavigationGate>
                     </View>
@@ -2757,9 +2590,12 @@ function AppContent() {
 }
 
 const styles = StyleSheet.create({
+  // ORCH-0589 v3 (R1): black — the transparent bottomNavigation from v2 was
+  // showing this wrapper through. Page-level backgrounds cover this on non-Swipe
+  // pages; the Swipe page (HomePage) already uses black so no change is visible there.
   safeArea: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "#000000",
   },
   profileLoadingContainer: {
     flex: 1,
@@ -2805,75 +2641,26 @@ const styles = StyleSheet.create({
     opacity: 0,
     pointerEvents: 'none',
   },
+  // ORCH-0589 v5 (T5): paddingTop 8 → 0. Nav now sits flush above the safe-area
+  // bottom (home-indicator zone), giving the card 8pt more vertical space.
+  // paddingBottom (via layout.bottomNavPadding on CoachMarkNavigationGate) is
+  // preserved to keep home-indicator clearance.
+  // ORCH-0600: position absolute so page content extends full-bleed under the
+  // nav. Pages that need bottom clearance use layout.bottomNavTotalHeight.
   bottomNavigation: {
-    backgroundColor: "white",
-    borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-    paddingTop: 8,
-    zIndex: 1,
-    elevation: 1,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "transparent",
+    paddingTop: 0,
+    zIndex: 50,
+    elevation: 0,
   },
-  navigationContainer: {
-    flexDirection: "row",
-    justifyContent: "space-evenly",
-    alignItems: "center",
-    paddingHorizontal: s(8),
-    height: vs(56),
-  },
-  navItem: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: vs(5),
-    borderRadius: 8,
-  },
-  navIconContainer: {
-    position: "relative",
-    width: ms(22),
-    height: ms(22),
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tabBadge: {
-    position: "absolute",
-    top: -6,
-    right: -8,
-    minWidth: ms(18),
-    height: ms(18),
-    backgroundColor: "#eb7825",
-    borderRadius: ms(9),
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: "white",
-  },
-  tabBadgeText: {
-    fontSize: ms(10),
-    color: "white",
-    fontWeight: "700",
-  },
-  tabBadgeDot: {
-    position: "absolute",
-    top: -2,
-    right: -2,
-    width: ms(8),
-    height: ms(8),
-    backgroundColor: "#eb7825",
-    borderRadius: ms(4),
-    borderWidth: 1.5,
-    borderColor: "white",
-  },
-  navText: {
-    fontSize: ms(10),
-    marginTop: vs(2),
-  },
-  navTextActive: {
-    color: "#eb7825",
-    fontWeight: "600",
-  },
-  navTextInactive: {
-    color: "#9CA3AF",
+  // ORCH-0589 v5 (T1a): paddingHorizontal 20 → 8. Nav capsule visibly wider to
+  // match the card's full-bleed horizontal reach, while still floating (not edge-to-edge).
+  glassNavWrapper: {
+    paddingHorizontal: 8,
   },
   // Floating Help Button styles
   floatingButtonContainer: {

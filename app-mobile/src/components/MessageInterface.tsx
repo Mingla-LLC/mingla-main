@@ -36,13 +36,19 @@ import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
 import { DirectMessage, messagingService } from "../services/messagingService";
 import { useTranslation } from 'react-i18next';
 import { HapticFeedback } from "../utils/hapticFeedback";
-import { colors as dsColors, spacing as dsSpacing } from "../constants/designSystem";
+import { colors as dsColors, spacing as dsSpacing, glass } from "../constants/designSystem";
 import { useAppLayout } from "../hooks/useAppLayout";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BlurView } from "expo-blur";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 /** Vertical gap between composer border and input row; match bottom when keyboard is closed. */
 const INPUT_AREA_VERTICAL_PADDING = 6;
+/** ORCH-0600: breathing gap between floating glass input capsule and the bottom nav. */
+const INPUT_CAPSULE_MARGIN_BOTTOM = 8;
+/** ORCH-0600: intrinsic height of the glass input capsule (padding + 40pt controls). */
+const INPUT_CAPSULE_HEIGHT = 56;
 
 interface Message {
   id: string;
@@ -179,6 +185,7 @@ export default function MessageInterface({
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const { bottomNavTotalHeight } = useAppLayout();
+  const safeInsets = useSafeAreaInsets();
 
   // ── Keyboard handling via useKeyboard hook ─────────────────
   const { keyboardHeight, isVisible: keyboardVisible, dismiss: dismissKeyboard } = useKeyboard({
@@ -671,11 +678,11 @@ export default function MessageInterface({
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: safeInsets.top + 8 }]}>
         {/* Top Row: Back button, Avatar, Name and Status */}
         <View style={styles.headerTopRow}>
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Icon name="arrow-back" size={24} color="#6b7280" />
+            <Icon name="arrow-back" size={24} color="rgba(255, 255, 255, 0.72)" />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -725,7 +732,7 @@ export default function MessageInterface({
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Icon name="ellipsis-vertical" size={20} color="#6b7280" />
+            <Icon name="ellipsis-vertical" size={20} color="rgba(255, 255, 255, 0.72)" />
           </TouchableOpacity>
         </View>
 
@@ -733,17 +740,17 @@ export default function MessageInterface({
         {/* Commented out header icons temporarily */}
         {/* <View style={styles.headerActions}>
           <TouchableOpacity style={styles.actionButton}>
-            <Icon name="call" size={16} color="#6b7280" />
+            <Icon name="call" size={16} color="rgba(255, 255, 255, 0.72)" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton}>
-            <Icon name="videocam" size={16} color="#6b7280" />
+            <Icon name="videocam" size={16} color="rgba(255, 255, 255, 0.72)" />
           </TouchableOpacity>
           <View style={styles.moreOptionsContainer}>
             <TouchableOpacity
               onPress={() => setShowMoreOptionsMenu(!showMoreOptionsMenu)}
               style={styles.actionButton}
             >
-              <Icon name="ellipsis-horizontal" size={16} color="#6b7280" />
+              <Icon name="ellipsis-horizontal" size={16} color="rgba(255, 255, 255, 0.72)" />
             </TouchableOpacity>
 
             {showMoreOptionsMenu && (
@@ -752,14 +759,14 @@ export default function MessageInterface({
                   onPress={handleAddToBoard}
                   style={styles.menuItem}
                 >
-                  <Icon name="people" size={16} color="#6b7280" />
+                  <Icon name="people" size={16} color="rgba(255, 255, 255, 0.72)" />
                   <Text style={styles.menuItemText}>Add to Board</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleShareSavedCard}
                   style={styles.menuItem}
                 >
-                  <Icon name="bookmark" size={16} color="#6b7280" />
+                  <Icon name="bookmark" size={16} color="rgba(255, 255, 255, 0.72)" />
                   <Text style={styles.menuItemText}>Share Saved Card</Text>
                 </TouchableOpacity>
                 <View style={styles.menuDivider} />
@@ -902,7 +909,20 @@ export default function MessageInterface({
           keyExtractor={(item) => item.message.id}
           inverted={true}
           style={styles.messagesContainer}
-          contentContainerStyle={styles.messagesContentContainer}
+          contentContainerStyle={[
+            styles.messagesContentContainer,
+            {
+              // ORCH-0600: inverted FlatList — paddingTop (pre-transform) becomes
+              // the VISUAL BOTTOM clearance after the scaleY:-1 flip. Tracks whatever
+              // is at the bottom (keyboard when open, bottom nav when closed) + the
+              // floating input capsule + a small breathing gap.
+              paddingTop:
+                (keyboardVisible ? keyboardHeight : bottomNavTotalHeight) +
+                INPUT_CAPSULE_HEIGHT +
+                INPUT_CAPSULE_MARGIN_BOTTOM +
+                8,
+            },
+          ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
@@ -989,7 +1009,7 @@ export default function MessageInterface({
               onPress={handleRemoveFile}
               style={styles.removeFileButton}
             >
-              <Icon name="close" size={12} color="#6b7280" />
+              <Icon name="close" size={12} color="rgba(255, 255, 255, 0.72)" />
             </TouchableOpacity>
           </View>
         </View>
@@ -1052,42 +1072,63 @@ export default function MessageInterface({
       {/* Deleted Account Banner */}
       {isDeletedAccount && !isBlocked && !isUnfriended && (
         <View style={styles.blockedBanner}>
-          <Icon name="alert-circle" size={18} color="#6b7280" />
+          <Icon name="alert-circle" size={18} color="rgba(255, 255, 255, 0.72)" />
           <Text style={styles.blockedBannerText}>
             {t('chat:accountDeleted')}
           </Text>
         </View>
       )}
 
-      {/* Input Area - Hidden when blocked, unfriended, or account deleted */}
+      {/* Input Area - Floating glass capsule. Sits above the bottom nav; lifts above
+          the keyboard when open. Chat list scrolls underneath.
+          animatedKeyboardHeight = max(0, keyboardHeight - navHeight) (the penetration
+          above the nav). Adding navHeight + MARGIN always gives the correct bottom:
+          - keyboard closed: bottom = 0 + navHeight + 8 = just above nav
+          - keyboard open:   bottom = (kbHeight - navHeight) + navHeight + 8 = just above keyboard */}
       {!isBlocked && !isUnfriended && !isDeletedAccount && (
       <Animated.View
         style={[
-          styles.inputArea,
+          styles.inputCapsuleWrap,
           {
-            // Match padding below the row to padding above (inputArea.paddingTop / border).
-            paddingBottom: keyboardVisible ? 0 : INPUT_AREA_VERTICAL_PADDING,
-            marginBottom: animatedKeyboardHeight,
+            bottom: Animated.add(
+              animatedKeyboardHeight,
+              new Animated.Value(bottomNavTotalHeight + INPUT_CAPSULE_MARGIN_BOTTOM)
+            ),
           },
         ]}
       >
         {/* Reply Preview Bar */}
         {replyingTo && (
-          <ReplyPreviewBar
-            senderName={replyingTo.senderName}
-            previewText={replyingTo.content}
-            isOwnMessage={replyingTo.isMe}
-            onClose={() => setReplyingTo(null)}
-          />
+          <View style={styles.replyPreviewWrap}>
+            <ReplyPreviewBar
+              senderName={replyingTo.senderName}
+              previewText={replyingTo.content}
+              isOwnMessage={replyingTo.isMe}
+              onClose={() => setReplyingTo(null)}
+            />
+          </View>
         )}
-        <View style={styles.inputContainer}>
+        <View style={styles.inputCapsule}>
+          <BlurView
+            intensity={glass.chrome.blur.intensity}
+            tint="dark"
+            experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: glass.chrome.tint.floor }]}
+          />
+          <View style={styles.inputContainer}>
           {/* Attachment Menu */}
           <View style={styles.attachmentContainer}>
             <TouchableOpacity
               onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}
               style={styles.attachmentButton}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
-              <Icon name="attach" size={20} color="#6b7280" />
+              <Icon name="attach" size={20} color="rgba(255, 255, 255, 0.85)" />
             </TouchableOpacity>
 
             {showAttachmentMenu && (
@@ -1140,6 +1181,9 @@ export default function MessageInterface({
             )}
           </View>
 
+          {/* Separator — cutout between attach and text field */}
+          <View style={styles.capsuleSeparator} />
+
           {/* Message Input */}
           <TouchableOpacity
             style={styles.messageInputContainer}
@@ -1161,12 +1205,15 @@ export default function MessageInterface({
               placeholder={
                 selectedFile ? t('chat:addCaption') : t('chat:typeMessage')
               }
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="rgba(255, 255, 255, 0.4)"
               style={styles.messageInput}
               multiline={false}
               maxLength={1000}
             />
           </TouchableOpacity>
+
+          {/* Separator — cutout between text field and send */}
+          <View style={styles.capsuleSeparator} />
 
           {/* Send Button */}
           <TouchableOpacity
@@ -1179,6 +1226,7 @@ export default function MessageInterface({
           >
             <Icon name="paper-plane" size={20} color="white" />
           </TouchableOpacity>
+        </View>
         </View>
       </Animated.View>
       )}
@@ -1196,7 +1244,7 @@ export default function MessageInterface({
                 onPress={() => setShowBoardSelection(false)}
                 style={styles.modalCloseButton}
               >
-                <Icon name="close" size={12} color="#6b7280" />
+                <Icon name="close" size={12} color="rgba(255, 255, 255, 0.72)" />
               </TouchableOpacity>
             </View>
 
@@ -1367,7 +1415,7 @@ export default function MessageInterface({
                 onPress={() => dismissNotification(notification.id)}
                 style={styles.dismissButton}
               >
-                <Icon name="close" size={12} color="#6b7280" />
+                <Icon name="close" size={12} color="rgba(255, 255, 255, 0.72)" />
               </TouchableOpacity>
             </View>
           ))}
@@ -1381,7 +1429,7 @@ export default function MessageInterface({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "rgba(12, 14, 18, 1)", // ORCH-0600: dark canvas for glass design
   },
   offlineBanner: {
     flexDirection: "row",
@@ -1418,9 +1466,9 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 0,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-    backgroundColor: "white",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "rgba(12, 14, 18, 1)",
   },
   headerTopRow: {
     flexDirection: "row",
@@ -1467,19 +1515,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#10b981",
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: "white",
+    borderColor: "rgba(12, 14, 18, 1)",
   },
   userInfo: {
     flex: 1,
   },
   userName: {
     fontSize: 16,
-    fontWeight: "500",
-    color: "#111827",
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   userStatus: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.6)",
   },
   headerActions: {
     flexDirection: "row",
@@ -1491,7 +1539,9 @@ const styles = StyleSheet.create({
   actionButton: {
     width: 32,
     height: 32,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.14)",
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
@@ -1593,20 +1643,29 @@ const styles = StyleSheet.create({
     maxWidth: "70%",
   },
   messageBubbleLeft: {
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.14)",
   },
   messageBubbleRight: {
     backgroundColor: "#eb7825",
+    borderWidth: 1,
+    borderColor: "rgba(235, 120, 37, 0.55)",
+    shadowColor: "#eb7825",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
   },
   messageText: {
     fontSize: 16,
     lineHeight: 20,
   },
   messageTextLeft: {
-    color: "#111827",
+    color: "#FFFFFF",
   },
   messageTextRight: {
-    color: "white",
+    color: "#FFFFFF",
   },
   messageCaption: {
     marginBottom: 8,
@@ -1639,10 +1698,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   videoTextLeft: {
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.72)",
   },
   videoTextRight: {
-    color: "white",
+    color: "#FFFFFF",
   },
   fileContainer: {
     flexDirection: "row",
@@ -1652,7 +1711,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   fileContainerLeft: {
-    backgroundColor: "white",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
   },
   fileContainerRight: {
     backgroundColor: "rgba(255, 255, 255, 0.2)",
@@ -1665,7 +1724,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   fileIconLeft: {
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
   },
   fileIconRight: {
     backgroundColor: "rgba(255, 255, 255, 0.3)",
@@ -1679,24 +1738,24 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   fileNameLeft: {
-    color: "#111827",
+    color: "#FFFFFF",
   },
   fileNameRight: {
-    color: "white",
+    color: "#FFFFFF",
   },
   fileSize: {
     fontSize: 12,
     marginTop: 2,
   },
   fileSizeLeft: {
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.6)",
   },
   fileSizeRight: {
     color: "rgba(255, 255, 255, 0.7)",
   },
   messageTimestamp: {
     fontSize: 12,
-    color: "#9ca3af",
+    color: "rgba(255, 255, 255, 0.45)",
     marginTop: 4,
   },
   messageTimestampLeft: {
@@ -1812,27 +1871,54 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
   },
-  inputArea: {
-    borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-    paddingHorizontal: 12,
-    paddingTop: INPUT_AREA_VERTICAL_PADDING,
-    paddingBottom: 0,
-    backgroundColor: "white",
+  // ORCH-0600: Floating glass input capsule — blurred pill with inner separators
+  // between attach / text / send, matching the home-chrome capsule language.
+  inputCapsuleWrap: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    zIndex: 60,
+  },
+  replyPreviewWrap: {
+    marginBottom: 6,
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: glass.chrome.tint.floor,
+    borderWidth: 1,
+    borderColor: glass.chrome.border.hairline,
+  },
+  inputCapsule: {
+    height: INPUT_CAPSULE_HEIGHT,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: glass.chrome.border.hairline,
+    overflow: "hidden",
+    shadowColor: glass.chrome.shadow.color,
+    shadowOffset: glass.chrome.shadow.offset,
+    shadowOpacity: glass.chrome.shadow.opacity,
+    shadowRadius: glass.chrome.shadow.radius,
+    elevation: glass.chrome.shadow.elevation,
   },
   inputContainer: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    paddingHorizontal: 6,
+  },
+  capsuleSeparator: {
+    width: StyleSheet.hairlineWidth,
+    height: 24,
+    backgroundColor: glass.chrome.border.hairline,
+    marginHorizontal: 4,
   },
   attachmentContainer: {
     position: "relative",
   },
   attachmentButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    backgroundColor: "transparent",
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1878,16 +1964,15 @@ const styles = StyleSheet.create({
   },
   messageInputContainer: {
     flex: 1,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 20,
-    paddingHorizontal: 16,
+    backgroundColor: "transparent",
+    paddingHorizontal: 8,
     paddingVertical: 10,
     minHeight: 40,
     justifyContent: "center",
   },
   messageInput: {
     fontSize: 16,
-    color: "#111827",
+    color: "#FFFFFF",
     padding: 0,
     margin: 0,
     includeFontPadding: false,

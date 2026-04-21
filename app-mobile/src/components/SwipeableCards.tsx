@@ -17,6 +17,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { Icon } from "./ui/Icon";
 import { GlassBadge } from "./ui/GlassBadge";
+import { LinearGradient } from "expo-linear-gradient";
+import { glass } from "../constants/designSystem";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
 
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -50,7 +52,7 @@ import { collabSaveCard } from "./helpers/collabSaveCard";
 import { recordCardSwipe, recordCardExpand } from "../services/cardEngagementService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useRecommendations,
   Recommendation,
@@ -413,6 +415,9 @@ export default function SwipeableCards({
   savedCards = [],
 }: SwipeableCardsProps) {
   const { t } = useTranslation(['cards', 'common']);
+  // ORCH-0589 v4 (V4): safe-area insets used to position the "View Previous" batchChip
+  // below the floating top-bar chrome on the Swipe page (insets.top + ~62pt).
+  const safeAreaInsets = useSafeAreaInsets();
   // Use recommendations from context
 
   const {
@@ -2119,10 +2124,13 @@ export default function SwipeableCards({
             </View>
           )}
 
-          {/* View Previous overlay — appears after first swipe */}
+          {/* View Previous overlay — appears after first swipe.
+              ORCH-0589 v4 (V4): repositioned below the floating top-bar chrome so it
+              doesn't collide with the Notifications bell. top = safeArea.top + ~62
+              (row height 52 + topInset 2 + 8 breathing). Right-aligned position preserved. */}
           {sessionSwipedCards.length > 0 && (
             <TouchableOpacity
-              style={styles.batchChip}
+              style={[styles.batchChip, { top: safeAreaInsets.top + 62 }]}
               onPress={() => setDismissedSheetVisible(true)}
               activeOpacity={0.7}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -2160,6 +2168,14 @@ export default function SwipeableCards({
                   {/* Hero Image Section */}
                   <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
                     <CardHeroImage uri={nextCard.image} style={styles.cardImage} />
+
+                    {/* ORCH-0589 v2 (G4): premium bottom-fade gradient — darker canvas for title + chips */}
+                    <LinearGradient
+                      colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.55)']}
+                      locations={[0, 0.5, 1]}
+                      pointerEvents="none"
+                      style={styles.heroGradient}
+                    />
 
                     {/* Gallery Indicator if multiple images (ORCH-0566: glass) */}
                     {nextCard.images && nextCard.images.length > 1 && (
@@ -2276,6 +2292,14 @@ export default function SwipeableCards({
                   {/* Hero Image Section - 60-65% of card */}
                   <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
                     <CardHeroImage uri={currentRec.image} style={styles.cardImage} />
+
+                    {/* ORCH-0589 v2 (G4): premium bottom-fade gradient — darker canvas for title + chips */}
+                    <LinearGradient
+                      colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.55)']}
+                      locations={[0, 0.5, 1]}
+                      pointerEvents="none"
+                      style={styles.heroGradient}
+                    />
 
                     {/* Gallery Indicator if multiple images (ORCH-0566: glass) */}
                     {currentRec.images && currentRec.images.length > 1 && (
@@ -2487,15 +2511,21 @@ const styles = StyleSheet.create({
     paddingTop: 2,
     paddingBottom: 8,
   },
+  // ORCH-0589 v3 (R4) + v4 (V1): full-bleed horizontally; v4 adds paddingBottom 12
+  // so there's a visible gap between the card's rounded bottom and the floating nav.
   cardContainer: {
-    width: SCREEN_WIDTH - 32,
+    width: SCREEN_WIDTH,
     maxWidth: 500,
     position: "relative",
     flex: 1,
-    paddingTop: 12,
-    paddingBottom: 8,
-    paddingHorizontal: 8,
+    paddingTop: 0,
+    paddingBottom: 12,
+    paddingHorizontal: 0,
   },
+  // ORCH-0589 v4 (V1): iPhone-bezel-matched corner radius + subtle drop shadow
+  // so the card reads as "living inside" the phone frame instead of a flat rectangle.
+  // Radius token sourced from glass.card.bezelRadius (40pt). Shadow gives a gentle
+  // lift against the dark safeArea backdrop.
   card: {
     position: "absolute",
     left: 0,
@@ -2503,22 +2533,20 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     backgroundColor: "white",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "rgba(0, 0, 0, 0.10)",
-    shadowColor: Platform.OS === "android" ? "rgba(0, 0, 0, 0.08)" : "#000",
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.18,
+    borderRadius: glass.card.bezelRadius,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
     shadowRadius: 16,
-    elevation: Platform.OS === "android" ? 12 : 10,
+    elevation: 8,
     zIndex: 2,
   },
+  // ORCH-0589 v4 (V1): borderRadius matches the outer card so overflow clips cleanly
+  // against the bezel-matched corners. `overflow: hidden` needed so the hero photo +
+  // cardDetails white strip both clip to the rounded silhouette.
   cardInner: {
     flex: 1,
-    borderRadius: 24,
+    borderRadius: glass.card.bezelRadius,
     overflow: "hidden",
   },
   nextCard: {
@@ -2528,11 +2556,10 @@ const styles = StyleSheet.create({
     flex: IMAGE_SECTION_RATIO,
     position: "relative",
   },
+  // ORCH-0589 v3 (R4): full-bleed image, no corner radii.
   cardImage: {
     width: "100%",
     height: "100%",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
   },
   matchBadge: {
     position: "absolute",
@@ -2561,22 +2588,35 @@ const styles = StyleSheet.create({
     top: 16,
     right: 16,
   },
+  // ORCH-0589 v2 (G4): more breathing room — premium rhythm.
+  // paddingBottom 24 → 40, cardTitle marginBottom 12 → 16.
   titleOverlay: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     padding: 20,
-    paddingBottom: 24,
+    paddingBottom: 40,
+    zIndex: 2,
   },
   cardTitle: {
     color: "white",
     fontSize: 24,
     fontWeight: "bold",
-    marginBottom: 12,
+    marginBottom: 16,
     textShadowColor: "rgba(0, 0, 0, 0.5)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  // ORCH-0589 v2 (G4): premium bottom gradient over the hero photo — gives the
+  // title + chips a darker canvas to sit on, without burying the photo itself.
+  heroGradient: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "45%",
+    zIndex: 1,
   },
   oneLiner: {
     fontSize: 15,
@@ -2594,10 +2634,10 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   // State badges row (saved/scheduled). Occupies the position formerly held by the
-  // removed "View more" chip — kept the marginTop separation, added gap for two chips.
+  // removed "View more" chip. ORCH-0589 v2 (G4): marginTop 8 → 12 for premium breathing room.
   stateBadgesRow: {
     flexDirection: "row",
-    marginTop: 8,
+    marginTop: 12,
     gap: 8,
   },
   addressRow: {
@@ -3034,8 +3074,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   batchChip: {
+    // ORCH-0589 v4 (V4): `top` set at runtime via inline style using safeAreaInsets.top + 62
+    // so the chip sits below the floating top-bar chrome. Right-alignment preserved.
     position: "absolute",
-    top: 16,
     right: 16,
     zIndex: 20,
     flexDirection: "row",
