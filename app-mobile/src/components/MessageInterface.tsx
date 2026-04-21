@@ -673,7 +673,13 @@ export default function MessageInterface({
       : 0;
   const iosKeyboardLift = Platform.OS === 'ios' && keyboardVisible ? keyboardHeight : 0;
 
-  const inputBottomOffset = bottomNavTotalHeight + INPUT_CAPSULE_MARGIN_BOTTOM + ANDROID_NAV_OVERLAP_FIX;
+  // When the keyboard is open, the floating bottom nav is hidden behind the
+  // keyboard — the composer only needs a small breathing gap above the keyboard
+  // top, not the full nav clearance. When closed, use full nav clearance so the
+  // composer floats above the nav capsule.
+  const inputBottomOffset = keyboardVisible
+    ? INPUT_CAPSULE_MARGIN_BOTTOM
+    : bottomNavTotalHeight + INPUT_CAPSULE_MARGIN_BOTTOM + ANDROID_NAV_OVERLAP_FIX;
   const finalInputBottom = inputBottomOffset + iosKeyboardLift + androidManualLift;
 
   return (
