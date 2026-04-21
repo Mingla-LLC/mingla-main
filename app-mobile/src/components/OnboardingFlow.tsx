@@ -2601,7 +2601,10 @@ const OnboardingFlow = ({
                   casual_food: 'utensils-crossed',
                   brunch_lunch_casual: 'restaurant-outline', // [TRANSITIONAL] legacy — remove after 2026-05-12
                   upscale_fine_dining: 'chef-hat',
-                  movies_theatre: 'film-new',
+                  // ORCH-0598: split movies_theatre → movies + theatre.
+                  movies: 'film-new',
+                  theatre: 'theater',
+                  movies_theatre: 'film-new', // [TRANSITIONAL] legacy — remove after 2026-05-13
                   creative_arts: 'color-palette-outline',
                   play: 'game-controller-outline',
                 } as Record<string, string>)[cat.slug] || 'compass-outline'}

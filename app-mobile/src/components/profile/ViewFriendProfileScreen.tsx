@@ -87,7 +87,10 @@ const CATEGORY_CHIP_ICONS: Record<string, string> = {
   casual_food: 'fast-food-outline',
   brunch_lunch_casual: 'fast-food-outline', // [TRANSITIONAL] legacy — remove after 2026-05-12
   upscale_fine_dining: 'restaurant-outline',
-  movies_theatre: 'film-outline',
+  // ORCH-0598 (Slice 6): split movies_theatre → movies + theatre.
+  movies: 'film-outline',
+  theatre: 'theater',
+  movies_theatre: 'film-outline', // [TRANSITIONAL] legacy — remove after 2026-05-13
   creative_arts: 'color-palette-outline',
   play: 'game-controller-outline',
   flowers: 'flower-outline',

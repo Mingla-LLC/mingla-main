@@ -15,7 +15,10 @@ const FINE_DINING_SECTION: HolidayCardSection = { label: 'Fine Dining', type: 'c
 const NATURE_SECTION: HolidayCardSection = { label: 'Nature', type: 'category', categorySlug: 'nature' }
 const PLAY_SECTION: HolidayCardSection = { label: 'Play', type: 'category', categorySlug: 'play' }
 const DRINKS_SECTION: HolidayCardSection = { label: 'Drinks & Music', type: 'category', categorySlug: 'drinks_and_music' }
-const MOVIES_SECTION: HolidayCardSection = { label: 'Movies & Theatre', type: 'category', categorySlug: 'movies_theatre' }
+// ORCH-0598 (Slice 6): updated label + slug from 'Movies & Theatre' / 'movies_theatre' to
+// new single-chip 'Movies' / 'movies'. Users get Movies-ranked deck. Adding a separate
+// THEATRE_SECTION to holiday presets is out of scope — tracked as ORCH-0598.7.
+const MOVIES_SECTION: HolidayCardSection = { label: 'Movies', type: 'category', categorySlug: 'movies' }
 const CREATIVE_ARTS_SECTION: HolidayCardSection = { label: 'Creative & Arts', type: 'category', categorySlug: 'creative_arts' }
 
 // Birthday and Custom Holiday preset: 3 curated + 3 category
@@ -134,7 +137,8 @@ export const STANDARD_HOLIDAYS: HolidayDefinition[] = [
 // Intent → category slugs mapping for intent-based card sections
 // ORCH-0434: Updated to new canonical slugs.
 // ORCH-0597 (Slice 5): brunch_lunch_casual bundled chip split into brunch + casual_food.
+// ORCH-0598 (Slice 6): movies_theatre bundled chip split into movies + theatre.
 export const INTENT_CATEGORY_MAP: Record<string, string[]> = {
   romantic: ['icebreakers', 'drinks_and_music', 'nature'],
-  adventurous: ['nature', 'play', 'creative_arts', 'brunch', 'casual_food', 'drinks_and_music', 'icebreakers', 'movies_theatre'],
+  adventurous: ['nature', 'play', 'creative_arts', 'brunch', 'casual_food', 'drinks_and_music', 'icebreakers', 'movies', 'theatre'],
 }

@@ -15,25 +15,28 @@ export const HIDDEN_CATEGORY_SLUGS = new Set(['groceries', 'flowers']);
 /**
  * All valid slugs.
  * ORCH-0434: canonical slug set.
- * ORCH-0597 (Slice 5): split 'brunch_lunch_casual' into 'brunch' + 'casual_food'.
- *   Old slug retained in LEGACY_CATEGORY_SLUGS (below) so resolution paths still
- *   work for pre-migration data and pre-OTA clients, but it is NOT returned
+ * ORCH-0597 (Slice 5): split 'brunch_lunch_casual' → 'brunch' + 'casual_food'.
+ * ORCH-0598 (Slice 6): split 'movies_theatre' → 'movies' + 'theatre'.
+ *   Old slugs retained in LEGACY_CATEGORY_SLUGS (below) so resolution paths still
+ *   work for pre-migration data and pre-OTA clients, but they are NOT returned
  *   anywhere user-facing (excluded from VISIBLE_CATEGORY_SLUGS).
- * 11 total: 9 visible + 2 hidden. brunch_lunch_casual is LEGACY-ONLY.
+ * 13 total: 10 visible + 2 hidden + 2 legacy-only (brunch_lunch_casual, movies_theatre).
  */
 const VALID_SLUGS = new Set([
   'nature', 'icebreakers', 'drinks_and_music',
   'brunch', 'casual_food',
-  'upscale_fine_dining', 'movies_theatre', 'creative_arts', 'play',
+  'movies', 'theatre',
+  'upscale_fine_dining', 'creative_arts', 'play',
   'flowers', 'groceries',
-  // [TRANSITIONAL] legacy bundled chip — resolved to 'brunch' by nameToSlugMap /
-  // legacyToSlug, but kept in VALID_SLUGS so normalizeCategoryArray preserves it
-  // during the pre-OTA soak window. Remove after 2026-05-12.
+  // [TRANSITIONAL] legacy bundled chips — kept for resolution / pre-OTA persistence.
+  // brunch_lunch_casual → remove after 2026-05-12
+  // movies_theatre     → remove after 2026-05-13
   'brunch_lunch_casual',
+  'movies_theatre',
 ]);
 
 /** Legacy slugs that are valid for resolution but must NEVER appear in user-visible chip lists. */
-const LEGACY_CATEGORY_SLUGS = new Set(['brunch_lunch_casual']);
+const LEGACY_CATEGORY_SLUGS = new Set(['brunch_lunch_casual', 'movies_theatre']);
 
 /** Visible slugs only (9) — use for user-facing lists. Excludes hidden AND legacy slugs. */
 export const VISIBLE_CATEGORY_SLUGS = [...VALID_SLUGS].filter(
@@ -56,11 +59,14 @@ export const getReadableCategoryName = (categoryKey: string): string => {
     'drink': 'drinks_and_music',
     'casual_eats': 'casual_food',
     'fine_dining': 'upscale_fine_dining',
-    'watch': 'movies_theatre',
-    'live_performance': 'movies_theatre',
+    // ORCH-0598 (Slice 6): legacy 'watch' → movies; 'live_performance' → theatre
+    'watch': 'movies',
+    'live_performance': 'theatre',
     'wellness': 'casual_food',  // orphan fallback
     // ORCH-0597: legacy bundled chip resolves to Brunch (primary intent in old chip label).
     'brunch_lunch_casual': 'brunch',
+    // ORCH-0598: legacy movies_theatre resolves to Movies (primary intent per OPEN-11).
+    'movies_theatre': 'movies',
     // Legacy combined/removed categories
     'groceries_flowers': 'flowers',
     'groceries & flowers': 'flowers',
@@ -81,7 +87,7 @@ export const getReadableCategoryName = (categoryKey: string): string => {
     'creative & arts': 'creative_arts',
     'first meet': 'icebreakers',
     // Legacy screen_ prefixed keys
-    'screen_nature': 'nature', 'screen_drink': 'drinks_and_music', 'screen_relax': 'movies_theatre',
+    'screen_nature': 'nature', 'screen_drink': 'drinks_and_music', 'screen_relax': 'movies',
     'screen_creative': 'creative_arts', 'screen_dining': 'upscale_fine_dining',
     'screen_wellness': 'casual_food', 'screen_play': 'play', 'screen_eat': 'casual_food',
     'screen_social': 'drinks_and_music', 'screen_romantic': 'upscale_fine_dining',
@@ -90,7 +96,7 @@ export const getReadableCategoryName = (categoryKey: string): string => {
     'screen_shop': 'creative_arts', 'screen_learn': 'creative_arts',
     'screen_exercise': 'casual_food', 'screen_culture': 'creative_arts',
     'screen_nightlife': 'play', 'screen_shopping': 'creative_arts',
-    'screen_relax_old': 'movies_theatre',
+    'screen_relax_old': 'movies',
   };
 
   // Strip legacy "category." prefix
@@ -137,7 +143,13 @@ export const getCategorySlug = (categoryKey: string): string => {
     // Retained for pre-OTA clients still sending this string. Remove after 2026-05-12.
     'Brunch, Lunch & Casual': 'brunch',
     'Upscale & Fine Dining': 'upscale_fine_dining',
-    'Movies & Theatre': 'movies_theatre',
+    // ORCH-0598 (Slice 6): new split chip display names
+    'Movies': 'movies',
+    'Theatre': 'theatre',
+    'Theater': 'theatre',
+    // [TRANSITIONAL] legacy bundled display name — resolves to Movies (primary intent per OPEN-11).
+    // Retained for pre-OTA clients still sending this string. Remove after 2026-05-13.
+    'Movies & Theatre': 'movies',
     'Creative & Arts': 'creative_arts',
     'Play': 'play',
     'Flowers': 'flowers',
@@ -148,8 +160,8 @@ export const getCategorySlug = (categoryKey: string): string => {
     'Drink': 'drinks_and_music',
     'Casual Eats': 'casual_food',
     'Fine Dining': 'upscale_fine_dining',
-    'Watch': 'movies_theatre',
-    'Live Performance': 'movies_theatre',
+    'Watch': 'movies',
+    'Live Performance': 'theatre',
     'Wellness': 'casual_food',
     'Nature': 'nature',
     'Picnic': 'nature',
@@ -157,7 +169,7 @@ export const getCategorySlug = (categoryKey: string): string => {
     'Work & Business': 'icebreakers',
     'Take a Stroll': 'nature',
     'Sip & Chill': 'drinks_and_music',
-    'Screen & Relax': 'movies_theatre',
+    'Screen & Relax': 'movies',
     'Creative & Hands-On': 'creative_arts',
     'Play & Move': 'play',
     'Dining Experience': 'upscale_fine_dining',
@@ -172,8 +184,8 @@ export const getCategorySlug = (categoryKey: string): string => {
     'drink': 'drinks_and_music',
     'casual_eats': 'casual_food',
     'fine_dining': 'upscale_fine_dining',
-    'watch': 'movies_theatre',
-    'live_performance': 'movies_theatre',
+    'watch': 'movies',
+    'live_performance': 'theatre',
     'wellness': 'casual_food',
     // ORCH-0597: legacy bundled slug resolves to Brunch (primary intent).
     'brunch_lunch_casual': 'brunch',
@@ -210,6 +222,10 @@ export const getCategoryIcon = (categoryKey: string): string => {
     // [TRANSITIONAL] legacy slug — kept for resolution only. Remove after 2026-05-12.
     'brunch_lunch_casual': 'utensils-crossed',
     'upscale_fine_dining': 'chef-hat',
+    // ORCH-0598: new split chip icons
+    'movies': 'film-new',
+    'theatre': 'theater',
+    // [TRANSITIONAL] legacy — kept for resolution. Remove after 2026-05-13.
     'movies_theatre': 'film-new',
     'creative_arts': 'color-palette-outline',
     'play': 'game-controller-outline',
@@ -239,8 +255,10 @@ export const normalizeCategoryArray = (
     const oldToNew: Record<string, string> = {
       'first_meet': 'icebreakers', 'picnic_park': 'nature', 'picnic': 'nature',
       'drink': 'drinks_and_music', 'casual_eats': 'casual_food',
-      'fine_dining': 'upscale_fine_dining', 'watch': 'movies_theatre',
-      'live_performance': 'movies_theatre', 'wellness': 'casual_food',
+      'fine_dining': 'upscale_fine_dining', 'watch': 'movies',
+      'live_performance': 'theatre', 'wellness': 'casual_food',
+      // ORCH-0598: legacy movies_theatre → movies (primary intent).
+      'movies_theatre': 'movies',
       // ORCH-0597: legacy bundled slug → brunch (primary intent).
       'brunch_lunch_casual': 'brunch',
       'groceries_flowers': 'flowers', 'work_business': 'icebreakers',
@@ -278,6 +296,10 @@ export const getCategoryColor = (categoryKey: string): string => {
     // [TRANSITIONAL] legacy slug — kept for resolution only. Remove after 2026-05-12.
     'brunch_lunch_casual': '#EF4444',
     'upscale_fine_dining': '#DC2626', // dark red
+    // ORCH-0598: split chip colors
+    'movies': '#3B82F6',              // blue (inherits legacy Movies & Theatre blue)
+    'theatre': '#8B5CF6',             // violet (distinct from movies blue)
+    // [TRANSITIONAL] legacy — remove after 2026-05-13
     'movies_theatre': '#3B82F6',      // blue
     'creative_arts': '#EC4899',       // pink
     'play': '#F59E0B',                // amber

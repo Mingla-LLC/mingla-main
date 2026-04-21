@@ -97,14 +97,16 @@ const experienceTypes = [
 
 // ORCH-0434: 8 categories — ordered for visual compactness (short labels paired)
 // ORCH-0597 (Slice 5): split "Brunch, Lunch & Casual" into two chips — "Brunch" + "Casual".
-// 9 chips total. Fine Dining pushed to row 9. Food chips clustered (rows 7-9).
+// ORCH-0598 (Slice 6): split "Movies & Theatre" into two chips — "Movies" + "Theatre".
+// 10 chips total. Balanced 5×2 grid. Theatre uses lucide Drama glyph via 'theater' name.
 const categories = [
   { id: 'play',                label: 'Play',                   icon: 'game-controller-outline' },
   { id: 'icebreakers',         label: 'Icebreakers',            icon: 'sparkles' },
   { id: 'nature',              label: 'Nature & Views',         icon: 'trees' },
   { id: 'drinks_and_music',    label: 'Drinks & Music',         icon: 'wine-outline' },
   { id: 'creative_arts',       label: 'Creative & Arts',        icon: 'color-palette-outline' },
-  { id: 'movies_theatre',      label: 'Movies & Theatre',       icon: 'film-new' },
+  { id: 'movies',              label: 'Movies',                 icon: 'film-new' },
+  { id: 'theatre',             label: 'Theatre',                icon: 'theater' },
   { id: 'brunch',              label: 'Brunch',                 icon: 'coffee' },
   { id: 'casual_food',         label: 'Casual',                 icon: 'utensils-crossed' },
   { id: 'upscale_fine_dining', label: 'Fine Dining',            icon: 'chef-hat' },

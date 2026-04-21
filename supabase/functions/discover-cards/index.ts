@@ -61,11 +61,29 @@ const CATEGORY_TO_SIGNAL: Record<
   'brunch':      { signalIds: ['brunch'],      filterMin: 120, displayCategory: 'Brunch' },
   'Casual':      { signalIds: ['casual_food'], filterMin: 120, displayCategory: 'Casual' },
   'casual_food': { signalIds: ['casual_food'], filterMin: 120, displayCategory: 'Casual' },
+  // Slice 6 / ORCH-0598 — 5 new type-grounded signals: nature, play, creative_arts,
+  // movies, theatre. Single-signal routing per chip. Movies uses relaxed filterMin=80
+  // per OPEN-10 (tiny universe — only 7 cinemas in Raleigh).
+  'Nature & Views':  { signalIds: ['nature'],        filterMin: 120, displayCategory: 'Nature & Views' },
+  'nature':          { signalIds: ['nature'],        filterMin: 120, displayCategory: 'Nature & Views' },
+  'Play':            { signalIds: ['play'],          filterMin: 120, displayCategory: 'Play' },
+  'play':            { signalIds: ['play'],          filterMin: 120, displayCategory: 'Play' },
+  'Creative & Arts': { signalIds: ['creative_arts'], filterMin: 120, displayCategory: 'Creative & Arts' },
+  'creative_arts':   { signalIds: ['creative_arts'], filterMin: 120, displayCategory: 'Creative & Arts' },
+  'Movies':  { signalIds: ['movies'],  filterMin: 80,  displayCategory: 'Movies' },
+  'movies':  { signalIds: ['movies'],  filterMin: 80,  displayCategory: 'Movies' },
+  'Theatre': { signalIds: ['theatre'], filterMin: 120, displayCategory: 'Theatre' },
+  'theatre': { signalIds: ['theatre'], filterMin: 120, displayCategory: 'Theatre' },
   // [TRANSITIONAL] ORCH-0597 pre-OTA clients still send the old union chip label/slug.
   // Serve the union (brunch + casual_food) via parallel-RPC merge, same as Slice 4 did.
   // Exit condition: 2026-05-12 (14d post ORCH-0597 100% OTA adoption).
   'Brunch, Lunch & Casual': { signalIds: ['brunch', 'casual_food'], filterMin: 120, displayCategory: 'Brunch' },
   'brunch_lunch_casual':    { signalIds: ['brunch', 'casual_food'], filterMin: 120, displayCategory: 'Brunch' },
+  // [TRANSITIONAL] ORCH-0598 pre-OTA clients still send the old Movies & Theatre union.
+  // Serve the union (movies + theatre) via parallel-RPC merge.
+  // Exit condition: 2026-05-13 (coordinated with ORCH-0597 2026-05-12 for single cleanup).
+  'Movies & Theatre': { signalIds: ['movies', 'theatre'], filterMin: 100, displayCategory: 'Movies' },
+  'movies_theatre':   { signalIds: ['movies', 'theatre'], filterMin: 100, displayCategory: 'Movies' },
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────

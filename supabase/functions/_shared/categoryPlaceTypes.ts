@@ -63,6 +63,14 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'live_music_venue', // ORCH-0434: added for Drinks & Music
     'karaoke',          // ORCH-0434: added for Drinks & Music
   ],
+  // ORCH-0598 (Slice 6): split "Movies & Theatre" into two separate canonical categories.
+  // Old display name retained as [TRANSITIONAL] below for pre-OTA clients (exit 2026-05-13).
+  'Movies': [
+    'movie_theater', 'drive_in',
+  ],
+  'Theatre': [
+    'performing_arts_theater', 'opera_house', 'auditorium', 'amphitheatre', 'concert_hall',
+  ],
   // ORCH-0597 (Slice 5): split "Brunch, Lunch & Casual" into two separate canonical
   // categories. Old display name retained as [TRANSITIONAL] alias (below) for pre-OTA
   // clients during the 14-day soak window ending 2026-05-12.
@@ -226,13 +234,25 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'fine-dining': 'Upscale & Fine Dining',
   'finedining': 'Upscale & Fine Dining',
   'fine dining': 'Upscale & Fine Dining',
+  // ORCH-0598 (Slice 6): split chips — NEW canonical routing.
+  'movies': 'Movies',
+  'Movies': 'Movies',
+  'theatre': 'Theatre',
+  'Theatre': 'Theatre',
+  'theater': 'Theatre',
+  'Theater': 'Theatre',
+  // [TRANSITIONAL] legacy bundled slug + display name — resolves to 'Movies & Theatre'
+  // canonical so CATEGORY_TO_SIGNAL routes to backward-compat UNION (movies + theatre).
+  // Pre-OTA clients still send these. Remove after 2026-05-13.
   'movies_theatre': 'Movies & Theatre',
   'movies-theatre': 'Movies & Theatre',
-  'watch': 'Movies & Theatre',             // backward compat
-  'live_performance': 'Movies & Theatre',   // backward compat
-  'live-performance': 'Movies & Theatre',
-  'live performance': 'Movies & Theatre',
-  'liveperformance': 'Movies & Theatre',
+  // Legacy "watch"/"screen & relax"/"live_performance" intents redirected to Movies
+  // (primary intent of old bundle was cinema-first per OPEN-11).
+  'watch': 'Movies',
+  'live_performance': 'Theatre',   // live performance → theatre (performing arts)
+  'live-performance': 'Theatre',
+  'live performance': 'Theatre',
+  'liveperformance': 'Theatre',
   'creative_arts': 'Creative & Arts',
   'creative-arts': 'Creative & Arts',
   'creativearts': 'Creative & Arts',
@@ -278,12 +298,13 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'dining_experiences': 'Upscale & Fine Dining',
   'dining-experiences': 'Upscale & Fine Dining',
   'dining': 'Upscale & Fine Dining',
-  'screen & relax': 'Movies & Theatre',
-  'screen_and_relax': 'Movies & Theatre',
-  'screen-and-relax': 'Movies & Theatre',
-  'screen&relax': 'Movies & Theatre',
-  'screenrelax': 'Movies & Theatre',
-  'screen_&_relax': 'Movies & Theatre',
+  // ORCH-0598: legacy "screen & relax" → Movies (cinema intent, not theatre)
+  'screen & relax': 'Movies',
+  'screen_and_relax': 'Movies',
+  'screen-and-relax': 'Movies',
+  'screen&relax': 'Movies',
+  'screenrelax': 'Movies',
+  'screen_&_relax': 'Movies',
   'creative & hands-on': 'Creative & Arts',
   'creative_and_hands_on': 'Creative & Arts',
   'creative-and-hands-on': 'Creative & Arts',
@@ -303,7 +324,7 @@ const CATEGORY_ALIASES: Record<string, string> = {
   // Short forms used by legacy recommendation endpoints
   'sip': 'Drinks & Music',
   'play_move': 'Play',
-  'screen_relax': 'Movies & Theatre',
+  'screen_relax': 'Movies',  // ORCH-0598: cinema intent → Movies chip
   'creative': 'Creative & Arts',
 };
 

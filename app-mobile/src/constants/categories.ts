@@ -81,7 +81,7 @@ export const categories: Category[] = [
     activityType: 'mobile',
     duration: 'medium',
     compatibleWith: ['creative_arts'],
-    incompatibleWith: ['movies_theatre', 'upscale_fine_dining', 'play']
+    incompatibleWith: ['movies', 'theatre', 'upscale_fine_dining', 'play']
   },
   {
     slug: 'icebreakers',
@@ -133,7 +133,7 @@ export const categories: Category[] = [
     },
     activityType: 'mixed',
     duration: 'short',
-    compatibleWith: ['drinks_and_music', 'movies_theatre', 'creative_arts'],
+    compatibleWith: ['drinks_and_music', 'movies', 'theatre', 'creative_arts'],
     incompatibleWith: []
   },
   {
@@ -176,7 +176,7 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'short',
-    compatibleWith: ['icebreakers', 'brunch', 'casual_food', 'upscale_fine_dining', 'movies_theatre', 'play', 'creative_arts'],
+    compatibleWith: ['icebreakers', 'brunch', 'casual_food', 'upscale_fine_dining', 'movies', 'theatre', 'play', 'creative_arts'],
     incompatibleWith: ['nature']
   },
   {
@@ -218,7 +218,7 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'medium',
-    compatibleWith: ['drinks_and_music', 'movies_theatre', 'play', 'creative_arts', 'casual_food'],
+    compatibleWith: ['drinks_and_music', 'movies', 'theatre', 'play', 'creative_arts', 'casual_food'],
     incompatibleWith: ['upscale_fine_dining']
   },
   {
@@ -267,7 +267,7 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'short',
-    compatibleWith: ['drinks_and_music', 'movies_theatre', 'play', 'creative_arts', 'brunch'],
+    compatibleWith: ['drinks_and_music', 'movies', 'theatre', 'play', 'creative_arts', 'brunch'],
     incompatibleWith: ['upscale_fine_dining']
   },
   {
@@ -311,38 +311,27 @@ export const categories: Category[] = [
     },
     activityType: 'stationary',
     duration: 'long',
-    compatibleWith: ['drinks_and_music', 'movies_theatre'],
+    compatibleWith: ['drinks_and_music', 'movies', 'theatre'],
     incompatibleWith: ['brunch', 'casual_food', 'play', 'nature']
   },
   {
-    slug: 'movies_theatre',
-    name: 'Movies & Theatre',
+    slug: 'movies',
+    name: 'Movies',
     icon: '🎬',
     description: 'Movie theaters for a fun shared evening',
-    detailedDescription: 'Movie theaters for a classic, low-effort outing. Grab popcorn and enjoy the latest releases or indie screenings together.',
+    detailedDescription: 'Cinemas, IMAX, drive-ins, and special screenings. Grab popcorn and enjoy the latest releases or indie films together.',
     expectedActivities: [
-      'Movie theaters and cinema screenings',
+      'Movie theaters and IMAX screenings',
       'Indie films and special screenings',
+      'Drive-in experiences',
     ],
     apiMapping: {
       googleMaps: {
-        coreAnchors: [
-          'movie_theater',
-        ],
+        coreAnchors: ['movie_theater', 'drive_in'],
         attributes: ['entertainment', 'indoor', 'seated'],
         excludedAttributes: [
-          'amusement_park', 'amusement_center', 'video_arcade',
-          'bowling_alley', 'paintball_center', 'go_karting_venue',
-          'miniature_golf_course', 'skateboard_park',
-          'gym', 'fitness_center', 'sports_complex', 'sports_club',
-          'stadium', 'race_course', 'tennis_court', 'swimming_pool',
-          'shopping_mall', 'department_store', 'electronics_store',
-          'furniture_store', 'warehouse_store', 'store', 'market',
-          'food_store', 'supermarket', 'grocery_store',
-          'parking', 'parking_lot', 'parking_garage',
-          'bus_station', 'train_station', 'transit_station', 'airport',
-          'fast_food_restaurant', 'hamburger_restaurant', 'pizza_restaurant',
-          'sandwich_shop', 'food_court', 'buffet_restaurant', 'diner',
+          'performing_arts_theater', 'opera_house', 'amphitheatre', 'concert_hall',
+          'gym', 'fitness_center', 'store', 'shopping_mall', 'food_store', 'nail_salon',
         ]
       },
       eventbrite: {
@@ -350,21 +339,62 @@ export const categories: Category[] = [
       }
     },
     logic: {
-      hardFilter: 'Must be a movie theater',
+      hardFilter: 'Must be a cinema, IMAX, or drive-in',
       hierarchy: {
-        broad: 'Watch',
-        niche: ['Movies', 'Special Screenings']
+        broad: 'Movies',
+        niche: ['Cinemas', 'IMAX', 'Drive-In', 'Special Screenings']
       },
-      fallbackBehavior: 'If no movie theater found, show nearest cinema.'
+      fallbackBehavior: 'If no cinema found in radius, show nearest multiplex.'
     },
     ux: {
       activeColor: '#3B82F6',
-      subcategories: ['Movies', 'Special Screenings'],
-      contextualPreview: 'New release at the cinema tonight — showtime at 7pm.'
+      subcategories: ['Cinemas', 'IMAX', 'Drive-In'],
+      contextualPreview: 'Alamo Drafthouse showing the new release tonight — recliners + dinner service.'
     },
     activityType: 'stationary',
     duration: 'medium',
-    compatibleWith: ['drinks_and_music', 'brunch', 'casual_food', 'upscale_fine_dining', 'icebreakers'],
+    compatibleWith: ['drinks_and_music', 'brunch', 'casual_food', 'upscale_fine_dining', 'icebreakers', 'theatre'],
+    incompatibleWith: ['nature']
+  },
+  {
+    slug: 'theatre',
+    name: 'Theatre',
+    icon: '🎭',
+    description: 'Live performing arts — plays, opera, symphony, ballet, concerts',
+    detailedDescription: 'Performing arts theatres, opera houses, concert halls, amphitheatres, and auditoriums. Live shows from Broadway plays to classical music to contemporary dance.',
+    expectedActivities: [
+      'Plays, musicals, and Broadway tours',
+      'Opera, symphony, and ballet',
+      'Concert halls and amphitheatres',
+    ],
+    apiMapping: {
+      googleMaps: {
+        coreAnchors: ['performing_arts_theater', 'opera_house', 'auditorium', 'amphitheatre', 'concert_hall'],
+        attributes: ['entertainment', 'live-performance', 'seated'],
+        excludedAttributes: [
+          'movie_theater', 'gym', 'sports_complex', 'sports_school', 'store', 'food_store', 'nail_salon',
+        ]
+      },
+      eventbrite: {
+        eventTypes: ['theater_events', 'opera_events', 'concerts', 'ballet']
+      }
+    },
+    logic: {
+      hardFilter: 'Must be a performing arts venue (theatre, opera, concert hall, or amphitheatre)',
+      hierarchy: {
+        broad: 'Theatre',
+        niche: ['Plays', 'Opera', 'Symphony', 'Ballet', 'Concerts']
+      },
+      fallbackBehavior: 'If no live-performance venue, show nearest auditorium or concert hall.'
+    },
+    ux: {
+      activeColor: '#8B5CF6',
+      subcategories: ['Plays', 'Opera', 'Symphony', 'Ballet', 'Concerts'],
+      contextualPreview: 'Meymandi Concert Hall — NC Symphony tonight at 8pm.'
+    },
+    activityType: 'stationary',
+    duration: 'long',
+    compatibleWith: ['drinks_and_music', 'movies', 'upscale_fine_dining', 'creative_arts', 'icebreakers'],
     incompatibleWith: ['nature']
   },
   {
@@ -566,13 +596,21 @@ export const getCategoryExperienceTypeCombinations = (categorySlug: string, expe
       'picnic-dates': 'Deli sandwich pickup before heading to the park.',
       'take-a-stroll': 'Casual café — grab a bite, walk, and come back for dessert.'
     },
-    'movies_theatre': {
+    'movies': {
       'first-date': 'Indie cinema showing a cult classic at 7pm.',
       'romantic': 'Drive-in double feature — bring blankets and snacks.',
       'adventurous': 'Arthouse screening — perfect for solo movie lovers.',
       'group-fun': 'Big-screen watch party of the championship game.',
       'picnic-dates': 'Outdoor movie screening with picnic blankets.',
       'take-a-stroll': 'Evening walk to the neighborhood cinema.'
+    },
+    'theatre': {
+      'first-date': 'Black-box theatre with a contemporary play — intimate and talked-about.',
+      'romantic': 'Symphony night at Meymandi — dress up and share a program.',
+      'adventurous': 'New-works showcase at a local theatre company.',
+      'group-fun': 'Musical at Martin Marietta Center — big group seats reserved.',
+      'picnic-dates': 'Outdoor Shakespeare in the park with a picnic hamper.',
+      'take-a-stroll': 'Evening walk to a chamber music performance.'
     },
     'creative_arts': {
       'first-date': 'Sip & Paint night with wine included — playful and low-stakes.',

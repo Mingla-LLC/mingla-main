@@ -762,14 +762,28 @@ const CATEGORY_TO_SIGNAL_SPEC_MIRROR: Record<string, RoutingEntry> = {
   // Slice 2 (drinks)
   'Drinks & Music':        { signalIds: ['drinks'], filterMin: 120, displayCategory: 'Drinks & Music' },
   'drinks_and_music':      { signalIds: ['drinks'], filterMin: 120, displayCategory: 'Drinks & Music' },
-  // Slice 5 / ORCH-0597 — split chips (single-signal)
+  // Slice 5 / ORCH-0597 — brunch/casual split
   'Brunch':      { signalIds: ['brunch'],      filterMin: 120, displayCategory: 'Brunch' },
   'brunch':      { signalIds: ['brunch'],      filterMin: 120, displayCategory: 'Brunch' },
   'Casual':      { signalIds: ['casual_food'], filterMin: 120, displayCategory: 'Casual' },
   'casual_food': { signalIds: ['casual_food'], filterMin: 120, displayCategory: 'Casual' },
-  // [TRANSITIONAL] pre-OTA union aliases (exit 2026-05-12)
+  // Slice 6 / ORCH-0598 — 5 new type-grounded signals
+  'Nature & Views':  { signalIds: ['nature'],        filterMin: 120, displayCategory: 'Nature & Views' },
+  'nature':          { signalIds: ['nature'],        filterMin: 120, displayCategory: 'Nature & Views' },
+  'Play':            { signalIds: ['play'],          filterMin: 120, displayCategory: 'Play' },
+  'play':            { signalIds: ['play'],          filterMin: 120, displayCategory: 'Play' },
+  'Creative & Arts': { signalIds: ['creative_arts'], filterMin: 120, displayCategory: 'Creative & Arts' },
+  'creative_arts':   { signalIds: ['creative_arts'], filterMin: 120, displayCategory: 'Creative & Arts' },
+  'Movies':  { signalIds: ['movies'],  filterMin: 80,  displayCategory: 'Movies' },
+  'movies':  { signalIds: ['movies'],  filterMin: 80,  displayCategory: 'Movies' },
+  'Theatre': { signalIds: ['theatre'], filterMin: 120, displayCategory: 'Theatre' },
+  'theatre': { signalIds: ['theatre'], filterMin: 120, displayCategory: 'Theatre' },
+  // [TRANSITIONAL] ORCH-0597 brunch/casual union aliases (exit 2026-05-12)
   'Brunch, Lunch & Casual': { signalIds: ['brunch', 'casual_food'], filterMin: 120, displayCategory: 'Brunch' },
   'brunch_lunch_casual':    { signalIds: ['brunch', 'casual_food'], filterMin: 120, displayCategory: 'Brunch' },
+  // [TRANSITIONAL] ORCH-0598 movies/theatre union aliases (exit 2026-05-13)
+  'Movies & Theatre': { signalIds: ['movies', 'theatre'], filterMin: 100, displayCategory: 'Movies' },
+  'movies_theatre':   { signalIds: ['movies', 'theatre'], filterMin: 100, displayCategory: 'Movies' },
 };
 
 Deno.test('T-29: ORCH-0597 — Brunch chip routes to single brunch signal', () => {
@@ -800,6 +814,52 @@ Deno.test('T-31: ORCH-0597 — pre-OTA Brunch, Lunch & Casual alias still unions
     assert(Array.isArray(entry.signalIds), `${key}: signalIds must be array`);
     assert(entry.signalIds.length >= 1, `${key}: signalIds must have at least one id`);
   }
-  // I-CATEGORY-SIGNAL-ALIAS-COMPLETE: must have exactly 11 entries post-Slice-5.
-  assertEquals(Object.keys(CATEGORY_TO_SIGNAL_SPEC_MIRROR).length, 11);
+  // I-CATEGORY-SIGNAL-ALIAS-COMPLETE: post-Slice-6 = 21 entries (10 new + 2 new TRANSITIONAL).
+  assertEquals(Object.keys(CATEGORY_TO_SIGNAL_SPEC_MIRROR).length, 21);
+});
+
+// ───── T-32 through T-37: ORCH-0598 (Slice 6) batch signal routing tests ─────
+
+Deno.test('T-32: ORCH-0598 — Nature & Views chip routes to single nature signal', () => {
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Nature & Views'].signalIds, ['nature']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['nature'].signalIds, ['nature']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Nature & Views'].filterMin, 120);
+});
+
+Deno.test('T-33: ORCH-0598 — Play chip routes to single play signal', () => {
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Play'].signalIds, ['play']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['play'].signalIds, ['play']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Play'].filterMin, 120);
+});
+
+Deno.test('T-34: ORCH-0598 — Creative & Arts chip routes to single creative_arts signal', () => {
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Creative & Arts'].signalIds, ['creative_arts']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['creative_arts'].signalIds, ['creative_arts']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Creative & Arts'].filterMin, 120);
+});
+
+Deno.test('T-35: ORCH-0598 — Movies chip routes to single movies signal with RELAXED filterMin=80', () => {
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Movies'].signalIds, ['movies']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['movies'].signalIds, ['movies']);
+  // Universe is tiny (7 cinemas Raleigh per F-2) — filter_min relaxed from 120 to 80.
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Movies'].filterMin, 80);
+});
+
+Deno.test('T-36: ORCH-0598 — Theatre chip routes to single theatre signal (user directive "make theatres better")', () => {
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Theatre'].signalIds, ['theatre']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['theatre'].signalIds, ['theatre']);
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Theatre'].filterMin, 120);
+});
+
+Deno.test('T-37: ORCH-0598 — pre-OTA Movies & Theatre alias still unions movies + theatre (backward-compat)', () => {
+  assertEquals(
+    CATEGORY_TO_SIGNAL_SPEC_MIRROR['Movies & Theatre'].signalIds,
+    ['movies', 'theatre'],
+  );
+  assertEquals(
+    CATEGORY_TO_SIGNAL_SPEC_MIRROR['movies_theatre'].signalIds,
+    ['movies', 'theatre'],
+  );
+  // Union uses filterMin=100 (middle-ground between movies 80 and theatre 120)
+  assertEquals(CATEGORY_TO_SIGNAL_SPEC_MIRROR['Movies & Theatre'].filterMin, 100);
 });

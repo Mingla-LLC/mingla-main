@@ -94,7 +94,7 @@ export type DeckServerPath =
 
 export interface DeckResponse {
   cards: Recommendation[];
-  deckMode: 'nature' | 'icebreakers' | 'drinks_and_music' | 'brunch' | 'casual_food' | 'brunch_lunch_casual' | 'upscale_fine_dining' | 'movies_theatre' | 'creative_arts' | 'play' | 'curated' | 'mixed';
+  deckMode: 'nature' | 'icebreakers' | 'drinks_and_music' | 'brunch' | 'casual_food' | 'brunch_lunch_casual' | 'upscale_fine_dining' | 'movies' | 'theatre' | 'movies_theatre' | 'creative_arts' | 'play' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
   hasMore: boolean;
@@ -133,7 +133,10 @@ const PILL_TO_CATEGORY_NAME: Record<string, string> = {
   casual_food: 'Casual',
   brunch_lunch_casual: 'Brunch, Lunch & Casual', // [TRANSITIONAL] legacy alias — remove after 2026-05-12
   upscale_fine_dining: 'Fine Dining',
-  movies_theatre: 'Movies & Theatre',
+  // ORCH-0598 (Slice 6): split movies_theatre into movies + theatre.
+  movies: 'Movies',
+  theatre: 'Theatre',
+  movies_theatre: 'Movies & Theatre', // [TRANSITIONAL] legacy alias — remove after 2026-05-13
   creative_arts: 'Creative & Arts',
   play: 'Play',
 };
@@ -238,8 +241,14 @@ class DeckService {
       'brunch, lunch & casual': 'brunch',
       'upscale_fine_dining': 'upscale_fine_dining',
       'upscale & fine dining': 'upscale_fine_dining',
-      'movies_theatre': 'movies_theatre',
-      'movies & theatre': 'movies_theatre',
+      // ORCH-0598 (Slice 6): new split chips
+      'movies': 'movies',
+      'theatre': 'theatre',
+      'theater': 'theatre',
+      // [TRANSITIONAL] legacy bundled slug + display name — resolves to 'movies' (primary
+      // intent of old chip per OPEN-11). Pre-OTA clients still send these. Remove 2026-05-13.
+      'movies_theatre': 'movies',
+      'movies & theatre': 'movies',
       'creative_arts': 'creative_arts',
       'creative & arts': 'creative_arts',
       'play': 'play',
@@ -254,9 +263,10 @@ class DeckService {
       'casual eats': 'casual_food',
       'fine_dining': 'upscale_fine_dining',
       'fine dining': 'upscale_fine_dining',
-      'watch': 'movies_theatre',
-      'live_performance': 'movies_theatre',
-      'live performance': 'movies_theatre',
+      // ORCH-0598: legacy 'watch' → movies; 'live_performance' → theatre (performing arts match)
+      'watch': 'movies',
+      'live_performance': 'theatre',
+      'live performance': 'theatre',
       'wellness': 'casual_food',
       'flowers': 'nature',
       'nature_views': 'nature',
@@ -270,7 +280,7 @@ class DeckService {
       'sip & chill': 'drinks_and_music',
       'sip and chill': 'drinks_and_music',
       'dining': 'upscale_fine_dining',
-      'screen & relax': 'movies_theatre',
+      'screen & relax': 'movies',  // ORCH-0598: cinema intent → movies chip
       'creative & hands-on': 'creative_arts',
     };
 
