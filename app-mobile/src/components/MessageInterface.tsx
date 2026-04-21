@@ -14,6 +14,7 @@ import {
   Modal,
   Dimensions,
   ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import { Icon } from "./ui/Icon";
 import * as ImagePicker from "expo-image-picker";
@@ -647,16 +648,33 @@ export default function MessageInterface({
   //   - inputBottomOffset: nav clearance so the composer floats above the bottom
   //     nav when the keyboard is closed. On Android, + ANDROID_NAV_OVERLAP_FIX
   //     because the nav uses bottom: insets.bottom + 6 (not 0).
-  //   - iosKeyboardLift: on iOS, add keyboardHeight when visible. iOS does not
-  //     resize/pan the window, so the composer must be manually lifted. Safe
-  //     because iOS fires keyboardWillShow BEFORE the animation, letting React
-  //     update the layout before the keyboard is painted.
-  //   - Android needs no lift because softwareKeyboardLayoutMode="resize"
-  //     shrinks the window — the composer's absolute `bottom: N` is measured
-  //     from the shrunken window's bottom edge (keyboard top when open).
-  const inputBottomOffset = bottomNavTotalHeight + INPUT_CAPSULE_MARGIN_BOTTOM + ANDROID_NAV_OVERLAP_FIX;
+  //   - iOS keyboard lift: iOS never resizes/pans the window — always lift manually.
+  //     Safe because iOS fires keyboardWillShow BEFORE animation.
+  //   - Android adaptive lift: Expo maps softwareKeyboardLayoutMode="resize" to
+  //     adjustResize in the manifest. On Pixel/stock Android, this shrinks the
+  //     window and the absolute composer naturally lands above the keyboard — no
+  //     manual lift needed. BUT on Samsung / edge-to-edge / new architecture, the
+  //     OS often ignores resize and leaves the window full-size (a known OEM
+  //     quirk). We detect this at runtime by comparing the current window height
+  //     to its observed maximum. If the window did NOT shrink by approximately
+  //     keyboardHeight, we apply a manual lift to compensate. This is adaptive:
+  //     on devices where resize works, no lift. On devices where it's ignored,
+  //     full manual lift. No race condition because the layout update happens
+  //     in response to the same keyboardDidShow event that reveals the ignore.
+  const { height: currentWindowHeight } = useWindowDimensions();
+  const maxWindowHeightRef = useRef<number>(currentWindowHeight);
+  if (currentWindowHeight > maxWindowHeightRef.current) {
+    maxWindowHeightRef.current = currentWindowHeight;
+  }
+  const windowShrinkAmount = Math.max(0, maxWindowHeightRef.current - currentWindowHeight);
+  const androidManualLift =
+    Platform.OS === 'android' && keyboardVisible
+      ? Math.max(0, keyboardHeight - windowShrinkAmount)
+      : 0;
   const iosKeyboardLift = Platform.OS === 'ios' && keyboardVisible ? keyboardHeight : 0;
-  const finalInputBottom = inputBottomOffset + iosKeyboardLift;
+
+  const inputBottomOffset = bottomNavTotalHeight + INPUT_CAPSULE_MARGIN_BOTTOM + ANDROID_NAV_OVERLAP_FIX;
+  const finalInputBottom = inputBottomOffset + iosKeyboardLift + androidManualLift;
 
   return (
     <View style={styles.container}>
