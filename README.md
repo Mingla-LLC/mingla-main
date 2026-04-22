@@ -334,7 +334,7 @@ Mingla/
 
 ### Generation and AI
 - `generate-single-cards` -- Batch single card generation from place pool
-- `generate-curated-experiences` -- Multi-stop itinerary generation
+- `generate-curated-experiences` -- Multi-stop itinerary generation. **Adding a new curated experience?** See [supabase/functions/generate-curated-experiences/EXPERIENCE_TEMPLATE.md](supabase/functions/generate-curated-experiences/EXPERIENCE_TEMPLATE.md) for the step-by-step template.
 - `generate-holiday-categories` -- Holiday category generation
 - `generate-ai-summary` -- AI place summaries
 - `generate-session-deck` -- Collaboration session deck generation
