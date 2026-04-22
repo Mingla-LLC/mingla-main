@@ -209,7 +209,7 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
   },
   {
     id: 'group-fun',
-    // ORCH-0600 — 2-stop structure, 5 combos mixing Activity-first and Food-first.
+    // ORCH-0628 — 2-stop structure, 5 combos mixing Activity-first and Food-first.
     // Stop roles are slug-derived at build time (see SLUG_TO_STOP_ROLE) since position 0
     // is sometimes Activity (play/movies/theatre) and sometimes Food (brunch).
     label: 'Group Fun',
@@ -468,7 +468,7 @@ const EXPERIENCE_RANK_SIGNAL_OVERRIDE: Record<string, Record<string, string>> = 
     'drinks_and_music': 'icebreakers',
   },
   'group-fun': {
-    // ORCH-0600 — all stops rank by `lively` vibe signal. Surfaces bowling/arcade/
+    // ORCH-0628 — all stops rank by `lively` vibe signal. Surfaces bowling/arcade/
     // sports-bar energy on Activity stop, group-friendly bistros over candlelit spots
     // on Food stop, and lively upscale venues (Capital Grille, Sullivan's) over
     // intimate ones (Second Empire) on Dinner stop.
@@ -503,7 +503,7 @@ const EXPERIENCE_RANK_SIGNAL_OVERRIDE: Record<string, Record<string, string>> = 
   },
 };
 
-// Per-slug stop role label for dynamic role assignment (ORCH-0600). When a typeDef's
+// Per-slug stop role label for dynamic role assignment (ORCH-0628). When a typeDef's
 // stop roles are generic placeholders and combos mix orderings (Activity-first vs
 // Food-first), the display label should reflect the actual slug. Falls back to
 // stopDef.role if slug not in map.

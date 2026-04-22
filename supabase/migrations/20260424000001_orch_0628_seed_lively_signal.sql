@@ -1,4 +1,10 @@
--- ORCH-0600 — Seed `lively` signal (quality-grounded vibe) for Group Fun curated intent.
+-- ORCH-0628 — Seed `lively` signal (quality-grounded vibe) for Group Fun curated intent.
+--
+-- NOTE: Originally committed on branch as "ORCH-0600" in commit 82ed971e, but that ID
+-- was already allocated to the dark-glass design system (commit 1fe561d8). Renumbered
+-- to ORCH-0628 on 2026-04-21 to resolve the collision. Live DB references
+-- (signal_definition_versions.notes) still carry the original "ORCH-0600" tag — that
+-- is audit data and left as-is; the canonical ID going forward is ORCH-0628.
 --
 -- Purpose: rank ANY stop by group-friendly energy. Used as EXPERIENCE_RANK_SIGNAL_OVERRIDE
 -- for Group Fun. Surfaces bowling/arcade/sports-bar/brewery over quiet venues; for food
