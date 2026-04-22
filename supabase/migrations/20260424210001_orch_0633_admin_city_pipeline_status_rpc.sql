@@ -67,10 +67,10 @@ AS $$
   score_stats AS (
     SELECT
       pp.city_id,
-      COUNT(DISTINCT ps.place_pool_id) AS scored_count
+      COUNT(DISTINCT ps.place_id) AS scored_count
     FROM public.place_scores ps
-    JOIN public.place_pool pp ON pp.id = ps.place_pool_id
-    WHERE pp.city_id IS NOT NULL AND pp.is_active
+    JOIN public.place_pool pp ON pp.id = ps.place_id
+    WHERE pp.city_id IS NOT NULL AND pp.is_active = true
     GROUP BY pp.city_id
   )
   SELECT
