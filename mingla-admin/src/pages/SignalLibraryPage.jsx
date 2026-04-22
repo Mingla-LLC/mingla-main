@@ -230,6 +230,172 @@ function RunScorerButton({ cityId, cityName, signalId, onComplete }) {
   );
 }
 
+// ── City Pipeline History — every seeded city at a glance ────────────────────
+//
+// ORCH-0633: table showing each city's progress through seed → refresh →
+// AI-validate → Bouncer → Score → Photos. Admin clicks a city row to pick it
+// as the active city below. Color-coded bars make "what still needs work"
+// obvious at a glance.
+
+function stageStatus(done, total) {
+  if (!total || total === 0) return { pct: 0, tone: 'gray', label: '0' };
+  const pct = Math.round((done / total) * 100);
+  let tone = 'red';
+  if (pct >= 95) tone = 'green';
+  else if (pct >= 50) tone = 'yellow';
+  else if (pct > 0) tone = 'orange';
+  return { pct, tone, label: `${done.toLocaleString()} / ${total.toLocaleString()} (${pct}%)` };
+}
+
+function StageCell({ done, total }) {
+  const s = stageStatus(done, total);
+  const bg = {
+    green: 'bg-green-500',
+    yellow: 'bg-yellow-500',
+    orange: 'bg-orange-500',
+    red: 'bg-red-500',
+    gray: 'bg-gray-300',
+  }[s.tone];
+  return (
+    <div className="flex flex-col gap-1 min-w-[110px]">
+      <div className="h-2 bg-[--color-border] rounded overflow-hidden">
+        <div className={`h-full ${bg} transition-all`} style={{ width: `${s.pct}%` }} />
+      </div>
+      <div className="text-[10px] font-mono text-[--color-text-tertiary]">{s.label}</div>
+    </div>
+  );
+}
+
+function formatRelative(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  const now = Date.now();
+  const diffMs = now - d.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString();
+}
+
+function CityPipelineHistory({ selectedCityId, onPickCity }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc('admin_city_pipeline_status');
+      if (rpcErr) throw rpcErr;
+      setRows(data ?? []);
+    } catch (err) {
+      console.error('[CityPipelineHistory]', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-[--color-text-secondary]">
+        <Spinner size="sm" /> Loading pipeline history…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <AlertCard kind="warning" icon={AlertTriangle} title="Couldn't load pipeline history">
+        {error}. If this is the first load after pulling the ORCH-0633 migration,
+        run <code>supabase db push</code> to apply <code>admin_city_pipeline_status</code>.
+      </AlertCard>
+    );
+  }
+  if (rows.length === 0) {
+    return <div className="text-sm text-[--color-text-secondary]">No seeded cities yet.</div>;
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-[--color-text-secondary]">
+          {rows.length} cities · click a row to select it below
+        </div>
+        <Button size="sm" variant="outline" onClick={refresh}>
+          <RefreshCw className="w-3 h-3" />
+          Refresh
+        </Button>
+      </div>
+
+      <div className="overflow-x-auto border border-[--color-border] rounded">
+        <table className="min-w-full text-xs">
+          <thead className="bg-[--color-background-secondary]">
+            <tr className="text-left">
+              <th className="px-3 py-2 font-semibold">City</th>
+              <th className="px-3 py-2 font-semibold">Total</th>
+              <th className="px-3 py-2 font-semibold">Refreshed</th>
+              <th className="px-3 py-2 font-semibold">AI-approved</th>
+              <th className="px-3 py-2 font-semibold">Bouncer-passed</th>
+              <th className="px-3 py-2 font-semibold">Photos</th>
+              <th className="px-3 py-2 font-semibold">Scored</th>
+              <th className="px-3 py-2 font-semibold">Last activity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const isSelected = r.city_id === selectedCityId;
+              const lastActivity = [r.last_place_update, r.last_refresh, r.last_bouncer_run, r.last_ai_run]
+                .filter(Boolean)
+                .map((s) => new Date(s).getTime())
+                .sort((a, b) => b - a)[0];
+              return (
+                <tr
+                  key={r.city_id}
+                  className={`border-t border-[--color-border] cursor-pointer hover:bg-[--color-background-secondary] ${isSelected ? 'bg-[--color-background-secondary]' : ''}`}
+                  onClick={() => onPickCity?.(r.city_id)}
+                >
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      {isSelected && <Badge variant="success">active</Badge>}
+                      <div>
+                        <div className="font-medium">{r.city_name}</div>
+                        <div className="text-[10px] text-[--color-text-tertiary]">{r.country_code || r.country_name || ''} · {r.city_status || '—'}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 font-mono">{Number(r.total_active ?? 0).toLocaleString()}</td>
+                  <td className="px-3 py-2"><StageCell done={Number(r.refreshed_count ?? 0)} total={Number(r.total_active ?? 0)} /></td>
+                  <td className="px-3 py-2"><StageCell done={Number(r.ai_approved_count ?? 0)} total={Number(r.total_active ?? 0)} /></td>
+                  <td className="px-3 py-2"><StageCell done={Number(r.is_servable_count ?? 0)} total={Number(r.total_active ?? 0)} /></td>
+                  <td className="px-3 py-2"><StageCell done={Number(r.has_real_photos_count ?? 0)} total={Number(r.total_active ?? 0)} /></td>
+                  <td className="px-3 py-2"><StageCell done={Number(r.scored_count ?? 0)} total={Number(r.is_servable_count ?? 0)} /></td>
+                  <td className="px-3 py-2 text-[--color-text-secondary]">{formatRelative(lastActivity ? new Date(lastActivity) : null)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="text-[10px] text-[--color-text-tertiary] leading-relaxed">
+        <strong>Reading the columns:</strong>{' '}
+        <span className="text-green-600">green</span> = 95%+ done ·{' '}
+        <span className="text-yellow-600">yellow</span> = 50-94% ·{' '}
+        <span className="text-orange-600">orange</span> = 1-49% ·{' '}
+        <span className="text-red-600">red</span> = 0% ·{' '}
+        <span className="text-gray-500">gray</span> = no data.{' '}
+        <strong>Scored</strong> is measured against Bouncer-passed (not total) — only servable places need scoring.
+      </div>
+    </div>
+  );
+}
+
 // ── Score-all-signals (whole city, one click) ────────────────────────────────
 //
 // ORCH-0631 UX fix: running the Bouncer for a city is one click, but scoring
@@ -642,7 +808,23 @@ export function SignalLibraryPage() {
         title="City"
         description="Select which city the Bouncer and Scorer will run against. Cities come from the seeding_cities table."
       >
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-4">
+          {/* ORCH-0633: Pipeline history table — every seeded city at a glance */}
+          <div>
+            <div className="text-xs uppercase tracking-wide text-[--color-text-tertiary] mb-2">
+              Pipeline history — all cities
+            </div>
+            <CityPipelineHistory
+              selectedCityId={selectedCityId}
+              onPickCity={(id) => setSelectedCityId(id)}
+            />
+          </div>
+
+          <div className="border-t border-[--color-border]" />
+
+          <div className="text-xs uppercase tracking-wide text-[--color-text-tertiary]">
+            Or pick a city from dropdown
+          </div>
           {citiesLoading && (
             <div className="flex items-center gap-2 text-sm text-[--color-text-secondary]">
               <Spinner size="sm" /> Loading cities…
