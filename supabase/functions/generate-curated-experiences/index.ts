@@ -127,24 +127,30 @@ interface ExperienceTypeDef {
 
 const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
   {
+    // ORCH-0601 — 2-stop structure, 6 combos mixing cultural + physical activities.
+    // Slugs `hiking` (nature subset) and `museum` (creative_arts subset) route via
+    // COMBO_SLUG_TYPE_FILTER to narrow the filter signal to specific types.
+    // Food stops (casual_food, upscale_fine_dining) rank by `lively` for post-
+    // adventure energetic dining.
     id: 'adventurous',
     label: 'Adventurous',
     stops: [
-      { role: 'Activity' },
-      { role: 'Drinks' },
-      { role: 'Dinner' },
+      { role: 'auto' },  // slug-derived
+      { role: 'auto' },
     ],
     combos: [
-      ['nature', 'drinks_and_music', 'brunch_lunch_casual'],
-      ['nature', 'drinks_and_music', 'upscale_fine_dining'],
-      ['play', 'drinks_and_music', 'brunch_lunch_casual'],
-      ['play', 'drinks_and_music', 'upscale_fine_dining'],
+      ['play',          'casual_food'],
+      ['theatre',       'casual_food'],
+      ['hiking',        'casual_food'],
+      ['theatre',       'upscale_fine_dining'],
+      ['creative_arts', 'upscale_fine_dining'],
+      ['museum',        'upscale_fine_dining'],
     ],
     taglines: [
       'Explore the unexpected — your next discovery awaits',
-      'Three stops, endless possibilities',
       'Chart your own path through the city',
       'For the curious soul who loves to wander',
+      'Adventure is calling — pick your path',
     ],
     descriptionTone: 'adventure',
   },
@@ -246,6 +252,8 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
     descriptionTone: 'picnic',
   },
   {
+    // ORCH-0601 — split stale brunch_lunch_casual into brunch + casual_food.
+    // Nature stop ranks by `scenic`, Food stops rank by `icebreakers`.
     id: 'take-a-stroll',
     label: 'Take a Stroll',
     stops: [
@@ -253,7 +261,8 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
       { role: 'Food' },
     ],
     combos: [
-      ['nature', 'brunch_lunch_casual'],
+      ['nature', 'brunch'],
+      ['nature', 'casual_food'],
       ['nature', 'upscale_fine_dining'],
     ],
     taglines: [
@@ -328,6 +337,7 @@ async function fetchSinglesForSignalRank(
   centerLng: number,
   radiusMeters: number,
   limit: number = 50,
+  requiredTypes?: string[],  // ORCH-0601: optional sub-filter — places must have at least one of these types (e.g., 'hiking_area','museum')
 ): Promise<any[]> {
   const latDelta = radiusMeters / 111320;
   const lngDelta = radiusMeters / (111320 * Math.cos(centerLat * Math.PI / 180));
@@ -340,7 +350,22 @@ async function fetchSinglesForSignalRank(
     .gte('score', filterMin);
 
   if (filterErr || !filterRows || filterRows.length === 0) return [];
-  const eligibleIds = filterRows.map((r: any) => r.place_id);
+  let eligibleIds = filterRows.map((r: any) => r.place_id);
+
+  // ORCH-0601 Step 1b: optional type-restriction (e.g. 'hiking' subset of nature,
+  // 'museum' subset of creative_arts). Keeps only place_ids whose place_pool.types
+  // overlaps with requiredTypes.
+  if (requiredTypes && requiredTypes.length > 0) {
+    const { data: typedRows, error: typedErr } = await supabaseAdmin
+      .from('place_pool')
+      .select('id')
+      .in('id', eligibleIds)
+      .overlaps('types', requiredTypes);
+    if (typedErr || !typedRows) return [];
+    const typedSet = new Set<string>(typedRows.map((r: any) => r.id));
+    eligibleIds = eligibleIds.filter((id: string) => typedSet.has(id));
+    if (eligibleIds.length === 0) return [];
+  }
 
   // Step 2: find their rank signal scores, ordered DESC
   const { data: rankRows, error: rankErr } = await supabaseAdmin
@@ -399,6 +424,20 @@ const COMBO_SLUG_TO_FILTER_SIGNAL: Record<string, string> = {
   'icebreakers': 'icebreakers',
   'flowers': 'flowers',
   'groceries': 'groceries',
+  // ORCH-0601 — sub-category slugs. These reuse an existing signal but add a
+  // required-types filter (see COMBO_SLUG_TYPE_FILTER below). Used by Adventurous
+  // to distinguish "hiking trails" (nature subset) vs generic nature parks, and
+  // "museum" (creative_arts subset) vs generic galleries/art classes.
+  'hiking': 'nature',
+  'museum': 'creative_arts',
+};
+
+// ORCH-0601 — Slugs that narrow a filter signal to a sub-category via types.
+// A place passes the filter iff it scores >= filter_min on the filter signal
+// AND its place_pool.types overlaps with this list.
+const COMBO_SLUG_TYPE_FILTER: Record<string, string[]> = {
+  hiking: ['hiking_area', 'state_park', 'nature_preserve', 'national_park', 'wildlife_refuge', 'scenic_spot'],
+  museum: ['museum', 'art_museum'],
 };
 
 // Mapping from experience type id → (combo slug → rank signal). When an experience
@@ -441,6 +480,27 @@ const EXPERIENCE_RANK_SIGNAL_OVERRIDE: Record<string, Record<string, string>> = 
     'casual_food': 'lively',
     'upscale_fine_dining': 'lively',
   },
+  'adventurous': {
+    // ORCH-0601 — Activity stops (play, hiking, theatre, creative_arts, museum)
+    // rank by their own chip signal (no override). Food stops rank by `lively` —
+    // after an adventurous outing, surface energetic restaurants over intimate ones.
+    'casual_food': 'lively',
+    'upscale_fine_dining': 'lively',
+  },
+  'take-a-stroll': {
+    // ORCH-0601 — Nature stop ranks by `scenic` (trails/greenways/gardens over
+    // playgrounds). Food stops rank by `icebreakers` — casual conversation-friendly
+    // spots for post-walk dining, not intense candlelit venues.
+    'nature': 'scenic',
+    'brunch': 'icebreakers',
+    'casual_food': 'icebreakers',
+    'upscale_fine_dining': 'icebreakers',
+  },
+  'picnic-dates': {
+    // ORCH-0601 — Picnic Spot ranks by `picnic_friendly` (tables/shelters/lawns
+    // over hiking-heavy preserves). Pullen/Lake Johnson/Shelley > Williamson Preserve.
+    'nature': 'picnic_friendly',
+  },
 };
 
 // Per-slug stop role label for dynamic role assignment (ORCH-0600). When a typeDef's
@@ -461,6 +521,8 @@ const SLUG_TO_STOP_ROLE: Record<string, string> = {
   flowers: 'Flowers',
   groceries: 'Groceries',
   icebreakers: 'Icebreaker',
+  hiking: 'Hike',       // ORCH-0601
+  museum: 'Museum',     // ORCH-0601
 };
 
 // Resolves stop role label. Opt-in: only typeDefs with role='auto' get slug-derived
@@ -637,17 +699,19 @@ async function generateCardsForType(
   // Pre-fetch places from place_pool for all categories in parallel
   const categoryPlaces: Record<string, any[]> = {};
 
-  // ORCH-0599.3: resolve per-experience signal-aware picker. If this experience
-  // type has overrides (e.g., Romantic ranks by `romantic` signal), use the
-  // new fetchSinglesForSignalRank. Else keep legacy fetchSinglesForCategory
-  // (rating-based shuffle) for backward compatibility with unmodified experiences.
+  // ORCH-0599.3 + 0601: resolve per-experience signal-aware picker. Signal-aware
+  // path is used when EITHER (a) this experience has a rank-signal override for
+  // this slug, OR (b) this slug has a required-types filter (hiking/museum).
+  // Otherwise fall back to legacy fetchSinglesForCategory (rating-based shuffle).
   const signalOverride = EXPERIENCE_RANK_SIGNAL_OVERRIDE[typeDef.id];
   const fetchForCombo = async (catId: string, fetchLat: number, fetchLng: number, fetchRadius: number, fetchLimit?: number): Promise<any[]> => {
-    if (signalOverride && signalOverride[catId]) {
-      const rankSignal = signalOverride[catId];
+    const rankOverride = signalOverride?.[catId];
+    const typeFilter = COMBO_SLUG_TYPE_FILTER[catId];
+    if (rankOverride || typeFilter) {
       const filterSignal = COMBO_SLUG_TO_FILTER_SIGNAL[catId] ?? catId;
       const filterMin = COMBO_SLUG_FILTER_MIN[catId] ?? 120;
-      return fetchSinglesForSignalRank(filterSignal, filterMin, rankSignal, fetchLat, fetchLng, fetchRadius, fetchLimit ?? 50);
+      const rankSignal = rankOverride ?? filterSignal;  // no override → rank by the filter signal itself
+      return fetchSinglesForSignalRank(filterSignal, filterMin, rankSignal, fetchLat, fetchLng, fetchRadius, fetchLimit ?? 50, typeFilter);
     }
     return fetchSinglesForCategory(catId, fetchLat, fetchLng, fetchRadius, fetchLimit ?? 50);
   };
