@@ -188,15 +188,18 @@ export default function HomePage({
     [onNotificationNavigate]
   );
 
-  // Coach mark refs (v2 spotlight — ref-based measurement, no styles)
-  // ORCH-0589 v2: gearRef removed — the header it targeted has been deleted entirely.
-  // coachPrefs + coachCollabPrefs hook calls retained for coach-mark index registration,
-  // but they no longer attach to a view. Coach-mark reauthoring (to target the new
-  // floating GlassIconButton) is a deferred follow-up per orchestrator prompt.
-  const coachDeck = useCoachMark(1, 0);
-  useCoachMark(2, 19);
-  const coachCardTap = useCoachMark(3, 0);
-  useCoachMark(5, 19);
+  // ORCH-0635: coach marks re-wired post-ORCH-0589 glass chrome refresh.
+  // Step 1: forwarded into SwipeableCards.cardContainer via coachDeckRef so the
+  //         cutout traces the actual card bounds. Radius 36 = cutout radius 40 =
+  //         glass.card.bezelRadius (40pt) — matches the iPhone-bezel card silhouette.
+  // Step 2: GlassTopBar Preferences button via coachPrefsRef.
+  // Steps 4/5: hooks live here (CollaborationSessions runs in modalsOnlyMode on Home
+  //            so its pill bar never mounts). Refs forwarded into GlassSessionSwitcher.
+  const coachDeck = useCoachMark(1, 36);
+  const coachPrefs = useCoachMark(2, 20);
+  // Step 4: create pill is 32pt circle. Cutout width = 32 + 2*4 = 40, radius = 20 = circle.
+  const coachCreate = useCoachMark(4, 16);
+  const coachSolo = useCoachMark(5, 18);
   // ORCH-0589 v2: sessionsOpacity + headerSlideAnim entrance animations removed —
   // the header they animated has been deleted; GlassTopBar owns its own enter motion.
 
@@ -211,6 +214,7 @@ export default function HomePage({
             Lives above everything else on the Swipe page (HomePage is currentPage === 'home'). */}
         <GlassTopBar
           visible
+          coachPrefsRef={coachPrefs.targetRef}
           onOpenPreferences={() => {
             if (currentMode === "solo") {
               onOpenPreferences();
@@ -228,6 +232,8 @@ export default function HomePage({
           sessionSwitcher={
             onSessionSelect && onSoloSelect ? (
               <GlassSessionSwitcher
+                coachSoloRef={coachSolo.targetRef}
+                coachCreateRef={coachCreate.targetRef}
                 items={[
                   { id: 'solo', label: 'Solo' },
                   ...collaborationSessions
@@ -306,10 +312,7 @@ export default function HomePage({
             />
           )}
 
-          <View
-            ref={(node: any) => { coachDeck.targetRef(node); coachCardTap.targetRef(node); }}
-            style={styles.deckWrapper}
-          >
+          <View style={styles.deckWrapper}>
           <SwipeableCards
             userPreferences={userPreferences}
             accountPreferences={accountPreferences}
@@ -327,6 +330,7 @@ export default function HomePage({
             onboardingData={onboardingData}
             refreshKey={refreshKey}
             savedCards={savedCards}
+            coachDeckRef={coachDeck.targetRef}
           />
           </View>
         </View>

@@ -178,6 +178,9 @@ const getDefaultPreferences = (): UserPreferences => ({
 interface SwipeableCardsProps {
   userPreferences?: any;
   currentMode?: string;
+  /** ORCH-0635: coach-mark target ref for step 1 (Meet your deck). Attached to
+   *  the cardContainer View so the cutout traces the actual card bounds. */
+  coachDeckRef?: (node: View | null) => void;
   // ORCH-0532: authoritative session list from AppStateManager. MUST be passed
   // from app/index.tsx via HomePage so SwipeableCards reads session state from
   // the SAME source as AppHandlers, eliminating dual-source divergence (V2 §6).
@@ -413,6 +416,7 @@ export default function SwipeableCards({
   onboardingData,
   refreshKey,
   savedCards = [],
+  coachDeckRef,
 }: SwipeableCardsProps) {
   const { t } = useTranslation(['cards', 'common']);
   // ORCH-0589 v4 (V4): safe-area insets used to position the "View Previous" batchChip
@@ -2098,7 +2102,7 @@ export default function SwipeableCards({
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
-        <View style={styles.cardContainer}>
+        <View ref={coachDeckRef} collapsable={false} style={styles.cardContainer}>
           {/* ORCH-0474: Pipeline-error toast — only when stale cards remain
               visible. Deck continues to render underneath so the user can keep
               swiping what they have while they retry. Dismissible via retry. */}

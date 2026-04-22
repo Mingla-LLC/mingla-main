@@ -3,6 +3,7 @@ import Feather from "@expo/vector-icons/Feather";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Platform,
   StatusBar,
   StyleSheet,
   Text,
@@ -47,6 +48,7 @@ import ShareModal from "../src/components/ShareModal";
 import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
 import { CoachMarkProvider, useCoachMarkContext } from "../src/contexts/CoachMarkContext";
+import { useCoachMark } from "../src/hooks/useCoachMark";
 import SpotlightOverlay from "../src/components/SpotlightOverlay";
 import { CustomPaywallScreen } from "../src/components/CustomPaywallScreen";
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
@@ -98,20 +100,37 @@ const TAB_BAR_ICON_SIZE = ms(20);
  *  ORCH-0589 v6 (U1) + v6.2 tune: paddingBottom: 6 — slim safety gap above the home
  *  indicator zone. v6 had 0 (flush); v6.1 tried 5px; v6.2 bumped to 6px for a touch more
  *  breathing room. `layout.bottomNavPadding` prop kept for rollback. */
-function CoachMarkNavigationGate({ layout: _layout, children }: { layout: any; children: React.ReactNode }) {
+function CoachMarkNavigationGate({ layout, children }: { layout: any; children: React.ReactNode }) {
   const { isCoachLoading, isCoachPending, isCoachActive } = useCoachMarkContext();
   const locked = isCoachLoading || isCoachPending || isCoachActive;
+  // ORCH-0610 fix: iOS overlaps the home-indicator zone for tight bezel-hugging;
+  // Android respects insets.bottom so the nav clears the system navigation panel
+  // (gesture bar or 3-button nav).
+  const navBottom = Platform.OS === 'android' ? layout.insets.bottom + 6 : 11;
   return (
     <View
       style={[
         styles.bottomNavigation,
-        { paddingBottom: 6 },
+        { bottom: navBottom, paddingBottom: 0 },
       ]}
       pointerEvents={locked ? 'none' : 'auto'}
     >
       {children}
     </View>
   );
+}
+
+/**
+ * ORCH-0635: GlassBottomNav wrapped with the step-3 (Likes tab) coach-mark hook.
+ * Must live UNDER CoachMarkProvider — AppContent itself runs OUTSIDE the provider
+ * because the provider is mounted inside AppContent's return JSX. This wrapper
+ * renders inside the provider's subtree so the hook resolves correctly.
+ */
+function GlassBottomNavWithCoach(
+  props: Omit<React.ComponentProps<typeof GlassBottomNav>, 'coachLikesRef'>,
+): React.ReactElement {
+  const coachLikes = useCoachMark(3, 12);
+  return <GlassBottomNav {...props} coachLikesRef={coachLikes.targetRef} />;
 }
 
 // ── Sentry ──────────────────────────────────────────────────────────────────
@@ -2273,15 +2292,27 @@ function AppContent() {
                 <ErrorBoundary>
                   <View style={styles.safeArea}>
                     <StatusBar
-                      barStyle={currentPage === "home" || currentPage === "discover" || currentPage === "connections" ? "light-content" : "dark-content"}
+                      barStyle={currentPage === "home" || currentPage === "discover" || currentPage === "connections" || currentPage === "likes" ? "light-content" : "dark-content"}
                       translucent={true}
                       backgroundColor="transparent"
                     />
                     <View style={styles.container}>
-                      {/* ORCH-0589 v2 (G3) + ORCH-0590 Phase 3 + ORCH-0600: Swipe, Profile, Discover,
-                          and Connections all render full-bleed — paddingTop 0 so the glass header
-                          extends under the status bar. Other pages keep the safe-area inset. */}
-                      <View style={[styles.mainContent, { paddingTop: (currentPage === "profile" || currentPage === "home" || currentPage === "discover" || currentPage === "connections") ? 0 : layout.insets.top }]}>
+                      {/* ORCH-0589 v2 (G3) + ORCH-0590 Phase 3 + ORCH-0600 + ORCH-0610: Swipe,
+                          Profile, Discover, Connections, and Likes all render full-bleed —
+                          paddingTop 0 so the glass header extends under the status bar.
+                          ORCH-0610 fix: Home is the only page that reserves bottom nav space
+                          — the swipe card sits ABOVE the nav (flush with screen bezels). Other
+                          pages keep paddingBottom: 0 so their content scrolls under the floating
+                          glass nav. */}
+                      <View
+                        style={[
+                          styles.mainContent,
+                          {
+                            paddingTop: (currentPage === "profile" || currentPage === "home" || currentPage === "discover" || currentPage === "connections" || currentPage === "likes") ? 0 : layout.insets.top,
+                            paddingBottom: currentPage === "home" ? layout.bottomNavContentHeight + (Platform.OS === 'android' ? layout.insets.bottom + 18 : 23) : 0,
+                          },
+                        ]}
+                      >
                         {/* Full-screen overlays render ON TOP of tabs */}
                         {viewingFriendProfileId ? (
                           <ViewFriendProfileScreen
@@ -2478,7 +2509,7 @@ function AppContent() {
                       {/* Bottom Navigation — ORCH-0589 floating glass capsule with orange spotlight. */}
                       <CoachMarkNavigationGate layout={layout}>
                         <View style={styles.glassNavWrapper}>
-                          <GlassBottomNav
+                          <GlassBottomNavWithCoach
                             currentPage={currentPage as BottomNavPage}
                             onNavigate={(page: BottomNavPage) => {
                               logger.action(`Tab pressed: ${page}`);

@@ -46,6 +46,10 @@ export type GlassSessionSwitcherProps = {
   onSelect: (id: string) => void;
   /** When provided, appends a "+" trailing pill that calls this on tap. */
   onCreate?: () => void;
+  /** ORCH-0635: coach-mark target ref for the Solo pill (step 5). */
+  coachSoloRef?: (node: View | null) => void;
+  /** ORCH-0635: coach-mark target ref for the "+" create pill (step 4). */
+  coachCreateRef?: (node: View | null) => void;
 };
 
 const isAndroidPreBlur = Platform.OS === 'android' && Platform.Version < 31;
@@ -55,6 +59,8 @@ export const GlassSessionSwitcher: React.FC<GlassSessionSwitcherProps> = ({
   activeId,
   onSelect,
   onCreate,
+  coachSoloRef,
+  coachCreateRef,
 }) => {
   const [reduceTransparency, setReduceTransparency] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -196,6 +202,7 @@ export const GlassSessionSwitcher: React.FC<GlassSessionSwitcherProps> = ({
             onLayout={(x, width) => handlePillLayout(item.id, x, width)}
             firstInRow={idx === 0}
             reduceMotion={reduceMotion}
+            coachRef={item.id === 'solo' ? coachSoloRef : undefined}
           />
         ))}
 
@@ -208,6 +215,7 @@ export const GlassSessionSwitcher: React.FC<GlassSessionSwitcherProps> = ({
               }
               onCreate();
             }}
+            coachRef={coachCreateRef}
           />
         ) : null}
       </ScrollView>
@@ -247,6 +255,8 @@ type SessionPillProps = {
   onLayout: (x: number, width: number) => void;
   firstInRow: boolean;
   reduceMotion: boolean;
+  /** ORCH-0635: optional coach-mark ref (attached to Solo pill only). */
+  coachRef?: (node: View | null) => void;
 };
 
 const SessionPill: React.FC<SessionPillProps> = ({
@@ -256,6 +266,7 @@ const SessionPill: React.FC<SessionPillProps> = ({
   onLayout,
   firstInRow,
   reduceMotion,
+  coachRef,
 }) => {
   const pulse = useRef(new Animated.Value(1)).current;
   const prevActiveRef = useRef<boolean>(active);
@@ -291,36 +302,40 @@ const SessionPill: React.FC<SessionPillProps> = ({
   ];
 
   return (
-    <Animated.View
-      style={[pillStyle, { transform: [{ scale: pulse }] }]}
-      onLayout={(e) => {
-        const { x, width } = e.nativeEvent.layout;
-        onLayout(x, width);
-      }}
-    >
-      {active ? (
-        <>
-          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.pillActiveFill]} />
-          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.pillActiveBorder]} />
-        </>
-      ) : null}
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`Switch to ${item.label}${active ? ', active' : ''}`}
-        accessibilityState={{ selected: active }}
-        style={styles.pillInner}
+    // ORCH-0635: outer coach-ref wrapper (static View) for measureInWindow stability.
+    // Animated.View can animate out of place; wrapping keeps the measurement target still.
+    <View ref={coachRef} collapsable={false}>
+      <Animated.View
+        style={[pillStyle, { transform: [{ scale: pulse }] }]}
+        onLayout={(e) => {
+          const { x, width } = e.nativeEvent.layout;
+          onLayout(x, width);
+        }}
       >
-        {/* ORCH-0589 v2 (G5): avatar removed — pills are label-only for a cleaner read. */}
-        <Text
-          style={[styles.pillLabel, active ? styles.pillLabelActive : styles.pillLabelInactive]}
-          numberOfLines={1}
-          ellipsizeMode="tail"
+        {active ? (
+          <>
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.pillActiveFill]} />
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.pillActiveBorder]} />
+          </>
+        ) : null}
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Switch to ${item.label}${active ? ', active' : ''}`}
+          accessibilityState={{ selected: active }}
+          style={styles.pillInner}
         >
-          {item.label}
-        </Text>
-      </Pressable>
-    </Animated.View>
+          {/* ORCH-0589 v2 (G5): avatar removed — pills are label-only for a cleaner read. */}
+          <Text
+            style={[styles.pillLabel, active ? styles.pillLabelActive : styles.pillLabelInactive]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {item.label}
+          </Text>
+        </Pressable>
+      </Animated.View>
+    </View>
   );
 };
 
@@ -328,7 +343,11 @@ const SessionPill: React.FC<SessionPillProps> = ({
 // Create pill ("+")
 // ──────────────────────────────────────────────────────────
 
-const CreatePill: React.FC<{ onPress: () => void }> = ({ onPress }) => {
+const CreatePill: React.FC<{
+  onPress: () => void;
+  /** ORCH-0635: optional coach-mark ref (step 4, "Better together"). */
+  coachRef?: (node: View | null) => void;
+}> = ({ onPress, coachRef }) => {
   const scale = useRef(new Animated.Value(1)).current;
 
   const pressIn = (): void => {
@@ -347,20 +366,29 @@ const CreatePill: React.FC<{ onPress: () => void }> = ({ onPress }) => {
   };
 
   return (
-    <Animated.View
-      style={[styles.createPill, { transform: [{ scale }] }]}
+    // ORCH-0635 rework: outer wrapper owns the left-gap margin so the coach-ref
+    // bounds match just the 32pt circular pill (not the preceding gap). The inner
+    // Animated.View gets an override marginLeft:0 to avoid double-spacing.
+    <View
+      ref={coachRef}
+      collapsable={false}
+      style={{ marginLeft: glass.chrome.switcher.createPillGap }}
     >
-      <Pressable
-        onPress={onPress}
-        onPressIn={pressIn}
-        onPressOut={pressOut}
-        accessibilityRole="button"
-        accessibilityLabel="Create new session"
-        style={styles.createPillInner}
+      <Animated.View
+        style={[styles.createPill, { marginLeft: 0, transform: [{ scale }] }]}
       >
-        <Icon name="add" size={18} color={c.inactive.iconColorStrong} />
-      </Pressable>
-    </Animated.View>
+        <Pressable
+          onPress={onPress}
+          onPressIn={pressIn}
+          onPressOut={pressOut}
+          accessibilityRole="button"
+          accessibilityLabel="Create new session"
+          style={styles.createPillInner}
+        >
+          <Icon name="add" size={18} color={c.inactive.iconColorStrong} />
+        </Pressable>
+      </Animated.View>
+    </View>
   );
 };
 

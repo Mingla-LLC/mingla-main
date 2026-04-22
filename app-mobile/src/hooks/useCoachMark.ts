@@ -50,5 +50,21 @@ export function useCoachMark(stepId: number, targetRadius: number = 8): UseCoach
     }
   }, [isActive, measure]);
 
+  // ORCH-0635: dev-time warning when a step's targetRef is never attached.
+  // Catches refactor-orphan regressions at dev time instead of in production.
+  useEffect(() => {
+    if (!__DEV__) return;
+    const t = setTimeout(() => {
+      if (!nodeRef.current) {
+        console.warn(
+          `[CoachMark] Step ${stepId} targetRef never attached — coach mark will ` +
+          `show centered-bubble fallback. Did a refactor orphan this step's target ` +
+          `element?`,
+        );
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [stepId]);
+
   return { isActive, targetRef };
 }

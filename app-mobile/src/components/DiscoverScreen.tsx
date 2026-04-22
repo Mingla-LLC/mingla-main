@@ -693,7 +693,9 @@ export default function DiscoverScreen({
 }: DiscoverScreenProps): React.ReactElement {
   const { t } = useTranslation(["discover", "common"]);
   const insets = useSafeAreaInsets();
-  const coachDiscoverFeed = useCoachMark(7, 0);
+  // ORCH-0635 (rework): step 6 target is the header panel (title + filter bar).
+  // targetRadius 24 → cutout radius 28 matches HEADER_PANEL_RADIUS for a neat fit.
+  const coachDiscoverFeed = useCoachMark(6, 24);
 
   // Accessibility state (mirrors home chrome pattern)
   const [reduceTransparency, setReduceTransparency] = useState(false);
@@ -1143,9 +1145,11 @@ export default function DiscoverScreen({
     <View style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
 
-      {/* Floating blurred header panel — one glass surface covering status bar,
-          title region, and filter bar. Rounded bottom corners trace the screen edges. */}
+      {/* ORCH-0635 (rework): coach-mark step 6 target — the header panel itself
+          (title + filter bar). Bubble renders centered via bubblePosition='center'. */}
       <View
+        ref={coachDiscoverFeed.targetRef}
+        collapsable={false}
         pointerEvents="box-none"
         style={[
           styles.headerPanel,
@@ -1262,7 +1266,6 @@ export default function DiscoverScreen({
               onPress={handleOpenFilterModal}
               reduceMotion={reduceMotion}
               reduceTransparency={reduceTransparency}
-              chipRef={coachDiscoverFeed.targetRef}
             />
           </View>
         </View>

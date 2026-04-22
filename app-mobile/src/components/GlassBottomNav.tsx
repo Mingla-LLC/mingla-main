@@ -57,6 +57,8 @@ export type GlassBottomNavProps = {
   labels: Record<BottomNavPage, string>;
   /** Unread count badges per tab (only connections + likes today). */
   badges?: Partial<Record<BottomNavPage, number>>;
+  /** ORCH-0635: coach-mark target ref for the Likes tab (step 3). */
+  coachLikesRef?: (node: View | null) => void;
 };
 
 const isAndroidPreBlur = Platform.OS === 'android' && Platform.Version < 31;
@@ -76,6 +78,7 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
   onNavigate,
   labels,
   badges,
+  coachLikesRef,
 }) => {
   const [reduceTransparency, setReduceTransparency] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -220,6 +223,7 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
           return (
             <Pressable
               key={key}
+              ref={key === 'likes' ? (coachLikesRef as React.Ref<View>) : undefined}
               onPress={() => {
                 if (active) return;
                 if (Platform.OS === 'ios') {
@@ -269,7 +273,9 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    height: glass.chrome.nav.capsuleHeight,
+    // ORCH-0610 fix: Android nav is 3pt shorter than iOS for tighter fit above
+    // the system navigation panel.
+    height: glass.chrome.nav.capsuleHeight - (Platform.OS === 'android' ? 3 : 0),
     borderRadius: glass.chrome.nav.radius,
     borderWidth: 1,
     borderColor: glass.chrome.border.hairline,

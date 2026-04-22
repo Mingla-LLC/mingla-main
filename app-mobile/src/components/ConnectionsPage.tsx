@@ -298,7 +298,8 @@ export default function ConnectionsPageRefactored({
 }: ConnectionsPageProps) {
   useScreenLogger('connections');
   const { t } = useTranslation(['connections', 'common']);
-  const coachChatHeader = useCoachMark(8, 0);
+  // ORCH-0635: step ID 8 → 7 (old step 5 dropped → renumber).
+  const coachChatHeader = useCoachMark(7, 0);
   const user = useAppStore((state) => state.user);
   const { bottomNavTotalHeight } = useAppLayout();
   const { height: screenHeight } = useWindowDimensions();

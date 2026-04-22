@@ -120,13 +120,14 @@ export default function ProfilePage({
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showBillingSheet, setShowBillingSheet] = useState(false);
-  // Coach mark: register scroll ref + measure target positions for steps 11-12
+  // ORCH-0635: coach-mark scroll-offset steps on Profile — step 8 (Account Settings
+  // row) + step 9 (Beta Feedback button). Step 9 was re-added after device feedback.
   const scrollRef = useRef<any>(null);
   const contentRef = useRef<View>(null);
   const accountSettingsRef = useRef<View>(null);
   const feedbackButtonRef = useRef<View>(null);
   const { currentStep, registerScrollRef, registerTargetScrollOffset, scrollLockActive } = useCoachMarkContext();
-  const isScrollStep = currentStep === 9 || currentStep === 10;
+  const isScrollStep = currentStep === 8 || currentStep === 9;
   const coachScrollPadding = isScrollStep ? Dimensions.get('window').height * 0.65 : 0;
 
   useEffect(() => {
@@ -135,28 +136,28 @@ export default function ProfilePage({
     }
   }, [registerScrollRef]);
 
-  // Use measureLayout to get exact positions relative to scroll content root
+  // ORCH-0635: measureLayout for both Profile scroll-offset targets —
+  // step 8 (Account Settings row) and step 9 (Beta Feedback button).
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (contentRef.current) {
-        if (accountSettingsRef.current) {
-          (accountSettingsRef.current as any).measureLayout(
-            contentRef.current,
-            (x: number, y: number, width: number, height: number) => {
-              registerTargetScrollOffset(9, x, y, width, height);
-            },
-            () => console.warn('[CoachMark] measureLayout failed for step 11'),
-          );
-        }
-        if (feedbackButtonRef.current) {
-          (feedbackButtonRef.current as any).measureLayout(
-            contentRef.current,
-            (x: number, y: number, width: number, height: number) => {
-              registerTargetScrollOffset(10, x, y, width, height);
-            },
-            () => console.warn('[CoachMark] measureLayout failed for step 12'),
-          );
-        }
+      if (!contentRef.current) return;
+      if (accountSettingsRef.current) {
+        (accountSettingsRef.current as any).measureLayout(
+          contentRef.current,
+          (x: number, y: number, width: number, height: number) => {
+            registerTargetScrollOffset(8, x, y, width, height);
+          },
+          () => console.warn('[CoachMark] measureLayout failed for step 8'),
+        );
+      }
+      if (feedbackButtonRef.current) {
+        (feedbackButtonRef.current as any).measureLayout(
+          contentRef.current,
+          (x: number, y: number, width: number, height: number) => {
+            registerTargetScrollOffset(9, x, y, width, height);
+          },
+          () => console.warn('[CoachMark] measureLayout failed for step 9'),
+        );
       }
     }, 800);
     return () => clearTimeout(timer);

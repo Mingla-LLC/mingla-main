@@ -37,6 +37,8 @@ export type GlassTopBarProps = {
   sessionSwitcher: React.ReactNode;
   preferencesActive?: boolean;
   notificationsActive?: boolean;
+  /** ORCH-0635: coach-mark target ref for the Preferences button (step 2). */
+  coachPrefsRef?: (node: View | null) => void;
 };
 
 export const GlassTopBar: React.FC<GlassTopBarProps> = ({
@@ -47,6 +49,7 @@ export const GlassTopBar: React.FC<GlassTopBarProps> = ({
   sessionSwitcher,
   preferencesActive = false,
   notificationsActive = false,
+  coachPrefsRef,
 }) => {
   const insets = useSafeAreaInsets();
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -215,12 +218,16 @@ export const GlassTopBar: React.FC<GlassTopBarProps> = ({
         ]}
       >
         <View style={styles.row} pointerEvents="box-none">
-          <GlassIconButton
-            iconName="options-outline"
-            onPress={onOpenPreferences}
-            active={preferencesActive}
-            accessibilityLabel="Preferences"
-          />
+          {/* ORCH-0635: coach-mark target wrapper for step 2 (Your taste, your rules).
+              Transparent View; GlassIconButton renders identically inside. */}
+          <View ref={coachPrefsRef} collapsable={false}>
+            <GlassIconButton
+              iconName="options-outline"
+              onPress={onOpenPreferences}
+              active={preferencesActive}
+              accessibilityLabel="Preferences"
+            />
+          </View>
           <View style={styles.center} pointerEvents="box-none">
             {sessionSwitcher}
           </View>

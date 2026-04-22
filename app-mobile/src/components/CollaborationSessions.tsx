@@ -144,8 +144,11 @@ export default function CollaborationSessions({
   const { showToast } = useToast();
   const scrollViewRef = useRef<ScrollView>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
-  const coachCreate = useCoachMark(4, 20);
-  const coachSolo = useCoachMark(6, 20);
+  // ORCH-0635 fix: coach-mark hooks for steps 4 (create pill) and 5 (solo pill) were
+  // moved to HomePage.tsx and forwarded through GlassSessionSwitcher. This component
+  // runs in `modalsOnlyMode` on Home, so its internal pill bar never mounts — the
+  // refs here never attached. Hooks removed to prevent duplicate step-ID registration
+  // and spurious __DEV__ warnings.
   const [showRightArrow, setShowRightArrow] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -219,8 +222,11 @@ export default function CollaborationSessions({
   const { canCreateSession: gateAllows, maxSessions, isUnlimited } = useSessionCreationGate();
 
   // ORCH-0589 — open the create-session modal when the host signals via nonce change.
+  // ORCH-0610 fix: the initial nonce from HomePage is 0 (not null), so the previous
+  // `== null` guard let mount through and opened the modal on cold start. Reject any
+  // falsy nonce (null / undefined / 0) — only positive nonces indicate a real trigger.
   useEffect(() => {
-    if (createTriggerNonce == null) return;
+    if (!createTriggerNonce) return;
     if (lastCreateTriggerRef.current === createTriggerNonce) return;
     lastCreateTriggerRef.current = createTriggerNonce;
     HapticFeedback.buttonPress();
@@ -599,7 +605,6 @@ export default function CollaborationSessions({
       {/* Fixed pills */}
       <View collapsable={false}>
         <TouchableOpacity
-          ref={coachSolo.targetRef as any}
           style={[styles.pill, isSoloMode && styles.soloPill]}
           onPress={() => {
             onSoloSelect();
@@ -617,7 +622,6 @@ export default function CollaborationSessions({
 
       <View collapsable={false}>
         <TouchableOpacity
-          ref={coachCreate.targetRef as any}
           style={[styles.pill, styles.createPill]}
           onPress={() => {
             HapticFeedback.buttonPress();

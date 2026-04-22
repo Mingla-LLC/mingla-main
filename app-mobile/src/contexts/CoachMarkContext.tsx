@@ -52,14 +52,15 @@ const CoachMarkContext = createContext<CoachMarkContextType | undefined>(undefin
 
 const LOADING_SENTINEL = -2;
 const TOUR_NOT_STARTED = 0;
-const TOUR_COMPLETED = 11;
+// ORCH-0635: tour shrank from 10 to 8 steps. TOUR_COMPLETED is COACH_STEP_COUNT + 1.
+const TOUR_COMPLETED = COACH_STEP_COUNT + 1;
 const TOUR_SKIPPED = -1;
 const START_DELAY_MS = 1500;
 const TAB_NAVIGATE_DELAY_MS = 400;
 const SCROLL_SETTLE_MS = 500;
 
-// Steps that need known-position scrolling (inside a ScrollView on profile tab)
-const SCROLL_STEPS = new Set([9, 10]);
+// ORCH-0635: scroll-offset steps on Profile — Account Settings row (8) + Beta Feedback (9).
+const SCROLL_STEPS = new Set([8, 9]);
 
 // ── Provider ────────────────────────────────────────────────────────────────
 
@@ -102,8 +103,35 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
           setCurrentStep(TOUR_COMPLETED);
           return;
         }
-        const step = data?.coach_mark_step ?? TOUR_NOT_STARTED;
-        setCurrentStep(step);
+        const fetchedStep = data?.coach_mark_step ?? TOUR_NOT_STARTED;
+
+        // ORCH-0635: normalize old-tour values (1..10, old sentinel 11) to new
+        // TOUR_COMPLETED (= COACH_STEP_COUNT + 1 = 9). Users mid-old-tour do NOT
+        // get re-run through the new tour — they already had their first-run moment.
+        // Idempotent: after the first write, fetchedStep === TOUR_COMPLETED and no
+        // further writes fire.
+        let normalizedStep: number;
+        if (
+          fetchedStep !== TOUR_NOT_STARTED &&
+          fetchedStep !== TOUR_SKIPPED &&
+          fetchedStep !== TOUR_COMPLETED &&
+          fetchedStep >= 1
+        ) {
+          normalizedStep = TOUR_COMPLETED;
+          supabase
+            .from('profiles')
+            .update({ coach_mark_step: TOUR_COMPLETED })
+            .eq('id', user!.id)
+            .then(({ error: updateError }) => {
+              if (updateError) {
+                console.warn('[CoachMark] Failed to normalize legacy step:', updateError.message);
+              }
+            });
+        } else {
+          normalizedStep = fetchedStep;
+        }
+
+        setCurrentStep(normalizedStep);
       } catch (e) {
         console.warn('[CoachMark] Unexpected error fetching step:', e);
         if (!cancelled) setCurrentStep(TOUR_COMPLETED);
@@ -144,7 +172,6 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
           step_id: String(config.id),
           step_title: config.title,
           tab: config.tab,
-          target_id: config.targetId,
         });
         // Start tour timer on first step
         if (config.id === 1) {
@@ -152,7 +179,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
         }
       }
 
-      // Steps 11-12: known-position scroll approach
+      // ORCH-0635: scroll-offset step (Profile Account Settings row)
       if (SCROLL_STEPS.has(currentStep)) {
         scrollToKnownPosition(currentStep);
         return;
