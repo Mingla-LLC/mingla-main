@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { Icon } from '../ui/Icon';
 import Toggle from './Toggle';
+import { glass } from '../../constants/designSystem';
 
 interface SettingsRowProps {
   label: string;
@@ -45,7 +46,7 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
     <View style={[styles.row, !isLast && styles.rowBorder]}>
       {icon && (
         <View style={styles.iconContainer}>
-          <Icon name={icon} size={20} color="#6b7280" />
+          <Icon name={icon} size={glass.profile.settingsRow.iconSize} color={glass.profile.settingsRow.iconColor} />
         </View>
       )}
       <View style={styles.labelContainer}>
@@ -59,11 +60,11 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
       {value != null && (
         <View style={styles.valueRow}>
           <Text style={styles.value}>{value}</Text>
-          <Icon name="chevron-forward" size={16} color="#9ca3af" />
+          <Icon name="chevron-forward" size={glass.profile.settingsRow.chevronSize} color={glass.profile.settingsRow.chevronColor} />
         </View>
       )}
       {showChevron && !value && (
-        <Icon name="chevron-forward" size={16} color="#9ca3af" />
+        <Icon name="chevron-forward" size={glass.profile.settingsRow.chevronSize} color={glass.profile.settingsRow.chevronColor} />
       )}
     </View>
   );
@@ -83,17 +84,19 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: glass.profile.settingsRow.verticalPadding,
   },
   rowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: glass.profile.settingsRow.rowDivider,
   },
   iconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#f3f4f6',
+    width: glass.profile.settingsRow.iconCircleSize,
+    height: glass.profile.settingsRow.iconCircleSize,
+    borderRadius: glass.profile.settingsRow.iconCircleRadius,
+    backgroundColor: glass.profile.settingsRow.iconCircleBg,
+    borderWidth: 1,
+    borderColor: glass.profile.settingsRow.iconCircleBorder,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -104,19 +107,19 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#111827',
+    color: '#ffffff',
   },
   labelBold: {
     fontWeight: '600',
   },
   hint: {
     fontSize: 12,
-    color: '#6b7280',
+    color: 'rgba(255, 255, 255, 0.55)',
     marginTop: 2,
   },
   description: {
     fontSize: 13,
-    color: '#6b7280',
+    color: 'rgba(255, 255, 255, 0.55)',
     marginTop: 2,
   },
   valueRow: {

@@ -1,9 +1,24 @@
+/**
+ * ProfileStatsRow — ORCH-0627 glass bento restructure.
+ *
+ * Layout (top → bottom):
+ *   1. Level hero row: 96pt progress ring + tier badge + "X to next tier" context
+ *   2. 2×2 tile grid: Saved | Scheduled / Friends | Streak
+ *   3. Motivation text (own-profile only, contextual)
+ *
+ * Places Visited is not a separate tile — it drives the tier context line inside
+ * the Level hero row (spec §4.3).
+ *
+ * Tokens: designSystem.ts → glass.profile.statTile / .levelRing / .tierBadge
+ * Spec:   DESIGN_ORCH-0627_PROFILE_GLASS_REFRESH_SPEC.md §4.3
+ */
 import React, { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
-import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
-import { Icon } from '../ui/Icon';
+import { View, Text, StyleSheet, Animated, Easing, Pressable } from 'react-native';
+import { Icon, type IconName } from '../ui/Icon';
 import Svg, { Circle } from 'react-native-svg';
+import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
+import { glass } from '../../constants/designSystem';
 
 // --- Types ---
 
@@ -40,23 +55,30 @@ const getNextTier = (places: number): { name: string; remaining: number } | null
       return { name: tier.name, remaining: tier.min - places };
     }
   }
-  return null; // Already at max tier
+  return null;
 };
 
-// --- Animated number hook ---
+// --- Animated count hook (short-circuits on target === 0) ---
 
-const useAnimatedCount = (target: number, duration = 600) => {
+const useAnimatedCount = (target: number, duration: number = glass.profile.motion.countUpMs): number => {
   const animValue = useRef(new Animated.Value(0)).current;
-  const displayRef = useRef(0);
-  const [, forceUpdate] = React.useState(0);
+  const displayRef = useRef<number>(0);
+  const [, forceUpdate] = React.useState<number>(0);
 
   useEffect(() => {
+    // ORCH-0627 — short-circuit when target is 0 (no animation needed, saves a frame)
+    if (target === 0) {
+      displayRef.current = 0;
+      forceUpdate((n) => n + 1);
+      return;
+    }
+
     animValue.setValue(0);
-    const listener = animValue.addListener(({ value }) => {
+    const listener = animValue.addListener(({ value }: { value: number }) => {
       const newVal = Math.round(value);
       if (newVal !== displayRef.current) {
         displayRef.current = newVal;
-        forceUpdate(n => n + 1);
+        forceUpdate((n) => n + 1);
       }
     });
     Animated.timing(animValue, {
@@ -66,32 +88,29 @@ const useAnimatedCount = (target: number, duration = 600) => {
       useNativeDriver: false,
     }).start();
     return () => animValue.removeListener(listener);
-  }, [target]);
+  }, [target, duration, animValue]);
 
   return displayRef.current;
 };
 
-// --- Circular progress component ---
+// --- Progress ring (96pt) ---
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-const ProgressRing: React.FC<{ progress: number; size?: number; strokeWidth?: number }> = ({
-  progress,
-  size = 36,
-  strokeWidth = 3,
-}) => {
+const ProgressRing: React.FC<{ progress: number }> = ({ progress }) => {
+  const r = glass.profile.levelRing;
   const animProgress = useRef(new Animated.Value(0)).current;
-  const radius = (size - strokeWidth) / 2;
+  const radius = (r.size - r.strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
   useEffect(() => {
     Animated.timing(animProgress, {
       toValue: progress,
-      duration: 800,
+      duration: r.animationMs,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
-  }, [progress]);
+  }, [progress, animProgress, r.animationMs]);
 
   const strokeDashoffset = animProgress.interpolate({
     inputRange: [0, 1],
@@ -99,21 +118,21 @@ const ProgressRing: React.FC<{ progress: number; size?: number; strokeWidth?: nu
   });
 
   return (
-    <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+    <Svg width={r.size} height={r.size} style={{ transform: [{ rotate: '-90deg' }] }}>
       <Circle
-        cx={size / 2}
-        cy={size / 2}
+        cx={r.size / 2}
+        cy={r.size / 2}
         r={radius}
-        stroke="#f3f4f6"
-        strokeWidth={strokeWidth}
+        stroke={r.trackColor}
+        strokeWidth={r.strokeWidth}
         fill="transparent"
       />
       <AnimatedCircle
-        cx={size / 2}
-        cy={size / 2}
+        cx={r.size / 2}
+        cy={r.size / 2}
         r={radius}
-        stroke="#f59e0b"
-        strokeWidth={strokeWidth}
+        stroke={r.fillColor}
+        strokeWidth={r.strokeWidth}
         fill="transparent"
         strokeDasharray={`${circumference}`}
         strokeDashoffset={strokeDashoffset}
@@ -123,55 +142,104 @@ const ProgressRing: React.FC<{ progress: number; size?: number; strokeWidth?: nu
   );
 };
 
-// --- Stat column for top row ---
+// --- Stat tile (bento grid cell) ---
 
-interface StatColumnProps {
-  icon: string;
+interface StatTileProps {
+  icon: IconName;
   iconColor: string;
-  iconBg: string;
   count: number;
   label: string;
   statKey: 'saved' | 'scheduled' | 'connections';
-  highlightColor?: string;
   onPress?: (stat: 'saved' | 'scheduled' | 'connections') => void;
+  /** If true, render the small flame-pulse glow (used by streak tile) */
+  pulseGlow?: boolean;
+  /** Suffix appended to the numeric count (e.g. "d" for streak days) */
+  suffix?: string;
 }
 
-const StatColumn: React.FC<StatColumnProps> = ({
-  icon, iconColor, iconBg, count, label, statKey, highlightColor, onPress,
+const StatTile: React.FC<StatTileProps> = ({
+  icon,
+  iconColor,
+  count,
+  label,
+  statKey,
+  onPress,
+  pulseGlow,
+  suffix,
 }) => {
   const displayCount = useAnimatedCount(count);
 
+  // Flame glow pulse for streak > 0
+  const glowOpacity = useRef(new Animated.Value(pulseGlow ? 0.6 : 0)).current;
+  useEffect(() => {
+    if (!pulseGlow) {
+      glowOpacity.setValue(0);
+      return;
+    }
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowOpacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(glowOpacity, { toValue: 0.6, duration: 1000, useNativeDriver: true }),
+      ]),
+    ).start();
+  }, [pulseGlow, glowOpacity]);
+
+  // Press scale
+  const pressScale = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    if (!onPress) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    Animated.timing(pressScale, {
+      toValue: glass.profile.statTile.pressScale,
+      duration: glass.profile.statTile.pressDurationMs,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+  };
+  const handlePressOut = () => {
+    Animated.timing(pressScale, {
+      toValue: 1,
+      duration: glass.profile.statTile.pressDurationMs,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+  };
+
   const content = (
-    <View style={styles.statItem}>
-      <View style={[styles.statIconCircle, { backgroundColor: iconBg }]}>
-        <Icon name={icon} size={14} color={iconColor} />
+    <Animated.View style={[styles.tile, { transform: [{ scale: pressScale }] }]}>
+      <View style={styles.tileIconCircle}>
+        {pulseGlow && (
+          <Animated.View style={[styles.tileIconGlow, { opacity: glowOpacity }]} />
+        )}
+        <Icon name={icon} size={glass.profile.statTile.iconSize} color={iconColor} />
       </View>
-      <Text style={[
-        styles.statNumber,
-        count > 0 && highlightColor ? { color: highlightColor } : null,
-        count === 0 ? styles.statNumberZero : null,
-      ]}>
-        {displayCount}
-      </Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
+      <View style={styles.tileValueRow}>
+        <Text style={count > 0 ? styles.tileValue : styles.tileValueZero}>
+          {displayCount}
+        </Text>
+        {suffix ? (
+          <Text style={styles.tileSuffix}>{suffix}</Text>
+        ) : null}
+      </View>
+      <Text style={styles.tileLabel}>{label}</Text>
+    </Animated.View>
   );
 
   if (onPress) {
     return (
-      <TrackedTouchableOpacity
-        logComponent="ProfileStatsRow"
-        style={styles.statFlex}
+      <Pressable
+        style={styles.tileFlex}
         onPress={() => onPress(statKey)}
-        activeOpacity={0.7}
-        accessibilityLabel={`${count} ${label}. Double tap to view.`}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        accessibilityLabel={`${count} ${label}. Double-tap to view.`}
         accessibilityRole="button"
       >
         {content}
-      </TrackedTouchableOpacity>
+      </Pressable>
     );
   }
-  return <View style={styles.statFlex}>{content}</View>;
+  return <View style={styles.tileFlex}>{content}</View>;
 };
 
 // --- Main component ---
@@ -190,23 +258,7 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
   const nextTier = getNextTier(placesVisited);
   const tierName = getTierName(placesVisited);
 
-  // Streak flame glow animation
-  const glowOpacity = useRef(new Animated.Value(0.6)).current;
-  useEffect(() => {
-    if (streakDays > 0) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(glowOpacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
-          Animated.timing(glowOpacity, { toValue: 0.6, duration: 1000, useNativeDriver: true }),
-        ])
-      ).start();
-    }
-  }, [streakDays]);
-
-  const visitedDisplay = useAnimatedCount(placesVisited);
-  const streakDisplay = useAnimatedCount(streakDays);
-
-  // Motivational text — only shown on own profile (onStatPress is the implicit signal)
+  // Motivational text — shown on own profile only (onStatPress is the implicit signal)
   let motivationText = '';
   if (onStatPress) {
     if (placesVisited === 0 && streakDays === 0) {
@@ -222,152 +274,203 @@ const ProfileStatsRow: React.FC<ProfileStatsRowProps> = ({
     }
   }
 
+  // Tier context line (right of level ring)
+  let tierContext: string;
+  if (nextTier) {
+    tierContext = nextTier.remaining === 1
+      ? t('profile:stats.tier_context_one', { tier: nextTier.name })
+      : t('profile:stats.tier_context_plural', { count: nextTier.remaining, tier: nextTier.name });
+  } else {
+    tierContext = t('profile:stats.tier_context_max');
+  }
+
   return (
-    <View style={styles.container}>
-      {/* Top row: Original 3 stats */}
-      <View style={styles.topRow}>
-        <StatColumn
-          icon="bookmark" iconColor="#eb7825" iconBg="#fff7ed"
-          count={savedCount} label={t('profile:stats.saved')} statKey="saved"
-          highlightColor="#eb7825" onPress={onStatPress}
-        />
-        <View style={styles.divider} />
-        <StatColumn
-          icon="calendar" iconColor="#3b82f6" iconBg="#eff6ff"
-          count={scheduledCount} label={t('profile:stats.scheduled')} statKey="scheduled"
-          onPress={onStatPress}
-        />
-        <View style={styles.divider} />
-        <StatColumn
-          icon="people" iconColor="#22c55e" iconBg="#f0fdf4"
-          count={connectionsCount} label={t('profile:stats.friends')} statKey="connections"
-          onPress={onStatPress}
-        />
-      </View>
-
-      {/* Bottom row: Gamified cards */}
-      <View style={styles.bottomRow}>
-        {/* Places Visited */}
-        <View style={styles.gamifiedCard}>
-          <Icon name="location" size={18} color="#eb7825" />
-          <Text style={[styles.gamifiedNumber, placesVisited === 0 && styles.gamifiedNumberZero]}>
-            {visitedDisplay}
-          </Text>
-          <Text style={styles.gamifiedLabel}>{t('profile:stats.places')}</Text>
-        </View>
-
-        {/* Streak */}
-        <View style={styles.gamifiedCard}>
-          <View style={styles.streakIconWrap}>
-            {streakDays > 0 && (
-              <Animated.View style={[styles.streakGlow, { opacity: glowOpacity }]} />
-            )}
-            <Icon name="flame" size={18} color="#f97316" />
-          </View>
-          <View style={styles.streakRow}>
-            <Text style={[styles.gamifiedNumber, streakDays === 0 && styles.gamifiedNumberZero]}>
-              {streakDisplay}
-            </Text>
-            <Text style={styles.streakSuffix}>d</Text>
-          </View>
-          <Text style={styles.gamifiedLabel}>{t('profile:stats.streak')}</Text>
-        </View>
-
-        {/* Level */}
-        <View style={styles.gamifiedCard}>
-          <Icon name="trophy" size={18} color="#f59e0b" />
-          <View style={styles.levelRingWrap}>
-            <ProgressRing progress={levelProgress} />
+    <View>
+      {/* Level hero row: ring + tier + context */}
+      <View style={styles.levelRow}>
+        <View style={styles.levelRingWrap}>
+          <ProgressRing progress={levelProgress} />
+          <View style={styles.levelNumberAbsolute} pointerEvents="none">
             <Text style={styles.levelNumber}>{level}</Text>
           </View>
-          <Text style={styles.gamifiedLabel}>{t('profile:stats.level')}</Text>
+        </View>
+        <View style={styles.levelRightCol}>
+          <View style={styles.tierBadge}>
+            <Icon
+              name="shield-checkmark"
+              size={glass.profile.tierBadge.iconSize}
+              color={glass.profile.tierBadge.iconColor}
+            />
+            <Text style={styles.tierLabel}>{tierName}</Text>
+          </View>
+          <Text style={styles.tierContext}>{tierContext}</Text>
+          {motivationText ? (
+            <Text style={styles.motivationText} numberOfLines={2}>{motivationText}</Text>
+          ) : null}
         </View>
       </View>
 
-      {/* Tier badge */}
-      <View style={styles.tierRow}>
-        <View style={styles.tierBadge}>
-          <Icon name="shield-checkmark" size={12} color="#f59e0b" />
-          <Text style={styles.tierText}>{tierName}</Text>
-        </View>
+      {/* 2×2 bento tile grid */}
+      <View style={styles.bentoRow}>
+        <StatTile
+          icon="bookmark"
+          iconColor={glass.profile.statTile.iconColorSaved}
+          count={savedCount}
+          label={t('profile:stats.saved')}
+          statKey="saved"
+          onPress={onStatPress}
+        />
+        <StatTile
+          icon="calendar"
+          iconColor={glass.profile.statTile.iconColorScheduled}
+          count={scheduledCount}
+          label={t('profile:stats.scheduled')}
+          statKey="scheduled"
+          onPress={onStatPress}
+        />
       </View>
-
-      {/* Motivational text */}
-      {motivationText ? (
-        <Text style={styles.motivationText}>{motivationText}</Text>
-      ) : null}
+      <View style={[styles.bentoRow, styles.bentoRowSpacing]}>
+        <StatTile
+          icon="people"
+          iconColor={glass.profile.statTile.iconColorFriends}
+          count={connectionsCount}
+          label={t('profile:stats.friends')}
+          statKey="connections"
+          onPress={onStatPress}
+        />
+        <StatTile
+          icon="flame"
+          iconColor={glass.profile.statTile.iconColorStreak}
+          count={streakDays}
+          label={t('profile:stats.streak')}
+          statKey="connections"
+          pulseGlow={streakDays > 0}
+          suffix="d"
+        />
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { paddingHorizontal: 24 },
-  // Top row
-  topRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#ffffff', borderRadius: 16,
-    borderWidth: 1, borderColor: '#f3f4f6',
-    paddingVertical: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 3, elevation: 2,
+  // Level hero row
+  levelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 14,
   },
-  statFlex: { flex: 1 },
-  statItem: { alignItems: 'center' },
-  statIconCircle: {
-    width: 28, height: 28, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  statNumber: { fontSize: 22, fontWeight: '800', color: '#111827', marginTop: 6 },
-  statNumberZero: { color: '#d1d5db' },
-  statLabel: {
-    fontSize: 11, fontWeight: '600', color: '#9ca3af',
-    textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2,
-  },
-  divider: { width: 1, height: 40, backgroundColor: '#f3f4f6' },
-  // Bottom row
-  bottomRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  gamifiedCard: {
-    flex: 1, backgroundColor: '#ffffff', borderRadius: 12,
-    borderWidth: 1, borderColor: '#f3f4f6',
-    paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 2, elevation: 1,
-  },
-  gamifiedNumber: { fontSize: 24, fontWeight: '800', color: '#111827', marginTop: 4 },
-  gamifiedNumberZero: { color: '#d1d5db' },
-  gamifiedLabel: {
-    fontSize: 11, fontWeight: '600', color: '#9ca3af',
-    textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2,
-  },
-  // Streak
-  streakIconWrap: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
-  streakGlow: {
-    position: 'absolute', width: 32, height: 32, borderRadius: 16,
-    backgroundColor: '#fff7ed',
-  },
-  streakRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 4 },
-  streakSuffix: { fontSize: 14, fontWeight: '500', color: '#9ca3af', marginLeft: 1 },
-  // Level
   levelRingWrap: {
-    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
-    marginTop: 4,
+    width: glass.profile.levelRing.size,
+    height: glass.profile.levelRing.size,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  levelNumberAbsolute: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: glass.profile.levelRing.size,
+    height: glass.profile.levelRing.size,
   },
   levelNumber: {
-    position: 'absolute', fontSize: 14, fontWeight: '800', color: '#111827',
+    fontSize: glass.profile.levelRing.innerNumberFontSize,
+    fontWeight: glass.profile.levelRing.innerNumberFontWeight,
+    color: glass.profile.levelRing.innerNumberColor,
+    letterSpacing: glass.profile.levelRing.innerNumberLetterSpacing,
   },
-  // Tier
-  tierRow: { alignItems: 'center', marginTop: 10 },
+  levelRightCol: {
+    flex: 1,
+    gap: 6,
+  },
   tierBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#fffbeb', borderRadius: 999,
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: 1, borderColor: '#fde68a',
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: glass.profile.tierBadge.iconLabelGap,
+    backgroundColor: glass.profile.tierBadge.bg,
+    borderWidth: glass.profile.tierBadge.borderWidth,
+    borderColor: glass.profile.tierBadge.border,
+    borderRadius: glass.profile.tierBadge.radius,
+    paddingHorizontal: glass.profile.tierBadge.paddingHorizontal,
+    paddingVertical: glass.profile.tierBadge.paddingVertical,
   },
-  tierText: { fontSize: 12, fontWeight: '600', color: '#92400e' },
-  // Motivation
+  tierLabel: {
+    fontSize: glass.profile.tierBadge.labelFontSize,
+    fontWeight: glass.profile.tierBadge.labelFontWeight,
+    color: glass.profile.tierBadge.labelColor,
+    letterSpacing: glass.profile.tierBadge.labelLetterSpacing,
+    textTransform: glass.profile.tierBadge.labelTextTransform,
+  },
+  tierContext: {
+    color: 'rgba(255, 255, 255, 0.65)',
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 17,
+  },
   motivationText: {
-    fontSize: 13, color: '#6b7280', textAlign: 'center',
-    marginTop: 8, lineHeight: 18,
+    color: 'rgba(255, 255, 255, 0.55)',
+    fontSize: 12,
+    fontStyle: 'italic',
+    lineHeight: 16,
+  },
+  // Bento
+  bentoRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  bentoRowSpacing: {
+    marginTop: 10,
+  },
+  tileFlex: {
+    flex: 1,
+  },
+  tile: {
+    backgroundColor: glass.profile.statTile.bg,
+    borderWidth: glass.profile.statTile.borderWidth,
+    borderColor: glass.profile.statTile.border,
+    borderRadius: glass.profile.statTile.radius,
+    paddingVertical: glass.profile.statTile.paddingVertical,
+    paddingHorizontal: glass.profile.statTile.paddingHorizontal,
+    minHeight: glass.profile.statTile.minHeight,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  tileIconCircle: {
+    width: glass.profile.statTile.iconBgSize,
+    height: glass.profile.statTile.iconBgSize,
+    borderRadius: glass.profile.statTile.iconBgRadius,
+    backgroundColor: glass.profile.statTile.iconBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileIconGlow: {
+    position: 'absolute',
+    width: glass.profile.statTile.iconBgSize + 4,
+    height: glass.profile.statTile.iconBgSize + 4,
+    borderRadius: (glass.profile.statTile.iconBgSize + 4) / 2,
+    backgroundColor: 'rgba(249, 115, 22, 0.25)',
+  },
+  tileValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginTop: 10,
+  },
+  tileValue: {
+    ...glass.profile.text.statValue,
+  },
+  tileValueZero: {
+    ...glass.profile.text.statValueZero,
+  },
+  tileSuffix: {
+    color: 'rgba(255, 255, 255, 0.40)',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 2,
+  },
+  tileLabel: {
+    ...glass.profile.text.statLabel,
+    marginTop: 2,
   },
 });
 
