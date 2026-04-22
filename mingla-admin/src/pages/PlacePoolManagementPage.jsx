@@ -1417,6 +1417,7 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
     if (!analysis) return "";
     const parts = [];
     if (analysis.blockedByAiApproval > 0) parts.push(`${formatCount(analysis.blockedByAiApproval)} not AI-approved`);
+    if (analysis.blockedByNotServable > 0) parts.push(`${formatCount(analysis.blockedByNotServable)} not Bouncer-approved`);
     if (analysis.blockedByMissingPhotoMetadata > 0) parts.push(`${formatCount(analysis.blockedByMissingPhotoMetadata)} missing Google photo refs`);
     if (analysis.blockedByMissingGooglePlaceId > 0) parts.push(`${formatCount(analysis.blockedByMissingGooglePlaceId)} missing Google place IDs`);
     if (analysis.failedPlaces > 0) parts.push(`${formatCount(analysis.failedPlaces)} previously failed`);
@@ -1440,7 +1441,9 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
     } catch { /* ignore */ }
   };
 
-  const fetchPreview = async () => {
+  // ORCH-0598.11: mode-aware preview. Defaults to 'initial' for backward-compat
+  // (used by the on-mount useEffect). Refresh button calls fetchPreview('refresh_servable').
+  const fetchPreview = async (mode = "initial") => {
     if (!selectedCity) return;
     try {
       const data = await invoke({
@@ -1448,6 +1451,7 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
         cityId: selectedCity,
         city: cityTextName,
         country: countryTextName,
+        mode,
       });
       if (mountedRef.current) setPreviewSummary(data.analysis || null);
     } catch {
@@ -1497,8 +1501,11 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
   }, [selectedCountry, selectedCity]);
 
   // ── Create run ───────────────────────────────────────────────────────────
+  // ORCH-0598.11: I-PHOTO-FILTER-EXPLICIT — mode is one of:
+  //   'initial'           — first-time city setup (filter ai_approved + no photos)
+  //   'refresh_servable'  — Bouncer-approved maintenance (filter is_servable=true)
 
-  const handleCreateRun = async () => {
+  const handleCreateRun = async (mode = "initial") => {
     setCreating(true);
     try {
       const data = await invoke({
@@ -1506,14 +1513,17 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
         cityId: selectedCity,
         city: cityTextName,
         country: countryTextName,
+        mode,
       });
+
+      const modeLabel = mode === "refresh_servable" ? "refresh servable" : "initial download";
 
       if (data.status === "nothing_to_do") {
         const blockedDescription = formatPreviewBreakdown(data.analysis);
         addToast({
           variant: "info",
           title: data.analysis?.withoutStoredPhotos > 0
-            ? `No downloadable photo candidates in ${selectedCity}`
+            ? `No ${modeLabel} candidates in ${selectedCity}`
             : `All places in ${selectedCity} already have photos`,
           description: data.analysis?.withoutStoredPhotos > 0
             ? `${formatCount(data.analysis.withoutStoredPhotos)} places still lack stored photos. ${blockedDescription || "They are currently blocked from download."}`
@@ -1540,11 +1550,12 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
       await refreshActiveRuns();
       addToast({
         variant: "success",
-        title: "Photo download run created",
+        title: `Photo download run created (${modeLabel})`,
         description: `${data.totalPlaces} places, ${data.totalBatches} batches, est. ${formatCost(data.estimatedCostUsd)}`,
       });
       await refreshPhotoState();
     } catch (err) {
+      console.error("[PhotoBackfill] create run error:", err);
       addToast({ variant: "error", title: "Failed to create run", description: err.message });
     }
     setCreating(false);
@@ -1795,12 +1806,32 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
                   )}
                 </div>
               </div>
-              <div className="flex gap-2">
+              {/* ORCH-0598.11: two clearly-labeled buttons. Initial = ai_approved + no photos
+                  (first-time city setup). Refresh Servable = is_servable=true (maintenance for
+                  Bouncer-approved set). I-PHOTO-FILTER-EXPLICIT. */}
+              <div className="flex flex-wrap gap-2">
                 {(downloadableCount === null || downloadableCount > 0) && (
-                  <Button variant="primary" icon={Download} onClick={handleCreateRun} disabled={creating}>
-                    {creating ? "Creating..." : `Start Photo Download (${formatCount(downloadableCount ?? missingCount)} places)`}
+                  <Button
+                    variant="primary"
+                    icon={Download}
+                    onClick={() => handleCreateRun("initial")}
+                    disabled={creating}
+                    title="ai_approved + no stored photos. For first-time city setup."
+                  >
+                    {creating
+                      ? "Creating..."
+                      : `Initial Download (${formatCount(downloadableCount ?? missingCount)} places)`}
                   </Button>
                 )}
+                <Button
+                  variant="secondary"
+                  icon={RefreshCw}
+                  onClick={() => handleCreateRun("refresh_servable")}
+                  disabled={creating}
+                  title="is_servable=true (Bouncer-approved). For maintenance / re-download."
+                >
+                  {creating ? "Creating..." : "Refresh Servable Photos"}
+                </Button>
                 <Button variant="secondary" icon={RefreshCw} onClick={refreshPhotoState} size="sm">
                   Re-check
                 </Button>

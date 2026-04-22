@@ -120,11 +120,15 @@ export async function checkPoolMaturity(
   const latDelta = radiusMeters / 111320;
   const lngDelta = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180));
 
+  // ORCH-0598.11 I-SERVING-TWO-GATE: maturity count must match what serving will
+  // actually return. Both must enforce is_servable + has-real-photos. Otherwise
+  // pool can show "mature" while serving returns 0 (or vice versa).
   const { data, error } = await supabaseAdmin
     .from('card_pool')
-    .select('category')
+    .select('category, place_pool!inner(is_servable, stored_photo_urls)')
     .eq('is_active', true)
     .eq('card_type', cardType)
+    .eq('place_pool.is_servable', true)
     .gte('lat', lat - latDelta)
     .lte('lat', lat + latDelta)
     .gte('lng', lng - lngDelta)
@@ -142,13 +146,21 @@ export async function checkPoolMaturity(
     };
   }
 
+  // Filter: card_pool peer must have real stored photos (no nulls / no '__backfill_failed__').
+  const realCards = data.filter((row: any) => {
+    const urls = row.place_pool?.stored_photo_urls;
+    if (!Array.isArray(urls) || urls.length === 0) return false;
+    if (urls.length === 1 && urls[0] === '__backfill_failed__') return false;
+    return true;
+  });
+
   // Build category breakdown
   const categoryBreakdown: Record<string, number> = {};
-  for (const row of data) {
+  for (const row of realCards) {
     categoryBreakdown[row.category] = (categoryBreakdown[row.category] || 0) + 1;
   }
 
-  const totalCards = data.length;
+  const totalCards = realCards.length;
   const categoryCoverage = categories.filter(
     cat => (categoryBreakdown[cat] || 0) >= minCardsPerCategory
   ).length;

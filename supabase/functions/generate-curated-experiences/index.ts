@@ -301,25 +301,42 @@ async function fetchSinglesForCategory(
   const latDelta = radiusMeters / 111320;
   const lngDelta = radiusMeters / (111320 * Math.cos(centerLat * Math.PI / 180));
 
+  // ORCH-0598.11 I-SERVING-TWO-GATE: legacy fetch path now JOINs place_pool via
+  // FK (card_pool_place_pool_id_fkey) and requires is_servable=true at the DB.
+  // The has-real-photos gate runs in JS post-fetch since PostgREST doesn't expose
+  // array_length() in the builder fluently. Over-fetch (limit*3) absorbs filter
+  // losses; final slice caps at `limit`.
   const { data, error } = await supabaseAdmin
     .from('card_pool')
-    .select('id, place_pool_id, google_place_id, title, address, lat, lng, rating, review_count, price_min, price_max, price_tier, price_tiers, opening_hours, website, images, image_url, city_id, city, country, utc_offset_minutes, ai_categories, category, categories')
+    .select(
+      'id, place_pool_id, google_place_id, title, address, lat, lng, rating, review_count, price_min, price_max, price_tier, price_tiers, opening_hours, website, images, image_url, city_id, city, country, utc_offset_minutes, ai_categories, category, categories, place_pool!inner(is_servable, stored_photo_urls)',
+    )
     .eq('is_active', true)
     .eq('card_type', 'single')
+    .eq('place_pool.is_servable', true)
     .contains('categories', [categoryId])
     .gte('lat', centerLat - latDelta)
     .lte('lat', centerLat + latDelta)
     .gte('lng', centerLng - lngDelta)
     .lte('lng', centerLng + lngDelta)
     .order('rating', { ascending: false })
-    .limit(limit);
+    .limit(limit * 3);
 
   if (error || !data) return [];
 
-  // Only keep cards with images (should always be true, but safety net)
-  const filtered = data.filter((card: any) => card.images?.length > 0 || card.image_url);
-  // Shuffle to ensure variety across requests (all results are quality-filtered by DB query)
-  return shuffle(filtered);
+  // ORCH-0598.11: filter out cards whose place_pool peer lacks real stored photos
+  // (NULL, empty array, or '__backfill_failed__' sentinel). Combined with the
+  // is_servable=true filter above, this is the I-SERVING-TWO-GATE invariant.
+  // Existing card_pool.images safety net preserved.
+  const servable = data.filter((card: any) => {
+    const urls = card.place_pool?.stored_photo_urls;
+    if (!Array.isArray(urls) || urls.length === 0) return false;
+    if (urls.length === 1 && urls[0] === '__backfill_failed__') return false;
+    return card.images?.length > 0 || card.image_url;
+  });
+
+  // Shuffle to ensure variety across requests
+  return shuffle(servable).slice(0, limit);
 }
 
 // ── ORCH-0599.3: Signal-aware picker for Romantic experience stops ────────

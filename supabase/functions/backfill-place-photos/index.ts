@@ -179,12 +179,22 @@ async function handleLegacy(
 
 // ── create_run ────────────────────────────────────────────────────────────
 
+// ORCH-0598.11: I-PHOTO-FILTER-EXPLICIT — exactly two named modes.
+//   'initial'           — first-time city setup; filter ai_approved=true AND no real photos
+//   'refresh_servable'  — Bouncer-approved maintenance; filter is_servable=true (no photo prereq)
+type BackfillMode = 'initial' | 'refresh_servable';
+
+function parseBackfillMode(raw: unknown): BackfillMode {
+  return raw === 'refresh_servable' ? 'refresh_servable' : 'initial';
+}
+
 interface CityPlaceRow {
   id: string;
   google_place_id?: string | null;
   photos?: unknown;
   stored_photo_urls?: string[] | null;
   ai_approved?: boolean | null;
+  is_servable?: boolean | null;
 }
 
 interface RunPreviewAnalysis {
@@ -195,8 +205,10 @@ interface RunPreviewAnalysis {
   failedPlaces: number;
   eligiblePlaces: number;
   blockedByAiApproval: number;
+  blockedByNotServable: number;
   blockedByMissingPhotoMetadata: number;
   blockedByMissingGooglePlaceId: number;
+  mode: BackfillMode;
 }
 
 function getStoredPhotoState(urls: string[] | null | undefined): 'missing' | 'failed' | 'real' {
@@ -212,7 +224,14 @@ function getStoredPhotoState(urls: string[] | null | undefined): 'missing' | 'fa
   return 'real';
 }
 
-function buildRunPreview(places: CityPlaceRow[]) {
+// ORCH-0598.11: mode-aware eligibility analysis.
+//   'initial'          — original behavior: ai_approved=true AND lacks real photos.
+//                        Used for first-time city setup. Skips places that already
+//                        have photos. ai_approved is the gate.
+//   'refresh_servable' — Bouncer-approved maintenance: is_servable=true. Re-fetches
+//                        photos for the Bouncer-passed set regardless of current
+//                        photo state (admin can intentionally re-download).
+function buildRunPreview(places: CityPlaceRow[], mode: BackfillMode) {
   const analysis: RunPreviewAnalysis = {
     totalPlaces: places.length,
     approvedPlaces: 0,
@@ -221,28 +240,44 @@ function buildRunPreview(places: CityPlaceRow[]) {
     failedPlaces: 0,
     eligiblePlaces: 0,
     blockedByAiApproval: 0,
+    blockedByNotServable: 0,
     blockedByMissingPhotoMetadata: 0,
     blockedByMissingGooglePlaceId: 0,
+    mode,
   };
   const eligiblePlaces: CityPlaceRow[] = [];
 
   for (const place of places) {
     if (place.ai_approved === true) analysis.approvedPlaces++;
-
     const storedState = getStoredPhotoState(place.stored_photo_urls);
-    if (storedState === 'real') {
-      analysis.withRealPhotos++;
-      continue;
+
+    if (mode === 'initial') {
+      // INITIAL: skip places that already have real photos
+      if (storedState === 'real') {
+        analysis.withRealPhotos++;
+        continue;
+      }
+      analysis.withoutStoredPhotos++;
+      if (storedState === 'failed') analysis.failedPlaces++;
+
+      if (place.ai_approved !== true) {
+        analysis.blockedByAiApproval++;
+        continue;
+      }
+    } else {
+      // REFRESH_SERVABLE: include all is_servable=true places, regardless of photo state.
+      // Track photo state for reporting only.
+      if (storedState === 'real') analysis.withRealPhotos++;
+      else if (storedState === 'failed') analysis.failedPlaces++;
+      else analysis.withoutStoredPhotos++;
+
+      if (place.is_servable !== true) {
+        analysis.blockedByNotServable++;
+        continue;
+      }
     }
 
-    analysis.withoutStoredPhotos++;
-    if (storedState === 'failed') analysis.failedPlaces++;
-
-    if (place.ai_approved !== true) {
-      analysis.blockedByAiApproval++;
-      continue;
-    }
-
+    // Common gates for both modes
     if (!place.google_place_id) {
       analysis.blockedByMissingGooglePlaceId++;
       continue;
@@ -264,8 +299,10 @@ function buildRunPreview(places: CityPlaceRow[]) {
 async function loadCityPlacesForRun(
   db: ReturnType<typeof createClient>,
   cityId: string,
+  mode: BackfillMode,
 ): Promise<{ places: CityPlaceRow[]; analysis: RunPreviewAnalysis; eligiblePlaces: CityPlaceRow[] }> {
   // PostgREST caps results at 1000 rows (project default). Paginate to get all.
+  // ORCH-0598.11: include is_servable in SELECT — needed for refresh_servable mode.
   const PAGE_SIZE = 1000;
   const allPlaces: CityPlaceRow[] = [];
   let offset = 0;
@@ -273,7 +310,7 @@ async function loadCityPlacesForRun(
   while (true) {
     const { data: page, error: pageErr } = await db
       .from('place_pool')
-      .select('id, google_place_id, photos, stored_photo_urls, ai_approved')
+      .select('id, google_place_id, photos, stored_photo_urls, ai_approved, is_servable')
       .eq('is_active', true)
       .eq('city_id', cityId)
       .order('created_at', { ascending: true })
@@ -291,7 +328,7 @@ async function loadCityPlacesForRun(
     offset += PAGE_SIZE;
   }
 
-  const preview = buildRunPreview(allPlaces);
+  const preview = buildRunPreview(allPlaces, mode);
   return { places: allPlaces, ...preview };
 }
 
@@ -303,15 +340,17 @@ async function handlePreviewRun(
   if (!cityId) return json({ error: 'cityId required' }, 400);
 
   const batchSize = Math.min(Math.max(Number(body.batchSize) || 10, 1), 20);
+  const mode = parseBackfillMode(body.mode);
 
   try {
-    const { analysis } = await loadCityPlacesForRun(db, cityId);
+    const { analysis } = await loadCityPlacesForRun(db, cityId, mode);
     const totalBatches = Math.ceil(analysis.eligiblePlaces / batchSize);
     const estimatedCostUsd = +(analysis.eligiblePlaces * COST_PER_PLACE).toFixed(4);
 
     return json({
       status: analysis.eligiblePlaces > 0 ? 'ready' : 'nothing_to_do',
       batchSize,
+      mode,
       totalPlaces: analysis.eligiblePlaces,
       totalBatches,
       estimatedCostUsd,
@@ -333,6 +372,7 @@ async function handleCreateRun(
   if (!cityId || !city || !country) return json({ error: 'cityId, city and country required' }, 400);
 
   const batchSize = Math.min(Math.max(Number(body.batchSize) || 10, 1), 20);
+  const mode = parseBackfillMode(body.mode);
 
   // Check for existing active run for same city (text labels in photo_backfill_runs)
   const { data: existing } = await db
@@ -351,7 +391,7 @@ async function handleCreateRun(
   let eligiblePlaces: CityPlaceRow[] = [];
   let analysis: RunPreviewAnalysis;
   try {
-    const preview = await loadCityPlacesForRun(db, cityId);
+    const preview = await loadCityPlacesForRun(db, cityId, mode);
     eligiblePlaces = preview.eligiblePlaces;
     analysis = preview.analysis;
   } catch (err) {
@@ -366,7 +406,9 @@ async function handleCreateRun(
   const totalBatches = Math.ceil(totalPlaces / batchSize);
   const estimatedCostUsd = +(totalPlaces * COST_PER_PLACE).toFixed(4);
 
-  // Insert run
+  // Insert run — ORCH-0598.11: persist mode so handleRunNextBatch knows which
+  // eligibility rule the run was created under (defensive — used by tester +
+  // status display).
   const { data: run, error: runErr } = await db
     .from('photo_backfill_runs')
     .insert({
@@ -378,6 +420,7 @@ async function handleCreateRun(
       estimated_cost_usd: estimatedCostUsd,
       triggered_by: userId,
       status: 'ready',
+      mode,
     })
     .select('id')
     .single();

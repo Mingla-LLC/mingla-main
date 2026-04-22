@@ -1,12 +1,14 @@
 /**
- * SIGNAL LIBRARY PAGE — ORCH-0588 Slice 1
+ * SIGNAL LIBRARY PAGE — ORCH-0588 + ORCH-0598.11
  *
- * Read-only v1: list active signals; click into a signal to see top-50 Raleigh
- * places with score + contributions breakdown; cohort serving slider 0-100%;
- * "Run scorer for Raleigh" trigger button.
+ * List active signals; pick a city; run Bouncer + Scorer for that city; preview
+ * top-50 places with score + contributions breakdown; cohort serving slider.
  *
- * Weight editing is intentionally NOT in v1 — admin tunes by inserting a new
- * signal_definition_versions row directly via SQL until Slice 2+ adds an editor.
+ * Per-city as of ORCH-0598.11 — no longer Raleigh-hardcoded. City list comes
+ * from the `admin_city_picker_data()` RPC (sourced from `seeding_cities`).
+ *
+ * Weight editing is still NOT in this version — admin tunes by inserting a new
+ * signal_definition_versions row directly via SQL until a future editor ships.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -20,9 +22,6 @@ import { SectionCard, AlertCard } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Spinner } from "../components/ui/Spinner";
-
-// Raleigh city_id — Slice 1 is Raleigh-only per ORCH-0550.1 readiness scope.
-const RALEIGH_CITY_ID = "0ccfcf20-21a9-4d7b-805d-cbe629dcfd2b";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -126,17 +125,21 @@ function CohortSlider({ signalId, onChange }) {
 
 // ── Run-bouncer trigger (city-wide; required before signal scoring) ──────────
 
-function RunBouncerButton({ onComplete }) {
+function RunBouncerButton({ cityId, cityName, onComplete }) {
   const { showToast } = useToast();
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState(null);
 
   async function trigger() {
+    if (!cityId) {
+      showToast("Pick a city first", "error");
+      return;
+    }
     setRunning(true);
     setLastResult(null);
     try {
       const { data, error } = await invokeWithRefresh("run-bouncer", {
-        body: { city_id: RALEIGH_CITY_ID },
+        body: { city_id: cityId },
       });
       if (error) throw error;
       setLastResult(data);
@@ -146,17 +149,20 @@ function RunBouncerButton({ onComplete }) {
       );
       onComplete?.(data);
     } catch (err) {
+      console.error("[RunBouncerButton]", err);
       showToast(`Bouncer failed: ${err.message}`, "error");
     } finally {
       setRunning(false);
     }
   }
 
+  const label = cityName || "selected city";
+
   return (
     <div className="flex flex-col gap-2">
-      <Button onClick={trigger} disabled={running} size="sm">
+      <Button onClick={trigger} disabled={running || !cityId} size="sm">
         {running ? <Spinner size="sm" /> : <Play className="w-3 h-3" />}
-        {running ? "Bouncing Raleigh…" : "Run Bouncer for Raleigh"}
+        {running ? `Bouncing ${label}…` : `Run Bouncer for ${label}`}
       </Button>
       {lastResult && (
         <div className="text-xs text-[--color-text-tertiary] font-mono space-y-0.5">
@@ -175,17 +181,21 @@ function RunBouncerButton({ onComplete }) {
 
 // ── Run-scorer trigger ───────────────────────────────────────────────────────
 
-function RunScorerButton({ signalId, onComplete }) {
+function RunScorerButton({ cityId, cityName, signalId, onComplete }) {
   const { showToast } = useToast();
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState(null);
 
   async function trigger() {
+    if (!cityId) {
+      showToast("Pick a city first", "error");
+      return;
+    }
     setRunning(true);
     setLastResult(null);
     try {
       const { data, error } = await invokeWithRefresh("run-signal-scorer", {
-        body: { signal_id: signalId, city_id: RALEIGH_CITY_ID },
+        body: { signal_id: signalId, city_id: cityId },
       });
       if (error) throw error;
       setLastResult(data);
@@ -195,17 +205,20 @@ function RunScorerButton({ signalId, onComplete }) {
       );
       onComplete?.(data);
     } catch (err) {
+      console.error("[RunScorerButton]", err);
       showToast(`Scorer failed: ${err.message}`, "error");
     } finally {
       setRunning(false);
     }
   }
 
+  const label = cityName || "selected city";
+
   return (
     <div className="flex flex-col gap-2">
-      <Button onClick={trigger} disabled={running} size="sm">
+      <Button onClick={trigger} disabled={running || !cityId} size="sm">
         {running ? <Spinner size="sm" /> : <Play className="w-3 h-3" />}
-        {running ? "Scoring Raleigh…" : "Run scorer for Raleigh"}
+        {running ? `Scoring ${label}…` : `Run scorer for ${label}`}
       </Button>
       {lastResult && (
         <div className="text-xs text-[--color-text-tertiary] font-mono">
@@ -219,13 +232,18 @@ function RunScorerButton({ signalId, onComplete }) {
 
 // ── Top-50 places preview ────────────────────────────────────────────────────
 
-function TopPlacesPreview({ signalId }) {
+function TopPlacesPreview({ cityId, cityName, signalId }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(new Set());
 
   const refresh = useCallback(async () => {
+    if (!cityId) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -240,18 +258,19 @@ function TopPlacesPreview({ signalId }) {
           )
         `)
         .eq("signal_id", signalId)
-        .eq("place_pool.city_id", RALEIGH_CITY_ID)
+        .eq("place_pool.city_id", cityId)
         .eq("place_pool.is_servable", true)
         .order("score", { ascending: false })
         .limit(50);
       if (queryError) throw queryError;
       setRows(data ?? []);
     } catch (err) {
+      console.error("[TopPlacesPreview]", err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [signalId]);
+  }, [cityId, signalId]);
 
   useEffect(() => {
     refresh();
@@ -283,9 +302,11 @@ function TopPlacesPreview({ signalId }) {
   }
 
   if (rows.length === 0) {
+    const cityLabel = cityName || "the selected city";
     return (
       <AlertCard kind="info" title="No scores yet">
-        Click <strong>Run scorer for Raleigh</strong> above to populate <code>place_scores</code>.
+        Run the Bouncer (above) for {cityLabel}, then click{" "}
+        <strong>Run scorer for {cityLabel}</strong> to populate <code>place_scores</code>.
       </AlertCard>
     );
   }
@@ -294,7 +315,7 @@ function TopPlacesPreview({ signalId }) {
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm text-[--color-text-secondary]">
-          Top {rows.length} Raleigh places by <code>{signalId}</code> score
+          Top {rows.length} {cityName || ""} places by <code>{signalId}</code> score
         </div>
         <Button size="sm" variant="ghost" onClick={refresh}>
           <RefreshCw className="w-3 h-3" />
@@ -381,6 +402,12 @@ export function SignalLibraryPage() {
   const [error, setError] = useState(null);
   const [previewKey, setPreviewKey] = useState(0); // bump to force preview refetch
 
+  // ORCH-0598.11: per-city control. City list from admin_city_picker_data RPC.
+  const [cities, setCities] = useState([]);
+  const [citiesLoading, setCitiesLoading] = useState(true);
+  const [citiesError, setCitiesError] = useState(null);
+  const [selectedCityId, setSelectedCityId] = useState(null);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -407,6 +434,39 @@ export function SignalLibraryPage() {
       cancelled = true;
     };
   }, [activeSignalId]);
+
+  // ORCH-0598.11: load city list. Default to highest ai_approved_places city
+  // (typically Raleigh today) so an admin opening the page sees something.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setCitiesLoading(true);
+      setCitiesError(null);
+      try {
+        const { data, error: rpcError } = await supabase.rpc("admin_city_picker_data");
+        if (rpcError) throw rpcError;
+        if (cancelled) return;
+        const sorted = (data ?? []).slice().sort(
+          (a, b) => Number(b.ai_approved_places ?? 0) - Number(a.ai_approved_places ?? 0),
+        );
+        setCities(sorted);
+        if (sorted.length > 0 && selectedCityId == null) {
+          setSelectedCityId(sorted[0].city_id);
+        }
+      } catch (err) {
+        console.error("[SignalLibraryPage] city list error:", err);
+        if (!cancelled) {
+          setCitiesError(err.message);
+          showToast(`Couldn't load city list: ${err.message}`, "error");
+        }
+      } finally {
+        if (!cancelled) setCitiesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCityId, showToast]);
 
   if (loading) {
     return (
@@ -436,6 +496,8 @@ export function SignalLibraryPage() {
   }
 
   const active = signals.find((s) => s.id === activeSignalId) ?? signals[0];
+  const selectedCity = cities.find((c) => c.city_id === selectedCityId) ?? null;
+  const selectedCityName = selectedCity?.city_name ?? null;
 
   return (
     <div className="py-6 flex flex-col gap-6">
@@ -445,22 +507,68 @@ export function SignalLibraryPage() {
           <div>
             <h1 className="text-2xl font-bold">Signal Library</h1>
             <p className="text-sm text-[--color-text-secondary]">
-              ORCH-0588 Slice 1 — read-only v1. Weight editing arrives in Slice 2+.
+              Per-city Bouncer + signal scoring. Pick a city, run Bouncer, then run scorer for each signal.
             </p>
           </div>
         </div>
       </header>
 
-      {/* Global: Bouncer (city-wide; required before signal scoring) */}
+      {/* ORCH-0598.11: city picker */}
       <SectionCard
-        title="Bouncer v2 (Raleigh)"
-        description="Deterministic gate. Run this BEFORE scoring any signal — sets place_pool.is_servable for every active Raleigh place. Re-run after place_pool refreshes."
+        title="City"
+        description="Select which city the Bouncer and Scorer will run against. Cities come from the seeding_cities table."
+      >
+        <div className="flex flex-col gap-2">
+          {citiesLoading && (
+            <div className="flex items-center gap-2 text-sm text-[--color-text-secondary]">
+              <Spinner size="sm" /> Loading cities…
+            </div>
+          )}
+          {citiesError && (
+            <AlertCard kind="error" icon={AlertTriangle} title="Couldn't load cities">
+              {citiesError}
+            </AlertCard>
+          )}
+          {!citiesLoading && !citiesError && cities.length === 0 && (
+            <AlertCard kind="info" title="No seeded cities yet">
+              Seed a city via the Place Pool Management page first.
+            </AlertCard>
+          )}
+          {!citiesLoading && !citiesError && cities.length > 0 && (
+            <select
+              className="w-full md:w-2/3 p-2 rounded border border-[--color-border] bg-[--color-background-primary] text-sm"
+              value={selectedCityId ?? ""}
+              onChange={(e) => setSelectedCityId(e.target.value || null)}
+              aria-label="Select city for Bouncer and Scorer"
+            >
+              {cities.map((c) => (
+                <option key={c.city_id} value={c.city_id}>
+                  {c.city_name}, {c.country_name}
+                  {" — "}
+                  {Number(c.ai_approved_places ?? 0).toLocaleString()} approved /{" "}
+                  {Number(c.total_active_places ?? 0).toLocaleString()} active
+                  {c.city_status ? ` · ${c.city_status}` : ""}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* Global: Bouncer (city-scoped per ORCH-0598.11; required before signal scoring) */}
+      <SectionCard
+        title={`Bouncer v2 (${selectedCityName ?? "select a city"})`}
+        description="Deterministic gate. Run this BEFORE scoring any signal — sets place_pool.is_servable for every active place in the selected city. Re-run after place_pool refreshes."
       >
         <div className="border border-[--color-border] rounded p-4">
           <div className="text-xs uppercase tracking-wide text-[--color-text-tertiary] mb-2">
-            Bouncer pass for Raleigh
+            Bouncer pass for {selectedCityName ?? "selected city"}
           </div>
-          <RunBouncerButton onComplete={() => setPreviewKey((k) => k + 1)} />
+          <RunBouncerButton
+            cityId={selectedCityId}
+            cityName={selectedCityName}
+            onComplete={() => setPreviewKey((k) => k + 1)}
+          />
         </div>
       </SectionCard>
 
@@ -493,16 +601,23 @@ export function SignalLibraryPage() {
           </div>
           <div className="border border-[--color-border] rounded p-4">
             <div className="text-xs uppercase tracking-wide text-[--color-text-tertiary] mb-2">
-              Score Raleigh
+              Score {selectedCityName ?? "selected city"}
             </div>
             <RunScorerButton
+              cityId={selectedCityId}
+              cityName={selectedCityName}
               signalId={active.id}
               onComplete={() => setPreviewKey((k) => k + 1)}
             />
           </div>
         </div>
 
-        <TopPlacesPreview key={`${active.id}-${previewKey}`} signalId={active.id} />
+        <TopPlacesPreview
+          key={`${active.id}-${selectedCityId}-${previewKey}`}
+          cityId={selectedCityId}
+          cityName={selectedCityName}
+          signalId={active.id}
+        />
       </SectionCard>
     </div>
   );
