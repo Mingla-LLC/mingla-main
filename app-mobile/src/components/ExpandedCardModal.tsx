@@ -185,11 +185,6 @@ const curatedStyles = StyleSheet.create({
     color: '#9ca3af',
     marginBottom: 6,
   },
-  placeType: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginBottom: 8,
-  },
   stopMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -909,10 +904,6 @@ function MultiStopPlanView({
                     {stop.aiDescription}
                   </Text>
                 ) : null}
-
-                <Text style={curatedStyles.placeType} numberOfLines={1}>
-                  {stop.placeType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                </Text>
 
                 <View style={curatedStyles.stopMetaRow}>
                   {stop.rating > 0 && (
