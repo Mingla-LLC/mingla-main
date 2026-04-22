@@ -350,7 +350,7 @@ const SavedTab = ({
       paddingVertical: 8,
     },
     experienceCard: {
-      backgroundColor: "#FFFFFF",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
       borderRadius: 16,
       borderWidth: 1,
       borderColor: "#f0f0f0",
@@ -373,7 +373,7 @@ const SavedTab = ({
       height: 80,
       borderRadius: 12,
       overflow: "hidden",
-      backgroundColor: "#f3f4f6",
+      backgroundColor: "rgba(255, 255, 255, 0.08)",
     },
     cardInfo: {
       flex: 1,
@@ -383,12 +383,12 @@ const SavedTab = ({
     cardTitle: {
       fontSize: 16,
       fontWeight: "700",
-      color: "#111827",
+      color: "#FFFFFF",
       marginBottom: 4,
     },
     cardSubtitle: {
       fontSize: 14,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
       flexShrink: 1,
     },
     cardTitleRow: {
@@ -415,7 +415,7 @@ const SavedTab = ({
     },
     recentlySavedText: {
       fontSize: 12,
-      color: "#9ca3af",
+      color: "rgba(255, 255, 255, 0.55)",
     },
     cardMeta: {
       flexDirection: "row",
@@ -442,7 +442,7 @@ const SavedTab = ({
     },
     statText: {
       fontSize: 14,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
     },
     priceText: {
       fontSize: 14,
@@ -521,9 +521,9 @@ const SavedTab = ({
       width: 40,
       height: 40,
       borderRadius: 12,
-      backgroundColor: "white",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
       borderWidth: 1,
-      borderColor: "#e5e7eb", // Light gray border
+      borderColor: "rgba(255, 255, 255, 0.12)", // Light gray border
       alignItems: "center",
       justifyContent: "center",
     },
@@ -531,7 +531,7 @@ const SavedTab = ({
       width: 40,
       height: 40,
       borderRadius: 12,
-      backgroundColor: "white",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
       borderWidth: 0.5,
       borderColor: "#ef4444", // Red border
       alignItems: "center",
@@ -540,7 +540,7 @@ const SavedTab = ({
     expandedContent: {
       borderTopWidth: 1,
       borderTopColor: "#f3f4f6",
-      backgroundColor: "#f9fafb",
+      backgroundColor: "rgba(255, 255, 255, 0.04)",
     },
     imageGallery: {
       position: "relative",
@@ -585,7 +585,7 @@ const SavedTab = ({
       borderRadius: 4,
     },
     activeIndicator: {
-      backgroundColor: "white",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
     },
     inactiveIndicator: {
       backgroundColor: "rgba(255, 255, 255, 0.5)",
@@ -597,12 +597,12 @@ const SavedTab = ({
     sectionTitle: {
       fontSize: 16,
       fontWeight: "500",
-      color: "#111827",
+      color: "#FFFFFF",
       marginBottom: 8,
     },
     sectionText: {
       fontSize: 14,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
       lineHeight: 20,
     },
     highlightsContainer: {
@@ -640,7 +640,7 @@ const SavedTab = ({
     },
     locationText: {
       fontSize: 14,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
       flex: 1,
     },
     socialStatsContainer: {
@@ -649,7 +649,7 @@ const SavedTab = ({
     socialStatsTitle: {
       fontSize: 16,
       fontWeight: "500",
-      color: "#111827",
+      color: "#FFFFFF",
       marginBottom: 8,
     },
     socialStatsRow: {
@@ -668,7 +668,7 @@ const SavedTab = ({
     },
     socialStatText: {
       fontSize: 14,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
     },
     emptyState: {
       flexDirection: "row",
@@ -677,7 +677,7 @@ const SavedTab = ({
       marginVertical: 12,
       paddingHorizontal: 16,
       paddingVertical: 14,
-      backgroundColor: "#fffbf5",
+      backgroundColor: "rgba(235, 120, 37, 0.08)",
       borderRadius: 12,
       borderWidth: 1,
       borderColor: "#f5e6d3",
@@ -697,12 +697,12 @@ const SavedTab = ({
     emptyStateTitle: {
       fontSize: 15,
       fontWeight: "600",
-      color: "#111827",
+      color: "#FFFFFF",
       marginBottom: 2,
     },
     emptyStateSubtitle: {
       fontSize: 13,
-      color: "#9ca3af",
+      color: "rgba(255, 255, 255, 0.55)",
       lineHeight: 18,
     },
     clearFiltersButton: {
@@ -726,7 +726,7 @@ const SavedTab = ({
     },
     loadingText: {
       fontSize: 14,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
       marginTop: 8,
     },
     closedMessage: {
@@ -749,7 +749,7 @@ const SavedTab = ({
       justifyContent: "flex-end",
     },
     modalContent: {
-      backgroundColor: "white",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       paddingBottom: 20,
@@ -761,12 +761,12 @@ const SavedTab = ({
       paddingHorizontal: 16,
       paddingVertical: 16,
       borderBottomWidth: 1,
-      borderBottomColor: "#e5e7eb",
+      borderBottomColor: "rgba(255, 255, 255, 0.12)",
     },
     modalTitle: {
       fontSize: 18,
       fontWeight: "600",
-      color: "#111827",
+      color: "#FFFFFF",
     },
     modalHeaderButtons: {
       flexDirection: "row",
@@ -778,7 +778,7 @@ const SavedTab = ({
     },
     modalCancelText: {
       fontSize: 16,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
     },
     modalConfirmButton: {
       paddingVertical: 8,
