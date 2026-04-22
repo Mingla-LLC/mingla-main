@@ -59,6 +59,89 @@ export const CULTURAL_TYPES: ReadonlyArray<string> = [
   'cultural_center', 'tourist_attraction', 'plaza',
 ];
 
+// ORCH-0631 — B9:child_venue allowlist. Case-insensitive exact-name matches
+// that BYPASS the B9 patterns below. For legitimate venues whose names happen
+// to match retailer patterns (camp/ironic naming, famous chains with retailer
+// words in name, etc.). Keep small — most exceptions should live in the regex
+// pattern guards (e.g., Target Field/Center already excluded in the target
+// pattern). Add a row here only when a specific named venue is an established
+// false positive we want to admit.
+//
+// Sync: also referenced by categoryPlaceTypes.isExcludedVenueName() via import.
+export const CHILD_VENUE_ALLOWLIST: ReadonlyArray<string> = [
+  // London queer nightclub/bar/restaurant — camp naming, not actually a
+  // superstore. https://dalstonsuperstore.com. Not serving London today;
+  // listed here so pool re-bounces admit it if London is ever seeded.
+  'dalston superstore',
+];
+
+// ORCH-0631 — B9:child_venue patterns. REJECT sub-counters, departments, and
+// vendor kiosks INSIDE big-box retailers. DO NOT reject the stores themselves —
+// Walmart, Costco, Sam's Club, etc. are legitimate grocery/flowers destinations.
+//
+// The distinction:
+//   ❌ REJECT: "Walmart Bakery", "Walmart Deli", "Walmart Garden Center",
+//              "Sam's Club Cafe", "Costco Food Court" — these are counters.
+//   ✅ ACCEPT: "Walmart", "Walmart Supercenter", "Walmart Neighborhood Market",
+//              "Costco", "Sam's Club", "Asda Superstore" — these are whole stores,
+//              valid for groceries + flowers categories.
+//
+// Why a dedicated rule instead of type-only filtering: Google tags "Walmart Bakery"
+// as primary_type='bakery' — it legitimately passes the type gate. Only the name
+// reveals it's a sub-counter not a standalone bakery.
+//
+// Matched by case-insensitive regex. Any hit → reject with reason 'B9:child_venue:<pattern>'.
+// Allowlist (above) is checked first and short-circuits to "not a child venue".
+
+// Sub-counter/department keywords that follow a retailer's brand prefix.
+const COUNTER_SUFFIX = '(?:bakery|deli|cafe|food\\s*court|garden\\s*center|pharmacy|auto(?:motive)?|vision|tire|optical|photo|gas\\s*station|fuel|liquor|eye\\s*care|hair\\s*salon|nail\\s*salon)';
+
+export const CHILD_VENUE_NAME_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
+  // Walmart sub-counters (NOT "Walmart", "Walmart Supercenter", "Walmart Neighborhood Market")
+  { pattern: new RegExp(`^\\s*walmart\\s+${COUNTER_SUFFIX}\\b`, 'i'), label: 'walmart_counter' },
+  // Sam's Club sub-counters
+  { pattern: new RegExp(`^\\s*sam'?s\\s+club\\s+${COUNTER_SUFFIX}\\b`, 'i'), label: 'sams_club_counter' },
+  // Costco sub-counters
+  { pattern: new RegExp(`^\\s*costco\\s+${COUNTER_SUFFIX}\\b`, 'i'), label: 'costco_counter' },
+  // BJ's Wholesale sub-counters
+  { pattern: new RegExp(`^\\s*bj'?s\\s+${COUNTER_SUFFIX}\\b`, 'i'), label: 'bjs_counter' },
+  // Target sub-counters (Target Cafe, Target Starbucks, etc.) — NOT Target Field/Center (stadium/arena)
+  { pattern: /^\s*target\s+(?!field\b|center\b)(cafe|starbucks|pharmacy|optical|photo)\b/i, label: 'target_counter' },
+  // Kroger / Harris Teeter / Publix / Wegmans sub-counters (floral already handled via groceries category)
+  { pattern: new RegExp(`^\\s*(kroger|harris\\s+teeter|publix|wegmans|whole\\s+foods|food\\s+lion|trader\\s+joe'?s)\\s+${COUNTER_SUFFIX}\\b`, 'i'), label: 'supermarket_counter' },
+  // Parenthetical "(Inside X)" — vendor kiosks: "MUNCHIT CAFE (Inside ALNOOR MARKET)"
+  { pattern: /\(\s*inside\s+[A-Za-z]/i, label: 'inside_parenthetical' },
+  // Pipe "| Inside X": "Synergy Face + Body | Inside The Beltline"
+  { pattern: /\|\s*inside\s+[A-Za-z]/i, label: 'inside_pipe' },
+  // "X at Walmart / at Target / at Costco" — 3rd-party kiosks INSIDE a retailer
+  // (e.g., "Starbucks at Walmart", "McDonald's at Walmart")
+  { pattern: /\bat\s+(walmart|target|costco|sam'?s\s+club|bj'?s)\b/i, label: 'at_retailer' },
+];
+
+/**
+ * Returns true if the name is on the B9 allowlist (exact case-insensitive match).
+ * Short-circuits the child-venue check for legitimate false-positive venues.
+ */
+export function isChildVenueAllowlisted(name: string | null): boolean {
+  if (!name) return false;
+  const normalized = name.trim().toLowerCase();
+  return CHILD_VENUE_ALLOWLIST.some((allowed) => allowed.toLowerCase() === normalized);
+}
+
+/**
+ * B9: returns the matching label if the name indicates a retail sub-venue, else null.
+ * Exported so seeding can short-circuit before the row even enters the pool.
+ * Allowlist is checked first — allowlisted names always return null.
+ */
+export function matchChildVenuePattern(name: string | null): string | null {
+  if (!name) return null;
+  if (isChildVenueAllowlisted(name)) return null;
+  for (const { pattern, label } of CHILD_VENUE_NAME_PATTERNS) {
+    if (pattern.test(name)) return label;
+  }
+  return null;
+}
+
 // Domain blocklist for B5 (own-domain rule). Social / aggregator / builder subdomains all fail.
 export const SOCIAL_DOMAINS: ReadonlyArray<string> = [
   'facebook.com', 'instagram.com', 'twitter.com', 'x.com', 'tiktok.com',
@@ -120,6 +203,15 @@ export function bounce(place: PlaceRow): BouncerVerdict {
   // B3: data integrity (name + lat + lng required)
   if (!place.name || place.lat == null || place.lng == null) {
     return { is_servable: false, cluster, reasons: ['B3:missing_required_field'] };
+  }
+
+  // B9: child-venue (ORCH-0631) — short-circuit. Big-box retailer sub-venues and
+  // "inside [store]" kiosks never qualify as standalone destinations regardless
+  // of photos/hours/cluster. Examples: Walmart Bakery, Sam's Club Cafe, Walmart
+  // Garden Center, "MUNCHIT CAFE (Inside ALNOOR MARKET)".
+  const childVenueLabel = matchChildVenuePattern(place.name);
+  if (childVenueLabel) {
+    return { is_servable: false, cluster, reasons: [`B9:child_venue:${childVenueLabel}`] };
   }
 
   // B7: Google photos required (universal — applies to all clusters including Natural)

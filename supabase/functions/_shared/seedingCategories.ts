@@ -146,6 +146,18 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
       // Fitness / corporate
       'gym', 'fitness_center', 'coworking_space', 'corporate_office',
       'shopping_mall', 'convention_center',
+      // ORCH-0631: big-box retailer + warehouse club primary_types.
+      // Prevents Google results like "Walmart Supercenter" or "Walmart
+      // Neighborhood Market" from entering the icebreakers seed set. A "Walmart
+      // Bakery" with primary_type='bakery' will still enter here (primary type
+      // is bakery, not supermarket) but gets caught by B9:child_venue at
+      // Bouncer. Belt-and-suspenders.
+      'supermarket', 'grocery_store', 'department_store',
+      'discount_store', 'discount_supermarket',
+      'warehouse_store', 'wholesale_store',
+      'home_improvement_store', 'hardware_store', 'electronics_store',
+      'furniture_store', 'clothing_store', 'home_goods_store',
+      'sporting_goods_store', 'toy_store',
     ],
   },
   {

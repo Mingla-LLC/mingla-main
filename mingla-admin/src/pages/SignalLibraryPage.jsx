@@ -230,6 +230,130 @@ function RunScorerButton({ cityId, cityName, signalId, onComplete }) {
   );
 }
 
+// ── Score-all-signals (whole city, one click) ────────────────────────────────
+//
+// ORCH-0631 UX fix: running the Bouncer for a city is one click, but scoring
+// all 15 signals required 15 separate clicks. This button loops through every
+// active signal sequentially and calls run-signal-scorer for each. Shows
+// per-signal progress + a final summary so the admin can see what landed.
+
+function ScoreAllSignalsButton({ cityId, cityName, signals, onComplete }) {
+  const { showToast } = useToast();
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0, label: "" });
+  const [summary, setSummary] = useState(null);
+
+  async function trigger() {
+    if (!cityId) {
+      showToast("Pick a city first", "error");
+      return;
+    }
+    if (!signals || signals.length === 0) {
+      showToast("No signals loaded", "error");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Score ALL ${signals.length} signals for ${cityName}?\n\nThis runs the scorer for each signal sequentially. Takes ~${signals.length * 2}s.`
+    );
+    if (!confirmed) return;
+
+    setRunning(true);
+    setSummary(null);
+    const results = [];
+
+    try {
+      for (let i = 0; i < signals.length; i++) {
+        const sig = signals[i];
+        setProgress({ current: i + 1, total: signals.length, label: sig.label });
+
+        try {
+          const { data, error } = await invokeWithRefresh("run-signal-scorer", {
+            body: { signal_id: sig.id, city_id: cityId },
+          });
+          if (error) throw error;
+          results.push({
+            signal_id: sig.id,
+            label: sig.label,
+            ok: true,
+            scored: data?.scored_count ?? 0,
+            ineligible: data?.ineligible_count ?? 0,
+          });
+        } catch (err) {
+          console.error(`[ScoreAllSignalsButton] ${sig.id} failed:`, err);
+          results.push({
+            signal_id: sig.id,
+            label: sig.label,
+            ok: false,
+            error: err.message,
+          });
+        }
+      }
+
+      const okCount = results.filter((r) => r.ok).length;
+      const totalScored = results.reduce((acc, r) => acc + (r.scored ?? 0), 0);
+      setSummary({ results, okCount, totalScored });
+
+      if (okCount === signals.length) {
+        showToast(
+          `All ${signals.length} signals scored for ${cityName} · ${totalScored.toLocaleString()} total score rows`,
+          "success"
+        );
+      } else {
+        showToast(
+          `${okCount}/${signals.length} signals scored — see details below`,
+          "warning"
+        );
+      }
+      onComplete?.(results);
+    } finally {
+      setRunning(false);
+      setProgress({ current: 0, total: 0, label: "" });
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Button
+        onClick={trigger}
+        disabled={running || !cityId || !signals?.length}
+        variant="primary"
+      >
+        {running ? <Spinner size="sm" /> : <Sparkles className="w-4 h-4" />}
+        {running
+          ? `Scoring signal ${progress.current}/${progress.total}: ${progress.label}…`
+          : `Score ALL ${signals?.length ?? 0} signals for ${cityName || "selected city"}`}
+      </Button>
+
+      {running && progress.total > 0 && (
+        <div className="w-full bg-[--color-border] rounded h-2 overflow-hidden">
+          <div
+            className="bg-[--color-accent-primary] h-full transition-all duration-300"
+            style={{ width: `${(progress.current / progress.total) * 100}%` }}
+          />
+        </div>
+      )}
+
+      {summary && (
+        <div className="border border-[--color-border] rounded p-3 text-xs">
+          <div className="font-semibold mb-2">
+            {summary.okCount}/{summary.results.length} signals scored · {summary.totalScored.toLocaleString()} total score rows
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-1 font-mono">
+            {summary.results.map((r) => (
+              <div
+                key={r.signal_id}
+                className={r.ok ? "text-[--color-text-secondary]" : "text-[--color-red]"}
+              >
+                {r.ok ? "✓" : "✗"} {r.label}: {r.ok ? `${r.scored} scored, ${r.ineligible} ineligible` : r.error}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Top-50 places preview ────────────────────────────────────────────────────
 
 function TopPlacesPreview({ cityId, cityName, signalId }) {
@@ -567,6 +691,21 @@ export function SignalLibraryPage() {
           <RunBouncerButton
             cityId={selectedCityId}
             cityName={selectedCityName}
+            onComplete={() => setPreviewKey((k) => k + 1)}
+          />
+        </div>
+      </SectionCard>
+
+      {/* ORCH-0631: Score-all-signals shortcut — one click runs the scorer for every signal */}
+      <SectionCard
+        title={`Score all signals (${selectedCityName ?? "select a city"})`}
+        description="Runs the scorer for every active signal sequentially. Use this after Bouncer. Per-signal scorer below is for re-running a single signal in isolation."
+      >
+        <div className="border border-[--color-border] rounded p-4">
+          <ScoreAllSignalsButton
+            cityId={selectedCityId}
+            cityName={selectedCityName}
+            signals={signals}
             onComplete={() => setPreviewKey((k) => k + 1)}
           />
         </div>

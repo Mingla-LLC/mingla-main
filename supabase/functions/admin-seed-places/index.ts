@@ -60,7 +60,13 @@ const FIELD_MASK = [
 
   // Hours & photos
   "places.regularOpeningHours",
-  "places.secondaryOpeningHours",
+  // ORCH-0598.11.R-002 — `places.secondaryOpeningHours` removed from searchNearby
+  // FieldMask. The new Google project (862310931802) hard-rejects it with
+  // INVALID_ARGUMENT (old project silently dropped). admin-refresh-places'
+  // DETAIL_FIELD_MASK already excluded it for the detail GET endpoint; this
+  // change aligns seed with refresh. Field is still written by the transform
+  // and update blocks as null-safe `gPlace.secondaryOpeningHours ?? null` —
+  // undefined input → null output, no regression.
   "places.utcOffsetMinutes",
   "places.photos",
 
@@ -1019,9 +1025,14 @@ async function handleRunNextBatch(body: any, supabase: any) {
         duplicateSkipped = existingRows.length;
         const UPDATE_BATCH_SIZE = 10;
 
+        // ORCH-0598.11.B-002 — surface per-row update errors instead of swallowing.
+        // Previously: Promise.all resolved even when every update returned {error},
+        // so 28 dupes silently failed while batch was marked completed.
+        // Now: collect errors, log them, throw at batch level so outer catch marks
+        // batch=failed and error_details contains the real PostgREST message.
         for (let i = 0; i < existingRows.length; i += UPDATE_BATCH_SIZE) {
           const updateBatch = existingRows.slice(i, i + UPDATE_BATCH_SIZE);
-          await Promise.all(
+          const results = await Promise.all(
             updateBatch.map((row) =>
               supabase
                 .from("place_pool")
@@ -1084,8 +1095,18 @@ async function handleRunNextBatch(body: any, supabase: any) {
                   refresh_failures: 0,
                 })
                 .eq("google_place_id", row.google_place_id)
+                .select("google_place_id")
             )
           );
+          const failed = results.filter((r: any) => r.error || !r.data || r.data.length === 0);
+          if (failed.length > 0) {
+            const sample = failed.slice(0, 3).map((r: any, idx: number) => {
+              const row = updateBatch[results.indexOf(r)];
+              return `row#${idx} gpid=${row?.google_place_id ?? '?'} error=${JSON.stringify(r.error ?? 'no rows affected')}`;
+            }).join(' | ');
+            console.error(`[admin-seed-places] Update failed on ${failed.length}/${updateBatch.length} rows. Sample: ${sample}`);
+            throw new Error(`duplicate-update-path: ${failed.length}/${updateBatch.length} rows failed. First: ${sample}`);
+          }
         }
       }
     }
@@ -1093,7 +1114,7 @@ async function handleRunNextBatch(body: any, supabase: any) {
     batchStatus = "failed";
     const isTimeout = err instanceof DOMException && err.name === "AbortError";
     errorMessage = isTimeout ? "Request timed out" : (err instanceof Error ? err.message : String(err));
-    errorDetails = { error_type: isTimeout ? "timeout" : "unknown" };
+    errorDetails = { error_type: isTimeout ? "timeout" : "unknown", error_stack: err instanceof Error ? err.stack : undefined };
   }
 
   const completedAt = new Date().toISOString();
@@ -1445,9 +1466,10 @@ async function handleRetryBatch(body: any, supabase: any) {
         duplicateSkipped = existingRows.length;
         const UPDATE_BATCH_SIZE = 10;
 
+        // ORCH-0598.11.B-002 — surface per-row update errors (see first handler for rationale).
         for (let i = 0; i < existingRows.length; i += UPDATE_BATCH_SIZE) {
           const updateBatch = existingRows.slice(i, i + UPDATE_BATCH_SIZE);
-          await Promise.all(
+          const results = await Promise.all(
             updateBatch.map((row) =>
               supabase
                 .from("place_pool")
@@ -1510,8 +1532,18 @@ async function handleRetryBatch(body: any, supabase: any) {
                   refresh_failures: 0,
                 })
                 .eq("google_place_id", row.google_place_id)
+                .select("google_place_id")
             )
           );
+          const failed = results.filter((r: any) => r.error || !r.data || r.data.length === 0);
+          if (failed.length > 0) {
+            const sample = failed.slice(0, 3).map((r: any, idx: number) => {
+              const row = updateBatch[results.indexOf(r)];
+              return `row#${idx} gpid=${row?.google_place_id ?? '?'} error=${JSON.stringify(r.error ?? 'no rows affected')}`;
+            }).join(' | ');
+            console.error(`[admin-seed-places retry] Update failed on ${failed.length}/${updateBatch.length} rows. Sample: ${sample}`);
+            throw new Error(`duplicate-update-path (retry): ${failed.length}/${updateBatch.length} rows failed. First: ${sample}`);
+          }
         }
       }
     }

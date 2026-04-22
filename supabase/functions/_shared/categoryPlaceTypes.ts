@@ -697,18 +697,53 @@ export const EXCLUDED_VENUE_NAME_KEYWORDS: string[] = [
   'school', 'academy', 'institute',
   'training center', 'learning center',
   'university', 'college', 'seminary',
+  // ORCH-0631: Big-box retailer SUB-COUNTERS and "inside [store]" vendor kiosks.
+  // Whole stores (Walmart, Costco, Sam's Club, Walmart Supercenter, Walmart
+  // Neighborhood Market, Asda Superstore) are LEGITIMATE groceries/flowers
+  // destinations and are NOT in this list. Only the counters/departments inside
+  // them are rejected here. Keep in sync with bouncer.ts CHILD_VENUE_NAME_PATTERNS.
+  'walmart bakery', 'walmart deli', 'walmart cafe', 'walmart food court',
+  'walmart garden center', 'walmart pharmacy', 'walmart auto', 'walmart vision',
+  'walmart tire', 'walmart optical', 'walmart photo', 'walmart gas',
+  "sam's club bakery", "sam's club cafe", "sam's club deli", "sam's club food court",
+  "sam's club pharmacy", "sam's club optical", "sam's club tire", "sam's club gas",
+  'sams club bakery', 'sams club cafe', 'sams club deli',
+  'costco bakery', 'costco cafe', 'costco deli', 'costco food court',
+  'costco pharmacy', 'costco optical', 'costco tire', 'costco gas',
+  "bj's bakery", "bj's cafe", "bj's deli", "bj's food court", "bj's pharmacy",
+  'target cafe', 'target starbucks', 'target pharmacy', 'target optical', 'target photo',
+  // 3rd-party kiosks inside retailers
+  ' at walmart', ' at target', ' at costco', " at sam's club", ' at bjs',
+  // Vendor kiosks with explicit "inside" marker
+  '(inside ', '| inside ',
 ];
 
 // Backward-compatible alias
 export const CHILD_VENUE_NAME_KEYWORDS = EXCLUDED_VENUE_NAME_KEYWORDS;
 
+// ORCH-0631: Allowlist shared with Bouncer B9 — sync source is bouncer.ts
+// CHILD_VENUE_ALLOWLIST. Duplicated here (not imported) because this file is
+// loaded by edge functions that may not include bouncer.ts in their deploy
+// bundle. Keep in sync manually; audited via tests.
+const CHILD_VENUE_ALLOWLIST_LOWERCASE: ReadonlyArray<string> = [
+  'dalston superstore',
+];
+
+function isAllowlisted(placeNameLower: string): boolean {
+  const trimmed = placeNameLower.trim();
+  return CHILD_VENUE_ALLOWLIST_LOWERCASE.some((a) => a === trimmed);
+}
+
 /**
  * Returns true if the place name contains excluded keywords
- * (children's venues, schools, educational institutions).
- * Case-insensitive.
+ * (children's venues, schools, educational institutions, retail sub-venues).
+ * Case-insensitive. Checks ORCH-0631 allowlist first — allowlisted names
+ * always return false.
  */
 export function isExcludedVenueName(placeName: string): boolean {
-  const lower = ` ${placeName.toLowerCase()} `; // pad with spaces for word-boundary keywords
+  const raw = placeName.toLowerCase();
+  if (isAllowlisted(raw)) return false;
+  const lower = ` ${raw} `; // pad with spaces for word-boundary keywords
   return EXCLUDED_VENUE_NAME_KEYWORDS.some(kw => lower.includes(kw));
 }
 

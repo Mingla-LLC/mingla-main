@@ -310,7 +310,7 @@ BRUNCH_LUNCH_CASUAL: A REAL sit-down restaurant with tables, waiters, and a menu
 
 DRINKS_AND_MUSIC: Bars, cocktail bars, wine bars, breweries, beer gardens, pubs, speakeasies, rooftop bars, nightclubs, live music venues, karaoke bars, hookah bars, wineries. If the primary draw is drinks, music, or social nightlife atmosphere, it's drinks_and_music.
 
-ICEBREAKERS: Cafes, coffee shops, tea houses, bakeries with seating, bookstore cafes, ice cream parlors, juice bars, donut shops and pastry shops with seating. Any casual low-pressure spot for a 45-minute conversation. Perfect for first dates or getting to know someone.
+ICEBREAKERS: Cafes, coffee shops, tea houses, bakeries with seating, bookstore cafes, ice cream parlors, juice bars, donut shops and pastry shops with seating. Any casual low-pressure spot for a 45-minute conversation. Perfect for first dates or getting to know someone. MUST be a standalone establishment that people visit as a destination. Sub-counters and departments INSIDE a big-box retailer (Walmart Bakery, Walmart Deli, Sam's Club Cafe, Costco Food Court, Costco Bakery, BJ's Cafe, Target Cafe) are NOT icebreakers — these are retail backdrops, not meet-up destinations. Vendor kiosks formatted as "X (Inside Y)" or "X | Inside Y" are also NOT icebreakers. Note: a plain "Walmart" or "Costco" store itself is NOT an icebreakers either (wrong category — those belong in groceries/flowers), but do not reject them universally — reclassify. It's specifically the named SUB-COUNTERS inside stores that are always rejected from every category.
 
 MOVIES_THEATRE: Real cinemas with screens and scheduled movies — movie theaters, indie cinemas, drive-ins, IMAX, AMC, Regal, Cinemark, Alamo Drafthouse. Also includes DEDICATED performing arts venues: concert halls, theaters, opera houses, comedy clubs, jazz clubs, amphitheaters. The venue must be PRIMARILY a cinema or performance space. Stage + scheduled performers + audience = movies_theatre. A bar that hosts live music on weekends is drinks_and_music, NOT movies_theatre. A pub with a comedy night is drinks_and_music, NOT movies_theatre. A cafe near a theater is icebreakers, NOT movies_theatre. Only assign movies_theatre if the place IS a cinema, theater, or concert hall — not if it merely hosts occasional entertainment. NO film production companies, NO booking agencies, NO dance studios.
 
@@ -325,6 +325,10 @@ GROCERIES: Grocery stores, supermarkets, specialty food stores, gourmet markets,
 FLOWERS: Florists, flower shops, flower bars. Large supermarkets with staffed floral departments (like Whole Foods, Wegmans, Publix) qualify for BOTH flowers and groceries. Garden centers, nurseries, and landscaping stores are NOT flowers (they sell potted plants, soil, tools — not date-worthy bouquets).
 
 REJECT if AND ONLY IF the place fits NO category at all: kids-only venue, fast food chain, permanently closed, not a venue (offices/consultants/contractors), personal grooming (salons/barbers/waxing/beauty/aesthetics/lash/brow/nail/hair/med spa), fitness (gyms/yoga), wellness spas, gambling halls, production companies, booking agencies, community centers, recreation centers, farms/ranches with seasonal attractions only, tobacco/hookah lounges, sports parks, campus dining halls.
+
+UNIVERSAL SUB-COUNTER REJECT (ORCH-0631): Named SUB-COUNTERS and DEPARTMENTS INSIDE a big-box retailer, supermarket, or warehouse club are REJECTED from every category. Specifically reject: "Walmart Bakery", "Walmart Deli", "Walmart Cafe", "Walmart Garden Center", "Walmart Pharmacy", "Walmart Auto/Vision/Tire/Optical/Photo/Gas", and the Sam's Club / Costco / BJ's / Target equivalents (Sam's Club Cafe, Costco Food Court, BJ's Bakery, Target Cafe, etc.). Also reject supermarket-chain sub-counters like "Kroger Bakery", "Harris Teeter Bakery", "Publix Deli", "Whole Foods Cafe". Also reject vendor kiosks formatted as "X (Inside Y)" or "X | Inside Y", and 3rd-party chains hosted inside retailers like "Starbucks at Walmart". These fit NO valid Mingla category — reject even with good ratings, photos, and hours.
+
+DO NOT apply the universal reject to WHOLE STORES. "Walmart", "Walmart Supercenter", "Walmart Neighborhood Market", "Costco", "Sam's Club", "BJ's Wholesale Club", "Asda Superstore", "Target" (by itself), "Real Canadian Superstore" are legitimate retail destinations that belong in groceries (and flowers if they have staffed floral departments like Whole Foods/Wegmans/Publix). Classify those normally; do not reject them.
 
 NEVER reject a place for having a low rating. A bar with 3.2 stars is still a bar. A restaurant with 2.8 stars is still a restaurant. Ratings measure quality, not category fitness. If it fits a category, ACCEPT it regardless of rating.
 
@@ -361,6 +365,16 @@ Example 11: "Beauty Blinks Aesthetics/Spa" type:spa → {"d":"reject","c":[],"pi
 Example 12: "Urban Air Trampoline Park" type:amusement_center → {"d":"reject","c":[],"pi":"children's trampoline park","w":true,"r":"Primarily kids birthday parties — reject","f":"high"}
 
 Example 13: "Painting with a Twist" type:art_studio → {"d":"accept","c":["creative_arts"],"pi":"paint-and-sip studio","w":true,"r":"Public paint-and-sip studio — creative_arts","f":"high"}
+
+Example 14: "Walmart Bakery" type:bakery → {"d":"reject","c":[],"pi":"retailer sub-venue","w":true,"r":"Bakery counter inside Walmart — not a standalone destination. ORCH-0631 universal sub-venue reject.","f":"high"}
+
+Example 15: "Sam's Club Cafe" type:cafe → {"d":"reject","c":[],"pi":"retailer sub-venue","w":true,"r":"Cafe counter inside Sam's Club warehouse store — not a standalone icebreakers destination. ORCH-0631.","f":"high"}
+
+Example 16: "Costco Food Court" type:food_court → {"d":"reject","c":[],"pi":"retailer sub-venue","w":true,"r":"Food court inside Costco — retail backdrop, not a meet-up destination. ORCH-0631.","f":"high"}
+
+Example 17: "Walmart Garden Center" type:garden_center → {"d":"reject","c":[],"pi":"retailer sub-venue","w":true,"r":"Garden center section inside Walmart — not a standalone nature destination. ORCH-0631.","f":"high"}
+
+Example 18: "MUNCHIT CAFE (Inside ALNOOR MARKET)" type:coffee_shop → {"d":"reject","c":[],"pi":"vendor kiosk","w":true,"r":"Vendor kiosk inside a market — not a standalone meet-up destination. ORCH-0631.","f":"high"}
 
 Example 14: "The Ruxton Steakhouse" type:steak_house price:PRICE_LEVEL_VERY_EXPENSIVE rating:4.4 → {"d":"accept","c":["upscale_fine_dining"],"pi":"upscale steakhouse","w":true,"r":"VERY_EXPENSIVE steakhouse with high rating — upscale_fine_dining","f":"high"}
 
