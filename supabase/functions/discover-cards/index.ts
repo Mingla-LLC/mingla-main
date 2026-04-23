@@ -250,6 +250,21 @@ function filterByDateWindows(
 
 // ORCH-0434: Simplified filterByDateTime — 3 date modes only, no time slots.
 // Cards without opening hours are EXCLUDED (except ALWAYS_OPEN_TYPES).
+//
+// [CRITICAL — ORCH-0641] place_pool.opening_hours is the unwrapped Google Places v1
+// regularOpeningHours shape written by admin-seed-places:314. Top-level keys are
+// { openNow, periods, weekdayDescriptions, nextOpenTime }. The primary filter key
+// is `periods` (no underscore). The 3 helpers below (isOpenAtHour Path B,
+// hasOpeningData, isOpenAnyTimeOnDay Path B) MUST check `oh.periods` before any
+// fallback. ~99.9% of rows match this shape; ~37 legacy rows have lowercase day
+// keys and fall through to parseHoursText. If you edit this, grep every edge
+// function that reads `opening_hours` for parity.
+//
+// Pre-ORCH-0641 bug: checked `oh._periods` (with underscore) + lowercase day keys
+// only. Those keys don't exist in schema → filter returned false → every place
+// excluded unless primary_type in ALWAYS_OPEN_TYPES. 7 of 10 chips returned 0
+// cards for every user from 2026-04-15 through 2026-04-23. Fixed by reading
+// `oh.periods` as the primary Path B.1a shape.
 function filterByDateTime(
   places: any[],
   datetimePref: string | undefined,
@@ -275,12 +290,12 @@ function filterByDateTime(
       });
     }
 
-    // Path B: Pool format — openingHours as Record<string, string>
+    // Path B: Pool format — openingHours is the unwrapped Google v1 shape.
     const oh = place.openingHours;
     if (oh && typeof oh === 'object') {
-      // Path B.1: Structured periods (preserved from Google API — most reliable)
-      if (oh._periods && Array.isArray(oh._periods) && oh._periods.length > 0) {
-        return oh._periods.some((period: any) => {
+      // Local helper: evaluate a periods array (same shape whether `periods` or `_periods`).
+      const evalPeriods = (periodsArr: any[]): boolean => {
+        return periodsArr.some((period: any) => {
           if (period.open?.day !== day) return false;
           const openH = (period.open?.hour ?? 0) + (period.open?.minute ?? 0) / 60;
           let closeH = (period.close?.hour ?? 24) + (period.close?.minute ?? 0) / 60;
@@ -288,8 +303,16 @@ function filterByDateTime(
           if (closeH <= openH) closeH += 24;
           return hourFrac >= openH && hourFrac < closeH;
         });
+      };
+      // Path B.1a: Primary shape — `periods` array (place_pool canonical, Google v1).
+      if (Array.isArray(oh.periods) && oh.periods.length > 0) {
+        return evalPeriods(oh.periods);
       }
-      // Path B.2: Text-based hours (fallback — uses regex parser)
+      // Path B.1b: Legacy underscore-prefixed `_periods` — safety fallback.
+      if (Array.isArray(oh._periods) && oh._periods.length > 0) {
+        return evalPeriods(oh._periods);
+      }
+      // Path B.2: Text-based hours (legacy rows with lowercase day keys — ~37 rows).
       const dayName = DAY_NAMES[day];
       const dayText = oh[dayName];
       if (!dayText) return false; // No data for this day → exclude
@@ -305,11 +328,15 @@ function filterByDateTime(
   // Helper: check if a place has ANY opening hours data or is always-open type
   function hasOpeningData(place: any): boolean {
     if (ALWAYS_OPEN_TYPES.has(place.placeType || '')) return true;
+    // Google API raw shape (rare — admin-seed-places unwraps this into `openingHours`).
     if (place.regularOpeningHours?.periods?.length > 0) return true;
     const oh = place.openingHours;
     if (oh && typeof oh === 'object') {
-      if (oh._periods?.length > 0) return true;
-      // Check if any day has text data
+      // Path B.1a: Primary shape — `periods` (no underscore) per admin-seed-places:314.
+      if (Array.isArray(oh.periods) && oh.periods.length > 0) return true;
+      // Path B.1b: Legacy underscore-prefixed fallback.
+      if (Array.isArray(oh._periods) && oh._periods.length > 0) return true;
+      // Path B.2: Text-based hours — ~37 legacy rows with lowercase day keys.
       return DAY_NAMES.some(d => oh[d]);
     }
     return false;
@@ -337,14 +364,18 @@ function filterByDateTime(
       return periods.some((period: any) => period.open?.day === day);
     }
 
-    // Path B: Pool format — openingHours
+    // Path B: Pool format — openingHours is the unwrapped Google v1 shape.
     const oh = place.openingHours;
     if (oh && typeof oh === 'object') {
-      // Path B.1: Structured periods preserved from Google
-      if (oh._periods && Array.isArray(oh._periods) && oh._periods.length > 0) {
+      // Path B.1a: Primary shape — `periods` array (canonical, no underscore).
+      if (Array.isArray(oh.periods) && oh.periods.length > 0) {
+        return oh.periods.some((period: any) => period.open?.day === day);
+      }
+      // Path B.1b: Legacy underscore-prefixed fallback.
+      if (Array.isArray(oh._periods) && oh._periods.length > 0) {
         return oh._periods.some((period: any) => period.open?.day === day);
       }
-      // Path B.2: Text-based hours — parseable non-"Closed" text means open
+      // Path B.2: Text-based hours — parseable non-"Closed" text means open.
       const dayName = DAY_NAMES[day];
       const dayText = oh[dayName];
       if (!dayText) return false;
