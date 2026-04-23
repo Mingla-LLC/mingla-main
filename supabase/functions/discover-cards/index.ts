@@ -1,15 +1,17 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
-  serveCardsFromPipeline,
-} from '../_shared/cardPoolService.ts';
-import {
   resolveCategories,
   HIDDEN_CATEGORIES,
 } from '../_shared/categoryPlaceTypes.ts';
-import { scoreCards } from '../_shared/scoringService.ts';
-import { isInCohort, stableHash } from '../_shared/signalScorer.ts';
+// ORCH-0634: scoreCards / scorePoolCards / stableHash removed — signal_score
+// IS the match score now (no chip-match heuristic re-ranking on top).
+import { isInCohort } from '../_shared/signalScorer.ts';
 import { googleLevelToTierSlug } from '../_shared/priceTiers.ts';
+// ORCH-0634: multi-chip signal fan-out helper. Replaces the deprecated
+// card_pool pipeline as the singles serving source. See
+// Mingla_Artifacts/outputs/SPEC_ORCH-0634_SIGNAL_ONLY_SERVING_AND_INTERLEAVE.md.
+import { roundRobinByChip } from '../_shared/deckInterleave.ts';
 
 // ─── ORCH-0588 Slice 1: cohort cache for signal-serving rollout ───────────────
 // Module-scoped 60s cache for the admin-config cohort pct. 60s = balance between
@@ -657,21 +659,11 @@ serve(async (req: Request) => {
     const maxDistKm = (travelConstraintValue / 60) * (SPEED_KMH[travelMode] || 4.5) * 1.3;
     const radiusMeters = Math.min(Math.max(Math.round(maxDistKm * 1000), 500), 50000);
 
-    // ── Helper: re-score pool-served cards against CURRENT user's preferences ─
-    function scorePoolCards(cards: any[]): any[] {
-      if (!cards.length) return cards;
-      // AI validation is the sole quality gate for category membership.
-      // No per-category price floor — if AI approved a place as fine_dining,
-      // trust the AI regardless of price tier. User's price tier selection
-      // (via preferences) is the only price filter that applies.
-      const scored = scoreCards(cards, { categories });
-      scored.sort((a, b) => b.matchScore - a.matchScore);
-      return scored.map(s => ({
-        ...s.card,
-        matchScore: s.matchScore,
-        scoringFactors: s.factors,
-      }));
-    }
+    // ORCH-0634: scorePoolCards removed. The new signal-serving path uses
+    // signal_score as matchScore directly — re-scoring with chip-match heuristics
+    // would discard the signal ranking. Solo deck order = signal_score DESC
+    // (per-chip) → round-robin interleave. Collab deck order = deterministic
+    // place_id sort with matchScore=0 (collab parity preserved).
 
     // ── Response helper for the three non-populated paths ────────────────
     // ORCH-0474: Single builder avoids drift between pool-empty / auth-required /
@@ -733,232 +725,231 @@ serve(async (req: Request) => {
       });
     }
 
-    // ─── ORCH-0590 Slice 2: signal-serving cohort branch (generalized) ──────
-    // Additive — control path (below) UNCHANGED for any user not in cohort.
-    // Single-category requests map to a signal via CATEGORY_TO_SIGNAL (module-level).
-    // Multi-category requests always use control path to keep cohort scope narrow.
-    // Rollback = flag-to-0 for the relevant signal.
-    const singleCategory = categories.length === 1 ? categories[0] : null;
-    const signalMatch = singleCategory ? CATEGORY_TO_SIGNAL[singleCategory] : null;
+    // ─── ORCH-0634: Signal-only multi-chip fan-out (replaces card_pool fallback) ──
+    //
+    // For EVERY chip the user selected, fire its signal RPC(s) in parallel, group
+    // results per-chip (max signal_score dedupe), then round-robin one-card-per-chip
+    // across buckets for the final deck order. Date/time + curated-hours filters
+    // still apply. Collab mode still uses deterministic sort (zero matchScore).
+    //
+    // After this block there is NO card_pool fallback. Card_pool is deprecated;
+    // see ORCH-0640 cleanup.
+    //
+    // INV-042 / INV-043 preserved:
+    //   - pool-empty: all RPCs succeeded, total result set is empty
+    //   - pipeline-error: every RPC errored (total failure)
+    //   - partial failure: some RPCs errored, others succeeded → proceed with
+    //     what we have + warn log (Constitution #3 — no silent failures)
 
-    if (signalMatch) {
-      try {
-        // ORCH-0596 Slice 4: multi-signal cohort decision. Check cohort pct for EACH
-        // signalId in parallel. "Any in-cohort fires" semantic: if ≥1 signal is in-cohort,
-        // the union path fires with just the active signals. If 0 are in-cohort, fall
-        // through to control path.
-        const cohortChecks = await Promise.all(
-          signalMatch.signalIds.map(async (signalId) => {
-            const pct = await getSignalServingPct(supabaseAdmin, signalId);
-            return { signalId, pct, inCohort: isInCohort(userId, pct) };
-          }),
-        );
-        const activeSignalIds = cohortChecks.filter((c) => c.inCohort).map((c) => c.signalId);
-        const userBucket = Math.abs(stableHash(userId)) % 100;
-        console.log(
-          `[signal-serving] cohort=${activeSignalIds.length > 0 ? 'NEW' : 'CONTROL'} user_bucket=${userBucket} active=${activeSignalIds.join('+') || 'none'} chip=${singleCategory}`,
-        );
+    // Step 1: resolve chips → signal targets. Drop chips without signal mapping
+    // (defensive — log but don't explode).
+    type ChipTarget = {
+      chip: string;            // canonical chip display (e.g. 'Brunch')
+      displayCategory: string; // label to attach to cards (from CATEGORY_TO_SIGNAL)
+      signalIds: string[];     // 1 or more signal IDs to union within this chip
+      filterMin: number;
+    };
+    const chipTargets: ChipTarget[] = [];
+    for (const chip of categories) {
+      const mapping = CATEGORY_TO_SIGNAL[chip];
+      if (!mapping) {
+        console.warn(`[discover-cards] chip="${chip}" has no CATEGORY_TO_SIGNAL entry — skipping (not falling back to card_pool)`);
+        continue;
+      }
+      chipTargets.push({
+        chip,
+        displayCategory: mapping.displayCategory,
+        signalIds: [...mapping.signalIds],
+        filterMin: mapping.filterMin,
+      });
+    }
 
-        if (activeSignalIds.length > 0) {
-          // Fire parallel RPCs for each active signal. Over-fetch for dedupe headroom
-          // when merging > 1 signal.
-          const rpcLimit = activeSignalIds.length === 1 ? limit : limit * 2;
-          const rpcResults = await Promise.all(
-            activeSignalIds.map((signalId) =>
-              supabaseAdmin.rpc('query_servable_places_by_signal', {
-                p_signal_id: signalId,
-                p_filter_min: signalMatch.filterMin,
-                p_lat: location.lat,
-                p_lng: location.lng,
-                p_radius_m: radiusMeters,
-                p_exclude_place_ids: excludeCardIds,
-                p_limit: rpcLimit,
-              }),
-            ),
-          );
+    if (chipTargets.length === 0) {
+      const elapsed = Date.now() - t0;
+      console.log(`[discover-cards] exit path=pool-empty reason=no_mapped_chips chips=[${categories.join(',')}] elapsed_ms=${elapsed}`);
+      return buildEmptyResponse({
+        path: 'pool-empty',
+        reason: 'No selected chips have signal mappings — verify CATEGORY_TO_SIGNAL coverage',
+        httpStatus: 200,
+      });
+    }
 
-          // If ALL RPCs errored, fall through to control. If some succeed, proceed.
-          const validResults = rpcResults.filter(({ error }) => !error);
-          if (validResults.length === 0) {
-            const errMsgs = rpcResults
-              .map(({ error }) => error?.message)
-              .filter(Boolean)
-              .join('; ');
-            console.warn(
-              `[signal-serving] all RPCs failed for ${activeSignalIds.join('+')}, falling through to control: ${errMsgs}`,
-            );
-            // Intentionally fall through to control path below — no throw.
-          } else {
-            // Merge by place_id, keep max signal_score across signals.
-            const merged = new Map<string, any>();
-            for (const { data } of validResults) {
-              for (const row of (data as any[]) ?? []) {
-                const existing = merged.get(row.place_id);
-                if (!existing || Number(row.signal_score) > Number(existing.signal_score)) {
-                  merged.set(row.place_id, row);
-                }
-              }
-            }
-            const rows = [...merged.values()]
-              .sort((a, b) => Number(b.signal_score) - Number(a.signal_score))
-              .slice(0, limit);
-            const cards = rows.map((r: any) =>
-              transformServablePlaceToCard(r, signalMatch.displayCategory),
-            );
-            const topScore = rows.length > 0 ? Number(rows[0].signal_score ?? 0) : 0;
-            const elapsed = Date.now() - t0;
-            const signalIdLabel = activeSignalIds.join('+');
-            const maxCohortPct = cohortChecks
-              .filter((c) => c.inCohort)
-              .reduce((max, c) => Math.max(max, c.pct), 0);
-            console.log(
-              `[signal-serving] NEW signal=${signalIdLabel} served=${cards.length} top_score=${topScore} elapsed_ms=${elapsed}`,
-            );
+    // Step 2: cohort-check each unique signalId once (cached 60s, cheap).
+    // "Any signal in-cohort" fires the new path for that chip; if a chip's
+    // signals are all flagged to 0 the chip returns empty (caller falls back to
+    // the interleave serving zero results for that chip — other chips continue).
+    const uniqueSignalIds = [...new Set(chipTargets.flatMap((t) => t.signalIds))];
+    const cohortByPct = new Map<string, { pct: number; inCohort: boolean }>();
+    await Promise.all(
+      uniqueSignalIds.map(async (sig) => {
+        const pct = await getSignalServingPct(supabaseAdmin, sig);
+        cohortByPct.set(sig, { pct, inCohort: isInCohort(userId, pct) });
+      }),
+    );
 
-            return new Response(
-              JSON.stringify({
-                success: true,
-                cards,
-                total: cards.length,
-                source: 'signal-serving-v1',
-                metadata: {
-                  hasMore: cards.length === limit,
-                  poolSize: cards.length,
-                  batchSeed: batchSeed ?? 0,
-                },
-                sourceBreakdown: {
-                  fromPool: cards.length,
-                  fromApi: 0,
-                  totalServed: cards.length,
-                  apiCallsMade: 0,
-                  cacheHits: 0,
-                  gapCategories: [],
-                  reason: `Signal-served: ${signalIdLabel} ≥ ${signalMatch.filterMin}`,
-                  path: 'pipeline',
-                  signalId: signalIdLabel,
-                  cohort: 'NEW',
-                  cohortPct: maxCohortPct,
-                  filterMin: signalMatch.filterMin,
-                  topScore,
-                },
-              }),
-              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-            );
-          }
+    // Step 3: build flat list of RPC tasks (one per chip × signalId where in-cohort).
+    type RpcTask = { chip: string; signalId: string; filterMin: number; displayCategory: string };
+    const rpcTasks: RpcTask[] = [];
+    for (const t of chipTargets) {
+      for (const sig of t.signalIds) {
+        if (cohortByPct.get(sig)?.inCohort) {
+          rpcTasks.push({
+            chip: t.chip,
+            signalId: sig,
+            filterMin: t.filterMin,
+            displayCategory: t.displayCategory,
+          });
         }
-        // activeSignalIds.length===0 → fall through to control path below
-      } catch (signalErr) {
-        // Belt: if anything in the signal branch throws, fall through to control.
-        // Surface to logs (Constitutional #3 — no silent failures).
-        console.warn(
-          `[signal-serving] branch threw for ${signalMatch.signalIds.join('+')}, falling through to control: ${(signalErr as Error)?.message}`,
-        );
       }
     }
 
-    // ── POOL block with structural try/catch ───────────────────────────────
-    // ORCH-0474 / INV-042, INV-043: The catch MUST NOT fall through to
-    // pool-empty. Any exception reaching here is a runtime failure, not a
-    // data gap. Surface it with path:'pipeline-error' + HTTP 500.
-    try {
-      const poolParams = {
-        supabaseAdmin,
-        userId,
-        lat: location.lat,
-        lng: location.lng,
-        radiusMeters,
-        categories,
-        limit,
-        cardType: 'single' as const,
-        excludePlaceIds: excludeCardIds,
-      };
-
-      const poolResult = await serveCardsFromPipeline(
-        poolParams,
-        '', // No Google API key needed — pool-only serving
-        { travelMode, travelConstraintValue },
-      );
-
-      if (poolResult.cards.length > 0) {
-        // Apply date/time filter to pool-served cards
-        // ORCH-0446: Use AND intersection when collab dateWindows provided, else solo single-mode
-        const timeFilteredCards = dateWindows && dateWindows.length > 0
-          ? filterByDateWindows(poolResult.cards, dateWindows, datetimePref, selectedDates)
-          : filterByDateTime(poolResult.cards, datetimePref, dateOption, selectedDates);
-
-        // Apply cascading hours filter to curated cards (timezone-aware via utcNow + card offset)
-        const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();
-        const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
-
-        // ORCH-0446C: Collab mode uses deterministic sort (place ID) instead of
-        // matchScore ranking. Both devices get identical card order. Solo unchanged.
-        const scoredPoolCards = sessionId
-          ? hoursFilteredCards
-              .sort((a: any, b: any) => (a.id ?? '').localeCompare(b.id ?? ''))
-              .map((card: any) => ({ ...card, matchScore: 0 }))
-          : scorePoolCards(hoursFilteredCards);
-
-        const elapsed = Date.now() - t0;
-        console.log(`[discover-cards] exit path=pipeline userId=present elapsed_ms=${elapsed} rows=${scoredPoolCards.length} preFilter=${poolResult.cards.length} mode=${sessionId ? 'collab-deterministic' : 'solo-scored'}`);
-
-        return new Response(JSON.stringify({
-          cards: scoredPoolCards,
-          total: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
-          source: 'pool',
-          metadata: {
-            hasMore: poolResult.hasMore,
-            poolSize: poolResult.totalUnseenCount ?? poolResult.totalPoolSize,
-            batchSeed: batchSeed ?? 0,
-          },
-          sourceBreakdown: {
-            fromPool: poolResult.fromPool,
-            fromApi: 0,
-            totalServed: scoredPoolCards.length,
-            apiCallsMade: 0,
-            cacheHits: 0,
-            gapCategories: poolResult.diagnostics?.gapCategories ?? [],
-            reason: poolResult.diagnostics?.reason ?? 'Served from pipeline',
-            path: 'pipeline',
-          },
-        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-
-      // ── POOL-EMPTY exit (genuine — RPC succeeded, zero rows) ─────────────
-      // ORCH-0474 / INV-042: This is the ONLY code path that may return
-      // path:'pool-empty'. Auth failures route to 'auth-required' above;
-      // pipeline exceptions route to 'pipeline-error' in the catch below.
-      // Do NOT add a fall-through here.
+    if (rpcTasks.length === 0) {
       const elapsed = Date.now() - t0;
-      console.log(`[discover-cards] exit path=pool-empty userId=present elapsed_ms=${elapsed} rows=0`);
+      console.log(`[discover-cards] exit path=pool-empty reason=no_signals_in_cohort chips=[${categories.join(',')}] elapsed_ms=${elapsed}`);
       return buildEmptyResponse({
         path: 'pool-empty',
-        reason: 'Pool empty for this area — run generate-single-cards to populate',
+        reason: 'No selected chips have a signal in cohort — flip signal_serving_*_pct=100 in admin_config',
         httpStatus: 200,
       });
+    }
 
-    } catch (poolErr) {
-      // ── PIPELINE-ERROR exit ───────────────────────────────────────────────
-      // ORCH-0474 / INV-042: Any exception in serveCardsFromPipeline or
-      // downstream lands here. MUST NOT fall through to pool-empty.
-      const err = poolErr as Error;
-      const errorClass = err?.name || 'Error';
-      // Sanitize: whitelist class + first 140 chars of message; redact
-      // UUIDs and emails so PII doesn't leak into response bodies.
-      const rawMsg = String(err?.message ?? 'unknown error').slice(0, 140);
-      const sanitizedMsg = rawMsg
-        .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '[REDACTED_UUID]')
-        .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[REDACTED_EMAIL]');
-      const reason = `${errorClass}: ${sanitizedMsg}`;
+    // Step 4: fire all RPCs in parallel. Over-fetch per chip (limit × 2) so
+    // round-robin has depth; final cap is `limit`.
+    const perChipRpcLimit = Math.max(20, Math.min(100, limit * 2));
+    const rpcResults = await Promise.all(
+      rpcTasks.map((task) =>
+        supabaseAdmin.rpc('query_servable_places_by_signal', {
+          p_signal_id: task.signalId,
+          p_filter_min: task.filterMin,
+          p_lat: location.lat,
+          p_lng: location.lng,
+          p_radius_m: radiusMeters,
+          p_exclude_place_ids: excludeCardIds,
+          p_limit: perChipRpcLimit,
+        }).then((res) => ({ task, res })),
+      ),
+    );
+
+    // Step 5: bucket results by chip, merging within a chip by place_id max-score.
+    // Skip failed RPCs but keep going (partial failure tolerance).
+    const perChipBuckets = new Map<string, Map<string, any>>(); // chip → place_id → row
+    const failedTasks: string[] = [];
+    for (const { task, res } of rpcResults) {
+      if (res.error) {
+        failedTasks.push(`${task.chip}/${task.signalId}: ${res.error.message}`);
+        continue;
+      }
+      let bucket = perChipBuckets.get(task.chip);
+      if (!bucket) {
+        bucket = new Map<string, any>();
+        perChipBuckets.set(task.chip, bucket);
+      }
+      for (const row of (res.data as any[]) ?? []) {
+        const existing = bucket.get(row.place_id);
+        if (!existing || Number(row.signal_score) > Number(existing.signal_score)) {
+          // Attach displayCategory from the winning chip (preserved through interleave)
+          bucket.set(row.place_id, { ...row, __displayCategory: task.displayCategory });
+        }
+      }
+    }
+
+    // Step 6: total-failure guard — every RPC errored → pipeline-error.
+    if (failedTasks.length === rpcTasks.length) {
       const elapsed = Date.now() - t0;
-      console.error(`[discover-cards] exit path=pipeline-error userId=present elapsed_ms=${elapsed} errorClass=${errorClass} msg="${sanitizedMsg}"`);
+      const truncated = failedTasks.slice(0, 3).join(' | ').slice(0, 200);
+      console.error(`[discover-cards] exit path=pipeline-error reason=all_rpcs_failed failed=${failedTasks.length} elapsed_ms=${elapsed} sample="${truncated}"`);
       return buildEmptyResponse({
         path: 'pipeline-error',
-        reason,
-        errorClass,
+        reason: `All ${rpcTasks.length} signal RPCs failed: ${truncated}`,
+        errorClass: 'SignalRpcError',
         errorKey: 'pipeline_error',
         httpStatus: 500,
       });
     }
+    if (failedTasks.length > 0) {
+      console.warn(`[discover-cards] partial signal-RPC failure ok=${rpcTasks.length - failedTasks.length}/${rpcTasks.length} sample="${failedTasks.slice(0, 2).join(' | ').slice(0, 200)}"`);
+    }
+
+    // Step 7: within each chip, sort by signal_score DESC (caller pre-sort so
+    // round-robin is deterministic). Preserve the user's chip-selection order
+    // from `categories` by reinserting in a fresh Map in that order.
+    const perChipSorted = new Map<string, any[]>();
+    for (const chip of categories) {
+      const bucket = perChipBuckets.get(chip);
+      if (!bucket || bucket.size === 0) continue;
+      const arr = [...bucket.values()].sort(
+        (a, b) => Number(b.signal_score ?? 0) - Number(a.signal_score ?? 0),
+      );
+      perChipSorted.set(chip, arr);
+    }
+
+    // Step 8: round-robin one-card-per-chip, cap at `limit`.
+    const interleavedRows = roundRobinByChip({ perChip: perChipSorted, totalLimit: limit });
+
+    if (interleavedRows.length === 0) {
+      const elapsed = Date.now() - t0;
+      console.log(`[discover-cards] exit path=pool-empty reason=zero_rows_post_filter chips=[${categories.join(',')}] elapsed_ms=${elapsed}`);
+      return buildEmptyResponse({
+        path: 'pool-empty',
+        reason: 'Signal RPCs succeeded but returned zero rows — try widening radius or adding chips',
+        httpStatus: 200,
+      });
+    }
+
+    // Step 9: transform to card shape (carries winning displayCategory).
+    const rawCards = interleavedRows.map((row: any) =>
+      transformServablePlaceToCard(row, row.__displayCategory ?? categories[0]),
+    );
+
+    // Step 10: date/time + curated-hours filter (preserved from legacy path).
+    const timeFilteredCards = dateWindows && dateWindows.length > 0
+      ? filterByDateWindows(rawCards, dateWindows, datetimePref, selectedDates)
+      : filterByDateTime(rawCards, datetimePref, dateOption, selectedDates);
+    const curatedUtcNow = datetimePref ? new Date(datetimePref) : new Date();
+    const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedUtcNow);
+
+    // Step 11: preserve collab deterministic order (zero out matchScore) OR
+    // keep signal-score ranked order for solo. We DO NOT call scorePoolCards
+    // here because the signal_score IS the match score — re-scoring would
+    // throw away the signal ranking in favor of chip-match heuristics.
+    const finalCards = sessionId
+      ? hoursFilteredCards
+          .sort((a: any, b: any) => (a.id ?? '').localeCompare(b.id ?? ''))
+          .map((card: any) => ({ ...card, matchScore: 0 }))
+      : hoursFilteredCards;
+
+    const elapsed = Date.now() - t0;
+    const perChipBreakdown: Record<string, number> = {};
+    for (const [chip, arr] of perChipSorted) perChipBreakdown[chip] = arr.length;
+    const filterMins: Record<string, number> = {};
+    for (const t of chipTargets) filterMins[t.chip] = t.filterMin;
+    console.log(`[discover-cards] exit path=pipeline source=signal-serving-v2-multi-chip chips=${categories.length} rpcs=${rpcTasks.length} failed=${failedTasks.length} pre=${rawCards.length} post=${finalCards.length} elapsed_ms=${elapsed} mode=${sessionId ? 'collab' : 'solo'}`);
+
+    return new Response(JSON.stringify({
+      success: true,
+      cards: finalCards,
+      total: finalCards.length,
+      source: 'signal-serving-v2-multi-chip',
+      metadata: {
+        hasMore: finalCards.length === limit,
+        poolSize: finalCards.length,
+        batchSeed: batchSeed ?? 0,
+        perChipBreakdown,
+      },
+      sourceBreakdown: {
+        fromPool: finalCards.length,
+        fromApi: 0,
+        totalServed: finalCards.length,
+        apiCallsMade: 0,
+        cacheHits: 0,
+        gapCategories: [],
+        reason: `Signal-served v2 multi-chip: ${categories.length} chips, ${rpcTasks.length} RPCs (${failedTasks.length} failed)`,
+        path: 'pipeline',
+        signalIds: uniqueSignalIds,
+        cohort: 'NEW',
+        filterMins,
+      },
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (err) {
     console.error('[discover-cards] Unhandled error:', err);

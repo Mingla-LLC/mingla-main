@@ -992,13 +992,34 @@ export async function serveCardsFromPipeline(
 
 // ── Serve curated cards from pool ───────────────────────────────────────────
 
+// ORCH-0634: serveCuratedCardsFromPool is a stub returning empty. card_pool is
+// deprecated for serving (both singles and curated). Every caller that still
+// invokes this function will naturally fall through to fresh assembly in
+// generateCardsForType. After ORCH-0640 drops card_pool the PoolQueryParams
+// interface itself will go; for now this keeps the signature stable so callers
+// don't need refactoring in this pass.
+//
+// Returns: shape that satisfies PoolQueryResult — zero cards, zero pool size,
+// hasMore=false. No error path; this is not a failure mode, it's the intended
+// no-op.
+// deno-lint-ignore require-await
 export async function serveCuratedCardsFromPool(
-  params: PoolQueryParams,
-  googleApiKey: string,
+  _params: PoolQueryParams,
+  _googleApiKey: string,
 ): Promise<PoolQueryResult> {
-  // For curated cards, query with card_type = 'curated'
-  return serveCardsFromPipeline(
-    { ...params, cardType: 'curated' },
-    googleApiKey,
-  );
+  return {
+    cards: [],
+    totalPoolSize: 0,
+    totalUnseenCount: 0,
+    fromPool: 0,
+    fromApi: 0,
+    hasMore: false,
+    diagnostics: {
+      reason: 'ORCH-0634: card_pool curated read path disabled. Caller will assemble fresh.',
+      gapCategories: [],
+      apiCallsMade: 0,
+      poolQueried: 0,
+      limitRequested: _params?.limit ?? 0,
+    },
+  };
 }

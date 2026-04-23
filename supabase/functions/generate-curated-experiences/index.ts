@@ -291,53 +291,15 @@ for (const et of EXPERIENCE_TYPES) {
 
 // ── Single Card Query (curated cards built from singles) ──────────────────
 
-async function fetchSinglesForCategory(
-  categoryId: string,
-  centerLat: number,
-  centerLng: number,
-  radiusMeters: number,
-  limit: number = 50,
-): Promise<any[]> {
-  const latDelta = radiusMeters / 111320;
-  const lngDelta = radiusMeters / (111320 * Math.cos(centerLat * Math.PI / 180));
-
-  // ORCH-0598.11 I-SERVING-TWO-GATE: legacy fetch path now JOINs place_pool via
-  // FK (card_pool_place_pool_id_fkey) and requires is_servable=true at the DB.
-  // The has-real-photos gate runs in JS post-fetch since PostgREST doesn't expose
-  // array_length() in the builder fluently. Over-fetch (limit*3) absorbs filter
-  // losses; final slice caps at `limit`.
-  const { data, error } = await supabaseAdmin
-    .from('card_pool')
-    .select(
-      'id, place_pool_id, google_place_id, title, address, lat, lng, rating, review_count, price_min, price_max, price_tier, price_tiers, opening_hours, website, images, image_url, city_id, city, country, utc_offset_minutes, ai_categories, category, categories, place_pool!inner(is_servable, stored_photo_urls)',
-    )
-    .eq('is_active', true)
-    .eq('card_type', 'single')
-    .eq('place_pool.is_servable', true)
-    .contains('categories', [categoryId])
-    .gte('lat', centerLat - latDelta)
-    .lte('lat', centerLat + latDelta)
-    .gte('lng', centerLng - lngDelta)
-    .lte('lng', centerLng + lngDelta)
-    .order('rating', { ascending: false })
-    .limit(limit * 3);
-
-  if (error || !data) return [];
-
-  // ORCH-0598.11: filter out cards whose place_pool peer lacks real stored photos
-  // (NULL, empty array, or '__backfill_failed__' sentinel). Combined with the
-  // is_servable=true filter above, this is the I-SERVING-TWO-GATE invariant.
-  // Existing card_pool.images safety net preserved.
-  const servable = data.filter((card: any) => {
-    const urls = card.place_pool?.stored_photo_urls;
-    if (!Array.isArray(urls) || urls.length === 0) return false;
-    if (urls.length === 1 && urls[0] === '__backfill_failed__') return false;
-    return card.images?.length > 0 || card.image_url;
-  });
-
-  // Shuffle to ensure variety across requests
-  return shuffle(servable).slice(0, limit);
-}
+// ORCH-0634: fetchSinglesForCategory DELETED. The function read from
+// card_pool.contains('categories', [catId]) which silently returned zero rows
+// for the new split chip slugs (brunch, casual_food, movies, theatre) because
+// card_pool.categories stored old bundled slugs only. Replacement: every caller
+// now uses fetchSinglesForSignalRank via fetchForCombo (which always resolves
+// a signal via COMBO_SLUG_TO_FILTER_SIGNAL — no card_pool fallback).
+//
+// If you find yourself wanting to re-add this for any reason, stop. card_pool
+// is deprecated and ORCH-0640 will DROP the table. Use signal scores instead.
 
 // ── ORCH-0599.3: Signal-aware picker for Romantic experience stops ────────
 // Queries card_pool JOINed with place_scores to:
@@ -398,26 +360,80 @@ async function fetchSinglesForSignalRank(
   const rankScoreById = new Map<string, number>();
   for (const r of rankRows) rankScoreById.set(r.place_id, Number(r.score));
 
-  // Step 3: fetch card_pool rows (presentation layer) for these place_ids in bounding box
-  const { data: cards, error: cardErr } = await supabaseAdmin
-    .from('card_pool')
-    .select('id, place_pool_id, google_place_id, title, address, lat, lng, rating, review_count, price_min, price_max, price_tier, price_tiers, opening_hours, website, images, image_url, city_id, city, country, utc_offset_minutes, ai_categories, category, categories')
+  // ORCH-0634: Step 3 rewritten to read place_pool DIRECTLY (was: card_pool join).
+  // Eliminates the 44-row card_pool gap AND the split-slug filter bug. Output
+  // shape mimics the old card_pool row so downstream assembly is unchanged.
+  //
+  // Three-gate serving enforced here:
+  //   G1: pp.is_servable = true
+  //   G2: signal_score >= filter_min (enforced upstream via place_scores filter)
+  //   G3: real stored_photo_urls (no NULL, no empty, no __backfill_failed__ sentinel)
+  const { data: places, error: placeErr } = await supabaseAdmin
+    .from('place_pool')
+    .select('id, google_place_id, name, address, lat, lng, rating, review_count, price_level, price_range_start_cents, price_range_end_cents, opening_hours, website, stored_photo_urls, photos, types, primary_type, utc_offset_minutes, ai_categories, city_id, city, country')
     .eq('is_active', true)
-    .eq('card_type', 'single')
-    .in('place_pool_id', rankedIds)
+    .eq('is_servable', true)
+    .in('id', rankedIds)
     .gte('lat', centerLat - latDelta)
     .lte('lat', centerLat + latDelta)
     .gte('lng', centerLng - lngDelta)
     .lte('lng', centerLng + lngDelta)
     .limit(limit * 2);
 
-  if (cardErr || !cards) return [];
+  if (placeErr || !places) {
+    console.warn(`[fetchSinglesForSignalRank] place_pool fetch error for ${filterSignal}/${rankSignal}: ${placeErr?.message ?? 'no data'}`);
+    return [];
+  }
 
-  // Step 4: attach rank score + sort by rank signal DESC (preserves signal-aware ordering
-  // even though card_pool.in() doesn't preserve input order)
-  const withScore = cards
-    .filter((card: any) => (card.images?.length > 0 || card.image_url) && card.place_pool_id)
-    .map((card: any) => ({ ...card, _rankScore: rankScoreById.get(card.place_pool_id) ?? 0 }))
+  // Step 4: apply G3 photo gate + shape each row as the assembler expects.
+  // Historical card_pool schema fields (title, images, image_url, etc.) are
+  // mapped from place_pool equivalents so generateCardsForType stays unchanged.
+  const withScore = places
+    .filter((pp: any) => {
+      const urls = pp.stored_photo_urls;
+      if (!Array.isArray(urls) || urls.length === 0) return false;
+      if (urls.length === 1 && urls[0] === '__backfill_failed__') return false;
+      return true;
+    })
+    .map((pp: any) => ({
+      // Identity — use place_pool_id for both id + place_pool_id so consumers
+      // that key on either work. card_pool.id is gone; downstream code that
+      // references card.id will get the place_pool UUID, which is unique.
+      id: pp.id,
+      place_pool_id: pp.id,
+      google_place_id: pp.google_place_id,
+      // Presentation (card_pool.title was a copy of place_pool.name)
+      title: pp.name,
+      address: pp.address,
+      lat: pp.lat,
+      lng: pp.lng,
+      rating: pp.rating,
+      review_count: pp.review_count,
+      // Price — derive legacy min/max/tier from place_pool columns
+      price_level: pp.price_level,
+      price_min: pp.price_range_start_cents != null ? Math.floor(pp.price_range_start_cents / 100) : null,
+      price_max: pp.price_range_end_cents != null ? Math.floor(pp.price_range_end_cents / 100) : null,
+      price_tier: null,      // card_pool had this; assembler tolerates null
+      price_tiers: null,
+      // Hours + meta
+      opening_hours: pp.opening_hours,
+      website: pp.website,
+      images: pp.stored_photo_urls,
+      image_url: pp.stored_photo_urls?.[0] ?? null,
+      city_id: pp.city_id,
+      city: pp.city,
+      country: pp.country,
+      utc_offset_minutes: pp.utc_offset_minutes,
+      // Categories — still passed through from place_pool.ai_categories.
+      // card_pool.categories is deprecated and not read anywhere post-ORCH-0634.
+      ai_categories: pp.ai_categories,
+      category: (pp.ai_categories?.[0] ?? null),
+      categories: pp.ai_categories,
+      // Types + signal rank score
+      types: pp.types,
+      primary_type: pp.primary_type,
+      _rankScore: rankScoreById.get(pp.id) ?? 0,
+    }))
     .sort((a: any, b: any) => b._rankScore - a._rankScore)
     .slice(0, limit);
 
@@ -716,21 +732,24 @@ async function generateCardsForType(
   // Pre-fetch places from place_pool for all categories in parallel
   const categoryPlaces: Record<string, any[]> = {};
 
-  // ORCH-0599.3 + 0601: resolve per-experience signal-aware picker. Signal-aware
-  // path is used when EITHER (a) this experience has a rank-signal override for
-  // this slug, OR (b) this slug has a required-types filter (hiking/museum).
-  // Otherwise fall back to legacy fetchSinglesForCategory (rating-based shuffle).
+  // ORCH-0634: EVERY curated stop goes through the signal system. No card_pool
+  // fallback. Rank signal = experience override (e.g. Romantic ranks by 'romantic'
+  // vibe) if present, else the filter signal itself. Type filter (hiking/museum
+  // sub-cats) applies when set. Flowers is signal-routed at filter_min=60
+  // (see COMBO_SLUG_FILTER_MIN below) — the legacy curated-big-store-list
+  // exception is gone; the v1.3.0 flowers signal is the sole gate.
   const signalOverride = EXPERIENCE_RANK_SIGNAL_OVERRIDE[typeDef.id];
   const fetchForCombo = async (catId: string, fetchLat: number, fetchLng: number, fetchRadius: number, fetchLimit?: number): Promise<any[]> => {
+    const filterSignal = COMBO_SLUG_TO_FILTER_SIGNAL[catId];
+    if (!filterSignal) {
+      console.warn(`[generate-curated] Unknown combo slug "${catId}" — no COMBO_SLUG_TO_FILTER_SIGNAL entry. Returning [] (no card_pool fallback).`);
+      return [];
+    }
     const rankOverride = signalOverride?.[catId];
     const typeFilter = COMBO_SLUG_TYPE_FILTER[catId];
-    if (rankOverride || typeFilter) {
-      const filterSignal = COMBO_SLUG_TO_FILTER_SIGNAL[catId] ?? catId;
-      const filterMin = COMBO_SLUG_FILTER_MIN[catId] ?? 120;
-      const rankSignal = rankOverride ?? filterSignal;  // no override → rank by the filter signal itself
-      return fetchSinglesForSignalRank(filterSignal, filterMin, rankSignal, fetchLat, fetchLng, fetchRadius, fetchLimit ?? 50, typeFilter);
-    }
-    return fetchSinglesForCategory(catId, fetchLat, fetchLng, fetchRadius, fetchLimit ?? 50);
+    const filterMin = COMBO_SLUG_FILTER_MIN[catId] ?? 120;
+    const rankSignal = rankOverride ?? filterSignal; // no override → rank by filter signal itself
+    return fetchSinglesForSignalRank(filterSignal, filterMin, rankSignal, fetchLat, fetchLng, fetchRadius, fetchLimit ?? 50, typeFilter);
   };
 
   if (hasReverseAnchor) {
@@ -1373,165 +1392,138 @@ serve(async (req) => {
 
     console.log(`[curated-v2] Generated ${cards.length} ${experienceType} cards`);
 
-    // Fire-and-forget: Batch store in pool
+    // ORCH-0634: card_pool + card_pool_stops writeback REMOVED.
+    //
+    // Curated cards are no longer persisted anywhere (I-NO-CURATED-PERSISTENCE).
+    // Every request assembles fresh. Only the GPT teaser is cached, keyed by
+    // (experience_type + sorted stop place_pool_ids) via the curated_teaser_cache
+    // table. Cache key formula is LOCKED per ORCH-0640 coordination — do not
+    // change post-cutover (engagement_metrics.container_key reuses this formula).
+    //
+    // Fire-and-forget: compute cache keys, fetch any existing teasers, call GPT
+    // only for the subset that missed, upsert misses back. Served cards are
+    // decorated with their teaser in-place so the first-return response includes
+    // fresh text; on cache-miss we still return the card without blocking.
     if (poolAdmin && cards.length > 0) {
       (async () => {
         try {
-          // 1. Collect card rows for insertion
-          // Teaser text generation
-          const teaserTexts: string[] = [];
-          if (OPENAI_API_KEY) {
+          // Compute cache_key for each card. Stops may lack placePoolId for
+          // outlier shapes; those cards are left uncached (GPT would have had
+          // to generate anyway — harmless).
+          const cardsWithKeys = cards.map((card: any, idx: number) => {
+            const stops = (card.stops || []).filter((s: any) => !s.optional);
+            const stopIds = stops.map((s: any) => s.placePoolId).filter(Boolean).slice();
+            if (stopIds.length === 0) return { card, idx, key: null };
+            stopIds.sort(); // LOCKED: ascending string compare on canonical UUID
+            const input = `${experienceType}:${stopIds.join(',')}`;
+            // deno-lint-ignore no-explicit-any
+            return { card, idx, key: null as string | null, stopIds, input };
+          });
+
+          // Hash the inputs via Web Crypto (Deno built-in).
+          for (const entry of cardsWithKeys) {
+            // deno-lint-ignore no-explicit-any
+            const e = entry as any;
+            if (!e.input) continue;
+            const bytes = new TextEncoder().encode(e.input);
+            const digest = await crypto.subtle.digest('SHA-256', bytes);
+            e.key = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+          }
+
+          // Batch lookup — who's already cached?
+          // deno-lint-ignore no-explicit-any
+          const keys = (cardsWithKeys as any[]).map((e) => e.key).filter(Boolean) as string[];
+          if (keys.length === 0) return;
+          const { data: cachedRows, error: readErr } = await poolAdmin
+            .from('curated_teaser_cache')
+            .select('cache_key, one_liner, tip, shopping_list')
+            .in('cache_key', keys);
+          if (readErr) {
+            console.warn(`[curated-teaser-cache] read error: ${readErr.message}`);
+            return;
+          }
+          const cached = new Map<string, { one_liner: string; tip: string | null; shopping_list: string | null }>();
+          for (const row of cachedRows ?? []) {
+            cached.set(row.cache_key, {
+              one_liner: row.one_liner,
+              tip: row.tip,
+              shopping_list: row.shopping_list,
+            });
+          }
+
+          // For cache hits: bump last_served_at + serve_count (best-effort).
+          if (cached.size > 0) {
+            const hitKeys = [...cached.keys()];
+            await poolAdmin
+              .from('curated_teaser_cache')
+              // deno-lint-ignore no-explicit-any
+              .update({ last_served_at: new Date().toISOString() } as any)
+              .in('cache_key', hitKeys);
+          }
+
+          // For cache misses: batch-GPT only the missed subset.
+          // deno-lint-ignore no-explicit-any
+          const missEntries = (cardsWithKeys as any[]).filter((e) => e.key && !cached.has(e.key));
+          if (OPENAI_API_KEY && missEntries.length > 0) {
             try {
-              const batchPrompt = `Generate ${cards.length} unique teaser sentences for curated experiences. Each must be max 20 words, intriguing, and must NOT reveal place names or addresses. Focus on vibe/emotion/activity.\n\nGenerate exactly ${cards.length} teasers for "${experienceType}" experiences. Output ONLY a JSON array of ${cards.length} strings.`;
+              const batchPrompt = `Generate ${missEntries.length} unique teaser sentences for curated experiences. Each must be max 20 words, intriguing, and must NOT reveal place names or addresses. Focus on vibe/emotion/activity.\n\nGenerate exactly ${missEntries.length} teasers for "${experienceType}" experiences. Output ONLY a JSON array of ${missEntries.length} strings.`;
               const teaserRes = await timeoutFetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
-                body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: batchPrompt }], max_tokens: 50 * cards.length, temperature: 0.8 }),
+                body: JSON.stringify({
+                  model: 'gpt-4o-mini',
+                  messages: [{ role: 'user', content: batchPrompt }],
+                  max_tokens: 50 * missEntries.length,
+                  temperature: 0.8,
+                }),
                 timeoutMs: 10000,
               });
               const teaserJson = await teaserRes.json();
               const teaserContent = teaserJson.choices?.[0]?.message?.content?.trim() ?? '[]';
               const cleanContent = teaserContent.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
               const parsed = JSON.parse(cleanContent);
-              if (Array.isArray(parsed)) teaserTexts.push(...parsed);
-            } catch (teaserErr) {
-              console.warn('[curated-v2] Teaser generation failed:', teaserErr);
-            }
-          }
-
-          // Build card rows
-          const cardEntries = cards.map((card: any, cardIndex: number) => {
-            const stops = card.stops || [];
-            const mainStops = stops.filter((s: any) => !s.optional);
-            const stopGooglePlaceIds = stops.map((s: any) => s.placeId).filter(Boolean);
-            const stopPlacePoolIds = stops.map((s: any) => s.placePoolId).filter(Boolean);
-            const stopCardPoolIds = stops.map((s: any) => s.cardPoolId).filter(Boolean);
-            const popularityScore = Math.min(5, (card.matchScore || 85) / 20) * Math.log10(2);
-
-            // Category from single cards' AI categories
-            const stopCategorySlug = mainStops[0]?.aiCategories?.[0] || mainStops[0]?.placeType || 'brunch_lunch_casual';
-            const stopCategories = [...new Set(mainStops.flatMap((s: any) => s.aiCategories || []))];
-            const stopCityId = mainStops[0]?.cityId || null;
-
-            return {
-              row: {
-                card_type: 'curated' as const,
-                place_pool_id: null,
-                google_place_id: stopCardPoolIds.length > 0
-                  ? `curated-${[...stopCardPoolIds].sort().join('-')}`
-                  : mainStops[0]?.placeId || card.id || `curated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                title: card.title || `${experienceType} Experience`,
-                category: stopCategorySlug,
-                categories: stopCategories,
-                ai_approved: true,
-                description: card.tagline || '',
-                highlights: [],
-                image_url: mainStops[0]?.imageUrl || null,
-                images: mainStops.map((s: any) => s.imageUrl).filter(Boolean),
-                address: mainStops[0]?.address || '',
-                lat: mainStops[0]?.lat || location.lat,
-                lng: mainStops[0]?.lng || location.lng,
-                rating: Math.min(5, (card.matchScore || 85) / 20),
-                review_count: 0,
-                price_min: card.totalPriceMin || 0,
-                price_max: card.totalPriceMax || 0,
-                price_tier: mainStops[0]?.priceTier || 'comfy',
-                price_tiers: mainStops[0]?.priceTiers || (mainStops[0]?.priceTier ? [mainStops[0].priceTier] : ['comfy']),
-                opening_hours: null,
-                website: null,
-                popularity_score: popularityScore,
-                is_active: true,
-                curated_pairing_key: card.pairingKey || null,
-                experience_type: experienceType,
-                stops: card.stops,
-                tagline: card.tagline || '',
-                total_price_min: card.totalPriceMin || 0,
-                total_price_max: card.totalPriceMax || 0,
-                estimated_duration_minutes: card.estimatedDurationMinutes || 0,
-                shopping_list: card.shoppingList || null,
-                teaser_text: teaserTexts[cardIndex] || `A ${experienceType} experience with ${mainStops.length} curated stops`,
-                city_id: stopCityId,
-                city: mainStops[0]?.city || null,
-                country: mainStops[0]?.country || null,
-                utc_offset_minutes: mainStops[0]?.utc_offset_minutes ?? null,
-              },
-              stopPlacePoolIds,
-              stopGooglePlaceIds,
-              stopCardPoolIds,
-            };
-          });
-
-          // Insert cards + normalized stops
-          const cardRows = cardEntries.map((e: any) => e.row);
-          if (cardRows.length > 0) {
-            const { data: insertedCards, error: cardError } = await poolAdmin
-              .from('card_pool')
-              .upsert(cardRows, { onConflict: 'google_place_id' })
-              .select('id, google_place_id');
-
-            if (cardError) {
-              console.warn('[curated-v2] Batch card insert error:', cardError.message);
-            }
-
-            if (insertedCards?.length) {
-              const stopRows: any[] = [];
-              for (const inserted of insertedCards) {
-                const entry = cardEntries.find((e: any) => e.row.google_place_id === inserted.google_place_id);
-                if (!entry) continue;
-                for (let i = 0; i < entry.stopPlacePoolIds.length; i++) {
-                  stopRows.push({
-                    card_pool_id: inserted.id,
-                    place_pool_id: entry.stopPlacePoolIds[i],
-                    google_place_id: entry.stopGooglePlaceIds[i] || '',
-                    stop_order: i,
-                    stop_card_pool_id: entry.stopCardPoolIds?.[i] || null,
+              if (Array.isArray(parsed)) {
+                const rowsToInsert: Array<{
+                  cache_key: string;
+                  experience_type: string;
+                  stop_place_pool_ids: string[];
+                  one_liner: string;
+                  tip: string | null;
+                  shopping_list: string | null;
+                }> = [];
+                for (let i = 0; i < missEntries.length; i++) {
+                  const entry = missEntries[i];
+                  const teaserText = typeof parsed[i] === 'string' ? parsed[i] : null;
+                  if (!teaserText || !entry.key || !entry.stopIds) continue;
+                  rowsToInsert.push({
+                    cache_key: entry.key,
+                    experience_type: experienceType,
+                    stop_place_pool_ids: entry.stopIds,
+                    one_liner: teaserText,
+                    tip: null,
+                    shopping_list: entry.card.shoppingList ?? null,
                   });
                 }
-              }
-              if (stopRows.length > 0) {
-                const { error: stopsError } = await poolAdmin
-                  .from('card_pool_stops')
-                  .upsert(stopRows, { onConflict: 'card_pool_id,place_pool_id' });
-                if (stopsError) {
-                  console.warn('[curated-v2] Batch stops insert error:', stopsError.message);
+                if (rowsToInsert.length > 0) {
+                  const { error: upsertErr } = await poolAdmin
+                    .from('curated_teaser_cache')
+                    .upsert(rowsToInsert, { onConflict: 'cache_key', ignoreDuplicates: true });
+                  if (upsertErr) {
+                    console.warn(`[curated-teaser-cache] upsert error: ${upsertErr.message}`);
+                  } else {
+                    console.log(`[curated-teaser-cache] inserted ${rowsToInsert.length} new teasers (hits=${cached.size}/${keys.length})`);
+                  }
                 }
               }
-
-              // CRIT-001: Cleanup cards with missing stops
-              const insertedIds = insertedCards.map((c: any) => c.id);
-              const { data: stopCounts } = await poolAdmin
-                .from('card_pool_stops')
-                .select('card_pool_id')
-                .in('card_pool_id', insertedIds);
-
-              const actualStopCounts: Record<string, number> = {};
-              for (const row of (stopCounts || [])) {
-                actualStopCounts[row.card_pool_id] = (actualStopCounts[row.card_pool_id] || 0) + 1;
-              }
-
-              const expectedStopCounts: Record<string, number> = {};
-              for (const inserted of insertedCards) {
-                const entry = cardEntries.find((e: any) => e.row.google_place_id === inserted.google_place_id);
-                expectedStopCounts[inserted.id] = entry?.stopPlacePoolIds?.length || 0;
-              }
-
-              const invalidIds = insertedIds.filter((id: string) =>
-                (actualStopCounts[id] || 0) < (expectedStopCounts[id] || 1)
-              );
-              if (invalidIds.length > 0) {
-                await poolAdmin.from('card_pool').delete().in('id', invalidIds);
-                console.warn(`[curated-v2] CRIT-001: Deleted ${invalidIds.length} curated cards with missing/partial stops`);
-              }
-
-              // ORCH-0410: Serve-time impression recording REMOVED.
-              // Cards are no longer marked as "seen" on fresh generation.
-              // Interaction tracking is now client-side via record_card_interaction RPC (Phase 2-4).
-
-              console.log(`[curated-v2] Batch stored ${cardRows.length} cards in pool`);
+            } catch (teaserErr) {
+              console.warn(`[curated-teaser-cache] GPT teaser generation failed: ${(teaserErr as Error)?.message}`);
             }
+          } else if (cached.size > 0) {
+            console.log(`[curated-teaser-cache] all ${cached.size}/${keys.length} teasers from cache, zero GPT calls`);
           }
-        } catch (storeError) {
-          console.warn('[curated-v2] Pool batch store error:', storeError);
+        } catch (cacheErr) {
+          // Constitution #3: surface, do not swallow.
+          console.warn(`[curated-teaser-cache] unexpected error: ${(cacheErr as Error)?.message}`);
         }
       })();
     }
