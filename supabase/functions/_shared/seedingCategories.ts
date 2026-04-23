@@ -154,7 +154,7 @@ export const SEEDING_CATEGORIES: SeedingCategoryConfig[] = [
       // Bouncer. Belt-and-suspenders.
       'supermarket', 'grocery_store', 'department_store',
       'discount_store', 'discount_supermarket',
-      'warehouse_store', 'wholesale_store',
+      'warehouse_store', 'wholesaler',
       'home_improvement_store', 'hardware_store', 'electronics_store',
       'furniture_store', 'clothing_store', 'home_goods_store',
       'sporting_goods_store', 'toy_store',
@@ -644,4 +644,11 @@ function validateSeedingCategories(configs: readonly SeedingCategoryConfig[]): v
   }
 }
 
+// [CRITICAL] Top-level throw. Any invalid Google type, duplicate, oversize array, or
+// includedTypes↔excludedPrimaryTypes collision in SEEDING_CATEGORIES will crash every
+// edge function that imports from this file (generate-curated-experiences,
+// admin-seed-places, etc.) at Deno module-load, producing HTTP 500 WORKER_ERROR on
+// every request with no user-visible diagnostic. Run
+// `deno test supabase/functions/_shared/seedingCategories.test.ts` before any deploy
+// that modifies SEEDING_CATEGORIES.
 validateSeedingCategories(SEEDING_CATEGORIES);
