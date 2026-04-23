@@ -6,11 +6,28 @@ export const ALLOWED_ADMIN_EMAILS = [
   "seth@usemingla.com",
 ];
 
+// ORCH-0640 ch08: TABLES allow-list scrubbed.
+//   Removed: card_pool, card_pool_stops, saves, experiences, saved_experiences,
+//            ai_validation_jobs, ai_validation_results, ai_validation_batches.
+//   Renamed: ai_validation_jobs → rules_runs, ai_validation_results → rules_run_results.
+//   Added:   engagement_metrics, curated_teaser_cache, rules_runs, rules_run_results,
+//            place_scores, signal_definitions, signal_definition_versions.
 export const TABLES = [
   "profiles",
-  "experiences",
-  "card_pool",
   "place_pool",
+  "place_scores",
+  "signal_definitions",
+  "signal_definition_versions",
+  "engagement_metrics",
+  "curated_teaser_cache",
+  "rules_runs",
+  "rules_run_results",
+  "rule_sets",
+  "rule_set_versions",
+  "rule_entries",
+  "rules_versions",
+  "saved_card",
+  "saved_people",
   "collaboration_sessions",
   "session_participants",
   "boards",
@@ -19,9 +36,8 @@ export const TABLES = [
   "board_messages",
   "board_card_messages",
   "board_card_rsvps",
-  "saved_experiences",
-  "saved_card",
-  "saved_people",
+  "board_saved_cards",
+  "board_user_swipe_states",
   "friends",
   "friend_requests",
   "friend_links",
@@ -54,15 +70,17 @@ export const TABLES = [
   "email_templates",
 ];
 
+// ORCH-0640 ch08: STAT_CARDS stripped of "Cards" (card_pool archived).
+// Added "Signal Scores" + "Engagement 7d" (new place-level metrics).
 export const STAT_CARDS = [
   { label: "Users", table: "profiles", icon: "Users" },
-  { label: "Experiences", table: "experiences", icon: "Sparkles" },
-  { label: "Cards", table: "card_pool", icon: "Layers" },
+  { label: "Places", table: "place_pool", icon: "Globe" },
+  { label: "Signal Scores", table: "place_scores", icon: "Activity" },
+  { label: "Engagement (7d)", table: "engagement_metrics", icon: "TrendingUp" },
   { label: "Collab Sessions", table: "collaboration_sessions", icon: "Handshake" },
   { label: "Boards", table: "boards", icon: "LayoutDashboard" },
   { label: "Reviews", table: "place_reviews", icon: "Star" },
   { label: "Feedback", table: "app_feedback", icon: "MessageSquare" },
-  { label: "Reports", table: "user_reports", icon: "Flag" },
 ];
 
 export const SEED_SCRIPTS = [
@@ -93,6 +111,11 @@ export const SEED_SCRIPTS = [
 ];
 
 // ─── Grouped Sidebar Navigation ──────────────────────────────────────────────
+// ORCH-0640 ch08: reorganised around the 3-gate architecture (DEC-044).
+//   Deleted entries: Card Pool, AI Validation (both pages DROPPED).
+//   New group: Supply (place_pool supply chain — intake + photo backfill).
+//   New group: Quality Gates (signal library — G1/G2/G3 authoring).
+//   Content group: kept Moderation + Place Pool only.
 
 export const NAV_GROUPS = [
   {
@@ -110,33 +133,37 @@ export const NAV_GROUPS = [
     ],
   },
   {
-    label: "Content",
+    label: "Supply",
     items: [
-      { id: "content", label: "Moderation", icon: "Layers" },
+      { id: "seed", label: "Seed / Refresh", icon: "Terminal" },
+      { id: "photos", label: "Photo Pool", icon: "Camera" },
       { id: "placepool", label: "Place Pool", icon: "Globe" },
-      { id: "cardpool", label: "Card Pool", icon: "Layers" },
     ],
   },
   {
-    label: "Operations",
+    label: "Quality Gates",
     items: [
-      { id: "reports", label: "Reports", icon: "Flag" },
-      { id: "feedback", label: "Feedback", icon: "Mic" },
-      { id: "email", label: "Email", icon: "Mail" },
+      { id: "signals", label: "Signal Library", icon: "Activity" },
+    ],
+  },
+  {
+    label: "Content",
+    items: [
+      { id: "content", label: "Moderation", icon: "Layers" },
     ],
   },
   {
     label: "Intelligence",
     items: [
       { id: "analytics", label: "Analytics", icon: "BarChart3" },
-      { id: "ai-validation", label: "AI Validation", icon: "Brain" },
-      { id: "signals", label: "Signal Library", icon: "Activity" }, // ORCH-0588 Slice 1
+      { id: "reports", label: "Reports", icon: "Flag" },
+      { id: "feedback", label: "Feedback", icon: "Mic" },
     ],
   },
   {
-    label: "Launch Tools",
+    label: "Operations",
     items: [
-      { id: "seed", label: "Database Tools", icon: "Terminal" },
+      { id: "email", label: "Email", icon: "Mail" },
     ],
   },
   {
@@ -159,14 +186,23 @@ export const STATUS_COLORS = {
   dismissed: "default",
 };
 
+// ORCH-0640 ch08: TABLE_CATEGORIES rescoped.
 export const TABLE_CATEGORIES = [
   {
     label: "Users & Profiles",
-    tables: ["profiles", "preferences", "notification_preferences", "saved_experiences", "saved_card", "saved_people"],
+    tables: ["profiles", "preferences", "notification_preferences", "saved_card", "saved_people"],
   },
   {
-    label: "Experiences & Cards",
-    tables: ["experiences", "card_pool", "place_pool"],
+    label: "Places & Serving",
+    tables: ["place_pool", "place_scores", "signal_definitions", "signal_definition_versions", "curated_teaser_cache"],
+  },
+  {
+    label: "Engagement",
+    tables: ["engagement_metrics", "user_interactions", "user_sessions", "user_activity", "place_reviews"],
+  },
+  {
+    label: "Rules Engine",
+    tables: ["rule_sets", "rule_set_versions", "rule_entries", "rules_versions", "rules_runs", "rules_run_results"],
   },
   {
     label: "Social & Messaging",
@@ -174,15 +210,11 @@ export const TABLE_CATEGORIES = [
   },
   {
     label: "Collaboration & Boards",
-    tables: ["collaboration_sessions", "session_participants", "boards", "board_cards", "board_votes", "board_messages", "board_card_messages", "board_card_rsvps"],
+    tables: ["collaboration_sessions", "session_participants", "boards", "board_cards", "board_votes", "board_messages", "board_card_messages", "board_card_rsvps", "board_saved_cards", "board_user_swipe_states"],
   },
   {
-    label: "Calendar & Reviews",
-    tables: ["calendar_entries", "place_reviews", "experience_feedback", "scheduled_activities"],
-  },
-  {
-    label: "Analytics & Safety",
-    tables: ["user_interactions", "user_sessions", "user_activity", "user_location_history", "user_preference_learning", "user_reports", "app_feedback", "activity_history", "admin_email_log"],
+    label: "Calendar & Safety",
+    tables: ["calendar_entries", "experience_feedback", "scheduled_activities", "user_reports", "app_feedback", "activity_history", "admin_email_log"],
   },
   {
     label: "Caches & Admin",

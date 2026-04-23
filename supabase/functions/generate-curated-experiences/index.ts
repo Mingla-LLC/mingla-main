@@ -1,6 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { serveCuratedCardsFromPool } from '../_shared/cardPoolService.ts';
 import { SEEDING_CATEGORY_MAP } from '../_shared/seedingCategories.ts';
 import { googleLevelToTierSlug, slugMeetsMinimum } from '../_shared/priceTiers.ts';
 import { timeoutFetch } from '../_shared/timeoutFetch.ts';
@@ -1309,77 +1308,10 @@ serve(async (req) => {
     const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
     const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
-    // warmPool support
-    if (warmPool && poolAdmin) {
-      try {
-        const poolResult = await serveCuratedCardsFromPool({
-          supabaseAdmin: poolAdmin,
-          userId: poolUserId,
-          lat: location.lat,
-          lng: location.lng,
-          radiusMeters: clampedRadius,
-          categories: [],
-          budgetMin: 0,
-          budgetMax: budgetMax,
-          limit: 40,
-          cardType: 'curated',
-          experienceType,
-        }, '');
-
-        if (poolResult.totalPoolSize >= 40) {
-          console.log('[warm-pool] Pool already warm:', poolResult.totalPoolSize, 'cards');
-          return new Response(JSON.stringify({
-            success: true, message: 'Pool already warm',
-            poolSize: poolResult.totalPoolSize,
-          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-      } catch (err) {
-        console.warn('[warm-pool] Pool check failed, proceeding to warm:', err);
-      }
-    }
-
-    // Pool-first: try serving from pool for batch 0
-    if (poolAdmin && poolUserId !== 'anonymous' && batchSeed === 0) {
-      try {
-        const poolResult = await serveCuratedCardsFromPool({
-          supabaseAdmin: poolAdmin,
-          userId: poolUserId,
-          lat: location.lat,
-          lng: location.lng,
-          radiusMeters: clampedRadius,
-          categories: [],
-          budgetMin: budgetMin || 0,
-          budgetMax: budgetMax || 1000,
-          limit: limit || 20,
-          cardType: 'curated',
-          experienceType,
-        }, '');
-
-        if (poolResult.cards.length >= Math.ceil(limit * 0.75)) {
-          console.log(`[pool-first-curated] Served ${poolResult.cards.length} curated cards from pool`);
-          const normalizedPoolCards = poolResult.cards.map((card: any) => ({
-            ...card,
-            categoryLabel: card.categoryLabel || card.category || experienceType || 'Experience',
-          }));
-          return new Response(
-            JSON.stringify({
-              success: true,
-              cards: normalizedPoolCards,
-              meta: {
-                totalResults: poolResult.cards.length,
-                fromPool: poolResult.fromPool,
-                fromApi: poolResult.fromApi,
-                poolSize: poolResult.totalPoolSize,
-              },
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        console.log(`[pool-first-curated] Pool had only ${poolResult.cards.length} curated cards, falling back`);
-      } catch (poolError) {
-        console.warn('[pool-first-curated] Pool query failed, falling back:', poolError);
-      }
-    }
+    // ORCH-0640: Pool-first optimization blocks REMOVED. They read card_pool,
+    // which is dropped. All curated generation now flows through
+    // generateCardsForType() which composes stops from place_pool via the
+    // signal system (ORCH-0634 rewire).
 
     console.log(`[curated-v2] Generating ${experienceType} cards (limit: ${limit})`);
 

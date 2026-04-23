@@ -24,15 +24,13 @@ import { throttledReverseGeocode } from '../utils/throttledGeocode';
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { formatCurrency, formatDistance, parseAndFormatDistance, formatPriceRange, getCurrencySymbol, getCurrencyRate } from "./utils/formatters";
 import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG, formatTierLabel } from "../constants/priceTiers";
-import {
-  ExperiencesService,
-  Experience,
-  UserPreferences,
-} from "../services/experiencesService";
-import {
-  ExperienceGenerationService,
-  GeneratedExperience,
-} from "../services/experienceGenerationService";
+// ORCH-0640 ch09: experiencesService + experienceGenerationService DELETED.
+// UserPreferences re-imported from canonical source. Legacy save calls
+// (ExperiencesService.saveExperience) redirected to savedCardsService.saveCard
+// (snapshot pattern into saved_card table). Dislike tracking dropped (engagement_metrics
+// handles impressions via recordCardSwipe → record_engagement RPC).
+import type { UserPreferences } from "../types/preferences";
+import { savedCardsService } from "../services/savedCardsService";
 import { useAppStore } from "../store/appStore";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import ExpandedCardModal from "./ExpandedCardModal";
@@ -1472,56 +1470,30 @@ export default function SwipeableCards({
       if (user?.id) {
         const isCuratedType = (card as any).cardType === 'curated';
 
-        // ── Non-curated: track like/dislike in saves table ───────────────
-        // Curated cards have no single place_id and skip this entirely.
+        // ── ORCH-0640 ch09: Legacy saves/experiences tables DROPPED in ch12.
+        // Swipe-right now writes to saved_card via savedCardsService (snapshot pattern).
+        // Swipe-left dislikes are captured by recordCardSwipe (engagement_metrics) above
+        // — no separate dislike table needed.
         if (!isCuratedType) {
           if (direction === "right") {
             try {
-              await ExperiencesService.saveExperience(user.id, card.id, "liked", {
-                title: card.title,
-                category: card.category,
-                place_id: card.id,
-                lat: card.lat,
-                lng: card.lng,
-                image_url: card.image || card.images?.[0],
-                opening_hours: card.openingHours,
-                meta: {
-                  matchScore: card.matchScore,
-                  reviewCount: card.reviewCount,
-                },
-              });
+              await savedCardsService.saveCard(user.id, card, "solo");
             } catch (saveError: any) {
               if (saveError?.code === "23505") {
                 console.warn(
-                  "Experience already saved for this user, skipping duplicate save"
+                  "Card already saved for this user, skipping duplicate save"
                 );
-                // Don't throw — consider this a success (already saved)
               } else {
-                console.error("Error saving experience:", saveError);
+                console.error("Error saving card:", saveError);
                 throw saveError;
               }
             }
           } else {
-            // Track dislike
+            // Swipe-left: no persistent table. Dislike is captured by recordCardSwipe
+            // above, which fires into engagement_metrics as a 'seen_deck' event.
             try {
-              await ExperiencesService.saveExperience(
-                user.id,
-                card.id,
-                "disliked",
-                {
-                  title: card.title,
-                  category: card.category,
-                  place_id: card.id,
-                  lat: card.lat,
-                  lng: card.lng,
-                  image_url: card.image || card.images?.[0],
-                  opening_hours: card.openingHours,
-                  meta: {
-                    matchScore: card.matchScore,
-                    reviewCount: card.reviewCount,
-                  },
-                }
-              );
+              // no-op (ORCH-0640 DEC-050)
+              await Promise.resolve();
             } catch (dislikeError) {
               console.error("Error tracking dislike:", dislikeError);
               // Continue without tracking dislike

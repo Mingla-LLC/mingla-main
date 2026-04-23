@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { ExperiencesService, UserPreferences } from '../services/experiencesService';
+// ORCH-0640 ch09: experiencesService DELETED. getUserPreferences survives on preferencesService.
+import { PreferencesService } from '../services/preferencesService';
+import type { UserPreferences } from '../types/preferences';
 import { offlineService } from '../services/offlineService';
 
 const fetchUserPreferences = async (
@@ -14,7 +16,7 @@ const fetchUserPreferences = async (
   // Network timeout is handled by fetchWithTimeout (12s) in supabase.ts.
   // No wrapper timeout needed — single layer of timeout control.
   try {
-    const prefs = await ExperiencesService.getUserPreferences(userId);
+    const prefs = await PreferencesService.getUserPreferences(userId);
 
     // Bail early if React Query cancelled this query (e.g. component unmounted)
     if (signal?.aborted) return null;

@@ -130,7 +130,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   const isPaired = !!pairedPill;
 
   // ── User location (for PersonHolidayView travel time) ───
-  const locationQuery = useUserLocation(currentUserId, currentMode as string, undefined);
+  const locationQuery = useUserLocation(currentUserId, currentMode as string);
   const userLocation = useMemo(() => {
     if (locationQuery?.data) {
       return { latitude: locationQuery.data.lat, longitude: locationQuery.data.lng };

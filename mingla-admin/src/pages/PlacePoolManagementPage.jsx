@@ -373,16 +373,10 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
       ai_reason: place.ai_reason || "",
       ai_confidence: place.ai_confidence,
     });
-    // Fetch AI card data
-    supabase.from("card_pool")
-      .select("ai_approved, ai_reason, ai_categories, ai_validated_at, categories, original_categories")
-      .eq("place_pool_id", place.id)
-      .eq("card_type", "single")
-      .eq("is_active", true)
-      .order("ai_validated_at", { ascending: false, nullsFirst: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => setAiCard(data));
+    // ORCH-0640 ch08: card_pool archived — aiCard lookup retired. Any AI-validation
+    // metadata the admin needs now comes from place_pool columns directly (bouncer_reason,
+    // ai_categories). Set stub so downstream renders don't crash.
+    setAiCard(null);
   }, [open, place]);
 
   if (!place) return null;
@@ -412,14 +406,10 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
     });
     if (rpcErr) { addToast({ variant: "error", title: "Save failed", description: rpcErr.message }); setSaving(false); return; }
 
-    // Save AI fields directly
+    // ORCH-0640 ch08: ai_approved/ai_validated_at/ai_reason/ai_confidence/ai_primary_identity
+    // columns DROPPED in ch13. Only ai_categories survives (admin-editable classification).
     const { error: aiErr } = await supabase.from("place_pool").update({
-      ai_approved: editForm.ai_approved,
-      ai_primary_identity: editForm.ai_primary_identity || null,
       ai_categories: editForm.ai_categories.length > 0 ? editForm.ai_categories : null,
-      ai_reason: editForm.ai_reason || null,
-      ai_confidence: editForm.ai_confidence,
-      ai_validated_at: new Date().toISOString(),
     }).eq("id", place.id);
     if (aiErr) { addToast({ variant: "error", title: "AI fields save failed", description: aiErr.message }); setSaving(false); return; }
 

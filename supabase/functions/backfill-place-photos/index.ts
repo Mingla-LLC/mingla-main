@@ -133,18 +133,8 @@ async function handleLegacy(
       );
 
       if (storedUrls && storedUrls.length > 0) {
-        try {
-          const { error: cardErr } = await supabaseAdmin
-            .from('card_pool')
-            .update({ image_url: storedUrls[0], images: storedUrls.slice(0, 5) })
-            .eq('place_pool_id', place.id);
-          if (cardErr) {
-            console.error(`[backfill-place-photos] card_pool update failed for ${place.google_place_id}:`, cardErr.message);
-          }
-        } catch (cardUpdateErr) {
-          console.error(`[backfill-place-photos] card_pool update error for ${place.google_place_id}:`,
-            cardUpdateErr instanceof Error ? cardUpdateErr.message : String(cardUpdateErr));
-        }
+        // ORCH-0640: card_pool update block REMOVED. place_pool.stored_photo_urls
+        // is the sole photo authority (I-POOL-ONLY-SERVING); card_pool is dropped.
         succeeded++;
       } else {
         await supabaseAdmin
@@ -193,7 +183,7 @@ interface CityPlaceRow {
   google_place_id?: string | null;
   photos?: unknown;
   stored_photo_urls?: string[] | null;
-  ai_approved?: boolean | null;
+  is_servable?: boolean | null;  // ORCH-0640: replaces ai_approved
   is_servable?: boolean | null;
 }
 
@@ -248,7 +238,9 @@ function buildRunPreview(places: CityPlaceRow[], mode: BackfillMode) {
   const eligiblePlaces: CityPlaceRow[] = [];
 
   for (const place of places) {
-    if (place.ai_approved === true) analysis.approvedPlaces++;
+    // ORCH-0640 ch06: ai_approved replaced by is_servable (Phase-5 retirement per
+    // run-bouncer:7 + DEC-043). Bouncer is the one quality gate.
+    if (place.is_servable === true) analysis.approvedPlaces++;
     const storedState = getStoredPhotoState(place.stored_photo_urls);
 
     if (mode === 'initial') {
@@ -260,8 +252,8 @@ function buildRunPreview(places: CityPlaceRow[], mode: BackfillMode) {
       analysis.withoutStoredPhotos++;
       if (storedState === 'failed') analysis.failedPlaces++;
 
-      if (place.ai_approved !== true) {
-        analysis.blockedByAiApproval++;
+      if (place.is_servable !== true) {
+        analysis.blockedByAiApproval++;  // field name kept for backward compat in report
         continue;
       }
     } else {
@@ -310,7 +302,7 @@ async function loadCityPlacesForRun(
   while (true) {
     const { data: page, error: pageErr } = await db
       .from('place_pool')
-      .select('id, google_place_id, photos, stored_photo_urls, ai_approved, is_servable')
+      .select('id, google_place_id, photos, stored_photo_urls, is_servable')
       .eq('is_active', true)
       .eq('city_id', cityId)
       .order('created_at', { ascending: true })
@@ -647,17 +639,17 @@ async function processBatch(
     const placeId = batch.place_pool_ids[i];
 
     try {
-      // Load place — check if it still needs photos and is AI-approved
+      // ORCH-0640 ch06: check if still eligible — Bouncer-approved (is_servable) replaces ai_approved.
       const { data: place } = await db
         .from('place_pool')
         .select('id, google_place_id, photos, stored_photo_urls')
         .eq('id', placeId)
         .eq('is_active', true)
-        .eq('ai_approved', true)
+        .eq('is_servable', true)
         .maybeSingle();
 
       if (!place) {
-        // Place deleted, deactivated, or not AI-approved since run creation
+        // Place deleted, deactivated, or Bouncer-rejected since run creation
         skipped++;
         continue;
       }
@@ -682,16 +674,8 @@ async function processBatch(
       );
 
       if (storedUrls && storedUrls.length > 0) {
-        // Update card_pool rows referencing this place
-        try {
-          await db
-            .from('card_pool')
-            .update({ image_url: storedUrls[0], images: storedUrls.slice(0, 5) })
-            .eq('place_pool_id', place.id);
-        } catch (cardErr) {
-          console.error(`[backfill-place-photos] card_pool update error for ${place.google_place_id}:`,
-            cardErr instanceof Error ? cardErr.message : String(cardErr));
-        }
+        // ORCH-0640: card_pool update block REMOVED. place_pool.stored_photo_urls
+        // is the sole photo authority (I-POOL-ONLY-SERVING); card_pool is dropped.
         succeeded++;
       } else {
         // All photos failed

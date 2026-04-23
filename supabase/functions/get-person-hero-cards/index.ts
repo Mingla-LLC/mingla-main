@@ -600,25 +600,66 @@ serve(async (req: Request) => {
       else if (categorySlugs.includes("adventurous")) effectiveCuratedType = "adventurous";
     }
 
-    // --- Call RPC ---
+    // ── ORCH-0640 ch06: Resolve category slugs to signal IDs ───────────────
+    // The new RPC query_person_hero_places_by_signal takes signal_ids (not categories).
+    // Mapping: Mingla category slug → signal_id.  Mirrors CATEGORY_TO_SIGNAL in
+    // discover-cards post-ORCH-0634. Intent-expanded slugs (romantic → [icebreakers,drinks,…])
+    // fan out to multiple signals; RPC merges results by place with max-score dedup.
+    const CATEGORY_SLUG_TO_SIGNAL_ID: Record<string, string> = {
+      upscale_fine_dining: 'fine_dining',
+      drinks_and_music: 'drinks',
+      brunch_lunch_casual: 'casual_food',  // brunch/casual union — RPC supports multiple signalIds
+      nature: 'nature',
+      play: 'play',
+      creative_arts: 'creative_arts',
+      movies_theatre: 'movies',            // pair with 'theatre' on caller
+      icebreakers: 'icebreakers',
+      flowers: 'flowers',
+    };
+    const signalIds = Array.from(new Set(
+      blendedCategories
+        .flatMap((slug: string) => INTENT_CATEGORY_MAP[slug] ?? [slug])
+        .map((s: string) => CATEGORY_SLUG_TO_SIGNAL_ID[s])
+        .filter(Boolean)
+    ));
+    // brunch_lunch_casual expands to both brunch + casual_food; movies_theatre expands to both
+    if (blendedCategories.includes('brunch_lunch_casual') && !signalIds.includes('brunch')) signalIds.push('brunch');
+    if (blendedCategories.includes('movies_theatre') && !signalIds.includes('theatre')) signalIds.push('theatre');
+
+    if (signalIds.length === 0) {
+      console.warn(`[get-person-hero-cards] No signal_ids resolved from categories=[${blendedCategories}]`);
+      return new Response(
+        JSON.stringify({ cards: [], hasMore: false }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
+      );
+    }
+
     console.log(
       `[get-person-hero-cards] userId=${userId}, ${usingPairedUser ? 'pairedUserId' : 'personId'}=${effectivePersonId}, ` +
-      `holidayKey=${holidayKey}, categories=[${resolvedCategories}], ` +
-      `curatedType=${effectiveCuratedType}`,
+      `holidayKey=${holidayKey}, signalIds=[${signalIds}], initialRadius=${initialRadius}m`,
     );
 
+    // ── ORCH-0640 ch06: call new pool-only RPC ─────────────────────────────
+    // query_person_hero_cards DROPPED in ch11. Replaced by query_person_hero_places_by_signal.
+    // Enforces I-THREE-GATE-SERVING. excludeCardIds (previously card_pool.id strings) now
+    // accepts place_pool.id UUIDs per I-PLACE-ID-CONTRACT.
+    const excludeUuids: string[] = Array.isArray(excludeCardIds)
+      ? excludeCardIds.filter((id): id is string => typeof id === 'string' && UUID_RE.test(id))
+      : [];
+
     const { data: rpcRows, error: rpcError } = await adminClient.rpc(
-      "query_person_hero_cards",
+      "query_person_hero_places_by_signal",
       {
         p_user_id: userId,
         p_person_id: effectivePersonId,
         p_lat: location.latitude,
         p_lng: location.longitude,
-        p_categories: resolvedCategories,
-        p_curated_experience_type: effectiveCuratedType,
-        p_initial_radius_meters: initialRadius,
-        p_max_radius_meters: maxRadius,
-        p_exclude_card_ids: excludeCardIds || [],
+        p_signal_ids: signalIds,
+        p_exclude_place_ids: excludeUuids,
+        p_initial_radius_m: initialRadius,
+        p_max_radius_m: maxRadius,
+        p_per_signal_limit: 3,
+        p_total_limit: 9,
       },
     );
 
@@ -630,10 +671,10 @@ serve(async (req: Request) => {
       );
     }
 
-    // --- Map rows to Card[] ---
+    // --- Map rows to Card[] (all single cards post-ORCH-0640; curated heroes retired) ---
     const rows = rpcRows ?? [];
-    let cards: Card[] = rows.map((row: { card: Record<string, unknown>; card_type: string; total_available: number }) =>
-      mapPoolCardToCard(row.card, row.card_type),
+    let cards: Card[] = rows.map((row: { place: Record<string, unknown>; signal_id: string; signal_score: number; total_available: number }) =>
+      mapPoolCardToCard(row.place, 'single'),
     );
     let totalAvailable = rows.length > 0 ? Number(rows[0].total_available) : 0;
 
@@ -667,7 +708,9 @@ serve(async (req: Request) => {
       });
     }
 
-    // --- Record impressions ---
+    // ── ORCH-0640 ch06: Impressions keyed on place_pool_id (post person_impressions_pivot) ──
+    // person_card_impressions.card_pool_id renamed to place_pool_id in ch04 migration 20260425000008.
+    // card.id now holds place_pool.id::TEXT (per I-PLACE-ID-CONTRACT).
     if (cards.length > 0) {
       const impressionRows = cards.map((card) => ({
         user_id: userId,
@@ -675,7 +718,7 @@ serve(async (req: Request) => {
           ? { paired_user_id: effectivePersonId }
           : { person_id: effectivePersonId }
         ),
-        card_pool_id: card.id,
+        place_pool_id: card.id,
         holiday_key: holidayKey,
       }));
 
@@ -684,8 +727,8 @@ serve(async (req: Request) => {
         .from("person_card_impressions")
         .upsert(impressionRows, {
           onConflict: usingPairedUser
-            ? "user_id,paired_user_id,card_pool_id"
-            : "user_id,person_id,card_pool_id",
+            ? "user_id,paired_user_id,place_pool_id"
+            : "user_id,person_id,place_pool_id",
           ignoreDuplicates: true,
         })
         .then(({ error }) => {

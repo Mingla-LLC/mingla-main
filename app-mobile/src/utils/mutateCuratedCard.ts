@@ -44,7 +44,9 @@ const PICNIC_STATIC_SHOPPING_LIST: string[] = [
 export interface StopAlternative {
   placeId: string;
   placePoolId: string;
-  cardPoolId: string;
+  // ORCH-0640 ch09: cardPoolId field removed — card_pool archived (DEC-037).
+  // Curated stop identity is now purely placePoolId. Callers who referenced
+  // cardPoolId need to switch to placePoolId.
   placeName: string;
   placeType: string;
   address: string;

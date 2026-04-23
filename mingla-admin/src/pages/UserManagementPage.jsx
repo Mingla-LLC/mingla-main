@@ -281,7 +281,8 @@ export function UserManagementPage() {
         interactionsRes, reportsRes, appFeedbackRes,
         locationRes, prefHistRes,
       ] = await Promise.all([
-        supabase.from("saved_experiences").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(50),
+        // ORCH-0640: saved_experiences table dropped. Full rebuild of user-detail surface comes in ORCH-0640.6.
+        Promise.resolve({ data: [], error: null }),
         supabase.from("saved_card").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(50),
         supabase.from("saved_people").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(50),
         supabase.from("friend_requests").select("*, sender:profiles!friend_requests_sender_id_fkey(display_name, email, avatar_url), receiver:profiles!friend_requests_receiver_id_fkey(display_name, email, avatar_url)").or(`sender_id.eq.${userId},receiver_id.eq.${userId}`).order("created_at", { ascending: false }).limit(50),
@@ -432,9 +433,8 @@ export function UserManagementPage() {
       { table: "person_audio_clips", column: "user_id" },
       { table: "person_experiences", column: "user_id" },
       { table: "saved_people", column: "user_id" },
-      { table: "saved_experiences", column: "user_id" },
+      // ORCH-0640: saved_experiences + saves dropped by migration 20260425000010.
       { table: "saved_card", column: "user_id" },
-      { table: "saves", column: "user_id" },
       { table: "board_cards", column: "added_by" },
       { table: "user_interactions", column: "user_id" },
       { table: "user_preference_learning", column: "user_id" },
@@ -552,7 +552,8 @@ export function UserManagementPage() {
     setImpersonateLoading(true);
     try {
       const [savedExpRes, savedCardsRes, prefsRes] = await Promise.all([
-        supabase.from("saved_experiences").select("*").eq("user_id", userId).limit(50),
+        // ORCH-0640: saved_experiences table dropped. Preview-profile relies on saved_card only post-demolition.
+        Promise.resolve({ data: [], error: null }),
         supabase.from("saved_card").select("*").eq("user_id", userId).limit(50),
         supabase.from("preferences").select("*").eq("profile_id", userId).maybeSingle(),
       ]);

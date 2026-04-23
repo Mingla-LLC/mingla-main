@@ -151,6 +151,12 @@ export interface ExpandedCardData {
   };
 }
 
+// ORCH-0640 rework v2: concrete aliases for the inline strollData/picnicData shapes,
+// exported so stopReplacementService (and other callers) can type edge-function
+// responses without widening to `unknown`.
+export type StrollData = NonNullable<ExpandedCardData['strollData']>;
+export type PicnicData = NonNullable<ExpandedCardData['picnicData']>;
+
 export interface WeatherData {
   temperature: number;
   condition: string;

@@ -8,9 +8,8 @@ import React, {
   useMemo,
 } from "react";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  UserPreferences,
-} from "../services/experiencesService";
+// ORCH-0640 ch09: experiencesService DELETED; UserPreferences canonical home.
+import type { UserPreferences } from "../types/preferences";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { supabase } from "../services/supabase";
@@ -953,59 +952,54 @@ export const RecommendationsProvider: React.FC<
       // by the deck cards sync effect and appended to recommendations.
       setBatchSeed(nextSeed);
 
-      // Collaboration mode: prefetch via server-side session deck
-      if (isCollaborationMode && resolvedSessionId) {
-        queryClient.prefetchQuery({
-          queryKey: ['session-deck', resolvedSessionId, nextSeed],
-          queryFn: () => fetchSessionDeck(resolvedSessionId, nextSeed, []),
-          staleTime: 30 * 60 * 1000,
-        });
-      } else {
-        // Solo mode: prefetch via client-side deckService
-        const prefetchCategories = activeDeckParams.categories ?? [];
-        const prefetchIntents = activeDeckParams.intents ?? [];
-        const prefetchTravelMode = isSoloMode ? (userPrefs?.travel_mode ?? 'walking') : (collabDeckParams?.travelMode ?? 'walking');
-        const prefetchConstraintType = 'time' as const;
-        const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (collabDeckParams?.travelConstraintValue ?? 30);
-        const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'today') : 'today';
-        const rawDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (collabDeckParams?.datetimePref ?? undefined);
-        // Normalize to ISO string to match useDeckCards query key format
-        const prefetchDatetimePref = rawDatetimePref
-          ? normalizeDateTime(rawDatetimePref)
-          : undefined;
+      // ORCH-0446/0636: both solo and collab prefetch via deckService under the
+      // shared deck-cards query key — useDeckCards consumes the same key for
+      // both modes (see flagSoloDeck / flagCollabDeck above). The retired
+      // server-side collab deck hook + helper type were deleted in ORCH-0446;
+      // this removes the dead collab-specific branch that still referenced them.
+      const prefetchCategories = activeDeckParams.categories ?? [];
+      const prefetchIntents = activeDeckParams.intents ?? [];
+      const prefetchTravelMode = isSoloMode ? (userPrefs?.travel_mode ?? 'walking') : (collabDeckParams?.travelMode ?? 'walking');
+      const prefetchConstraintType = 'time' as const;
+      const prefetchConstraintValue = isSoloMode ? (userPrefs?.travel_constraint_value ?? 30) : (collabDeckParams?.travelConstraintValue ?? 30);
+      const prefetchDateOption = isSoloMode ? (userPrefs?.date_option ?? 'today') : 'today';
+      const rawDatetimePref = isSoloMode ? userPrefs?.datetime_pref : (collabDeckParams?.datetimePref ?? undefined);
+      // Normalize to ISO string to match useDeckCards query key format
+      const prefetchDatetimePref = rawDatetimePref
+        ? normalizeDateTime(rawDatetimePref)
+        : undefined;
 
-        const prefetchLat = Math.round(activeDeckLocation.lat * 1000) / 1000;
-        const prefetchLng = Math.round(activeDeckLocation.lng * 1000) / 1000;
-        queryClient.prefetchQuery({
-          queryKey: [
-            'deck-cards',
-            prefetchLat, prefetchLng,
-            prefetchCategories.sort().join(','),
-            prefetchIntents.sort().join(','),
-            prefetchTravelMode,
-            prefetchConstraintType,
-            prefetchConstraintValue,
-            prefetchDatetimePref,
-            prefetchDateOption,
-            nextSeed,
-            '', // no exclusions
-          ],
-          queryFn: () => deckService.fetchDeck({
-            location: activeDeckLocation,
-            categories: prefetchCategories,
-            intents: prefetchIntents,
-            travelMode: prefetchTravelMode,
-            travelConstraintType: prefetchConstraintType,
-            travelConstraintValue: prefetchConstraintValue,
-            datetimePref: prefetchDatetimePref,
-            dateOption: prefetchDateOption,
-            batchSeed: nextSeed,
-            limit: 10000,
-            excludeCardIds: [],
-          }),
-          staleTime: 5 * 60 * 1000,
-        });
-      }
+      const prefetchLat = Math.round(activeDeckLocation.lat * 1000) / 1000;
+      const prefetchLng = Math.round(activeDeckLocation.lng * 1000) / 1000;
+      queryClient.prefetchQuery({
+        queryKey: [
+          'deck-cards',
+          prefetchLat, prefetchLng,
+          prefetchCategories.sort().join(','),
+          prefetchIntents.sort().join(','),
+          prefetchTravelMode,
+          prefetchConstraintType,
+          prefetchConstraintValue,
+          prefetchDatetimePref,
+          prefetchDateOption,
+          nextSeed,
+          '', // no exclusions
+        ],
+        queryFn: () => deckService.fetchDeck({
+          location: activeDeckLocation,
+          categories: prefetchCategories,
+          intents: prefetchIntents,
+          travelMode: prefetchTravelMode,
+          travelConstraintType: prefetchConstraintType,
+          travelConstraintValue: prefetchConstraintValue,
+          datetimePref: prefetchDatetimePref,
+          dateOption: prefetchDateOption,
+          batchSeed: nextSeed,
+          limit: 10000,
+          excludeCardIds: [],
+        }),
+        staleTime: 5 * 60 * 1000,
+      });
     }
   }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, isCollaborationMode, resolvedSessionId, userPrefs, queryClient]);
 
@@ -1239,26 +1233,15 @@ export const RecommendationsProvider: React.FC<
         completionTimeoutRef.current = null;
       }
 
-      // ── Cache-first check: see if React Query already has cards for the new mode.
-      // If so, skip the loading spinner entirely and show cached cards instantly.
-      // This is the key optimization — reopening a previously visited session is instant.
-      let hasCachedCards = false;
-      const newModeIsSolo = currentMode === 'solo';
-      if (!newModeIsSolo && propPersistedSessionId) {
-        // Collaboration: check session-deck cache
-        const cachedSessionDeck = queryClient.getQueryData<SessionDeckResponse>(['session-deck', propPersistedSessionId, 0]);
-        if (cachedSessionDeck && cachedSessionDeck.cards?.length > 0) {
-          hasCachedCards = true;
-        }
-      }
-      // For solo mode, useDeckCards' initialData and RQ persistence handle the cache.
-      // We don't need to check here — the query will return cached data immediately.
-
       // ── Full state reset on mode change ────────────────────────────────
-      // Every mode starts with a clean slate. No stale batch positions,
-      // exhaustion flags, or prefetch state carrying over.
-      setIsModeTransitioning(!hasCachedCards); // Skip transition spinner if cache has cards
-      setHasCompletedFetchForCurrentMode(hasCachedCards); // Already "complete" if cache hit
+      // ORCH-0446/0636: the prior cache-first check against the retired
+      // server-side collab deck cache was removed. useDeckCards' initialData
+      // + RQ persistence now handle the cache for BOTH solo and collab modes —
+      // returning cached data instantly when the deck-cards key matches.
+      // Every mode change starts with a clean slate; the transition spinner
+      // is short-lived when the cache is warm.
+      setIsModeTransitioning(true);
+      setHasCompletedFetchForCurrentMode(false);
       previousDeckIdsRef.current = '';
       setBatchSeed(0);
       prefetchFiredRef.current = false;
@@ -1288,13 +1271,14 @@ export const RecommendationsProvider: React.FC<
       // mode-specific (`dismissed_cards_${userId}_${mode}`), so each mode's
       // dismissed cards persist independently and don't cross-contaminate.
 
-      if (!hasCachedCards) {
-        completionTimeoutRef.current = setTimeout(() => {
-          console.warn("Recommendations fetch timeout - forcing completion");
-          setHasCompletedFetchForCurrentMode(true);
-          setIsModeTransitioning(false);
-        }, 5000);
-      }
+      // Safety timer: force completion if fetch hangs beyond 5s. Cleared by
+      // the ORCH-0446B effect below once collab params resolve, OR by the
+      // solo fetch completion path.
+      completionTimeoutRef.current = setTimeout(() => {
+        console.warn("Recommendations fetch timeout - forcing completion");
+        setHasCompletedFetchForCurrentMode(true);
+        setIsModeTransitioning(false);
+      }, 5000);
     }
 
     previousModeRef.current = currentMode;

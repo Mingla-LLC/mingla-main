@@ -25,7 +25,7 @@ import { extractWeekdayText } from "../utils/openingHoursUtils";
 import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
 import { bookingService, BookingOption } from "../services/bookingService";
-import { ExperienceGenerationService } from "../services/experienceGenerationService";
+import { stopReplacementService } from "../services/stopReplacementService"; // ORCH-0640 ch09: experienceGenerationService DELETED; methods moved to stopReplacementService
 import { useRecommendations } from "../contexts/RecommendationsContext";
 import ExpandedCardHeader from "./expandedCard/ExpandedCardHeader";
 import { getUserLocale } from "../utils/localeUtils";
@@ -1423,7 +1423,7 @@ export default function ExpandedCardModal({
     setLoadingStrollData(true);
     try {
       const fetchedStrollData =
-        await ExperienceGenerationService.fetchCompanionStrollData(anchor);
+        await stopReplacementService.fetchCompanionStrollData(anchor);
       if (fetchedStrollData) {
         setStrollData(fetchedStrollData);
         // Update the card's strollData in the context and cache
@@ -1471,7 +1471,7 @@ export default function ExpandedCardModal({
     setLoadingPicnicData(true);
     try {
       const fetchedPicnicData =
-        await ExperienceGenerationService.fetchPicnicGroceryData(picnic);
+        await stopReplacementService.fetchPicnicGroceryData(picnic);
       if (fetchedPicnicData) {
         setPicnicData(fetchedPicnicData);
         // Persist to database if callback is provided (for saved cards)

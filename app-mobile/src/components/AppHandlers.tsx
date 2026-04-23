@@ -692,40 +692,14 @@ export function useAppHandlers(state: any) {
       return false;
     }
 
-    // Duplicate check — solo mode only.
-    // Skip for curated cards: they can be modified (stop replacements) and the
-    // upsert on onConflict will correctly overwrite with the updated version.
-    const isCuratedCard = (card as any).cardType === 'curated';
-    if (!isCuratedCard) {
-      try {
-        const { data: existingCard, error: checkError } = await supabase
-          .from("saved_card")
-          .select("id")
-          .eq("profile_id", user.id)
-          .eq("experience_id", card.id)
-          .maybeSingle();
-
-        if (existingCard && !checkError) {
-          // Card already exists
-          if (Platform.OS === "android") {
-            ToastAndroid.show(
-              `${card.title} is already in your saved experiences`,
-              ToastAndroid.SHORT
-            );
-          } else {
-            Alert.alert(
-              "Already saved",
-              `${card.title} is already in your saved experiences.`
-            );
-          }
-          return true;
-        }
-      } catch (error) {
-        // Error checking (continue with save)
-        console.error("Error checking existing saved card:", error);
-        // Continue with save even if check fails
-      }
-    }
+    // ORCH-0640.R-01: pre-save existence check removed.
+    // savedCardsService.saveCard uses upsert(onConflict='profile_id,experience_id')
+    // against the unique index saved_card_profile_experience_idx — it is idempotent.
+    // Re-saves overwrite card_data, refreshing display state for pre-cutover rows
+    // whose card_data was shaped for the old card_pool/experiences schema. The old
+    // pre-check produced false-positive "Already saved" alerts when a pre-cutover
+    // saved_card row's experience_id coincidentally matched the new deck's
+    // card.id (= place_pool.id).
 
     try {
       // Solo mode: save to saved_card via service.

@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { StopAlternative } from '../utils/mutateCuratedCard';
+import type { StrollData, PicnicData } from '../types/expandedCardTypes';
 
 interface GetAlternativesParams {
   categoryId: string;
@@ -18,7 +19,49 @@ interface AlternativesResponse {
   };
 }
 
+// ORCH-0640 ch09: moved from experienceGenerationService.ts (DELETED).
+// These two methods power the Expanded Card modal's curated-stroll companion + picnic
+// grocery-list features. get-companion-stops + get-picnic-grocery edge fns remain KEEP
+// (§5.3 audit — implementor verifies their bodies are card_pool-free post-cutover).
+interface StrollAnchor {
+  id: string;
+  name: string;
+  location: { lat: number; lng: number };
+  address?: string;
+}
+interface PicnicAnchor {
+  id: string;
+  name: string;
+  location: { lat: number; lng: number };
+  address?: string;
+  title?: string;
+}
+
 class StopReplacementService {
+  async fetchCompanionStrollData(anchor: StrollAnchor): Promise<StrollData | null> {
+    try {
+      const { data, error } = await supabase.functions.invoke('get-companion-stops', { body: { anchor } });
+      if (error) { console.error('[stopReplacementService] get-companion-stops error:', error); return null; }
+      const typed = data as { strollData?: StrollData } | null;
+      return typed?.strollData ?? null;
+    } catch (err) {
+      console.error('[stopReplacementService] get-companion-stops threw:', err);
+      return null;
+    }
+  }
+
+  async fetchPicnicGroceryData(picnic: PicnicAnchor): Promise<PicnicData | null> {
+    try {
+      const { data, error } = await supabase.functions.invoke('get-picnic-grocery', { body: { picnic } });
+      if (error) { console.error('[stopReplacementService] get-picnic-grocery error:', error); return null; }
+      const typed = data as { picnicData?: PicnicData } | null;
+      return typed?.picnicData ?? null;
+    } catch (err) {
+      console.error('[stopReplacementService] get-picnic-grocery threw:', err);
+      return null;
+    }
+  }
+
   async getAlternatives(params: GetAlternativesParams): Promise<StopAlternative[]> {
     const { data, error } = await supabase.functions.invoke('replace-curated-stop', {
       body: {

@@ -5,10 +5,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ORCH-0640 ch06: warm list trimmed. discover-experiences DELETED (DEC-051 orphan).
+// get-person-hero-cards REWRITTEN but still warm-eligible. discover-cards +
+// generate-curated-experiences are the surviving hot paths.
 const FUNCTIONS_TO_WARM = [
   'discover-cards',
   'generate-curated-experiences',
-  'discover-experiences',
   'get-person-hero-cards',
 ];
 

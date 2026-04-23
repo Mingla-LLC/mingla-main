@@ -119,32 +119,15 @@ function ExperiencesSubView() {
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [expSearch]);
 
+  // ORCH-0640: experiences table is dropped. Content moderation is retired until
+  // ORCH-0640.4 redesign lands (moderation will operate on place_pool.is_servable).
   const fetchExperiences = useCallback(async () => {
-    setExpLoading(true);
+    if (!mountedRef.current) return;
+    setExperiences([]);
+    setExpCount(0);
+    setExpLoading(false);
     setExpError(null);
-    try {
-      let query = supabase
-        .from("experiences")
-        .select("*", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .range(expPage * PAGE_SIZE, (expPage + 1) * PAGE_SIZE - 1);
-
-      if (debouncedSearch) query = query.ilike("title", `%${escapeLike(debouncedSearch)}%`);
-      if (expCategoryFilter) query = query.eq("category", expCategoryFilter);
-
-      const { data, count, error } = await query;
-      if (error) throw error;
-      if (!mountedRef.current) return;
-      setExperiences(data || []);
-      setExpCount(count ?? 0);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setExpError(err.message);
-      addToast({ variant: "error", title: "Failed to load experiences", description: err.message });
-    } finally {
-      if (mountedRef.current) setExpLoading(false);
-    }
-  }, [expPage, debouncedSearch, expCategoryFilter, addToast]);
+  }, []);
 
   useEffect(() => { fetchExperiences(); }, [fetchExperiences]);
 
@@ -161,66 +144,22 @@ function ExperiencesSubView() {
     });
   };
 
+  // ORCH-0640: edit retired. Redesign arrives in ORCH-0640.4.
   const saveEdit = async () => {
-    if (!editingExp) return;
-    setSaving(true);
-    try {
-      const updates = {
-        title: editForm.title.trim() || null,
-        category: editForm.category || null,
-        price_min: editForm.price_min === "" ? null : Number(editForm.price_min),
-        price_max: editForm.price_max === "" ? null : Number(editForm.price_max),
-        duration_min: editForm.duration_min === "" ? null : Number(editForm.duration_min),
-        image_url: editForm.image_url.trim() || null,
-      };
-      const { error } = await supabase.from("experiences").update(updates).eq("id", editingExp.id);
-      if (error) throw error;
-      addToast({ variant: "success", title: "Experience updated" });
-      logAdminAction("content.edit", "experience", editingExp.id, { title: updates.title });
-      setEditingExp(null);
-      fetchExperiences();
-    } catch (err) {
-      addToast({ variant: "error", title: "Update failed", description: err.message });
-    } finally {
-      setSaving(false);
-    }
+    addToast({ variant: "info", title: "Content moderation retired — see ORCH-0640.4 redesign" });
+    setEditingExp(null);
   };
 
-  // Delete
+  // ORCH-0640: delete retired. Redesign arrives in ORCH-0640.4.
   const confirmDelete = async () => {
-    if (!deleteId) return;
-    setDeleting(true);
-    try {
-      const { error } = await supabase.from("experiences").delete().eq("id", deleteId);
-      if (error) throw error;
-      addToast({ variant: "success", title: "Experience deleted" });
-      logAdminAction("content.delete", "experience", deleteId);
-      setDeleteId(null);
-      fetchExperiences();
-    } catch (err) {
-      addToast({ variant: "error", title: "Delete failed", description: err.message });
-    } finally {
-      setDeleting(false);
-    }
+    addToast({ variant: "info", title: "Content moderation retired — see ORCH-0640.4 redesign" });
+    setDeleteId(null);
   };
 
-  // Bulk actions
+  // ORCH-0640: bulk delete retired. Redesign arrives in ORCH-0640.4.
   const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-    setBulkActioning(true);
-    try {
-      const ids = [...selectedIds];
-      const { error } = await supabase.from("experiences").delete().in("id", ids);
-      if (error) throw error;
-      addToast({ variant: "success", title: `${ids.length} experience(s) deleted` });
-      ids.forEach(id => logAdminAction("content.delete", "experience", id));
-      setSelectedIds(new Set());
-      fetchExperiences();
-    } catch (err) {
-      addToast({ variant: "error", title: "Bulk delete failed", description: err.message });
-    } finally {
-      setBulkActioning(false);
-    }
+    addToast({ variant: "info", title: "Content moderation retired — see ORCH-0640.4 redesign" });
+    setSelectedIds(new Set());
   };
 
   const columns = [
@@ -462,105 +401,39 @@ function CardPoolSubView() {
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [cardSearch]);
 
+  // ORCH-0640 ch08: card_pool queries retired. The Cards tab on ContentModerationPage
+  // is non-functional post-cutover — moderation of individual cards no longer makes sense
+  // because cards are derived on-demand from place_pool + place_scores.
+  // Place-level moderation happens on PlacePoolManagementPage (toggle is_servable).
+  // Full redesign of ContentModerationPage is a follow-up ORCH (0640.4) if admins want
+  // a consolidated "moderation queue" view.
   const fetchCards = useCallback(async () => {
-    setCardLoading(true);
+    setCardLoading(false);
     setCardError(null);
-    try {
-      let query = supabase
-        .from("card_pool")
-        .select("id, title, category, card_type, rating, review_count, popularity_score, served_count, last_served_at, is_active, price_min, price_max, lat, lng, image_url, created_at", { count: "exact" })
-        .order("popularity_score", { ascending: false, nullsFirst: false })
-        .range(cardPage * PAGE_SIZE, (cardPage + 1) * PAGE_SIZE - 1);
-
-      if (debouncedSearch) query = query.ilike("title", `%${escapeLike(debouncedSearch)}%`);
-      if (cardTypeFilter) query = query.eq("card_type", cardTypeFilter);
-      if (cardActiveFilter === "active") query = query.eq("is_active", true);
-      if (cardActiveFilter === "inactive") query = query.eq("is_active", false);
-
-      const { data, count, error } = await query;
-      if (error) throw error;
-      if (!mountedRef.current) return;
-      setCards(data || []);
-      setCardCount(count ?? 0);
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setCardError(err.message);
-      addToast({ variant: "error", title: "Failed to load card pool", description: err.message });
-    } finally {
-      if (mountedRef.current) setCardLoading(false);
-    }
-  }, [cardPage, debouncedSearch, cardTypeFilter, cardActiveFilter, addToast]);
+    setCards([]);
+    setCardCount(0);
+  }, []);
 
   useEffect(() => { fetchCards(); }, [fetchCards]);
 
-  const toggleCardActive = async (id, currentlyActive) => {
-    setTogglingId(id);
-    try {
-      const { error } = await supabase.from("card_pool").update({ is_active: !currentlyActive }).eq("id", id);
-      if (error) throw error;
-      addToast({ variant: "success", title: currentlyActive ? "Card deactivated" : "Card reactivated" });
-      logAdminAction("content.toggle_active", "card_pool", id, { is_active: !currentlyActive });
-      setCards((prev) => prev.map((c) => c.id === id ? { ...c, is_active: !currentlyActive } : c));
-    } catch (err) {
-      addToast({ variant: "error", title: "Toggle failed", description: err.message });
-    } finally {
-      if (mountedRef.current) setTogglingId(null);
-    }
+  const toggleCardActive = async (_id, _currentlyActive) => {
+    addToast({
+      variant: "info",
+      title: "Card moderation retired",
+      description: "Use Place Pool → toggle is_servable for place-level moderation.",
+    });
   };
 
-  // Bulk actions
   const handleBulkActivate = async () => {
-    if (selectedIds.size === 0) return;
-    setBulkActioning(true);
-    try {
-      const ids = [...selectedIds];
-      const { error } = await supabase.from("card_pool").update({ is_active: true }).in("id", ids);
-      if (error) throw error;
-      addToast({ variant: "success", title: `${ids.length} card(s) activated` });
-      ids.forEach(id => logAdminAction("content.toggle_active", "card_pool", id, { is_active: true }));
-      setSelectedIds(new Set());
-      fetchCards();
-    } catch (err) {
-      addToast({ variant: "error", title: "Bulk activate failed", description: err.message });
-    } finally {
-      setBulkActioning(false);
-    }
+    addToast({ variant: "info", title: "Card moderation retired", description: "Use Place Pool." });
   };
 
   const handleBulkDeactivate = async () => {
-    if (selectedIds.size === 0) return;
-    setBulkActioning(true);
-    try {
-      const ids = [...selectedIds];
-      const { error } = await supabase.from("card_pool").update({ is_active: false }).in("id", ids);
-      if (error) throw error;
-      addToast({ variant: "success", title: `${ids.length} card(s) deactivated` });
-      ids.forEach(id => logAdminAction("content.toggle_active", "card_pool", id, { is_active: false }));
-      setSelectedIds(new Set());
-      fetchCards();
-    } catch (err) {
-      addToast({ variant: "error", title: "Bulk deactivate failed", description: err.message });
-    } finally {
-      setBulkActioning(false);
-    }
+    addToast({ variant: "info", title: "Card moderation retired", description: "Use Place Pool." });
   };
 
   const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-    setBulkActioning(true);
-    try {
-      const ids = [...selectedIds];
-      const { error } = await supabase.from("card_pool").delete().in("id", ids);
-      if (error) throw error;
-      addToast({ variant: "success", title: `${ids.length} card(s) deleted` });
-      ids.forEach(id => logAdminAction("content.delete", "card_pool", id));
-      setSelectedIds(new Set());
-      fetchCards();
-    } catch (err) {
-      addToast({ variant: "error", title: "Bulk delete failed", description: err.message });
-    } finally {
-      setBulkActioning(false);
-    }
+    addToast({ variant: "info", title: "Card moderation retired", description: "Use Place Pool." });
   };
 
   const columns = [

@@ -899,7 +899,16 @@ export const useSessionManagement = () => {
           table: 'session_participants',
           filter: `user_id=eq.${user.id}`,
         },
-        (payload) => { console.log('[SESSION_PILLS] session_participants changed:', payload.eventType, payload.old?.session_id || payload.new?.session_id); loadUserSessions(); }
+        (payload) => {
+          const oldRow = (payload.old ?? {}) as Record<string, unknown>;
+          const newRow = (payload.new ?? {}) as Record<string, unknown>;
+          console.log(
+            '[SESSION_PILLS] session_participants changed:',
+            payload.eventType,
+            oldRow.session_id ?? newRow.session_id,
+          );
+          loadUserSessions();
+        }
       )
       .subscribe();
 
