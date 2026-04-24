@@ -320,14 +320,26 @@ async function fetchSinglesForSignalRank(
   const latDelta = radiusMeters / 111320;
   const lngDelta = radiusMeters / (111320 * Math.cos(centerLat * Math.PI / 180));
 
-  // Step 1: find place_ids that pass the filter signal threshold
+  // Step 1: find place_ids that pass the filter signal threshold.
+  // ORCH-0653: explicit .order + .limit(50000) bypasses PostgREST default 1000-row cap.
+  // 4 signals exceed 1000 at-threshold (casual_food=2069, icebreakers=1519, drinks=1227,
+  // brunch=1014); without this, results truncate non-deterministically and downstream
+  // bbox filter at Step 3 silently empties for the user's city. Order by place_id (PK
+  // index, deterministic, cheap) — no need to rank here since Step 2 ranks by rankSignal.
   const { data: filterRows, error: filterErr } = await supabaseAdmin
     .from('place_scores')
     .select('place_id')
     .eq('signal_id', filterSignal)
-    .gte('score', filterMin);
+    .gte('score', filterMin)
+    .order('place_id', { ascending: true })
+    .limit(50000);
 
-  if (filterErr || !filterRows || filterRows.length === 0) return [];
+  // ORCH-0653: throw on error (Constitution #3) — do NOT silently return [].
+  // Empty result (no eligible places) is still a legitimate empty return.
+  if (filterErr) {
+    throw new Error(`[fetchSinglesForSignalRank] Step 1 (filter signal '${filterSignal}' >= ${filterMin}) failed: ${filterErr.message}`);
+  }
+  if (!filterRows || filterRows.length === 0) return [];
   let eligibleIds = filterRows.map((r: any) => r.place_id);
 
   // ORCH-0601 Step 1b: optional type-restriction (e.g. 'hiking' subset of nature,
@@ -339,7 +351,11 @@ async function fetchSinglesForSignalRank(
       .select('id')
       .in('id', eligibleIds)
       .overlaps('types', requiredTypes);
-    if (typedErr || !typedRows) return [];
+    // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
+    if (typedErr) {
+      throw new Error(`[fetchSinglesForSignalRank] Step 1b (type-filter ${requiredTypes.join('|')} over ${eligibleIds.length} eligible IDs) failed: ${typedErr.message}`);
+    }
+    if (!typedRows) return [];
     const typedSet = new Set<string>(typedRows.map((r: any) => r.id));
     eligibleIds = eligibleIds.filter((id: string) => typedSet.has(id));
     if (eligibleIds.length === 0) return [];
@@ -352,9 +368,13 @@ async function fetchSinglesForSignalRank(
     .eq('signal_id', rankSignal)
     .in('place_id', eligibleIds)
     .order('score', { ascending: false })
-    .limit(limit * 3); // over-fetch for lat/lng filter + card_pool join losses
+    .limit(limit * 3); // over-fetch for lat/lng filter losses
 
-  if (rankErr || !rankRows || rankRows.length === 0) return [];
+  // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
+  if (rankErr) {
+    throw new Error(`[fetchSinglesForSignalRank] Step 2 (rank signal '${rankSignal}' over ${eligibleIds.length} eligible IDs) failed: ${rankErr.message}`);
+  }
+  if (!rankRows || rankRows.length === 0) return [];
   const rankedIds = rankRows.map((r: any) => r.place_id);
   const rankScoreById = new Map<string, number>();
   for (const r of rankRows) rankScoreById.set(r.place_id, Number(r.score));
@@ -379,10 +399,12 @@ async function fetchSinglesForSignalRank(
     .lte('lng', centerLng + lngDelta)
     .limit(limit * 2);
 
-  if (placeErr || !places) {
-    console.warn(`[fetchSinglesForSignalRank] place_pool fetch error for ${filterSignal}/${rankSignal}: ${placeErr?.message ?? 'no data'}`);
-    return [];
+  // ORCH-0653: throw on error (Constitution #3) — was silent console.warn + return [].
+  // Empty result (!places.length) still legitimate; only error path throws.
+  if (placeErr) {
+    throw new Error(`[fetchSinglesForSignalRank] Step 3 (place_pool fetch for ${filterSignal}/${rankSignal} over ${rankedIds.length} ranked IDs in bbox center=(${centerLat.toFixed(4)},${centerLng.toFixed(4)}) radius=${Math.round(latDelta * 111320)}m) failed: ${placeErr.message}`);
   }
+  if (!places || places.length === 0) return [];
 
   // Step 4: apply G3 photo gate + shape each row as the assembler expects.
   // Historical card_pool schema fields (title, images, image_url, etc.) are
