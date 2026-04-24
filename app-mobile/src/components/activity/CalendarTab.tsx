@@ -1135,9 +1135,10 @@ const CalendarTab = ({
         : [experience.image || entry.image].filter(Boolean),
       rating: experience.rating || entry.rating || 4.5,
       reviewCount: experience.reviewCount || entry.reviewCount || 0,
-      priceRange: experience.priceRange || entry.priceRange || "N/A",
+      // [ORCH-0649 — INVARIANT I-NO-FABRICATED-DISPLAY-N/A] no "N/A" fabrication.
+      priceRange: experience.priceRange || entry.priceRange || undefined,
       distance: (experience as any).distance || "",
-      travelTime: experience.travelTime || "N/A",
+      travelTime: experience.travelTime || undefined,
       address: experience.address || entry.address || "",
       openingHours: (experience as any).openingHours,
       phone: experience.phoneNumber || entry.phoneNumber,

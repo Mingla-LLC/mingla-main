@@ -128,6 +128,7 @@
     "pickADate": "Επίλεξε Ημερομηνία",
     "changeTime": "Αλλαγή Ώρας",
     "closedAtTime": "Αυτό το μέρος είναι κλειστό την επιλεγμένη ώρα. Επίλεξε μια διαφορετική ώρα.",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}. Επαλήθευσε τα ωράρια λειτουργίας πριν τον προγραμματισμό.",
     "selectDate": "Επίλεξε Ημερομηνία",
     "selectTime": "Επίλεξε Ώρα",

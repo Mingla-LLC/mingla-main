@@ -28,6 +28,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
 import { extractWeekdayText, isPlaceOpenAt } from "../../utils/openingHoursUtils";
+import { normalizeWebsiteUrl } from "../../utils/normalizeWebsiteUrl";
 import { useTranslation } from "react-i18next";
 
 
@@ -125,185 +126,11 @@ export default function ActionButtons({
     return days[new Date().getDay()];
   }, []);
 
-  // Parse time string like "9:00 AM" to minutes since midnight
-  const parseTimeString = (timeStr: string): number => {
-    const trimmed = timeStr.trim();
-    const match = trimmed.match(/(\d+):(\d+)\s*(AM|PM)/i);
-    if (!match) return 0;
-
-    let hours = parseInt(match[1], 10);
-    const minutes = parseInt(match[2], 10);
-    const period = match[3].toUpperCase();
-
-    // Convert to 24-hour format
-    if (period === "AM") {
-      if (hours === 12) hours = 0; // 12 AM = midnight
-    } else {
-      // PM
-      if (hours !== 12) hours += 12; // 1 PM = 13:00, but 12 PM stays 12
-    }
-
-    return hours * 60 + minutes; // Return minutes since midnight
-  };
-
-  // Check if place is open at the selected date/time
-  const checkPlaceAvailability = (
-    dateToCheck: Date,
-  ): {
-    isOpen: boolean;
-    isAssumption: boolean;
-    reason?: string;
-  } => {
-    if (!card || !dateToCheck) {
-      return {
-        isOpen: true,
-        isAssumption: true,
-        reason: "No card or time selected",
-      };
-    }
-
-    let openingHours: any = card.openingHours;
-
-    // If openingHours is a string, try to unwrap (may be JSON-stringified once or more)
-    if (typeof openingHours === "string") {
-      const trimmed = openingHours.trim();
-      if (trimmed === "" || trimmed === '""') {
-        return {
-          isOpen: true,
-          isAssumption: true,
-          reason: "Opening hours data not available",
-        };
-      }
-      let attempts = 0;
-      while (typeof openingHours === "string" && attempts < 3) {
-        try {
-          openingHours = JSON.parse(openingHours);
-          attempts++;
-        } catch {
-          break;
-        }
-      }
-    }
-
-    // If no opening hours data, assume open (user schedules at own risk)
-    if (
-      !openingHours ||
-      openingHours === null ||
-      typeof openingHours !== "object" ||
-      !Array.isArray(openingHours.weekday_text) ||
-      openingHours.weekday_text.length === 0
-    ) {
-      return {
-        isOpen: true,
-        isAssumption: true,
-        reason: "Opening hours data not available",
-      };
-    }
-
-    // Get the day of the week from date (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
-    const dayOfWeek = dateToCheck.getDay();
-    const dayNames = [
-      "Sunday",
-      "Monday",
-      "Tuesday",
-      "Wednesday",
-      "Thursday",
-      "Friday",
-      "Saturday",
-    ];
-    const selectedDayName = dayNames[dayOfWeek];
-
-    // Find the opening hours for the selected day
-    const dayHours = openingHours.weekday_text?.find((entry: string) =>
-      entry.startsWith(selectedDayName),
-    );
-
-    if (!dayHours) {
-      // No hours found for this day, assume closed
-      return {
-        isOpen: false,
-        isAssumption: false,
-      };
-    }
-
-    // Ensure dayHours is a string
-    if (typeof dayHours !== "string") {
-      return {
-        isOpen: true,
-        isAssumption: true,
-        reason: "Invalid opening hours data format",
-      };
-    }
-
-    // Handle special case: "Open 24 hours"
-    if (/open\s*24\s*hours?/i.test(dayHours)) {
-      return {
-        isOpen: true,
-        isAssumption: false,
-      };
-    }
-
-    // Handle special case: "Closed"
-    if (/closed/i.test(dayHours)) {
-      return {
-        isOpen: false,
-        isAssumption: false,
-      };
-    }
-
-    // Parse the time range (e.g., "Monday: 9:00 AM – 12:00 AM")
-    // Try different patterns to handle various formats
-    let timeRangeMatch = dayHours.match(/:\s*(.+?)\s*–\s*(.+)$/);
-
-    // If that doesn't work, try with different dash characters
-    if (!timeRangeMatch) {
-      timeRangeMatch = dayHours.match(/:\s*(.+?)\s*-\s*(.+)$/); // Regular dash
-    }
-    if (!timeRangeMatch) {
-      timeRangeMatch = dayHours.match(/:\s*(.+?)\s*to\s*(.+)$/i); // "to" separator
-    }
-    if (!timeRangeMatch) {
-      // Can't parse the time range, assume open with warning
-      return {
-        isOpen: true,
-        isAssumption: true,
-        reason: "Could not parse opening hours format",
-      };
-    }
-
-    const openTimeStr = timeRangeMatch[1].trim();
-    const closeTimeStr = timeRangeMatch[2].trim();
-
-    // Parse times to minutes since midnight
-    const openTimeMinutes = parseTimeString(openTimeStr);
-    const closeTimeMinutes = parseTimeString(closeTimeStr);
-
-    // Get selected time in minutes since midnight
-    const selectedHours = dateToCheck.getHours();
-    const selectedMinutes = dateToCheck.getMinutes();
-    const selectedTimeMinutes = selectedHours * 60 + selectedMinutes;
-
-    // Handle case where closing time is midnight (12:00 AM)
-    if (closeTimeMinutes === 0) {
-      const isOpen = selectedTimeMinutes >= openTimeMinutes;
-      return { isOpen, isAssumption: false };
-    }
-
-    // Normal case: check if selected time is within the range
-    if (openTimeMinutes < closeTimeMinutes) {
-      // Normal case: opening and closing on same day (e.g., 9 AM - 6 PM)
-      const isOpen =
-        selectedTimeMinutes >= openTimeMinutes &&
-        selectedTimeMinutes < closeTimeMinutes;
-      return { isOpen, isAssumption: false };
-    } else {
-      // Case where closing time is next day (e.g., 9 PM - 2 AM)
-      const isOpen =
-        selectedTimeMinutes >= openTimeMinutes ||
-        selectedTimeMinutes < closeTimeMinutes;
-      return { isOpen, isAssumption: false };
-    }
-  };
+  // [ORCH-0649 — CONSTITUTION #2] Local parseTimeString + checkPlaceAvailability
+  // DELETED. All availability checks now inline the canonical isPlaceOpenAt
+  // (openingHoursUtils.ts) at the call site. Mapping isPlaceOpenAt's
+  // true | false | null result to the legacy {isOpen, isAssumption, reason}
+  // shape is done per call site.
 
   // Helper function to generate suggested dates
   const generateSuggestedDates = (dateTimePrefs: any) => {
@@ -436,8 +263,18 @@ export default function ActionButtons({
           setSelectedDateTime(combinedDateTime);
           setShowDateTimePicker(false);
 
-          // Check availability and auto-schedule if open
-          const availability = checkPlaceAvailability(combinedDateTime);
+          // Check availability and auto-schedule if open.
+          // [ORCH-0649] Canonical isPlaceOpenAt → legacy {isOpen,isAssumption,reason}.
+          const weekdayText = extractWeekdayText(card?.openingHours ?? null);
+          const openAt = isPlaceOpenAt(weekdayText, combinedDateTime);
+          const availability =
+            openAt === null
+              ? {
+                  isOpen: true,
+                  isAssumption: true,
+                  reason: "Opening hours data not available",
+                }
+              : { isOpen: openAt, isAssumption: false };
           setAvailabilityCheck(availability);
           setHasCheckedAvailability(true);
 
@@ -492,8 +329,18 @@ export default function ActionButtons({
     setSelectedDateTime(combinedDateTime);
     setShowDateTimePicker(false);
 
-    // Check availability and auto-schedule if open
-    const availability = checkPlaceAvailability(combinedDateTime);
+    // Check availability and auto-schedule if open.
+    // [ORCH-0649] Canonical isPlaceOpenAt → legacy {isOpen,isAssumption,reason}.
+    const weekdayText = extractWeekdayText(card?.openingHours ?? null);
+    const openAt = isPlaceOpenAt(weekdayText, combinedDateTime);
+    const availability =
+      openAt === null
+        ? {
+            isOpen: true,
+            isAssumption: true,
+            reason: "Opening hours data not available",
+          }
+        : { isOpen: openAt, isAssumption: false };
     setAvailabilityCheck(availability);
     setHasCheckedAvailability(true);
 
@@ -710,15 +557,11 @@ export default function ActionButtons({
   };
 
   const handlePoliciesAndReservations = () => {
-    if (!onOpenBrowser || !card.website) return;
-
-    let url = card.website;
-    if (url.startsWith('http://')) {
-      // Force HTTPS — iOS ATS blocks insecure HTTP connections in WebView
-      url = url.replace('http://', 'https://');
-    } else if (!url.startsWith('https://')) {
-      url = `https://${url}`;
-    }
+    if (!onOpenBrowser) return;
+    // [ORCH-0649] Normalize via shared helper — http→https, whitespace trim,
+    // case-insensitive scheme check. iOS ATS blocks plain http:// in WebView.
+    const url = normalizeWebsiteUrl(card.website);
+    if (!url) return;
     onOpenBrowser(url, card.title);
   };
 

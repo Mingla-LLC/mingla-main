@@ -178,17 +178,14 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     highlights: [card.placeTypeLabel],
     fullDescription: card.description,
     address: card.address,
-    openingHours: card.openingHours && Object.keys(card.openingHours).length > 0
-      ? {
-          open_now: card.isOpenNow,
-          weekday_text: Object.entries(card.openingHours).map(
-            ([day, hours]) =>
-              `${day.charAt(0).toUpperCase() + day.slice(1)}: ${hours}`
-          ),
-        }
-      : card.isOpenNow != null
-        ? { open_now: card.isOpenNow }
-        : null,
+    // [CRITICAL — ORCH-0649] DO NOT transform card.openingHours shape here.
+    // The mobile renderer reads via extractWeekdayText (openingHoursUtils.ts)
+    // which already handles every known shape (Google v1, Google legacy,
+    // Record<string,string>, JSON-stringified). Wrapping the v1 shape into
+    // { open_now, weekday_text } via Object.entries produces garbage strings
+    // like "OpenNow: false" / "Periods: [object Object]" — see Phase 1+2
+    // investigation INVESTIGATION_ORCH-0649_EXPANDED_CARD_QUARTET.md.
+    openingHours: card.openingHours ?? null,
     tags: [card.placeType, card.placeTypeLabel].filter(Boolean),
     matchScore: card.matchScore ?? 85,
     reviewCount: card.reviewCount ?? 0,

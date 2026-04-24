@@ -1487,9 +1487,12 @@ const SavedTab = ({
       images: card.images?.length ? card.images : [card.image].filter(Boolean),
       rating: card.rating || 4.5,
       reviewCount: card.reviewCount || 0,
-      priceRange: card.priceRange || "N/A",
+      // [ORCH-0649 — INVARIANT I-NO-FABRICATED-DISPLAY-N/A]
+      // Pass undefined (not literal "N/A") so the renderer's truthy guard
+      // hides the pill. Constitution #9 forbids fabricated display values.
+      priceRange: card.priceRange || undefined,
       distance: (card as any).distance || "",
-      travelTime: card.travelTime || "N/A",
+      travelTime: card.travelTime || undefined,
       address: card.address || "",
       openingHours: card.openingHours,
       highlights: card.highlights || [],
@@ -1514,9 +1517,10 @@ const SavedTab = ({
         ((card as any).lat && (card as any).lng
           ? { lat: (card as any).lat, lng: (card as any).lng }
           : undefined),
+      // [ORCH-0649] Must be a real Date or undefined — never the string "N/A".
       selectedDateTime: (card as any)?.dateAdded
         ? new Date((card as any).dateAdded)
-        : "N/A",
+        : undefined,
       strollData: (card as any).strollData,
       picnicData: (card as any).picnicData,
       website: (card as any).website || undefined,

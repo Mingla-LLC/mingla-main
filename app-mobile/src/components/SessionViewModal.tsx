@@ -614,9 +614,10 @@ export default function SessionViewModal({
       images: cardData.images || [cardData.image].filter(Boolean) as string[],
       rating: cardData.rating || 4.5,
       reviewCount: cardData.reviewCount || 0,
-      priceRange: cardData.priceRange || "N/A",
+      // [ORCH-0649 — INVARIANT I-NO-FABRICATED-DISPLAY-N/A] no "N/A" fabrication.
+      priceRange: cardData.priceRange || undefined,
       distance: cardData.distance || "",
-      travelTime: cardData.travelTime || "N/A",
+      travelTime: cardData.travelTime || undefined,
       address: cardData.address || "",
       openingHours: cardData.openingHours,
       phone: cardData.phone,

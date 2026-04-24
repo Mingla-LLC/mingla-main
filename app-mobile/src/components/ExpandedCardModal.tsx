@@ -22,6 +22,7 @@ import { formatDistanceFromMeters, formatPriceRange, formatCurrency } from "./ut
 import { tierLabel, tierRangeLabel, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
 import { curatedStopsToTimeline } from "../utils/curatedToTimeline";
 import { extractWeekdayText } from "../utils/openingHoursUtils";
+import { normalizeWebsiteUrl } from "../utils/normalizeWebsiteUrl";
 import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
 import { bookingService, BookingOption } from "../services/bookingService";
@@ -953,13 +954,19 @@ function MultiStopPlanView({
                   );
                 })()}
 
-                {/* Policies & Reservations — only when website exists */}
-                {stop.website ? (
+                {/* Policies & Reservations — only when website normalizes.
+                    [ORCH-0649 — INVARIANT I-WEBVIEW-URL-NORMALIZED]
+                    Previously passed raw stop.website; http:// tripped iOS ATS
+                    (NSURLErrorDomain -1022). normalizeWebsiteUrl rewrites to
+                    https:// with whitespace/case hardening. */}
+                {stop.website && normalizeWebsiteUrl(stop.website) ? (
                   <TouchableOpacity
                     style={curatedStyles.policiesButton}
                     onPress={() => {
+                      const normalized = normalizeWebsiteUrl(stop.website);
+                      if (!normalized) return;
                       setBrowserTitle(stop.placeName);
-                      setBrowserUrl(stop.website);
+                      setBrowserUrl(normalized);
                     }}
                     activeOpacity={0.8}
                   >

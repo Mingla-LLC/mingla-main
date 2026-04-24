@@ -17,16 +17,32 @@ export interface ExpandedCardData {
   images: string[];
   rating: number;
   reviewCount: number;
-  priceRange: string;
+  // [ORCH-0649] priceRange + travelTime may be absent. Renderers use truthy
+  // guards (`{travelTime && ...}`) to hide pills. Never fabricate "N/A".
+  priceRange?: string;
   distance: string;
-  travelTime: string;
+  travelTime?: string;
   address: string;
+  // [ORCH-0649] openingHours arrives in multiple shapes across the codebase.
+  // extractWeekdayText (openingHoursUtils.ts) is the canonical reader — do
+  // NOT read .weekday_text or .weekdayDescriptions directly in components.
+  // 85.6% of place_pool rows are Google Places v1; ~0.1% legacy record.
   openingHours?:
     | string
     | {
+        // Google legacy
         open_now?: boolean;
         weekday_text?: string[];
       }
+    | {
+        // Google Places v1 (canonical — what admin-seed-places writes today)
+        openNow?: boolean;
+        periods?: unknown[];
+        nextOpenTime?: string;
+        nextCloseTime?: string;
+        weekdayDescriptions?: string[];
+      }
+    | Record<string, string>  // Mingla legacy ({ monday: "9-5", ... }) — 37 rows in pool
     | null;
   phone?: string;
   website?: string;
@@ -53,7 +69,9 @@ export interface ExpandedCardData {
     lng: number;
   };
   // Date/time for weather and timeline
-  selectedDateTime?: Date | string;
+  // [ORCH-0649] Must be a real Date when present. Was previously `Date | string`
+  // which allowed the literal "N/A" fallback — Constitution #9 violation.
+  selectedDateTime?: Date;
   // Stroll-specific data
   strollData?: {
     anchor: {

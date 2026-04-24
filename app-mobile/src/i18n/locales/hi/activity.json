@@ -128,6 +128,7 @@
     "pickADate": "तारीख चुनें",
     "changeTime": "समय बदलें",
     "closedAtTime": "यह जगह चुने हुए समय पर बंद है। कृपया अलग समय चुनें।",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}। शेड्यूल करने से पहले खुलने का समय जांच लें।",
     "selectDate": "तारीख चुनें",
     "selectTime": "समय चुनें",

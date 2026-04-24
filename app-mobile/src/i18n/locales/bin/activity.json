@@ -128,6 +128,7 @@
     "pickADate": "H\u1ecdo Ede\u1eb9",
     "changeTime": "Sag\u1ecde Uki",
     "closedAtTime": "Ehe na kue ye uki na. H\u1ecdo uki ne nibun.",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}. Ladian uki ne a gha khuae ne u gha m\u1ecden ede\u1eb9.",
     "selectDate": "H\u1ecdo Ede\u1eb9",
     "selectTime": "H\u1ecdo Uki",

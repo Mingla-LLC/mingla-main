@@ -90,11 +90,31 @@ if [ -n "$DELETED_IMPORT_VIOLATIONS" ]; then
   FAIL=1
 fi
 
+# ─── ORCH-0649: I-NO-FABRICATED-DISPLAY-N/A ───────────────────────────────────
+# Forbid the literal string "N/A" as a fallback default for display strings
+# in saved-card / calendar / session-view ExpandedCardData constructors.
+# Constitution #9 — never show fabricated data to users. Hide the pill if
+# no real value exists.
+echo "Checking I-NO-FABRICATED-DISPLAY-N/A..."
+NA_HITS=$(grep -rEn '\|\|\s*"N/A"' \
+    app-mobile/src/components/activity/SavedTab.tsx \
+    app-mobile/src/components/activity/CalendarTab.tsx \
+    app-mobile/src/components/SessionViewModal.tsx \
+    2>/dev/null \
+  | grep -v '__test_gate' \
+  || true)
+if [ -n "$NA_HITS" ]; then
+  echo "FAIL: I-NO-FABRICATED-DISPLAY-N/A violated. ORCH-0649 forbids '|| \"N/A\"'"
+  echo "   defaulting for display strings in these files. Hit lines:"
+  echo "$NA_HITS"
+  FAIL=1
+fi
+
 if [ $FAIL -eq 1 ]; then
   echo ""
-  echo "ORCH-0640 invariant check FAILED."
+  echo "ORCH-0640 / ORCH-0649 invariant check FAILED."
   exit 1
 fi
 
-echo "All ORCH-0640 invariant gates pass."
+echo "All ORCH-0640 / ORCH-0649 invariant gates pass."
 exit 0

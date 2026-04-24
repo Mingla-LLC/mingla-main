@@ -128,6 +128,7 @@
     "pickADate": "Chọn ngày",
     "changeTime": "Đổi giờ",
     "closedAtTime": "Địa điểm này đóng cửa vào thời gian đã chọn. Vui lòng chọn giờ khác.",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}. Vui lòng xác minh giờ mở cửa trước khi đặt lịch.",
     "selectDate": "Chọn ngày",
     "selectTime": "Chọn giờ",

@@ -128,6 +128,7 @@
     "pickADate": "选择日期",
     "changeTime": "更改时间",
     "closedAtTime": "此地点在所选时间已关闭。请选择其他时间。",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}。请在安排前确认营业时间。",
     "selectDate": "选择日期",
     "selectTime": "选择时间",
