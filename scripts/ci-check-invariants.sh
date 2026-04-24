@@ -26,13 +26,17 @@ if [ -n "$CARD_POOL_VIOLATIONS" ]; then
   FAIL=1
 fi
 
-# ─── I-BOUNCER-IS-QUALITY-GATE: no ai_approved in serving code ───
+# ─── I-BOUNCER-IS-QUALITY-GATE: no ai_approved in serving code or admin frontend ───
+# ORCH-0646 extension (2026-04-23): mingla-admin/src/ added after ORCH-0640 cleanup
+# gap allowed ai_approved references to persist in admin pages after column drop.
+# Must not regress — admin reads the same dropped column and would 500.
 AI_VIOLATIONS=$(git grep -l "ai_approved\|ai_override\|ai_validated" \
     supabase/functions/discover-cards/ \
     supabase/functions/generate-curated-experiences/ \
     supabase/functions/get-person-hero-cards/ \
     supabase/functions/get-paired-saves/ \
     app-mobile/src/ \
+    mingla-admin/src/ \
     2>/dev/null \
   | grep -vE '\.md$' \
   || true)

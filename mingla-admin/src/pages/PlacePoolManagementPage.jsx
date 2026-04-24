@@ -131,7 +131,7 @@ function CityPicker({ cities, scope, onScopeChange }) {
                 <button key={c.city_id} onClick={() => { onScopeChange({ countryCode: group.countryCode, cityId: c.city_id }); setOpen(false); }}
                   className={`w-full text-left pl-7 pr-3 py-1.5 text-sm hover:bg-[var(--gray-100)] cursor-pointer flex justify-between ${scope.cityId === c.city_id ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)] font-medium" : ""}`}>
                   <span>{c.city_name}</span>
-                  <span className="text-xs text-[var(--color-text-tertiary)]">{(c.ai_approved_places || 0).toLocaleString()}</span>
+                  <span className="text-xs text-[var(--color-text-tertiary)]">{(c.is_servable_places || 0).toLocaleString()}</span>
                 </button>
               ))}
             </div>
@@ -244,7 +244,7 @@ function OverviewTab({ scope, onScopeChange, pickerCities }) {
     ? "City scope"
     : selectedCountry ? "Country scope" : "Global pool";
 
-  const aiPct = data.active_places > 0 ? Math.round(((data.ai_approved_places || data.ai_approved_count || 0) / data.active_places) * 100) : 0;
+  const servablePct = data.active_places > 0 ? Math.round(((data.is_servable_places || data.is_servable_count || 0) / data.active_places) * 100) : 0;
 
   const isGlobal = !selectedCountry;
   const isCountryLevel = !!selectedCountry && !selectedCity;
@@ -256,9 +256,9 @@ function OverviewTab({ scope, onScopeChange, pickerCities }) {
         {countryFlag(r.country_code)} {r.country_name}
       </button>
     )},
-    { key: "ai_approved_places", label: "AI Approved", sortable: true, render: (_, r) => (r.ai_approved_places || 0).toLocaleString() },
+    { key: "is_servable_places", label: "Servable", sortable: true, render: (_, r) => (r.is_servable_places || 0).toLocaleString() },
     { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.photo_pct || 0)}>{r.photo_pct || 0}%</Badge> },
-    { key: "ai_validated_pct", label: "AI Validated %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.ai_validated_pct || 0)}>{r.ai_validated_pct || 0}%</Badge> },
+    { key: "bounced_pct", label: "Bounced %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.bounced_pct || 0)}>{r.bounced_pct || 0}%</Badge> },
     { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
     { key: "city_count", label: "Cities", sortable: true },
   ];
@@ -267,9 +267,9 @@ function OverviewTab({ scope, onScopeChange, pickerCities }) {
     { key: "city_name", label: "City", sortable: true, render: (_, r) => (
       <button onClick={() => onSelectCity(r.city_id)} className="text-[var(--color-brand-500)] hover:underline cursor-pointer font-medium text-left">{r.city_name}</button>
     )},
-    { key: "ai_approved_places", label: "AI Approved", sortable: true, render: (_, r) => (r.ai_approved_places || 0).toLocaleString() },
+    { key: "is_servable_places", label: "Servable", sortable: true, render: (_, r) => (r.is_servable_places || 0).toLocaleString() },
     { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.photo_pct || 0)}>{r.photo_pct || 0}%</Badge> },
-    { key: "ai_validated_pct", label: "AI Validated %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.ai_validated_pct || 0)}>{r.ai_validated_pct || 0}%</Badge> },
+    { key: "bounced_pct", label: "Bounced %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.bounced_pct || 0)}>{r.bounced_pct || 0}%</Badge> },
     { key: "category_coverage", label: "Categories", sortable: true, render: (_, r) => `${r.category_coverage || 0}/13` },
     { key: "avg_rating", label: "Avg Rating", sortable: true, render: (_, r) => r.avg_rating ? `★ ${r.avg_rating}` : "—" },
   ];
@@ -281,7 +281,7 @@ function OverviewTab({ scope, onScopeChange, pickerCities }) {
         {CATEGORY_LABELS[r.category] || r.category || "Uncategorized"}
       </div>
     )},
-    { key: "place_count", label: "AI Approved", sortable: true },
+    { key: "place_count", label: "Servable", sortable: true },
     { key: "photo_pct", label: "Photo %", sortable: true, render: (_, r) => <Badge variant={pctColor(r.photo_pct || 0)}>{r.photo_pct || 0}%</Badge> },
     { key: "avg_rating", label: "Avg Rating", sortable: true, render: (_, r) => r.avg_rating ? `★ ${r.avg_rating}` : "—" },
   ];
@@ -306,20 +306,20 @@ function OverviewTab({ scope, onScopeChange, pickerCities }) {
         <StatCard icon={Globe} label="Active Places" value={data.active_places} />
         <StatCard icon={Camera} label="Photo Coverage" value={`${data.photo_pct}%`}
           trend={data.photo_pct >= 80 ? "Good" : data.photo_pct >= 50 ? "Fair" : "Low"} trendUp={data.photo_pct >= 80} />
-        <StatCard icon={Eye} label="AI Validated" value={`${aiPct}%`}
-          trend={`${data.ai_validated_count} of ${data.active_places}`} trendUp={aiPct >= 50} />
-        <StatCard icon={Clock} label="Pending Review" value={data.ai_pending_count || 0}
-          trend={data.ai_pending_count === 0 ? "All validated" : "Needs validation"} trendUp={data.ai_pending_count === 0} />
+        <StatCard icon={Eye} label="Bouncer Judged" value={`${servablePct}%`}
+          trend={`${data.bouncer_judged_count} of ${data.active_places}`} trendUp={servablePct >= 50} />
+        <StatCard icon={Clock} label="Not Yet Bounced" value={data.bouncer_pending_count || 0}
+          trend={data.bouncer_pending_count === 0 ? "All judged" : "Needs Bouncer pass"} trendUp={data.bouncer_pending_count === 0} />
       </div>
 
-      {/* AI Validation stats (read-only — validation runs via AI Validation page) */}
-      {(data.ai_pending_count > 0 || data.ai_validated_count > 0) && (
-        <SectionCard title="AI Validation Summary">
+      {/* ORCH-0646: Bouncer summary (replaces "AI Validation Summary" — Bouncer is authoritative per ORCH-0640) */}
+      {(data.bouncer_pending_count > 0 || data.bouncer_judged_count > 0) && (
+        <SectionCard title="Bouncer Summary">
           <div className="grid grid-cols-4 gap-4">
-            <StatCard label="Validated" value={data.ai_validated_count} />
-            <StatCard label="Approved" value={data.ai_approved_count} />
-            <StatCard label="Rejected" value={data.ai_rejected_count} />
-            <StatCard label="Pending" value={data.ai_pending_count} />
+            <StatCard label="Judged" value={data.bouncer_judged_count} />
+            <StatCard label="Servable" value={data.is_servable_count} />
+            <StatCard label="Excluded" value={data.bouncer_excluded_count} />
+            <StatCard label="Not Yet Bounced" value={data.bouncer_pending_count} />
           </div>
         </SectionCard>
       )}
@@ -352,11 +352,13 @@ function OverviewTab({ scope, onScopeChange, pickerCities }) {
 
 function PlaceDetailModal({ place, open, onClose, onSave }) {
   const { addToast } = useToast();
-  const [aiCard, setAiCard] = useState(null);
+  // ORCH-0646: legacy AI-validation card state removed (was always null after ORCH-0640
+  // ch08 archived card_pool). All dead-branch consumers removed. Bouncer is the
+  // authoritative quality gate now; servability comes from place.is_servable directly.
   const [expandedPhoto, setExpandedPhoto] = useState(null);
   const [editForm, setEditForm] = useState({
     name: "", price_tiers: [], seeding_category: "", is_active: true,
-    ai_approved: null, ai_primary_identity: "", ai_categories: [], ai_reason: "", ai_confidence: null,
+    ai_categories: [],
   });
   const [saving, setSaving] = useState(false);
 
@@ -367,30 +369,21 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
       price_tiers: place.price_tiers?.length ? place.price_tiers : (place.price_tier ? [place.price_tier] : []),
       seeding_category: place.seeding_category || "",
       is_active: place.is_active,
-      ai_approved: place.ai_approved,
-      ai_primary_identity: place.ai_primary_identity || "",
       ai_categories: place.ai_categories || [],
-      ai_reason: place.ai_reason || "",
-      ai_confidence: place.ai_confidence,
     });
-    // ORCH-0640 ch08: card_pool archived — aiCard lookup retired. Any AI-validation
-    // metadata the admin needs now comes from place_pool columns directly (bouncer_reason,
-    // ai_categories). Set stub so downstream renders don't crash.
-    setAiCard(null);
   }, [open, place]);
 
   if (!place) return null;
 
   const photos = place.stored_photo_urls || [];
   const types = place.types || [];
-  const aiCats = place.ai_categories?.length > 0 ? place.ai_categories : aiCard?.ai_categories || [];
+  const aiCats = place.ai_categories || [];
   const hasConflict = place.seeding_category && aiCats.length > 0 && place.seeding_category !== aiCats[0];
 
-  const aiStatusBadge = () => {
-    const approved = place.ai_approved ?? aiCard?.ai_approved;
-    if (approved === true) return <Badge variant="success">Approved</Badge>;
-    if (approved === false) return <Badge variant="error">Rejected</Badge>;
-    return <Badge variant="outline">Pending</Badge>;
+  const bouncerStatusBadge = () => {
+    if (place.is_servable === true) return <Badge variant="success">Servable</Badge>;
+    if (place.is_servable === false) return <Badge variant="error">Excluded</Badge>;
+    return <Badge variant="outline">Not Yet Bounced</Badge>;
   };
 
   const handleSave = async () => {
@@ -406,8 +399,12 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
     });
     if (rpcErr) { addToast({ variant: "error", title: "Save failed", description: rpcErr.message }); setSaving(false); return; }
 
-    // ORCH-0640 ch08: ai_approved/ai_validated_at/ai_reason/ai_confidence/ai_primary_identity
-    // columns DROPPED in ch13. Only ai_categories survives (admin-editable classification).
+    // ORCH-0640 ch08 + ORCH-0646: the servable-flag + validation-timestamp columns
+    // were dropped in ch13 (see migration 20260425000004). Three related AI-era
+    // columns (reason / primary_identity / confidence) STILL EXIST on place_pool
+    // but the pipeline that populated them was archived — they are now stale-data
+    // only. Only ai_categories is actively editable (admin-driven classification).
+    // Bouncer is the authoritative quality gate going forward.
     const { error: aiErr } = await supabase.from("place_pool").update({
       ai_categories: editForm.ai_categories.length > 0 ? editForm.ai_categories : null,
     }).eq("id", place.id);
@@ -508,10 +505,10 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
                 {hasConflict && <Badge variant="warning">Conflict</Badge>}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[var(--color-text-secondary)]">AI Status:</span> {aiStatusBadge()}
+                <span className="text-[var(--color-text-secondary)]">Bouncer Status:</span> {bouncerStatusBadge()}
               </div>
-              {aiCard?.ai_reason && aiCard?.ai_approved === false && (
-                <div><span className="text-[var(--color-text-secondary)]">AI Reason:</span> <span className="text-[var(--color-error-600)]">{aiCard.ai_reason}</span></div>
+              {place.is_servable === false && place.bouncer_reason && (
+                <div><span className="text-[var(--color-text-secondary)]">Bouncer Reason:</span> <span className="text-[var(--color-error-600)]">{place.bouncer_reason}</span></div>
               )}
             </div>
           </div>
@@ -578,24 +575,13 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
             </div>
           </div>
 
-          {/* AI Override Controls */}
+          {/* ORCH-0646: "AI Classification Override" block removed per D-3.
+              Bouncer is the authoritative gate (I-BOUNCER-IS-QUALITY-GATE); admin
+              does not override. AI Categories section below remains editable for
+              admin-driven classification. */}
           <div>
-            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">AI Classification Override</h4>
+            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Categories</h4>
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-[var(--color-text-secondary)]">AI Status</label>
-                  <select className="block mt-1 w-full rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-                    value={editForm.ai_approved === null ? "" : editForm.ai_approved ? "true" : "false"}
-                    onChange={(e) => setEditForm((f) => ({ ...f, ai_approved: e.target.value === "" ? null : e.target.value === "true" }))}>
-                    <option value="">Pending</option>
-                    <option value="true">Approved</option>
-                    <option value="false">Rejected</option>
-                  </select>
-                </div>
-                <Input label="Primary Identity" value={editForm.ai_primary_identity} placeholder="e.g. restaurant, spa, museum"
-                  onChange={(e) => setEditForm((f) => ({ ...f, ai_primary_identity: e.target.value }))} />
-              </div>
               <div>
                 <label className="text-xs text-[var(--color-text-secondary)]">AI Categories (select all that apply)</label>
                 <div className="flex flex-wrap gap-2 mt-1">
@@ -618,8 +604,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
                   ))}
                 </div>
               </div>
-              <Input label="AI Reason" value={editForm.ai_reason} placeholder="Why this classification"
-                onChange={(e) => setEditForm((f) => ({ ...f, ai_reason: e.target.value }))} />
+              {/* ORCH-0646: AI Reason Input removed — reason column dropped in ORCH-0640 ch13. */}
             </div>
           </div>
         </div>
@@ -1074,9 +1059,9 @@ function MapTab({ scope, registeredCity, tiles, seedingOps }) {
     if (!selectedCity) { setPlaces([]); return; }
     setMapLoading(true);
     let q = supabase.from("place_pool")
-      .select("id, name, lat, lng, rating, ai_categories, seeding_category, is_active, stored_photo_urls, ai_approved")
+      .select("id, name, lat, lng, rating, ai_categories, seeding_category, is_active, stored_photo_urls, is_servable")
       .eq("is_active", true)
-      .eq("ai_approved", true)
+      .eq("is_servable", true)
       .eq("city_id", selectedCity);
     q.limit(3000).then(({ data }) => {
       if (mountedRef.current) { setPlaces(data || []); setMapLoading(false); }
@@ -1199,7 +1184,7 @@ function BrowseTab({ scope, onRefresh }) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ category: "", status: "active", photoStatus: "", priceTier: "", priceLevel: "", minRating: "", aiStatus: "", nameSearch: "" });
+  const [filters, setFilters] = useState({ category: "", status: "active", photoStatus: "", priceTier: "", priceLevel: "", minRating: "", servableStatus: "", nameSearch: "" });
   const [detailPlace, setDetailPlace] = useState(null);
   const PAGE_SIZE = 20;
 
@@ -1226,9 +1211,9 @@ function BrowseTab({ scope, onRefresh }) {
     if (filters.priceLevel === "missing") q = q.is("price_level", null);
     else if (filters.priceLevel) q = q.eq("price_level", filters.priceLevel);
     if (filters.minRating) q = q.gte("rating", parseFloat(filters.minRating));
-    if (filters.aiStatus === "validated") q = q.eq("ai_approved", true);
-    else if (filters.aiStatus === "rejected") q = q.eq("ai_approved", false);
-    else if (filters.aiStatus === "pending") q = q.is("ai_approved", null);
+    if (filters.servableStatus === "servable") q = q.eq("is_servable", true);
+    else if (filters.servableStatus === "excluded") q = q.eq("is_servable", false);
+    else if (filters.servableStatus === "not_bounced") q = q.is("is_servable", null);
     if (filters.nameSearch) q = q.ilike("name", `%${filters.nameSearch}%`);
     q = q.order("created_at", { ascending: false })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
@@ -1267,10 +1252,10 @@ function BrowseTab({ scope, onRefresh }) {
       const n = r.stored_photo_urls?.length || 0;
       return <Badge variant={n > 0 ? "success" : "error"}>{n}</Badge>;
     }},
-    { key: "ai_approved", label: "AI Status", render: (_, r) => {
-      if (r.ai_approved === true) return <Badge variant="success">Approved</Badge>;
-      if (r.ai_approved === false) return <Badge variant="error">Rejected</Badge>;
-      return <Badge variant="outline">Pending</Badge>;
+    { key: "is_servable", label: "Bouncer Status", render: (_, r) => {
+      if (r.is_servable === true) return <Badge variant="success">Servable</Badge>;
+      if (r.is_servable === false) return <Badge variant="error">Excluded</Badge>;
+      return <Badge variant="outline">Not Yet Bounced</Badge>;
     }},
     { key: "last_detail_refresh", label: "Refreshed", render: (_, r) => relativeTime(r.last_detail_refresh) },
     { key: "is_active", label: "Status", render: (_, r) => <Badge variant={r.is_active ? "success" : "error"}>{r.is_active ? "Active" : "Inactive"}</Badge> },
@@ -1307,13 +1292,13 @@ function BrowseTab({ scope, onRefresh }) {
           </select>
         </div>
         <div>
-          <label className="text-xs text-[var(--color-text-secondary)]">AI Status</label>
+          <label className="text-xs text-[var(--color-text-secondary)]">Bouncer Status</label>
           <select className="block mt-1 rounded border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm"
-            value={filters.aiStatus} onChange={(e) => { setFilters((f) => ({ ...f, aiStatus: e.target.value })); setPage(0); }}>
+            value={filters.servableStatus} onChange={(e) => { setFilters((f) => ({ ...f, servableStatus: e.target.value })); setPage(0); }}>
             <option value="">All</option>
-            <option value="validated">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="pending">Pending</option>
+            <option value="servable">Servable</option>
+            <option value="excluded">Excluded</option>
+            <option value="not_bounced">Not Yet Bounced</option>
           </select>
         </div>
         <div>
@@ -1492,7 +1477,7 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
 
   // ── Create run ───────────────────────────────────────────────────────────
   // ORCH-0598.11: I-PHOTO-FILTER-EXPLICIT — mode is one of:
-  //   'initial'           — first-time city setup (filter ai_approved + no photos)
+  //   'initial'           — first-time city setup (filter is_servable + no photos)
   //   'refresh_servable'  — Bouncer-approved maintenance (filter is_servable=true)
 
   const handleCreateRun = async (mode = "initial") => {
@@ -1796,7 +1781,7 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
                   )}
                 </div>
               </div>
-              {/* ORCH-0598.11: two clearly-labeled buttons. Initial = ai_approved + no photos
+              {/* ORCH-0598.11: two clearly-labeled buttons. Initial = is_servable + no photos
                   (first-time city setup). Refresh Servable = is_servable=true (maintenance for
                   Bouncer-approved set). I-PHOTO-FILTER-EXPLICIT. */}
               <div className="flex flex-wrap gap-2">
@@ -1806,7 +1791,7 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
                     icon={Download}
                     onClick={() => handleCreateRun("initial")}
                     disabled={creating}
-                    title="ai_approved + no stored photos. For first-time city setup."
+                    title="is_servable + no stored photos. For first-time city setup."
                   >
                     {creating
                       ? "Creating..."
@@ -2258,26 +2243,28 @@ function SeedingTab({ registeredCity, tiles, stats, seedingOps, refreshKey, onRe
 }
 
 
-// ── RejectedTab ─────────────────────────────────────────────────────────────
+// ── ExcludedTab (ORCH-0646: renamed from RejectedTab, read-only per D-3) ─────
+// Bouncer is the authoritative quality gate (I-BOUNCER-IS-QUALITY-GATE). Admin
+// surfaces Bouncer-excluded places for visibility + deactivation — no admin
+// override RPC. If override is ever needed, add a deliberate admin_override_servable
+// RPC with audit trail (deferred; not in ORCH-0646 scope).
 
-function RejectedTab({ scope, onRefresh }) {
+function ExcludedTab({ scope, onRefresh }) {
   const { addToast } = useToast();
   const [places, setPlaces] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [approveModal, setApproveModal] = useState(null);
-  const [selectedCat, setSelectedCat] = useState("");
   const [filterCat, setFilterCat] = useState(null); // category filter for the list
   const [detailPlace, setDetailPlace] = useState(null);
   const PAGE_SIZE = 20;
 
-  const fetchRejected = useCallback(async () => {
+  const fetchExcluded = useCallback(async () => {
     setLoading(true);
     let q = supabase.from("place_pool")
       .select("*", { count: "exact" })
       .eq("is_active", true)
-      .eq("ai_approved", false);
+      .eq("is_servable", false);
     if (scope.cityId) q = q.eq("city_id", scope.cityId);
     if (filterCat) q = q.eq("seeding_category", filterCat);
     q = q.order("name").range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
@@ -2287,29 +2274,15 @@ function RejectedTab({ scope, onRefresh }) {
     setLoading(false);
   }, [scope.cityId, page, filterCat]);
 
-  useEffect(() => { fetchRejected(); }, [fetchRejected]);
+  useEffect(() => { fetchExcluded(); }, [fetchExcluded]);
   useEffect(() => { setPage(0); }, [scope.cityId, filterCat]);
-
-  const handleApprove = async () => {
-    if (!approveModal || !selectedCat) return;
-    const { error } = await supabase.from("place_pool").update({
-      ai_approved: true,
-      ai_categories: [selectedCat],
-      ai_validated_at: new Date().toISOString(),
-    }).eq("id", approveModal.id);
-    if (error) { addToast({ variant: "error", title: "Approve failed", description: error.message }); return; }
-    addToast({ variant: "success", title: `Approved "${approveModal.name}"` });
-    setApproveModal(null);
-    setSelectedCat("");
-    fetchRejected();
-  };
 
   const handleDelete = async (place) => {
     if (!confirm(`Delete "${place.name}"? This sets it to inactive.`)) return;
     const { error } = await supabase.from("place_pool").update({ is_active: false }).eq("id", place.id);
     if (error) { addToast({ variant: "error", title: "Delete failed", description: error.message }); return; }
     addToast({ variant: "success", title: `Deleted "${place.name}"` });
-    fetchRejected();
+    fetchExcluded();
   };
 
   const columns = [
@@ -2318,7 +2291,7 @@ function RejectedTab({ scope, onRefresh }) {
         onClick={() => setDetailPlace(r)}>{r.name}</button>
     )},
     { key: "address", label: "Address", render: (_, r) => <span className="text-xs max-w-[250px] truncate block">{r.address || "—"}</span> },
-    { key: "ai_reason", label: "AI Reason", render: (_, r) => <span className="text-xs max-w-[250px] truncate block text-[var(--color-error-600)]">{r.ai_reason || "—"}</span> },
+    { key: "bouncer_reason", label: "Bouncer Reason", render: (_, r) => <span className="text-xs max-w-[250px] truncate block text-[var(--color-error-600)]">{r.bouncer_reason || "—"}</span> },
     { key: "seeding_category", label: "Discovered Via", render: (_, r) => r.seeding_category ? (
       <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full text-white/70" style={{ backgroundColor: CATEGORY_COLORS[r.seeding_category] || "#6b7280" }}>
         {CATEGORY_LABELS[r.seeding_category] || r.seeding_category}
@@ -2327,10 +2300,6 @@ function RejectedTab({ scope, onRefresh }) {
     { key: "rating", label: "Rating", render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
     { key: "actions", label: "", render: (_, r) => (
       <div className="flex gap-1">
-        <button onClick={() => { setApproveModal(r); setSelectedCat(""); }}
-          className="p-1 rounded hover:bg-green-100 text-green-600 cursor-pointer" title="Override → Approve">
-          <CheckCircle className="w-4 h-4" />
-        </button>
         <button onClick={() => handleDelete(r)}
           className="p-1 rounded hover:bg-red-100 text-red-500 cursor-pointer" title="Delete (deactivate)">
           <XCircle className="w-4 h-4" />
@@ -2342,7 +2311,7 @@ function RejectedTab({ scope, onRefresh }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <StatCard icon={AlertTriangle} label="Total Rejected" value={total} />
+        <StatCard icon={AlertTriangle} label="Total Bouncer-Excluded" value={total} />
       </div>
 
       {/* Category filter pills */}
@@ -2365,34 +2334,12 @@ function RejectedTab({ scope, onRefresh }) {
       </div>
 
       <DataTable columns={columns} rows={places} loading={loading}
-        emptyMessage="No rejected places" emptyIcon={CheckCircle}
+        emptyMessage="No Bouncer-excluded places" emptyIcon={CheckCircle}
         pagination={{ page, pageSize: PAGE_SIZE, total, onChange: setPage }} />
-
-      {/* Approve modal */}
-      <Modal open={!!approveModal} onClose={() => setApproveModal(null)} title={`Approve "${approveModal?.name || ""}"`} size="sm">
-        <ModalBody>
-          <p className="text-sm text-[var(--color-text-secondary)] mb-3">Pick a category for this place:</p>
-          <div className="flex flex-wrap gap-2">
-            {ALL_CATEGORIES.map((c) => (
-              <button key={c} onClick={() => setSelectedCat(c)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
-                  selectedCat === c ? "text-white border-transparent" : "bg-transparent border-[var(--gray-300)] text-[var(--color-text-secondary)]"
-                }`}
-                style={selectedCat === c ? { backgroundColor: CATEGORY_COLORS[c] } : {}}>
-                {CATEGORY_LABELS[c]}
-              </button>
-            ))}
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setApproveModal(null)}>Cancel</Button>
-          <Button variant="primary" onClick={handleApprove} disabled={!selectedCat}>Approve</Button>
-        </ModalFooter>
-      </Modal>
 
       {/* Place detail modal — reuses the same modal as Browse tab */}
       <PlaceDetailModal place={detailPlace} open={!!detailPlace}
-        onClose={() => setDetailPlace(null)} onSave={() => { fetchRejected(); }} />
+        onClose={() => setDetailPlace(null)} onSave={() => { fetchExcluded(); }} />
     </div>
   );
 }
@@ -2472,7 +2419,7 @@ export function PlacePoolManagementPage({ onTabChange }) {
     return `${pickerCities.length} cities`;
   })();
 
-  const totalApproved = pickerCities.reduce((s, c) => s + (c.ai_approved_places || 0), 0);
+  const totalServable = pickerCities.reduce((s, c) => s + (c.is_servable_places || 0), 0);
 
   const tabs = [
     { id: "overview", label: "Overview" },
@@ -2481,7 +2428,7 @@ export function PlacePoolManagementPage({ onTabChange }) {
     { id: "seeding", label: "Seeding" },
     { id: "refresh", label: "Refresh" },
     { id: "photos", label: "Photos" },
-    { id: "rejected", label: "Rejected" },
+    { id: "excluded", label: "Bouncer-Excluded" },
   ];
 
   const handleAddCity = (city) => {
@@ -2512,7 +2459,7 @@ export function PlacePoolManagementPage({ onTabChange }) {
         <div className="flex items-center gap-3">
           <div>
             <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Place Pool Management</h2>
-            <p className="text-sm text-[var(--color-text-secondary)]">{scopeLabel} · {totalApproved.toLocaleString()} AI-approved places</p>
+            <p className="text-sm text-[var(--color-text-secondary)]">{scopeLabel} · {totalServable.toLocaleString()} servable places</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -2595,8 +2542,8 @@ export function PlacePoolManagementPage({ onTabChange }) {
             <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city to manage photos.</div>
           )
         )}
-        {activeTab === "rejected" && (
-          <RejectedTab scope={scope} onRefresh={refresh} />
+        {activeTab === "excluded" && (
+          <ExcludedTab scope={scope} onRefresh={refresh} />
         )}
       </div>
 

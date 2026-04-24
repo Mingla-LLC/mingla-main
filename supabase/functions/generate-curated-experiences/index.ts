@@ -439,6 +439,19 @@ async function fetchSinglesForSignalRank(
   return withScore;
 }
 
+// [CRITICAL — ORCH-0643] Every signal named in this map MUST have:
+//   (1) a row in signal_definitions with is_active=true and current_version_id set
+//   (2) at least one row in place_scores (via run-signal-scorer)
+// Before adding a new combo slug, verify both conditions via:
+//   SELECT sd.id, COUNT(ps.place_id)
+//   FROM signal_definitions sd
+//   LEFT JOIN place_scores ps ON ps.signal_id = sd.id
+//   WHERE sd.id = '<new_signal>'
+//   GROUP BY sd.id;
+// The `groceries` entry broke picnic-dates silently for weeks because
+// the signal was never registered (ORCH-0643 v1 BLOCKED, v2.1 fixed).
+// Do NOT add an entry here without confirming the signal scores exist.
+//
 // Mapping from combo category slug → filter signal. Chip slugs sometimes differ
 // from signal ids (e.g., chip 'upscale_fine_dining' uses signal 'fine_dining').
 const COMBO_SLUG_TO_FILTER_SIGNAL: Record<string, string> = {

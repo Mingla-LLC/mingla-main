@@ -131,3 +131,51 @@ Mixpanel shows the mirror events in the product funnel.
   reference a dropped table (ORCH-0556 origin). Enforced by the periodic
   `supabase/tests/concurrency/collab_match_race.sql` run, which would
   fail on 42P01.
+
+---
+
+## ORCH-0646 invariants (2026-04-23) — Column-drop cleanup discipline
+
+### I-COLUMN-DROP-CLEANUP-EXHAUSTIVE
+
+**Rule:** Any migration that drops a column (or renames a materialized-view
+projection) MUST be paired with grep gates before its cutover migration is
+considered ready:
+
+1. Grep `mingla-admin/src/` for the dropped column name — ZERO matches.
+2. Grep `app-mobile/src/` for the dropped column name — ZERO matches.
+3. Grep `supabase/functions/` for the dropped column name — ZERO matches
+   (allowing deletion-proving comments like `// ORCH-XXXX ch13: COLUMN dropped`).
+4. Inspect every function body in `public` schema via
+   `SELECT pg_get_functiondef(oid) FROM pg_proc` grep for the column name —
+   ZERO matches (or only in functions scheduled for drop in the same cutover).
+
+**Enforcement:** CI script `scripts/ci-check-invariants.sh` covers gates
+(1)-(3) at the source-tree level. Gate (4) is a manual pre-cutover check
+until there's automation against live DB.
+
+**Origin:** ORCH-0640 dropped `place_pool.ai_approved` on 2026-04-23 with
+mobile cleanup verified and 14 admin RPCs rewritten, but six other RPCs and
+23 admin JSX sites were missed. Admin Place Pool + Signal Library broke in
+prod for hours until the user surfaced it. CLOSE Grade A was awarded without
+admin smoke because the tester matrix was mobile-only. ORCH-0646 completed
+the cleanup and registered this invariant so column drops never again ship
+with missing surface coverage.
+
+**Regression test:** The CI script runs on every push. Any new
+`ai_approved` / `ai_override` / `ai_validated` reference introduced in
+`mingla-admin/src/`, `app-mobile/src/`, or the four serving edge functions
+fails the gate (exit 1).
+
+**Manual pre-cutover check (example template):**
+```bash
+COLUMN="ai_approved"
+for DIR in mingla-admin/src/ app-mobile/src/ supabase/functions/; do
+  MATCHES=$(grep -rn "$COLUMN" "$DIR" | grep -vE '\.md$' || true)
+  if [ -n "$MATCHES" ]; then
+    echo "FAIL: $COLUMN still referenced in $DIR:"
+    echo "$MATCHES"
+    exit 1
+  fi
+done
+```

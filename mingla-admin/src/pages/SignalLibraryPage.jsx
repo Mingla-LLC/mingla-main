@@ -340,7 +340,7 @@ function CityPipelineHistory({ selectedCityId, onPickCity }) {
               <th className="px-3 py-2 font-semibold">City</th>
               <th className="px-3 py-2 font-semibold">Total</th>
               <th className="px-3 py-2 font-semibold">Refreshed</th>
-              <th className="px-3 py-2 font-semibold">AI-approved</th>
+              <th className="px-3 py-2 font-semibold">Bouncer-judged</th>
               <th className="px-3 py-2 font-semibold">Bouncer-passed</th>
               <th className="px-3 py-2 font-semibold">Photos</th>
               <th className="px-3 py-2 font-semibold">Scored</th>
@@ -371,7 +371,7 @@ function CityPipelineHistory({ selectedCityId, onPickCity }) {
                   </td>
                   <td className="px-3 py-2 font-mono">{Number(r.total_active ?? 0).toLocaleString()}</td>
                   <td className="px-3 py-2"><StageCell done={Number(r.refreshed_count ?? 0)} total={Number(r.total_active ?? 0)} /></td>
-                  <td className="px-3 py-2"><StageCell done={Number(r.ai_approved_count ?? 0)} total={Number(r.total_active ?? 0)} /></td>
+                  <td className="px-3 py-2"><StageCell done={Number(r.bouncer_judged_count ?? 0)} total={Number(r.total_active ?? 0)} /></td>
                   <td className="px-3 py-2"><StageCell done={Number(r.is_servable_count ?? 0)} total={Number(r.total_active ?? 0)} /></td>
                   <td className="px-3 py-2"><StageCell done={Number(r.has_real_photos_count ?? 0)} total={Number(r.total_active ?? 0)} /></td>
                   <td className="px-3 py-2"><StageCell done={Number(r.scored_count ?? 0)} total={Number(r.is_servable_count ?? 0)} /></td>
@@ -725,7 +725,7 @@ export function SignalLibraryPage() {
     };
   }, [activeSignalId]);
 
-  // ORCH-0598.11: load city list. Default to highest ai_approved_places city
+  // ORCH-0598.11 + ORCH-0646: load city list. Default to highest is_servable_places city
   // (typically Raleigh today) so an admin opening the page sees something.
   useEffect(() => {
     let cancelled = false;
@@ -737,7 +737,7 @@ export function SignalLibraryPage() {
         if (rpcError) throw rpcError;
         if (cancelled) return;
         const sorted = (data ?? []).slice().sort(
-          (a, b) => Number(b.ai_approved_places ?? 0) - Number(a.ai_approved_places ?? 0),
+          (a, b) => Number(b.is_servable_places ?? 0) - Number(a.is_servable_places ?? 0),
         );
         setCities(sorted);
         if (sorted.length > 0 && selectedCityId == null) {
@@ -851,7 +851,7 @@ export function SignalLibraryPage() {
                 <option key={c.city_id} value={c.city_id}>
                   {c.city_name}, {c.country_name}
                   {" — "}
-                  {Number(c.ai_approved_places ?? 0).toLocaleString()} approved /{" "}
+                  {Number(c.is_servable_places ?? 0).toLocaleString()} servable /{" "}
                   {Number(c.total_active_places ?? 0).toLocaleString()} active
                   {c.city_status ? ` · ${c.city_status}` : ""}
                 </option>
