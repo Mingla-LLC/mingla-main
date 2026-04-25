@@ -12,6 +12,10 @@ import { googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 // card_pool pipeline as the singles serving source. See
 // Mingla_Artifacts/outputs/SPEC_ORCH-0634_SIGNAL_ONLY_SERVING_AND_INTERLEAVE.md.
 import { roundRobinByChip } from '../_shared/deckInterleave.ts';
+// ORCH-0659/0660: honest distance + per-mode travel-time computation.
+// Single owner: _shared/distanceMath.ts. See
+// Mingla_Artifacts/specs/SPEC_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md.
+import { haversineKm, estimateTravelMinutes, type TravelMode } from '../_shared/distanceMath.ts';
 
 // ─── ORCH-0588 Slice 1: cohort cache for signal-serving rollout ───────────────
 // Module-scoped 60s cache for the admin-config cohort pct. 60s = balance between
@@ -527,9 +531,43 @@ function filterCuratedByStopHours(
 // mobile already expects (mirrors unifiedCardToRecommendation in deckService.ts).
 // Adds two underscore-prefixed debug fields (_signal_score, _signal_contributions)
 // the mobile parser ignores. ZERO mobile changes required.
-function transformServablePlaceToCard(row: any, categoryLabel: string): any {
+//
+// ─── ORCH-0659 + ORCH-0660 ──────────────────────────────────────────────────
+// [CRITICAL] This transformer enforces I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME.
+// Pre-fix (2026-04-22 → 2026-04-25), this function hardcoded distanceKm=0 and
+// travelTimeMin=0, causing every category card to display "nearby" placeholder
+// + missing travel-time pill on mobile. The fix: compute haversine distance
+// against the user's resolved location + per-mode estimate via shared helpers.
+// If you need to "skip" distance/time computation, set both fields to null —
+// NEVER 0. The mobile UI hides the badges on null but fabricates "nearby" and
+// "0 min" on 0. See:
+//   - reports/INVESTIGATION_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md
+//   - specs/SPEC_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md
+//   - INVARIANT_REGISTRY.md → I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME
+// ────────────────────────────────────────────────────────────────────────────
+function transformServablePlaceToCard(
+  row: any,
+  categoryLabel: string,
+  userLat: number,
+  userLng: number,
+  travelMode: TravelMode,
+): any {
   const storedPhotos = Array.isArray(row.stored_photo_urls) ? row.stored_photo_urls : [];
   const tier = googleLevelToTierSlug(row.price_level);
+
+  // ORCH-0659/0660: honest distance + per-mode travel-time computation.
+  // I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME — never 0-sentinel; if either
+  // place lat/lng is null, both fields drop to null so mobile hides the
+  // badge instead of fabricating a misleading value.
+  const placeLat = typeof row.lat === 'number' ? row.lat : null;
+  const placeLng = typeof row.lng === 'number' ? row.lng : null;
+  const distanceKm: number | null = (placeLat !== null && placeLng !== null)
+    ? Math.round(haversineKm(userLat, userLng, placeLat, placeLng) * 100) / 100
+    : null;
+  const travelTimeMin: number | null = distanceKm !== null
+    ? Math.round(estimateTravelMinutes(distanceKm, travelMode))
+    : null;
+
   return {
     id: row.place_id,
     placeId: row.google_place_id,
@@ -551,8 +589,9 @@ function transformServablePlaceToCard(row: any, categoryLabel: string): any {
     category: categoryLabel,
     matchScore: Math.round(Number(row.signal_score ?? 0)),
     description: '',
-    distanceKm: 0,
-    travelTimeMin: 0,
+    distanceKm,
+    travelTimeMin,
+    travelMode,  // Mobile uses this to render the matching mode-icon
     oneLiner: null,
     tip: null,
     // Debug-only fields — mobile parser ignores extra keys
@@ -928,9 +967,24 @@ serve(async (req: Request) => {
     }
 
     // Step 9: transform to card shape (carries winning displayCategory).
-    const rawCards = interleavedRows.map((row: any) =>
-      transformServablePlaceToCard(row, row.__displayCategory ?? categories[0]),
-    );
+    // ORCH-0659/0660: pass user location + travel mode so transformer computes
+    // honest haversine distance + per-mode travel-time. Track null-coord rows
+    // for one aggregated warning per request.
+    let _placesMissingCoords = 0;
+    const rawCards = interleavedRows.map((row: any) => {
+      const card = transformServablePlaceToCard(
+        row,
+        row.__displayCategory ?? categories[0],
+        location.lat,
+        location.lng,
+        travelMode as TravelMode,
+      );
+      if (card.distanceKm === null) _placesMissingCoords++;
+      return card;
+    });
+    if (_placesMissingCoords > 0) {
+      console.warn(`[discover-cards] ${_placesMissingCoords}/${rawCards.length} places had null lat/lng — distance/travelTime set to null`);
+    }
 
     // Step 10: date/time + curated-hours filter (preserved from legacy path).
     const timeFilteredCards = dateWindows && dateWindows.length > 0

@@ -72,15 +72,19 @@ export function curatedToRecommendation(card: any): Recommendation {
     categoryIcon: getCategoryIcon(card.categoryLabel || '') || 'compass-outline',
     lat: firstStop?.lat,
     lng: firstStop?.lng,
-    timeAway: firstStop && (firstStop.travelTimeFromUserMin ?? 0) > 0 ? `${Math.round(firstStop.travelTimeFromUserMin)} min` : '',
     description: card.tagline ?? '',
     budget: `$${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`,
     rating: avgRating,
     image: firstImage,
     images: allImages.length > 0 ? allImages : [firstImage || ''],
     priceRange: `$${card.totalPriceMin ?? 0}–$${card.totalPriceMax ?? 0}`,
-    distance: firstStop && (firstStop.distanceFromUserKm ?? 0) > 0 ? `${firstStop.distanceFromUserKm.toFixed(1)} km` : '',
-    travelTime: firstStop && (firstStop.travelTimeFromUserMin ?? 0) > 0 ? `${Math.round(firstStop.travelTimeFromUserMin)} min` : '',
+    // ORCH-0659/0660: honest null when first-stop distance/travel-time is missing
+    distance: firstStop && typeof firstStop.distanceFromUserKm === 'number'
+      ? `${firstStop.distanceFromUserKm.toFixed(1)} km`
+      : null,
+    travelTime: firstStop && typeof firstStop.travelTimeFromUserMin === 'number'
+      ? `${Math.round(firstStop.travelTimeFromUserMin)} min`
+      : null,
     experienceType: card.experienceType ?? 'adventurous',
     highlights: stops.map((s: any) => s.placeName),
     fullDescription: card.tagline ?? '',

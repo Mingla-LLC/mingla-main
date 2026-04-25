@@ -19,9 +19,12 @@ export interface ExpandedCardData {
   reviewCount: number;
   // [ORCH-0649] priceRange + travelTime may be absent. Renderers use truthy
   // guards (`{travelTime && ...}`) to hide pills. Never fabricate "N/A".
+  // [ORCH-0659/0660] distance + travelTime widened to string | null. travelMode
+  // added so the expanded-view metric pill icon matches the user's selected mode.
   priceRange?: string;
-  distance: string;
-  travelTime?: string;
+  distance: string | null;
+  travelTime?: string | null;
+  travelMode?: string;
   address: string;
   // [ORCH-0649] openingHours arrives in multiple shapes across the codebase.
   // extractWeekdayText (openingHoursUtils.ts) is the canonical reader — do
@@ -261,7 +264,7 @@ export interface ExpandedCardModalProps {
     card: ExpandedCardData,
     picnicData: ExpandedCardData["picnicData"],
   ) => Promise<void> | void; // Callback to persist picnic data to database
-  hideTravelTime?: boolean;
+  // ORCH-0659/0660: hideTravelTime prop deleted — was dead code (zero callers).
   // Review navigation: swipe through reviewed cards in expanded view
   onNavigateNext?: () => void;
   onNavigatePrevious?: () => void;

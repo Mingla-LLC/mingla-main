@@ -1222,7 +1222,7 @@ export default function ExpandedCardModal({
   onCardRemoved,
   onStrollDataFetched,
   onPicnicDataFetched,
-  hideTravelTime,
+  // ORCH-0659/0660: hideTravelTime prop deleted — was dead code (zero callers).
   onNavigateNext,
   onNavigatePrevious,
   navigationIndex,
@@ -1782,7 +1782,8 @@ export default function ExpandedCardModal({
                   tags={card.tags}
                   rating={card.rating}
                   distance={card.distance}
-                  travelTime={hideTravelTime ? undefined : card.travelTime}
+                  travelTime={card.travelTime}
+                  travelMode={card.travelMode ?? userPreferences?.travel_mode}
                   measurementSystem={accountPreferences?.measurementSystem}
                   priceRange={card.priceRange}
                   priceTier={card.priceTier}
@@ -1885,7 +1886,7 @@ export default function ExpandedCardModal({
                 <BusynessSection
                   busynessData={busynessData}
                   loading={loadingBusyness}
-                  travelTime={card.travelTime}
+                  travelTime={card.travelTime ?? undefined}
                 />
 
                 {/* Practical Details Section */}
@@ -1994,7 +1995,7 @@ export default function ExpandedCardModal({
                     title={card.title}
                     address={card.address}
                     priceRange={card.priceRange}
-                    travelTime={card.travelTime}
+                    travelTime={card.travelTime ?? undefined}
                     strollTimeline={strollData.timeline}
                     routeDuration={strollData.route?.duration}
                     currency={accountPreferences?.currency}
@@ -2008,7 +2009,7 @@ export default function ExpandedCardModal({
                     title={card.title}
                     address={card.address}
                     priceRange={card.priceRange}
-                    travelTime={card.travelTime}
+                    travelTime={card.travelTime ?? undefined}
                     strollTimeline={picnicData.timeline}
                     routeDuration={picnicData.route?.duration}
                     currency={accountPreferences?.currency}

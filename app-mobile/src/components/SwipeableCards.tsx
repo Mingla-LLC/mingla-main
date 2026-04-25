@@ -2166,14 +2166,20 @@ export default function SwipeableCards({
 
                       {/* ORCH-0566: glass info badges (preview layer — no entry motion, not pressable) */}
                       <View style={styles.detailsBadges}>
-                        <GlassBadge iconName="location">
-                          {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem) || t('cards:swipeable.nearby')}
-                        </GlassBadge>
-                        {nextCard.travelTime && nextCard.travelTime !== '0 min' ? (
+                        {/* ORCH-0659: honest null propagation — hide the badge entirely when
+                            distance is missing. No "nearby" placeholder (Constitution #9). */}
+                        {nextCard.distance != null && (
+                          <GlassBadge iconName="location">
+                            {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem)}
+                          </GlassBadge>
+                        )}
+                        {/* ORCH-0660: render only when real value present. Mode-icon matches
+                            card.travelMode (set server-side per user preference). */}
+                        {nextCard.travelTime != null && (
                           <GlassBadge iconName={getTravelModeIcon(nextCard.travelMode ?? effectiveTravelMode)}>
                             {nextCard.travelTime}
                           </GlassBadge>
-                        ) : null}
+                        )}
                         {nextCard.rating != null && nextCard.rating > 0 && (
                           <GlassBadge iconName="star">{nextCard.rating.toFixed(1)}</GlassBadge>
                         )}
@@ -2300,14 +2306,18 @@ export default function SwipeableCards({
                       {/* ORCH-0566: glass info badges (front card — entry motion via entryIndex) */}
                       {/* Saved/scheduled state badges retain their brand-color semantic treatment (out of spec scope). */}
                       <View style={styles.detailsBadges}>
-                        <GlassBadge iconName="location" entryIndex={0}>
-                          {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem) || t('cards:swipeable.nearby')}
-                        </GlassBadge>
-                        {currentRec.travelTime && currentRec.travelTime !== '0 min' ? (
+                        {/* ORCH-0659: honest null propagation — hide the badge when distance missing. */}
+                        {currentRec.distance != null && (
+                          <GlassBadge iconName="location" entryIndex={0}>
+                            {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem)}
+                          </GlassBadge>
+                        )}
+                        {/* ORCH-0660: render only when real value present; icon matches selected travel mode. */}
+                        {currentRec.travelTime != null && (
                           <GlassBadge iconName={getTravelModeIcon(currentRec.travelMode ?? effectiveTravelMode)} entryIndex={1}>
                             {currentRec.travelTime}
                           </GlassBadge>
-                        ) : null}
+                        )}
                         {currentRec.rating != null && currentRec.rating > 0 && (
                           <GlassBadge iconName="star" entryIndex={2}>
                             {currentRec.rating.toFixed(1)}

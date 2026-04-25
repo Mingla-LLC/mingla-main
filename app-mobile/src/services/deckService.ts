@@ -147,9 +147,12 @@ const PILL_TO_CATEGORY_NAME: Record<string, string> = {
  * icon and experienceType dynamically.
  */
 export function unifiedCardToRecommendation(card: any): Recommendation {
-  // Defensive: ensure numeric fields are never undefined (edge fn may omit them)
-  const distanceKm = card.distanceKm ?? 0;
-  const travelTimeMin = card.travelTimeMin ?? 0;
+  // ORCH-0659/0660: honest null propagation. Backend now emits real distance
+  // + per-mode travel time (or null if location can't be resolved). Never
+  // coerce null → 0; the UI branches on null to hide the badge instead of
+  // fabricating "nearby" or "0 min".
+  const distanceKm: number | null = typeof card.distanceKm === 'number' ? card.distanceKm : null;
+  const travelTimeMin: number | null = typeof card.travelTimeMin === 'number' ? card.travelTimeMin : null;
 
   const priceTier: PriceTierSlug = card.priceTier ?? googleLevelToTierSlug(card.priceLevel);
   const priceText = tierLabel(priceTier);
@@ -164,15 +167,14 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     categoryIcon: getCategoryIcon(category) || 'compass',
     lat: card.lat,
     lng: card.lng,
-    timeAway: `${Math.round(travelTimeMin)} min`,
     description: card.description,
     budget: priceText,
     rating: card.rating ?? 0,
     image: card.image,
     images: card.images?.length > 0 ? card.images : [card.image].filter(Boolean),
     priceRange: priceText,
-    distance: distanceKm > 0 ? `${distanceKm.toFixed(1)} km` : '',
-    travelTime: travelTimeMin > 0 ? `${Math.round(travelTimeMin)} min` : '',
+    distance: distanceKm !== null ? `${distanceKm.toFixed(1)} km` : null,
+    travelTime: travelTimeMin !== null ? `${Math.round(travelTimeMin)} min` : null,
     travelMode: card.travelMode || undefined,
     experienceType,
     highlights: [card.placeTypeLabel],

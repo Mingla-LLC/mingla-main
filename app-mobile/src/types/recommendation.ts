@@ -16,15 +16,17 @@ export interface Recommendation {
   categoryIcon: string;
   lat?: number;
   lng?: number;
-  timeAway: string;
   description: string;
   budget: string;
   rating: number;
   image: string;
   images: string[];
   priceRange: string;
-  distance: string;
-  travelTime: string;
+  // ORCH-0659/0660: honest null when distance/travel-time can't be computed
+  // (missing user GPS, missing place lat/lng). UI hides the badge on null
+  // — never fabricate "nearby" or "0 min".
+  distance: string | null;
+  travelTime: string | null;
   experienceType: string;
   highlights: string[];
   fullDescription: string;

@@ -42,7 +42,7 @@ function transformCard(card: any): Recommendation {
     categoryIcon: card.categoryIcon || 'compass-outline',
     lat: card.lat ?? card.location?.lat ?? curatedLat,
     lng: card.lng ?? card.location?.lng ?? curatedLng,
-    timeAway: card.travelTime || '',
+    // ORCH-0659/0660: timeAway field deleted from Recommendation type.
     description: card.description || card.briefDescription || card.tagline || '',
     budget: card.priceRange || '',
     rating: card.rating || 0,

@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SEEDING_CATEGORY_MAP } from '../_shared/seedingCategories.ts';
 import { googleLevelToTierSlug, slugMeetsMinimum } from '../_shared/priceTiers.ts';
 import { timeoutFetch } from '../_shared/timeoutFetch.ts';
+import { haversineKm, estimateTravelMinutes } from '../_shared/distanceMath.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * generate-curated-experiences  –  Pool-Only Curated Card Generator
@@ -1031,25 +1032,8 @@ function shuffle<T>(array: T[]): T[] {
   return arr;
 }
 
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function estimateTravelMinutes(distKm: number, travelMode: string): number {
-  const config: Record<string, { speed: number; factor: number }> = {
-    walking:   { speed: 4.5, factor: 1.3 },
-    driving:   { speed: 35,  factor: 1.4 },
-    transit:   { speed: 20,  factor: 1.3 },
-    biking:    { speed: 14,  factor: 1.3 },
-    bicycling: { speed: 14,  factor: 1.3 },
-  };
-  const { speed, factor } = config[travelMode] ?? config.walking;
-  return Math.max(3, Math.round((distKm * factor / speed) * 60));
-}
+// ORCH-0659/0660: haversineKm + estimateTravelMinutes moved to
+// _shared/distanceMath.ts as the canonical owner. Imported above.
 
 // NEAREST-PLACE SELECTION (Block 8 — hardened 2026-03-22)
 // Picks the closest candidate by haversine distance. Pre-sorted array
