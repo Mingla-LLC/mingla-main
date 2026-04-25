@@ -414,6 +414,45 @@ export const glass = {
       iconColorStrong: 'rgba(255, 255, 255, 0.88)',
       labelColor: 'rgba(255, 255, 255, 0.55)',
     },
+    // ORCH-0661 — Pending session pill states (sender + receiver). Both share the
+    // dim-pill base (opacity, dashed hairline border) so they read as visually
+    // identical "pending" states; badge color/icon is the only differentiator.
+    // Sender's outgoing invite (sent) gets a dim white badge for "passive, awaiting";
+    // recipient's incoming invite (received) gets an orange-glow badge for "incoming,
+    // take action." Border style is `dashed` for visual distinction from inactive
+    // (no border) and active (solid orange). If `dashed` renders poorly on a target
+    // platform, fallback is `solid` with `borderColor` at slightly higher alpha.
+    // Pixel-matches legacy CollaborationSessions.inviteBadge geometry (size 14,
+    // radius 7, offset -3, 1.5px border, 7px icon) for behavioral continuity with
+    // the pre-ORCH-0589 pill-bar design.
+    pending: {
+      // Both states share these base values:
+      dimOpacity: 0.6,
+      borderWidth: 1,
+      borderStyle: 'dashed' as const,
+      borderColor: 'rgba(255, 255, 255, 0.28)',
+      labelColor: 'rgba(255, 255, 255, 0.55)',
+      // Badge geometry:
+      badge: {
+        size: 14,
+        radius: 7,
+        offsetTop: -3,
+        offsetRight: -3,
+        borderWidth: 1.5,
+        borderColor: 'rgba(12, 14, 18, 1)',
+        iconSize: 7,
+        iconColor: '#FFFFFF',
+      },
+      // State-specific badge fill:
+      sent: {
+        badgeBgColor: 'rgba(255, 255, 255, 0.65)',
+        iconName: 'time-outline' as const,
+      },
+      received: {
+        badgeBgColor: '#eb7825',
+        iconName: 'mail' as const,
+      },
+    },
     badge: {
       bgColor: '#eb7825',
       borderColor: 'rgba(18, 20, 26, 1)',
