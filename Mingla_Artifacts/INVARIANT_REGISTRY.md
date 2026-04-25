@@ -7,6 +7,66 @@
 
 ---
 
+## ORCH-0672 invariant (2026-04-25) — Coupled-diff partial commit prevention
+
+### I-COUPLED-DIFF-NEVER-PARTIAL-COMMIT
+
+**Rule:** Any working-tree diff that touches ≥2 files where one file *defines* a
+symbol and another file *consumes* that symbol (token, type, function, prop, RPC,
+RLS policy, migration, edge fn handler, etc.) is **COUPLED**. A coupled diff MUST
+be committed atomically — either all halves in one commit, or none at all. Partial
+commits of coupled diffs are forbidden.
+
+**Concrete examples of coupling:**
+- `designSystem.ts` token block + `Component.tsx` consumer reads (this incident)
+- `migration.sql` schema add + `service.ts` query against new column
+- `edge-fn/index.ts` handler + mobile service call against new payload shape
+- `types.ts` interface change + every component that reads/writes the type
+- New RPC + caller that invokes it
+- New CHECK constraint + service that produces values matching the constraint
+
+**Enforcement:**
+
+1. **Forensics + orchestrator capture step (process):** when an in-flight diff is
+   captured (e.g., during investigation of a different issue), each file in the
+   diff MUST be classified as either `single-half` (safe to commit alone or revert
+   alone) or `coupled-with: <other-file-list>` (must move together). Capture
+   without classification is incomplete.
+2. **Commit-time guard (process):** before any partial-stage commit (e.g.,
+   `git commit -- <pathspec>` or `git add -p` followed by commit), the developer
+   MUST grep for outbound symbol references from the staged half to confirm the
+   consumer half is either also staged in the same commit OR already on HEAD.
+3. **CI-time guard (deferred — separate work):** future CI gate could grep for
+   newly-introduced token reads in committed files where the token is undefined
+   in the same commit's tree state. Tracked as a future improvement; manual
+   discipline holds until then.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: simulate the ORCH-0672 regression by removing the pending
+# block from designSystem.ts while leaving the consumer reads in
+# GlassSessionSwitcher.tsx — Metro bundle must fail with module-load TypeError.
+# Positive control: with both halves present, Metro bundle succeeds.
+cd app-mobile && npx expo export --platform ios 2>&1 | grep -E "(TypeError|Cannot read property)"
+# Expected: empty (positive) or specific error pointing at the missing definition (negative).
+```
+
+**Origin:** Registered 2026-04-25 after ORCH-0672 S0 emergency — commit
+`3911b696 fix(home): pin Solo + create pills` shipped only the consumer half
+(`GlassSessionSwitcher.tsx +226/-66` reading `glass.chrome.pending.*` tokens at
+17 sites) without the matching token-definition half (`designSystem.ts` +39-line
+`pending` sub-namespace). Module-load crash bricked dev build for ~hours until
+ORCH-0672 hotfix landed at commit `d566dab7`. ORCH-0669 forensics had captured
+the in-flight diff but did not classify it as coupled — orchestrator + forensics
+both missed the partial-commit risk. This invariant closes the regression class.
+
+**Severity if violated:** S0 (module-load build brick), S1 (runtime call into
+undefined function), or data-integrity (missing migration before service that
+queries new column) depending on which symbol class is incomplete.
+
+---
+
 ## ORCH-0558 invariants (2026-04-21) — Collab match promotion
 
 ### I-MATCH-PROMOTION-DETERMINISTIC
@@ -179,3 +239,81 @@ for DIR in mingla-admin/src/ app-mobile/src/ supabase/functions/; do
   fi
 done
 ```
+
+---
+
+## ORCH-0668 invariants (2026-04-25) — RPC language discipline for hot paths
+
+### I-RPC-LANGUAGE-SQL-FOR-HOT-PATH
+
+**Definition:** Any PostgreSQL RPC called from a Supabase Edge Function on a
+user-facing hot path with array (`text[]`, `uuid[]`) or composite parameters
+MUST be `LANGUAGE sql STABLE`, OR `LANGUAGE plpgsql` with both:
+  (a) `SET plan_cache_mode = force_custom_plan` in `proconfig`, AND
+  (b) a `[CRITICAL — I-RPC-LANGUAGE-SQL-FOR-HOT-PATH]` justification block
+      in the migration body explaining why plpgsql is required.
+
+**Rationale:** Plpgsql functions cache query plans per session. After ≥5
+invocations, plpgsql switches from custom (per-call optimized) plans to a
+generic (parameter-blind) plan. For RPCs with variable-cardinality array
+parameters and cost-sensitive joins (cardinality of `text[]` × table scan),
+the generic plan is catastrophic — observed 100× slowdown vs equivalent
+inline SQL. Combined with the 8 s `authenticator.statement_timeout` ceiling,
+this turns a soft perf regression into universal hard failure (ORCH-0668).
+
+**Hot-path RPCs subject to this invariant** (allowlist — additions require review):
+- `public.query_person_hero_places_by_signal`
+- `public.query_servable_places_by_signal`
+- `public.fetch_local_signal_ranked`
+
+**Exempt RPCs** (admin / cron / batch — not user-facing hot paths):
+- `public.cron_refresh_admin_place_pool_mv` (has 15 min `statement_timeout`
+  override; plpgsql for control flow)
+
+**Why we re-introduce risk:** Re-introducing `LANGUAGE plpgsql` for any of
+the listed hot-path RPCs without `plan_cache_mode = force_custom_plan` AND
+the justification comment will:
+1. Pass headless tests (raw-SQL probes don't exercise plpgsql plan caching).
+2. Pass for the first 5 invocations after every connection re-use.
+3. Then silently start hitting the 8 s `authenticator.statement_timeout` for
+   any caller passing ≥6 array elements, returning HTTP 500 to mobile,
+   surfacing as universal "Couldn't load recommendations" with no diagnostic.
+
+**Owner:** Backend RPC layer.
+**Gate:** `scripts/ci-check-invariants.sh` block I-RPC-LANGUAGE-SQL-FOR-HOT-PATH.
+**Established:** ORCH-0668 (2026-04-25). Investigation:
+`reports/INVESTIGATION_ORCH-0668_PAIRED_PROFILE_RECOMMENDATIONS_FAIL.md`.
+Spec: `specs/SPEC_ORCH-0668_PAIRED_PROFILE_RPC_FIX.md`.
+**Related:** I-THREE-GATE-SERVING (DEC-053), ORCH-0540 plpgsql wrapper precedent,
+`feedback_headless_qa_rpc_gap.md` (mandatory live-fire for SQL RPCs before CLOSE).
+
+---
+
+### I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME
+
+**Rule:** Every card emitted by any deck-serving edge function MUST carry
+haversine-computed `distanceKm` (km) AND per-mode `travelTimeMin` (min). If
+user location OR place lat/lng is missing, BOTH fields drop to `null` together.
+Mobile UI branches on `null` to hide the badge. Never `0` sentinel; never
+`|| t(...nearby)` fallback; never return literal `'Nearby'` from
+`parseAndFormatDistance` on missing input (lines 223/230/238 for
+genuinely-tiny distances deferred to ORCH-0673 i18n).
+
+**Enforcement:** Single owner `_shared/distanceMath.ts` exports
+`haversineKm`/`estimateTravelMinutes`/`TravelMode`; `_shared/stopAlternatives.ts`
+re-exports. CI gate `scripts/ci-check-invariants.sh` blocks 4 patterns:
+edge-fn zero literals, mobile `|| t(...nearby)`, formatters
+`if (!distanceString...return 'Nearby'`, `timeAway` field assignments. Type:
+`Recommendation.distance/travelTime` and `CardInfoSectionProps.distance/travelTime`
+are `string | null`; `ExpandedCardData` widened + new `travelMode?: string`.
+
+**Test:** Live `discover-cards` × 4 travel modes returns non-zero distanceKm +
+travelTimeMin. Negative controls NC-1..NC-4 fire `exit 1` on regression
+injection and recover `exit 0` on revert.
+
+**Established:** ORCH-0659 + ORCH-0660 (2026-04-25, rework v2 bundles tester
+F-1 fix). Artifacts:
+`reports/INVESTIGATION_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md`,
+`specs/SPEC_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md`,
+`outputs/IMPLEMENTATION_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME_REPORT.md`,
+`outputs/QA_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME_REPORT.md`.
