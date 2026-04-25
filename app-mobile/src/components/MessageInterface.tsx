@@ -93,12 +93,15 @@ interface MessageInterfaceProps {
     replyToId?: string
   ) => void;
   messages: Message[];
-  onSendCollabInvite?: (friend: Friend) => void;
-  onAddToBoard?: (
-    sessionIds: string[],
-    friend: any,
-    suppressNotification?: boolean
-  ) => void;
+  /**
+   * ORCH-0666: invoked when user taps "Add to Board" in the more-options menu.
+   * Owner: ConnectionsPage (mounts AddToBoardModal with sessionMembershipService
+   * .addFriendsToSessions RPC). REQUIRED (not optional) — TypeScript catches
+   * missing wiring. Replaces dead-tap onAddToBoard + onSendCollabInvite chain
+   * that was fake-success theatre via in-component BoardSelection sub-UI
+   * (deleted in this cycle). Constitution #1 / #3 closures.
+   */
+  onOpenAddToBoardModal: (friend: Friend) => void;
   onShareSavedCard?: (friend: any, suppressNotification?: boolean) => void;
   onRemoveFriend?: (friend: any, suppressNotification?: boolean) => void;
   onBlockUser?: (friend: any, suppressNotification?: boolean) => void;
@@ -136,8 +139,7 @@ export default function MessageInterface({
   onBack,
   onSendMessage,
   messages,
-  onSendCollabInvite,
-  onAddToBoard,
+  onOpenAddToBoardModal,
   onShareSavedCard,
   onRemoveFriend,
   onBlockUser,
@@ -179,7 +181,6 @@ export default function MessageInterface({
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
-  const [showBoardSelection, setShowBoardSelection] = useState(false);
   // ORCH-0667: shared-card picker state
   const [showSavedCardPicker, setShowSavedCardPicker] = useState(false);
   const [pickerSubmittingCardId, setPickerSubmittingCardId] = useState<string | null>(null);
@@ -201,7 +202,6 @@ export default function MessageInterface({
     isMe: boolean;
   } | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [selectedBoards, setSelectedBoards] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const { bottomNavTotalHeight } = useAppLayout();
@@ -601,31 +601,16 @@ export default function MessageInterface({
 
   // More options handlers
 
+  // ORCH-0666: delegate to ConnectionsPage which mounts AddToBoardModal (real
+  // flow with sessionMembershipService.addFriendsToSessions RPC, sessionMembership
+  // toasts via addToBoardToasts util). The pre-0666 in-component BoardSelection
+  // sub-UI + onAddToBoard prop chain + handleBoardSelection success toast were
+  // fake-success theatre — Constitution #1 (dead tap once user navigated past)
+  // + #3 (silent fake-success). Empty-boards check + "no boards" toast are now
+  // owned by AddToBoardModal's empty-state UI. Deleted in cycle 2.
   const handleAddToBoard = () => {
-    if (boardsSessions.length === 0) {
-      showNotification(
-        t('chat:noBoardsAvailable'),
-        t('chat:noBoardsMessage'),
-        "info"
-      );
-      setShowMoreOptionsMenu(false);
-      return;
-    }
-    setShowBoardSelection(true);
     setShowMoreOptionsMenu(false);
-  };
-
-  const handleBoardSelection = (selectedBoards: string[]) => {
-    if (selectedBoards.length > 0) {
-      onAddToBoard?.(selectedBoards, friend, true);
-      showNotification(
-        t('chat:addedToBoard'),
-        selectedBoards.length > 1
-          ? t('chat:addedToBoardMessagePlural', { name: friend.name, count: selectedBoards.length })
-          : t('chat:addedToBoardMessage', { name: friend.name, count: selectedBoards.length })
-      );
-    }
-    setShowBoardSelection(false);
+    onOpenAddToBoardModal(friend);
   };
 
   // ORCH-0667: Real flow. Opens the saved-card picker.
@@ -1299,82 +1284,9 @@ export default function MessageInterface({
       {/* Hidden File Input - Not supported in React Native */}
       {/* File selection will be handled through TouchableOpacity and native file picker */}
 
-      {/* Board Selection Modal */}
-      {showBoardSelection && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t('chat:addToBoard')}</Text>
-              <TouchableOpacity
-                onPress={() => setShowBoardSelection(false)}
-                style={styles.modalCloseButton}
-              >
-                <Icon name="close" size={12} color="rgba(255, 255, 255, 0.72)" />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.modalSubtitle}>
-              {t('chat:selectBoardsSubtitle', { name: friend.name })}
-            </Text>
-
-            <ScrollView style={styles.boardList}>
-              {boardsSessions.map((board) => (
-                <TouchableOpacity
-                  key={board.id}
-                  onPress={() => {
-                    const isSelected = selectedBoards.includes(board.id);
-                    if (isSelected) {
-                      setSelectedBoards((prev) =>
-                        prev.filter((id) => id !== board.id)
-                      );
-                    } else {
-                      setSelectedBoards((prev) => [...prev, board.id]);
-                    }
-                  }}
-                  style={[
-                    styles.boardItem,
-                    selectedBoards.includes(board.id) &&
-                      styles.boardItemSelected,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.checkbox,
-                      selectedBoards.includes(board.id) &&
-                        styles.checkboxSelected,
-                    ]}
-                  >
-                    {selectedBoards.includes(board.id) && (
-                      <Icon name="checkmark" size={12} color="white" />
-                    )}
-                  </View>
-                  <View style={styles.boardInfo}>
-                    <Text style={styles.boardName}>{board.name}</Text>
-                    <Text style={styles.boardParticipants}>
-                      {t('chat:boardParticipants', { count: board.participants?.length || 0 })}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => setShowBoardSelection(false)}
-                style={styles.cancelButton}
-              >
-                <Text style={styles.cancelButtonText}>{t('chat:cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleBoardSelection(selectedBoards)}
-                style={styles.confirmButton}
-              >
-                <Text style={styles.confirmButtonText}>{t('chat:addToBoardConfirm')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
+      {/* ORCH-0666 cycle 2: BoardSelection sub-UI deleted. ConnectionsPage owns
+          the real AddToBoardModal mount; MessageInterface delegates via the
+          required onOpenAddToBoardModal prop. */}
 
       {/* ORCH-0667: shared-card picker modal */}
       {showSavedCardPicker && (

@@ -313,29 +313,12 @@ export function useAppHandlers(state: any) {
     }
   };
 
-  const handleAddToBoard = (sessionIds: string[], friend: any) => {
-    sessionIds.forEach((sessionId, index) => {
-      const notification = {
-        id: `add-to-board-${Date.now()}-${friend.id}-${index}`,
-        type: "success" as const,
-        title:
-          sessionIds.length === 1
-            ? i18n.t('common:toast_added_to_board')
-            : i18n.t('common:toast_added_to_boards', { count: sessionIds.length }),
-        message:
-          sessionIds.length === 1
-            ? i18n.t('common:toast_added_board_msg', { name: friend.name })
-            : i18n.t('common:toast_added_boards_msg', { name: friend.name, count: sessionIds.length }),
-        sessionName: sessionId,
-        autoHide: true,
-        duration: 4000,
-      };
-
-      setTimeout(() => {
-        setNotifications((prev: any) => [...prev, notification]);
-      }, index * 100);
-    });
-  };
+  // ORCH-0666 cycle 2: handleAddToBoard toast-only stub DELETED. The real flow
+  // is owned by ConnectionsPage's AddToBoardModal mount, which calls
+  // sessionMembershipService.addFriendsToSessions (atomic SECURITY DEFINER RPC
+  // add_friend_to_session with 5 guards + 7 outcomes). Toasts emitted by
+  // addToBoardToasts util based on real RPC results. Constitution #1 (no dead
+  // tap) + #3 (no fake success) closures.
 
   // ORCH-0667: Replaced by MessageInterface picker. NEVER restore toast-only stub.
   // Constitution #1 (no dead taps) + #3 (no silent fake-success) + #9 (no fabricated state).
@@ -864,7 +847,6 @@ export function useAppHandlers(state: any) {
     handleDemoteFromAdmin,
     handleRemoveMember,
     handleLeaveBoard,
-    handleAddToBoard,
     handleShareSavedCard,
     handleRemoveFriend,
     handleBlockUser,
