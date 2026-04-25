@@ -1,5 +1,9 @@
 # Open Investigations
 
+> **2026-04-25 — Wave 4 CLOSE: no investigations opened, no investigations closed.** All 4 Wave 4 ORCHs (0664/0666/0667/0659-0660) had their investigation chains complete prior to this session (chats 3/4/6/11). Tester verified against existing artifacts; no new investigation gaps surfaced. **Open investigation queue unchanged from parallel chat's ORCH-0677 picnic-dates dispatch.**
+
+> **2026-04-25 — ORCH-0677 INVESTIGATION DISPATCHED (S1 — picnic-dates curated deck stuck on "Curating your lineup", single-intent regression after ORCH-0653 v3.2 CLOSE).** Forensics prompt: [prompts/FORENSICS_ORCH-0677_PICNIC_DATES_STUCK_CURATING.md](Mingla_Artifacts/prompts/FORENSICS_ORCH-0677_PICNIC_DATES_STUCK_CURATING.md). INVESTIGATE-ONLY, scope-locked to picnic-dates. Mandatory five-truth-layer matrix (Docs / Schema / Code / Runtime / Data) + 8 hypotheses falsified (A-H covering hours filter, mobile state machine, prod deploy version, fetchPicnicGroceryData consumer, string mismatch, anchor supply, cache poisoning, companion supply) + 8 SQL probes (RPC version, groceries/nature supply at user's city, servable counts, opening_hours coverage, edge fn invocation logs) + 4-cell live-fire matrix. Definition of done: killer gate proven HIGH with at least three falsified hypotheses, blast radius named (picnic-only vs other intents at risk), report at `reports/INVESTIGATION_ORCH-0677_PICNIC_DATES_STUCK_CURATING.md`. **Add to Active Investigations table when forensics agent picks up dispatch.** No tester or spec dispatch until investigation returns and orchestrator REVIEWs.
+
 > **2026-04-25 — ORCH-0668 CLOSED Grade A — investigation chain complete.** Investigation `reports/INVESTIGATION_ORCH-0668_PAIRED_PROFILE_RECOMMENDATIONS_FAIL.md` → spec `specs/SPEC_ORCH-0668_PAIRED_PROFILE_RPC_FIX.md` → implementation `outputs/IMPLEMENTATION_ORCH-0668_PAIRED_PROFILE_RPC_FIX_REPORT.md` → QA `outputs/QA_ORCH-0668_PAIRED_PROFILE_RPC_FIX_REPORT.md` → CLOSE Grade A. All four artifacts archived. **No new investigation opened from this CLOSE.** The 5 originally-deferred discoveries (D-1 audit other plpgsql RPCs / D-3 service_role.statement_timeout / D-4 cron MV 79s / D-6 degraded-mode fallback / process improvement: forensics SPEC mode should EXPLAIN ANALYZE before lock) remain explicitly out of scope and not yet dispatched. **Active investigation queue unchanged.** Next investigation candidates: none on Priority Board for chat-domain bundle (Wave 4 testers run against existing dispatches; no new investigations needed unless tester FAILs surface root-cause-unknowns).
 
 > **2026-04-25 — ORCH-0672 CLOSED — no investigation opened.** Root cause was obvious from `git show --stat 3911b696` + grep for `glass.chrome.pending` matches in working tree (consumer references at 17 sites, token definition zero matches). Orchestrator independently verified before dispatch — no forensics agent needed. Implementor report `reports/IMPLEMENTATION_ORCH-0672_PENDING_TOKENS_REGRESSION_REPORT.md` carries the full evidence trail. **No new investigation candidates from this work.** Open investigation queue unchanged.
@@ -21,7 +25,7 @@
 
 | ID | Issue | Investigator | Started | Last Update | Status |
 |----|-------|-------------|---------|-------------|--------|
-| (none) | | | | | |
+| ORCH-0677 | Picnic-dates curated deck stuck on "Curating your lineup" — single-intent regression after ORCH-0653 v3.2 CLOSE | (pending dispatch) | 2026-04-25 | 2026-04-25 | dispatch-written-pending-pickup |
 
 ## Recently Completed (this session)
 
