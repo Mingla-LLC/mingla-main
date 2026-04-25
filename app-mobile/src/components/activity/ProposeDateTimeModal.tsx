@@ -710,6 +710,8 @@ export default function ProposeDateTimeModal({
                 onChange={handleDatePickerChange}
                 minimumDate={new Date()}
                 style={pickerModalStyles.picker}
+                themeVariant="dark"
+                textColor="#FFFFFF"
               />
             </SafeAreaView>
           </View>
@@ -745,6 +747,8 @@ export default function ProposeDateTimeModal({
                 is24Hour={false}
                 onChange={handleTimePickerChange}
                 style={pickerModalStyles.picker}
+                themeVariant="dark"
+                textColor="#FFFFFF"
               />
             </SafeAreaView>
           </View>

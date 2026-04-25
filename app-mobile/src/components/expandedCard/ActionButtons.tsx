@@ -621,6 +621,8 @@ export default function ActionButtons({
                     onChange={handleDateTimePickerChange}
                     minimumDate={new Date()}
                     style={styles.dateTimePicker}
+                    themeVariant="light"
+                    textColor="#111827"
                   />
                 </SafeAreaView>
               </View>
