@@ -308,21 +308,6 @@ for (const et of EXPERIENCE_TYPES) {
 // surfacing the most date-night-appropriate fine-dining/creative-arts/theatre
 // venues instead of a random upscale_fine_dining place.
 
-// ORCH-0653 v3.1: PostgREST URL length cap (~64KB on Deno fetch) limits how
-// many IDs we can pass through .in() in a single request. UUIDs URL-encode
-// to ~40 chars; ~1500+ IDs blow the cap. Chunk size 500 keeps each request
-// safely under 25KB (500 × 40 = 20KB query + headers + base URL).
-const IN_CHUNK_SIZE = 500;
-
-function chunkIds(ids: string[], size: number = IN_CHUNK_SIZE): string[][] {
-  if (ids.length <= size) return [ids];
-  const chunks: string[][] = [];
-  for (let i = 0; i < ids.length; i += size) {
-    chunks.push(ids.slice(i, i + size));
-  }
-  return chunks;
-}
-
 async function fetchSinglesForSignalRank(
   filterSignal: string,
   filterMin: number,
@@ -336,104 +321,47 @@ async function fetchSinglesForSignalRank(
   const latDelta = radiusMeters / 111320;
   const lngDelta = radiusMeters / (111320 * Math.cos(centerLat * Math.PI / 180));
 
-  // ORCH-0653 v3: bbox FIRST. The v2-prior order (Steps 1+2 ranked globally,
-  // Step 3 applied bbox AFTER the rank) was system-broken: top-N by score is
-  // dominated by global density hotspots (e.g. London Iceland/Sainsbury's
-  // chains saturate the top 60 grocery slots). For any user outside that
-  // hotspot, the top-N rarely intersected the user's bbox → Step 3 silently
-  // returned [] → assembly loop killed every combo → cards: []. Now: fetch
-  // geographic candidates first, signal-filter and rank within that local
-  // set. Top N is always N local rows ranked by rankSignal score.
+  // ORCH-0653 v3.2: single RPC call replaces v3/v3.1 multi-step PostgREST
+  // pipeline. The RPC pushes the bbox + filter signal + rank signal query
+  // into Postgres so we never pass thousands of IDs through .in() over
+  // HTTP. Supabase edge proxy URL cap (~10-12KB) was rejecting v3.1's
+  // 500-ID chunks (~20KB URL); chunking smaller (200 IDs) would have cost
+  // ~25 sequential roundtrips per intent. The RPC = 2 roundtrips total
+  // (RPC + small hydrate), no URL constraint, server-side composite index
+  // on (signal_id, score) does the heavy lifting.
   //
   // Three-gate serving still enforced:
-  //   G1: pp.is_servable = true (Step 0)
-  //   G2: signal_score >= filter_min (Step 1)
-  //   G3: real stored_photo_urls (post-block .filter at line 412)
+  //   G1: pp.is_servable = true (RPC WHERE)
+  //   G2: ps_filter.score >= filter_min (RPC INNER JOIN ON)
+  //   G3: real stored_photo_urls (post-block .filter, unchanged)
 
-  // Step 0: place_pool candidates within bbox + active + servable [+ type-filtered].
-  // ORCH-0601's typeFilter merges in here (was a separate Step 1b roundtrip).
-  let bboxQuery = supabaseAdmin
-    .from('place_pool')
-    .select('id')
-    .eq('is_active', true)
-    .eq('is_servable', true)
-    .gte('lat', centerLat - latDelta)
-    .lte('lat', centerLat + latDelta)
-    .gte('lng', centerLng - lngDelta)
-    .lte('lng', centerLng + lngDelta);
-
-  if (requiredTypes && requiredTypes.length > 0) {
-    bboxQuery = bboxQuery.overlaps('types', requiredTypes);
-  }
-
-  const { data: bboxRows, error: bboxErr } = await bboxQuery
-    .order('id', { ascending: true })
-    .limit(5000);
+  const { data: rankedPairs, error: rpcErr } = await supabaseAdmin.rpc(
+    'fetch_local_signal_ranked',
+    {
+      p_filter_signal: filterSignal,
+      p_filter_min: filterMin,
+      p_rank_signal: rankSignal,
+      p_lat_min: centerLat - latDelta,
+      p_lat_max: centerLat + latDelta,
+      p_lng_min: centerLng - lngDelta,
+      p_lng_max: centerLng + lngDelta,
+      p_required_types: requiredTypes ?? null,
+      p_limit: limit * 2,
+    }
+  );
 
   // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
-  if (bboxErr) {
-    throw new Error(`[fetchSinglesForSignalRank] Step 0 (bbox+servable+types over center=(${centerLat.toFixed(4)},${centerLng.toFixed(4)}) radius=${Math.round(latDelta * 111320)}m types=${requiredTypes?.join('|') ?? 'any'}) failed: ${bboxErr.message}`);
+  if (rpcErr) {
+    throw new Error(`[fetchSinglesForSignalRank] RPC fetch_local_signal_ranked (filter=${filterSignal}>=${filterMin} rank=${rankSignal} bbox=(${centerLat.toFixed(4)},${centerLng.toFixed(4)})±${Math.round(latDelta * 111320)}m types=${requiredTypes?.join('|') ?? 'any'}) failed: ${rpcErr.message}`);
   }
-  if (!bboxRows || bboxRows.length === 0) return [];
-  const bboxIds = bboxRows.map((r: any) => r.id);
+  if (!rankedPairs || rankedPairs.length === 0) return [];
 
-  // Step 1: of those local candidates, which clear the filter signal threshold?
-  // ORCH-0653 v3.1: chunk the .in() to stay under PostgREST URL cap. v3 hit
-  // HTTP 500 `Invalid URL` for any city with > ~1500 bbox candidates (Raleigh
-  // had 2106 for nature + casual_food).
-  const bboxChunks = chunkIds(bboxIds);
-  const filterRowsAccum: Array<{ place_id: string }> = [];
-  for (let i = 0; i < bboxChunks.length; i++) {
-    const chunk = bboxChunks[i];
-    const { data: chunkRows, error: chunkErr } = await supabaseAdmin
-      .from('place_scores')
-      .select('place_id')
-      .eq('signal_id', filterSignal)
-      .gte('score', filterMin)
-      .in('place_id', chunk);
-
-    // ORCH-0653: throw on error (Constitution #3); empty chunk legitimate.
-    if (chunkErr) {
-      throw new Error(`[fetchSinglesForSignalRank] Step 1 (filter signal '${filterSignal}' >= ${filterMin} chunk ${i + 1}/${bboxChunks.length} over ${chunk.length} bbox IDs) failed: ${chunkErr.message}`);
-    }
-    if (chunkRows && chunkRows.length > 0) filterRowsAccum.push(...chunkRows);
-  }
-  if (filterRowsAccum.length === 0) return [];
-  const eligibleIds = filterRowsAccum.map((r: any) => r.place_id);
-
-  // Step 2: rank LOCAL eligible by rank signal score, take top N.
-  // ORCH-0653 v3.1: chunk the .in() — eligibleIds may also exceed URL cap
-  // for high-supply signals. Each chunk fetches its own top-LIMIT*2 by
-  // score, accumulator merges + re-sorts globally + slices final top.
-  const eligibleChunks = chunkIds(eligibleIds);
-  const rankRowsAccum: Array<{ place_id: string; score: number }> = [];
-  for (let i = 0; i < eligibleChunks.length; i++) {
-    const chunk = eligibleChunks[i];
-    const { data: chunkRows, error: chunkErr } = await supabaseAdmin
-      .from('place_scores')
-      .select('place_id, score')
-      .eq('signal_id', rankSignal)
-      .in('place_id', chunk)
-      .order('score', { ascending: false })
-      .limit(limit * 2);
-
-    // ORCH-0653: throw on error (Constitution #3); empty chunk legitimate.
-    if (chunkErr) {
-      throw new Error(`[fetchSinglesForSignalRank] Step 2 (rank signal '${rankSignal}' chunk ${i + 1}/${eligibleChunks.length} over ${chunk.length} eligible IDs) failed: ${chunkErr.message}`);
-    }
-    if (chunkRows && chunkRows.length > 0) rankRowsAccum.push(...(chunkRows as Array<{ place_id: string; score: number }>));
-  }
-  if (rankRowsAccum.length === 0) return [];
-  // Re-sort the unioned chunks globally and take top limit*2 (each chunk's
-  // top-N may be lower-scoring than another chunk's top-N).
-  rankRowsAccum.sort((a, b) => Number(b.score) - Number(a.score));
-  const rankRows = rankRowsAccum.slice(0, limit * 2);
-  const rankedIds = rankRows.map((r: any) => r.place_id);
+  const rankedIds = rankedPairs.map((p: any) => p.place_id);
   const rankScoreById = new Map<string, number>();
-  for (const r of rankRows) rankScoreById.set(r.place_id, Number(r.score));
+  for (const p of rankedPairs) rankScoreById.set(p.place_id, Number(p.rank_score));
 
-  // Step 3: hydrate the ranked local set. No bbox refilter, no servable
-  // refilter (Step 0 already restricted both). Pure hydration.
+  // Hydrate the small ranked set. rankedIds is bounded by limit*2 ≤ ~100,
+  // well under any URL cap. No chunking needed.
   const { data: places, error: placeErr } = await supabaseAdmin
     .from('place_pool')
     .select('id, google_place_id, name, address, lat, lng, rating, review_count, price_level, price_range_start_cents, price_range_end_cents, opening_hours, website, stored_photo_urls, photos, types, primary_type, utc_offset_minutes, ai_categories, city_id, city, country')
@@ -441,13 +369,11 @@ async function fetchSinglesForSignalRank(
 
   // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
   if (placeErr) {
-    throw new Error(`[fetchSinglesForSignalRank] Step 3 (place_pool hydrate over ${rankedIds.length} ranked IDs) failed: ${placeErr.message}`);
+    throw new Error(`[fetchSinglesForSignalRank] hydrate (place_pool .in over ${rankedIds.length} ranked IDs) failed: ${placeErr.message}`);
   }
   if (!places || places.length === 0) return [];
 
-  // Reorder hydrated rows to match Step 2's score-DESC order. The downstream
-  // .sort by _rankScore is idempotent on a pre-sorted list, but reordering
-  // here makes the intermediate state self-consistent for debugging.
+  // Reorder hydrated rows to match RPC's score-DESC order.
   const placeById = new Map<string, any>();
   for (const pp of places) placeById.set(pp.id, pp);
   const orderedPlaces = rankedIds.map((id: string) => placeById.get(id)).filter(Boolean);
