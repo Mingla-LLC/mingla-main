@@ -410,15 +410,26 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
               <Text style={[styles.chipText, { color: tierBadge.text }]}>{TIER_LABEL[profile.tier]}</Text>
             </View>
           </View>
-
-          {/* Interest chips */}
-          {profile.categories.map(cat => (
-            <View key={cat} style={styles.chip}>
-              <Icon name={getCategoryChipIcon(cat) as any} size={s(14)} color="#eb7825" />
-              <Text style={styles.chipText}>{cat.replace(/_/g, ' ')}</Text>
-            </View>
-          ))}
         </View>
+
+        {/* Interests — dedicated section, warm peach palette */}
+        {profile.categories.length > 0 && (
+          <View style={styles.interestsSection}>
+            <Text style={styles.interestsHeader}>{t('profile:friend.interests')}</Text>
+            <View style={styles.interestsWrap}>
+              {profile.categories.map(cat => {
+                const slug = cat.toLowerCase().replace(/[^a-z_]/g, '_');
+                const label = t(`common:category_${slug}`, { defaultValue: cat.replace(/_/g, ' ') });
+                return (
+                  <View key={cat} style={styles.interestPill}>
+                    <Icon name={getCategoryChipIcon(cat) as any} size={s(14)} color="#c2410c" />
+                    <Text style={styles.interestPillText}>{label}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {onMessage && profile.isFriend ? (
           <TouchableOpacity
@@ -590,6 +601,43 @@ const styles = StyleSheet.create({
     fontSize: s(13),
     fontWeight: '600',
     color: '#374151',
+  },
+  interestsSection: {
+    marginTop: vs(22),
+    paddingHorizontal: s(20),
+    alignItems: 'center',
+  },
+  interestsHeader: {
+    fontSize: s(11),
+    fontWeight: '700',
+    color: '#9ca3af',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    marginBottom: vs(12),
+  },
+  interestsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    rowGap: vs(8),
+    columnGap: s(8),
+  },
+  interestPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(6),
+    backgroundColor: '#fff7ed',
+    borderRadius: s(999),
+    paddingHorizontal: s(13),
+    paddingVertical: vs(8),
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  interestPillText: {
+    fontSize: s(13),
+    fontWeight: '600',
+    color: '#c2410c',
+    textTransform: 'capitalize',
   },
   pairedSection: {
     marginTop: vs(24),
