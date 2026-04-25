@@ -307,6 +307,22 @@ for (const et of EXPERIENCE_TYPES) {
 // This replaces rating-based shuffle ordering for Romantic-experience stops,
 // surfacing the most date-night-appropriate fine-dining/creative-arts/theatre
 // venues instead of a random upscale_fine_dining place.
+
+// ORCH-0653 v3.1: PostgREST URL length cap (~64KB on Deno fetch) limits how
+// many IDs we can pass through .in() in a single request. UUIDs URL-encode
+// to ~40 chars; ~1500+ IDs blow the cap. Chunk size 500 keeps each request
+// safely under 25KB (500 × 40 = 20KB query + headers + base URL).
+const IN_CHUNK_SIZE = 500;
+
+function chunkIds(ids: string[], size: number = IN_CHUNK_SIZE): string[][] {
+  if (ids.length <= size) return [ids];
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) {
+    chunks.push(ids.slice(i, i + size));
+  }
+  return chunks;
+}
+
 async function fetchSinglesForSignalRank(
   filterSignal: string,
   filterMin: number,
@@ -362,35 +378,56 @@ async function fetchSinglesForSignalRank(
   const bboxIds = bboxRows.map((r: any) => r.id);
 
   // Step 1: of those local candidates, which clear the filter signal threshold?
-  const { data: filterRows, error: filterErr } = await supabaseAdmin
-    .from('place_scores')
-    .select('place_id')
-    .eq('signal_id', filterSignal)
-    .gte('score', filterMin)
-    .in('place_id', bboxIds)
-    .limit(50000);
+  // ORCH-0653 v3.1: chunk the .in() to stay under PostgREST URL cap. v3 hit
+  // HTTP 500 `Invalid URL` for any city with > ~1500 bbox candidates (Raleigh
+  // had 2106 for nature + casual_food).
+  const bboxChunks = chunkIds(bboxIds);
+  const filterRowsAccum: Array<{ place_id: string }> = [];
+  for (let i = 0; i < bboxChunks.length; i++) {
+    const chunk = bboxChunks[i];
+    const { data: chunkRows, error: chunkErr } = await supabaseAdmin
+      .from('place_scores')
+      .select('place_id')
+      .eq('signal_id', filterSignal)
+      .gte('score', filterMin)
+      .in('place_id', chunk);
 
-  // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
-  if (filterErr) {
-    throw new Error(`[fetchSinglesForSignalRank] Step 1 (filter signal '${filterSignal}' >= ${filterMin} over ${bboxIds.length} bbox IDs) failed: ${filterErr.message}`);
+    // ORCH-0653: throw on error (Constitution #3); empty chunk legitimate.
+    if (chunkErr) {
+      throw new Error(`[fetchSinglesForSignalRank] Step 1 (filter signal '${filterSignal}' >= ${filterMin} chunk ${i + 1}/${bboxChunks.length} over ${chunk.length} bbox IDs) failed: ${chunkErr.message}`);
+    }
+    if (chunkRows && chunkRows.length > 0) filterRowsAccum.push(...chunkRows);
   }
-  if (!filterRows || filterRows.length === 0) return [];
-  const eligibleIds = filterRows.map((r: any) => r.place_id);
+  if (filterRowsAccum.length === 0) return [];
+  const eligibleIds = filterRowsAccum.map((r: any) => r.place_id);
 
   // Step 2: rank LOCAL eligible by rank signal score, take top N.
-  const { data: rankRows, error: rankErr } = await supabaseAdmin
-    .from('place_scores')
-    .select('place_id, score')
-    .eq('signal_id', rankSignal)
-    .in('place_id', eligibleIds)
-    .order('score', { ascending: false })
-    .limit(limit * 2);
+  // ORCH-0653 v3.1: chunk the .in() — eligibleIds may also exceed URL cap
+  // for high-supply signals. Each chunk fetches its own top-LIMIT*2 by
+  // score, accumulator merges + re-sorts globally + slices final top.
+  const eligibleChunks = chunkIds(eligibleIds);
+  const rankRowsAccum: Array<{ place_id: string; score: number }> = [];
+  for (let i = 0; i < eligibleChunks.length; i++) {
+    const chunk = eligibleChunks[i];
+    const { data: chunkRows, error: chunkErr } = await supabaseAdmin
+      .from('place_scores')
+      .select('place_id, score')
+      .eq('signal_id', rankSignal)
+      .in('place_id', chunk)
+      .order('score', { ascending: false })
+      .limit(limit * 2);
 
-  // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
-  if (rankErr) {
-    throw new Error(`[fetchSinglesForSignalRank] Step 2 (rank signal '${rankSignal}' over ${eligibleIds.length} local eligible IDs) failed: ${rankErr.message}`);
+    // ORCH-0653: throw on error (Constitution #3); empty chunk legitimate.
+    if (chunkErr) {
+      throw new Error(`[fetchSinglesForSignalRank] Step 2 (rank signal '${rankSignal}' chunk ${i + 1}/${eligibleChunks.length} over ${chunk.length} eligible IDs) failed: ${chunkErr.message}`);
+    }
+    if (chunkRows && chunkRows.length > 0) rankRowsAccum.push(...(chunkRows as Array<{ place_id: string; score: number }>));
   }
-  if (!rankRows || rankRows.length === 0) return [];
+  if (rankRowsAccum.length === 0) return [];
+  // Re-sort the unioned chunks globally and take top limit*2 (each chunk's
+  // top-N may be lower-scoring than another chunk's top-N).
+  rankRowsAccum.sort((a, b) => Number(b.score) - Number(a.score));
+  const rankRows = rankRowsAccum.slice(0, limit * 2);
   const rankedIds = rankRows.map((r: any) => r.place_id);
   const rankScoreById = new Map<string, number>();
   for (const r of rankRows) rankScoreById.set(r.place_id, Number(r.score));
