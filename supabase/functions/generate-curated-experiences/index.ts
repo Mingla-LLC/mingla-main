@@ -320,96 +320,105 @@ async function fetchSinglesForSignalRank(
   const latDelta = radiusMeters / 111320;
   const lngDelta = radiusMeters / (111320 * Math.cos(centerLat * Math.PI / 180));
 
-  // Step 1: find place_ids that pass the filter signal threshold.
-  // ORCH-0653: explicit .order + .limit(50000) bypasses PostgREST default 1000-row cap.
-  // 4 signals exceed 1000 at-threshold (casual_food=2069, icebreakers=1519, drinks=1227,
-  // brunch=1014); without this, results truncate non-deterministically and downstream
-  // bbox filter at Step 3 silently empties for the user's city. Order by place_id (PK
-  // index, deterministic, cheap) — no need to rank here since Step 2 ranks by rankSignal.
+  // ORCH-0653 v3: bbox FIRST. The v2-prior order (Steps 1+2 ranked globally,
+  // Step 3 applied bbox AFTER the rank) was system-broken: top-N by score is
+  // dominated by global density hotspots (e.g. London Iceland/Sainsbury's
+  // chains saturate the top 60 grocery slots). For any user outside that
+  // hotspot, the top-N rarely intersected the user's bbox → Step 3 silently
+  // returned [] → assembly loop killed every combo → cards: []. Now: fetch
+  // geographic candidates first, signal-filter and rank within that local
+  // set. Top N is always N local rows ranked by rankSignal score.
+  //
+  // Three-gate serving still enforced:
+  //   G1: pp.is_servable = true (Step 0)
+  //   G2: signal_score >= filter_min (Step 1)
+  //   G3: real stored_photo_urls (post-block .filter at line 412)
+
+  // Step 0: place_pool candidates within bbox + active + servable [+ type-filtered].
+  // ORCH-0601's typeFilter merges in here (was a separate Step 1b roundtrip).
+  let bboxQuery = supabaseAdmin
+    .from('place_pool')
+    .select('id')
+    .eq('is_active', true)
+    .eq('is_servable', true)
+    .gte('lat', centerLat - latDelta)
+    .lte('lat', centerLat + latDelta)
+    .gte('lng', centerLng - lngDelta)
+    .lte('lng', centerLng + lngDelta);
+
+  if (requiredTypes && requiredTypes.length > 0) {
+    bboxQuery = bboxQuery.overlaps('types', requiredTypes);
+  }
+
+  const { data: bboxRows, error: bboxErr } = await bboxQuery
+    .order('id', { ascending: true })
+    .limit(5000);
+
+  // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
+  if (bboxErr) {
+    throw new Error(`[fetchSinglesForSignalRank] Step 0 (bbox+servable+types over center=(${centerLat.toFixed(4)},${centerLng.toFixed(4)}) radius=${Math.round(latDelta * 111320)}m types=${requiredTypes?.join('|') ?? 'any'}) failed: ${bboxErr.message}`);
+  }
+  if (!bboxRows || bboxRows.length === 0) return [];
+  const bboxIds = bboxRows.map((r: any) => r.id);
+
+  // Step 1: of those local candidates, which clear the filter signal threshold?
   const { data: filterRows, error: filterErr } = await supabaseAdmin
     .from('place_scores')
     .select('place_id')
     .eq('signal_id', filterSignal)
     .gte('score', filterMin)
-    .order('place_id', { ascending: true })
+    .in('place_id', bboxIds)
     .limit(50000);
 
-  // ORCH-0653: throw on error (Constitution #3) — do NOT silently return [].
-  // Empty result (no eligible places) is still a legitimate empty return.
+  // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
   if (filterErr) {
-    throw new Error(`[fetchSinglesForSignalRank] Step 1 (filter signal '${filterSignal}' >= ${filterMin}) failed: ${filterErr.message}`);
+    throw new Error(`[fetchSinglesForSignalRank] Step 1 (filter signal '${filterSignal}' >= ${filterMin} over ${bboxIds.length} bbox IDs) failed: ${filterErr.message}`);
   }
   if (!filterRows || filterRows.length === 0) return [];
-  let eligibleIds = filterRows.map((r: any) => r.place_id);
+  const eligibleIds = filterRows.map((r: any) => r.place_id);
 
-  // ORCH-0601 Step 1b: optional type-restriction (e.g. 'hiking' subset of nature,
-  // 'museum' subset of creative_arts). Keeps only place_ids whose place_pool.types
-  // overlaps with requiredTypes.
-  if (requiredTypes && requiredTypes.length > 0) {
-    const { data: typedRows, error: typedErr } = await supabaseAdmin
-      .from('place_pool')
-      .select('id')
-      .in('id', eligibleIds)
-      .overlaps('types', requiredTypes);
-    // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
-    if (typedErr) {
-      throw new Error(`[fetchSinglesForSignalRank] Step 1b (type-filter ${requiredTypes.join('|')} over ${eligibleIds.length} eligible IDs) failed: ${typedErr.message}`);
-    }
-    if (!typedRows) return [];
-    const typedSet = new Set<string>(typedRows.map((r: any) => r.id));
-    eligibleIds = eligibleIds.filter((id: string) => typedSet.has(id));
-    if (eligibleIds.length === 0) return [];
-  }
-
-  // Step 2: find their rank signal scores, ordered DESC
+  // Step 2: rank LOCAL eligible by rank signal score, take top N.
   const { data: rankRows, error: rankErr } = await supabaseAdmin
     .from('place_scores')
     .select('place_id, score')
     .eq('signal_id', rankSignal)
     .in('place_id', eligibleIds)
     .order('score', { ascending: false })
-    .limit(limit * 3); // over-fetch for lat/lng filter losses
+    .limit(limit * 2);
 
   // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
   if (rankErr) {
-    throw new Error(`[fetchSinglesForSignalRank] Step 2 (rank signal '${rankSignal}' over ${eligibleIds.length} eligible IDs) failed: ${rankErr.message}`);
+    throw new Error(`[fetchSinglesForSignalRank] Step 2 (rank signal '${rankSignal}' over ${eligibleIds.length} local eligible IDs) failed: ${rankErr.message}`);
   }
   if (!rankRows || rankRows.length === 0) return [];
   const rankedIds = rankRows.map((r: any) => r.place_id);
   const rankScoreById = new Map<string, number>();
   for (const r of rankRows) rankScoreById.set(r.place_id, Number(r.score));
 
-  // ORCH-0634: Step 3 rewritten to read place_pool DIRECTLY (was: card_pool join).
-  // Eliminates the 44-row card_pool gap AND the split-slug filter bug. Output
-  // shape mimics the old card_pool row so downstream assembly is unchanged.
-  //
-  // Three-gate serving enforced here:
-  //   G1: pp.is_servable = true
-  //   G2: signal_score >= filter_min (enforced upstream via place_scores filter)
-  //   G3: real stored_photo_urls (no NULL, no empty, no __backfill_failed__ sentinel)
+  // Step 3: hydrate the ranked local set. No bbox refilter, no servable
+  // refilter (Step 0 already restricted both). Pure hydration.
   const { data: places, error: placeErr } = await supabaseAdmin
     .from('place_pool')
     .select('id, google_place_id, name, address, lat, lng, rating, review_count, price_level, price_range_start_cents, price_range_end_cents, opening_hours, website, stored_photo_urls, photos, types, primary_type, utc_offset_minutes, ai_categories, city_id, city, country')
-    .eq('is_active', true)
-    .eq('is_servable', true)
-    .in('id', rankedIds)
-    .gte('lat', centerLat - latDelta)
-    .lte('lat', centerLat + latDelta)
-    .gte('lng', centerLng - lngDelta)
-    .lte('lng', centerLng + lngDelta)
-    .limit(limit * 2);
+    .in('id', rankedIds);
 
-  // ORCH-0653: throw on error (Constitution #3) — was silent console.warn + return [].
-  // Empty result (!places.length) still legitimate; only error path throws.
+  // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
   if (placeErr) {
-    throw new Error(`[fetchSinglesForSignalRank] Step 3 (place_pool fetch for ${filterSignal}/${rankSignal} over ${rankedIds.length} ranked IDs in bbox center=(${centerLat.toFixed(4)},${centerLng.toFixed(4)}) radius=${Math.round(latDelta * 111320)}m) failed: ${placeErr.message}`);
+    throw new Error(`[fetchSinglesForSignalRank] Step 3 (place_pool hydrate over ${rankedIds.length} ranked IDs) failed: ${placeErr.message}`);
   }
   if (!places || places.length === 0) return [];
+
+  // Reorder hydrated rows to match Step 2's score-DESC order. The downstream
+  // .sort by _rankScore is idempotent on a pre-sorted list, but reordering
+  // here makes the intermediate state self-consistent for debugging.
+  const placeById = new Map<string, any>();
+  for (const pp of places) placeById.set(pp.id, pp);
+  const orderedPlaces = rankedIds.map((id: string) => placeById.get(id)).filter(Boolean);
 
   // Step 4: apply G3 photo gate + shape each row as the assembler expects.
   // Historical card_pool schema fields (title, images, image_url, etc.) are
   // mapped from place_pool equivalents so generateCardsForType stays unchanged.
-  const withScore = places
+  const withScore = orderedPlaces
     .filter((pp: any) => {
       const urls = pp.stored_photo_urls;
       if (!Array.isArray(urls) || urls.length === 0) return false;
