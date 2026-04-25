@@ -820,8 +820,23 @@ async function generateCardsForType(
   // ORCH-0434: Budget filtering removed. perStopBudget set to Infinity to disable.
   const perStopBudget = Infinity;
 
+  // [TRANSITIONAL] ORCH-0653 v2 instrumentation: per-gate kill counters. Remove after diagnosis (v3 fix).
+  const _gateCounts = {
+    attempted: 0,
+    reverseAnchor_no_anchor: 0,
+    reverseAnchor_no_available: 0,
+    reverseAnchor_no_place: 0,
+    standard_no_available: 0,
+    standard_no_place: 0,
+    required_stops_short: 0,
+    travel_constraint: 0,
+    duplicate_place_ids: 0,
+    built_successfully: 0,
+  };
+
   for (const combo of comboList) {
     if (cards.length >= limit) break;
+    _gateCounts.attempted++;
 
     const stops: any[] = [];
     const comboUsedIds = new Set(globalUsedPlaceIds);
@@ -836,7 +851,11 @@ async function generateCardsForType(
       const anchorPlaces = (categoryPlaces[anchorCatId] || []).filter(p => {
         return !comboUsedIds.has(p.google_place_id);
       });
-      if (anchorPlaces.length === 0) { valid = false; }
+      if (anchorPlaces.length === 0) {
+        _gateCounts.reverseAnchor_no_anchor++;
+        console.error(`[generateCardsForType:${typeDef.id}:gate-reverseAnchor_no_anchor] iter=${_gateCounts.attempted} anchorCatId=${anchorCatId} categoryPlaces.length=${(categoryPlaces[anchorCatId] || []).length} comboUsedIds.size=${comboUsedIds.size}`);
+        valid = false;
+      }
       else {
         const anchor = anchorPlaces[0];
         comboUsedIds.add(anchor.google_place_id);
@@ -873,11 +892,19 @@ async function generateCardsForType(
               if (!stopDef.optional && p.price_min > perStopBudget) return false;
               return true;
             });
-            if (available.length === 0 && !stopDef.optional) { valid = false; break; }
+            if (available.length === 0 && !stopDef.optional) {
+              _gateCounts.reverseAnchor_no_available++;
+              console.error(`[generateCardsForType:${typeDef.id}:gate-reverseAnchor_no_available] iter=${_gateCounts.attempted} catId=${catId} anchor.gpid=${anchor.google_place_id} nearKey=${nearKey} categoryPlaces[nearKey].length=${(categoryPlaces[nearKey] || []).length} comboUsedIds.size=${comboUsedIds.size}`);
+              valid = false; break;
+            }
             if (available.length === 0 && stopDef.optional) continue;
 
             const place = selectClosestHighestRated(available, prevLat, prevLng);
-            if (!place && !stopDef.optional) { valid = false; break; }
+            if (!place && !stopDef.optional) {
+              _gateCounts.reverseAnchor_no_place++;
+              console.error(`[generateCardsForType:${typeDef.id}:gate-reverseAnchor_no_place] iter=${_gateCounts.attempted} catId=${catId} anchor.gpid=${anchor.google_place_id} available.length=${available.length} prevLat=${prevLat} prevLng=${prevLng}`);
+              valid = false; break;
+            }
             if (!place) continue;
 
             comboUsedIds.add(place.google_place_id);
@@ -911,6 +938,8 @@ async function generateCardsForType(
 
         if (available.length === 0) {
           if (stopDef.optional) continue; // Skip optional stops gracefully
+          _gateCounts.standard_no_available++;
+          console.error(`[generateCardsForType:${typeDef.id}:gate-standard_no_available] iter=${_gateCounts.attempted} catId=${catId} categoryPlaces[catId].length=${(categoryPlaces[catId] || []).length} comboUsedIds.size=${comboUsedIds.size}`);
           valid = false;
           break;
         }
@@ -923,6 +952,8 @@ async function generateCardsForType(
 
         if (!place) {
           if (stopDef.optional) continue;
+          _gateCounts.standard_no_place++;
+          console.error(`[generateCardsForType:${typeDef.id}:gate-standard_no_place] iter=${_gateCounts.attempted} catId=${catId} available.length=${available.length} prevLat=${prevLat} prevLng=${prevLng}`);
           valid = false;
           break;
         }
@@ -942,7 +973,11 @@ async function generateCardsForType(
     // Validate: must have at least the required (non-optional) stops
     const requiredStops = typeDef.stops.filter(s => !s.optional).length;
     const builtRequired = stops.filter(s => !s.optional).length;
-    if (!valid || builtRequired < requiredStops) continue;
+    if (!valid || builtRequired < requiredStops) {
+      _gateCounts.required_stops_short++;
+      console.error(`[generateCardsForType:${typeDef.id}:gate-required_stops_short] iter=${_gateCounts.attempted} valid=${valid} builtRequired=${builtRequired} requiredStops=${requiredStops}`);
+      continue;
+    }
 
     // Validate budget
     const totalMin = stops.filter(s => !s.optional).reduce((s, st) => s + st.priceMin, 0);
@@ -951,11 +986,19 @@ async function generateCardsForType(
 
     // Validate travel constraint
     const firstStop = stops.find(s => !s.optional);
-    if (firstStop && firstStop.travelTimeFromUserMin > travelConstraintValue * 1.5) continue;
+    if (firstStop && firstStop.travelTimeFromUserMin > travelConstraintValue * 1.5) {
+      _gateCounts.travel_constraint++;
+      console.error(`[generateCardsForType:${typeDef.id}:gate-travel_constraint] iter=${_gateCounts.attempted} firstStop.placeName=${firstStop.placeName} travelTimeFromUserMin=${firstStop.travelTimeFromUserMin} threshold=${travelConstraintValue * 1.5}`);
+      continue;
+    }
 
     // Validate no duplicate places
     const placeIds = stops.map(s => s.placeId).filter(Boolean);
-    if (new Set(placeIds).size !== placeIds.length) continue;
+    if (new Set(placeIds).size !== placeIds.length) {
+      _gateCounts.duplicate_place_ids++;
+      console.error(`[generateCardsForType:${typeDef.id}:gate-duplicate_place_ids] iter=${_gateCounts.attempted} placeIds=${JSON.stringify(placeIds)}`);
+      continue;
+    }
 
     const comboLabels = combo.map(catId => SEEDING_CATEGORY_MAP[catId]?.label || catId);
 
@@ -996,7 +1039,11 @@ async function generateCardsForType(
     }
 
     cards.push(card);
+    _gateCounts.built_successfully++;
   }
+
+  // [TRANSITIONAL] ORCH-0653 v2 instrumentation summary. Remove after diagnosis (v3 fix).
+  console.error(`[generateCardsForType:${typeDef.id}:SUMMARY] cards.length=${cards.length} _gateCounts=${JSON.stringify(_gateCounts)}`);
 
   return cards;
 }
