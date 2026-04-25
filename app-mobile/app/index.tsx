@@ -1303,7 +1303,37 @@ function AppContent() {
         return acc;
       }, []);
 
-      updateBoardsSessions(uniqueSessions);
+      // ORCH-0666: enrich each session with `pendingInviteeIds` — the friend IDs
+      // for whom the current user has outstanding pending invites. AddToBoardModal
+      // uses this to filter out friends who already have a pending invite to a
+      // given session (CF-2 close — pre-flight idempotency UX).
+      // Caller-scoped only (current user is the inviter); cross-user pending
+      // invitees are not surfaced — the RPC's `already_invited` outcome handles
+      // those cases gracefully at confirm time.
+      let pendingByInviter: { session_id: string; invited_user_id: string }[] = [];
+      try {
+        const { data: pendingRows } = await supabase
+          .from('collaboration_invites')
+          .select('session_id, invited_user_id')
+          .eq('inviter_id', user.id)
+          .eq('status', 'pending');
+        pendingByInviter = pendingRows || [];
+      } catch (e) {
+        // Non-fatal — filter just becomes a no-op.
+        console.warn('[refreshAllSessions] pendingInviteeIds fetch failed:', e);
+      }
+      const pendingMap = new Map<string, string[]>();
+      for (const row of pendingByInviter) {
+        const list = pendingMap.get(row.session_id) ?? [];
+        list.push(row.invited_user_id);
+        pendingMap.set(row.session_id, list);
+      }
+      const enriched = uniqueSessions.map((s: any) => ({
+        ...s,
+        pendingInviteeIds: pendingMap.get(s.id) ?? [],
+      }));
+
+      updateBoardsSessions(enriched);
     } finally {
       // Only clear loading if this is still the current generation.
       // If a newer call took over, it will clear loading when it finishes.
@@ -2122,16 +2152,13 @@ function AppContent() {
       case "connections":
         return (
           <ConnectionsPage
-            onSendCollabInvite={(friend: any) => {
-              console.log("Sending collaboration invite to:", friend);
-            }}
-            onAddToBoard={handlers.handleAddToBoard}
             onShareSavedCard={handlers.handleShareSavedCard}
             onRemoveFriend={handlers.handleRemoveFriend}
             onBlockUser={handlers.handleBlockUser}
             onReportUser={handlers.handleReportUser}
             accountPreferences={accountPreferences}
             boardsSessions={boardsSessions}
+            onRefreshSessions={refreshAllSessions}
             currentMode={currentMode ?? "solo"}
             onModeChange={handlers.handleModeChange}
             onUpdateBoardSession={(board: any) => {
@@ -2410,16 +2437,13 @@ function AppContent() {
                             <View style={currentPage === 'connections' ? styles.tabVisible : styles.tabHidden}>
                               <ConnectionsPage
                                 isTabVisible={currentPage === 'connections'}
-                                onSendCollabInvite={(friend: any) => {
-                                  console.log("Sending collaboration invite to:", friend);
-                                }}
-                                onAddToBoard={handlers.handleAddToBoard}
                                 onShareSavedCard={handlers.handleShareSavedCard}
                                 onRemoveFriend={handlers.handleRemoveFriend}
                                 onBlockUser={handlers.handleBlockUser}
                                 onReportUser={handlers.handleReportUser}
                                 accountPreferences={accountPreferences}
                                 boardsSessions={boardsSessions}
+                                onRefreshSessions={refreshAllSessions}
                                 currentMode={currentMode ?? "solo"}
                                 onModeChange={handlers.handleModeChange}
                                 onUpdateBoardSession={(board: any) => {

@@ -337,21 +337,17 @@ export function useAppHandlers(state: any) {
     });
   };
 
+  // ORCH-0667: Replaced by MessageInterface picker. NEVER restore toast-only stub.
+  // Constitution #1 (no dead taps) + #3 (no silent fake-success) + #9 (no fabricated state).
+  // The real flow lives in MessageInterface.handleShareSavedCard → handleSelectCardToShare,
+  // which calls messagingService.sendCardMessage and shows toasts based on real send result.
+  // This handler is kept as a no-op shim to avoid prop-drilling churn through
+  // ConnectionsPage → app/index.tsx; remove in a future cleanup once the prop chain is pruned.
   const handleShareSavedCard = (
-    friend: any,
-    suppressNotification?: boolean
+    _friend: any,
+    _suppressNotification?: boolean
   ) => {
-    if (!suppressNotification) {
-      const notification = {
-        id: `share-saved-card-${Date.now()}-${friend.id}`,
-        type: "success" as const,
-        title: i18n.t('common:toast_card_shared'),
-        message: i18n.t('common:toast_card_shared_msg', { name: friend.name }),
-        autoHide: true,
-        duration: 3000,
-      };
-      setNotifications((prev: any) => [...prev, notification]);
-    }
+    // Intentionally empty. See ORCH-0667 spec §9.7 + impl step 9.
   };
 
   // Toast-only handlers — the actual DB operations (removeFriend, blockFriend)

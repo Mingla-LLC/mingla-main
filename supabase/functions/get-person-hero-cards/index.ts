@@ -647,6 +647,7 @@ serve(async (req: Request) => {
       ? excludeCardIds.filter((id): id is string => typeof id === 'string' && UUID_RE.test(id))
       : [];
 
+    const rpcStart = Date.now();
     const { data: rpcRows, error: rpcError } = await adminClient.rpc(
       "query_person_hero_places_by_signal",
       {
@@ -662,14 +663,39 @@ serve(async (req: Request) => {
         p_total_limit: 9,
       },
     );
+    const rpcDurationMs = Date.now() - rpcStart;
 
     if (rpcError) {
-      console.error("[get-person-hero-cards] RPC error:", rpcError);
+      // ORCH-0668 HF-1: distinguish PostgREST statement-timeout (SQLSTATE 57014)
+      // from real RPC errors so the mobile client can choose retry semantics.
+      const isTimeout = rpcError.code === '57014';
+      console.error(
+        "[get-person-hero-cards] RPC error:",
+        JSON.stringify({
+          code: rpcError.code,
+          message: rpcError.message,
+          duration_ms: rpcDurationMs,
+          signal_count: signalIds.length,
+          isTimeout,
+        }),
+      );
       return new Response(
-        JSON.stringify({ error: "Database query failed" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 },
+        JSON.stringify({ error: isTimeout ? "rpc_timeout" : "rpc_failed" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: isTimeout ? 503 : 500,
+        },
       );
     }
+
+    console.log(
+      "[get-person-hero-cards] RPC duration:",
+      rpcDurationMs,
+      "ms, signal_count:",
+      signalIds.length,
+      "rows:",
+      (rpcRows ?? []).length,
+    );
 
     // --- Map rows to Card[] (all single cards post-ORCH-0640; curated heroes retired) ---
     const rows = rpcRows ?? [];

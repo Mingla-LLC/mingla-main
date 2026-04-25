@@ -20,7 +20,7 @@ function truncate(str: string | undefined, maxLen: number): string {
 }
 
 interface NotifyMessageRequest {
-  type: "direct_message" | "board_message" | "board_mention" | "board_card_message";
+  type: "direct_message" | "board_message" | "board_mention" | "board_card_message" | "direct_card_message";
   senderId: string;
   conversationId?: string;
   recipientId?: string;
@@ -33,6 +33,10 @@ interface NotifyMessageRequest {
   cardName?: string;
   cardSaverId?: string;
   otherCommenterIds?: string[];
+  // ORCH-0667: direct_card_message specific fields
+  cardId?: string;       // place_pool.id — analytics dedup
+  cardTitle?: string;    // for push body
+  cardImageUrl?: string; // optional, reserved for rich-push v2
 }
 
 async function callNotifyDispatch(
@@ -247,6 +251,42 @@ serve(async (req) => {
 
       await Promise.allSettled(dispatches);
       return jsonResponse({ success: true, notified: recipientSet.size });
+    }
+
+    // ORCH-0667: direct card share (sender shares a saved card via DM)
+    if (type === "direct_card_message") {
+      const { conversationId, recipientId, messageId, cardTitle, cardId } = body;
+      if (!conversationId || !recipientId || !messageId || !cardTitle) {
+        return jsonResponse(
+          { error: "conversationId, recipientId, messageId, and cardTitle required for direct_card_message" },
+          400,
+        );
+      }
+
+      const titleTrunc = truncate(cardTitle, 60);
+      const messageTimestamp = Date.now();
+
+      await callNotifyDispatch(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        userId: recipientId,
+        type: "direct_card_message",
+        title: `${senderName} shared an experience`,
+        body: `🔖 ${titleTrunc}`,
+        data: {
+          deepLink: `mingla://messages/${conversationId}`,
+          cardId: cardId ?? undefined,
+        },
+        actorId: senderId,
+        relatedId: messageId,
+        relatedType: "message",
+        idempotencyKey: `card_share:${messageId}:${recipientId}`,
+        pushOverrides: {
+          androidChannelId: "messages",
+          threadId: `dm:${conversationId}`,
+          collapseId: `card_share:${messageId}`,
+        },
+      });
+
+      return jsonResponse({ success: true, notified: 1 });
     }
 
     return jsonResponse({ error: `Unknown message type: ${type}` }, 400);

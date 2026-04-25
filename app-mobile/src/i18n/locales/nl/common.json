@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "Wandeling maken",
   "unknown": "Onbekend",
   "time_just_now": "Zojuist",
-
   "toast_invite_sent": "Uitnodiging verstuurd!",
   "toast_invite_sent_msg": "Samenwerkingsuitnodiging verstuurd naar {{name}}",
   "toast_member_promoted": "Lid gepromoveerd",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "Toegevoegd aan {{count}} borden!",
   "toast_added_board_msg": "{{name}} is toegevoegd aan het samenwerkingsbord",
   "toast_added_boards_msg": "{{name}} is toegevoegd aan {{count}} samenwerkingsborden",
-  "toast_card_shared": "Kaart gedeeld!",
-  "toast_card_shared_msg": "Een opgeslagen ervaring is gedeeld met {{name}}",
   "toast_friend_removed": "Vriend verwijderd",
   "toast_friend_removed_msg": "{{name}} is verwijderd uit je vriendenlijst",
   "toast_user_blocked": "Gebruiker geblokkeerd",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "voor intimidatie",
   "toast_report_reason_other": "voor schending van communityrichtlijnen",
   "user_fallback": "Gebruiker",
-
   "calendar_access_needed": "Agendatoegang nodig",
   "calendar_access_needed_msg": "Mingla heeft agendatoegang nodig om evenementen toe te voegen. Schakel dit in via je apparaatinstellingen.",
   "open_settings": "Instellingen openen",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "Er ging iets mis bij het toevoegen van het evenement. Probeer het opnieuw.",
   "added_to_calendar": "Toegevoegd",
   "add_to_calendar": "Toevoegen aan agenda",
-
   "confidence_excellent": "Uitstekende match",
   "confidence_good": "Goede match",
   "confidence_fair": "Redelijke match",
@@ -157,21 +152,18 @@
   "match_time": "Tijd",
   "match_popularity": "Populariteit",
   "match_factors": "Matchfactoren",
-
   "stat_views": "Weergaven",
   "stat_likes": "Likes",
   "stat_saves": "Opgeslagen",
   "stat_shares": "Gedeeld",
   "review_count_one": "{{count}} beoordeling",
   "review_count_other": "{{count}} beoordelingen",
-
   "profile_update_failed": "Profiel bijwerken mislukt",
   "profile_update_failed_msg": "Profiel kon niet worden bijgewerkt. Probeer het opnieuw.",
   "saved_experience": "Opgeslagen ervaring",
   "experience": "Ervaring",
   "solo_experience": "Solo-ervaring",
   "untitled": "Naamloos",
-
   "error_sign_in_save": "Log in om ervaringen op te slaan",
   "error_boundary_title": "Er is iets misgegaan",
   "error_boundary_message": "We zijn een onverwachte fout tegengekomen. Probeer het opnieuw."

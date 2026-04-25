@@ -65,6 +65,7 @@ type FriendsModalTab = "friend-list" | "sent" | "requests" | "blocked";
 import AddToBoardModal from "./AddToBoardModal";
 import ReportUserModal from "./ReportUserModal";
 import BlockUserModal from "./BlockUserModal";
+import { emitAddToBoardToasts } from "../utils/addToBoardToasts";
 
 // Pairing — ORCH-0435 Phase A
 import PairRequestModal from "./PairRequestModal";
@@ -73,18 +74,14 @@ import { usePairingPills, useIncomingPairRequests, useSendPairRequest, useCancel
 import type { PairRequest } from "../services/pairingService";
 interface ConnectionsPageProps {
   isTabVisible?: boolean;
-  onSendCollabInvite?: (friend: any) => void;
-  onAddToBoard?: (
-    sessionIds: string[],
-    friend: any,
-    suppressNotification?: boolean
-  ) => void;
   onShareSavedCard?: (friend: any, suppressNotification?: boolean) => void;
   onRemoveFriend?: (friend: any, suppressNotification?: boolean) => void;
   onBlockUser?: (friend: any, suppressNotification?: boolean) => void;
   onReportUser?: (friend: any, suppressNotification?: boolean) => void;
   accountPreferences?: any;
   boardsSessions?: any[];
+  /** ORCH-0666: refreshes the home/session list after add-to-session mutation. */
+  onRefreshSessions?: (options?: { showLoading?: boolean }) => Promise<void>;
   currentMode?: "solo" | string;
   onModeChange?: (mode: "solo" | string) => void;
   onUpdateBoardSession?: (updatedBoard: any) => void;
@@ -275,14 +272,13 @@ const glassPillStyles = StyleSheet.create({
 });
 
 export default function ConnectionsPageRefactored({
-  onSendCollabInvite,
-  onAddToBoard,
   onShareSavedCard,
   onRemoveFriend,
   onBlockUser,
   onReportUser,
   accountPreferences,
   boardsSessions = [],
+  onRefreshSessions,
   currentMode = "solo",
   onModeChange,
   onUpdateBoardSession,
@@ -960,6 +956,7 @@ export default function ConnectionsPageRefactored({
       fileUrl: msg.file_url,
       fileName: msg.file_name,
       fileSize: msg.file_size?.toString(),
+      cardPayload: msg.card_payload,  // ORCH-0667
       isMe: msg.sender_id === userId,
       unread: !msg.is_read && msg.sender_id !== userId,
       isRead: msg.is_read ?? false,
@@ -1497,6 +1494,125 @@ export default function ConnectionsPageRefactored({
     }
   }, [isOffline, currentConversationId, user?.id, transformMessage, markConversationAsRead, fetchConversations]);
 
+  /**
+   * ORCH-0664 (I-DEDUP-AFTER-DELIVERY): single owner for incoming-message UI
+   * state mutation. Both delivery paths funnel here:
+   *   1. broadcast (chat:${id}) via useBroadcastReceiver → MessageInterface
+   *      → onBroadcastReceive prop → handleBroadcastReceive → THIS HELPER
+   *   2. postgres_changes (conversation:${id}) via subscribeToConversation
+   *      .onMessage → THIS HELPER
+   *
+   * The seen-set add is INSIDE this helper, AFTER `setMessages` succeeds, to
+   * satisfy the invariant. If `broadcastSeenIds.current.has(newMessage.id)` is
+   * already true, the OTHER delivery path won the race — we skip the
+   * visible-messages add but still run idempotent side effects (cache,
+   * conversation list, mark-as-read).
+   *
+   * Sender-side L1907-area `broadcastSeenIds.current.add(sentMessage.id)` is
+   * the documented exception to I-DEDUP-AFTER-DELIVERY (sender already mutated
+   * UI via optimistic-replace). DO NOT touch it.
+   */
+  const addIncomingMessageToUI = useCallback(
+    (newMessage: DirectMessage, conversationId: string, userId: string) => {
+      const alreadyDelivered = broadcastSeenIds.current.has(newMessage.id);
+
+      if (!alreadyDelivered) {
+        const transformedMsg = transformMessage(newMessage, userId);
+
+        // Add to messages (replace optimistic or add new)
+        setMessages((prev) => {
+          const exists = prev.some((msg) => msg.id === transformedMsg.id);
+          if (exists) return prev;
+
+          const optimisticIndex = prev.findIndex(
+            (msg) =>
+              msg.id.startsWith("temp-") &&
+              msg.senderId === transformedMsg.senderId &&
+              msg.content === transformedMsg.content &&
+              Math.abs(
+                new Date(msg.timestamp).getTime() -
+                  new Date(transformedMsg.timestamp).getTime()
+              ) < 5000
+          );
+
+          if (optimisticIndex !== -1) {
+            const updated = [...prev];
+            updated[optimisticIndex] = transformedMsg;
+            return updated;
+          }
+
+          return [...prev, transformedMsg];
+        });
+
+        // Couple the seen-set add to a successful UI mutation.
+        // I-DEDUP-AFTER-DELIVERY: never populate the seen-set without
+        // a corresponding visible-messages addition.
+        broadcastSeenIds.current.add(newMessage.id);
+      }
+
+      // Cache update ALWAYS runs (idempotent — uses same exists/optimistic checks)
+      const transformedForCache = transformMessage(newMessage, userId);
+      setMessagesCache((prev) => {
+        const existing = prev[conversationId] || [];
+        const exists = existing.some((msg) => msg.id === transformedForCache.id);
+        if (exists) return prev;
+
+        const optimisticIndex = existing.findIndex(
+          (msg) =>
+            msg.id.startsWith("temp-") &&
+            msg.senderId === transformedForCache.senderId &&
+            msg.content === transformedForCache.content &&
+            Math.abs(
+              new Date(msg.timestamp).getTime() -
+                new Date(transformedForCache.timestamp).getTime()
+            ) < 5000
+        );
+
+        if (optimisticIndex !== -1) {
+          const updated = [...existing];
+          updated[optimisticIndex] = transformedForCache;
+          return { ...prev, [conversationId]: updated };
+        }
+
+        return { ...prev, [conversationId]: [...existing, transformedForCache] };
+      });
+
+      // Conversation list update ALWAYS runs.
+      // Do NOT increment unread_count — the chat is open, so the message
+      // is immediately visible and marked as read below. Incrementing here
+      // would inflate the tab badge until the next fetchConversations.
+      setConversations((prev) =>
+        prev.map((conv): Conversation => {
+          if (conv.id === conversationId) {
+            return {
+              ...conv,
+              last_message: newMessage as unknown as ConvMessage,
+              // Keep unread_count at 0 — user is actively viewing this chat
+            };
+          }
+          return conv;
+        })
+      );
+
+      // Auto-mark as read ALWAYS runs (chat is open by precondition)
+      if (newMessage.sender_id !== userId) {
+        messagingService.markAsRead([newMessage.id], userId).catch(console.error);
+      }
+    },
+    [transformMessage]
+  );
+
+  // ORCH-0664: callback passed to MessageInterface as `onBroadcastReceive`.
+  // useBroadcastReceiver invokes it when a friend's message arrives via the
+  // chat:{conversationId} broadcast channel; we delegate to the single owner.
+  const handleBroadcastReceive = useCallback(
+    (msg: DirectMessage) => {
+      if (!currentConversationId || !user?.id) return;
+      addIncomingMessageToUI(msg, currentConversationId, user.id);
+    },
+    [currentConversationId, user?.id, addIncomingMessageToUI]
+  );
+
   // ── Realtime subscription setup ──────────────────────────
   const setupRealtimeSubscription = (conversationId: string, userId: string) => {
 
@@ -1510,88 +1626,9 @@ export default function ConnectionsPageRefactored({
       userId,
       {
         onMessage: (newMessage: DirectMessage) => {
-          // Broadcast dedup: if broadcast already delivered this message to
-          // the UI, skip the message-add but still run all side effects
-          // (cache sync, conversation list update, auto-mark-as-read).
-          const alreadyDelivered = broadcastSeenIds.current.has(newMessage.id);
-
-          if (!alreadyDelivered) {
-            const transformedMsg = transformMessage(newMessage, userId);
-
-            // Add to messages (replace optimistic or add new)
-            setMessages((prev) => {
-              const exists = prev.some((msg) => msg.id === transformedMsg.id);
-              if (exists) return prev;
-
-              const optimisticIndex = prev.findIndex(
-                (msg) =>
-                  msg.id.startsWith("temp-") &&
-                  msg.senderId === transformedMsg.senderId &&
-                  msg.content === transformedMsg.content &&
-                  Math.abs(
-                    new Date(msg.timestamp).getTime() -
-                      new Date(transformedMsg.timestamp).getTime()
-                  ) < 5000
-              );
-
-              if (optimisticIndex !== -1) {
-                const updated = [...prev];
-                updated[optimisticIndex] = transformedMsg;
-                return updated;
-              }
-
-              return [...prev, transformedMsg];
-            });
-          }
-
-          // Cache update ALWAYS runs (even if broadcast already delivered to UI)
-          const transformedForCache = transformMessage(newMessage, userId);
-          setMessagesCache((prev) => {
-            const existing = prev[conversationId] || [];
-            const exists = existing.some((msg) => msg.id === transformedForCache.id);
-            if (exists) return prev;
-
-            const optimisticIndex = existing.findIndex(
-              (msg) =>
-                msg.id.startsWith("temp-") &&
-                msg.senderId === transformedForCache.senderId &&
-                msg.content === transformedForCache.content &&
-                Math.abs(
-                  new Date(msg.timestamp).getTime() -
-                    new Date(transformedForCache.timestamp).getTime()
-                ) < 5000
-            );
-
-            if (optimisticIndex !== -1) {
-              const updated = [...existing];
-              updated[optimisticIndex] = transformedForCache;
-              return { ...prev, [conversationId]: updated };
-            }
-
-            return { ...prev, [conversationId]: [...existing, transformedForCache] };
-          });
-
-          // Conversation list update ALWAYS runs.
-          // Do NOT increment unread_count — the chat is open, so the message
-          // is immediately visible and marked as read below. Incrementing here
-          // would inflate the tab badge until the next fetchConversations.
-          setConversations((prev) =>
-            prev.map((conv): Conversation => {
-              if (conv.id === conversationId) {
-                return {
-                  ...conv,
-                  last_message: newMessage as unknown as ConvMessage,
-                  // Keep unread_count at 0 — user is actively viewing this chat
-                };
-              }
-              return conv;
-            })
-          );
-
-          // Auto-mark as read ALWAYS runs
-          if (newMessage.sender_id !== userId) {
-            messagingService.markAsRead([newMessage.id], userId).catch(console.error);
-          }
+          // ORCH-0664: delegate to single owner. Both delivery paths
+          // (broadcast + postgres_changes) funnel here.
+          addIncomingMessageToUI(newMessage, conversationId, userId);
         },
 
         // Read receipt flow: when the receiver marks a message as read,
@@ -1815,7 +1852,7 @@ export default function ConnectionsPageRefactored({
               conversation_id: currentConversationId,
               sender_id: user.id,
               content,
-              message_type: type as "text" | "image" | "file",
+              message_type: type as "text" | "image" | "video" | "file" | "card",
               file_url: fileUrl,
               file_name: fileName,
               file_size: fileSize,
@@ -1978,19 +2015,13 @@ export default function ConnectionsPageRefactored({
   };
 
   // ── MessageInterface callback handlers ───────────────────
-  const handleSendCollabInvite = (friend: Friend) => {
-    onSendCollabInvite?.(friend);
-  };
+  // ORCH-0666: handleSendCollabInvite + handleAddToBoardConfirm DELETED.
+  // The Friends modal "Add to session" entry and the DM-path "Add to board"
+  // entry both route through handleAddToBoard → AddToBoardModal → mutation hook.
 
   const handleAddToBoard = (friend: Friend) => {
     setSelectedFriendForBoard(friend);
     setShowAddToBoardModal(true);
-  };
-
-  const handleAddToBoardConfirm = (sessionIds: string[], friend: Friend) => {
-    onAddToBoard?.(sessionIds, friend);
-    setShowAddToBoardModal(false);
-    setSelectedFriendForBoard(null);
   };
 
   const handleShareSavedCard = (friend: Friend) => {
@@ -2201,8 +2232,7 @@ export default function ConnectionsPageRefactored({
             onBack={handleBackFromMessage}
             onSendMessage={handleSendMessage}
             messages={messages}
-            onSendCollabInvite={handleSendCollabInvite}
-            onAddToBoard={onAddToBoard}
+            onOpenAddToBoardModal={(friend: Friend) => handleAddToBoard(friend)}
             onShareSavedCard={handleShareSavedCard}
             onRemoveFriend={handleRemoveFriend}
             onBlockUser={handleBlockUser}
@@ -2220,6 +2250,7 @@ export default function ConnectionsPageRefactored({
             currentUserId={user?.id || null}
             currentUserName={currentUserDisplayName}
             broadcastSeenIds={broadcastSeenIds}
+            onBroadcastReceive={handleBroadcastReceive}
             isOffline={isOffline}
             onViewProfile={onNavigateToFriendProfile}
           />
@@ -2233,7 +2264,23 @@ export default function ConnectionsPageRefactored({
           }}
           friend={selectedFriendForBoard}
           boardsSessions={boardsSessions}
-          onConfirm={handleAddToBoardConfirm}
+          onMutationSettled={() => {
+            // ORCH-0666: refresh boardsSessions so newly-pending invitees are
+            // filtered out on next open and any state mutations propagate.
+            void onRefreshSessions?.();
+          }}
+          onResult={(result) => {
+            if (selectedFriendForBoard) {
+              emitAddToBoardToasts(
+                result,
+                { id: selectedFriendForBoard.id, name: selectedFriendForBoard.name || 'Friend' },
+                (boardsSessions || []).map((s: any) => ({
+                  id: s.id || s.session_id,
+                  name: s.name || 'Session',
+                }))
+              );
+            }
+          }}
         />
         <ReportUserModal
           isOpen={showReportModal}
@@ -2700,12 +2747,13 @@ export default function ConnectionsPageRefactored({
                     }}
                     onAddToSession={(friendUserId) => {
                       setShowFriendsModal(false);
-                      // Find the friend and trigger collab invite
+                      // ORCH-0666: open AddToBoardModal pre-targeted at this friend.
+                      // Replaces dead-tap onSendCollabInvite (RC-1) and HF-5 wrong-primitive.
                       const friend = dbFriends.find(f => {
                         const fid = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
                         return fid === friendUserId;
                       });
-                      if (friend) onSendCollabInvite?.(friend);
+                      if (friend) handleAddToBoard(friend);
                     }}
                     onFriendPress={(friendUserId) => {
                       setShowFriendsModal(false);
@@ -2892,6 +2940,33 @@ export default function ConnectionsPageRefactored({
           setShowIncomingPairRequest(null);
         }}
         onClose={() => setShowIncomingPairRequest(null)}
+      />
+
+      {/* ORCH-0666: AddToBoardModal must be mounted on the default-render branch
+          so the Friends modal "Add to session" entry point can open it. */}
+      <AddToBoardModal
+        isOpen={showAddToBoardModal}
+        onClose={() => {
+          setShowAddToBoardModal(false);
+          setSelectedFriendForBoard(null);
+        }}
+        friend={selectedFriendForBoard}
+        boardsSessions={boardsSessions}
+        onMutationSettled={() => {
+          void onRefreshSessions?.();
+        }}
+        onResult={(result) => {
+          if (selectedFriendForBoard) {
+            emitAddToBoardToasts(
+              result,
+              { id: selectedFriendForBoard.id, name: selectedFriendForBoard.name || 'Friend' },
+              (boardsSessions || []).map((s: any) => ({
+                id: s.id || s.session_id,
+                name: s.name || 'Session',
+              }))
+            );
+          }
+        }}
       />
     </>
   );

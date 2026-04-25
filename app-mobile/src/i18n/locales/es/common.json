@@ -109,7 +109,6 @@
   "intent_take_a_stroll": "Dar un paseo",
   "unknown": "Desconocido",
   "time_just_now": "Ahora",
-
   "toast_invite_sent": "¡Invitación enviada!",
   "toast_invite_sent_msg": "Invitación de colaboración enviada a {{name}}",
   "toast_member_promoted": "Miembro ascendido",
@@ -128,8 +127,6 @@
   "toast_added_to_boards": "¡Añadido a {{count}} tableros!",
   "toast_added_board_msg": "{{name}} ha sido añadido al tablero de colaboración",
   "toast_added_boards_msg": "{{name}} ha sido añadido a {{count}} tableros de colaboración",
-  "toast_card_shared": "¡Tarjeta compartida!",
-  "toast_card_shared_msg": "Una experiencia guardada ha sido compartida con {{name}}",
   "toast_friend_removed": "Amigo removido",
   "toast_friend_removed_msg": "{{name}} ha sido removido de tu lista de amigos",
   "toast_user_blocked": "Usuario bloqueado",
@@ -143,7 +140,6 @@
   "toast_report_reason_harassment": "por acoso",
   "toast_report_reason_other": "por violar las normas de la comunidad",
   "user_fallback": "Usuario",
-
   "calendar_access_needed": "Acceso al calendario necesario",
   "calendar_access_needed_msg": "Mingla necesita acceso al calendario para agregar eventos. Por favor habilítalo en la configuración de tu dispositivo.",
   "open_settings": "Abrir configuración",
@@ -156,7 +152,6 @@
   "calendar_error_msg": "Algo salió mal al agregar el evento. Por favor inténtalo de nuevo.",
   "added_to_calendar": "Agregado",
   "add_to_calendar": "Agregar al calendario",
-
   "confidence_excellent": "Coincidencia excelente",
   "confidence_good": "Buena coincidencia",
   "confidence_fair": "Coincidencia aceptable",
@@ -167,21 +162,18 @@
   "match_time": "Horario",
   "match_popularity": "Popularidad",
   "match_factors": "Factores de coincidencia",
-
   "stat_views": "Vistas",
   "stat_likes": "Me gusta",
   "stat_saves": "Guardados",
   "stat_shares": "Compartidos",
   "review_count_one": "{{count}} reseña",
   "review_count_other": "{{count}} reseñas",
-
   "profile_update_failed": "Error al actualizar perfil",
   "profile_update_failed_msg": "No se pudo actualizar el perfil. Por favor inténtalo de nuevo.",
   "saved_experience": "Experiencia guardada",
   "experience": "Experiencia",
   "solo_experience": "Experiencia individual",
   "untitled": "Sin título",
-
   "error_sign_in_save": "Inicia sesión para guardar experiencias",
   "error_boundary_title": "Algo salió mal",
   "error_boundary_message": "Encontramos un error inesperado. Por favor inténtalo de nuevo."

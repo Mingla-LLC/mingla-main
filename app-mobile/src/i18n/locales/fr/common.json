@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "Se balader",
   "unknown": "Inconnu",
   "time_just_now": "À l'instant",
-
   "toast_invite_sent": "Invitation envoyée !",
   "toast_invite_sent_msg": "Invitation de collaboration envoyée à {{name}}",
   "toast_member_promoted": "Membre promu",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "Ajouté à {{count}} tableaux !",
   "toast_added_board_msg": "{{name}} a été ajouté au tableau de collaboration",
   "toast_added_boards_msg": "{{name}} a été ajouté à {{count}} tableaux de collaboration",
-  "toast_card_shared": "Carte partagée !",
-  "toast_card_shared_msg": "Une expérience sauvegardée a été partagée avec {{name}}",
   "toast_friend_removed": "Ami retiré",
   "toast_friend_removed_msg": "{{name}} a été retiré de votre liste d'amis",
   "toast_user_blocked": "Utilisateur bloqué",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "pour harcèlement",
   "toast_report_reason_other": "pour violation des règles de la communauté",
   "user_fallback": "Utilisateur",
-
   "calendar_access_needed": "Accès au calendrier nécessaire",
   "calendar_access_needed_msg": "Mingla a besoin d'accéder à votre calendrier pour ajouter des événements. Veuillez l'activer dans les paramètres de votre appareil.",
   "open_settings": "Ouvrir les paramètres",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "Une erreur est survenue lors de l'ajout de l'événement. Veuillez réessayer.",
   "added_to_calendar": "Ajouté",
   "add_to_calendar": "Ajouter au calendrier",
-
   "confidence_excellent": "Excellente correspondance",
   "confidence_good": "Bonne correspondance",
   "confidence_fair": "Correspondance correcte",
@@ -157,21 +152,18 @@
   "match_time": "Horaire",
   "match_popularity": "Popularité",
   "match_factors": "Critères de correspondance",
-
   "stat_views": "Vues",
   "stat_likes": "J'aime",
   "stat_saves": "Enregistrements",
   "stat_shares": "Partages",
   "review_count_one": "{{count}} avis",
   "review_count_other": "{{count}} avis",
-
   "profile_update_failed": "Échec de la mise à jour du profil",
   "profile_update_failed_msg": "Impossible de mettre à jour le profil. Veuillez réessayer.",
   "saved_experience": "Expérience sauvegardée",
   "experience": "Expérience",
   "solo_experience": "Expérience solo",
   "untitled": "Sans titre",
-
   "error_sign_in_save": "Veuillez vous connecter pour sauvegarder des expériences",
   "error_boundary_title": "Une erreur est survenue",
   "error_boundary_message": "Nous avons rencontré une erreur inattendue. Veuillez réessayer."

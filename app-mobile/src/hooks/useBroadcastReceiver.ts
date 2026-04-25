@@ -41,14 +41,20 @@ export function useBroadcastReceiver({
       .on('broadcast', { event: 'new_message' }, (payload) => {
         const msg = payload.payload as DirectMessage;
 
-        // Skip own messages (already shown as optimistic)
+        // Skip own messages (already shown as optimistic).
         if (msg.sender_id === currentUserId) return;
 
-        // Skip if already seen (dedup)
+        // ORCH-0664 (I-DEDUP-AFTER-DELIVERY): defensive double-fire dedup ONLY.
+        // The seen-set's authoritative population happens INSIDE the delegate
+        // (ConnectionsPage's addIncomingMessageToUI), AFTER the message is added
+        // to UI state. This invariant prevents the postgres_changes backup path
+        // from being silently skipped when the broadcast delegate is a no-op.
+        // The CI gate in scripts/ci-check-invariants.sh forbids any seen-set
+        // mutation calls inside this file — population is the delegate's job.
         if (broadcastSeenIds.current.has(msg.id)) return;
 
-        // Mark as seen and deliver
-        broadcastSeenIds.current.add(msg.id);
+        // Deliver — delegate is responsible for both UI state mutation AND
+        // seen-set add as a coupled operation.
         onBroadcastMessageRef.current(msg);
       })
       .subscribe();

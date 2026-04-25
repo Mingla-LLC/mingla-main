@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "散步",
   "unknown": "未知",
   "time_just_now": "刚刚",
-
   "toast_invite_sent": "邀请已发送！",
   "toast_invite_sent_msg": "已向 {{name}} 发送协作邀请",
   "toast_member_promoted": "成员已晋升",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "已添加到 {{count}} 个看板！",
   "toast_added_board_msg": "{{name}} 已添加到协作看板",
   "toast_added_boards_msg": "{{name}} 已添加到 {{count}} 个协作看板",
-  "toast_card_shared": "卡片已分享！",
-  "toast_card_shared_msg": "已与 {{name}} 分享了一个保存的体验",
   "toast_friend_removed": "好友已移除",
   "toast_friend_removed_msg": "{{name}} 已从您的好友列表中移除",
   "toast_user_blocked": "用户已屏蔽",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "骚扰行为",
   "toast_report_reason_other": "违反社区准则",
   "user_fallback": "用户",
-
   "calendar_access_needed": "需要日历权限",
   "calendar_access_needed_msg": "Mingla 需要日历权限来添加活动。请在设备设置中启用。",
   "open_settings": "打开设置",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "添加活动时出错，请重试。",
   "added_to_calendar": "已添加",
   "add_to_calendar": "添加到日历",
-
   "confidence_excellent": "极佳匹配",
   "confidence_good": "良好匹配",
   "confidence_fair": "一般匹配",
@@ -157,21 +152,18 @@
   "match_time": "时间",
   "match_popularity": "热度",
   "match_factors": "匹配因素",
-
   "stat_views": "浏览",
   "stat_likes": "点赞",
   "stat_saves": "收藏",
   "stat_shares": "分享",
   "review_count_one": "{{count}} 条评价",
   "review_count_other": "{{count}} 条评价",
-
   "profile_update_failed": "个人资料更新失败",
   "profile_update_failed_msg": "无法更新个人资料，请重试。",
   "saved_experience": "已保存的体验",
   "experience": "体验",
   "solo_experience": "个人体验",
   "untitled": "无标题",
-
   "error_sign_in_save": "请登录以保存体验",
   "error_boundary_title": "出了点问题",
   "error_boundary_message": "遇到意外错误，请重试。"

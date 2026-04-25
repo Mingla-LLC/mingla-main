@@ -21,10 +21,11 @@ export interface Message {
   conversation_id: string;
   sender_id: string | null;
   content?: string;
-  message_type: 'text' | 'image' | 'file';
+  message_type: 'text' | 'image' | 'video' | 'file' | 'card';  // ORCH-0667: + 'video','card'
   file_url?: string;
   file_name?: string;
   file_size?: number;
+  card_payload?: any;  // ORCH-0667: CardPayload — typed loosely to avoid circular import
   created_at: string;
   sender_name?: string;
   is_read: boolean;

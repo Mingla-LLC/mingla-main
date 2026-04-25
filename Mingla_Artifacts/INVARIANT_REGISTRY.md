@@ -67,6 +67,65 @@ queries new column) depending on which symbol class is incomplete.
 
 ---
 
+## ORCH-0664 invariant (2026-04-25) — DM realtime dedup ordering
+
+### I-DEDUP-AFTER-DELIVERY
+
+**Rule:** Dedup tracking sets (e.g., `broadcastSeenIds`, idempotency keys,
+request-id sets, "already-processed" caches) MUST be populated INSIDE the
+success path of the delivery they are deduping, AFTER the user-visible state
+has been mutated. Pre-emptive population (before delegation) creates a class
+of bug where the secondary delivery path silently skips because the dedup set
+falsely reports "already delivered" when the primary path was a no-op.
+
+**Why:** Pre-fix root cause RC-0664 — `useBroadcastReceiver.ts:51` marked
+`broadcastSeenIds.add(msg.id)` BEFORE the delegate ran, the delegate was a
+no-op, then `subscribeToConversation`'s postgres_changes backup saw the
+seen flag and silently skipped its `setMessages` add. Result: every DM
+receiver dropped every incoming message until close+reopen reload.
+
+**Enforcement:**
+1. **Code review checklist:** any `*.add(id)` adjacent to a delegate call
+   must come AFTER the delegate, not before.
+2. **CI grep gate** in `scripts/ci-check-invariants.sh` —
+   `useBroadcastReceiver.ts` MUST NOT contain `broadcastSeenIds.current.add(`
+   inside the broadcast event handler. Population is the
+   `ConnectionsPage.addIncomingMessageToUI` handler's responsibility.
+3. **Required-prop contract** — `MessageInterface.tsx`'s
+   `onBroadcastReceive` is REQUIRED (non-optional) so TypeScript catches
+   any caller that forgets to wire the callback. "No-op fallback" was the
+   exact pre-fix shape that caused the bug.
+4. **Protective comment blocks** at three sites (useBroadcastReceiver.ts
+   handler body, ConnectionsPage.tsx `addIncomingMessageToUI` JSDoc,
+   MessageInterface.tsx header comment above `useBroadcastReceiver` call).
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: re-introduce the pre-emptive add — gate exits 1.
+sed -i 's|// Deliver — delegate is responsible|broadcastSeenIds.current.add(msg.id);\n        // Deliver — delegate is responsible|' app-mobile/src/hooks/useBroadcastReceiver.ts
+bash scripts/ci-check-invariants.sh   # expect exit 1 with descriptive error
+git checkout -- app-mobile/src/hooks/useBroadcastReceiver.ts
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Exception (legitimate pre-emptive add permitted):** when the caller has
+ALREADY mutated state in another way and is ITSELF the producer of the work
+the dedup set protects against. The canonical example is the SENDER's own
+add at `ConnectionsPage.tsx` L1936-area (was L1907 pre-helper-insertion):
+sender has already shown the message via optimistic-replace; the seen-set
+add is correct because the UI mutation is local-side, not delegate-side.
+The CDC echo of the sender's own write must not re-add the message.
+
+**Severity if violated:** S1 (every receiver of every message silently
+drops from UI; user sees empty chat until close+reopen reload).
+
+**Origin:** Registered 2026-04-25 after ORCH-0664 root cause proof.
+Spec: `specs/SPEC_ORCH-0664_DM_REALTIME_DEDUP.md`. Investigation:
+`reports/INVESTIGATION_ORCH-0663_0664_0665_CHAT_TRIPLE.md`.
+
+---
+
 ## ORCH-0558 invariants (2026-04-21) — Collab match promotion
 
 ### I-MATCH-PROMOTION-DETERMINISTIC

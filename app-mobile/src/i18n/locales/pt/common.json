@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "Passear",
   "unknown": "Desconhecido",
   "time_just_now": "Agora mesmo",
-
   "toast_invite_sent": "Convite enviado!",
   "toast_invite_sent_msg": "Convite de colaboração enviado para {{name}}",
   "toast_member_promoted": "Membro promovido",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "Adicionado a {{count}} quadros!",
   "toast_added_board_msg": "{{name}} foi adicionado ao quadro de colaboração",
   "toast_added_boards_msg": "{{name}} foi adicionado a {{count}} quadros de colaboração",
-  "toast_card_shared": "Card compartilhado!",
-  "toast_card_shared_msg": "Uma experiência salva foi compartilhada com {{name}}",
   "toast_friend_removed": "Amigo removido",
   "toast_friend_removed_msg": "{{name}} foi removido da sua lista de amigos",
   "toast_user_blocked": "Usuário bloqueado",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "por assédio",
   "toast_report_reason_other": "por violação das diretrizes da comunidade",
   "user_fallback": "Usuário",
-
   "calendar_access_needed": "Acesso ao calendário necessário",
   "calendar_access_needed_msg": "O Mingla precisa de acesso ao calendário para adicionar eventos. Ative nas configurações do dispositivo.",
   "open_settings": "Abrir configurações",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "Algo deu errado ao adicionar o evento. Tente novamente.",
   "added_to_calendar": "Adicionado",
   "add_to_calendar": "Adicionar ao calendário",
-
   "confidence_excellent": "Combinação excelente",
   "confidence_good": "Boa combinação",
   "confidence_fair": "Combinação razoável",
@@ -157,21 +152,18 @@
   "match_time": "Horário",
   "match_popularity": "Popularidade",
   "match_factors": "Fatores de combinação",
-
   "stat_views": "Visualizações",
   "stat_likes": "Curtidas",
   "stat_saves": "Salvos",
   "stat_shares": "Compartilhamentos",
   "review_count_one": "{{count}} avaliação",
   "review_count_other": "{{count}} avaliações",
-
   "profile_update_failed": "Atualização do perfil falhou",
   "profile_update_failed_msg": "Não foi possível atualizar o perfil. Tente novamente.",
   "saved_experience": "Experiência salva",
   "experience": "Experiência",
   "solo_experience": "Experiência solo",
   "untitled": "Sem título",
-
   "error_sign_in_save": "Faça login para salvar experiências",
   "error_boundary_title": "Algo deu errado",
   "error_boundary_message": "Encontramos um erro inesperado. Tente novamente."

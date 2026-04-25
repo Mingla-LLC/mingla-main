@@ -3,21 +3,88 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { blockService } from './blockService';
 import { getDisplayName } from '../utils/getDisplayName';
 
+/**
+ * ORCH-0667: snapshot payload for shared-card chat messages.
+ * Trim list per spec §6 — strict subset of ExpandedCardData. Recipient-relative
+ * fields (travelTime, distance) are deliberately excluded — sender's values would
+ * fabricate for the recipient (Constitution #9, cross-ref ORCH-0659/0660).
+ */
+export interface CardPayload {
+  // Identity + render essentials
+  id: string;
+  title: string;
+  category: string | null;
+  image: string | null;
+
+  // ExpandedCardModal enrichment (all optional, dropped under size pressure)
+  images?: string[];
+  rating?: number;
+  reviewCount?: number;
+  priceRange?: string;
+  address?: string;
+  description?: string;
+  highlights?: string[];
+  matchScore?: number;
+}
+
 export interface DirectMessage {
   id: string;
   conversation_id: string;
   sender_id: string | null;
   content: string;
-  message_type: 'text' | 'image' | 'video' | 'file';
+  message_type: 'text' | 'image' | 'video' | 'file' | 'card';
   file_url?: string;
   file_name?: string;
   file_size?: number;
+  card_payload?: CardPayload;  // ORCH-0667: present iff message_type = 'card'
   reply_to_id?: string | null;
   created_at: string;
   updated_at?: string;
   deleted_at?: string | null;
   sender_name?: string;
   is_read?: boolean;
+}
+
+/**
+ * ORCH-0667: trim a SavedCardModel to a CardPayload, enforcing the <5KB budget.
+ * Drop order under pressure: highlights → description → images → address.
+ * Required fields {id, title, category, image} are never dropped.
+ */
+export function trimCardPayload(card: any): CardPayload {
+  const trimmed: CardPayload = {
+    id: card.id,
+    title: card.title || 'Saved experience',
+    category: card.category ?? null,
+    image: card.image ?? null,
+  };
+
+  if (Array.isArray(card.images) && card.images.length) {
+    trimmed.images = card.images.slice(0, 6);
+  }
+  if (typeof card.rating === 'number') trimmed.rating = card.rating;
+  if (typeof card.reviewCount === 'number') trimmed.reviewCount = card.reviewCount;
+  if (card.priceRange) trimmed.priceRange = card.priceRange;
+  if (card.address) trimmed.address = card.address;
+  if (card.description) {
+    trimmed.description = String(card.description).slice(0, 500);
+  }
+  if (Array.isArray(card.highlights) && card.highlights.length) {
+    trimmed.highlights = card.highlights
+      .slice(0, 5)
+      .map((h: any) => String(h).slice(0, 80));
+  }
+  if (typeof card.matchScore === 'number') trimmed.matchScore = card.matchScore;
+
+  // Size guard — drop optional fields in reverse priority if over budget
+  const dropOrder: (keyof CardPayload)[] = ['highlights', 'description', 'images', 'address'];
+  let size = JSON.stringify(trimmed).length;
+  for (const key of dropOrder) {
+    if (size <= 5120) break;
+    delete trimmed[key];
+    size = JSON.stringify(trimmed).length;
+  }
+
+  return trimmed;
 }
 
 export interface Conversation {
@@ -514,6 +581,96 @@ export class MessagingService {
   }
 
   /**
+   * ORCH-0667: Send a card-type message containing a snapshot of the saved card.
+   * Mirrors sendMessage but with message_type='card' and card_payload populated.
+   * The `content` field carries forward-safe text so old-build clients (pre-fix)
+   * see "Shared an experience: {title}" instead of a blank bubble.
+   */
+  async sendCardMessage(
+    conversationId: string,
+    senderId: string,
+    card: any,
+  ): Promise<{ message: DirectMessage | null; error: string | null }> {
+    try {
+      const cardPayload = trimCardPayload(card);
+      const content = `Shared an experience: ${cardPayload.title}`;
+
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          sender_id: senderId,
+          content,
+          message_type: 'card',
+          card_payload: cardPayload,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === '42501' || error.message?.includes('policy')) {
+          return { message: null, error: 'Cannot send card to this user' };
+        }
+        throw error;
+      }
+
+      const enrichedMessage = await this.enrichMessage(data, senderId);
+
+      // Fan out push + in-app notification (non-blocking)
+      this.sendCardMessageNotifications(conversationId, senderId, enrichedMessage, cardPayload).catch((err) =>
+        console.error('Error sending card-share notifications:', err),
+      );
+
+      return { message: enrichedMessage, error: null };
+    } catch (error: any) {
+      console.error('Error sending card message:', error);
+      return { message: null, error: error.message || 'Failed to send card' };
+    }
+  }
+
+  /**
+   * ORCH-0667: Fan out card-share notifications via the notify-message pipeline.
+   * Mirrors sendMessageNotifications but with type='direct_card_message'.
+   */
+  private async sendCardMessageNotifications(
+    conversationId: string,
+    senderId: string,
+    message: DirectMessage,
+    cardPayload: CardPayload,
+  ): Promise<void> {
+    try {
+      const { data: participants, error: participantsError } = await supabase
+        .from('conversation_participants')
+        .select('user_id')
+        .eq('conversation_id', conversationId)
+        .neq('user_id', senderId);
+
+      if (participantsError || !participants || participants.length === 0) {
+        return;
+      }
+
+      for (const participant of participants) {
+        supabase.functions
+          .invoke('notify-message', {
+            body: {
+              type: 'direct_card_message',
+              senderId,
+              conversationId,
+              recipientId: participant.user_id,
+              messageId: message.id,
+              cardTitle: cardPayload.title,
+              cardId: cardPayload.id,
+              cardImageUrl: cardPayload.image,
+            },
+          })
+          .catch((err) => console.log('Card-share notification error (non-critical):', err));
+      }
+    } catch (error) {
+      console.error('Error sending card-share notifications:', error);
+    }
+  }
+
+  /**
    * Mark messages as read
    */
   async markAsRead(messageIds: string[], userId: string): Promise<{ error: string | null }> {
@@ -726,6 +883,8 @@ export class MessagingService {
         messagePreview = '🎥 Video';
       } else if (message.message_type === 'file') {
         messagePreview = `📄 ${message.file_name || 'Document'}`;
+      } else if (message.message_type === 'card') {
+        messagePreview = `🔖 ${message.card_payload?.title || 'Shared experience'}`;
       } else if (messagePreview.length > 50) {
         messagePreview = messagePreview.substring(0, 50) + '...';
       }

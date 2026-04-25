@@ -20,10 +20,11 @@ export interface Message {
   senderName: string;
   content: string;
   timestamp: string;
-  type: 'text' | 'image' | 'video' | 'file';
+  type: 'text' | 'image' | 'video' | 'file' | 'card';  // ORCH-0667: + 'card'
   fileUrl?: string;
   fileName?: string;
   fileSize?: string;
+  cardPayload?: any;  // ORCH-0667: CardPayload — typed loosely here to avoid circular import
   isMe: boolean;
   unread?: boolean;
   failed?: boolean;

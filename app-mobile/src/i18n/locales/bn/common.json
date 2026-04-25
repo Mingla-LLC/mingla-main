@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "হাঁটতে যান",
   "unknown": "অজানা",
   "time_just_now": "এইমাত্র",
-
   "toast_invite_sent": "আমন্ত্রণ পাঠানো হয়েছে!",
   "toast_invite_sent_msg": "{{name}}-কে সহযোগিতার আমন্ত্রণ পাঠানো হয়েছে",
   "toast_member_promoted": "সদস্যকে পদোন্নতি দেওয়া হয়েছে",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "{{count}}টি বোর্ডে যোগ করা হয়েছে!",
   "toast_added_board_msg": "{{name}}-কে সহযোগিতা বোর্ডে যোগ করা হয়েছে",
   "toast_added_boards_msg": "{{name}}-কে {{count}}টি সহযোগিতা বোর্ডে যোগ করা হয়েছে",
-  "toast_card_shared": "কার্ড শেয়ার করা হয়েছে!",
-  "toast_card_shared_msg": "{{name}}-এর সাথে একটি সংরক্ষিত অভিজ্ঞতা শেয়ার করা হয়েছে",
   "toast_friend_removed": "বন্ধু অপসারিত",
   "toast_friend_removed_msg": "{{name}}-কে আপনার বন্ধু তালিকা থেকে সরানো হয়েছে",
   "toast_user_blocked": "ব্যবহারকারী ব্লক করা হয়েছে",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "হয়রানির জন্য",
   "toast_report_reason_other": "কমিউনিটি নির্দেশিকা লঙ্ঘনের জন্য",
   "user_fallback": "ব্যবহারকারী",
-
   "calendar_access_needed": "ক্যালেন্ডার অ্যাক্সেস প্রয়োজন",
   "calendar_access_needed_msg": "ইভেন্ট যোগ করতে Mingla-র ক্যালেন্ডার অ্যাক্সেস প্রয়োজন। অনুগ্রহ করে ডিভাইস সেটিংসে এটি সক্রিয় করুন।",
   "open_settings": "সেটিংস খুলুন",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "ইভেন্ট যোগ করার সময় সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
   "added_to_calendar": "যোগ করা হয়েছে",
   "add_to_calendar": "ক্যালেন্ডারে যোগ করুন",
-
   "confidence_excellent": "চমৎকার মিল",
   "confidence_good": "ভালো মিল",
   "confidence_fair": "মোটামুটি মিল",
@@ -157,21 +152,18 @@
   "match_time": "সময়",
   "match_popularity": "জনপ্রিয়তা",
   "match_factors": "মিলের কারণসমূহ",
-
   "stat_views": "দেখা হয়েছে",
   "stat_likes": "পছন্দ",
   "stat_saves": "সংরক্ষিত",
   "stat_shares": "শেয়ার",
   "review_count_one": "{{count}}টি রিভিউ",
   "review_count_other": "{{count}}টি রিভিউ",
-
   "profile_update_failed": "প্রোফাইল আপডেট ব্যর্থ",
   "profile_update_failed_msg": "প্রোফাইল আপডেট করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।",
   "saved_experience": "সংরক্ষিত অভিজ্ঞতা",
   "experience": "অভিজ্ঞতা",
   "solo_experience": "একক অভিজ্ঞতা",
   "untitled": "শিরোনামহীন",
-
   "error_sign_in_save": "অভিজ্ঞতা সংরক্ষণ করতে সাইন ইন করুন",
   "error_boundary_title": "কিছু একটা সমস্যা হয়েছে",
   "error_boundary_message": "একটি অপ্রত্যাশিত ত্রুটি ঘটেছে। অনুগ্রহ করে আবার চেষ্টা করুন।"

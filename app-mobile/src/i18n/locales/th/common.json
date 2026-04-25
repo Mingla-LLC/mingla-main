@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "เดินเล่น",
   "unknown": "ไม่ทราบ",
   "time_just_now": "เมื่อสักครู่",
-
   "toast_invite_sent": "ส่งคำเชิญแล้ว!",
   "toast_invite_sent_msg": "ส่งคำเชิญร่วมมือถึง {{name}} แล้ว",
   "toast_member_promoted": "เลื่อนตำแหน่งสมาชิกแล้ว",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "เพิ่มใน {{count}} บอร์ดแล้ว!",
   "toast_added_board_msg": "{{name}} ถูกเพิ่มในบอร์ดร่วมมือแล้ว",
   "toast_added_boards_msg": "{{name}} ถูกเพิ่มใน {{count}} บอร์ดร่วมมือแล้ว",
-  "toast_card_shared": "แชร์การ์ดแล้ว!",
-  "toast_card_shared_msg": "ประสบการณ์ที่บันทึกถูกแชร์กับ {{name}} แล้ว",
   "toast_friend_removed": "ลบเพื่อนแล้ว",
   "toast_friend_removed_msg": "{{name}} ถูกลบออกจากรายชื่อเพื่อนแล้ว",
   "toast_user_blocked": "บล็อกผู้ใช้แล้ว",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "เนื่องจากการคุกคาม",
   "toast_report_reason_other": "เนื่องจากละเมิดหลักเกณฑ์ชุมชน",
   "user_fallback": "ผู้ใช้",
-
   "calendar_access_needed": "ต้องการสิทธิ์เข้าถึงปฏิทิน",
   "calendar_access_needed_msg": "Mingla ต้องการสิทธิ์เข้าถึงปฏิทินเพื่อเพิ่มกิจกรรม กรุณาเปิดใช้งานในการตั้งค่าอุปกรณ์ของคุณ",
   "open_settings": "เปิดการตั้งค่า",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "เกิดข้อผิดพลาดขณะเพิ่มกิจกรรม กรุณาลองอีกครั้ง",
   "added_to_calendar": "เพิ่มแล้ว",
   "add_to_calendar": "เพิ่มในปฏิทิน",
-
   "confidence_excellent": "เข้ากันดีเยี่ยม",
   "confidence_good": "เข้ากันดี",
   "confidence_fair": "เข้ากันพอใช้",
@@ -157,21 +152,18 @@
   "match_time": "เวลา",
   "match_popularity": "ความนิยม",
   "match_factors": "ปัจจัยการจับคู่",
-
   "stat_views": "ยอดดู",
   "stat_likes": "ถูกใจ",
   "stat_saves": "บันทึก",
   "stat_shares": "แชร์",
   "review_count_one": "{{count}} รีวิว",
   "review_count_other": "{{count}} รีวิว",
-
   "profile_update_failed": "อัปเดตโปรไฟล์ล้มเหลว",
   "profile_update_failed_msg": "ไม่สามารถอัปเดตโปรไฟล์ได้ กรุณาลองอีกครั้ง",
   "saved_experience": "ประสบการณ์ที่บันทึก",
   "experience": "ประสบการณ์",
   "solo_experience": "ประสบการณ์เดี่ยว",
   "untitled": "ไม่มีชื่อ",
-
   "error_sign_in_save": "กรุณาเข้าสู่ระบบเพื่อบันทึกประสบการณ์",
   "error_boundary_title": "เกิดข้อผิดพลาด",
   "error_boundary_message": "เราพบข้อผิดพลาดที่ไม่คาดคิด กรุณาลองอีกครั้ง"

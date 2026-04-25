@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "جولة مشي",
   "unknown": "غير معروف",
   "time_just_now": "الآن",
-
   "toast_invite_sent": "تم إرسال الدعوة!",
   "toast_invite_sent_msg": "تم إرسال دعوة التعاون إلى {{name}}",
   "toast_member_promoted": "تمت ترقية العضو",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "تمت الإضافة إلى {{count}} لوحات!",
   "toast_added_board_msg": "تمت إضافة {{name}} إلى لوحة التعاون",
   "toast_added_boards_msg": "تمت إضافة {{name}} إلى {{count}} لوحات تعاون",
-  "toast_card_shared": "تمت مشاركة البطاقة!",
-  "toast_card_shared_msg": "تمت مشاركة تجربة محفوظة مع {{name}}",
   "toast_friend_removed": "تمت إزالة الصديق",
   "toast_friend_removed_msg": "تمت إزالة {{name}} من قائمة أصدقائك",
   "toast_user_blocked": "تم حظر المستخدم",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "بسبب تحرش",
   "toast_report_reason_other": "بسبب انتهاك إرشادات المجتمع",
   "user_fallback": "مستخدم",
-
   "calendar_access_needed": "مطلوب الوصول للتقويم",
   "calendar_access_needed_msg": "يحتاج Mingla إلى الوصول للتقويم لإضافة الأحداث. يرجى تفعيله في إعدادات جهازك.",
   "open_settings": "فتح الإعدادات",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "حدث خطأ أثناء إضافة الحدث. يرجى المحاولة مرة أخرى.",
   "added_to_calendar": "تمت الإضافة",
   "add_to_calendar": "إضافة للتقويم",
-
   "confidence_excellent": "تطابق ممتاز",
   "confidence_good": "تطابق جيد",
   "confidence_fair": "تطابق مقبول",
@@ -157,21 +152,18 @@
   "match_time": "الوقت",
   "match_popularity": "الشعبية",
   "match_factors": "عوامل التطابق",
-
   "stat_views": "المشاهدات",
   "stat_likes": "الإعجابات",
   "stat_saves": "المحفوظات",
   "stat_shares": "المشاركات",
   "review_count_one": "{{count}} تقييم",
   "review_count_other": "{{count}} تقييمات",
-
   "profile_update_failed": "فشل تحديث الملف الشخصي",
   "profile_update_failed_msg": "تعذّر تحديث الملف الشخصي. يرجى المحاولة مرة أخرى.",
   "saved_experience": "تجربة محفوظة",
   "experience": "تجربة",
   "solo_experience": "تجربة فردية",
   "untitled": "بدون عنوان",
-
   "error_sign_in_save": "يرجى تسجيل الدخول لحفظ التجارب",
   "error_boundary_title": "حدث خطأ ما",
   "error_boundary_message": "واجهنا خطأً غير متوقع. يرجى المحاولة مرة أخرى."

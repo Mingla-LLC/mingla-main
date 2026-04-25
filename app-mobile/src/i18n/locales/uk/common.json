@@ -117,8 +117,6 @@
   "toast_added_to_boards": "Додатиed to {{count}} Boards!",
   "toast_added_board_msg": "{{name}} has been added to the collaboration board",
   "toast_added_boards_msg": "{{name}} has been added to {{count}} collaboration boards",
-  "toast_card_shared": "Card Поділитисяd!",
-  "toast_card_shared_msg": "A saved experience has been shared with {{name}}",
   "toast_friend_removed": "Друг Removed",
   "toast_friend_removed_msg": "{{name}} has been removed from your friends list",
   "toast_user_blocked": "Користувач Заблокуватиed",

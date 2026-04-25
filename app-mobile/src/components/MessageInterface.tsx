@@ -33,7 +33,9 @@ import { SwipeableMessage } from "./chat/SwipeableMessage";
 import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
-import { DirectMessage, messagingService } from "../services/messagingService";
+import { DirectMessage, messagingService, CardPayload } from "../services/messagingService";
+import { useSavedCards } from "../hooks/useSavedCards";
+import ExpandedCardModal from "./ExpandedCardModal";  // ORCH-0667
 import { useTranslation } from 'react-i18next';
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { colors as dsColors, spacing as dsSpacing, glass } from "../constants/designSystem";
@@ -56,10 +58,11 @@ interface Message {
   senderName: string;
   content: string;
   timestamp: string;
-  type: "text" | "image" | "video" | "file";
+  type: "text" | "image" | "video" | "file" | "card";
   fileUrl?: string;
   fileName?: string;
   fileSize?: string;
+  cardPayload?: CardPayload;  // ORCH-0667
   isMe: boolean;
   unread?: boolean;
   failed?: boolean;
@@ -114,6 +117,16 @@ interface MessageInterfaceProps {
   currentUserId?: string | null;
   currentUserName?: string | null;
   broadcastSeenIds?: React.MutableRefObject<Set<string>>;
+  /**
+   * ORCH-0664 (REQUIRED): invoked when the chat:{conversationId} broadcast
+   * channel delivers a new incoming message. Owner: ConnectionsPage. The
+   * handler MUST add the message to UI state AND call
+   * broadcastSeenIds.add(msg.id) as a coupled operation (in that order) —
+   * partial implementations re-introduce the I-DEDUP-AFTER-DELIVERY bug
+   * class. Required (not optional) by contract; "no-op fallback" was the
+   * exact pre-0664 shape that silently dropped every received message.
+   */
+  onBroadcastReceive: (msg: DirectMessage) => void;
   isOffline?: boolean;
   onViewProfile?: (userId: string) => void;
 }
@@ -142,6 +155,7 @@ export default function MessageInterface({
   currentUserId = null,
   currentUserName = null,
   broadcastSeenIds: broadcastSeenIdsProp,
+  onBroadcastReceive,
   isOffline = false,
   onViewProfile,
 }: MessageInterfaceProps) {
@@ -166,6 +180,12 @@ export default function MessageInterface({
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
   const [showBoardSelection, setShowBoardSelection] = useState(false);
+  // ORCH-0667: shared-card picker state
+  const [showSavedCardPicker, setShowSavedCardPicker] = useState(false);
+  const [pickerSubmittingCardId, setPickerSubmittingCardId] = useState<string | null>(null);
+  const [expandedCardFromChat, setExpandedCardFromChat] = useState<any | null>(null);
+  const [showExpandedCardFromChat, setShowExpandedCardFromChat] = useState(false);
+  const savedCardsQuery = useSavedCards(currentUserId ?? undefined);
   const [revealedTimestampId, setRevealedTimestampId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
@@ -228,23 +248,20 @@ export default function MessageInterface({
   });
 
   // ── Broadcast receiver (receive-only) ─────────────────────
-  // IMPORTANT: This hook subscribes to the `chat:{conversationId}` broadcast channel.
-  // ConnectionsPage.handleSendMessage depends on this channel being subscribed
-  // so that supabase.channel() returns the existing subscribed channel for sending.
-  // Do NOT remove this hook without moving the channel subscription to ConnectionsPage.
-  const handleBroadcastMessage = useCallback(
-    (_msg: DirectMessage) => {
-      // ConnectionsPage owns all message state — broadcast messages are deduplicated
-      // there via broadcastSeenIds ref + postgres_changes backup delivery.
-    },
-    []
-  );
-
+  // ORCH-0664: this hook subscribes to the `chat:{conversationId}` broadcast
+  // channel for instant incoming-message delivery. The handler is owned by
+  // ConnectionsPage (passed in via `onBroadcastReceive`); MessageInterface
+  // is just the mount point. ConnectionsPage.handleSendMessage also relies
+  // on this channel being subscribed so that `supabase.channel()` returns
+  // the existing subscribed instance for `.send()`. Do NOT remove this hook
+  // without first relocating both the broadcast subscription and the
+  // ConnectionsPage send-path channel reference (tracked as ORCH-0664.D-3 /
+  // HF-0664-A).
   useBroadcastReceiver({
     conversationId,
     currentUserId,
     broadcastSeenIds,
-    onBroadcastMessage: handleBroadcastMessage,
+    onBroadcastMessage: onBroadcastReceive,
   });
 
   // ── Message grouping (memoized) ───────────────────────────
@@ -611,13 +628,53 @@ export default function MessageInterface({
     setShowBoardSelection(false);
   };
 
+  // ORCH-0667: Real flow. Opens the saved-card picker.
+  // The lying success toast and the prop-call to onShareSavedCard (which was
+  // toast-only at the AppHandlers terminal) have been deleted per Constitution
+  // #1/#3/#9. Real success/failure toasts fire from handleSelectCardToShare
+  // based on the actual send result.
   const handleShareSavedCard = () => {
-    onShareSavedCard?.(friend, true);
     setShowMoreOptionsMenu(false);
-    showNotification(
-      t('chat:cardShared'),
-      t('chat:cardSharedMessage', { name: friend.name })
-    );
+    setShowSavedCardPicker(true);
+  };
+
+  // ORCH-0667: tap a card in the picker → send for real, then close + toast.
+  const handleSelectCardToShare = async (card: any) => {
+    if (pickerSubmittingCardId) return;  // double-tap guard
+    if (!conversationId || !currentUserId) {
+      showNotification(
+        t('chat:cardShareFailedTitle'),
+        t('chat:cardShareFailedToast'),
+        'error',
+      );
+      return;
+    }
+
+    setPickerSubmittingCardId(card.id);
+    try {
+      const { message, error } = await messagingService.sendCardMessage(
+        conversationId,
+        currentUserId,
+        card,
+      );
+
+      if (error || !message) {
+        showNotification(
+          t('chat:cardShareFailedTitle'),
+          t('chat:cardShareFailedToast'),
+          'error',
+        );
+        return;
+      }
+
+      showNotification(
+        t('chat:cardSentTitle'),
+        t('chat:cardSentToast', { name: friend.name }),
+      );
+      setShowSavedCardPicker(false);
+    } finally {
+      setPickerSubmittingCardId(null);
+    }
   };
 
   const handleRemoveFriend = () => {
@@ -893,8 +950,13 @@ export default function MessageInterface({
                     fileUrl: item.message.fileUrl,
                     fileName: item.message.fileName,
                     fileSize: item.message.fileSize,
+                    cardPayload: item.message.cardPayload,  // ORCH-0667
                     isMe: item.message.isMe,
                     failed: item.message.failed,
+                  }}
+                  onCardBubbleTap={(payload) => {
+                    setExpandedCardFromChat(payload);
+                    setShowExpandedCardFromChat(true);
                   }}
                   isMe={item.message.isMe}
                   groupPosition={item.groupPosition}
@@ -1312,6 +1374,107 @@ export default function MessageInterface({
             </View>
           </View>
         </View>
+      )}
+
+      {/* ORCH-0667: shared-card picker modal */}
+      {showSavedCardPicker && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t('chat:pickerTitle')}</Text>
+              <TouchableOpacity
+                onPress={() => setShowSavedCardPicker(false)}
+                style={styles.modalCloseButton}
+              >
+                <Icon name="close" size={12} color="rgba(255, 255, 255, 0.72)" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubtitle}>
+              {t('chat:pickerSubtitle', { name: friend.name })}
+            </Text>
+
+            {savedCardsQuery.isLoading ? (
+              <View style={styles.boardList}>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={styles.savedCardSkeletonRow}>
+                    <View style={styles.savedCardSkeletonThumb} />
+                    <View style={styles.savedCardSkeletonText}>
+                      <View style={[styles.savedCardSkeletonBar, { width: '60%' }]} />
+                      <View style={[styles.savedCardSkeletonBar, { width: '40%', marginTop: 6 }]} />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (savedCardsQuery.data?.length ?? 0) === 0 ? (
+              <View style={styles.savedCardEmptyContainer}>
+                <Text style={styles.savedCardEmptyTitle}>
+                  {t('chat:noSavedCardsToShareTitle')}
+                </Text>
+                <Text style={styles.savedCardEmptyBody}>
+                  {t('chat:noSavedCardsToShareBody')}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setShowSavedCardPicker(false)}
+                  style={styles.confirmButton}
+                >
+                  <Text style={styles.confirmButtonText}>{t('chat:ok')}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <ScrollView style={styles.boardList}>
+                {savedCardsQuery.data?.map((card) => {
+                  const isSubmitting = pickerSubmittingCardId === card.id;
+                  const isOtherSubmitting =
+                    !!pickerSubmittingCardId && pickerSubmittingCardId !== card.id;
+                  return (
+                    <TouchableOpacity
+                      key={card.id}
+                      onPress={() => handleSelectCardToShare(card)}
+                      disabled={isSubmitting || isOtherSubmitting}
+                      style={[
+                        styles.savedCardRow,
+                        isSubmitting && { opacity: 0.5 },
+                      ]}
+                    >
+                      {card.image ? (
+                        <Image
+                          source={{ uri: card.image }}
+                          style={styles.savedCardThumb}
+                        />
+                      ) : (
+                        <View style={[styles.savedCardThumb, styles.savedCardThumbPlaceholder]}>
+                          <Icon name="bookmark" size={20} color="rgba(255,255,255,0.5)" />
+                        </View>
+                      )}
+                      <View style={styles.savedCardInfo}>
+                        <Text style={styles.savedCardTitle} numberOfLines={1}>
+                          {card.title}
+                        </Text>
+                        <Text style={styles.savedCardSubtitle} numberOfLines={1}>
+                          {isSubmitting ? t('chat:cardSending') : (card.category || '')}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* ORCH-0667: tap-to-expand shared card from chat (D-4 bundled) */}
+      {showExpandedCardFromChat && expandedCardFromChat && (
+        <ExpandedCardModal
+          visible={showExpandedCardFromChat}
+          card={expandedCardFromChat}
+          onClose={() => {
+            setShowExpandedCardFromChat(false);
+            setExpandedCardFromChat(null);
+          }}
+          onSave={async () => { /* no-op in chat-mounted modal */ }}
+          currentMode="solo"
+        />
       )}
 
       {/* More options bottom sheet — ORCH-0435 */}
@@ -2078,6 +2241,79 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6b7280",
     marginTop: 2,
+  },
+  // ORCH-0667: shared-card picker styles
+  savedCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.05)",
+  },
+  savedCardThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,0,0,0.06)",
+  },
+  savedCardThumbPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  savedCardInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  savedCardTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  savedCardSubtitle: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  savedCardSkeletonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  savedCardSkeletonThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
+  savedCardSkeletonText: {
+    flex: 1,
+  },
+  savedCardSkeletonBar: {
+    height: 10,
+    borderRadius: 4,
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
+  savedCardEmptyContainer: {
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    alignItems: "center",
+    gap: 12,
+  },
+  savedCardEmptyTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+    textAlign: "center",
+  },
+  savedCardEmptyBody: {
+    fontSize: 14,
+    color: "#6b7280",
+    textAlign: "center",
+    marginBottom: 8,
   },
   modalActions: {
     flexDirection: "row",

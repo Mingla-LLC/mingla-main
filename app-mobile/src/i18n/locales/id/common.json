@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "Jalan-Jalan",
   "unknown": "Tidak diketahui",
   "time_just_now": "Baru saja",
-
   "toast_invite_sent": "Undangan Terkirim!",
   "toast_invite_sent_msg": "Undangan kolaborasi telah dikirim ke {{name}}",
   "toast_member_promoted": "Anggota Dipromosikan",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "Ditambahkan ke {{count}} Board!",
   "toast_added_board_msg": "{{name}} telah ditambahkan ke board kolaborasi",
   "toast_added_boards_msg": "{{name}} telah ditambahkan ke {{count}} board kolaborasi",
-  "toast_card_shared": "Kartu Dibagikan!",
-  "toast_card_shared_msg": "Pengalaman tersimpan telah dibagikan dengan {{name}}",
   "toast_friend_removed": "Teman Dihapus",
   "toast_friend_removed_msg": "{{name}} telah dihapus dari daftar teman Anda",
   "toast_user_blocked": "Pengguna Diblokir",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "karena pelecehan",
   "toast_report_reason_other": "karena melanggar pedoman komunitas",
   "user_fallback": "Pengguna",
-
   "calendar_access_needed": "Akses Kalender Diperlukan",
   "calendar_access_needed_msg": "Mingla memerlukan akses kalender untuk menambahkan acara. Silakan aktifkan di pengaturan perangkat Anda.",
   "open_settings": "Buka Pengaturan",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "Terjadi kesalahan saat menambahkan acara. Silakan coba lagi.",
   "added_to_calendar": "Ditambahkan",
   "add_to_calendar": "Tambah ke kalender",
-
   "confidence_excellent": "Sangat Cocok",
   "confidence_good": "Cocok",
   "confidence_fair": "Cukup Cocok",
@@ -157,21 +152,18 @@
   "match_time": "Waktu",
   "match_popularity": "Popularitas",
   "match_factors": "Faktor Kecocokan",
-
   "stat_views": "Dilihat",
   "stat_likes": "Suka",
   "stat_saves": "Simpan",
   "stat_shares": "Bagikan",
   "review_count_one": "{{count}} ulasan",
   "review_count_other": "{{count}} ulasan",
-
   "profile_update_failed": "Gagal Memperbarui Profil",
   "profile_update_failed_msg": "Gagal memperbarui profil. Silakan coba lagi.",
   "saved_experience": "Pengalaman Tersimpan",
   "experience": "Pengalaman",
   "solo_experience": "Pengalaman Solo",
   "untitled": "Tanpa Judul",
-
   "error_sign_in_save": "Silakan masuk untuk menyimpan pengalaman",
   "error_boundary_title": "Terjadi kesalahan",
   "error_boundary_message": "Kami mengalami kesalahan yang tidak terduga. Silakan coba lagi."
