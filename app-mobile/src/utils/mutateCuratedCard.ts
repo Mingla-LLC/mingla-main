@@ -112,7 +112,13 @@ export function buildReplacementStop(
     priceMin: alternative.priceMin,
     priceMax: alternative.priceMax,
     openingHours: alternative.openingHours as Record<string, string>,
-    isOpenNow: true, // Will be computed live by useIsPlaceOpen
+    // ORCH-0677.QA-1: honest unknown (Constitution #9). StopAlternative
+    // doesn't carry openingHours.openNow, so we cannot derive truthfully
+    // here. Consumers compute live via useIsPlaceOpen(openingHours), not
+    // stop.isOpenNow directly — verified at ExpandedCardModal:1191,
+    // ActionButtons:121, ProposeDateTimeModal:128. DiscoverMap:170 uses
+    // strict `=== false` check so null is treated as "unknown" not "closed".
+    isOpenNow: null,
     website: alternative.website,
     lat: alternative.lat,
     lng: alternative.lng,

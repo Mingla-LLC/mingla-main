@@ -483,11 +483,97 @@ if [ -n "$PHOTO_VIOLATIONS" ]; then
   FAIL=1
 fi
 
+# ─── ORCH-0678: I-PRE-PHOTO-BOUNCER-SOLE-WRITER ─────────────────────────────
+# Only run-pre-photo-bouncer/index.ts may write to passes_pre_photo_check (plus
+# the one-time backfill UPDATE in the ORCH-0678 migration). Any other writer
+# breaks Constitutional #2 (one owner per truth) for the new column.
+echo "Checking I-PRE-PHOTO-BOUNCER-SOLE-WRITER..."
+PRE_PHOTO_LEAKS=$(grep -rln "passes_pre_photo_check" \
+    supabase/functions/ \
+    2>/dev/null \
+  | grep -v 'supabase/functions/run-pre-photo-bouncer/' \
+  | grep -v 'supabase/functions/backfill-place-photos/' \
+  | grep -v '__test_gate' \
+  || true)
+if [ -n "$PRE_PHOTO_LEAKS" ]; then
+  # backfill-place-photos READS the column for its eligibility gate; that's
+  # allowed. This gate catches WRITES specifically — narrow the check below.
+  PRE_PHOTO_WRITES=$(grep -rln "\.update.*passes_pre_photo_check\|passes_pre_photo_check\s*:\s*\(true\|false\|verdict\)" \
+      supabase/functions/ \
+      2>/dev/null \
+    | grep -v 'supabase/functions/run-pre-photo-bouncer/' \
+    | grep -v '__test_gate' \
+    || true)
+  if [ -n "$PRE_PHOTO_WRITES" ]; then
+    echo "FAIL: I-PRE-PHOTO-BOUNCER-SOLE-WRITER violated. Only run-pre-photo-bouncer"
+    echo "   may write passes_pre_photo_check. Other write-site detected:"
+    echo "$PRE_PHOTO_WRITES"
+    FAIL=1
+  fi
+fi
+
+# ─── ORCH-0678: I-PHOTO-DOWNLOAD-GATES-ON-PRE-PHOTO ─────────────────────────
+# backfill-place-photos must gate eligibility on passes_pre_photo_check (mode
+# 'pre_photo_passed') or is_servable (mode 'refresh_servable'). The legacy
+# no-action handleLegacy route was deleted; POSTing without an action returns
+# HTTP 400. This gate catches resurrection of either pattern.
+echo "Checking I-PHOTO-DOWNLOAD-GATES-ON-PRE-PHOTO..."
+LEGACY_HANDLER_HITS=$(grep -nE "function handleLegacy\(|return handleLegacy\(" \
+    supabase/functions/backfill-place-photos/index.ts \
+    2>/dev/null \
+  | grep -v '__test_gate' \
+  || true)
+if [ -n "$LEGACY_HANDLER_HITS" ]; then
+  echo "FAIL: I-PHOTO-DOWNLOAD-GATES-ON-PRE-PHOTO violated. ORCH-0678 retired"
+  echo "   handleLegacy. Photo backfill must always go through the action-based"
+  echo "   modes (pre_photo_passed | refresh_servable). Hit lines:"
+  echo "$LEGACY_HANDLER_HITS"
+  FAIL=1
+fi
+# Forbid resurrection of the dropped RPCs as callers in code.
+LEGACY_RPC_HITS=$(grep -rnE "rpc\(['\"]get_places_needing_photos['\"]\)|rpc\(['\"]count_places_needing_photos['\"]\)" \
+    supabase/functions/ \
+    2>/dev/null \
+  | grep -v '__test_gate' \
+  || true)
+if [ -n "$LEGACY_RPC_HITS" ]; then
+  echo "FAIL: I-PHOTO-DOWNLOAD-GATES-ON-PRE-PHOTO violated. ORCH-0678 dropped"
+  echo "   get_places_needing_photos + count_places_needing_photos. Resurrection"
+  echo "   detected:"
+  echo "$LEGACY_RPC_HITS"
+  FAIL=1
+fi
+
+# ─── ORCH-0678: I-TWO-PASS-BOUNCER-RULE-PARITY ──────────────────────────────
+# The Bouncer rule body in _shared/bouncer.ts is the single source of truth
+# for both passes. Hand-rolled rule keywords (B7:no_google_photos, B8:no_stored_photos,
+# B5:social_only, etc.) must NOT appear in any other source file outside the
+# canonical locations (the bouncer module + its tests + the two runner edge fns
+# that pass verdicts through, + backfill-place-photos which logs reasons).
+echo "Checking I-TWO-PASS-BOUNCER-RULE-PARITY..."
+RULE_DUPLICATION=$(grep -rln "B8:no_stored_photos\|B7:no_google_photos\|B5:social_only" \
+    supabase/functions/ \
+    2>/dev/null \
+  | grep -v 'supabase/functions/_shared/bouncer.ts' \
+  | grep -v 'supabase/functions/_shared/__tests__/' \
+  | grep -v 'supabase/functions/run-bouncer/' \
+  | grep -v 'supabase/functions/run-pre-photo-bouncer/' \
+  | grep -v 'supabase/functions/backfill-place-photos/' \
+  | grep -v '__test_gate' \
+  || true)
+if [ -n "$RULE_DUPLICATION" ]; then
+  echo "FAIL: I-TWO-PASS-BOUNCER-RULE-PARITY violated. Bouncer rule strings"
+  echo "   appear outside the canonical files (_shared/bouncer.ts is the only"
+  echo "   source of truth). Hit:"
+  echo "$RULE_DUPLICATION"
+  FAIL=1
+fi
+
 if [ $FAIL -eq 1 ]; then
   echo ""
-  echo "ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 invariant check FAILED."
+  echo "ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 / ORCH-0678 invariant check FAILED."
   exit 1
 fi
 
-echo "All ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 invariant gates pass."
+echo "All ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 / ORCH-0678 invariant gates pass."
 exit 0

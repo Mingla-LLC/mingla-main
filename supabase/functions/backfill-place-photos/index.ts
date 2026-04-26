@@ -32,9 +32,15 @@ serve(async (req: Request) => {
 
     const body = await req.json().catch(() => ({}));
 
-    // ── No action field → legacy path (backward compatibility) ────────────
+    // ORCH-0678: legacy no-action route retired. The handleLegacy path used the
+    // get_places_needing_photos RPC which had no servability gate — that flexibility
+    // was the only working escape from the ORCH-0640 ch06 deadlock, but it's now
+    // obsolete because the action-based 'pre_photo_passed' mode does the same job
+    // correctly via the passes_pre_photo_check column. Constitutional #8 (subtract
+    // before adding). Both RPCs are DROPped in the same migration that adds the
+    // pre-photo columns.
     if (!body.action) {
-      return handleLegacy(supabaseAdmin, body, apiKey);
+      return json({ error: "Missing 'action'. Use action='preview_run', 'create_run', 'run_next_batch', etc." }, 400);
     }
 
     // ── Auth: all action-based requests require admin ─────────────────────
@@ -89,93 +95,34 @@ serve(async (req: Request) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Legacy path — original behavior, no action field
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function handleLegacy(
-  supabaseAdmin: ReturnType<typeof createClient>,
-  body: Record<string, unknown>,
-  apiKey: string,
-): Promise<Response> {
-  const batchSize = Math.min(Number(body.batchSize) || 50, 200);
-  const dryRun = body.dryRun === true;
-
-  const { data: places, error: queryError } = await supabaseAdmin
-    .rpc('get_places_needing_photos', { p_batch_size: batchSize });
-
-  if (queryError) {
-    console.error('[backfill-place-photos] Query error:', queryError);
-    return json({ error: queryError.message }, 500);
-  }
-
-  const { data: countResult } = await supabaseAdmin.rpc('count_places_needing_photos');
-  const totalRemaining = countResult ?? 0;
-
-  if (dryRun) {
-    return json({
-      success: true, dryRun: true, batchSize,
-      candidatesInBatch: places?.length ?? 0,
-      totalRemaining,
-    });
-  }
-
-  let succeeded = 0;
-  let failed = 0;
-  let skipped = 0;
-
-  for (const place of (places ?? [])) {
-    try {
-      const photoMeta = Array.isArray(place.photos) ? place.photos : [];
-      if (photoMeta.length === 0) { skipped++; continue; }
-
-      const storedUrls = await downloadAndStorePhotos(
-        supabaseAdmin, place.google_place_id, photoMeta, apiKey
-      );
-
-      if (storedUrls && storedUrls.length > 0) {
-        // ORCH-0640: card_pool update block REMOVED. place_pool.stored_photo_urls
-        // is the sole photo authority (I-POOL-ONLY-SERVING); card_pool is dropped.
-        succeeded++;
-      } else {
-        await supabaseAdmin
-          .from('place_pool')
-          .update({ stored_photo_urls: ['__backfill_failed__'] })
-          .eq('google_place_id', place.google_place_id);
-        failed++;
-      }
-    } catch (err) {
-      console.error(`[backfill-place-photos] Error processing ${place.google_place_id}:`,
-        err instanceof Error ? err.message : String(err));
-      await supabaseAdmin
-        .from('place_pool')
-        .update({ stored_photo_urls: ['__backfill_failed__'] })
-        .eq('google_place_id', place.google_place_id);
-      failed++;
-    }
-    await new Promise(r => setTimeout(r, 500));
-  }
-
-  return json({
-    success: true,
-    processed: (places?.length ?? 0),
-    succeeded, failed, skipped,
-    remaining: totalRemaining - succeeded,
-  });
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // Action handlers
 // ═══════════════════════════════════════════════════════════════════════════
+//
+// ORCH-0678: legacy no-action handleLegacy() route deleted. It used the
+// get_places_needing_photos + count_places_needing_photos RPCs (also dropped
+// by the ORCH-0678 migration). The two-pass design supersedes it: pre-photo
+// Bouncer sets passes_pre_photo_check, then 'pre_photo_passed' mode below
+// gates eligibility on that column. Constitutional #8 (subtract before adding).
 
 // ── create_run ────────────────────────────────────────────────────────────
 
-// ORCH-0598.11: I-PHOTO-FILTER-EXPLICIT — exactly two named modes.
-//   'initial'           — first-time city setup; filter is_servable=true AND no real photos
-//   'refresh_servable'  — Bouncer-approved maintenance; filter is_servable=true (no photo prereq)
-type BackfillMode = 'initial' | 'refresh_servable';
+// ORCH-0598.11 + ORCH-0678: I-PHOTO-FILTER-EXPLICIT — exactly two named modes.
+//   'pre_photo_passed'  — first-time city setup AFTER pre-photo Bouncer has run.
+//                         Gate: passes_pre_photo_check=true AND no real photos.
+//                         Used post-seed to download photos for places that cleared
+//                         the pre-photo Bouncer pass (ORCH-0678 first pass).
+//                         Replaces the old 'initial' mode whose is_servable gate
+//                         caused the deadlock proven by ORCH-0678 forensics.
+//   'refresh_servable'  — admin maintenance for already-final-bouncer-approved places.
+//                         Gate: is_servable=true (regardless of photo state).
+//                         Use case: forcing photo re-download for a healthy city.
+type BackfillMode = 'pre_photo_passed' | 'refresh_servable';
 
 function parseBackfillMode(raw: unknown): BackfillMode {
-  return raw === 'refresh_servable' ? 'refresh_servable' : 'initial';
+  // ORCH-0678: 'pre_photo_passed' is the default — it's the first-pass mode used
+  // after a city is seeded and pre-photo Bouncer has run. 'refresh_servable' is
+  // the maintenance mode for already-servable places.
+  return raw === 'refresh_servable' ? 'refresh_servable' : 'pre_photo_passed';
 }
 
 interface CityPlaceRow {
@@ -183,7 +130,8 @@ interface CityPlaceRow {
   google_place_id?: string | null;
   photos?: unknown;
   stored_photo_urls?: string[] | null;
-  is_servable?: boolean | null;  // ORCH-0640: replaces ai_approved
+  is_servable?: boolean | null;
+  passes_pre_photo_check?: boolean | null;  // ORCH-0678: pre-photo Bouncer verdict
 }
 
 interface RunPreviewAnalysis {
@@ -193,7 +141,8 @@ interface RunPreviewAnalysis {
   withoutStoredPhotos: number;
   failedPlaces: number;
   eligiblePlaces: number;
-  blockedByNotServable: number;
+  blockedByPrePhoto: number;       // ORCH-0678: counts in 'pre_photo_passed' mode
+  blockedByNotServable: number;    // counts in 'refresh_servable' mode
   blockedByMissingPhotoMetadata: number;
   blockedByMissingGooglePlaceId: number;
   mode: BackfillMode;
@@ -212,12 +161,14 @@ function getStoredPhotoState(urls: string[] | null | undefined): 'missing' | 'fa
   return 'real';
 }
 
-// ORCH-0598.11 + ORCH-0671: mode-aware eligibility analysis.
-//   'initial'          — first-time city setup: is_servable=true AND lacks real photos.
-//                        Skips places that already have photos. is_servable is the gate.
+// ORCH-0598.11 + ORCH-0671 + ORCH-0678: mode-aware eligibility analysis.
+//   'pre_photo_passed' — first-time city setup AFTER pre-photo Bouncer has run:
+//                        passes_pre_photo_check=true AND lacks real photos. Skips
+//                        places that already have photos. The pre-photo Bouncer
+//                        column is the gate. Replaces the broken 'initial' mode.
 //   'refresh_servable' — Bouncer-approved maintenance: is_servable=true. Re-fetches
-//                        photos for the Bouncer-passed set regardless of current
-//                        photo state (admin can intentionally re-download).
+//                        photos for the final-bouncer-passed set regardless of
+//                        current photo state (admin can intentionally re-download).
 function buildRunPreview(places: CityPlaceRow[], mode: BackfillMode) {
   const analysis: RunPreviewAnalysis = {
     totalPlaces: places.length,
@@ -226,6 +177,7 @@ function buildRunPreview(places: CityPlaceRow[], mode: BackfillMode) {
     withoutStoredPhotos: 0,
     failedPlaces: 0,
     eligiblePlaces: 0,
+    blockedByPrePhoto: 0,
     blockedByNotServable: 0,
     blockedByMissingPhotoMetadata: 0,
     blockedByMissingGooglePlaceId: 0,
@@ -234,13 +186,17 @@ function buildRunPreview(places: CityPlaceRow[], mode: BackfillMode) {
   const eligiblePlaces: CityPlaceRow[] = [];
 
   for (const place of places) {
-    // ORCH-0640 ch06: ai_approved replaced by is_servable (Phase-5 retirement per
-    // run-bouncer:7 + DEC-043). Bouncer is the one quality gate.
-    if (place.is_servable === true) analysis.approvedPlaces++;
+    // ORCH-0678 two-pass: in 'pre_photo_passed' mode the gate is passes_pre_photo_check
+    // (set by run-pre-photo-bouncer BEFORE photos exist). In 'refresh_servable' mode
+    // the gate is is_servable (set by run-bouncer AFTER photos exist).
+    const passesGate = mode === 'pre_photo_passed'
+      ? place.passes_pre_photo_check === true
+      : place.is_servable === true;
+    if (passesGate) analysis.approvedPlaces++;
     const storedState = getStoredPhotoState(place.stored_photo_urls);
 
-    if (mode === 'initial') {
-      // INITIAL: skip places that already have real photos
+    if (mode === 'pre_photo_passed') {
+      // PRE_PHOTO_PASSED: skip places that already have real photos
       if (storedState === 'real') {
         analysis.withRealPhotos++;
         continue;
@@ -248,8 +204,8 @@ function buildRunPreview(places: CityPlaceRow[], mode: BackfillMode) {
       analysis.withoutStoredPhotos++;
       if (storedState === 'failed') analysis.failedPlaces++;
 
-      if (place.is_servable !== true) {
-        analysis.blockedByNotServable++;
+      if (place.passes_pre_photo_check !== true) {
+        analysis.blockedByPrePhoto++;
         continue;
       }
     } else {
@@ -290,7 +246,8 @@ async function loadCityPlacesForRun(
   mode: BackfillMode,
 ): Promise<{ places: CityPlaceRow[]; analysis: RunPreviewAnalysis; eligiblePlaces: CityPlaceRow[] }> {
   // PostgREST caps results at 1000 rows (project default). Paginate to get all.
-  // ORCH-0598.11: include is_servable in SELECT — needed for refresh_servable mode.
+  // ORCH-0598.11 + ORCH-0678: include is_servable AND passes_pre_photo_check in
+  // SELECT — both modes need to read their respective gate column.
   const PAGE_SIZE = 1000;
   const allPlaces: CityPlaceRow[] = [];
   let offset = 0;
@@ -298,7 +255,7 @@ async function loadCityPlacesForRun(
   while (true) {
     const { data: page, error: pageErr } = await db
       .from('place_pool')
-      .select('id, google_place_id, photos, stored_photo_urls, is_servable')
+      .select('id, google_place_id, photos, stored_photo_urls, is_servable, passes_pre_photo_check')
       .eq('is_active', true)
       .eq('city_id', cityId)
       .order('created_at', { ascending: true })
@@ -378,16 +335,32 @@ async function handleCreateRun(
 
   let eligiblePlaces: CityPlaceRow[] = [];
   let analysis: RunPreviewAnalysis;
+  let allPlaces: CityPlaceRow[] = [];
   try {
     const preview = await loadCityPlacesForRun(db, cityId, mode);
     eligiblePlaces = preview.eligiblePlaces;
     analysis = preview.analysis;
+    allPlaces = preview.places;
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : 'Failed to load run candidates' }, 500);
   }
 
   if (eligiblePlaces.length === 0) {
-    return json({ status: 'nothing_to_do', totalPlaces: 0, analysis });
+    // ORCH-0678 Constitutional #3: distinguish between "no rows pre-bounced yet"
+    // (operator missed a step) and "pre-bouncer ran and rejected everything" (real
+    // empty). Without this, the operator sees a silent zero and can't tell which.
+    let reason: string | null = null;
+    if (mode === 'pre_photo_passed' && allPlaces.length > 0
+        && allPlaces.every((p) => p.passes_pre_photo_check == null)) {
+      reason = 'No rows have been pre-bounced for this city yet — run pre-photo Bouncer first';
+    } else if (mode === 'pre_photo_passed' && analysis.approvedPlaces === 0
+               && allPlaces.length > 0) {
+      reason = 'Pre-photo Bouncer rejected every row in this city — nothing to download photos for';
+    } else if (mode === 'refresh_servable' && analysis.approvedPlaces === 0
+               && allPlaces.length > 0) {
+      reason = 'No is_servable=true rows in this city — run pre-photo Bouncer + photo backfill + final Bouncer to populate them';
+    }
+    return json({ status: 'nothing_to_do', totalPlaces: 0, analysis, reason });
   }
 
   const totalPlaces = eligiblePlaces.length;
@@ -532,8 +505,11 @@ async function handleRunNextBatch(
     .update({ status: 'running', started_at: new Date().toISOString() })
     .eq('id', batch.id);
 
-  // Process batch
-  const result = await processBatch(db, batch, apiKey);
+  // Process batch — ORCH-0678: pass run.mode through so processBatch picks the
+  // right gate column (passes_pre_photo_check vs is_servable). parseBackfillMode
+  // defensively coerces unknown values (e.g., legacy 'initial' rows from before
+  // the rename) to 'pre_photo_passed' which is the semantically-closest mode.
+  const result = await processBatch(db, batch, apiKey, parseBackfillMode(run.mode));
 
   // Update batch status
   const batchStatus = result.succeeded === 0 && result.failed > 0 ? 'failed' : 'completed';
@@ -625,27 +601,38 @@ async function processBatch(
   db: ReturnType<typeof createClient>,
   batch: { place_pool_ids: string[] },
   apiKey: string,
+  mode: BackfillMode,
 ): Promise<BatchResult> {
   let succeeded = 0;
   let failed = 0;
   let skipped = 0;
   const failedPlaces: BatchResult['failedPlaces'] = [];
 
+  // ORCH-0678 two-pass: per-row eligibility gate is mode-aware. 'pre_photo_passed'
+  // mode gates on passes_pre_photo_check (set BEFORE photos exist, by pre-photo
+  // Bouncer); 'refresh_servable' mode gates on is_servable (set AFTER photos
+  // exist, by final Bouncer). The two columns have separate single writers per
+  // I-PRE-PHOTO-BOUNCER-SOLE-WRITER + I-IS-SERVABLE-SINGLE-WRITER.
+  const gateColumn = mode === 'pre_photo_passed' ? 'passes_pre_photo_check' : 'is_servable';
+
   for (let i = 0; i < batch.place_pool_ids.length; i++) {
     const placeId = batch.place_pool_ids[i];
 
     try {
-      // ORCH-0640 ch06: check if still eligible — Bouncer-approved (is_servable) replaces ai_approved.
+      // Re-check eligibility on the gate column matching this run's mode.
+      // The row could have been deactivated, re-bounced, or had its gate flipped
+      // since run creation; this guard prevents downloading photos for rows that
+      // no longer qualify.
       const { data: place } = await db
         .from('place_pool')
         .select('id, google_place_id, photos, stored_photo_urls')
         .eq('id', placeId)
         .eq('is_active', true)
-        .eq('is_servable', true)
+        .eq(gateColumn, true)
         .maybeSingle();
 
       if (!place) {
-        // Place deleted, deactivated, or Bouncer-rejected since run creation
+        // Place deleted, deactivated, or gate-column-flipped since run creation
         skipped++;
         continue;
       }
@@ -947,8 +934,8 @@ async function handleRetryBatch(
     })
     .eq('id', batchId);
 
-  // Re-process
-  const result = await processBatch(db, batch, apiKey);
+  // Re-process — ORCH-0678: pass run.mode through (see handleRunNextBatch above).
+  const result = await processBatch(db, batch, apiKey, parseBackfillMode(run.mode));
 
   // Update batch status
   const batchStatus = result.succeeded === 0 && result.failed > 0 ? 'failed' : 'completed';

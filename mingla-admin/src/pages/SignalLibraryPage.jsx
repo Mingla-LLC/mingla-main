@@ -123,9 +123,37 @@ function CohortSlider({ signalId, onChange }) {
   );
 }
 
-// ── Run-bouncer trigger (city-wide; required before signal scoring) ──────────
+// ── Bouncer pipeline (3 sequential steps; ORCH-0678 two-pass design) ────────
+//
+// Replaces the single RunBouncerButton with three explicit steps:
+//   1. Pre-Photo Bouncer — runs all rules except B8 (stored photos check).
+//      Writes passes_pre_photo_check column.
+//   2. Photo Backfill — downloads photos for places that survived step 1.
+//      Loops backfill-place-photos run_next_batch until done.
+//   3. Final Bouncer — full ruleset including B8. Writes is_servable column.
+//      Catches photo-download failures.
+//
+// All three buttons are always enabled when a city is selected. Operators
+// read each button's status text to understand pipeline state. This is more
+// robust than state-machine enablement because re-seed scenarios reset the
+// pipeline implicitly.
 
-function RunBouncerButton({ cityId, cityName, onComplete }) {
+function ClusterBreakdown({ data }) {
+  if (!data) return null;
+  return (
+    <div className="text-xs text-[--color-text-tertiary] font-mono space-y-0.5">
+      <div>pass={data.pass_count} · reject={data.reject_count} · written={data.written}</div>
+      <div className="opacity-70">
+        A={data.by_cluster?.A_COMMERCIAL?.pass}/{data.by_cluster?.A_COMMERCIAL?.reject} ·
+        B={data.by_cluster?.B_CULTURAL?.pass}/{data.by_cluster?.B_CULTURAL?.reject} ·
+        C={data.by_cluster?.C_NATURAL?.pass}/{data.by_cluster?.C_NATURAL?.reject} ·
+        X={data.by_cluster?.EXCLUDED?.reject}
+      </div>
+    </div>
+  );
+}
+
+function BouncerStep({ stepNum, label, edgeFn, helpText, cityId, cityName, onComplete }) {
   const { showToast } = useToast();
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState(null);
@@ -138,43 +166,207 @@ function RunBouncerButton({ cityId, cityName, onComplete }) {
     setRunning(true);
     setLastResult(null);
     try {
-      const { data, error } = await invokeWithRefresh("run-bouncer", {
+      const { data, error } = await invokeWithRefresh(edgeFn, {
         body: { city_id: cityId },
       });
       if (error) throw error;
       setLastResult(data);
       showToast(
-        `Bouncer done: ${data?.pass_count ?? 0} pass, ${data?.reject_count ?? 0} reject (${data?.duration_ms ?? 0}ms)`,
+        `${label} done: ${data?.pass_count ?? 0} pass / ${data?.reject_count ?? 0} reject (${data?.duration_ms ?? 0}ms)`,
         "success",
       );
       onComplete?.(data);
     } catch (err) {
-      console.error("[RunBouncerButton]", err);
-      showToast(`Bouncer failed: ${err.message}`, "error");
+      console.error(`[${edgeFn}]`, err);
+      showToast(`${label} failed: ${err.message}`, "error");
     } finally {
       setRunning(false);
     }
   }
 
-  const label = cityName || "selected city";
-
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 border border-[--color-border] rounded p-3">
+      <div className="text-xs uppercase tracking-wide text-[--color-text-tertiary]">
+        Step {stepNum} — {label}
+      </div>
+      <p className="text-xs text-[--color-text-secondary]">{helpText}</p>
       <Button onClick={trigger} disabled={running || !cityId} size="sm">
         {running ? <Spinner size="sm" /> : <Play className="w-3 h-3" />}
-        {running ? `Bouncing ${label}…` : `Run Bouncer for ${label}`}
+        {running ? `Running ${label}…` : `Run ${label} for ${cityName || "selected city"}`}
       </Button>
-      {lastResult && (
+      <ClusterBreakdown data={lastResult} />
+    </div>
+  );
+}
+
+function PhotoBackfillStep({ stepNum, label, helpText, cityId, cityName, country }) {
+  const { showToast } = useToast();
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState(null);
+  // [TRANSITIONAL] inline cancel via ref — full-featured pause/resume lives on
+  // PlacePoolManagementPage. ORCH-0678 admin UI surfaces a simpler launch+monitor.
+  const stopRef = useState({ stop: false })[0];
+
+  async function trigger() {
+    if (!cityId || !cityName || !country) {
+      showToast("Pick a city first (need name + country)", "error");
+      return;
+    }
+    setRunning(true);
+    setProgress({ phase: "creating_run", message: "Creating photo backfill run…" });
+    stopRef.stop = false;
+
+    try {
+      // Step A: create the run with mode='pre_photo_passed' (ORCH-0678).
+      const { data: runData, error: runErr } = await invokeWithRefresh("backfill-place-photos", {
+        body: {
+          action: "create_run",
+          cityId,
+          city: cityName,
+          country,
+          mode: "pre_photo_passed",
+          batchSize: 20,
+        },
+      });
+      if (runErr) throw runErr;
+      if (runData?.status === "nothing_to_do") {
+        setProgress({
+          phase: "done",
+          message: runData.reason || "Nothing to do — no eligible places.",
+          summary: { succeeded: 0, failed: 0, skipped: 0, totalBatches: 0, runId: null },
+        });
+        showToast(runData.reason || "Nothing to do.", "info");
+        return;
+      }
+      if (runData?.status === "already_active") {
+        setProgress({
+          phase: "error",
+          message: `A run is already active for this city (runId ${runData.runId}). Resolve it on the Place Pool Management page first.`,
+        });
+        showToast("Existing run blocks new run", "error");
+        return;
+      }
+      const runId = runData?.runId;
+      if (!runId) throw new Error("create_run returned no runId");
+      setProgress({
+        phase: "running",
+        runId,
+        totalBatches: runData.totalBatches,
+        completedBatches: 0,
+        succeeded: 0,
+        failed: 0,
+        message: `Run created. Processing ${runData.totalPlaces} places in ${runData.totalBatches} batches…`,
+      });
+
+      // Step B: loop run_next_batch until done or cancelled.
+      while (!stopRef.stop) {
+        const { data: batchData, error: batchErr } = await invokeWithRefresh("backfill-place-photos", {
+          body: { action: "run_next_batch", runId },
+        });
+        if (batchErr) throw batchErr;
+        if (batchData?.done) {
+          setProgress({
+            phase: "done",
+            runId,
+            message: "All batches complete.",
+            summary: {
+              succeeded: batchData.runProgress?.totalSucceeded ?? 0,
+              failed: batchData.runProgress?.totalFailed ?? 0,
+              totalBatches: batchData.runProgress?.totalBatches ?? 0,
+            },
+          });
+          showToast(
+            `Photo backfill done: ${batchData.runProgress?.totalSucceeded ?? 0} succeeded, ${batchData.runProgress?.totalFailed ?? 0} failed`,
+            "success",
+          );
+          break;
+        }
+        setProgress((prev) => ({
+          ...prev,
+          completedBatches: batchData.runProgress?.completedBatches ?? prev.completedBatches,
+          succeeded: batchData.runProgress?.totalSucceeded ?? prev.succeeded,
+          failed: batchData.runProgress?.totalFailed ?? prev.failed,
+          totalBatches: batchData.runProgress?.totalBatches ?? prev.totalBatches,
+          message: `Batch ${batchData.batchIndex + 1} of ${batchData.runProgress?.totalBatches ?? "?"}: ${batchData.runProgress?.totalSucceeded ?? 0} succeeded so far`,
+        }));
+      }
+      if (stopRef.stop) {
+        setProgress((prev) => ({ ...prev, phase: "cancelled", message: "Cancelled by operator." }));
+        showToast("Photo backfill cancelled", "info");
+      }
+    } catch (err) {
+      console.error("[backfill-place-photos]", err);
+      setProgress({ phase: "error", message: err?.message || "Photo backfill failed" });
+      showToast(`Photo backfill failed: ${err.message}`, "error");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border border-[--color-border] rounded p-3">
+      <div className="text-xs uppercase tracking-wide text-[--color-text-tertiary]">
+        Step {stepNum} — {label}
+      </div>
+      <p className="text-xs text-[--color-text-secondary]">{helpText}</p>
+      <div className="flex gap-2">
+        <Button onClick={trigger} disabled={running || !cityId} size="sm">
+          {running ? <Spinner size="sm" /> : <Play className="w-3 h-3" />}
+          {running ? `Backfilling ${cityName || "city"}…` : `Run ${label} for ${cityName || "selected city"}`}
+        </Button>
+        {running && (
+          <Button onClick={() => { stopRef.stop = true; }} size="sm" variant="outline">
+            Cancel
+          </Button>
+        )}
+      </div>
+      {progress && (
         <div className="text-xs text-[--color-text-tertiary] font-mono space-y-0.5">
-          <div>pass={lastResult.pass_count} · reject={lastResult.reject_count} · written={lastResult.written}</div>
-          <div className="opacity-70">
-            A={lastResult.by_cluster?.A_COMMERCIAL?.pass}/{lastResult.by_cluster?.A_COMMERCIAL?.reject} ·
-            B={lastResult.by_cluster?.B_CULTURAL?.pass}/{lastResult.by_cluster?.B_CULTURAL?.reject} ·
-            C={lastResult.by_cluster?.C_NATURAL?.pass}/{lastResult.by_cluster?.C_NATURAL?.reject} ·
-            X={lastResult.by_cluster?.EXCLUDED?.reject}
-          </div>
+          <div>{progress.message}</div>
+          {progress.phase === "running" && progress.totalBatches != null && (
+            <div className="opacity-70">
+              batch {progress.completedBatches}/{progress.totalBatches} · succeeded={progress.succeeded} · failed={progress.failed}
+            </div>
+          )}
+          {progress.phase === "done" && progress.summary && (
+            <div className="opacity-70">
+              succeeded={progress.summary.succeeded} · failed={progress.summary.failed} · batches={progress.summary.totalBatches}
+            </div>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function BouncerPipelineButtons({ cityId, cityName, country, onComplete }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <BouncerStep
+        stepNum={1}
+        label="Pre-Photo Bouncer"
+        edgeFn="run-pre-photo-bouncer"
+        helpText="Weeds out places lacking websites, hours, valid types, or google photo metadata. Run this FIRST after seeding — sets passes_pre_photo_check on every active place."
+        cityId={cityId}
+        cityName={cityName}
+      />
+      <PhotoBackfillStep
+        stepNum={2}
+        label="Photo Backfill"
+        helpText={`Downloads photos from Google for places that survived Step 1. Cost ≈ $0.035 per place (~75% cheaper than running this without Step 1 first).`}
+        cityId={cityId}
+        cityName={cityName}
+        country={country}
+      />
+      <BouncerStep
+        stepNum={3}
+        label="Final Bouncer"
+        edgeFn="run-bouncer"
+        helpText="Full ruleset including stored-photo check. Sets is_servable. Catches photo-download failures from Step 2."
+        cityId={cityId}
+        cityName={cityName}
+        onComplete={onComplete}
+      />
     </div>
   );
 }
@@ -861,21 +1053,20 @@ export function SignalLibraryPage() {
         </div>
       </SectionCard>
 
-      {/* Global: Bouncer (city-scoped per ORCH-0598.11; required before signal scoring) */}
+      {/* Global: Bouncer pipeline — ORCH-0678 two-pass design.
+          Three sequential steps: Pre-Photo Bouncer → Photo Backfill → Final Bouncer.
+          All three buttons always-enabled when a city is picked; operators read
+          per-step status text to understand pipeline state. */}
       <SectionCard
-        title={`Bouncer v2 (${selectedCityName ?? "select a city"})`}
-        description="Deterministic gate. Run this BEFORE scoring any signal — sets place_pool.is_servable for every active place in the selected city. Re-run after place_pool refreshes."
+        title={`Bouncer pipeline (${selectedCityName ?? "select a city"})`}
+        description="Two-pass deterministic gate with photo download in between. Run all three steps in order BEFORE scoring any signal. Step 1 → Step 2 → Step 3. Re-run after place_pool refreshes."
       >
-        <div className="border border-[--color-border] rounded p-4">
-          <div className="text-xs uppercase tracking-wide text-[--color-text-tertiary] mb-2">
-            Bouncer pass for {selectedCityName ?? "selected city"}
-          </div>
-          <RunBouncerButton
-            cityId={selectedCityId}
-            cityName={selectedCityName}
-            onComplete={() => setPreviewKey((k) => k + 1)}
-          />
-        </div>
+        <BouncerPipelineButtons
+          cityId={selectedCityId}
+          cityName={selectedCityName}
+          country={selectedCity?.country_name ?? null}
+          onComplete={() => setPreviewKey((k) => k + 1)}
+        />
       </SectionCard>
 
       {/* ORCH-0631: Score-all-signals shortcut — one click runs the scorer for every signal */}

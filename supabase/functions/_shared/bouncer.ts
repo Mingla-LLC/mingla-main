@@ -1,10 +1,22 @@
 // ORCH-0588 Slice 1 — Bouncer v2 pure logic.
+// ORCH-0678 — extended with opts.skipStoredPhotoCheck for two-pass design.
 //
-// Imported by run-bouncer/index.ts (Deno edge fn) and bouncer.test.ts (Deno tests).
+// Imported by:
+//   - run-bouncer/index.ts          → calls bounce(place); writes is_servable
+//   - run-pre-photo-bouncer/index.ts → calls bounce(place, {skipStoredPhotoCheck:true});
+//                                       writes passes_pre_photo_check
+//   - _shared/__tests__/bouncer.test.ts (Deno tests)
+//
 // Zero side effects, zero IO. Pure functions only.
 //
 // Invariant I-BOUNCER-DETERMINISTIC: NO AI, NO keyword matching for category judgment.
 // Type lists + data-integrity rules + cluster-aware website/hours requirements.
+//
+// I-TWO-PASS-BOUNCER-RULE-PARITY (ORCH-0678): rule body must remain identical across
+// both passes. The skipStoredPhotoCheck flag is the ONLY allowed difference — it
+// suppresses B8 in the pre-photo pass (the photo-download step happens between the
+// two passes; pre-photo can't yet check stored photos because they don't exist yet).
+// Adding any other pass-specific branch is a violation — file a new ORCH instead.
 
 export type Cluster = 'A_COMMERCIAL' | 'B_CULTURAL' | 'C_NATURAL' | 'EXCLUDED';
 
@@ -185,7 +197,10 @@ function hasOpeningHours(place: PlaceRow): boolean {
   return false;
 }
 
-export function bounce(place: PlaceRow): BouncerVerdict {
+export function bounce(
+  place: PlaceRow,
+  opts?: { skipStoredPhotoCheck?: boolean },
+): BouncerVerdict {
   const cluster = deriveCluster(place.types);
   const reasons: string[] = [];
 
@@ -214,11 +229,17 @@ export function bounce(place: PlaceRow): BouncerVerdict {
     return { is_servable: false, cluster, reasons: [`B9:child_venue:${childVenueLabel}`] };
   }
 
-  // B7: Google photos required (universal — applies to all clusters including Natural)
+  // B7: Google photos required (universal — applies to all clusters including Natural).
+  // Always checked, including in pre-photo pass — no point queueing zero-photo-metadata
+  // rows for download.
   if (!hasGooglePhotos(place)) reasons.push('B7:no_google_photos');
 
-  // B8: stored (downloaded) photos required (universal)
-  if (!hasStoredPhotos(place)) reasons.push('B8:no_stored_photos');
+  // B8: stored (downloaded) photos required (universal in final pass; SKIPPED in
+  // pre-photo pass per ORCH-0678 two-pass design — pre-photo runs B1-B7+B9 only,
+  // so a place can clear pre-photo, get its photos downloaded, then clear final).
+  if (!opts?.skipStoredPhotoCheck && !hasStoredPhotos(place)) {
+    reasons.push('B8:no_stored_photos');
+  }
 
   // Cluster-specific rules
   if (cluster === 'A_COMMERCIAL') {

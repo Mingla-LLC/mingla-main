@@ -7,6 +7,150 @@
 
 ---
 
+## ORCH-0678 invariants (2026-04-25) — Two-Pass Bouncer (pre-photo + final)
+
+### I-PRE-PHOTO-BOUNCER-SOLE-WRITER
+
+**Rule:** Only `supabase/functions/run-pre-photo-bouncer/index.ts` writes to
+`place_pool.passes_pre_photo_check`, `place_pool.pre_photo_bouncer_reason`, and
+`place_pool.pre_photo_bouncer_validated_at`. The one-time backfill UPDATE in the
+ORCH-0678 migration (`20260430000001_orch_0678_pre_photo_bouncer.sql`) is the
+only other writer (and it runs exactly once when the migration is applied).
+`backfill-place-photos` READS `passes_pre_photo_check` for its eligibility gate
+but never writes it.
+
+**Enforcement:** CI gate `I-PRE-PHOTO-BOUNCER-SOLE-WRITER` block in
+`scripts/ci-check-invariants.sh` — greps for `passes_pre_photo_check` write
+sites (`.update(...)` containing the column, or column literal in object
+construction) outside `run-pre-photo-bouncer/`. Returns 0 hits when clean.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: inject a synthetic write — gate exits 1 naming the file.
+cat > supabase/functions/discover-cards/__test_gate.ts <<'EOF'
+// __test_gate
+await db.from('place_pool').update({ passes_pre_photo_check: true }).eq('id', '...');
+EOF
+bash scripts/ci-check-invariants.sh   # expect exit 1, names discover-cards
+rm supabase/functions/discover-cards/__test_gate.ts
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Why it exists:** Constitutional #2 (one owner per truth). Mirrors
+I-IS-SERVABLE-SINGLE-WRITER. If a second writer of `passes_pre_photo_check`
+appears, the column's correctness drifts from the deterministic rule logic
+in `_shared/bouncer.ts`. ORCH-0678 forensics proved the cost of this class of
+drift: ORCH-0640 ch06 conflated `is_servable` writes by changing the eligibility
+gate, creating a literal deadlock.
+
+**Severity if violated:** S1 (single-writer column ownership is a structural
+correctness invariant; violations cause silent column drift).
+
+**Origin:** Registered 2026-04-25 after ORCH-0678 implementation. Investigation:
+`reports/INVESTIGATION_ORCH-0678_LAGOS_BOUNCER_MASS_REJECT.md`. Spec:
+`specs/SPEC_ORCH-0678_TWO_PASS_BOUNCER.md` §Invariants.
+
+---
+
+### I-PHOTO-DOWNLOAD-GATES-ON-PRE-PHOTO
+
+**Rule:** `backfill-place-photos` action-based modes gate eligibility on
+`passes_pre_photo_check=true` (mode `'pre_photo_passed'`) or `is_servable=true`
+(mode `'refresh_servable'`). NEVER on raw `is_servable IS NULL` or any other
+ad-hoc predicate. The legacy non-action `handleLegacy` route is forbidden —
+POSTing without an `action` field returns HTTP 400. The two RPCs
+`get_places_needing_photos` and `count_places_needing_photos` were dropped in
+the ORCH-0678 migration; resurrecting them as callers is forbidden.
+
+**Enforcement:** CI gate `I-PHOTO-DOWNLOAD-GATES-ON-PRE-PHOTO` block in
+`scripts/ci-check-invariants.sh` — (a) forbids `function handleLegacy(` or
+`return handleLegacy(` in `backfill-place-photos/index.ts`; (b) forbids
+`rpc('get_places_needing_photos')` or `rpc('count_places_needing_photos')`
+anywhere under `supabase/functions/`.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control 1: re-introduce handleLegacy.
+cat >> supabase/functions/backfill-place-photos/index.ts <<'EOF'
+// __test_gate
+async function handleLegacy() { return new Response('ok'); }
+EOF
+bash scripts/ci-check-invariants.sh   # expect exit 1, names handleLegacy
+git checkout -- supabase/functions/backfill-place-photos/index.ts
+bash scripts/ci-check-invariants.sh   # expect exit 0
+
+# Negative control 2: re-introduce the RPC call.
+cat > supabase/functions/backfill-place-photos/__test_gate.ts <<'EOF'
+// __test_gate
+await db.rpc('get_places_needing_photos', { p_batch_size: 50 });
+EOF
+bash scripts/ci-check-invariants.sh   # expect exit 1
+rm supabase/functions/backfill-place-photos/__test_gate.ts
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Why it exists:** prevents recurrence of the ORCH-0640 ch06 deadlock. The
+gate column for first-pass photo download must be one that's set BEFORE photos
+exist (`passes_pre_photo_check`). The legacy no-action route was the only working
+escape from the prior deadlock — preserving it would create a documented vs
+undocumented drift; retiring it forces operators through the correct flow.
+
+**Severity if violated:** S1 (re-introduces the deadlock class that blocked
+Lagos and 8 other cities).
+
+**Origin:** Registered 2026-04-25 after ORCH-0678 implementation. Investigation:
+`reports/INVESTIGATION_ORCH-0678_LAGOS_BOUNCER_MASS_REJECT.md`. Spec:
+`specs/SPEC_ORCH-0678_TWO_PASS_BOUNCER.md` §Invariants.
+
+---
+
+### I-TWO-PASS-BOUNCER-RULE-PARITY
+
+**Rule:** The rule body in `_shared/bouncer.ts` is the single source of truth
+for both Bouncer passes. The only difference between `bounce(place)` and
+`bounce(place, { skipStoredPhotoCheck: true })` is whether B8
+(`B8:no_stored_photos`) appears in `reasons`. No other rule may differ between
+passes. Bouncer rule keywords (B5:social_only, B7:no_google_photos,
+B8:no_stored_photos, etc.) must NOT appear hand-rolled in any source file
+outside `_shared/bouncer.ts` (the bouncer module + its tests + the two runner
+edge fns that pass verdicts through + `backfill-place-photos` which may log
+reasons received from the verdicts).
+
+**Enforcement:** CI gate `I-TWO-PASS-BOUNCER-RULE-PARITY` block in
+`scripts/ci-check-invariants.sh` — greps for the rule keywords across
+`supabase/functions/` excluding the canonical-author files. Returns 0 hits when
+clean.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: introduce a hand-rolled rule check.
+cat > supabase/functions/discover-cards/__test_gate.ts <<'EOF'
+// __test_gate
+if (!hasGooglePhotos(place)) reasons.push('B7:no_google_photos');
+EOF
+bash scripts/ci-check-invariants.sh   # expect exit 1, names discover-cards
+rm supabase/functions/discover-cards/__test_gate.ts
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Why it exists:** prevents rule drift between the two passes. If pre-photo
+and final ever diverge in any rule other than B8, places could pass pre-photo,
+get their photos downloaded ($), then fail final for a NEW reason — silent
+breakage with cost waste. Also prevents a class of bug where someone hand-rolls
+a "lightweight" Bouncer check elsewhere and lets it diverge from the canonical
+rules over time.
+
+**Severity if violated:** S2 (rule drift class; correctness depends on which
+rule diverged and where).
+
+**Origin:** Registered 2026-04-25 after ORCH-0678 implementation. Spec:
+`specs/SPEC_ORCH-0678_TWO_PASS_BOUNCER.md` §Invariants.
+
+---
+
 ## ORCH-0671 invariants (2026-04-25) — Photo Pool admin surface deletion + label/owner/filter discipline
 
 ### I-LABEL-MATCHES-PREDICATE
@@ -658,3 +802,115 @@ F-1 fix). Artifacts:
 `specs/SPEC_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md`,
 `outputs/IMPLEMENTATION_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME_REPORT.md`,
 `outputs/QA_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME_REPORT.md`.
+
+---
+
+## ORCH-0675 Wave 1 invariants (2026-04-25) — Android performance surgical fixes
+
+### I-ANIMATIONS-NATIVE-DRIVER-DEFAULT
+
+**Rule:** All `Animated.timing` and `Animated.spring` calls in the SwipeableCards
+PanResponder swipe-handler region (`app-mobile/src/components/SwipeableCards.tsx`
+lines 1216-1380) AND the DiscoverScreen LoadingGridSkeleton block
+(`app-mobile/src/components/DiscoverScreen.tsx` lines 575-620) MUST use
+`useNativeDriver: true`. Width/height animations are exempt only with explicit
+`// useNativeDriver:false JUSTIFIED: <reason>` inline comment.
+
+**Why:** JS-thread animation drops frames on mid-tier Android (Snapdragon
+600-class). Native driver delegates frame interpolation to the UI thread,
+restoring 60 fps gesture response. ORCH-0675 cycle-1 forensics RC-1 (swipe
+deck) + RC-3 (loading skeleton).
+
+**Enforcement:** CI gate `app-mobile/scripts/ci/check-no-native-driver-false.sh`
+— greps for `useNativeDriver: false` in the two scoped regions, ignores lines
+with `JUSTIFIED:` whitelist comment.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: inject violation in SwipeableCards swipe handler
+sed -i 's/useNativeDriver: true,/useNativeDriver: false,/' \
+  app-mobile/src/components/SwipeableCards.tsx
+bash app-mobile/scripts/ci/check-no-native-driver-false.sh
+# Expected: exit 1 with "I-ANIMATIONS-NATIVE-DRIVER-DEFAULT violation"
+git checkout app-mobile/src/components/SwipeableCards.tsx
+bash app-mobile/scripts/ci/check-no-native-driver-false.sh
+# Expected: exit 0 with "I-ANIMATIONS-NATIVE-DRIVER-DEFAULT: PASS"
+```
+
+**Related artifacts:**
+`Mingla_Artifacts/specs/SPEC_ORCH-0675_WAVE1_ANDROID_PERF.md`,
+`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0675_ANDROID_PERFORMANCE_PARITY.md`.
+
+---
+
+### I-LOCALES-LAZY-LOAD
+
+**Rule:** Only the `en` locale's 23 namespaces may be statically imported in
+`app-mobile/src/i18n/index.ts`. All other 28 languages MUST be loaded
+on-demand via the `localeLoaders` map using dynamic `import()`. The
+`localeLoaders` map MUST contain exactly 28 entries (one per non-en language).
+
+**Why:** Static eager-load of all 667 locale JSONs (29 langs × 23 namespaces)
+adds ~200-500 ms to cold-start parse on lower-tier ARM CPUs. Lazy-load defers
+the cost to language-switch event (rare). ORCH-0675 cycle-1 forensics RC-2
+(i18n eager-loads 667 JSONs).
+
+**Enforcement:** CI gate `app-mobile/scripts/ci/check-i18n-lazy-load.sh` —
+counts static `import .* from './locales/<lang>/'` lines (must equal en count
+of 23) and counts `<lang>: async () =>` loader entries (must be ≥28).
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: inject a non-en static import
+echo "import fr_common from './locales/fr/common.json'" >> \
+  app-mobile/src/i18n/index.ts
+bash app-mobile/scripts/ci/check-i18n-lazy-load.sh
+# Expected: exit 1 with "non-en static locale import" violation
+git checkout app-mobile/src/i18n/index.ts
+bash app-mobile/scripts/ci/check-i18n-lazy-load.sh
+# Expected: exit 0 with "PASS (23 static en imports, 28 lazy loaders)"
+```
+
+**Related artifacts:**
+`Mingla_Artifacts/specs/SPEC_ORCH-0675_WAVE1_ANDROID_PERF.md`.
+
+---
+
+### I-ZUSTAND-PERSIST-DEBOUNCED
+
+**Rule:** Zustand `persist` middleware storage MUST use the
+`debouncedAsyncStorage` wrapper defined in `app-mobile/src/store/appStore.ts`,
+NOT raw `AsyncStorage`. The wrapper MUST include:
+1. A trailing debounce ≥250 ms on `setItem` calls
+2. A `pendingWrites` Map for queued values
+3. A `getItem` that reads pending values first to avoid hydration race
+4. An AppState `'background'`/`'inactive'` listener that calls
+   `flushPendingWrites` synchronously enough to survive process kill
+
+**Why:** Android SQLite-backed AsyncStorage takes 20-200 ms per write on
+mid-tier devices. Heavy swipe sessions write per-swipe, blocking the JS
+thread. Debouncing coalesces to ~1 write per 250 ms window. AppState flush
+prevents data loss on process kill. ORCH-0675 cycle-1 forensics RC-6.
+
+**Enforcement:** CI gate
+`app-mobile/scripts/ci/check-zustand-persist-debounced.sh` — verifies all 5
+required elements present and that raw `createJSONStorage(() => AsyncStorage)`
+is NOT used.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: revert the wrapper to raw AsyncStorage
+sed -i 's/createJSONStorage(() => debouncedAsyncStorage)/createJSONStorage(() => AsyncStorage)/' \
+  app-mobile/src/store/appStore.ts
+bash app-mobile/scripts/ci/check-zustand-persist-debounced.sh
+# Expected: exit 1 with "raw AsyncStorage adapter still present (bypasses debounce)"
+git checkout app-mobile/src/store/appStore.ts
+bash app-mobile/scripts/ci/check-zustand-persist-debounced.sh
+# Expected: exit 0 with "PASS"
+```
+
+**Related artifacts:**
+`Mingla_Artifacts/specs/SPEC_ORCH-0675_WAVE1_ANDROID_PERF.md`.
