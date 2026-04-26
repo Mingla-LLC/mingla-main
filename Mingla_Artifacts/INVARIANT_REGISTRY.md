@@ -7,6 +7,62 @@
 
 ---
 
+## ORCH-0686 invariants (2026-04-26) — Photo backfill mode CHECK alignment + TS/SQL parity
+
+### I-PHOTO-FILTER-EXPLICIT
+
+**Rule:** `photo_backfill_runs.mode` is one of three values:
+
+- `'pre_photo_passed'` — current default; first-pass after pre-photo Bouncer; gates eligibility on `place_pool.passes_pre_photo_check`.
+- `'refresh_servable'` — Bouncer-approved maintenance; gates on `place_pool.is_servable`.
+- `'initial'` — LEGACY alias for historical terminal-state rows; not written from new code.
+
+The TypeScript `BackfillMode` union in `supabase/functions/backfill-place-photos/index.ts` and the SQL CHECK constraint `photo_backfill_runs_mode_check` MUST stay in sync.
+
+**Established by:** ORCH-0598.11 (initial 2-mode form, declared inline in migration `20260424200002_orch_0598_11_launch_city_pipeline.sql:8`), rewritten by ORCH-0686 (3-mode form, persisted as a registry entry — was previously only a migration comment, which let it go stale through ORCH-0678).
+
+**Enforcement:** CI gate `I-DB-ENUM-CODE-PARITY` in `scripts/ci-check-invariants.sh` (see below).
+
+**Test that catches a regression:**
+
+```bash
+# Positive control — tree consistent.
+bash scripts/ci-check-invariants.sh
+# Expect: gate prints "I-DB-ENUM-CODE-PARITY ... OK"
+
+# Verify the live constraint matches.
+psql "$DATABASE_URL" -c "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'photo_backfill_runs_mode_check';"
+# Expect a CHECK whose ARRAY contains 'initial', 'pre_photo_passed', 'refresh_servable'.
+```
+
+---
+
+### I-DB-ENUM-CODE-PARITY
+
+**Rule:** Whenever a TypeScript union or enum value is renamed, added, or removed, and its values are persisted into a column governed by a SQL CHECK constraint, the migration MUST update the constraint in the same change. The TypeScript value set and the SQL CHECK value set MUST be permutation-equal at all times.
+
+**Established by:** ORCH-0686 (root-cause register entry RC-0686). Same class of failure as ORCH-0540 (PL/pgSQL type-resolution drift after flag flip — code change without schema/RPC alignment). Two occurrences was enough; the gate exists so a third cannot ship.
+
+**Enforcement:** CI gate `I-DB-ENUM-CODE-PARITY` block in `scripts/ci-check-invariants.sh`. Currently scoped to the `BackfillMode` ↔ `photo_backfill_runs.mode` pair; future renames append additional checks under the same gate. The gate parses the TS union literal values from `supabase/functions/backfill-place-photos/index.ts`, parses the latest CHECK constraint definition for `photo_backfill_runs_mode_check` from the most recent migration that references it, and asserts the two value sets are permutation-equal. Fails loud naming both sets and the offending file paths.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: add a fake value to the BackfillMode TS union without updating SQL.
+sed -i.bak "s/type BackfillMode = 'pre_photo_passed' | 'refresh_servable';/type BackfillMode = 'pre_photo_passed' | 'refresh_servable' | 'fakemode';/" \
+  supabase/functions/backfill-place-photos/index.ts
+bash scripts/ci-check-invariants.sh
+# Expect: exit 1, "FAIL: I-DB-ENUM-CODE-PARITY violated", names BOTH value sets,
+#         names the offending TS file path.
+mv supabase/functions/backfill-place-photos/index.ts.bak supabase/functions/backfill-place-photos/index.ts
+
+# Positive control: tree consistent.
+bash scripts/ci-check-invariants.sh
+# Expect: gate prints OK.
+```
+
+---
+
 ## ORCH-0678 invariants (2026-04-25) — Two-Pass Bouncer (pre-photo + final)
 
 ### I-PRE-PHOTO-BOUNCER-SOLE-WRITER
@@ -914,3 +970,88 @@ bash app-mobile/scripts/ci/check-zustand-persist-debounced.sh
 
 **Related artifacts:**
 `Mingla_Artifacts/specs/SPEC_ORCH-0675_WAVE1_ANDROID_PERF.md`.
+
+---
+
+## ORCH-0684 invariants (2026-04-26) — Paired-person view signal-system rewire
+
+### I-PERSON-HERO-RPC-USES-USER-PARAMS
+
+**Rule:** `query_person_hero_places_by_signal` MUST consume both `p_user_id` AND `p_person_id` parameters in its body — not just declare them. Specifically, the body must contain LEFT JOINs to `saved_card` (filtered by `profile_id IN (p_user_id, p_person_id)`) AND `user_visits` (filtered by `user_id IN (p_user_id, p_person_id)`) so the per-place ranking can apply joint-pair-history boosts (D-Q2 Option B).
+
+**Why it exists:** ORCH-0684 RC-3 — the RPC declared both parameters but used neither in its body. Two different users in the same city querying the same friend got identical top-9 results. Personalization was structurally impossible at the ranking layer. Reverting to a personalization-blind body (e.g., dropping the JOINs in the saves/visits CTEs) re-introduces the regression.
+
+**Enforcement:** CI gate `I-PERSON-HERO-RPC-USES-USER-PARAMS` in `scripts/ci-check-invariants.sh`. The gate requires structural matches:
+
+- `saved_card sc` JOIN with `profile_id IN (p_user_id, p_person_id)` predicate present
+- `user_visits uv` JOIN with `user_id IN (p_user_id, p_person_id)` predicate present
+
+**Test that catches a regression:**
+
+```bash
+# Negative control — comment out the saves OR visits CTE JOIN body
+# (replace BOOL_OR(...) computation with `false AS viewer_saved` etc.).
+bash scripts/ci-check-invariants.sh
+# Expected: FAIL: missing structural personalization JOINs.
+```
+
+**Established by:** ORCH-0684.
+
+**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`](Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md), `supabase/migrations/20260501000001_orch_0684_person_hero_personalized.sql`.
+
+---
+
+### I-RPC-RETURN-SHAPE-MATCHES-CONSUMER
+
+**Rule:** Edge fn mappers consuming a JSONB blob from an RPC MUST NOT reference field names that don't exist on the source schema. Specifically, `mapPlacePoolRowToCard` in `supabase/functions/get-person-hero-cards/index.ts` reads from a `place_pool` row (snake_case Google shape: `name`, `stored_photo_urls`, `primary_type`, `opening_hours`, `price_level`, `address`, etc.) and MUST NOT reference legacy `card_pool` ghost field names (`raw.title`, `raw.image_url`, `raw.category_slug`, `raw.price_tier`, `raw.tagline`, `raw.total_price_min/max`, `raw.estimated_duration_minutes`, `raw.experience_type`, `raw.shopping_list`, `raw.card_type`).
+
+**Why it exists:** ORCH-0684 RC-1 — the legacy `mapPoolCardToCard` was forked from the deleted `card_pool` shape and never rewired when ORCH-0640 ch06 repointed the RPC source to `place_pool`. Mapper read 17 ghost fields that don't exist on `place_pool` → every card defaulted to `title:"Unknown"`, `imageUrl:null`, `category:""`, `priceTier:"chill"` (fabricated). Bug shipped through ORCH-0668's perf-only QA gate because the QA didn't include "captured cards display real content."
+
+**Enforcement:** CI gate `I-RPC-RETURN-SHAPE-MATCHES-CONSUMER` in `scripts/ci-check-invariants.sh`. The gate isolates the `mapPlacePoolRowToCard` function body via awk extraction (start at `^function mapPlacePoolRowToCard`, end at first `^}`) and greps for `raw\.(title|image_url|category_slug|price_tier|price_tiers|tagline|total_price_min|total_price_max|estimated_duration_minutes|experience_type|shopping_list|card_type)\b`. Function-scope extraction excludes the legitimate `curatedCardToCard` helper which reads similarly-named fields from the curated-experiences edge fn output (not from `place_pool`).
+
+**Test that catches a regression:**
+
+```bash
+# Negative control — inject `raw.tagline` (or any other ghost field) inside
+# mapPlacePoolRowToCard.
+bash scripts/ci-check-invariants.sh
+# Expected: FAIL: mapPlacePoolRowToCard reads card_pool ghost fields: <line>
+```
+
+**Established by:** ORCH-0684.
+
+**Related artifacts:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0684_PAIRED_VIEW_CARDS_NOT_REAL.md`](Mingla_Artifacts/reports/INVESTIGATION_ORCH-0684_PAIRED_VIEW_CARDS_NOT_REAL.md), [`Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`](Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md).
+
+---
+
+### I-PERSON-HERO-CARDS-HAVE-CONTENT
+
+**Rule:** Every card returned by `get-person-hero-cards` MUST satisfy:
+
+- `title !== "Unknown"` AND `title !== ""` — derived from `place_pool.name`
+- `imageUrl !== null` — derived from `place_pool.stored_photo_urls[0]` (non-sentinel)
+- `category !== ""` — derived from `place_pool.primary_type` via `mapPrimaryTypeToMinglaCategory`
+- `priceTier IN {null, 'chill', 'comfy', 'bougie', 'lavish'}` — `null` when `price_level IS NULL`, NEVER fabricated
+- `isOpenNow IN {true, false, null}` — `null` when `opening_hours.openNow` is undefined, NEVER fabricated `true`
+
+The first three are guaranteed by the three-gate filter at the RPC layer (place_pool rows that pass have populated name + stored_photo_urls + primary_type). The last two are Constitution #9 fabrication guards.
+
+**Why it exists:** D-8 meta-discovery from ORCH-0684 investigation. ORCH-0668 closed Grade A on perf-only QA (8s → 215ms) and missed the mapper shape bug because the QA didn't visually inspect cards. Adding a CI smoke test that asserts cards-have-content catches this entire class of regression pre-merge.
+
+**Enforcement:** Documentary contract at `supabase/functions/get-person-hero-cards/mapper.test.ts`. A live HTTP smoke test (`_smoke.test.ts`) was specified per spec §3.8 but not wired into CI in this implementation cycle — full wiring requires CI test JWTs which are not yet in the repo. Filed as ORCH-0684.D-fu-test for follow-up.
+
+**Test that catches a regression:**
+
+```bash
+# Manual probe via real JWT — author's responsibility post-deploy:
+curl -X POST https://<project>.supabase.co/functions/v1/get-person-hero-cards \
+  -H "Authorization: Bearer <jwt>" \
+  -d '{"pairedUserId":"<uuid>","holidayKey":"birthday","categorySlugs":["romantic","play","upscale_fine_dining"],"curatedExperienceType":"romantic","location":{"latitude":35.7796,"longitude":-78.6382},"mode":"default","excludeCardIds":[]}'
+# Expected: every card.title is a real venue name; every card.imageUrl is a
+# Supabase storage URL; every card.category is one of the 13 Mingla canonical
+# categories.
+```
+
+**Established by:** ORCH-0684.
+
+**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`](Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md) §3.8.

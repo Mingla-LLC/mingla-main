@@ -569,11 +569,137 @@ if [ -n "$RULE_DUPLICATION" ]; then
   FAIL=1
 fi
 
+# ─── ORCH-0686: I-DB-ENUM-CODE-PARITY ───────────────────────────────────────
+# The TypeScript BackfillMode union and the SQL CHECK constraint
+# photo_backfill_runs_mode_check MUST reference the same set of values. Same
+# class of failure as ORCH-0540 (PL/pgSQL type-resolution drift after flag flip)
+# and ORCH-0686 (TS rename without SQL update — 14,401 places stranded).
+echo "Checking I-DB-ENUM-CODE-PARITY..."
+
+DBENUM_TS_FILE="supabase/functions/backfill-place-photos/index.ts"
+DBENUM_TS_VALUES=""
+if [ -f "$DBENUM_TS_FILE" ]; then
+  DBENUM_TS_VALUES=$(grep -E "^type BackfillMode " "$DBENUM_TS_FILE" \
+    | grep -oE "'[^']+'" | tr -d "'" | sort -u | tr '\n' ' ' | xargs || true)
+fi
+
+# Find the latest non-ROLLBACK migration that defines photo_backfill_runs_mode_check.
+DBENUM_SQL_FILE=$(ls supabase/migrations/*.sql 2>/dev/null \
+  | grep -v ROLLBACK \
+  | xargs grep -l "photo_backfill_runs_mode_check" 2>/dev/null \
+  | sort | tail -n 1 || true)
+DBENUM_SQL_VALUES=""
+if [ -n "$DBENUM_SQL_FILE" ]; then
+  # Extract the literal values from the actual CHECK (mode IN (...)) clause.
+  # Match only the CHECK line + the immediate continuation, then pull single-quoted
+  # tokens. Avoids matching RAISE EXCEPTION strings and LIKE '%...%' predicates
+  # elsewhere in the migration.
+  DBENUM_SQL_VALUES=$(awk '/CHECK[[:space:]]*\(mode[[:space:]]+IN[[:space:]]*\(/{p=1} p{print; if (/\)/) exit}' "$DBENUM_SQL_FILE" \
+    | grep -oE "'[^']+'" | tr -d "'" | sort -u | tr '\n' ' ' | xargs || true)
+fi
+
+if [ -z "$DBENUM_TS_VALUES" ] || [ -z "$DBENUM_SQL_VALUES" ]; then
+  echo "FAIL: I-DB-ENUM-CODE-PARITY could not extract value sets."
+  echo "   TS file: $DBENUM_TS_FILE (values: '$DBENUM_TS_VALUES')"
+  echo "   SQL file: $DBENUM_SQL_FILE (values: '$DBENUM_SQL_VALUES')"
+  FAIL=1
+else
+  # Subset check: every TS value MUST appear in the SQL CHECK clause.
+  # SQL may carry additional legacy values not in TS (e.g., 'initial' kept as a
+  # legacy alias for historical rows that TS code no longer writes — see
+  # ORCH-0686 spec §3.6 + test case T-02). The bug class this gate prevents is
+  # TS additions/renames that never reach SQL. SQL-only legacy values are fine.
+  DBENUM_MISSING=""
+  for v in $DBENUM_TS_VALUES; do
+    if ! echo " $DBENUM_SQL_VALUES " | grep -q " $v "; then
+      DBENUM_MISSING="$DBENUM_MISSING $v"
+    fi
+  done
+  if [ -n "$DBENUM_MISSING" ]; then
+    echo "FAIL: I-DB-ENUM-CODE-PARITY violated."
+    echo "   BackfillMode TS values ($DBENUM_TS_FILE): $DBENUM_TS_VALUES"
+    echo "   CHECK constraint SQL values ($DBENUM_SQL_FILE): $DBENUM_SQL_VALUES"
+    echo "   Missing from SQL CHECK clause:$DBENUM_MISSING"
+    echo "   Every TS BackfillMode value MUST be present in the SQL CHECK clause."
+    echo "   Update the migration to include the missing value(s)."
+    FAIL=1
+  else
+    echo "  OK (TS=[$DBENUM_TS_VALUES] subset-of SQL=[$DBENUM_SQL_VALUES])"
+  fi
+fi
+
+# ─── ORCH-0684: I-PERSON-HERO-RPC-USES-USER-PARAMS ───────────────────────
+# query_person_hero_places_by_signal must reference both p_user_id and
+# p_person_id in its body (not just declare them). Catches future
+# regressions where the personalization JOINs are accidentally removed.
+# Threshold ≥3 each: 1 in parameter declaration + ≥2 in body uses
+# (saves filter + visits filter in the personalization layer).
+echo "[invariants] Checking I-PERSON-HERO-RPC-USES-USER-PARAMS..."
+PERSON_HERO_RPC_FILE=$(ls supabase/migrations/*orch_0684_person_hero_personalized.sql 2>/dev/null | tail -1)
+if [ -z "$PERSON_HERO_RPC_FILE" ]; then
+  echo "  WARN: ORCH-0684 migration file not found — gate inactive (acceptable until merged)"
+else
+  # Require the structural personalization JOINs that consume the user params:
+  # one for saved_card (saves CTE) and one for user_visits (visits CTE). Both
+  # must filter on (p_user_id, p_person_id). If either is missing, the
+  # personalization layer has been gutted and RC-3 has regressed.
+  SAVES_JOIN=$(grep -E "saved_card.*sc.*profile_id.*IN.*\(p_user_id.*p_person_id\)" "$PERSON_HERO_RPC_FILE" \
+    || grep -B0 -A4 "saved_card sc" "$PERSON_HERO_RPC_FILE" | grep -E "profile_id.*IN.*\(p_user_id" || true)
+  VISITS_JOIN=$(grep -E "user_visits.*uv.*user_id.*IN.*\(p_user_id.*p_person_id\)" "$PERSON_HERO_RPC_FILE" \
+    || grep -B0 -A4 "user_visits uv" "$PERSON_HERO_RPC_FILE" | grep -E "user_id.*IN.*\(p_user_id" || true)
+  if [ -z "$SAVES_JOIN" ] || [ -z "$VISITS_JOIN" ]; then
+    echo "  FAIL: $PERSON_HERO_RPC_FILE missing structural personalization JOINs."
+    [ -z "$SAVES_JOIN" ]  && echo "    - saved_card JOIN filtered by IN (p_user_id, p_person_id) NOT FOUND"
+    [ -z "$VISITS_JOIN" ] && echo "    - user_visits JOIN filtered by IN (p_user_id, p_person_id) NOT FOUND"
+    echo "    Reverting these eliminates D-Q2 Option B personalization (RC-3 regression)."
+    FAIL=1
+  else
+    echo "  OK (saves + visits joint-pair JOINs present)"
+  fi
+fi
+
+# ─── ORCH-0684: I-RPC-RETURN-SHAPE-MATCHES-CONSUMER ──────────────────────
+# get-person-hero-cards's mapPlacePoolRowToCard must read place_pool fields
+# (snake_case Google shape: name, stored_photo_urls, primary_type, price_level,
+# opening_hours, etc.) and MUST NOT read deleted card_pool ghost fields
+# (raw.title / raw.image_url / raw.category_slug / raw.price_tier / raw.tagline
+# / raw.total_price_min/max / raw.estimated_duration_minutes / raw.experience_type
+# / raw.shopping_list / raw.card_type).
+#
+# We isolate only the mapPlacePoolRowToCard function body via awk and then grep
+# inside it. The curatedCardToCard helper in the same file legitimately reads
+# similarly-named fields from the curated-experiences edge fn output (not
+# place_pool), so it is excluded by the function-scope extraction.
+echo "[invariants] Checking I-RPC-RETURN-SHAPE-MATCHES-CONSUMER..."
+MAPPER_FILE="supabase/functions/get-person-hero-cards/index.ts"
+if [ ! -f "$MAPPER_FILE" ]; then
+  echo "  WARN: $MAPPER_FILE not found — gate inactive"
+else
+  # Extract the mapPlacePoolRowToCard function body via awk: start at the
+  # 'function mapPlacePoolRowToCard' line, end at the matching closing brace
+  # at column 0 (top-level function definition).
+  MAPPER_BODY=$(awk '
+    /^function mapPlacePoolRowToCard/ { in_fn=1 }
+    in_fn { print }
+    in_fn && /^}/ { exit }
+  ' "$MAPPER_FILE")
+  GHOST_REFS=$(echo "$MAPPER_BODY" \
+    | grep -nE "raw\.(title|image_url|category_slug|price_tier|price_tiers|tagline|total_price_min|total_price_max|estimated_duration_minutes|experience_type|shopping_list|card_type)\b" \
+    || true)
+  if [ -n "$GHOST_REFS" ]; then
+    echo "  FAIL: mapPlacePoolRowToCard in $MAPPER_FILE reads card_pool ghost fields:"
+    echo "$GHOST_REFS"
+    FAIL=1
+  else
+    echo "  OK"
+  fi
+fi
+
 if [ $FAIL -eq 1 ]; then
   echo ""
-  echo "ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 / ORCH-0678 invariant check FAILED."
+  echo "ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 / ORCH-0678 / ORCH-0684 / ORCH-0686 invariant check FAILED."
   exit 1
 fi
 
-echo "All ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 / ORCH-0678 invariant gates pass."
+echo "All ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 / ORCH-0678 / ORCH-0684 / ORCH-0686 invariant gates pass."
 exit 0
