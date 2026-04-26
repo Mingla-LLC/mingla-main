@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { View } from 'react-native';
+import { View, Platform, StatusBar } from 'react-native';
 import { useCoachMarkContext } from '../contexts/CoachMarkContext';
 
 interface UseCoachMarkResult {
@@ -31,7 +31,21 @@ export function useCoachMark(stepId: number, targetRadius: number = 8): UseCoach
 
     node.measureInWindow((x: number, y: number, width: number, height: number) => {
       if (width === 0 && height === 0) return;
-      registerTarget(stepId, { x, y, width, height, radius: targetRadius });
+
+      // ORCH-0688: Android Y-correction for coach mark spotlight cutout.
+      // The SVG mask in SpotlightOverlay paints in the application-window frame
+      // (which extends behind the status bar under edge-to-edge — see app.json
+      // `edgeToEdgeEnabled: true` + the translucent <StatusBar> at app/index.tsx).
+      // node.measureInWindow on Android returns Y in the application-content
+      // frame (excluding the status-bar zone). The two frames differ by exactly
+      // StatusBar.currentHeight, so the cutout was rendered ~24dp above its
+      // target (founder Samsung Galaxy screenshots: step 2 cutout sat on the
+      // system clock; step 4 cutout sat on a status-bar icon). On iOS the
+      // keyWindow + React root view share one frame, so this branch is a no-op.
+      // Do NOT remove without re-reading SPEC_ORCH-0688_COACH_MARK_ANDROID_OFFSET.md.
+      const correctedY = Platform.OS === 'android' ? y + (StatusBar.currentHeight ?? 0) : y;
+
+      registerTarget(stepId, { x, y: correctedY, width, height, radius: targetRadius });
     });
   }, [stepId, targetRadius, registerTarget]);
 

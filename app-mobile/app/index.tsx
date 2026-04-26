@@ -2480,7 +2480,7 @@ function AppContent() {
               <NavigationProvider>
                 <CoachMarkProvider navigateToTab={(tab: string) => setCurrentPage(tab as any)}>
                 <ErrorBoundary>
-                  <View style={styles.safeArea}>
+                  <View style={styles.rootView}>
                     <StatusBar
                       barStyle={currentPage === "home" || currentPage === "discover" || currentPage === "connections" || currentPage === "likes" ? "light-content" : "dark-content"}
                       translucent={true}
@@ -2766,7 +2766,7 @@ const styles = StyleSheet.create({
   // ORCH-0589 v3 (R1): black — the transparent bottomNavigation from v2 was
   // showing this wrapper through. Page-level backgrounds cover this on non-Swipe
   // pages; the Swipe page (HomePage) already uses black so no change is visible there.
-  safeArea: {
+  rootView: {
     flex: 1,
     backgroundColor: "#000000",
   },

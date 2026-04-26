@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, ReactNode } from 'react';
-import { Dimensions } from 'react-native';
+import { Dimensions, Platform, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabase';
@@ -232,11 +232,22 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       // After scroll settles, register a SYNTHETIC measurement at the known position
       setTimeout(() => {
         // Profile page extends behind status bar — scroll content starts at y=0.
-        // exactScreenY = contentY - scrollY (no insets offset needed)
+        // exactScreenY = contentY - scrollY (no insets offset needed at THIS layer).
+        //
+        // ORCH-0688: Android Y-correction also applied here because the SVG mask in
+        // SpotlightOverlay paints in the application-window frame (which extends
+        // behind the status bar under edge-to-edge), while the synthetic exactScreenY
+        // is computed in the application-content frame. Without the correction, steps
+        // 8-9 (Profile Account Settings + Beta Feedback) would land ~24dp too high on
+        // Samsung One UI. Mirrors the parallel correction in useCoachMark.ts. iOS
+        // branch is a literal no-op (keyWindow + React root share one frame).
+        // Do NOT remove without re-reading SPEC_ORCH-0688_COACH_MARK_ANDROID_OFFSET.md.
         const exactScreenY = offset.contentY - scrollY;
+        const correctedY = Platform.OS === 'android' ? exactScreenY + (StatusBar.currentHeight ?? 0) : exactScreenY;
+
         registerTarget(step, {
           x: offset.contentX,
-          y: exactScreenY,
+          y: correctedY,
           width: offset.width,
           height: offset.height,
           radius: 12,

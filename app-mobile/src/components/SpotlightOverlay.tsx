@@ -7,7 +7,7 @@ import {
   Animated,
   Easing,
   Keyboard,
-  Dimensions,
+  useWindowDimensions,
   AccessibilityInfo,
 } from 'react-native';
 import Svg, { Defs, Rect, Mask } from 'react-native-svg';
@@ -58,7 +58,7 @@ export default function SpotlightOverlay(): React.ReactElement | null {
   const [bubbleHeight, setBubbleHeight] = useState(0);
   const hasEnteredRef = useRef(false);
 
-  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   // ── Accessibility ───────────────────────────────────────────────────────
   useEffect(() => {
