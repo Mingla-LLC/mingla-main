@@ -1,9 +1,19 @@
 # Root Cause Register
 
-> Last updated: 2026-04-25
+> Last updated: 2026-04-26
 > Proven root causes with causal clusters.
 
 ## Root Causes
+
+### RC-0686: TypeScript enum rename without SQL CHECK constraint update (`photo_backfill_runs.mode`)
+- **Discovery date:** 2026-04-26
+- **Proof:** [reports/INVESTIGATION_ORCH-0686_PHOTO_BACKFILL_CREATE_RUN_500.md](Mingla_Artifacts/reports/INVESTIGATION_ORCH-0686_PHOTO_BACKFILL_CREATE_RUN_500.md) — live-fire supabase MCP probe confirmed constraint def `CHECK ((mode = ANY (ARRAY['initial'::text, 'refresh_servable'::text])))`; data layer shows zero rows with new mode value `'pre_photo_passed'` (latest insert 2026-04-20, before ORCH-0678 deploy on 2026-04-25).
+- **Symptoms caused:** Admin UI "Create photo download run" returns "Failed to create run / Edge Function returned a non-2xx status code" for every city. 14,401 pre-bouncer-approved places stranded. ORCH-0682 (Lagos+8-city operational recovery) Steps 2+3 cannot complete via the post-ORCH-0678 admin three-button flow.
+- **Causal chain:** ORCH-0678 spec specified the `BackfillMode` TypeScript union rename `'initial'` → `'pre_photo_passed'` in `backfill-place-photos/index.ts` and admin UI call sites, but did NOT specify an `ALTER TABLE … DROP CONSTRAINT … ADD CONSTRAINT …` migration. Implementor faithfully followed spec; tester PASSed without live-fire of `create_run` end-to-end. Post-deploy, every `INSERT INTO photo_backfill_runs (..., mode='pre_photo_passed', ...)` raises Postgres SQLSTATE 23514 against the stale constraint. Edge fn returns 500. Supabase JS admin client surfaces generic message (body not unwrapped — Constitution #3 sub-finding F-4).
+- **Structural fix (specced, not yet shipped):** [prompts/SPEC_ORCH-0686_PHOTO_BACKFILL_MODE_CONSTRAINT.md](Mingla_Artifacts/prompts/SPEC_ORCH-0686_PHOTO_BACKFILL_MODE_CONSTRAINT.md) — migration amends constraint to `('initial','pre_photo_passed','refresh_servable')` (legacy `'initial'` retained for 18 historical rows, all terminal-state); flips DEFAULT to `'pre_photo_passed'`; adds CI gate `I-DB-ENUM-CODE-PARITY` requiring TS union and SQL CHECK to stay in sync; bundles admin error-body unwrapper helper to surface real Postgres errors in toast.
+- **Status:** Investigated, specced, awaiting SPEC mode return → IMPL → TEST.
+- **Invariants:** `I-PHOTO-FILTER-EXPLICIT` (text rewrite required — currently stale); new `I-DB-ENUM-CODE-PARITY` (registers structural prevention of this exact pattern).
+- **Causal cluster:** Same shape as ORCH-0540 (PL/pgSQL type-resolution drift after flag flip — code change without schema/RPC alignment, missed by headless QA). Lesson: any rename of a persisted-value union or enum REQUIRES a migration step in the same spec, plus mandatory live-fire of an end-to-end write through the constrained column before tester PASS.
 
 ### RC-0664: DM Realtime Receive Silently Dropped (Pre-emptive Dedup)
 - **Discovery date:** 2026-04-25
