@@ -788,6 +788,9 @@ const OnboardingFlow = ({
   const [legalBrowserTitle, setLegalBrowserTitle] = useState('')
   const [legalBrowserVisible, setLegalBrowserVisible] = useState(false)
   const [resendCountdown, setResendCountdown] = useState(0)
+  // Measured grid height for the categories step. Drives per-tile height so
+  // all 11 categories (6 rows × 2 cols) fit at a glance without scrolling.
+  const [categoryGridHeight, setCategoryGridHeight] = useState(0)
   const [otpAttempts, setOtpAttempts] = useState(0)
   const [activeChannel, setActiveChannel] = useState<OtpChannel>('sms')
   const [channelConfirmation, setChannelConfirmation] = useState<string | null>(null)
@@ -2582,16 +2585,32 @@ const OnboardingFlow = ({
 
 
     if (subStep === 'categories') {
+      // 2 columns → ceil(N/2) rows. Recomputes if the category list grows/shrinks.
+      const CATEGORY_ROWS = Math.ceil(categories.length / 2)
+      const CATEGORY_ROW_GAP = 10
+      const computedTileHeight =
+        categoryGridHeight > 0
+          ? Math.floor((categoryGridHeight - CATEGORY_ROW_GAP * (CATEGORY_ROWS - 1)) / CATEGORY_ROWS)
+          : undefined
       return (
         <View style={styles.categoryStepRoot}>
-          <Text style={styles.headline}>{t('onboarding:categories.headline')}</Text>
-          <Text style={styles.body}>{t('onboarding:categories.body')}</Text>
-          <View style={styles.categoryGrid}>
+          <Text style={styles.categoryHeadline}>{t('onboarding:categories.headline')}</Text>
+          <Text style={styles.categoryBody}>{t('onboarding:categories.body')}</Text>
+          <View
+            style={styles.categoryGrid}
+            onLayout={(e) => {
+              const h = e.nativeEvent.layout.height
+              if (h > 0 && Math.abs(h - categoryGridHeight) > 1) {
+                setCategoryGridHeight(h)
+              }
+            }}
+          >
             {categories.map((cat) => (
               <CategoryTile
                 key={cat.slug}
                 slug={cat.slug}
                 name={t(`common:category_${cat.slug}`)}
+                tileHeight={computedTileHeight}
                 icon={({
                   nature: 'trees',
                   icebreakers: 'cafe-outline',
@@ -2882,6 +2901,7 @@ const OnboardingFlow = ({
       hideBottomBar={navState.subStep === 'getting_experiences'}
       disableKeyboardAvoidance={navState.subStep === 'collaborations' || navState.subStep === 'welcome'}
       scrollEnabled={navState.subStep !== 'welcome' && navState.subStep !== 'intents' && navState.subStep !== 'celebration' && navState.subStep !== 'gender_identity' && navState.subStep !== 'collaborations' && navState.subStep !== 'categories'}
+      flushContent={navState.subStep === 'categories'}
       onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
     >
       {renderContent()}
@@ -3229,16 +3249,31 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
   },
+  // Tighter headline/body so the grid below has more room on small Android
+  // devices. The categories step is fit-at-a-glance (no scroll), so every
+  // pixel above the grid eats into tile height.
+  categoryHeadline: {
+    ...typography.xl,
+    fontWeight: fontWeights.bold,
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  categoryBody: {
+    ...typography.sm,
+    fontWeight: fontWeights.regular,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+  },
   categoryGrid: {
     flex: 1,
     width: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    alignContent: 'stretch',
+    alignContent: 'flex-start',
     gap: 10,
-    marginTop: spacing.sm,
-    paddingBottom: spacing.sm,
+    marginTop: 4,
+    paddingBottom: spacing.xs,
   },
   // ─── Selection Tiles (Budget, Transport, Travel) ───
   tileGrid: {

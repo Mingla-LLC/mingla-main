@@ -40,6 +40,11 @@ interface OnboardingShellProps {
   hideBottomBar?: boolean;
   disableKeyboardAvoidance?: boolean;
   scrollEnabled?: boolean;
+  // When true, the scroll contentContainer uses a tight bottom padding
+  // instead of the default 160. Use for fit-at-a-glance, non-scrollable
+  // steps (e.g. categories) where the children should sit flush above the
+  // bottom CTA bar instead of leaving ~160px of empty space.
+  flushContent?: boolean;
   onBackToWelcome?: () => void;
   children: React.ReactNode;
 }
@@ -57,6 +62,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
   hideBottomBar = false,
   disableKeyboardAvoidance = false,
   scrollEnabled = true,
+  flushContent = false,
   onBackToWelcome,
   children,
 }) => {
@@ -284,6 +290,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
             styles.scrollContent,
             hideBottomBar && { paddingBottom: 160 + insets.bottom },
             !scrollEnabled && styles.scrollContentFixed,
+            flushContent && { paddingBottom: spacing.md },
           ]}
           scrollEnabled={scrollEnabled}
           showsVerticalScrollIndicator={false}
