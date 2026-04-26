@@ -7,7 +7,12 @@ export async function fetchPersonHeroCards(params: {
   categorySlugs: string[];
   curatedExperienceType: string | null;
   location: { latitude: number; longitude: number };
-  mode?: "default" | "shuffle";
+  // ORCH-0684 D-Q4: widened to add explicit "individual" force-off.
+  // "default" lets the edge fn auto-decide bilateral when both users meet
+  // the preference threshold; "individual" explicitly blocks auto-promotion.
+  mode?: "default" | "shuffle" | "bilateral" | "individual";
+  isCustomHoliday?: boolean;
+  yearsElapsed?: number;             // ORCH-0684: anniversary detection
   excludeCardIds?: string[];
 }): Promise<HolidayCardsResponse> {
   const { data: sessionData } = await supabase.auth.getSession();
@@ -29,6 +34,8 @@ export async function fetchPersonHeroCards(params: {
         curatedExperienceType: params.curatedExperienceType,
         location: params.location,
         mode: params.mode ?? "default",
+        isCustomHoliday: params.isCustomHoliday,
+        yearsElapsed: params.yearsElapsed,
         excludeCardIds: params.excludeCardIds,
       }),
     }

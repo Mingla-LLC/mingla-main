@@ -4,13 +4,10 @@
 //
 // This file is retained for the `HolidayCardsResponse` and `HolidayCard` type
 // definitions, which ARE imported externally (usePairedCards.ts,
-// usePersonHeroCards.ts, personHeroCardsService.ts).
+// personHeroCardsService.ts).
 //
-// Kept imports: `supabase` and `supabaseUrl` are unused after the function
-// deletions but are safe-harmless re-exports if any future code path needs them
-// for holiday-related reads. If a future cleanup pass confirms they have zero
-// type-level use either, move `HolidayCard` + `HolidayCardsResponse` into
-// `types/holidayTypes.ts` and delete this file entirely (ORCH-0573 backlog).
+// ORCH-0684 HF-2 cleanup: dropped unused `supabase, supabaseUrl` re-imports
+// per Constitution #8. The original ORCH-0573 backlog comment is now resolved.
 
 export interface HolidayCard {
   id: string;
@@ -37,9 +34,16 @@ export interface HolidayCard {
   experienceType: string | null;
   categories: string[] | null;
   shoppingList: unknown[] | null;
+  // ORCH-0684 telemetry passthrough — additive optional fields, not consumed by current UI
+  isOpenNow?: boolean | null;
+  distanceM?: number | null;
+  signalId?: string | null;
+  signalScore?: number | null;
 }
 
 export interface HolidayCardsResponse {
   cards: HolidayCard[];
   hasMore: boolean;
+  // ORCH-0684 D-Q1: optional empty-state explainer mirroring ORCH-0677 contract.
+  summary?: { emptyReason: string };
 }

@@ -29,6 +29,9 @@ export const personCardKeys = {
   all: ['personCards'] as const,
   hero: (pairedUserId: string, holidayKey: string) =>
     [...personCardKeys.all, 'hero', pairedUserId, holidayKey] as const,
-  paired: (pairedUserId: string, holidayKey: string, locationKey: string) =>
-    [...personCardKeys.all, 'paired', pairedUserId, holidayKey, locationKey] as const,
+  // ORCH-0684 D-Q4: `mode` parameter added so individual / bilateral / shuffle
+  // cache separately. Default 'default' preserves backwards-compat with old
+  // call sites that pass 3 args.
+  paired: (pairedUserId: string, holidayKey: string, locationKey: string, mode: string = 'default') =>
+    [...personCardKeys.all, 'paired', pairedUserId, holidayKey, locationKey, mode] as const,
 };

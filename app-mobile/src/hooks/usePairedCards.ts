@@ -7,12 +7,20 @@ import { personCardKeys } from "./queryKeys";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
+export type PairedCardsMode = "default" | "individual" | "bilateral";
+
 interface UsePairedCardsParams {
   pairedUserId: string;
-  holidayKey: string; // "birthday" | holiday.id | customHoliday.id
+  holidayKey: string;
   location: { latitude: number; longitude: number };
   sections: HolidayCardSection[];
   excludeCardIds?: string[];
+  // ORCH-0684 D-Q4: explicit user override of bilateral auto-detect.
+  // "default" lets the edge fn auto-decide; "individual" forces off; "bilateral" forces on.
+  mode?: PairedCardsMode;
+  // ORCH-0684 D-Q1: anniversary detection for custom holidays.
+  isCustomHoliday?: boolean;
+  yearsElapsed?: number;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -59,10 +67,11 @@ export function usePairedCards(params: UsePairedCardsParams | null) {
   const derived = params ? sectionsToSlugsAndType(params.sections) : null;
   const hasValidLocation = !!params && isValidLocation(params.location);
   const locKey = params ? locationKey(params.location) : "";
+  const mode: PairedCardsMode = params?.mode ?? "default";
 
   return useQuery<HolidayCardsResponse>({
     queryKey: params
-      ? personCardKeys.paired(params.pairedUserId, params.holidayKey, locKey)
+      ? personCardKeys.paired(params.pairedUserId, params.holidayKey, locKey, mode)
       : personCardKeys.all,
     queryFn: () =>
       fetchPersonHeroCards({
@@ -71,7 +80,9 @@ export function usePairedCards(params: UsePairedCardsParams | null) {
         categorySlugs: derived!.categorySlugs,
         curatedExperienceType: derived!.curatedExperienceType,
         location: params!.location,
-        mode: "default",
+        mode,
+        isCustomHoliday: params!.isCustomHoliday,
+        yearsElapsed: params!.yearsElapsed,
         excludeCardIds: params!.excludeCardIds,
       }),
     enabled: hasValidLocation,
@@ -98,7 +109,9 @@ export function useShufflePairedCards() {
       holidayKey: string,
       sections: HolidayCardSection[],
       location: { latitude: number; longitude: number },
-      excludeCardIds?: string[]
+      excludeCardIds?: string[],
+      isCustomHoliday?: boolean,
+      yearsElapsed?: number,
     ): Promise<void> => {
       const { categorySlugs, curatedExperienceType } =
         sectionsToSlugsAndType(sections);
@@ -110,14 +123,19 @@ export function useShufflePairedCards() {
         curatedExperienceType,
         location,
         mode: "shuffle",
+        isCustomHoliday,
+        yearsElapsed,
         excludeCardIds,
       });
 
       const locK = locationKey(location);
 
-      // Replace the cached data so the UI updates immediately
+      // Replace the cached data so the UI updates immediately.
+      // ORCH-0684: shuffle writes into the "default"-mode key so the next
+      // render in default mode shows the shuffled set; explicit-mode users
+      // (individual/bilateral) get their own caches.
       queryClient.setQueryData(
-        personCardKeys.paired(pairedUserId, holidayKey, locK),
+        personCardKeys.paired(pairedUserId, holidayKey, locK, "default"),
         result
       );
     },
