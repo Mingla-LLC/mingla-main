@@ -14,7 +14,7 @@ import { SeedPage } from "./pages/SeedPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { AdminPage } from "./pages/AdminPage";
 import { PlacePoolManagementPage } from "./pages/PlacePoolManagementPage";
-import { PhotoPoolManagementPage } from "./pages/PhotoPoolManagementPage"; // ORCH-0640 ch08: reattached from orphan
+// ORCH-0671: PhotoPoolManagementPage DELETED — bouncer-blind ghost page replaced by Photos tab on Place Pool page.
 import { UserManagementPage } from "./pages/UserManagementPage";
 import { ContentModerationPage } from "./pages/ContentModerationPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
@@ -37,7 +37,7 @@ const PAGES = {
   tables: TableBrowserPage,
   seed: SeedPage,
   placepool: PlacePoolManagementPage,
-  photos: PhotoPoolManagementPage,   // ORCH-0640 ch08: route added
+  // ORCH-0671: 'photos' route deleted — getTabFromHash falls back to 'overview' via PAGES[hash] guard.
   feedback: BetaFeedbackPage,
   reports: ReportsPage,
   email: EmailPage,

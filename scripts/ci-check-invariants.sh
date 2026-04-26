@@ -382,11 +382,112 @@ else
   echo "  (deno not on PATH — I-CURATED-REVERSEANCHOR-NEEDS-COMBOS skipped)"
 fi
 
+# ─── ORCH-0671: I-LABEL-MATCHES-PREDICATE ───────────────────────────────────
+# No "AI Approved" / "AI Validated" labels in admin UI. Underlying data is the
+# bouncer signal (is_servable); the legacy ai_approved column was dropped by
+# ORCH-0640. Inverse-naming = Constitution #9 violation (operator-trust framing).
+# See SPEC_ORCH-0671_PHOTO_POOL_DELETE_AND_RELABEL.md §6 + §3.7 Gate 1.
+echo "Checking I-LABEL-MATCHES-PREDICATE..."
+LABEL_VIOLATIONS=$(git grep -lE "AI[ -]?(Approved|Validated)" \
+    mingla-admin/src/ \
+    2>/dev/null \
+  | grep -vE '\.md$' \
+  || true)
+if [ -n "$LABEL_VIOLATIONS" ]; then
+  echo "FAIL: I-LABEL-MATCHES-PREDICATE violation(s):"
+  echo "  Admin UI label says 'AI Approved' or 'AI Validated' but the data is the"
+  echo "  bouncer signal. Rename to 'Bouncer Approved' or 'Servable'."
+  echo "$LABEL_VIOLATIONS"
+  FAIL=1
+fi
+
+# ─── ORCH-0671: I-OWNER-PER-OPERATION-TYPE ──────────────────────────────────
+# Every value allowed by admin_backfill_log.operation_type CHECK constraint MUST
+# have >=1 consumer in supabase/functions/. New operation_type values without a
+# consumer create zombie pending rows (per ORCH-0671's 17 zombies, $3,283.98
+# estimated, $0 actual API spend).
+echo "Checking I-OWNER-PER-OPERATION-TYPE..."
+# ORCH-0671: exclude *ROLLBACK*.sql files from scan — they're emergency-only
+# manual-apply migrations that intentionally restore pre-cutover state and
+# would falsely re-trip gates the cutover migration just resolved.
+LATEST_OP_CONSTRAINT=$(ls -1 supabase/migrations/*.sql 2>/dev/null \
+  | grep -v ROLLBACK \
+  | xargs grep -l "admin_backfill_log_operation_type_check" 2>/dev/null \
+  | sort -r | head -1)
+if [ -n "$LATEST_OP_CONSTRAINT" ]; then
+  # ORCH-0671: extract values from the CHECK constraint definition specifically
+  # (using surrounding lines around "ADD CONSTRAINT") to avoid picking up
+  # operation_type filters in DELETE / SELECT / DO-block assertions elsewhere
+  # in the same file.
+  ALLOWED_VALUES=$(grep -A 2 "ADD CONSTRAINT admin_backfill_log_operation_type_check" "$LATEST_OP_CONSTRAINT" \
+    | grep -oE "operation_type[[:space:]]*(=|IN)[[:space:]]*\(?'[^']+'(,[[:space:]]*'[^']+')*\)?" \
+    | tail -1 \
+    | grep -oE "'[^']+'" \
+    | tr -d "'")
+  for op_value in $ALLOWED_VALUES; do
+    # ORCH-0671: regex tolerates JS/TS supabase client pattern
+    #   .eq("operation_type", "place_refresh")
+    # which has a closing quote on the column name before the comma+value.
+    CONSUMER_COUNT=$(git grep -lE "operation_type[\"']?[[:space:]]*[,=]?[[:space:]]*[\"']${op_value}[\"']" \
+        supabase/functions/ \
+        2>/dev/null | wc -l)
+    if [ "$CONSUMER_COUNT" -lt 1 ]; then
+      echo "FAIL: I-OWNER-PER-OPERATION-TYPE violation:"
+      echo "  admin_backfill_log.operation_type allows '$op_value' but no consumer in supabase/functions/"
+      FAIL=1
+    fi
+  done
+fi
+
+# ─── ORCH-0671: I-PHOTO-FILTER-EXPLICIT-EXTENSION ───────────────────────────
+# Every Postgres function named admin_*photo* MUST gate aggregations on
+# is_servable IS TRUE. Exception: function bodies containing the literal string
+# 'RAW POOL VIEW' justify intentional unfiltered aggregation. Per ORCH-0671,
+# the deleted Photo Pool page's 5 RPCs filtered only on is_active and produced
+# 65-95% noise from bouncer-rejected places.
+echo "Checking I-PHOTO-FILTER-EXPLICIT-EXTENSION..."
+# ORCH-0671: exclude *ROLLBACK*.sql files — rollback intentionally restores
+# pre-cutover bouncer-blind RPCs that this gate would otherwise re-flag.
+PHOTO_RPC_FILES=$(grep -lE "CREATE (OR REPLACE )?FUNCTION public\.admin_[a-z_]*photo[a-z_]*" \
+  supabase/migrations/*.sql 2>/dev/null \
+  | grep -v ROLLBACK \
+  | sort -r)
+PHOTO_VIOLATIONS=""
+for f in $PHOTO_RPC_FILES; do
+  FN_NAMES=$(grep -oE "CREATE (OR REPLACE )?FUNCTION public\.admin_[a-z_]*photo[a-z_]*" "$f" \
+    | sed -E 's/CREATE (OR REPLACE )?FUNCTION public\.//')
+  for fn_name in $FN_NAMES; do
+    LATEST_FOR_FN=$(grep -lE "CREATE (OR REPLACE )?FUNCTION public\.${fn_name}" \
+      supabase/migrations/*.sql 2>/dev/null | grep -v ROLLBACK | sort -r | head -1)
+    if [ "$f" != "$LATEST_FOR_FN" ]; then continue; fi
+    # ORCH-0671 enhancement: skip if a LATER migration DROPs the function (function
+    # no longer exists live in DB; the historical CREATE is dead code in source).
+    # This handles the post-deletion case where the spec gate would otherwise
+    # falsely flag historical CREATE migrations after a clean DROP. Documented
+    # as Discovery D-1 in IMPLEMENTATION_ORCH-0671_REPORT.md (spec §3.7 gate logic gap).
+    LATEST_DROP=$(grep -lE "DROP FUNCTION (IF EXISTS )?public\.${fn_name}" \
+      supabase/migrations/*.sql 2>/dev/null | grep -v ROLLBACK | sort -r | head -1)
+    if [ -n "$LATEST_DROP" ] && [[ "$LATEST_DROP" > "$f" ]]; then continue; fi
+    if ! grep -E "is_servable|RAW POOL VIEW" "$f" > /dev/null 2>&1; then
+      PHOTO_VIOLATIONS="$PHOTO_VIOLATIONS\n  $fn_name (defined in $f) lacks is_servable filter and no RAW POOL VIEW comment"
+    fi
+  done
+done
+if [ -n "$PHOTO_VIOLATIONS" ]; then
+  echo "FAIL: I-PHOTO-FILTER-EXPLICIT-EXTENSION violation(s):"
+  printf '%b\n' "$PHOTO_VIOLATIONS"
+  echo "  Every admin_*photo* RPC must filter on is_servable IS TRUE,"
+  echo "  OR the function body must contain a 'RAW POOL VIEW' comment justifying"
+  echo "  the unfiltered aggregation (rare; e.g. admin tooling that intentionally"
+  echo "  needs to see the entire pool including bouncer-rejected places)."
+  FAIL=1
+fi
+
 if [ $FAIL -eq 1 ]; then
   echo ""
-  echo "ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0677 invariant check FAILED."
+  echo "ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 invariant check FAILED."
   exit 1
 fi
 
-echo "All ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0677 invariant gates pass."
+echo "All ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 invariant gates pass."
 exit 0

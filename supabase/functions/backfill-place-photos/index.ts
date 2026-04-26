@@ -170,7 +170,7 @@ async function handleLegacy(
 // ── create_run ────────────────────────────────────────────────────────────
 
 // ORCH-0598.11: I-PHOTO-FILTER-EXPLICIT — exactly two named modes.
-//   'initial'           — first-time city setup; filter ai_approved=true AND no real photos
+//   'initial'           — first-time city setup; filter is_servable=true AND no real photos
 //   'refresh_servable'  — Bouncer-approved maintenance; filter is_servable=true (no photo prereq)
 type BackfillMode = 'initial' | 'refresh_servable';
 
@@ -184,7 +184,6 @@ interface CityPlaceRow {
   photos?: unknown;
   stored_photo_urls?: string[] | null;
   is_servable?: boolean | null;  // ORCH-0640: replaces ai_approved
-  is_servable?: boolean | null;
 }
 
 interface RunPreviewAnalysis {
@@ -194,7 +193,6 @@ interface RunPreviewAnalysis {
   withoutStoredPhotos: number;
   failedPlaces: number;
   eligiblePlaces: number;
-  blockedByAiApproval: number;
   blockedByNotServable: number;
   blockedByMissingPhotoMetadata: number;
   blockedByMissingGooglePlaceId: number;
@@ -214,10 +212,9 @@ function getStoredPhotoState(urls: string[] | null | undefined): 'missing' | 'fa
   return 'real';
 }
 
-// ORCH-0598.11: mode-aware eligibility analysis.
-//   'initial'          — original behavior: ai_approved=true AND lacks real photos.
-//                        Used for first-time city setup. Skips places that already
-//                        have photos. ai_approved is the gate.
+// ORCH-0598.11 + ORCH-0671: mode-aware eligibility analysis.
+//   'initial'          — first-time city setup: is_servable=true AND lacks real photos.
+//                        Skips places that already have photos. is_servable is the gate.
 //   'refresh_servable' — Bouncer-approved maintenance: is_servable=true. Re-fetches
 //                        photos for the Bouncer-passed set regardless of current
 //                        photo state (admin can intentionally re-download).
@@ -229,7 +226,6 @@ function buildRunPreview(places: CityPlaceRow[], mode: BackfillMode) {
     withoutStoredPhotos: 0,
     failedPlaces: 0,
     eligiblePlaces: 0,
-    blockedByAiApproval: 0,
     blockedByNotServable: 0,
     blockedByMissingPhotoMetadata: 0,
     blockedByMissingGooglePlaceId: 0,
@@ -253,7 +249,7 @@ function buildRunPreview(places: CityPlaceRow[], mode: BackfillMode) {
       if (storedState === 'failed') analysis.failedPlaces++;
 
       if (place.is_servable !== true) {
-        analysis.blockedByAiApproval++;  // field name kept for backward compat in report
+        analysis.blockedByNotServable++;
         continue;
       }
     } else {

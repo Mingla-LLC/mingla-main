@@ -43,9 +43,6 @@ export function RefreshTab({ city, cities: _cities, onRefresh, onRefreshChange, 
   const [preview, setPreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
 
-  // Pool health (from admin_pool_stats_overview.refresh_health)
-  const [poolHealth, setPoolHealth] = useState(null);
-
   // History (last 20 runs for this city)
   const [history, setHistory] = useState([]);
 
@@ -63,7 +60,6 @@ export function RefreshTab({ city, cities: _cities, onRefresh, onRefreshChange, 
     if (!city) {
       setActiveRun(null);
       setBatches([]);
-      setPoolHealth(null);
       setHistory([]);
       return;
     }
@@ -99,15 +95,12 @@ export function RefreshTab({ city, cities: _cities, onRefresh, onRefreshChange, 
         onRefreshChange?.(false);
       }
 
-      // Pool health (admin_pool_stats_overview RPC)
-      try {
-        const { data: stats } = await supabase.rpc("admin_pool_stats_overview");
-        if (!cancelled && stats?.refresh_health) {
-          setPoolHealth(stats.refresh_health);
-        }
-      } catch (err) {
-        console.warn("[RefreshTab] pool health load failed:", err?.message);
-      }
+      // ORCH-0671: Pool Health panel + admin_pool_stats_overview RPC call deleted.
+      // The RPC was already failing silently in production (function dropped from live DB
+      // by an earlier ORCH; catch swallowed PGRST202 — Constitution #3 violation). The
+      // panel was a global stat misplaced in a per-city refresh tab. If a global pool-
+      // health stat is wanted later, it gets a new home (likely Overview page) in a
+      // separate ORCH. See spec §1 Q-671-2.
 
       // Run history
       try {
@@ -427,18 +420,6 @@ export function RefreshTab({ city, cities: _cities, onRefresh, onRefreshChange, 
 
   return (
     <div className="space-y-6">
-      {/* ── Pool Health Card (always visible) ── */}
-      {poolHealth && (
-        <SectionCard title="Pool Freshness" subtitle="Across all active places (city scope: see Stale on filters card)">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard label="Active places" value={(poolHealth.total_active_places ?? 0).toLocaleString()} />
-            <StatCard label="Stale > 7d" value={(poolHealth.stale_7d ?? 0).toLocaleString()} />
-            <StatCard label="Stale > 30d" value={(poolHealth.stale_30d ?? 0).toLocaleString()} />
-            <StatCard label="Stale + recently served" value={(poolHealth.recently_served_and_stale ?? 0).toLocaleString()} />
-          </div>
-        </SectionCard>
-      )}
-
       {/* ── Phase 1: Setup (no active run) ── */}
       {!activeRun && (
         <>

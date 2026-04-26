@@ -7,6 +7,211 @@
 
 ---
 
+## ORCH-0671 invariants (2026-04-25) — Photo Pool admin surface deletion + label/owner/filter discipline
+
+### I-LABEL-MATCHES-PREDICATE
+
+**Rule:** Every UI label of the form `"X Approved"` / `"X Validated"` / `"X-approved"`
+/ `"X-validated"` MUST cite the actual approval predicate it counts. In the admin
+frontend specifically, `"AI Approved"` and `"AI Validated"` are BANNED — the
+underlying data is the bouncer signal (`is_servable`); the legacy `ai_approved`
+column was dropped by ORCH-0640. Inverse-naming = Constitution #9 violation
+(operator-trust framing).
+
+**Enforcement:** CI gate `I-LABEL-MATCHES-PREDICATE` block in
+`scripts/ci-check-invariants.sh` —
+`git grep -lE "AI[ -]?(Approved|Validated)" mingla-admin/src/` returns 0 hits
+(excluding `*.md` documentation matches).
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: inject a banned label — gate exits 1.
+echo '<StatCard label="AI Approved" />' > mingla-admin/src/__test_gate.jsx
+bash scripts/ci-check-invariants.sh   # expect exit 1, names the file
+rm mingla-admin/src/__test_gate.jsx
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Why it exists:** ORCH-0671 investigation §4 documented 5 places where
+bouncer-aware data (post-ORCH-0640) was still labeled "AI Approved" — operator-trust
+violation (Constitution #9 fabricated framing) and pattern-repeat of ORCH-0640 +
+ORCH-0646 cleanup misses.
+
+**Severity if violated:** S2 (operator-trust framing for admin tooling; not
+end-user-visible but undermines admin reliability).
+
+**Origin:** Registered 2026-04-25 after ORCH-0671 implementation. Investigation:
+`reports/INVESTIGATION_ORCH-0671_PHOTO_TAB_BOUNCER_AWARENESS.md`. Spec:
+`specs/SPEC_ORCH-0671_PHOTO_POOL_DELETE_AND_RELABEL.md` §6 + §3.7 Gate 1.
+
+---
+
+### I-OWNER-PER-OPERATION-TYPE
+
+**Rule:** Every value allowed by `admin_backfill_log.operation_type` CHECK
+constraint MUST have at least one consumer in `supabase/functions/` that
+processes rows of that type. New operation_type values without a consumer create
+zombie pending rows (per ORCH-0671's 17 zombies, $3,283.98 estimated, $0 actual
+API spend — pending since 2026-04-02 with no edge fn ever scheduled to consume them).
+
+**Enforcement:** CI gate `I-OWNER-PER-OPERATION-TYPE` block in
+`scripts/ci-check-invariants.sh` — parses the latest non-ROLLBACK migration
+defining `admin_backfill_log_operation_type_check` constraint, extracts allowed
+values from the CHECK clause, and for each value requires ≥1 grep hit on
+`operation_type ... 'value'` in `supabase/functions/`.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: write a temp migration adding 'photo_backfill' back to the
+# constraint without a consumer — gate exits 1 naming 'photo_backfill'.
+cat > supabase/migrations/99999999999999_test_gate.sql <<'EOF'
+ALTER TABLE public.admin_backfill_log
+  DROP CONSTRAINT IF EXISTS admin_backfill_log_operation_type_check;
+ALTER TABLE public.admin_backfill_log
+  ADD CONSTRAINT admin_backfill_log_operation_type_check
+  CHECK (operation_type IN ('place_refresh', 'photo_backfill'));
+EOF
+bash scripts/ci-check-invariants.sh   # expect exit 1, names photo_backfill
+rm supabase/migrations/99999999999999_test_gate.sql
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Why it exists:** ORCH-0671 investigation §6 (HF-D) — the standalone Photo Pool
+admin page's trigger button INSERTed `operation_type='photo_backfill'` rows but
+no edge fn was ever wired to process them. Result: 17 pending rows accumulated
+across 23 days with $3,283.98 estimated cost (Constitution #9 phantom data) and
+zero actual API spend (Constitution #2 ownership gap — the operation_type was
+"owned" by no consumer).
+
+**Severity if violated:** S2-S3 (creates phantom cost data + zombie operational
+state; not end-user-visible but degrades admin operator trust + observability).
+
+**Origin:** Registered 2026-04-25 after ORCH-0671 implementation. Spec:
+`specs/SPEC_ORCH-0671_PHOTO_POOL_DELETE_AND_RELABEL.md` §6 + §3.7 Gate 2.
+
+---
+
+### I-PHOTO-FILTER-EXPLICIT-EXTENSION
+
+**Rule:** Every Postgres function named `admin_*photo*` MUST gate aggregations
+and projections on `is_servable IS TRUE`. Exception: a function that intentionally
+surfaces the unfiltered pool MUST contain a comment with the literal string
+`"RAW POOL VIEW"` justifying the unfiltered aggregation.
+
+**Enforcement:** CI gate `I-PHOTO-FILTER-EXPLICIT-EXTENSION` block in
+`scripts/ci-check-invariants.sh` — for each `admin_*photo*` function defined in
+the LATEST non-ROLLBACK migration that touches it, body must contain
+`is_servable` OR `RAW POOL VIEW`. Functions that have been dropped by a later
+migration are skipped (DROP-aware enhancement).
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: add a temp migration with a bouncer-blind photo RPC.
+cat > supabase/migrations/99999999999999_test_gate.sql <<'EOF'
+CREATE OR REPLACE FUNCTION public.admin_photo_test_v2()
+RETURNS BIGINT
+LANGUAGE sql STABLE
+AS $$ SELECT COUNT(*) FROM place_pool WHERE is_active = true $$;
+EOF
+bash scripts/ci-check-invariants.sh   # expect exit 1, names admin_photo_test_v2
+# Recovery via comment:
+sed -i '1i -- RAW POOL VIEW: test fixture' supabase/migrations/99999999999999_test_gate.sql
+bash scripts/ci-check-invariants.sh   # expect exit 0
+rm supabase/migrations/99999999999999_test_gate.sql
+```
+
+**Why it exists:** ORCH-0671 investigation §3 measured 65-95% noise in the
+deleted Photo Pool page's category counts because all 5 RPCs filtered only on
+`is_active`. Bouncer-rejected places (those failing `is_servable`) were counted
+as "missing photos to backfill" — operator saw a wildly inflated $695.63/mo
+phantom cost vs $0 real. This invariant prevents recurrence on any future admin
+photo aggregation. Note: spec §3.7 gate text was enhanced in implementation to
+handle DROP migrations + ROLLBACK files (see implementor report Discoveries D-1,
+D-2).
+
+**Severity if violated:** S2 (cost framing + operator-trust; not user-visible
+but materially affects admin decision-making).
+
+**Origin:** Registered 2026-04-25 after ORCH-0671 implementation. Spec:
+`specs/SPEC_ORCH-0671_PHOTO_POOL_DELETE_AND_RELABEL.md` §6 + §3.7 Gate 3.
+
+---
+
+## ORCH-0677 invariants (2026-04-25) — Curated reverse-anchor + empty-verdict + lint gate
+
+### I-CURATED-FAILED-ANCHOR-IS-USED
+
+**Rule:** When a reverse-anchor experience type's near-anchor companion fetch fails
+(any gate fires: `reverseAnchor_no_available`, `reverseAnchor_no_place`,
+`required_stops_short`, `travel_constraint`, `duplicate_place_ids`), the failing
+anchor's `google_place_id` MUST be added to a per-request `failedAnchorIds: Set<string>`
+**before** the iteration's `valid = false` / `continue`. Subsequent iterations of the
+same combo must filter `anchorPlaces` against this set so they advance to the next
+candidate instead of re-picking the dead one.
+
+**Why:** picnic-dates is the only `reverseAnchor: true` typedef AND the only intent
+with a single combo. Without per-request failure tracking, when the top-ranked
+picnic_friendly anchor (e.g., Spring Forest Road Park) had zero qualifying groceries
+within 3 km, the assembly loop deterministically re-picked the same anchor 8 times
+and returned 0 cards. ORCH-0677 RC-1.
+
+**Enforcement:** [supabase/functions/generate-curated-experiences/index.ts:815](supabase/functions/generate-curated-experiences/index.ts#L815)
+declares `failedAnchorIds`; filter clause + 5 add-sites at the gate-fail branches.
+
+**Test:** spec T-04 (unit) — with 5 anchor candidates and only the 5th viable,
+the loop reaches it within ≤5 iterations. T-02 (live-fire) — picnic at Umstead
+returns either ≥1 card or explicit `summary.emptyReason='no_viable_anchor'` with
+`failedAnchorCount >= 2`.
+
+---
+
+### I-CURATED-EMPTY-IS-EXPLICIT-VERDICT
+
+**Rule:** Every curated edge-function response with `cards.length === 0` MUST include
+a `summary` object carrying `emptyReason: 'pool_empty' | 'no_viable_anchor' | 'pipeline_error'`.
+The mobile `RecommendationsContext.deckUIState` EMPTY branch MUST fire whenever
+`curatedEmptyReason !== undefined`. Without an explicit verdict, curated-only empty
+results fall through to the INITIAL_LOADING fallback and the user sees "Curating your
+lineup" indefinitely.
+
+**Why:** Constitution #3 (no silent failures). Pre-fix, a curated-only empty response
+was indistinguishable from "still loading" on the mobile side because `hasMoreFromEdge`
+defaulted to `true`. ORCH-0677 RC-2.
+
+**Enforcement:**
+- Edge fn: [supabase/functions/generate-curated-experiences/index.ts](supabase/functions/generate-curated-experiences/index.ts)
+  function-end summary computation + HTTP response shape conditional spread.
+- Mobile: [app-mobile/src/services/deckService.ts](app-mobile/src/services/deckService.ts)
+  aggregates per-pill `pillEmptyReasons` → emits `curatedEmptyReason` on `DeckResponse`;
+  [app-mobile/src/contexts/RecommendationsContext.tsx:1666](app-mobile/src/contexts/RecommendationsContext.tsx#L1666)
+  EMPTY branch reads `soloCuratedEmptyReason !== undefined`.
+
+**Test:** spec T-05 (mocked stuck-EMPTY routing) + T-11 (device live-fire — picnic
+at Umstead never shows "Curating your lineup" beyond cold-fetch window).
+
+---
+
+### I-CURATED-REVERSEANCHOR-NEEDS-COMBOS
+
+**Rule:** Any `EXPERIENCE_TYPES` typedef in `generate-curated-experiences/index.ts`
+where `stops.some(s => s.reverseAnchor)` MUST have `combos.length >= 2`.
+Single-combo + reverseAnchor produces no fallback variety when an anchor fails the
+near-anchor companion fetch — this exact shape was the cause of ORCH-0677.
+
+**Enforcement:** Deno lint script [supabase/functions/generate-curated-experiences/_lint_invariants.ts](supabase/functions/generate-curated-experiences/_lint_invariants.ts)
+imports `EXPERIENCE_TYPES` and asserts the rule. Wired into
+[scripts/ci-check-invariants.sh](scripts/ci-check-invariants.sh) with graceful skip
+when `deno` is not on PATH.
+
+**Test:** spec T-08 (CI inject + revert negative-control) — adding a synthetic typedef
+with `reverseAnchor: true` and `combos.length === 1` causes `bash scripts/ci-check-invariants.sh`
+to exit 1 with the invariant name in stderr; removing it returns to exit 0.
+
+---
+
 ## ORCH-0672 invariant (2026-04-25) — Coupled-diff partial commit prevention
 
 ### I-COUPLED-DIFF-NEVER-PARTIAL-COMMIT

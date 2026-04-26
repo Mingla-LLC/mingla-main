@@ -1391,7 +1391,6 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
   const formatPreviewBreakdown = (analysis) => {
     if (!analysis) return "";
     const parts = [];
-    if (analysis.blockedByAiApproval > 0) parts.push(`${formatCount(analysis.blockedByAiApproval)} not AI-approved`);
     if (analysis.blockedByNotServable > 0) parts.push(`${formatCount(analysis.blockedByNotServable)} not Bouncer-approved`);
     if (analysis.blockedByMissingPhotoMetadata > 0) parts.push(`${formatCount(analysis.blockedByMissingPhotoMetadata)} missing Google photo refs`);
     if (analysis.blockedByMissingGooglePlaceId > 0) parts.push(`${formatCount(analysis.blockedByMissingGooglePlaceId)} missing Google place IDs`);
@@ -1734,7 +1733,7 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
       {/* Row 2: Pipeline breakdown — why places are blocked */}
       <div className="grid grid-cols-4 gap-4">
         <StatCard icon={Download} label="Downloadable Now" value={previewSummary ? formatCount(previewSummary.eligiblePlaces) : "—"} />
-        <StatCard icon={AlertTriangle} label="Not AI Approved" value={previewSummary ? formatCount(previewSummary.blockedByAiApproval) : "—"} />
+        <StatCard icon={AlertTriangle} label="Not Bouncer Approved" value={previewSummary ? formatCount(previewSummary.blockedByNotServable) : "—"} />
         <StatCard icon={ImageOff} label="No Photo Refs" value={previewSummary ? formatCount(previewSummary.blockedByMissingPhotoMetadata) : "—"} />
         <StatCard icon={XCircle} label="Previously Failed" value={previewSummary ? formatCount(previewSummary.failedPlaces) : "—"} />
       </div>
@@ -1977,7 +1976,7 @@ function StatsTab({ city, stats, refreshKey }) {
       .limit(20)
       .then(({ data }) => { setRuns(data || []); setLoadingRuns(false); });
 
-    // Load AI-approved category breakdown (replaces old seeding_category stats)
+    // Load Bouncer-approved category breakdown (replaces old seeding_category stats)
     supabase.rpc("admin_place_category_breakdown", { p_city_id: city.id })
       .then(({ data }) => { setAiCatBreakdown(data || []); });
   }, [city, refreshKey]);
@@ -2021,7 +2020,7 @@ function StatsTab({ city, stats, refreshKey }) {
 
   if (!city) return <div className="text-center py-12 text-[var(--color-text-secondary)]">Select a city.</div>;
 
-  // AI-approved category breakdown (from admin_place_category_breakdown RPC)
+  // Bouncer-approved category breakdown (from admin_place_category_breakdown RPC)
   const byCat = {};
   for (const row of aiCatBreakdown) {
     byCat[row.category] = { count: Number(row.place_count) || 0, photo_pct: row.photo_pct || 0, avg_rating: row.avg_rating };
@@ -2066,8 +2065,8 @@ function StatsTab({ city, stats, refreshKey }) {
 
   return (
     <div className="space-y-6">
-      {/* Category breakdown — AI-approved only */}
-      <SectionCard title="AI-Approved Places by Category">
+      {/* Category breakdown — Bouncer-approved only */}
+      <SectionCard title="Bouncer-Approved Places by Category">
         <div className="space-y-2">
           {ALL_CATEGORIES.map((catId) => {
             const data = byCat[catId] || { count: 0, photo_pct: 0 };

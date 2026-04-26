@@ -136,7 +136,6 @@ export const NAV_GROUPS = [
     label: "Supply",
     items: [
       { id: "seed", label: "Seed / Refresh", icon: "Terminal" },
-      { id: "photos", label: "Photo Pool", icon: "Camera" },
       { id: "placepool", label: "Place Pool", icon: "Globe" },
     ],
   },
