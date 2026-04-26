@@ -403,6 +403,69 @@ export function filterOutIntents(categories: string[]): string[] {
 // ── All canonical category display names ──────────────────────────────────────
 export const ALL_CATEGORY_NAMES = Object.keys(MINGLA_CATEGORY_PLACE_TYPES);
 
+// ── ORCH-0684: primary_type → Mingla category (reverse map) ──────────────────
+// Used by get-person-hero-cards mapper to derive a Mingla category for a
+// place_pool row from its Google primary_type. Returns the FIRST category whose
+// place-type list contains the primary_type. Falls back to null when no match
+// — caller must emit empty string (Constitution #9 — never fabricate).
+//
+// Built lazily; cached after first call. Mingla has 13 categories × ~25 place
+// types each — lookup is O(categories × types) ~325 string comparisons; cheap.
+let _PRIMARY_TYPE_TO_CATEGORY_CACHE: Map<string, string> | null = null;
+
+function buildPrimaryTypeIndex(): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const [category, placeTypes] of Object.entries(MINGLA_CATEGORY_PLACE_TYPES)) {
+    for (const t of placeTypes) {
+      // First-write-wins: a primary_type may appear under multiple categories
+      // (e.g. 'restaurant' under both Casual and Fine Dining). The first
+      // category in MINGLA_CATEGORY_PLACE_TYPES insertion order claims it.
+      if (!index.has(t)) index.set(t, category);
+    }
+  }
+  return index;
+}
+
+/**
+ * Resolve a Google primary_type (e.g. 'italian_restaurant', 'park', 'movie_theater')
+ * to a Mingla canonical category display name (e.g. 'Brunch, Lunch & Casual',
+ * 'Nature & Views', 'Movies & Theatre'). Returns null when the type doesn't
+ * map to any Mingla category. Caller decides whether to fall back or skip.
+ *
+ * Optionally checks the place's `types[]` array as a secondary lookup if
+ * primary_type doesn't match — Google sometimes returns generic primary_types
+ * (`establishment`, `point_of_interest`) with the meaningful classification in
+ * the secondary array.
+ */
+export function mapPrimaryTypeToMinglaCategory(
+  primaryType: string | null | undefined,
+  fallbackTypes: string[] = [],
+): string | null {
+  if (!primaryType && fallbackTypes.length === 0) return null;
+  if (_PRIMARY_TYPE_TO_CATEGORY_CACHE === null) {
+    _PRIMARY_TYPE_TO_CATEGORY_CACHE = buildPrimaryTypeIndex();
+  }
+  if (primaryType) {
+    const cat = _PRIMARY_TYPE_TO_CATEGORY_CACHE.get(primaryType);
+    if (cat) return cat;
+  }
+  // Fallback: scan the secondary types array for a hit.
+  for (const t of fallbackTypes) {
+    const cat = _PRIMARY_TYPE_TO_CATEGORY_CACHE.get(t);
+    if (cat) return cat;
+  }
+  return null;
+}
+
+/**
+ * Convert a Mingla category display name to its DB slug.
+ * Wrapper around DISPLAY_TO_SLUG with a stricter null-vs-string contract.
+ */
+export function mapCategoryToSlug(category: string | null | undefined): string {
+  if (!category) return '';
+  return DISPLAY_TO_SLUG[category] ?? '';
+}
+
 // ── Display name ↔ DB slug mapping ────────────────────────────────────────
 // card_pool.category stores slugs; edge functions use display names from
 // MINGLA_CATEGORY_PLACE_TYPES keys. These maps bridge the gap.
