@@ -337,11 +337,56 @@ if [ -n "$FAKE_DELAY_VIOLATIONS" ]; then
   FAIL=1
 fi
 
+# ─── ORCH-0669: I-CHROME-HAIRLINE-SUB-PERCEPTIBLE ───────────────────────────
+# Forbid inline borderColor with white alpha >= 0.09 in any chrome consumer
+# file. Chrome perimeter borders MUST consume glass.chrome.border.hairline
+# (locked at 0.06 alpha) by token reference. Applies to Glass*.tsx in
+# components/ and components/ui/, plus MessageInterface.tsx (which shares
+# the home-chrome design language for its input capsule per spec §2 v2).
+# See SPEC_ORCH-0669_HOME_CHROME_HAIRLINE.md §6 + §10.1.
+echo "Checking I-CHROME-HAIRLINE-SUB-PERCEPTIBLE..."
+HAIRLINE_HITS=$(grep -rEn "borderColor:[[:space:]]*['\"]rgba\([[:space:]]*255[[:space:]]*,[[:space:]]*255[[:space:]]*,[[:space:]]*255[[:space:]]*,[[:space:]]*0\.(0[9]|[1-9])" \
+    app-mobile/src/components/Glass*.tsx \
+    app-mobile/src/components/ui/Glass*.tsx \
+    app-mobile/src/components/MessageInterface.tsx \
+    2>/dev/null \
+  | grep -v '__test_gate' \
+  | grep -v '__not_chrome__' \
+  || true)
+if [ -n "$HAIRLINE_HITS" ]; then
+  echo "FAIL: I-CHROME-HAIRLINE-SUB-PERCEPTIBLE violated. ORCH-0669 forbids"
+  echo "   inline borderColor with white alpha >= 0.09 on chrome files."
+  echo "   Chrome perimeters MUST consume glass.chrome.border.hairline by"
+  echo "   reference (currently locked at 0.06). Hit lines:"
+  echo "$HAIRLINE_HITS"
+  FAIL=1
+fi
+
+# ─── ORCH-0677: I-CURATED-REVERSEANCHOR-NEEDS-COMBOS ───────────────────────
+# Any EXPERIENCE_TYPES typedef with `reverseAnchor: true` must have
+# `combos.length >= 2`. Single-combo + reverseAnchor = no fallback variety
+# when an anchor fails (root cause of picnic-dates stuck-curating bug).
+# Delegated to a Deno script that imports EXPERIENCE_TYPES so the check
+# remains robust across typedef refactors. Skipped if `deno` not installed.
+if command -v deno >/dev/null 2>&1; then
+  echo "Checking I-CURATED-REVERSEANCHOR-NEEDS-COMBOS..."
+  if ! deno run --allow-read \
+      supabase/functions/generate-curated-experiences/_lint_invariants.ts \
+      >/dev/null 2>&1; then
+    echo "FAIL: I-CURATED-REVERSEANCHOR-NEEDS-COMBOS violated. Re-run:"
+    echo "   deno run --allow-read supabase/functions/generate-curated-experiences/_lint_invariants.ts"
+    echo "   for details. ORCH-0677 — picnic-dates regression class."
+    FAIL=1
+  fi
+else
+  echo "  (deno not on PATH — I-CURATED-REVERSEANCHOR-NEEDS-COMBOS skipped)"
+fi
+
 if [ $FAIL -eq 1 ]; then
   echo ""
-  echo "ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 invariant check FAILED."
+  echo "ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0677 invariant check FAILED."
   exit 1
 fi
 
-echo "All ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 invariant gates pass."
+echo "All ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0677 invariant gates pass."
 exit 0

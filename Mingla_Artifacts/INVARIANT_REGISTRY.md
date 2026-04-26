@@ -67,6 +67,83 @@ queries new column) depending on which symbol class is incomplete.
 
 ---
 
+## ORCH-0669 invariant (2026-04-25) — Home + chat chrome hairline sub-perceptible
+
+### I-CHROME-HAIRLINE-SUB-PERCEPTIBLE
+
+**Rule:** The shared `glass.chrome.border.hairline` token defines the perimeter
+edge of every Home + bottom-nav chrome surface AND the chat input capsule
+(which by original-author intent shares the home-chrome design language per the
+inline comment at `MessageInterface.tsx` capsule styles, "matching the
+home-chrome capsule language"). Its white alpha MUST be `≤ 0.08`. Any consumer
+of chrome edge styling — chrome surface (`Glass*.tsx`, `ui/Glass*.tsx`) OR
+chat input chrome (`MessageInterface.tsx` capsule + reply preview + separator)
+— MUST consume this token by reference; inline `rgba(255, 255, 255, X)`
+literals with white alpha ≥ 0.09 on these files are forbidden.
+
+**Cross-property note:** The token is consumed by both `borderColor` (perimeter
+strokes — surfaces 1-7) and `backgroundColor` (1px-wide chat input separator —
+surface 8). The invariant binds the token VALUE; the property choice is at the
+consumer's discretion. Future consumers using this token as a `backgroundColor`
+for a thin filled element should expect that element to be sub-perceptible at
+the locked alpha — by design (Option A locked by founder 2026-04-25).
+
+**Excluded scope (DOES NOT apply to):**
+- `glass.chrome.pending.borderColor` — ORCH-0661 dashed pending-pill state,
+  intentionally higher visibility (28%).
+- `glass.chrome.active.border` — orange active-state border, separate token
+  (`'rgba(235, 120, 37, 0.55)'`, no white-alpha concern).
+- Non-chrome surfaces (`Card*.tsx`, `Badge*.tsx`, modals, sheets, profile,
+  discover) — different design languages, separate token systems.
+- Sibling `topHighlight` tokens in `glass.badge.border.*`, `glass.profile.card.*`,
+  `glass.profile.cardElevated.*` namespaces — governed by their own design specs.
+
+**Why it exists:** Two prior incidents created visible white-line artifacts on
+Home chrome:
+1. ORCH-0589 V5 deleted the L3 top-highlight overlay because it produced a
+   visible white line at chrome scale.
+2. ORCH-0669 (this work) lowered the L4 hairline alpha from 0.12 to 0.06
+   because at 0.12 it produced a visible white seam.
+
+The pattern: edge-definition layers on Home chrome must remain *sub-perceptible*
+— the chrome should feel "edge-defined" without anyone consciously seeing an
+edge. This invariant locks that bar going forward. Any new chrome element added
+later (e.g., `GlassFloatingActionButton`) must consume
+`glass.chrome.border.hairline` and not exceed the alpha cap.
+
+**Enforcement:**
+1. **Token value cap (in code):** the token at `app-mobile/src/constants/designSystem.ts`
+   `glass.chrome.border.hairline` is locked at `'rgba(255, 255, 255, 0.06)'`
+   with a justification comment block warning future readers.
+2. **CI grep gate** in `scripts/ci-check-invariants.sh` block
+   `I-CHROME-HAIRLINE-SUB-PERCEPTIBLE` — fails if any chrome consumer file
+   (`Glass*.tsx` in `components/`, `Glass*.tsx` in `components/ui/`, or
+   `MessageInterface.tsx`) inlines a `borderColor: 'rgba(255, 255, 255, 0.X)'`
+   literal with white alpha ≥ 0.09.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: simulate the regression by adding an inline borderColor
+# at 0.10 alpha to a chrome consumer — gate exits 1.
+sed -i 's|borderColor: glass.chrome.border.hairline,|borderColor: '\''rgba(255, 255, 255, 0.10)'\'',|' app-mobile/src/components/ui/GlassIconButton.tsx
+bash scripts/ci-check-invariants.sh   # expect exit 1 with descriptive error
+git checkout -- app-mobile/src/components/ui/GlassIconButton.tsx
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Severity if violated:** S2 (cosmetic; first-impression damage on every Home
+render — chrome reads as a hard white seam against dark blur backdrop, breaks
+the "premium glass" intent of SPEC_ORCH-0589 V5).
+
+**Origin:** Registered 2026-04-25 after ORCH-0669 cycle 2 implementation.
+Investigation: `reports/INVESTIGATION_ORCH-0669_HOME_HEADER_GLASS_EDGES.md`.
+Spec: `specs/SPEC_ORCH-0669_HOME_CHROME_HAIRLINE.md` (v2 — Option A locked
+2026-04-25 to share lower alpha across all 7 consumers, accept chat-separator
+near-invisibility).
+
+---
+
 ## ORCH-0664 invariant (2026-04-25) — DM realtime dedup ordering
 
 ### I-DEDUP-AFTER-DELIVERY

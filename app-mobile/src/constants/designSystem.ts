@@ -383,8 +383,15 @@ export const glass = {
       pressed: 'rgba(12, 14, 18, 0.58)',
     },
     border: {
-      hairline: 'rgba(255, 255, 255, 0.12)',
-      topHighlight: 'rgba(255, 255, 255, 0.24)',
+      // ORCH-0669 — Lowered from 0.12 to 0.06 (50% reduction).
+      // 0.12 read as a visible white seam against the dark blur backdrop on all 7
+      // chrome surfaces (pill bar container, preferences chip, notification bell,
+      // bottom nav capsule, create pill, chat reply preview, chat input capsule).
+      // 0.06 preserves L4 edge-definition intent (per SPEC_ORCH-0589 §13) without
+      // crossing the perceptibility threshold on typical card-photo backdrops.
+      // See INVESTIGATION_ORCH-0669 §3 + §11.
+      // Invariant: I-CHROME-HAIRLINE-SUB-PERCEPTIBLE.
+      hairline: 'rgba(255, 255, 255, 0.06)',
     },
     shadow: {
       color: '#000000',

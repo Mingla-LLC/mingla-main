@@ -1619,7 +1619,7 @@ const styles = StyleSheet.create({
     height: 32,
     backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.14)",
+    borderColor: "rgba(255, 255, 255, 0.14)", // __not_chrome__: chat-header utility button, separate design language from glass.chrome.* — see ORCH-0669 D-1
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
@@ -1723,7 +1723,7 @@ const styles = StyleSheet.create({
   messageBubbleLeft: {
     backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.14)",
+    borderColor: "rgba(255, 255, 255, 0.14)", // __not_chrome__: incoming message bubble, separate design language from glass.chrome.* — see ORCH-0669 D-1
   },
   messageBubbleRight: {
     backgroundColor: "#eb7825",
