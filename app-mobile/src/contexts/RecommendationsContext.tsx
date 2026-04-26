@@ -705,6 +705,10 @@ export const RecommendationsProvider: React.FC<
   const soloDeckHasMore = activeDeck.hasMore;
   const soloDeckError = activeDeck.error;
   const soloServerPath = activeDeck.serverPath;
+  // ORCH-0677 RC-2: when curated-only deck returns 0 cards, this carries the
+  // server's verdict so the EMPTY branch can fire instead of stuck-loading.
+  // Applies to both solo and collab — both flow through useDeckCards.
+  const soloCuratedEmptyReason = activeDeck.curatedEmptyReason;
 
   // ── ORCH-0391: Persist deck key + location on first successful solo load ──
   // Enables instant cold-start render on next app open (if location matches).
@@ -1654,12 +1658,18 @@ export const RecommendationsProvider: React.FC<
     // EMPTY (server returned 0 cards for location/prefs).
     //
     // ORCH-0490 Phase 2.1 + I-DECK-EMPTY-IS-SERVER-VERDICT: EMPTY is server-verdict
-    // only. Two acceptable conditions:
+    // only. Three acceptable conditions:
     //   (a) soloServerPath === 'pool-empty' — server explicitly reported empty pool
     //       (genuine seeding gap, or auth-ok-but-empty result for these filters).
     //   (b) isDeckBatchLoaded && !deckHasMore — the final paginated batch resolved
     //       with no more pages, and recommendations is empty (filter killed all
     //       cards the pipeline returned).
+    //   (c) ORCH-0677 RC-2: soloCuratedEmptyReason is set — curated-only deck
+    //       returned 0 cards with an explicit empty verdict. Without this gate,
+    //       curated-only empty results fall through to the INITIAL_LOADING
+    //       fallback at line 1684, leaving the user on "Curating your lineup"
+    //       indefinitely. Do not remove the curatedEmptyReason check — it is
+    //       the only signal that surfaces curated-only empty results.
     // `hasCompletedFetchForCurrentMode` is intentionally NOT in this condition —
     // it was the hook the old 20s safety timer used to force false EMPTY. With
     // the timer removed, we require a REAL server signal here.
@@ -1667,7 +1677,8 @@ export const RecommendationsProvider: React.FC<
       recommendations.length === 0 &&
       !isModeTransitioning &&
       (soloServerPath === 'pool-empty' ||
-        (isDeckBatchLoaded && !deckHasMore))
+        (isDeckBatchLoaded && !deckHasMore) ||
+        soloCuratedEmptyReason !== undefined)
     ) {
       return { type: 'EMPTY' };
     }
@@ -1692,6 +1703,7 @@ export const RecommendationsProvider: React.FC<
     allParticipantPrefs, isExhausted,
     soloServerPath, // ORCH-0474: drives AUTH_REQUIRED + PIPELINE_ERROR routing
     isDeckBatchLoaded, deckHasMore, // ORCH-0490 Phase 2.1: drive server-verdict EMPTY branch
+    soloCuratedEmptyReason, // ORCH-0677 RC-2: drive curated-only EMPTY routing
     // NOTE: `loading` intentionally removed — the EMPTY check no longer depends on it.
     // Keeping it here caused unnecessary recomputation on every background refetch.
   ]);

@@ -139,6 +139,11 @@ export interface UseDeckCardsResult {
    *  on failure. Undefined when the query has no result yet (still loading,
    *  or disabled). */
   serverPath?: DeckServerPath;
+  /** ORCH-0677 RC-2: when curated-only deck returns 0 cards, this carries
+   *  the server's verdict (`pool_empty | no_viable_anchor | pipeline_error`)
+   *  so RecommendationsContext routes to EMPTY UI state instead of stuck
+   *  INITIAL_LOADING. `undefined` for non-empty/mixed/category-only decks. */
+  curatedEmptyReason?: import('../types/curatedExperience').CuratedEmptyReason;
 }
 
 export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
@@ -253,5 +258,9 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     error: query.error as Error | null,
     refetch: query.refetch,
     serverPath: resolvedServerPath,
-  }), [cards, activePills, query.data?.deckMode, query.data?.hasMore, query.isLoading, query.isFetching, query.isPlaceholderData, hasData, query.error, query.refetch, resolvedServerPath]);
+    // ORCH-0677 RC-2: surface curated-only-empty verdict so consumers
+    // (RecommendationsContext) can route to EMPTY UI state instead of
+    // staying on INITIAL_LOADING. `undefined` for non-empty/mixed decks.
+    curatedEmptyReason: query.data?.curatedEmptyReason,
+  }), [cards, activePills, query.data?.deckMode, query.data?.hasMore, query.data?.curatedEmptyReason, query.isLoading, query.isFetching, query.isPlaceholderData, hasData, query.error, query.refetch, resolvedServerPath]);
 }

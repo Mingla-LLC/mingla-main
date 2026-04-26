@@ -155,7 +155,10 @@ export function useMapCards(
       CURATED_TYPES.forEach((type, i) => {
         const result = results[i];
         if (result.status === 'fulfilled') {
-          const curatedCards = result.value;
+          // ORCH-0677 RC-2: response is now { cards, summary? }; map cards
+          // ignore the summary field (the map view does not need an empty
+          // verdict — it just renders whatever curated stops it gets).
+          const curatedCards = result.value.cards;
           console.log(`[useMapCards] Curated "${type}": ${curatedCards.length} cards returned`);
           for (const card of curatedCards) {
             if (card.stops && card.stops.length > 0) {

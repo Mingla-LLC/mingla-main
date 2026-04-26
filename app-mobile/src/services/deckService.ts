@@ -92,6 +92,12 @@ export type DeckServerPath =
   | 'auth-required'
   | 'pipeline-error';
 
+// ORCH-0677 RC-2: re-exported here for hook/context consumers. The canonical
+// definition lives in `types/curatedExperience` so service + hook share one
+// owner per truth (Constitution #2).
+export type { CuratedEmptyReason } from '../types/curatedExperience';
+import type { CuratedEmptyReason } from '../types/curatedExperience';
+
 export interface DeckResponse {
   cards: Recommendation[];
   deckMode: 'nature' | 'icebreakers' | 'drinks_and_music' | 'brunch' | 'casual_food' | 'brunch_lunch_casual' | 'upscale_fine_dining' | 'movies' | 'theatre' | 'movies_theatre' | 'creative_arts' | 'play' | 'curated' | 'mixed';
@@ -99,6 +105,11 @@ export interface DeckResponse {
   total: number;
   hasMore: boolean;
   serverPath: DeckServerPath;
+  // ORCH-0677 RC-2: when curated-only deck returns 0 cards, this carries the
+  // server's verdict so RecommendationsContext can route to EMPTY UI state.
+  // `undefined` for mixed decks, decks with cards, or decks where the server
+  // shape didn't include a summary (legacy or pre-fix edge fn).
+  curatedEmptyReason?: CuratedEmptyReason;
 }
 
 /**
@@ -357,6 +368,12 @@ class DeckService {
     const curatedPills = pills.filter(p => p.type === 'curated');
     const fetchStart = Date.now();
 
+    // ORCH-0677 RC-2: capture per-pill empty verdicts so curated-only empty
+    // results can route to EMPTY UI state instead of stuck-loading. Mixed
+    // decks (categoryPills.length > 0) ignore this — pagination/standard
+    // EMPTY paths still apply via hasMoreFromEdge logic below.
+    const pillEmptyReasons = new Map<string, CuratedEmptyReason>();
+
     // ── Build parallel fetch promises ──────────────────────────────────
     const categoryPromise: Promise<Recommendation[]> = (async () => {
       if (categoryPills.length === 0) return [];
@@ -474,7 +491,10 @@ class DeckService {
         curatedPills.map(async (pill): Promise<Recommendation[]> => {
           try {
             const curatedLimit = limit; // Give curated the same limit as categories — interleave balances them
-            const cards = await curatedExperiencesService.generateCuratedExperiences({
+            // ORCH-0677 RC-2: response is now { cards, summary? }. summary is
+            // present only when cards is empty; carries the server's empty
+            // verdict (pool_empty | no_viable_anchor | pipeline_error).
+            const response = await curatedExperiencesService.generateCuratedExperiences({
               experienceType: pill.id as any,
               location: params.location,
               travelMode: params.travelMode,
@@ -487,11 +507,23 @@ class DeckService {
               skipDescriptions: true,
             });
             if (__DEV__) {
-              console.log(`[DeckService] Curated pill "${pill.id}" → ${cards.length} cards`);
+              console.log(
+                `[DeckService] Curated pill "${pill.id}" → ${response.cards.length} cards` +
+                  (response.summary ? ` (emptyReason=${response.summary.emptyReason})` : ''),
+              );
             }
-            return cards.map(curatedToRecommendation);
+            // Capture per-pill empty verdict if surfaced. Backwards-compat:
+            // legacy edge fn responses without `summary` aggregate to
+            // `pool_empty` in the §4.2 fallback below.
+            if (response.cards.length === 0 && response.summary) {
+              pillEmptyReasons.set(pill.id, response.summary.emptyReason);
+            }
+            return response.cards.map(curatedToRecommendation);
           } catch (err) {
             console.warn(`[DeckService] Curated pill ${pill.id} failed:`, err);
+            // ORCH-0677 RC-2: caught throws are treated as pipeline errors so
+            // the user gets a clear EMPTY (with retry copy) instead of stuck.
+            pillEmptyReasons.set(pill.id, 'pipeline_error');
             return [];
           }
         })
@@ -673,6 +705,22 @@ class DeckService {
             : 'curated')
         : 'mixed';
 
+    // ORCH-0677 RC-2: when curated-only deck returns empty, route to EMPTY
+    // UI state instead of INITIAL_LOADING. Pre-fix, hasMoreFromEdge stayed
+    // true and the EMPTY branch in RecommendationsContext never fired.
+    // Aggregation precedence: pipeline_error > no_viable_anchor > pool_empty.
+    // Mixed decks (categoryPills.length > 0) are unaffected — pagination
+    // contract stays in place.
+    const isCuratedOnly = curatedPills.length > 0 && categoryPills.length === 0;
+    let curatedEmptyReason: CuratedEmptyReason | undefined;
+    if (isCuratedOnly && interleaved.length === 0) {
+      const reasons = Array.from(pillEmptyReasons.values());
+      if (reasons.includes('pipeline_error')) curatedEmptyReason = 'pipeline_error';
+      else if (reasons.includes('no_viable_anchor')) curatedEmptyReason = 'no_viable_anchor';
+      else curatedEmptyReason = 'pool_empty'; // covers pool_empty + legacy responses without summary
+      hasMoreFromEdge = false;
+    }
+
     return {
       cards: interleaved,
       deckMode,
@@ -680,6 +728,7 @@ class DeckService {
       total: interleaved.length,
       hasMore: hasMoreFromEdge,
       serverPath: finalServerPath,
+      curatedEmptyReason,
     };
   }
 
