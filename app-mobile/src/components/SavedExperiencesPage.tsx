@@ -159,6 +159,13 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
   onPurchaseFromSaved,
   onShareCard,
 }) => {
+  // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
+  const renderCountRef = React.useRef(0);
+  if (__DEV__) {
+    renderCountRef.current += 1;
+    console.log(`[render-count] SavedExperiencesPage: ${renderCountRef.current}`);
+  }
+
   useScreenLogger('saved');
   const { t } = useTranslation(['saved', 'common']);
 
@@ -545,4 +552,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SavedExperiencesPage;
+// ORCH-0679 Wave 2A: I-TAB-SCREENS-MEMOIZED.
+export default React.memo(SavedExperiencesPage);

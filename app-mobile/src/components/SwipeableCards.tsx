@@ -652,20 +652,27 @@ export default function SwipeableCards({
   }, [recommendations, removedCards, currentCardIndex, removedCardIds]);
 
   // Swipe animation values
-  const position = useRef(new Animated.ValueXY()).current;
-  const rotate = position.x.interpolate({
+  // ORCH-0675 Wave 1 RC-1 — split Animated.ValueXY into two Animated.Value to
+  // enable useNativeDriver: true on transform/opacity. (I-ANIMATIONS-NATIVE-DRIVER-DEFAULT)
+  // ValueXY does not support native driver; per-axis Animated.Value does.
+  // Pre-fix: every swipe frame interpolated on JS thread → mid-tier Android stutter.
+  // Post-fix: transform.translateX/Y delegated to UI thread; PanResponder still
+  // updates per-axis values imperatively (existing pattern preserved).
+  const positionX = useRef(new Animated.Value(0)).current;
+  const positionY = useRef(new Animated.Value(0)).current;
+  const rotate = positionX.interpolate({
     inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
     outputRange: ["-30deg", "0deg", "30deg"],
   });
-  const likeOpacity = position.x.interpolate({
+  const likeOpacity = positionX.interpolate({
     inputRange: [0, SCREEN_WIDTH / 4],
     outputRange: [0, 1],
   });
-  const nopeOpacity = position.x.interpolate({
+  const nopeOpacity = positionX.interpolate({
     inputRange: [-SCREEN_WIDTH / 4, 0],
     outputRange: [1, 0],
   });
-  const nextCardOpacity = position.x.interpolate({
+  const nextCardOpacity = positionX.interpolate({
     inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
     outputRange: [1, 0, 1],
   });
@@ -994,7 +1001,9 @@ export default function SwipeableCards({
         setIsExpandedModalVisible(false);
         setSelectedCardForExpansion(null);
         setDismissedSheetVisible(false);
-        position.setValue({ x: 0, y: 0 });
+        // ORCH-0675 Wave 1 RC-1 — per-axis reset (Animated.ValueXY → 2× Animated.Value)
+        positionX.setValue(0);
+        positionY.setValue(0);
 
         // Clear old storage keys (from previous refreshKey/mode) before updating the refs
         if (
@@ -1219,16 +1228,19 @@ export default function SwipeableCards({
         return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
       },
       onPanResponderGrant: () => {
-        position.setOffset({
-          x: (position.x as any)._value,
-          y: (position.y as any)._value,
-        });
+        // ORCH-0675 Wave 1 RC-1 — per-axis offset (Animated.ValueXY → 2× Animated.Value)
+        positionX.setOffset((positionX as any)._value);
+        positionY.setOffset((positionY as any)._value);
       },
       onPanResponderMove: (_, gestureState) => {
-        position.setValue({ x: gestureState.dx, y: gestureState.dy });
+        // ORCH-0675 Wave 1 RC-1 — per-axis setValue
+        positionX.setValue(gestureState.dx);
+        positionY.setValue(gestureState.dy);
       },
       onPanResponderRelease: (_, gestureState) => {
-        position.flattenOffset();
+        // ORCH-0675 Wave 1 RC-1 — per-axis flatten
+        positionX.flattenOffset();
+        positionY.flattenOffset();
 
         // Get current card from refs (always fresh)
         const availableCards = recommendationsRef.current.filter(
@@ -1244,10 +1256,12 @@ export default function SwipeableCards({
             HapticFeedback.medium();
             handleCardExpandRef.current?.();
           }
-          Animated.spring(position, {
-            toValue: { x: 0, y: 0 },
-            useNativeDriver: false,
-          }).start();
+          // ORCH-0675 Wave 1 RC-1 — useNativeDriver: true mandatory.
+          // (I-ANIMATIONS-NATIVE-DRIVER-DEFAULT) Mixing native+JS in Animated.parallel throws.
+          Animated.parallel([
+            Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
+            Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
+          ]).start();
           return;
         }
 
@@ -1265,10 +1279,11 @@ export default function SwipeableCards({
           // Check if card exists
           if (!cardToRemove) {
             console.warn("No card to swipe");
-            Animated.spring(position, {
-              toValue: { x: 0, y: 0 },
-              useNativeDriver: false,
-            }).start();
+            // ORCH-0675 Wave 1 RC-1 — per-axis spring with native driver
+            Animated.parallel([
+              Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
+              Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
+            ]).start();
             return;
           }
 
@@ -1281,22 +1296,30 @@ export default function SwipeableCards({
             HapticFeedback.medium();
             setPaywallFeature('curated_cards');
             setShowPaywall(true);
-            Animated.spring(position, {
-              toValue: { x: 0, y: 0 },
-              useNativeDriver: false,
-            }).start();
+            // ORCH-0675 Wave 1 RC-1 — per-axis spring with native driver
+            Animated.parallel([
+              Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
+              Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
+            ]).start();
             return;
           }
 
           // Animate card off the screen edge
-          Animated.timing(position, {
-            toValue: {
-              x: direction === "right" ? SCREEN_WIDTH : -SCREEN_WIDTH,
-              y: gestureState.dy,
-            },
-            duration: 250,
-            useNativeDriver: false,
-          }).start(() => {
+          // ORCH-0675 Wave 1 RC-1 — per-axis timing with native driver.
+          // Animated.parallel start() callback fires when LAST animation resolves —
+          // equivalent semantics to single-call ValueXY .start() callback.
+          Animated.parallel([
+            Animated.timing(positionX, {
+              toValue: direction === "right" ? SCREEN_WIDTH : -SCREEN_WIDTH,
+              duration: 250,
+              useNativeDriver: true,
+            }),
+            Animated.timing(positionY, {
+              toValue: gestureState.dy,
+              duration: 250,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
             // After animation completes, remove the card and advance to next
             setRemovedCards((prev) => {
               const newSet = new Set([...prev, cardToRemove.id]);
@@ -1313,19 +1336,22 @@ export default function SwipeableCards({
             });
 
             // Wait for React to render the next card before resetting position
-            // This prevents the flash/flicker
+            // This prevents the flash/flicker — DO NOT remove this rAF chain.
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
-                position.setValue({ x: 0, y: 0 });
+                // ORCH-0675 Wave 1 RC-1 — per-axis reset
+                positionX.setValue(0);
+                positionY.setValue(0);
               });
             });
           });
         } else {
           // Snap back to center
-          Animated.spring(position, {
-            toValue: { x: 0, y: 0 },
-            useNativeDriver: false,
-          }).start();
+          // ORCH-0675 Wave 1 RC-1 — per-axis spring with native driver
+          Animated.parallel([
+            Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
+            Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
+          ]).start();
         }
       },
     })
@@ -1333,8 +1359,9 @@ export default function SwipeableCards({
 
   const handleCardTap = () => {
     // Only handle tap if card is not being dragged
-    const currentX = (position.x as any)._value || 0;
-    const currentY = (position.y as any)._value || 0;
+    // ORCH-0675 Wave 1 RC-1 — per-axis read (Animated.ValueXY → 2× Animated.Value)
+    const currentX = (positionX as any)._value || 0;
+    const currentY = (positionY as any)._value || 0;
     if (Math.abs(currentX) < 10 && Math.abs(currentY) < 10 && currentRec) {
       handleCardExpand();
     }
@@ -1706,7 +1733,9 @@ export default function SwipeableCards({
     // Clear local state
     setRemovedCards(new Set());
     setCurrentCardIndex(0);
-    position.setValue({ x: 0, y: 0 });
+    // ORCH-0675 Wave 1 RC-1 — per-axis reset
+    positionX.setValue(0);
+    positionY.setValue(0);
 
     // Clear AsyncStorage for current mode and refreshKey
     try {
@@ -2226,9 +2255,10 @@ export default function SwipeableCards({
             style={[
               styles.card,
               {
+                // ORCH-0675 Wave 1 RC-1 — per-axis transform (native-driver compatible)
                 transform: [
-                  { translateX: position.x },
-                  { translateY: position.y },
+                  { translateX: positionX },
+                  { translateY: positionY },
                   { rotate: rotate },
                 ],
               },

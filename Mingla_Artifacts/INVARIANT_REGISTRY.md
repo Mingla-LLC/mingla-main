@@ -1055,3 +1055,73 @@ curl -X POST https://<project>.supabase.co/functions/v1/get-person-hero-cards \
 **Established by:** ORCH-0684.
 
 **Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`](Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md) §3.8.
+
+---
+
+## I-CHAT-CARDPAYLOAD-NO-RECIPIENT-RELATIVE-FIELDS
+
+**Statement:** `trimCardPayload` (in [`app-mobile/src/services/messagingService.ts`](app-mobile/src/services/messagingService.ts)) MUST NEVER extract or persist any of the following fields into the trimmed `CardPayload`: `travelTime`, `travelTimeMin`, `distance`, `distanceKm`, `distance_km`. These are recipient-relative — sender's value would fabricate for the recipient.
+
+**Why it exists:** Constitution #9 (no fabricated data). Codifies the ORCH-0659/0660 distance/travel-time lesson at the chat-share trim boundary. A shared card opens for the recipient on a device with their own location and travel mode; the sender's distance/travel-time value would not reflect the recipient's reality and would surface as silent fabrication.
+
+**Enforcement:** CI gate in [`scripts/ci-check-invariants.sh`](scripts/ci-check-invariants.sh) extracts the body of `trimCardPayload` via `awk` and greps for the forbidden field names. FAILS the build with file:line + invariant ID + cross-ref ORCH-0659/0660 if any match. Negative-control tested.
+
+**Test that catches a regression:**
+
+```bash
+# In trimCardPayload body — both must return zero:
+awk '/export function trimCardPayload/,/^\}/' app-mobile/src/services/messagingService.ts \
+  | grep -cE '(travelTime|travelTimeMin|distance|distanceKm|distance_km)'
+```
+
+**Established by:** ORCH-0685.
+
+**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md) §6.3 + §12.1, [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0685_v2_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/reports/INVESTIGATION_ORCH-0685_v2_EXPANDED_CARD_MODAL.md) §RC-2.
+
+---
+
+## I-LOCALE-CATEGORY-PARITY
+
+**Statement:** Every locale's `common.json` (under `app-mobile/src/i18n/locales/<locale>/common.json`) MUST contain ALL 12 required `category_*` keys: `category_nature`, `category_icebreakers`, `category_drinks_and_music`, `category_brunch`, `category_casual_food`, `category_upscale_fine_dining`, `category_movies`, `category_theatre`, `category_creative_arts`, `category_play`, `category_brunch_lunch_casual` (legacy), `category_movies_theatre` (legacy).
+
+**Why it exists:** `getReadableCategoryName` ([`app-mobile/src/utils/categoryUtils.ts:50`](app-mobile/src/utils/categoryUtils.ts#L50)) calls `i18n.t('common:category_${slug}')`. When the key is missing, it falls back to title-cased English. This produces mixed-language UI for non-English locales (e.g., a French user sees "Casual Food" instead of "Décontracté"). Constitution #3 — silent translation failure.
+
+**Enforcement:** CI gate in [`scripts/ci-check-invariants.sh`](scripts/ci-check-invariants.sh) iterates 29 locales × 12 keys, FAILS with named missing key + locale.
+
+**Test that catches a regression:**
+
+```bash
+# All 29 × 12 = 348 grep checks must pass:
+REQUIRED='category_nature category_icebreakers category_drinks_and_music category_brunch category_casual_food category_upscale_fine_dining category_movies category_theatre category_creative_arts category_play category_brunch_lunch_casual category_movies_theatre'
+for loc in $(ls app-mobile/src/i18n/locales/); do
+  for k in $REQUIRED; do
+    grep -q "\"$k\"" "app-mobile/src/i18n/locales/$loc/common.json" || echo "MISSING: $loc/$k"
+  done
+done
+# Expected output: empty.
+```
+
+**Established by:** ORCH-0685.
+
+**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md) §11.1.
+
+---
+
+## I-MODAL-CATEGORY-SUBCOMPONENT-WRAPS
+
+**Statement:** Sub-component category props in `ExpandedCardModal.tsx` (specifically `<WeatherSection category={…}>` and `<TimelineSection category={…}>` — both Stroll and Picnic variants) MUST pass the result of `getReadableCategoryName(card.category)`, NOT the raw `card.category`. The CardInfoSection prop site at line 1780 is exempt — that component translates internally.
+
+**Why it exists:** `card.category` is a canonical slug (`casual_food`, `nature`, etc.). Sub-components that receive raw slugs are latent slug-leak surfaces — any future maintainer who adds a `<Text>{category}</Text>` render in those components ships a slug to the user. Defense-in-depth at the prop boundary protects against this entire class of future leak.
+
+**Enforcement:** CI gate greps line range 1860-2020 of `ExpandedCardModal.tsx` for any `category={card.category}` (raw) and FAILS if found. The CardInfoSection block (lines 1778-1794) is outside this range and unaffected.
+
+**Test that catches a regression:**
+
+```bash
+# Must return zero matches:
+sed -n '1860,2020p' app-mobile/src/components/ExpandedCardModal.tsx | grep -cE 'category=\{card\.category\}'
+```
+
+**Established by:** ORCH-0685.
+
+**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md) §10.2.

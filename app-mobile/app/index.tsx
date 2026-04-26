@@ -133,26 +133,24 @@ function GlassBottomNavWithCoach(
   return <GlassBottomNav {...props} coachLikesRef={coachLikes.targetRef} />;
 }
 
-// ── Sentry ──────────────────────────────────────────────────────────────────
-// Initialize BEFORE any React component renders. Sentry's native module
-// installs a global NSException handler that captures the crash details
-// (module name, method, exception reason) before the process terminates.
-// This is the ONLY way to identify unsymbolicated native crashes without Xcode.
-Sentry.init({
-  dsn: 'https://5bb11663dddc2efc612498d7a14b70f4@o4511136062701568.ingest.us.sentry.io/4511136064012288',
-  enableNativeFramesTracking: true,
-  enableAutoSessionTracking: true,
-  // Capture 100% of errors (we need every crash right now)
-  tracesSampleRate: 0,
-  // Attach breadcrumbs from our logger
-  maxBreadcrumbs: 50,
-  enabled: !__DEV__, // Only in production builds
-});
+// ── ORCH-0679 Wave 2B-2: Sentry init moved to app/_layout.tsx ───────────────
+// I-SENTRY-SINGLE-INIT — Sentry.init() must be called exactly once across the
+// entire app-mobile/ codebase. The previous duplicate init here was deleted;
+// configs (enableNativeFramesTracking, enableAutoSessionTracking, tracesSampleRate,
+// maxBreadcrumbs, enabled:!__DEV__) are merged into _layout.tsx.
+// CI gate: scripts/ci/check-single-sentry-init.sh.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AppContent() {
   const state = useAppState();
   const handlers = useAppHandlers(state);
+  // ORCH-0679 Wave 2.5: useAppHandlers returns a fresh object every render
+  // (audit D-WAVE2-IMPL-2 / TS-1.5 — fix deferred to a separate wave). To let
+  // useCallback wraps below have stable identity without busting on `handlers`
+  // as a dep, callbacks read handlers via this ref. The ref is updated every
+  // render so the latest handlers are always used inside callback bodies.
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
   const layout = useAppLayout();
   const { t } = useTranslation(['navigation', 'common']);
 
@@ -1021,7 +1019,9 @@ function AppContent() {
   }));
 
   // Handle notification tap → navigate to the relevant page (V2: ServerNotification)
-  const handleNotificationNavigate = (notification: ServerNotification) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped — all closure deps are setState
+  // setters (React-stable) so identity is permanently stable.
+  const handleNotificationNavigate = useCallback((notification: ServerNotification) => {
     const deepLink = notification.data?.deepLink as string | undefined;
     logger.action('Notification tapped', { type: notification.type, deepLink });
 
@@ -1098,28 +1098,42 @@ function AppContent() {
     } else {
       setCurrentPage('home');
     }
-  };
+  }, [
+    setCurrentPage,
+    setViewingFriendProfileId,
+    setPendingConnectionsPanel,
+    setPendingOpenDmUserId,
+    setPendingSessionOpen,
+    setShowPaywall,
+    setDeepLinkParams,
+  ]);
 
   // Session handlers for the CollaborationSessions bar
-  const handleSessionSelect = (sessionId: string | null) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped. handlers.handleModeChange is
+  // accessed via handlersRef.current to avoid the unstable handlers dep
+  // (TS-1.5 — AppHandlers fix deferred).
+  const handleSessionSelect = useCallback((sessionId: string | null) => {
     logger.action('Session selected', { sessionId });
     if (sessionId) {
       const session = boardsSessions?.find((s: any) => s.id === sessionId || s.session_id === sessionId);
       if (session) {
-        handlers.handleModeChange(session.name);
+        handlersRef.current.handleModeChange(session.name);
         setCurrentSessionId(sessionId);
       }
     }
-  };
+  }, [boardsSessions, setCurrentSessionId]);
 
-  const handleSoloSelect = () => {
+  const handleSoloSelect = useCallback(() => {
     logger.action('Solo mode selected');
-    handlers.handleModeChange('solo');
+    handlersRef.current.handleModeChange('solo');
     setCurrentSessionId(null);
-  };
+  }, [setCurrentSessionId]);
 
   // Helper function to refresh all sessions (active + pending)
-  const refreshAllSessions = async (options?: { showLoading?: boolean }) => {
+  // ORCH-0679 Wave 2A: useCallback-wrapped so its identity is stable across renders.
+  // Without this, every parent re-render rebuilds this fn → all consumers (HomePage,
+  // ConnectionsPage props) see a new ref → memo barriers bust → render storm.
+  const refreshAllSessions = useCallback(async (options?: { showLoading?: boolean }) => {
     if (!user?.id) {
       setIsLoadingBoards(false);
       return;
@@ -1341,9 +1355,12 @@ function AppContent() {
         setIsLoadingBoards(false);
       }
     }
-  };
+  }, [user?.id, updateBoardsSessions, setIsLoadingBoards]);
 
-  const handleCreateSession = async (sessionName: string, selectedFriends: Friend[] = [], phoneInvitees?: { phoneE164: string }[]) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped. Body uses handlers.handleModeChange
+  // via handlersRef.current; refreshAllSessions is already useCallback-wrapped
+  // from Wave 2A. Other deps are setState setters (React-stable) and user?.id.
+  const handleCreateSession = useCallback(async (sessionName: string, selectedFriends: Friend[] = [], phoneInvitees?: { phoneE164: string }[]) => {
     if (!user?.id) return;
     logger.action('Create session pressed', { name: sessionName, friendCount: selectedFriends.length });
     setIsCreatingSession(true);
@@ -1539,7 +1556,7 @@ function AppContent() {
       toastManager.success(message);
 
       // Switch to the new session
-      handlers.handleModeChange(sessionName);
+      handlersRef.current.handleModeChange(sessionName);
       setCurrentSessionId(session.id);
     } catch (error) {
       console.error('Error creating session:', error);
@@ -1553,9 +1570,11 @@ function AppContent() {
     } finally {
       setIsCreatingSession(false);
     }
-  };
+  }, [user?.id, refreshAllSessions, setIsCreatingSession, setCurrentSessionId]);
 
-  const handleAcceptInvite = async (sessionId: string) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped. Calls handleSessionSelect (now
+  // useCallback'd) — its identity is stable so safe in dep array.
+  const handleAcceptInvite = useCallback(async (sessionId: string) => {
     if (!user?.id) return;
     logger.action('Accept invite pressed', { sessionId });
     try {
@@ -1585,9 +1604,10 @@ function AppContent() {
       console.error('Error accepting invite:', error);
       toastManager.error('Failed to accept invite.');
     }
-  };
+  }, [user?.id, queryClient, refreshAllSessions, handleSessionSelect, setPendingSessionOpen]);
 
-  const handleDeclineInvite = async (sessionId: string) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped.
+  const handleDeclineInvite = useCallback(async (sessionId: string) => {
     if (!user?.id) return;
     logger.action('Decline invite pressed', { sessionId });
     try {
@@ -1613,9 +1633,10 @@ function AppContent() {
       console.error('Error declining invite:', error);
       toastManager.error('Failed to decline invite.');
     }
-  };
+  }, [user?.id, queryClient, refreshAllSessions]);
 
-  const handleCancelInvite = async (sessionId: string) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped.
+  const handleCancelInvite = useCallback(async (sessionId: string) => {
     if (!user?.id) return;
     logger.action('Cancel invite pressed', { sessionId });
     try {
@@ -1658,10 +1679,11 @@ function AppContent() {
       console.error('[CancelInvite] Error:', error);
       toastManager.error('Failed to cancel invite.');
     }
-  };
+  }, [user?.id, refreshAllSessions]);
 
   // ORCH-0437: Invite more people to an existing pending session
-  const handleInviteMoreToSession = async (sessionId: string, friend: { id: string; name: string; username?: string; avatar?: string }) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped.
+  const handleInviteMoreToSession = useCallback(async (sessionId: string, friend: { id: string; name: string; username?: string; avatar?: string }) => {
     if (!user?.id) return;
     logger.action('Invite more to session', { sessionId, friendId: friend.id });
     try {
@@ -1739,7 +1761,7 @@ function AppContent() {
       console.error('Error inviting to session:', error);
       toastManager.error('Failed to send invite.');
     }
-  };
+  }, [user?.id, refreshAllSessions]);
 
   // Handle deep links for OAuth callback
   useEffect(() => {
@@ -1995,6 +2017,149 @@ function AppContent() {
     getSessionId();
     return () => { cancelled = true; };
   }, [currentMode, user?.id]);
+
+  // ─── ORCH-0679 Wave 2.6 — Hot-fix: hooks moved here from after early returns ───
+  // Wave 2A originally placed these AFTER `if (!_hasHydrated...) return` (line ~2026
+  // post-Wave-2.5), `if (showOnboardingFlow...)`, `if (!isAuthenticated)`, and
+  // `if (user && !profile)` early-return guards. That caused a Rules of Hooks
+  // violation when auth state transitioned (render 1: early return hit, hooks
+  // never called; render 2: hooks called for the first time → "Rendered more
+  // hooks than during the previous render"). Founder caught the crash on first
+  // dev-client cold start. This relocation puts every hook above all early
+  // returns. Static prevention: ESLint react-hooks/rules-of-hooks rule (added
+  // to CI in this wave). closeProfileOverlays moved from line ~2438 too.
+  // ─── ORCH-0679 Wave 2A — Hoisted tab props (I-TAB-PROPS-STABLE) ─────────────
+  // Every prop passed to a memoized tab below MUST be a stable reference.
+  // Inline arrow functions and object literals bust the React.memo barrier.
+  // CI gate: scripts/ci/check-no-inline-tab-props.sh (region-scoped — see gate).
+
+  const accountPreferencesMemo = useMemo(
+    () => ({
+      currency: accountPreferences?.currency || "USD",
+      measurementSystem:
+        (accountPreferences?.measurementSystem as "Metric" | "Imperial") || "Imperial",
+    }),
+    [accountPreferences?.currency, accountPreferences?.measurementSystem]
+  );
+
+  // ── Logging-only no-op handlers (no closure deps — empty array safe) ──
+  const handleAddToCalendar = useCallback((experienceData: any) => {
+    console.log("Add to calendar:", experienceData);
+  }, []);
+  const handlePurchaseComplete = useCallback((experienceData: any, purchaseOption: any) => {
+    console.log("Purchase complete:", experienceData, purchaseOption);
+  }, []);
+  const handleGenerateNewMockCard = useCallback(() => {
+    console.log("Generate new card");
+  }, []);
+  const handleScheduleFromSaved = useCallback((card: any) => {
+    console.log("Scheduling from saved:", card);
+  }, []);
+  const handlePurchaseFromSavedSaved = useCallback((card: any, option: any) => {
+    console.log("Purchasing from saved:", card, option);
+  }, []);
+  const handlePurchaseFromSavedLikes = useCallback((card: any, purchaseOption: any) => {
+    console.log("Purchasing from saved:", card, purchaseOption);
+  }, []);
+  const handleAddToCalendarFromLikes = useCallback((entry: any) => {
+    console.log("Adding to calendar:", entry);
+  }, []);
+  const handleShowQRCode = useCallback((entryId: string) => {
+    console.log("Showing QR code for:", entryId);
+  }, []);
+  const handleUpdateBoardSession = useCallback((board: any) => {
+    console.log("Updating board session:", board);
+  }, []);
+
+  // ── State-touching handlers ──
+  const handleResetCards = useCallback(() => {
+    setRemovedCardIds([]);
+  }, [setRemovedCardIds]);
+
+  const handleOpenSessionHandled = useCallback(() => {
+    setPendingSessionOpen(null);
+  }, [setPendingSessionOpen]);
+
+  const handleOpenPreferences = useCallback(() => {
+    logger.action('Open preferences pressed');
+    setShowPreferences(true);
+  }, [setShowPreferences]);
+
+  const handleOpenCollabPreferences = useCallback(() => {
+    logger.action('Open collab preferences pressed');
+    setShowCollabPreferences(true);
+  }, [setShowCollabPreferences]);
+
+  const handleSessionStateChangedShowLoading = useCallback(() => {
+    refreshAllSessions({ showLoading: true });
+  }, [refreshAllSessions]);
+
+  const handleOpenChatWithUserFromDiscover = useCallback((friendUserId: string) => {
+    setPendingOpenDmUserId(friendUserId);
+    setCurrentPage("connections");
+  }, [setPendingOpenDmUserId, setCurrentPage]);
+
+  const handleViewFriendProfile = useCallback((friendUserId: string) => {
+    setViewingFriendProfileId(friendUserId);
+  }, [setViewingFriendProfileId]);
+
+  const discoverDeepLinkParams = useMemo(
+    () => (currentPage === 'discover' ? deepLinkParams : null),
+    [currentPage, deepLinkParams]
+  );
+
+  const handleDeepLinkHandled = useCallback(() => {
+    setDeepLinkParams(null);
+  }, [setDeepLinkParams]);
+
+  const handleCreateSessionFromConnections = useCallback(async () => {
+    await refreshAllSessions({ showLoading: true });
+  }, [refreshAllSessions]);
+
+  const handleFriendAccepted = useCallback(() => {
+    refreshAllSessions({ showLoading: false });
+  }, [refreshAllSessions]);
+
+  const handleOpenDirectMessageHandled = useCallback(() => {
+    setPendingOpenDmUserId(null);
+  }, [setPendingOpenDmUserId]);
+
+  const handleInitialPanelHandled = useCallback(() => {
+    setPendingConnectionsPanel(null);
+  }, []);
+
+  const handleNavigationComplete = useCallback(() => {
+    setActivityNavigation(null);
+  }, [setActivityNavigation]);
+
+  const handleSignOutFromProfile = useCallback(async () => {
+    logger.action('Sign out pressed');
+    await handleSignOut();
+  }, [handleSignOut]);
+
+  const handleNavigateToConnectionsFromProfile = useCallback(() => {
+    logger.action('Navigate to connections from profile');
+    setPendingConnectionsPanel("friends");
+    setCurrentPage("connections");
+  }, [setCurrentPage]);
+
+  const savedExperiencesCountMemo = useMemo(
+    () => savedCards?.length ?? 0,
+    [savedCards]
+  );
+
+  const scheduledCountMemo = useMemo(
+    () => calendarEntries?.length ?? 0,
+    [calendarEntries]
+  );
+
+  // Ensure any full-screen profile overlays are closed when switching tabs/pages
+  // ORCH-0679 Wave 2.5: useCallback-wrapped — stable identity passed to
+  // GlassBottomNavWithCoach. Wave 2.6: relocated to above early returns.
+  const closeProfileOverlays = useCallback(() => {
+    setViewingFriendProfileId(null);
+  }, [setViewingFriendProfileId]);
+  // ─── End ORCH-0679 Wave 2A/2.5/2.6 hoists ──────────────────────────────────
 
   // RELIABILITY: Gate on !_hasHydrated || isLoadingAuth. This ensures the profile
   // gate below sees the Zustand-persisted profile value (from AsyncStorage rehydration)
@@ -2283,10 +2448,8 @@ function AppContent() {
     }
   };
 
-  // Ensure any full-screen profile overlays are closed when switching tabs/pages
-  const closeProfileOverlays = () => {
-    setViewingFriendProfileId(null);
-  };
+  // closeProfileOverlays useCallback was originally here — relocated to above
+  // early returns by Wave 2.6 hot-fix (Rules of Hooks compliance).
 
   // Show main app if user is authenticated AND has completed onboarding
   if (
@@ -2366,33 +2529,20 @@ function AppContent() {
                             <View style={currentPage === 'home' ? styles.tabVisible : styles.tabHidden}>
                               <HomePage
                                 isTabVisible={currentPage === 'home'}
-                                onOpenPreferences={() => {
-                                  logger.action('Open preferences pressed');
-                                  setShowPreferences(true);
-                                }}
-                                onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
+                                onOpenPreferences={handleOpenPreferences}
+                                onOpenCollabPreferences={handleOpenCollabPreferences}
                                 currentMode={currentMode ?? "solo"}
                                 boardsSessions={boardsSessions}
                                 userPreferences={userPreferences}
-                                accountPreferences={{
-                                  currency: accountPreferences?.currency || "USD",
-                                  measurementSystem:
-                                    (accountPreferences?.measurementSystem as
-                                      | "Metric"
-                                      | "Imperial") || "Imperial",
-                                }}
-                                onAddToCalendar={(experienceData: any) =>
-                                  console.log("Add to calendar:", experienceData)
-                                }
+                                accountPreferences={accountPreferencesMemo}
+                                onAddToCalendar={handleAddToCalendar}
                                 savedCards={savedCards}
                                 onSaveCard={handlers.handleSaveCard}
                                 onShareCard={handlers.handleShareCard}
-                                onPurchaseComplete={(experienceData: any, purchaseOption: any) =>
-                                  console.log("Purchase complete:", experienceData, purchaseOption)
-                                }
+                                onPurchaseComplete={handlePurchaseComplete}
                                 removedCardIds={removedCardIds}
-                                onResetCards={() => setRemovedCardIds([])}
-                                generateNewMockCard={() => console.log("Generate new card")}
+                                onResetCards={handleResetCards}
+                                generateNewMockCard={handleGenerateNewMockCard}
                                 refreshKey={preferencesRefreshKey}
                                 collaborationSessions={collaborationSessions}
                                 selectedSessionId={currentSessionId}
@@ -2403,35 +2553,24 @@ function AppContent() {
                                 onDeclineInvite={handleDeclineInvite}
                                 onCancelInvite={handleCancelInvite}
                                 onInviteMoreToSession={handleInviteMoreToSession}
-                                onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
+                                onSessionStateChanged={handleSessionStateChangedShowLoading}
                                 availableFriends={availableFriendsForSessions}
                                 isCreatingSession={isCreatingSession}
                                 onNotificationNavigate={handleNotificationNavigate}
                                 userId={user?.id}
                                 openSessionId={pendingSessionOpen}
-                                onOpenSessionHandled={() => setPendingSessionOpen(null)}
+                                onOpenSessionHandled={handleOpenSessionHandled}
                               />
                             </View>
                             <View style={currentPage === 'discover' ? styles.tabVisible : styles.tabHidden}>
                               <DiscoverScreen
                                 isTabVisible={currentPage === 'discover'}
-                                onOpenChatWithUser={(friendUserId) => {
-                                  setPendingOpenDmUserId(friendUserId);
-                                  setCurrentPage("connections");
-                                }}
-                                onViewFriendProfile={(friendUserId) =>
-                                  setViewingFriendProfileId(friendUserId)
-                                }
-                                accountPreferences={{
-                                  currency: accountPreferences?.currency || "USD",
-                                  measurementSystem:
-                                    (accountPreferences?.measurementSystem as
-                                      | "Metric"
-                                      | "Imperial") || "Imperial",
-                                }}
+                                onOpenChatWithUser={handleOpenChatWithUserFromDiscover}
+                                onViewFriendProfile={handleViewFriendProfile}
+                                accountPreferences={accountPreferencesMemo}
                                 preferencesRefreshKey={preferencesRefreshKey}
-                                deepLinkParams={currentPage === 'discover' ? deepLinkParams : null}
-                                onDeepLinkHandled={() => setDeepLinkParams(null)}
+                                deepLinkParams={discoverDeepLinkParams}
+                                onDeepLinkHandled={handleDeepLinkHandled}
                               />
                             </View>
                             <View style={currentPage === 'connections' ? styles.tabVisible : styles.tabHidden}>
@@ -2446,19 +2585,15 @@ function AppContent() {
                                 onRefreshSessions={refreshAllSessions}
                                 currentMode={currentMode ?? "solo"}
                                 onModeChange={handlers.handleModeChange}
-                                onUpdateBoardSession={(board: any) => {
-                                  console.log("Updating board session:", board);
-                                }}
-                                onCreateSession={async () => {
-                                  await refreshAllSessions({ showLoading: true });
-                                }}
+                                onUpdateBoardSession={handleUpdateBoardSession}
+                                onCreateSession={handleCreateSessionFromConnections}
                                 onUnreadCountChange={setTotalUnreadMessages}
-                                onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
-                                onFriendAccepted={() => refreshAllSessions({ showLoading: false })}
+                                onNavigateToFriendProfile={handleViewFriendProfile}
+                                onFriendAccepted={handleFriendAccepted}
                                 openDirectMessageWithUserId={pendingOpenDmUserId}
-                                onOpenDirectMessageHandled={() => setPendingOpenDmUserId(null)}
+                                onOpenDirectMessageHandled={handleOpenDirectMessageHandled}
                                 initialPanel={pendingConnectionsPanel}
-                                onInitialPanelHandled={() => setPendingConnectionsPanel(null)}
+                                onInitialPanelHandled={handleInitialPanelHandled}
                               />
                             </View>
                             <View style={currentPage === 'saved' ? styles.tabVisible : styles.tabHidden}>
@@ -2467,12 +2602,8 @@ function AppContent() {
                                 savedCards={savedCards}
                                 isLoading={isLoadingSavedCards}
                                 userPreferences={userPreferences}
-                                onScheduleFromSaved={(card: any) => {
-                                  console.log("Scheduling from saved:", card);
-                                }}
-                                onPurchaseFromSaved={(card: any, option: any) => {
-                                  console.log("Purchasing from saved:", card, option);
-                                }}
+                                onScheduleFromSaved={handleScheduleFromSaved}
+                                onPurchaseFromSaved={handlePurchaseFromSavedSaved}
                                 onShareCard={handlers.handleShareCard}
                               />
                             </View>
@@ -2488,36 +2619,23 @@ function AppContent() {
                                 userPreferences={userPreferences}
                                 accountPreferences={accountPreferences}
                                 navigationData={activityNavigation}
-                                onNavigationComplete={() => setActivityNavigation(null)}
-                                onPurchaseFromSaved={(card: any, purchaseOption: any) => {
-                                  console.log("Purchasing from saved:", card, purchaseOption);
-                                }}
+                                onNavigationComplete={handleNavigationComplete}
+                                onPurchaseFromSaved={handlePurchaseFromSavedLikes}
                                 onRemoveFromCalendar={handlers.handleRemoveFromCalendar}
                                 onShareCard={handlers.handleShareCard}
-                                onAddToCalendar={(entry: any) => {
-                                  console.log("Adding to calendar:", entry);
-                                }}
-                                onShowQRCode={(entryId: string) => {
-                                  console.log("Showing QR code for:", entryId);
-                                }}
+                                onAddToCalendar={handleAddToCalendarFromLikes}
+                                onShowQRCode={handleShowQRCode}
                               />
                             </View>
                             <View style={currentPage === 'profile' ? styles.tabVisible : styles.tabHidden}>
                               <ProfilePage
                                 isTabVisible={currentPage === 'profile'}
-                                onSignOut={async () => {
-                                  logger.action('Sign out pressed');
-                                  await handleSignOut();
-                                }}
+                                onSignOut={handleSignOutFromProfile}
                                 onUserIdentityUpdate={handleUserIdentityUpdate}
                                 onNavigateToActivity={handlers.handleNavigateToActivity}
-                                onNavigateToConnections={() => {
-                                  logger.action('Navigate to connections from profile');
-                                  setPendingConnectionsPanel("friends");
-                                  setCurrentPage("connections");
-                                }}
-                                savedExperiences={savedCards?.length || 0}
-                                scheduledCount={calendarEntries?.length || 0}
+                                onNavigateToConnections={handleNavigateToConnectionsFromProfile}
+                                savedExperiences={savedExperiencesCountMemo}
+                                scheduledCount={scheduledCountMemo}
                                 notificationsEnabled={notificationsEnabled}
                                 onNotificationsToggle={handlers.handleNotificationsToggle}
                                 userIdentity={userIdentity}

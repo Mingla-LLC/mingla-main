@@ -271,7 +271,7 @@ const glassPillStyles = StyleSheet.create({
   },
 });
 
-export default function ConnectionsPageRefactored({
+function ConnectionsPageRefactored({
   onShareSavedCard,
   onRemoveFriend,
   onBlockUser,
@@ -292,6 +292,13 @@ export default function ConnectionsPageRefactored({
   onInitialPanelHandled,
   isTabVisible,
 }: ConnectionsPageProps) {
+  // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
+  const renderCountRef = React.useRef(0);
+  if (__DEV__) {
+    renderCountRef.current += 1;
+    console.log(`[render-count] ConnectionsPage: ${renderCountRef.current}`);
+  }
+
   useScreenLogger('connections');
   const { t } = useTranslation(['connections', 'common']);
   // ORCH-0635: step ID 8 → 7 (old step 5 dropped → renumber).
@@ -3479,3 +3486,6 @@ sheetBodyContent: {
     fontWeight: "700",
   },
 });
+
+// ORCH-0679 Wave 2A: I-TAB-SCREENS-MEMOIZED.
+export default React.memo(ConnectionsPageRefactored);

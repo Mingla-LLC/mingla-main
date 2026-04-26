@@ -68,7 +68,7 @@ interface HomePageProps {
   onOpenSessionHandled?: () => void;
 }
 
-export default function HomePage({
+function HomePage({
   onOpenPreferences,
   onOpenCollabPreferences,
   currentMode,
@@ -105,6 +105,14 @@ export default function HomePage({
   openSessionId = null,
   onOpenSessionHandled,
 }: HomePageProps) {
+  // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
+  // Tap a different tab — only that tab should log. Hidden tabs MUST NOT log.
+  const renderCountRef = React.useRef(0);
+  if (__DEV__) {
+    renderCountRef.current += 1;
+    console.log(`[render-count] HomePage: ${renderCountRef.current}`);
+  }
+
   // Notifications modal state
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showFriendRequestsModal, setShowFriendRequestsModal] = useState(false);
@@ -419,3 +427,8 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 });
+
+// ORCH-0679 Wave 2A: I-TAB-SCREENS-MEMOIZED — default Object.is shallow compare.
+// All props passed from app/index.tsx are stable refs (useCallback/useMemo) so
+// shallow compare correctly detects real changes vs render-storm noise.
+export default React.memo(HomePage);

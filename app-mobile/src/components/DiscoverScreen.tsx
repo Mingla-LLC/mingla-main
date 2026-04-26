@@ -578,19 +578,22 @@ interface LoadingGridSkeletonProps {
 const LoadingGridSkeleton: React.FC<LoadingGridSkeletonProps> = ({ count = 6 }) => {
   const pulse = useRef(new RNAnimated.Value(0)).current;
   useEffect(() => {
+    // ORCH-0675 Wave 1 RC-3 — useNativeDriver: true mandatory for opacity-only animation.
+    // (I-ANIMATIONS-NATIVE-DRIVER-DEFAULT) opacity is GPU-eligible; JS-driven loop
+    // would starve gesture input during Discover loading state on mid-tier Android.
     const loop = RNAnimated.loop(
       RNAnimated.sequence([
         RNAnimated.timing(pulse, {
           toValue: 1,
           duration: d.motion.skeletonPulseMs / 2,
           easing: RNEasing.inOut(RNEasing.quad),
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
         RNAnimated.timing(pulse, {
           toValue: 0,
           duration: d.motion.skeletonPulseMs / 2,
           easing: RNEasing.inOut(RNEasing.quad),
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
       ])
     );
@@ -688,9 +691,16 @@ const EmptyState: React.FC<EmptyStateProps> = ({
 // Main screen
 // ============================================================================
 
-export default function DiscoverScreen({
+function DiscoverScreen({
   accountPreferences,
 }: DiscoverScreenProps): React.ReactElement {
+  // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
+  const renderCountRef = React.useRef(0);
+  if (__DEV__) {
+    renderCountRef.current += 1;
+    console.log(`[render-count] DiscoverScreen: ${renderCountRef.current}`);
+  }
+
   const { t } = useTranslation(["discover", "common"]);
   const insets = useSafeAreaInsets();
   // ORCH-0635 (rework): step 6 target is the header panel (title + filter bar).
@@ -1926,3 +1936,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 });
+
+// ORCH-0679 Wave 2A: I-TAB-SCREENS-MEMOIZED.
+export default React.memo(DiscoverScreen);

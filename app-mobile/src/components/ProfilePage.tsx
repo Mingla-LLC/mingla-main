@@ -65,7 +65,7 @@ interface ProfilePageProps {
   };
 }
 
-export default function ProfilePage({
+function ProfilePage({
   onSignOut,
   onUserIdentityUpdate,
   onNavigateToActivity,
@@ -77,6 +77,13 @@ export default function ProfilePage({
   onNotificationsToggle,
   userIdentity,
 }: ProfilePageProps) {
+  // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
+  const renderCountRef = React.useRef(0);
+  if (__DEV__) {
+    renderCountRef.current += 1;
+    console.log(`[render-count] ProfilePage: ${renderCountRef.current}`);
+  }
+
   useScreenLogger('profile');
   const { t } = useTranslation(['profile', 'common']);
   const insets = useSafeAreaInsets();
@@ -648,3 +655,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 });
+
+// ORCH-0679 Wave 2A: I-TAB-SCREENS-MEMOIZED.
+export default React.memo(ProfilePage);

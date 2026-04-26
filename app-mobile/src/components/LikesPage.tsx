@@ -56,7 +56,7 @@ interface LikesPageProps {
   onNavigationComplete?: () => void;
 }
 
-export default function LikesPage({
+function LikesPage({
   savedCards,
   userPreferences,
   accountPreferences,
@@ -74,6 +74,13 @@ export default function LikesPage({
   navigationData,
   onNavigationComplete,
 }: LikesPageProps): React.ReactElement {
+  // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
+  const renderCountRef = React.useRef(0);
+  if (__DEV__) {
+    renderCountRef.current += 1;
+    console.log(`[render-count] LikesPage: ${renderCountRef.current}`);
+  }
+
   useScreenLogger('likes');
   const { t } = useTranslation(['saved']);
   const insets = useSafeAreaInsets();
@@ -433,3 +440,6 @@ const styles = StyleSheet.create({
     color: glass.chrome.inactive.labelColor,
   },
 });
+
+// ORCH-0679 Wave 2A: I-TAB-SCREENS-MEMOIZED.
+export default React.memo(LikesPage);

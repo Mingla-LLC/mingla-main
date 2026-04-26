@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, ReactNode } from 'react';
 import { Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/appStore';
@@ -374,7 +374,9 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     ? COACH_STEPS.find((s) => s.id === currentStep) ?? null
     : null;
 
-  const value: CoachMarkContextType = {
+  // ORCH-0679 Wave 2A: useMemo on value (I-PROVIDER-VALUE-MEMOIZED) — context
+  // value identity is stable across renders when no underlying state/refs change.
+  const value = useMemo<CoachMarkContextType>(() => ({
     currentStep,
     isCoachActive,
     isCoachPending,
@@ -389,7 +391,22 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     registerTargetScrollOffset,
     overlayVisible,
     scrollLockActive,
-  };
+  }), [
+    currentStep,
+    isCoachActive,
+    isCoachPending,
+    isCoachLoading,
+    currentStepConfig,
+    nextStep,
+    prevStep,
+    skipTour,
+    targetMeasurements,
+    registerTarget,
+    registerScrollRef,
+    registerTargetScrollOffset,
+    overlayVisible,
+    scrollLockActive,
+  ]);
 
   return (
     <CoachMarkContext.Provider value={value}>

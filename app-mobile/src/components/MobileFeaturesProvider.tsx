@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, ReactNode } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { enhancedLocationService, LocationData } from '../services/enhancedLocationService';
 import { cameraService } from '../services/cameraService';
@@ -69,34 +69,33 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
     return () => subscription?.remove();
   }, [isLocationTracking]);
 
-  const startLocationTracking = () => {
+  // ORCH-0679 Wave 2A: useCallback wraps + useMemo on value (I-PROVIDER-VALUE-MEMOIZED).
+  const startLocationTracking = useCallback(() => {
     if (!locationPermissionGranted) {
       console.warn('Location permission not granted');
       return;
     }
 
     enhancedLocationService.startLocationTracking({
-      accuracy: 1, // High accuracy
-      timeInterval: 10000, // 10 seconds
-      distanceInterval: 50, // 50 meters
+      accuracy: 1,
+      timeInterval: 10000,
+      distanceInterval: 50,
       onLocationUpdate: (update) => {
         setCurrentLocation(update.location);
-        
-        // If significant change, log it
         if (update.isSignificantChange) {
         }
       },
     });
 
     setIsLocationTracking(true);
-  };
+  }, [locationPermissionGranted]);
 
-  const stopLocationTracking = () => {
+  const stopLocationTracking = useCallback(() => {
     enhancedLocationService.stopLocationTracking();
     setIsLocationTracking(false);
-  };
+  }, []);
 
-  const getCurrentLocation = async (): Promise<LocationData | null> => {
+  const getCurrentLocation = useCallback(async (): Promise<LocationData | null> => {
     try {
       const location = await enhancedLocationService.getCurrentLocation();
       setCurrentLocation(location);
@@ -105,58 +104,62 @@ export const MobileFeaturesProvider: React.FC<MobileFeaturesProviderProps> = ({ 
       console.error('Error getting current location:', error);
       return null;
     }
-  };
+  }, []);
 
-  const takePhoto = async (options?: any) => {
+  const takePhoto = useCallback(async (options?: any) => {
     try {
       return await cameraService.takePhoto(options);
     } catch (error) {
       console.error('Error taking photo:', error);
       return null;
     }
-  };
+  }, []);
 
-  const pickFromLibrary = async (options?: any) => {
+  const pickFromLibrary = useCallback(async (options?: any) => {
     try {
       return await cameraService.pickFromLibrary(options);
     } catch (error) {
       console.error('Error picking from library:', error);
       return null;
     }
-  };
+  }, []);
 
-  const uploadImage = async (uri: string, fileName?: string): Promise<string | null> => {
+  const uploadImage = useCallback(async (uri: string, fileName?: string): Promise<string | null> => {
     try {
       return await cameraService.uploadImage(uri, fileName);
     } catch (error) {
       console.error('Error uploading image:', error);
       return null;
     }
-  };
+  }, []);
 
-  // AI service methods removed - using RecommendationsGrid instead
-
-  const value: MobileFeaturesContextType = {
-    // Location
+  const value = useMemo<MobileFeaturesContextType>(() => ({
     currentLocation,
     isLocationTracking,
     locationPermissionGranted,
     startLocationTracking,
     stopLocationTracking,
     getCurrentLocation,
-    
-    // Camera
     cameraPermissionGranted,
     takePhoto,
     pickFromLibrary,
     uploadImage,
-    
-    // AI methods removed - using RecommendationsGrid instead
-    
-    // Status
     isInitialized,
     initializationError,
-  };
+  }), [
+    currentLocation,
+    isLocationTracking,
+    locationPermissionGranted,
+    startLocationTracking,
+    stopLocationTracking,
+    getCurrentLocation,
+    cameraPermissionGranted,
+    takePhoto,
+    pickFromLibrary,
+    uploadImage,
+    isInitialized,
+    initializationError,
+  ]);
 
   return (
     <MobileFeaturesContext.Provider value={value}>
