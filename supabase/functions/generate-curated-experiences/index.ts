@@ -125,7 +125,18 @@ interface ExperienceTypeDef {
   descriptionTone: 'adventure' | 'romantic' | 'stroll' | 'group' | 'picnic' | 'firstdate';
 }
 
-const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
+// ORCH-0677: CuratedSummary surfaced when cards.length === 0 so mobile can route
+// curated-only empty results to the EMPTY UI state instead of stuck-loading.
+// `pool_empty` = no anchor candidates; `no_viable_anchor` = anchors existed but
+// every reverse-anchor candidate failed; `pipeline_error` = caught exception.
+export type CuratedEmptyReason = 'pool_empty' | 'no_viable_anchor' | 'pipeline_error';
+export interface CuratedSummary {
+  emptyReason: CuratedEmptyReason;
+  candidateAnchorCount: number;
+  failedAnchorCount: number;
+}
+
+export const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
   {
     // ORCH-0601 — 2-stop structure, 6 combos mixing cultural + physical activities.
     // Slugs `hiking` (nature subset) and `museum` (creative_arts subset) route via
@@ -646,7 +657,13 @@ function buildCardStop(
     priceTier: card.price_tiers?.[0] || card.price_tier || 'chill',
     priceTiers: card.price_tiers?.length ? card.price_tiers : (card.price_tier ? [card.price_tier] : ['chill']),
     openingHours: card.opening_hours || {},
-    isOpenNow: true,
+    // ORCH-0677 D-3: derive truthfully from openingHours.openNow when present.
+    // Never fabricate `true` (Constitution #9). null = honestly unknown.
+    isOpenNow: (() => {
+      const oh = card.opening_hours;
+      if (oh && (oh.openNow === true || oh.openNow === false)) return oh.openNow;
+      return null;
+    })(),
     website: card.website || null,
     lat,
     lng,
@@ -717,7 +734,7 @@ async function generateCardsForType(
   travelConstraintValue: number,
   limit: number,
   skipDescriptions: boolean,
-): Promise<any[]> {
+): Promise<{ cards: any[]; summary?: CuratedSummary }> {
   const TRAVEL_SPEEDS_KMH: Record<string, number> = {
     walking: 4.5, biking: 14, transit: 20, driving: 35,
   };
@@ -789,27 +806,31 @@ async function generateCardsForType(
   // Build cards
   const cards: any[] = [];
   const globalUsedPlaceIds = new Set<string>();
+  // ORCH-0677 RC-1: dead-anchor cycle prevention. Reverse-anchor types
+  // (currently picnic-dates) re-pick anchorPlaces[0] every iteration when
+  // the failed-anchor set is empty — leading to infinite retries on the
+  // same dead candidate. Tracking failures per-request lets the loop
+  // advance to the next anchor on the next iteration. Do not remove
+  // without re-running T-04 fixture (see SPEC_ORCH-0677 §6).
+  const failedAnchorIds = new Set<string>();
+  // Capture the anchor's place_id at the top of each reverse-anchor iteration
+  // so post-anchor gates (required_stops_short / travel_constraint / duplicate)
+  // can mark it as failed without needing to re-derive `anchor` from scope.
   const mainStopCount = typeDef.stops.filter(s => !s.optional).length;
   // ORCH-0434: Budget filtering removed. perStopBudget set to Infinity to disable.
   const perStopBudget = Infinity;
 
-  // [TRANSITIONAL] ORCH-0653 v2 instrumentation: per-gate kill counters. Remove after diagnosis (v3 fix).
-  const _gateCounts = {
-    attempted: 0,
-    reverseAnchor_no_anchor: 0,
-    reverseAnchor_no_available: 0,
-    reverseAnchor_no_place: 0,
-    standard_no_available: 0,
-    standard_no_place: 0,
-    required_stops_short: 0,
-    travel_constraint: 0,
-    duplicate_place_ids: 0,
-    built_successfully: 0,
-  };
+  // ORCH-0677 §3.2: track candidate anchor count so summary can surface it
+  // when cards.length === 0. Only meaningful for reverse-anchor types.
+  const initialAnchorCount = hasReverseAnchor
+    ? (categoryPlaces[typeDef.combos[0][typeDef.stops.findIndex(s => s.reverseAnchor)]] || []).length
+    : 0;
 
   for (const combo of comboList) {
+    // ORCH-0677: per-iteration anchor identity, set once anchor is picked.
+    // Used by post-anchor gates to mark the anchor as failed.
+    let currentAnchorId: string | null = null;
     if (cards.length >= limit) break;
-    _gateCounts.attempted++;
 
     const stops: any[] = [];
     const comboUsedIds = new Set(globalUsedPlaceIds);
@@ -822,15 +843,23 @@ async function generateCardsForType(
       const anchorStopIdx = typeDef.stops.findIndex(s => s.reverseAnchor);
       const anchorCatId = combo[anchorStopIdx];
       const anchorPlaces = (categoryPlaces[anchorCatId] || []).filter(p => {
-        return !comboUsedIds.has(p.google_place_id);
+        // ORCH-0677 RC-1: also exclude anchors that have failed in a prior
+        // iteration of this request — without this, anchorPlaces[0] keeps
+        // re-picking the same dead anchor, producing 0 cards across all
+        // limit*2 iterations.
+        return !comboUsedIds.has(p.google_place_id)
+          && !failedAnchorIds.has(p.google_place_id);
       });
       if (anchorPlaces.length === 0) {
-        _gateCounts.reverseAnchor_no_anchor++;
-        console.error(`[generateCardsForType:${typeDef.id}:gate-reverseAnchor_no_anchor] iter=${_gateCounts.attempted} anchorCatId=${anchorCatId} categoryPlaces.length=${(categoryPlaces[anchorCatId] || []).length} comboUsedIds.size=${comboUsedIds.size}`);
+        // No remaining anchor candidates (either none ever existed, or all
+        // viable anchors have been marked failed in prior iterations).
+        // Loop will exit on the next iteration since cards.length stays 0
+        // and the comboList eventually exhausts.
         valid = false;
       }
       else {
         const anchor = anchorPlaces[0];
+        currentAnchorId = anchor.google_place_id;   // ORCH-0677: for post-anchor gates
         comboUsedIds.add(anchor.google_place_id);
 
         // Fetch non-anchor categories near anchor (3km radius)
@@ -866,16 +895,17 @@ async function generateCardsForType(
               return true;
             });
             if (available.length === 0 && !stopDef.optional) {
-              _gateCounts.reverseAnchor_no_available++;
-              console.error(`[generateCardsForType:${typeDef.id}:gate-reverseAnchor_no_available] iter=${_gateCounts.attempted} catId=${catId} anchor.gpid=${anchor.google_place_id} nearKey=${nearKey} categoryPlaces[nearKey].length=${(categoryPlaces[nearKey] || []).length} comboUsedIds.size=${comboUsedIds.size}`);
+              // ORCH-0677 RC-1: this anchor cannot complete a valid combo —
+              // mark it failed so the next iteration picks a different one.
+              failedAnchorIds.add(anchor.google_place_id);
               valid = false; break;
             }
             if (available.length === 0 && stopDef.optional) continue;
 
             const place = selectClosestHighestRated(available, prevLat, prevLng);
             if (!place && !stopDef.optional) {
-              _gateCounts.reverseAnchor_no_place++;
-              console.error(`[generateCardsForType:${typeDef.id}:gate-reverseAnchor_no_place] iter=${_gateCounts.attempted} catId=${catId} anchor.gpid=${anchor.google_place_id} available.length=${available.length} prevLat=${prevLat} prevLng=${prevLng}`);
+              // ORCH-0677 RC-1: companion selection failed — mark anchor failed.
+              failedAnchorIds.add(anchor.google_place_id);
               valid = false; break;
             }
             if (!place) continue;
@@ -911,8 +941,9 @@ async function generateCardsForType(
 
         if (available.length === 0) {
           if (stopDef.optional) continue; // Skip optional stops gracefully
-          _gateCounts.standard_no_available++;
-          console.error(`[generateCardsForType:${typeDef.id}:gate-standard_no_available] iter=${_gateCounts.attempted} catId=${catId} categoryPlaces[catId].length=${(categoryPlaces[catId] || []).length} comboUsedIds.size=${comboUsedIds.size}`);
+          // Standard branch — no anchor to mark. Combo-level retry is governed
+          // by the round-robin shuffle in comboList; no extra failure tracking
+          // needed here since standard types have multi-combo variety.
           valid = false;
           break;
         }
@@ -925,8 +956,6 @@ async function generateCardsForType(
 
         if (!place) {
           if (stopDef.optional) continue;
-          _gateCounts.standard_no_place++;
-          console.error(`[generateCardsForType:${typeDef.id}:gate-standard_no_place] iter=${_gateCounts.attempted} catId=${catId} available.length=${available.length} prevLat=${prevLat} prevLng=${prevLng}`);
           valid = false;
           break;
         }
@@ -947,8 +976,9 @@ async function generateCardsForType(
     const requiredStops = typeDef.stops.filter(s => !s.optional).length;
     const builtRequired = stops.filter(s => !s.optional).length;
     if (!valid || builtRequired < requiredStops) {
-      _gateCounts.required_stops_short++;
-      console.error(`[generateCardsForType:${typeDef.id}:gate-required_stops_short] iter=${_gateCounts.attempted} valid=${valid} builtRequired=${builtRequired} requiredStops=${requiredStops}`);
+      // ORCH-0677 RC-1: post-validation failure for reverse-anchor types
+      // marks the anchor failed so the loop progresses to the next.
+      if (hasReverseAnchor && currentAnchorId) failedAnchorIds.add(currentAnchorId);
       continue;
     }
 
@@ -960,16 +990,18 @@ async function generateCardsForType(
     // Validate travel constraint
     const firstStop = stops.find(s => !s.optional);
     if (firstStop && firstStop.travelTimeFromUserMin > travelConstraintValue * 1.5) {
-      _gateCounts.travel_constraint++;
-      console.error(`[generateCardsForType:${typeDef.id}:gate-travel_constraint] iter=${_gateCounts.attempted} firstStop.placeName=${firstStop.placeName} travelTimeFromUserMin=${firstStop.travelTimeFromUserMin} threshold=${travelConstraintValue * 1.5}`);
+      // ORCH-0677 RC-1: travel-constraint failure for reverse-anchor types
+      // marks the anchor failed so the loop tries a different one.
+      if (hasReverseAnchor && currentAnchorId) failedAnchorIds.add(currentAnchorId);
       continue;
     }
 
     // Validate no duplicate places
     const placeIds = stops.map(s => s.placeId).filter(Boolean);
     if (new Set(placeIds).size !== placeIds.length) {
-      _gateCounts.duplicate_place_ids++;
-      console.error(`[generateCardsForType:${typeDef.id}:gate-duplicate_place_ids] iter=${_gateCounts.attempted} placeIds=${JSON.stringify(placeIds)}`);
+      // ORCH-0677 RC-1: duplicate-place failure for reverse-anchor types
+      // marks the anchor failed so the loop tries a different one.
+      if (hasReverseAnchor && currentAnchorId) failedAnchorIds.add(currentAnchorId);
       continue;
     }
 
@@ -1012,13 +1044,29 @@ async function generateCardsForType(
     }
 
     cards.push(card);
-    _gateCounts.built_successfully++;
   }
 
-  // [TRANSITIONAL] ORCH-0653 v2 instrumentation summary. Remove after diagnosis (v3 fix).
-  console.error(`[generateCardsForType:${typeDef.id}:SUMMARY] cards.length=${cards.length} _gateCounts=${JSON.stringify(_gateCounts)}`);
+  // ORCH-0677 §3.2: when no cards built, surface an explicit verdict so mobile
+  // can route to EMPTY UI state instead of staying on INITIAL_LOADING.
+  let summary: CuratedSummary | undefined;
+  if (cards.length === 0) {
+    if (hasReverseAnchor) {
+      summary = {
+        emptyReason: initialAnchorCount === 0 ? 'pool_empty' : 'no_viable_anchor',
+        candidateAnchorCount: initialAnchorCount,
+        failedAnchorCount: failedAnchorIds.size,
+      };
+    } else {
+      // Standard branch: empty means none of the categories had viable picks.
+      summary = {
+        emptyReason: 'pool_empty',
+        candidateAnchorCount: 0,
+        failedAnchorCount: 0,
+      };
+    }
+  }
 
-  return cards;
+  return { cards, summary };
 }
 
 // ── Utility functions ──────────────────────────────────────────────────────
@@ -1354,7 +1402,9 @@ serve(async (req) => {
     console.log(`[curated-v2] Generating ${experienceType} cards (limit: ${limit})`);
 
     const generateLimit = warmPool ? Math.min(limit, 15) : limit;
-    const cards = await generateCardsForType(
+    // ORCH-0677: generateCardsForType now returns { cards, summary? }; summary
+    // is set when cards.length === 0 to make the empty verdict explicit.
+    const { cards, summary } = await generateCardsForType(
       typeDef,
       location.lat, location.lng, budgetMax, travelMode,
       travelConstraintValue, generateLimit, skipDescriptions,
@@ -1517,6 +1567,11 @@ serve(async (req) => {
           pipeline: 'curated-v2',
         },
         ...(warmPool ? { success: true, poolSize: cards.length } : {}),
+        // ORCH-0677 §3.5: include `summary` only when cards is empty AND
+        // generateCardsForType produced a verdict. Mobile uses this to route
+        // curated-only empty results to EMPTY UI state. Legacy mobile builds
+        // ignore unknown fields per JSON forward-compat.
+        ...(normalizedCards.length === 0 && summary ? { summary } : {}),
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
