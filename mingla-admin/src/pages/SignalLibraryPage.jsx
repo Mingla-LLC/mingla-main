@@ -17,6 +17,7 @@ import {
   Activity, ChevronRight, ChevronDown, RefreshCw, Play, AlertTriangle, Sparkles,
 } from "lucide-react";
 import { supabase, invokeWithRefresh } from "../lib/supabase";
+import { extractFunctionError } from "../lib/edgeFunctionError";
 import { useToast } from "../context/ToastContext";
 import { SectionCard, AlertCard } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
@@ -169,7 +170,10 @@ function BouncerStep({ stepNum, label, edgeFn, helpText, cityId, cityName, onCom
       const { data, error } = await invokeWithRefresh(edgeFn, {
         body: { city_id: cityId },
       });
-      if (error) throw error;
+      if (error) {
+        const msg = await extractFunctionError(error, "Edge function error");
+        throw new Error(msg);
+      }
       setLastResult(data);
       showToast(
         `${label} done: ${data?.pass_count ?? 0} pass / ${data?.reject_count ?? 0} reject (${data?.duration_ms ?? 0}ms)`,
@@ -228,7 +232,10 @@ function PhotoBackfillStep({ stepNum, label, helpText, cityId, cityName, country
           batchSize: 20,
         },
       });
-      if (runErr) throw runErr;
+      if (runErr) {
+        const msg = await extractFunctionError(runErr, "Edge function error");
+        throw new Error(msg);
+      }
       if (runData?.status === "nothing_to_do") {
         setProgress({
           phase: "done",
@@ -263,7 +270,10 @@ function PhotoBackfillStep({ stepNum, label, helpText, cityId, cityName, country
         const { data: batchData, error: batchErr } = await invokeWithRefresh("backfill-place-photos", {
           body: { action: "run_next_batch", runId },
         });
-        if (batchErr) throw batchErr;
+        if (batchErr) {
+          const msg = await extractFunctionError(batchErr, "Edge function error");
+          throw new Error(msg);
+        }
         if (batchData?.done) {
           setProgress({
             phase: "done",
@@ -389,7 +399,10 @@ function RunScorerButton({ cityId, cityName, signalId, onComplete }) {
       const { data, error } = await invokeWithRefresh("run-signal-scorer", {
         body: { signal_id: signalId, city_id: cityId },
       });
-      if (error) throw error;
+      if (error) {
+        const msg = await extractFunctionError(error, "Edge function error");
+        throw new Error(msg);
+      }
       setLastResult(data);
       showToast(
         `Scorer done: ${data?.scored_count ?? 0} scored, ${data?.ineligible_count ?? 0} ineligible (${data?.duration_ms ?? 0}ms)`,
@@ -628,7 +641,10 @@ function ScoreAllSignalsButton({ cityId, cityName, signals, onComplete }) {
           const { data, error } = await invokeWithRefresh("run-signal-scorer", {
             body: { signal_id: sig.id, city_id: cityId },
           });
-          if (error) throw error;
+          if (error) {
+            const msg = await extractFunctionError(error, "Edge function error");
+            throw new Error(msg);
+          }
           results.push({
             signal_id: sig.id,
             label: sig.label,

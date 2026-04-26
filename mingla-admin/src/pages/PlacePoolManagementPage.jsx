@@ -20,6 +20,7 @@ import {
   Square, SkipForward, XCircle, Loader, RotateCcw, Zap, MinusCircle,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { extractFunctionError } from "../lib/edgeFunctionError";
 import { useToast } from "../context/ToastContext";
 import { Tabs } from "../components/ui/Tabs";
 import { Button } from "../components/ui/Button";
@@ -1376,7 +1377,10 @@ function PhotoTab({ scope, registeredCity: regCity, onActiveRunsChange }) {
 
   const invoke = async (body) => {
     const { data, error } = await supabase.functions.invoke("backfill-place-photos", { body });
-    if (error) throw new Error(error.message || "Edge function error");
+    if (error) {
+      const msg = await extractFunctionError(error, "Edge function error");
+      throw new Error(msg);
+    }
     if (data?.error) throw new Error(data.error);
     return data;
   };
