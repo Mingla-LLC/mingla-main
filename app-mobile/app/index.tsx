@@ -1006,17 +1006,24 @@ function AppContent() {
 
   // Transform friends to Friend format for session creation
   // dbFriends from useFriends has: id, friend_user_id, username, display_name, first_name, last_name, avatar_url
-  const availableFriendsForSessions: Friend[] = (dbFriends || []).map((friend: any) => ({
-    id: friend.friend_user_id || friend.id,
-    name: friend.display_name || 
-          (friend.first_name && friend.last_name ? `${friend.first_name} ${friend.last_name}` : null) ||
-          friend.first_name ||
-          friend.username || 
-          'Unknown',
-    username: friend.username,
-    avatar: friend.avatar_url,
-    status: 'offline' as const,
-  }));
+  // ORCH-0679 Wave 2.7 RC-2: useMemo wrap — without it, the .map() rebuilt a fresh
+  // array every render, busting HomePage memo on every parent re-render
+  // (independent of TS-1.5 / handlers.X). Forensics audit confirmed this was the
+  // second root cause of the post-Wave-2 render storm.
+  const availableFriendsForSessions = useMemo<Friend[]>(
+    () => (dbFriends || []).map((friend: any) => ({
+      id: friend.friend_user_id || friend.id,
+      name: friend.display_name ||
+            (friend.first_name && friend.last_name ? `${friend.first_name} ${friend.last_name}` : null) ||
+            friend.first_name ||
+            friend.username ||
+            'Unknown',
+      username: friend.username,
+      avatar: friend.avatar_url,
+      status: 'offline' as const,
+    })),
+    [dbFriends]
+  );
 
   // Handle notification tap → navigate to the relevant page (V2: ServerNotification)
   // ORCH-0679 Wave 2.5: useCallback-wrapped — all closure deps are setState
@@ -2159,7 +2166,60 @@ function AppContent() {
   const closeProfileOverlays = useCallback(() => {
     setViewingFriendProfileId(null);
   }, [setViewingFriendProfileId]);
-  // ─── End ORCH-0679 Wave 2A/2.5/2.6 hoists ──────────────────────────────────
+
+  // ─── ORCH-0679 Wave 2.7 — handlers.X stabilization (RC-1) ──────────────────
+  // useAppHandlers returns a fresh object every render (TS-1.5 — god-hook fix
+  // deferred). These wrappers read via handlersRef.current so empty dep arrays
+  // give permanently stable identity. Forensics audit
+  // (INVESTIGATION_ORCH-0679_WAVE2_DIAG_AUDIT.md) confirmed this was busting
+  // memo on 5 of 6 tabs (every tab with at least one handlers.X JSX prop).
+  // The 9 in-AppContent helpers were already wrapped in Wave 2.5; THESE are
+  // the JSX-prop-passed handlers.X that Wave 2.5 missed.
+  const stableHandleSaveCard = useCallback(
+    (card: any): Promise<boolean> => handlersRef.current.handleSaveCard(card),
+    []
+  );
+  const stableHandleShareCard = useCallback(
+    (experienceData: any): void => handlersRef.current.handleShareCard(experienceData),
+    []
+  );
+  const stableHandleShareSavedCard = useCallback(
+    (friend: any, suppressNotification?: boolean): void =>
+      handlersRef.current.handleShareSavedCard(friend, suppressNotification),
+    []
+  );
+  const stableHandleRemoveFriend = useCallback(
+    (friend: any, suppressNotification?: boolean): void =>
+      handlersRef.current.handleRemoveFriend(friend, suppressNotification),
+    []
+  );
+  const stableHandleBlockUser = useCallback(
+    (friend: any, suppressNotification?: boolean): void =>
+      handlersRef.current.handleBlockUser(friend, suppressNotification),
+    []
+  );
+  const stableHandleReportUser = useCallback(
+    (friend: any, suppressNotification?: boolean, reason?: string, details?: string): void =>
+      handlersRef.current.handleReportUser(friend, suppressNotification, reason, details),
+    []
+  );
+  const stableHandleModeChange = useCallback(
+    (mode: "solo" | string): Promise<void> => handlersRef.current.handleModeChange(mode),
+    []
+  );
+  const stableHandleRemoveFromCalendar = useCallback(
+    (entry: any): Promise<void> => handlersRef.current.handleRemoveFromCalendar(entry),
+    []
+  );
+  const stableHandleNavigateToActivity = useCallback(
+    (tab: "saved" | "calendar"): void => handlersRef.current.handleNavigateToActivity(tab),
+    []
+  );
+  const stableHandleNotificationsToggle = useCallback(
+    (enabled: boolean): Promise<void> => handlersRef.current.handleNotificationsToggle(enabled),
+    []
+  );
+  // ─── End ORCH-0679 Wave 2A/2.5/2.6/2.7 hoists ──────────────────────────────
 
   // RELIABILITY: Gate on !_hasHydrated || isLoadingAuth. This ensures the profile
   // gate below sees the Zustand-persisted profile value (from AsyncStorage rehydration)
@@ -2522,125 +2582,145 @@ function AppContent() {
                           />
                         ) : null}
 
-                        {/* All 5 tabs always mounted — only active tab visible */}
-                        {/* Hidden when a full-screen overlay is active */}
+                        {/* ORCH-0679 Wave 2.8 Path B — only the active tab is mounted.
+                            Hidden tabs literally don't exist → no React.memo concerns,
+                            no context-propagation re-renders, no god-hook impact.
+                            Per-tab state preservation: scroll/filter/panel state lives
+                            in Zustand registry (see useTabScrollRegistry hook + appStore
+                            tabScroll/discoverFilters/savedFilters/connectionsActivePanel/
+                            connectionsFriendsModalTab/likesActiveTab fields).
+                            CI gate: scripts/ci/check-active-tab-only.sh enforces no
+                            regression to the all-mounted pattern.
+                            Hidden when a full-screen overlay is active. */}
                         {!isOverlayActive && (
                           <View style={{ flex: 1 }}>
-                            <View style={currentPage === 'home' ? styles.tabVisible : styles.tabHidden}>
-                              <HomePage
-                                isTabVisible={currentPage === 'home'}
-                                onOpenPreferences={handleOpenPreferences}
-                                onOpenCollabPreferences={handleOpenCollabPreferences}
-                                currentMode={currentMode ?? "solo"}
-                                boardsSessions={boardsSessions}
-                                userPreferences={userPreferences}
-                                accountPreferences={accountPreferencesMemo}
-                                onAddToCalendar={handleAddToCalendar}
-                                savedCards={savedCards}
-                                onSaveCard={handlers.handleSaveCard}
-                                onShareCard={handlers.handleShareCard}
-                                onPurchaseComplete={handlePurchaseComplete}
-                                removedCardIds={removedCardIds}
-                                onResetCards={handleResetCards}
-                                generateNewMockCard={handleGenerateNewMockCard}
-                                refreshKey={preferencesRefreshKey}
-                                collaborationSessions={collaborationSessions}
-                                selectedSessionId={currentSessionId}
-                                onSessionSelect={handleSessionSelect}
-                                onSoloSelect={handleSoloSelect}
-                                onCreateSession={handleCreateSession}
-                                onAcceptInvite={handleAcceptInvite}
-                                onDeclineInvite={handleDeclineInvite}
-                                onCancelInvite={handleCancelInvite}
-                                onInviteMoreToSession={handleInviteMoreToSession}
-                                onSessionStateChanged={handleSessionStateChangedShowLoading}
-                                availableFriends={availableFriendsForSessions}
-                                isCreatingSession={isCreatingSession}
-                                onNotificationNavigate={handleNotificationNavigate}
-                                userId={user?.id}
-                                openSessionId={pendingSessionOpen}
-                                onOpenSessionHandled={handleOpenSessionHandled}
-                              />
-                            </View>
-                            <View style={currentPage === 'discover' ? styles.tabVisible : styles.tabHidden}>
-                              <DiscoverScreen
-                                isTabVisible={currentPage === 'discover'}
-                                onOpenChatWithUser={handleOpenChatWithUserFromDiscover}
-                                onViewFriendProfile={handleViewFriendProfile}
-                                accountPreferences={accountPreferencesMemo}
-                                preferencesRefreshKey={preferencesRefreshKey}
-                                deepLinkParams={discoverDeepLinkParams}
-                                onDeepLinkHandled={handleDeepLinkHandled}
-                              />
-                            </View>
-                            <View style={currentPage === 'connections' ? styles.tabVisible : styles.tabHidden}>
-                              <ConnectionsPage
-                                isTabVisible={currentPage === 'connections'}
-                                onShareSavedCard={handlers.handleShareSavedCard}
-                                onRemoveFriend={handlers.handleRemoveFriend}
-                                onBlockUser={handlers.handleBlockUser}
-                                onReportUser={handlers.handleReportUser}
-                                accountPreferences={accountPreferences}
-                                boardsSessions={boardsSessions}
-                                onRefreshSessions={refreshAllSessions}
-                                currentMode={currentMode ?? "solo"}
-                                onModeChange={handlers.handleModeChange}
-                                onUpdateBoardSession={handleUpdateBoardSession}
-                                onCreateSession={handleCreateSessionFromConnections}
-                                onUnreadCountChange={setTotalUnreadMessages}
-                                onNavigateToFriendProfile={handleViewFriendProfile}
-                                onFriendAccepted={handleFriendAccepted}
-                                openDirectMessageWithUserId={pendingOpenDmUserId}
-                                onOpenDirectMessageHandled={handleOpenDirectMessageHandled}
-                                initialPanel={pendingConnectionsPanel}
-                                onInitialPanelHandled={handleInitialPanelHandled}
-                              />
-                            </View>
-                            <View style={currentPage === 'saved' ? styles.tabVisible : styles.tabHidden}>
-                              <SavedExperiencesPage
-                                isTabVisible={currentPage === 'saved'}
-                                savedCards={savedCards}
-                                isLoading={isLoadingSavedCards}
-                                userPreferences={userPreferences}
-                                onScheduleFromSaved={handleScheduleFromSaved}
-                                onPurchaseFromSaved={handlePurchaseFromSavedSaved}
-                                onShareCard={handlers.handleShareCard}
-                              />
-                            </View>
-                            <View style={currentPage === 'likes' ? styles.tabVisible : styles.tabHidden}>
-                              <LikesPage
-                                isTabVisible={currentPage === 'likes'}
-                                savedCards={savedCards}
-                                isLoadingSavedCards={isLoadingSavedCards}
-                                isSavedCardsError={isSavedCardsError}
-                                onRetrySavedCards={refetchSavedCards}
-                                isLoadingCalendarEntries={isLoadingCalendarEntries}
-                                calendarEntries={calendarEntries}
-                                userPreferences={userPreferences}
-                                accountPreferences={accountPreferences}
-                                navigationData={activityNavigation}
-                                onNavigationComplete={handleNavigationComplete}
-                                onPurchaseFromSaved={handlePurchaseFromSavedLikes}
-                                onRemoveFromCalendar={handlers.handleRemoveFromCalendar}
-                                onShareCard={handlers.handleShareCard}
-                                onAddToCalendar={handleAddToCalendarFromLikes}
-                                onShowQRCode={handleShowQRCode}
-                              />
-                            </View>
-                            <View style={currentPage === 'profile' ? styles.tabVisible : styles.tabHidden}>
-                              <ProfilePage
-                                isTabVisible={currentPage === 'profile'}
-                                onSignOut={handleSignOutFromProfile}
-                                onUserIdentityUpdate={handleUserIdentityUpdate}
-                                onNavigateToActivity={handlers.handleNavigateToActivity}
-                                onNavigateToConnections={handleNavigateToConnectionsFromProfile}
-                                savedExperiences={savedExperiencesCountMemo}
-                                scheduledCount={scheduledCountMemo}
-                                notificationsEnabled={notificationsEnabled}
-                                onNotificationsToggle={handlers.handleNotificationsToggle}
-                                userIdentity={userIdentity}
-                              />
-                            </View>
+                            {(() => {
+                              switch (currentPage) {
+                                case 'home':
+                                  return (
+                                    <HomePage
+                                      isTabVisible={true}
+                                      onOpenPreferences={handleOpenPreferences}
+                                      onOpenCollabPreferences={handleOpenCollabPreferences}
+                                      currentMode={currentMode ?? "solo"}
+                                      boardsSessions={boardsSessions}
+                                      userPreferences={userPreferences}
+                                      accountPreferences={accountPreferencesMemo}
+                                      onAddToCalendar={handleAddToCalendar}
+                                      savedCards={savedCards}
+                                      onSaveCard={stableHandleSaveCard}
+                                      onShareCard={stableHandleShareCard}
+                                      onPurchaseComplete={handlePurchaseComplete}
+                                      removedCardIds={removedCardIds}
+                                      onResetCards={handleResetCards}
+                                      generateNewMockCard={handleGenerateNewMockCard}
+                                      refreshKey={preferencesRefreshKey}
+                                      collaborationSessions={collaborationSessions}
+                                      selectedSessionId={currentSessionId}
+                                      onSessionSelect={handleSessionSelect}
+                                      onSoloSelect={handleSoloSelect}
+                                      onCreateSession={handleCreateSession}
+                                      onAcceptInvite={handleAcceptInvite}
+                                      onDeclineInvite={handleDeclineInvite}
+                                      onCancelInvite={handleCancelInvite}
+                                      onInviteMoreToSession={handleInviteMoreToSession}
+                                      onSessionStateChanged={handleSessionStateChangedShowLoading}
+                                      availableFriends={availableFriendsForSessions}
+                                      isCreatingSession={isCreatingSession}
+                                      onNotificationNavigate={handleNotificationNavigate}
+                                      userId={user?.id}
+                                      openSessionId={pendingSessionOpen}
+                                      onOpenSessionHandled={handleOpenSessionHandled}
+                                    />
+                                  );
+                                case 'discover':
+                                  return (
+                                    <DiscoverScreen
+                                      isTabVisible={true}
+                                      onOpenChatWithUser={handleOpenChatWithUserFromDiscover}
+                                      onViewFriendProfile={handleViewFriendProfile}
+                                      accountPreferences={accountPreferencesMemo}
+                                      preferencesRefreshKey={preferencesRefreshKey}
+                                      deepLinkParams={discoverDeepLinkParams}
+                                      onDeepLinkHandled={handleDeepLinkHandled}
+                                    />
+                                  );
+                                case 'connections':
+                                  return (
+                                    <ConnectionsPage
+                                      isTabVisible={true}
+                                      onShareSavedCard={stableHandleShareSavedCard}
+                                      onRemoveFriend={stableHandleRemoveFriend}
+                                      onBlockUser={stableHandleBlockUser}
+                                      onReportUser={stableHandleReportUser}
+                                      accountPreferences={accountPreferences}
+                                      boardsSessions={boardsSessions}
+                                      onRefreshSessions={refreshAllSessions}
+                                      currentMode={currentMode ?? "solo"}
+                                      onModeChange={stableHandleModeChange}
+                                      onUpdateBoardSession={handleUpdateBoardSession}
+                                      onCreateSession={handleCreateSessionFromConnections}
+                                      onUnreadCountChange={setTotalUnreadMessages}
+                                      onNavigateToFriendProfile={handleViewFriendProfile}
+                                      onFriendAccepted={handleFriendAccepted}
+                                      openDirectMessageWithUserId={pendingOpenDmUserId}
+                                      onOpenDirectMessageHandled={handleOpenDirectMessageHandled}
+                                      initialPanel={pendingConnectionsPanel}
+                                      onInitialPanelHandled={handleInitialPanelHandled}
+                                    />
+                                  );
+                                case 'saved':
+                                  return (
+                                    <SavedExperiencesPage
+                                      isTabVisible={true}
+                                      savedCards={savedCards}
+                                      isLoading={isLoadingSavedCards}
+                                      userPreferences={userPreferences}
+                                      onScheduleFromSaved={handleScheduleFromSaved}
+                                      onPurchaseFromSaved={handlePurchaseFromSavedSaved}
+                                      onShareCard={stableHandleShareCard}
+                                    />
+                                  );
+                                case 'likes':
+                                  return (
+                                    <LikesPage
+                                      isTabVisible={true}
+                                      savedCards={savedCards}
+                                      isLoadingSavedCards={isLoadingSavedCards}
+                                      isSavedCardsError={isSavedCardsError}
+                                      onRetrySavedCards={refetchSavedCards}
+                                      isLoadingCalendarEntries={isLoadingCalendarEntries}
+                                      calendarEntries={calendarEntries}
+                                      userPreferences={userPreferences}
+                                      accountPreferences={accountPreferences}
+                                      navigationData={activityNavigation}
+                                      onNavigationComplete={handleNavigationComplete}
+                                      onPurchaseFromSaved={handlePurchaseFromSavedLikes}
+                                      onRemoveFromCalendar={stableHandleRemoveFromCalendar}
+                                      onShareCard={stableHandleShareCard}
+                                      onAddToCalendar={handleAddToCalendarFromLikes}
+                                      onShowQRCode={handleShowQRCode}
+                                    />
+                                  );
+                                case 'profile':
+                                  return (
+                                    <ProfilePage
+                                      isTabVisible={true}
+                                      onSignOut={handleSignOutFromProfile}
+                                      onUserIdentityUpdate={handleUserIdentityUpdate}
+                                      onNavigateToActivity={stableHandleNavigateToActivity}
+                                      onNavigateToConnections={handleNavigateToConnectionsFromProfile}
+                                      savedExperiences={savedExperiencesCountMemo}
+                                      scheduledCount={scheduledCountMemo}
+                                      notificationsEnabled={notificationsEnabled}
+                                      onNotificationsToggle={stableHandleNotificationsToggle}
+                                      userIdentity={userIdentity}
+                                    />
+                                  );
+                                default:
+                                  return null;
+                              }
+                            })()}
                           </View>
                         )}
                       </View>
@@ -2802,18 +2882,10 @@ const styles = StyleSheet.create({
   mainContent: {
     flex: 1,
   },
-  tabVisible: {
-    flex: 1,
-  },
-  tabHidden: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    opacity: 0,
-    pointerEvents: 'none',
-  },
+  // ORCH-0679 Wave 2.8 Path B: tabVisible/tabHidden styles deleted.
+  // The all-tabs-always-mounted pattern was replaced with a switch(currentPage)
+  // IIFE that mounts only the active tab. CI gate: check-active-tab-only.sh
+  // enforces these style names cannot return.
   // ORCH-0589 v5 (T5): paddingTop 8 → 0. Nav now sits flush above the safe-area
   // bottom (home-indicator zone), giving the card 8pt more vertical space.
   // paddingBottom (via layout.bottomNavPadding on CoachMarkNavigationGate) is

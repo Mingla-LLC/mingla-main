@@ -33,11 +33,13 @@ if [ ! -f "$TARGET_FILE" ]; then
   exit 1
 fi
 
-# Region-scoped check: lines 2529-2645 (the 6-tab JSX block — Wave 2.6 shifted bounds).
+# Region-scoped check: lines 2599-2722 (the IIFE switch tab JSX block — Wave 2.8 shifted bounds).
+# Wave 2.8 Path B replaced the 6 always-mounted tab Views with a switch(currentPage)
+# IIFE rendering only the active tab. The region scope tracks the new switch block.
 # Match `={() =>`, `={async () =>`, OR `={{` (inline object literal).
 INLINE_VIOLATIONS=$(awk '
-  NR>=2529 && NR<=2645 && /inline-OK:/ { next }
-  NR>=2529 && NR<=2645 && (/={\(\) =>/ || /={async \(\) =>/ || /={\(.*\) =>/ || /={{/) {
+  NR>=2599 && NR<=2722 && /inline-OK:/ { next }
+  NR>=2599 && NR<=2722 && (/={\(\) =>/ || /={async \(\) =>/ || /={\(.*\) =>/ || /={{/) {
     print FILENAME ":" NR ": " $0
   }
 ' "$TARGET_FILE")

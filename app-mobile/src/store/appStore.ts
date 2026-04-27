@@ -178,6 +178,39 @@ interface AppState {
   // UI overlay state (not persisted)
   showAccountSettings: boolean;
 
+  // ─── ORCH-0679 Wave 2.8 Path B — Tab state registry (NOT persisted) ────────
+  // Session-scoped storage to preserve scroll position, filter state, and
+  // active panel/sub-tab across tab unmount/remount. Path B switched the tab
+  // rendering pattern from "all 6 always mounted" to "only active tab mounted"
+  // — this registry is what makes that switch UX-equivalent (or better) than
+  // the old all-mounted approach.
+  // Spec §3-§4 (SPEC_ORCH-0679_WAVE2_8_PATH_B_TAB_MOUNT_UNMOUNT.md).
+  tabScroll: {
+    discover_main: number;
+    connections_friends: number;
+    connections_add: number;
+    connections_blocked: number;
+    saved: number;
+    likes_saved: number;
+    likes_calendar: number;
+    profile: number;
+  };
+  // Discover filter state — null = use component defaults on first mount.
+  // Type kept loose (any) here to avoid circular import; DiscoverScreen owns the shape.
+  discoverFilters: { date: string; price: string; genre: string } | null;
+  // Saved filters
+  savedFilters: {
+    searchQuery: string;
+    selectedCategory: string | null;
+    matchScoreFilter: number | null;
+    dateRangeFilter: 'all' | '7' | '30';
+    sortOption: 'newest' | 'oldest' | 'matchHigh' | 'matchLow';
+  } | null;
+  // Active panel/sub-tab state
+  connectionsActivePanel: 'friends' | 'add' | 'blocked' | null;
+  connectionsFriendsModalTab: 'friend-list' | 'requests' | 'add' | null;
+  likesActiveTab: 'saved' | 'calendar';
+
   // Actions
   setAuth: (user: User | null) => void;
   setProfile: (profile: User | null) => void;
@@ -199,6 +232,14 @@ interface AppState {
   // or an updater function (to support `setPreferencesRefreshKey((k) => k + 1)`
   // idiom used at AppStateManager + app/index.tsx pref-save call sites).
   setPreferencesRefreshKey: (updater: number | ((prev: number) => number)) => void;
+
+  // ─── ORCH-0679 Wave 2.8 Path B — Tab registry setters ──────────────────────
+  setTabScroll: (key: keyof AppState['tabScroll'], y: number) => void;
+  setDiscoverFilters: (filters: AppState['discoverFilters']) => void;
+  setSavedFilters: (filters: AppState['savedFilters']) => void;
+  setConnectionsActivePanel: (panel: AppState['connectionsActivePanel']) => void;
+  setConnectionsFriendsModalTab: (tab: AppState['connectionsFriendsModalTab']) => void;
+  setLikesActiveTab: (tab: 'saved' | 'calendar') => void;
 
   // Utilities
   clearUserData: () => void;
@@ -226,6 +267,23 @@ export const useAppStore = create<AppState>()(
       deckSchemaVersion: DECK_SCHEMA_VERSION,
       preferencesRefreshKey: 0, // [ORCH-0504] persisted refresh counter
       showAccountSettings: false,
+
+      // ─── ORCH-0679 Wave 2.8 Path B — Tab registry initial state ──────────
+      tabScroll: {
+        discover_main: 0,
+        connections_friends: 0,
+        connections_add: 0,
+        connections_blocked: 0,
+        saved: 0,
+        likes_saved: 0,
+        likes_calendar: 0,
+        profile: 0,
+      },
+      discoverFilters: null,
+      savedFilters: null,
+      connectionsActivePanel: null,
+      connectionsFriendsModalTab: null,
+      likesActiveTab: 'saved',
 
       // Auth actions
       setAuth: (user) => {
@@ -265,6 +323,17 @@ export const useAppStore = create<AppState>()(
               : updater,
         })),
 
+      // ─── ORCH-0679 Wave 2.8 Path B — Tab registry setters ────────────────
+      setTabScroll: (key, y) =>
+        set((state: AppState) => ({
+          tabScroll: { ...state.tabScroll, [key]: y },
+        })),
+      setDiscoverFilters: (discoverFilters) => set({ discoverFilters }),
+      setSavedFilters: (savedFilters) => set({ savedFilters }),
+      setConnectionsActivePanel: (connectionsActivePanel) => set({ connectionsActivePanel }),
+      setConnectionsFriendsModalTab: (connectionsFriendsModalTab) => set({ connectionsFriendsModalTab }),
+      setLikesActiveTab: (likesActiveTab) => set({ likesActiveTab }),
+
       // Deck session actions
       addSwipedCard: (card) => set((state: AppState) => {
         const updated = [...state.sessionSwipedCards, card];
@@ -297,6 +366,22 @@ export const useAppStore = create<AppState>()(
           // [ORCH-0504] Constitutional #6: logout clears everything. The next
           // user starts at refreshKey=0, producing fresh AsyncStorage keys.
           preferencesRefreshKey: 0,
+          // ORCH-0679 Wave 2.8: clear tab registry on logout (Constitution #6)
+          tabScroll: {
+            discover_main: 0,
+            connections_friends: 0,
+            connections_add: 0,
+            connections_blocked: 0,
+            saved: 0,
+            likes_saved: 0,
+            likes_calendar: 0,
+            profile: 0,
+          },
+          discoverFilters: null,
+          savedFilters: null,
+          connectionsActivePanel: null,
+          connectionsFriendsModalTab: null,
+          likesActiveTab: 'saved',
         }),
     })),  // end of state definition + devLoggerMiddleware
     {
