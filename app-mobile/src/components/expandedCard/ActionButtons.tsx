@@ -199,7 +199,9 @@ export default function ActionButtons({
   const showVisitButton = isSaved && !hasCalendarEntry && (onVisitPress || onRemoveVisitPress);
 
   const handleSave = async () => {
-    if (isSaving) return; // Prevent multiple saves
+    if (isSaving) {
+      return; // Prevent multiple saves
+    }
 
     // Gate: curated card save requires Mingla+
     const isCurated = (card as any).cardType === 'curated' || (card as any).is_curated;
@@ -211,7 +213,8 @@ export default function ActionButtons({
     setIsSaving(true);
     try {
       await onSave(card);
-    } catch (error: any) {
+    } catch (error) {
+      console.error('[ActionButtons.handleSave] save failed', error);
       Alert.alert(t('common:error'), t('expanded_details:action_buttons.error_save'));
     } finally {
       setIsSaving(false);

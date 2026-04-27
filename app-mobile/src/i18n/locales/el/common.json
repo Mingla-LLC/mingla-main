@@ -166,5 +166,14 @@
   "untitled": "Χωρίς Τίτλο",
   "error_sign_in_save": "Συνδέσου για να αποθηκεύσεις εμπειρίες",
   "error_boundary_title": "Κάτι πήγε στραβά",
-  "error_boundary_message": "Αντιμετωπίσαμε ένα απρόσμενο σφάλμα. Δοκίμασε ξανά."
+  "error_boundary_message": "Αντιμετωπίσαμε ένα απρόσμενο σφάλμα. Δοκίμασε ξανά.",
+  "category_icebreakers": "Πάγος",
+  "category_drinks_and_music": "Ποτά & Μουσική",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Καθημερινό",
+  "category_upscale_fine_dining": "Γκουρμέ",
+  "category_movies": "Ταινίες",
+  "category_theatre": "Θέατρο",
+  "category_brunch_lunch_casual": "Brunch, μεσημεριανό & καθημερινά",
+  "category_movies_theatre": "Ταινίες & Θέατρο"
 }

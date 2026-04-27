@@ -166,5 +166,14 @@
   "untitled": "Sem título",
   "error_sign_in_save": "Faça login para salvar experiências",
   "error_boundary_title": "Algo deu errado",
-  "error_boundary_message": "Encontramos um erro inesperado. Tente novamente."
+  "error_boundary_message": "Encontramos um erro inesperado. Tente novamente.",
+  "category_icebreakers": "Quebra-gelo",
+  "category_drinks_and_music": "Bebidas e Música",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Alta Gastronomia",
+  "category_movies": "Cinema",
+  "category_theatre": "Teatro",
+  "category_brunch_lunch_casual": "Brunch, almoço e casual",
+  "category_movies_theatre": "Cinema e Teatro"
 }

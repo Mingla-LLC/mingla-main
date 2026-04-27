@@ -695,11 +695,87 @@ else
   fi
 fi
 
+# ─── ORCH-0685: I-CHAT-CARDPAYLOAD-NO-RECIPIENT-RELATIVE-FIELDS ───
+# trimCardPayload MUST NEVER extract recipient-relative fields. Constitution #9.
+# Cross-ref: ORCH-0659/0660 + INVARIANT_REGISTRY.md.
+echo ""
+echo "I-CHAT-CARDPAYLOAD-NO-RECIPIENT-RELATIVE-FIELDS (ORCH-0685): forbidden-field guard..."
+TRIM_FILE="app-mobile/src/services/messagingService.ts"
+if [ ! -f "$TRIM_FILE" ]; then
+  echo "  WARN: $TRIM_FILE not found — skipping"
+else
+  TRIM_BODY=$(awk '/export function trimCardPayload/{f=1} f{print} f && /^\}/{exit}' "$TRIM_FILE")
+  FORBIDDEN=$(echo "$TRIM_BODY" | grep -nE "(travelTime|travelTimeMin|distance|distanceKm|distance_km)" || true)
+  if [ -n "$FORBIDDEN" ]; then
+    echo "  FAIL: trimCardPayload extracts a recipient-relative field. Constitution #9 violation."
+    echo "  Forbidden fields: travelTime, travelTimeMin, distance, distanceKm, distance_km"
+    echo "  Cross-ref: ORCH-0659/0660 + INVARIANT_REGISTRY.md I-CHAT-CARDPAYLOAD-NO-RECIPIENT-RELATIVE-FIELDS"
+    echo "  Offending lines (relative to trim body):"
+    echo "$FORBIDDEN" | sed 's/^/    /'
+    FAIL=1
+  else
+    echo "  OK"
+  fi
+fi
+
+# ─── ORCH-0685: I-LOCALE-CATEGORY-PARITY ───
+# All 29 locale common.json files MUST have all 12 required category_* keys.
+echo ""
+echo "I-LOCALE-CATEGORY-PARITY (ORCH-0685): 29 locales x 12 required category_* keys..."
+REQUIRED_CATEGORY_KEYS="category_nature category_icebreakers category_drinks_and_music category_brunch category_casual_food category_upscale_fine_dining category_movies category_theatre category_creative_arts category_play category_brunch_lunch_casual category_movies_theatre"
+LOCALE_DIR="app-mobile/src/i18n/locales"
+LOCALE_PARITY_FAIL=0
+if [ ! -d "$LOCALE_DIR" ]; then
+  echo "  WARN: $LOCALE_DIR not found — skipping"
+else
+  for locale_path in "$LOCALE_DIR"/*/; do
+    locale=$(basename "$locale_path")
+    common_json="${locale_path}common.json"
+    if [ ! -f "$common_json" ]; then
+      echo "  FAIL: missing $common_json"
+      LOCALE_PARITY_FAIL=1
+      continue
+    fi
+    for key in $REQUIRED_CATEGORY_KEYS; do
+      if ! grep -q "\"$key\"" "$common_json"; then
+        echo "  FAIL: locale '$locale' missing key '$key' in common.json"
+        LOCALE_PARITY_FAIL=1
+      fi
+    done
+  done
+  if [ "$LOCALE_PARITY_FAIL" -eq 0 ]; then
+    echo "  OK (all 29 locales x 12 keys verified)"
+  else
+    echo "  Cross-ref: ORCH-0685 spec §11.1 + INVARIANT_REGISTRY.md I-LOCALE-CATEGORY-PARITY"
+    FAIL=1
+  fi
+fi
+
+# ─── ORCH-0685: I-MODAL-CATEGORY-SUBCOMPONENT-WRAPS ───
+# Sub-component category props in ExpandedCardModal MUST be wrapped with getReadableCategoryName.
+# Lines 1860-2020 cover WeatherSection + 2x TimelineSection prop sites (post-edit).
+echo ""
+echo "I-MODAL-CATEGORY-SUBCOMPONENT-WRAPS (ORCH-0685): defense-in-depth slug-leak guard..."
+MODAL_FILE="app-mobile/src/components/ExpandedCardModal.tsx"
+if [ ! -f "$MODAL_FILE" ]; then
+  echo "  WARN: $MODAL_FILE not found — skipping"
+else
+  RAW_PROPS=$(sed -n '1860,2020p' "$MODAL_FILE" | grep -cE 'category=\{card\.category\}' || true)
+  if [ "$RAW_PROPS" -ne 0 ]; then
+    echo "  FAIL: found $RAW_PROPS raw 'category={card.category}' prop site(s) in ExpandedCardModal.tsx lines 1860-2020"
+    echo "  All sub-component category props in this range MUST be wrapped: category={getReadableCategoryName(card.category)}"
+    echo "  Cross-ref: ORCH-0685 spec §10.2 + INVARIANT_REGISTRY.md I-MODAL-CATEGORY-SUBCOMPONENT-WRAPS"
+    FAIL=1
+  else
+    echo "  OK"
+  fi
+fi
+
 if [ $FAIL -eq 1 ]; then
   echo ""
-  echo "ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 / ORCH-0678 / ORCH-0684 / ORCH-0686 invariant check FAILED."
+  echo "ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 / ORCH-0678 / ORCH-0684 / ORCH-0685 / ORCH-0686 invariant check FAILED."
   exit 1
 fi
 
-echo "All ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 / ORCH-0678 / ORCH-0684 / ORCH-0686 invariant gates pass."
+echo "All ORCH-0640 / ORCH-0649 / ORCH-0659 / ORCH-0660 / ORCH-0664 / ORCH-0666 / ORCH-0667 / ORCH-0668 / ORCH-0669 / ORCH-0671 / ORCH-0677 / ORCH-0678 / ORCH-0684 / ORCH-0685 / ORCH-0686 invariant gates pass."
 exit 0

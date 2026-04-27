@@ -166,5 +166,14 @@
   "untitled": "Aláìlórúkọ",
   "error_sign_in_save": "Jọ̀wọ́ wọlé láti tọ́jú àwọn ìrírí",
   "error_boundary_title": "Nǹkan kan kò tọ́",
-  "error_boundary_message": "A bá àṣìṣe tí a kò retí. Jọ̀wọ́ tún gbìyànjú."
+  "error_boundary_message": "A bá àṣìṣe tí a kò retí. Jọ̀wọ́ tún gbìyànjú.",
+  "category_icebreakers": "Icebreakers",
+  "category_drinks_and_music": "Drinks & Music",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Movies",
+  "category_theatre": "Theatre",
+  "category_brunch_lunch_casual": "Brunch, Lunch & Casual",
+  "category_movies_theatre": "Movies & Theatre"
 }

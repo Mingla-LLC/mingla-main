@@ -166,5 +166,14 @@
   "untitled": "Tanpa tajuk",
   "error_sign_in_save": "Sila log masuk untuk menyimpan pengalaman",
   "error_boundary_title": "Sesuatu tidak kena",
-  "error_boundary_message": "Kami mengalami ralat yang tidak dijangka. Sila cuba lagi."
+  "error_boundary_message": "Kami mengalami ralat yang tidak dijangka. Sila cuba lagi.",
+  "category_icebreakers": "Pemecah suasana",
+  "category_drinks_and_music": "Minuman & Muzik",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Kasual",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Filem",
+  "category_theatre": "Teater",
+  "category_brunch_lunch_casual": "Brunch, makan tengah hari & kasual",
+  "category_movies_theatre": "Filem & Teater"
 }

@@ -166,5 +166,14 @@
   "untitled": "শিরোনামহীন",
   "error_sign_in_save": "অভিজ্ঞতা সংরক্ষণ করতে সাইন ইন করুন",
   "error_boundary_title": "কিছু একটা সমস্যা হয়েছে",
-  "error_boundary_message": "একটি অপ্রত্যাশিত ত্রুটি ঘটেছে। অনুগ্রহ করে আবার চেষ্টা করুন।"
+  "error_boundary_message": "একটি অপ্রত্যাশিত ত্রুটি ঘটেছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
+  "category_icebreakers": "আইসব্রেকার",
+  "category_drinks_and_music": "পানীয় এবং সঙ্গীত",
+  "category_brunch": "ব্রাঞ্চ",
+  "category_casual_food": "নৈমিত্তিক",
+  "category_upscale_fine_dining": "ফাইন ডাইনিং",
+  "category_movies": "চলচ্চিত্র",
+  "category_theatre": "থিয়েটার",
+  "category_brunch_lunch_casual": "ব্রাঞ্চ, লাঞ্চ এবং নৈমিত্তিক",
+  "category_movies_theatre": "চলচ্চিত্র ও থিয়েটার"
 }

@@ -22,6 +22,7 @@ import { formatDistanceFromMeters, formatPriceRange, formatCurrency } from "./ut
 import { tierLabel, tierRangeLabel, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
 import { curatedStopsToTimeline } from "../utils/curatedToTimeline";
 import { extractWeekdayText } from "../utils/openingHoursUtils";
+import { getReadableCategoryName, getCategoryIcon } from "../utils/categoryUtils";  // ORCH-0685
 import { normalizeWebsiteUrl } from "../utils/normalizeWebsiteUrl";
 import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
@@ -1778,7 +1779,7 @@ export default function ExpandedCardModal({
                 <CardInfoSection
                   title={card.title}
                   category={card.category}
-                  categoryIcon={card.categoryIcon}
+                  categoryIcon={card.categoryIcon || getCategoryIcon(card.category)}
                   tags={card.tags}
                   rating={card.rating}
                   distance={card.distance}
@@ -1871,7 +1872,7 @@ export default function ExpandedCardModal({
                 <WeatherSection
                   weatherData={weatherData}
                   loading={loadingWeather}
-                  category={card.category}
+                  category={getReadableCategoryName(card.category)}
                   selectedDateTime={
                     card.selectedDateTime instanceof Date
                       ? card.selectedDateTime
@@ -1991,7 +1992,7 @@ export default function ExpandedCardModal({
                 {/* Timeline Section (for Take a Stroll cards) */}
                 {isStrollCard && strollData && strollData.timeline && (
                   <TimelineSection
-                    category={card.category}
+                    category={getReadableCategoryName(card.category)}
                     title={card.title}
                     address={card.address}
                     priceRange={card.priceRange}
@@ -2005,7 +2006,7 @@ export default function ExpandedCardModal({
                 {/* Timeline Section (for Picnic cards) */}
                 {isPicnicCard && picnicData && picnicData.timeline && (
                   <TimelineSection
-                    category={card.category}
+                    category={getReadableCategoryName(card.category)}
                     title={card.title}
                     address={card.address}
                     priceRange={card.priceRange}

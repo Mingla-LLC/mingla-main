@@ -166,5 +166,14 @@
   "untitled": "ไม่มีชื่อ",
   "error_sign_in_save": "กรุณาเข้าสู่ระบบเพื่อบันทึกประสบการณ์",
   "error_boundary_title": "เกิดข้อผิดพลาด",
-  "error_boundary_message": "เราพบข้อผิดพลาดที่ไม่คาดคิด กรุณาลองอีกครั้ง"
+  "error_boundary_message": "เราพบข้อผิดพลาดที่ไม่คาดคิด กรุณาลองอีกครั้ง",
+  "category_icebreakers": "ทลายกำแพง",
+  "category_drinks_and_music": "เครื่องดื่มและดนตรี",
+  "category_brunch": "บรันช์",
+  "category_casual_food": "สบาย ๆ",
+  "category_upscale_fine_dining": "ไฟน์ไดน์นิ่ง",
+  "category_movies": "ภาพยนตร์",
+  "category_theatre": "ละครเวที",
+  "category_brunch_lunch_casual": "บรันช์ มื้อกลางวัน และสบาย ๆ",
+  "category_movies_theatre": "ภาพยนตร์และละครเวที"
 }

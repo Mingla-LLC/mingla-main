@@ -166,5 +166,14 @@
   "untitled": "Babu suna",
   "error_sign_in_save": "Da fatan a shiga don ajiye gogewa",
   "error_boundary_title": "Wani abu bai yi daidai ba",
-  "error_boundary_message": "Mun gamu da kuskure marar zato. Da fatan a sake gwadawa."
+  "error_boundary_message": "Mun gamu da kuskure marar zato. Da fatan a sake gwadawa.",
+  "category_icebreakers": "Icebreakers",
+  "category_drinks_and_music": "Drinks & Music",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Movies",
+  "category_theatre": "Theatre",
+  "category_brunch_lunch_casual": "Brunch, Lunch & Casual",
+  "category_movies_theatre": "Movies & Theatre"
 }

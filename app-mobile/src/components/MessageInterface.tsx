@@ -34,11 +34,15 @@ import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
 import { DirectMessage, messagingService, CardPayload } from "../services/messagingService";
+import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
+import { savedCardsService } from "../services/savedCardsService";  // ORCH-0685
 import { useSavedCards } from "../hooks/useSavedCards";
 import ExpandedCardModal from "./ExpandedCardModal";  // ORCH-0667
+import type { ExpandedCardData } from "../types/expandedCardTypes";  // ORCH-0685
 import { useTranslation } from 'react-i18next';
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { colors as dsColors, spacing as dsSpacing, glass } from "../constants/designSystem";
+import { colors } from "../constants/colors";
 import { useAppLayout } from "../hooks/useAppLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
@@ -184,9 +188,32 @@ export default function MessageInterface({
   // ORCH-0667: shared-card picker state
   const [showSavedCardPicker, setShowSavedCardPicker] = useState(false);
   const [pickerSubmittingCardId, setPickerSubmittingCardId] = useState<string | null>(null);
-  const [expandedCardFromChat, setExpandedCardFromChat] = useState<any | null>(null);
+  // ORCH-0685: typed state — replaces unsafe `any` typing (Constitution #12 fix).
+  // Populated via cardPayloadToExpandedCardData helper (cardPayloadAdapter.ts).
+  const [expandedCardFromChat, setExpandedCardFromChat] = useState<ExpandedCardData | null>(null);
   const [showExpandedCardFromChat, setShowExpandedCardFromChat] = useState(false);
+  // ORCH-0685: Save handler state (CF-2 dead-tap fix).
+  const [isSavingSharedCard, setIsSavingSharedCard] = useState(false);
+  const [sharedCardIsSaved, setSharedCardIsSaved] = useState(false);
   const savedCardsQuery = useSavedCards(currentUserId ?? undefined);
+
+  // ORCH-0685 cycle-3 (Pattern F): derive sharedCardIsSaved from the cached
+  // saves list so already-saved chat cards open with the "Saved" button on
+  // first paint instead of the stale "Save" default.
+  useEffect(() => {
+    if (!expandedCardFromChat) {
+      setSharedCardIsSaved(false);
+      return;
+    }
+    const list = savedCardsQuery.data;
+    if (!list) {
+      setSharedCardIsSaved(false);
+      return;
+    }
+    const isAlreadySaved = list.some((c) => c.id === expandedCardFromChat.id);
+    setSharedCardIsSaved(isAlreadySaved);
+  }, [expandedCardFromChat, savedCardsQuery.data]);
+
   const [revealedTimestampId, setRevealedTimestampId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
@@ -599,6 +626,71 @@ export default function MessageInterface({
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
+  // ORCH-0685 cycle-3: brand-aligned notification rendering. Shared between
+  // the always-mounted panel and the chat-shared-card overlay panel so both
+  // surfaces look identical.
+  const getNotificationVisuals = (type: "success" | "error" | "info") => {
+    switch (type) {
+      case "success":
+        return {
+          stripeColor: colors.success,
+          bgColor: colors.successLight,
+          borderColor: colors.success,
+          iconName: "checkmark-circle" as const,
+          iconColor: colors.successDark,
+        };
+      case "error":
+        return {
+          stripeColor: colors.error,
+          bgColor: "#fef2f2",
+          borderColor: colors.error,
+          iconName: "alert-circle" as const,
+          iconColor: colors.error,
+        };
+      case "info":
+      default:
+        return {
+          stripeColor: colors.primary,
+          bgColor: colors.lightOrange,
+          borderColor: colors.primary,
+          iconName: "info" as const,
+          iconColor: colors.primary,
+        };
+    }
+  };
+
+  const renderNotificationCard = (notification: any, withPointerEvents: boolean) => {
+    const v = getNotificationVisuals(notification.type ?? "info");
+    return (
+      <View
+        key={notification.id}
+        style={[
+          styles.notification,
+          { backgroundColor: v.bgColor, borderColor: v.borderColor },
+        ]}
+        pointerEvents={withPointerEvents ? "auto" : undefined}
+      >
+        <View style={[styles.notificationIndicator, { backgroundColor: v.stripeColor }]} />
+        <View style={styles.notificationContent}>
+          <View style={styles.notificationTitleRow}>
+            <Icon name={v.iconName} size={18} color={v.iconColor} />
+            <Text style={styles.notificationTitle}>{notification.title}</Text>
+          </View>
+          {notification.message ? (
+            <Text style={styles.notificationMessage}>{notification.message}</Text>
+          ) : null}
+        </View>
+        <TouchableOpacity
+          onPress={() => dismissNotification(notification.id)}
+          style={styles.dismissButton}
+          accessibilityLabel="Dismiss notification"
+        >
+          <Icon name="close" size={14} color={colors.gray500} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   // More options handlers
 
   // ORCH-0666: delegate to ConnectionsPage which mounts AddToBoardModal (real
@@ -659,6 +751,54 @@ export default function MessageInterface({
       setShowSavedCardPicker(false);
     } finally {
       setPickerSubmittingCardId(null);
+    }
+  };
+
+  /**
+   * ORCH-0685 §9.4: Real Save handler for chat-mounted ExpandedCardModal.
+   * Replaces the no-op at the chat-mounted modal mount (CF-2 dead-tap fix).
+   *
+   * Behavior:
+   *   - Loading: button disabled while saving (via isSavingSharedCard guard).
+   *   - Success: sharedCardIsSaved → true (passed as isSaved prop on modal,
+   *     button transitions to "Saved" state). Success toast.
+   *   - Already-saved: savedCardsService.saveCard handles 23505 silently
+   *     (idempotent upsert). Treated as success — UI transitions to "Saved".
+   *   - Error: toast surfaces. sharedCardIsSaved stays false.
+   *   - Constitution #1: every tap produces real feedback.
+   *   - Constitution #3: errors surface, never swallowed.
+   */
+  const handleSaveSharedCard = async (cardData: ExpandedCardData): Promise<void> => {
+    if (isSavingSharedCard || sharedCardIsSaved) {
+      return;
+    }
+
+    if (!currentUserId) {
+      showNotification(
+        t('chat:cardSaveFailedTitle'),
+        t('chat:cardSaveFailedToast'),
+        'error',
+      );
+      return;
+    }
+
+    setIsSavingSharedCard(true);
+    try {
+      await savedCardsService.saveCard(currentUserId, cardData, 'solo');
+      setSharedCardIsSaved(true);
+      showNotification(
+        t('chat:cardSavedTitle'),
+        t('chat:cardSavedToast'),
+      );
+    } catch (error) {
+      console.error('[handleSaveSharedCard] saveCard failed', error);
+      showNotification(
+        t('chat:cardSaveFailedTitle'),
+        t('chat:cardSaveFailedToast'),
+        'error',
+      );
+    } finally {
+      setIsSavingSharedCard(false);
     }
   };
 
@@ -940,8 +1080,11 @@ export default function MessageInterface({
                     failed: item.message.failed,
                   }}
                   onCardBubbleTap={(payload) => {
-                    setExpandedCardFromChat(payload);
+                    // ORCH-0685: typed conversion replaces unsafe `any` cast (Constitution #12 fix).
+                    setExpandedCardFromChat(cardPayloadToExpandedCardData(payload));
                     setShowExpandedCardFromChat(true);
+                    // ORCH-0685 cycle-3: sharedCardIsSaved now derived via useEffect against
+                    // savedCardsQuery.data — no manual reset needed.
                   }}
                   isMe={item.message.isMe}
                   groupPosition={item.groupPosition}
@@ -1375,7 +1518,7 @@ export default function MessageInterface({
         </View>
       )}
 
-      {/* ORCH-0667: tap-to-expand shared card from chat (D-4 bundled) */}
+      {/* ORCH-0667 + ORCH-0685: tap-to-expand shared card from chat with real Save wiring */}
       {showExpandedCardFromChat && expandedCardFromChat && (
         <ExpandedCardModal
           visible={showExpandedCardFromChat}
@@ -1383,10 +1526,31 @@ export default function MessageInterface({
           onClose={() => {
             setShowExpandedCardFromChat(false);
             setExpandedCardFromChat(null);
+            // ORCH-0685 cycle-3: useEffect on expandedCardFromChat=null resets
+            // sharedCardIsSaved automatically.
           }}
-          onSave={async () => { /* no-op in chat-mounted modal */ }}
+          onSave={handleSaveSharedCard}  // ORCH-0685: CF-2 dead-tap fix
+          isSaved={sharedCardIsSaved}    // ORCH-0685: button transitions to "Saved"
           currentMode="solo"
         />
+      )}
+
+      {/* Mount notifications above the chat-shared ExpandedCardModal portal: RN
+          Modal portals over sibling Views regardless of zIndex/elevation, so a
+          second transparent Modal is the only way to surface toasts on top.
+          pointerEvents="box-none" lets taps pass through to the underlying modal. */}
+      {showExpandedCardFromChat && notifications.length > 0 && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+          presentationStyle="overFullScreen"
+          onRequestClose={() => { /* no-op — auto-dismiss handles cleanup */ }}
+        >
+          <View style={styles.notificationsContainer} pointerEvents="box-none">
+            {notifications.map((notification) => renderNotificationCard(notification, true))}
+          </View>
+        </Modal>
       )}
 
       {/* More options bottom sheet — ORCH-0435 */}
@@ -1466,37 +1630,7 @@ export default function MessageInterface({
       {/* Local Notifications */}
       {notifications.length > 0 && (
         <View style={styles.notificationsContainer}>
-          {notifications.map((notification) => (
-            <View key={notification.id} style={styles.notification}>
-              <View
-                style={[
-                  styles.notificationIndicator,
-                  {
-                    backgroundColor:
-                      notification.type === "success"
-                        ? "#10b981"
-                        : notification.type === "error"
-                        ? "#ef4444"
-                        : "#3b82f6",
-                  },
-                ]}
-              />
-              <View style={styles.notificationContent}>
-                <Text style={styles.notificationTitle}>
-                  {notification.title}
-                </Text>
-                <Text style={styles.notificationMessage}>
-                  {notification.message}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => dismissNotification(notification.id)}
-                style={styles.dismissButton}
-              >
-                <Icon name="close" size={12} color="rgba(255, 255, 255, 0.72)" />
-              </TouchableOpacity>
-            </View>
-          ))}
+          {notifications.map((notification) => renderNotificationCard(notification, false))}
         </View>
       )}
 
@@ -2266,11 +2400,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   notification: {
-    backgroundColor: "white",
+    // backgroundColor + borderColor set inline per notification.type via getNotificationVisuals
     borderWidth: 1,
-    borderColor: "#e5e7eb",
     borderRadius: 12,
-    padding: 16,
+    paddingVertical: 14,
+    paddingRight: 14,
+    paddingLeft: 18, // 4px stripe + 14px gutter
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -2279,36 +2414,48 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 12,
+    overflow: "hidden",
   },
   notificationIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginTop: 8,
-    flexShrink: 0,
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    // backgroundColor set inline per notification.type
   },
   notificationContent: {
     flex: 1,
     minWidth: 0,
+    paddingVertical: 2,
+  },
+  notificationTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   notificationTitle: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 15,
+    fontWeight: "600",
     color: "#111827",
+    flexShrink: 1,
   },
   notificationMessage: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "#374151",
     marginTop: 4,
+    lineHeight: 19,
   },
   dismissButton: {
     width: 24,
     height: 24,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "transparent",
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    alignSelf: "flex-start",
+    marginTop: 2,
   },
   // ORCH-0435: Day separator
   daySeparator: {

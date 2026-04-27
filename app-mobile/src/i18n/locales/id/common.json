@@ -166,5 +166,14 @@
   "untitled": "Tanpa Judul",
   "error_sign_in_save": "Silakan masuk untuk menyimpan pengalaman",
   "error_boundary_title": "Terjadi kesalahan",
-  "error_boundary_message": "Kami mengalami kesalahan yang tidak terduga. Silakan coba lagi."
+  "error_boundary_message": "Kami mengalami kesalahan yang tidak terduga. Silakan coba lagi.",
+  "category_icebreakers": "Pemecah kebekuan",
+  "category_drinks_and_music": "Minuman & Musik",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Kasual",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Film",
+  "category_theatre": "Teater",
+  "category_brunch_lunch_casual": "Brunch, makan siang & kasual",
+  "category_movies_theatre": "Film & Teater"
 }

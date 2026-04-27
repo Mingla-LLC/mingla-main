@@ -166,5 +166,14 @@
   "untitled": "Untitled",
   "error_sign_in_save": "Please sign in to save experiences",
   "error_boundary_title": "Bir şeyler ters gitti",
-  "error_boundary_message": "We encountered an unexpected error. Please try again."
+  "error_boundary_message": "We encountered an unexpected error. Please try again.",
+  "category_icebreakers": "Buz kırıcılar",
+  "category_drinks_and_music": "İçecekler & Müzik",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Rahat",
+  "category_upscale_fine_dining": "Lüks Yemek",
+  "category_movies": "Filmler",
+  "category_theatre": "Tiyatro",
+  "category_brunch_lunch_casual": "Brunch, öğle yemeği & rahat",
+  "category_movies_theatre": "Filmler & Tiyatro"
 }

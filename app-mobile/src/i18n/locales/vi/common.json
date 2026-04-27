@@ -166,5 +166,14 @@
   "untitled": "Chưa đặt tên",
   "error_sign_in_save": "Vui lòng đăng nhập để lưu trải nghiệm",
   "error_boundary_title": "Đã xảy ra lỗi",
-  "error_boundary_message": "Chúng tôi gặp lỗi không mong muốn. Vui lòng thử lại."
+  "error_boundary_message": "Chúng tôi gặp lỗi không mong muốn. Vui lòng thử lại.",
+  "category_icebreakers": "Phá vỡ băng",
+  "category_drinks_and_music": "Đồ uống & Âm nhạc",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Bình dị",
+  "category_upscale_fine_dining": "Ẩm thực cao cấp",
+  "category_movies": "Phim",
+  "category_theatre": "Nhà hát",
+  "category_brunch_lunch_casual": "Brunch, trưa & bình dị",
+  "category_movies_theatre": "Phim & Nhà hát"
 }

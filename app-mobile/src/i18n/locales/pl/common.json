@@ -166,5 +166,14 @@
   "untitled": "Untitled",
   "error_sign_in_save": "Please sign in to save experiences",
   "error_boundary_title": "Coś poszło nie tak",
-  "error_boundary_message": "We encountered an unexpected error. Please try again."
+  "error_boundary_message": "We encountered an unexpected error. Please try again.",
+  "category_icebreakers": "Lodołamacze",
+  "category_drinks_and_music": "Drinki i muzyka",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Wykwintne",
+  "category_movies": "Kino",
+  "category_theatre": "Teatr",
+  "category_brunch_lunch_casual": "Brunch, lunch i casual",
+  "category_movies_theatre": "Kino i teatr"
 }

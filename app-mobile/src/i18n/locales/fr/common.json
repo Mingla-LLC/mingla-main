@@ -166,5 +166,14 @@
   "untitled": "Sans titre",
   "error_sign_in_save": "Veuillez vous connecter pour sauvegarder des expériences",
   "error_boundary_title": "Une erreur est survenue",
-  "error_boundary_message": "Nous avons rencontré une erreur inattendue. Veuillez réessayer."
+  "error_boundary_message": "Nous avons rencontré une erreur inattendue. Veuillez réessayer.",
+  "category_icebreakers": "Brise-glaces",
+  "category_drinks_and_music": "Boissons & Musique",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Décontracté",
+  "category_upscale_fine_dining": "Gastronomie",
+  "category_movies": "Cinéma",
+  "category_theatre": "Théâtre",
+  "category_brunch_lunch_casual": "Brunch, déjeuner & décontracté",
+  "category_movies_theatre": "Cinéma & Théâtre"
 }

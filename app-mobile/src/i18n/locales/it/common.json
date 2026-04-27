@@ -166,5 +166,14 @@
   "untitled": "Untitled",
   "error_sign_in_save": "Please sign in to save experiences",
   "error_boundary_title": "Qualcosa è andato storto",
-  "error_boundary_message": "We encountered an unexpected error. Please try again."
+  "error_boundary_message": "We encountered an unexpected error. Please try again.",
+  "category_icebreakers": "Rompighiaccio",
+  "category_drinks_and_music": "Drink e Musica",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Alta Cucina",
+  "category_movies": "Cinema",
+  "category_theatre": "Teatro",
+  "category_brunch_lunch_casual": "Brunch, pranzo e casual",
+  "category_movies_theatre": "Cinema e Teatro"
 }

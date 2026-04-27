@@ -166,5 +166,14 @@
   "untitled": "بدون عنوان",
   "error_sign_in_save": "يرجى تسجيل الدخول لحفظ التجارب",
   "error_boundary_title": "حدث خطأ ما",
-  "error_boundary_message": "واجهنا خطأً غير متوقع. يرجى المحاولة مرة أخرى."
+  "error_boundary_message": "واجهنا خطأً غير متوقع. يرجى المحاولة مرة أخرى.",
+  "category_icebreakers": "كاسرات الجمود",
+  "category_drinks_and_music": "المشروبات والموسيقى",
+  "category_brunch": "الإفطار المتأخر",
+  "category_casual_food": "غير رسمي",
+  "category_upscale_fine_dining": "مطاعم راقية",
+  "category_movies": "أفلام",
+  "category_theatre": "مسرح",
+  "category_brunch_lunch_casual": "الإفطار المتأخر والغداء وغير الرسمي",
+  "category_movies_theatre": "أفلام ومسرح"
 }

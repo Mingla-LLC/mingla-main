@@ -166,5 +166,14 @@
   "untitled": "शीर्षकहीन",
   "error_sign_in_save": "अनुभव सहेजने के लिए साइन इन करें",
   "error_boundary_title": "कुछ गड़बड़ हो गई",
-  "error_boundary_message": "एक अप्रत्याशित त्रुटि हुई। कृपया फिर से कोशिश करें।"
+  "error_boundary_message": "एक अप्रत्याशित त्रुटि हुई। कृपया फिर से कोशिश करें।",
+  "category_icebreakers": "आइसब्रेकर",
+  "category_drinks_and_music": "पेय और संगीत",
+  "category_brunch": "ब्रंच",
+  "category_casual_food": "अनौपचारिक",
+  "category_upscale_fine_dining": "फ़ाइन डाइनिंग",
+  "category_movies": "फ़िल्में",
+  "category_theatre": "थिएटर",
+  "category_brunch_lunch_casual": "ब्रंच, लंच और अनौपचारिक",
+  "category_movies_theatre": "फ़िल्में और थिएटर"
 }

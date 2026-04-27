@@ -166,5 +166,14 @@
   "untitled": "无标题",
   "error_sign_in_save": "请登录以保存体验",
   "error_boundary_title": "出了点问题",
-  "error_boundary_message": "遇到意外错误，请重试。"
+  "error_boundary_message": "遇到意外错误，请重试。",
+  "category_icebreakers": "破冰",
+  "category_drinks_and_music": "饮品与音乐",
+  "category_brunch": "早午餐",
+  "category_casual_food": "休闲",
+  "category_upscale_fine_dining": "精致餐饮",
+  "category_movies": "电影",
+  "category_theatre": "剧院",
+  "category_brunch_lunch_casual": "早午餐、午餐与休闲",
+  "category_movies_theatre": "电影与剧院"
 }

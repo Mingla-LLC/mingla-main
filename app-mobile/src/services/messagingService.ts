@@ -4,26 +4,75 @@ import { blockService } from './blockService';
 import { getDisplayName } from '../utils/getDisplayName';
 
 /**
- * ORCH-0667: snapshot payload for shared-card chat messages.
- * Trim list per spec §6 — strict subset of ExpandedCardData. Recipient-relative
- * fields (travelTime, distance) are deliberately excluded — sender's values would
- * fabricate for the recipient (Constitution #9, cross-ref ORCH-0659/0660).
+ * ORCH-0667 + ORCH-0685: snapshot payload for shared-card chat messages.
+ *
+ * Carries every ExpandedCardModal-render-relevant field so chat-shared cards
+ * render with ~95% parity to deck-tap cards (per ORCH-0685 DEC-1).
+ *
+ * EXPLICITLY EXCLUDED — do NOT add `travelTime`, `travelTimeMin`, `distance`,
+ * `distanceKm`, `distance_km` or any other recipient-relative field. Sender's
+ * value would fabricate for the recipient (Constitution #9 violation).
+ * Cross-ref: ORCH-0659/0660 distance/travel-time lesson.
+ * Enforced by: invariant I-CHAT-CARDPAYLOAD-NO-RECIPIENT-RELATIVE-FIELDS +
+ * CI gate in scripts/ci-check-invariants.sh.
+ *
+ * SIZE BUDGET: 5KB (preserved from ORCH-0667). Drop order under pressure
+ * defined in trimCardPayload below: drop optional rich fields first,
+ * essentials never dropped.
  */
 export interface CardPayload {
-  // Identity + render essentials
-  id: string;
-  title: string;
-  category: string | null;
-  image: string | null;
+  // ── REQUIRED ESSENTIALS (never dropped under size pressure) ─────────────
+  id: string;                    // place_pool.id — analytics dedup; NOT for refetch
+  title: string;                 // hero / bubble title
+  category: string | null;       // canonical slug (e.g., 'casual_food'); rendered via getReadableCategoryName at consumer site
+  image: string | null;          // primary image URL
 
-  // ExpandedCardModal enrichment (all optional, dropped under size pressure)
-  images?: string[];
+  // ── ORCH-0685 DEC-1 ADDITIONS — modal-render-relevant ──────────────────
+  /** lat/lng pair. Required by ExpandedCardModal weather + busyness + booking fetch gates. */
+  location?: { lat: number; lng: number };
+  /** Google Place ID. Required by ExpandedCardModal booking dedup. */
+  placeId?: string;
+  /** Optional explicit icon name; falls back to getCategoryIcon(category) at render. */
+  categoryIcon?: string;
+  /** Render in CardInfoSection tag chips row. */
+  tags?: string[];
+  /** Forward-positioned per ORCH-0685.D-5 — modal does not render today; persisted for future enablement. */
+  matchFactors?: {
+    location: number;
+    budget: number;
+    category: number;
+    time: number;
+    popularity: number;
+  };
+  /** Forward-positioned per ORCH-0685.D-5 — modal does not render today. */
+  socialStats?: {
+    views: number;
+    likes: number;
+    saves: number;
+    shares?: number;
+  };
+  /** Phone number for booking + PracticalDetailsSection phone row. */
+  phone?: string;
+  /** Website URL for booking + PracticalDetailsSection website row. */
+  website?: string;
+  /** Opening-hours data; multiple legacy shapes per ExpandedCardData. */
+  openingHours?:
+    | string
+    | { open_now?: boolean; weekday_text?: string[] }
+    | { openNow?: boolean; periods?: unknown[]; nextOpenTime?: string; nextCloseTime?: string; weekdayDescriptions?: string[] }
+    | Record<string, string>
+    | null;
+  /** Date/time for weather + timeline. ISO string only (Date is not JSON-serializable). */
+  selectedDateTime?: string;
+
+  // ── ORCH-0667 ORIGINAL OPTIONAL FIELDS (preserved) ──────────────────────
+  images?: string[];             // gallery — drop under pressure
   rating?: number;
   reviewCount?: number;
   priceRange?: string;
   address?: string;
-  description?: string;
-  highlights?: string[];
+  description?: string;          // capped 500 chars at trim
+  highlights?: string[];         // cap 5 × 80 chars at trim
   matchScore?: number;
 }
 
@@ -46,11 +95,25 @@ export interface DirectMessage {
 }
 
 /**
- * ORCH-0667: trim a SavedCardModel to a CardPayload, enforcing the <5KB budget.
- * Drop order under pressure: highlights → description → images → address.
- * Required fields {id, title, category, image} are never dropped.
+ * ORCH-0667 + ORCH-0685: trim a SavedCardModel to a CardPayload, enforcing
+ * the <5KB budget.
+ *
+ * Drop order under pressure (v2 — extended for ORCH-0685):
+ *   matchFactors → socialStats → tags → openingHours → highlights →
+ *   description → images → address
+ * Required fields {id, title, category, image} are NEVER dropped.
+ * NEW fields with hard render dependencies (location, placeId, categoryIcon)
+ * are also never dropped — without them, ExpandedCardModal sections silently
+ * skip (defeats the entire ORCH-0685 fix).
+ *
+ * FORBIDDEN FIELDS — do NOT extract under any circumstance:
+ *   - travelTime, travelTimeMin, distance, distanceKm, distance_km
+ *   - These are recipient-relative; sender's value fabricates (Constitution #9).
+ *   - Cross-ref: ORCH-0659/0660. Enforced by:
+ *     I-CHAT-CARDPAYLOAD-NO-RECIPIENT-RELATIVE-FIELDS (CI-gated).
  */
 export function trimCardPayload(card: any): CardPayload {
+  // [ORCH-0685 RC-2 FIX] Required essentials — never dropped, never absent.
   const trimmed: CardPayload = {
     id: card.id,
     title: card.title || 'Saved experience',
@@ -58,6 +121,54 @@ export function trimCardPayload(card: any): CardPayload {
     image: card.image ?? null,
   };
 
+  // [ORCH-0685 DEC-1] Hard-render-dependent additions (never dropped under pressure).
+  if (card.location && typeof card.location.lat === 'number' && typeof card.location.lng === 'number') {
+    trimmed.location = { lat: card.location.lat, lng: card.location.lng };
+  }
+  if (typeof card.placeId === 'string' && card.placeId.length > 0) {
+    trimmed.placeId = card.placeId;
+  }
+  if (typeof card.categoryIcon === 'string' && card.categoryIcon.length > 0) {
+    trimmed.categoryIcon = card.categoryIcon;
+  }
+
+  // [ORCH-0685 DEC-1] Soft-render fields (drop in size-guard order if budget exceeded).
+  if (Array.isArray(card.tags) && card.tags.length) {
+    trimmed.tags = card.tags
+      .slice(0, 10)
+      .map((t: any) => String(t).slice(0, 32));
+  }
+  if (card.matchFactors && typeof card.matchFactors === 'object') {
+    const mf = card.matchFactors;
+    trimmed.matchFactors = {
+      location: Number(mf.location) || 0,
+      budget: Number(mf.budget) || 0,
+      category: Number(mf.category) || 0,
+      time: Number(mf.time) || 0,
+      popularity: Number(mf.popularity) || 0,
+    };
+  }
+  if (card.socialStats && typeof card.socialStats === 'object') {
+    const ss = card.socialStats;
+    trimmed.socialStats = {
+      views: Number(ss.views) || 0,
+      likes: Number(ss.likes) || 0,
+      saves: Number(ss.saves) || 0,
+      shares: Number(ss.shares) || 0,
+    };
+  }
+  if (typeof card.phone === 'string' && card.phone.length > 0) trimmed.phone = card.phone;
+  if (typeof card.website === 'string' && card.website.length > 0) trimmed.website = card.website;
+  if (card.openingHours !== undefined && card.openingHours !== null) {
+    trimmed.openingHours = card.openingHours;
+  }
+  if (card.selectedDateTime instanceof Date) {
+    trimmed.selectedDateTime = card.selectedDateTime.toISOString();
+  } else if (typeof card.selectedDateTime === 'string' && card.selectedDateTime.length > 0) {
+    trimmed.selectedDateTime = card.selectedDateTime;
+  }
+
+  // [ORCH-0667 v1 fields — preserved]
   if (Array.isArray(card.images) && card.images.length) {
     trimmed.images = card.images.slice(0, 6);
   }
@@ -75,8 +186,18 @@ export function trimCardPayload(card: any): CardPayload {
   }
   if (typeof card.matchScore === 'number') trimmed.matchScore = card.matchScore;
 
-  // Size guard — drop optional fields in reverse priority if over budget
-  const dropOrder: (keyof CardPayload)[] = ['highlights', 'description', 'images', 'address'];
+  // [ORCH-0685 §6.3] Size guard — drop optional fields in reverse priority if over budget.
+  // 'location', 'placeId', 'categoryIcon' are NOT in dropOrder — they unlock 3 modal sections.
+  const dropOrder: (keyof CardPayload)[] = [
+    'matchFactors',
+    'socialStats',
+    'tags',
+    'openingHours',
+    'highlights',
+    'description',
+    'images',
+    'address',
+  ];
   let size = JSON.stringify(trimmed).length;
   for (const key of dropOrder) {
     if (size <= 5120) break;

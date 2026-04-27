@@ -166,5 +166,14 @@
   "untitled": "無題",
   "error_sign_in_save": "体験を保存するにはサインインしてください",
   "error_boundary_title": "問題が発生しました",
-  "error_boundary_message": "予期しないエラーが発生しました。もう一度お試しください。"
+  "error_boundary_message": "予期しないエラーが発生しました。もう一度お試しください。",
+  "category_icebreakers": "アイスブレイカー",
+  "category_drinks_and_music": "ドリンク&音楽",
+  "category_brunch": "ブランチ",
+  "category_casual_food": "カジュアル",
+  "category_upscale_fine_dining": "ファインダイニング",
+  "category_movies": "映画",
+  "category_theatre": "劇場",
+  "category_brunch_lunch_casual": "ブランチ、ランチ、カジュアル",
+  "category_movies_theatre": "映画&劇場"
 }

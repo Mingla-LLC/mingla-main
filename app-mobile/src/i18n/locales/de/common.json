@@ -166,5 +166,14 @@
   "untitled": "Ohne Titel",
   "error_sign_in_save": "Bitte melde dich an, um Erlebnisse zu speichern",
   "error_boundary_title": "Etwas ist schiefgelaufen",
-  "error_boundary_message": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es erneut."
+  "error_boundary_message": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es erneut.",
+  "category_icebreakers": "Eisbrecher",
+  "category_drinks_and_music": "Drinks & Musik",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Lässig",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Filme",
+  "category_theatre": "Theater",
+  "category_brunch_lunch_casual": "Brunch, Lunch & Lässig",
+  "category_movies_theatre": "Filme & Theater"
 }

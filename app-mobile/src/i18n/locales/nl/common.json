@@ -166,5 +166,14 @@
   "untitled": "Naamloos",
   "error_sign_in_save": "Log in om ervaringen op te slaan",
   "error_boundary_title": "Er is iets misgegaan",
-  "error_boundary_message": "We zijn een onverwachte fout tegengekomen. Probeer het opnieuw."
+  "error_boundary_message": "We zijn een onverwachte fout tegengekomen. Probeer het opnieuw.",
+  "category_icebreakers": "IJsbrekers",
+  "category_drinks_and_music": "Drankjes & Muziek",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Films",
+  "category_theatre": "Theater",
+  "category_brunch_lunch_casual": "Brunch, lunch & casual",
+  "category_movies_theatre": "Films & Theater"
 }

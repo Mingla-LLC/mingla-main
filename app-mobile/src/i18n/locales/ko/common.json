@@ -166,5 +166,14 @@
   "untitled": "제목 없음",
   "error_sign_in_save": "경험을 저장하려면 로그인해 주세요",
   "error_boundary_title": "문제가 발생했습니다",
-  "error_boundary_message": "예상치 못한 오류가 발생했습니다. 다시 시도해 주세요."
+  "error_boundary_message": "예상치 못한 오류가 발생했습니다. 다시 시도해 주세요.",
+  "category_icebreakers": "아이스브레이커",
+  "category_drinks_and_music": "음료 & 음악",
+  "category_brunch": "브런치",
+  "category_casual_food": "캐주얼",
+  "category_upscale_fine_dining": "파인 다이닝",
+  "category_movies": "영화",
+  "category_theatre": "극장",
+  "category_brunch_lunch_casual": "브런치, 점심 & 캐주얼",
+  "category_movies_theatre": "영화 & 극장"
 }

@@ -166,5 +166,14 @@
   "untitled": "Untitled",
   "error_sign_in_save": "Please sign in to save experiences",
   "error_boundary_title": "Något gick fel",
-  "error_boundary_message": "We encountered an unexpected error. Please try again."
+  "error_boundary_message": "We encountered an unexpected error. Please try again.",
+  "category_icebreakers": "Isbrytare",
+  "category_drinks_and_music": "Drinkar & Musik",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Avslappnat",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Filmer",
+  "category_theatre": "Teater",
+  "category_brunch_lunch_casual": "Brunch, lunch & avslappnat",
+  "category_movies_theatre": "Filmer & Teater"
 }

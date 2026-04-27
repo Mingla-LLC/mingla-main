@@ -166,5 +166,14 @@
   "untitled": "ללא כותרת",
   "error_sign_in_save": "התחבר כדי לשמור חוויות",
   "error_boundary_title": "משהו השתבש",
-  "error_boundary_message": "נתקלנו בשגיאה לא צפויה. נסה שוב."
+  "error_boundary_message": "נתקלנו בשגיאה לא צפויה. נסה שוב.",
+  "category_icebreakers": "שוברי קרח",
+  "category_drinks_and_music": "משקאות ומוזיקה",
+  "category_brunch": "ברנץ’",
+  "category_casual_food": "קז’ואל",
+  "category_upscale_fine_dining": "מסעדות יוקרה",
+  "category_movies": "סרטים",
+  "category_theatre": "תיאטרון",
+  "category_brunch_lunch_casual": "ברנץ’, צהריים וקז’ואל",
+  "category_movies_theatre": "סרטים ותיאטרון"
 }
