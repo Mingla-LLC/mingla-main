@@ -675,6 +675,12 @@ export default function SwipeableCards({
   const nextCardOpacity = positionX.interpolate({
     inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
     outputRange: [1, 0, 1],
+    // ORCH-0694 0694-D: clamp prevents the next-card render from being
+    // "more visible than 1" during any future timing edge case. Without
+    // this, the default 'extend' extrapolation goes above 1 at positionX
+    // values beyond ±SCREEN_WIDTH/2 (e.g., end of swipe-out animation),
+    // contributing to the ghost-card visual artifact.
+    extrapolate: 'clamp',
   });
 
   // Filter out removed cards (needed for shouldShowLoader calculation)
@@ -840,6 +846,21 @@ export default function SwipeableCards({
       });
     }
   }, [currentRec?.id, currentCardIndex]);
+
+  // ORCH-0694 0694-G: belt-and-suspenders transform reset on card change.
+  // The swipe-completion .start() callback (lines ~1322) is the primary path
+  // that resets positionX/Y to 0 before state advance. This effect handles
+  // any OTHER path that advances currentRec (e.g., onCardRemoved from
+  // ExpandedCardModal at line ~2480, schedule-from-modal flow). Without this,
+  // those non-swipe-handler paths would inherit whatever transform values
+  // positionX/Y last held — same ghost-card class as the original bug.
+  // Cheap (one setValue per card change), safe (idempotent on first mount).
+  useEffect(() => {
+    if (!currentRec) return;
+    positionX.setValue(0);
+    positionY.setValue(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRec?.id]);
 
   // Trigger card content entrance animations when current card changes
   useEffect(() => {
@@ -1304,7 +1325,20 @@ export default function SwipeableCards({
             return;
           }
 
-          // Animate card off the screen edge
+          // Animate card off the screen edge.
+          // ORCH-0694: clamp dy to ±100 so diagonal swipes don't drift the exit
+          // animation off-screen-and-down (CF-2). Combined with key={currentRec.id}
+          // on the card Animated.View + reset-before-state-advance below, this
+          // structurally eliminates the ghost-card-after-swipe bug class.
+          //
+          // DO NOT re-introduce a 2-rAF reset chain here. The previous version
+          // reset transforms AFTER state advance via 2 requestAnimationFrame
+          // nesting; the gap created a window where the new top card briefly
+          // inherited the previous card's stale transform values, producing the
+          // bottom-left wedge artifact reported under ORCH-0694. The fix is
+          // per-card React key (line 2254 area) + reset-before-state-advance,
+          // NOT timing the reset around the React render cycle.
+          //
           // ORCH-0675 Wave 1 RC-1 — per-axis timing with native driver.
           // Animated.parallel start() callback fires when LAST animation resolves —
           // equivalent semantics to single-call ValueXY .start() callback.
@@ -1315,18 +1349,23 @@ export default function SwipeableCards({
               useNativeDriver: true,
             }),
             Animated.timing(positionY, {
-              toValue: gestureState.dy,
+              // ORCH-0694 0694-E: clamp dy magnitude so extreme diagonal swipes
+              // don't leave the exit animation in geometrically-extreme end states.
+              toValue: Math.max(-100, Math.min(100, gestureState.dy)),
               duration: 250,
               useNativeDriver: true,
             }),
           ]).start(() => {
-            // After animation completes, remove the card and advance to next
-            setRemovedCards((prev) => {
-              const newSet = new Set([...prev, cardToRemove.id]);
-              return newSet;
-            });
+            // ORCH-0694 0694-B: reset transforms BEFORE state advance.
+            // The old Animated.View has key={oldCard.id} and unmounts in this
+            // same render pass; the new Animated.View mounts with key={newCard.id}
+            // and binds to positionX/Y already at 0. No 2-rAF dance needed.
+            positionX.setValue(0);
+            positionY.setValue(0);
 
-            // Move to next card
+            // Advance state. React batches these into a single re-render that
+            // swaps the keyed Animated.View atomically.
+            setRemovedCards((prev) => new Set([...prev, cardToRemove.id]));
             setCurrentCardIndex(0);
 
             // RELIABILITY: .catch() on fire-and-forget handleSwipe. Without this,
@@ -1335,15 +1374,9 @@ export default function SwipeableCards({
               console.error('[SwipeableCards] Swipe handler error:', err);
             });
 
-            // Wait for React to render the next card before resetting position
-            // This prevents the flash/flicker — DO NOT remove this rAF chain.
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                // ORCH-0675 Wave 1 RC-1 — per-axis reset
-                positionX.setValue(0);
-                positionY.setValue(0);
-              });
-            });
+            // ORCH-0694 0694-C: 2-rAF chain DELETED. The "DO NOT remove this
+            // rAF chain" comment from prior author is obsoleted by the per-card
+            // key on the current Animated.View — see comment block above.
           });
         } else {
           // Snap back to center
@@ -2251,7 +2284,13 @@ export default function SwipeableCards({
             })()}
 
           {/* Current Card */}
+          {/* ORCH-0694 0694-A: per-card key forces React to mount a fresh
+              Animated.View whenever the active card changes. Combined with
+              the reset-before-state-advance pattern in the swipe-completion
+              callback below, this structurally eliminates the shared-Animated.Value
+              ghost-card bug class. */}
           <Animated.View
+            key={currentRec.id}
             style={[
               styles.card,
               {
