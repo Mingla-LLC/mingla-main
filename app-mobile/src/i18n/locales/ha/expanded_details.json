@@ -35,7 +35,16 @@
     "schedule_anyway": "Shirya Ko Haka",
     "scheduled_toast": "An shirya! An matsar da {{title}} zuwa kalandar ka",
     "closed_message": "An rufe wannan wurin a ranar da lokacin da ka zaɓa. Danna \"Shirya\" don zaɓi lokaci daban.",
-    "share_prompt": "Raba {{title}} tare da abokai"
+    "share_prompt": "Raba {{title}} tare da abokai",
+    "back_to_date": "Komawa kwanan wata",
+    "confirm_date_title": "An zaɓi ranar",
+    "confirm_date_message": "Ka zaɓi {{date}}. Ci gaba zuwa zaɓen lokaci?",
+    "change_date": "Canza kwanan wata",
+    "pick_time": "Zaɓi lokaci",
+    "unverified_hours_title": "Lokutan buɗewa ba sa samuwa",
+    "unverified_hours_message": "Ba mu iya tabbatar da lokutan buɗe {{venueName}} ba na wannan lokacin. Tsara duk da haka?",
+    "error_past_date_title": "Zaɓi lokaci na nan gaba",
+    "error_past_date_message": "Wannan lokacin ya wuce. Da fatan zaɓi lokaci na nan gaba."
   },
   "busyness": {
     "traffic": "Cunkoson Ababen Hanya",

@@ -35,7 +35,16 @@
     "schedule_anyway": "Agendar de todos modos",
     "scheduled_toast": "¡Agendado! {{title}} se ha movido a tu calendario",
     "closed_message": "Este lugar está cerrado en la fecha y hora seleccionadas. Toca \"Agendar\" para elegir un horario diferente.",
-    "share_prompt": "Compartir {{title}} con amigos"
+    "share_prompt": "Compartir {{title}} con amigos",
+    "back_to_date": "Volver a fecha",
+    "confirm_date_title": "Fecha seleccionada",
+    "confirm_date_message": "Elegiste {{date}}. ¿Continuar con la hora?",
+    "change_date": "Cambiar fecha",
+    "pick_time": "Elegir hora",
+    "unverified_hours_title": "Horario no disponible",
+    "unverified_hours_message": "No pudimos verificar el horario de {{venueName}} para esa hora. ¿Programar de todos modos?",
+    "error_past_date_title": "Elige una hora futura",
+    "error_past_date_message": "Esa hora ya pasó. Por favor, elige una hora futura."
   },
   "busyness": {
     "traffic": "Tráfico",

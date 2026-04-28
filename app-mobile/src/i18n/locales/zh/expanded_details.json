@@ -35,7 +35,16 @@
     "schedule_anyway": "仍然安排",
     "scheduled_toast": "已安排！{{title}} 已添加到您的日历",
     "closed_message": "此地点在所选日期和时间已关闭。点击\"安排日程\"选择其他时间。",
-    "share_prompt": "与好友分享 {{title}}"
+    "share_prompt": "与好友分享 {{title}}",
+    "back_to_date": "返回日期",
+    "confirm_date_title": "已选择日期",
+    "confirm_date_message": "您选择了{{date}}。继续选择时间?",
+    "change_date": "更改日期",
+    "pick_time": "选择时间",
+    "unverified_hours_title": "营业时间未知",
+    "unverified_hours_message": "我们无法验证{{venueName}}在该时段的营业时间。仍要安排吗?",
+    "error_past_date_title": "选择将来的时间",
+    "error_past_date_message": "该时间已过。请选择将来的时间。"
   },
   "busyness": {
     "traffic": "交通",

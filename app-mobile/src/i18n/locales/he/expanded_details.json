@@ -35,7 +35,16 @@
     "schedule_anyway": "תזמן בכל זאת",
     "scheduled_toast": "תוזמן! {{title}} הועבר ליומן שלך",
     "closed_message": "המקום סגור בתאריך ובשעה שנבחרו. הקש \"תזמן\" כדי לבחור שעה אחרת.",
-    "share_prompt": "שתף את {{title}} עם חברים"
+    "share_prompt": "שתף את {{title}} עם חברים",
+    "back_to_date": "חזרה לתאריך",
+    "confirm_date_title": "התאריך נבחר",
+    "confirm_date_message": "בחרת ב-{{date}}. להמשיך לבחירת שעה?",
+    "change_date": "שנה תאריך",
+    "pick_time": "בחר שעה",
+    "unverified_hours_title": "שעות פתיחה לא זמינות",
+    "unverified_hours_message": "לא הצלחנו לאמת את שעות הפתיחה של {{venueName}} בשעה זו. לתזמן בכל זאת?",
+    "error_past_date_title": "בחר שעה עתידית",
+    "error_past_date_message": "השעה הזו כבר עברה. בחר שעה עתידית."
   },
   "busyness": {
     "traffic": "תנועה",

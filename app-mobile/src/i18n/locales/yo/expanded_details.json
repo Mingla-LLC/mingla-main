@@ -35,7 +35,16 @@
     "schedule_anyway": "Ṣètò Bí Ó Ti Wù",
     "scheduled_toast": "A ti ṣètò! A ti gbé {{title}} lọ sí kàlẹ́ndà rẹ",
     "closed_message": "Ibi yìí ti tì ní ọjọ́ àti àkókò tí o yàn. Fọwọ́ kàn \"Ṣètò\" láti yan àkókò mìíràn.",
-    "share_prompt": "Pín {{title}} pẹ̀lú àwọn ọ̀rẹ́"
+    "share_prompt": "Pín {{title}} pẹ̀lú àwọn ọ̀rẹ́",
+    "back_to_date": "Pada si ọjọ",
+    "confirm_date_title": "Ti yan ọjọ",
+    "confirm_date_message": "O yan {{date}}. Tẹsiwaju si yiyan akoko?",
+    "change_date": "Yi ọjọ pada",
+    "pick_time": "Yan akoko",
+    "unverified_hours_title": "Awọn wakati ko si",
+    "unverified_hours_message": "A ko le ṣayẹwo awọn wakati {{venueName}} fun akoko yẹn. Ṣeto sibẹsibẹ?",
+    "error_past_date_title": "Yan akoko ọjọ iwaju",
+    "error_past_date_message": "Akoko yẹn ti kọja tẹlẹ. Jọwọ yan akoko ọjọ iwaju."
   },
   "busyness": {
     "traffic": "Ìjá-àrà Ọkọ̀",

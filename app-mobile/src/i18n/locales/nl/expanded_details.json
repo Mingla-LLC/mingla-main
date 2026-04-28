@@ -35,7 +35,16 @@
     "schedule_anyway": "Toch plannen",
     "scheduled_toast": "Gepland! {{title}} is toegevoegd aan je agenda",
     "closed_message": "Deze plek is gesloten op de geselecteerde datum en tijd. Tik op \"Plannen\" om een ander tijdstip te kiezen.",
-    "share_prompt": "{{title}} delen met vrienden"
+    "share_prompt": "{{title}} delen met vrienden",
+    "back_to_date": "Terug naar datum",
+    "confirm_date_title": "Datum geselecteerd",
+    "confirm_date_message": "Je hebt {{date}} gekozen. Doorgaan naar tijd?",
+    "change_date": "Datum wijzigen",
+    "pick_time": "Tijd kiezen",
+    "unverified_hours_title": "Openingstijden onbekend",
+    "unverified_hours_message": "We konden de openingstijden van {{venueName}} voor dat moment niet verifiëren. Toch plannen?",
+    "error_past_date_title": "Kies een toekomstige tijd",
+    "error_past_date_message": "Die tijd is al voorbij. Kies een toekomstige tijd."
   },
   "busyness": {
     "traffic": "Verkeer",

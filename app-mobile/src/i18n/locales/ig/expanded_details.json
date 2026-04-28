@@ -35,7 +35,16 @@
     "schedule_anyway": "Hazịa N'agbanyeghị",
     "scheduled_toast": "Ahazịrị! Ebugara {{title}} na kalenda gị",
     "closed_message": "Ebe a mechiri na ụbọchị na oge ị họọrọ. Pịa \"Hazịa\" iji họrọ oge ọzọ.",
-    "share_prompt": "Kekọrịta {{title}} na ndị enyi"
+    "share_prompt": "Kekọrịta {{title}} na ndị enyi",
+    "back_to_date": "Laghachi na ụbọchị",
+    "confirm_date_title": "Ahọrọla ụbọchị",
+    "confirm_date_message": "Ị họọrọ {{date}}. Gaa n'ihu na nhọrọ oge?",
+    "change_date": "Gbanwee ụbọchị",
+    "pick_time": "Họrọ oge",
+    "unverified_hours_title": "Awa enweghị",
+    "unverified_hours_message": "Anyị enweghị ike igosipụta oge {{venueName}} maka oge ahụ. Hazie agbanyeghị?",
+    "error_past_date_title": "Họrọ oge n'ihu",
+    "error_past_date_message": "Oge ahụ agafeela. Biko họrọ oge n'ihu."
   },
   "busyness": {
     "traffic": "Okporo Ụzọ",

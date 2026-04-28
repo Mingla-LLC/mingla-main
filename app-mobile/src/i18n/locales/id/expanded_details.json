@@ -35,7 +35,16 @@
     "schedule_anyway": "Tetap Jadwalkan",
     "scheduled_toast": "Terjadwal! {{title}} telah ditambahkan ke kalender Anda",
     "closed_message": "Tempat ini tutup pada tanggal dan waktu yang dipilih. Ketuk \"Jadwalkan\" untuk memilih waktu lain.",
-    "share_prompt": "Bagikan {{title}} dengan teman"
+    "share_prompt": "Bagikan {{title}} dengan teman",
+    "back_to_date": "Kembali ke tanggal",
+    "confirm_date_title": "Tanggal dipilih",
+    "confirm_date_message": "Anda memilih {{date}}. Lanjut ke pemilihan waktu?",
+    "change_date": "Ubah tanggal",
+    "pick_time": "Pilih waktu",
+    "unverified_hours_title": "Jam buka tidak tersedia",
+    "unverified_hours_message": "Kami tidak dapat memverifikasi jam buka {{venueName}} untuk waktu itu. Tetap jadwalkan?",
+    "error_past_date_title": "Pilih waktu mendatang",
+    "error_past_date_message": "Waktu itu sudah berlalu. Silakan pilih waktu yang akan datang."
   },
   "busyness": {
     "traffic": "Lalu Lintas",

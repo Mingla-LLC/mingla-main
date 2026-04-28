@@ -35,7 +35,16 @@
     "schedule_anyway": "そのままスケジュール",
     "scheduled_toast": "スケジュール完了！ {{title}}がカレンダーに追加されました",
     "closed_message": "選択した日時にはこの場所は閉まっています。「スケジュール」をタップして別の時間を選んでください。",
-    "share_prompt": "{{title}}を友達と共有"
+    "share_prompt": "{{title}}を友達と共有",
+    "back_to_date": "日付に戻る",
+    "confirm_date_title": "日付を選択しました",
+    "confirm_date_message": "{{date}}を選択しました。時刻の選択に進みますか?",
+    "change_date": "日付を変更",
+    "pick_time": "時刻を選ぶ",
+    "unverified_hours_title": "営業時間が不明",
+    "unverified_hours_message": "その時刻の{{venueName}}の営業時間を確認できませんでした。それでも予約しますか?",
+    "error_past_date_title": "未来の時刻を選択",
+    "error_past_date_message": "その時刻は過ぎています。未来の時刻を選んでください。"
   },
   "busyness": {
     "traffic": "交通状況",

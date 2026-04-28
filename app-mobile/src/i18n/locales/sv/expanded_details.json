@@ -35,7 +35,16 @@
     "schedule_anyway": "Schemalägg Anyway",
     "scheduled_toast": "Schemalagt! {{title}} has been moved to your calendar",
     "closed_message": "This place is closed at the selected date och time. Tap \"Schemalägg\" to choose a different time.",
-    "share_prompt": "Dela {{title}} with friends"
+    "share_prompt": "Dela {{title}} with friends",
+    "back_to_date": "Tillbaka till datum",
+    "confirm_date_title": "Datum valt",
+    "confirm_date_message": "Du valde {{date}}. Fortsätta till tidsval?",
+    "change_date": "Ändra datum",
+    "pick_time": "Välj tid",
+    "unverified_hours_title": "Öppettider saknas",
+    "unverified_hours_message": "Vi kunde inte verifiera {{venueName}}s öppettider för den tiden. Boka ändå?",
+    "error_past_date_title": "Välj en framtida tid",
+    "error_past_date_message": "Den tiden har redan passerat. Välj en framtida tid."
   },
   "busyness": {
     "traffic": "Traffic",

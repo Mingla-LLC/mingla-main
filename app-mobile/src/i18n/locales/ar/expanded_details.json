@@ -35,7 +35,16 @@
     "schedule_anyway": "جدولة على أي حال",
     "scheduled_toast": "تمت الجدولة! تم نقل {{title}} إلى تقويمك",
     "closed_message": "هذا المكان مغلق في التاريخ والوقت المحددين. اضغط \"جدولة\" لاختيار وقت آخر.",
-    "share_prompt": "مشاركة {{title}} مع الأصدقاء"
+    "share_prompt": "مشاركة {{title}} مع الأصدقاء",
+    "back_to_date": "العودة إلى التاريخ",
+    "confirm_date_title": "تم اختيار التاريخ",
+    "confirm_date_message": "لقد اخترت {{date}}. هل تريد المتابعة لاختيار الوقت؟",
+    "change_date": "تغيير التاريخ",
+    "pick_time": "اختر الوقت",
+    "unverified_hours_title": "ساعات العمل غير متاحة",
+    "unverified_hours_message": "لم نتمكن من التحقق من ساعات عمل {{venueName}} في ذلك الوقت. هل تريد الجدولة على أي حال؟",
+    "error_past_date_title": "اختر وقتًا في المستقبل",
+    "error_past_date_message": "لقد مر هذا الوقت بالفعل. يرجى اختيار وقت في المستقبل."
   },
   "busyness": {
     "traffic": "حركة المرور",

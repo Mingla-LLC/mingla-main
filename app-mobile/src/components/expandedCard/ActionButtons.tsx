@@ -92,6 +92,8 @@ export default function ActionButtons({
     reason?: string;
   } | null>(null);
   const [hasCheckedAvailability, setHasCheckedAvailability] = useState(false);
+  // ORCH-0690 S-2: holds the Android-OK'd date while the preview/confirm Alert is open.
+  const [pendingDateConfirmation, setPendingDateConfirmation] = useState<Date | null>(null);
   const [showAllHours, setShowAllHours] = useState(false);
   const visitScaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -247,75 +249,42 @@ export default function ActionButtons({
     if (Platform.OS === "android") {
       if (event.type === "dismissed") {
         setShowDateTimePicker(false);
+        setPendingDateConfirmation(null);
         return;
       }
 
       if (date) {
         if (pickerMode === "date") {
-          // Date selected on Android - show time picker next
-          setSelectedDate(date);
-          setSelectedTime(date);
-          setPickerMode("time");
-          // Keep picker visible for time selection
+          // ORCH-0690 S-2: Android calendar dialog OK'd. Stage the date and surface
+          // a preview/confirm Alert before advancing to time-mode. User can review
+          // the picked date and back out to pick a different day.
+          setShowDateTimePicker(false);
+          setPendingDateConfirmation(date);
+          showAndroidDateConfirmation(date);
         } else {
-          // Time selected on Android - check availability
+          // Time selected on Android — combine and run shared confirmAndSchedule.
           const combinedDateTime = new Date(selectedDate);
           combinedDateTime.setHours(date.getHours());
           combinedDateTime.setMinutes(date.getMinutes());
           setSelectedTime(combinedDateTime);
           setSelectedDateTime(combinedDateTime);
           setShowDateTimePicker(false);
-
-          // Check availability and auto-schedule if open.
-          // [ORCH-0649] Canonical isPlaceOpenAt → legacy {isOpen,isAssumption,reason}.
-          const weekdayText = extractWeekdayText(card?.openingHours ?? null);
-          const openAt = isPlaceOpenAt(weekdayText, combinedDateTime);
-          const availability =
-            openAt === null
-              ? {
-                  isOpen: true,
-                  isAssumption: true,
-                  reason: "Opening hours data not available",
-                }
-              : { isOpen: openAt, isAssumption: false };
-          setAvailabilityCheck(availability);
-          setHasCheckedAvailability(true);
-
-          if (availability.isOpen) {
-            proceedWithScheduling(combinedDateTime);
-          } else {
-            Alert.alert(
-              "Place Closed",
-              "This place is closed at the selected date and time. Please choose a different time.",
-              [
-                {
-                  text: "Choose Another Time",
-                  onPress: () => {
-                    setAvailabilityCheck(null);
-                    setHasCheckedAvailability(false);
-                    setSelectedDateTime(null);
-                    const now = new Date();
-                    setSelectedDate(now);
-                    setSelectedTime(now);
-                    setPickerMode("date");
-                    setShowDateTimePicker(true);
-                  },
-                },
-                { text: "Cancel", style: "cancel" },
-              ],
-            );
-          }
+          confirmAndSchedule(combinedDateTime);
         }
       }
     } else {
-      // iOS flow
+      // [ORCH-0690 RC-1] Do NOT call setPickerMode("time") in this branch.
+      // iOS uses display="spinner" which emits onChange per wheel tick. Auto-flipping
+      // to time-mode here means one wheel notch commits the date and hijacks user
+      // intent before they can reach the Next button. Mode advancement is owned
+      // EXCLUSIVELY by handleDatePickerConfirm (the Next button).
       if (date) {
         if (pickerMode === "date") {
+          // Spinner tick — update selectedDate ONLY.
           setSelectedDate(date);
           setSelectedTime(date);
-          setPickerMode("time");
         } else {
-          // Time selected - wait for Done button
+          // Time mode spinner tick — update selectedTime; final commit via Done button.
           const combinedDateTime = new Date(selectedDate);
           combinedDateTime.setHours(date.getHours());
           combinedDateTime.setMinutes(date.getMinutes());
@@ -323,6 +292,145 @@ export default function ActionButtons({
         }
       }
     }
+  };
+
+  // ORCH-0690 S-7: shared availability + scheduling helper. Replaces duplicated
+  // logic in iOS handleTimePickerConfirm and Android time-set branch.
+  // - S-4: past-date check at function entry (Constitution #12).
+  // - S-5: isAssumption surfacing (Constitution #9 — never silently auto-schedule
+  //   on unknown hours; ask the user).
+  // - HF-2 fix: closed-place re-prompt preserves selectedDate, only resets
+  //   selectedTime, reopens in pickerMode="time".
+  const confirmAndSchedule = (combinedDateTime: Date) => {
+    // S-4: past-date check (Constitution #12).
+    // OQ-2 resolution: keep picker open in time-mode so user can re-pick on same date.
+    if (combinedDateTime.getTime() < Date.now()) {
+      Alert.alert(
+        t('expanded_details:action_buttons.error_past_date_title'),
+        t('expanded_details:action_buttons.error_past_date_message'),
+        [
+          {
+            text: t('expanded_details:action_buttons.cancel'),
+            style: 'cancel',
+          },
+          {
+            text: t('expanded_details:action_buttons.choose_another_time'),
+            onPress: () => {
+              setSelectedDateTime(null);
+              setSelectedTime(new Date());
+              setPickerMode('time');
+              setShowDateTimePicker(true);
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    const weekdayText = extractWeekdayText(card?.openingHours ?? null);
+    const openAt = isPlaceOpenAt(weekdayText, combinedDateTime);
+    const availability =
+      openAt === null
+        ? {
+            isOpen: true,
+            isAssumption: true,
+            reason: 'Opening hours data not available',
+          }
+        : { isOpen: openAt, isAssumption: false };
+    setAvailabilityCheck(availability);
+    setHasCheckedAvailability(true);
+
+    // S-5: isAssumption surfacing — Constitution #9 spirit fix. Never silently
+    // auto-schedule when hours are unknown; ask the user instead.
+    if (availability.isOpen && availability.isAssumption) {
+      Alert.alert(
+        t('expanded_details:action_buttons.unverified_hours_title'),
+        t('expanded_details:action_buttons.unverified_hours_message', {
+          venueName: card.title,
+        }),
+        [
+          {
+            text: t('expanded_details:action_buttons.cancel'),
+            style: 'cancel',
+            onPress: () => {
+              setAvailabilityCheck(null);
+              setHasCheckedAvailability(false);
+              setSelectedDateTime(null);
+            },
+          },
+          {
+            text: t('expanded_details:action_buttons.schedule_anyway'),
+            onPress: () => proceedWithScheduling(combinedDateTime),
+          },
+        ],
+      );
+      return;
+    }
+
+    if (availability.isOpen) {
+      proceedWithScheduling(combinedDateTime);
+    } else {
+      // HF-2 fix: preserve selectedDate, only reset selectedTime, reopen in time-mode.
+      Alert.alert(
+        t('expanded_details:action_buttons.place_closed_title'),
+        t('expanded_details:action_buttons.place_closed_body'),
+        [
+          {
+            text: t('expanded_details:action_buttons.choose_another_time'),
+            onPress: () => {
+              setAvailabilityCheck(null);
+              setHasCheckedAvailability(false);
+              setSelectedDateTime(null);
+              // S-8: keep selectedDate; only reset selectedTime to now.
+              setSelectedTime(new Date());
+              setPickerMode('time');
+              setShowDateTimePicker(true);
+            },
+          },
+          { text: t('expanded_details:action_buttons.cancel'), style: 'cancel' },
+        ],
+      );
+    }
+  };
+
+  // ORCH-0690 S-2: Android post-OK preview/confirm prompt. Lets the user review
+  // the picked date and either advance to time-mode or pick a different day.
+  const showAndroidDateConfirmation = (date: Date) => {
+    const formattedDate = date.toLocaleDateString(undefined, {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    });
+    Alert.alert(
+      t('expanded_details:action_buttons.confirm_date_title'),
+      t('expanded_details:action_buttons.confirm_date_message', { date: formattedDate }),
+      [
+        {
+          text: t('expanded_details:action_buttons.change_date'),
+          onPress: () => {
+            // Re-open calendar dialog. Keep pickerMode="date".
+            setPendingDateConfirmation(null);
+            setSelectedDate(date);
+            setShowDateTimePicker(true);
+          },
+        },
+        {
+          text: t('expanded_details:action_buttons.pick_time'),
+          onPress: () => {
+            // Commit the date and advance to time-mode.
+            setSelectedDate(date);
+            setSelectedTime(date);
+            setPickerMode('time');
+            setPendingDateConfirmation(null);
+            setShowDateTimePicker(true);
+          },
+        },
+      ],
+      {
+        cancelable: true,
+        onDismiss: () => setPendingDateConfirmation(null),
+      },
+    );
   };
 
   const handleTimePickerConfirm = () => {
@@ -331,51 +439,20 @@ export default function ActionButtons({
     combinedDateTime.setMinutes(selectedTime.getMinutes());
     setSelectedDateTime(combinedDateTime);
     setShowDateTimePicker(false);
-
-    // Check availability and auto-schedule if open.
-    // [ORCH-0649] Canonical isPlaceOpenAt → legacy {isOpen,isAssumption,reason}.
-    const weekdayText = extractWeekdayText(card?.openingHours ?? null);
-    const openAt = isPlaceOpenAt(weekdayText, combinedDateTime);
-    const availability =
-      openAt === null
-        ? {
-            isOpen: true,
-            isAssumption: true,
-            reason: "Opening hours data not available",
-          }
-        : { isOpen: openAt, isAssumption: false };
-    setAvailabilityCheck(availability);
-    setHasCheckedAvailability(true);
-
-    if (availability.isOpen) {
-      proceedWithScheduling(combinedDateTime);
-    } else {
-      Alert.alert(
-        "Place Closed",
-        "This place is closed at the selected date and time. Please choose a different time.",
-        [
-          {
-            text: "Choose Another Time",
-            onPress: () => {
-              setAvailabilityCheck(null);
-              setHasCheckedAvailability(false);
-              setSelectedDateTime(null);
-              const now = new Date();
-              setSelectedDate(now);
-              setSelectedTime(now);
-              setPickerMode("date");
-              setShowDateTimePicker(true);
-            },
-          },
-          { text: "Cancel", style: "cancel" },
-        ],
-      );
-    }
+    confirmAndSchedule(combinedDateTime);
   };
 
   const handleDatePickerConfirm = () => {
-    // Accept the currently displayed date and advance to time picker
+    // Accept the currently displayed date and advance to time picker.
+    // [ORCH-0690] This is now the SOLE iOS path that flips date → time.
     setPickerMode("time");
+  };
+
+  // ORCH-0690 S-3: iOS "← Back to date" handler. Lets user revert from time-mode
+  // back to date-mode without losing selectedDate progress.
+  const handleBackToDate = () => {
+    setPickerMode("date");
+    // selectedDate intentionally preserved.
   };
 
   const proceedWithScheduling = async (scheduledDateTime: Date, skipStopCheck = false) => {
@@ -592,7 +669,7 @@ export default function ActionButtons({
                 />
                 <SafeAreaView style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 20) }]} edges={['bottom', 'left', 'right']}>
                   <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>
+                    <Text style={styles.modalTitle} numberOfLines={1} ellipsizeMode="tail">
                       {pickerMode === "date" ? t('expanded_details:action_buttons.select_date') : t('expanded_details:action_buttons.select_time')}
                     </Text>
                     <View style={styles.modalHeaderButtons}>
@@ -604,6 +681,19 @@ export default function ActionButtons({
                       >
                         <Text style={styles.modalCancelText}>{t('expanded_details:action_buttons.cancel')}</Text>
                       </TrackedTouchableOpacity>
+                      {/* ORCH-0690 S-3: Back-to-date button visible only in time-mode */}
+                      {pickerMode === "time" && (
+                        <TrackedTouchableOpacity
+                          logComponent="ActionButtons"
+                          logId="picker_back_to_date"
+                          style={styles.modalCancelButton}
+                          onPress={handleBackToDate}
+                        >
+                          <Text style={styles.modalCancelText}>
+                            {t('expanded_details:action_buttons.back_to_date')}
+                          </Text>
+                        </TrackedTouchableOpacity>
+                      )}
                       <TrackedTouchableOpacity
                         logComponent="ActionButtons"
                         logId="picker_done"
@@ -967,14 +1057,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: "#111827",
+    flex: 1,
+    flexShrink: 1,
+    marginRight: 8,
   },
   modalHeaderButtons: {
     flexDirection: "row",
-    gap: 16,
+    gap: 8,
   },
   modalCancelButton: {
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
   },
   modalCancelText: {
     fontSize: 16,
@@ -982,7 +1075,7 @@ const styles = StyleSheet.create({
   },
   modalConfirmButton: {
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
   },
   modalConfirmText: {
     fontSize: 16,

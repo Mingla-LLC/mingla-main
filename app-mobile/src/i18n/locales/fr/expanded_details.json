@@ -35,7 +35,16 @@
     "schedule_anyway": "Planifier quand même",
     "scheduled_toast": "Planifié ! {{title}} a été ajouté à votre calendrier",
     "closed_message": "Ce lieu est fermé à la date et l'heure sélectionnées. Appuyez sur « Planifier » pour choisir un autre horaire.",
-    "share_prompt": "Partager {{title}} avec des amis"
+    "share_prompt": "Partager {{title}} avec des amis",
+    "back_to_date": "Retour à la date",
+    "confirm_date_title": "Date sélectionnée",
+    "confirm_date_message": "Vous avez choisi {{date}}. Passer à la sélection de l'heure ?",
+    "change_date": "Changer la date",
+    "pick_time": "Choisir l'heure",
+    "unverified_hours_title": "Horaires indisponibles",
+    "unverified_hours_message": "Nous n'avons pas pu vérifier les horaires de {{venueName}} pour ce créneau. Planifier quand même ?",
+    "error_past_date_title": "Choisir une heure future",
+    "error_past_date_message": "Cette heure est déjà passée. Veuillez choisir une heure future."
   },
   "busyness": {
     "traffic": "Trafic",

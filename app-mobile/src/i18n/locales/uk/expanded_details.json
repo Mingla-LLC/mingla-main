@@ -35,7 +35,16 @@
     "schedule_anyway": "Запланувати Anyway",
     "scheduled_toast": "Заплановано! {{title}} has been moved to your calendar",
     "closed_message": "This place is closed at the selected date та time. Tap \"Запланувати\" to choose a different time.",
-    "share_prompt": "Поділитися {{title}} with friends"
+    "share_prompt": "Поділитися {{title}} with friends",
+    "back_to_date": "Назад до дати",
+    "confirm_date_title": "Дату вибрано",
+    "confirm_date_message": "Ви вибрали {{date}}. Перейти до вибору часу?",
+    "change_date": "Змінити дату",
+    "pick_time": "Вибрати час",
+    "unverified_hours_title": "Години роботи недоступні",
+    "unverified_hours_message": "Ми не змогли перевірити години роботи {{venueName}} на цей час. Запланувати все одно?",
+    "error_past_date_title": "Виберіть майбутній час",
+    "error_past_date_message": "Цей час вже минув. Будь ласка, виберіть майбутній час."
   },
   "busyness": {
     "traffic": "Traffic",
