@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useQuery } from '@tanstack/react-query';
 import { useCoachMarkContext } from "../contexts/CoachMarkContext";
 import {
@@ -13,6 +13,7 @@ import {
   Easing,
   AccessibilityInfo,
   useWindowDimensions,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
@@ -41,6 +42,7 @@ import AccountSettings from "./profile/AccountSettings";
 import BillingSheet from "./profile/BillingSheet";
 import * as Haptics from 'expo-haptics';
 import { useScreenLogger } from "../hooks/useScreenLogger";
+import { useTabScrollRegistry } from "../hooks/useTabScrollRegistry";
 import BetaFeedbackButton from "./BetaFeedbackButton";
 import InAppBrowserModal from "./InAppBrowserModal";
 import { LEGAL_URLS } from "../constants/urls";
@@ -142,6 +144,19 @@ function ProfilePage({
       registerScrollRef('profile', scrollRef);
     }
   }, [registerScrollRef]);
+
+  // ORCH-0679 Wave 2.8.1: tab scroll registry — preserves scroll position across
+  // Profile tab unmount/remount under Path B. Composes with the coach-mark
+  // scrollRef above via setScrollRefs callback.
+  const { scrollRef: registryScrollRef, handleScroll: handleRegistryScroll } =
+    useTabScrollRegistry('profile');
+  const setScrollRefs = useCallback(
+    (node: ScrollView | null): void => {
+      scrollRef.current = node;
+      (registryScrollRef as React.MutableRefObject<ScrollView | null>).current = node;
+    },
+    [registryScrollRef]
+  );
 
   // ORCH-0635: measureLayout for both Profile scroll-offset targets —
   // step 8 (Account Settings row) and step 9 (Beta Feedback button).
@@ -408,7 +423,7 @@ function ProfilePage({
         <View style={styles.heroGlowInner} />
       </Animated.View>
 
-      <KeyboardAwareScrollView ref={scrollRef} style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEnabled={!scrollLockActive}>
+      <KeyboardAwareScrollView ref={setScrollRefs} onScroll={handleRegistryScroll} scrollEventThrottle={16} style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEnabled={!scrollLockActive}>
         <View style={[styles.content, coachScrollPadding > 0 && { paddingBottom: coachScrollPadding }]} ref={contentRef} collapsable={false}>
           {/* ORCH-0627 Phase 1 — 5 bento cards: Hero → Interests → Stats → Account → Footer */}
 

@@ -46,6 +46,7 @@ import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
 import { useAppStore } from "../store/appStore";
+import { useTabScrollRegistry } from "../hooks/useTabScrollRegistry";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { enhancedLocationService } from "../services/enhancedLocationService";
 import { useFeatureGate, GatedFeature } from "../hooks/useFeatureGate";
@@ -801,11 +802,30 @@ function DiscoverScreen({
 
   // Filter state
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
-  const [selectedFilters, setSelectedFilters] = useState<NightOutFilters>({
-    date: "any",
-    price: "any",
-    genre: "all",
-  });
+  // ORCH-0679 Wave 2.8.1: filter preservation across tab unmount/remount.
+  // Snapshot at mount (Zustand registry holds loose strings to avoid circular
+  // import — narrow back to the typed unions here, where the shape is owned).
+  const discoverFiltersSnapshot = useMemo(() => useAppStore.getState().discoverFilters, []);
+  const setDiscoverFiltersRegistry = useAppStore((s) => s.setDiscoverFilters);
+  const [selectedFilters, setSelectedFilters] = useState<NightOutFilters>(
+    discoverFiltersSnapshot
+      ? {
+          date: discoverFiltersSnapshot.date as DateFilter,
+          price: discoverFiltersSnapshot.price as PriceFilter,
+          genre: discoverFiltersSnapshot.genre as GenreFilter,
+        }
+      : { date: "any", price: "any", genre: "all" }
+  );
+
+  // Sync local filter state back to the Zustand registry on every change so
+  // the values survive tab unmount under Path B (ORCH-0679 Wave 2.8).
+  useEffect(() => {
+    setDiscoverFiltersRegistry(selectedFilters);
+  }, [selectedFilters, setDiscoverFiltersRegistry]);
+
+  // ORCH-0679 Wave 2.8.1: scroll position registry.
+  const { scrollRef: discoverScrollRef, handleScroll: handleDiscoverScroll } =
+    useTabScrollRegistry('discover_main');
 
   // Events fetch state
   const [nightOutCards, setNightOutCards] = useState<NightOutCardData[]>([]);
@@ -1283,6 +1303,9 @@ function DiscoverScreen({
 
       {/* Scrollable content — grid only; header stays fixed above */}
       <ScrollView
+        ref={discoverScrollRef as React.RefObject<ScrollView>}
+        onScroll={handleDiscoverScroll}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingTop: HEADER_PANEL_HEIGHT + 12,

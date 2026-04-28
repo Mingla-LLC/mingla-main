@@ -25,6 +25,7 @@ import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useAppLayout } from "../hooks/useAppLayout";
 import { glass } from "../constants/designSystem";
 import { useTranslation } from 'react-i18next';
+import { useAppStore } from "../store/appStore";
 
 // Tab types for Likes screen
 export type LikesTab = "saved" | "calendar";
@@ -85,7 +86,14 @@ function LikesPage({
   const { t } = useTranslation(['saved']);
   const insets = useSafeAreaInsets();
   const { bottomNavTotalHeight } = useAppLayout();
-  const [activeTab, setActiveTab] = useState<LikesTab>("saved");
+  // ORCH-0679 Wave 2.8.1: preserve inner-tab selection across tab unmount/remount.
+  // Snapshot the registry at mount; sync via useEffect below.
+  const likesActiveTabSnapshot = useAppStore.getState().likesActiveTab;
+  const setLikesActiveTabRegistry = useAppStore((s) => s.setLikesActiveTab);
+  const [activeTab, setActiveTab] = useState<LikesTab>(likesActiveTabSnapshot);
+  useEffect(() => {
+    setLikesActiveTabRegistry(activeTab);
+  }, [activeTab, setLikesActiveTabRegistry]);
 
   // ── Accessibility state (glass + spotlight motion) ───────────
   const [reduceTransparency, setReduceTransparency] = useState(false);

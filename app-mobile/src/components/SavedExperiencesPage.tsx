@@ -15,6 +15,8 @@ import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { useTranslation } from 'react-i18next';
+import { useAppStore } from '../store/appStore';
+import { useTabScrollRegistry } from '../hooks/useTabScrollRegistry';
 
 interface SavedExperiencesPageProps {
   isTabVisible?: boolean;
@@ -191,11 +193,25 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
 
   const insets = useSafeAreaInsets();
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [matchScoreFilter, setMatchScoreFilter] = useState<number | null>(null);
-  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>("all");
-  const [sortOption, setSortOption] = useState<SortOption>("newest");
+  // ORCH-0679 Wave 2.8.1: filter preservation across tab unmount/remount.
+  // Snapshot at mount so other tabs writing to the registry don't trigger
+  // re-renders here. Sync our local state back via the useEffect below.
+  const savedFiltersSnapshot = useMemo(() => useAppStore.getState().savedFilters, []);
+  const setSavedFilters = useAppStore((s) => s.setSavedFilters);
+  const [searchQuery, setSearchQuery] = useState(savedFiltersSnapshot?.searchQuery ?? "");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(savedFiltersSnapshot?.selectedCategory ?? null);
+  const [matchScoreFilter, setMatchScoreFilter] = useState<number | null>(savedFiltersSnapshot?.matchScoreFilter ?? null);
+  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>(savedFiltersSnapshot?.dateRangeFilter ?? "all");
+  const [sortOption, setSortOption] = useState<SortOption>(savedFiltersSnapshot?.sortOption ?? "newest");
+
+  // Sync local filter state back to the Zustand registry so the values
+  // survive tab unmount under Path B (ORCH-0679 Wave 2.8).
+  useEffect(() => {
+    setSavedFilters({ searchQuery, selectedCategory, matchScoreFilter, dateRangeFilter, sortOption });
+  }, [searchQuery, selectedCategory, matchScoreFilter, dateRangeFilter, sortOption, setSavedFilters]);
+
+  // ORCH-0679 Wave 2.8.1: scroll position registry.
+  const { scrollRef: savedScrollRef, handleScroll: handleSavedScroll } = useTabScrollRegistry('saved');
 
   const categoryOptions = useMemo(() => {
     return ALL_FILTER_OPTIONS.map((option) => ({
@@ -302,6 +318,9 @@ const SavedExperiencesPage: React.FC<SavedExperiencesPageProps> = ({
   return (
     <View style={styles.container}>
       <ScrollView
+        ref={savedScrollRef as React.RefObject<ScrollView>}
+        onScroll={handleSavedScroll}
+        scrollEventThrottle={16}
         style={styles.scrollContainer}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
