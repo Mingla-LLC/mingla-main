@@ -1,13 +1,11 @@
 import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect } from "expo-router";
 import AppRoutes from "../src/config/routes";
 import { useAuth } from "../src/context/AuthContext";
 import BusinessWelcomeScreen from "../src/components/auth/BusinessWelcomeScreen";
 
 export default function Index() {
-  const router = useRouter();
-  const { user, loading, accountStatus, signInWithGoogle, signInWithApple } =
-    useAuth();
+  const { user, loading, signInWithGoogle, signInWithApple } = useAuth();
 
   if (loading) {
     return (
@@ -27,12 +25,7 @@ export default function Index() {
     );
   }
 
-  // Signed in, onboarding not complete → onboarding flow
-  if (!accountStatus?.onboardingCompleted) {
-    return <Redirect href={AppRoutes.onboarding.index as never} />;
-  }
-
-  // Signed in, onboarding complete → dashboard
+  // Signed in → dashboard (onboarding skipped to reduce testing friction)
   return <Redirect href={AppRoutes.home} />;
 }
 
