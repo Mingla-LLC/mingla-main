@@ -20,9 +20,24 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+// SSR-safe storage adapter. Expo Router 6 renders pages in Node during the
+// web bundle pass — AsyncStorage's web shim assumes `window.localStorage`,
+// so it crashes when `window` is undefined. The no-op fallback lets the
+// Supabase client initialise without persistence during SSR; once the
+// browser hydrates, `window` exists and AsyncStorage's localStorage shim
+// works normally. On iOS/Android, `window` is provided by React Native, so
+// AsyncStorage is used as before.
+const ssrSafeStorage = {
+  getItem: async (_key: string): Promise<string | null> => null,
+  setItem: async (_key: string, _value: string): Promise<void> => undefined,
+  removeItem: async (_key: string): Promise<void> => undefined,
+};
+
+const storage = typeof window === "undefined" ? ssrSafeStorage : AsyncStorage;
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
+    storage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
