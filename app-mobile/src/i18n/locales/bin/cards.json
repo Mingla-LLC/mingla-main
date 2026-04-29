@@ -86,5 +86,22 @@
   "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
   "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
   "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
-  "swipeable.retry": "Retry @needs_translation"
+  "swipeable.retry": "Retry @needs_translation",
+  "expanded.tickets_tba": "Tikiti yo gha rri ne odẹ",
+  "expanded.save": "Yẹ",
+  "expanded.saved": "Eyẹ",
+  "expanded.share": "Yan",
+  "expanded.add_to_calendar": "Sin ye kalẹnda",
+  "expanded.about": "Eseta",
+  "expanded.when_and_where": "Vbe ye gba kpaọ",
+  "expanded.tags": "Awa",
+  "expanded.open_in_maps": "Hiọn ye Maps",
+  "expanded.show_more": "Nọkharha",
+  "expanded.show_less": "Kekere",
+  "expanded.calendar_permission_title": "I khẹrhẹ ne kalẹnda",
+  "expanded.calendar_permission_body": "Yẹ kalẹnda ye Settings ne ọ na sin oghẹ ne ye.",
+  "expanded.calendar_unavailable": "I miẹ kalẹnda ne u ya ya gbe.",
+  "expanded.calendar_date_parse_error": "I ma fian re ẹgheghe ye oghẹ.",
+  "expanded.calendar_added": "I sin re kalẹnda",
+  "expanded.calendar_error": "I ma sin re kalẹnda. Ye vbe."
 }

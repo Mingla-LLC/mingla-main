@@ -86,5 +86,22 @@
   "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
   "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
   "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
-  "swipeable.retry": "Retry @needs_translation"
+  "swipeable.retry": "Retry @needs_translation",
+  "expanded.tickets_tba": "Akwụkwọ ikike ga-abịa",
+  "expanded.save": "Chekwaa",
+  "expanded.saved": "Echekwala",
+  "expanded.share": "Kekọrịta",
+  "expanded.add_to_calendar": "Tinye na kalenda",
+  "expanded.about": "Maka",
+  "expanded.when_and_where": "Mgbe na Ebee",
+  "expanded.tags": "Akara",
+  "expanded.open_in_maps": "Mepee na Maps",
+  "expanded.show_more": "Ọzọ",
+  "expanded.show_less": "Mpe",
+  "expanded.calendar_permission_title": "Ikike kalenda dị mkpa",
+  "expanded.calendar_permission_body": "Kwe ka ikike kalenda na Ntọala iji tinye mmemme a.",
+  "expanded.calendar_unavailable": "Achọtaghị kalenda enwere ike ide na ngwaọrụ a.",
+  "expanded.calendar_date_parse_error": "Anyị enweghị ike ịgụ oge mmemme.",
+  "expanded.calendar_added": "Tinyere na kalenda",
+  "expanded.calendar_error": "Enweghị ike ịtinye na kalenda. Nwaa ọzọ."
 }

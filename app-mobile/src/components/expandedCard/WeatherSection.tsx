@@ -59,10 +59,10 @@ export default function WeatherSection({
       <View style={styles.container}>
         <View style={styles.row}>
           <View style={styles.iconBadge}>
-            <Icon name="cloudy" size={14} color="#ea580c" />
+            <Icon name="cloudy" size={14} color="#eb7825" />
           </View>
           <Text style={styles.label}>{t('expanded_details:weather.weather')}</Text>
-          <ActivityIndicator size="small" color="#ea580c" />
+          <ActivityIndicator size="small" color="#eb7825" />
         </View>
       </View>
     );
@@ -77,7 +77,7 @@ export default function WeatherSection({
     <View style={styles.container}>
       <View style={styles.row}>
         <View style={styles.iconBadge}>
-          <Icon name={weatherIcon} size={14} color="#ea580c" />
+          <Icon name={weatherIcon} size={14} color="#eb7825" />
         </View>
         <Text style={styles.label}>Weather</Text>
         <View style={styles.conditionBadge}>
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fef7f0",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: "#fff7ed",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
     borderColor: "#eb782544",
     justifyContent: "center",
@@ -121,7 +121,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#78350f",
+    color: "#eb7825",
   },
   conditionBadge: {
     backgroundColor: "#eb78251a",
@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
   conditionText: {
     fontSize: 12,
     fontWeight: "500",
-    color: "#c2410c",
+    color: "#eb7825",
   },
   spacer: {
     flex: 1,
@@ -140,6 +140,6 @@ const styles = StyleSheet.create({
   temp: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#ea580c",
+    color: "#eb7825",
   },
 });

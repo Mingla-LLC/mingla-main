@@ -17,7 +17,7 @@ export default function ExpandedCardHeader({
         style={styles.closeButton}
         activeOpacity={0.7}
       >
-        <Icon name="close" size={16} color="#6b7280" />
+        <Icon name="close" size={16} color="rgba(255,255,255,0.70)" />
       </TrackedTouchableOpacity>
       <View style={styles.headerSpacer} />
     </View>
@@ -31,14 +31,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'rgba(255,255,255,0.10)',
     zIndex: 1000,
   },
   closeButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: 'rgba(255,255,255,0.10)',
     justifyContent: 'center',
     alignItems: 'center',
   },

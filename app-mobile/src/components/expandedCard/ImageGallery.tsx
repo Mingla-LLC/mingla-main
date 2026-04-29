@@ -83,7 +83,7 @@ export default function ImageGallery({
     return (
       <View style={styles.container}>
         <View style={styles.placeholder}>
-          <Icon name="image-outline" size={48} color="#9ca3af" />
+          <Icon name="image-outline" size={48} color="rgba(255,255,255,0.50)" />
         </View>
       </View>
     );
@@ -123,7 +123,7 @@ export default function ImageGallery({
               onPress={goToPrevious}
               activeOpacity={0.7}
             >
-              <Icon name="chevron-back" size={20} color="#ffffff" />
+              <Icon name="chevron-back" size={20} color="rgba(255,255,255,0.10)" />
             </TouchableOpacity>
           )}
           {currentIndex < images.length - 1 && (
@@ -132,7 +132,7 @@ export default function ImageGallery({
               onPress={goToNext}
               activeOpacity={0.7}
             >
-              <Icon name="chevron-forward" size={20} color="#ffffff" />
+              <Icon name="chevron-forward" size={20} color="rgba(255,255,255,0.10)" />
             </TouchableOpacity>
           )}
         </>
@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f3f4f6',
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   dotsContainer: {
     position: 'absolute',
@@ -194,13 +194,13 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#6b7280',
+    backgroundColor: 'rgba(255,255,255,0.70)',
   },
   dotActive: {
     width: 24,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   counter: {
     position: 'absolute',
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   counterText: {
-    color: '#ffffff',
+    color: 'rgba(255,255,255,0.10)',
     fontSize: 12,
     fontWeight: '600',
   },

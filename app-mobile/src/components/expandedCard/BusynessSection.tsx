@@ -46,17 +46,17 @@ export default function BusynessSection({
       <View style={styles.container}>
         <View style={styles.row}>
           <View style={styles.iconBadge}>
-            <Icon name="car" size={14} color="#ea580c" />
+            <Icon name="car" size={14} color="#eb7825" />
           </View>
           <Text style={styles.label}>{t('expanded_details:busyness.traffic')}</Text>
-          <ActivityIndicator size="small" color="#ea580c" />
+          <ActivityIndicator size="small" color="#eb7825" />
         </View>
         <View style={styles.row}>
           <View style={styles.iconBadge}>
-            <Icon name="stats-chart" size={14} color="#ea580c" />
+            <Icon name="stats-chart" size={14} color="#eb7825" />
           </View>
           <Text style={styles.label}>{t('expanded_details:busyness.busy_level')}</Text>
-          <ActivityIndicator size="small" color="#ea580c" />
+          <ActivityIndicator size="small" color="#eb7825" />
         </View>
       </View>
     );
@@ -75,7 +75,7 @@ export default function BusynessSection({
       {(busynessData.trafficInfo || travelTime) && (
         <View style={styles.row}>
           <View style={styles.iconBadge}>
-            <Icon name="car" size={14} color="#ea580c" />
+            <Icon name="car" size={14} color="#eb7825" />
           </View>
           <Text style={styles.label}>{t('expanded_details:busyness.traffic')}</Text>
           <View style={styles.conditionBadge}>
@@ -91,7 +91,7 @@ export default function BusynessSection({
       {/* Busy Level Row */}
       <View style={styles.row}>
         <View style={styles.iconBadge}>
-          <Icon name="stats-chart" size={14} color="#ea580c" />
+          <Icon name="stats-chart" size={14} color="#eb7825" />
         </View>
         <Text style={styles.label}>{t('expanded_details:busyness.busy')}</Text>
         <View style={styles.conditionBadge}>
@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fef7f0",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: "#fff7ed",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
     borderColor: "#eb782544",
     justifyContent: "center",
@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#78350f",
+    color: "#eb7825",
   },
   conditionBadge: {
     backgroundColor: "#eb78251a",
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
   conditionText: {
     fontSize: 12,
     fontWeight: "500",
-    color: "#c2410c",
+    color: "#eb7825",
   },
   spacer: {
     flex: 1,
@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
   value: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#ea580c",
+    color: "#eb7825",
   },
   miniBarContainer: {
     alignItems: "flex-end",
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
   miniBarTrack: {
     width: 48,
     height: 5,
-    backgroundColor: "#ebe6e7",
+    backgroundColor: "rgba(255,255,255,0.18)",
     borderRadius: 3,
     overflow: "hidden",
   },
@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
   occupancy: {
     fontSize: 10,
     fontWeight: "600",
-    color: "#c2410c",
+    color: "#eb7825",
   },
   estimatedBadge: {
     backgroundColor: "#eb782510",

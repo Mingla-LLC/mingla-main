@@ -190,7 +190,7 @@ export default function TimelineSection({
                     <Icon
                       name="flag"
                       size={20}
-                      color={isExpanded ? "#ffffff" : "#9ca3af"}
+                      color={isExpanded ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.50)"}
                     />
                   ) : (
                     <View
@@ -257,7 +257,7 @@ export default function TimelineSection({
                   <Icon
                     name={isExpanded ? "chevron-up" : "chevron-down"}
                     size={20}
-                    color={isExpanded ? "#eb7825" : "#9ca3af"}
+                    color={isExpanded ? "#eb7825" : "rgba(255,255,255,0.50)"}
                   />
                 </TouchableOpacity>
 
@@ -339,10 +339,10 @@ export default function TimelineSection({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "rgba(255,255,255,0.10)",
     paddingVertical: 20,
     borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
+    borderTopColor: "rgba(255,255,255,0.10)",
   },
   stepsContainer: {
     paddingHorizontal: 16,
@@ -362,10 +362,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     position: "relative",
     zIndex: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "rgba(255,255,255,0.18)",
     padding: 16,
   },
   stepIconContainer: {
@@ -387,9 +387,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   stepIconCircleInactive: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "rgba(255,255,255,0.50)",
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -398,10 +398,10 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: "#9ca3af",
+    backgroundColor: "rgba(255,255,255,0.50)",
   },
   stopIconInnerActive: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
   stepContent: {
     flex: 1,
@@ -421,7 +421,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   stepLabel: {
-    backgroundColor: "#e5e7eb",
+    backgroundColor: "rgba(255,255,255,0.18)",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
@@ -432,10 +432,10 @@ const styles = StyleSheet.create({
   stepLabelText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#6b7280",
+    color: "rgba(255,255,255,0.70)",
   },
   stepLabelTextActive: {
-    color: "#ffffff",
+    color: "rgba(255,255,255,0.10)",
   },
   locationPin: {
     marginLeft: 2,
@@ -447,7 +447,7 @@ const styles = StyleSheet.create({
   stepTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#111827",
+    color: "#ffffff",
     marginBottom: 2,
   },
   stepTitleActive: {
@@ -455,19 +455,19 @@ const styles = StyleSheet.create({
   },
   stepSubtitle: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "rgba(255,255,255,0.70)",
   },
   expandedContent: {
     marginTop: 8,
   },
   stepDescription: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "rgba(255,255,255,0.70)",
     lineHeight: 20,
     marginBottom: 12,
   },
   locationCard: {
-    backgroundColor: "#fef3e2",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
@@ -480,14 +480,14 @@ const styles = StyleSheet.create({
   },
   locationCardAddress: {
     fontSize: 14,
-    color: "#111827",
+    color: "#ffffff",
     flex: 1,
   },
   openMapsButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#ffffff",
+    backgroundColor: "rgba(255,255,255,0.10)",
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
@@ -508,11 +508,11 @@ const styles = StyleSheet.create({
   separatorLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#e5e7eb",
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
   separatorText: {
     fontSize: 12,
-    color: "#9ca3af",
+    color: "rgba(255,255,255,0.50)",
     fontWeight: "500",
   },
   collapsedContent: {
@@ -520,6 +520,6 @@ const styles = StyleSheet.create({
   },
   collapsedSubtitle: {
     fontSize: 13,
-    color: "#9ca3af",
+    color: "rgba(255,255,255,0.50)",
   },
 });

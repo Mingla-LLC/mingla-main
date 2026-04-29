@@ -86,5 +86,22 @@
   "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
   "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
   "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
-  "swipeable.retry": "Retry @needs_translation"
+  "swipeable.retry": "Retry @needs_translation",
+  "expanded.tickets_tba": "Billets à venir",
+  "expanded.save": "Enregistrer",
+  "expanded.saved": "Enregistré",
+  "expanded.share": "Partager",
+  "expanded.add_to_calendar": "Ajouter au calendrier",
+  "expanded.about": "À propos",
+  "expanded.when_and_where": "Quand et où",
+  "expanded.tags": "Tags",
+  "expanded.open_in_maps": "Ouvrir dans Plans",
+  "expanded.show_more": "Plus",
+  "expanded.show_less": "Moins",
+  "expanded.calendar_permission_title": "Accès au calendrier requis",
+  "expanded.calendar_permission_body": "Autorise l'accès au calendrier dans les Réglages pour ajouter cet événement.",
+  "expanded.calendar_unavailable": "Aucun calendrier modifiable trouvé sur cet appareil.",
+  "expanded.calendar_date_parse_error": "Impossible de lire l'heure de l'événement.",
+  "expanded.calendar_added": "Ajouté au calendrier",
+  "expanded.calendar_error": "Impossible d'ajouter au calendrier. Réessayez."
 }

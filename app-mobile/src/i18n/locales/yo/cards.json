@@ -86,5 +86,22 @@
   "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
   "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
   "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
-  "swipeable.retry": "Retry @needs_translation"
+  "swipeable.retry": "Retry @needs_translation",
+  "expanded.tickets_tba": "Awọn tikẹti laipẹ",
+  "expanded.save": "Pamọ",
+  "expanded.saved": "Ti pamọ",
+  "expanded.share": "Pin",
+  "expanded.add_to_calendar": "Fi kun kalẹnda",
+  "expanded.about": "Nipa",
+  "expanded.when_and_where": "Igba & Ibi",
+  "expanded.tags": "Awọn àmì",
+  "expanded.open_in_maps": "Ṣii ni Maps",
+  "expanded.show_more": "Diẹ sii",
+  "expanded.show_less": "Kere",
+  "expanded.calendar_permission_title": "A nilo iwọle si kalẹnda",
+  "expanded.calendar_permission_body": "Gba laaye iwọle kalẹnda ni Eto lati ṣafikun iṣẹlẹ yii.",
+  "expanded.calendar_unavailable": "Ko si kalẹnda ti o le kọ silẹ lori ẹrọ yii.",
+  "expanded.calendar_date_parse_error": "A ko le ka akoko iṣẹlẹ.",
+  "expanded.calendar_added": "Ti fi kun kalẹnda",
+  "expanded.calendar_error": "Ko le fi kun kalẹnda. Gbiyanju lẹẹkansi."
 }

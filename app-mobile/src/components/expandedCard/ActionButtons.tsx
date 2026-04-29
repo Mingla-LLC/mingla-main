@@ -715,7 +715,7 @@ export default function ActionButtons({
                     minimumDate={new Date()}
                     style={styles.dateTimePicker}
                     themeVariant="light"
-                    textColor="#111827"
+                    textColor="#ffffff"
                   />
                 </SafeAreaView>
               </View>
@@ -739,7 +739,7 @@ export default function ActionButtons({
       {parsedOpeningHours && (
         <View style={styles.openingHoursSection}>
           <View style={styles.openingHoursHeader}>
-            <Icon name="time" size={18} color="#ea580c" />
+            <Icon name="time" size={18} color="#eb7825" />
             <Text style={styles.openingHoursTitle}>{t('expanded_details:action_buttons.opening_hours')}</Text>
             {liveOpenStatus !== null && (
               <View style={[
@@ -781,7 +781,7 @@ export default function ActionButtons({
               <Text style={styles.showAllHoursText}>
                 {showAllHours ? t('expanded_details:action_buttons.show_less') : t('expanded_details:action_buttons.show_all_hours')}
               </Text>
-              <Icon name={showAllHours ? "chevron-up" : "chevron-down"} size={14} color="#ea580c" />
+              <Icon name={showAllHours ? "chevron-up" : "chevron-down"} size={14} color="#eb7825" />
             </TrackedTouchableOpacity>
           )}
         </View>
@@ -802,13 +802,13 @@ export default function ActionButtons({
           disabled={isSaving || isSaved}
         >
           {isSaving ? (
-            <ActivityIndicator size="small" color="#ffffff" />
+            <ActivityIndicator size="small" color="rgba(255,255,255,0.10)" />
           ) : (
             <>
               <Icon
                 name={isSaved ? "bookmark" : "bookmark-outline"}
                 size={20}
-                color="#ffffff"
+                color="rgba(255,255,255,0.10)"
               />
               <Text style={styles.saveButtonText}>
                 {isSaved ? t('expanded_details:action_buttons.saved') : t('expanded_details:action_buttons.save')}
@@ -830,13 +830,13 @@ export default function ActionButtons({
           disabled={isScheduling || isScheduled}
         >
           {isScheduling ? (
-            <ActivityIndicator size="small" color="#ffffff" />
+            <ActivityIndicator size="small" color="rgba(255,255,255,0.10)" />
           ) : (
             <>
               <Icon
                 name={isScheduled ? "checkmark-circle" : "calendar-outline"}
                 size={20}
-                color="#ffffff"
+                color="rgba(255,255,255,0.10)"
               />
               <Text style={styles.scheduleButtonText}>
                 {isScheduled ? t('expanded_details:action_buttons.scheduled') : t('expanded_details:action_buttons.schedule')}
@@ -853,7 +853,7 @@ export default function ActionButtons({
           onPress={handleShare}
           activeOpacity={0.7}
         >
-          <Icon name="share-outline" size={20} color="#6b7280" />
+          <Icon name="share-outline" size={20} color="rgba(255,255,255,0.70)" />
         </TrackedTouchableOpacity>
       </View>
 
@@ -866,7 +866,7 @@ export default function ActionButtons({
           onPress={handlePoliciesAndReservations}
           activeOpacity={0.8}
         >
-          <Icon name="globe-outline" size={18} color="#ffffff" />
+          <Icon name="globe-outline" size={18} color="rgba(255,255,255,0.10)" />
           <Text style={styles.policiesButtonText}>
             {t('expanded_details:action_buttons.policies_reservations')}
           </Text>
@@ -900,7 +900,7 @@ export default function ActionButtons({
           >
             {isVisitLoading ? (
               <>
-                <ActivityIndicator size="small" color="#9ca3af" />
+                <ActivityIndicator size="small" color="rgba(255,255,255,0.50)" />
                 <Text style={styles.visitButtonTextLoading}>{t('expanded_details:action_buttons.on_it')}</Text>
               </>
             ) : isVisited ? (
@@ -919,7 +919,7 @@ export default function ActionButtons({
                 <Icon
                   name="checkmark-circle-outline"
                   size={20}
-                  color="#9ca3af"
+                  color="rgba(255,255,255,0.50)"
                 />
                 <Text style={styles.visitButtonTextDefault}>{t('expanded_details:action_buttons.i_went_here')}</Text>
               </>
@@ -934,7 +934,7 @@ export default function ActionButtons({
         !availabilityCheck.isOpen &&
         !availabilityCheck.isAssumption && (
           <View style={styles.closedMessageContainer}>
-            <Icon name="alert-circle" size={16} color="#9a3412" />
+            <Icon name="alert-circle" size={16} color="#eb7825" />
             <Text style={styles.closedMessage}>
               {t('expanded_details:action_buttons.closed_message')}
             </Text>
@@ -946,11 +946,11 @@ export default function ActionButtons({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "rgba(255,255,255,0.10)",
     paddingVertical: 20,
     paddingHorizontal: 16,
     borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
+    borderTopColor: "rgba(255,255,255,0.10)",
     gap: 12,
   },
   topRow: {
@@ -971,7 +971,7 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#ffffff",
+    color: "rgba(255,255,255,0.10)",
   },
   actionButtonDisabled: {
     opacity: 0.6,
@@ -993,14 +993,14 @@ const styles = StyleSheet.create({
   scheduleButtonText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#ffffff",
+    color: "rgba(255,255,255,0.10)",
   },
   shareIconButton: {
     width: 48,
     height: 48,
-    backgroundColor: "#ffffff",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "rgba(255,255,255,0.18)",
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -1009,7 +1009,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#1f2937",
+    backgroundColor: "#ffffff",
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
@@ -1017,7 +1017,7 @@ const styles = StyleSheet.create({
   policiesButtonText: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#ffffff",
+    color: "rgba(255,255,255,0.10)",
   },
   shareButton: {
     flexDirection: "row",
@@ -1028,7 +1028,7 @@ const styles = StyleSheet.create({
   },
   shareButtonText: {
     fontSize: 15,
-    color: "#6b7280",
+    color: "rgba(255,255,255,0.70)",
     fontWeight: "500",
   },
   modalOverlay: {
@@ -1051,12 +1051,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: "rgba(255,255,255,0.18)",
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#111827",
+    color: "#ffffff",
     flex: 1,
     flexShrink: 1,
     marginRight: 8,
@@ -1071,7 +1071,7 @@ const styles = StyleSheet.create({
   },
   modalCancelText: {
     fontSize: 16,
-    color: "#6b7280",
+    color: "rgba(255,255,255,0.70)",
   },
   modalConfirmButton: {
     paddingVertical: 8,
@@ -1088,7 +1088,7 @@ const styles = StyleSheet.create({
   closedMessageContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff7ed",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "#eb782566",
@@ -1099,14 +1099,14 @@ const styles = StyleSheet.create({
   closedMessage: {
     flex: 1,
     fontSize: 13,
-    color: "#9a3412",
+    color: "#eb7825",
     fontWeight: "500",
     lineHeight: 18,
   },
   warningMessageContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff7ed",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "#eb782566",
@@ -1117,7 +1117,7 @@ const styles = StyleSheet.create({
   warningMessage: {
     flex: 1,
     fontSize: 13,
-    color: "#9a3412",
+    color: "#eb7825",
     fontWeight: "500",
     lineHeight: 18,
   },
@@ -1125,9 +1125,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#ffffff",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1.5,
-    borderColor: "#d1d5db",
+    borderColor: "rgba(255,255,255,0.50)",
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
@@ -1137,17 +1137,17 @@ const styles = StyleSheet.create({
     borderColor: "#22c55e",
   },
   visitButtonLoading: {
-    borderColor: "#e5e7eb",
+    borderColor: "rgba(255,255,255,0.18)",
   },
   visitButtonTextDefault: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#4b5563",
+    color: "rgba(255,255,255,0.70)",
   },
   visitButtonTextLoading: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#9ca3af",
+    color: "rgba(255,255,255,0.50)",
   },
   visitButtonTextVisited: {
     fontSize: 15,
@@ -1183,10 +1183,10 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   openNowBadgeOpen: {
-    backgroundColor: "#fff7ed",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
   openNowBadgeClosed: {
-    backgroundColor: "#fef2f2",
+    backgroundColor: "rgba(239,68,68,0.10)",
   },
   openNowDot: {
     width: 7,
@@ -1204,10 +1204,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   openNowTextOpen: {
-    color: "#9a3412",
+    color: "#eb7825",
   },
   openNowTextClosed: {
-    color: "#991b1b",
+    color: "#FCA5A5",
   },
   openingHoursRow: {
     flexDirection: "row",
@@ -1217,23 +1217,23 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   openingHoursRowToday: {
-    backgroundColor: "#fff7ed",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
   todayIndicator: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#ea580c",
+    backgroundColor: "#eb7825",
     marginRight: 8,
   },
   openingHoursText: {
     fontSize: 13,
-    color: "#374151",
+    color: "rgba(255,255,255,0.80)",
     lineHeight: 20,
   },
   openingHoursTextToday: {
     fontWeight: "700",
-    color: "#9a3412",
+    color: "#eb7825",
   },
   showAllHoursButton: {
     flexDirection: "row",
@@ -1244,7 +1244,7 @@ const styles = StyleSheet.create({
   },
   showAllHoursText: {
     fontSize: 13,
-    color: "#ea580c",
+    color: "#eb7825",
     fontWeight: "600",
   },
 });

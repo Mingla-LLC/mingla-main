@@ -62,7 +62,7 @@ export function StopImageGallery({ images, onImagePress }: StopImageGalleryProps
     return (
       <View style={styles.container}>
         <View style={styles.placeholder}>
-          <Icon name="image-outline" size={32} color="#d1d5db" />
+          <Icon name="image-outline" size={32} color="rgba(255,255,255,0.50)" />
         </View>
       </View>
     );
@@ -115,7 +115,7 @@ export function StopImageGallery({ images, onImagePress }: StopImageGalleryProps
                   />
                 ) : (
                   <View style={styles.placeholder}>
-                    <ActivityIndicator size="small" color="#d1d5db" />
+                    <ActivityIndicator size="small" color="rgba(255,255,255,0.50)" />
                   </View>
                 )}
               </TouchableOpacity>
@@ -137,7 +137,7 @@ export function StopImageGallery({ images, onImagePress }: StopImageGalleryProps
 
           {/* Photo counter pill — top right */}
           <View style={styles.counterPill}>
-            <Icon name="images-outline" size={10} color="#ffffff" />
+            <Icon name="images-outline" size={10} color="rgba(255,255,255,0.10)" />
             <Text style={styles.counterText}>{currentIndex + 1}/{images.length}</Text>
           </View>
         </>
@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
     marginBottom: 10,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: 'rgba(255,255,255,0.10)',
     position: 'relative',
   },
   scrollView: {
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f3f4f6',
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   dotsRow: {
     position: 'absolute',
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
   },
   dotActive: {
     width: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   dotInactive: {
     width: 5,
@@ -214,6 +214,6 @@ const styles = StyleSheet.create({
   counterText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#ffffff',
+    color: 'rgba(255,255,255,0.10)',
   },
 });

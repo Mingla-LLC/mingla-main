@@ -86,5 +86,22 @@
   "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
   "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
   "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
-  "swipeable.retry": "Retry @needs_translation"
+  "swipeable.retry": "Retry @needs_translation",
+  "expanded.tickets_tba": "Vé sắp ra mắt",
+  "expanded.save": "Lưu",
+  "expanded.saved": "Đã lưu",
+  "expanded.share": "Chia sẻ",
+  "expanded.add_to_calendar": "Thêm vào lịch",
+  "expanded.about": "Giới thiệu",
+  "expanded.when_and_where": "Khi nào & Ở đâu",
+  "expanded.tags": "Thẻ",
+  "expanded.open_in_maps": "Mở trong Bản đồ",
+  "expanded.show_more": "Thêm",
+  "expanded.show_less": "Ít hơn",
+  "expanded.calendar_permission_title": "Cần quyền truy cập lịch",
+  "expanded.calendar_permission_body": "Cho phép quyền truy cập lịch trong Cài đặt để thêm sự kiện này.",
+  "expanded.calendar_unavailable": "Không tìm thấy lịch có thể ghi trên thiết bị này.",
+  "expanded.calendar_date_parse_error": "Không đọc được thời gian sự kiện.",
+  "expanded.calendar_added": "Đã thêm vào lịch",
+  "expanded.calendar_error": "Không thể thêm vào lịch. Thử lại."
 }

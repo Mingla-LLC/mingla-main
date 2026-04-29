@@ -86,5 +86,22 @@
   "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
   "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
   "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
-  "swipeable.retry": "Retry @needs_translation"
+  "swipeable.retry": "Retry @needs_translation",
+  "expanded.tickets_tba": "Tickets komen eraan",
+  "expanded.save": "Opslaan",
+  "expanded.saved": "Opgeslagen",
+  "expanded.share": "Delen",
+  "expanded.add_to_calendar": "Aan agenda toevoegen",
+  "expanded.about": "Over",
+  "expanded.when_and_where": "Wanneer & Waar",
+  "expanded.tags": "Tags",
+  "expanded.open_in_maps": "Openen in Kaarten",
+  "expanded.show_more": "Meer",
+  "expanded.show_less": "Minder",
+  "expanded.calendar_permission_title": "Toegang tot agenda vereist",
+  "expanded.calendar_permission_body": "Sta agendatoegang toe in Instellingen om dit evenement toe te voegen.",
+  "expanded.calendar_unavailable": "Geen schrijfbare agenda op dit apparaat gevonden.",
+  "expanded.calendar_date_parse_error": "Kon de tijd van het evenement niet lezen.",
+  "expanded.calendar_added": "Aan agenda toegevoegd",
+  "expanded.calendar_error": "Kon niet aan agenda toevoegen. Probeer opnieuw."
 }

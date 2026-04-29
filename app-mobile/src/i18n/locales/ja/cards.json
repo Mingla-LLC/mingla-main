@@ -86,5 +86,22 @@
   "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
   "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
   "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
-  "swipeable.retry": "Retry @needs_translation"
+  "swipeable.retry": "Retry @needs_translation",
+  "expanded.tickets_tba": "チケット未定",
+  "expanded.save": "保存",
+  "expanded.saved": "保存済み",
+  "expanded.share": "共有",
+  "expanded.add_to_calendar": "カレンダーに追加",
+  "expanded.about": "概要",
+  "expanded.when_and_where": "日時と場所",
+  "expanded.tags": "タグ",
+  "expanded.open_in_maps": "マップで開く",
+  "expanded.show_more": "もっと見る",
+  "expanded.show_less": "閉じる",
+  "expanded.calendar_permission_title": "カレンダーへのアクセスが必要です",
+  "expanded.calendar_permission_body": "このイベントを追加するには設定でカレンダーへのアクセスを許可してください。",
+  "expanded.calendar_unavailable": "このデバイスに書き込み可能なカレンダーがありません。",
+  "expanded.calendar_date_parse_error": "イベントの時刻を読み取れませんでした。",
+  "expanded.calendar_added": "カレンダーに追加しました",
+  "expanded.calendar_error": "カレンダーに追加できませんでした。もう一度お試しください。"
 }

@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
-  Modal,
   View,
   Text,
   ScrollView,
@@ -14,6 +13,12 @@ import {
   LayoutAnimation,
   PanResponder,
 } from "react-native";
+import BottomSheet, {
+  BottomSheetScrollView,
+  BottomSheetBackdrop,
+  BottomSheetBackdropProps,
+} from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "./ui/Icon";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
@@ -33,13 +38,11 @@ import ExpandedCardHeader from "./expandedCard/ExpandedCardHeader";
 import { getUserLocale } from "../utils/localeUtils";
 import ImageGallery from "./expandedCard/ImageGallery";
 import CardInfoSection from "./expandedCard/CardInfoSection";
-import DescriptionSection from "./expandedCard/DescriptionSection";
-import HighlightsSection from "./expandedCard/HighlightsSection";
 import WeatherSection from "./expandedCard/WeatherSection";
 import BusynessSection from "./expandedCard/BusynessSection";
 import PracticalDetailsSection from "./expandedCard/PracticalDetailsSection";
-import MatchFactorsBreakdown from "./expandedCard/MatchFactorsBreakdown";
 import TimelineSection from "./expandedCard/TimelineSection";
+import EventDetailLayout from "./expandedCard/EventDetailLayout";
 import CompanionStopsSection from "./expandedCard/CompanionStopsSection";
 import { StopImageGallery } from "./expandedCard/StopImageGallery";
 import { ImageLightbox } from "./ImageLightbox";
@@ -51,6 +54,7 @@ import { useReplaceStop } from '../hooks/useReplaceStop';
 import { replaceStopInCard, StopAlternative } from '../utils/mutateCuratedCard';
 import * as Haptics from 'expo-haptics';
 import { colors } from "../constants/colors";
+import { glass } from "../constants/designSystem";
 import { SCREEN_HEIGHT } from "../utils/responsive";
 import { useIsPlaceOpen } from "../hooks/useIsPlaceOpen";
 
@@ -1532,59 +1536,101 @@ export default function ExpandedCardModal({
     }
   };
 
+  // [ORCH-0696 S-1] BottomSheet chrome wiring. Sheet ref drives open/close
+  // via snapToIndex(1) (90% expanded) on visible=true and close() on visible=false.
+  // onChange surfaces dismissal (drag-down past 50% → index === -1) back via onClose.
+  const bottomSheetRef = useRef<BottomSheet>(null);
+  const insets = useSafeAreaInsets();
+  // (hasNavigation already declared above; reuse that value below)
+
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.55}
+        pressBehavior="close"
+      />
+    ),
+    []
+  );
+
+  useEffect(() => {
+    if (visible) {
+      bottomSheetRef.current?.snapToIndex(1);
+    } else {
+      bottomSheetRef.current?.close();
+    }
+  }, [visible]);
+
+  const handleSheetChange = useCallback(
+    (index: number) => {
+      if (index === -1) onClose();
+    },
+    [onClose]
+  );
+
   return (
-  <>
-    <Modal
-      visible={visible}
-      animationType="fade"
-      transparent={true}
-      onRequestClose={onClose}
+    <BottomSheet
+      ref={bottomSheetRef}
+      index={visible ? 1 : -1}
+      snapPoints={glass.bottomSheet.snapPoints as unknown as (string | number)[]}
+      enablePanDownToClose
+      onChange={handleSheetChange}
+      handleIndicatorStyle={{
+        backgroundColor: glass.bottomSheet.handle.color,
+        width: glass.bottomSheet.handle.width,
+        height: glass.bottomSheet.handle.height,
+      }}
+      backgroundStyle={{
+        backgroundColor: "rgba(12, 14, 18, 1)",
+        borderTopLeftRadius: glass.bottomSheet.topRadius,
+        borderTopRightRadius: glass.bottomSheet.topRadius,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: glass.bottomSheet.hairline,
+      }}
+      backdropComponent={renderBackdrop}
     >
-      <View style={styles.overlay}>
-        <TouchableOpacity
-          style={styles.overlayBackground}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        <View
-          style={styles.modalContainer}
-          {...(reviewSwipeResponder?.panHandlers ?? {})}
-        >
-          {/* Sticky Header */}
+      {/* [ORCH-0696 S-6] Conditionally render sticky header + review nav for
+          review-flow surfaces only (Discover deck + Solo deck pass nav props).
+          Drag handle owns chrome role on all other 6 mount surfaces. */}
+      {hasNavigation && navigationTotal != null && navigationIndex != null && (
+        <>
           <ExpandedCardHeader onClose={onClose} />
+          <View style={styles.reviewNavBar}>
+            <TouchableOpacity
+              onPress={onNavigatePrevious}
+              disabled={!onNavigatePrevious}
+              style={styles.reviewNavArrow}
+              hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+            >
+              <Icon name="chevron-back" size={20} color={onNavigatePrevious ? '#eb7825' : 'rgba(255,255,255,0.30)'} />
+            </TouchableOpacity>
+            <Text style={styles.reviewNavCounter}>
+              {navigationIndex + 1} of {navigationTotal}
+            </Text>
+            <TouchableOpacity
+              onPress={onNavigateNext}
+              disabled={!onNavigateNext}
+              style={styles.reviewNavArrow}
+              hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+            >
+              <Icon name="chevron-forward" size={20} color={onNavigateNext ? '#eb7825' : 'rgba(255,255,255,0.30)'} />
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
 
-          {/* Review navigation counter */}
-          {hasNavigation && navigationTotal != null && navigationIndex != null && (
-            <View style={styles.reviewNavBar}>
-              <TouchableOpacity
-                onPress={onNavigatePrevious}
-                disabled={!onNavigatePrevious}
-                style={styles.reviewNavArrow}
-                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
-              >
-                <Icon name="chevron-back" size={20} color={onNavigatePrevious ? '#eb7825' : '#d1d5db'} />
-              </TouchableOpacity>
-              <Text style={styles.reviewNavCounter}>
-                {navigationIndex + 1} of {navigationTotal}
-              </Text>
-              <TouchableOpacity
-                onPress={onNavigateNext}
-                disabled={!onNavigateNext}
-                style={styles.reviewNavArrow}
-                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
-              >
-                <Icon name="chevron-forward" size={20} color={onNavigateNext ? '#eb7825' : '#d1d5db'} />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Scrollable Content */}
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={true}
-            nestedScrollEnabled={true}
-          >
+      {/* Scrollable Content — BottomSheetScrollView required so gestures don't
+          fight with the sheet's drag-to-dismiss handler. */}
+      <BottomSheetScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom, 16) },
+        ]}
+      >
             {/* ===== Curated Experience Plan ===== */}
             {isCuratedCard && curatedCard && Array.isArray(curatedCard.stops) && (
               <>
@@ -1633,148 +1679,47 @@ export default function ExpandedCardModal({
               </>
             )}
 
-            {/* Image Gallery (non-curated only) */}
-            {!isCuratedCard && (card.images && card.images.length > 0 ? (
+            {/* Image Gallery (place branch only — EventDetailLayout has its own hero poster) */}
+            {!isCuratedCard && !isNightOut && (card.images && card.images.length > 0 ? (
               <ImageGallery images={card.images} initialImage={card.image} />
             ) : (
               <View
                 style={{
                   height: 200,
-                  backgroundColor: "#f3f4f6",
+                  backgroundColor: glass.surfaceDark.backgroundColor,
                   justifyContent: "center",
                   alignItems: "center",
                 }}
               >
-                <Text>{t('cards:expanded.no_images')}</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.60)' }}>{t('cards:expanded.no_images')}</Text>
               </View>
             ))}
 
-            {/* ===== Night Out / Regular Layout (non-curated only) ===== */}
+            {/* ===== [ORCH-0696 S-2 lock-in] Render branching =====
+                Event branch fires on `card.nightOutData != null` OR
+                `card.cardType === 'event'`. Do NOT change without spec approval.
+                `cardType === 'event'` has 0 callers today (audit-verified) — kept
+                as forward-looking guard. Live trigger is `nightOutData != null`. */}
             {!isCuratedCard && (isNightOut && nightOut ? (
-              <View style={nightOutStyles.container}>
-                {/* Event Title */}
-                <Text style={nightOutStyles.title}>{card.title}</Text>
-
-                {/* Venue + Artist Row */}
-                <View style={nightOutStyles.categoryHostRow}>
-                  <Icon name="musical-notes" size={16} color="#eb7825" />
-                  <Text style={nightOutStyles.categoryText}>{nightOut.venueName}</Text>
-                  <Text style={nightOutStyles.dotSep}>•</Text>
-                  <Text style={nightOutStyles.hostText}>{nightOut.artistName}</Text>
-                </View>
-
-                {/* Genre + SubGenre Badges */}
-                {(nightOut.genre || nightOut.subGenre) && (
-                  <View style={nightOutStyles.tagsRow}>
-                    {nightOut.genre && (
-                      <View style={nightOutStyles.vibeBadge}>
-                        <Text style={nightOutStyles.vibeBadgeText}>{nightOut.genre}</Text>
-                      </View>
-                    )}
-                    {nightOut.subGenre && (
-                      <View style={nightOutStyles.vibeBadge}>
-                        <Text style={nightOutStyles.vibeBadgeText}>{nightOut.subGenre}</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                {/* Ticket Status Badge */}
-                <View style={[nightOutStyles.ticketStatusBadge,
-                  nightOut.ticketStatus === "onsale" ? { backgroundColor: '#10B981' } :
-                  nightOut.ticketStatus === "offsale" ? { backgroundColor: '#EF4444' } :
-                  { backgroundColor: '#F59E0B' }
-                ]}>
-                  <Icon name="ticket-outline" size={16} color="#fff" />
-                  <Text style={nightOutStyles.ticketStatusText}>
-                    {nightOut.ticketStatus === "onsale" ? t('cards:expanded.on_sale') :
-                     nightOut.ticketStatus === "offsale" ? t('cards:expanded.sold_out') : t('cards:expanded.coming_soon')}
-                  </Text>
-                </View>
-
-                {/* Date/Time + Price Cards */}
-                <View style={nightOutStyles.infoCardsRow}>
-                  {/* Date & Time Card */}
-                  <View style={nightOutStyles.infoCard}>
-                    <View style={nightOutStyles.infoCardHeader}>
-                      <Icon name="calendar" size={14} color="#eb7825" />
-                      <Text style={nightOutStyles.infoCardLabel}>{t('cards:expanded.date_time')}</Text>
-                    </View>
-                    <Text style={nightOutStyles.infoCardPrimary}>{nightOut.date}</Text>
-                    <Text style={nightOutStyles.infoCardSecondary}>{nightOut.time}</Text>
-                  </View>
-
-                  {/* Ticket Price Card */}
-                  <View style={nightOutStyles.infoCard}>
-                    <View style={nightOutStyles.infoCardHeader}>
-                      <Icon name="pricetag-outline" size={14} color="#eb7825" />
-                      <Text style={nightOutStyles.infoCardLabel}>{t('cards:expanded.tickets')}</Text>
-                    </View>
-                    <Text style={nightOutStyles.infoCardPrice} numberOfLines={1} adjustsFontSizeToFit>{formatPriceRange(nightOut.price, accountPreferences?.currency)}</Text>
-                    <Text style={nightOutStyles.infoCardSecondary}>{t('cards:expanded.per_ticket')}</Text>
-                  </View>
-                </View>
-
-                {/* Divider */}
-                <View style={nightOutStyles.divider} />
-
-                {/* Vibe Tags */}
-                {nightOut.tags && nightOut.tags.length > 0 && (
-                  <>
-                    <Text style={nightOutStyles.sectionTitle}>{t('cards:expanded.vibe')}</Text>
-                    <View style={nightOutStyles.tagsRow}>
-                      {nightOut.tags.map((tag, index) => (
-                        <View key={index} style={nightOutStyles.vibeBadge}>
-                          <Text style={nightOutStyles.vibeBadgeText}>{tag}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </>
-                )}
-
-                {/* Divider */}
-                <View style={nightOutStyles.divider} />
-
-                {/* Venue Info */}
-                <View style={nightOutStyles.venueCard}>
-                  <View style={nightOutStyles.venueIconRow}>
-                    <View style={nightOutStyles.venueIcon}>
-                      <Icon name="location" size={20} color="#eb7825" />
-                    </View>
-                    <View style={nightOutStyles.venueDetails}>
-                      <Text style={nightOutStyles.venueName}>{nightOut.venueName}</Text>
-                      <Text style={nightOutStyles.venueAddress}>{card.address}</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={nightOutStyles.directionsButton}
-                    onPress={openDirections}
-                    activeOpacity={0.7}
-                  >
-                    <Icon name="navigate-outline" size={16} color="#eb7825" />
-                    <Text style={nightOutStyles.directionsText}>{t('cards:expanded.get_directions')}</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Seat Map (if available) */}
-                {nightOut.seatMapUrl && !seatMapFailed && (
-                  <View style={{ marginTop: 16 }}>
-                    <Text style={nightOutStyles.sectionTitle}>{t('cards:expanded.seat_map')}</Text>
-                    <Image
-                      source={{ uri: nightOut.seatMapUrl }}
-                      style={{ width: '100%', height: 200, borderRadius: 12 }}
-                      resizeMode="contain"
-                      onError={() => setSeatMapFailed(true)}
-                    />
-                  </View>
-                )}
-
-                {/* Bottom spacer for the sticky button */}
-                <View style={{ height: 80 }} />
-              </View>
+              <EventDetailLayout
+                card={card}
+                nightOut={nightOut}
+                isSaved={!!isSaved}
+                onSave={onSave}
+                onShare={onShare}
+                onClose={onClose}
+                onOpenBrowser={(url, title) => {
+                  setBrowserUrl(url);
+                  setBrowserTitle(title);
+                }}
+                accountPreferences={accountPreferences}
+                seatMapFailed={seatMapFailed}
+                setSeatMapFailed={setSeatMapFailed}
+                openDirections={openDirections}
+              />
             ) : (
               <>
-                {/* ===== Regular Experience Detail Layout ===== */}
+                {/* ===== Regular Place Detail Layout (preserved unchanged structurally) ===== */}
                 {/* Card Info Section: Title, Tags, Metrics, Description */}
                 <CardInfoSection
                   title={card.title}
@@ -2043,349 +1988,54 @@ export default function ExpandedCardModal({
                 />
               </>
             ))}
-          </ScrollView>
+      </BottomSheetScrollView>
 
-          {/* Sticky Get Tickets + Share Button for Night Out */}
-          {isNightOut && nightOut && (
-            <View style={nightOutStyles.stickyButtonContainer}>
-              <View style={nightOutStyles.stickyButtonRow}>
-                {nightOut.ticketUrl && nightOut.ticketStatus === "onsale" ? (
-                  <TouchableOpacity
-                    style={nightOutStyles.getTicketsButton}
-                    activeOpacity={0.8}
-                    onPress={() => setTicketBrowserUrl(nightOut.ticketUrl)}
-                  >
-                    <Icon name="ticket-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={nightOutStyles.getTicketsText} numberOfLines={1} adjustsFontSizeToFit>
-                      {t('cards:expanded.get_tickets', { price: formatPriceRange(nightOut.price, accountPreferences?.currency) })}
-                    </Text>
-                  </TouchableOpacity>
-                ) : (
-                  <View style={[nightOutStyles.getTicketsButton, { backgroundColor: '#666' }]}>
-                    <Text style={nightOutStyles.getTicketsText}>
-                      {nightOut.ticketStatus === "offsale" ? t('cards:expanded.sold_out') : t('cards:expanded.tickets_coming_soon')}
-                    </Text>
-                  </View>
-                )}
-                <TouchableOpacity
-                  style={nightOutStyles.shareButton}
-                  activeOpacity={0.7}
-                  onPress={() => setIsNightOutShareOpen(true)}
-                >
-                  <Icon name="share-2" size={20} color="#111827" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+      {/* In-app ticket browser (event Get Tickets CTA target) */}
+      {isNightOut && nightOut && (
+        <InAppBrowserModal
+          visible={ticketBrowserUrl !== null}
+          url={ticketBrowserUrl ?? ''}
+          title={`Tickets – ${nightOut.eventName}`}
+          onClose={() => setTicketBrowserUrl(null)}
+        />
+      )}
 
-          {/* Night Out Share Modal */}
-          {/* In-app ticket browser */}
-          {isNightOut && nightOut && (
-            <InAppBrowserModal
-              visible={ticketBrowserUrl !== null}
-              url={ticketBrowserUrl ?? ''}
-              title={`Tickets – ${nightOut.eventName}`}
-              onClose={() => setTicketBrowserUrl(null)}
-            />
-          )}
+      {/* In-app browser for Policies & Reservations (Nature place cards) */}
+      <InAppBrowserModal
+        visible={browserUrl !== null}
+        url={browserUrl ?? ''}
+        title={browserTitle}
+        onClose={() => setBrowserUrl(null)}
+      />
 
-          {/* In-app browser for Policies & Reservations (Nature cards) */}
-          <InAppBrowserModal
-            visible={browserUrl !== null}
-            url={browserUrl ?? ''}
-            title={browserTitle}
-            onClose={() => setBrowserUrl(null)}
-          />
-
-          {isNightOut && nightOut && (
-            <ShareModal
-              isOpen={isNightOutShareOpen}
-              onClose={() => setIsNightOutShareOpen(false)}
-              experienceData={{
-                title: card.title,
-                image: card.image,
-                images: card.images,
-                distance: card.distance,
-                priceRange: nightOut.price,
-                rating: card.rating,
-                address: card.address,
-                description: card.description,
-                location: card.location,
-              }}
-              dateTimePreferences={{
-                timeOfDay: nightOut.time,
-                dayOfWeek: nightOut.date,
-                planningTimeframe: nightOut.date,
-              }}
-              accountPreferences={accountPreferences}
-            />
-          )}
-        </View>
-      </View>
-    </Modal>
-
-  </>
+      {isNightOut && nightOut && (
+        <ShareModal
+          isOpen={isNightOutShareOpen}
+          onClose={() => setIsNightOutShareOpen(false)}
+          experienceData={{
+            title: card.title,
+            image: card.image,
+            images: card.images,
+            distance: card.distance,
+            priceRange: nightOut.price,
+            rating: card.rating,
+            address: card.address,
+            description: card.description,
+            location: card.location,
+          }}
+          dateTimePreferences={{
+            timeOfDay: nightOut.time,
+            dayOfWeek: nightOut.date,
+            planningTimeframe: nightOut.date,
+          }}
+          accountPreferences={accountPreferences}
+        />
+      )}
+    </BottomSheet>
   );
 }
 
 // Night Out detail styles
-const nightOutStyles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 8,
-  },
-  categoryHostRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  categoryText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#eb7825",
-  },
-  dotSep: {
-    fontSize: 14,
-    color: "#9ca3af",
-  },
-  hostText: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  infoCardsRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 16,
-  },
-  infoCard: {
-    flex: 1,
-    backgroundColor: "#fff7ed",
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  infoCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 8,
-  },
-  infoCardLabel: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#6b7280",
-  },
-  infoCardPrimary: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  infoCardSecondary: {
-    fontSize: 13,
-    color: "#6b7280",
-  },
-  infoCardPrice: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#eb7825",
-    marginBottom: 2,
-  },
-  goingBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#ffffff",
-    borderRadius: 10,
-    paddingVertical: 12,
-    marginBottom: 20,
-    borderColor: colors.primary,
-    borderWidth: 1,
-  },
-  goingText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#f3f4f6",
-    marginVertical: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 10,
-  },
-  descriptionText: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: "#374151",
-  },
-  tagsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 16,
-  },
-  vibeBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: "#eb7825",
-    backgroundColor: "#fff7ed",
-  },
-  vibeBadgeText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#eb7825",
-  },
-  musicGenreContainer: {
-    backgroundColor: "#f9fafb",
-    borderRadius: 10,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#f3f4f6",
-  },
-  musicGenreHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 4,
-  },
-  musicGenreLabel: {
-    fontSize: 12,
-    color: "#6b7280",
-  },
-  musicGenreValue: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  venueCard: {
-    backgroundColor: "#fff7ed",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  venueIconRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    marginBottom: 12,
-  },
-  venueIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#fff7ed",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  venueDetails: {
-    flex: 1,
-  },
-  venueName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  venueAddress: {
-    fontSize: 13,
-    color: "#6b7280",
-    lineHeight: 18,
-  },
-  directionsButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 4,
-  },
-  directionsText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#eb7825",
-  },
-  stickyButtonContainer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#fff",
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-  },
-  stickyButtonRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  getTicketsButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#eb7825",
-    borderRadius: 12,
-    paddingVertical: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  getTicketsText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#ffffff",
-    flexShrink: 1,
-  },
-  shareButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    backgroundColor: "#ffffff",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  ticketStatusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    alignSelf: "flex-start",
-  },
-  ticketStatusText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-});
 
 const styles = StyleSheet.create({
   reviewNavBar: {
@@ -2394,9 +2044,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 8,
     paddingHorizontal: 16,
-    backgroundColor: '#f9fafb',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.10)',
   },
   reviewNavArrow: {
     padding: 4,
@@ -2404,35 +2054,8 @@ const styles = StyleSheet.create({
   reviewNavCounter: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6b7280',
+    color: 'rgba(255,255,255,0.70)',
     marginHorizontal: 16,
-  },
-  overlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  },
-  overlayBackground: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  modalContainer: {
-    width: "95%",
-    maxWidth: 600,
-    height: SCREEN_HEIGHT * 0.9,
-    maxHeight: SCREEN_HEIGHT * 0.9,
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
   },
   scrollView: {
     flex: 1,

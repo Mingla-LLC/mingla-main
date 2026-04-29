@@ -86,5 +86,22 @@
   "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
   "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
   "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
-  "swipeable.retry": "Retry @needs_translation"
+  "swipeable.retry": "Retry @needs_translation",
+  "expanded.tickets_tba": "Bilete în curând",
+  "expanded.save": "Salvează",
+  "expanded.saved": "Salvat",
+  "expanded.share": "Distribuie",
+  "expanded.add_to_calendar": "Adaugă în calendar",
+  "expanded.about": "Despre",
+  "expanded.when_and_where": "Când și unde",
+  "expanded.tags": "Etichete",
+  "expanded.open_in_maps": "Deschide în Hărți",
+  "expanded.show_more": "Mai mult",
+  "expanded.show_less": "Mai puțin",
+  "expanded.calendar_permission_title": "Este necesar accesul la calendar",
+  "expanded.calendar_permission_body": "Permite accesul la calendar din Setări pentru a adăuga acest eveniment.",
+  "expanded.calendar_unavailable": "Niciun calendar editabil găsit pe acest dispozitiv.",
+  "expanded.calendar_date_parse_error": "Nu am putut citi ora evenimentului.",
+  "expanded.calendar_added": "Adăugat în calendar",
+  "expanded.calendar_error": "Nu s-a putut adăuga în calendar. Încearcă din nou."
 }

@@ -86,5 +86,22 @@
   "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
   "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
   "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
-  "swipeable.retry": "Retry @needs_translation"
+  "swipeable.retry": "Retry @needs_translation",
+  "expanded.tickets_tba": "Εισιτήρια σύντομα",
+  "expanded.save": "Αποθήκευση",
+  "expanded.saved": "Αποθηκεύτηκε",
+  "expanded.share": "Κοινοποίηση",
+  "expanded.add_to_calendar": "Προσθήκη στο ημερολόγιο",
+  "expanded.about": "Σχετικά",
+  "expanded.when_and_where": "Πότε & Πού",
+  "expanded.tags": "Ετικέτες",
+  "expanded.open_in_maps": "Άνοιγμα στους Χάρτες",
+  "expanded.show_more": "Περισσότερα",
+  "expanded.show_less": "Λιγότερα",
+  "expanded.calendar_permission_title": "Απαιτείται πρόσβαση στο ημερολόγιο",
+  "expanded.calendar_permission_body": "Επιτρέψτε την πρόσβαση στο ημερολόγιο στις Ρυθμίσεις για να προσθέσετε αυτήν την εκδήλωση.",
+  "expanded.calendar_unavailable": "Δεν βρέθηκε εγγράψιμο ημερολόγιο σε αυτή τη συσκευή.",
+  "expanded.calendar_date_parse_error": "Δεν μπορέσαμε να διαβάσουμε την ώρα της εκδήλωσης.",
+  "expanded.calendar_added": "Προστέθηκε στο ημερολόγιο",
+  "expanded.calendar_error": "Αδυναμία προσθήκης στο ημερολόγιο. Δοκιμάστε ξανά."
 }

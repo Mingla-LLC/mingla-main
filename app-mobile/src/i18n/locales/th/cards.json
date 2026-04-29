@@ -86,5 +86,22 @@
   "swipeable.pipeline_error_title": "Couldn't load your deck @needs_translation",
   "swipeable.pipeline_error_subtitle": "Something went wrong on our end. Give it another try. @needs_translation",
   "swipeable.pipeline_error_toast": "We had trouble loading fresh cards. @needs_translation",
-  "swipeable.retry": "Retry @needs_translation"
+  "swipeable.retry": "Retry @needs_translation",
+  "expanded.tickets_tba": "ตั๋วประกาศภายหลัง",
+  "expanded.save": "บันทึก",
+  "expanded.saved": "บันทึกแล้ว",
+  "expanded.share": "แชร์",
+  "expanded.add_to_calendar": "เพิ่มในปฏิทิน",
+  "expanded.about": "เกี่ยวกับ",
+  "expanded.when_and_where": "เมื่อไหร่ & ที่ไหน",
+  "expanded.tags": "แท็ก",
+  "expanded.open_in_maps": "เปิดในแผนที่",
+  "expanded.show_more": "เพิ่มเติม",
+  "expanded.show_less": "น้อยลง",
+  "expanded.calendar_permission_title": "ต้องการสิทธิ์เข้าถึงปฏิทิน",
+  "expanded.calendar_permission_body": "อนุญาตการเข้าถึงปฏิทินในการตั้งค่าเพื่อเพิ่มกิจกรรมนี้",
+  "expanded.calendar_unavailable": "ไม่พบปฏิทินที่เขียนได้ในอุปกรณ์นี้",
+  "expanded.calendar_date_parse_error": "ไม่สามารถอ่านเวลาของกิจกรรมได้",
+  "expanded.calendar_added": "เพิ่มในปฏิทินแล้ว",
+  "expanded.calendar_error": "ไม่สามารถเพิ่มในปฏิทินได้ ลองอีกครั้ง"
 }

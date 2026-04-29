@@ -262,6 +262,40 @@ export const glass = {
     borderWidth: 1,
     borderRadius: radius.xl,
   },
+  // ORCH-0696 — Glass-on-dark variant for ExpandedCardModal bottom sheet (dark bg).
+  surfaceDark: {
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    borderWidth: 1,
+    borderRadius: radius.xl,
+  },
+  // ORCH-0696 — Bottom-sheet chrome tokens (canonical for all @gorhom/bottom-sheet
+  // instances). DO NOT add new bottom sheets without consuming these tokens.
+  bottomSheet: {
+    scrim: {
+      color: 'rgba(0, 0, 0, 0.55)',
+      blurIntensity: 12,
+      fallbackSolid: 'rgba(0, 0, 0, 0.85)',
+    },
+    handle: {
+      color: 'rgba(255, 255, 255, 0.30)',
+      width: 36,
+      height: 4,
+      radius: 2,
+      marginTop: 8,
+      marginBottom: 12,
+    },
+    hairline: 'rgba(255, 255, 255, 0.08)',
+    topRadius: 28,
+    snapPoints: ['50%', '90%'] as const,
+    shadow: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: 0.4,
+      shadowRadius: 16,
+      elevation: 16,
+    },
+  },
   surfaceElevated: {
     backgroundColor: 'rgba(255, 255, 255, 0.70)',
     borderColor: 'rgba(255, 255, 255, 0.45)',

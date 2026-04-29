@@ -130,7 +130,7 @@ export default function CompanionStopsSection({
               )}
               {stop.address && (
                 <View style={styles.stopAddress}>
-                  <Icon name="location-outline" size={12} color="#9ca3af" />
+                  <Icon name="location-outline" size={12} color="rgba(255,255,255,0.50)" />
                   <Text style={styles.addressText} numberOfLines={1}>
                     {stop.address}
                   </Text>
@@ -146,10 +146,10 @@ export default function CompanionStopsSection({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#ffffff',
+    backgroundColor: 'rgba(255,255,255,0.10)',
     paddingVertical: 20,
     borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    borderTopColor: 'rgba(255,255,255,0.10)',
   },
   header: {
     flexDirection: 'row',
@@ -161,11 +161,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#111827',
+    color: '#ffffff',
   },
   subtitle: {
     fontSize: 14,
-    color: '#6b7280',
+    color: 'rgba(255,255,255,0.70)',
     paddingHorizontal: 16,
     marginBottom: 16,
   },
@@ -174,16 +174,16 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   stopCard: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: 'rgba(255,255,255,0.10)',
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   stopImage: {
     width: '100%',
     height: 120,
-    backgroundColor: '#e5e7eb',
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   stopContent: {
     padding: 12,
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#fef3e2',
+    backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 2,
     borderColor: '#eb7825',
     justifyContent: 'center',
@@ -210,12 +210,12 @@ const styles = StyleSheet.create({
   stopName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: '#ffffff',
     marginBottom: 2,
   },
   stopType: {
     fontSize: 12,
-    color: '#6b7280',
+    color: 'rgba(255,255,255,0.70)',
     textTransform: 'capitalize',
   },
   stopRating: {
@@ -227,11 +227,11 @@ const styles = StyleSheet.create({
   ratingText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#111827',
+    color: '#ffffff',
   },
   reviewText: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: 'rgba(255,255,255,0.50)',
   },
   stopAddress: {
     flexDirection: 'row',
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   },
   addressText: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: 'rgba(255,255,255,0.50)',
     flex: 1,
   },
 });
