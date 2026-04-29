@@ -1498,6 +1498,42 @@ export default function ExpandedCardModal({
     }
   };
 
+  // [ORCH-0696 S-1] BottomSheet chrome wiring. MUST be declared BEFORE the
+  // `if (!card) return null` early return below — React rules-of-hooks
+  // requires every hook call in same order every render. If these moved
+  // below the early return, the hook count would differ between
+  // visible-without-card and visible-with-card states.
+  const bottomSheetRef = useRef<BottomSheet>(null);
+  const insets = useSafeAreaInsets();
+
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.55}
+        pressBehavior="close"
+      />
+    ),
+    []
+  );
+
+  useEffect(() => {
+    if (visible) {
+      bottomSheetRef.current?.snapToIndex(1);
+    } else {
+      bottomSheetRef.current?.close();
+    }
+  }, [visible]);
+
+  const handleSheetChange = useCallback(
+    (index: number) => {
+      if (index === -1) onClose();
+    },
+    [onClose]
+  );
+
   if (!card) {
     return null;
   }
@@ -1535,41 +1571,6 @@ export default function ExpandedCardModal({
       if (url) Linking.openURL(url);
     }
   };
-
-  // [ORCH-0696 S-1] BottomSheet chrome wiring. Sheet ref drives open/close
-  // via snapToIndex(1) (90% expanded) on visible=true and close() on visible=false.
-  // onChange surfaces dismissal (drag-down past 50% → index === -1) back via onClose.
-  const bottomSheetRef = useRef<BottomSheet>(null);
-  const insets = useSafeAreaInsets();
-  // (hasNavigation already declared above; reuse that value below)
-
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.55}
-        pressBehavior="close"
-      />
-    ),
-    []
-  );
-
-  useEffect(() => {
-    if (visible) {
-      bottomSheetRef.current?.snapToIndex(1);
-    } else {
-      bottomSheetRef.current?.close();
-    }
-  }, [visible]);
-
-  const handleSheetChange = useCallback(
-    (index: number) => {
-      if (index === -1) onClose();
-    },
-    [onClose]
-  );
 
   return (
     <BottomSheet
