@@ -138,8 +138,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   return (
     <View testID={testID} style={[styles.host, style]}>
       <GlassChrome
-        intensity="chrome"
-        tintColor={glass.tint.chrome.idle}
+        intensity="cardElevated"
+        tintColor="rgba(12, 14, 18, 0.55)"
         borderColor={glass.border.chrome}
         radius="full"
         style={styles.bar}

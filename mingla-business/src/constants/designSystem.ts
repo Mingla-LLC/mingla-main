@@ -164,7 +164,7 @@ export const glass = {
   },
   border: {
     badge: "rgba(255, 255, 255, 0.14)",
-    chrome: "rgba(255, 255, 255, 0.06)",
+    chrome: "rgba(255, 255, 255, 0.14)",
     profileBase: "rgba(255, 255, 255, 0.08)",
     profileElevated: "rgba(255, 255, 255, 0.12)",
     pending: "rgba(255, 255, 255, 0.28)",

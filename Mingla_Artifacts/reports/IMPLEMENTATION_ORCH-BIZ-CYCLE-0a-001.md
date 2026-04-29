@@ -1,6 +1,6 @@
 # Implementation Report — ORCH-BIZ-CYCLE-0a-001 · Mingla Business Foundation
 
-**Status:** IN PROGRESS — **Sub-phase A ✅ Complete · Sub-phase B ✅ Complete (all 10 SC PASS, I-2 verified both platforms)**. Sub-phases C / D / E / F pending.
+**Status:** IN PROGRESS — **Sub-phases A / B / C.1 / C.2 / C.3 / D ✅ Complete**. Sub-phases E / F pending.
 **Codebase:** `mingla-business/`
 **Cycle:** 0a — Foundation
 **Author:** Mingla Implementor
@@ -851,6 +851,359 @@ Authorise Sub-phase D when ready.
 ---
 
 **End of Sub-phase C.3 report. Tier 3 complete. Sub-phase C.1 + C.2 + C.3 = 24 primitives shipped.**
+
+---
+
+## Sub-phase D — Tab Routes + First Visible Payoff
+
+**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D.md)
+**Outcome:** all 10 SC PASS. tsc clean. The kit is now wired through the tab nav. Founder visual smoke pending in Sub-phase F (or earlier — see §D.7).
+
+### D.1 Files changed
+
+#### Created (4 new)
+
+##### `app/_layout.tsx` (modified)
+
+**What it did before:** wrapped the Stack in `SafeAreaProvider` + `AuthProvider`. No GestureHandlerRootView.
+**What it does now:** the same tree, additionally wrapped in `<GestureHandlerRootView style={{ flex: 1 }}>` from `react-native-gesture-handler`. This is required for Sub-phase C.3 `Sheet` (and any future Pan/Swipe gesture). One-line wrap. AuthProvider, SafeAreaProvider, and Stack all preserved verbatim.
+**Why:** SC-6 — GestureHandlerRootView present. Without it, Sheet's `Gesture.Pan()` throws at runtime.
+**Lines changed:** +3, 0 removed (additive wrap).
+
+##### `app/(tabs)/_layout.tsx` (new)
+
+**What it did before:** did not exist.
+**What it does now:** the tabs route-group layout. Renders `<Slot />` for the active tab content + our custom `<BottomNav />` capsule below it. `TABS` constant is the 3-tab array per DEC-073 (Home / Events / Account). Active tab inferred from `usePathname()` via `detectActiveTab` helper (matches paths like `/home`, `/events`, `/account` regardless of whether Expo Router resolves the `(tabs)` group prefix). `handleChange` pushes via `router.push("/(tabs)/<id>")`. Bottom nav padded with `useSafeAreaInsets().bottom` for home-indicator clearance. Background `canvas.discover` (#0c0e12).
+**Why:** SC-1 + SC-7 + SC-9 — composes BottomNav with the 3-tab default per DEC-073, hosts the `<Slot />` for active tab content.
+**Lines added:** ~70
+
+##### `app/(tabs)/home.tsx` (new)
+
+**What it did before:** did not exist.
+**What it does now:** Home placeholder. Renders `<TopBar leftKind="brand" />` (which reads `useCurrentBrand()` and shows "Create brand" since the store is empty in Cycle 0a) + a `GlassCard variant="elevated"` with title "Home" and body "Cycle 1 lands content here." Top inset honoured via `useSafeAreaInsets().top`.
+**Why:** SC-2 — placeholder Home.
+**Lines added:** ~60
+
+##### `app/(tabs)/events.tsx` (new)
+
+**What it did before:** did not exist.
+**What it does now:** Events placeholder, identical structure to Home. Title "Events", body "Cycle 9 lands content here." (Cycle 9 lands the Events list per BUSINESS_PRD §5.0.)
+**Why:** SC-2 — placeholder Events.
+**Lines added:** ~60
+
+##### `app/(tabs)/account.tsx` (new)
+
+**What it did before:** did not exist.
+**What it does now:** Account placeholder. Renders the same shape as Home + Events, with two additions: (1) a "Signed in as &lt;email&gt;" line reading `user.email ?? user.user_metadata.email ?? "creator"` (porting the legacy logic from the deleted `app/home.tsx`); (2) a `<Button label="Sign out" variant="secondary" />` whose press handler calls `useAuth().signOut()` with try/catch dev-error logging. After sign-out, the auth-gate at `app/index.tsx` re-renders the welcome screen — no explicit `<Redirect />` needed in this tab.
+**Why:** SC-3 — Account placeholder + sign-out preserves I-2 (auth round-trip).
+**Lines added:** ~95
+
+#### Modified (1)
+
+##### `src/config/routes.ts`
+
+**What it did before:** `home: "/home"` plus `auth.index: "/auth"`. 12 lines.
+**What it does now:** `home: "/(tabs)/home"`, `events: "/(tabs)/events"`, `account: "/(tabs)/account"` (the latter two added for future caller convenience), `auth.index: "/auth"`. Doc comment updated to explain Expo Router `(tabs)` group resolution. 17 lines.
+**Why:** SC-4 — auth-gate redirect via `AppRoutes.home` now points at the new tabs path. Expo Router resolves `/(tabs)/home` → `/home` at runtime, so this string is purely declarative.
+**Lines changed:** +5, ~3 modified.
+
+#### Deleted (1)
+
+##### `app/home.tsx`
+
+**What it did before:** the legacy placeholder Home — a flat View with title "Mingla Business" + email line + raw `TouchableOpacity` Sign-out button (background `#eb7825`).
+**What it does now:** does not exist.
+**Why:** SC-5 — atomic delete with `(tabs)/home.tsx` creation. Leaving both alive triggers an Expo Router duplicate-route error because `app/home.tsx` and `app/(tabs)/home.tsx` resolve to the same URL `/home`. The Account tab now hosts the sign-out flow (with the new `Button` primitive instead of `TouchableOpacity`).
+
+### D.2 Verification matrix (10 SC)
+
+| SC | Criterion | Status | Evidence |
+|----|-----------|--------|----------|
+| 1 | `app/(tabs)/_layout.tsx` exists with TABS array of 3 entries | ✅ PASS | File created; `TABS` array carries 3 entries with id/icon/label per DEC-073 |
+| 2 | 3 tab screens exist with TopBar + GlassCard placeholder | ✅ PASS | `home.tsx`, `events.tsx`, `account.tsx` all created and follow the same shape |
+| 3 | Account tab renders Sign-out Button calling `useAuth().signOut()` | ✅ PASS | account.tsx:25-34 `handleSignOut` + line 67 `<Button label="Sign out" />` |
+| 4 | `AppRoutes.home === "/(tabs)/home"` | ✅ PASS | `routes.ts:9` |
+| 5 | `app/home.tsx` is deleted | ✅ PASS | `ls app/` returns no `home.tsx` (only `_layout.tsx`, `index.tsx`, `auth/`, `(tabs)/`) |
+| 6 | `app/_layout.tsx` wraps `GestureHandlerRootView` AND `SafeAreaProvider` | ✅ PASS | `_layout.tsx:9-15` — both present, GestureHandlerRootView outermost |
+| 7 | `npx tsc --noEmit` exits 0 | ✅ PASS | Final run: `EXIT: 0` |
+| 8 | No new hex literals (token discipline preserved) | ✅ PASS | `grep -rnE "#[0-9a-fA-F]{6}" "app/(tabs)/"` returns zero matches |
+| 9 | Mingla domain rule preserved | ✅ PASS | `grep -riE "dating\|match-making\|swipe to like" "app/(tabs)/"` returns zero |
+| 10 | Sub-phase D section appended to implementation report | ✅ PASS | This section |
+
+### D.3 Invariant re-check
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| I-1 | ✅ Preserved | `designSystem.ts` not touched |
+| I-2 | ✅ Preserved (TS-level); founder-device smoke pending | Auth flow unchanged. Account tab calls `useAuth().signOut()` with try/catch. Sign-out → auth-gate re-renders welcome (the `(tabs)` group only mounts when `user !== null` because the gate redirects there from index.tsx). Real-device verification in Sub-phase F |
+| I-3 | ✅ Preserved (TS-level); Sub-phase F runs full smoke | Tab routes work on iOS / Android / web (Expo Router handles all three identically). Web visual smoke deferred to Sub-phase F |
+| I-4 | ✅ Preserved | Cross-app forbidden-import grep returns zero |
+| I-5 | ✅ Preserved | Domain-rule grep returns zero. All sample copy is cycle-pointer language ("Cycle 1 lands content here", "Cycle 9 lands content here", "Cycle 14 lands settings here") + neutral "Signed in as &lt;email&gt;" |
+| I-6 | ✅ Preserved | No `any`, no `@ts-ignore`; tsc strict clean |
+| I-7 | ✅ Preserved | Account-tab signOut errors caught with `__DEV__` console.error. No silent failure. (Caller of /(tabs)/account isn't responsible for user-visible feedback because sign-out errors are rare and the auth-gate redirect handles the common path.) |
+| I-8 | ✅ Preserved | No Supabase code touched — sign-out via existing AuthContext |
+| I-9 | N/A | No new motion in this sub-phase. BottomNav spotlight + reduce-motion already wired in C.3 |
+| I-10 | N/A | No currency strings |
+
+### D.4 Discoveries for orchestrator
+
+| ID | Description | Severity | Action |
+|----|-------------|----------|--------|
+| **D-IMPL-11** | Dispatch §2.1 mentioned `app/welcome.tsx` as a file to verify. It does not exist — `BusinessWelcomeScreen` is rendered inline by `app/index.tsx` based on `user === null`. The dispatch reference was outdated; no welcome route exists today. | Info | None — implementation correctly worked with the actual file structure |
+| **D-IMPL-12** | The TopBar in each tab screen has `paddingTop: insets.top` applied at the tab-screen level (not at the (tabs) layout level) so each tab manages its own safe-area top. This avoids the BottomNav layout having to know about top inset, but it does mean each new tab screen has to remember this pattern. Worth documenting in Cycle 1's first real screen as a convention. | Low | None — the pattern is explicit in all 3 tab files; future tabs will copy it |
+| **D-IMPL-13** | `pathname` from `usePathname()` returns the resolved URL without the `(tabs)` group prefix (e.g. `/home`, not `/(tabs)/home`). The `detectActiveTab` helper accommodates both forms via `endsWith` check, so the active-tab inference is robust regardless of how Expo Router serializes the path internally. | Info | None |
+
+### D.5 Transition Items
+
+None new in this sub-phase. The pre-existing transition items remain:
+- ErrorBoundary "Get help" → Cycle 14 Sentry (unchanged from C.3)
+- TopBar default right-slot icons unwired → Cycle 1+ (unchanged from C.3)
+- Brand chip Toast placeholders → Cycle 1 + 2 (unchanged from C.3)
+
+### D.6 Files changed summary
+
+| Path | Action | Lines |
+|------|--------|-------|
+| `mingla-business/app/_layout.tsx` | modified (wrap with GestureHandlerRootView) | +3 |
+| `mingla-business/app/(tabs)/_layout.tsx` | new | ~70 |
+| `mingla-business/app/(tabs)/home.tsx` | new | ~60 |
+| `mingla-business/app/(tabs)/events.tsx` | new | ~60 |
+| `mingla-business/app/(tabs)/account.tsx` | new | ~95 |
+| `mingla-business/src/config/routes.ts` | modified (route paths + doc) | +5 |
+| `mingla-business/app/home.tsx` | **deleted** | -69 |
+
+**Net:** 4 created, 2 modified, 1 deleted. ~+225 lines added, ~-69 deleted = **+156 net**.
+
+### D.7 Founder smoke instruction
+
+**This is the first visible payoff of Cycle 0a.** Reload the dev client. After signing in you should see:
+
+1. **Dark canvas** (`#0c0e12`) instead of the white legacy home
+2. **Glass TopBar** at top with the orange Mingla M monogram + "Create brand" chip + chevron-down
+3. **3-tab BottomNav** at bottom — Home / Events / Account capsule with **orange spotlight** behind the active tab
+4. **GlassCard placeholder** in the centre saying "Cycle 1 lands content here." (or "Cycle 9..." / "Cycle 14...")
+5. **Tap each tab** → spotlight springs across, content swaps
+6. **Tap brand chip** → Toast slides down: "Brand creation lands in Cycle 1." (auto-dismisses after 2.6s)
+7. **Tap Account** → see "Signed in as &lt;your-email&gt;" + grey "Sign out" button
+8. **Tap Sign out** → returns to welcome screen
+9. **Sign in again** → lands on Home with spotlight on Home
+
+**If anything looks off:**
+- TopBar appears flat / no blur → web browser may not support `backdrop-filter` (expected fallback to solid `rgba(20,22,26,0.92)`); on iOS/Android the BlurView should render real blur
+- Spotlight doesn't animate / jumps instantly → `useReducedMotion()` is returning `true` (OS-level reduce motion enabled — disable to verify spring animation)
+- Brand chip tap does nothing → check console for `[Toast]` warnings; `useState` for the inline Toast may have desynced
+- Sign out fails → check console for `[AccountTab] signOut threw:` log; Supabase session might be stale
+
+Authorize Sub-phase E (styleguide route) when smoke passes.
+
+---
+
+**End of Sub-phase D report. First visible payoff achieved.**
+
+---
+
+## Sub-phase D.1 — Polish Fixes (founder-steered Path D)
+
+**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D1.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D1.md)
+**Outcome:** all 4 surgical polish fixes landed. tsc clean. Two files modified, no new files, no deletions, no `designSystem.ts` edits. Founder visual smoke #2 pending.
+
+### D.1.1 Files modified
+
+#### `mingla-business/src/components/ui/TopBar.tsx`
+
+**What it did before:**
+- Brand-chip rendered `<MinglaMark size={28} />` + brand label + chevron-down
+- `<GlassChrome>` wrapper used `intensity="backdrop"` (22) + `tintColor={glass.tint.backdrop}` (0.34 alpha) + default `shadows.glassChrome`
+- `handleBrandTap` always set a new Toast state (no toggle behaviour)
+- `styles.toastWrap` lacked explicit `zIndex` / `elevation`, so Toast painted behind the tab's ScrollView
+- Imported `glass` + `MinglaMark` (both used by the brand chip)
+
+**What it does now:**
+- Brand chip renders only brand label + chevron-down (MinglaMark removed per ORCH-BIZ-0a-D1)
+- `<GlassChrome>` wrapper now `intensity="cardElevated"` (34) + `tintColor="rgba(12, 14, 18, 0.55)"` + `shadow={shadows.glassCardElevated}` per ORCH-BIZ-0a-D2 (Path D)
+- `handleBrandTap` toggles: if `toast !== null`, set `null` and return (early dismiss); else open the appropriate Toast per ORCH-BIZ-0a-D4
+- `styles.toastWrap` carries `zIndex: 1000` + `elevation: 1000` so Toast paints above tab ScrollView on iOS + Android per ORCH-BIZ-0a-D3
+- Imports updated: `MinglaMark` removed, `glass` removed (no longer consumed at file scope), `shadows` added
+- File-head doc comment refreshed to describe the new chrome wrapper choice + the intentional MinglaMark omission
+
+**Why:** all 4 ORCH-BIZ-0a-D fixes (1, 2, 3, 4) per founder visual-smoke feedback after Sub-phase D landed.
+
+**Lines changed:** ~12 added, ~5 removed (net +7).
+
+#### `mingla-business/src/components/ui/BottomNav.tsx`
+
+**What it did before:** `<GlassChrome>` wrapper used `intensity="chrome"` (28) + `tintColor={glass.tint.chrome.idle}` (0.48 alpha).
+
+**What it does now:** `<GlassChrome>` wrapper now `intensity="cardElevated"` (34) + `tintColor="rgba(12, 14, 18, 0.55)"`. `borderColor={glass.border.chrome}` preserved. `shadow` left at GlassChrome's default (the active-tab spotlight already carries `shadows.glassChromeActive` warm-glow; doubling up would over-shadow per dispatch §2 Fix 2).
+
+**Why:** ORCH-BIZ-0a-D2 (Path D — premium glass, visual harmony with TopBar's bumped intensity).
+
+**Lines changed:** 2 modified.
+
+### D.1.2 Verification matrix (8 SC)
+
+| SC | Criterion | Status | Evidence |
+|----|-----------|--------|----------|
+| 1 | MinglaMark gone from brand chip render + import removed | ✅ PASS | `grep -n "MinglaMark" src/components/ui/TopBar.tsx` returns one match, line 11 — a doc-comment explaining the intentional omission. Zero code references. Import line 35 (`import { MinglaMark } from "./MinglaMark"`) removed |
+| 2 | TopBar GlassChrome overrides intensity/tintColor/shadow | ✅ PASS | TopBar.tsx:157-160 — `intensity="cardElevated"`, `tintColor="rgba(12, 14, 18, 0.55)"`, `shadow={shadows.glassCardElevated}` |
+| 3 | BottomNav GlassChrome overrides intensity/tintColor | ✅ PASS | BottomNav.tsx:141-142 — `intensity="cardElevated"`, `tintColor="rgba(12, 14, 18, 0.55)"` |
+| 4 | Toast wrap has zIndex + elevation 1000 | ✅ PASS | TopBar.tsx:239-240 — `zIndex: 1000` + `elevation: 1000` |
+| 5 | Brand chip tap toggles Toast | ✅ PASS | TopBar.tsx:97-100 — early-return `setToast(null)` when `toast !== null` |
+| 6 | tsc clean | ✅ PASS | `npx tsc --noEmit` exits 0 |
+| 7 | No designSystem.ts edits | ✅ PASS | All overrides happen at the component level. Sub-phase A's "additive only" rule preserved |
+| 8 | Sub-phase D.1 section appended to report | ✅ PASS | This section |
+
+### D.1.3 Invariant re-check
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| I-1 | ✅ Preserved | designSystem.ts not touched |
+| I-2 | ✅ Preserved | No auth files touched |
+| I-3 | ✅ Preserved (TS-level); founder visual smoke #2 pending | Premium glass overrides use the same expo-blur intensity API. Web fallback (solid `rgba(20,22,26,0.92)`) still kicks in when `backdrop-filter` unsupported |
+| I-4 | ✅ Preserved | No imports from app-mobile |
+| I-5 | ✅ Preserved | Domain-rule grep returns zero |
+| I-6 | ✅ Preserved | tsc strict clean — no `any`, no `@ts-ignore` |
+| I-7 | ✅ Preserved | Toast toggle still surfaces dismiss visibly. zIndex fix means Toast is now actually visible (was previously a silent rendering-stack failure — surfaced and fixed) |
+| I-8 | ✅ Preserved | No Supabase code touched |
+| I-9 | ✅ Preserved | No new motion added; reduce-motion paths unchanged |
+| I-10 | ✅ Preserved (N/A) | No currency strings touched |
+
+### D.1.4 Discoveries for orchestrator
+
+| ID | Description | Severity | Action |
+|----|-------------|----------|--------|
+| **D-IMPL-14** | Hardcoded `"rgba(12, 14, 18, 0.55)"` literal appears in both TopBar.tsx and BottomNav.tsx. Same RGBA value, two consumers. If founder visual smoke #2 likes the result, the orchestrator should consider promoting this to a `glass.tint.chromePremium` token in a future Sub-phase A revision. | Low | Defer to a "promote-component-overrides-to-tokens" cycle if the polish lands well |
+| **D-IMPL-15** | The Toast lives inside TopBar's render tree. The zIndex + elevation fix works for the brand-chip Toast, but if Cycle 1+ wants Toasts firing from OTHER components (e.g. a save-success Toast from an event creator), each component would need its own Toast tree + zIndex management. **A global Toast manager (`<ToastHost>` + `useToast()` hook) is the right architecture for that scale** — defer to a future cycle when that need surfaces | Info | Architecturally noted — no action this cycle |
+| **D-IMPL-16** | The Sub-phase D.1 dispatch §3.1 said to confirm `shadows.glassCardElevated` exists in `designSystem.ts`. It does (Sub-phase A added it). No deviation. | Info | None |
+
+### D.1.5 Transition Items
+
+No new transition items. The pre-existing markers from C.3 + D remain unchanged:
+- ErrorBoundary "Get help" → Cycle 14 Sentry
+- TopBar default right-slot icons unwired → Cycle 1+
+- Brand chip Toast placeholders → Cycle 1 (brand creation) + Cycle 2 (brand switcher)
+
+### D.1.6 Files changed summary
+
+| Path | Action | Lines |
+|------|--------|-------|
+| `mingla-business/src/components/ui/TopBar.tsx` | modified (4 in-place edits + doc comment refresh) | net +7 |
+| `mingla-business/src/components/ui/BottomNav.tsx` | modified (2-line override change) | net 0 (2 modified) |
+
+**Total:** 0 created, 2 modified, 0 deleted. ~+7 net lines.
+
+### D.1.7 Founder smoke instruction
+
+Reload the dev client. Confirm:
+
+1. **Brand chip shows just text + chevron** — no orange Mingla M logo
+2. **Chrome surfaces feel heavier + frostier** — TopBar floats with a more visible drop shadow underneath; BottomNav's glass capsule reads as more solid against the dark canvas
+3. **Tap brand chip** → Toast slides down ABOVE the home tab content (not behind it). Visible from any tab
+4. **Tap brand chip again immediately** → Toast dismisses (no waiting for the 2.6s auto-dismiss)
+5. **Switch tabs while a Toast is showing** → not part of this fix's scope; Toast is local to TopBar so it'll persist across tab switches; that behaviour can be revisited if it feels wrong
+
+If any of (1)–(4) look off, tell me which and I'll iterate. Authorize Sub-phase E (styleguide) when smoke passes.
+
+---
+
+**End of Sub-phase D.1 report.**
+
+---
+
+## Sub-phase D.2 — Premium Glass (border brightness)
+
+**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D2.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D2.md)
+**Outcome:** single token-value edit landed. tsc clean. Zero component edits. Founder visual smoke #3 pending.
+
+**Sub-phase A revision flag:** this dispatch deliberately revised an existing token value (rather than adding a new one). Documented under `D.2.4` below per dispatch §2.
+
+### D.2.1 The edit
+
+#### `mingla-business/src/constants/designSystem.ts` (line 167)
+
+**What it did before:** `chrome: "rgba(255, 255, 255, 0.06)"` — chrome border at 6% white alpha (effectively invisible against the dark canvas).
+
+**What it does now:** `chrome: "rgba(255, 255, 255, 0.14)"` — chrome border at 14% white alpha (clearly visible frosted-glass edge, matches the `app-mobile/` Events page sticky-header / card-chip border treatment per Explore audit 2026-04-29).
+
+**Why:** ORCH-BIZ-0a-D2 founder visual smoke #2 — Path D's intensity / tint / shadow bumps did not deliver "explorer-app feel." Explore investigation of Events page showed the missing element was border brightness (2.3× delta — `0.06` → `0.14`). Single-token edit propagates to all chrome consumers (TopBar, BottomNav, IconChrome, IconChrome inside TopBar's right slot).
+
+**Lines changed:** 1 modified (line 167). Net 0 lines.
+
+### D.2.2 Verification gates
+
+| Gate | Status | Evidence |
+|------|--------|----------|
+| `npx tsc --noEmit` exits 0 | ✅ PASS | Final run: `EXIT: 0` |
+| `glass.border.chrome` value updated | ✅ PASS | `grep -n "chrome:" designSystem.ts` returns line 167 with `0.14` alpha |
+| Consumers auto-inherit | ✅ PASS | 3 explicit usages: `GlassChrome.tsx:87` (prop default), `BottomNav.tsx:143` (explicit), `IconChrome.tsx:126` (inactive). TopBar consumes via GlassChrome's default param flow |
+| Zero component edits | ✅ PASS | `git diff src/components/` returns empty for tsx files (only designSystem.ts changed) |
+
+### D.2.3 Success criteria status
+
+| SC | Criterion | Status |
+|----|-----------|--------|
+| 1 | `glass.border.chrome` is `"rgba(255, 255, 255, 0.14)"` | ✅ PASS |
+| 2 | tsc clean | ✅ PASS |
+| 3 | No component file edits | ✅ PASS |
+| 4 | Sub-phase D.2 section appended to report | ✅ PASS |
+
+### D.2.4 Sub-phase A revision flag
+
+This dispatch edited an existing `designSystem.ts` token value rather than adding a new one. Per Sub-phase A's "additive only forever" closure rule, this is a deliberate exception, justified as follows:
+
+- **No caller breaks.** All consumers (GlassChrome, TopBar, BottomNav, IconChrome) continue to work identically; only the rendered alpha changes.
+- **The original value was under-specified.** `0.06` was chosen at Sub-phase A time without a visual reference. The Events page audit gave us a calibrated reference, and `0.14` is the correct match.
+- **Refining a value across all callers is the safest possible kind of token change.** Renaming or removing exports breaks call sites; tightening an RGBA value does not.
+
+If we make a habit of editing existing token values, the rule needs revisiting. For one-off corrections like this, the spirit of Sub-phase A's closure (no contract breaks) is preserved.
+
+### D.2.5 Invariant re-check
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| I-1 | ⚠ DELIBERATE EXCEPTION | designSystem.ts edit is a token-value revision, not a contract change. Documented in D.2.4 |
+| I-2 | ✅ Preserved | No auth files touched |
+| I-3 | ✅ Preserved | RGBA strings work identically across iOS / Android / web |
+| I-4 | ✅ Preserved | No imports from app-mobile |
+| I-5 | ✅ Preserved | No copy / domain text touched |
+| I-6 | ✅ Preserved | tsc strict clean |
+| I-7 | ✅ Preserved | Border is now visibly bright (the prior 0.06 was a silent visual failure — surfaced and fixed) |
+| I-8 | ✅ Preserved | No Supabase code touched |
+| I-9 | ✅ Preserved | No motion changes |
+| I-10 | ✅ Preserved (N/A) | No currency strings touched |
+
+### D.2.6 Discoveries for orchestrator
+
+| ID | Description | Severity | Action |
+|----|-------------|----------|--------|
+| **D-IMPL-17** | Sub-phase A's `glass.border.profileBase` (`0.08`) and `glass.border.profileElevated` (`0.12`) are also under-specified relative to the Events page reference (which uses `0.14–0.18` for card chips). If founder visual smoke #3 says cards still look flat, propose D.3 to bump these too. **Out of scope for D.2.** | Info | Future iteration if needed |
+| **D-IMPL-18** | The Sub-phase A "additive only" rule was useful for component-export stability but is over-broad if it forbids ALL token-value refinement. Recommend orchestrator codify a clearer rule: "exports stable, values may be refined when callers don't break." Otherwise we'll keep treating each token tweak as a special-case exception. | Info | Process improvement for orchestrator to consider |
+
+### D.2.7 Transition Items
+
+No new transition items.
+
+### D.2.8 Founder smoke instruction
+
+Reload the dev client. Confirm:
+
+1. **Chrome surfaces have a clearly visible frosted edge** — TopBar's outer perimeter is now defined against the dark canvas (was nearly invisible in D.1). BottomNav same. IconChrome buttons (search + bell in TopBar's right slot) also have visible round edges.
+2. **Compare to the Events page on the consumer Mingla app** — the chrome should now feel materially similar (same border brightness recipe).
+3. **No regressions** — TopBar text alignment, brand chip toggle, BottomNav spotlight animation, IconChrome press scale should all still work as before. Only the border alpha changed.
+
+If still not premium enough, the next-best Explore findings (queued in `D-IMPL-17`):
+- Bump `glass.border.profileBase/.profileElevated` for card surfaces
+- Add variable blur intensities (chromeBadge / chromeElevated tokens)
+- Add a glow-shadow token for active interactions
+
+Authorize Sub-phase E (styleguide) when smoke passes.
+
+---
+
+**End of Sub-phase D.2 report.**
+
+
+
 
 
 

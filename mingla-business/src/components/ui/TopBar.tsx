@@ -2,20 +2,24 @@
  * TopBar — top-of-screen chrome.
  *
  * Three left-slot variants:
- *   - `brand` — MinglaMark + brand label + chevron-down. Reads
- *               `useCurrentBrand()` from `currentBrandStore`. When no
- *               brand exists, label is "Create brand" and tapping fires
- *               a Toast saying brand creation lands in Cycle 1. When a
- *               brand exists, tapping fires a Toast saying the brand
- *               switcher lands in Cycle 2.
+ *   - `brand` — brand label + chevron-down. Reads `useCurrentBrand()`
+ *               from `currentBrandStore`. When no brand exists, label
+ *               is "Create brand" and tapping fires a Toast saying
+ *               brand creation lands in Cycle 1. When a brand exists,
+ *               tapping fires a Toast saying the brand switcher lands
+ *               in Cycle 2. Subsequent taps on the chip toggle the
+ *               Toast (open → dismiss). MinglaMark logo intentionally
+ *               omitted per ORCH-BIZ-0a-D1.
  *   - `back`  — `chevL` IconChrome + optional title.
  *   - `none`  — no left content (renders empty View for layout balance).
  *
  * Right slot is configurable; defaults to a search IconChrome + bell
  * IconChrome with badge. Caller passes any `React.ReactNode`.
  *
- * Wrapper uses `GlassChrome` with `intensity="backdrop"` and tinted
- * floor `glass.tint.backdrop`.
+ * Wrapper uses `GlassChrome` with `intensity="cardElevated"` (premium
+ * frost), tinted floor `rgba(12,14,18,0.55)`, and `shadows.glassCard-
+ * Elevated` for stronger separation from the canvas. Component-level
+ * overrides per ORCH-BIZ-0a-D2 (Path D — full premium).
  */
 
 import React, { useState } from "react";
@@ -23,7 +27,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
 import {
-  glass,
+  shadows,
   spacing,
   text as textTokens,
   typography,
@@ -33,7 +37,6 @@ import { useCurrentBrand } from "../../store/currentBrandStore";
 import { GlassChrome } from "./GlassChrome";
 import { Icon } from "./Icon";
 import { IconChrome } from "./IconChrome";
-import { MinglaMark } from "./MinglaMark";
 import { Toast } from "./Toast";
 import type { ToastKind } from "./Toast";
 
@@ -93,6 +96,10 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [toast, setToast] = useState<ToastState | null>(null);
 
   const handleBrandTap = (): void => {
+    if (toast !== null) {
+      setToast(null);
+      return;
+    }
     if (currentBrand === null) {
       setToast({ kind: "info", message: "Brand creation lands in Cycle 1." });
     } else {
@@ -116,7 +123,6 @@ export const TopBar: React.FC<TopBarProps> = ({
             accessibilityLabel={`Brand: ${label}`}
             style={styles.brandRow}
           >
-            <MinglaMark size={28} />
             <Text style={styles.brandLabel} numberOfLines={1}>
               {label}
             </Text>
@@ -150,8 +156,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <View testID={testID} style={style}>
       <GlassChrome
-        intensity="backdrop"
-        tintColor={glass.tint.backdrop}
+        intensity="cardElevated"
+        tintColor="rgba(12, 14, 18, 0.55)"
+        shadow={shadows.glassCardElevated}
         radius="lg"
         style={styles.bar}
       >
@@ -231,6 +238,8 @@ const styles = StyleSheet.create({
     top: TOPBAR_HEIGHT + spacing.sm,
     left: 0,
     right: 0,
+    zIndex: 1000,
+    elevation: 1000,
   },
 });
 
