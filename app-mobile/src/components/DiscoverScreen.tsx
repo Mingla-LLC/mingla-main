@@ -55,7 +55,7 @@ import { useSavedCards } from "../hooks/useSavedCards";
 import { savedCardsService } from "../services/savedCardsService";
 import { savedCardKeys } from "../hooks/queryKeys";
 import { useQueryClient } from "@tanstack/react-query";
-import { PRICE_TIERS } from "../constants/priceTiers";
+import { PRICE_TIERS, TIER_BY_SLUG, type PriceTierSlug } from "../constants/priceTiers";
 import { glass } from "../constants/designSystem";
 
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
@@ -1078,6 +1078,11 @@ function DiscoverScreen({
   };
 
   // Client-side price filter + sort by nearest date
+  /**
+   * [ORCH-0670 Slice A S-2 lock-in] Filter consumes PRICE_TIERS via TIER_BY_SLUG.
+   * Do NOT add hardcoded USD ranges here — tier ranges live in priceTiers.ts.
+   * Regression test: T-04..T-07 verify tier filtering on a venue with mixed prices.
+   */
   const filteredNightOutCards = useMemo(() => {
     let filtered = nightOutCards;
     if (selectedFilters.price !== "any") {
@@ -1085,20 +1090,23 @@ function DiscoverScreen({
         if (card.priceMin === null && card.priceMax === null) return false;
         const min = card.priceMin || 0;
         const max = card.priceMax || min;
-        switch (selectedFilters.price) {
-          case "free":
-            return max === 0;
-          case "under-25":
-            return min < 25;
-          case "25-50":
-            return min <= 50 && max >= 25;
-          case "50-100":
-            return min <= 100 && max >= 50;
-          case "over-100":
-            return max > 100;
-          default:
-            return true;
-        }
+
+        // Look up tier bounds from the canonical PRICE_TIERS constant.
+        // Tier slug emitted by chips at priceFilterOptions now matches the
+        // filter switch via TIER_BY_SLUG. Removes the dual-taxonomy bug class.
+        const tier = TIER_BY_SLUG[selectedFilters.price as PriceTierSlug];
+        if (!tier) return true; // unknown slug — pass-through (defensive)
+
+        // Filter logic: card range overlaps tier range.
+        // tier.max === null → upper bound is infinity (lavish).
+        const tierMin = tier.min;
+        const tierMax = tier.max ?? Number.POSITIVE_INFINITY;
+
+        // Overlap check: card.range AND tier.range have non-empty intersection.
+        // - card range: [min, max]
+        // - tier range: [tierMin, tierMax]
+        // Overlap iff: min <= tierMax AND max >= tierMin
+        return min <= tierMax && max >= tierMin;
       });
     }
     filtered = [...filtered].sort((a, b) => {
@@ -1109,6 +1117,10 @@ function DiscoverScreen({
     return filtered;
   }, [nightOutCards, selectedFilters.price]);
 
+  // [ORCH-0670 Slice A S-2 lock-in] After S-2, tier slugs (chill/comfy/bougie/lavish)
+  // actually filter via TIER_BY_SLUG. The badge counter accurately reflects active filters.
+  // Do NOT modify this calculation without first confirming the price-filter switch still
+  // honors the tier-slug → range mapping in filteredNightOutCards above.
   const moreChipBadgeCount =
     (selectedFilters.price !== "any" ? 1 : 0) + (selectedFilters.genre !== "all" ? 1 : 0);
 
@@ -1218,12 +1230,10 @@ function DiscoverScreen({
           <Text
             style={styles.titleText}
             numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
             accessibilityRole="header"
             allowFontScaling
           >
-            Concerts & Events
+            {t("discover:title")}
           </Text>
         </View>
 
@@ -1236,35 +1246,35 @@ function DiscoverScreen({
               contentContainerStyle={styles.chipRow}
             >
               <FilterChip
-                label="All"
+                label={t("discover:filters.all_dates_short")}
                 active={isFilterActive("any")}
                 onPress={() => setSelectedFilters((p) => ({ ...p, date: "any" }))}
                 reduceMotion={reduceMotion}
                 reduceTransparency={reduceTransparency}
               />
               <FilterChip
-                label="Tonight"
+                label={t("discover:filters.tonight")}
                 active={isFilterActive("today")}
                 onPress={() => setSelectedFilters((p) => ({ ...p, date: "today" }))}
                 reduceMotion={reduceMotion}
                 reduceTransparency={reduceTransparency}
               />
               <FilterChip
-                label="This Weekend"
+                label={t("discover:filters.this_weekend")}
                 active={isFilterActive("weekend")}
                 onPress={() => setSelectedFilters((p) => ({ ...p, date: "weekend" }))}
                 reduceMotion={reduceMotion}
                 reduceTransparency={reduceTransparency}
               />
               <FilterChip
-                label="Next Week"
+                label={t("discover:filters.next_week")}
                 active={isFilterActive("next-week")}
                 onPress={() => setSelectedFilters((p) => ({ ...p, date: "next-week" }))}
                 reduceMotion={reduceMotion}
                 reduceTransparency={reduceTransparency}
               />
               <FilterChip
-                label="This Month"
+                label={t("discover:filters.this_month")}
                 active={isFilterActive("month")}
                 onPress={() => setSelectedFilters((p) => ({ ...p, date: "month" }))}
                 reduceMotion={reduceMotion}
@@ -1290,7 +1300,7 @@ function DiscoverScreen({
           <View style={styles.filterBarDivider} />
           <View style={styles.filterBarPinned}>
             <FilterChip
-              label="Filters"
+              label={t("discover:filters.button")}
               icon="options-outline"
               badgeCount={moreChipBadgeCount}
               onPress={handleOpenFilterModal}
@@ -1610,13 +1620,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   titleText: {
+    // [ORCH-0670 Slice A S-6] Do NOT add adjustsFontSizeToFit OR minimumFontScale to
+    // the parent <Text>. Android font rendering produces inconsistent autoshrink
+    // behavior with iOS, leading to cross-platform header size divergence (operator
+    // field-test 2026-04-28). Title MUST fit at full 32pt OR ellipsize via numberOfLines:1.
+    // Friends-screen baseline at ConnectionsPage.tsx:3021-3028 is the canonical pattern.
     fontSize: d.title.fontSize,
     fontWeight: d.title.fontWeight,
-    lineHeight: 32,
+    lineHeight: 36,
     color: d.title.color,
     // Counter iOS font leading so the glyphs sit tight to the top of the band.
     marginTop: Platform.OS === "ios" ? -4 : 0,
     includeFontPadding: false,
+    textAlignVertical: "center",
   },
 
   // Filter bar (absolute inside header panel)
