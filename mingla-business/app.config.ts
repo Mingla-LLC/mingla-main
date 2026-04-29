@@ -20,6 +20,12 @@ const iosUrlScheme = iosClientId
   ? `com.googleusercontent.apps.${iosClientId}`
   : "com.googleusercontent.apps.placeholder";
 
+// [TRANSITIONAL] Apple Tap to Pay entitlement
+// (`com.apple.developer.proximity-reader.payment.acceptance`) omitted from
+// `ios.entitlements` in app.json until Apple approves the application.
+// Re-add once approved. Used by Cycle 13 (Door Mode card-present payments).
+// Not needed for Cycles 0a–12.
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: config.name ?? "mingla-business",
@@ -33,6 +39,29 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "expo-apple-authentication",
+    // expo-blur 15.0.8 has no config plugin — auto-links via React Native
+    // auto-linking only. Adding it as a plugin entry throws PluginError.
+    // Surfaced as D-DEV-1 in implementation report.
+    "expo-camera",
+    [
+      "expo-image-picker",
+      {
+        photosPermission:
+          "Mingla Business uses your photo library to upload brand and event imagery.",
+      },
+    ],
+    [
+      "@stripe/stripe-react-native",
+      {
+        merchantIdentifier: "merchant.com.sethogieva.minglabusiness",
+        enableGooglePay: true,
+      },
+    ],
+    "@sentry/react-native/expo",
+    // [TRANSITIONAL] react-native-nfc-manager auto-linked via npm install
+    // (D-NFC-OUTCOME = Option 3). No plugin entry required for auto-link.
+    // If iOS NFC entitlement is needed for Cycle 13 door-mode, re-evaluate
+    // with `expo-config-plugin-nfc-manager` (Option 1) at that time.
   ],
   extra: {
     ...config.extra,
