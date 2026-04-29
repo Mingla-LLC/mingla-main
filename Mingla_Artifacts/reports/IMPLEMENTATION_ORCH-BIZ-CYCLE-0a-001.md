@@ -561,4 +561,135 @@ Tier 1 components are TypeScript-clean and ready for Tier 2 (C.2) consumption. V
 
 **End of Sub-phase C.1 report.**
 
+---
+
+## Sub-phase C.2 — Tier 2 Glass + Composition Primitives
+
+**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C2.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C2.md)
+**Outcome:** all 7 components built, tsc clean, all 7 verification gates PASS, all 10 success criteria PASS (SC-10 = report appended). Visual smoke deferred to Sub-phase E.
+
+### C.2.1 Files created (7 new)
+
+All at `mingla-business/src/components/ui/`. Each carries an exported `Props` interface and both named + default exports.
+
+#### `GlassChrome.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** the foundation 5-layer glass wrapper. Renders L1 BlurView (`expo-blur` v15.0.8 with `tint="dark"` and intensity from `blurIntensity` token map — `chrome=28`, `cardBase=30`, `cardElevated=34`, `modal=40`, `badge=24`, `backdrop=22`) → L2 tint floor (translucent fill from `glass.tint.{badge|chrome|backdrop|profileBase|profileElevated}`) → L3 top-edge highlight (1px line at `glass.highlight.{profileBase|profileElevated}`) → L4 hairline border (`StyleSheet.hairlineWidth` perimeter at `glass.border.{chrome|profileBase|profileElevated}`) → L5 drop shadow (token-driven, applied to outer container). Web fallback path detected at module scope: when `Platform.OS === 'web'` AND neither `backdrop-filter` nor `-webkit-backdrop-filter` is supported, L1 falls back to a solid `<View>` with `backgroundColor: rgba(20,22,26,0.92)` — visible degradation, never `return null` (Invariant I-7). Props expose `intensity`, `tint` (preset), `radius`, `tintColor` / `borderColor` / `highlightColor` (overrides), and `shadow` (style override). Children render in a clipped inner container so the L1 blur doesn't bleed beyond the rounded radius.
+**Why:** SC-1 + SC-3 + SC-5 + SC-6 — the bedrock glass primitive. IconChrome composes it. GlassCard composes it. Future TopBar / BottomNav (Tier 3) will compose it.
+**Lines added:** ~150
+
+#### `IconChrome.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** 36×36 circular glass icon button. Composed from `GlassChrome` (radius `full`, intensity `chrome`) + `Icon` (size = `0.5 * containerSize`). Active variant overrides `tintColor → accent.tint`, `borderColor → accent.border`, `shadow → shadows.glassChromeActive` (the warm-glow shadow), and the icon colour to `accent.warm`. Press: scale 0.96 over 120ms `easings.press` (reduce-motion: opacity 0.7). Light haptic on native press-down. Optional badge dot in top-right (`semantic.error` background + `text.inverse` micro-cap label, hides when `badge === 0 || undefined`, displays `"99+"` for badge values >99). When `onPress` is `undefined`, renders as a non-interactive presentational chrome (no Pressable wrapper).
+**Why:** SC-1 + SC-3 + SC-4 + SC-5 — used by future TopBar (search/bell), Brand chip dropdown trigger, BottomNav fab affordances.
+**Lines added:** ~205
+
+#### `GlassCard.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** content-area card. Two variants:
+- `base`: intensity `cardBase` (30), tint `glass.tint.profileBase`, border `glass.border.profileBase`, highlight `glass.highlight.profileBase`, shadow `shadows.glassCardBase`, default radius `lg` (16).
+- `elevated`: intensity `cardElevated` (34), tint `glass.tint.profileElevated`, border `glass.border.profileElevated`, highlight `glass.highlight.profileElevated`, shadow `shadows.glassCardElevated`, default radius `xl` (24).
+
+Composes `GlassChrome` directly (no duplication of the 5-layer logic). Inner padding default `spacing.md` (16); pass `padding={0}` for flush content. The judgment-call from dispatch §5.3 — chose to compose GlassChrome rather than duplicate the layer stack — keeps both primitives in lockstep when the glass material is later refined.
+**Why:** SC-1 + SC-3 + SC-5 — KpiTile, ActionTile, EmptyState all consume; future deck cards in Cycle 4 will too.
+**Lines added:** ~95
+
+#### `EventCover.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** hue-driven striped placeholder for missing event imagery. Source web reference at `primitives.jsx:101–122` uses CSS `repeating-linear-gradient` with `oklch()` colour values. Both unsupported in React Native; ported as: a `<react-native-svg>` element with a base `<Rect>` fill (`hsl(hue, 60%, 50%)`) and a clipped `<G>` containing parallel `<Rect>` stripes (`hsl(hue, 60%, 40%)`, 14px wide × 14px gap, rotated 45°) over a square 600×600 viewBox with `preserveAspectRatio="xMidYMid slice"`. Bottom vignette via `expo-linear-gradient` (transparent → `rgba(0,0,0,0.72)` from 50%→100%). Top-left "COVER" label (10/14, weight 600, letter-spacing 0.5, colour `rgba(255,255,255,0.55)`). Children render on top as overlay slot. Props: `hue?, radius?, label?, height?, width?, children?`. **Colour-space deviation logged as D-IMPL-5.**
+**Why:** SC-1 + SC-3 — required for any event surface that lacks Cloudinary imagery; future deck card empty-cover state composes this.
+**Lines added:** ~135
+
+#### `KpiTile.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** dashboard tile. Composes `GlassCard variant="base"` containing label (uppercase `typography.labelCap`, colour `text.tertiary`) + value (`typography.statValue`, `text.primary`, `adjustsFontSizeToFit` for very long values) + optional delta (`typography.caption`, colour drives by `deltaUp`: `true → semantic.success`, `false → semantic.error`, `undefined → text.tertiary`) + optional sub (`typography.bodySm`, `text.secondary`, max 2 lines). **Currency-aware contract (Invariant I-10):** `value: string | number` — caller is responsible for `Intl.NumberFormat` formatting (locale + currency + min/max fraction digits). KpiTile NEVER formats currency itself. Documented at the file head and in `value` prop JSDoc.
+**Why:** SC-1 + SC-3 + SC-5 + SC-7 — every dashboard surface in Cycles 1, 9, 12 will compose this. Currency neutrality is the load-bearing contract.
+**Lines added:** ~115
+
+#### `ActionTile.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** action grid tile. Composes `GlassCard` (variant `base` for default, `elevated` + `shadows.glassChromeActive` for `primary`) containing a 40×40 circular icon container + label (`typography.bodyLg`, weight 600) + optional sub (`typography.bodySm`, secondary). Primary variant: icon container background `accent.tint`, border `accent.border`, icon colour `accent.warm`. Default variant: icon container background `glass.tint.profileElevated`, border `glass.border.profileElevated`, icon colour `text.primary`. Press: scale 0.97 / 120ms / `easings.press` (reduce-motion: opacity 0.85). Light haptic on native. Min-height 96, padding 16. `onPress` errors caught with `__DEV__` console (caller responsible for user-visible feedback upstream).
+**Why:** SC-1 + SC-3 + SC-5 — used in future Home / Events action grids; the `primary` variant differentiates the hero action.
+**Lines added:** ~190
+
+#### `EmptyState.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** centred panel with optional illustration (`IconName` string OR custom `React.ReactNode`) + h3 title + bodySm description + optional CTA `Button`. Type guard `isIconName` distinguishes the union. When `illustration` is an `IconName`, renders `<Icon size={48} color={text.quaternary} />`. CTA renders the `Button` primitive with default variant `primary`, size `md`. Layout: vertical centred stack, padding `spacing.lg`, gaps `spacing.md` between illustration + title, `spacing.xs` between title + description, `spacing.lg` (less `xs` margin compensation) before CTA.
+**Why:** SC-1 + SC-3 — every empty state in Cycles 1–17 (no events yet, no orders, etc.) composes this with organiser-language copy at the call site.
+**Lines added:** ~115
+
+### C.2.2 Verification matrix (10 SC)
+
+| SC | Criterion | Status | Evidence |
+|----|-----------|--------|----------|
+| 1 | 7 component files at `src/components/ui/` | ✅ PASS | `ls src/components/ui/*.tsx` returns 17 (9 from C.1 + 7 new + existing BrandIcons.tsx) |
+| 2 | Each carries an exported `Props` interface | ✅ PASS | `GlassChromeProps`, `IconChromeProps`, `GlassCardProps`, `EventCoverProps`, `KpiTileProps`, `ActionTileProps`, `EmptyStateProps` all exported |
+| 3 | Strictly typed; verification §6.1 + §6.2 pass | ✅ PASS | `npx tsc --noEmit` exits 0; grep for `any|@ts-ignore` returns only matches inside comment text or natural-language doc strings ("anything that floats", "any list / surface", "any reasonable cover") — no actual code violations |
+| 4 | Every variant + state from master §7.1 §10–15 + §19 implemented | ✅ PASS | GlassChrome 6 intensities × 3 tints × 5 radii; IconChrome {idle, active, pressed, disabled, with-badge} × press states; GlassCard 2 variants; EventCover hue + label + overlay-slot; KpiTile {with/without delta, deltaUp true/false/undefined, with/without sub}; ActionTile {primary true/false} × press states; EmptyState {with/without illustration, illustration as IconName vs ReactNode, with/without description, with/without CTA} |
+| 5 | 5-layer glass rule preserved | ✅ PASS | GlassChrome.tsx renders L1 BlurView (line 110), L2 tint floor (line 119), L3 top highlight (line 124), L4 hairline border (line 130), L5 shadow (line 78). IconChrome + GlassCard compose GlassChrome directly — same stack |
+| 6 | Web `backdrop-filter` fallback wired | ✅ PASS | GlassChrome.tsx:60-66 `supportsBackdropFilter` constant detects via `CSS.supports`; lines 108-117 branch between `<BlurView>` (when supported) and solid-rgba `<View>` (when unsupported). Detection runs once at module scope to avoid per-render cost |
+| 7 | KpiTile contract: caller pre-formats | ✅ PASS | KpiTile.tsx accepts `value: string | number`, renders via `String(value)` only; no `Intl.NumberFormat` call. Documented at file head + in `value` prop JSDoc + `KpiTileProps` |
+| 8 | Mingla domain rule: zero "dating" / "match-making" / "swipe to" / "swipe right/left" | ✅ PASS | `grep -riE "dating\|match-making\|swipe to like\|swipe right\|swipe left" src/components/ui` returns zero matches |
+| 9 | `npx tsc --noEmit` exits 0 | ✅ PASS | Final post-fix run: `EXIT: 0` |
+| 10 | Sub-phase C.2 section appended to report | ✅ PASS | This section |
+
+**Visual smoke** is intentionally deferred to Sub-phase E (`__styleguide.tsx`). Components are TypeScript-clean and dependency-graph-sound but have not been rendered on real device or browser. All variants are verified at the code-level (read), not at render-time.
+
+### C.2.3 Invariant re-check
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| I-1 | ✅ Preserved | `designSystem.ts` not touched in this tier |
+| I-2 | ✅ Preserved | No auth files touched |
+| I-3 | ✅ Preserved (TS-level); Sub-phase F runs full web smoke | `Platform.OS === "web"` guard wraps the only platform-divergent path (BlurView fallback). All 7 components render on iOS, Android, and web — verified by code review |
+| I-4 | ✅ Preserved | Cross-app forbidden-import grep returns zero |
+| I-5 | ✅ Preserved | Domain-rule grep returns zero; sample default copy in EmptyState defaults uses neutral / organiser-friendly language only |
+| I-6 | ✅ Preserved | No `any`, no `@ts-ignore`, no `@ts-expect-error`; tsc strict clean |
+| I-7 | ✅ Preserved | Web glass fallback is a visible solid-rgba layer, not null. EventCover renders parallel rects (the safer primary path) — degrades gracefully if SVG renderer chokes on the clipped `<G>` |
+| I-8 | ✅ Preserved | No Supabase code touched |
+| I-9 | ✅ Preserved | Reduce-motion wired in IconChrome + ActionTile press animations (the only motion in this tier). GlassChrome / GlassCard / EventCover / KpiTile / EmptyState are static |
+| I-10 | ✅ Preserved | KpiTile `value: string | number` contract; no formatting in component (caller responsibility) — the load-bearing currency-neutrality contract |
+
+### C.2.4 Discoveries for orchestrator
+
+| ID | Description | Severity | Action |
+|----|-------------|----------|--------|
+| **D-IMPL-5** | EventCover web source uses `oklch()` colour space which RN does not support. Approximated `oklch(0.55 0.18 hue)` → `hsl(hue, 60%, 45%)` and `oklch(0.50 0.16 hue)` → `hsl(hue, 60%, 40%)`. Approximation is perceptually close but not identical at extreme hues (near-grey desaturation differs). | Low (cosmetic) | If exact-match becomes required, port a JS oklch→rgb function (~30 LOC) or accept the deviation as a known design-fidelity gap. Track for Sub-phase E styleguide visual smoke. |
+| **D-IMPL-6** | `expo-blur` v15.0.8 on web automatically maps `<BlurView>` to `backdrop-filter: blur(N) saturate(...)`. No explicit web shim code needed in our component — the package handles it. Our `supportsBackdropFilter` detection is therefore a fallback safety net for browsers that lack `backdrop-filter` (Firefox <103, older Safari, some embedded browsers). | Info | None — implementation is correct as-shipped. |
+| **D-IMPL-7** | `PressableStateCallbackType` requires both `pressed: boolean` and `hovered: boolean`. When rendering a non-interactive variant of IconChrome, we call the render function with `{ pressed: false, hovered: false }` to satisfy the type. Identical pattern as Button's pressable-state extension from C.1. | Info | None — type discipline preserved without escape casts. |
+
+### C.2.5 Transition Items
+
+None added in this tier. The two pre-existing transitional comments (Button hover hex shades from C.1, Apple Tap to Pay entitlement from Sub-phase B) remain unchanged.
+
+### C.2.6 Files changed
+
+| Path | Action | Lines |
+|------|--------|-------|
+| `mingla-business/src/components/ui/GlassChrome.tsx` | new | ~150 |
+| `mingla-business/src/components/ui/IconChrome.tsx` | new | ~205 |
+| `mingla-business/src/components/ui/GlassCard.tsx` | new | ~95 |
+| `mingla-business/src/components/ui/EventCover.tsx` | new | ~135 |
+| `mingla-business/src/components/ui/KpiTile.tsx` | new | ~115 |
+| `mingla-business/src/components/ui/ActionTile.tsx` | new | ~190 |
+| `mingla-business/src/components/ui/EmptyState.tsx` | new | ~115 |
+
+**Total:** 7 new files, ~1005 net lines added. Zero files modified, zero deleted.
+
+### C.2.7 Founder action
+
+Tier 2 components are TypeScript-clean and ready for Tier 3 (C.3) consumption. Visual smoke happens in Sub-phase E styleguide — Tier 2 alone has no rendering surface. Authorise Tier 3 (C.3 — Toast / Sheet / Modal / ErrorBoundary / ConfirmDialog / Stepper / TopBar / BottomNav, 8 components) when ready.
+
+---
+
+**End of Sub-phase C.2 report.**
+
+
 
