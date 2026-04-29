@@ -52,6 +52,14 @@ export interface TopBarProps {
   rightSlot?: React.ReactNode;
   /** Bell badge count when default right slot renders. */
   unreadCount?: number;
+  /**
+   * Cycle 1+ override for brand-chip-tap behaviour (per DEC-079 carve-out).
+   * When defined, suppresses the Cycle 0a transitional Toast and fires this
+   * handler instead — typically to open BrandSwitcherSheet. When undefined,
+   * the existing Cycle 0a Toast fires (backward compatible).
+   * Anchor: line 11 header comment marks the Toast as Cycle 0a-transitional.
+   */
+  onBrandTap?: () => void;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
@@ -89,6 +97,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onBack,
   rightSlot,
   unreadCount,
+  onBrandTap,
   testID,
   style,
 }) => {
@@ -96,6 +105,13 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [toast, setToast] = useState<ToastState | null>(null);
 
   const handleBrandTap = (): void => {
+    // Cycle 1+ override per DEC-079: caller supplies real handler (typically
+    // opens BrandSwitcherSheet). Toast path remains for any consumer that
+    // hasn't migrated yet.
+    if (onBrandTap !== undefined) {
+      onBrandTap();
+      return;
+    }
     if (toast !== null) {
       setToast(null);
       return;

@@ -319,8 +319,11 @@ export const Input: React.FC<InputProps> = ({
             {
               color: textTokens.primary,
               fontSize: typography.body.fontSize,
-              lineHeight: typography.body.lineHeight,
               fontWeight: typography.body.fontWeight,
+              // No `lineHeight` — TextInput on iOS treats lineHeight as
+              // line-box height, drifting the text baseline toward the
+              // bottom (visible bottom-skew on the text variant). Container
+              // already centers via `alignItems: "center"` + height: 100%.
               paddingLeft:
                 resolvedLeadingIcon !== undefined ? 0 : PADDING_X,
               paddingRight: showClear || showPasswordToggle ? 0 : PADDING_X,
@@ -422,13 +425,18 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
     height: "100%",
-  },
-  inputAndroid: {
-    includeFontPadding: false,
-    textAlignVertical: "center",
+    // Neutralise platform default vertical padding on both iOS and Android
+    // so placeholder + typed text both vertically center inside the field
+    // (relying on the container's `alignItems: "center"` + `height: HEIGHT`).
     paddingVertical: 0,
     paddingTop: 0,
     paddingBottom: 0,
+  },
+  inputAndroid: {
+    // Android-specific: kill the EditText font padding that would push text
+    // down + force vertical centering even when paddingVertical is 0.
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   trailingButton: {
     paddingLeft: 8,

@@ -44,10 +44,9 @@ export default function TabsLayout(): React.ReactElement {
 
   return (
     <View style={styles.host}>
-      <View style={styles.content}>
-        <Slot />
-      </View>
+      <Slot />
       <View
+        pointerEvents="box-none"
         style={[
           styles.navWrap,
           {
@@ -65,12 +64,16 @@ export default function TabsLayout(): React.ReactElement {
 const styles = StyleSheet.create({
   host: {
     flex: 1,
+    // App canvas — shows through the safe-area zone behind the floating nav
+    // so the home-indicator area blends seamlessly with the dark theme. The
+    // BottomNav is a floating capsule positioned absolute on top.
     backgroundColor: canvas.discover,
   },
-  content: {
-    flex: 1,
-  },
   navWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
     paddingHorizontal: spacing.md,
   },
 });
