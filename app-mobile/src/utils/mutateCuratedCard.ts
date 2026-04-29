@@ -116,8 +116,7 @@ export function buildReplacementStop(
     // doesn't carry openingHours.openNow, so we cannot derive truthfully
     // here. Consumers compute live via useIsPlaceOpen(openingHours), not
     // stop.isOpenNow directly — verified at ExpandedCardModal:1191,
-    // ActionButtons:121, ProposeDateTimeModal:128. DiscoverMap:170 uses
-    // strict `=== false` check so null is treated as "unknown" not "closed".
+    // ActionButtons:121, ProposeDateTimeModal:128.
     isOpenNow: null,
     website: alternative.website,
     lat: alternative.lat,
