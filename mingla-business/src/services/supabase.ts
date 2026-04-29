@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 const extra = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
 
@@ -40,6 +41,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    // Cycle 0b: enable URL-hash session detection on web only. The OAuth
+    // redirect flow returns the session as a URL fragment (#access_token=…)
+    // which Supabase auto-extracts, finalises, then clears from history.
+    // Native iOS/Android use ID-token flow, no URL fragment — keep false.
+    detectSessionInUrl: Platform.OS === "web",
   },
 });

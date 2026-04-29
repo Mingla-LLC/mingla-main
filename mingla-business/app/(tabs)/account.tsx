@@ -56,13 +56,19 @@ export default function AccountTab(): React.ReactElement {
   const handleSignOut = useCallback(async (): Promise<void> => {
     try {
       await signOut();
+      // After signOut succeeds, navigate to root. AuthContext clears `user`
+      // to null via the Supabase listener, then app/index.tsx renders the
+      // BusinessWelcomeScreen. Without this navigation, the user stays on
+      // /(tabs)/account with cleared session but unchanged UI (Cycle 0a-vintage
+      // bug surfaced during Cycle 0b smoke; per ORCH-BIZ-AUTH-SIGNOUT-NAV).
+      router.replace("/");
     } catch (error) {
       if (__DEV__) {
         // eslint-disable-next-line no-console
         console.error("[AccountTab] signOut threw:", error);
       }
     }
-  }, [signOut]);
+  }, [signOut, router]);
 
   const handleOpenStyleguide = useCallback((): void => {
     router.push("/__styleguide" as never);

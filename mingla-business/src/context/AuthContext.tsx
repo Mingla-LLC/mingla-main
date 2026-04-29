@@ -25,18 +25,31 @@ const iosClientId =
   Constants.expoConfig?.extra?.IOS_CLIENT_ID ||
   process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
 
-if (webClientId) {
+// Cycle 0b: GoogleSignin native SDK is iOS/Android-only ("web support is
+// sponsor-only" — see D-IMPL-35). Calling configure() on web emits a
+// runtime warning AND was the suspected cause of the WEB2 AuthProvider
+// hang. Gate to non-web so the SDK is only touched where it works.
+if (Platform.OS !== "web" && webClientId) {
   GoogleSignin.configure({
     webClientId,
     iosClientId: Platform.OS === "ios" && iosClientId ? iosClientId : undefined,
     offlineAccess: true,
     forceCodeForRefreshToken: true,
   });
-} else {
+} else if (Platform.OS !== "web" && !webClientId) {
   console.warn(
-    "[mingla-business] EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not set — Google Sign-In will not work."
+    "[mingla-business] EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not set — native Google Sign-In will not work."
   );
 }
+
+// Web auth uses Supabase OAuth-redirect (DEC-076 + DEC-081). The browser
+// is redirected to Google/Apple, then back to `${origin}/auth/callback`
+// where Supabase finalises the session via `detectSessionInUrl: true`.
+const buildWebRedirectTo = (): string | undefined => {
+  if (Platform.OS !== "web") return undefined;
+  if (typeof window === "undefined") return undefined;
+  return `${window.location.origin}/auth/callback`;
+};
 
 type AuthContextValue = {
   user: User | null;
@@ -97,6 +110,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signInWithGoogle = useCallback(async (): Promise<{ error: Error | null }> => {
+    // Web: Supabase OAuth-redirect flow. Native Google Sign-In SDK is not
+    // available on web; this path replaces the native call entirely.
+    if (Platform.OS === "web") {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: buildWebRedirectTo(),
+        },
+      });
+      if (error) {
+        return { error: new Error(error.message) };
+      }
+      // Browser navigates away to Google — control does not return here.
+      return { error: null };
+    }
+
     try {
       if (!webClientId) {
         Alert.alert(
@@ -200,6 +229,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signInWithApple = useCallback(async (): Promise<{ error: Error | null }> => {
+    // Web: Supabase OAuth-redirect flow with Apple provider.
+    // Apple Developer + Supabase config completed pre-Cycle-0b dispatch
+    // (Service ID com.sethogieva.minglabusiness.web, Team 782KVMY869,
+    // Key 4F5MJ3G94D, JWT valid until ~2026-10-26).
+    if (Platform.OS === "web") {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "apple",
+        options: {
+          redirectTo: buildWebRedirectTo(),
+        },
+      });
+      if (error) {
+        return { error: new Error(error.message) };
+      }
+      return { error: null };
+    }
+
     try {
       if (Platform.OS !== "ios") {
         Alert.alert("Not available", "Apple Sign-In is only available on iOS.");
@@ -257,12 +303,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
-    try {
-      if (await GoogleSignin.hasPreviousSignIn()) {
-        await GoogleSignin.signOut();
+    // GoogleSignin native SDK is iOS/Android-only — gate per Cycle 0b.
+    if (Platform.OS !== "web") {
+      try {
+        if (await GoogleSignin.hasPreviousSignIn()) {
+          await GoogleSignin.signOut();
+        }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
     }
   }, []);
 
