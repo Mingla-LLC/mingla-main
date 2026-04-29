@@ -1202,6 +1202,615 @@ Authorize Sub-phase E (styleguide) when smoke passes.
 
 **End of Sub-phase D.2 report.**
 
+---
+
+## Sub-phase E — Hidden /__styleguide Route
+
+**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E.md)
+**Outcome:** all 10 SC PASS. tsc clean. Single new file at `app/__styleguide.tsx` (~770 lines) + 1 small Account-tab edit. The kit is now QA-able as a single scrollable surface.
+
+### E.1 Files changed
+
+#### `mingla-business/app/__styleguide.tsx` (NEW)
+
+**What it did before:** did not exist.
+
+**What it does now:** the dev-only styleguide route at `/__styleguide`. Production builds short-circuit via `if (!__DEV__) return <Redirect href="/(tabs)/home" />` at the top of the component — Metro tree-shakes everything below for production bundles. The dev route renders 10 scrollable sections per dispatch §3.3:
+
+1. **Tokens** — colour swatches (accent / canvas / glass tint+border / semantic / text), shadow specimens (md, lg, xl, glassChrome, glassChromeActive, glassCardBase, glassCardElevated), spacing-scale visualisation (xxs through xxl), radius-scale visualisation (sm through xxl), motion token notes
+2. **Typography** — every typography token rendered with its name + sample text "Live event tonight"
+3. **Atoms** — MinglaMark sizes 28/40/56, Spinner sizes 24/36/48, Skeleton 3 width×height combos, WebStatusBar (web only — note for native)
+4. **Icon glyphs** — all 69 IconName values in a flex-wrap grid at size 22 with name labels (the QA gate confirming every glyph + the IconName union compile)
+5. **Form & display** — Buttons (4 variants × 3 sizes + loading/disabled/leading-icon/square/sample-press), Pills (6 variants + livePulse toggle), StatusPills (7 statuses), Inputs (8 examples covering all 6 variants + leading-icon + clearable + disabled)
+6. **Glass surfaces** — IconChrome (idle, badge=3, badge=120, active, disabled), GlassChrome intensity comparison (chrome / cardBase / cardElevated / modal), GlassCard (base + elevated side by side), EventCover (5 hue values: 0, 25, 80, 200, 320)
+7. **Compositions** — KpiTile (3 delta states: up, down, neutral; values pre-formatted via `Intl.NumberFormat` GBP), ActionTile (default + primary), EmptyState (icon illustration + custom node + no-CTA)
+8. **Overlays** — Toast trigger buttons (4 kinds), Sheet trigger, Modal trigger, ConfirmDialog triggers (3 variants), ErrorBoundary scoped trigger (throws inside a real `<ErrorBoundary>` so the fallback panel renders)
+9. **Indicator** — Stepper at index 0, 2, last (3 phases); Platform.OS auto-switches mobile dots vs web numbered circles
+10. **Chrome** — TopBar (3 leftKind variants), BottomNav (interactive — tapping a tab fires the spring spotlight animation)
+
+Trigger overlays (Toast / Sheet / Modal / ConfirmDialog) are rendered conditionally at the bottom of the screen using local `useState` flags, not via global host. ErrorBoundary uses an inline `ErrorTrigger` that throws when `shouldThrow=true`; reset clears the flag.
+
+A small back-button in the top-left header lets the founder return to the Account tab.
+
+**Why:** SC-1 through SC-10 — the full QA surface for the foundation kit. Every primitive renders at least once.
+
+**Lines added:** ~770
+
+#### `mingla-business/app/(tabs)/account.tsx` (MODIFIED)
+
+**What it did before:** Account-tab placeholder with email + Sign-out Button only.
+
+**What it does now:** same plus a dev-only "Open dev styleguide" Button below sign-out. Wrapped in `{__DEV__ ? (...) : null}` so production builds tree-shake the entry point. Uses `Button variant="ghost"` with `leadingIcon="grid"` for visual differentiation. Imports `useRouter()` from `expo-router` and pushes to `/__styleguide`.
+
+**Why:** SC-6 — entry point so the founder can find the styleguide on real devices.
+
+**Lines changed:** +13 added, ~3 modified.
+
+### E.2 Verification matrix (10 SC)
+
+| SC | Criterion | Status | Evidence |
+|----|-----------|--------|----------|
+| 1 | `app/__styleguide.tsx` exists with all 10 sections | ✅ PASS | File created with sections 1-10 per dispatch §3.3 |
+| 2 | All 24 primitives rendered at least once | ✅ PASS | Inventory across sections: MinglaMark §3, Icon §3+§4, Spinner §3, Skeleton §3, StatusBar §3, Button §5+overlay triggers, Pill §5, StatusPill §5, Input §5, IconChrome §6, GlassChrome §6, GlassCard §6+§E.Section component, EventCover §6, KpiTile §7, ActionTile §7, EmptyState §7, Toast §8, Sheet §8, Modal §8, ConfirmDialog §8, ErrorBoundary §8, Stepper §9, TopBar §10, BottomNav §10 — 24 of 24 |
+| 3 | All 69 Icon names render in the grid | ✅ PASS | `ALL_ICON_NAMES` array literally lists 69 names; map renders each with name label |
+| 4 | Toast / Sheet / Modal / ConfirmDialog / ErrorBoundary have working trigger buttons | ✅ PASS | 4 Toast triggers (one per kind), 1 Sheet trigger, 1 Modal trigger, 3 ConfirmDialog triggers (one per variant), 1 ErrorBoundary trigger inside `<ErrorBoundary onReset>` scope |
+| 5 | `__DEV__` gate redirects production builds | ✅ PASS | `app/__styleguide.tsx:104-106` early-returns `<Redirect href="/(tabs)/home" />` when `!__DEV__` |
+| 6 | Account tab has dev-only "Open dev styleguide" Button | ✅ PASS | `app/(tabs)/account.tsx:73-83` — wrapped in `__DEV__` ternary, uses `Button variant="ghost"` with `leadingIcon="grid"` |
+| 7 | tsc clean | ✅ PASS | `npx tsc --noEmit` exits 0 |
+| 8 | No new hex literals (token discipline preserved) | ✅ PASS | `grep -nE "#[0-9a-fA-F]{6}" app/__styleguide.tsx` returns zero matches |
+| 9 | Mingla domain rule preserved | ✅ PASS | All sample text uses event-organiser language: "Live event tonight", "Save event", "Lonely Moth Live", "Tickets sold", "Refunds", "Doors open", "End the live event?", "No events yet", "Welcome to Mingla Business". Forbidden grep returns zero |
+| 10 | Sub-phase E section appended to implementation report | ✅ PASS | This section |
+
+### E.3 Invariant re-check
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| I-1 | ✅ Preserved | designSystem.ts not touched |
+| I-2 | ✅ Preserved | Auth flow unchanged — Account-tab change is additive (new dev-only Button below existing sign-out) |
+| I-3 | ✅ Preserved (TS-level) | iOS / Android / web all render the styleguide. Section 3 includes a `Platform.OS === "web"` guard for `<WebStatusBar />` (only renders on web; native shows a note instead) |
+| I-4 | ✅ Preserved | No imports from app-mobile |
+| I-5 | ✅ Preserved | All sample text is event-organiser language (verified by grep) |
+| I-6 | ✅ Preserved | tsc strict clean. The single grep match for "any" at line 702 is a user-facing string ("anything looks broken"), not a TS `any` type |
+| I-7 | ✅ Preserved | No silent failures — ErrorBoundary trigger throws into a real `<ErrorBoundary>` scope so the fallback renders. Trigger reset path resets state cleanly |
+| I-8 | ✅ Preserved | No Supabase code touched |
+| I-9 | ✅ Preserved | Reduce-motion handled by primitives themselves; styleguide adds no new motion |
+| I-10 | ✅ Preserved | KpiTile demo values use `Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" })` — caller pre-formats per the I-10 contract documented in KpiTile's file head |
+
+### E.4 Discoveries for orchestrator
+
+| ID | Description | Severity | Action |
+|----|-------------|----------|--------|
+| **D-IMPL-19** | The styleguide imports `easings` from `designSystem.ts` but doesn't directly read its values inside JSX (only references it textually in a Tokens-section subtitle). To keep the import live for IDE intellisense + visible in the import block, a `void easings;` statement was added before the StyleSheet definitions. Same pattern would apply if any other token export needs to remain "informational only" in this file. | Info | None — pattern is benign, used once |
+| **D-IMPL-20** | `app/__styleguide.tsx` is 770 lines as a single file. Future styleguide expansion (e.g. when Cycle 1 adds new domain components) should consider extracting per-section subcomponents to keep the file scannable. For Cycle 0a, single-file is fine and matches dispatch §3.1. | Info | Defer to future cycle when file grows |
+| **D-IMPL-21** | `Pressable` import was added to render the back button in the styleguide header. No alternative was reasonable — the back button is a one-off interactive element that doesn't warrant a new primitive. Notable as the only interactive element in this file that doesn't go through Button/IconChrome — kept inline for size economy. | Info | None |
+
+### E.5 Transition Items
+
+No new transition items. Pre-existing markers from C.3 + D + D.1 + D.2 unchanged.
+
+### E.6 Files changed summary
+
+| Path | Action | Lines |
+|------|--------|-------|
+| `mingla-business/app/__styleguide.tsx` | new | ~770 |
+| `mingla-business/app/(tabs)/account.tsx` | modified (dev-only nav button + import + styleguideRow style) | +13, 3 modified |
+
+**Total:** 1 created, 1 modified, 0 deleted. ~+783 net lines.
+
+### E.7 Founder smoke instruction
+
+Reload the dev client. Open Account tab → tap "Open dev styleguide" (only visible in dev builds). You'll land on the styleguide page.
+
+**Smoke pass per platform:**
+
+1. **iOS** — scroll through all 10 sections top to bottom. Confirm:
+   - Section 4 Icon grid: all 69 glyphs visible, no fallback squares (which would mean a missing/invalid icon name)
+   - Section 5 Buttons: tap "Sample press" → check console for the haptic-verify log line; press should also scale + haptic
+   - Section 5 Pills: tap "livePulse: ON" toggle → live pill's dot should stop/restart breathing
+   - Section 6 GlassChrome: 4 boxes show progressively more frost (chrome → cardBase → cardElevated → modal)
+   - Section 8 Toast: tap each kind — `success`/`info` auto-dismiss after 2.6s; `warn` after 6s; `error` is persistent (tap chip again to dismiss)
+   - Section 8 Sheet: drag the handle down past 80px to dismiss; or tap scrim
+   - Section 8 Modal: tap scrim to dismiss
+   - Section 8 ConfirmDialog typeToConfirm: type "Lonely Moth" exactly to enable the destructive Confirm button
+   - Section 8 ConfirmDialog holdToConfirm: press-and-hold the orange button — bar fills over 1.5s; release before 100% resets
+   - Section 8 ErrorBoundary: tap "Throw" → fallback panel with "Something broke. We're on it." renders → tap "Try again" → scope resets
+   - Section 9 Stepper: dot row with current/completed/future colours visible
+   - Section 10 BottomNav: tap a different tab → spotlight springs across with the warm-glow shadow
+2. **Android** — repeat all of the above. Check the haptic on Sample Button press (Android haptic feedback engine is different from iOS — verify it actually fires).
+3. **Web** (`npx expo start --web` then visit `http://localhost:8081/__styleguide`):
+   - Section 3 includes a live `WebStatusBar` row with current local time + signal/wifi/battery icons
+   - Section 6 GlassChrome: confirm `backdrop-filter` works in Chrome / Safari / Firefox. If unsupported, the fallback solid rgba should be visible (still readable, just not blurred)
+   - Section 8 Modal: press Escape key — modal should dismiss
+
+If anything is off, tell me which section + what's wrong. I'll dispatch a surgical fix before Sub-phase F closes the cycle.
+
+Authorize Sub-phase F (close protocol + final cross-platform smoke + founder sign-off + Cycle 0a closure) when smoke passes.
+
+---
+
+**End of Sub-phase E report.**
+
+---
+
+## Sub-phase E.1 — Brand + Input polish (3 corrections after E smoke)
+
+**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E1.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E1.md)
+**Outcome:** all 3 ORCH-BIZ-0a-E[1-3] corrections landed. tsc clean. 1 component deleted, 1 asset copied, 2 components extended.
+
+### E.1.1 Files changed
+
+#### `mingla-business/src/components/ui/MinglaMark.tsx` — DELETED
+
+**What it did before:** rendered a 32×32 SVG with a 135° linearGradient `#fb923c → #eb7825` background plus a white M-path stroked at 2px. Used in 4 styleguide locations.
+
+**What it does now:** does not exist.
+
+**Why:** ORCH-BIZ-0a-E1. The orange-gradient M monogram was off-brand vs the consumer Mingla app's actual brand identity (white wordmark on transparent). Deleted per founder direction. Zero production consumers existed post-Sub-phase D.1 — only styleguide demos referenced it.
+
+**Lines removed:** ~58.
+
+#### `mingla-business/assets/mingla_official_logo.png` — NEW (copied)
+
+**What it did before:** did not exist in `mingla-business/`.
+
+**What it does now:** copied verbatim from `app-mobile/assets/mingla_official_logo.png` (29762 bytes — same byte size confirmed). White wordmark on transparent, native dimensions 1356×480, used by the consumer Mingla app's WelcomeScreen + AppLoadingScreen.
+
+**Why:** ORCH-BIZ-0a-E1. The styleguide section 3 + section 7 EmptyState now render the real brand asset via `<Image source={require(...)} />`.
+
+#### `mingla-business/src/components/ui/Input.tsx` — MODIFIED
+
+**What it did before:** 6 variants (text/email/phone/number/password/search). Phone variant was a single TextInput with `keyboardType="phone-pad"`. Password variant was a single TextInput with `secureTextEntry: true` set permanently (no toggle). Trailing slot: optional clear button when `clearable && value`. ~230 lines.
+
+**What it does now:**
+- **Phone variant (ORCH-BIZ-0a-E2):** renders a left-side country chip (flag + dial code + chevron-down) BEFORE the TextInput. The chip is a `Pressable` that opens a `<Sheet snapPoint="half">` with a hardcoded 12-country picker (UK default per Strategic Plan UK launch + US, IE, CA, AU, NZ, DE, FR, NL, ES, IT, PL). Tap a country → `Sheet` closes → chip updates → optional `onCountryChange` callback fires. Caller's `value`/`onChangeText` continue to carry **only the local-number portion**; caller reconstructs E.164 via `country.dialCode + value`. New optional props: `defaultCountryIso?: string` (defaults to "GB"; invalid ISO falls back to GB with `__DEV__` warning) and `onCountryChange?: (country: PhoneCountry) => void`. The `PHONE_COUNTRIES` constant is `[TRANSITIONAL]`-marked for Cycle 3+ swap to `libphonenumber-js`.
+- **Password variant (ORCH-BIZ-0a-E3):** renders a trailing eye-toggle Pressable. Tap toggles local `secureRevealed` state (default `false` → text obscured). Eye icon dims to `text.tertiary` when text is visible (no `eye-off` glyph available — fallback per dispatch §5.1). A11y label flips between "Show password" / "Hide password". `clearable` prop ignored on password variant per dispatch §5.2 (visual conflict with eye toggle).
+- **Trailing slot priority:** password eye > clear button. Mutually exclusive — `secureTextEntry` was removed from `VARIANT_BEHAVIOUR.password` (it's now driven by local state).
+- **Public exports added:** `PhoneCountry` interface, `PHONE_COUNTRIES` constant.
+
+~330 lines (net +100 from rewrite).
+
+**Why:** ORCH-BIZ-0a-E2 + ORCH-BIZ-0a-E3 — founder visual smoke #4 corrections to bring phone + password input UX up to modern expectations.
+
+#### `mingla-business/app/__styleguide.tsx` — MODIFIED
+
+**What it did before:** imported `MinglaMark`, rendered 3 size demos in section 3 + 1 EmptyState illustration in section 7.
+
+**What it does now:** `MinglaMark` import removed. `Image` added to react-native imports. Section 3 atoms now shows ONE row "Mingla wordmark (real brand)" rendering `mingla_official_logo.png` at width 180 with native aspect ratio 1356/480. Section 7 EmptyState welcome's illustration now renders the same wordmark at width 200. Two new style entries added to `demoStyles` (`wordmarkSmall`, `wordmarkLarge`) holding the width + aspectRatio numbers.
+
+**Lines changed:** -10 (removed 3 size demos) +9 (one wordmark row + 2 style entries + import). Net -1 line.
+
+### E.1.2 Verification matrix (11 SC)
+
+| SC | Criterion | Status | Evidence |
+|----|-----------|--------|----------|
+| 1 | `MinglaMark.tsx` deleted from `src/components/ui/` | ✅ PASS | `ls` returns "No such file or directory" |
+| 2 | `mingla_official_logo.png` copied to `mingla-business/assets/` | ✅ PASS | `ls -la` returns 29762-byte file matching source |
+| 3 | Styleguide section 3 + section 7 use real wordmark via `<Image>` | ✅ PASS | `grep -n "MinglaMark" __styleguide.tsx` returns zero; both usage sites now render `Image source={require(...)}` |
+| 4 | Phone variant renders country chip + number field | ✅ PASS | Input.tsx renders country chip Pressable when `variant === "phone"` (lines ~270–280) before the TextInput |
+| 5 | Country picker Sheet opens on chip tap, closes on country tap | ✅ PASS | `handleOpenPicker` sets `pickerOpen=true`; `handlePickCountry` sets `pickerOpen=false` + fires `onCountryChange` callback |
+| 6 | Default country is GB unless `defaultCountryIso` overrides | ✅ PASS | `findCountryByIso(undefined)` returns `DEFAULT_PHONE_COUNTRY` which is `PHONE_COUNTRIES[0]` = GB; invalid ISO falls back with `__DEV__` warning |
+| 7 | `onCountryChange` callback fires on country selection | ✅ PASS | `handlePickCountry(next)` calls `onCountryChange?.(next)` after state set |
+| 8 | Password variant has trailing eye toggle that flips `secureTextEntry` | ✅ PASS | `secureTextEntry = isPassword && !secureRevealed`; trailing Pressable toggles `secureRevealed` |
+| 9 | Eye icon a11y label switches between "Show password" / "Hide password" | ✅ PASS | `accessibilityLabel={secureRevealed ? "Hide password" : "Show password"}` |
+| 10 | tsc clean | ✅ PASS | Final `npx tsc --noEmit` exits 0 |
+| 11 | Sub-phase E.1 section appended to report | ✅ PASS | This section |
+
+### E.1.3 Invariant re-check
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| I-1 | ✅ Preserved | designSystem.ts not touched |
+| I-2 | ✅ Preserved | Auth flow unchanged |
+| I-3 | ✅ Preserved (TS-level) | Country picker uses Sheet (gesture-handler v2 API works on iOS / Android / web). Emoji flags render natively across all 3 platforms — no image asset needed |
+| I-4 | ✅ Preserved | No imports from app-mobile (the wordmark asset is now in `mingla-business/assets/`, not imported across boundaries) |
+| I-5 | ✅ Preserved | No "dating" / "match" / "swipe" language anywhere |
+| I-6 | ✅ Preserved | tsc strict clean. No `any`, no `@ts-ignore`. `PhoneCountry` interface explicitly typed |
+| I-7 | ✅ Preserved | Invalid `defaultCountryIso` falls back to GB visibly (with `__DEV__` warning). Password eye toggle visibly indicates state (icon colour change). Country picker visibly opens / closes |
+| I-8 | ✅ Preserved | No Supabase code touched |
+| I-9 | ✅ Preserved | Sheet's spring + reduce-motion behaviour unchanged |
+| I-10 | ✅ Preserved (N/A) | No currency strings touched |
+
+### E.1.4 Discoveries for orchestrator
+
+| ID | Description | Severity | Action |
+|----|-------------|----------|--------|
+| **D-IMPL-22** | The Icon set has `"eye"` but no `"eye-off"` (or "eye-slashed") glyph. Password reveal toggle uses opacity-based state indicator as fallback — fully-bright eye = hidden / dimmed eye = visible. Functionally clear but less idiomatic than a true eye-off icon. | Low | Add `"eye-off"` to Icon.tsx in a future cycle; flip the toggle to swap glyphs instead of dimming |
+| **D-IMPL-23** | `PHONE_COUNTRIES` is a hardcoded 12-country list with `[TRANSITIONAL]` marker. Cycle 3+ should swap to `libphonenumber-js` for full international coverage + proper E.164 validation when Mingla expands beyond UK + Western Europe. The current list is sufficient for UK launch. | Info | Track for Cycle 3+ orchestrator dispatch |
+| **D-IMPL-24** | Country picker's selected-row indicator (`<Icon name="check" />`) and Sheet drag handle are visible but not animated. Modern country pickers often animate selection with a subtle scale/colour pulse. Out of scope for Cycle 0a; flag for design polish in a future cycle if founder feedback pushes for it. | Info | Defer; Sub-phase E.1 polish target was UX correctness, not animation flourish |
+| **D-IMPL-25** | `Sheet` is the chosen UX for the country picker. On web, `Sheet` is a bottom-anchored panel with drag-to-dismiss — works fine. On native, the Sheet's drag gesture requires `GestureHandlerRootView` at the app root (already wrapped in Sub-phase D). No new native deps. | Info | None — confirmation that the dependency chain holds |
+
+### E.1.5 Transition Items
+
+| Marker | Location | Exit condition |
+|--------|----------|----------------|
+| `// [TRANSITIONAL] 12-country hardcoded list` | `Input.tsx` PHONE_COUNTRIES declaration | Cycle 3+ — swap to `libphonenumber-js` + full international list when Mingla expands beyond UK + Western Europe |
+
+Pre-existing transition items unchanged.
+
+### E.1.6 Files changed summary
+
+| Path | Action | Lines |
+|------|--------|-------|
+| `mingla-business/src/components/ui/MinglaMark.tsx` | **deleted** | -58 |
+| `mingla-business/assets/mingla_official_logo.png` | **new (copied)** | (binary asset) |
+| `mingla-business/src/components/ui/Input.tsx` | modified (phone picker + password toggle) | net +100 |
+| `mingla-business/app/__styleguide.tsx` | modified (replace 4 MinglaMark usages with wordmark Image) | net -1 |
+
+**Total:** 1 deleted, 1 new asset, 2 modified. Net ~+41 lines (excluding the 30 KB asset).
+
+### E.1.7 Founder smoke instruction
+
+Reload dev client. Open Account → Open dev styleguide. Confirm:
+
+1. **Section 3 atoms** — only ONE row remains: "Mingla wordmark (real brand)" rendering the white wordmark on the dark canvas (no orange logo anywhere)
+2. **Section 5 form & display, phone variant** — the phone Input row shows a left chip with 🇬🇧 + +44 + chevron-down, then the number field. Tap the chip → bottom sheet opens with 12 countries → tap one (e.g. 🇺🇸) → sheet closes → chip updates to 🇺🇸 +1
+3. **Section 5 form & display, password variant** — trailing eye icon visible. Tap eye → text reveals (icon dims). Tap again → text hides (icon brightens)
+4. **Section 7 EmptyState welcome** — illustration is the real wordmark (same as section 3, just larger)
+
+If any of (1)-(4) look off, tell me which and I'll iterate. Authorize Sub-phase F (close + final cross-platform smoke + Cycle 0a closure) when smoke passes.
+
+---
+
+**End of Sub-phase E.1 report.**
+
+---
+
+## Sub-phase E.2 — Android shadows + Wordmark deletion + Phone polish
+
+**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E2.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E2.md)
+**Outcome:** all 4 ORCH-BIZ-0a-E[4-7] corrections landed. tsc clean. 3 files modified, no new files, no deletions.
+
+### E.2.1 Files changed
+
+#### `mingla-business/src/constants/designSystem.ts`
+
+**What it did before:** all 6 glass shadow tokens (`glassBadge`, `glassChrome`, `glassChromeActive`, `glassCardBase`, `glassCardElevated`, `glassModal`) carried fixed numeric `elevation` values (4 / 6 / 8 / 6 / 10 / 16). On Android these rendered as hard rectangular drop-shadows that bled through translucent glass surfaces, creating the "solid box inside" artifact founder reported on visual smoke #5.
+
+**What it does now:** added `import { Platform } from "react-native"` plus a `glassElevation(ios: number): number` helper that returns the iOS value on iOS and `0` on Android via `Platform.select`. All 6 glass shadow entries now wrap their elevation value: `elevation: glassElevation(N)`. iOS shadow* fields preserved verbatim — premium blur visual unchanged on iOS. Removed the `as const` from the `shadows` const because elevation is now a function-call result, not a literal (this doesn't break any consumer since shadow style values are passed to RN's StyleSheet which handles both literal and computed numbers identically).
+
+**Why:** ORCH-BIZ-0a-E4. Documented as the 2nd deliberate exception to Sub-phase A's "additive only" rule (after D.2's `glass.border.chrome` alpha bump). No caller breaks; iOS visual unchanged.
+
+**Lines changed:** +5 import + helper, ~6 elevation modifications. Net +5.
+
+#### `mingla-business/src/components/ui/Input.tsx`
+
+**What it did before:**
+- Phone variant chip rendered `flag + dialCode + chevron-down`
+- Country picker Sheet had a `<Text style={styles.pickerTitle}>Select country</Text>` title above the country list
+- TextInput on Android suffered the default `includeFontPadding: true` extra ascender/descender padding, which on the styleguide's narrow phone-input row pushed text outside the 48-px container — visually appeared as a "2-line" wrap
+- TextInput style: `flex: 1, height: "100%"` (no flexShrink/minWidth)
+
+**What it does now:**
+- Phone chip renders `flag + chevron-down` only — dial code text dropped from the chip; dial code still visible in each picker-row + announced in the chip's a11y label so screen readers get full context
+- Sheet picker no longer shows the "Select country" title — the country list itself is contextually clear
+- TextInput style adds an Android-only branch via `Platform.OS === "android"` that includes `includeFontPadding: false` and `textAlignVertical: "center"` (combats the Android `TextInput` default-padding bug)
+- TextInput style adds `flexShrink: 1, minWidth: 0` for safety on narrow rows
+- `countryDialCode` and `pickerTitle` style entries removed from `styles`
+- `inputAndroid` style entry added
+
+**Why:** ORCH-BIZ-0a-E6 (chip + 2-line wrap) + ORCH-BIZ-0a-E7 (drop title).
+
+**Lines changed:** ~-15 (removed dialCode chip text + Sheet title + 2 unused styles) +10 (Android style entry + flexShrink/minWidth on input). Net -5.
+
+#### `mingla-business/app/__styleguide.tsx`
+
+**What it did before:**
+- Section 3 atoms had a `<SectionRow label="Mingla wordmark (real brand)">` rendering the wordmark at width 180
+- Section 7 EmptyState welcome demo passed `illustration={<Image ... mingla_official_logo.png ...>}` at width 200
+- `Image` imported from react-native
+- `wordmarkSmall` and `wordmarkLarge` style entries in `demoStyles`
+- Section 5 phone-variant placeholder was `"+44 7700 900000"` (redundant with chip)
+
+**What it does now:**
+- Section 3 atoms removed the wordmark SectionRow entirely; subtitle updated from "Wordmark · Spinner · Skeleton · StatusBar" to "Spinner · Skeleton · StatusBar"
+- Section 7 EmptyState welcome demo now passes no `illustration` prop (label changed to "no illustration") — relies on title + description only
+- `Image` removed from react-native imports
+- `wordmarkSmall` + `wordmarkLarge` style entries removed
+- Phone placeholder updated to `"7700 900000"` (local-number portion only)
+
+**Why:** ORCH-BIZ-0a-E5 (founder explicit "outrightly deleted") + ORCH-BIZ-0a-E6 placeholder cleanup.
+
+**Lines changed:** ~-25 (wordmark row + EmptyState illustration block + Image import + 2 style entries) +1 (subtitle text). Net ~-24.
+
+**Note:** `mingla-business/assets/mingla_official_logo.png` retained on disk — no harm in keeping for future welcome / splash use.
+
+### E.2.2 Verification matrix (12 SC)
+
+| SC | Criterion | Status | Evidence |
+|----|-----------|--------|----------|
+| 1 | All 6 glass shadow tokens use `glassElevation()` helper | ✅ PASS | `grep -c "glassElevation" designSystem.ts` returns 7 (1 helper def + 6 uses) |
+| 2 | `Platform` imported in designSystem.ts | ✅ PASS | Line 1 of imports `import { Platform } from "react-native"` |
+| 3 | Wordmark SectionRow removed from section 3 | ✅ PASS | `grep -n "Mingla wordmark" __styleguide.tsx` returns zero |
+| 4 | EmptyState welcome's illustration prop removed (Option A) | ✅ PASS | section 7's "Welcome to Mingla Business" EmptyState now passes no `illustration` prop |
+| 5 | `wordmarkSmall` / `wordmarkLarge` styles removed | ✅ PASS | `grep -n "wordmarkSmall\|wordmarkLarge" __styleguide.tsx` returns zero |
+| 6 | `Image` import removed from styleguide | ✅ PASS | `grep -n "import.*Image" __styleguide.tsx` returns zero |
+| 7 | Country chip renders flag + chevron only | ✅ PASS | `grep -nE "country\.dialCode" Input.tsx` matches only JSDoc + a11y label, NOT the chip JSX |
+| 8 | TextInput has `includeFontPadding: false` + `textAlignVertical: center` on Android | ✅ PASS | `inputAndroid` style entry at line 426-428; applied via `Platform.OS === "android"` ternary in component style array |
+| 9 | "Select country" title + `pickerTitle` style removed | ✅ PASS | `grep -nE "Select country\|pickerTitle" Input.tsx` returns zero |
+| 10 | Styleguide phone placeholder updated to "7700 900000" | ✅ PASS | section 5 phone variant placeholder is now `"7700 900000"` |
+| 11 | tsc clean | ✅ PASS | `npx tsc --noEmit` exits 0 |
+| 12 | Sub-phase E.2 section appended to report | ✅ PASS | This section |
+
+### E.2.3 Invariant re-check
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| I-1 | ⚠ DELIBERATE EXCEPTION | `designSystem.ts` edit IS a token-value revision (the 2nd, after D.2). Documented in §E.2.1 + dispatch §3.3. No caller breaks; iOS visual unchanged |
+| I-2 | ✅ Preserved | Auth flow unchanged |
+| I-3 | ✅ Preserved | iOS / Android / web all render. Android specifically improved by elevation removal. Web unaffected (no elevation concept on web) |
+| I-4 | ✅ Preserved | No imports from app-mobile |
+| I-5 | ✅ Preserved | No "dating" / "match" / "swipe" language |
+| I-6 | ✅ Preserved | tsc strict clean. Removed `as const` from `shadows` because elevation is now computed at module load — RN style typing accepts numeric or undefined values either way |
+| I-7 | ✅ Preserved | Android shadow rectangles were a silent visual failure — surfaced and fixed |
+| I-8 | ✅ Preserved | No Supabase code touched |
+| I-9 | ✅ Preserved | No motion changes |
+| I-10 | ✅ Preserved (N/A) | No currency strings touched |
+
+### E.2.4 Discoveries for orchestrator
+
+| ID | Description | Severity | Action |
+|----|-------------|----------|--------|
+| **D-IMPL-26** | The `as const` removal from `shadows` is a minor TypeScript-discipline downgrade — consumers no longer get literal-narrowed types for shadow numeric values. In practice, all consumers pass shadow objects to `StyleSheet.create` or directly into a `style={shadows.X}` prop, which expects general numeric values, so no caller is affected. If literal typing becomes important in a future cycle, the helper signature can be adjusted to return a const-typed numeric literal pattern. | Info | None — `as const` removal is correct for the runtime-computed elevation pattern |
+| **D-IMPL-27** | Android `includeFontPadding: false` + `textAlignVertical: "center"` is a pattern that should propagate to ANY TextInput in the kit. Currently only `Input.tsx` benefits. If a future component embeds a raw `<TextInput>` (e.g. ConfirmDialog typeToConfirm consumes our `Input` so it inherits the fix; but a hypothetical inline TextInput would not), the same Android pattern needs to be applied. Recommend codifying as a kit convention or extracting to a shared style helper. | Low | Track for future polish; ConfirmDialog already inherits via `Input` consumption |
+| **D-IMPL-28** | If founder visual smoke #6 still reports Android glass surfaces feeling "not premium enough" after elevation removal, the recommended next step is to bump the Android tint floor opacity (e.g. `glass.tint.profileElevated` 0.55 → 0.85 on Android only) so the surface reads as solid-frosted instead of translucent — same `Platform.select` pattern. Out of scope for E.2; defer if needed. | Info | Defer to E.3 if founder pushes |
+
+### E.2.5 Transition Items
+
+No new transition items. Pre-existing markers from C.3 + D + D.1 + D.2 + E.1 unchanged.
+
+### E.2.6 Files changed summary
+
+| Path | Action | Lines |
+|------|--------|-------|
+| `mingla-business/src/constants/designSystem.ts` | modified (Platform import + glassElevation helper + 6 shadow elevations) | net +5 |
+| `mingla-business/src/components/ui/Input.tsx` | modified (chip shortened + Android font fix + Sheet title removed + flexShrink/minWidth) | net -5 |
+| `mingla-business/app/__styleguide.tsx` | modified (wordmark deletion + placeholder update + style cleanup) | net -24 |
+
+**Total:** 0 created, 3 modified, 0 deleted. Net ~-24 lines (mostly from styleguide simplification).
+
+### E.2.7 Founder smoke instruction
+
+Reload dev client. Open Account → Open dev styleguide. Confirm:
+
+1. **Section 3 atoms** — no wordmark row, just Spinner / Skeleton / StatusBar demos
+2. **Section 7 EmptyState welcome** — title "Welcome to Mingla Business" + description without an illustration
+3. **Section 5 phone field** — chip is compact: 🇬🇧 ▼ (just flag + chevron). Placeholder reads `7700 900000`. Single visual line on both iOS and Android (no 2-line wrap)
+4. **Tap phone chip** — Sheet opens, country list visible, NO "Select country" title at the top (just the drag handle + countries)
+5. **Android specifically** — GlassChrome active variant in section 6, ActionTile primary in section 7, BottomNav spotlight in section 10, shadow specimens in section 1: all should render WITHOUT a solid rectangle inside / behind the surface. Chrome should feel premium-frosted on Android the way it does on iOS
+
+If anything is still off, tell me which section / surface and I'll iterate. Authorize Sub-phase F (close + final cross-platform smoke + Cycle 0a closure) when smoke passes.
+
+If Android glass STILL feels under-premium after elevation removal, **D-IMPL-28** (Android tint floor opacity bump) is queued as the next polish iteration — easy to dispatch as E.3.
+
+---
+
+**End of Sub-phase E.2 report.**
+
+---
+
+## Sub-phase E.3 — Android shadow extension + TextInput cleanup + iOS phone padding
+
+**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E3.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E3.md)
+**Outcome:** all 4 ORCH-BIZ-0a-E[8-11] corrections landed. tsc clean. 2 files modified.
+
+### E.3.1 Files changed
+
+#### `mingla-business/src/constants/designSystem.ts`
+
+**What it did before:** E.2's `glassElevation()` helper was applied only to the 6 `glass*` shadow entries. The 4 generic shadow entries (`sm`, `md`, `lg`, `xl`) still carried literal numeric `elevation` values (2 / 4 / 8 / 12). On Android these rendered as hard rectangular drop-shadows that bled through the styleguide's translucent ShadowSpecimen demos — same root cause as E.4 but unscoped from E.2's fix.
+
+**What it does now:**
+- Renamed `glassElevation()` → `androidSafeElevation()` for clarity (no longer just glass-specific)
+- Applied `androidSafeElevation()` to ALL 10 shadow tokens — `sm` / `md` / `lg` / `xl` + the 6 `glass*` entries
+- Doc comment refreshed explaining the rename + scope expansion
+
+**Why:** ORCH-BIZ-0a-E8. Documented as the 3rd Sub-phase A revision (after D.2's `glass.border.chrome` alpha bump + E.2's first elevation Platform.select). No caller breaks; iOS visuals unchanged.
+
+**Lines changed:** 1 helper rename + 4 elevation field updates + 1 expanded doc comment. Net +6.
+
+#### `mingla-business/src/components/ui/Input.tsx`
+
+**What it did before:**
+- `inputAndroid` style had only `includeFontPadding: false` + `textAlignVertical: "center"` (E.2's fix) — Android `TextInput` still inherited default theme `paddingVertical`, causing the phone field's typed text + placeholder to wrap to 2 visual lines on narrow rows
+- TextInput had no `underlineColorAndroid` prop — Android `EditText` default drawable rendered as a "hovering rounded box" over the field on focus
+- Phone variant TextInput `paddingLeft: 0` (because the country chip occupies the leading slot), creating zero breathing room between chip's right border and typed number — visually crowded "weirdly to the left" on iOS
+
+**What it does now:**
+- `inputAndroid` style extended with `paddingVertical: 0` + `paddingTop: 0` + `paddingBottom: 0` (5 entries total) — fully overrides Android theme padding
+- `<TextInput>` in render carries `underlineColorAndroid="transparent"` prop — kills the EditText drawable on Android (silent no-op on iOS)
+- Phone variant TextInput `paddingLeft` conditional dropped `isPhone ||` — phone now gets the same `PADDING_X` (14) left padding as text/email/number/password/search variants. The country chip's `paddingRight: 8` + the TextInput's `paddingLeft: 14` now combine for ~22px of breathing room between chip content and typed number — clean visual separation across iOS + Android
+
+**Why:** ORCH-BIZ-0a-E9 + E10 + E11.
+
+**Lines changed:** +3 (paddingVertical/Top/Bottom in inputAndroid) +1 (underlineColorAndroid prop) -1 (drop `isPhone ||` from conditional). Net +3.
+
+### E.3.2 Verification matrix (6 SC)
+
+| SC | Criterion | Status | Evidence |
+|----|-----------|--------|----------|
+| 1 | All 10 shadow tokens use `androidSafeElevation()` | ✅ PASS | `grep -c "androidSafeElevation" designSystem.ts` returns 11 (1 helper def + 10 uses) |
+| 2 | `inputAndroid` includes `paddingVertical: 0` + `paddingTop: 0` + `paddingBottom: 0` | ✅ PASS | All 3 fields present at lines 429-431 |
+| 3 | `<TextInput>` carries `underlineColorAndroid="transparent"` | ✅ PASS | Line 315 of Input.tsx |
+| 4 | Phone variant `paddingLeft` is `PADDING_X`, not `0` | ✅ PASS | Line 325 conditional simplified to `resolvedLeadingIcon !== undefined ? 0 : PADDING_X` (phone variant has no `resolvedLeadingIcon`, so falls through to `PADDING_X`) |
+| 5 | tsc clean | ✅ PASS | Final `npx tsc --noEmit` exits 0 |
+| 6 | Sub-phase E.3 section appended to report | ✅ PASS | This section |
+
+### E.3.3 Invariant re-check
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| I-1 | ⚠ DELIBERATE EXCEPTION | `designSystem.ts` token-value revision is the 3rd (after D.2 + E.2). Documented in §E.3.1. No caller breaks; iOS visual unchanged |
+| I-2 | ✅ Preserved | Auth flow unchanged |
+| I-3 | ✅ Preserved | iOS / Android / web all render. Android specifically improved. iOS phone breathing room improved |
+| I-4 | ✅ Preserved | No imports from app-mobile |
+| I-5 | ✅ Preserved | No "dating" / "match" / "swipe" language |
+| I-6 | ✅ Preserved | tsc strict clean |
+| I-7 | ✅ Preserved | Android EditText drawable + non-glass elevation rectangles were silent visual artifacts — surfaced and fixed |
+| I-8 | ✅ Preserved | No Supabase code touched |
+| I-9 | ✅ Preserved | No motion changes |
+| I-10 | ✅ Preserved (N/A) | No currency strings touched |
+
+### E.3.4 Discoveries for orchestrator
+
+| ID | Description | Severity | Action |
+|----|-------------|----------|--------|
+| **D-IMPL-29** | The `androidSafeElevation()` helper is now used by every shadow in `designSystem.ts`. If a future cycle introduces an opaque card or button that legitimately wants Android elevation (Material Design lift), it must override at the component level via `style={{ elevation: N }}` — the token system no longer ships Android elevation by default. Track for any first opaque-surface introduction. | Info | None — the convention is correct for the current all-glass surface set |
+| **D-IMPL-30** | `underlineColorAndroid="transparent"` is the standard Android TextInput-cleanup pattern. If a future cycle introduces a custom-styled TextInput (e.g. a multiline note field), the same prop should propagate. Recommend codifying as a kit convention or extracting to a shared TextInput-style helper. | Low | Track for future TextInput surfaces |
+| **D-IMPL-31** | Phone variant's `paddingLeft` simplification (drop `isPhone ||`) means the conditional is now identical to the original conditional from C.1. The `isPhone` branch was added in E.1 but proved unnecessary once the chip's own paddingRight + the TextInput's PADDING_X provided sufficient visual gap. The chip's `paddingRight: 8` + TextInput `paddingLeft: 14` = 22px combined breathing room. | Info | Pattern locked in for future variants that consume left-side adornments |
+
+### E.3.5 Transition Items
+
+No new transition items. Pre-existing markers unchanged.
+
+### E.3.6 Files changed summary
+
+| Path | Action | Lines |
+|------|--------|-------|
+| `mingla-business/src/constants/designSystem.ts` | modified (rename helper + extend to all shadows) | net +6 |
+| `mingla-business/src/components/ui/Input.tsx` | modified (3 padding zeros + underlineColorAndroid + paddingLeft conditional fix) | net +3 |
+
+**Total:** 0 created, 2 modified, 0 deleted. Net +9 lines.
+
+### E.3.7 Founder smoke instruction
+
+Reload dev client. Open Account → Open dev styleguide.
+
+**Android (primary verification surface):**
+1. Section 1 Tokens — shadow specimens md/lg/xl render WITHOUT a rectangle inside; same clean look as iOS
+2. Section 5 phone field — `7700 900000` placeholder renders on a SINGLE line (no 2-line wrap)
+3. All input fields (especially password + phone number) — NO floating rounded box around them; clean transparent containers
+
+**iOS (regression check + Fix 4 verification):**
+4. Section 5 phone field — typed number / placeholder has clear breathing room between the country chip and the text (no longer crowding against chip's right border)
+5. All other primitive surfaces unchanged from prior smoke
+
+**Both platforms:**
+6. Glass surfaces (TopBar, BottomNav, IconChrome, GlassCard, ActionTile) — premium feel preserved; no regressions
+
+If any issue persists, tell me which platform / which section / what's wrong. Authorize Sub-phase F (close + final cross-platform smoke + Cycle 0a closure) when smoke passes.
+
+If Android glass surfaces still feel under-premium after the elevation removal + drawable cleanup, **D-IMPL-28** from E.2 (Android tint floor opacity bump from 0.55 → 0.85) is queued as the next polish. Easy E.4 if needed.
+
+---
+
+**End of Sub-phase E.3 report.**
+
+---
+
+## Sub-phase E.4 — Sheet/Modal lazy-render fix
+
+**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E4.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E4.md)
+**Outcome:** ORCH-BIZ-0a-E12 corrected. tsc clean. 2 files modified.
+
+### E.4.1 Files changed
+
+#### `mingla-business/src/components/ui/Sheet.tsx`
+
+**What it did before:** rendered its full View tree on every render regardless of `visible`. Outer View used `pointerEvents={visible ? "auto" : "none"}` and the panel translated off-screen via `translateY(closedY)` when closed — but the View tree was always present in the parent's layout. When the Sheet was rendered inline inside `Input.tsx` (Fragment sibling pattern), `position: absolute` resolved to the nearest positioned ancestor (the small SectionRow `rowContent` ~48px tall), not the screen root. The panel's `translateY(closedY)` was therefore computed relative to that tiny frame and the rendered panel visually leaked into adjacent rows in the styleguide ScrollView — exactly the iOS artifact the founder reported on smoke #7 (rounded box + drag handle visible behind number + password Input rows).
+
+**What it does now:**
+- Added `useState<boolean>(visible)` for a `mounted` flag (initial value follows `visible`)
+- Added `useRef<ReturnType<typeof setTimeout> | null>` for `closeTimerRef`
+- New `useEffect` watches `visible`: on `true` → set `mounted=true` immediately + cancel any pending unmount timer; on `false` → schedule a 280ms unmount via `setTimeout` (240ms close animation + 40ms safety buffer)
+- If `visible` flips back to `true` during the close window, the unmount timer is cancelled and the component stays mounted
+- Cleanup on component-unmount cancels any pending timer (no zombie callbacks)
+- Early `if (!mounted) return null;` immediately before the JSX return
+
+When the Sheet is closed (and the close animation has completed), it returns `null` — no View tree, no layout footprint, no inline-render leak. When `visible` flips back to true, the component re-mounts with fresh `useSharedValue` initial values (closedY for translateY, 0 for scrimOpacity), and the existing animation `useEffect` runs to animate to the open state.
+
+**Why:** ORCH-BIZ-0a-E12 — Sheet panel leak diagnosed via founder iOS screenshot.
+
+**Lines changed:** +31, -2 (removed 2 lines of trailing code displaced by the new useEffect, replaced with the new mount-control useEffect + early-return). Net +29.
+
+#### `mingla-business/src/components/ui/Modal.tsx`
+
+**What it did before:** same pattern as Sheet — full render tree always present, scrim opacity-animated, panel scale-animated. Same potential for inline-render leaks if Modal were rendered inside a positioned ancestor smaller than the screen.
+
+**What it does now:** same lazy-mount pattern as Sheet, with a 200ms unmount delay (Modal's exit animation is 160ms + 40ms safety buffer — faster than Sheet's because Modal's exit is faster).
+
+**Why:** ORCH-BIZ-0a-E12 prophylactic — even though Modal isn't currently rendered inline anywhere in the kit (ConfirmDialog passes Modal at the top of its render and is itself rendered inline in styleguide section 8 + future cycle screens), the same architectural defect existed. Apply the fix uniformly so future cycles don't trip on it.
+
+**Lines changed:** +31, -2. Net +29.
+
+### E.4.2 Verification matrix (7 SC)
+
+| SC | Criterion | Status | Evidence |
+|----|-----------|--------|----------|
+| 1 | Sheet returns `null` when `mounted === false` | ✅ PASS | Sheet.tsx:169 — `if (!mounted) return null;` immediately before main JSX return |
+| 2 | Modal returns `null` when `mounted === false` | ✅ PASS | Modal.tsx:151 — same pattern |
+| 3 | Both schedule unmount via setTimeout AFTER close animation | ✅ PASS | Sheet uses `UNMOUNT_DELAY_MS = 280` (240+40); Modal uses `UNMOUNT_DELAY_MS = 200` (160+40). Both verified via grep |
+| 4 | Both cancel pending unmount if `visible` flips back to true | ✅ PASS | Both `useEffect` blocks check `closeTimerRef.current !== null` and clearTimeout when `visible` flips to true |
+| 5 | Both clean up timers on component unmount | ✅ PASS | Both `useEffect` returns a cleanup that clears the ref'd timer |
+| 6 | tsc clean | ✅ PASS | Final `npx tsc --noEmit` exits 0 |
+| 7 | Sub-phase E.4 section appended to report | ✅ PASS | This section |
+
+### E.4.3 Invariant re-check
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| I-1 | ✅ Preserved | designSystem.ts not touched |
+| I-2 | ✅ Preserved | Auth flow unchanged |
+| I-3 | ✅ Preserved | iOS / Android / web all benefit from the fix uniformly. Animations still run because Reanimated `useSharedValue(closedY)` initialises correctly each fresh mount |
+| I-4 | ✅ Preserved | No imports from app-mobile |
+| I-5 | ✅ Preserved | No copy / domain text touched |
+| I-6 | ✅ Preserved | tsc strict clean |
+| I-7 | ✅ Preserved | The leak was a silent visual failure — surfaced and fixed |
+| I-8 | ✅ Preserved | No Supabase code touched |
+| I-9 | ✅ Preserved | Animation timings preserved (Sheet 240ms close + 40ms buffer; Modal 160ms close + 40ms buffer). Reduce-motion paths unchanged |
+| I-10 | ✅ Preserved (N/A) | No currency strings touched |
+
+### E.4.4 Discoveries for orchestrator
+
+| ID | Description | Severity | Action |
+|----|-------------|----------|--------|
+| **D-IMPL-32** | The lazy-mount pattern (`useState<boolean>(visible)` + `useRef<setTimeout>` + early `null` return) is now used in both Sheet and Modal. Recommend extracting to a shared `useLazyMount(visible, exitDurationMs)` custom hook in a future cycle to DRY the pattern. Three primitives (Sheet, Modal, and any future overlay) would benefit. Out of scope for E.4 (founder asked for the fix, not the abstraction). | Info | Track for Cycle 1+ refactor |
+| **D-IMPL-33** | The ROOT architectural fix would be a screen-level overlay host (like `react-native-portalize` or a custom `<OverlayHost>` at app root + a context-driven imperative API). That'd let Sheet + Modal ALWAYS render at the screen root regardless of where the consumer mounts them, eliminating the inline-positioning class of bugs entirely. The lazy-mount fix in E.4 is a tactical patch; the strategic fix is a Cycle 1+ refactor. | Info | Track for Cycle 1+ |
+| **D-IMPL-34** | After this fix, ConfirmDialog (which composes Modal) inherits the lazy-mount behaviour automatically — its triggers in the styleguide should no longer leak. Verified via code review (no ConfirmDialog-specific lazy-mount logic needed; the wrapping Modal handles it). | Info | None — confirmed working by inheritance |
+
+### E.4.5 Transition Items
+
+No new transition items. Pre-existing markers unchanged.
+
+### E.4.6 Files changed summary
+
+| Path | Action | Lines |
+|------|--------|-------|
+| `mingla-business/src/components/ui/Sheet.tsx` | modified (lazy-mount pattern + early-null return) | net +29 |
+| `mingla-business/src/components/ui/Modal.tsx` | modified (same pattern) | net +29 |
+
+**Total:** 0 created, 2 modified, 0 deleted. Net ~+58 lines.
+
+### E.4.7 Founder smoke instruction
+
+Reload dev client. Open Account → Open dev styleguide.
+
+**Primary verification — the leak fix:**
+
+1. Section 5 (Form & display, Inputs) — number + password rows should now have NO rounded box / drag handle hovering inside or behind them. Clean, transparent input containers as iOS expects
+
+**Regression check — verify the fix doesn't break overlay open/close:**
+
+2. Section 8 (Overlays) — tap "Open bottom sheet" → Sheet still opens with the spring slide-up animation
+3. Drag the Sheet's handle down past 80px OR tap the scrim → Sheet still closes cleanly with the timing animation
+4. Re-open and re-close several times — no stuck state, no flicker, no leak
+5. Section 8 — tap "Open centred modal" → Modal still opens with the scale + opacity entrance
+6. Tap scrim or press Escape (web) → Modal still closes cleanly
+7. Section 8 — tap any of the 3 ConfirmDialog triggers (simple / type to confirm / hold to confirm) — they still open and close correctly (ConfirmDialog inherits the fix via Modal composition)
+8. Section 5 phone field — tap the country chip → country picker Sheet still opens and closes correctly. After closing, no leak in the rows below
+
+If anything is off (e.g. Sheet doesn't open, Modal doesn't close, fluctuates between states, or another visual artifact appears), tell me which trigger / which scenario and I'll iterate.
+
+Authorize Sub-phase F (close + final cross-platform smoke + Cycle 0a closure) when smoke passes.
+
+---
+
+**End of Sub-phase E.4 report.**
+
+
+
+
+
+
 
 
 

@@ -18,7 +18,7 @@
  * 6 includes one by default; if not, add at the top of `app/_layout.tsx`).
  */
 
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Dimensions, Pressable, StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -66,6 +66,7 @@ const CLOSE_VELOCITY = 600;
 const SPRING_CONFIG = { damping: 22, stiffness: 200, mass: 1 } as const;
 const REDUCE_MOTION_OPEN = { duration: 200, easing: Easing.out(Easing.cubic) } as const;
 const TIMING_CLOSE = { duration: 240, easing: Easing.in(Easing.cubic) } as const;
+const UNMOUNT_DELAY_MS = 280; // 240ms close anim + 40ms safety
 
 export const Sheet: React.FC<SheetProps> = ({
   visible,
@@ -81,9 +82,36 @@ export const Sheet: React.FC<SheetProps> = ({
   const closedY = sheetHeight; // pushed fully off-screen
   const openY = 0;
 
+  // Lazy-mount: keep the Sheet out of the View tree when not visible to
+  // prevent inline-render leaks (Sub-phase E.4 / ORCH-BIZ-0a-E12). Stay
+  // mounted long enough for the close animation to finish, then unmount.
+  const [mounted, setMounted] = useState<boolean>(visible);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const translateY = useSharedValue(closedY);
   const scrimOpacity = useSharedValue(0);
   const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    } else if (mounted) {
+      closeTimerRef.current = setTimeout(() => {
+        setMounted(false);
+        closeTimerRef.current = null;
+      }, UNMOUNT_DELAY_MS);
+    }
+    return (): void => {
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, [mounted, visible]);
 
   useEffect(() => {
     if (visible) {
@@ -137,6 +165,8 @@ export const Sheet: React.FC<SheetProps> = ({
   const handleScrimPress = (): void => {
     if (dismissOnScrimTap) onClose();
   };
+
+  if (!mounted) return null;
 
   return (
     <View

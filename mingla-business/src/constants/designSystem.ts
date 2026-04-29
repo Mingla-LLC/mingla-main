@@ -4,7 +4,27 @@
  * Cycle 0a: extended additively with the design-package token set
  * (accent / canvas / glass / semantic / text / blurIntensity / easings /
  * durations / typography). Existing exports preserved verbatim.
+ *
+ * Sub-phase E.2: glass shadow tokens (`glassBadge`, `glassChrome`,
+ * `glassChromeActive`, `glassCardBase`, `glassCardElevated`, `glassModal`)
+ * use `Platform.select` to zero `elevation` on Android. Reason: Android
+ * `elevation` draws a hard rectangular drop-shadow regardless of border-
+ * radius or alpha, which bleeds through translucent glass surfaces and
+ * creates a "solid box inside" artifact (ORCH-BIZ-0a-E4). iOS shadow*
+ * fields are preserved verbatim — premium blur unchanged on iOS.
  */
+
+import { Platform } from "react-native";
+
+// Sub-phase E.3 (ORCH-BIZ-0a-E8): renamed from `glassElevation` and applied
+// to ALL shadow tokens (including non-glass `sm`/`md`/`lg`/`xl`). Reason:
+// styleguide demos render the generic shadows on translucent backgrounds,
+// so the same Android elevation-rectangle artifact applied. There are no
+// opaque-card consumers in mingla-business today; if a future cycle needs
+// Android elevation on a specific opaque surface, override at the component
+// level.
+const androidSafeElevation = (ios: number): number =>
+  Platform.select({ ios, android: 0, default: ios }) ?? ios;
 
 export const spacing = {
   xxs: 2,
@@ -32,72 +52,72 @@ export const shadows = {
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
-    elevation: 2,
+    elevation: androidSafeElevation(2),
   },
   md: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
-    elevation: 4,
+    elevation: androidSafeElevation(4),
   },
   lg: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
     shadowRadius: 15,
-    elevation: 8,
+    elevation: androidSafeElevation(8),
   },
   xl: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 20 },
     shadowOpacity: 0.1,
     shadowRadius: 25,
-    elevation: 12,
+    elevation: androidSafeElevation(12),
   },
   glassBadge: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: androidSafeElevation(4),
   },
   glassChrome: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.28,
     shadowRadius: 12,
-    elevation: 6,
+    elevation: androidSafeElevation(6),
   },
   glassChromeActive: {
     shadowColor: "#eb7825",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.35,
     shadowRadius: 14,
-    elevation: 8,
+    elevation: androidSafeElevation(8),
   },
   glassCardBase: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 16,
-    elevation: 6,
+    elevation: androidSafeElevation(6),
   },
   glassCardElevated: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.42,
     shadowRadius: 24,
-    elevation: 10,
+    elevation: androidSafeElevation(10),
   },
   glassModal: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 16 },
     shadowOpacity: 0.48,
     shadowRadius: 40,
-    elevation: 16,
+    elevation: androidSafeElevation(16),
   },
-} as const;
+};
 
 export const fontWeights = {
   regular: "400" as const,

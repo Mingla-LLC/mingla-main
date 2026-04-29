@@ -9,6 +9,7 @@
 
 import React, { useCallback } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "../../src/components/ui/Button";
@@ -23,6 +24,7 @@ import { useAuth } from "../../src/context/AuthContext";
 
 export default function AccountTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { user, signOut } = useAuth();
 
   const handleSignOut = useCallback(async (): Promise<void> => {
@@ -35,6 +37,10 @@ export default function AccountTab(): React.ReactElement {
       }
     }
   }, [signOut]);
+
+  const handleOpenStyleguide = useCallback((): void => {
+    router.push("/__styleguide" as never);
+  }, [router]);
 
   const emailLabel =
     user?.email ??
@@ -64,6 +70,17 @@ export default function AccountTab(): React.ReactElement {
               size="md"
             />
           </View>
+          {__DEV__ ? (
+            <View style={styles.styleguideRow}>
+              <Button
+                label="Open dev styleguide"
+                onPress={handleOpenStyleguide}
+                variant="ghost"
+                size="md"
+                leadingIcon="grid"
+              />
+            </View>
+          ) : null}
         </GlassCard>
       </ScrollView>
     </View>
@@ -109,5 +126,9 @@ const styles = StyleSheet.create({
   signOutRow: {
     flexDirection: "row",
     marginTop: spacing.lg,
+  },
+  styleguideRow: {
+    flexDirection: "row",
+    marginTop: spacing.sm,
   },
 });

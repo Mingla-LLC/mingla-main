@@ -11,7 +11,7 @@
  * Body uses `GlassCard variant="elevated"` with radius `xl`.
  */
 
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import Animated, {
@@ -45,6 +45,7 @@ export interface ModalProps {
 const ENTRY_DURATION = 200;
 const EXIT_DURATION = 160;
 const SCRIM_COLOR = "rgba(0, 0, 0, 0.5)";
+const UNMOUNT_DELAY_MS = 200; // 160ms exit anim + 40ms safety
 
 export const Modal: React.FC<ModalProps> = ({
   visible,
@@ -55,10 +56,37 @@ export const Modal: React.FC<ModalProps> = ({
   testID,
   style,
 }) => {
+  // Lazy-mount: keep the Modal out of the View tree when not visible to
+  // prevent inline-render leaks (Sub-phase E.4 / ORCH-BIZ-0a-E12). Stay
+  // mounted long enough for the close animation to finish, then unmount.
+  const [mounted, setMounted] = useState<boolean>(visible);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const scrimOpacity = useSharedValue(0);
   const panelScale = useSharedValue(0.96);
   const panelOpacity = useSharedValue(0);
   const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    } else if (mounted) {
+      closeTimerRef.current = setTimeout(() => {
+        setMounted(false);
+        closeTimerRef.current = null;
+      }, UNMOUNT_DELAY_MS);
+    }
+    return (): void => {
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, [mounted, visible]);
 
   useEffect(() => {
     if (visible) {
@@ -119,6 +147,8 @@ export const Modal: React.FC<ModalProps> = ({
   const handleScrimPress = (): void => {
     if (dismissOnScrimTap) onClose();
   };
+
+  if (!mounted) return null;
 
   return (
     <View
