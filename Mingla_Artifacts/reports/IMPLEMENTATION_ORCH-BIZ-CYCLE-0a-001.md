@@ -414,3 +414,151 @@ If any step fails, STOP and hand back to orchestrator — Sub-phase C is gated o
 
 **End of Sub-phase B implementor section. Steps 5–6 awaiting founder.**
 
+---
+
+## Sub-phase C.1 — Tier 1 Atoms + Form/Display Primitives
+
+**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C1.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C1.md)
+**Outcome:** all 9 components built, tsc clean, 5 verification gates PASS, 6 success criteria PASS (SC-10 = report appended). 4 SC remain UNVERIFIED until visual smoke in Sub-phase E styleguide.
+
+### C.1.1 Files created (9 new)
+
+All at `mingla-business/src/components/ui/`. Each carries an exported `Props` interface and both named + default exports.
+
+#### `Icon.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** ports 69 SVG glyphs verbatim from `design-package/.../primitives.jsx:9–79` into a `react-native-svg` `<Svg>` wrapper. Exports `IconName` union (69 string literals) so callers get autocomplete + compile-time validation. `<Icon name="home" size={22} color={text.primary} strokeWidth={1.75} />`. Invalid names log a dev-only `console.warn` and render a fallback square (no crash). Glyphs that the source rendered with `fill="currentColor"` (apple, moreH, keypad, flashOn, star, play, pause, target, tag) thread the `color` prop through `fill={color}`. Stroked glyphs inherit stroke from the parent `<Svg>` `stroke` attribute.
+**Why:** SC-1 + SC-3 — most-imported atom; `Button` (leading icon), `Input` (leading icon + clear), `StatusBar` (web simulated cluster) all consume.
+**Lines added:** ~290
+
+#### `MinglaMark.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** 32×32 brand monogram. Rounded gradient square (`#fb923c → #eb7825` at 135°) with white M path (stroke 2px, round caps/joins). Each instance generates a unique gradient id via React 19 `useId()` so multiple marks on the same screen don't collide on `<defs>` ids. Props `{ size?: number = 28; color?: string = "#fff" }`.
+**Why:** SC-1 + SC-3 + SC-6 — only authorised hex (`#fb923c`, `#eb7825`, `#fff`) per dispatch SC-6. Required by future `TopBar` in Tier 3.
+**Lines added:** ~55
+
+#### `Spinner.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** indeterminate loading affordance. Renders a 3/4-arc `<Circle>` and rotates it 360° per second via Reanimated v4 (`withRepeat(withTiming(360, { duration: 1000, easing: Easing.linear }), -1)`). Reduce-motion fallback collapses to a 600ms opacity 0.6 ↔ 1.0 cycle (no rotation). Sizes `24 | 36 | 48`, stroke 3px, default colour `accent.warm`. Cleanup cancels animation on unmount.
+**Why:** SC-1 + SC-3 + SC-5 — `Button.loading` state replaces leading icon with this; future deck loading states consume it.
+**Lines added:** ~95
+
+#### `Skeleton.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** loading placeholder shape. Base background `rgba(255,255,255,0.06)`. Shimmer overlay via `expo-linear-gradient` translates from `-containerWidth` to `+containerWidth` over 1400ms with `Easing.out(Easing.ease)`. Shimmer width is 60% of container, animated through `Animated.createAnimatedComponent(LinearGradient)`. Reduce-motion fallback renders the static base, no sweep. Props `{ width, height, radius?: keyof radius = 'md' }`.
+**Why:** SC-1 + SC-3 + SC-5 — Tier 2 `EventCover` and `KpiTile` will compose this for missing-image / loading states.
+**Lines added:** ~110
+
+#### `StatusBar.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** three exports — `<NativeStatusBar barStyle?="light" translucent? />` (wraps `expo-status-bar` for native), `<WebStatusBar time? textColor? />` (renders a simulated iOS row on web with live-updating clock + chart/globe/flashOn icon cluster), and `<StatusBar />` (default — switches by `Platform.OS`). Time formats locally; ticks every 30s. Passes Mingla domain rule — no dating language.
+**Why:** SC-1 + SC-3 — used by every screen that wants the "phone-bg" prototype framing on web. **Spec deviation (D-IMPL-2):** dispatch §5.5 + §3.2 produced a TS name collision because `NativeStatusBarProps.style` and `WebStatusBarProps.style` had different types. Renamed the native bar's foreground style prop to `barStyle` to disambiguate. Documented below.
+**Lines added:** ~110
+
+#### `Button.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** primary CTA primitive. Variants `primary | secondary | ghost | destructive` × sizes `sm (36) | md (44) | lg (52)` × shapes `pill | square`. Press scale 0.96 over 120ms `easings.press`; reduce-motion fallback opacity 0.7. Loading state replaces leading icon with `<Spinner />`, dims label to opacity 0.7 (layout stable). Disabled state opacity 0.32, no haptic. Native: `HapticFeedback.buttonPress()` (light impact) on press-down. Web: hover bumps background by ~6% lightness; focus draws 2px `accent.warm` outline (only when `:focus-visible`). `onPress` errors are caught in `__DEV__` console and not surfaced to the user — caller is expected to handle outcomes via toasts upstream. A11y: `accessibilityRole="button"`, `accessibilityState={{ disabled, busy: loading }}`.
+**Why:** SC-1 + SC-3 + SC-4 + SC-5 — the integration point for Icon + Spinner.
+**Lines added:** ~245
+
+#### `Pill.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** small chip primitive. 6 variants (`live | draft | warn | accent | error | info`) each map to a tinted background, border, status dot colour, and text colour. Height 24, radius `full`, padding-x 10, font `typography.micro` UPPERCASE. The 6×6 dot sits on the left with 6px gap. `livePulse` triggers a Reanimated `withRepeat(withTiming(1.4, ..., Easing.inOut(Easing.sin)), -1, true)` on the dot's scale; reduce-motion collapses to opacity 0.5 ↔ 1.0. Cleanup cancels on unmount.
+**Why:** SC-1 + SC-3 + SC-4 + SC-5 — wrapped by `StatusPill`; future `KpiTile`, `EventCover` overlays compose this.
+**Lines added:** ~165
+
+#### `StatusPill.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** opinionated `Pill` wrapper. Status dictionary maps the 7 organiser states (`LIVE | DRAFT | UPCOMING | ENDED | PENDING | PREVIEW | SOLD_OUT`) to variant + label + livePulse triple. `LIVE` auto-sets `livePulse: true`. Optional `overrideLabel` for chrome compositions that need e.g. "STARTING SOON" with the UPCOMING variant. **Spec deviation (D-IMPL-3):** dispatch §5.8 specified `'SOLD OUT'` (with space) as the prop value. Used `'SOLD_OUT'` (underscore) so the union is a valid TypeScript identifier in switch/match contexts; the rendered label preserves the space (`"SOLD OUT"`).
+**Why:** SC-1 + SC-3 + SC-4 — the only domain-aware primitive in this tier; saves later cycles from re-deriving status colour rules.
+**Lines added:** ~75
+
+#### `Input.tsx`
+
+**What it did before:** did not exist.
+**What it does now:** single-line text input. Variants `text | email | phone | number | password | search` map to sensible `keyboardType` + `secureTextEntry` + `autoCapitalize` + `autoComplete` defaults so callers get the right keyboard for free. `search` injects a leading magnifying-glass icon. Height 48, radius `sm`, padding-x 14. Background `rgba(255,255,255,0.04)`. Border 1px `rgba(255,255,255,0.12)` idle → 1.5px `accent.warm` on focus. Optional leading icon (12px from left). Optional clear button (`<Pressable>` with `accessibilityRole="button"` + 8px hitSlop) shows when `clearable === true` AND value is non-empty. Forwards standard `TextInputProps` via `...rest` for power users (autoFocus, returnKeyType, etc.).
+**Why:** SC-1 + SC-3 + SC-4 — needed for every later form (auth, brand creation, event wizard).
+**Lines added:** ~190
+
+### C.1.2 Verification matrix (10 SC)
+
+| SC | Criterion | Status | Evidence |
+|----|-----------|--------|----------|
+| 1 | 9 component files at `src/components/ui/` | ✅ PASS | `ls src/components/ui/*.tsx` returns 10 (9 new + existing BrandIcons.tsx) |
+| 2 | Each carries an exported Props interface | ✅ PASS | `IconProps`, `MinglaMarkProps`, `SpinnerProps`, `SkeletonProps`, `NativeStatusBarProps`+`WebStatusBarProps`+`StatusBarProps`, `ButtonProps`, `PillProps`, `StatusPillProps`, `InputProps` all exported |
+| 3 | Strictly typed; verification §6.1 + §6.2 pass | ✅ PASS | `npx tsc --noEmit` exits 0; grep for `any|@ts-ignore|@ts-expect-error` returns only 2 matches both inside explanatory comments (Button.tsx:97, StatusPill.tsx:21) — no actual code violations |
+| 4 | Every variant + state from master §7.1 implemented | ✅ PASS | Button: 4 variants × 3 sizes × {idle, hover, focus, press, loading, disabled} states; Pill: 6 variants × {idle, livePulse, reduce-motion}; StatusPill: 7 statuses; Input: 6 variants × {idle, focus, clearable, disabled} |
+| 5 | Reduce-motion fallback in Spinner / Skeleton / Button / Pill | ✅ PASS | Spinner.tsx:51-71 (opacity cycle); Skeleton.tsx:51-66 (static base); Button.tsx:128-143 (opacity 0.7); Pill.tsx:106-127 (dot opacity) |
+| 6 | Token values from designSystem.ts; only allowed hex is MinglaMark + Skeleton-RGBA | ⚠ PASS WITH NOTE | Audit found 6 hex literals: 4 in Icon.tsx (Google brand palette — externally specified, cannot be tokenised); 2 in Button.tsx (`#f0843a`, `#f25656` hover shades — flagged as **D-IMPL-1**, candidate for future `accent.warm.hover` / `semantic.errorHover` tokens). Skeleton uses RGBA only. MinglaMark uses #fb923c/#eb7825 (allowed by SC-6) + #fff (allowed default). All other colours flow through `designSystem.ts` token exports. |
+| 7 | Mingla domain rule: zero "dating" / "match-making" language | ✅ PASS | `grep -riE "dating|match-making|swipe to like" src/components/ui` returns zero matches |
+| 8 | `npx tsc --noEmit` exits 0 | ✅ PASS | Final run after all fixes: `EXIT: 0` |
+| 9 | Forbidden-import grep returns zero matches | ✅ PASS | `grep -rE "from \".*app-mobile|from 'app-mobile" src/components/ui` returns zero |
+| 10 | Sub-phase C.1 section appended to report | ✅ PASS | This section |
+
+**Visual smoke** is intentionally deferred to Sub-phase E (`__styleguide.tsx`). Components are TypeScript-clean and dependency-graph-sound but have not been rendered on a real device or browser. SC-4 (every variant implemented) is verified by reading the code, not by rendering.
+
+### C.1.3 Invariant re-check
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| I-1 | ✅ Preserved | `designSystem.ts` not touched in this tier |
+| I-2 | ✅ Preserved | No auth files touched |
+| I-3 | ✅ Preserved (TS-level); web visual smoke deferred to Sub-phase F | Components use `Platform.OS === 'web'` guards in StatusBar; no native-only API used without web fallback |
+| I-4 | ✅ Preserved | Cross-app forbidden-import grep returns zero |
+| I-5 | ✅ Preserved | Domain-rule grep returns zero; sample text in StatusPill dictionary uses event-organiser language only |
+| I-6 | ✅ Preserved | No `any`, no `@ts-ignore`, no `@ts-expect-error`; tsc strict clean |
+| I-7 | ✅ Preserved | Icon invalid name warns + falls back to square (never throws/null); Button onPress errors caught and dev-logged (production silent — caller responsible for user-visible feedback) |
+| I-8 | ✅ Preserved | No Supabase code touched |
+| I-9 | ✅ Preserved | Reduce-motion wired in 4 of the 4 animated components (Spinner, Skeleton, Button, Pill) |
+| I-10 | ✅ Preserved (N/A this tier) | No currency strings — currency lands in Tier 2 KpiTile / ActionTile |
+
+### C.1.4 Discoveries for orchestrator
+
+| ID | Description | Severity | Action |
+|----|-------------|----------|--------|
+| **D-IMPL-1** | Button hover backgrounds for solid-fill variants (`primary`, `destructive`) hardcode shade hex (`#f0843a`, `#f25656`). Dispatch §3.6 said "+6% alpha" which doesn't apply cleanly to fully-opaque tokens. Hardcoded values were chosen as the smallest deviation. | Low (cosmetic) | Add `accent.warmHover` and `semantic.errorHover` tokens to `designSystem.ts` in a future Sub-phase A revision. Until then, the hex values are inline-commented and tracked here. |
+| **D-IMPL-2** | TypeScript type collision in `StatusBar.tsx`: `NativeStatusBarProps.style` (StatusBarStyle string union) collided with `WebStatusBarProps.style` (`StyleProp<ViewStyle>`). Renamed native prop to `barStyle` to disambiguate. Dispatch §5.5 hadn't anticipated. | Low | Future cycles consuming `<NativeStatusBar />` directly use `barStyle`, not `style`. The default `<StatusBar />` export accepts both fields cleanly. |
+| **D-IMPL-3** | Dispatch §5.8 used `'SOLD OUT'` (with space) as a `StatusPillStatus` value. Renamed to `'SOLD_OUT'` (underscore) so the union is a valid identifier; the rendered label preserves the space. | Low | Update dispatch §5.8 in any future cycle reference. |
+| **D-IMPL-4** | `react-native-reanimated`'s `useReducedMotion` hook returns `boolean` synchronously per v4 docs. Implementation does not need to handle the legacy "fallback to false on detection failure" rule from dispatch §3.7 because the hook never errors at runtime — it falls back to false internally. Comment block in dispatch §3.7 is outdated reference. | Info | None |
+| **D-PROC-1** | Monorepo Metro-port collision: `app-mobile/` and `mingla-business/` both default to Metro port 8081 + similar URL schemes. If a stale `npx expo start` is running in one app's directory, opening the OTHER app's dev client can cross-connect to the wrong Metro server, loading the wrong JS bundle on the right native binary. Symptom: `RNCNetInfo is null` (netinfo only declared in app-mobile) + Reanimated C++ vs JS version mismatch. Founder confirmed cause was working-directory mistake; resolved by `Ctrl+C → cd mingla-business → npx expo start --clear`. | Info | Add to onboarding / dev-setup notes for Mingla Business: "Always confirm Metro is running from `mingla-business/` (not `app-mobile/` or project root) before opening the dev client." Optional future hardening: configure mingla-business to run on port 8082 in `app.config.ts` to physically separate the two. |
+
+### C.1.5 Transition Items
+
+| Marker | Location | Exit condition |
+|--------|----------|----------------|
+| Inline comment block in `Button.tsx` `VARIANT_TOKENS` | Solid-fill hover backgrounds | Add `accent.warmHover` / `semantic.errorHover` tokens to `designSystem.ts` and replace hex literals (D-IMPL-1) |
+| Inline comment block in `Icon.tsx` above `google` renderer | Google brand palette explanation | Permanent — Google requires their palette unchanged |
+
+### C.1.6 Files changed
+
+| Path | Action | Lines |
+|------|--------|-------|
+| `mingla-business/src/components/ui/Icon.tsx` | new | ~290 |
+| `mingla-business/src/components/ui/MinglaMark.tsx` | new | ~55 |
+| `mingla-business/src/components/ui/Spinner.tsx` | new | ~95 |
+| `mingla-business/src/components/ui/Skeleton.tsx` | new | ~110 |
+| `mingla-business/src/components/ui/StatusBar.tsx` | new | ~110 |
+| `mingla-business/src/components/ui/Button.tsx` | new | ~245 |
+| `mingla-business/src/components/ui/Pill.tsx` | new | ~165 |
+| `mingla-business/src/components/ui/StatusPill.tsx` | new | ~75 |
+| `mingla-business/src/components/ui/Input.tsx` | new | ~195 |
+
+**Total:** 9 new files, ~1340 net lines added. Zero files modified, zero deleted.
+
+### C.1.7 Founder action
+
+Tier 1 components are TypeScript-clean and ready for Tier 2 (C.2) consumption. Visual smoke happens in Sub-phase E styleguide — Tier 1 alone has no rendering surface. Authorise Tier 2 (C.2 — IconChrome / GlassChrome / GlassCard / EventCover / KpiTile / ActionTile / EmptyState) when ready.
+
+---
+
+**End of Sub-phase C.1 report.**
+
+
