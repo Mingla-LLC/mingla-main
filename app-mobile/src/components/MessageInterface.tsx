@@ -1535,23 +1535,11 @@ export default function MessageInterface({
         />
       )}
 
-      {/* Mount notifications above the chat-shared ExpandedCardModal portal: RN
-          Modal portals over sibling Views regardless of zIndex/elevation, so a
-          second transparent Modal is the only way to surface toasts on top.
-          pointerEvents="box-none" lets taps pass through to the underlying modal. */}
-      {showExpandedCardFromChat && notifications.length > 0 && (
-        <Modal
-          visible={true}
-          transparent={true}
-          animationType="fade"
-          presentationStyle="overFullScreen"
-          onRequestClose={() => { /* no-op — auto-dismiss handles cleanup */ }}
-        >
-          <View style={styles.notificationsContainer} pointerEvents="box-none">
-            {notifications.map((notification) => renderNotificationCard(notification, true))}
-          </View>
-        </Modal>
-      )}
+      {/* [ORCH-0696 F-13 lock-in] Shape 2a Modal hack deleted post-bottom-sheet
+          conversion verified by operator live-fire on iOS + Android (2026-04-29).
+          DO NOT re-introduce — toasts now render naturally above @gorhom/bottom-sheet
+          (Animated.View, not native Modal portal). The notifications panel below
+          (around line 1632) remains as the canonical single mount point. */}
 
       {/* More options bottom sheet — ORCH-0435 */}
       <Modal
