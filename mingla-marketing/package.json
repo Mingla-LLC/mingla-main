@@ -1,0 +1,32 @@
+{
+  "name": "mingla-marketing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mingla marketing sites — usemingla.com (umbrella) + explore.usemingla.com + business.usemingla.com. Single Next.js 15 codebase, subdomain-routed via middleware.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "15.5.15",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "motion": "12.38.0",
+    "clsx": "2.1.1",
+    "tailwind-merge": "2.5.4"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "@types/node": "22.9.0",
+    "@types/react": "19.0.1",
+    "@types/react-dom": "19.0.1",
+    "tailwindcss": "4.2.4",
+    "@tailwindcss/postcss": "4.2.4",
+    "postcss": "8.5.10",
+    "eslint": "9.39.4",
+    "eslint-config-next": "15.5.15"
+  }
+}

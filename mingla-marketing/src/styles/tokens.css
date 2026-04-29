@@ -1,0 +1,171 @@
+/*
+ * Mingla design tokens — ported from app-mobile/src/constants/designSystem.ts
+ *
+ * SINGLE SOURCE OF TRUTH for all visual values across the marketing sites.
+ * Every component MUST consume these via var(--mingla-*) or via the JS
+ * mirror at src/lib/tokens.ts. Never hardcode color/spacing/radius.
+ *
+ * Constitutional #2 (one owner per truth) compliance.
+ */
+
+:root {
+  /* ───────────────────────── COLORS ───────────────────────── */
+
+  /* Primary brand (orange ramp — same as orange ramp by design) */
+  --mingla-primary-50: #fff7ed;
+  --mingla-primary-100: #ffedd5;
+  --mingla-primary-200: #fed7aa;
+  --mingla-primary-300: #fdba74;
+  --mingla-primary-400: #fb923c;
+  --mingla-primary-500: #f97316;
+  --mingla-primary-600: #ea580c;
+  --mingla-primary-700: #c2410c;
+  --mingla-primary-800: #9a3412;
+  --mingla-primary-900: #7c2d12;
+
+  /* Accent — the warm orange used for selected pills, CTAs, glow.
+     Intentionally different from primary-500. */
+  --mingla-accent: #eb7825;
+
+  /* Semantic */
+  --mingla-success: #22c55e;
+  --mingla-warning: #f59e0b;
+  --mingla-error: #ef4444;
+  --mingla-error-bright: #f87171;
+
+  /* Gray ramp */
+  --mingla-gray-50: #f9fafb;
+  --mingla-gray-100: #f3f4f6;
+  --mingla-gray-200: #e5e7eb;
+  --mingla-gray-300: #d1d5db;
+  --mingla-gray-400: #9ca3af;
+  --mingla-gray-500: #6b7280;
+  --mingla-gray-600: #4b5563;
+  --mingla-gray-700: #374151;
+  --mingla-gray-800: #1f2937;
+  --mingla-gray-900: #111827;
+
+  /* Canvas — the dark plum-charcoal from glass.profile.screenBg */
+  --mingla-canvas: rgb(20 17 19);
+  --mingla-canvas-rgb: 20 17 19;
+
+  /* Light-mode backgrounds (kept available even though dark-default) */
+  --mingla-bg-primary: #ffffff;
+  --mingla-bg-secondary: #f9fafb;
+  --mingla-bg-tertiary: #f3f4f6;
+  --mingla-warm-glow: #fff9f5;
+
+  /* Text */
+  --mingla-text-primary: #111827;
+  --mingla-text-secondary: #4b5563;
+  --mingla-text-tertiary: #6b7280;
+  --mingla-text-inverse: #ffffff;
+
+  /* ───────────────────────── SPACING ───────────────────────── */
+  --mingla-space-xxs: 2px;
+  --mingla-space-xs: 4px;
+  --mingla-space-sm: 8px;
+  --mingla-space-md: 16px;
+  --mingla-space-lg: 24px;
+  --mingla-space-xl: 32px;
+  --mingla-space-xxl: 48px;
+
+  /* ───────────────────────── RADIUS ───────────────────────── */
+  --mingla-radius-sm: 8px;
+  --mingla-radius-md: 12px;
+  --mingla-radius-lg: 16px;
+  --mingla-radius-xl: 24px;
+  --mingla-radius-full: 9999px;
+
+  /* ───────────────────────── TYPOGRAPHY ─────────────────────── */
+  --mingla-font-xs: 12px;
+  --mingla-font-sm: 14px;
+  --mingla-font-md: 16px;
+  --mingla-font-lg: 18px;
+  --mingla-font-xl: 20px;
+  --mingla-font-xxl: 24px;
+  --mingla-font-xxxl: 32px;
+  --mingla-font-tagline: 17px;
+
+  --mingla-line-xs: 16px;
+  --mingla-line-sm: 20px;
+  --mingla-line-md: 24px;
+  --mingla-line-lg: 28px;
+  --mingla-line-xl: 32px;
+  --mingla-line-xxl: 36px;
+  --mingla-line-xxxl: 48px;
+  --mingla-line-tagline: 26px;
+
+  /* Font weights */
+  --mingla-weight-regular: 400;
+  --mingla-weight-medium: 500;
+  --mingla-weight-semibold: 600;
+  --mingla-weight-bold: 700;
+
+  /* ───────────────────────── SHADOWS ───────────────────────── */
+  /* Translated from RN shadow shape → CSS box-shadow strings.
+     RN: { offset:{w,h}, radius, opacity, color } → "h-offset v-offset blur color@opacity" */
+  --mingla-shadow-sm: 0 1px 3px rgb(0 0 0 / 0.10);
+  --mingla-shadow-md: 0 4px 6px rgb(0 0 0 / 0.10);
+  --mingla-shadow-lg: 0 10px 15px rgb(0 0 0 / 0.10);
+  --mingla-shadow-xl: 0 20px 25px rgb(0 0 0 / 0.10);
+  --mingla-shadow-glass: 0 8px 24px rgb(0 0 0 / 0.08);
+  --mingla-shadow-glass-light: 0 4px 12px rgb(0 0 0 / 0.06);
+
+  /* ───────────────────────── ANIMATIONS ─────────────────────── */
+  --mingla-duration-fast: 150ms;
+  --mingla-duration-normal: 300ms;
+  --mingla-duration-slow: 500ms;
+
+  --mingla-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --mingla-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --mingla-ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ───────────────────────── GLASS — onboarding ─────────────── */
+  --mingla-glass-surface-bg: rgb(255 255 255 / 0.55);
+  --mingla-glass-surface-border: rgb(255 255 255 / 0.35);
+  --mingla-glass-surface-elevated-bg: rgb(255 255 255 / 0.70);
+  --mingla-glass-surface-elevated-border: rgb(255 255 255 / 0.45);
+  --mingla-glass-button-secondary-bg: rgb(255 255 255 / 0.40);
+  --mingla-glass-button-secondary-border: rgb(255 255 255 / 0.50);
+  --mingla-glass-blur-light: 40px;
+
+  /* ───────────────────────── GLASS — chrome (audience switcher consumer) */
+  --mingla-chrome-tint-floor: rgb(12 14 18 / 0.48);
+  --mingla-chrome-tint-pressed: rgb(12 14 18 / 0.58);
+  --mingla-chrome-hairline: rgb(255 255 255 / 0.06);
+  --mingla-chrome-fallback: rgb(22 24 28 / 0.94);
+  --mingla-chrome-blur: 28px;
+  --mingla-chrome-shadow: 0 4px 12px rgb(0 0 0 / 0.28);
+
+  --mingla-chrome-active-tint: rgb(235 120 37 / 0.28);
+  --mingla-chrome-active-border: rgb(235 120 37 / 0.55);
+  --mingla-chrome-active-glow-color: var(--mingla-accent);
+  --mingla-chrome-active-glow-opacity: 0.35;
+  --mingla-chrome-active-glow-radius: 14px;
+  --mingla-chrome-active-icon: #ffffff;
+  --mingla-chrome-active-label: #ffffff;
+
+  --mingla-chrome-inactive-icon: rgb(255 255 255 / 0.65);
+  --mingla-chrome-inactive-icon-strong: rgb(255 255 255 / 0.88);
+  --mingla-chrome-inactive-label: rgb(255 255 255 / 0.55);
+
+  --mingla-chrome-button-size: 44px;
+  --mingla-chrome-button-radius: 22px;
+  --mingla-chrome-switcher-height: 44px;
+  --mingla-chrome-switcher-radius: 22px;
+  --mingla-chrome-switcher-px: 6px;
+  --mingla-chrome-switcher-py: 4px;
+  --mingla-chrome-pill-height: 36px;
+  --mingla-chrome-pill-radius: 18px;
+  --mingla-chrome-pill-px: 12px;
+  --mingla-chrome-pill-px-active: 14px;
+
+  /* ───────────────────────── GLASS — hero glow (Phase 2+ heavy use) */
+  --mingla-hero-glow-center: rgb(235 120 37 / 0.28);
+  --mingla-hero-glow-mid: rgb(235 120 37 / 0.12);
+  --mingla-hero-glow-edge: rgb(235 120 37 / 0);
+  --mingla-hero-glow-radius: 180px;
+  --mingla-hero-gradient-from: rgb(235 120 37 / 0.10);
+  --mingla-hero-gradient-to: rgb(20 17 19 / 0);
+}

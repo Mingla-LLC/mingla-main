@@ -1,0 +1,105 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+
+/*
+ * Tailwind v4 @theme bridge — exposes Mingla design tokens as Tailwind
+ * utilities (e.g. text-mingla-accent, rounded-mingla-xl, p-mingla-md).
+ *
+ * Naming convention: mingla-{token-name} so utilities don't collide with
+ * Tailwind defaults. Components can use either:
+ *   - Tailwind utility:    className="bg-mingla-accent rounded-mingla-xl"
+ *   - CSS variable direct: style={{ background: 'var(--mingla-accent)' }}
+ *   - JS import:           import { colors } from '@/lib/tokens'
+ *
+ * All three resolve to the same value. tokens.css is the source of truth.
+ */
+@theme inline {
+  /* Colors */
+  --color-mingla-accent: var(--mingla-accent);
+  --color-mingla-canvas: var(--mingla-canvas);
+  --color-mingla-warm-glow: var(--mingla-warm-glow);
+
+  --color-mingla-primary-50: var(--mingla-primary-50);
+  --color-mingla-primary-100: var(--mingla-primary-100);
+  --color-mingla-primary-200: var(--mingla-primary-200);
+  --color-mingla-primary-300: var(--mingla-primary-300);
+  --color-mingla-primary-400: var(--mingla-primary-400);
+  --color-mingla-primary-500: var(--mingla-primary-500);
+  --color-mingla-primary-600: var(--mingla-primary-600);
+  --color-mingla-primary-700: var(--mingla-primary-700);
+  --color-mingla-primary-800: var(--mingla-primary-800);
+  --color-mingla-primary-900: var(--mingla-primary-900);
+
+  --color-mingla-success: var(--mingla-success);
+  --color-mingla-warning: var(--mingla-warning);
+  --color-mingla-error: var(--mingla-error);
+
+  /* Spacing */
+  --spacing-mingla-xxs: var(--mingla-space-xxs);
+  --spacing-mingla-xs: var(--mingla-space-xs);
+  --spacing-mingla-sm: var(--mingla-space-sm);
+  --spacing-mingla-md: var(--mingla-space-md);
+  --spacing-mingla-lg: var(--mingla-space-lg);
+  --spacing-mingla-xl: var(--mingla-space-xl);
+  --spacing-mingla-xxl: var(--mingla-space-xxl);
+
+  /* Radius */
+  --radius-mingla-sm: var(--mingla-radius-sm);
+  --radius-mingla-md: var(--mingla-radius-md);
+  --radius-mingla-lg: var(--mingla-radius-lg);
+  --radius-mingla-xl: var(--mingla-radius-xl);
+  --radius-mingla-full: var(--mingla-radius-full);
+
+  /* Font sizes */
+  --font-size-mingla-xs: var(--mingla-font-xs);
+  --font-size-mingla-sm: var(--mingla-font-sm);
+  --font-size-mingla-md: var(--mingla-font-md);
+  --font-size-mingla-lg: var(--mingla-font-lg);
+  --font-size-mingla-xl: var(--mingla-font-xl);
+  --font-size-mingla-xxl: var(--mingla-font-xxl);
+  --font-size-mingla-xxxl: var(--mingla-font-xxxl);
+
+  /* Font families (set in app/layout.tsx via next/font) */
+  --font-family-mingla-serif: var(--font-fraunces, ui-serif, Georgia, serif);
+  --font-family-mingla-sans: var(--font-inter, ui-sans-serif, system-ui, sans-serif);
+}
+
+/* ─────────────────────── Base + dark-mode-default ─────────────────────── */
+
+html {
+  background-color: var(--mingla-canvas);
+  color: var(--mingla-text-inverse);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-family-mingla-sans);
+  background-color: var(--mingla-canvas);
+  color: var(--mingla-text-inverse);
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* Editorial serif headings by default — page-level overrides allowed */
+h1, h2, h3 {
+  font-family: var(--font-family-mingla-serif);
+  font-weight: var(--mingla-weight-semibold);
+  letter-spacing: -0.02em;
+}
+
+/* Selection */
+::selection {
+  background-color: var(--mingla-accent);
+  color: white;
+}
+
+/* Reduce motion respect */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
