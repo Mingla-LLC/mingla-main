@@ -435,7 +435,7 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.70)",
   },
   stepLabelTextActive: {
-    color: "rgba(255,255,255,0.10)",
+    color: "#ffffff",
   },
   locationPin: {
     marginLeft: 2,

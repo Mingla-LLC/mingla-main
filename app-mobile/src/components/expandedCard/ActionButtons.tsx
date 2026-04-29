@@ -802,13 +802,13 @@ export default function ActionButtons({
           disabled={isSaving || isSaved}
         >
           {isSaving ? (
-            <ActivityIndicator size="small" color="rgba(255,255,255,0.10)" />
+            <ActivityIndicator size="small" color="#ffffff" />
           ) : (
             <>
               <Icon
                 name={isSaved ? "bookmark" : "bookmark-outline"}
                 size={20}
-                color="rgba(255,255,255,0.10)"
+                color="#ffffff"
               />
               <Text style={styles.saveButtonText}>
                 {isSaved ? t('expanded_details:action_buttons.saved') : t('expanded_details:action_buttons.save')}
@@ -830,13 +830,13 @@ export default function ActionButtons({
           disabled={isScheduling || isScheduled}
         >
           {isScheduling ? (
-            <ActivityIndicator size="small" color="rgba(255,255,255,0.10)" />
+            <ActivityIndicator size="small" color="#ffffff" />
           ) : (
             <>
               <Icon
                 name={isScheduled ? "checkmark-circle" : "calendar-outline"}
                 size={20}
-                color="rgba(255,255,255,0.10)"
+                color="#ffffff"
               />
               <Text style={styles.scheduleButtonText}>
                 {isScheduled ? t('expanded_details:action_buttons.scheduled') : t('expanded_details:action_buttons.schedule')}
@@ -866,7 +866,7 @@ export default function ActionButtons({
           onPress={handlePoliciesAndReservations}
           activeOpacity={0.8}
         >
-          <Icon name="globe-outline" size={18} color="rgba(255,255,255,0.10)" />
+          <Icon name="globe-outline" size={18} color="#ffffff" />
           <Text style={styles.policiesButtonText}>
             {t('expanded_details:action_buttons.policies_reservations')}
           </Text>
@@ -971,7 +971,7 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.10)",
+    color: "#ffffff",
   },
   actionButtonDisabled: {
     opacity: 0.6,
@@ -993,7 +993,7 @@ const styles = StyleSheet.create({
   scheduleButtonText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.10)",
+    color: "#ffffff",
   },
   shareIconButton: {
     width: 48,
@@ -1017,7 +1017,7 @@ const styles = StyleSheet.create({
   policiesButtonText: {
     fontSize: 15,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.10)",
+    color: "#ffffff",
   },
   shareButton: {
     flexDirection: "row",
@@ -1171,7 +1171,7 @@ const styles = StyleSheet.create({
   openingHoursTitle: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#333333",
+    color: "#ffffff",
     flex: 1,
   },
   openNowBadge: {

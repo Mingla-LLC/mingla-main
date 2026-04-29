@@ -123,7 +123,7 @@ export default function ImageGallery({
               onPress={goToPrevious}
               activeOpacity={0.7}
             >
-              <Icon name="chevron-back" size={20} color="rgba(255,255,255,0.10)" />
+              <Icon name="chevron-back" size={20} color="#ffffff" />
             </TouchableOpacity>
           )}
           {currentIndex < images.length - 1 && (
@@ -132,7 +132,7 @@ export default function ImageGallery({
               onPress={goToNext}
               activeOpacity={0.7}
             >
-              <Icon name="chevron-forward" size={20} color="rgba(255,255,255,0.10)" />
+              <Icon name="chevron-forward" size={20} color="#ffffff" />
             </TouchableOpacity>
           )}
         </>

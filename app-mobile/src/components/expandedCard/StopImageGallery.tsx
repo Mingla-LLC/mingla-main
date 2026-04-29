@@ -137,7 +137,7 @@ export function StopImageGallery({ images, onImagePress }: StopImageGalleryProps
 
           {/* Photo counter pill — top right */}
           <View style={styles.counterPill}>
-            <Icon name="images-outline" size={10} color="rgba(255,255,255,0.10)" />
+            <Icon name="images-outline" size={10} color="#ffffff" />
             <Text style={styles.counterText}>{currentIndex + 1}/{images.length}</Text>
           </View>
         </>
