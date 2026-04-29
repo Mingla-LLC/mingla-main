@@ -13,6 +13,14 @@ export function useIsPlaceOpen(
   openingHours:
     | string
     | { open_now?: boolean; weekday_text?: string[] }
+    | {
+        // [ORCH-0649] Google Places v1 shape — canonical in place_pool today.
+        openNow?: boolean;
+        periods?: unknown[];
+        nextOpenTime?: string;
+        nextCloseTime?: string;
+        weekdayDescriptions?: string[];
+      }
     | Record<string, string>
     | string[]
     | null

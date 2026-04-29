@@ -2,6 +2,9 @@
   "name": "mingla-scripts",
   "private": true,
   "type": "module",
+  "scripts": {
+    "validate:categories": "node validate-category-consistency.mjs"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2",
     "openai": "^4"

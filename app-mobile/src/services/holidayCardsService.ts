@@ -1,4 +1,13 @@
-import { supabase, supabaseUrl } from "./supabase";
+// ORCH-0570 Phase 1: `getHolidayCards()` and `getHolidayCardsWithMeta()` were
+// removed — both had zero call sites across the repo. The `get-holiday-cards`
+// edge function they wrapped was deleted in the same commit.
+//
+// This file is retained for the `HolidayCardsResponse` and `HolidayCard` type
+// definitions, which ARE imported externally (usePairedCards.ts,
+// personHeroCardsService.ts).
+//
+// ORCH-0684 HF-2 cleanup: dropped unused `supabase, supabaseUrl` re-imports
+// per Constitution #8. The original ORCH-0573 backlog comment is now resolved.
 
 export interface HolidayCard {
   id: string;
@@ -25,79 +34,16 @@ export interface HolidayCard {
   experienceType: string | null;
   categories: string[] | null;
   shoppingList: unknown[] | null;
+  // ORCH-0684 telemetry passthrough — additive optional fields, not consumed by current UI
+  isOpenNow?: boolean | null;
+  distanceM?: number | null;
+  signalId?: string | null;
+  signalScore?: number | null;
 }
 
 export interface HolidayCardsResponse {
   cards: HolidayCard[];
   hasMore: boolean;
-}
-
-export async function getHolidayCards(params: {
-  personId: string;
-  holidayKey: string;
-  categorySlugs: string[];
-  location: { latitude: number; longitude: number };
-  linkedUserId?: string;
-}): Promise<HolidayCard[]> {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData?.session?.access_token;
-  if (!token) throw new Error("Not authenticated");
-
-  const response = await fetch(
-    `${supabaseUrl}/functions/v1/get-holiday-cards`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(params),
-    }
-  );
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || "Failed to fetch holiday cards");
-  }
-
-  const data = await response.json();
-  return data.cards ?? [];
-}
-
-export async function getHolidayCardsWithMeta(params: {
-  personId: string;
-  holidayKey: string;
-  categorySlugs: string[];
-  location: { latitude: number; longitude: number };
-  linkedUserId?: string;
-  description?: string;
-  mode?: "holiday" | "hero" | "generate_more";
-  excludeCardIds?: string[];
-}): Promise<HolidayCardsResponse> {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData?.session?.access_token;
-  if (!token) throw new Error("Not authenticated");
-
-  const response = await fetch(
-    `${supabaseUrl}/functions/v1/get-holiday-cards`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(params),
-    }
-  );
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || "Failed to fetch holiday cards");
-  }
-
-  const data = await response.json();
-  return {
-    cards: data.cards ?? [],
-    hasMore: data.hasMore ?? false,
-  };
+  // ORCH-0684 D-Q1: optional empty-state explainer mirroring ORCH-0677 contract.
+  summary?: { emptyReason: string };
 }

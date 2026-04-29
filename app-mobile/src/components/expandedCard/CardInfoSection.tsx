@@ -13,8 +13,8 @@ interface CardInfoSectionProps {
   categoryIcon?: string;
   tags?: string[];
   rating?: number;
-  distance?: string;
-  travelTime?: string;
+  distance?: string | null;
+  travelTime?: string | null;
   travelMode?: string;
   measurementSystem?: "Metric" | "Imperial";
   priceRange?: string;
@@ -135,13 +135,15 @@ export default function CardInfoSection({
             <Text style={styles.metricPillText}>{rating.toFixed(1)}</Text>
           </View>
         )}
-        {distance && (
+        {/* ORCH-0659: honest null propagation; no "nearby" fallback. */}
+        {distance != null && (
           <View style={styles.metricPill}>
             <Icon name="location-outline" size={12} color="#eb7825" />
-            <Text style={styles.metricPillText}>{parseAndFormatDistance(distance, measurementSystem) || t('expanded_details:card_info.nearby')}</Text>
+            <Text style={styles.metricPillText}>{parseAndFormatDistance(distance, measurementSystem)}</Text>
           </View>
         )}
-        {travelTime && travelTime !== '0 min' && (
+        {/* ORCH-0660: travelMode prop now threaded; icon matches user's selected mode. */}
+        {travelTime != null && (
           <View style={styles.metricPill}>
             <Icon name={getTravelModeIcon(travelMode)} size={12} color="#eb7825" />
             <Text style={styles.metricPillText}>{travelTime}</Text>

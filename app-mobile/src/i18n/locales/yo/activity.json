@@ -128,6 +128,7 @@
     "pickADate": "Yan Ọjọ́",
     "changeTime": "Yí Àkókò Padà",
     "closedAtTime": "Ibi yìí ti pa mọ́ ní àkókò yìí. Jọ̀wọ́ yan àkókò mìíràn.",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}. Jọ̀wọ́ ṣàyẹ̀wò àkókò ṣíṣí kí o tó ṣètò.",
     "selectDate": "Yan Ọjọ́",
     "selectTime": "Yan Àkókò",

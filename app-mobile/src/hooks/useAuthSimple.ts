@@ -15,7 +15,8 @@ import { queryClient } from "../config/queryClient";
 import { deckService, DeckResponse } from "../services/deckService";
 import { buildDeckQueryKey } from "./useDeckCards";
 import { normalizeCategoryArray } from "../utils/categoryUtils";
-import { ExperiencesService } from "../services/experiencesService";
+// ORCH-0640 ch09: experiencesService DELETED. getUserPreferences retained on preferencesService.
+import { PreferencesService } from "../services/preferencesService";
 
 
 // Module-level flag — shared across ALL instances of useAuthSimple.
@@ -105,7 +106,7 @@ export const useAuthSimple = () => {
           // Skips new users (empty prefs → handled by ORCH-0386 onboarding).
           (async () => {
             try {
-              const prefs = await ExperiencesService.getUserPreferences(session.user.id);
+              const prefs = await PreferencesService.getUserPreferences(session.user.id);
               if (!prefs || !prefs.categories?.length) return; // New user or empty — skip
 
               // Pre-seed preferences cache (saves ~200ms re-fetch post-transition)

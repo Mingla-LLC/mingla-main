@@ -35,7 +35,16 @@
     "schedule_anyway": "Vẫn lên lịch",
     "scheduled_toast": "Đã lên lịch! {{title}} đã được thêm vào lịch của bạn",
     "closed_message": "Địa điểm này đóng cửa vào ngày và giờ đã chọn. Nhấn \"Lên lịch\" để chọn thời gian khác.",
-    "share_prompt": "Chia sẻ {{title}} với bạn bè"
+    "share_prompt": "Chia sẻ {{title}} với bạn bè",
+    "back_to_date": "Quay lại ngày",
+    "confirm_date_title": "Đã chọn ngày",
+    "confirm_date_message": "Bạn đã chọn {{date}}. Tiếp tục chọn giờ?",
+    "change_date": "Đổi ngày",
+    "pick_time": "Chọn giờ",
+    "unverified_hours_title": "Không có giờ mở cửa",
+    "unverified_hours_message": "Chúng tôi không thể xác minh giờ mở cửa của {{venueName}} vào lúc đó. Vẫn lên lịch?",
+    "error_past_date_title": "Chọn thời gian trong tương lai",
+    "error_past_date_message": "Thời gian đó đã qua. Vui lòng chọn thời gian trong tương lai."
   },
   "busyness": {
     "traffic": "Giao thông",

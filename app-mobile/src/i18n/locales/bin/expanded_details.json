@@ -35,7 +35,16 @@
     "schedule_anyway": "Rhan Ẹghẹ Vbe Ọ Ma",
     "scheduled_toast": "A ya rhan ẹghẹ! A ya mu {{title}} rrie kalẹnda ẹre",
     "closed_message": "A ya khui ehe na vbe ẹdẹ ne ẹghẹ ne u rhie. Kẹ \"Rhan ẹghẹ\" ne u gha rhie ẹghẹ nọhọ.",
-    "share_prompt": "Tiẹ {{title}} ne ọre"
+    "share_prompt": "Tiẹ {{title}} ne ọre",
+    "back_to_date": "Gha rhulẹ ye ẹdẹ",
+    "confirm_date_title": "Ẹdẹ na zẹ",
+    "confirm_date_message": "U zẹ {{date}}. U khian gha kpe ye ẹgheghe ra?",
+    "change_date": "Khian ẹdẹ",
+    "pick_time": "Zẹ ẹgheghe",
+    "unverified_hours_title": "Aghae oghae I rhirhi",
+    "unverified_hours_message": "I ma fian re aghae oghae {{venueName}} ye ẹgheghe na. U ya gha lae ra?",
+    "error_past_date_title": "Zẹ ẹgheghe ne ọ rre ne odẹ",
+    "error_past_date_message": "Ẹgheghe na guolo nẹ. Zẹ ẹgheghe ne ọ rre ne odẹ."
   },
   "busyness": {
     "traffic": "Ọda Imọtọ",

@@ -95,6 +95,19 @@ interface CollaborationSessionsProps {
   } | null;
   openSessionId?: string | null;
   onOpenSessionHandled?: () => void;
+  /**
+   * ORCH-0589 — when true, this component renders ONLY its modals (create / invite /
+   * session-view / paywall / country-picker). The pill-bar UI is suppressed because the
+   * host (HomePage via GlassTopBar → GlassSessionSwitcher) now renders the pills itself.
+   * Existing callers that use the full UI should omit this prop.
+   */
+  modalsOnlyMode?: boolean;
+  /**
+   * ORCH-0589 — nonce that, when it changes, programmatically opens the create-session
+   * modal. Used by the host to wire GlassSessionSwitcher's "+" pill to the existing
+   * create flow without re-implementing it. Null/undefined = no trigger.
+   */
+  createTriggerNonce?: number | null;
 }
 
 // Helper function to generate initials from a name
@@ -123,14 +136,19 @@ export default function CollaborationSessions({
   inviteModalTrigger = null,
   openSessionId = null,
   onOpenSessionHandled,
+  modalsOnlyMode = false,
+  createTriggerNonce = null,
 }: CollaborationSessionsProps) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation(['modals', 'common']);
   const { showToast } = useToast();
   const scrollViewRef = useRef<ScrollView>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
-  const coachCreate = useCoachMark(4, 20);
-  const coachSolo = useCoachMark(6, 20);
+  // ORCH-0635 fix: coach-mark hooks for steps 4 (create pill) and 5 (solo pill) were
+  // moved to HomePage.tsx and forwarded through GlassSessionSwitcher. This component
+  // runs in `modalsOnlyMode` on Home, so its internal pill bar never mounts — the
+  // refs here never attached. Hooks removed to prevent duplicate step-ID registration
+  // and spurious __DEV__ warnings.
   const [showRightArrow, setShowRightArrow] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -185,6 +203,9 @@ export default function CollaborationSessions({
     }
   }, [showCreateModal]);
 
+  // ORCH-0589 trigger ref — consumed by the useEffect declared lower, after useSessionCreationGate.
+  const lastCreateTriggerRef = useRef<number | string | null>(null);
+
   // Phone input state
   const [phoneNumber, setPhoneNumber] = useState('');
   const [selectedCountry, setSelectedCountry] = useState<CountryData>(
@@ -199,6 +220,22 @@ export default function CollaborationSessions({
 
   // Session creation gate — tier-based limit enforcement
   const { canCreateSession: gateAllows, maxSessions, isUnlimited } = useSessionCreationGate();
+
+  // ORCH-0589 — open the create-session modal when the host signals via nonce change.
+  // ORCH-0610 fix: the initial nonce from HomePage is 0 (not null), so the previous
+  // `== null` guard let mount through and opened the modal on cold start. Reject any
+  // falsy nonce (null / undefined / 0) — only positive nonces indicate a real trigger.
+  useEffect(() => {
+    if (!createTriggerNonce) return;
+    if (lastCreateTriggerRef.current === createTriggerNonce) return;
+    lastCreateTriggerRef.current = createTriggerNonce;
+    HapticFeedback.buttonPress();
+    if (!gateAllows && !isUnlimited) {
+      setShowPaywall(true);
+      return;
+    }
+    setShowCreateModal(true);
+  }, [createTriggerNonce, gateAllows, isUnlimited]);
 
   // Build E.164 phone
   const phoneRawDigits = phoneNumber.replace(/\D/g, '');
@@ -560,12 +597,14 @@ export default function CollaborationSessions({
     );
   };
 
-  return (
-    <View style={styles.container}>
+  // ORCH-0589 — legacy pill-bar UI (preserved for callers that don't use the new
+  // floating GlassSessionSwitcher). When modalsOnlyMode, we skip this whole block
+  // and render only the modal sub-tree below.
+  const pillBar = modalsOnlyMode ? null : (
+    <>
       {/* Fixed pills */}
       <View collapsable={false}>
         <TouchableOpacity
-          ref={coachSolo.targetRef as any}
           style={[styles.pill, isSoloMode && styles.soloPill]}
           onPress={() => {
             onSoloSelect();
@@ -583,7 +622,6 @@ export default function CollaborationSessions({
 
       <View collapsable={false}>
         <TouchableOpacity
-          ref={coachCreate.targetRef as any}
           style={[styles.pill, styles.createPill]}
           onPress={() => {
             HapticFeedback.buttonPress();
@@ -628,6 +666,12 @@ export default function CollaborationSessions({
           <Icon name="chevron-forward" size={16} color="#6B7280" />
         </TouchableOpacity>
       )}
+    </>
+  );
+
+  return (
+    <View style={modalsOnlyMode ? styles.modalsOnlyContainer : styles.container}>
+      {pillBar}
 
       {/* Create Session Modal */}
       <Modal
@@ -1188,6 +1232,11 @@ export default function CollaborationSessions({
 }
 
 const styles = StyleSheet.create({
+  // ORCH-0589: when modalsOnlyMode is true, the component is a pure modal host — no layout footprint.
+  modalsOnlyContainer: {
+    width: 0,
+    height: 0,
+  },
   container: {
     flexDirection: 'row',
     alignItems: 'center',

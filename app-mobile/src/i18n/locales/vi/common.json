@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "Đi dạo",
   "unknown": "Không rõ",
   "time_just_now": "Vừa xong",
-
   "toast_invite_sent": "Đã gửi lời mời!",
   "toast_invite_sent_msg": "Đã gửi lời mời cộng tác đến {{name}}",
   "toast_member_promoted": "Đã thăng cấp thành viên",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "Đã thêm vào {{count}} bảng!",
   "toast_added_board_msg": "{{name}} đã được thêm vào bảng cộng tác",
   "toast_added_boards_msg": "{{name}} đã được thêm vào {{count}} bảng cộng tác",
-  "toast_card_shared": "Đã chia sẻ thẻ!",
-  "toast_card_shared_msg": "Trải nghiệm đã lưu đã được chia sẻ với {{name}}",
   "toast_friend_removed": "Đã xóa bạn bè",
   "toast_friend_removed_msg": "{{name}} đã bị xóa khỏi danh sách bạn bè",
   "toast_user_blocked": "Đã chặn người dùng",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "vì hành vi quấy rối",
   "toast_report_reason_other": "vì vi phạm quy tắc cộng đồng",
   "user_fallback": "Người dùng",
-
   "calendar_access_needed": "Cần quyền truy cập lịch",
   "calendar_access_needed_msg": "Mingla cần quyền truy cập lịch để thêm sự kiện. Vui lòng bật trong cài đặt thiết bị.",
   "open_settings": "Mở cài đặt",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "Đã xảy ra lỗi khi thêm sự kiện. Vui lòng thử lại.",
   "added_to_calendar": "Đã thêm",
   "add_to_calendar": "Thêm vào lịch",
-
   "confidence_excellent": "Phù hợp xuất sắc",
   "confidence_good": "Phù hợp tốt",
   "confidence_fair": "Phù hợp khá",
@@ -157,22 +152,28 @@
   "match_time": "Thời gian",
   "match_popularity": "Độ phổ biến",
   "match_factors": "Yếu tố phù hợp",
-
   "stat_views": "Lượt xem",
   "stat_likes": "Thích",
   "stat_saves": "Lưu",
   "stat_shares": "Chia sẻ",
   "review_count_one": "{{count}} đánh giá",
   "review_count_other": "{{count}} đánh giá",
-
   "profile_update_failed": "Cập nhật hồ sơ thất bại",
   "profile_update_failed_msg": "Không thể cập nhật hồ sơ. Vui lòng thử lại.",
   "saved_experience": "Trải nghiệm đã lưu",
   "experience": "Trải nghiệm",
   "solo_experience": "Trải nghiệm cá nhân",
   "untitled": "Chưa đặt tên",
-
   "error_sign_in_save": "Vui lòng đăng nhập để lưu trải nghiệm",
   "error_boundary_title": "Đã xảy ra lỗi",
-  "error_boundary_message": "Chúng tôi gặp lỗi không mong muốn. Vui lòng thử lại."
+  "error_boundary_message": "Chúng tôi gặp lỗi không mong muốn. Vui lòng thử lại.",
+  "category_icebreakers": "Phá vỡ băng",
+  "category_drinks_and_music": "Đồ uống & Âm nhạc",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Bình dị",
+  "category_upscale_fine_dining": "Ẩm thực cao cấp",
+  "category_movies": "Phim",
+  "category_theatre": "Nhà hát",
+  "category_brunch_lunch_casual": "Brunch, trưa & bình dị",
+  "category_movies_theatre": "Phim & Nhà hát"
 }

@@ -35,7 +35,16 @@
     "schedule_anyway": "फिर भी शेड्यूल करें",
     "scheduled_toast": "शेड्यूल हो गया! {{title}} आपके कैलेंडर में जोड़ दिया गया",
     "closed_message": "चयनित तारीख और समय पर यह जगह बंद है। दूसरा समय चुनने के लिए \"शेड्यूल\" टैप करें।",
-    "share_prompt": "{{title}} दोस्तों के साथ साझा करें"
+    "share_prompt": "{{title}} दोस्तों के साथ साझा करें",
+    "back_to_date": "तारीख पर वापस",
+    "confirm_date_title": "तारीख चुनी गई",
+    "confirm_date_message": "आपने {{date}} चुना। समय चयन पर जाएं?",
+    "change_date": "तारीख बदलें",
+    "pick_time": "समय चुनें",
+    "unverified_hours_title": "समय अनुपलब्ध",
+    "unverified_hours_message": "हम उस समय के लिए {{venueName}} के समय की पुष्टि नहीं कर सके। फिर भी शेड्यूल करें?",
+    "error_past_date_title": "भविष्य का समय चुनें",
+    "error_past_date_message": "यह समय बीत चुका है। कृपया भविष्य का समय चुनें।"
   },
   "busyness": {
     "traffic": "ट्रैफ़िक",

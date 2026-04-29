@@ -35,7 +35,8 @@ const CRITICAL_QUERY_KEYS = [
   subscriptionKeys.all,           // subscription status
   ['calendarEntries'],            // calendar entries
   ['userPreferences'],            // user preferences
-  ['discover-experiences'],       // discover grid experiences
+  // ORCH-0640 ch09: discover-experiences edge fn DELETED (DEC-051 orphan).
+  // Discover screen is Ticketmaster-only; no query key to refresh.
   ['map-cards-singles'],          // map view single cards
   ['map-cards-curated'],          // map view curated cards
   ['nearby-people'],              // nearby people on discover map (ORCH-0385)

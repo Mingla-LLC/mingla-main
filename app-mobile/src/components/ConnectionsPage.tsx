@@ -4,12 +4,12 @@ import {
   Text,
   View,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   ActivityIndicator,
   Alert,
   FlatList,
   TextInput,
-  Clipboard,
   Modal,
   TouchableWithoutFeedback,
   Keyboard,
@@ -19,7 +19,11 @@ import {
   RefreshControl,
   InteractionManager,
   Image,
+  AccessibilityInfo,
 } from "react-native";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Icon } from "./ui/Icon";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
@@ -35,9 +39,9 @@ import { Conversation, Message as ConvMessage } from "../hooks/useMessages";
 import { Friend, Message } from "../services/connectionsService";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useKeyboard } from "../hooks/useKeyboard";
-import { colors, spacing, typography, fontWeights } from "../constants/designSystem";
+import { useAppLayout } from "../hooks/useAppLayout";
+import { colors, spacing, typography, fontWeights, glass } from "../constants/designSystem";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNetworkMonitor } from "../services/networkMonitor";
 import { withTimeout } from "../utils/withTimeout";
 import { useToast } from "./ToastManager";
@@ -61,6 +65,7 @@ type FriendsModalTab = "friend-list" | "sent" | "requests" | "blocked";
 import AddToBoardModal from "./AddToBoardModal";
 import ReportUserModal from "./ReportUserModal";
 import BlockUserModal from "./BlockUserModal";
+import { emitAddToBoardToasts } from "../utils/addToBoardToasts";
 
 // Pairing — ORCH-0435 Phase A
 import PairRequestModal from "./PairRequestModal";
@@ -69,18 +74,14 @@ import { usePairingPills, useIncomingPairRequests, useSendPairRequest, useCancel
 import type { PairRequest } from "../services/pairingService";
 interface ConnectionsPageProps {
   isTabVisible?: boolean;
-  onSendCollabInvite?: (friend: any) => void;
-  onAddToBoard?: (
-    sessionIds: string[],
-    friend: any,
-    suppressNotification?: boolean
-  ) => void;
   onShareSavedCard?: (friend: any, suppressNotification?: boolean) => void;
   onRemoveFriend?: (friend: any, suppressNotification?: boolean) => void;
   onBlockUser?: (friend: any, suppressNotification?: boolean) => void;
   onReportUser?: (friend: any, suppressNotification?: boolean) => void;
   accountPreferences?: any;
   boardsSessions?: any[];
+  /** ORCH-0666: refreshes the home/session list after add-to-session mutation. */
+  onRefreshSessions?: (options?: { showLoading?: boolean }) => Promise<void>;
   currentMode?: "solo" | string;
   onModeChange?: (mode: "solo" | string) => void;
   onUpdateBoardSession?: (updatedBoard: any) => void;
@@ -111,7 +112,7 @@ const normalizeSearchText = (value: string | null | undefined): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-// ── ORCH-0435: Paired friends pill bar ─────────────────────────────────────
+// ── ORCH-0435 + ORCH-0600: Paired friends pill (dark-glass) ────────────────
 interface PairedPillPerson {
   pairedUserId: string;
   displayName: string;
@@ -123,174 +124,161 @@ interface PairedPillPerson {
   incomingRequest?: PairRequest;
 }
 
-function PairedPillsBar({
-  people,
-  onSelectPerson,
-  onAddPress,
-  onPendingPress,
-  onIncomingPress,
+const isAndroidPreBlur = Platform.OS === 'android' && Platform.Version < 31;
+
+// Compact dark-glass paired pill — horizontal inside the filter-bar-style row.
+// ORCH-0600: replaces the ORCH-0435 vertical avatar+name stack with a row pill
+// matching the Discover chip visual (rounded glass, orange active state).
+function GlassPairedPill({
+  person,
+  onPress,
 }: {
-  people: PairedPillPerson[];
-  onSelectPerson: (person: PairedPillPerson) => void;
-  onAddPress: () => void;
-  onPendingPress?: (person: PairedPillPerson) => void;
-  onIncomingPress?: (person: PairedPillPerson) => void;
+  person: PairedPillPerson;
+  onPress: () => void;
 }) {
-  const [failedAvatars, setFailedAvatars] = useState<Set<string>>(new Set());
+  const [failedAvatar, setFailedAvatar] = useState(false);
+  const name = person.firstName || person.displayName?.split(' ')[0] || 'Friend';
+  const isIncoming = !!person.incoming;
+  const isPending = !!person.pending;
+  const isActive = !isPending && !isIncoming;
+
+  const bg = isIncoming
+    ? 'rgba(235, 120, 37, 0.22)'
+    : isPending
+    ? 'rgba(255, 255, 255, 0.05)'
+    : 'rgba(255, 255, 255, 0.08)';
+  const border = isIncoming
+    ? 'rgba(235, 120, 37, 0.55)'
+    : isPending
+    ? 'rgba(255, 255, 255, 0.08)'
+    : 'rgba(255, 255, 255, 0.14)';
+  const labelColor = isIncoming
+    ? '#FFFFFF'
+    : isPending
+    ? 'rgba(255, 255, 255, 0.55)'
+    : 'rgba(255, 255, 255, 0.9)';
 
   return (
-    <View style={pillStyles.container}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={pillStyles.scrollContent}
-      >
-        {/* Add button — first */}
-        <TouchableOpacity style={pillStyles.pill} onPress={onAddPress} activeOpacity={0.7}>
-          <View style={pillStyles.addButtonRing}>
-            <Icon name="add" size={20} color="#eb7825" />
+    <Pressable
+      onPress={() => {
+        HapticFeedback.light();
+        onPress();
+      }}
+      hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
+      accessibilityRole="button"
+      accessibilityLabel={
+        isIncoming
+          ? `Incoming pair request from ${person.displayName}`
+          : isPending
+          ? `Pair request pending for ${person.displayName}, tap to cancel`
+          : `Open ${person.displayName} profile`
+      }
+      style={({ pressed }) => [
+        glassPillStyles.pill,
+        { backgroundColor: bg, borderColor: border },
+        pressed ? { transform: [{ scale: 0.97 }] } : null,
+      ]}
+    >
+      <View style={[glassPillStyles.avatarWrap, isPending ? { opacity: 0.55 } : null]}>
+        {person.avatarUrl && !failedAvatar ? (
+          <Image
+            source={{ uri: person.avatarUrl }}
+            style={glassPillStyles.avatar}
+            onError={() => setFailedAvatar(true)}
+          />
+        ) : (
+          <View style={glassPillStyles.avatarFallback}>
+            <Text style={glassPillStyles.avatarInitials} allowFontScaling={false}>
+              {person.initials}
+            </Text>
           </View>
-          <Text style={pillStyles.name} numberOfLines={1}>Add</Text>
-        </TouchableOpacity>
-        {people.map((person) => {
-          const name = person.firstName || person.displayName?.split(" ")[0] || "Friend";
-          const isPending = person.pending;
-          return (
-            <TouchableOpacity
-              key={person.pairedUserId}
-              style={[pillStyles.pill, isPending && pillStyles.pillPending]}
-              onPress={() => person.incoming ? onIncomingPress?.(person) : isPending ? onPendingPress?.(person) : onSelectPerson(person)}
-              activeOpacity={0.7}
-            >
-              <View style={[pillStyles.avatarRing, isPending && pillStyles.avatarRingPending]}>
-                {person.avatarUrl && !failedAvatars.has(person.pairedUserId) ? (
-                  <Image
-                    source={{ uri: person.avatarUrl }}
-                    style={[pillStyles.avatar, isPending && pillStyles.avatarPending]}
-                    onError={() => setFailedAvatars(prev => new Set([...prev, person.pairedUserId]))}
-                  />
-                ) : (
-                  <View style={[pillStyles.avatarFallback, isPending && pillStyles.avatarFallbackPending]}>
-                    <Text style={pillStyles.avatarInitials}>{person.initials}</Text>
-                  </View>
-                )}
-                {/* Star badge — green for active, grey for pending */}
-                <View style={[pillStyles.starBadge, isPending && pillStyles.starBadgePending]}>
-                  <Icon name="star" size={10} color="#ffffff" />
-                </View>
-              </View>
-              <Text style={[pillStyles.name, isPending && pillStyles.namePending]} numberOfLines={1}>{name}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-    </View>
+        )}
+        {isActive ? (
+          <View style={glassPillStyles.statusDotActive}>
+            <Icon name="star" size={8} color="#FFFFFF" />
+          </View>
+        ) : null}
+      </View>
+      <Text style={[glassPillStyles.name, { color: labelColor }]} numberOfLines={1} allowFontScaling>
+        {name}
+      </Text>
+      {isIncoming ? (
+        <View style={glassPillStyles.incomingDot} />
+      ) : null}
+    </Pressable>
   );
 }
 
-const pillStyles = StyleSheet.create({
-  container: {
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#f3f4f6",
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    gap: 14,
-    alignItems: "center",
-  },
+const glassPillStyles = StyleSheet.create({
   pill: {
-    alignItems: "center",
-    width: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 36,
+    paddingLeft: 4,
+    paddingRight: 12,
+    borderRadius: 18,
+    borderWidth: 1,
   },
-  avatarRing: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    borderColor: "#10b981",
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
+  avatarWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    position: 'relative',
+    overflow: 'visible',
   },
   avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
   },
   avatarFallback: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#eb7825",
-    justifyContent: "center",
-    alignItems: "center",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(235, 120, 37, 0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarInitials: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#ffffff",
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
-  starBadge: {
-    position: "absolute",
+  statusDotActive: {
+    position: 'absolute',
     bottom: -2,
     right: -2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: "#10b981",
-    justifyContent: "center",
-    alignItems: "center",
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#eb7825',
     borderWidth: 1.5,
-    borderColor: "#ffffff",
+    borderColor: 'rgba(12, 14, 18, 1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  incomingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#eb7825',
   },
   name: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#374151",
-    marginTop: 4,
-    textAlign: "center",
-    maxWidth: 56,
-  },
-  pillPending: {
-    opacity: 0.6,
-  },
-  avatarRingPending: {
-    borderColor: "#d1d5db",
-  },
-  avatarPending: {
-    opacity: 0.5,
-  },
-  avatarFallbackPending: {
-    backgroundColor: "#9ca3af",
-  },
-  starBadgePending: {
-    backgroundColor: "#9ca3af",
-  },
-  namePending: {
-    color: "#9ca3af",
-  },
-  addButtonRing: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    borderColor: "#eb7825",
-    borderStyle: "dashed",
-    justifyContent: "center",
-    alignItems: "center",
+    fontSize: 13,
+    fontWeight: '500',
+    maxWidth: 100,
   },
 });
 
-export default function ConnectionsPageRefactored({
-  onSendCollabInvite,
-  onAddToBoard,
+function ConnectionsPageRefactored({
   onShareSavedCard,
   onRemoveFriend,
   onBlockUser,
   onReportUser,
   accountPreferences,
   boardsSessions = [],
+  onRefreshSessions,
   currentMode = "solo",
   onModeChange,
   onUpdateBoardSession,
@@ -304,10 +292,19 @@ export default function ConnectionsPageRefactored({
   onInitialPanelHandled,
   isTabVisible,
 }: ConnectionsPageProps) {
+  // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
+  const renderCountRef = React.useRef(0);
+  if (__DEV__) {
+    renderCountRef.current += 1;
+    console.log(`[render-count] ConnectionsPage: ${renderCountRef.current}`);
+  }
+
   useScreenLogger('connections');
   const { t } = useTranslation(['connections', 'common']);
-  const coachChatHeader = useCoachMark(8, 0);
+  // ORCH-0635: step ID 8 → 7 (old step 5 dropped → renumber).
+  const coachChatHeader = useCoachMark(7, 0);
   const user = useAppStore((state) => state.user);
+  const { bottomNavTotalHeight } = useAppLayout();
   const { height: screenHeight } = useWindowDimensions();
 
   // ── Keyboard-aware sheet height ────────────────────────────
@@ -335,6 +332,24 @@ export default function ConnectionsPageRefactored({
   const sheetHeight = keyboardVisible
     ? Math.max(200, stableHeightRef.current - keyboardHeight - 44)
     : stableHeightRef.current * 0.88;
+
+  // ── ORCH-0600: Accessibility state for glass header ──────
+  const [reduceTransparency, setReduceTransparency] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceTransparencyEnabled()
+      .then((rt) => {
+        if (mounted) setReduceTransparency(rt);
+      })
+      .catch(() => {
+        if (mounted) setReduceTransparency(true);
+      });
+    const sub = AccessibilityInfo.addEventListener('reduceTransparencyChanged', setReduceTransparency);
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, []);
 
   // ── UI state ─────────────────────────────────────────────
   const [activePanel, setActivePanel] = useState<PanelId>(null); // [TRANSITIONAL] legacy — being replaced by showFriendsModal
@@ -802,18 +817,9 @@ export default function ConnectionsPageRefactored({
     onUnreadCountChange?.(totalUnread);
   }, [conversations, onUnreadCountChange, mutedUserIds]);
 
-  // ── Panel handler ────────────────────────────────────────
-  const handleInvitePress = () => {
-    HapticFeedback.light();
-    try {
-      const inviteLink = `https://mingla.app/invite/${user?.id || ""}`;
-      Clipboard.setString(inviteLink);
-      Alert.alert("", t('connections:invite_link_copied'));
-      mixpanelService.trackReferralLinkShared({ method: 'copy' });
-    } catch (e) {
-      console.error("Error copying invite link:", e);
-    }
-  };
+  // ORCH-0600: handleInvitePress + link-outline button deleted (dead weight per
+  // user directive). Clipboard import removed. mixpanelService.trackReferralLinkShared
+  // has no other caller in this file after deletion.
 
   const openFriendsModal = (tab?: FriendsModalTab) => {
     HapticFeedback.light();
@@ -957,6 +963,7 @@ export default function ConnectionsPageRefactored({
       fileUrl: msg.file_url,
       fileName: msg.file_name,
       fileSize: msg.file_size?.toString(),
+      cardPayload: msg.card_payload,  // ORCH-0667
       isMe: msg.sender_id === userId,
       unread: !msg.is_read && msg.sender_id !== userId,
       isRead: msg.is_read ?? false,
@@ -1494,6 +1501,125 @@ export default function ConnectionsPageRefactored({
     }
   }, [isOffline, currentConversationId, user?.id, transformMessage, markConversationAsRead, fetchConversations]);
 
+  /**
+   * ORCH-0664 (I-DEDUP-AFTER-DELIVERY): single owner for incoming-message UI
+   * state mutation. Both delivery paths funnel here:
+   *   1. broadcast (chat:${id}) via useBroadcastReceiver → MessageInterface
+   *      → onBroadcastReceive prop → handleBroadcastReceive → THIS HELPER
+   *   2. postgres_changes (conversation:${id}) via subscribeToConversation
+   *      .onMessage → THIS HELPER
+   *
+   * The seen-set add is INSIDE this helper, AFTER `setMessages` succeeds, to
+   * satisfy the invariant. If `broadcastSeenIds.current.has(newMessage.id)` is
+   * already true, the OTHER delivery path won the race — we skip the
+   * visible-messages add but still run idempotent side effects (cache,
+   * conversation list, mark-as-read).
+   *
+   * Sender-side L1907-area `broadcastSeenIds.current.add(sentMessage.id)` is
+   * the documented exception to I-DEDUP-AFTER-DELIVERY (sender already mutated
+   * UI via optimistic-replace). DO NOT touch it.
+   */
+  const addIncomingMessageToUI = useCallback(
+    (newMessage: DirectMessage, conversationId: string, userId: string) => {
+      const alreadyDelivered = broadcastSeenIds.current.has(newMessage.id);
+
+      if (!alreadyDelivered) {
+        const transformedMsg = transformMessage(newMessage, userId);
+
+        // Add to messages (replace optimistic or add new)
+        setMessages((prev) => {
+          const exists = prev.some((msg) => msg.id === transformedMsg.id);
+          if (exists) return prev;
+
+          const optimisticIndex = prev.findIndex(
+            (msg) =>
+              msg.id.startsWith("temp-") &&
+              msg.senderId === transformedMsg.senderId &&
+              msg.content === transformedMsg.content &&
+              Math.abs(
+                new Date(msg.timestamp).getTime() -
+                  new Date(transformedMsg.timestamp).getTime()
+              ) < 5000
+          );
+
+          if (optimisticIndex !== -1) {
+            const updated = [...prev];
+            updated[optimisticIndex] = transformedMsg;
+            return updated;
+          }
+
+          return [...prev, transformedMsg];
+        });
+
+        // Couple the seen-set add to a successful UI mutation.
+        // I-DEDUP-AFTER-DELIVERY: never populate the seen-set without
+        // a corresponding visible-messages addition.
+        broadcastSeenIds.current.add(newMessage.id);
+      }
+
+      // Cache update ALWAYS runs (idempotent — uses same exists/optimistic checks)
+      const transformedForCache = transformMessage(newMessage, userId);
+      setMessagesCache((prev) => {
+        const existing = prev[conversationId] || [];
+        const exists = existing.some((msg) => msg.id === transformedForCache.id);
+        if (exists) return prev;
+
+        const optimisticIndex = existing.findIndex(
+          (msg) =>
+            msg.id.startsWith("temp-") &&
+            msg.senderId === transformedForCache.senderId &&
+            msg.content === transformedForCache.content &&
+            Math.abs(
+              new Date(msg.timestamp).getTime() -
+                new Date(transformedForCache.timestamp).getTime()
+            ) < 5000
+        );
+
+        if (optimisticIndex !== -1) {
+          const updated = [...existing];
+          updated[optimisticIndex] = transformedForCache;
+          return { ...prev, [conversationId]: updated };
+        }
+
+        return { ...prev, [conversationId]: [...existing, transformedForCache] };
+      });
+
+      // Conversation list update ALWAYS runs.
+      // Do NOT increment unread_count — the chat is open, so the message
+      // is immediately visible and marked as read below. Incrementing here
+      // would inflate the tab badge until the next fetchConversations.
+      setConversations((prev) =>
+        prev.map((conv): Conversation => {
+          if (conv.id === conversationId) {
+            return {
+              ...conv,
+              last_message: newMessage as unknown as ConvMessage,
+              // Keep unread_count at 0 — user is actively viewing this chat
+            };
+          }
+          return conv;
+        })
+      );
+
+      // Auto-mark as read ALWAYS runs (chat is open by precondition)
+      if (newMessage.sender_id !== userId) {
+        messagingService.markAsRead([newMessage.id], userId).catch(console.error);
+      }
+    },
+    [transformMessage]
+  );
+
+  // ORCH-0664: callback passed to MessageInterface as `onBroadcastReceive`.
+  // useBroadcastReceiver invokes it when a friend's message arrives via the
+  // chat:{conversationId} broadcast channel; we delegate to the single owner.
+  const handleBroadcastReceive = useCallback(
+    (msg: DirectMessage) => {
+      if (!currentConversationId || !user?.id) return;
+      addIncomingMessageToUI(msg, currentConversationId, user.id);
+    },
+    [currentConversationId, user?.id, addIncomingMessageToUI]
+  );
+
   // ── Realtime subscription setup ──────────────────────────
   const setupRealtimeSubscription = (conversationId: string, userId: string) => {
 
@@ -1507,88 +1633,9 @@ export default function ConnectionsPageRefactored({
       userId,
       {
         onMessage: (newMessage: DirectMessage) => {
-          // Broadcast dedup: if broadcast already delivered this message to
-          // the UI, skip the message-add but still run all side effects
-          // (cache sync, conversation list update, auto-mark-as-read).
-          const alreadyDelivered = broadcastSeenIds.current.has(newMessage.id);
-
-          if (!alreadyDelivered) {
-            const transformedMsg = transformMessage(newMessage, userId);
-
-            // Add to messages (replace optimistic or add new)
-            setMessages((prev) => {
-              const exists = prev.some((msg) => msg.id === transformedMsg.id);
-              if (exists) return prev;
-
-              const optimisticIndex = prev.findIndex(
-                (msg) =>
-                  msg.id.startsWith("temp-") &&
-                  msg.senderId === transformedMsg.senderId &&
-                  msg.content === transformedMsg.content &&
-                  Math.abs(
-                    new Date(msg.timestamp).getTime() -
-                      new Date(transformedMsg.timestamp).getTime()
-                  ) < 5000
-              );
-
-              if (optimisticIndex !== -1) {
-                const updated = [...prev];
-                updated[optimisticIndex] = transformedMsg;
-                return updated;
-              }
-
-              return [...prev, transformedMsg];
-            });
-          }
-
-          // Cache update ALWAYS runs (even if broadcast already delivered to UI)
-          const transformedForCache = transformMessage(newMessage, userId);
-          setMessagesCache((prev) => {
-            const existing = prev[conversationId] || [];
-            const exists = existing.some((msg) => msg.id === transformedForCache.id);
-            if (exists) return prev;
-
-            const optimisticIndex = existing.findIndex(
-              (msg) =>
-                msg.id.startsWith("temp-") &&
-                msg.senderId === transformedForCache.senderId &&
-                msg.content === transformedForCache.content &&
-                Math.abs(
-                  new Date(msg.timestamp).getTime() -
-                    new Date(transformedForCache.timestamp).getTime()
-                ) < 5000
-            );
-
-            if (optimisticIndex !== -1) {
-              const updated = [...existing];
-              updated[optimisticIndex] = transformedForCache;
-              return { ...prev, [conversationId]: updated };
-            }
-
-            return { ...prev, [conversationId]: [...existing, transformedForCache] };
-          });
-
-          // Conversation list update ALWAYS runs.
-          // Do NOT increment unread_count — the chat is open, so the message
-          // is immediately visible and marked as read below. Incrementing here
-          // would inflate the tab badge until the next fetchConversations.
-          setConversations((prev) =>
-            prev.map((conv): Conversation => {
-              if (conv.id === conversationId) {
-                return {
-                  ...conv,
-                  last_message: newMessage as unknown as ConvMessage,
-                  // Keep unread_count at 0 — user is actively viewing this chat
-                };
-              }
-              return conv;
-            })
-          );
-
-          // Auto-mark as read ALWAYS runs
-          if (newMessage.sender_id !== userId) {
-            messagingService.markAsRead([newMessage.id], userId).catch(console.error);
-          }
+          // ORCH-0664: delegate to single owner. Both delivery paths
+          // (broadcast + postgres_changes) funnel here.
+          addIncomingMessageToUI(newMessage, conversationId, userId);
         },
 
         // Read receipt flow: when the receiver marks a message as read,
@@ -1812,7 +1859,7 @@ export default function ConnectionsPageRefactored({
               conversation_id: currentConversationId,
               sender_id: user.id,
               content,
-              message_type: type as "text" | "image" | "file",
+              message_type: type as "text" | "image" | "video" | "file" | "card",
               file_url: fileUrl,
               file_name: fileName,
               file_size: fileSize,
@@ -1975,19 +2022,13 @@ export default function ConnectionsPageRefactored({
   };
 
   // ── MessageInterface callback handlers ───────────────────
-  const handleSendCollabInvite = (friend: Friend) => {
-    onSendCollabInvite?.(friend);
-  };
+  // ORCH-0666: handleSendCollabInvite + handleAddToBoardConfirm DELETED.
+  // The Friends modal "Add to session" entry and the DM-path "Add to board"
+  // entry both route through handleAddToBoard → AddToBoardModal → mutation hook.
 
   const handleAddToBoard = (friend: Friend) => {
     setSelectedFriendForBoard(friend);
     setShowAddToBoardModal(true);
-  };
-
-  const handleAddToBoardConfirm = (sessionIds: string[], friend: Friend) => {
-    onAddToBoard?.(sessionIds, friend);
-    setShowAddToBoardModal(false);
-    setSelectedFriendForBoard(null);
   };
 
   const handleShareSavedCard = (friend: Friend) => {
@@ -2198,8 +2239,7 @@ export default function ConnectionsPageRefactored({
             onBack={handleBackFromMessage}
             onSendMessage={handleSendMessage}
             messages={messages}
-            onSendCollabInvite={handleSendCollabInvite}
-            onAddToBoard={onAddToBoard}
+            onOpenAddToBoardModal={(friend: Friend) => handleAddToBoard(friend)}
             onShareSavedCard={handleShareSavedCard}
             onRemoveFriend={handleRemoveFriend}
             onBlockUser={handleBlockUser}
@@ -2217,6 +2257,7 @@ export default function ConnectionsPageRefactored({
             currentUserId={user?.id || null}
             currentUserName={currentUserDisplayName}
             broadcastSeenIds={broadcastSeenIds}
+            onBroadcastReceive={handleBroadcastReceive}
             isOffline={isOffline}
             onViewProfile={onNavigateToFriendProfile}
           />
@@ -2230,7 +2271,23 @@ export default function ConnectionsPageRefactored({
           }}
           friend={selectedFriendForBoard}
           boardsSessions={boardsSessions}
-          onConfirm={handleAddToBoardConfirm}
+          onMutationSettled={() => {
+            // ORCH-0666: refresh boardsSessions so newly-pending invitees are
+            // filtered out on next open and any state mutations propagate.
+            void onRefreshSessions?.();
+          }}
+          onResult={(result) => {
+            if (selectedFriendForBoard) {
+              emitAddToBoardToasts(
+                result,
+                { id: selectedFriendForBoard.id, name: selectedFriendForBoard.name || 'Friend' },
+                (boardsSessions || []).map((s: any) => ({
+                  id: s.id || s.session_id,
+                  name: s.name || 'Session',
+                }))
+              );
+            }
+          }}
         />
         <ReportUserModal
           isOpen={showReportModal}
@@ -2261,74 +2318,175 @@ export default function ConnectionsPageRefactored({
     );
   }
 
+  // ORCH-0600 v2: single-row glass header — title + friends icon + add button
+  // + scrollable paired pills all inline. Panel shrinks from two bands to one.
+  const g = glass.discover;
+  const HEADER_ROW_TOP = chatInsets.top + glass.chrome.row.topInset;
+  const HEADER_ROW_HEIGHT = 48;
+  const HEADER_PANEL_HEIGHT = HEADER_ROW_TOP + HEADER_ROW_HEIGHT + 8; // +8 breathing under the row
+  const HEADER_PANEL_RADIUS = 28;
+  const useGlass = !reduceTransparency && !isAndroidPreBlur;
+  const incomingCount = incomingRequests.length + incomingPairRequests.length;
+  const showBadge = !badgeDismissed && incomingCount > 0;
+
+  // Pills-row handlers shared by both the + button and the scroll rows below
+  const handlePillPress = (person: PairedPillPerson): void => {
+    if (person.incoming && person.incomingRequest) {
+      setShowIncomingPairRequest(person.incomingRequest);
+      return;
+    }
+    if (person.pending) {
+      const pill = pairingPills.find(
+        (p) => p.pairedUserId === person.pairedUserId && p.pillState !== 'active'
+      );
+      if (!pill) return;
+      Alert.alert(
+        'Cancel Pair Request',
+        `Cancel your pair request to ${person.displayName}?`,
+        [
+          { text: 'Keep', style: 'cancel' },
+          {
+            text: 'Cancel Request',
+            style: 'destructive',
+            onPress: () => {
+              if (pill.pairRequestId) cancelPairRequestMutation.mutate(pill.pairRequestId);
+              else if (pill.pendingInviteId) cancelPairInviteMutation.mutate(pill.pendingInviteId);
+            },
+          },
+        ]
+      );
+      return;
+    }
+    onNavigateToFriendProfile?.(person.pairedUserId);
+  };
+
   // ── Main chat list view ──────────────────────────────────
   return (
     <>
       <View style={styles.container}>
-        <View style={styles.content}>
-          {/* Compact header: title + action icons */}
-          <View ref={coachChatHeader.targetRef as any} style={styles.headerRow}>
-            <Text style={styles.title}>{t('connections:title')}</Text>
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                onPress={() => openFriendsModal()}
-                style={styles.headerIconBtn}
-                activeOpacity={0.7}
+        {/* Glass header panel — status bar + title row + action/pills row */}
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.headerPanel,
+            {
+              height: HEADER_PANEL_HEIGHT,
+              borderBottomLeftRadius: HEADER_PANEL_RADIUS,
+              borderBottomRightRadius: HEADER_PANEL_RADIUS,
+            },
+          ]}
+        >
+          {useGlass ? (
+            <BlurView
+              intensity={g.stickyHeader.blurIntensity}
+              tint="dark"
+              experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+          ) : null}
+          <View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: useGlass ? g.stickyHeader.tint : g.stickyHeader.fallbackSolid },
+            ]}
+          />
+          <View
+            pointerEvents="none"
+            style={[
+              styles.headerPanelHairline,
+              {
+                borderBottomLeftRadius: HEADER_PANEL_RADIUS,
+                borderBottomRightRadius: HEADER_PANEL_RADIUS,
+              },
+            ]}
+          />
+
+          {/* Single header row — title + friends icon + + button + scrollable pills */}
+          <View
+            ref={coachChatHeader.targetRef as any}
+            style={[styles.headerRowAbsolute, { top: HEADER_ROW_TOP, height: HEADER_ROW_HEIGHT }]}
+          >
+            <Text style={styles.titleText} numberOfLines={1} allowFontScaling accessibilityRole="header">
+              {t('connections:title')}
+            </Text>
+
+            <Pressable
+              onPress={() => openFriendsModal()}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+              accessibilityRole="button"
+              accessibilityLabel={showBadge ? `Friends, ${incomingCount} new` : 'Friends'}
+              style={styles.friendsIconButton}
+            >
+              <Icon name="people-outline" size={22} color="#FFFFFF" />
+              {showBadge ? (
+                <View style={styles.titleIconBadge}>
+                  <Text style={styles.titleIconBadgeText} allowFontScaling={false}>
+                    {incomingCount > 9 ? '9+' : String(incomingCount)}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                HapticFeedback.light();
+                setShowPairRequestModal(true);
+              }}
+              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              accessibilityRole="button"
+              accessibilityLabel="Pair with a friend"
+              style={({ pressed }) => [
+                styles.addButtonGlass,
+                pressed ? { transform: [{ scale: 0.96 }] } : null,
+              ]}
+            >
+              <Icon name="add" size={20} color="#FFFFFF" />
+            </Pressable>
+
+            <View style={styles.pillsDividerInline} />
+
+            <View style={styles.pillsScrollWrap}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.pillsScrollContent}
               >
-                <Icon name="people-outline" size={18} color="#eb7825" />
-                {!badgeDismissed && (incomingRequests.length + incomingPairRequests.length) > 0 && (
-                  <View style={styles.headerBadge}>
-                    <Text style={styles.headerBadgeText}>
-                      {(incomingRequests.length + incomingPairRequests.length) > 9
-                        ? "9+"
-                        : incomingRequests.length + incomingPairRequests.length}
+                {activePairedPeople.map((person) => (
+                  <GlassPairedPill
+                    key={person.pairedUserId}
+                    person={person}
+                    onPress={() => handlePillPress(person)}
+                  />
+                ))}
+                {activePairedPeople.length === 0 ? (
+                  <View style={styles.pillsEmptyHint}>
+                    <Text style={styles.pillsEmptyHintText} allowFontScaling numberOfLines={1}>
+                      Tap + to pair
                     </Text>
                   </View>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={handleInvitePress}
-                style={styles.headerIconBtn}
-                activeOpacity={0.7}
-              >
-                <Icon name="link-outline" size={18} color="#eb7825" />
-              </TouchableOpacity>
-
+                ) : null}
+              </ScrollView>
+              <LinearGradient
+                colors={[g.filterBar.backdropTint, 'rgba(12,14,18,0)']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={[styles.pillsFade, { left: 0, width: g.filterBar.fadeEdgeWidth }]}
+                pointerEvents="none"
+              />
+              <LinearGradient
+                colors={['rgba(12,14,18,0)', g.filterBar.backdropTint]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={[styles.pillsFade, { right: 0, width: g.filterBar.fadeEdgeWidth }]}
+                pointerEvents="none"
+              />
             </View>
           </View>
+        </View>
 
-          {/* Paired friends pills — ORCH-0435 */}
-          {activePairedPeople.length > 0 && (
-            <PairedPillsBar
-              people={activePairedPeople}
-              onSelectPerson={(person) => onNavigateToFriendProfile?.(person.pairedUserId)}
-              onAddPress={() => setShowPairRequestModal(true)}
-              onPendingPress={(person) => {
-                const pill = pairingPills.find(p => p.pairedUserId === person.pairedUserId && p.pillState !== 'active');
-                if (!pill) return;
-                Alert.alert(
-                  'Cancel Pair Request',
-                  `Cancel your pair request to ${person.displayName}?`,
-                  [
-                    { text: 'Keep', style: 'cancel' },
-                    {
-                      text: 'Cancel Request', style: 'destructive', onPress: () => {
-                        if (pill.pairRequestId) cancelPairRequestMutation.mutate(pill.pairRequestId);
-                        else if (pill.pendingInviteId) cancelPairInviteMutation.mutate(pill.pendingInviteId);
-                      },
-                    },
-                  ]
-                );
-              }}
-              onIncomingPress={(person) => {
-                if (person.incomingRequest) {
-                  setShowIncomingPairRequest(person.incomingRequest);
-                }
-              }}
-            />
-          )}
-          {/* Incoming pair requests now show as greyed pills in the bar above */}
+        <View style={[styles.content, { paddingTop: HEADER_PANEL_HEIGHT + 12 }]}>
 
           {/* Search bar */}
           <View style={styles.searchContainer}>
@@ -2464,7 +2622,10 @@ export default function ConnectionsPageRefactored({
                 return chatItem;
               }}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.chatListContent}
+              contentContainerStyle={[
+                styles.chatListContent,
+                { paddingBottom: bottomNavTotalHeight + 24 },
+              ]}
               ItemSeparatorComponent={null}
               refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
             />
@@ -2593,12 +2754,13 @@ export default function ConnectionsPageRefactored({
                     }}
                     onAddToSession={(friendUserId) => {
                       setShowFriendsModal(false);
-                      // Find the friend and trigger collab invite
+                      // ORCH-0666: open AddToBoardModal pre-targeted at this friend.
+                      // Replaces dead-tap onSendCollabInvite (RC-1) and HF-5 wrong-primitive.
                       const friend = dbFriends.find(f => {
                         const fid = f.user_id === (user?.id || '') ? f.friend_user_id : f.user_id;
                         return fid === friendUserId;
                       });
-                      if (friend) onSendCollabInvite?.(friend);
+                      if (friend) handleAddToBoard(friend);
                     }}
                     onFriendPress={(friendUserId) => {
                       setShowFriendsModal(false);
@@ -2786,6 +2948,33 @@ export default function ConnectionsPageRefactored({
         }}
         onClose={() => setShowIncomingPairRequest(null)}
       />
+
+      {/* ORCH-0666: AddToBoardModal must be mounted on the default-render branch
+          so the Friends modal "Add to session" entry point can open it. */}
+      <AddToBoardModal
+        isOpen={showAddToBoardModal}
+        onClose={() => {
+          setShowAddToBoardModal(false);
+          setSelectedFriendForBoard(null);
+        }}
+        friend={selectedFriendForBoard}
+        boardsSessions={boardsSessions}
+        onMutationSettled={() => {
+          void onRefreshSessions?.();
+        }}
+        onResult={(result) => {
+          if (selectedFriendForBoard) {
+            emitAddToBoardToasts(
+              result,
+              { id: selectedFriendForBoard.id, name: selectedFriendForBoard.name || 'Friend' },
+              (boardsSessions || []).map((s: any) => ({
+                id: s.id || s.session_id,
+                name: s.name || 'Session',
+              }))
+            );
+          }
+        }}
+      />
     </>
   );
 }
@@ -2793,14 +2982,125 @@ export default function ConnectionsPageRefactored({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: glass.discover.screenBg,
   },
   content: {
     flex: 1,
   },
-backdropFill: {
-  ...StyleSheet.absoluteFillObject,
-},
+  backdropFill: {
+    ...StyleSheet.absoluteFillObject,
+  },
+
+  // ── ORCH-0600: Glass header panel ────────────────────────
+  headerPanel: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    overflow: 'hidden',
+  },
+  headerPanelHairline: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: glass.discover.stickyHeader.bottomHairline,
+  },
+  headerRowAbsolute: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    paddingHorizontal: glass.discover.title.horizontalPadding,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  titleText: {
+    color: glass.discover.title.color,
+    fontSize: glass.discover.title.fontSize,
+    fontWeight: glass.discover.title.fontWeight,
+    lineHeight: 36,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+  },
+  friendsIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  titleIconBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: '#eb7825',
+    borderWidth: 1.5,
+    borderColor: 'rgba(12, 14, 18, 1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  titleIconBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 12,
+  },
+  addButtonGlass: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: glass.chrome.active.tint,
+    borderWidth: 1,
+    borderColor: glass.chrome.active.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: glass.chrome.active.glowColor,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  pillsDividerInline: {
+    width: StyleSheet.hairlineWidth,
+    height: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    marginHorizontal: 4,
+  },
+  pillsScrollWrap: {
+    flex: 1,
+    height: '100%',
+    justifyContent: 'center',
+  },
+  pillsScrollContent: {
+    alignItems: 'center',
+    gap: glass.discover.filterBar.chipGap,
+    paddingRight: glass.discover.filterBar.fadeEdgeWidth,
+  },
+  pillsFade: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+  },
+  pillsEmptyHint: {
+    height: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  pillsEmptyHintText: {
+    color: 'rgba(255, 255, 255, 0.55)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+
   // ── Header ────────────────────────────────
   headerRow: {
     flexDirection: "row",
@@ -3056,12 +3356,12 @@ backdropFill: {
   emptyTitle: {
     fontSize: 17,
     fontWeight: "600",
-    color: "#111827",
+    color: "#FFFFFF",
     marginTop: 14,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: "#9ca3af",
+    color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
     marginTop: 6,
   },
@@ -3186,3 +3486,6 @@ sheetBodyContent: {
     fontWeight: "700",
   },
 });
+
+// ORCH-0679 Wave 2A: I-TAB-SCREENS-MEMOIZED.
+export default React.memo(ConnectionsPageRefactored);

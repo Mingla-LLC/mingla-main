@@ -165,41 +165,12 @@ export class PreferencesService {
   }
 
   /**
-   * Get user's saved experiences
+   * ORCH-0640 ch09: getSavedExperiences retired — saves + experiences tables DROPPED.
+   * Empty-returning shim. Callers should migrate to savedCardsService (saved_card table).
+   * Removal deferred to ORCH-0640.D-9 per DEC-048 (no shims).
    */
-  static async getSavedExperiences(userId: string): Promise<any[]> {
-    try {
-      const { data, error } = await supabase
-        .from("saves")
-        .select(
-          `
-          experience_id,
-          status,
-          scheduled_at,
-          created_at,
-          experiences (*)
-        `
-        )
-        .eq("profile_id", userId)
-        .eq("status", "liked")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Error fetching saved experiences:", error);
-        throw error;
-      }
-
-      return (
-        data?.map((item) => ({
-          ...item.experiences,
-          saved_at: item.created_at,
-          scheduled_at: item.scheduled_at,
-        })) || []
-      );
-    } catch (error) {
-      console.error("Failed to fetch saved experiences:", error);
-      return [];
-    }
+  static async getSavedExperiences(_userId: string): Promise<any[]> {
+    return [];
   }
 
   /**

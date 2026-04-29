@@ -128,6 +128,7 @@
     "pickADate": "Datum wählen",
     "changeTime": "Zeit ändern",
     "closedAtTime": "Dieser Ort ist zur gewählten Zeit geschlossen. Bitte wähle eine andere Zeit.",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}. Bitte überprüfe die Öffnungszeiten vor der Planung.",
     "selectDate": "Datum wählen",
     "selectTime": "Zeit wählen",

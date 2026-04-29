@@ -16,20 +16,21 @@ import { useTranslation } from 'react-i18next';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { Icon } from "./ui/Icon";
+import { GlassBadge } from "./ui/GlassBadge";
+import { LinearGradient } from "expo-linear-gradient";
+import { glass } from "../constants/designSystem";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
 
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { formatCurrency, formatDistance, parseAndFormatDistance, formatPriceRange, getCurrencySymbol, getCurrencyRate } from "./utils/formatters";
 import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG, formatTierLabel } from "../constants/priceTiers";
-import {
-  ExperiencesService,
-  Experience,
-  UserPreferences,
-} from "../services/experiencesService";
-import {
-  ExperienceGenerationService,
-  GeneratedExperience,
-} from "../services/experienceGenerationService";
+// ORCH-0640 ch09: experiencesService + experienceGenerationService DELETED.
+// UserPreferences re-imported from canonical source. Legacy save calls
+// (ExperiencesService.saveExperience) redirected to savedCardsService.saveCard
+// (snapshot pattern into saved_card table). Dislike tracking dropped (engagement_metrics
+// handles impressions via recordCardSwipe → record_engagement RPC).
+import type { UserPreferences } from "../types/preferences";
+import { savedCardsService } from "../services/savedCardsService";
 import { useAppStore } from "../store/appStore";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import ExpandedCardModal from "./ExpandedCardModal";
@@ -39,12 +40,17 @@ import type { CuratedExperienceCard } from "../types/curatedExperience";
 import { mixpanelService } from "../services/mixpanelService";
 import { logAppsFlyerEvent } from "../services/appsFlyerService";
 import { BoardCardService } from "../services/boardCardService";
-import { notifyMatch } from "../services/boardNotificationService";
-import { inAppNotificationService } from "../services/inAppNotificationService";
+// ORCH-0532 / ORCH-0558: shared helper for collab right-swipe — calls
+// BoardCardService.recordSwipeAndCheckMatch (atomic RPC: upsert swipe_state +
+// fire check_mutual_like trigger under advisory lock + return match state),
+// shows provisional + match toasts, fires notifyMatch on matched:true.
+// Used by primary swipe gesture AND the 3 non-gesture save callsites so ALL
+// collab right-swipes go through one code path.
+import { collabSaveCard } from "./helpers/collabSaveCard";
 import { recordCardSwipe, recordCardExpand } from "../services/cardEngagementService";
 import { useSessionManagement } from "../hooks/useSessionManagement";
 import { useBoardSession } from "../hooks/useBoardSession";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useRecommendations,
   Recommendation,
@@ -170,6 +176,13 @@ const getDefaultPreferences = (): UserPreferences => ({
 interface SwipeableCardsProps {
   userPreferences?: any;
   currentMode?: string;
+  /** ORCH-0635: coach-mark target ref for step 1 (Meet your deck). Attached to
+   *  the cardContainer View so the cutout traces the actual card bounds. */
+  coachDeckRef?: (node: View | null) => void;
+  // ORCH-0532: authoritative session list from AppStateManager. MUST be passed
+  // from app/index.tsx via HomePage so SwipeableCards reads session state from
+  // the SAME source as AppHandlers, eliminating dual-source divergence (V2 §6).
+  boardsSessions?: any[];
   onCardLike: (card: any) => Promise<boolean>;
   accountPreferences?: {
     currency: string;
@@ -387,6 +400,7 @@ const indeterminateBarStyles = StyleSheet.create({
 export default function SwipeableCards({
   userPreferences,
   currentMode = "solo",
+  boardsSessions = [],
   onCardLike,
   accountPreferences,
   onAddToCalendar,
@@ -400,8 +414,12 @@ export default function SwipeableCards({
   onboardingData,
   refreshKey,
   savedCards = [],
+  coachDeckRef,
 }: SwipeableCardsProps) {
   const { t } = useTranslation(['cards', 'common']);
+  // ORCH-0589 v4 (V4): safe-area insets used to position the "View Previous" batchChip
+  // below the floating top-bar chrome on the Swipe page (insets.top + ~62pt).
+  const safeAreaInsets = useSafeAreaInsets();
   // Use recommendations from context
 
   const {
@@ -467,12 +485,13 @@ export default function SwipeableCards({
     refreshKey
   );
 
-  // Get current session for board saving
+  // ORCH-0532: currentSession + isInSolo retained for tier-inheritance logic
+  // (creatorId, isInCollab). availableSessions and sessionsLoading dropped —
+  // resolvedSessionId now derives from boardsSessions prop (AppStateManager)
+  // instead, eliminating the dual-source-of-truth race documented in V2 §6.
   const {
     currentSession,
     isInSolo,
-    availableSessions,
-    loading: sessionsLoading,
   } = useSessionManagement();
   const user = useAppStore((state) => state.user);
   const { data: cachedPreferences } = useUserPreferences(user?.id);
@@ -545,27 +564,37 @@ export default function SwipeableCards({
     return () => { cancelled = true; };
   }, [userLocation?.lat, userLocation?.lng]);
 
-  // Resolve session ID from currentMode if currentSession is not available
-  // currentMode can be either "solo", a session name, or a session ID
+  // ORCH-0532 (2026-04-19): resolvedSessionId MUST read from AppStateManager's
+  // `boardsSessions` (prop) — the SAME authoritative source used by
+  // AppHandlers.handleSaveCard via stateRef. Do NOT re-introduce a dependency
+  // on useSessionManagement.availableSessions here — that hook's state can lag
+  // behind AppStateManager's, producing dual-source divergence bugs (see V2
+  // report §6 CF-1..CF-8 for the 8 ways that divergence fires).
+  //
+  // Resolution logic matches AppHandlers.tsx:687-699 verbatim (creator joined
+  // via session.id, invitee via session.name, legacy rows via session_id field).
+  //
+  // currentMode can be: "solo", a session name, or a session ID.
   const resolvedSessionId = React.useMemo(() => {
     if (currentMode === "solo") return null;
-
-    // If we have currentSession, use its ID
-    if (currentSession?.id) return currentSession.id;
-
-    // Otherwise, try to find session by name or ID from availableSessions
-    const session = availableSessions.find(
-      (s) => s.id === currentMode || s.name === currentMode
+    const session = (boardsSessions || []).find(
+      (s: any) =>
+        s.id === currentMode ||
+        s.name === currentMode ||
+        (s as any).session_id === currentMode
     );
-    return session?.id || null;
-  }, [currentMode, currentSession, availableSessions]);
+    return session
+      ? ((session as any).session_id || session.id || null)
+      : null;
+  }, [currentMode, boardsSessions]);
 
   // isWaitingForSessionResolution is now provided by RecommendationsContext
 
   // Check if we're in a board/collab session.
-  // ORCH-0395: Use resolvedSessionId (derived from currentMode + availableSessions).
-  // NOT currentSession?.id — useSessionManagement.currentSession is always null because
-  // switchToCollaborative() is never called from the session selection flow.
+  // ORCH-0532: resolvedSessionId is now derived from boardsSessions (prop from
+  // AppStateManager) — NOT from useSessionManagement's availableSessions. This
+  // matches the source that AppHandlers uses, eliminating the dual-source race
+  // that caused the quorum-bypass bug.
   const isBoardSession =
     currentMode !== "solo" && !!resolvedSessionId;
 
@@ -623,22 +652,35 @@ export default function SwipeableCards({
   }, [recommendations, removedCards, currentCardIndex, removedCardIds]);
 
   // Swipe animation values
-  const position = useRef(new Animated.ValueXY()).current;
-  const rotate = position.x.interpolate({
+  // ORCH-0675 Wave 1 RC-1 — split Animated.ValueXY into two Animated.Value to
+  // enable useNativeDriver: true on transform/opacity. (I-ANIMATIONS-NATIVE-DRIVER-DEFAULT)
+  // ValueXY does not support native driver; per-axis Animated.Value does.
+  // Pre-fix: every swipe frame interpolated on JS thread → mid-tier Android stutter.
+  // Post-fix: transform.translateX/Y delegated to UI thread; PanResponder still
+  // updates per-axis values imperatively (existing pattern preserved).
+  const positionX = useRef(new Animated.Value(0)).current;
+  const positionY = useRef(new Animated.Value(0)).current;
+  const rotate = positionX.interpolate({
     inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
     outputRange: ["-30deg", "0deg", "30deg"],
   });
-  const likeOpacity = position.x.interpolate({
+  const likeOpacity = positionX.interpolate({
     inputRange: [0, SCREEN_WIDTH / 4],
     outputRange: [0, 1],
   });
-  const nopeOpacity = position.x.interpolate({
+  const nopeOpacity = positionX.interpolate({
     inputRange: [-SCREEN_WIDTH / 4, 0],
     outputRange: [1, 0],
   });
-  const nextCardOpacity = position.x.interpolate({
+  const nextCardOpacity = positionX.interpolate({
     inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
     outputRange: [1, 0, 1],
+    // ORCH-0694 0694-D: clamp prevents the next-card render from being
+    // "more visible than 1" during any future timing edge case. Without
+    // this, the default 'extend' extrapolation goes above 1 at positionX
+    // values beyond ±SCREEN_WIDTH/2 (e.g., end of swipe-out animation),
+    // contributing to the ghost-card visual artifact.
+    extrapolate: 'clamp',
   });
 
   // Filter out removed cards (needed for shouldShowLoader calculation)
@@ -805,6 +847,21 @@ export default function SwipeableCards({
     }
   }, [currentRec?.id, currentCardIndex]);
 
+  // ORCH-0694 0694-G: belt-and-suspenders transform reset on card change.
+  // The swipe-completion .start() callback (lines ~1322) is the primary path
+  // that resets positionX/Y to 0 before state advance. This effect handles
+  // any OTHER path that advances currentRec (e.g., onCardRemoved from
+  // ExpandedCardModal at line ~2480, schedule-from-modal flow). Without this,
+  // those non-swipe-handler paths would inherit whatever transform values
+  // positionX/Y last held — same ghost-card class as the original bug.
+  // Cheap (one setValue per card change), safe (idempotent on first mount).
+  useEffect(() => {
+    if (!currentRec) return;
+    positionX.setValue(0);
+    positionY.setValue(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRec?.id]);
+
   // Trigger card content entrance animations when current card changes
   useEffect(() => {
     if (currentRec) {
@@ -965,7 +1022,9 @@ export default function SwipeableCards({
         setIsExpandedModalVisible(false);
         setSelectedCardForExpansion(null);
         setDismissedSheetVisible(false);
-        position.setValue({ x: 0, y: 0 });
+        // ORCH-0675 Wave 1 RC-1 — per-axis reset (Animated.ValueXY → 2× Animated.Value)
+        positionX.setValue(0);
+        positionY.setValue(0);
 
         // Clear old storage keys (from previous refreshKey/mode) before updating the refs
         if (
@@ -1190,16 +1249,19 @@ export default function SwipeableCards({
         return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
       },
       onPanResponderGrant: () => {
-        position.setOffset({
-          x: (position.x as any)._value,
-          y: (position.y as any)._value,
-        });
+        // ORCH-0675 Wave 1 RC-1 — per-axis offset (Animated.ValueXY → 2× Animated.Value)
+        positionX.setOffset((positionX as any)._value);
+        positionY.setOffset((positionY as any)._value);
       },
       onPanResponderMove: (_, gestureState) => {
-        position.setValue({ x: gestureState.dx, y: gestureState.dy });
+        // ORCH-0675 Wave 1 RC-1 — per-axis setValue
+        positionX.setValue(gestureState.dx);
+        positionY.setValue(gestureState.dy);
       },
       onPanResponderRelease: (_, gestureState) => {
-        position.flattenOffset();
+        // ORCH-0675 Wave 1 RC-1 — per-axis flatten
+        positionX.flattenOffset();
+        positionY.flattenOffset();
 
         // Get current card from refs (always fresh)
         const availableCards = recommendationsRef.current.filter(
@@ -1215,10 +1277,12 @@ export default function SwipeableCards({
             HapticFeedback.medium();
             handleCardExpandRef.current?.();
           }
-          Animated.spring(position, {
-            toValue: { x: 0, y: 0 },
-            useNativeDriver: false,
-          }).start();
+          // ORCH-0675 Wave 1 RC-1 — useNativeDriver: true mandatory.
+          // (I-ANIMATIONS-NATIVE-DRIVER-DEFAULT) Mixing native+JS in Animated.parallel throws.
+          Animated.parallel([
+            Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
+            Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
+          ]).start();
           return;
         }
 
@@ -1236,10 +1300,11 @@ export default function SwipeableCards({
           // Check if card exists
           if (!cardToRemove) {
             console.warn("No card to swipe");
-            Animated.spring(position, {
-              toValue: { x: 0, y: 0 },
-              useNativeDriver: false,
-            }).start();
+            // ORCH-0675 Wave 1 RC-1 — per-axis spring with native driver
+            Animated.parallel([
+              Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
+              Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
+            ]).start();
             return;
           }
 
@@ -1252,29 +1317,55 @@ export default function SwipeableCards({
             HapticFeedback.medium();
             setPaywallFeature('curated_cards');
             setShowPaywall(true);
-            Animated.spring(position, {
-              toValue: { x: 0, y: 0 },
-              useNativeDriver: false,
-            }).start();
+            // ORCH-0675 Wave 1 RC-1 — per-axis spring with native driver
+            Animated.parallel([
+              Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
+              Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
+            ]).start();
             return;
           }
 
-          // Animate card off the screen edge
-          Animated.timing(position, {
-            toValue: {
-              x: direction === "right" ? SCREEN_WIDTH : -SCREEN_WIDTH,
-              y: gestureState.dy,
-            },
-            duration: 250,
-            useNativeDriver: false,
-          }).start(() => {
-            // After animation completes, remove the card and advance to next
-            setRemovedCards((prev) => {
-              const newSet = new Set([...prev, cardToRemove.id]);
-              return newSet;
-            });
+          // Animate card off the screen edge.
+          // ORCH-0694: clamp dy to ±100 so diagonal swipes don't drift the exit
+          // animation off-screen-and-down (CF-2). Combined with key={currentRec.id}
+          // on the card Animated.View + reset-before-state-advance below, this
+          // structurally eliminates the ghost-card-after-swipe bug class.
+          //
+          // DO NOT re-introduce a 2-rAF reset chain here. The previous version
+          // reset transforms AFTER state advance via 2 requestAnimationFrame
+          // nesting; the gap created a window where the new top card briefly
+          // inherited the previous card's stale transform values, producing the
+          // bottom-left wedge artifact reported under ORCH-0694. The fix is
+          // per-card React key (line 2254 area) + reset-before-state-advance,
+          // NOT timing the reset around the React render cycle.
+          //
+          // ORCH-0675 Wave 1 RC-1 — per-axis timing with native driver.
+          // Animated.parallel start() callback fires when LAST animation resolves —
+          // equivalent semantics to single-call ValueXY .start() callback.
+          Animated.parallel([
+            Animated.timing(positionX, {
+              toValue: direction === "right" ? SCREEN_WIDTH : -SCREEN_WIDTH,
+              duration: 250,
+              useNativeDriver: true,
+            }),
+            Animated.timing(positionY, {
+              // ORCH-0694 0694-E: clamp dy magnitude so extreme diagonal swipes
+              // don't leave the exit animation in geometrically-extreme end states.
+              toValue: Math.max(-100, Math.min(100, gestureState.dy)),
+              duration: 250,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            // ORCH-0694 0694-B: reset transforms BEFORE state advance.
+            // The old Animated.View has key={oldCard.id} and unmounts in this
+            // same render pass; the new Animated.View mounts with key={newCard.id}
+            // and binds to positionX/Y already at 0. No 2-rAF dance needed.
+            positionX.setValue(0);
+            positionY.setValue(0);
 
-            // Move to next card
+            // Advance state. React batches these into a single re-render that
+            // swaps the keyed Animated.View atomically.
+            setRemovedCards((prev) => new Set([...prev, cardToRemove.id]));
             setCurrentCardIndex(0);
 
             // RELIABILITY: .catch() on fire-and-forget handleSwipe. Without this,
@@ -1283,20 +1374,17 @@ export default function SwipeableCards({
               console.error('[SwipeableCards] Swipe handler error:', err);
             });
 
-            // Wait for React to render the next card before resetting position
-            // This prevents the flash/flicker
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                position.setValue({ x: 0, y: 0 });
-              });
-            });
+            // ORCH-0694 0694-C: 2-rAF chain DELETED. The "DO NOT remove this
+            // rAF chain" comment from prior author is obsoleted by the per-card
+            // key on the current Animated.View — see comment block above.
           });
         } else {
           // Snap back to center
-          Animated.spring(position, {
-            toValue: { x: 0, y: 0 },
-            useNativeDriver: false,
-          }).start();
+          // ORCH-0675 Wave 1 RC-1 — per-axis spring with native driver
+          Animated.parallel([
+            Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
+            Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
+          ]).start();
         }
       },
     })
@@ -1304,8 +1392,9 @@ export default function SwipeableCards({
 
   const handleCardTap = () => {
     // Only handle tap if card is not being dragged
-    const currentX = (position.x as any)._value || 0;
-    const currentY = (position.y as any)._value || 0;
+    // ORCH-0675 Wave 1 RC-1 — per-axis read (Animated.ValueXY → 2× Animated.Value)
+    const currentX = (positionX as any)._value || 0;
+    const currentY = (positionY as any)._value || 0;
     if (Math.abs(currentX) < 10 && Math.abs(currentY) < 10 && currentRec) {
       handleCardExpand();
     }
@@ -1439,142 +1528,90 @@ export default function SwipeableCards({
     try {
       // Track interaction in Supabase (only if user is authenticated)
       if (user?.id) {
-        // Curated cards don't have a single place_id — skip Supabase operations
-        if ((card as any).cardType === 'curated') {
-          // ORCH-0408 Phase 4: ExperiencesService.trackInteraction removed — consolidated into record_card_interaction RPC
+        const isCuratedType = (card as any).cardType === 'curated';
 
-          if (direction === 'right') {
-            // ORCH-0395: In collab mode, skip onCardLike (direct save). The DB trigger
-            // check_mutual_like handles saving after 2+ right-swipes.
-            // Solo mode: save immediately via onCardLike as before.
-            if (!isBoardSession) {
-              const saveResult = await onCardLike(card);
-              if (saveResult === false) {
-                setRemovedCards((prev) => {
-                  const newSet = new Set(prev);
-                  newSet.delete(card.id);
-                  return newSet;
-                });
-                return;
-              }
-            }
-          }
-          // Left-swipe dismissal tracking handled in the shared block below
-        } else {
-
-        // ORCH-0408 Phase 4: ExperiencesService.trackInteraction removed — consolidated into record_card_interaction RPC
-
-        // Save to Supabase if swiped right (liked)
-        if (direction === "right") {
-          try {
-            await ExperiencesService.saveExperience(user.id, card.id, "liked", {
-              title: card.title,
-              category: card.category,
-              place_id: card.id,
-              lat: card.lat,
-              lng: card.lng,
-              image_url: card.image || card.images?.[0],
-              opening_hours: card.openingHours,
-              meta: {
-                matchScore: card.matchScore,
-                reviewCount: card.reviewCount,
-              },
-            });
-          } catch (saveError: any) {
-            if (saveError?.code === "23505") {
-              console.warn(
-                "Experience already saved for this user, skipping duplicate save"
-              );
-              // Don't throw - consider this a success (already saved)
-            } else {
-              console.error("Error saving experience:", saveError);
-              // Re-throw other errors so they can be handled by the caller
-              throw saveError;
-            }
-          }
-
-          // ORCH-0395: In collab mode, skip onCardLike (direct save). The DB trigger
-          // check_mutual_like handles saving after 2+ right-swipes.
-          // Solo mode: save immediately via onCardLike as before.
-          if (!isBoardSession) {
-            const saveResult = await onCardLike(card);
-            if (saveResult === false) {
-              setRemovedCards((prev) => {
-                const newSet = new Set(prev);
-                newSet.delete(card.id);
-                return newSet;
-              });
-              return;
-            }
-          }
-        } else {
-          // Track dislike
-          try {
-            await ExperiencesService.saveExperience(
-              user.id,
-              card.id,
-              "disliked",
-              {
-                title: card.title,
-                category: card.category,
-                place_id: card.id,
-                lat: card.lat,
-                lng: card.lng,
-                image_url: card.image || card.images?.[0],
-                opening_hours: card.openingHours,
-                meta: {
-                  matchScore: card.matchScore,
-                  reviewCount: card.reviewCount,
-                },
-              }
-            );
-          } catch (dislikeError) {
-            console.error("Error tracking dislike:", dislikeError);
-            // Continue without tracking dislike
-          }
-        }
-
-        // Track swipe state for board sessions
-        if (isBoardSession && resolvedSessionId) {
-          try {
-            await BoardCardService.trackSwipeState({
-              sessionId: resolvedSessionId,
-              experienceId: card.id,
-              userId: user.id,
-              swipeDirection: direction,
-            });
-
-            // ORCH-0395: After tracking swipe, check if the DB trigger created a match.
-            // Only check on right-swipe — left-swipes can't trigger a match.
-            if (direction === 'right') {
-              const matchResult = await BoardCardService.checkForMatch(
-                resolvedSessionId,
-                card.id
-              );
-              if (matchResult.matched && matchResult.savedCardId && matchResult.matchedUserIds) {
-                // Fire-and-forget: send push + in-app notification to all participants
-                notifyMatch({
-                  sessionId: resolvedSessionId,
-                  savedCardId: matchResult.savedCardId,
-                  experienceId: card.id,
-                  cardTitle: matchResult.cardTitle || card.title || 'a spot',
-                  matchedUserIds: matchResult.matchedUserIds,
-                });
-
-                // Local in-app notification for the current user
-                inAppNotificationService.add(
-                  'board_card_matched',
-                  "It's a match! 🎉",
-                  `You and others liked ${matchResult.cardTitle || card.title || 'a spot'}`,
-                  { page: 'home', sessionId: resolvedSessionId }
+        // ── ORCH-0640 ch09: Legacy saves/experiences tables DROPPED in ch12.
+        // Swipe-right now writes to saved_card via savedCardsService (snapshot pattern).
+        // Swipe-left dislikes are captured by recordCardSwipe (engagement_metrics) above
+        // — no separate dislike table needed.
+        if (!isCuratedType) {
+          if (direction === "right") {
+            try {
+              await savedCardsService.saveCard(user.id, card, "solo");
+            } catch (saveError: any) {
+              if (saveError?.code === "23505") {
+                console.warn(
+                  "Card already saved for this user, skipping duplicate save"
                 );
+              } else {
+                console.error("Error saving card:", saveError);
+                throw saveError;
               }
             }
-          } catch (swipeStateError) {
-            console.error("Error tracking swipe state:", swipeStateError);
-            // Continue even if swipe state tracking fails
+          } else {
+            // Swipe-left: no persistent table. Dislike is captured by recordCardSwipe
+            // above, which fires into engagement_metrics as a 'seen_deck' event.
+            try {
+              // no-op (ORCH-0640 DEC-050)
+              await Promise.resolve();
+            } catch (dislikeError) {
+              console.error("Error tracking dislike:", dislikeError);
+              // Continue without tracking dislike
+            }
           }
         }
+
+        // ── Solo-only: right-swipe fires onCardLike (= handleSaveCard) ───
+        // ORCH-0532: handleSaveCard is now SOLO-ONLY. Only fire it when NOT
+        // in a collab session. Collab right-swipes go through collabSaveCard
+        // below. This applies to BOTH curated and non-curated cards.
+        if (direction === 'right' && !isBoardSession) {
+          const saveResult = await onCardLike(card);
+          if (saveResult === false) {
+            setRemovedCards((prev) => {
+              const newSet = new Set(prev);
+              newSet.delete(card.id);
+              return newSet;
+            });
+            return;
+          }
+        }
+
+        // ── Collab-only: route through shared helper (right) or just record
+        // swipe state (left). ORCH-0533: this block NOW fires for curated
+        // cards too. ORCH-0558: both branches now go through
+        // BoardCardService.recordSwipeAndCheckMatch (atomic RPC).
+        if (isBoardSession && resolvedSessionId) {
+          if (direction === 'right') {
+            // collabSaveCard handles: RPC call → provisional toast → match
+            // toast + notifyMatch on matched:true. Helper is try/catch-sealed.
+            await collabSaveCard({
+              card,
+              sessionId: resolvedSessionId,
+              userId: user.id,
+              t,
+            });
+          } else {
+            // Left-swipe: record swipe state so other participants see the
+            // user opted out. Uses the same atomic RPC with direction='left';
+            // the RPC short-circuits past the match-detection branch and
+            // returns `{matched: false, reason: 'left_swipe'}`.
+            try {
+              await BoardCardService.recordSwipeAndCheckMatch({
+                sessionId: resolvedSessionId,
+                experienceId: card.id,
+                userId: user.id,
+                cardData: {}, // left-swipes don't need payload
+                swipeDirection: 'left',
+              });
+            } catch (leftErr) {
+              console.warn(
+                '[handleSwipe] left-swipe RPC failed:',
+                leftErr
+              );
+              // Non-fatal — continue with UI updates
+            }
+          }
         }
       } else {
         // User not authenticated - just handle locally
@@ -1629,9 +1666,27 @@ export default function SwipeableCards({
     }
   };
 
+  // ORCH-0532: dismissed-sheet re-save path. In collab mode, route through the
+  // shared helper (writes swipe-state, honors quorum trigger). In solo mode,
+  // fire onCardLike (= handleSaveCard, now solo-only). Previously this callsite
+  // was unguarded — it always called onCardLike, which used to write directly
+  // to board_saved_cards and bypass quorum. Now quorum is preserved on every path.
   const handleSaveDismissedCard = useCallback((card: Recommendation) => {
-    onCardLike(card);
-  }, [onCardLike]);
+    if (isBoardSession && resolvedSessionId && user?.id) {
+      // Fire-and-forget in collab — the helper handles its own toast/error UX.
+      // .catch() guards against unhandled rejections.
+      collabSaveCard({
+        card,
+        sessionId: resolvedSessionId,
+        userId: user.id,
+        t,
+      }).catch((err) =>
+        console.error('[handleSaveDismissedCard] collabSaveCard failed:', err)
+      );
+    } else {
+      onCardLike(card);
+    }
+  }, [onCardLike, isBoardSession, resolvedSessionId, user?.id, t]);
 
   const recommendationToExpanded = useCallback((card: Recommendation): ExpandedCardData => {
     if ((card as any).cardType === 'curated') {
@@ -1711,7 +1766,9 @@ export default function SwipeableCards({
     // Clear local state
     setRemovedCards(new Set());
     setCurrentCardIndex(0);
-    position.setValue({ x: 0, y: 0 });
+    // ORCH-0675 Wave 1 RC-1 — per-axis reset
+    positionX.setValue(0);
+    positionY.setValue(0);
 
     // Clear AsyncStorage for current mode and refreshKey
     try {
@@ -1882,7 +1939,20 @@ export default function SwipeableCards({
             currentMode={currentMode}
             onSave={async (card) => {
               try {
-                onCardLike?.(card);
+                // ORCH-0532: in collab, route through shared helper (writes
+                // swipe-state, honors quorum). In solo, onCardLike = handleSaveCard
+                // (now solo-only). Previously this was unguarded — always called
+                // onCardLike, bypassing quorum in collab.
+                if (isBoardSession && resolvedSessionId && user?.id) {
+                  await collabSaveCard({
+                    card: card as unknown as Recommendation,
+                    sessionId: resolvedSessionId,
+                    userId: user.id,
+                    t,
+                  });
+                } else {
+                  onCardLike?.(card);
+                }
                 mixpanelService.trackCardSaved({
                   card_id: card.id,
                   card_title: card.title,
@@ -2066,7 +2136,7 @@ export default function SwipeableCards({
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
       <View style={styles.container}>
-        <View style={styles.cardContainer}>
+        <View ref={coachDeckRef} collapsable={false} style={styles.cardContainer}>
           {/* ORCH-0474: Pipeline-error toast — only when stale cards remain
               visible. Deck continues to render underneath so the user can keep
               swiping what they have while they retry. Dismissible via retry. */}
@@ -2092,10 +2162,13 @@ export default function SwipeableCards({
             </View>
           )}
 
-          {/* View Previous overlay — appears after first swipe */}
+          {/* View Previous overlay — appears after first swipe.
+              ORCH-0589 v4 (V4): repositioned below the floating top-bar chrome so it
+              doesn't collide with the Notifications bell. top = safeArea.top + ~62
+              (row height 52 + topInset 2 + 8 breathing). Right-aligned position preserved. */}
           {sessionSwipedCards.length > 0 && (
             <TouchableOpacity
-              style={styles.batchChip}
+              style={[styles.batchChip, { top: safeAreaInsets.top + 62 }]}
               onPress={() => setDismissedSheetVisible(true)}
               activeOpacity={0.7}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -2134,13 +2207,18 @@ export default function SwipeableCards({
                   <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
                     <CardHeroImage uri={nextCard.image} style={styles.cardImage} />
 
-                    {/* Gallery Indicator if multiple images */}
+                    {/* ORCH-0589 v2 (G4): premium bottom-fade gradient — darker canvas for title + chips */}
+                    <LinearGradient
+                      colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.55)']}
+                      locations={[0, 0.5, 1]}
+                      pointerEvents="none"
+                      style={styles.heroGradient}
+                    />
+
+                    {/* Gallery Indicator if multiple images (ORCH-0566: glass) */}
                     {nextCard.images && nextCard.images.length > 1 && (
-                      <View style={styles.galleryIndicator}>
-                        <Icon name="images" size={16} color="white" />
-                        <Text style={styles.galleryText}>
-                          {nextCard.images.length}
-                        </Text>
+                      <View style={styles.galleryIndicatorWrapper}>
+                        <GlassBadge iconName="images">{nextCard.images.length}</GlassBadge>
                       </View>
                     )}
 
@@ -2148,51 +2226,35 @@ export default function SwipeableCards({
                     <View style={styles.titleOverlay}>
                       <Text style={styles.cardTitle}>{nextCard.title}</Text>
 
-                      {/* Info badges: distance, travel time, rating, price */}
+                      {/* ORCH-0566: glass info badges (preview layer — no entry motion, not pressable) */}
                       <View style={styles.detailsBadges}>
-                        <View style={styles.detailBadge}>
-                          <Icon name="location" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem) || t('cards:swipeable.nearby')}
-                          </Text>
-                        </View>
-                        {nextCard.travelTime && nextCard.travelTime !== '0 min' ? (
-                          <View style={styles.detailBadge}>
-                            <Icon name={getTravelModeIcon(nextCard.travelMode ?? effectiveTravelMode)} size={12} color="white" />
-                            <Text style={styles.detailBadgeText}>
-                              {nextCard.travelTime}
-                            </Text>
-                          </View>
-                        ) : null}
-                        {nextCard.rating != null && nextCard.rating > 0 && (
-                          <View style={styles.detailBadge}>
-                            <Icon name="star" size={12} color="white" />
-                            <Text style={styles.detailBadgeText}>
-                              {nextCard.rating.toFixed(1)}
-                            </Text>
-                          </View>
+                        {/* ORCH-0659: honest null propagation — hide the badge entirely when
+                            distance is missing. No "nearby" placeholder (Constitution #9). */}
+                        {nextCard.distance != null && (
+                          <GlassBadge iconName="location">
+                            {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem)}
+                          </GlassBadge>
                         )}
-                        <View style={styles.detailBadge}>
-                          <Icon name="pricetag" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {nextCard.priceTier && TIER_BY_SLUG[nextCard.priceTier as PriceTierSlug]
-                              ? formatTierLabel(nextCard.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
-                              : formatPriceRange(nextCard.priceRange || t('cards:swipeable.free'), accountPreferences?.currency) || t('cards:swipeable.free')}
-                          </Text>
-                        </View>
-                        <View style={styles.detailBadge}>
-                          <Icon name={NextCategoryIcon} size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>{getReadableCategoryName(nextCard.category)}</Text>
-                        </View>
+                        {/* ORCH-0660: render only when real value present. Mode-icon matches
+                            card.travelMode (set server-side per user preference). */}
+                        {nextCard.travelTime != null && (
+                          <GlassBadge iconName={getTravelModeIcon(nextCard.travelMode ?? effectiveTravelMode)}>
+                            {nextCard.travelTime}
+                          </GlassBadge>
+                        )}
+                        {nextCard.rating != null && nextCard.rating > 0 && (
+                          <GlassBadge iconName="star">{nextCard.rating.toFixed(1)}</GlassBadge>
+                        )}
+                        <GlassBadge iconName="pricetag">
+                          {nextCard.priceTier && TIER_BY_SLUG[nextCard.priceTier as PriceTierSlug]
+                            ? formatTierLabel(nextCard.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
+                            : formatPriceRange(nextCard.priceRange || t('cards:swipeable.free'), accountPreferences?.currency) || t('cards:swipeable.free')}
+                        </GlassBadge>
+                        <GlassBadge iconName={NextCategoryIcon}>
+                          {getReadableCategoryName(nextCard.category)}
+                        </GlassBadge>
                       </View>
-
-                      {/* View more badge */}
-                      <View style={styles.viewMoreRow}>
-                        <View style={styles.viewMoreBadge}>
-                          <Icon name="eye" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>{t('cards:swipeable.view_more')}</Text>
-                        </View>
-                      </View>
+                      {/* ORCH-0566 follow-up: View-more chip removed. Preview has no saved/scheduled state. */}
                     </View>
                   </View>
 
@@ -2222,13 +2284,20 @@ export default function SwipeableCards({
             })()}
 
           {/* Current Card */}
+          {/* ORCH-0694 0694-A: per-card key forces React to mount a fresh
+              Animated.View whenever the active card changes. Combined with
+              the reset-before-state-advance pattern in the swipe-completion
+              callback below, this structurally eliminates the shared-Animated.Value
+              ghost-card bug class. */}
           <Animated.View
+            key={currentRec.id}
             style={[
               styles.card,
               {
+                // ORCH-0675 Wave 1 RC-1 — per-axis transform (native-driver compatible)
                 transform: [
-                  { translateX: position.x },
-                  { translateY: position.y },
+                  { translateX: positionX },
+                  { translateY: positionY },
                   { rotate: rotate },
                 ],
               },
@@ -2275,13 +2344,18 @@ export default function SwipeableCards({
                   <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
                     <CardHeroImage uri={currentRec.image} style={styles.cardImage} />
 
-                    {/* Gallery Indicator if multiple images */}
+                    {/* ORCH-0589 v2 (G4): premium bottom-fade gradient — darker canvas for title + chips */}
+                    <LinearGradient
+                      colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.55)']}
+                      locations={[0, 0.5, 1]}
+                      pointerEvents="none"
+                      style={styles.heroGradient}
+                    />
+
+                    {/* Gallery Indicator if multiple images (ORCH-0566: glass) */}
                     {currentRec.images && currentRec.images.length > 1 && (
-                      <View style={styles.galleryIndicator}>
-                        <Icon name="images" size={16} color="white" />
-                        <Text style={styles.galleryText}>
-                          {currentRec.images.length}
-                        </Text>
+                      <View style={styles.galleryIndicatorWrapper}>
+                        <GlassBadge iconName="images">{currentRec.images.length}</GlassBadge>
                       </View>
                     )}
 
@@ -2298,63 +2372,55 @@ export default function SwipeableCards({
                         <Text style={styles.oneLiner} numberOfLines={1}>{currentRec.oneLiner}</Text>
                       )}
 
-                      {/* Info badges: distance, travel time, rating, price */}
+                      {/* ORCH-0566: glass info badges (front card — entry motion via entryIndex) */}
+                      {/* Saved/scheduled state badges retain their brand-color semantic treatment (out of spec scope). */}
                       <View style={styles.detailsBadges}>
-                        <View style={styles.detailBadge}>
-                          <Icon name="location" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem) || t('cards:swipeable.nearby')}
-                          </Text>
-                        </View>
-                        {currentRec.travelTime && currentRec.travelTime !== '0 min' ? (
-                          <View style={styles.detailBadge}>
-                            <Icon name={getTravelModeIcon(currentRec.travelMode ?? effectiveTravelMode)} size={12} color="white" />
-                            <Text style={styles.detailBadgeText}>
-                              {currentRec.travelTime}
-                            </Text>
-                          </View>
-                        ) : null}
+                        {/* ORCH-0659: honest null propagation — hide the badge when distance missing. */}
+                        {currentRec.distance != null && (
+                          <GlassBadge iconName="location" entryIndex={0}>
+                            {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem)}
+                          </GlassBadge>
+                        )}
+                        {/* ORCH-0660: render only when real value present; icon matches selected travel mode. */}
+                        {currentRec.travelTime != null && (
+                          <GlassBadge iconName={getTravelModeIcon(currentRec.travelMode ?? effectiveTravelMode)} entryIndex={1}>
+                            {currentRec.travelTime}
+                          </GlassBadge>
+                        )}
                         {currentRec.rating != null && currentRec.rating > 0 && (
-                          <View style={styles.detailBadge}>
-                            <Icon name="star" size={12} color="white" />
-                            <Text style={styles.detailBadgeText}>
-                              {currentRec.rating.toFixed(1)}
-                            </Text>
-                          </View>
+                          <GlassBadge iconName="star" entryIndex={2}>
+                            {currentRec.rating.toFixed(1)}
+                          </GlassBadge>
                         )}
-                        <View style={styles.detailBadge}>
-                          <Icon name="pricetag" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>
-                            {currentRec.priceTier && TIER_BY_SLUG[currentRec.priceTier as PriceTierSlug]
-                              ? formatTierLabel(currentRec.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
-                              : formatPriceRange(currentRec.priceRange || t('cards:swipeable.free'), accountPreferences?.currency) || t('cards:swipeable.free')}
-                          </Text>
-                        </View>
-                        <View style={styles.detailBadge}>
-                          <Icon name={CategoryIcon} size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>{getReadableCategoryName(currentRec.category)}</Text>
-                        </View>
-                        {isCurrentCardSaved && (
-                          <View style={styles.savedBadge}>
-                            <Icon name="heart" size={10} color="white" />
-                            <Text style={styles.savedBadgeText}>{t('cards:swipeable.saved')}</Text>
-                          </View>
-                        )}
-                        {isCurrentCardScheduled && (
-                          <View style={styles.scheduledBadge}>
-                            <Icon name="calendar" size={10} color="white" />
-                            <Text style={styles.scheduledBadgeText}>{t('cards:swipeable.scheduled')}</Text>
-                          </View>
-                        )}
+                        <GlassBadge iconName="pricetag" entryIndex={3}>
+                          {currentRec.priceTier && TIER_BY_SLUG[currentRec.priceTier as PriceTierSlug]
+                            ? formatTierLabel(currentRec.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
+                            : formatPriceRange(currentRec.priceRange || t('cards:swipeable.free'), accountPreferences?.currency) || t('cards:swipeable.free')}
+                        </GlassBadge>
+                        <GlassBadge iconName={CategoryIcon} entryIndex={4}>
+                          {getReadableCategoryName(currentRec.category)}
+                        </GlassBadge>
                       </View>
 
-                      {/* View more badge */}
-                      <View style={styles.viewMoreRow}>
-                        <View style={styles.viewMoreBadge}>
-                          <Icon name="eye" size={12} color="white" />
-                          <Text style={styles.detailBadgeText}>{t('cards:swipeable.view_more')}</Text>
+                      {/* State badges row — saved/scheduled chips live here (moved down from the meta row
+                          so the brand-colored state signals get their own line, replacing the removed
+                          "View more" chip). Row is empty when neither flag is true — React renders nothing. */}
+                      {(isCurrentCardSaved || isCurrentCardScheduled) && (
+                        <View style={styles.stateBadgesRow}>
+                          {isCurrentCardSaved && (
+                            <View style={styles.savedBadge}>
+                              <Icon name="heart" size={10} color="white" />
+                              <Text style={styles.savedBadgeText}>{t('cards:swipeable.saved')}</Text>
+                            </View>
+                          )}
+                          {isCurrentCardScheduled && (
+                            <View style={styles.scheduledBadge}>
+                              <Icon name="calendar" size={10} color="white" />
+                              <Text style={styles.scheduledBadgeText}>{t('cards:swipeable.scheduled')}</Text>
+                            </View>
+                          )}
                         </View>
-                      </View>
+                      )}
                     </Animated.View>
                   </View>
 
@@ -2410,11 +2476,24 @@ export default function SwipeableCards({
               // Move to next card
               setCurrentCardIndex(0);
 
-              // Handle swipe logic (tracking, saving, etc.) - await to catch errors
+              // Handle swipe logic (tracking, saving, etc.) - await to catch errors.
+              // ORCH-0532: handleSwipe now routes collab right-swipes through
+              // collabSaveCard internally, so this path is quorum-safe.
               await handleSwipe("right", currentRec);
             } else {
-              // Fallback: just call onCardLike if card doesn't match
-              onCardLike?.(card);
+              // ORCH-0532: fallback when expanded card doesn't match current deck card
+              // (e.g., modal opened from a different list). In collab, route through
+              // shared helper to preserve quorum. In solo, onCardLike = handleSaveCard.
+              if (isBoardSession && resolvedSessionId && user?.id) {
+                await collabSaveCard({
+                  card: card as unknown as Recommendation,
+                  sessionId: resolvedSessionId,
+                  userId: user.id,
+                  t,
+                });
+              } else {
+                onCardLike?.(card);
+              }
             }
 
             // Close the modal only on success
@@ -2487,15 +2566,21 @@ const styles = StyleSheet.create({
     paddingTop: 2,
     paddingBottom: 8,
   },
+  // ORCH-0589 v3 (R4) + v4 (V1): full-bleed horizontally; v4 adds paddingBottom 12
+  // so there's a visible gap between the card's rounded bottom and the floating nav.
   cardContainer: {
-    width: SCREEN_WIDTH - 32,
+    width: SCREEN_WIDTH,
     maxWidth: 500,
     position: "relative",
     flex: 1,
-    paddingTop: 12,
-    paddingBottom: 8,
-    paddingHorizontal: 8,
+    paddingTop: 0,
+    paddingBottom: 12,
+    paddingHorizontal: 0,
   },
+  // ORCH-0589 v4 (V1): iPhone-bezel-matched corner radius + subtle drop shadow
+  // so the card reads as "living inside" the phone frame instead of a flat rectangle.
+  // Radius token sourced from glass.card.bezelRadius (40pt). Shadow gives a gentle
+  // lift against the dark safeArea backdrop.
   card: {
     position: "absolute",
     left: 0,
@@ -2503,22 +2588,20 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     backgroundColor: "white",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "rgba(0, 0, 0, 0.10)",
-    shadowColor: Platform.OS === "android" ? "rgba(0, 0, 0, 0.08)" : "#000",
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.18,
+    borderRadius: glass.card.bezelRadius,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
     shadowRadius: 16,
-    elevation: Platform.OS === "android" ? 12 : 10,
+    elevation: 8,
     zIndex: 2,
   },
+  // ORCH-0589 v4 (V1): borderRadius matches the outer card so overflow clips cleanly
+  // against the bezel-matched corners. `overflow: hidden` needed so the hero photo +
+  // cardDetails white strip both clip to the rounded silhouette.
   cardInner: {
     flex: 1,
-    borderRadius: 24,
+    borderRadius: glass.card.bezelRadius,
     overflow: "hidden",
   },
   nextCard: {
@@ -2528,11 +2611,10 @@ const styles = StyleSheet.create({
     flex: IMAGE_SECTION_RATIO,
     position: "relative",
   },
+  // ORCH-0589 v3 (R4): full-bleed image, no corner radii.
   cardImage: {
     width: "100%",
     height: "100%",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
   },
   matchBadge: {
     position: "absolute",
@@ -2555,39 +2637,41 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
-  galleryIndicator: {
+  // ORCH-0566: position-only wrapper — GlassBadge provides its own skin.
+  galleryIndicatorWrapper: {
     position: "absolute",
     top: 16,
     right: 16,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
   },
-  galleryText: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "500",
-  },
+  // ORCH-0589 v2 (G4): more breathing room — premium rhythm.
+  // paddingBottom 24 → 40, cardTitle marginBottom 12 → 16.
   titleOverlay: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     padding: 20,
-    paddingBottom: 24,
+    paddingBottom: 40,
+    zIndex: 2,
   },
   cardTitle: {
     color: "white",
     fontSize: 24,
     fontWeight: "bold",
-    marginBottom: 12,
+    marginBottom: 16,
     textShadowColor: "rgba(0, 0, 0, 0.5)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  // ORCH-0589 v2 (G4): premium bottom gradient over the hero photo — gives the
+  // title + chips a darker canvas to sit on, without burying the photo itself.
+  heroGradient: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "45%",
+    zIndex: 1,
   },
   oneLiner: {
     fontSize: 15,
@@ -2604,32 +2688,12 @@ const styles = StyleSheet.create({
     gap: 8,
     flexWrap: "wrap",
   },
-  detailBadge: {
-    backgroundColor: "rgba(107, 114, 128, 0.8)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
+  // State badges row (saved/scheduled). Occupies the position formerly held by the
+  // removed "View more" chip. ORCH-0589 v2 (G4): marginTop 8 → 12 for premium breathing room.
+  stateBadgesRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  viewMoreRow: {
-    flexDirection: "row",
-    marginTop: 8,
-  },
-  viewMoreBadge: {
-    backgroundColor: "rgba(107, 114, 128, 0.8)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  detailBadgeText: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "500",
+    marginTop: 12,
+    gap: 8,
   },
   addressRow: {
     flexDirection: "row",
@@ -2829,12 +2893,12 @@ const styles = StyleSheet.create({
   emptyDeckTitle: {
     fontSize: 17,
     fontWeight: "600",
-    color: "#111827",
+    color: "#FFFFFF",
     textAlign: "center",
   },
   emptyDeckSubtitle: {
     fontSize: 13,
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
     lineHeight: 18,
     marginBottom: 8,
@@ -2876,7 +2940,7 @@ const styles = StyleSheet.create({
   },
   emptyDeckHint: {
     fontSize: 12,
-    color: "#9ca3af",
+    color: "rgba(255, 255, 255, 0.55)",
     textAlign: "center",
     lineHeight: 17,
     marginTop: 4,
@@ -2893,12 +2957,12 @@ const styles = StyleSheet.create({
   noCardsTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#111827",
+    color: "#FFFFFF",
     textAlign: "center",
   },
   noCardsSubtitle: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
     lineHeight: 21,
     marginBottom: 8,
@@ -3065,8 +3129,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   batchChip: {
+    // ORCH-0589 v4 (V4): `top` set at runtime via inline style using safeAreaInsets.top + 62
+    // so the chip sits below the floating top-bar chrome. Right-alignment preserved.
     position: "absolute",
-    top: 16,
     right: 16,
     zIndex: 20,
     flexDirection: "row",

@@ -117,8 +117,6 @@
   "toast_added_to_boards": "Aggiungied to {{count}} Boards!",
   "toast_added_board_msg": "{{name}} has been added to the collaboration board",
   "toast_added_boards_msg": "{{name}} has been added to {{count}} collaboration boards",
-  "toast_card_shared": "Carta Condivisa!",
-  "toast_card_shared_msg": "A saved experience has been shared with {{name}}",
   "toast_friend_removed": "Amico Rimosso",
   "toast_friend_removed_msg": "{{name}} has been removed from your friends list",
   "toast_user_blocked": "Utente Bloccato",
@@ -168,5 +166,14 @@
   "untitled": "Untitled",
   "error_sign_in_save": "Please sign in to save experiences",
   "error_boundary_title": "Qualcosa è andato storto",
-  "error_boundary_message": "We encountered an unexpected error. Please try again."
+  "error_boundary_message": "We encountered an unexpected error. Please try again.",
+  "category_icebreakers": "Rompighiaccio",
+  "category_drinks_and_music": "Drink e Musica",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Alta Cucina",
+  "category_movies": "Cinema",
+  "category_theatre": "Teatro",
+  "category_brunch_lunch_casual": "Brunch, pranzo e casual",
+  "category_movies_theatre": "Cinema e Teatro"
 }

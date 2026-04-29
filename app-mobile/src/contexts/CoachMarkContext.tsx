@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
-import { Dimensions } from 'react-native';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, ReactNode } from 'react';
+import { Dimensions, Platform, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabase';
@@ -52,14 +52,15 @@ const CoachMarkContext = createContext<CoachMarkContextType | undefined>(undefin
 
 const LOADING_SENTINEL = -2;
 const TOUR_NOT_STARTED = 0;
-const TOUR_COMPLETED = 11;
+// ORCH-0635: tour shrank from 10 to 8 steps. TOUR_COMPLETED is COACH_STEP_COUNT + 1.
+const TOUR_COMPLETED = COACH_STEP_COUNT + 1;
 const TOUR_SKIPPED = -1;
 const START_DELAY_MS = 1500;
 const TAB_NAVIGATE_DELAY_MS = 400;
 const SCROLL_SETTLE_MS = 500;
 
-// Steps that need known-position scrolling (inside a ScrollView on profile tab)
-const SCROLL_STEPS = new Set([9, 10]);
+// ORCH-0635: scroll-offset steps on Profile — Account Settings row (8) + Beta Feedback (9).
+const SCROLL_STEPS = new Set([8, 9]);
 
 // ── Provider ────────────────────────────────────────────────────────────────
 
@@ -102,8 +103,35 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
           setCurrentStep(TOUR_COMPLETED);
           return;
         }
-        const step = data?.coach_mark_step ?? TOUR_NOT_STARTED;
-        setCurrentStep(step);
+        const fetchedStep = data?.coach_mark_step ?? TOUR_NOT_STARTED;
+
+        // ORCH-0635: normalize old-tour values (1..10, old sentinel 11) to new
+        // TOUR_COMPLETED (= COACH_STEP_COUNT + 1 = 9). Users mid-old-tour do NOT
+        // get re-run through the new tour — they already had their first-run moment.
+        // Idempotent: after the first write, fetchedStep === TOUR_COMPLETED and no
+        // further writes fire.
+        let normalizedStep: number;
+        if (
+          fetchedStep !== TOUR_NOT_STARTED &&
+          fetchedStep !== TOUR_SKIPPED &&
+          fetchedStep !== TOUR_COMPLETED &&
+          fetchedStep >= 1
+        ) {
+          normalizedStep = TOUR_COMPLETED;
+          supabase
+            .from('profiles')
+            .update({ coach_mark_step: TOUR_COMPLETED })
+            .eq('id', user!.id)
+            .then(({ error: updateError }) => {
+              if (updateError) {
+                console.warn('[CoachMark] Failed to normalize legacy step:', updateError.message);
+              }
+            });
+        } else {
+          normalizedStep = fetchedStep;
+        }
+
+        setCurrentStep(normalizedStep);
       } catch (e) {
         console.warn('[CoachMark] Unexpected error fetching step:', e);
         if (!cancelled) setCurrentStep(TOUR_COMPLETED);
@@ -144,7 +172,6 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
           step_id: String(config.id),
           step_title: config.title,
           tab: config.tab,
-          target_id: config.targetId,
         });
         // Start tour timer on first step
         if (config.id === 1) {
@@ -152,7 +179,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
         }
       }
 
-      // Steps 11-12: known-position scroll approach
+      // ORCH-0635: scroll-offset step (Profile Account Settings row)
       if (SCROLL_STEPS.has(currentStep)) {
         scrollToKnownPosition(currentStep);
         return;
@@ -205,11 +232,22 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       // After scroll settles, register a SYNTHETIC measurement at the known position
       setTimeout(() => {
         // Profile page extends behind status bar — scroll content starts at y=0.
-        // exactScreenY = contentY - scrollY (no insets offset needed)
+        // exactScreenY = contentY - scrollY (no insets offset needed at THIS layer).
+        //
+        // ORCH-0688: Android Y-correction also applied here because the SVG mask in
+        // SpotlightOverlay paints in the application-window frame (which extends
+        // behind the status bar under edge-to-edge), while the synthetic exactScreenY
+        // is computed in the application-content frame. Without the correction, steps
+        // 8-9 (Profile Account Settings + Beta Feedback) would land ~24dp too high on
+        // Samsung One UI. Mirrors the parallel correction in useCoachMark.ts. iOS
+        // branch is a literal no-op (keyWindow + React root share one frame).
+        // Do NOT remove without re-reading SPEC_ORCH-0688_COACH_MARK_ANDROID_OFFSET.md.
         const exactScreenY = offset.contentY - scrollY;
+        const correctedY = Platform.OS === 'android' ? exactScreenY + (StatusBar.currentHeight ?? 0) : exactScreenY;
+
         registerTarget(step, {
           x: offset.contentX,
-          y: exactScreenY,
+          y: correctedY,
           width: offset.width,
           height: offset.height,
           radius: 12,
@@ -347,7 +385,9 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     ? COACH_STEPS.find((s) => s.id === currentStep) ?? null
     : null;
 
-  const value: CoachMarkContextType = {
+  // ORCH-0679 Wave 2A: useMemo on value (I-PROVIDER-VALUE-MEMOIZED) — context
+  // value identity is stable across renders when no underlying state/refs change.
+  const value = useMemo<CoachMarkContextType>(() => ({
     currentStep,
     isCoachActive,
     isCoachPending,
@@ -362,7 +402,22 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     registerTargetScrollOffset,
     overlayVisible,
     scrollLockActive,
-  };
+  }), [
+    currentStep,
+    isCoachActive,
+    isCoachPending,
+    isCoachLoading,
+    currentStepConfig,
+    nextStep,
+    prevStep,
+    skipTour,
+    targetMeasurements,
+    registerTarget,
+    registerScrollRef,
+    registerTargetScrollOffset,
+    overlayVisible,
+    scrollLockActive,
+  ]);
 
   return (
     <CoachMarkContext.Provider value={value}>

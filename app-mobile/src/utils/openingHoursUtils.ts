@@ -158,6 +158,14 @@ export function extractWeekdayText(
   openingHours:
     | string
     | { open_now?: boolean; weekday_text?: string[] }
+    | {
+        // [ORCH-0649] Google Places v1 — 85.6% of place_pool rows as of 2026-04-23.
+        openNow?: boolean;
+        periods?: unknown[];
+        nextOpenTime?: string;
+        nextCloseTime?: string;
+        weekdayDescriptions?: string[];
+      }
     | { lines?: string[] }
     | Record<string, string>
     | string[]
@@ -181,6 +189,23 @@ export function extractWeekdayText(
     const obj = openingHours as Record<string, unknown>;
 
     if (Array.isArray(obj.weekday_text) && obj.weekday_text.length > 0) {
+      // [CRITICAL — ORCH-0649] Defensive guard for the deckService.ts:184-187
+      // pre-fix shape mismatch. Pre-OTA clients persisted weekday_text arrays
+      // whose entries were Object.entries() of Google v1 (PascalCase keys).
+      // If we detect this pattern, return null so the consumer hides the
+      // section instead of rendering "OpenNow: false" / "Periods: [object Object]"
+      // raw. The SQL backfill (orch_0649_backfill_saved_card_opening_hours)
+      // is the durable fix; this guard handles any cached row that escapes.
+      const looksBroken = (obj.weekday_text as string[]).some((line) =>
+        typeof line === 'string' && (
+          line.startsWith('OpenNow:') ||
+          line.startsWith('Periods:') ||
+          line.startsWith('NextOpenTime:') ||
+          line.startsWith('NextCloseTime:') ||
+          line.startsWith('WeekdayDescriptions:')
+        )
+      );
+      if (looksBroken) return null;
       return obj.weekday_text as string[];
     }
 

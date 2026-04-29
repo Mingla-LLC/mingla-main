@@ -4,6 +4,8 @@ import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { Icon } from './ui/Icon';
 import { getDisplayName } from '../utils/getDisplayName';
 import { useTranslation } from 'react-i18next';
+import { useAddFriendToSessions } from '../hooks/useAddFriendToSessions';
+import type { AddFriendsToSessionsReturn } from '../services/sessionMembershipService';
 
 interface Friend {
   id: string;
@@ -30,6 +32,9 @@ interface CollaborationSession {
   pendingParticipants: number;
   totalParticipants: number;
   boardCards: number;
+  /** ORCH-0666: caller-scoped invitee IDs with pending invites; used to filter
+   *  the picker so users don't try to re-add already-pending friends. */
+  pendingInviteeIds?: string[];
 }
 
 interface AddToBoardModalProps {
@@ -37,7 +42,10 @@ interface AddToBoardModalProps {
   onClose: () => void;
   friend: Friend | null;
   boardsSessions?: any[];
-  onConfirm: (sessionIds: string[], friend: Friend) => void;
+  /** ORCH-0666: refresh trigger called after mutation settles. */
+  onMutationSettled?: () => void;
+  /** ORCH-0666: forwards the aggregate result for parent-owned toast emission. */
+  onResult?: (result: AddFriendsToSessionsReturn) => void;
 }
 
 // Helper to format relative time
@@ -57,77 +65,33 @@ const formatRelativeTime = (dateString: string | undefined, t: (key: string) => 
   return date.toLocaleDateString();
 };
 
-export default function AddToBoardModal({ isOpen, onClose, friend, boardsSessions = [], onConfirm }: AddToBoardModalProps) {
+export default function AddToBoardModal({
+  isOpen,
+  onClose,
+  friend,
+  boardsSessions = [],
+  onMutationSettled,
+  onResult,
+}: AddToBoardModalProps) {
   const { t } = useTranslation(['modals', 'common']);
   const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
-  const [isAdding, setIsAdding] = useState(false);
+  const [lastResult, setLastResult] = useState<AddFriendsToSessionsReturn | null>(null);
+
+  const mutation = useAddFriendToSessions({
+    onMutationSettled: () => {
+      onMutationSettled?.();
+    },
+  });
 
   // Reset selections when modal opens/closes
   React.useEffect(() => {
     if (!isOpen) {
       setSelectedSessions([]);
-      setIsAdding(false);
+      setLastResult(null);
     }
   }, [isOpen]);
 
   if (!isOpen || !friend) return null;
-
-  const handleAddToBoard = async () => {
-    if (selectedSessions.length === 0 || !friend) return;
-    
-    setIsAdding(true);
-    
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    onConfirm(selectedSessions, friend);
-    setIsAdding(false);
-    setSelectedSessions([]);
-    onClose();
-  };
-
-  const handleSessionToggle = (sessionId: string) => {
-    setSelectedSessions(prev => 
-      prev.includes(sessionId)
-        ? prev.filter(id => id !== sessionId)
-        : [...prev, sessionId]
-    );
-  };
-
-  const handleSelectAll = () => {
-    if (selectedSessions.length === availableSessions.length) {
-      setSelectedSessions([]);
-    } else {
-      setSelectedSessions(availableSessions.map(session => session.id));
-    }
-  };
-
-  const getStatusStyle = (status: CollaborationSession['status']) => {
-    switch (status) {
-      case 'active': return styles.statusBadgeActive;
-      case 'pending': return styles.statusBadgePending;
-      case 'archived': return styles.statusBadgeArchived;
-      default: return styles.statusBadgeArchived;
-    }
-  };
-
-  const getStatusTextStyle = (status: CollaborationSession['status']) => {
-    switch (status) {
-      case 'active': return styles.statusTextActive;
-      case 'pending': return styles.statusTextPending;
-      case 'archived': return styles.statusTextArchived;
-      default: return styles.statusTextArchived;
-    }
-  };
-
-  const getStatusIcon = (status: CollaborationSession['status']) => {
-    switch (status) {
-      case 'active': return <Icon name="people" size={12} color="#059669" />;
-      case 'pending': return <Icon name="time" size={12} color="#d97706" />;
-      case 'archived': return <Icon name="calendar" size={12} color="#6b7280" />;
-      default: return <Icon name="alert-circle" size={12} color="#6b7280" />;
-    }
-  };
 
   // Transform boardsSessions to CollaborationSession format
   const sessions: CollaborationSession[] = (boardsSessions || []).map((board: any) => ({
@@ -148,13 +112,113 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
     pendingParticipants: board.pendingParticipants || 0,
     totalParticipants: board.participants?.length || 0,
     boardCards: board.cardsCount || board.cards_count || 0,
+    pendingInviteeIds: board.pendingInviteeIds || [],
   }));
 
-  // Filter out sessions where the friend is already a participant
-  const availableSessions = sessions.filter(session => 
-    !session.participants.some(participant => participant.id === friend.id) &&
-    session.status !== 'archived'
-  );
+  // ORCH-0666: filter excludes friends who are already participants AND
+  // friends with pending invites in the current user's outgoing invitations
+  // (CF-2 close). Sessions must be in `pending` or `active` state — `archived`
+  // and `ended` are excluded at UX layer (RPC also enforces server-side).
+  const availableSessions = sessions.filter((session) => {
+    const friendIsParticipant = session.participants.some((p) => p.id === friend.id);
+    const friendHasPendingInvite = (session.pendingInviteeIds ?? []).includes(friend.id);
+    const sessionIsValidStatus = session.status === 'active' || session.status === 'pending';
+    return !friendIsParticipant && !friendHasPendingInvite && sessionIsValidStatus;
+  });
+
+  const handleAddToBoard = async (): Promise<void> => {
+    if (selectedSessions.length === 0 || !friend) return;
+    // Build sessionNames map for telemetry payload
+    const sessionNames: Record<string, string> = {};
+    for (const id of selectedSessions) {
+      const s = sessions.find((ss) => ss.id === id);
+      if (s) sessionNames[id] = s.name;
+    }
+    try {
+      const result = await mutation.mutateAsync({
+        sessionIds: selectedSessions,
+        friendUserId: friend.id,
+        sessionNames,
+      });
+      setLastResult(result);
+      // Forward result to parent for toast emission (Constitution #2 single-owner).
+      onResult?.(result);
+      setSelectedSessions([]);
+      // Close on full success or all-already-state. On any error, keep modal
+      // open and render inline error UI.
+      if (result.errors.length === 0) {
+        onClose();
+      }
+    } catch (err: unknown) {
+      // mutateAsync only throws if the mutationFn throws (rare — the service
+      // catches loop errors internally). Treat as a full failure.
+      console.error('[AddToBoardModal] mutation threw:', err);
+      setLastResult({
+        results: [],
+        errors: selectedSessions.map((sid) => ({
+          sessionId: sid,
+          message: err instanceof Error ? err.message : 'Unknown error',
+          errorCode: 'mutation_threw',
+        })),
+      });
+    }
+  };
+
+  const handleSessionToggle = (sessionId: string): void => {
+    setSelectedSessions((prev) =>
+      prev.includes(sessionId) ? prev.filter((id) => id !== sessionId) : [...prev, sessionId]
+    );
+  };
+
+  const handleSelectAll = (): void => {
+    if (selectedSessions.length === availableSessions.length) {
+      setSelectedSessions([]);
+    } else {
+      setSelectedSessions(availableSessions.map((session) => session.id));
+    }
+  };
+
+  const getStatusStyle = (status: CollaborationSession['status']): object => {
+    switch (status) {
+      case 'active':
+        return styles.statusBadgeActive;
+      case 'pending':
+        return styles.statusBadgePending;
+      case 'archived':
+        return styles.statusBadgeArchived;
+      default:
+        return styles.statusBadgeArchived;
+    }
+  };
+
+  const getStatusTextStyle = (status: CollaborationSession['status']): object => {
+    switch (status) {
+      case 'active':
+        return styles.statusTextActive;
+      case 'pending':
+        return styles.statusTextPending;
+      case 'archived':
+        return styles.statusTextArchived;
+      default:
+        return styles.statusTextArchived;
+    }
+  };
+
+  const getStatusIcon = (status: CollaborationSession['status']): React.ReactElement => {
+    switch (status) {
+      case 'active':
+        return <Icon name="people" size={12} color="#059669" />;
+      case 'pending':
+        return <Icon name="time" size={12} color="#d97706" />;
+      case 'archived':
+        return <Icon name="calendar" size={12} color="#6b7280" />;
+      default:
+        return <Icon name="alert-circle" size={12} color="#6b7280" />;
+    }
+  };
+
+  const isAdding = mutation.isPending;
+  const errorEntries = lastResult?.errors ?? [];
 
   return (
     <Modal
@@ -164,186 +228,209 @@ export default function AddToBoardModal({ isOpen, onClose, friend, boardsSession
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <TrackedTouchableOpacity logComponent="AddToBoardModal"
+        <TrackedTouchableOpacity
+          logComponent="AddToBoardModal"
           style={styles.backdropTouch}
           activeOpacity={1}
           onPress={onClose}
         />
         <View style={styles.modalContainer}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerContent}>
-            <View style={styles.headerSidePlaceholder} />
-            <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>{t('modals:add_to_board.title')}</Text>
-              <Text style={styles.headerSubtitle}>
-                {t('modals:add_to_board.subtitle', { friendName: friend.name })}
-              </Text>
-            </View>
-            <TrackedTouchableOpacity logComponent="AddToBoardModal"
-              onPress={onClose}
-              style={styles.closeButton}
-            >
-              <Icon name="close" size={20} color="#6b7280" />
-            </TrackedTouchableOpacity>
-          </View>
-        </View>
-
-        {/* Content */}
-        <ScrollView style={styles.content}>
-          {availableSessions.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Icon name="people" size={48} color="#d1d5db" />
-              <Text style={styles.emptyStateTitle}>{t('modals:add_to_board.no_boards_title')}</Text>
-              <Text style={styles.emptyStateText}>
-                {t('modals:add_to_board.no_boards_text', { friendName: friend.name })}
-              </Text>
-            </View>
-          ) : (
-            <>
-              <View style={styles.selectionHeader}>
-                <Text style={styles.selectionText}>
-                  {t('modals:add_to_board.select_boards', { friendName: friend.name })}
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.headerContent}>
+              <View style={styles.headerSidePlaceholder} />
+              <View style={styles.headerCenter}>
+                <Text style={styles.headerTitle}>{t('modals:add_to_board.title')}</Text>
+                <Text style={styles.headerSubtitle}>
+                  {t('modals:add_to_board.subtitle', { friendName: friend.name })}
                 </Text>
-                <View style={styles.selectionControls}>
-                  {selectedSessions.length > 0 && (
-                    <View style={styles.selectionBadge}>
-                      <Icon name="checkmark" size={12} color="#ea580c" />
-                      <Text style={styles.selectionCount}>{selectedSessions.length}</Text>
-                    </View>
-                  )}
-                  {availableSessions.length > 1 && (
-                    <TrackedTouchableOpacity logComponent="AddToBoardModal"
-                      onPress={handleSelectAll}
-                      style={styles.selectAllButton}
-                    >
-                      {selectedSessions.length === availableSessions.length ? (
-                        <Icon name="close" size={12} color="#eb7825" />
-                      ) : (
-                        <Icon name="checkmark" size={12} color="#eb7825" />
-                      )}
-                      <Text style={styles.selectAllText}>{t('modals:add_to_board.all')}</Text>
-                    </TrackedTouchableOpacity>
-                  )}
-                </View>
               </View>
-              
-              <View style={styles.sessionsList}>
-                {availableSessions.map((session) => (
-                  <TrackedTouchableOpacity logComponent="AddToBoardModal"
-                    key={session.id}
-                    style={[
-                      styles.sessionCard,
-                      selectedSessions.includes(session.id) && styles.sessionCardSelected
-                    ]}
-                    onPress={() => handleSessionToggle(session.id)}
-                  >
-                    <View style={styles.sessionCardHeader}>
-                      <View style={styles.sessionCardContent}>
-                        <View style={styles.sessionCardTitleRow}>
-                          <Text style={styles.sessionCardName}>{session.name}</Text>
-                          <View style={[styles.statusBadge, getStatusStyle(session.status)]}>
-                            {getStatusIcon(session.status)}
-                            <Text style={[styles.statusText, getStatusTextStyle(session.status)]}>
-                              {session.status}
-                            </Text>
+              <TrackedTouchableOpacity
+                logComponent="AddToBoardModal"
+                onPress={onClose}
+                style={styles.closeButton}
+              >
+                <Icon name="close" size={20} color="#6b7280" />
+              </TrackedTouchableOpacity>
+            </View>
+          </View>
+
+          {/* Content */}
+          <ScrollView style={styles.content}>
+            {availableSessions.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Icon name="people" size={48} color="#d1d5db" />
+                <Text style={styles.emptyStateTitle}>{t('modals:add_to_board.no_boards_title')}</Text>
+                <Text style={styles.emptyStateText}>
+                  {t('modals:add_to_board.no_boards_text', { friendName: friend.name })}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.selectionHeader}>
+                  <Text style={styles.selectionText}>
+                    {t('modals:add_to_board.select_boards', { friendName: friend.name })}
+                  </Text>
+                  <View style={styles.selectionControls}>
+                    {selectedSessions.length > 0 && (
+                      <View style={styles.selectionBadge}>
+                        <Icon name="checkmark" size={12} color="#ea580c" />
+                        <Text style={styles.selectionCount}>{selectedSessions.length}</Text>
+                      </View>
+                    )}
+                    {availableSessions.length > 1 && (
+                      <TrackedTouchableOpacity
+                        logComponent="AddToBoardModal"
+                        onPress={handleSelectAll}
+                        style={styles.selectAllButton}
+                      >
+                        {selectedSessions.length === availableSessions.length ? (
+                          <Icon name="close" size={12} color="#eb7825" />
+                        ) : (
+                          <Icon name="checkmark" size={12} color="#eb7825" />
+                        )}
+                        <Text style={styles.selectAllText}>{t('modals:add_to_board.all')}</Text>
+                      </TrackedTouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
+                {/* Inline error UI when the mutation surfaced any failures */}
+                {errorEntries.length > 0 && (
+                  <View style={styles.errorBanner}>
+                    <Icon name="alert-circle" size={16} color="#dc2626" />
+                    <Text style={styles.errorBannerText}>
+                      {t('common:toast_invite_error')}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.sessionsList}>
+                  {availableSessions.map((session) => (
+                    <TrackedTouchableOpacity
+                      logComponent="AddToBoardModal"
+                      key={session.id}
+                      style={[
+                        styles.sessionCard,
+                        selectedSessions.includes(session.id) && styles.sessionCardSelected,
+                      ]}
+                      onPress={() => handleSessionToggle(session.id)}
+                    >
+                      <View style={styles.sessionCardHeader}>
+                        <View style={styles.sessionCardContent}>
+                          <View style={styles.sessionCardTitleRow}>
+                            <Text style={styles.sessionCardName}>{session.name}</Text>
+                            <View style={[styles.statusBadge, getStatusStyle(session.status)]}>
+                              {getStatusIcon(session.status)}
+                              <Text style={[styles.statusText, getStatusTextStyle(session.status)]}>
+                                {session.status}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.sessionCardMeta}>
+                            <View style={styles.metaItem}>
+                              <Icon name="people" size={12} color="#6b7280" />
+                              <Text style={styles.metaText}>
+                                {t('modals:add_to_board.members_count', { count: session.totalParticipants })}
+                              </Text>
+                            </View>
+                            <View style={styles.metaItem}>
+                              <Icon name="calendar" size={12} color="#6b7280" />
+                              <Text style={styles.metaText}>
+                                {t('modals:add_to_board.cards_count', { count: session.boardCards })}
+                              </Text>
+                            </View>
+                            <View style={styles.metaItem}>
+                              <Icon name="time" size={12} color="#6b7280" />
+                              <Text style={styles.metaText}>{session.lastActivity}</Text>
+                            </View>
                           </View>
                         </View>
-                        
-                        <View style={styles.sessionCardMeta}>
-                          <View style={styles.metaItem}>
-                            <Icon name="people" size={12} color="#6b7280" />
-                            <Text style={styles.metaText}>{t('modals:add_to_board.members_count', { count: session.totalParticipants })}</Text>
-                          </View>
-                          <View style={styles.metaItem}>
-                            <Icon name="calendar" size={12} color="#6b7280" />
-                            <Text style={styles.metaText}>{t('modals:add_to_board.cards_count', { count: session.boardCards })}</Text>
-                          </View>
-                          <View style={styles.metaItem}>
-                            <Icon name="time" size={12} color="#6b7280" />
-                            <Text style={styles.metaText}>{session.lastActivity}</Text>
+
+                        <View style={styles.sessionCardCheckbox}>
+                          <View
+                            style={[
+                              styles.checkbox,
+                              selectedSessions.includes(session.id) && styles.checkboxSelected,
+                            ]}
+                          >
+                            {selectedSessions.includes(session.id) && (
+                              <Icon name="checkmark" size={16} color="white" />
+                            )}
                           </View>
                         </View>
                       </View>
-                      
-                      <View style={styles.sessionCardCheckbox}>
-                        <View style={[
-                          styles.checkbox,
-                          selectedSessions.includes(session.id) && styles.checkboxSelected
-                        ]}>
-                          {selectedSessions.includes(session.id) && (
-                            <Icon name="checkmark" size={16} color="white" />
+
+                      {/* Participants Preview */}
+                      <View style={styles.participantsPreview}>
+                        <View style={styles.participantsAvatars}>
+                          {session.participants.slice(0, 3).map((participant, index) => (
+                            <View
+                              key={participant.id}
+                              style={[styles.participantAvatar, { marginLeft: index > 0 ? -8 : 0 }]}
+                            >
+                              <Text style={styles.participantAvatarText}>
+                                {participant.name.split(' ').map((n) => n[0]).join('')}
+                              </Text>
+                            </View>
+                          ))}
+                          {session.participants.length > 3 && (
+                            <View style={[styles.participantAvatar, styles.participantAvatarMore, { marginLeft: -8 }]}>
+                              <Text style={styles.participantAvatarMoreText}>
+                                +{session.participants.length - 3}
+                              </Text>
+                            </View>
                           )}
                         </View>
+                        <Text style={styles.participantsLabel}>
+                          {t('modals:add_to_board.current_members')}
+                        </Text>
                       </View>
-                    </View>
-                    
-                    {/* Participants Preview */}
-                    <View style={styles.participantsPreview}>
-                      <View style={styles.participantsAvatars}>
-                        {session.participants.slice(0, 3).map((participant, index) => (
-                          <View
-                            key={participant.id}
-                            style={[styles.participantAvatar, { marginLeft: index > 0 ? -8 : 0 }]}
-                          >
-                            <Text style={styles.participantAvatarText}>
-                              {participant.name.split(' ').map(n => n[0]).join('')}
-                            </Text>
-                          </View>
-                        ))}
-                        {session.participants.length > 3 && (
-                          <View style={[styles.participantAvatar, styles.participantAvatarMore, { marginLeft: -8 }]}>
-                            <Text style={styles.participantAvatarMoreText}>
-                              +{session.participants.length - 3}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={styles.participantsLabel}>
-                        {t('modals:add_to_board.current_members')}
-                      </Text>
-                    </View>
-                  </TrackedTouchableOpacity>
-                ))}
-              </View>
-            </>
-          )}
-        </ScrollView>
+                    </TrackedTouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+          </ScrollView>
 
-        {/* Footer */}
-        {availableSessions.length > 0 && (
-          <View style={styles.footer}>
-            <TrackedTouchableOpacity logComponent="AddToBoardModal"
-              onPress={onClose}
-              style={styles.cancelButton}
-            >
-              <Text style={styles.cancelButtonText}>{t('modals:add_to_board.cancel')}</Text>
-            </TrackedTouchableOpacity>
-            <TrackedTouchableOpacity logComponent="AddToBoardModal"
-              onPress={handleAddToBoard}
-              disabled={selectedSessions.length === 0 || isAdding}
-              style={[
-                styles.addButton,
-                (selectedSessions.length === 0 || isAdding) && styles.addButtonDisabled
-              ]}
-            >
-              {isAdding ? (
-                <>
-                  <View style={styles.loadingSpinner} />
-                  <Text style={styles.addButtonText}>{t('modals:add_to_board.adding')}</Text>
-                </>
-              ) : (
-                <Text style={styles.addButtonText}>
-                  {selectedSessions.length === 0
-                    ? t('modals:add_to_board.select_boards_button')
-                    : selectedSessions.length === 1
+          {/* Footer */}
+          {availableSessions.length > 0 && (
+            <View style={styles.footer}>
+              <TrackedTouchableOpacity
+                logComponent="AddToBoardModal"
+                onPress={onClose}
+                style={styles.cancelButton}
+                disabled={isAdding}
+              >
+                <Text style={styles.cancelButtonText}>{t('modals:add_to_board.cancel')}</Text>
+              </TrackedTouchableOpacity>
+              <TrackedTouchableOpacity
+                logComponent="AddToBoardModal"
+                onPress={handleAddToBoard}
+                disabled={selectedSessions.length === 0 || isAdding}
+                style={[
+                  styles.addButton,
+                  (selectedSessions.length === 0 || isAdding) && styles.addButtonDisabled,
+                ]}
+              >
+                {isAdding ? (
+                  <>
+                    <View style={styles.loadingSpinner} />
+                    <Text style={styles.addButtonText}>{t('modals:add_to_board.adding')}</Text>
+                  </>
+                ) : (
+                  <Text style={styles.addButtonText}>
+                    {selectedSessions.length === 0
+                      ? t('modals:add_to_board.select_boards_button')
+                      : selectedSessions.length === 1
                       ? t('modals:add_to_board.add_to_board_button')
                       : t('modals:add_to_board.add_to_boards_button', { count: selectedSessions.length })}
-                </Text>
-              )}
-            </TrackedTouchableOpacity>
-          </View>
-        )}
+                  </Text>
+                )}
+              </TrackedTouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -482,6 +569,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: '#eb7825',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#dc2626',
   },
   sessionsList: {
     gap: 12,

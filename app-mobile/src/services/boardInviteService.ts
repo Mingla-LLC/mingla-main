@@ -170,38 +170,11 @@ export class BoardInviteService {
     }
   }
 
-  /**
-   * Send invites to friends via friends list
-   */
-  static async sendFriendInvites(sessionId: string, friendIds: string[], inviterId: string): Promise<{ success: boolean; errors?: string[] }> {
-    try {
-      const errors: string[] = [];
-
-      for (const friendId of friendIds) {
-        const { error } = await supabase
-          .from('collaboration_invites')
-          .insert({
-            session_id: sessionId,
-            inviter_id: inviterId,
-            invited_user_id: friendId,
-            invite_method: 'friends_list',
-            status: 'pending',
-          });
-
-        if (error) {
-          errors.push(`Failed to invite friend ${friendId}: ${error.message}`);
-        }
-      }
-
-      return {
-        success: errors.length === 0,
-        errors: errors.length > 0 ? errors : undefined,
-      };
-    } catch (error: any) {
-      console.error('Error sending friend invites:', error);
-      return { success: false, errors: [error.message] };
-    }
-  }
+  // ORCH-0666: sendFriendInvites zombie DELETED (CF-1).
+  // The canonical flow is now `sessionMembershipService.addFriendsToSessions`,
+  // which routes through the atomic `add_friend_to_session` SECURITY DEFINER RPC.
+  // Direct INSERTs into collaboration_invites from mobile code are forbidden
+  // going forward (I-INVITE-CREATION-IS-RPC-ONLY, CI grep gate enforced).
 
   /**
    * Get pending invites for a user

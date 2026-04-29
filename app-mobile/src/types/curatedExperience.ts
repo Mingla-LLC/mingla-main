@@ -16,7 +16,9 @@ export interface CuratedStop {
   priceMin: number;
   priceMax: number;
   openingHours: Record<string, string>;
-  isOpenNow: boolean;
+  // ORCH-0677 D-3: widened to allow honest absence (`null`) when the source
+  // data does not include `openNow`. Constitution #9 — never fabricate `true`.
+  isOpenNow: boolean | null;
   website: string | null;
   lat: number;
   lng: number;
@@ -30,6 +32,16 @@ export interface CuratedStop {
   dismissible?: boolean;
   role?: string;
   comboCategory?: string;  // Mingla category slug from the combo that selected this stop (e.g., 'fine_dining')
+}
+
+// ORCH-0677 RC-2: surfaced by `generate-curated-experiences` when the response
+// has zero cards. Mobile uses this to route to EMPTY UI state instead of
+// staying on INITIAL_LOADING. Optional — legacy edge fn responses omit it.
+export type CuratedEmptyReason = 'pool_empty' | 'no_viable_anchor' | 'pipeline_error';
+export interface CuratedSummary {
+  emptyReason: CuratedEmptyReason;
+  candidateAnchorCount: number;
+  failedAnchorCount: number;
 }
 
 export interface CuratedExperienceCard {

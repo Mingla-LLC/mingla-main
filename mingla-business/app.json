@@ -9,11 +9,24 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.sethogieva.minglabusiness",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Mingla Business uses your camera to scan attendee tickets at the door.",
+        "NSPhotoLibraryUsageDescription": "Mingla Business uses your photo library to upload brand and event imagery.",
+        "NSPhotoLibraryAddUsageDescription": "Mingla Business saves event tickets to your photo library when you tap Save.",
+        "NSFaceIDUsageDescription": "Mingla Business uses Face ID to confirm Apple Pay transactions at the door."
+      },
+      "entitlements": {
+        "com.apple.developer.in-app-payments": [
+          "merchant.com.sethogieva.minglabusiness"
+        ]
+      },
+      "associatedDomains": [
+        "applinks:business.mingla.com",
+        "applinks:mingla.com"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +37,26 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.sethogieva.minglabusiness"
+      "package": "com.sethogieva.minglabusiness",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.NFC",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.INTERNET"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "business.mingla.com" },
+            { "scheme": "https", "host": "mingla.com", "pathPrefix": "/e" },
+            { "scheme": "https", "host": "mingla.com", "pathPrefix": "/b" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "output": "static",
@@ -47,7 +79,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     },
     "extra": {
       "router": {},

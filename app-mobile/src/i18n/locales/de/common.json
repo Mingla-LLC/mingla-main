@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "Spazieren gehen",
   "unknown": "Unbekannt",
   "time_just_now": "Gerade eben",
-
   "toast_invite_sent": "Einladung gesendet!",
   "toast_invite_sent_msg": "Zusammenarbeits-Einladung an {{name}} gesendet",
   "toast_member_promoted": "Mitglied befördert",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "Zu {{count}} Boards hinzugefügt!",
   "toast_added_board_msg": "{{name}} wurde zum Zusammenarbeits-Board hinzugefügt",
   "toast_added_boards_msg": "{{name}} wurde zu {{count}} Zusammenarbeits-Boards hinzugefügt",
-  "toast_card_shared": "Karte geteilt!",
-  "toast_card_shared_msg": "Ein gespeichertes Erlebnis wurde mit {{name}} geteilt",
   "toast_friend_removed": "Freund entfernt",
   "toast_friend_removed_msg": "{{name}} wurde aus deiner Freundesliste entfernt",
   "toast_user_blocked": "Benutzer blockiert",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "wegen Belästigung",
   "toast_report_reason_other": "wegen Verstoßes gegen Community-Richtlinien",
   "user_fallback": "Benutzer",
-
   "calendar_access_needed": "Kalenderzugriff benötigt",
   "calendar_access_needed_msg": "Mingla benötigt Kalenderzugriff, um Termine hinzuzufügen. Bitte aktiviere ihn in deinen Geräteeinstellungen.",
   "open_settings": "Einstellungen öffnen",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "Beim Hinzufügen des Ereignisses ist etwas schiefgelaufen. Bitte versuche es erneut.",
   "added_to_calendar": "Hinzugefügt",
   "add_to_calendar": "Zum Kalender hinzufügen",
-
   "confidence_excellent": "Ausgezeichnete Übereinstimmung",
   "confidence_good": "Gute Übereinstimmung",
   "confidence_fair": "Ordentliche Übereinstimmung",
@@ -157,22 +152,28 @@
   "match_time": "Zeit",
   "match_popularity": "Beliebtheit",
   "match_factors": "Match-Faktoren",
-
   "stat_views": "Aufrufe",
   "stat_likes": "Likes",
   "stat_saves": "Gespeichert",
   "stat_shares": "Geteilt",
   "review_count_one": "{{count}} Bewertung",
   "review_count_other": "{{count}} Bewertungen",
-
   "profile_update_failed": "Profilaktualisierung fehlgeschlagen",
   "profile_update_failed_msg": "Profil konnte nicht aktualisiert werden. Bitte versuche es erneut.",
   "saved_experience": "Gespeichertes Erlebnis",
   "experience": "Erlebnis",
   "solo_experience": "Solo-Erlebnis",
   "untitled": "Ohne Titel",
-
   "error_sign_in_save": "Bitte melde dich an, um Erlebnisse zu speichern",
   "error_boundary_title": "Etwas ist schiefgelaufen",
-  "error_boundary_message": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es erneut."
+  "error_boundary_message": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es erneut.",
+  "category_icebreakers": "Eisbrecher",
+  "category_drinks_and_music": "Drinks & Musik",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Lässig",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Filme",
+  "category_theatre": "Theater",
+  "category_brunch_lunch_casual": "Brunch, Lunch & Lässig",
+  "category_movies_theatre": "Filme & Theater"
 }

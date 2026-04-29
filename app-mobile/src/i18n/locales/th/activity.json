@@ -128,6 +128,7 @@
     "pickADate": "เลือกวันที่",
     "changeTime": "เปลี่ยนเวลา",
     "closedAtTime": "สถานที่นี้ปิดในเวลาที่เลือก กรุณาเลือกเวลาอื่น",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}} กรุณาตรวจสอบเวลาเปิดทำการก่อนจัดกำหนดการ",
     "selectDate": "เลือกวันที่",
     "selectTime": "เลือกเวลา",

@@ -44,7 +44,9 @@ const PICNIC_STATIC_SHOPPING_LIST: string[] = [
 export interface StopAlternative {
   placeId: string;
   placePoolId: string;
-  cardPoolId: string;
+  // ORCH-0640 ch09: cardPoolId field removed — card_pool archived (DEC-037).
+  // Curated stop identity is now purely placePoolId. Callers who referenced
+  // cardPoolId need to switch to placePoolId.
   placeName: string;
   placeType: string;
   address: string;
@@ -110,7 +112,12 @@ export function buildReplacementStop(
     priceMin: alternative.priceMin,
     priceMax: alternative.priceMax,
     openingHours: alternative.openingHours as Record<string, string>,
-    isOpenNow: true, // Will be computed live by useIsPlaceOpen
+    // ORCH-0677.QA-1: honest unknown (Constitution #9). StopAlternative
+    // doesn't carry openingHours.openNow, so we cannot derive truthfully
+    // here. Consumers compute live via useIsPlaceOpen(openingHours), not
+    // stop.isOpenNow directly — verified at ExpandedCardModal:1191,
+    // ActionButtons:121, ProposeDateTimeModal:128.
+    isOpenNow: null,
     website: alternative.website,
     lat: alternative.lat,
     lng: alternative.lng,

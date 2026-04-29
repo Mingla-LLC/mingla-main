@@ -6,21 +6,82 @@ const GOOGLE_API_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// ORCH-0550.1 — Mirrors admin-seed-places.FIELD_MASK (48 fields) plus
+// `places.addressComponents` (needed locally in handleSearch to extract
+// country + countryCode). Kept as a benign superset per spec §4:
+// admin-place-search requests identical signal data as bulk seeding.
+//
+// I-FIELD-MASK-SINGLE-OWNER: admin-seed-places is authoritative; this list
+// mirrors it. If you add a field there, add it here.
 const FIELD_MASK = [
+  // Identity
   "places.id",
   "places.displayName",
+  "places.primaryTypeDisplayName",
   "places.formattedAddress",
-  "places.addressComponents",
+  "places.addressComponents", // local: country extraction in handleSearch
   "places.location",
   "places.types",
   "places.primaryType",
+
+  // Ratings & price
   "places.rating",
   "places.userRatingCount",
   "places.priceLevel",
+  "places.priceRange",
+
+  // Hours & photos
   "places.regularOpeningHours",
+  "places.secondaryOpeningHours",
+  "places.utcOffsetMinutes",
   "places.photos",
+
+  // Links
   "places.websiteUri",
+  "places.googleMapsUri",
+  "places.nationalPhoneNumber",
+
+  // Operational state
   "places.businessStatus",
+
+  // Content (AI-heavy)
+  "places.editorialSummary",
+  "places.generativeSummary",
+  "places.reviews",
+
+  // Meal service booleans
+  "places.servesBrunch",
+  "places.servesLunch",
+  "places.servesDinner",
+  "places.servesBreakfast",
+  "places.servesBeer",
+  "places.servesWine",
+  "places.servesCocktails",
+  "places.servesCoffee",
+  "places.servesDessert",
+  "places.servesVegetarianFood",
+
+  // Ambience & amenities
+  "places.outdoorSeating",
+  "places.liveMusic",
+  "places.goodForGroups",
+  "places.goodForChildren",
+  "places.goodForWatchingSports",
+  "places.allowsDogs",
+  "places.restroom",
+  "places.reservable",
+  "places.menuForChildren",
+
+  // Service options
+  "places.dineIn",
+  "places.takeout",
+  "places.delivery",
+  "places.curbsidePickup",
+
+  // Access & facilities
+  "places.accessibilityOptions",
+  "places.parkingOptions",
+  "places.paymentOptions",
 ].join(",");
 
 // RELIABILITY: These ranges MUST match app-mobile/src/constants/priceTiers.ts
@@ -42,6 +103,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// ORCH-0550.1 — Mirrors admin-seed-places.transformGooglePlaceForSeed.
+// Any new Google field added there must also be persisted here, otherwise the
+// admin-search → push path would leave new columns NULL on first-touch rows.
 function transformGooglePlace(gPlace: Record<string, unknown>) {
   const priceLevel = gPlace.priceLevel as string | undefined;
   const priceInfo = PRICE_LEVEL_MAP[priceLevel ?? ""] ?? {
@@ -61,6 +125,28 @@ function transformGooglePlace(gPlace: Record<string, unknown>) {
     heightPx?: number;
   }>;
 
+  const editorialSummaryText =
+    (gPlace.editorialSummary as { text?: string } | undefined)?.text ?? null;
+  const generativeSummaryText =
+    (gPlace.generativeSummary as { overview?: { text?: string } } | undefined)?.overview?.text ?? null;
+  const primaryTypeDisplayNameText =
+    (gPlace.primaryTypeDisplayName as { text?: string } | undefined)?.text ?? null;
+
+  const priceRange = gPlace.priceRange as
+    | {
+        startPrice?: { currencyCode?: string; units?: string };
+        endPrice?: { currencyCode?: string; units?: string };
+      }
+    | undefined;
+  const priceRangeCurrency =
+    priceRange?.startPrice?.currencyCode ?? priceRange?.endPrice?.currencyCode ?? null;
+  const priceRangeStartCents = priceRange?.startPrice?.units
+    ? parseInt(priceRange.startPrice.units, 10) * 100
+    : null;
+  const priceRangeEndCents = priceRange?.endPrice?.units
+    ? parseInt(priceRange.endPrice.units, 10) * 100
+    : null;
+
   return {
     google_place_id: gPlace.id as string,
     name: displayName?.text ?? "Unknown",
@@ -69,6 +155,7 @@ function transformGooglePlace(gPlace: Record<string, unknown>) {
     lng: location?.longitude ?? 0,
     types: (gPlace.types as string[]) ?? [],
     primary_type: (gPlace.primaryType as string) ?? null,
+    primary_type_display_name: primaryTypeDisplayNameText,
     rating: (gPlace.rating as number) ?? null,
     review_count: (gPlace.userRatingCount as number) ?? 0,
     price_level: priceLevel ?? null,
@@ -76,13 +163,59 @@ function transformGooglePlace(gPlace: Record<string, unknown>) {
     price_max: priceInfo.max,
     price_tier: priceInfo.tier,
     price_tiers: priceInfo.tier ? [priceInfo.tier] : [],
+    price_range_currency: priceRangeCurrency,
+    price_range_start_cents: priceRangeStartCents,
+    price_range_end_cents: priceRangeEndCents,
     opening_hours: gPlace.regularOpeningHours ?? null,
+    secondary_opening_hours: gPlace.secondaryOpeningHours ?? null,
     photos: photos.map((p) => ({
       name: p.name,
       widthPx: p.widthPx,
       heightPx: p.heightPx,
     })),
     website: (gPlace.websiteUri as string) ?? null,
+    google_maps_uri: (gPlace.googleMapsUri as string) ?? null,
+    national_phone_number: (gPlace.nationalPhoneNumber as string) ?? null,
+    business_status: (gPlace.businessStatus as string) ?? null,
+    editorial_summary: editorialSummaryText,
+    generative_summary: generativeSummaryText,
+    reviews: gPlace.reviews ?? null,
+    utc_offset_minutes: (gPlace.utcOffsetMinutes as number) ?? null,
+
+    // Meal service booleans
+    serves_brunch: gPlace.servesBrunch ?? null,
+    serves_lunch: gPlace.servesLunch ?? null,
+    serves_dinner: gPlace.servesDinner ?? null,
+    serves_breakfast: gPlace.servesBreakfast ?? null,
+    serves_beer: gPlace.servesBeer ?? null,
+    serves_wine: gPlace.servesWine ?? null,
+    serves_cocktails: gPlace.servesCocktails ?? null,
+    serves_coffee: gPlace.servesCoffee ?? null,
+    serves_dessert: gPlace.servesDessert ?? null,
+    serves_vegetarian_food: gPlace.servesVegetarianFood ?? null,
+
+    // Ambience & amenities
+    outdoor_seating: gPlace.outdoorSeating ?? null,
+    live_music: gPlace.liveMusic ?? null,
+    good_for_groups: gPlace.goodForGroups ?? null,
+    good_for_children: gPlace.goodForChildren ?? null,
+    good_for_watching_sports: gPlace.goodForWatchingSports ?? null,
+    allows_dogs: gPlace.allowsDogs ?? null,
+    has_restroom: gPlace.restroom ?? null,
+    reservable: gPlace.reservable ?? null,
+    menu_for_children: gPlace.menuForChildren ?? null,
+
+    // Service options
+    dine_in: gPlace.dineIn ?? null,
+    takeout: gPlace.takeout ?? null,
+    delivery: gPlace.delivery ?? null,
+    curbside_pickup: gPlace.curbsidePickup ?? null,
+
+    // Access & facilities (JSONB)
+    accessibility_options: gPlace.accessibilityOptions ?? null,
+    parking_options: gPlace.parkingOptions ?? null,
+    payment_options: gPlace.paymentOptions ?? null,
+
     raw_google_data: gPlace,
     fetched_via: "text_search",
     last_detail_refresh: new Date().toISOString(),

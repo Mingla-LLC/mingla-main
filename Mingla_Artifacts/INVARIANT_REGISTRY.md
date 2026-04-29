@@ -1,116 +1,1127 @@
 # Invariant Registry
 
-> Last updated: 2026-04-19 (AH-148 Phase 2.5 verification — added `I-REFRESHKEY-PERSISTED` (AH-142 documentation backfill) and `I-MODE-SESSION-PERSISTS-COLD-LAUNCH` enforced via `mingla_last_mode` per DEC-031)
-> Source: Mingla Orchestrator skill references
+> Rules that must ALWAYS hold in the Mingla codebase. Every invariant lists
+> (a) the rule, (b) the enforcement mechanism, (c) the test that catches a
+> regression. When a change breaks one of these, the severity is raised
+> and a structural fix is required — not a patch.
 
-## Architecture / Response-Shape Invariants
+---
 
-| ID | Invariant | Layer | Enforcement | Status |
-|----|-----------|-------|-------------|--------|
-| **INV-042** | No edge-function response may conflate runtime failures with data-absence signals. Runtime errors (auth, exceptions, timeouts) and data signals (empty pool, filtered to zero) must use mutually-exclusive `path` values. A client that cannot distinguish "server crashed" from "no data" cannot implement correct retry/recovery UX. | Edge function | Per-path explicit `return` branches in `discover-cards/index.ts` (`auth-required` / `pool-empty` / `pipeline-error` / `pipeline`). Protective comment at `pool-empty` return prohibits fall-through additions. Tester T-06 runtime-verified the response shape. | **Enforced (ORCH-0474, 2026-04-17, QA cycle 1 PASS)** |
-| **INV-043** | Every edge-function code path must `return` explicitly. No unconditional fall-throughs that hide which upstream branch is responsible. If a new exit condition is added, it must have its own explicit `return` with a unique `sourceBreakdown.path` value. | Edge function | Structural comment at `discover-cards/index.ts` file header names INV-043 and ORCH-0474. Current deployed code (v118) has zero fall-throughs — every exit returns. | **Enforced (ORCH-0474, 2026-04-17, QA cycle 1 PASS)** |
+## ORCH-0686 invariants (2026-04-26) — Photo backfill mode CHECK alignment + TS/SQL parity
 
-## Data Integrity Invariants
+### I-PHOTO-FILTER-EXPLICIT
 
-| ID | Invariant | Layer | Enforcement | Status |
-|----|-----------|-------|-------------|--------|
-| **I-EMPTY-CACHE-NONPERSIST** | `deck-cards` React Query responses with `cards.length === 0` MUST NOT be dehydrated to AsyncStorage. `staleTime: Infinity` is only safe because of this guard. Pairing Infinity staleTime + persistence + response-can-be-empty without the guard produces permanent warm-session cache poisoning. Extended by ORCH-0474 to cover all four non-populated paths (pool-empty, filtered pipeline, auth-required, pipeline-error). | App root + Hook | `shouldDehydrateQuery` at `app-mobile/app/index.tsx:2968-2983`; protective comment at `app-mobile/src/hooks/useDeckCards.ts:165-174` | Enforced (ORCH-0469 2026-04-17; ORCH-0474 coverage extension 2026-04-17) |
-| INV-D01 | Every card in card_pool has at least one photo URL | DB + Edge | NOT NULL + validation | Enforced |
-| INV-D02 | Every card_pool entry has city and country TEXT populated | DB | NOT NULL + backfill migration | Enforced (Commit 5db8dbe8) |
-| INV-D03 | Curated cards reference only active place_pool entries | DB | FK + cascade deactivation | Enforced |
-| INV-D04 | Category slugs are canonical format everywhere | DB + Code | SQL CASE normalization (26 branches) | Enforced (Commit 6c7b2429) |
-| INV-D05 | Exclusion rules apply identically in generation and serving | Edge | Shared exclusion logic, NOT EXISTS | Enforced (Commits 984f8be7, a408e1b1) |
-| INV-D06 | Impressions scoped to session (reset on preference change) | Edge | preferences.updated_at comparison | Enforced |
-| INV-D07 | User phone numbers are E.164 format in DB | DB | Validation in send-otp | Enforced |
-| INV-D08 | Every price surface shows real data or nothing | Code | No fallback defaults | Enforced (Pass 1 + Constitution) |
-| INV-D09 | Paired saves are bidirectionally visible | DB + RLS | RLS policies | UNVERIFIED |
-| INV-D10 | Blocked users are completely mutually invisible | DB + RLS | Bidirectional block check | UNVERIFIED |
+**Rule:** `photo_backfill_runs.mode` is one of three values:
 
-## State Management Invariants
+- `'pre_photo_passed'` — current default; first-pass after pre-photo Bouncer; gates eligibility on `place_pool.passes_pre_photo_check`.
+- `'refresh_servable'` — Bouncer-approved maintenance; gates on `place_pool.is_servable`.
+- `'initial'` — LEGACY alias for historical terminal-state rows; not written from new code.
 
-| ID | Invariant | Layer | Enforcement | Status |
-|----|-----------|-------|-------------|--------|
-| INV-S01 | React Query is sole authority for server-fetched data | Code | No Zustand stores holding API data | Enforced |
-| INV-S02 | Every mutation invalidates correct query keys | Code | Key factory + explicit invalidation | Enforced (Commit 846e7cce) |
-| INV-S03 | Zustand holds only client-side state | Code | Architecture review | Enforced |
-| INV-S04 | AsyncStorage schema is versioned | Code | DECK_SCHEMA_VERSION + migration | UNVERIFIED |
-| INV-S05 | Sign-out clears all caches, stores, subscriptions, tokens | Code | Centralized cleanup | UNVERIFIED (ORCH-0004) |
-| INV-S06 | Preferences to deck pipeline has no race condition | Code | No invalidateQueries; prefsHash matching | Enforced (Commit 79d0905b) |
-| INV-S07 | Query keys contain ALL parameters that affect result | Code | Key factory with all dependencies | Enforced (Commit 846e7cce) |
-| INV-S08 | Optimistic updates rollback on mutation failure | Code | onError handlers | Partial (16 mutations covered) |
-| **I-REFRESHKEY-PERSISTED** | `preferencesRefreshKey` (the AsyncStorage swipe-state key discriminant for `mingla_card_state_${mode}_${refreshKey}_*`) MUST be persisted across cold launches. Previous pattern (local `useState(0)` in AppStateManager) reset to 0 on cold launch, orphaning prior swipe-state AsyncStorage keys → deck reset to card 1. | Code | Zustand `partialize` includes `preferencesRefreshKey` at `appStore.ts:255`; `onRehydrateStorage` null-default guard at `appStore.ts:277-279`; `clearUserData` resets to 0 per Constitutional #6 at `appStore.ts:232`. | **Enforced (ORCH-0504 via AH-142, 2026-04-20; documentation backfill 2026-04-19 per AH-148 §6 Discovery 4)** |
-| **I-MODE-SESSION-PERSISTS-COLD-LAUNCH** | User's `currentMode` (`'solo'` or collab-session name) and active `sessionId` MUST survive app kill + cold launch so the user reopens into the mode+session they left. Must NOT compromise ORCH-0209's DB-authoritative `currentSession` object model — only the mode name + session UUID persist; the full `CollaborationSession` object is re-fetched from DB on every open. | Code | `safeAsyncStorageSet("mingla_last_mode", { mode, sessionId })` at `AppStateManager.tsx:168,437`; read at line 391; verified against live DB via `SessionService.getActiveSession` at lines 429-453 with graceful fallback to Solo on deleted session. Logout swept via prefix match `key.startsWith("mingla_")` at `AppStateManager.tsx:792`. | **Enforced (existing — formalized 2026-04-19 via DEC-031 replacing retracted DEC-026)** |
+The TypeScript `BackfillMode` union in `supabase/functions/backfill-place-photos/index.ts` and the SQL CHECK constraint `photo_backfill_runs_mode_check` MUST stay in sync.
 
-### I-PROGRESSIVE-DELIVERY-INTERLEAVE-AUTHORITATIVE
+**Established by:** ORCH-0598.11 (initial 2-mode form, declared inline in migration `20260424200002_orch_0598_11_launch_city_pipeline.sql:8`), rewritten by ORCH-0686 (3-mode form, persisted as a registry entry — was previously only a migration comment, which let it go stale through ORCH-0678).
 
-**Established:** 2026-04-18 (ORCH-0503 v3)
-**Location:** `RecommendationsContext.tsx` sync-effect flag-on `batchSeed === 0` branch
+**Enforcement:** CI gate `I-DB-ENUM-CODE-PARITY` in `scripts/ci-check-invariants.sh` (see below).
 
-**Statement:** When the provider's deck-sync effect processes a non-placeholder
-`deckCards` array whose ID set is a strict superset of the accumulated prior ID
-set (including the equal-cardinality and growing-cardinality sub-cases), it
-MUST adopt `deckCards` verbatim as the new `recommendations` /
-`accumulatedCardsRef`. Prev-preserving merge fallbacks (e.g.,
-`[...prev, ...toAppend]`) are INVALID in this branch because React Query
-collapses partial-2 and queryFn-resolve notifications under React 18 batching —
-cardinality alone cannot distinguish mid-partial growth from final-interleave
-arrival.
+**Test that catches a regression:**
 
-**Preserved by:**
-- `const merged = deckCards` inside the strict-superset branch (single-line adoption)
-- `__DEV__` runtime guard comparing `merged[0..3]` to `deckCards[0..3]`
-- Grep invariant: `grep '\[\.\.\.prev, \.\.\.toAppend\]' RecommendationsContext.tsx` → 0 matches
+```bash
+# Positive control — tree consistent.
+bash scripts/ci-check-invariants.sh
+# Expect: gate prints "I-DB-ENUM-CODE-PARITY ... OK"
 
-**Verified by:** SC-0503v3-02 (device), SC-0503v3-09 (structural grep), SC-0503v3-11 (dev runtime guard present)
-**Closed ORCH-ID:** ORCH-0503
-**Related:** I-PROGRESSIVE-DELIVERY-EXPANSION-NOT-REPLACEMENT (ORCH-0498)
+# Verify the live constraint matches.
+psql "$DATABASE_URL" -c "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'photo_backfill_runs_mode_check';"
+# Expect a CHECK whose ARRAY contains 'initial', 'pre_photo_passed', 'refresh_servable'.
+```
 
-## Auth & Session Invariants
+---
 
-| ID | Invariant | Layer | Enforcement | Status |
-|----|-----------|-------|-------------|--------|
-| INV-A01 | Single auth instance | Code | Centralized useAuthSimple | Enforced |
-| INV-A02 | Token refresh is centralized and race-free | Code | Grace period + invalidateQueries | Enforced (Commit aa9cfd68) |
-| INV-A03 | 401 responses trigger refresh, not logout (within grace) | Code | 401 detector with grace period | Enforced |
-| INV-A04 | Every edge function validates auth | Edge | Auth check at function entry | UNVERIFIED |
-| INV-A05 | RLS policies exist on every table with user data | DB | Policy coverage audit | UNVERIFIED (ORCH-0223) |
+### I-DB-ENUM-CODE-PARITY
 
-## UI Invariants
+**Rule:** Whenever a TypeScript union or enum value is renamed, added, or removed, and its values are persisted into a column governed by a SQL CHECK constraint, the migration MUST update the constraint in the same change. The TypeScript value set and the SQL CHECK value set MUST be permutation-equal at all times.
 
-| ID | Invariant | Layer | Enforcement | Status |
-|----|-----------|-------|-------------|--------|
-| INV-U01 | Every screen has loading, error, empty, populated states | Code | Component state machine | Partial |
-| INV-U02 | No dead taps | Code | No disabled-but-visible buttons | UNVERIFIED |
-| INV-U03 | Currency follows user locale everywhere | Code | User profile currency propagation | Enforced (Pass 1) |
-| INV-U04 | Travel time uses user's configured travel mode | Code | effectiveTravelMode resolution | Enforced |
-| INV-U05 | Category labels are display names, not slugs | Code | EXPERIENCE_TYPE_LABELS mapping | Enforced |
-| INV-U06 | Icons resolve for all known types | Code | ICON_MAP completeness | Enforced (Commit 88f2d43f) |
+**Established by:** ORCH-0686 (root-cause register entry RC-0686). Same class of failure as ORCH-0540 (PL/pgSQL type-resolution drift after flag flip — code change without schema/RPC alignment). Two occurrences was enough; the gate exists so a third cannot ship.
 
-## Realtime & Notification Invariants
+**Enforcement:** CI gate `I-DB-ENUM-CODE-PARITY` block in `scripts/ci-check-invariants.sh`. Currently scoped to the `BackfillMode` ↔ `photo_backfill_runs.mode` pair; future renames append additional checks under the same gate. The gate parses the TS union literal values from `supabase/functions/backfill-place-photos/index.ts`, parses the latest CHECK constraint definition for `photo_backfill_runs_mode_check` from the most recent migration that references it, and asserts the two value sets are permutation-equal. Fails loud naming both sets and the offending file paths.
 
-| ID | Invariant | Layer | Enforcement | Status |
-|----|-----------|-------|-------------|--------|
-| INV-R01 | Realtime subscriptions clean up on unmount | Code | useEffect cleanup | Enforced (Commit ea655d36) |
-| INV-R02 | Notifications respect user preference toggles | Edge | Preference check in dispatch | Enforced |
-| INV-R03 | Quiet hours enforced (10 PM - 8 AM, DMs bypass) | Edge | Timezone-aware check | UNVERIFIED |
-| INV-R04 | Push tokens cleaned up after 30 days inactive | DB | Cron job | UNVERIFIED |
-| INV-R05 | Notification for deleted content doesn't crash | Code + Edge | Null-safe handling | UNVERIFIED (ORCH-0089) |
+**Test that catches a regression:**
 
-## Pipeline Invariants
+```bash
+# Negative control: add a fake value to the BackfillMode TS union without updating SQL.
+sed -i.bak "s/type BackfillMode = 'pre_photo_passed' | 'refresh_servable';/type BackfillMode = 'pre_photo_passed' | 'refresh_servable' | 'fakemode';/" \
+  supabase/functions/backfill-place-photos/index.ts
+bash scripts/ci-check-invariants.sh
+# Expect: exit 1, "FAIL: I-DB-ENUM-CODE-PARITY violated", names BOTH value sets,
+#         names the offending TS file path.
+mv supabase/functions/backfill-place-photos/index.ts.bak supabase/functions/backfill-place-photos/index.ts
 
-| ID | Invariant | Layer | Enforcement | Status |
-|----|-----------|-------|-------------|--------|
-| INV-P01 | No card-serving function touches Google/OpenAI directly | Edge | All card_pool-only serving | Enforced |
-| INV-P02 | AI validation is the sole quality gate for cards | Edge | No type-based SQL exclusion | Enforced (Commits c9708465, 97a5dfd0) |
-| INV-P03 | Children's venues excluded across all 3 card pipelines | Edge | isChildVenueName() in all generators | Enforced |
-| INV-P04 | Per-category exclusions at both generation and serve time | Edge + DB | category_type_exclusions + NOT EXISTS | Enforced |
+# Positive control: tree consistent.
+bash scripts/ci-check-invariants.sh
+# Expect: gate prints OK.
+```
 
-## Invariant Status Summary
+---
 
-| Status | Count |
-|--------|-------|
-| Enforced (with evidence) | 24 |
-| Partial | 2 |
-| UNVERIFIED | 10 |
+## ORCH-0678 invariants (2026-04-25) — Two-Pass Bouncer (pre-photo + final)
 
-Unverified invariants represent latent risk. Each maps to an open ORCH issue.
+### I-PRE-PHOTO-BOUNCER-SOLE-WRITER
+
+**Rule:** Only `supabase/functions/run-pre-photo-bouncer/index.ts` writes to
+`place_pool.passes_pre_photo_check`, `place_pool.pre_photo_bouncer_reason`, and
+`place_pool.pre_photo_bouncer_validated_at`. The one-time backfill UPDATE in the
+ORCH-0678 migration (`20260430000001_orch_0678_pre_photo_bouncer.sql`) is the
+only other writer (and it runs exactly once when the migration is applied).
+`backfill-place-photos` READS `passes_pre_photo_check` for its eligibility gate
+but never writes it.
+
+**Enforcement:** CI gate `I-PRE-PHOTO-BOUNCER-SOLE-WRITER` block in
+`scripts/ci-check-invariants.sh` — greps for `passes_pre_photo_check` write
+sites (`.update(...)` containing the column, or column literal in object
+construction) outside `run-pre-photo-bouncer/`. Returns 0 hits when clean.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: inject a synthetic write — gate exits 1 naming the file.
+cat > supabase/functions/discover-cards/__test_gate.ts <<'EOF'
+// __test_gate
+await db.from('place_pool').update({ passes_pre_photo_check: true }).eq('id', '...');
+EOF
+bash scripts/ci-check-invariants.sh   # expect exit 1, names discover-cards
+rm supabase/functions/discover-cards/__test_gate.ts
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Why it exists:** Constitutional #2 (one owner per truth). Mirrors
+I-IS-SERVABLE-SINGLE-WRITER. If a second writer of `passes_pre_photo_check`
+appears, the column's correctness drifts from the deterministic rule logic
+in `_shared/bouncer.ts`. ORCH-0678 forensics proved the cost of this class of
+drift: ORCH-0640 ch06 conflated `is_servable` writes by changing the eligibility
+gate, creating a literal deadlock.
+
+**Severity if violated:** S1 (single-writer column ownership is a structural
+correctness invariant; violations cause silent column drift).
+
+**Origin:** Registered 2026-04-25 after ORCH-0678 implementation. Investigation:
+`reports/INVESTIGATION_ORCH-0678_LAGOS_BOUNCER_MASS_REJECT.md`. Spec:
+`specs/SPEC_ORCH-0678_TWO_PASS_BOUNCER.md` §Invariants.
+
+---
+
+### I-PHOTO-DOWNLOAD-GATES-ON-PRE-PHOTO
+
+**Rule:** `backfill-place-photos` action-based modes gate eligibility on
+`passes_pre_photo_check=true` (mode `'pre_photo_passed'`) or `is_servable=true`
+(mode `'refresh_servable'`). NEVER on raw `is_servable IS NULL` or any other
+ad-hoc predicate. The legacy non-action `handleLegacy` route is forbidden —
+POSTing without an `action` field returns HTTP 400. The two RPCs
+`get_places_needing_photos` and `count_places_needing_photos` were dropped in
+the ORCH-0678 migration; resurrecting them as callers is forbidden.
+
+**Enforcement:** CI gate `I-PHOTO-DOWNLOAD-GATES-ON-PRE-PHOTO` block in
+`scripts/ci-check-invariants.sh` — (a) forbids `function handleLegacy(` or
+`return handleLegacy(` in `backfill-place-photos/index.ts`; (b) forbids
+`rpc('get_places_needing_photos')` or `rpc('count_places_needing_photos')`
+anywhere under `supabase/functions/`.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control 1: re-introduce handleLegacy.
+cat >> supabase/functions/backfill-place-photos/index.ts <<'EOF'
+// __test_gate
+async function handleLegacy() { return new Response('ok'); }
+EOF
+bash scripts/ci-check-invariants.sh   # expect exit 1, names handleLegacy
+git checkout -- supabase/functions/backfill-place-photos/index.ts
+bash scripts/ci-check-invariants.sh   # expect exit 0
+
+# Negative control 2: re-introduce the RPC call.
+cat > supabase/functions/backfill-place-photos/__test_gate.ts <<'EOF'
+// __test_gate
+await db.rpc('get_places_needing_photos', { p_batch_size: 50 });
+EOF
+bash scripts/ci-check-invariants.sh   # expect exit 1
+rm supabase/functions/backfill-place-photos/__test_gate.ts
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Why it exists:** prevents recurrence of the ORCH-0640 ch06 deadlock. The
+gate column for first-pass photo download must be one that's set BEFORE photos
+exist (`passes_pre_photo_check`). The legacy no-action route was the only working
+escape from the prior deadlock — preserving it would create a documented vs
+undocumented drift; retiring it forces operators through the correct flow.
+
+**Severity if violated:** S1 (re-introduces the deadlock class that blocked
+Lagos and 8 other cities).
+
+**Origin:** Registered 2026-04-25 after ORCH-0678 implementation. Investigation:
+`reports/INVESTIGATION_ORCH-0678_LAGOS_BOUNCER_MASS_REJECT.md`. Spec:
+`specs/SPEC_ORCH-0678_TWO_PASS_BOUNCER.md` §Invariants.
+
+---
+
+### I-TWO-PASS-BOUNCER-RULE-PARITY
+
+**Rule:** The rule body in `_shared/bouncer.ts` is the single source of truth
+for both Bouncer passes. The only difference between `bounce(place)` and
+`bounce(place, { skipStoredPhotoCheck: true })` is whether B8
+(`B8:no_stored_photos`) appears in `reasons`. No other rule may differ between
+passes. Bouncer rule keywords (B5:social_only, B7:no_google_photos,
+B8:no_stored_photos, etc.) must NOT appear hand-rolled in any source file
+outside `_shared/bouncer.ts` (the bouncer module + its tests + the two runner
+edge fns that pass verdicts through + `backfill-place-photos` which may log
+reasons received from the verdicts).
+
+**Enforcement:** CI gate `I-TWO-PASS-BOUNCER-RULE-PARITY` block in
+`scripts/ci-check-invariants.sh` — greps for the rule keywords across
+`supabase/functions/` excluding the canonical-author files. Returns 0 hits when
+clean.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: introduce a hand-rolled rule check.
+cat > supabase/functions/discover-cards/__test_gate.ts <<'EOF'
+// __test_gate
+if (!hasGooglePhotos(place)) reasons.push('B7:no_google_photos');
+EOF
+bash scripts/ci-check-invariants.sh   # expect exit 1, names discover-cards
+rm supabase/functions/discover-cards/__test_gate.ts
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Why it exists:** prevents rule drift between the two passes. If pre-photo
+and final ever diverge in any rule other than B8, places could pass pre-photo,
+get their photos downloaded ($), then fail final for a NEW reason — silent
+breakage with cost waste. Also prevents a class of bug where someone hand-rolls
+a "lightweight" Bouncer check elsewhere and lets it diverge from the canonical
+rules over time.
+
+**Severity if violated:** S2 (rule drift class; correctness depends on which
+rule diverged and where).
+
+**Origin:** Registered 2026-04-25 after ORCH-0678 implementation. Spec:
+`specs/SPEC_ORCH-0678_TWO_PASS_BOUNCER.md` §Invariants.
+
+---
+
+## ORCH-0671 invariants (2026-04-25) — Photo Pool admin surface deletion + label/owner/filter discipline
+
+### I-LABEL-MATCHES-PREDICATE
+
+**Rule:** Every UI label of the form `"X Approved"` / `"X Validated"` / `"X-approved"`
+/ `"X-validated"` MUST cite the actual approval predicate it counts. In the admin
+frontend specifically, `"AI Approved"` and `"AI Validated"` are BANNED — the
+underlying data is the bouncer signal (`is_servable`); the legacy `ai_approved`
+column was dropped by ORCH-0640. Inverse-naming = Constitution #9 violation
+(operator-trust framing).
+
+**Enforcement:** CI gate `I-LABEL-MATCHES-PREDICATE` block in
+`scripts/ci-check-invariants.sh` —
+`git grep -lE "AI[ -]?(Approved|Validated)" mingla-admin/src/` returns 0 hits
+(excluding `*.md` documentation matches).
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: inject a banned label — gate exits 1.
+echo '<StatCard label="AI Approved" />' > mingla-admin/src/__test_gate.jsx
+bash scripts/ci-check-invariants.sh   # expect exit 1, names the file
+rm mingla-admin/src/__test_gate.jsx
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Why it exists:** ORCH-0671 investigation §4 documented 5 places where
+bouncer-aware data (post-ORCH-0640) was still labeled "AI Approved" — operator-trust
+violation (Constitution #9 fabricated framing) and pattern-repeat of ORCH-0640 +
+ORCH-0646 cleanup misses.
+
+**Severity if violated:** S2 (operator-trust framing for admin tooling; not
+end-user-visible but undermines admin reliability).
+
+**Origin:** Registered 2026-04-25 after ORCH-0671 implementation. Investigation:
+`reports/INVESTIGATION_ORCH-0671_PHOTO_TAB_BOUNCER_AWARENESS.md`. Spec:
+`specs/SPEC_ORCH-0671_PHOTO_POOL_DELETE_AND_RELABEL.md` §6 + §3.7 Gate 1.
+
+---
+
+### I-OWNER-PER-OPERATION-TYPE
+
+**Rule:** Every value allowed by `admin_backfill_log.operation_type` CHECK
+constraint MUST have at least one consumer in `supabase/functions/` that
+processes rows of that type. New operation_type values without a consumer create
+zombie pending rows (per ORCH-0671's 17 zombies, $3,283.98 estimated, $0 actual
+API spend — pending since 2026-04-02 with no edge fn ever scheduled to consume them).
+
+**Enforcement:** CI gate `I-OWNER-PER-OPERATION-TYPE` block in
+`scripts/ci-check-invariants.sh` — parses the latest non-ROLLBACK migration
+defining `admin_backfill_log_operation_type_check` constraint, extracts allowed
+values from the CHECK clause, and for each value requires ≥1 grep hit on
+`operation_type ... 'value'` in `supabase/functions/`.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: write a temp migration adding 'photo_backfill' back to the
+# constraint without a consumer — gate exits 1 naming 'photo_backfill'.
+cat > supabase/migrations/99999999999999_test_gate.sql <<'EOF'
+ALTER TABLE public.admin_backfill_log
+  DROP CONSTRAINT IF EXISTS admin_backfill_log_operation_type_check;
+ALTER TABLE public.admin_backfill_log
+  ADD CONSTRAINT admin_backfill_log_operation_type_check
+  CHECK (operation_type IN ('place_refresh', 'photo_backfill'));
+EOF
+bash scripts/ci-check-invariants.sh   # expect exit 1, names photo_backfill
+rm supabase/migrations/99999999999999_test_gate.sql
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Why it exists:** ORCH-0671 investigation §6 (HF-D) — the standalone Photo Pool
+admin page's trigger button INSERTed `operation_type='photo_backfill'` rows but
+no edge fn was ever wired to process them. Result: 17 pending rows accumulated
+across 23 days with $3,283.98 estimated cost (Constitution #9 phantom data) and
+zero actual API spend (Constitution #2 ownership gap — the operation_type was
+"owned" by no consumer).
+
+**Severity if violated:** S2-S3 (creates phantom cost data + zombie operational
+state; not end-user-visible but degrades admin operator trust + observability).
+
+**Origin:** Registered 2026-04-25 after ORCH-0671 implementation. Spec:
+`specs/SPEC_ORCH-0671_PHOTO_POOL_DELETE_AND_RELABEL.md` §6 + §3.7 Gate 2.
+
+---
+
+### I-PHOTO-FILTER-EXPLICIT-EXTENSION
+
+**Rule:** Every Postgres function named `admin_*photo*` MUST gate aggregations
+and projections on `is_servable IS TRUE`. Exception: a function that intentionally
+surfaces the unfiltered pool MUST contain a comment with the literal string
+`"RAW POOL VIEW"` justifying the unfiltered aggregation.
+
+**Enforcement:** CI gate `I-PHOTO-FILTER-EXPLICIT-EXTENSION` block in
+`scripts/ci-check-invariants.sh` — for each `admin_*photo*` function defined in
+the LATEST non-ROLLBACK migration that touches it, body must contain
+`is_servable` OR `RAW POOL VIEW`. Functions that have been dropped by a later
+migration are skipped (DROP-aware enhancement).
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: add a temp migration with a bouncer-blind photo RPC.
+cat > supabase/migrations/99999999999999_test_gate.sql <<'EOF'
+CREATE OR REPLACE FUNCTION public.admin_photo_test_v2()
+RETURNS BIGINT
+LANGUAGE sql STABLE
+AS $$ SELECT COUNT(*) FROM place_pool WHERE is_active = true $$;
+EOF
+bash scripts/ci-check-invariants.sh   # expect exit 1, names admin_photo_test_v2
+# Recovery via comment:
+sed -i '1i -- RAW POOL VIEW: test fixture' supabase/migrations/99999999999999_test_gate.sql
+bash scripts/ci-check-invariants.sh   # expect exit 0
+rm supabase/migrations/99999999999999_test_gate.sql
+```
+
+**Why it exists:** ORCH-0671 investigation §3 measured 65-95% noise in the
+deleted Photo Pool page's category counts because all 5 RPCs filtered only on
+`is_active`. Bouncer-rejected places (those failing `is_servable`) were counted
+as "missing photos to backfill" — operator saw a wildly inflated $695.63/mo
+phantom cost vs $0 real. This invariant prevents recurrence on any future admin
+photo aggregation. Note: spec §3.7 gate text was enhanced in implementation to
+handle DROP migrations + ROLLBACK files (see implementor report Discoveries D-1,
+D-2).
+
+**Severity if violated:** S2 (cost framing + operator-trust; not user-visible
+but materially affects admin decision-making).
+
+**Origin:** Registered 2026-04-25 after ORCH-0671 implementation. Spec:
+`specs/SPEC_ORCH-0671_PHOTO_POOL_DELETE_AND_RELABEL.md` §6 + §3.7 Gate 3.
+
+---
+
+## ORCH-0677 invariants (2026-04-25) — Curated reverse-anchor + empty-verdict + lint gate
+
+### I-CURATED-FAILED-ANCHOR-IS-USED
+
+**Rule:** When a reverse-anchor experience type's near-anchor companion fetch fails
+(any gate fires: `reverseAnchor_no_available`, `reverseAnchor_no_place`,
+`required_stops_short`, `travel_constraint`, `duplicate_place_ids`), the failing
+anchor's `google_place_id` MUST be added to a per-request `failedAnchorIds: Set<string>`
+**before** the iteration's `valid = false` / `continue`. Subsequent iterations of the
+same combo must filter `anchorPlaces` against this set so they advance to the next
+candidate instead of re-picking the dead one.
+
+**Why:** picnic-dates is the only `reverseAnchor: true` typedef AND the only intent
+with a single combo. Without per-request failure tracking, when the top-ranked
+picnic_friendly anchor (e.g., Spring Forest Road Park) had zero qualifying groceries
+within 3 km, the assembly loop deterministically re-picked the same anchor 8 times
+and returned 0 cards. ORCH-0677 RC-1.
+
+**Enforcement:** [supabase/functions/generate-curated-experiences/index.ts:815](supabase/functions/generate-curated-experiences/index.ts#L815)
+declares `failedAnchorIds`; filter clause + 5 add-sites at the gate-fail branches.
+
+**Test:** spec T-04 (unit) — with 5 anchor candidates and only the 5th viable,
+the loop reaches it within ≤5 iterations. T-02 (live-fire) — picnic at Umstead
+returns either ≥1 card or explicit `summary.emptyReason='no_viable_anchor'` with
+`failedAnchorCount >= 2`.
+
+---
+
+### I-CURATED-EMPTY-IS-EXPLICIT-VERDICT
+
+**Rule:** Every curated edge-function response with `cards.length === 0` MUST include
+a `summary` object carrying `emptyReason: 'pool_empty' | 'no_viable_anchor' | 'pipeline_error'`.
+The mobile `RecommendationsContext.deckUIState` EMPTY branch MUST fire whenever
+`curatedEmptyReason !== undefined`. Without an explicit verdict, curated-only empty
+results fall through to the INITIAL_LOADING fallback and the user sees "Curating your
+lineup" indefinitely.
+
+**Why:** Constitution #3 (no silent failures). Pre-fix, a curated-only empty response
+was indistinguishable from "still loading" on the mobile side because `hasMoreFromEdge`
+defaulted to `true`. ORCH-0677 RC-2.
+
+**Enforcement:**
+- Edge fn: [supabase/functions/generate-curated-experiences/index.ts](supabase/functions/generate-curated-experiences/index.ts)
+  function-end summary computation + HTTP response shape conditional spread.
+- Mobile: [app-mobile/src/services/deckService.ts](app-mobile/src/services/deckService.ts)
+  aggregates per-pill `pillEmptyReasons` → emits `curatedEmptyReason` on `DeckResponse`;
+  [app-mobile/src/contexts/RecommendationsContext.tsx:1666](app-mobile/src/contexts/RecommendationsContext.tsx#L1666)
+  EMPTY branch reads `soloCuratedEmptyReason !== undefined`.
+
+**Test:** spec T-05 (mocked stuck-EMPTY routing) + T-11 (device live-fire — picnic
+at Umstead never shows "Curating your lineup" beyond cold-fetch window).
+
+---
+
+### I-CURATED-REVERSEANCHOR-NEEDS-COMBOS
+
+**Rule:** Any `EXPERIENCE_TYPES` typedef in `generate-curated-experiences/index.ts`
+where `stops.some(s => s.reverseAnchor)` MUST have `combos.length >= 2`.
+Single-combo + reverseAnchor produces no fallback variety when an anchor fails the
+near-anchor companion fetch — this exact shape was the cause of ORCH-0677.
+
+**Enforcement:** Deno lint script [supabase/functions/generate-curated-experiences/_lint_invariants.ts](supabase/functions/generate-curated-experiences/_lint_invariants.ts)
+imports `EXPERIENCE_TYPES` and asserts the rule. Wired into
+[scripts/ci-check-invariants.sh](scripts/ci-check-invariants.sh) with graceful skip
+when `deno` is not on PATH.
+
+**Test:** spec T-08 (CI inject + revert negative-control) — adding a synthetic typedef
+with `reverseAnchor: true` and `combos.length === 1` causes `bash scripts/ci-check-invariants.sh`
+to exit 1 with the invariant name in stderr; removing it returns to exit 0.
+
+---
+
+## ORCH-0672 invariant (2026-04-25) — Coupled-diff partial commit prevention
+
+### I-COUPLED-DIFF-NEVER-PARTIAL-COMMIT
+
+**Rule:** Any working-tree diff that touches ≥2 files where one file *defines* a
+symbol and another file *consumes* that symbol (token, type, function, prop, RPC,
+RLS policy, migration, edge fn handler, etc.) is **COUPLED**. A coupled diff MUST
+be committed atomically — either all halves in one commit, or none at all. Partial
+commits of coupled diffs are forbidden.
+
+**Concrete examples of coupling:**
+- `designSystem.ts` token block + `Component.tsx` consumer reads (this incident)
+- `migration.sql` schema add + `service.ts` query against new column
+- `edge-fn/index.ts` handler + mobile service call against new payload shape
+- `types.ts` interface change + every component that reads/writes the type
+- New RPC + caller that invokes it
+- New CHECK constraint + service that produces values matching the constraint
+
+**Enforcement:**
+
+1. **Forensics + orchestrator capture step (process):** when an in-flight diff is
+   captured (e.g., during investigation of a different issue), each file in the
+   diff MUST be classified as either `single-half` (safe to commit alone or revert
+   alone) or `coupled-with: <other-file-list>` (must move together). Capture
+   without classification is incomplete.
+2. **Commit-time guard (process):** before any partial-stage commit (e.g.,
+   `git commit -- <pathspec>` or `git add -p` followed by commit), the developer
+   MUST grep for outbound symbol references from the staged half to confirm the
+   consumer half is either also staged in the same commit OR already on HEAD.
+3. **CI-time guard (deferred — separate work):** future CI gate could grep for
+   newly-introduced token reads in committed files where the token is undefined
+   in the same commit's tree state. Tracked as a future improvement; manual
+   discipline holds until then.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: simulate the ORCH-0672 regression by removing the pending
+# block from designSystem.ts while leaving the consumer reads in
+# GlassSessionSwitcher.tsx — Metro bundle must fail with module-load TypeError.
+# Positive control: with both halves present, Metro bundle succeeds.
+cd app-mobile && npx expo export --platform ios 2>&1 | grep -E "(TypeError|Cannot read property)"
+# Expected: empty (positive) or specific error pointing at the missing definition (negative).
+```
+
+**Origin:** Registered 2026-04-25 after ORCH-0672 S0 emergency — commit
+`3911b696 fix(home): pin Solo + create pills` shipped only the consumer half
+(`GlassSessionSwitcher.tsx +226/-66` reading `glass.chrome.pending.*` tokens at
+17 sites) without the matching token-definition half (`designSystem.ts` +39-line
+`pending` sub-namespace). Module-load crash bricked dev build for ~hours until
+ORCH-0672 hotfix landed at commit `d566dab7`. ORCH-0669 forensics had captured
+the in-flight diff but did not classify it as coupled — orchestrator + forensics
+both missed the partial-commit risk. This invariant closes the regression class.
+
+**Severity if violated:** S0 (module-load build brick), S1 (runtime call into
+undefined function), or data-integrity (missing migration before service that
+queries new column) depending on which symbol class is incomplete.
+
+---
+
+## ORCH-0669 invariant (2026-04-25) — Home + chat chrome hairline sub-perceptible
+
+### I-CHROME-HAIRLINE-SUB-PERCEPTIBLE
+
+**Rule:** The shared `glass.chrome.border.hairline` token defines the perimeter
+edge of every Home + bottom-nav chrome surface AND the chat input capsule
+(which by original-author intent shares the home-chrome design language per the
+inline comment at `MessageInterface.tsx` capsule styles, "matching the
+home-chrome capsule language"). Its white alpha MUST be `≤ 0.08`. Any consumer
+of chrome edge styling — chrome surface (`Glass*.tsx`, `ui/Glass*.tsx`) OR
+chat input chrome (`MessageInterface.tsx` capsule + reply preview + separator)
+— MUST consume this token by reference; inline `rgba(255, 255, 255, X)`
+literals with white alpha ≥ 0.09 on these files are forbidden.
+
+**Cross-property note:** The token is consumed by both `borderColor` (perimeter
+strokes — surfaces 1-7) and `backgroundColor` (1px-wide chat input separator —
+surface 8). The invariant binds the token VALUE; the property choice is at the
+consumer's discretion. Future consumers using this token as a `backgroundColor`
+for a thin filled element should expect that element to be sub-perceptible at
+the locked alpha — by design (Option A locked by founder 2026-04-25).
+
+**Excluded scope (DOES NOT apply to):**
+- `glass.chrome.pending.borderColor` — ORCH-0661 dashed pending-pill state,
+  intentionally higher visibility (28%).
+- `glass.chrome.active.border` — orange active-state border, separate token
+  (`'rgba(235, 120, 37, 0.55)'`, no white-alpha concern).
+- Non-chrome surfaces (`Card*.tsx`, `Badge*.tsx`, modals, sheets, profile,
+  discover) — different design languages, separate token systems.
+- Sibling `topHighlight` tokens in `glass.badge.border.*`, `glass.profile.card.*`,
+  `glass.profile.cardElevated.*` namespaces — governed by their own design specs.
+
+**Why it exists:** Two prior incidents created visible white-line artifacts on
+Home chrome:
+1. ORCH-0589 V5 deleted the L3 top-highlight overlay because it produced a
+   visible white line at chrome scale.
+2. ORCH-0669 (this work) lowered the L4 hairline alpha from 0.12 to 0.06
+   because at 0.12 it produced a visible white seam.
+
+The pattern: edge-definition layers on Home chrome must remain *sub-perceptible*
+— the chrome should feel "edge-defined" without anyone consciously seeing an
+edge. This invariant locks that bar going forward. Any new chrome element added
+later (e.g., `GlassFloatingActionButton`) must consume
+`glass.chrome.border.hairline` and not exceed the alpha cap.
+
+**Enforcement:**
+1. **Token value cap (in code):** the token at `app-mobile/src/constants/designSystem.ts`
+   `glass.chrome.border.hairline` is locked at `'rgba(255, 255, 255, 0.06)'`
+   with a justification comment block warning future readers.
+2. **CI grep gate** in `scripts/ci-check-invariants.sh` block
+   `I-CHROME-HAIRLINE-SUB-PERCEPTIBLE` — fails if any chrome consumer file
+   (`Glass*.tsx` in `components/`, `Glass*.tsx` in `components/ui/`, or
+   `MessageInterface.tsx`) inlines a `borderColor: 'rgba(255, 255, 255, 0.X)'`
+   literal with white alpha ≥ 0.09.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: simulate the regression by adding an inline borderColor
+# at 0.10 alpha to a chrome consumer — gate exits 1.
+sed -i 's|borderColor: glass.chrome.border.hairline,|borderColor: '\''rgba(255, 255, 255, 0.10)'\'',|' app-mobile/src/components/ui/GlassIconButton.tsx
+bash scripts/ci-check-invariants.sh   # expect exit 1 with descriptive error
+git checkout -- app-mobile/src/components/ui/GlassIconButton.tsx
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Severity if violated:** S2 (cosmetic; first-impression damage on every Home
+render — chrome reads as a hard white seam against dark blur backdrop, breaks
+the "premium glass" intent of SPEC_ORCH-0589 V5).
+
+**Origin:** Registered 2026-04-25 after ORCH-0669 cycle 2 implementation.
+Investigation: `reports/INVESTIGATION_ORCH-0669_HOME_HEADER_GLASS_EDGES.md`.
+Spec: `specs/SPEC_ORCH-0669_HOME_CHROME_HAIRLINE.md` (v2 — Option A locked
+2026-04-25 to share lower alpha across all 7 consumers, accept chat-separator
+near-invisibility).
+
+---
+
+## ORCH-0664 invariant (2026-04-25) — DM realtime dedup ordering
+
+### I-DEDUP-AFTER-DELIVERY
+
+**Rule:** Dedup tracking sets (e.g., `broadcastSeenIds`, idempotency keys,
+request-id sets, "already-processed" caches) MUST be populated INSIDE the
+success path of the delivery they are deduping, AFTER the user-visible state
+has been mutated. Pre-emptive population (before delegation) creates a class
+of bug where the secondary delivery path silently skips because the dedup set
+falsely reports "already delivered" when the primary path was a no-op.
+
+**Why:** Pre-fix root cause RC-0664 — `useBroadcastReceiver.ts:51` marked
+`broadcastSeenIds.add(msg.id)` BEFORE the delegate ran, the delegate was a
+no-op, then `subscribeToConversation`'s postgres_changes backup saw the
+seen flag and silently skipped its `setMessages` add. Result: every DM
+receiver dropped every incoming message until close+reopen reload.
+
+**Enforcement:**
+1. **Code review checklist:** any `*.add(id)` adjacent to a delegate call
+   must come AFTER the delegate, not before.
+2. **CI grep gate** in `scripts/ci-check-invariants.sh` —
+   `useBroadcastReceiver.ts` MUST NOT contain `broadcastSeenIds.current.add(`
+   inside the broadcast event handler. Population is the
+   `ConnectionsPage.addIncomingMessageToUI` handler's responsibility.
+3. **Required-prop contract** — `MessageInterface.tsx`'s
+   `onBroadcastReceive` is REQUIRED (non-optional) so TypeScript catches
+   any caller that forgets to wire the callback. "No-op fallback" was the
+   exact pre-fix shape that caused the bug.
+4. **Protective comment blocks** at three sites (useBroadcastReceiver.ts
+   handler body, ConnectionsPage.tsx `addIncomingMessageToUI` JSDoc,
+   MessageInterface.tsx header comment above `useBroadcastReceiver` call).
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: re-introduce the pre-emptive add — gate exits 1.
+sed -i 's|// Deliver — delegate is responsible|broadcastSeenIds.current.add(msg.id);\n        // Deliver — delegate is responsible|' app-mobile/src/hooks/useBroadcastReceiver.ts
+bash scripts/ci-check-invariants.sh   # expect exit 1 with descriptive error
+git checkout -- app-mobile/src/hooks/useBroadcastReceiver.ts
+bash scripts/ci-check-invariants.sh   # expect exit 0
+```
+
+**Exception (legitimate pre-emptive add permitted):** when the caller has
+ALREADY mutated state in another way and is ITSELF the producer of the work
+the dedup set protects against. The canonical example is the SENDER's own
+add at `ConnectionsPage.tsx` L1936-area (was L1907 pre-helper-insertion):
+sender has already shown the message via optimistic-replace; the seen-set
+add is correct because the UI mutation is local-side, not delegate-side.
+The CDC echo of the sender's own write must not re-add the message.
+
+**Severity if violated:** S1 (every receiver of every message silently
+drops from UI; user sees empty chat until close+reopen reload).
+
+**Origin:** Registered 2026-04-25 after ORCH-0664 root cause proof.
+Spec: `specs/SPEC_ORCH-0664_DM_REALTIME_DEDUP.md`. Investigation:
+`reports/INVESTIGATION_ORCH-0663_0664_0665_CHAT_TRIPLE.md`.
+
+---
+
+## ORCH-0558 invariants (2026-04-21) — Collab match promotion
+
+### I-MATCH-PROMOTION-DETERMINISTIC
+
+**Rule:** Meeting the collab quorum threshold (≥2 right-swipes on the same
+experience in the same session) MUST produce exactly one
+`board_saved_cards` row, regardless of concurrency or timing.
+
+**Enforcement:**
+- Advisory lock on `(session_id, experience_id)` at check_mutual_like
+  trigger entry (migration `20260421000003_orch_0558_trigger_v3.sql`)
+- Unique index `board_saved_cards_session_experience_unique` on
+  `(session_id, experience_id)` (migration `20260421000002`)
+- `INSERT … ON CONFLICT (session_id, experience_id) DO NOTHING` in the
+  promotion path — losers fall into attach-vote branch
+
+**Test:** `supabase/tests/concurrency/collab_match_race.sql` — 100-run
+harness with dblink-spawned concurrent transactions; exactly 1 saved_card
+and exactly N votes per run. Orchestrator Close gate.
+
+### I-BOARD-SAVED-CARDS-EXPERIENCE-ID-NOT-NULL
+
+**Rule:** No row in `board_saved_cards` may have `experience_id = NULL`.
+Historical ghosts were cleaned up in migration `20260421000001`.
+
+**Enforcement:** `ALTER TABLE board_saved_cards ALTER COLUMN experience_id
+SET NOT NULL` (migration `20260421000002`).
+
+**Test:** `SELECT count(*) FROM board_saved_cards WHERE experience_id IS
+NULL` must always return 0. Any INSERT with NULL fails with `23502`.
+
+### I-CHECK-FOR-MATCH-COLUMN-ALIGNED
+
+**Rule:** Any code that determines "was this card promoted in this
+session?" must use the same semantics as the trigger's existence check.
+Post-ORCH-0558 the single server authority is
+`rpc_record_swipe_and_check_match`; no client-side `board_saved_cards`
+query determines match state.
+
+**Enforcement:**
+- `BoardCardService.checkForMatch` removed
+- Client-side match detection goes through the RPC only
+
+**Test:** `git grep -n "'experience_id'" app-mobile/src/services/boardCardService.ts`
+must return zero lines within 20 lines of a `.from('board_saved_cards')`
+match-intent read. Enforced during code review.
+
+### I-MATCH-NOTIFICATION-FAILS-OPEN
+
+**Rule:** If push delivery fails or is disabled, in-app notification
+still fires. If in-app fails, the match toast still fires (client-local,
+no external dependency).
+
+**Enforcement:**
+- `notify-dispatch` INSERTs the `notifications` row BEFORE attempting
+  push (existing behavior verified 2026-04-21). The
+  `useNotifications` hook subscribes via Supabase Realtime and surfaces
+  new matches in-app instantly.
+- `notify-session-match` emits `collab_match_notification_delivered`
+  per successful in-app insert and `collab_match_notification_failed`
+  per dispatch error.
+- `collabSaveCard` match toast is client-local — fires from local RPC
+  response, independent of push/edge-fn availability.
+
+**Test:** Device test with airplane mode toggled after the RPC returns
+matched=true — match toast still fires on the matcher's device. Non-matcher
+participants see the `notifications` row via Realtime INSERT as soon as
+network returns.
+
+### I-REALTIME-COLD-FETCH-PARITY
+
+**Rule:** Session Cards tab shows the same set of saved cards whether
+reached via realtime INSERT event or via cold-open fetch.
+
+**Enforcement:**
+- `SessionViewModal.loadSavedCards` runs on modal open (cold fetch)
+- `onCardSaved` realtime subscription updates on board_saved_cards INSERT
+- `onMatchPromoted` (board_votes INSERT) belt catches missed INSERT
+  events with a 1s debounced refetch
+- Ghost rows eliminated by migration 000001, so saved_at DESC ordering
+  stops hiding fresh matches behind stale entries
+
+**Test:** Device test — match occurs while user is on Home tab, then
+opens Cards tab cold — card must be present.
+
+### I-COLLAB-MATCH-OBSERVABLE
+
+**Rule:** Every attempted match promotion emits a telemetry event with a
+machine-readable reason — engineering sees failures in production without
+waiting for user reports.
+
+**Enforcement:**
+- `match_telemetry_events` table (migration 000004) receives events from:
+  - `check_mutual_like` trigger (every decision path)
+  - `rpc_record_swipe_and_check_match` RPC (attempt events)
+  - `notify-session-match` edge fn (delivered / failed)
+- Mobile `collabSaveCard` mirrors outcomes to Mixpanel
+  (`Collab Match Attempt`, `Collab Match Promotion Success`,
+  `Collab Match Promotion Skipped`, `Collab Match RPC Error`)
+
+**Test:** After a successful match,
+`SELECT count(*) FROM match_telemetry_events WHERE session_id = X AND
+event_type = 'collab_match_promotion_success'` returns exactly 1.
+Mixpanel shows the mirror events in the product funnel.
+
+---
+
+## Carried invariants (preserved from prior ORCH work)
+
+- **I-02 One owner per truth** — no two systems authoritatively describe
+  the same state. ORCH-0558: RPC is the single server authority for
+  match state; client has no independent match-detection query path.
+- **I-03 No silent failures** — every catch block surfaces the error via
+  toast, telemetry, or console.warn. ORCH-0558 preserves this across the
+  new RPC call, the rewired `collabSaveCard`, and the edge fn telemetry.
+- **I-08 Subtract before adding** — `saveCardToBoard` and `checkForMatch`
+  were removed entirely, not deprecated and left in place. No dead code
+  paths left behind.
+- **I-11 One auth instance** — RPC uses `auth.uid()` and validates
+  against `session_participants.has_accepted`. No separate auth layer.
+- **I-TRIGGER-READS-CURRENT-SCHEMA** — `check_mutual_like` must never
+  reference a dropped table (ORCH-0556 origin). Enforced by the periodic
+  `supabase/tests/concurrency/collab_match_race.sql` run, which would
+  fail on 42P01.
+
+---
+
+## ORCH-0646 invariants (2026-04-23) — Column-drop cleanup discipline
+
+### I-COLUMN-DROP-CLEANUP-EXHAUSTIVE
+
+**Rule:** Any migration that drops a column (or renames a materialized-view
+projection) MUST be paired with grep gates before its cutover migration is
+considered ready:
+
+1. Grep `mingla-admin/src/` for the dropped column name — ZERO matches.
+2. Grep `app-mobile/src/` for the dropped column name — ZERO matches.
+3. Grep `supabase/functions/` for the dropped column name — ZERO matches
+   (allowing deletion-proving comments like `// ORCH-XXXX ch13: COLUMN dropped`).
+4. Inspect every function body in `public` schema via
+   `SELECT pg_get_functiondef(oid) FROM pg_proc` grep for the column name —
+   ZERO matches (or only in functions scheduled for drop in the same cutover).
+
+**Enforcement:** CI script `scripts/ci-check-invariants.sh` covers gates
+(1)-(3) at the source-tree level. Gate (4) is a manual pre-cutover check
+until there's automation against live DB.
+
+**Origin:** ORCH-0640 dropped `place_pool.ai_approved` on 2026-04-23 with
+mobile cleanup verified and 14 admin RPCs rewritten, but six other RPCs and
+23 admin JSX sites were missed. Admin Place Pool + Signal Library broke in
+prod for hours until the user surfaced it. CLOSE Grade A was awarded without
+admin smoke because the tester matrix was mobile-only. ORCH-0646 completed
+the cleanup and registered this invariant so column drops never again ship
+with missing surface coverage.
+
+**Regression test:** The CI script runs on every push. Any new
+`ai_approved` / `ai_override` / `ai_validated` reference introduced in
+`mingla-admin/src/`, `app-mobile/src/`, or the four serving edge functions
+fails the gate (exit 1).
+
+**Manual pre-cutover check (example template):**
+```bash
+COLUMN="ai_approved"
+for DIR in mingla-admin/src/ app-mobile/src/ supabase/functions/; do
+  MATCHES=$(grep -rn "$COLUMN" "$DIR" | grep -vE '\.md$' || true)
+  if [ -n "$MATCHES" ]; then
+    echo "FAIL: $COLUMN still referenced in $DIR:"
+    echo "$MATCHES"
+    exit 1
+  fi
+done
+```
+
+---
+
+## ORCH-0668 invariants (2026-04-25) — RPC language discipline for hot paths
+
+### I-RPC-LANGUAGE-SQL-FOR-HOT-PATH
+
+**Definition:** Any PostgreSQL RPC called from a Supabase Edge Function on a
+user-facing hot path with array (`text[]`, `uuid[]`) or composite parameters
+MUST be `LANGUAGE sql STABLE`, OR `LANGUAGE plpgsql` with both:
+  (a) `SET plan_cache_mode = force_custom_plan` in `proconfig`, AND
+  (b) a `[CRITICAL — I-RPC-LANGUAGE-SQL-FOR-HOT-PATH]` justification block
+      in the migration body explaining why plpgsql is required.
+
+**Rationale:** Plpgsql functions cache query plans per session. After ≥5
+invocations, plpgsql switches from custom (per-call optimized) plans to a
+generic (parameter-blind) plan. For RPCs with variable-cardinality array
+parameters and cost-sensitive joins (cardinality of `text[]` × table scan),
+the generic plan is catastrophic — observed 100× slowdown vs equivalent
+inline SQL. Combined with the 8 s `authenticator.statement_timeout` ceiling,
+this turns a soft perf regression into universal hard failure (ORCH-0668).
+
+**Hot-path RPCs subject to this invariant** (allowlist — additions require review):
+- `public.query_person_hero_places_by_signal`
+- `public.query_servable_places_by_signal`
+- `public.fetch_local_signal_ranked`
+
+**Exempt RPCs** (admin / cron / batch — not user-facing hot paths):
+- `public.cron_refresh_admin_place_pool_mv` (has 15 min `statement_timeout`
+  override; plpgsql for control flow)
+
+**Why we re-introduce risk:** Re-introducing `LANGUAGE plpgsql` for any of
+the listed hot-path RPCs without `plan_cache_mode = force_custom_plan` AND
+the justification comment will:
+1. Pass headless tests (raw-SQL probes don't exercise plpgsql plan caching).
+2. Pass for the first 5 invocations after every connection re-use.
+3. Then silently start hitting the 8 s `authenticator.statement_timeout` for
+   any caller passing ≥6 array elements, returning HTTP 500 to mobile,
+   surfacing as universal "Couldn't load recommendations" with no diagnostic.
+
+**Owner:** Backend RPC layer.
+**Gate:** `scripts/ci-check-invariants.sh` block I-RPC-LANGUAGE-SQL-FOR-HOT-PATH.
+**Established:** ORCH-0668 (2026-04-25). Investigation:
+`reports/INVESTIGATION_ORCH-0668_PAIRED_PROFILE_RECOMMENDATIONS_FAIL.md`.
+Spec: `specs/SPEC_ORCH-0668_PAIRED_PROFILE_RPC_FIX.md`.
+**Related:** I-THREE-GATE-SERVING (DEC-053), ORCH-0540 plpgsql wrapper precedent,
+`feedback_headless_qa_rpc_gap.md` (mandatory live-fire for SQL RPCs before CLOSE).
+
+---
+
+### I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME
+
+**Rule:** Every card emitted by any deck-serving edge function MUST carry
+haversine-computed `distanceKm` (km) AND per-mode `travelTimeMin` (min). If
+user location OR place lat/lng is missing, BOTH fields drop to `null` together.
+Mobile UI branches on `null` to hide the badge. Never `0` sentinel; never
+`|| t(...nearby)` fallback; never return literal `'Nearby'` from
+`parseAndFormatDistance` on missing input (lines 223/230/238 for
+genuinely-tiny distances deferred to ORCH-0673 i18n).
+
+**Enforcement:** Single owner `_shared/distanceMath.ts` exports
+`haversineKm`/`estimateTravelMinutes`/`TravelMode`; `_shared/stopAlternatives.ts`
+re-exports. CI gate `scripts/ci-check-invariants.sh` blocks 4 patterns:
+edge-fn zero literals, mobile `|| t(...nearby)`, formatters
+`if (!distanceString...return 'Nearby'`, `timeAway` field assignments. Type:
+`Recommendation.distance/travelTime` and `CardInfoSectionProps.distance/travelTime`
+are `string | null`; `ExpandedCardData` widened + new `travelMode?: string`.
+
+**Test:** Live `discover-cards` × 4 travel modes returns non-zero distanceKm +
+travelTimeMin. Negative controls NC-1..NC-4 fire `exit 1` on regression
+injection and recover `exit 0` on revert.
+
+**Established:** ORCH-0659 + ORCH-0660 (2026-04-25, rework v2 bundles tester
+F-1 fix). Artifacts:
+`reports/INVESTIGATION_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md`,
+`specs/SPEC_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME.md`,
+`outputs/IMPLEMENTATION_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME_REPORT.md`,
+`outputs/QA_ORCH-0659_0660_DECK_DISTANCE_TRAVELTIME_REPORT.md`.
+
+---
+
+## ORCH-0675 Wave 1 invariants (2026-04-25) — Android performance surgical fixes
+
+### I-ANIMATIONS-NATIVE-DRIVER-DEFAULT
+
+**Rule:** All `Animated.timing` and `Animated.spring` calls in the SwipeableCards
+PanResponder swipe-handler region (`app-mobile/src/components/SwipeableCards.tsx`
+lines 1216-1380) AND the DiscoverScreen LoadingGridSkeleton block
+(`app-mobile/src/components/DiscoverScreen.tsx` lines 575-620) MUST use
+`useNativeDriver: true`. Width/height animations are exempt only with explicit
+`// useNativeDriver:false JUSTIFIED: <reason>` inline comment.
+
+**Why:** JS-thread animation drops frames on mid-tier Android (Snapdragon
+600-class). Native driver delegates frame interpolation to the UI thread,
+restoring 60 fps gesture response. ORCH-0675 cycle-1 forensics RC-1 (swipe
+deck) + RC-3 (loading skeleton).
+
+**Enforcement:** CI gate `app-mobile/scripts/ci/check-no-native-driver-false.sh`
+— greps for `useNativeDriver: false` in the two scoped regions, ignores lines
+with `JUSTIFIED:` whitelist comment.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: inject violation in SwipeableCards swipe handler
+sed -i 's/useNativeDriver: true,/useNativeDriver: false,/' \
+  app-mobile/src/components/SwipeableCards.tsx
+bash app-mobile/scripts/ci/check-no-native-driver-false.sh
+# Expected: exit 1 with "I-ANIMATIONS-NATIVE-DRIVER-DEFAULT violation"
+git checkout app-mobile/src/components/SwipeableCards.tsx
+bash app-mobile/scripts/ci/check-no-native-driver-false.sh
+# Expected: exit 0 with "I-ANIMATIONS-NATIVE-DRIVER-DEFAULT: PASS"
+```
+
+**Related artifacts:**
+`Mingla_Artifacts/specs/SPEC_ORCH-0675_WAVE1_ANDROID_PERF.md`,
+`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0675_ANDROID_PERFORMANCE_PARITY.md`.
+
+---
+
+### I-LOCALES-LAZY-LOAD
+
+**Rule:** Only the `en` locale's 23 namespaces may be statically imported in
+`app-mobile/src/i18n/index.ts`. All other 28 languages MUST be loaded
+on-demand via the `localeLoaders` map using dynamic `import()`. The
+`localeLoaders` map MUST contain exactly 28 entries (one per non-en language).
+
+**Why:** Static eager-load of all 667 locale JSONs (29 langs × 23 namespaces)
+adds ~200-500 ms to cold-start parse on lower-tier ARM CPUs. Lazy-load defers
+the cost to language-switch event (rare). ORCH-0675 cycle-1 forensics RC-2
+(i18n eager-loads 667 JSONs).
+
+**Enforcement:** CI gate `app-mobile/scripts/ci/check-i18n-lazy-load.sh` —
+counts static `import .* from './locales/<lang>/'` lines (must equal en count
+of 23) and counts `<lang>: async () =>` loader entries (must be ≥28).
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: inject a non-en static import
+echo "import fr_common from './locales/fr/common.json'" >> \
+  app-mobile/src/i18n/index.ts
+bash app-mobile/scripts/ci/check-i18n-lazy-load.sh
+# Expected: exit 1 with "non-en static locale import" violation
+git checkout app-mobile/src/i18n/index.ts
+bash app-mobile/scripts/ci/check-i18n-lazy-load.sh
+# Expected: exit 0 with "PASS (23 static en imports, 28 lazy loaders)"
+```
+
+**Related artifacts:**
+`Mingla_Artifacts/specs/SPEC_ORCH-0675_WAVE1_ANDROID_PERF.md`.
+
+---
+
+### I-ZUSTAND-PERSIST-DEBOUNCED
+
+**Rule:** Zustand `persist` middleware storage MUST use the
+`debouncedAsyncStorage` wrapper defined in `app-mobile/src/store/appStore.ts`,
+NOT raw `AsyncStorage`. The wrapper MUST include:
+1. A trailing debounce ≥250 ms on `setItem` calls
+2. A `pendingWrites` Map for queued values
+3. A `getItem` that reads pending values first to avoid hydration race
+4. An AppState `'background'`/`'inactive'` listener that calls
+   `flushPendingWrites` synchronously enough to survive process kill
+
+**Why:** Android SQLite-backed AsyncStorage takes 20-200 ms per write on
+mid-tier devices. Heavy swipe sessions write per-swipe, blocking the JS
+thread. Debouncing coalesces to ~1 write per 250 ms window. AppState flush
+prevents data loss on process kill. ORCH-0675 cycle-1 forensics RC-6.
+
+**Enforcement:** CI gate
+`app-mobile/scripts/ci/check-zustand-persist-debounced.sh` — verifies all 5
+required elements present and that raw `createJSONStorage(() => AsyncStorage)`
+is NOT used.
+
+**Test that catches a regression:**
+
+```bash
+# Negative control: revert the wrapper to raw AsyncStorage
+sed -i 's/createJSONStorage(() => debouncedAsyncStorage)/createJSONStorage(() => AsyncStorage)/' \
+  app-mobile/src/store/appStore.ts
+bash app-mobile/scripts/ci/check-zustand-persist-debounced.sh
+# Expected: exit 1 with "raw AsyncStorage adapter still present (bypasses debounce)"
+git checkout app-mobile/src/store/appStore.ts
+bash app-mobile/scripts/ci/check-zustand-persist-debounced.sh
+# Expected: exit 0 with "PASS"
+```
+
+**Related artifacts:**
+`Mingla_Artifacts/specs/SPEC_ORCH-0675_WAVE1_ANDROID_PERF.md`.
+
+---
+
+## ORCH-0684 invariants (2026-04-26) — Paired-person view signal-system rewire
+
+### I-PERSON-HERO-RPC-USES-USER-PARAMS
+
+**Rule:** `query_person_hero_places_by_signal` MUST consume both `p_user_id` AND `p_person_id` parameters in its body — not just declare them. Specifically, the body must contain LEFT JOINs to `saved_card` (filtered by `profile_id IN (p_user_id, p_person_id)`) AND `user_visits` (filtered by `user_id IN (p_user_id, p_person_id)`) so the per-place ranking can apply joint-pair-history boosts (D-Q2 Option B).
+
+**Why it exists:** ORCH-0684 RC-3 — the RPC declared both parameters but used neither in its body. Two different users in the same city querying the same friend got identical top-9 results. Personalization was structurally impossible at the ranking layer. Reverting to a personalization-blind body (e.g., dropping the JOINs in the saves/visits CTEs) re-introduces the regression.
+
+**Enforcement:** CI gate `I-PERSON-HERO-RPC-USES-USER-PARAMS` in `scripts/ci-check-invariants.sh`. The gate requires structural matches:
+
+- `saved_card sc` JOIN with `profile_id IN (p_user_id, p_person_id)` predicate present
+- `user_visits uv` JOIN with `user_id IN (p_user_id, p_person_id)` predicate present
+
+**Test that catches a regression:**
+
+```bash
+# Negative control — comment out the saves OR visits CTE JOIN body
+# (replace BOOL_OR(...) computation with `false AS viewer_saved` etc.).
+bash scripts/ci-check-invariants.sh
+# Expected: FAIL: missing structural personalization JOINs.
+```
+
+**Established by:** ORCH-0684.
+
+**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`](Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md), `supabase/migrations/20260501000001_orch_0684_person_hero_personalized.sql`.
+
+---
+
+### I-RPC-RETURN-SHAPE-MATCHES-CONSUMER
+
+**Rule:** Edge fn mappers consuming a JSONB blob from an RPC MUST NOT reference field names that don't exist on the source schema. Specifically, `mapPlacePoolRowToCard` in `supabase/functions/get-person-hero-cards/index.ts` reads from a `place_pool` row (snake_case Google shape: `name`, `stored_photo_urls`, `primary_type`, `opening_hours`, `price_level`, `address`, etc.) and MUST NOT reference legacy `card_pool` ghost field names (`raw.title`, `raw.image_url`, `raw.category_slug`, `raw.price_tier`, `raw.tagline`, `raw.total_price_min/max`, `raw.estimated_duration_minutes`, `raw.experience_type`, `raw.shopping_list`, `raw.card_type`).
+
+**Why it exists:** ORCH-0684 RC-1 — the legacy `mapPoolCardToCard` was forked from the deleted `card_pool` shape and never rewired when ORCH-0640 ch06 repointed the RPC source to `place_pool`. Mapper read 17 ghost fields that don't exist on `place_pool` → every card defaulted to `title:"Unknown"`, `imageUrl:null`, `category:""`, `priceTier:"chill"` (fabricated). Bug shipped through ORCH-0668's perf-only QA gate because the QA didn't include "captured cards display real content."
+
+**Enforcement:** CI gate `I-RPC-RETURN-SHAPE-MATCHES-CONSUMER` in `scripts/ci-check-invariants.sh`. The gate isolates the `mapPlacePoolRowToCard` function body via awk extraction (start at `^function mapPlacePoolRowToCard`, end at first `^}`) and greps for `raw\.(title|image_url|category_slug|price_tier|price_tiers|tagline|total_price_min|total_price_max|estimated_duration_minutes|experience_type|shopping_list|card_type)\b`. Function-scope extraction excludes the legitimate `curatedCardToCard` helper which reads similarly-named fields from the curated-experiences edge fn output (not from `place_pool`).
+
+**Test that catches a regression:**
+
+```bash
+# Negative control — inject `raw.tagline` (or any other ghost field) inside
+# mapPlacePoolRowToCard.
+bash scripts/ci-check-invariants.sh
+# Expected: FAIL: mapPlacePoolRowToCard reads card_pool ghost fields: <line>
+```
+
+**Established by:** ORCH-0684.
+
+**Related artifacts:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0684_PAIRED_VIEW_CARDS_NOT_REAL.md`](Mingla_Artifacts/reports/INVESTIGATION_ORCH-0684_PAIRED_VIEW_CARDS_NOT_REAL.md), [`Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`](Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md).
+
+---
+
+### I-PERSON-HERO-CARDS-HAVE-CONTENT
+
+**Rule:** Every card returned by `get-person-hero-cards` MUST satisfy:
+
+- `title !== "Unknown"` AND `title !== ""` — derived from `place_pool.name`
+- `imageUrl !== null` — derived from `place_pool.stored_photo_urls[0]` (non-sentinel)
+- `category !== ""` — derived from `place_pool.primary_type` via `mapPrimaryTypeToMinglaCategory`
+- `priceTier IN {null, 'chill', 'comfy', 'bougie', 'lavish'}` — `null` when `price_level IS NULL`, NEVER fabricated
+- `isOpenNow IN {true, false, null}` — `null` when `opening_hours.openNow` is undefined, NEVER fabricated `true`
+
+The first three are guaranteed by the three-gate filter at the RPC layer (place_pool rows that pass have populated name + stored_photo_urls + primary_type). The last two are Constitution #9 fabrication guards.
+
+**Why it exists:** D-8 meta-discovery from ORCH-0684 investigation. ORCH-0668 closed Grade A on perf-only QA (8s → 215ms) and missed the mapper shape bug because the QA didn't visually inspect cards. Adding a CI smoke test that asserts cards-have-content catches this entire class of regression pre-merge.
+
+**Enforcement:** Documentary contract at `supabase/functions/get-person-hero-cards/mapper.test.ts`. A live HTTP smoke test (`_smoke.test.ts`) was specified per spec §3.8 but not wired into CI in this implementation cycle — full wiring requires CI test JWTs which are not yet in the repo. Filed as ORCH-0684.D-fu-test for follow-up.
+
+**Test that catches a regression:**
+
+```bash
+# Manual probe via real JWT — author's responsibility post-deploy:
+curl -X POST https://<project>.supabase.co/functions/v1/get-person-hero-cards \
+  -H "Authorization: Bearer <jwt>" \
+  -d '{"pairedUserId":"<uuid>","holidayKey":"birthday","categorySlugs":["romantic","play","upscale_fine_dining"],"curatedExperienceType":"romantic","location":{"latitude":35.7796,"longitude":-78.6382},"mode":"default","excludeCardIds":[]}'
+# Expected: every card.title is a real venue name; every card.imageUrl is a
+# Supabase storage URL; every card.category is one of the 13 Mingla canonical
+# categories.
+```
+
+**Established by:** ORCH-0684.
+
+**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`](Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md) §3.8.
+
+---
+
+## I-CHAT-CARDPAYLOAD-NO-RECIPIENT-RELATIVE-FIELDS
+
+**Statement:** `trimCardPayload` (in [`app-mobile/src/services/messagingService.ts`](app-mobile/src/services/messagingService.ts)) MUST NEVER extract or persist any of the following fields into the trimmed `CardPayload`: `travelTime`, `travelTimeMin`, `distance`, `distanceKm`, `distance_km`. These are recipient-relative — sender's value would fabricate for the recipient.
+
+**Why it exists:** Constitution #9 (no fabricated data). Codifies the ORCH-0659/0660 distance/travel-time lesson at the chat-share trim boundary. A shared card opens for the recipient on a device with their own location and travel mode; the sender's distance/travel-time value would not reflect the recipient's reality and would surface as silent fabrication.
+
+**Enforcement:** CI gate in [`scripts/ci-check-invariants.sh`](scripts/ci-check-invariants.sh) extracts the body of `trimCardPayload` via `awk` and greps for the forbidden field names. FAILS the build with file:line + invariant ID + cross-ref ORCH-0659/0660 if any match. Negative-control tested.
+
+**Test that catches a regression:**
+
+```bash
+# In trimCardPayload body — both must return zero:
+awk '/export function trimCardPayload/,/^\}/' app-mobile/src/services/messagingService.ts \
+  | grep -cE '(travelTime|travelTimeMin|distance|distanceKm|distance_km)'
+```
+
+**Established by:** ORCH-0685.
+
+**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md) §6.3 + §12.1, [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0685_v2_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/reports/INVESTIGATION_ORCH-0685_v2_EXPANDED_CARD_MODAL.md) §RC-2.
+
+---
+
+## I-LOCALE-CATEGORY-PARITY
+
+**Statement:** Every locale's `common.json` (under `app-mobile/src/i18n/locales/<locale>/common.json`) MUST contain ALL 12 required `category_*` keys: `category_nature`, `category_icebreakers`, `category_drinks_and_music`, `category_brunch`, `category_casual_food`, `category_upscale_fine_dining`, `category_movies`, `category_theatre`, `category_creative_arts`, `category_play`, `category_brunch_lunch_casual` (legacy), `category_movies_theatre` (legacy).
+
+**Why it exists:** `getReadableCategoryName` ([`app-mobile/src/utils/categoryUtils.ts:50`](app-mobile/src/utils/categoryUtils.ts#L50)) calls `i18n.t('common:category_${slug}')`. When the key is missing, it falls back to title-cased English. This produces mixed-language UI for non-English locales (e.g., a French user sees "Casual Food" instead of "Décontracté"). Constitution #3 — silent translation failure.
+
+**Enforcement:** CI gate in [`scripts/ci-check-invariants.sh`](scripts/ci-check-invariants.sh) iterates 29 locales × 12 keys, FAILS with named missing key + locale.
+
+**Test that catches a regression:**
+
+```bash
+# All 29 × 12 = 348 grep checks must pass:
+REQUIRED='category_nature category_icebreakers category_drinks_and_music category_brunch category_casual_food category_upscale_fine_dining category_movies category_theatre category_creative_arts category_play category_brunch_lunch_casual category_movies_theatre'
+for loc in $(ls app-mobile/src/i18n/locales/); do
+  for k in $REQUIRED; do
+    grep -q "\"$k\"" "app-mobile/src/i18n/locales/$loc/common.json" || echo "MISSING: $loc/$k"
+  done
+done
+# Expected output: empty.
+```
+
+**Established by:** ORCH-0685.
+
+**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md) §11.1.
+
+---
+
+## I-MODAL-CATEGORY-SUBCOMPONENT-WRAPS
+
+**Statement:** Sub-component category props in `ExpandedCardModal.tsx` (specifically `<WeatherSection category={…}>` and `<TimelineSection category={…}>` — both Stroll and Picnic variants) MUST pass the result of `getReadableCategoryName(card.category)`, NOT the raw `card.category`. The CardInfoSection prop site at line 1780 is exempt — that component translates internally.
+
+**Why it exists:** `card.category` is a canonical slug (`casual_food`, `nature`, etc.). Sub-components that receive raw slugs are latent slug-leak surfaces — any future maintainer who adds a `<Text>{category}</Text>` render in those components ships a slug to the user. Defense-in-depth at the prop boundary protects against this entire class of future leak.
+
+**Enforcement:** CI gate greps line range 1860-2020 of `ExpandedCardModal.tsx` for any `category={card.category}` (raw) and FAILS if found. The CardInfoSection block (lines 1778-1794) is outside this range and unaffected.
+
+**Test that catches a regression:**
+
+```bash
+# Must return zero matches:
+sed -n '1860,2020p' app-mobile/src/components/ExpandedCardModal.tsx | grep -cE 'category=\{card\.category\}'
+```
+
+**Established by:** ORCH-0685.
+
+**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md) §10.2.

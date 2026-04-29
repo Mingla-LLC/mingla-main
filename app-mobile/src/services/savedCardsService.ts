@@ -68,7 +68,7 @@ export const savedCardsService = {
     // Use explicit source parameter if provided, otherwise fall back to card.source or "solo"
     // This ensures we always use the current mode, not a stale source from the card object
     const cardSource = source || card.source || "solo";
-    
+
     const payload = {
       profile_id: profileId,
       experience_id: card.id,
@@ -89,7 +89,8 @@ export const savedCardsService = {
 
     if (error) {
       if ((error as any).code === "23505") {
-        console.warn("Card already saved; skipping duplicate insert");
+        // Duplicate is idempotent success — onConflict already merged.
+        console.warn("[savedCardsService.saveCard] 23505 duplicate — treating as success", error);
       } else {
         throw error;
       }

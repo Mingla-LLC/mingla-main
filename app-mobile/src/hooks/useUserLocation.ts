@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { UserPreferences } from '../services/experiencesService';
+import type { UserPreferences } from '../types/preferences'; // ORCH-0640 ch09: retargeted from deleted experiencesService
 import { enhancedLocationService } from '../services/enhancedLocationService';
 import { geocodingService } from '../services/geocodingService';
 

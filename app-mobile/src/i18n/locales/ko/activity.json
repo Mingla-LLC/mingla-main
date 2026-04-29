@@ -128,6 +128,7 @@
     "pickADate": "날짜 선택",
     "changeTime": "시간 변경",
     "closedAtTime": "이 장소는 선택한 시간에 영업하지 않습니다. 다른 시간을 선택해 주세요.",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}. 예약 전에 영업시간을 확인해 주세요.",
     "selectDate": "날짜 선택",
     "selectTime": "시간 선택",

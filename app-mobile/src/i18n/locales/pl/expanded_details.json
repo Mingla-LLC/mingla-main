@@ -35,7 +35,16 @@
     "schedule_anyway": "Zaplanuj Dowolnyway",
     "scheduled_toast": "Zaplanowane! {{title}} has been moved to your calendar",
     "closed_message": "This place is closed at the selected date i time. Tap \"Zaplanuj\" to choose a different time.",
-    "share_prompt": "Udostępnij {{title}} with friends"
+    "share_prompt": "Udostępnij {{title}} with friends",
+    "back_to_date": "Wróć do daty",
+    "confirm_date_title": "Data wybrana",
+    "confirm_date_message": "Wybrałeś {{date}}. Kontynuować wybór godziny?",
+    "change_date": "Zmień datę",
+    "pick_time": "Wybierz godzinę",
+    "unverified_hours_title": "Godziny niedostępne",
+    "unverified_hours_message": "Nie mogliśmy zweryfikować godzin {{venueName}} o tej porze. Zaplanować mimo to?",
+    "error_past_date_title": "Wybierz godzinę w przyszłości",
+    "error_past_date_message": "Ta godzina już minęła. Wybierz godzinę w przyszłości."
   },
   "busyness": {
     "traffic": "Traffic",

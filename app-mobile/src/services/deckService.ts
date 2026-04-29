@@ -92,13 +92,24 @@ export type DeckServerPath =
   | 'auth-required'
   | 'pipeline-error';
 
+// ORCH-0677 RC-2: re-exported here for hook/context consumers. The canonical
+// definition lives in `types/curatedExperience` so service + hook share one
+// owner per truth (Constitution #2).
+export type { CuratedEmptyReason } from '../types/curatedExperience';
+import type { CuratedEmptyReason } from '../types/curatedExperience';
+
 export interface DeckResponse {
   cards: Recommendation[];
-  deckMode: 'nature' | 'icebreakers' | 'drinks_and_music' | 'brunch_lunch_casual' | 'upscale_fine_dining' | 'movies_theatre' | 'creative_arts' | 'play' | 'curated' | 'mixed';
+  deckMode: 'nature' | 'icebreakers' | 'drinks_and_music' | 'brunch' | 'casual_food' | 'brunch_lunch_casual' | 'upscale_fine_dining' | 'movies' | 'theatre' | 'movies_theatre' | 'creative_arts' | 'play' | 'curated' | 'mixed';
   activePills: string[];
   total: number;
   hasMore: boolean;
   serverPath: DeckServerPath;
+  // ORCH-0677 RC-2: when curated-only deck returns 0 cards, this carries the
+  // server's verdict so RecommendationsContext can route to EMPTY UI state.
+  // `undefined` for mixed decks, decks with cards, or decks where the server
+  // shape didn't include a summary (legacy or pre-fix edge fn).
+  curatedEmptyReason?: CuratedEmptyReason;
 }
 
 /**
@@ -122,13 +133,21 @@ interface DeckPill {
 
 // ── Pill ID → display name for the unified edge function ─────────────────
 // ORCH-0434: Updated to new canonical slugs.
+// ORCH-0597 (Slice 5): split brunch_lunch_casual into brunch + casual_food.
+// Legacy `brunch_lunch_casual` key retained for pre-OTA clients still sending the
+// old slug; backend CATEGORY_TO_SIGNAL serves the union until 2026-05-12.
 const PILL_TO_CATEGORY_NAME: Record<string, string> = {
   nature: 'Nature & Views',
   icebreakers: 'Icebreakers',
   drinks_and_music: 'Drinks & Music',
-  brunch_lunch_casual: 'Brunch, Lunch & Casual',
-  upscale_fine_dining: 'Upscale & Fine Dining',
-  movies_theatre: 'Movies & Theatre',
+  brunch: 'Brunch',
+  casual_food: 'Casual',
+  brunch_lunch_casual: 'Brunch, Lunch & Casual', // [TRANSITIONAL] legacy alias — remove after 2026-05-12
+  upscale_fine_dining: 'Fine Dining',
+  // ORCH-0598 (Slice 6): split movies_theatre into movies + theatre.
+  movies: 'Movies',
+  theatre: 'Theatre',
+  movies_theatre: 'Movies & Theatre', // [TRANSITIONAL] legacy alias — remove after 2026-05-13
   creative_arts: 'Creative & Arts',
   play: 'Play',
 };
@@ -139,9 +158,12 @@ const PILL_TO_CATEGORY_NAME: Record<string, string> = {
  * icon and experienceType dynamically.
  */
 export function unifiedCardToRecommendation(card: any): Recommendation {
-  // Defensive: ensure numeric fields are never undefined (edge fn may omit them)
-  const distanceKm = card.distanceKm ?? 0;
-  const travelTimeMin = card.travelTimeMin ?? 0;
+  // ORCH-0659/0660: honest null propagation. Backend now emits real distance
+  // + per-mode travel time (or null if location can't be resolved). Never
+  // coerce null → 0; the UI branches on null to hide the badge instead of
+  // fabricating "nearby" or "0 min".
+  const distanceKm: number | null = typeof card.distanceKm === 'number' ? card.distanceKm : null;
+  const travelTimeMin: number | null = typeof card.travelTimeMin === 'number' ? card.travelTimeMin : null;
 
   const priceTier: PriceTierSlug = card.priceTier ?? googleLevelToTierSlug(card.priceLevel);
   const priceText = tierLabel(priceTier);
@@ -156,31 +178,27 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     categoryIcon: getCategoryIcon(category) || 'compass',
     lat: card.lat,
     lng: card.lng,
-    timeAway: `${Math.round(travelTimeMin)} min`,
     description: card.description,
     budget: priceText,
     rating: card.rating ?? 0,
     image: card.image,
     images: card.images?.length > 0 ? card.images : [card.image].filter(Boolean),
     priceRange: priceText,
-    distance: distanceKm > 0 ? `${distanceKm.toFixed(1)} km` : '',
-    travelTime: travelTimeMin > 0 ? `${Math.round(travelTimeMin)} min` : '',
+    distance: distanceKm !== null ? `${distanceKm.toFixed(1)} km` : null,
+    travelTime: travelTimeMin !== null ? `${Math.round(travelTimeMin)} min` : null,
     travelMode: card.travelMode || undefined,
     experienceType,
     highlights: [card.placeTypeLabel],
     fullDescription: card.description,
     address: card.address,
-    openingHours: card.openingHours && Object.keys(card.openingHours).length > 0
-      ? {
-          open_now: card.isOpenNow,
-          weekday_text: Object.entries(card.openingHours).map(
-            ([day, hours]) =>
-              `${day.charAt(0).toUpperCase() + day.slice(1)}: ${hours}`
-          ),
-        }
-      : card.isOpenNow != null
-        ? { open_now: card.isOpenNow }
-        : null,
+    // [CRITICAL — ORCH-0649] DO NOT transform card.openingHours shape here.
+    // The mobile renderer reads via extractWeekdayText (openingHoursUtils.ts)
+    // which already handles every known shape (Google v1, Google legacy,
+    // Record<string,string>, JSON-stringified). Wrapping the v1 shape into
+    // { open_now, weekday_text } via Object.entries produces garbage strings
+    // like "OpenNow: false" / "Periods: [object Object]" — see Phase 1+2
+    // investigation INVESTIGATION_ORCH-0649_EXPANDED_CARD_QUARTET.md.
+    openingHours: card.openingHours ?? null,
     tags: [card.placeType, card.placeTypeLabel].filter(Boolean),
     matchScore: card.matchScore ?? 85,
     reviewCount: card.reviewCount ?? 0,
@@ -222,12 +240,25 @@ class DeckService {
       'icebreakers': 'icebreakers',
       'drinks_and_music': 'drinks_and_music',
       'drinks & music': 'drinks_and_music',
-      'brunch_lunch_casual': 'brunch_lunch_casual',
-      'brunch, lunch & casual': 'brunch_lunch_casual',
+      // ORCH-0597 (Slice 5): new split chips
+      'brunch': 'brunch',
+      'casual_food': 'casual_food',
+      'casual': 'casual_food',
+      // [TRANSITIONAL] legacy chip slug + display name — resolved to Brunch (primary intent
+      // of the old bundled chip). Pre-OTA clients reading from old persisted prefs before
+      // migration lands still hit this path. Remove after 2026-05-12.
+      'brunch_lunch_casual': 'brunch',
+      'brunch, lunch & casual': 'brunch',
       'upscale_fine_dining': 'upscale_fine_dining',
       'upscale & fine dining': 'upscale_fine_dining',
-      'movies_theatre': 'movies_theatre',
-      'movies & theatre': 'movies_theatre',
+      // ORCH-0598 (Slice 6): new split chips
+      'movies': 'movies',
+      'theatre': 'theatre',
+      'theater': 'theatre',
+      // [TRANSITIONAL] legacy bundled slug + display name — resolves to 'movies' (primary
+      // intent of old chip per OPEN-11). Pre-OTA clients still send these. Remove 2026-05-13.
+      'movies_theatre': 'movies',
+      'movies & theatre': 'movies',
       'creative_arts': 'creative_arts',
       'creative & arts': 'creative_arts',
       'play': 'play',
@@ -238,14 +269,15 @@ class DeckService {
       'picnic park': 'nature',
       'picnic': 'nature',
       'drink': 'drinks_and_music',
-      'casual_eats': 'brunch_lunch_casual',
-      'casual eats': 'brunch_lunch_casual',
+      'casual_eats': 'casual_food',
+      'casual eats': 'casual_food',
       'fine_dining': 'upscale_fine_dining',
       'fine dining': 'upscale_fine_dining',
-      'watch': 'movies_theatre',
-      'live_performance': 'movies_theatre',
-      'live performance': 'movies_theatre',
-      'wellness': 'brunch_lunch_casual',
+      // ORCH-0598: legacy 'watch' → movies; 'live_performance' → theatre (performing arts match)
+      'watch': 'movies',
+      'live_performance': 'theatre',
+      'live performance': 'theatre',
+      'wellness': 'casual_food',
       'flowers': 'nature',
       'nature_views': 'nature',
       // Legacy compat
@@ -258,7 +290,7 @@ class DeckService {
       'sip & chill': 'drinks_and_music',
       'sip and chill': 'drinks_and_music',
       'dining': 'upscale_fine_dining',
-      'screen & relax': 'movies_theatre',
+      'screen & relax': 'movies',  // ORCH-0598: cinema intent → movies chip
       'creative & hands-on': 'creative_arts',
     };
 
@@ -335,6 +367,12 @@ class DeckService {
     const categoryPills = pills.filter(p => p.type === 'category');
     const curatedPills = pills.filter(p => p.type === 'curated');
     const fetchStart = Date.now();
+
+    // ORCH-0677 RC-2: capture per-pill empty verdicts so curated-only empty
+    // results can route to EMPTY UI state instead of stuck-loading. Mixed
+    // decks (categoryPills.length > 0) ignore this — pagination/standard
+    // EMPTY paths still apply via hasMoreFromEdge logic below.
+    const pillEmptyReasons = new Map<string, CuratedEmptyReason>();
 
     // ── Build parallel fetch promises ──────────────────────────────────
     const categoryPromise: Promise<Recommendation[]> = (async () => {
@@ -453,7 +491,10 @@ class DeckService {
         curatedPills.map(async (pill): Promise<Recommendation[]> => {
           try {
             const curatedLimit = limit; // Give curated the same limit as categories — interleave balances them
-            const cards = await curatedExperiencesService.generateCuratedExperiences({
+            // ORCH-0677 RC-2: response is now { cards, summary? }. summary is
+            // present only when cards is empty; carries the server's empty
+            // verdict (pool_empty | no_viable_anchor | pipeline_error).
+            const response = await curatedExperiencesService.generateCuratedExperiences({
               experienceType: pill.id as any,
               location: params.location,
               travelMode: params.travelMode,
@@ -466,11 +507,23 @@ class DeckService {
               skipDescriptions: true,
             });
             if (__DEV__) {
-              console.log(`[DeckService] Curated pill "${pill.id}" → ${cards.length} cards`);
+              console.log(
+                `[DeckService] Curated pill "${pill.id}" → ${response.cards.length} cards` +
+                  (response.summary ? ` (emptyReason=${response.summary.emptyReason})` : ''),
+              );
             }
-            return cards.map(curatedToRecommendation);
+            // Capture per-pill empty verdict if surfaced. Backwards-compat:
+            // legacy edge fn responses without `summary` aggregate to
+            // `pool_empty` in the §4.2 fallback below.
+            if (response.cards.length === 0 && response.summary) {
+              pillEmptyReasons.set(pill.id, response.summary.emptyReason);
+            }
+            return response.cards.map(curatedToRecommendation);
           } catch (err) {
             console.warn(`[DeckService] Curated pill ${pill.id} failed:`, err);
+            // ORCH-0677 RC-2: caught throws are treated as pipeline errors so
+            // the user gets a clear EMPTY (with retry copy) instead of stuck.
+            pillEmptyReasons.set(pill.id, 'pipeline_error');
             return [];
           }
         })
@@ -652,6 +705,22 @@ class DeckService {
             : 'curated')
         : 'mixed';
 
+    // ORCH-0677 RC-2: when curated-only deck returns empty, route to EMPTY
+    // UI state instead of INITIAL_LOADING. Pre-fix, hasMoreFromEdge stayed
+    // true and the EMPTY branch in RecommendationsContext never fired.
+    // Aggregation precedence: pipeline_error > no_viable_anchor > pool_empty.
+    // Mixed decks (categoryPills.length > 0) are unaffected — pagination
+    // contract stays in place.
+    const isCuratedOnly = curatedPills.length > 0 && categoryPills.length === 0;
+    let curatedEmptyReason: CuratedEmptyReason | undefined;
+    if (isCuratedOnly && interleaved.length === 0) {
+      const reasons = Array.from(pillEmptyReasons.values());
+      if (reasons.includes('pipeline_error')) curatedEmptyReason = 'pipeline_error';
+      else if (reasons.includes('no_viable_anchor')) curatedEmptyReason = 'no_viable_anchor';
+      else curatedEmptyReason = 'pool_empty'; // covers pool_empty + legacy responses without summary
+      hasMoreFromEdge = false;
+    }
+
     return {
       cards: interleaved,
       deckMode,
@@ -659,6 +728,7 @@ class DeckService {
       total: interleaved.length,
       hasMore: hasMoreFromEdge,
       serverPath: finalServerPath,
+      curatedEmptyReason,
     };
   }
 

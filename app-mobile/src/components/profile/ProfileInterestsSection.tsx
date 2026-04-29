@@ -1,19 +1,34 @@
-import React, { useRef, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+/**
+ * ProfileInterestsSection — ORCH-0627 glass re-skin.
+ *
+ * Chips:
+ *   - Intent chips (ONBOARDING_INTENTS): orange-glow tokens (profile.chip.intent)
+ *   - Category chips (categories):       neutral glass tokens (profile.chip.category)
+ *
+ * Header uses the card-title small-caps style; edit pencil is a white-6% circle button.
+ * Empty state CTA is contained inside the card with white-10% hairline.
+ *
+ * Stagger entrance preserved, with Reduce Motion fallback (all chips fade together).
+ *
+ * Tokens: designSystem.ts → glass.profile.chip / .text.cardTitle
+ * Spec:   DESIGN_ORCH-0627_PROFILE_GLASS_REFRESH_SPEC.md §4.2
+ */
+import React, { useRef, useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, Animated, AccessibilityInfo } from 'react-native';
 import { TrackedTouchableOpacity } from '../TrackedTouchableOpacity';
 import { Pencil, Sparkles } from 'lucide-react-native';
 import { ONBOARDING_INTENTS } from '../../types/onboarding';
 import { categories as allCategories } from '../../constants/categories';
 import { INTENT_ICON_MAP, CATEGORY_ICON_MAP } from '../../constants/interestIcons';
 import { useTranslation } from 'react-i18next';
+import { glass } from '../../constants/designSystem';
 
 interface ProfileInterestsSectionProps {
   intents: string[];
   categories: string[];
   isOwnProfile: boolean;
   onEditPress?: () => void;
-  /** Overrides default header ("Your Interests" / "Interests"). */
+  /** Overrides default header title. */
   sectionTitle?: string;
 }
 
@@ -29,47 +44,67 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
 }) => {
   const { t } = useTranslation(['profile', 'common']);
   const hasInterests = intents.length > 0 || categories.length > 0;
-  const headerTitle = sectionTitle ?? (isOwnProfile ? t('profile:interests.your_interests') : t('profile:interests.interests'));
+  const headerTitle = sectionTitle ?? (isOwnProfile
+    ? t('profile:interests.your_interests')
+    : t('profile:interests.interests'));
   const intentData = ONBOARDING_INTENTS.filter((i) => intents.includes(i.id));
   const categoryData = allCategories.filter((c) => categories.includes(c.name));
   const totalPills = intentData.length + categoryData.length;
 
-  // Stable dep keys — avoids calling .join() inside the useEffect dep array
   const intentsKey = useMemo(() => intents.join(','), [intents]);
   const categoriesKey = useMemo(() => categories.join(','), [categories]);
+
+  // Reduce-motion preference
+  const [reduceMotion, setReduceMotion] = useState<boolean>(false);
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => {
+        if (mounted) setReduceMotion(enabled);
+      })
+      .catch(() => {});
+    const sub = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      (enabled: boolean) => setReduceMotion(enabled),
+    );
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, []);
 
   // Stagger animation refs
   const pillAnims = useRef<Animated.Value[]>([]);
   const pillTranslates = useRef<Animated.Value[]>([]);
 
-  // Initialize animation values when pill count changes
   useEffect(() => {
     if (totalPills === 0) return;
     pillAnims.current = Array.from({ length: totalPills }, () => new Animated.Value(0));
-    pillTranslates.current = Array.from({ length: totalPills }, () => new Animated.Value(8));
+    pillTranslates.current = Array.from({ length: totalPills }, () => new Animated.Value(reduceMotion ? 0 : 8));
 
     const animations = pillAnims.current.map((anim, i) =>
       Animated.parallel([
         Animated.timing(anim, {
           toValue: 1,
           duration: PILL_DURATION,
-          delay: i * STAGGER_DELAY,
+          delay: reduceMotion ? 0 : i * STAGGER_DELAY,
           useNativeDriver: true,
         }),
         Animated.timing(pillTranslates.current[i], {
           toValue: 0,
           duration: PILL_DURATION,
-          delay: i * STAGGER_DELAY,
+          delay: reduceMotion ? 0 : i * STAGGER_DELAY,
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
     Animated.parallel(animations).start();
-  }, [intentsKey, categoriesKey, totalPills]);
+  }, [intentsKey, categoriesKey, totalPills, reduceMotion]);
 
+  // Empty state — viewer's profile (no edit affordances)
   if (!hasInterests && !isOwnProfile) {
     return (
-      <View style={styles.container}>
+      <View>
         <View style={styles.header}>
           <Text style={styles.title}>{headerTitle}</Text>
         </View>
@@ -79,7 +114,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
   }
 
   return (
-    <View style={styles.container}>
+    <View>
       <View style={styles.header}>
         <Text style={styles.title}>{headerTitle}</Text>
         {isOwnProfile && (
@@ -91,7 +126,7 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
             accessibilityLabel={t('profile:interests.edit_accessibility')}
             accessibilityRole="button"
           >
-            <Pencil size={14} color="#6b7280" strokeWidth={2.5} />
+            <Pencil size={14} color="rgba(255, 255, 255, 0.80)" strokeWidth={2.5} />
           </TrackedTouchableOpacity>
         )}
       </View>
@@ -120,19 +155,15 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
             return (
               <Animated.View
                 key={intent.id}
-                style={[styles.intentPillWrap, { opacity, transform: [{ translateY }] }]}
+                style={[
+                  styles.intentPill,
+                  { opacity, transform: [{ translateY }] },
+                ]}
               >
-                <LinearGradient
-                  colors={['#eb7825', '#f5a623']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.intentPill}
-                >
-                  {IconComponent && (
-                    <IconComponent size={14} color="#ffffff" strokeWidth={2.5} />
-                  )}
-                  <Text style={styles.intentText}>{t(`common:intent_${intent.id.replace(/-/g, '_')}`)}</Text>
-                </LinearGradient>
+                {IconComponent && (
+                  <IconComponent size={glass.profile.chip.iconSize} color={glass.profile.chip.intent.iconColor} strokeWidth={2.5} />
+                )}
+                <Text style={styles.intentText}>{t(`common:intent_${intent.id.replace(/-/g, '_')}`)}</Text>
               </Animated.View>
             );
           })}
@@ -144,14 +175,15 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
             return (
               <Animated.View
                 key={cat.slug}
-                style={[styles.categoryPillWrap, { opacity, transform: [{ translateY }] }]}
+                style={[
+                  styles.categoryPill,
+                  { opacity, transform: [{ translateY }] },
+                ]}
               >
-                <View style={styles.categoryPill}>
-                  {CatIcon && (
-                    <CatIcon size={14} color="#374151" strokeWidth={2} />
-                  )}
-                  <Text style={styles.categoryText}>{t(`common:category_${cat.slug}`)}</Text>
-                </View>
+                {CatIcon && (
+                  <CatIcon size={glass.profile.chip.iconSize} color={glass.profile.chip.category.iconColor} strokeWidth={2} />
+                )}
+                <Text style={styles.categoryText}>{t(`common:category_${cat.slug}`)}</Text>
               </Animated.View>
             );
           })}
@@ -162,57 +194,108 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
 };
 
 const styles = StyleSheet.create({
-  container: { paddingHorizontal: 24 },
   header: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
   },
-  title: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  title: {
+    ...glass.profile.text.cardTitle,
+  },
   friendInterestsEmpty: {
-    fontSize: 15,
-    color: '#6b7280',
-    marginBottom: 8,
+    color: 'rgba(255, 255, 255, 0.55)',
+    fontSize: 14,
+    fontWeight: '400',
+    fontStyle: 'italic',
+    marginBottom: 4,
   },
   editButton: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  // Empty state
+  // Empty-state CTA card
   emptyState: {
-    borderWidth: 1.5, borderColor: '#d1d5db', borderStyle: 'dashed',
-    borderRadius: 16, paddingVertical: 24, paddingHorizontal: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
+    borderRadius: 14,
+    paddingVertical: 22,
+    paddingHorizontal: 16,
     alignItems: 'center',
   },
   emptyText: {
-    fontSize: 14, color: '#6b7280', textAlign: 'center', marginTop: 8,
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.65)',
+    textAlign: 'center',
+    marginTop: 10,
     lineHeight: 20,
   },
   addButton: {
-    paddingHorizontal: 16, paddingVertical: 8,
-    backgroundColor: '#eb7825', borderRadius: 999, marginTop: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    backgroundColor: '#eb7825',
+    borderRadius: 999,
+    marginTop: 14,
   },
-  addButtonText: { fontSize: 14, fontWeight: '600', color: '#ffffff' },
-  // Pills
-  pillsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  intentPillWrap: {},
+  addButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  // Pills row
+  pillsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: glass.profile.chip.rowGap,
+    columnGap: glass.profile.chip.columnGap,
+  },
+  // Intent (orange glow)
   intentPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1, shadowRadius: 3, elevation: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: glass.profile.chip.iconLabelGap,
+    backgroundColor: glass.profile.chip.intent.bg,
+    borderWidth: glass.profile.chip.intent.borderWidth,
+    borderColor: glass.profile.chip.intent.border,
+    borderRadius: glass.profile.chip.radius,
+    height: glass.profile.chip.height,
+    paddingHorizontal: glass.profile.chip.paddingHorizontal,
+    // Soft orange glow on iOS
+    shadowColor: glass.profile.chip.intent.shadowColor,
+    shadowOpacity: glass.profile.chip.intent.shadowOpacity,
+    shadowRadius: glass.profile.chip.intent.shadowRadius,
+    shadowOffset: glass.profile.chip.intent.shadowOffset,
+    elevation: 3,
   },
   intentText: {
-    fontSize: 13, fontWeight: '600', color: '#ffffff', letterSpacing: 0.2,
+    fontSize: glass.profile.chip.labelFontSize,
+    fontWeight: glass.profile.chip.labelFontWeight,
+    color: glass.profile.chip.intent.textColor,
+    letterSpacing: 0.2,
   },
-  categoryPillWrap: {},
+  // Category (neutral glass)
   categoryPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#ffffff', borderWidth: 1.5, borderColor: '#e5e7eb',
-    borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 2, elevation: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: glass.profile.chip.iconLabelGap,
+    backgroundColor: glass.profile.chip.category.bg,
+    borderWidth: glass.profile.chip.category.borderWidth,
+    borderColor: glass.profile.chip.category.border,
+    borderRadius: glass.profile.chip.radius,
+    height: glass.profile.chip.height,
+    paddingHorizontal: glass.profile.chip.paddingHorizontal,
   },
-  categoryText: { fontSize: 13, fontWeight: '500', color: '#374151' },
+  categoryText: {
+    fontSize: glass.profile.chip.labelFontSize,
+    fontWeight: '500',
+    color: glass.profile.chip.category.textColor,
+  },
 });
 
 export default ProfileInterestsSection;

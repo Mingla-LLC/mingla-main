@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "Se Ọda",
   "unknown": "I Ma Ghẹ",
   "time_just_now": "Nẹ nẹ",
-
   "toast_invite_sent": "A Ya Tiẹ!",
   "toast_invite_sent_msg": "A ya tiẹ iwinna ne ọ gha bẹghe ne {{name}}",
   "toast_member_promoted": "A Ya Mu Ọghe Ga",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "A Fie Vbe Bọọdụ {{count}}!",
   "toast_added_board_msg": "A ya fie {{name}} vbe bọọdụ iwinna",
   "toast_added_boards_msg": "A ya fie {{name}} vbe bọọdụ iwinna {{count}}",
-  "toast_card_shared": "A Ya Rhie Kaadi Tiẹ!",
-  "toast_card_shared_msg": "A ya rhie emwi ne a sẹ tiẹ {{name}}",
   "toast_friend_removed": "A Ya Rhan Ọre Kua",
   "toast_friend_removed_msg": "A ya rhan {{name}} kua vbe ebe ẹre ọre",
   "toast_user_blocked": "A Ya Mu Ọghe Do",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "ne ọ gha rhẹ ẹvbo",
   "toast_report_reason_other": "ne ọ gha khian vbe itan ẹvbo",
   "user_fallback": "Ọghe",
-
   "calendar_access_needed": "A Hia Ọda Kalẹnda",
   "calendar_access_needed_msg": "Mingla hia ọda kalẹnda ne ọ gha fie ẹghẹ. Kpaye ya ruẹ ẹre vbe ebe u te rhan ẹrọ.",
   "open_settings": "Ruẹ Ehe Ne A Rhan",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "Emwi ọkpa gbe vbe a ya fie emwi na. Kpaye ke gberra.",
   "added_to_calendar": "A Ya Fie",
   "add_to_calendar": "Fie vbe kalẹnda",
-
   "confidence_excellent": "Ọ Gha Sẹ Gbẹra",
   "confidence_good": "Ọ Gha Sẹ",
   "confidence_fair": "Ọ Gha Khin",
@@ -157,22 +152,28 @@
   "match_time": "Ẹghẹ",
   "match_popularity": "Ọ Mwẹ Aro",
   "match_factors": "Emwi Ne Ọ Gha Sẹ",
-
   "stat_views": "Ighee",
   "stat_likes": "Ihẹnmwẹ",
   "stat_saves": "Isẹ",
   "stat_shares": "Itiẹ",
   "review_count_one": "Ighee {{count}}",
   "review_count_other": "Ighee {{count}}",
-
   "profile_update_failed": "Irhan Profailu I Mwẹ",
   "profile_update_failed_msg": "I gha rhan profailu. Kpaye ke gberra.",
   "saved_experience": "Emwi Ne A Sẹ",
   "experience": "Emwi",
   "solo_experience": "Emwi Ne U Ya Ru",
   "untitled": "I Mwẹ Eni",
-
   "error_sign_in_save": "Kpaye wọlọ ne u gha sẹ emwi",
   "error_boundary_title": "Emwi ọkpa i gha khin vbe ọ ma",
-  "error_boundary_message": "Emwi ne a i re tẹ gbe. Kpaye ke gberra."
+  "error_boundary_message": "Emwi ne a i re tẹ gbe. Kpaye ke gberra.",
+  "category_icebreakers": "Icebreakers",
+  "category_drinks_and_music": "Drinks & Music",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Movies",
+  "category_theatre": "Theatre",
+  "category_brunch_lunch_casual": "Brunch, Lunch & Casual",
+  "category_movies_theatre": "Movies & Theatre"
 }

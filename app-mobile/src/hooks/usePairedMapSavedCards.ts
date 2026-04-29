@@ -47,7 +47,7 @@ function toRecommendation(row: SavedCardRow): Recommendation | null {
     categoryIcon: (typeof cardData.categoryIcon === 'string' && cardData.categoryIcon) ? cardData.categoryIcon : 'compass-outline',
     lat,
     lng,
-    timeAway: typeof cardData.timeAway === 'string' ? cardData.timeAway : '',
+    // ORCH-0659/0660: timeAway field deleted from Recommendation type.
     description: typeof cardData.description === 'string' ? cardData.description : '',
     budget: typeof cardData.budget === 'string' ? cardData.budget : '',
     rating: toNumber(cardData.rating) ?? 0,

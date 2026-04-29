@@ -3,9 +3,19 @@ import { initReactI18next } from 'react-i18next'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { getDefaultLanguageCode } from '../constants/languages'
 
-// ─── Static imports: 29 languages × 23 namespaces ───
+// ─── ORCH-0675 Wave 1 RC-2 — only `en` is statically imported.
+// (I-LOCALES-LAZY-LOAD) All 28 other languages MUST be in the `localeLoaders`
+// map below for dynamic import. Adding a static import for any non-en locale
+// breaks the CI gate and undoes the cold-start bundle-parse savings.
+//
+// Brief flash trade-off: non-English users on cold start may see English strings
+// for ~100-300ms while the dynamic-import resolves. This is the accepted Wave 1
+// trade-off vs eager-loading 667 JSONs at module-load.
+//
+// DO NOT enable i18next `useSuspense: true` to "fix" this flash — it would
+// block first paint and reintroduce a different cold-start cost.
 
-// en
+// ─── Eager: en only (23 namespaces) ───
 import en_common from './locales/en/common.json'
 import en_onboarding from './locales/en/onboarding.json'
 import en_navigation from './locales/en/navigation.json'
@@ -30,705 +40,718 @@ import en_billing from './locales/en/billing.json'
 import en_expanded_details from './locales/en/expanded_details.json'
 import en_auth from './locales/en/auth.json'
 
-// es
-import es_common from './locales/es/common.json'
-import es_onboarding from './locales/es/onboarding.json'
-import es_navigation from './locales/es/navigation.json'
-import es_cards from './locales/es/cards.json'
-import es_discover from './locales/es/discover.json'
-import es_preferences from './locales/es/preferences.json'
-import es_share from './locales/es/share.json'
-import es_paywall from './locales/es/paywall.json'
-import es_profile from './locales/es/profile.json'
-import es_settings from './locales/es/settings.json'
-import es_connections from './locales/es/connections.json'
-import es_saved from './locales/es/saved.json'
-import es_feedback from './locales/es/feedback.json'
-import es_chat from './locales/es/chat.json'
-import es_social from './locales/es/social.json'
-import es_map from './locales/es/map.json'
-import es_activity from './locales/es/activity.json'
-import es_board from './locales/es/board.json'
-import es_notifications from './locales/es/notifications.json'
-import es_modals from './locales/es/modals.json'
-import es_billing from './locales/es/billing.json'
-import es_expanded_details from './locales/es/expanded_details.json'
-import es_auth from './locales/es/auth.json'
+const NAMESPACES = [
+  'common', 'onboarding', 'navigation', 'cards', 'discover', 'preferences',
+  'share', 'paywall', 'profile', 'settings', 'connections', 'saved',
+  'feedback', 'chat', 'social', 'map', 'activity', 'board', 'notifications',
+  'modals', 'billing', 'expanded_details', 'auth',
+] as const
 
-// bin
-import bin_common from './locales/bin/common.json'
-import bin_onboarding from './locales/bin/onboarding.json'
-import bin_navigation from './locales/bin/navigation.json'
-import bin_cards from './locales/bin/cards.json'
-import bin_discover from './locales/bin/discover.json'
-import bin_preferences from './locales/bin/preferences.json'
-import bin_share from './locales/bin/share.json'
-import bin_paywall from './locales/bin/paywall.json'
-import bin_profile from './locales/bin/profile.json'
-import bin_settings from './locales/bin/settings.json'
-import bin_connections from './locales/bin/connections.json'
-import bin_saved from './locales/bin/saved.json'
-import bin_feedback from './locales/bin/feedback.json'
-import bin_chat from './locales/bin/chat.json'
-import bin_social from './locales/bin/social.json'
-import bin_map from './locales/bin/map.json'
-import bin_activity from './locales/bin/activity.json'
-import bin_board from './locales/bin/board.json'
-import bin_notifications from './locales/bin/notifications.json'
-import bin_modals from './locales/bin/modals.json'
-import bin_billing from './locales/bin/billing.json'
-import bin_expanded_details from './locales/bin/expanded_details.json'
-import bin_auth from './locales/bin/auth.json'
-
-// ha
-import ha_common from './locales/ha/common.json'
-import ha_onboarding from './locales/ha/onboarding.json'
-import ha_navigation from './locales/ha/navigation.json'
-import ha_cards from './locales/ha/cards.json'
-import ha_discover from './locales/ha/discover.json'
-import ha_preferences from './locales/ha/preferences.json'
-import ha_share from './locales/ha/share.json'
-import ha_paywall from './locales/ha/paywall.json'
-import ha_profile from './locales/ha/profile.json'
-import ha_settings from './locales/ha/settings.json'
-import ha_connections from './locales/ha/connections.json'
-import ha_saved from './locales/ha/saved.json'
-import ha_feedback from './locales/ha/feedback.json'
-import ha_chat from './locales/ha/chat.json'
-import ha_social from './locales/ha/social.json'
-import ha_map from './locales/ha/map.json'
-import ha_activity from './locales/ha/activity.json'
-import ha_board from './locales/ha/board.json'
-import ha_notifications from './locales/ha/notifications.json'
-import ha_modals from './locales/ha/modals.json'
-import ha_billing from './locales/ha/billing.json'
-import ha_expanded_details from './locales/ha/expanded_details.json'
-import ha_auth from './locales/ha/auth.json'
-
-// ig
-import ig_common from './locales/ig/common.json'
-import ig_onboarding from './locales/ig/onboarding.json'
-import ig_navigation from './locales/ig/navigation.json'
-import ig_cards from './locales/ig/cards.json'
-import ig_discover from './locales/ig/discover.json'
-import ig_preferences from './locales/ig/preferences.json'
-import ig_share from './locales/ig/share.json'
-import ig_paywall from './locales/ig/paywall.json'
-import ig_profile from './locales/ig/profile.json'
-import ig_settings from './locales/ig/settings.json'
-import ig_connections from './locales/ig/connections.json'
-import ig_saved from './locales/ig/saved.json'
-import ig_feedback from './locales/ig/feedback.json'
-import ig_chat from './locales/ig/chat.json'
-import ig_social from './locales/ig/social.json'
-import ig_map from './locales/ig/map.json'
-import ig_activity from './locales/ig/activity.json'
-import ig_board from './locales/ig/board.json'
-import ig_notifications from './locales/ig/notifications.json'
-import ig_modals from './locales/ig/modals.json'
-import ig_billing from './locales/ig/billing.json'
-import ig_expanded_details from './locales/ig/expanded_details.json'
-import ig_auth from './locales/ig/auth.json'
-
-// yo
-import yo_common from './locales/yo/common.json'
-import yo_onboarding from './locales/yo/onboarding.json'
-import yo_navigation from './locales/yo/navigation.json'
-import yo_cards from './locales/yo/cards.json'
-import yo_discover from './locales/yo/discover.json'
-import yo_preferences from './locales/yo/preferences.json'
-import yo_share from './locales/yo/share.json'
-import yo_paywall from './locales/yo/paywall.json'
-import yo_profile from './locales/yo/profile.json'
-import yo_settings from './locales/yo/settings.json'
-import yo_connections from './locales/yo/connections.json'
-import yo_saved from './locales/yo/saved.json'
-import yo_feedback from './locales/yo/feedback.json'
-import yo_chat from './locales/yo/chat.json'
-import yo_social from './locales/yo/social.json'
-import yo_map from './locales/yo/map.json'
-import yo_activity from './locales/yo/activity.json'
-import yo_board from './locales/yo/board.json'
-import yo_notifications from './locales/yo/notifications.json'
-import yo_modals from './locales/yo/modals.json'
-import yo_billing from './locales/yo/billing.json'
-import yo_expanded_details from './locales/yo/expanded_details.json'
-import yo_auth from './locales/yo/auth.json'
-
-// fr
-import fr_common from './locales/fr/common.json'
-import fr_onboarding from './locales/fr/onboarding.json'
-import fr_navigation from './locales/fr/navigation.json'
-import fr_cards from './locales/fr/cards.json'
-import fr_discover from './locales/fr/discover.json'
-import fr_preferences from './locales/fr/preferences.json'
-import fr_share from './locales/fr/share.json'
-import fr_paywall from './locales/fr/paywall.json'
-import fr_profile from './locales/fr/profile.json'
-import fr_settings from './locales/fr/settings.json'
-import fr_connections from './locales/fr/connections.json'
-import fr_saved from './locales/fr/saved.json'
-import fr_feedback from './locales/fr/feedback.json'
-import fr_chat from './locales/fr/chat.json'
-import fr_social from './locales/fr/social.json'
-import fr_map from './locales/fr/map.json'
-import fr_activity from './locales/fr/activity.json'
-import fr_board from './locales/fr/board.json'
-import fr_notifications from './locales/fr/notifications.json'
-import fr_modals from './locales/fr/modals.json'
-import fr_billing from './locales/fr/billing.json'
-import fr_expanded_details from './locales/fr/expanded_details.json'
-import fr_auth from './locales/fr/auth.json'
-
-// nl
-import nl_common from './locales/nl/common.json'
-import nl_onboarding from './locales/nl/onboarding.json'
-import nl_navigation from './locales/nl/navigation.json'
-import nl_cards from './locales/nl/cards.json'
-import nl_discover from './locales/nl/discover.json'
-import nl_preferences from './locales/nl/preferences.json'
-import nl_share from './locales/nl/share.json'
-import nl_paywall from './locales/nl/paywall.json'
-import nl_profile from './locales/nl/profile.json'
-import nl_settings from './locales/nl/settings.json'
-import nl_connections from './locales/nl/connections.json'
-import nl_saved from './locales/nl/saved.json'
-import nl_feedback from './locales/nl/feedback.json'
-import nl_chat from './locales/nl/chat.json'
-import nl_social from './locales/nl/social.json'
-import nl_map from './locales/nl/map.json'
-import nl_activity from './locales/nl/activity.json'
-import nl_board from './locales/nl/board.json'
-import nl_notifications from './locales/nl/notifications.json'
-import nl_modals from './locales/nl/modals.json'
-import nl_billing from './locales/nl/billing.json'
-import nl_expanded_details from './locales/nl/expanded_details.json'
-import nl_auth from './locales/nl/auth.json'
-
-// de
-import de_common from './locales/de/common.json'
-import de_onboarding from './locales/de/onboarding.json'
-import de_navigation from './locales/de/navigation.json'
-import de_cards from './locales/de/cards.json'
-import de_discover from './locales/de/discover.json'
-import de_preferences from './locales/de/preferences.json'
-import de_share from './locales/de/share.json'
-import de_paywall from './locales/de/paywall.json'
-import de_profile from './locales/de/profile.json'
-import de_settings from './locales/de/settings.json'
-import de_connections from './locales/de/connections.json'
-import de_saved from './locales/de/saved.json'
-import de_feedback from './locales/de/feedback.json'
-import de_chat from './locales/de/chat.json'
-import de_social from './locales/de/social.json'
-import de_map from './locales/de/map.json'
-import de_activity from './locales/de/activity.json'
-import de_board from './locales/de/board.json'
-import de_notifications from './locales/de/notifications.json'
-import de_modals from './locales/de/modals.json'
-import de_billing from './locales/de/billing.json'
-import de_expanded_details from './locales/de/expanded_details.json'
-import de_auth from './locales/de/auth.json'
-
-// pt
-import pt_common from './locales/pt/common.json'
-import pt_onboarding from './locales/pt/onboarding.json'
-import pt_navigation from './locales/pt/navigation.json'
-import pt_cards from './locales/pt/cards.json'
-import pt_discover from './locales/pt/discover.json'
-import pt_preferences from './locales/pt/preferences.json'
-import pt_share from './locales/pt/share.json'
-import pt_paywall from './locales/pt/paywall.json'
-import pt_profile from './locales/pt/profile.json'
-import pt_settings from './locales/pt/settings.json'
-import pt_connections from './locales/pt/connections.json'
-import pt_saved from './locales/pt/saved.json'
-import pt_feedback from './locales/pt/feedback.json'
-import pt_chat from './locales/pt/chat.json'
-import pt_social from './locales/pt/social.json'
-import pt_map from './locales/pt/map.json'
-import pt_activity from './locales/pt/activity.json'
-import pt_board from './locales/pt/board.json'
-import pt_notifications from './locales/pt/notifications.json'
-import pt_modals from './locales/pt/modals.json'
-import pt_billing from './locales/pt/billing.json'
-import pt_expanded_details from './locales/pt/expanded_details.json'
-import pt_auth from './locales/pt/auth.json'
-
-// ar
-import ar_common from './locales/ar/common.json'
-import ar_onboarding from './locales/ar/onboarding.json'
-import ar_navigation from './locales/ar/navigation.json'
-import ar_cards from './locales/ar/cards.json'
-import ar_discover from './locales/ar/discover.json'
-import ar_preferences from './locales/ar/preferences.json'
-import ar_share from './locales/ar/share.json'
-import ar_paywall from './locales/ar/paywall.json'
-import ar_profile from './locales/ar/profile.json'
-import ar_settings from './locales/ar/settings.json'
-import ar_connections from './locales/ar/connections.json'
-import ar_saved from './locales/ar/saved.json'
-import ar_feedback from './locales/ar/feedback.json'
-import ar_chat from './locales/ar/chat.json'
-import ar_social from './locales/ar/social.json'
-import ar_map from './locales/ar/map.json'
-import ar_activity from './locales/ar/activity.json'
-import ar_board from './locales/ar/board.json'
-import ar_notifications from './locales/ar/notifications.json'
-import ar_modals from './locales/ar/modals.json'
-import ar_billing from './locales/ar/billing.json'
-import ar_expanded_details from './locales/ar/expanded_details.json'
-import ar_auth from './locales/ar/auth.json'
-
-// bn
-import bn_common from './locales/bn/common.json'
-import bn_onboarding from './locales/bn/onboarding.json'
-import bn_navigation from './locales/bn/navigation.json'
-import bn_cards from './locales/bn/cards.json'
-import bn_discover from './locales/bn/discover.json'
-import bn_preferences from './locales/bn/preferences.json'
-import bn_share from './locales/bn/share.json'
-import bn_paywall from './locales/bn/paywall.json'
-import bn_profile from './locales/bn/profile.json'
-import bn_settings from './locales/bn/settings.json'
-import bn_connections from './locales/bn/connections.json'
-import bn_saved from './locales/bn/saved.json'
-import bn_feedback from './locales/bn/feedback.json'
-import bn_chat from './locales/bn/chat.json'
-import bn_social from './locales/bn/social.json'
-import bn_map from './locales/bn/map.json'
-import bn_activity from './locales/bn/activity.json'
-import bn_board from './locales/bn/board.json'
-import bn_notifications from './locales/bn/notifications.json'
-import bn_modals from './locales/bn/modals.json'
-import bn_billing from './locales/bn/billing.json'
-import bn_expanded_details from './locales/bn/expanded_details.json'
-import bn_auth from './locales/bn/auth.json'
-
-// zh
-import zh_common from './locales/zh/common.json'
-import zh_onboarding from './locales/zh/onboarding.json'
-import zh_navigation from './locales/zh/navigation.json'
-import zh_cards from './locales/zh/cards.json'
-import zh_discover from './locales/zh/discover.json'
-import zh_preferences from './locales/zh/preferences.json'
-import zh_share from './locales/zh/share.json'
-import zh_paywall from './locales/zh/paywall.json'
-import zh_profile from './locales/zh/profile.json'
-import zh_settings from './locales/zh/settings.json'
-import zh_connections from './locales/zh/connections.json'
-import zh_saved from './locales/zh/saved.json'
-import zh_feedback from './locales/zh/feedback.json'
-import zh_chat from './locales/zh/chat.json'
-import zh_social from './locales/zh/social.json'
-import zh_map from './locales/zh/map.json'
-import zh_activity from './locales/zh/activity.json'
-import zh_board from './locales/zh/board.json'
-import zh_notifications from './locales/zh/notifications.json'
-import zh_modals from './locales/zh/modals.json'
-import zh_billing from './locales/zh/billing.json'
-import zh_expanded_details from './locales/zh/expanded_details.json'
-import zh_auth from './locales/zh/auth.json'
-
-// hi
-import hi_common from './locales/hi/common.json'
-import hi_onboarding from './locales/hi/onboarding.json'
-import hi_navigation from './locales/hi/navigation.json'
-import hi_cards from './locales/hi/cards.json'
-import hi_discover from './locales/hi/discover.json'
-import hi_preferences from './locales/hi/preferences.json'
-import hi_share from './locales/hi/share.json'
-import hi_paywall from './locales/hi/paywall.json'
-import hi_profile from './locales/hi/profile.json'
-import hi_settings from './locales/hi/settings.json'
-import hi_connections from './locales/hi/connections.json'
-import hi_saved from './locales/hi/saved.json'
-import hi_feedback from './locales/hi/feedback.json'
-import hi_chat from './locales/hi/chat.json'
-import hi_social from './locales/hi/social.json'
-import hi_map from './locales/hi/map.json'
-import hi_activity from './locales/hi/activity.json'
-import hi_board from './locales/hi/board.json'
-import hi_notifications from './locales/hi/notifications.json'
-import hi_modals from './locales/hi/modals.json'
-import hi_billing from './locales/hi/billing.json'
-import hi_expanded_details from './locales/hi/expanded_details.json'
-import hi_auth from './locales/hi/auth.json'
-
-// id
-import id_common from './locales/id/common.json'
-import id_onboarding from './locales/id/onboarding.json'
-import id_navigation from './locales/id/navigation.json'
-import id_cards from './locales/id/cards.json'
-import id_discover from './locales/id/discover.json'
-import id_preferences from './locales/id/preferences.json'
-import id_share from './locales/id/share.json'
-import id_paywall from './locales/id/paywall.json'
-import id_profile from './locales/id/profile.json'
-import id_settings from './locales/id/settings.json'
-import id_connections from './locales/id/connections.json'
-import id_saved from './locales/id/saved.json'
-import id_feedback from './locales/id/feedback.json'
-import id_chat from './locales/id/chat.json'
-import id_social from './locales/id/social.json'
-import id_map from './locales/id/map.json'
-import id_activity from './locales/id/activity.json'
-import id_board from './locales/id/board.json'
-import id_notifications from './locales/id/notifications.json'
-import id_modals from './locales/id/modals.json'
-import id_billing from './locales/id/billing.json'
-import id_expanded_details from './locales/id/expanded_details.json'
-import id_auth from './locales/id/auth.json'
-
-// ja
-import ja_common from './locales/ja/common.json'
-import ja_onboarding from './locales/ja/onboarding.json'
-import ja_navigation from './locales/ja/navigation.json'
-import ja_cards from './locales/ja/cards.json'
-import ja_discover from './locales/ja/discover.json'
-import ja_preferences from './locales/ja/preferences.json'
-import ja_share from './locales/ja/share.json'
-import ja_paywall from './locales/ja/paywall.json'
-import ja_profile from './locales/ja/profile.json'
-import ja_settings from './locales/ja/settings.json'
-import ja_connections from './locales/ja/connections.json'
-import ja_saved from './locales/ja/saved.json'
-import ja_feedback from './locales/ja/feedback.json'
-import ja_chat from './locales/ja/chat.json'
-import ja_social from './locales/ja/social.json'
-import ja_map from './locales/ja/map.json'
-import ja_activity from './locales/ja/activity.json'
-import ja_board from './locales/ja/board.json'
-import ja_notifications from './locales/ja/notifications.json'
-import ja_modals from './locales/ja/modals.json'
-import ja_billing from './locales/ja/billing.json'
-import ja_expanded_details from './locales/ja/expanded_details.json'
-import ja_auth from './locales/ja/auth.json'
-
-// ko
-import ko_common from './locales/ko/common.json'
-import ko_onboarding from './locales/ko/onboarding.json'
-import ko_navigation from './locales/ko/navigation.json'
-import ko_cards from './locales/ko/cards.json'
-import ko_discover from './locales/ko/discover.json'
-import ko_preferences from './locales/ko/preferences.json'
-import ko_share from './locales/ko/share.json'
-import ko_paywall from './locales/ko/paywall.json'
-import ko_profile from './locales/ko/profile.json'
-import ko_settings from './locales/ko/settings.json'
-import ko_connections from './locales/ko/connections.json'
-import ko_saved from './locales/ko/saved.json'
-import ko_feedback from './locales/ko/feedback.json'
-import ko_chat from './locales/ko/chat.json'
-import ko_social from './locales/ko/social.json'
-import ko_map from './locales/ko/map.json'
-import ko_activity from './locales/ko/activity.json'
-import ko_board from './locales/ko/board.json'
-import ko_notifications from './locales/ko/notifications.json'
-import ko_modals from './locales/ko/modals.json'
-import ko_billing from './locales/ko/billing.json'
-import ko_expanded_details from './locales/ko/expanded_details.json'
-import ko_auth from './locales/ko/auth.json'
-
-// ms
-import ms_common from './locales/ms/common.json'
-import ms_onboarding from './locales/ms/onboarding.json'
-import ms_navigation from './locales/ms/navigation.json'
-import ms_cards from './locales/ms/cards.json'
-import ms_discover from './locales/ms/discover.json'
-import ms_preferences from './locales/ms/preferences.json'
-import ms_share from './locales/ms/share.json'
-import ms_paywall from './locales/ms/paywall.json'
-import ms_profile from './locales/ms/profile.json'
-import ms_settings from './locales/ms/settings.json'
-import ms_connections from './locales/ms/connections.json'
-import ms_saved from './locales/ms/saved.json'
-import ms_feedback from './locales/ms/feedback.json'
-import ms_chat from './locales/ms/chat.json'
-import ms_social from './locales/ms/social.json'
-import ms_map from './locales/ms/map.json'
-import ms_activity from './locales/ms/activity.json'
-import ms_board from './locales/ms/board.json'
-import ms_notifications from './locales/ms/notifications.json'
-import ms_modals from './locales/ms/modals.json'
-import ms_billing from './locales/ms/billing.json'
-import ms_expanded_details from './locales/ms/expanded_details.json'
-import ms_auth from './locales/ms/auth.json'
-
-// el
-import el_common from './locales/el/common.json'
-import el_onboarding from './locales/el/onboarding.json'
-import el_navigation from './locales/el/navigation.json'
-import el_cards from './locales/el/cards.json'
-import el_discover from './locales/el/discover.json'
-import el_preferences from './locales/el/preferences.json'
-import el_share from './locales/el/share.json'
-import el_paywall from './locales/el/paywall.json'
-import el_profile from './locales/el/profile.json'
-import el_settings from './locales/el/settings.json'
-import el_connections from './locales/el/connections.json'
-import el_saved from './locales/el/saved.json'
-import el_feedback from './locales/el/feedback.json'
-import el_chat from './locales/el/chat.json'
-import el_social from './locales/el/social.json'
-import el_map from './locales/el/map.json'
-import el_activity from './locales/el/activity.json'
-import el_board from './locales/el/board.json'
-import el_notifications from './locales/el/notifications.json'
-import el_modals from './locales/el/modals.json'
-import el_billing from './locales/el/billing.json'
-import el_expanded_details from './locales/el/expanded_details.json'
-import el_auth from './locales/el/auth.json'
-
-// he
-import he_common from './locales/he/common.json'
-import he_onboarding from './locales/he/onboarding.json'
-import he_navigation from './locales/he/navigation.json'
-import he_cards from './locales/he/cards.json'
-import he_discover from './locales/he/discover.json'
-import he_preferences from './locales/he/preferences.json'
-import he_share from './locales/he/share.json'
-import he_paywall from './locales/he/paywall.json'
-import he_profile from './locales/he/profile.json'
-import he_settings from './locales/he/settings.json'
-import he_connections from './locales/he/connections.json'
-import he_saved from './locales/he/saved.json'
-import he_feedback from './locales/he/feedback.json'
-import he_chat from './locales/he/chat.json'
-import he_social from './locales/he/social.json'
-import he_map from './locales/he/map.json'
-import he_activity from './locales/he/activity.json'
-import he_board from './locales/he/board.json'
-import he_notifications from './locales/he/notifications.json'
-import he_modals from './locales/he/modals.json'
-import he_billing from './locales/he/billing.json'
-import he_expanded_details from './locales/he/expanded_details.json'
-import he_auth from './locales/he/auth.json'
-
-// it
-import it_common from './locales/it/common.json'
-import it_onboarding from './locales/it/onboarding.json'
-import it_navigation from './locales/it/navigation.json'
-import it_cards from './locales/it/cards.json'
-import it_discover from './locales/it/discover.json'
-import it_preferences from './locales/it/preferences.json'
-import it_share from './locales/it/share.json'
-import it_paywall from './locales/it/paywall.json'
-import it_profile from './locales/it/profile.json'
-import it_settings from './locales/it/settings.json'
-import it_connections from './locales/it/connections.json'
-import it_saved from './locales/it/saved.json'
-import it_feedback from './locales/it/feedback.json'
-import it_chat from './locales/it/chat.json'
-import it_social from './locales/it/social.json'
-import it_map from './locales/it/map.json'
-import it_activity from './locales/it/activity.json'
-import it_board from './locales/it/board.json'
-import it_notifications from './locales/it/notifications.json'
-import it_modals from './locales/it/modals.json'
-import it_billing from './locales/it/billing.json'
-import it_expanded_details from './locales/it/expanded_details.json'
-import it_auth from './locales/it/auth.json'
-
-// pl
-import pl_common from './locales/pl/common.json'
-import pl_onboarding from './locales/pl/onboarding.json'
-import pl_navigation from './locales/pl/navigation.json'
-import pl_cards from './locales/pl/cards.json'
-import pl_discover from './locales/pl/discover.json'
-import pl_preferences from './locales/pl/preferences.json'
-import pl_share from './locales/pl/share.json'
-import pl_paywall from './locales/pl/paywall.json'
-import pl_profile from './locales/pl/profile.json'
-import pl_settings from './locales/pl/settings.json'
-import pl_connections from './locales/pl/connections.json'
-import pl_saved from './locales/pl/saved.json'
-import pl_feedback from './locales/pl/feedback.json'
-import pl_chat from './locales/pl/chat.json'
-import pl_social from './locales/pl/social.json'
-import pl_map from './locales/pl/map.json'
-import pl_activity from './locales/pl/activity.json'
-import pl_board from './locales/pl/board.json'
-import pl_notifications from './locales/pl/notifications.json'
-import pl_modals from './locales/pl/modals.json'
-import pl_billing from './locales/pl/billing.json'
-import pl_expanded_details from './locales/pl/expanded_details.json'
-import pl_auth from './locales/pl/auth.json'
-
-// ro
-import ro_common from './locales/ro/common.json'
-import ro_onboarding from './locales/ro/onboarding.json'
-import ro_navigation from './locales/ro/navigation.json'
-import ro_cards from './locales/ro/cards.json'
-import ro_discover from './locales/ro/discover.json'
-import ro_preferences from './locales/ro/preferences.json'
-import ro_share from './locales/ro/share.json'
-import ro_paywall from './locales/ro/paywall.json'
-import ro_profile from './locales/ro/profile.json'
-import ro_settings from './locales/ro/settings.json'
-import ro_connections from './locales/ro/connections.json'
-import ro_saved from './locales/ro/saved.json'
-import ro_feedback from './locales/ro/feedback.json'
-import ro_chat from './locales/ro/chat.json'
-import ro_social from './locales/ro/social.json'
-import ro_map from './locales/ro/map.json'
-import ro_activity from './locales/ro/activity.json'
-import ro_board from './locales/ro/board.json'
-import ro_notifications from './locales/ro/notifications.json'
-import ro_modals from './locales/ro/modals.json'
-import ro_billing from './locales/ro/billing.json'
-import ro_expanded_details from './locales/ro/expanded_details.json'
-import ro_auth from './locales/ro/auth.json'
-
-// ru
-import ru_common from './locales/ru/common.json'
-import ru_onboarding from './locales/ru/onboarding.json'
-import ru_navigation from './locales/ru/navigation.json'
-import ru_cards from './locales/ru/cards.json'
-import ru_discover from './locales/ru/discover.json'
-import ru_preferences from './locales/ru/preferences.json'
-import ru_share from './locales/ru/share.json'
-import ru_paywall from './locales/ru/paywall.json'
-import ru_profile from './locales/ru/profile.json'
-import ru_settings from './locales/ru/settings.json'
-import ru_connections from './locales/ru/connections.json'
-import ru_saved from './locales/ru/saved.json'
-import ru_feedback from './locales/ru/feedback.json'
-import ru_chat from './locales/ru/chat.json'
-import ru_social from './locales/ru/social.json'
-import ru_map from './locales/ru/map.json'
-import ru_activity from './locales/ru/activity.json'
-import ru_board from './locales/ru/board.json'
-import ru_notifications from './locales/ru/notifications.json'
-import ru_modals from './locales/ru/modals.json'
-import ru_billing from './locales/ru/billing.json'
-import ru_expanded_details from './locales/ru/expanded_details.json'
-import ru_auth from './locales/ru/auth.json'
-
-// sv
-import sv_common from './locales/sv/common.json'
-import sv_onboarding from './locales/sv/onboarding.json'
-import sv_navigation from './locales/sv/navigation.json'
-import sv_cards from './locales/sv/cards.json'
-import sv_discover from './locales/sv/discover.json'
-import sv_preferences from './locales/sv/preferences.json'
-import sv_share from './locales/sv/share.json'
-import sv_paywall from './locales/sv/paywall.json'
-import sv_profile from './locales/sv/profile.json'
-import sv_settings from './locales/sv/settings.json'
-import sv_connections from './locales/sv/connections.json'
-import sv_saved from './locales/sv/saved.json'
-import sv_feedback from './locales/sv/feedback.json'
-import sv_chat from './locales/sv/chat.json'
-import sv_social from './locales/sv/social.json'
-import sv_map from './locales/sv/map.json'
-import sv_activity from './locales/sv/activity.json'
-import sv_board from './locales/sv/board.json'
-import sv_notifications from './locales/sv/notifications.json'
-import sv_modals from './locales/sv/modals.json'
-import sv_billing from './locales/sv/billing.json'
-import sv_expanded_details from './locales/sv/expanded_details.json'
-import sv_auth from './locales/sv/auth.json'
-
-// th
-import th_common from './locales/th/common.json'
-import th_onboarding from './locales/th/onboarding.json'
-import th_navigation from './locales/th/navigation.json'
-import th_cards from './locales/th/cards.json'
-import th_discover from './locales/th/discover.json'
-import th_preferences from './locales/th/preferences.json'
-import th_share from './locales/th/share.json'
-import th_paywall from './locales/th/paywall.json'
-import th_profile from './locales/th/profile.json'
-import th_settings from './locales/th/settings.json'
-import th_connections from './locales/th/connections.json'
-import th_saved from './locales/th/saved.json'
-import th_feedback from './locales/th/feedback.json'
-import th_chat from './locales/th/chat.json'
-import th_social from './locales/th/social.json'
-import th_map from './locales/th/map.json'
-import th_activity from './locales/th/activity.json'
-import th_board from './locales/th/board.json'
-import th_notifications from './locales/th/notifications.json'
-import th_modals from './locales/th/modals.json'
-import th_billing from './locales/th/billing.json'
-import th_expanded_details from './locales/th/expanded_details.json'
-import th_auth from './locales/th/auth.json'
-
-// tr
-import tr_common from './locales/tr/common.json'
-import tr_onboarding from './locales/tr/onboarding.json'
-import tr_navigation from './locales/tr/navigation.json'
-import tr_cards from './locales/tr/cards.json'
-import tr_discover from './locales/tr/discover.json'
-import tr_preferences from './locales/tr/preferences.json'
-import tr_share from './locales/tr/share.json'
-import tr_paywall from './locales/tr/paywall.json'
-import tr_profile from './locales/tr/profile.json'
-import tr_settings from './locales/tr/settings.json'
-import tr_connections from './locales/tr/connections.json'
-import tr_saved from './locales/tr/saved.json'
-import tr_feedback from './locales/tr/feedback.json'
-import tr_chat from './locales/tr/chat.json'
-import tr_social from './locales/tr/social.json'
-import tr_map from './locales/tr/map.json'
-import tr_activity from './locales/tr/activity.json'
-import tr_board from './locales/tr/board.json'
-import tr_notifications from './locales/tr/notifications.json'
-import tr_modals from './locales/tr/modals.json'
-import tr_billing from './locales/tr/billing.json'
-import tr_expanded_details from './locales/tr/expanded_details.json'
-import tr_auth from './locales/tr/auth.json'
-
-// uk
-import uk_common from './locales/uk/common.json'
-import uk_onboarding from './locales/uk/onboarding.json'
-import uk_navigation from './locales/uk/navigation.json'
-import uk_cards from './locales/uk/cards.json'
-import uk_discover from './locales/uk/discover.json'
-import uk_preferences from './locales/uk/preferences.json'
-import uk_share from './locales/uk/share.json'
-import uk_paywall from './locales/uk/paywall.json'
-import uk_profile from './locales/uk/profile.json'
-import uk_settings from './locales/uk/settings.json'
-import uk_connections from './locales/uk/connections.json'
-import uk_saved from './locales/uk/saved.json'
-import uk_feedback from './locales/uk/feedback.json'
-import uk_chat from './locales/uk/chat.json'
-import uk_social from './locales/uk/social.json'
-import uk_map from './locales/uk/map.json'
-import uk_activity from './locales/uk/activity.json'
-import uk_board from './locales/uk/board.json'
-import uk_notifications from './locales/uk/notifications.json'
-import uk_modals from './locales/uk/modals.json'
-import uk_billing from './locales/uk/billing.json'
-import uk_expanded_details from './locales/uk/expanded_details.json'
-import uk_auth from './locales/uk/auth.json'
-
-// vi
-import vi_common from './locales/vi/common.json'
-import vi_onboarding from './locales/vi/onboarding.json'
-import vi_navigation from './locales/vi/navigation.json'
-import vi_cards from './locales/vi/cards.json'
-import vi_discover from './locales/vi/discover.json'
-import vi_preferences from './locales/vi/preferences.json'
-import vi_share from './locales/vi/share.json'
-import vi_paywall from './locales/vi/paywall.json'
-import vi_profile from './locales/vi/profile.json'
-import vi_settings from './locales/vi/settings.json'
-import vi_connections from './locales/vi/connections.json'
-import vi_saved from './locales/vi/saved.json'
-import vi_feedback from './locales/vi/feedback.json'
-import vi_chat from './locales/vi/chat.json'
-import vi_social from './locales/vi/social.json'
-import vi_map from './locales/vi/map.json'
-import vi_activity from './locales/vi/activity.json'
-import vi_board from './locales/vi/board.json'
-import vi_notifications from './locales/vi/notifications.json'
-import vi_modals from './locales/vi/modals.json'
-import vi_billing from './locales/vi/billing.json'
-import vi_expanded_details from './locales/vi/expanded_details.json'
-import vi_auth from './locales/vi/auth.json'
+// ─── Lazy: 28 other languages via dynamic import ───
+// Metro requires literal paths in import() — each language has its own loader.
+// Each loader returns Promise<Record<namespace, bundle>>.
+const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
+  es: async () => ({
+    common: (await import('./locales/es/common.json')).default,
+    onboarding: (await import('./locales/es/onboarding.json')).default,
+    navigation: (await import('./locales/es/navigation.json')).default,
+    cards: (await import('./locales/es/cards.json')).default,
+    discover: (await import('./locales/es/discover.json')).default,
+    preferences: (await import('./locales/es/preferences.json')).default,
+    share: (await import('./locales/es/share.json')).default,
+    paywall: (await import('./locales/es/paywall.json')).default,
+    profile: (await import('./locales/es/profile.json')).default,
+    settings: (await import('./locales/es/settings.json')).default,
+    connections: (await import('./locales/es/connections.json')).default,
+    saved: (await import('./locales/es/saved.json')).default,
+    feedback: (await import('./locales/es/feedback.json')).default,
+    chat: (await import('./locales/es/chat.json')).default,
+    social: (await import('./locales/es/social.json')).default,
+    map: (await import('./locales/es/map.json')).default,
+    activity: (await import('./locales/es/activity.json')).default,
+    board: (await import('./locales/es/board.json')).default,
+    notifications: (await import('./locales/es/notifications.json')).default,
+    modals: (await import('./locales/es/modals.json')).default,
+    billing: (await import('./locales/es/billing.json')).default,
+    expanded_details: (await import('./locales/es/expanded_details.json')).default,
+    auth: (await import('./locales/es/auth.json')).default,
+  }),
+  bin: async () => ({
+    common: (await import('./locales/bin/common.json')).default,
+    onboarding: (await import('./locales/bin/onboarding.json')).default,
+    navigation: (await import('./locales/bin/navigation.json')).default,
+    cards: (await import('./locales/bin/cards.json')).default,
+    discover: (await import('./locales/bin/discover.json')).default,
+    preferences: (await import('./locales/bin/preferences.json')).default,
+    share: (await import('./locales/bin/share.json')).default,
+    paywall: (await import('./locales/bin/paywall.json')).default,
+    profile: (await import('./locales/bin/profile.json')).default,
+    settings: (await import('./locales/bin/settings.json')).default,
+    connections: (await import('./locales/bin/connections.json')).default,
+    saved: (await import('./locales/bin/saved.json')).default,
+    feedback: (await import('./locales/bin/feedback.json')).default,
+    chat: (await import('./locales/bin/chat.json')).default,
+    social: (await import('./locales/bin/social.json')).default,
+    map: (await import('./locales/bin/map.json')).default,
+    activity: (await import('./locales/bin/activity.json')).default,
+    board: (await import('./locales/bin/board.json')).default,
+    notifications: (await import('./locales/bin/notifications.json')).default,
+    modals: (await import('./locales/bin/modals.json')).default,
+    billing: (await import('./locales/bin/billing.json')).default,
+    expanded_details: (await import('./locales/bin/expanded_details.json')).default,
+    auth: (await import('./locales/bin/auth.json')).default,
+  }),
+  ha: async () => ({
+    common: (await import('./locales/ha/common.json')).default,
+    onboarding: (await import('./locales/ha/onboarding.json')).default,
+    navigation: (await import('./locales/ha/navigation.json')).default,
+    cards: (await import('./locales/ha/cards.json')).default,
+    discover: (await import('./locales/ha/discover.json')).default,
+    preferences: (await import('./locales/ha/preferences.json')).default,
+    share: (await import('./locales/ha/share.json')).default,
+    paywall: (await import('./locales/ha/paywall.json')).default,
+    profile: (await import('./locales/ha/profile.json')).default,
+    settings: (await import('./locales/ha/settings.json')).default,
+    connections: (await import('./locales/ha/connections.json')).default,
+    saved: (await import('./locales/ha/saved.json')).default,
+    feedback: (await import('./locales/ha/feedback.json')).default,
+    chat: (await import('./locales/ha/chat.json')).default,
+    social: (await import('./locales/ha/social.json')).default,
+    map: (await import('./locales/ha/map.json')).default,
+    activity: (await import('./locales/ha/activity.json')).default,
+    board: (await import('./locales/ha/board.json')).default,
+    notifications: (await import('./locales/ha/notifications.json')).default,
+    modals: (await import('./locales/ha/modals.json')).default,
+    billing: (await import('./locales/ha/billing.json')).default,
+    expanded_details: (await import('./locales/ha/expanded_details.json')).default,
+    auth: (await import('./locales/ha/auth.json')).default,
+  }),
+  ig: async () => ({
+    common: (await import('./locales/ig/common.json')).default,
+    onboarding: (await import('./locales/ig/onboarding.json')).default,
+    navigation: (await import('./locales/ig/navigation.json')).default,
+    cards: (await import('./locales/ig/cards.json')).default,
+    discover: (await import('./locales/ig/discover.json')).default,
+    preferences: (await import('./locales/ig/preferences.json')).default,
+    share: (await import('./locales/ig/share.json')).default,
+    paywall: (await import('./locales/ig/paywall.json')).default,
+    profile: (await import('./locales/ig/profile.json')).default,
+    settings: (await import('./locales/ig/settings.json')).default,
+    connections: (await import('./locales/ig/connections.json')).default,
+    saved: (await import('./locales/ig/saved.json')).default,
+    feedback: (await import('./locales/ig/feedback.json')).default,
+    chat: (await import('./locales/ig/chat.json')).default,
+    social: (await import('./locales/ig/social.json')).default,
+    map: (await import('./locales/ig/map.json')).default,
+    activity: (await import('./locales/ig/activity.json')).default,
+    board: (await import('./locales/ig/board.json')).default,
+    notifications: (await import('./locales/ig/notifications.json')).default,
+    modals: (await import('./locales/ig/modals.json')).default,
+    billing: (await import('./locales/ig/billing.json')).default,
+    expanded_details: (await import('./locales/ig/expanded_details.json')).default,
+    auth: (await import('./locales/ig/auth.json')).default,
+  }),
+  yo: async () => ({
+    common: (await import('./locales/yo/common.json')).default,
+    onboarding: (await import('./locales/yo/onboarding.json')).default,
+    navigation: (await import('./locales/yo/navigation.json')).default,
+    cards: (await import('./locales/yo/cards.json')).default,
+    discover: (await import('./locales/yo/discover.json')).default,
+    preferences: (await import('./locales/yo/preferences.json')).default,
+    share: (await import('./locales/yo/share.json')).default,
+    paywall: (await import('./locales/yo/paywall.json')).default,
+    profile: (await import('./locales/yo/profile.json')).default,
+    settings: (await import('./locales/yo/settings.json')).default,
+    connections: (await import('./locales/yo/connections.json')).default,
+    saved: (await import('./locales/yo/saved.json')).default,
+    feedback: (await import('./locales/yo/feedback.json')).default,
+    chat: (await import('./locales/yo/chat.json')).default,
+    social: (await import('./locales/yo/social.json')).default,
+    map: (await import('./locales/yo/map.json')).default,
+    activity: (await import('./locales/yo/activity.json')).default,
+    board: (await import('./locales/yo/board.json')).default,
+    notifications: (await import('./locales/yo/notifications.json')).default,
+    modals: (await import('./locales/yo/modals.json')).default,
+    billing: (await import('./locales/yo/billing.json')).default,
+    expanded_details: (await import('./locales/yo/expanded_details.json')).default,
+    auth: (await import('./locales/yo/auth.json')).default,
+  }),
+  fr: async () => ({
+    common: (await import('./locales/fr/common.json')).default,
+    onboarding: (await import('./locales/fr/onboarding.json')).default,
+    navigation: (await import('./locales/fr/navigation.json')).default,
+    cards: (await import('./locales/fr/cards.json')).default,
+    discover: (await import('./locales/fr/discover.json')).default,
+    preferences: (await import('./locales/fr/preferences.json')).default,
+    share: (await import('./locales/fr/share.json')).default,
+    paywall: (await import('./locales/fr/paywall.json')).default,
+    profile: (await import('./locales/fr/profile.json')).default,
+    settings: (await import('./locales/fr/settings.json')).default,
+    connections: (await import('./locales/fr/connections.json')).default,
+    saved: (await import('./locales/fr/saved.json')).default,
+    feedback: (await import('./locales/fr/feedback.json')).default,
+    chat: (await import('./locales/fr/chat.json')).default,
+    social: (await import('./locales/fr/social.json')).default,
+    map: (await import('./locales/fr/map.json')).default,
+    activity: (await import('./locales/fr/activity.json')).default,
+    board: (await import('./locales/fr/board.json')).default,
+    notifications: (await import('./locales/fr/notifications.json')).default,
+    modals: (await import('./locales/fr/modals.json')).default,
+    billing: (await import('./locales/fr/billing.json')).default,
+    expanded_details: (await import('./locales/fr/expanded_details.json')).default,
+    auth: (await import('./locales/fr/auth.json')).default,
+  }),
+  nl: async () => ({
+    common: (await import('./locales/nl/common.json')).default,
+    onboarding: (await import('./locales/nl/onboarding.json')).default,
+    navigation: (await import('./locales/nl/navigation.json')).default,
+    cards: (await import('./locales/nl/cards.json')).default,
+    discover: (await import('./locales/nl/discover.json')).default,
+    preferences: (await import('./locales/nl/preferences.json')).default,
+    share: (await import('./locales/nl/share.json')).default,
+    paywall: (await import('./locales/nl/paywall.json')).default,
+    profile: (await import('./locales/nl/profile.json')).default,
+    settings: (await import('./locales/nl/settings.json')).default,
+    connections: (await import('./locales/nl/connections.json')).default,
+    saved: (await import('./locales/nl/saved.json')).default,
+    feedback: (await import('./locales/nl/feedback.json')).default,
+    chat: (await import('./locales/nl/chat.json')).default,
+    social: (await import('./locales/nl/social.json')).default,
+    map: (await import('./locales/nl/map.json')).default,
+    activity: (await import('./locales/nl/activity.json')).default,
+    board: (await import('./locales/nl/board.json')).default,
+    notifications: (await import('./locales/nl/notifications.json')).default,
+    modals: (await import('./locales/nl/modals.json')).default,
+    billing: (await import('./locales/nl/billing.json')).default,
+    expanded_details: (await import('./locales/nl/expanded_details.json')).default,
+    auth: (await import('./locales/nl/auth.json')).default,
+  }),
+  de: async () => ({
+    common: (await import('./locales/de/common.json')).default,
+    onboarding: (await import('./locales/de/onboarding.json')).default,
+    navigation: (await import('./locales/de/navigation.json')).default,
+    cards: (await import('./locales/de/cards.json')).default,
+    discover: (await import('./locales/de/discover.json')).default,
+    preferences: (await import('./locales/de/preferences.json')).default,
+    share: (await import('./locales/de/share.json')).default,
+    paywall: (await import('./locales/de/paywall.json')).default,
+    profile: (await import('./locales/de/profile.json')).default,
+    settings: (await import('./locales/de/settings.json')).default,
+    connections: (await import('./locales/de/connections.json')).default,
+    saved: (await import('./locales/de/saved.json')).default,
+    feedback: (await import('./locales/de/feedback.json')).default,
+    chat: (await import('./locales/de/chat.json')).default,
+    social: (await import('./locales/de/social.json')).default,
+    map: (await import('./locales/de/map.json')).default,
+    activity: (await import('./locales/de/activity.json')).default,
+    board: (await import('./locales/de/board.json')).default,
+    notifications: (await import('./locales/de/notifications.json')).default,
+    modals: (await import('./locales/de/modals.json')).default,
+    billing: (await import('./locales/de/billing.json')).default,
+    expanded_details: (await import('./locales/de/expanded_details.json')).default,
+    auth: (await import('./locales/de/auth.json')).default,
+  }),
+  pt: async () => ({
+    common: (await import('./locales/pt/common.json')).default,
+    onboarding: (await import('./locales/pt/onboarding.json')).default,
+    navigation: (await import('./locales/pt/navigation.json')).default,
+    cards: (await import('./locales/pt/cards.json')).default,
+    discover: (await import('./locales/pt/discover.json')).default,
+    preferences: (await import('./locales/pt/preferences.json')).default,
+    share: (await import('./locales/pt/share.json')).default,
+    paywall: (await import('./locales/pt/paywall.json')).default,
+    profile: (await import('./locales/pt/profile.json')).default,
+    settings: (await import('./locales/pt/settings.json')).default,
+    connections: (await import('./locales/pt/connections.json')).default,
+    saved: (await import('./locales/pt/saved.json')).default,
+    feedback: (await import('./locales/pt/feedback.json')).default,
+    chat: (await import('./locales/pt/chat.json')).default,
+    social: (await import('./locales/pt/social.json')).default,
+    map: (await import('./locales/pt/map.json')).default,
+    activity: (await import('./locales/pt/activity.json')).default,
+    board: (await import('./locales/pt/board.json')).default,
+    notifications: (await import('./locales/pt/notifications.json')).default,
+    modals: (await import('./locales/pt/modals.json')).default,
+    billing: (await import('./locales/pt/billing.json')).default,
+    expanded_details: (await import('./locales/pt/expanded_details.json')).default,
+    auth: (await import('./locales/pt/auth.json')).default,
+  }),
+  ar: async () => ({
+    common: (await import('./locales/ar/common.json')).default,
+    onboarding: (await import('./locales/ar/onboarding.json')).default,
+    navigation: (await import('./locales/ar/navigation.json')).default,
+    cards: (await import('./locales/ar/cards.json')).default,
+    discover: (await import('./locales/ar/discover.json')).default,
+    preferences: (await import('./locales/ar/preferences.json')).default,
+    share: (await import('./locales/ar/share.json')).default,
+    paywall: (await import('./locales/ar/paywall.json')).default,
+    profile: (await import('./locales/ar/profile.json')).default,
+    settings: (await import('./locales/ar/settings.json')).default,
+    connections: (await import('./locales/ar/connections.json')).default,
+    saved: (await import('./locales/ar/saved.json')).default,
+    feedback: (await import('./locales/ar/feedback.json')).default,
+    chat: (await import('./locales/ar/chat.json')).default,
+    social: (await import('./locales/ar/social.json')).default,
+    map: (await import('./locales/ar/map.json')).default,
+    activity: (await import('./locales/ar/activity.json')).default,
+    board: (await import('./locales/ar/board.json')).default,
+    notifications: (await import('./locales/ar/notifications.json')).default,
+    modals: (await import('./locales/ar/modals.json')).default,
+    billing: (await import('./locales/ar/billing.json')).default,
+    expanded_details: (await import('./locales/ar/expanded_details.json')).default,
+    auth: (await import('./locales/ar/auth.json')).default,
+  }),
+  bn: async () => ({
+    common: (await import('./locales/bn/common.json')).default,
+    onboarding: (await import('./locales/bn/onboarding.json')).default,
+    navigation: (await import('./locales/bn/navigation.json')).default,
+    cards: (await import('./locales/bn/cards.json')).default,
+    discover: (await import('./locales/bn/discover.json')).default,
+    preferences: (await import('./locales/bn/preferences.json')).default,
+    share: (await import('./locales/bn/share.json')).default,
+    paywall: (await import('./locales/bn/paywall.json')).default,
+    profile: (await import('./locales/bn/profile.json')).default,
+    settings: (await import('./locales/bn/settings.json')).default,
+    connections: (await import('./locales/bn/connections.json')).default,
+    saved: (await import('./locales/bn/saved.json')).default,
+    feedback: (await import('./locales/bn/feedback.json')).default,
+    chat: (await import('./locales/bn/chat.json')).default,
+    social: (await import('./locales/bn/social.json')).default,
+    map: (await import('./locales/bn/map.json')).default,
+    activity: (await import('./locales/bn/activity.json')).default,
+    board: (await import('./locales/bn/board.json')).default,
+    notifications: (await import('./locales/bn/notifications.json')).default,
+    modals: (await import('./locales/bn/modals.json')).default,
+    billing: (await import('./locales/bn/billing.json')).default,
+    expanded_details: (await import('./locales/bn/expanded_details.json')).default,
+    auth: (await import('./locales/bn/auth.json')).default,
+  }),
+  zh: async () => ({
+    common: (await import('./locales/zh/common.json')).default,
+    onboarding: (await import('./locales/zh/onboarding.json')).default,
+    navigation: (await import('./locales/zh/navigation.json')).default,
+    cards: (await import('./locales/zh/cards.json')).default,
+    discover: (await import('./locales/zh/discover.json')).default,
+    preferences: (await import('./locales/zh/preferences.json')).default,
+    share: (await import('./locales/zh/share.json')).default,
+    paywall: (await import('./locales/zh/paywall.json')).default,
+    profile: (await import('./locales/zh/profile.json')).default,
+    settings: (await import('./locales/zh/settings.json')).default,
+    connections: (await import('./locales/zh/connections.json')).default,
+    saved: (await import('./locales/zh/saved.json')).default,
+    feedback: (await import('./locales/zh/feedback.json')).default,
+    chat: (await import('./locales/zh/chat.json')).default,
+    social: (await import('./locales/zh/social.json')).default,
+    map: (await import('./locales/zh/map.json')).default,
+    activity: (await import('./locales/zh/activity.json')).default,
+    board: (await import('./locales/zh/board.json')).default,
+    notifications: (await import('./locales/zh/notifications.json')).default,
+    modals: (await import('./locales/zh/modals.json')).default,
+    billing: (await import('./locales/zh/billing.json')).default,
+    expanded_details: (await import('./locales/zh/expanded_details.json')).default,
+    auth: (await import('./locales/zh/auth.json')).default,
+  }),
+  hi: async () => ({
+    common: (await import('./locales/hi/common.json')).default,
+    onboarding: (await import('./locales/hi/onboarding.json')).default,
+    navigation: (await import('./locales/hi/navigation.json')).default,
+    cards: (await import('./locales/hi/cards.json')).default,
+    discover: (await import('./locales/hi/discover.json')).default,
+    preferences: (await import('./locales/hi/preferences.json')).default,
+    share: (await import('./locales/hi/share.json')).default,
+    paywall: (await import('./locales/hi/paywall.json')).default,
+    profile: (await import('./locales/hi/profile.json')).default,
+    settings: (await import('./locales/hi/settings.json')).default,
+    connections: (await import('./locales/hi/connections.json')).default,
+    saved: (await import('./locales/hi/saved.json')).default,
+    feedback: (await import('./locales/hi/feedback.json')).default,
+    chat: (await import('./locales/hi/chat.json')).default,
+    social: (await import('./locales/hi/social.json')).default,
+    map: (await import('./locales/hi/map.json')).default,
+    activity: (await import('./locales/hi/activity.json')).default,
+    board: (await import('./locales/hi/board.json')).default,
+    notifications: (await import('./locales/hi/notifications.json')).default,
+    modals: (await import('./locales/hi/modals.json')).default,
+    billing: (await import('./locales/hi/billing.json')).default,
+    expanded_details: (await import('./locales/hi/expanded_details.json')).default,
+    auth: (await import('./locales/hi/auth.json')).default,
+  }),
+  id: async () => ({
+    common: (await import('./locales/id/common.json')).default,
+    onboarding: (await import('./locales/id/onboarding.json')).default,
+    navigation: (await import('./locales/id/navigation.json')).default,
+    cards: (await import('./locales/id/cards.json')).default,
+    discover: (await import('./locales/id/discover.json')).default,
+    preferences: (await import('./locales/id/preferences.json')).default,
+    share: (await import('./locales/id/share.json')).default,
+    paywall: (await import('./locales/id/paywall.json')).default,
+    profile: (await import('./locales/id/profile.json')).default,
+    settings: (await import('./locales/id/settings.json')).default,
+    connections: (await import('./locales/id/connections.json')).default,
+    saved: (await import('./locales/id/saved.json')).default,
+    feedback: (await import('./locales/id/feedback.json')).default,
+    chat: (await import('./locales/id/chat.json')).default,
+    social: (await import('./locales/id/social.json')).default,
+    map: (await import('./locales/id/map.json')).default,
+    activity: (await import('./locales/id/activity.json')).default,
+    board: (await import('./locales/id/board.json')).default,
+    notifications: (await import('./locales/id/notifications.json')).default,
+    modals: (await import('./locales/id/modals.json')).default,
+    billing: (await import('./locales/id/billing.json')).default,
+    expanded_details: (await import('./locales/id/expanded_details.json')).default,
+    auth: (await import('./locales/id/auth.json')).default,
+  }),
+  ja: async () => ({
+    common: (await import('./locales/ja/common.json')).default,
+    onboarding: (await import('./locales/ja/onboarding.json')).default,
+    navigation: (await import('./locales/ja/navigation.json')).default,
+    cards: (await import('./locales/ja/cards.json')).default,
+    discover: (await import('./locales/ja/discover.json')).default,
+    preferences: (await import('./locales/ja/preferences.json')).default,
+    share: (await import('./locales/ja/share.json')).default,
+    paywall: (await import('./locales/ja/paywall.json')).default,
+    profile: (await import('./locales/ja/profile.json')).default,
+    settings: (await import('./locales/ja/settings.json')).default,
+    connections: (await import('./locales/ja/connections.json')).default,
+    saved: (await import('./locales/ja/saved.json')).default,
+    feedback: (await import('./locales/ja/feedback.json')).default,
+    chat: (await import('./locales/ja/chat.json')).default,
+    social: (await import('./locales/ja/social.json')).default,
+    map: (await import('./locales/ja/map.json')).default,
+    activity: (await import('./locales/ja/activity.json')).default,
+    board: (await import('./locales/ja/board.json')).default,
+    notifications: (await import('./locales/ja/notifications.json')).default,
+    modals: (await import('./locales/ja/modals.json')).default,
+    billing: (await import('./locales/ja/billing.json')).default,
+    expanded_details: (await import('./locales/ja/expanded_details.json')).default,
+    auth: (await import('./locales/ja/auth.json')).default,
+  }),
+  ko: async () => ({
+    common: (await import('./locales/ko/common.json')).default,
+    onboarding: (await import('./locales/ko/onboarding.json')).default,
+    navigation: (await import('./locales/ko/navigation.json')).default,
+    cards: (await import('./locales/ko/cards.json')).default,
+    discover: (await import('./locales/ko/discover.json')).default,
+    preferences: (await import('./locales/ko/preferences.json')).default,
+    share: (await import('./locales/ko/share.json')).default,
+    paywall: (await import('./locales/ko/paywall.json')).default,
+    profile: (await import('./locales/ko/profile.json')).default,
+    settings: (await import('./locales/ko/settings.json')).default,
+    connections: (await import('./locales/ko/connections.json')).default,
+    saved: (await import('./locales/ko/saved.json')).default,
+    feedback: (await import('./locales/ko/feedback.json')).default,
+    chat: (await import('./locales/ko/chat.json')).default,
+    social: (await import('./locales/ko/social.json')).default,
+    map: (await import('./locales/ko/map.json')).default,
+    activity: (await import('./locales/ko/activity.json')).default,
+    board: (await import('./locales/ko/board.json')).default,
+    notifications: (await import('./locales/ko/notifications.json')).default,
+    modals: (await import('./locales/ko/modals.json')).default,
+    billing: (await import('./locales/ko/billing.json')).default,
+    expanded_details: (await import('./locales/ko/expanded_details.json')).default,
+    auth: (await import('./locales/ko/auth.json')).default,
+  }),
+  ms: async () => ({
+    common: (await import('./locales/ms/common.json')).default,
+    onboarding: (await import('./locales/ms/onboarding.json')).default,
+    navigation: (await import('./locales/ms/navigation.json')).default,
+    cards: (await import('./locales/ms/cards.json')).default,
+    discover: (await import('./locales/ms/discover.json')).default,
+    preferences: (await import('./locales/ms/preferences.json')).default,
+    share: (await import('./locales/ms/share.json')).default,
+    paywall: (await import('./locales/ms/paywall.json')).default,
+    profile: (await import('./locales/ms/profile.json')).default,
+    settings: (await import('./locales/ms/settings.json')).default,
+    connections: (await import('./locales/ms/connections.json')).default,
+    saved: (await import('./locales/ms/saved.json')).default,
+    feedback: (await import('./locales/ms/feedback.json')).default,
+    chat: (await import('./locales/ms/chat.json')).default,
+    social: (await import('./locales/ms/social.json')).default,
+    map: (await import('./locales/ms/map.json')).default,
+    activity: (await import('./locales/ms/activity.json')).default,
+    board: (await import('./locales/ms/board.json')).default,
+    notifications: (await import('./locales/ms/notifications.json')).default,
+    modals: (await import('./locales/ms/modals.json')).default,
+    billing: (await import('./locales/ms/billing.json')).default,
+    expanded_details: (await import('./locales/ms/expanded_details.json')).default,
+    auth: (await import('./locales/ms/auth.json')).default,
+  }),
+  el: async () => ({
+    common: (await import('./locales/el/common.json')).default,
+    onboarding: (await import('./locales/el/onboarding.json')).default,
+    navigation: (await import('./locales/el/navigation.json')).default,
+    cards: (await import('./locales/el/cards.json')).default,
+    discover: (await import('./locales/el/discover.json')).default,
+    preferences: (await import('./locales/el/preferences.json')).default,
+    share: (await import('./locales/el/share.json')).default,
+    paywall: (await import('./locales/el/paywall.json')).default,
+    profile: (await import('./locales/el/profile.json')).default,
+    settings: (await import('./locales/el/settings.json')).default,
+    connections: (await import('./locales/el/connections.json')).default,
+    saved: (await import('./locales/el/saved.json')).default,
+    feedback: (await import('./locales/el/feedback.json')).default,
+    chat: (await import('./locales/el/chat.json')).default,
+    social: (await import('./locales/el/social.json')).default,
+    map: (await import('./locales/el/map.json')).default,
+    activity: (await import('./locales/el/activity.json')).default,
+    board: (await import('./locales/el/board.json')).default,
+    notifications: (await import('./locales/el/notifications.json')).default,
+    modals: (await import('./locales/el/modals.json')).default,
+    billing: (await import('./locales/el/billing.json')).default,
+    expanded_details: (await import('./locales/el/expanded_details.json')).default,
+    auth: (await import('./locales/el/auth.json')).default,
+  }),
+  he: async () => ({
+    common: (await import('./locales/he/common.json')).default,
+    onboarding: (await import('./locales/he/onboarding.json')).default,
+    navigation: (await import('./locales/he/navigation.json')).default,
+    cards: (await import('./locales/he/cards.json')).default,
+    discover: (await import('./locales/he/discover.json')).default,
+    preferences: (await import('./locales/he/preferences.json')).default,
+    share: (await import('./locales/he/share.json')).default,
+    paywall: (await import('./locales/he/paywall.json')).default,
+    profile: (await import('./locales/he/profile.json')).default,
+    settings: (await import('./locales/he/settings.json')).default,
+    connections: (await import('./locales/he/connections.json')).default,
+    saved: (await import('./locales/he/saved.json')).default,
+    feedback: (await import('./locales/he/feedback.json')).default,
+    chat: (await import('./locales/he/chat.json')).default,
+    social: (await import('./locales/he/social.json')).default,
+    map: (await import('./locales/he/map.json')).default,
+    activity: (await import('./locales/he/activity.json')).default,
+    board: (await import('./locales/he/board.json')).default,
+    notifications: (await import('./locales/he/notifications.json')).default,
+    modals: (await import('./locales/he/modals.json')).default,
+    billing: (await import('./locales/he/billing.json')).default,
+    expanded_details: (await import('./locales/he/expanded_details.json')).default,
+    auth: (await import('./locales/he/auth.json')).default,
+  }),
+  it: async () => ({
+    common: (await import('./locales/it/common.json')).default,
+    onboarding: (await import('./locales/it/onboarding.json')).default,
+    navigation: (await import('./locales/it/navigation.json')).default,
+    cards: (await import('./locales/it/cards.json')).default,
+    discover: (await import('./locales/it/discover.json')).default,
+    preferences: (await import('./locales/it/preferences.json')).default,
+    share: (await import('./locales/it/share.json')).default,
+    paywall: (await import('./locales/it/paywall.json')).default,
+    profile: (await import('./locales/it/profile.json')).default,
+    settings: (await import('./locales/it/settings.json')).default,
+    connections: (await import('./locales/it/connections.json')).default,
+    saved: (await import('./locales/it/saved.json')).default,
+    feedback: (await import('./locales/it/feedback.json')).default,
+    chat: (await import('./locales/it/chat.json')).default,
+    social: (await import('./locales/it/social.json')).default,
+    map: (await import('./locales/it/map.json')).default,
+    activity: (await import('./locales/it/activity.json')).default,
+    board: (await import('./locales/it/board.json')).default,
+    notifications: (await import('./locales/it/notifications.json')).default,
+    modals: (await import('./locales/it/modals.json')).default,
+    billing: (await import('./locales/it/billing.json')).default,
+    expanded_details: (await import('./locales/it/expanded_details.json')).default,
+    auth: (await import('./locales/it/auth.json')).default,
+  }),
+  pl: async () => ({
+    common: (await import('./locales/pl/common.json')).default,
+    onboarding: (await import('./locales/pl/onboarding.json')).default,
+    navigation: (await import('./locales/pl/navigation.json')).default,
+    cards: (await import('./locales/pl/cards.json')).default,
+    discover: (await import('./locales/pl/discover.json')).default,
+    preferences: (await import('./locales/pl/preferences.json')).default,
+    share: (await import('./locales/pl/share.json')).default,
+    paywall: (await import('./locales/pl/paywall.json')).default,
+    profile: (await import('./locales/pl/profile.json')).default,
+    settings: (await import('./locales/pl/settings.json')).default,
+    connections: (await import('./locales/pl/connections.json')).default,
+    saved: (await import('./locales/pl/saved.json')).default,
+    feedback: (await import('./locales/pl/feedback.json')).default,
+    chat: (await import('./locales/pl/chat.json')).default,
+    social: (await import('./locales/pl/social.json')).default,
+    map: (await import('./locales/pl/map.json')).default,
+    activity: (await import('./locales/pl/activity.json')).default,
+    board: (await import('./locales/pl/board.json')).default,
+    notifications: (await import('./locales/pl/notifications.json')).default,
+    modals: (await import('./locales/pl/modals.json')).default,
+    billing: (await import('./locales/pl/billing.json')).default,
+    expanded_details: (await import('./locales/pl/expanded_details.json')).default,
+    auth: (await import('./locales/pl/auth.json')).default,
+  }),
+  ro: async () => ({
+    common: (await import('./locales/ro/common.json')).default,
+    onboarding: (await import('./locales/ro/onboarding.json')).default,
+    navigation: (await import('./locales/ro/navigation.json')).default,
+    cards: (await import('./locales/ro/cards.json')).default,
+    discover: (await import('./locales/ro/discover.json')).default,
+    preferences: (await import('./locales/ro/preferences.json')).default,
+    share: (await import('./locales/ro/share.json')).default,
+    paywall: (await import('./locales/ro/paywall.json')).default,
+    profile: (await import('./locales/ro/profile.json')).default,
+    settings: (await import('./locales/ro/settings.json')).default,
+    connections: (await import('./locales/ro/connections.json')).default,
+    saved: (await import('./locales/ro/saved.json')).default,
+    feedback: (await import('./locales/ro/feedback.json')).default,
+    chat: (await import('./locales/ro/chat.json')).default,
+    social: (await import('./locales/ro/social.json')).default,
+    map: (await import('./locales/ro/map.json')).default,
+    activity: (await import('./locales/ro/activity.json')).default,
+    board: (await import('./locales/ro/board.json')).default,
+    notifications: (await import('./locales/ro/notifications.json')).default,
+    modals: (await import('./locales/ro/modals.json')).default,
+    billing: (await import('./locales/ro/billing.json')).default,
+    expanded_details: (await import('./locales/ro/expanded_details.json')).default,
+    auth: (await import('./locales/ro/auth.json')).default,
+  }),
+  ru: async () => ({
+    common: (await import('./locales/ru/common.json')).default,
+    onboarding: (await import('./locales/ru/onboarding.json')).default,
+    navigation: (await import('./locales/ru/navigation.json')).default,
+    cards: (await import('./locales/ru/cards.json')).default,
+    discover: (await import('./locales/ru/discover.json')).default,
+    preferences: (await import('./locales/ru/preferences.json')).default,
+    share: (await import('./locales/ru/share.json')).default,
+    paywall: (await import('./locales/ru/paywall.json')).default,
+    profile: (await import('./locales/ru/profile.json')).default,
+    settings: (await import('./locales/ru/settings.json')).default,
+    connections: (await import('./locales/ru/connections.json')).default,
+    saved: (await import('./locales/ru/saved.json')).default,
+    feedback: (await import('./locales/ru/feedback.json')).default,
+    chat: (await import('./locales/ru/chat.json')).default,
+    social: (await import('./locales/ru/social.json')).default,
+    map: (await import('./locales/ru/map.json')).default,
+    activity: (await import('./locales/ru/activity.json')).default,
+    board: (await import('./locales/ru/board.json')).default,
+    notifications: (await import('./locales/ru/notifications.json')).default,
+    modals: (await import('./locales/ru/modals.json')).default,
+    billing: (await import('./locales/ru/billing.json')).default,
+    expanded_details: (await import('./locales/ru/expanded_details.json')).default,
+    auth: (await import('./locales/ru/auth.json')).default,
+  }),
+  sv: async () => ({
+    common: (await import('./locales/sv/common.json')).default,
+    onboarding: (await import('./locales/sv/onboarding.json')).default,
+    navigation: (await import('./locales/sv/navigation.json')).default,
+    cards: (await import('./locales/sv/cards.json')).default,
+    discover: (await import('./locales/sv/discover.json')).default,
+    preferences: (await import('./locales/sv/preferences.json')).default,
+    share: (await import('./locales/sv/share.json')).default,
+    paywall: (await import('./locales/sv/paywall.json')).default,
+    profile: (await import('./locales/sv/profile.json')).default,
+    settings: (await import('./locales/sv/settings.json')).default,
+    connections: (await import('./locales/sv/connections.json')).default,
+    saved: (await import('./locales/sv/saved.json')).default,
+    feedback: (await import('./locales/sv/feedback.json')).default,
+    chat: (await import('./locales/sv/chat.json')).default,
+    social: (await import('./locales/sv/social.json')).default,
+    map: (await import('./locales/sv/map.json')).default,
+    activity: (await import('./locales/sv/activity.json')).default,
+    board: (await import('./locales/sv/board.json')).default,
+    notifications: (await import('./locales/sv/notifications.json')).default,
+    modals: (await import('./locales/sv/modals.json')).default,
+    billing: (await import('./locales/sv/billing.json')).default,
+    expanded_details: (await import('./locales/sv/expanded_details.json')).default,
+    auth: (await import('./locales/sv/auth.json')).default,
+  }),
+  th: async () => ({
+    common: (await import('./locales/th/common.json')).default,
+    onboarding: (await import('./locales/th/onboarding.json')).default,
+    navigation: (await import('./locales/th/navigation.json')).default,
+    cards: (await import('./locales/th/cards.json')).default,
+    discover: (await import('./locales/th/discover.json')).default,
+    preferences: (await import('./locales/th/preferences.json')).default,
+    share: (await import('./locales/th/share.json')).default,
+    paywall: (await import('./locales/th/paywall.json')).default,
+    profile: (await import('./locales/th/profile.json')).default,
+    settings: (await import('./locales/th/settings.json')).default,
+    connections: (await import('./locales/th/connections.json')).default,
+    saved: (await import('./locales/th/saved.json')).default,
+    feedback: (await import('./locales/th/feedback.json')).default,
+    chat: (await import('./locales/th/chat.json')).default,
+    social: (await import('./locales/th/social.json')).default,
+    map: (await import('./locales/th/map.json')).default,
+    activity: (await import('./locales/th/activity.json')).default,
+    board: (await import('./locales/th/board.json')).default,
+    notifications: (await import('./locales/th/notifications.json')).default,
+    modals: (await import('./locales/th/modals.json')).default,
+    billing: (await import('./locales/th/billing.json')).default,
+    expanded_details: (await import('./locales/th/expanded_details.json')).default,
+    auth: (await import('./locales/th/auth.json')).default,
+  }),
+  tr: async () => ({
+    common: (await import('./locales/tr/common.json')).default,
+    onboarding: (await import('./locales/tr/onboarding.json')).default,
+    navigation: (await import('./locales/tr/navigation.json')).default,
+    cards: (await import('./locales/tr/cards.json')).default,
+    discover: (await import('./locales/tr/discover.json')).default,
+    preferences: (await import('./locales/tr/preferences.json')).default,
+    share: (await import('./locales/tr/share.json')).default,
+    paywall: (await import('./locales/tr/paywall.json')).default,
+    profile: (await import('./locales/tr/profile.json')).default,
+    settings: (await import('./locales/tr/settings.json')).default,
+    connections: (await import('./locales/tr/connections.json')).default,
+    saved: (await import('./locales/tr/saved.json')).default,
+    feedback: (await import('./locales/tr/feedback.json')).default,
+    chat: (await import('./locales/tr/chat.json')).default,
+    social: (await import('./locales/tr/social.json')).default,
+    map: (await import('./locales/tr/map.json')).default,
+    activity: (await import('./locales/tr/activity.json')).default,
+    board: (await import('./locales/tr/board.json')).default,
+    notifications: (await import('./locales/tr/notifications.json')).default,
+    modals: (await import('./locales/tr/modals.json')).default,
+    billing: (await import('./locales/tr/billing.json')).default,
+    expanded_details: (await import('./locales/tr/expanded_details.json')).default,
+    auth: (await import('./locales/tr/auth.json')).default,
+  }),
+  uk: async () => ({
+    common: (await import('./locales/uk/common.json')).default,
+    onboarding: (await import('./locales/uk/onboarding.json')).default,
+    navigation: (await import('./locales/uk/navigation.json')).default,
+    cards: (await import('./locales/uk/cards.json')).default,
+    discover: (await import('./locales/uk/discover.json')).default,
+    preferences: (await import('./locales/uk/preferences.json')).default,
+    share: (await import('./locales/uk/share.json')).default,
+    paywall: (await import('./locales/uk/paywall.json')).default,
+    profile: (await import('./locales/uk/profile.json')).default,
+    settings: (await import('./locales/uk/settings.json')).default,
+    connections: (await import('./locales/uk/connections.json')).default,
+    saved: (await import('./locales/uk/saved.json')).default,
+    feedback: (await import('./locales/uk/feedback.json')).default,
+    chat: (await import('./locales/uk/chat.json')).default,
+    social: (await import('./locales/uk/social.json')).default,
+    map: (await import('./locales/uk/map.json')).default,
+    activity: (await import('./locales/uk/activity.json')).default,
+    board: (await import('./locales/uk/board.json')).default,
+    notifications: (await import('./locales/uk/notifications.json')).default,
+    modals: (await import('./locales/uk/modals.json')).default,
+    billing: (await import('./locales/uk/billing.json')).default,
+    expanded_details: (await import('./locales/uk/expanded_details.json')).default,
+    auth: (await import('./locales/uk/auth.json')).default,
+  }),
+  vi: async () => ({
+    common: (await import('./locales/vi/common.json')).default,
+    onboarding: (await import('./locales/vi/onboarding.json')).default,
+    navigation: (await import('./locales/vi/navigation.json')).default,
+    cards: (await import('./locales/vi/cards.json')).default,
+    discover: (await import('./locales/vi/discover.json')).default,
+    preferences: (await import('./locales/vi/preferences.json')).default,
+    share: (await import('./locales/vi/share.json')).default,
+    paywall: (await import('./locales/vi/paywall.json')).default,
+    profile: (await import('./locales/vi/profile.json')).default,
+    settings: (await import('./locales/vi/settings.json')).default,
+    connections: (await import('./locales/vi/connections.json')).default,
+    saved: (await import('./locales/vi/saved.json')).default,
+    feedback: (await import('./locales/vi/feedback.json')).default,
+    chat: (await import('./locales/vi/chat.json')).default,
+    social: (await import('./locales/vi/social.json')).default,
+    map: (await import('./locales/vi/map.json')).default,
+    activity: (await import('./locales/vi/activity.json')).default,
+    board: (await import('./locales/vi/board.json')).default,
+    notifications: (await import('./locales/vi/notifications.json')).default,
+    modals: (await import('./locales/vi/modals.json')).default,
+    billing: (await import('./locales/vi/billing.json')).default,
+    expanded_details: (await import('./locales/vi/expanded_details.json')).default,
+    auth: (await import('./locales/vi/auth.json')).default,
+  }),
+}
 
 const LANGUAGE_STORAGE_KEY = 'mingla_preferred_language'
 
@@ -746,51 +769,81 @@ export async function persistLanguage(code: string): Promise<void> {
   } catch {}
 }
 
+/**
+ * Lazy-load a language's namespace bundles into i18next.
+ * Returns immediately if the language is already loaded or is 'en' (always eager).
+ *
+ * ORCH-0675 Wave 1 RC-2 — fired on initial cold start (if active != 'en') AND
+ * on language change. Errors are surfaced via console.error (Constitution #3);
+ * fallbackLng: 'en' ensures UI continues rendering.
+ */
+export async function ensureLanguageLoaded(lang: string): Promise<void> {
+  if (lang === 'en') return // always eager
+  if (i18n.hasResourceBundle(lang, 'common')) return // already loaded
+
+  const loader = localeLoaders[lang]
+  if (!loader) {
+    console.warn(`[i18n] Unknown language code: ${lang}`)
+    return
+  }
+
+  try {
+    const bundles = await loader()
+    for (const ns of NAMESPACES) {
+      if (bundles[ns]) {
+        i18n.addResourceBundle(lang, ns, bundles[ns], /* deep */ true, /* overwrite */ true)
+      }
+    }
+  } catch (err) {
+    console.error(`[i18n] Failed to load language ${lang}:`, err)
+    // Falls back to en (configured below).
+  }
+}
+
+const initialLang = getDefaultLanguageCode()
+
 i18n.use(initReactI18next).init({
   resources: {
-    en: { common: en_common, onboarding: en_onboarding, navigation: en_navigation, cards: en_cards, discover: en_discover, preferences: en_preferences, share: en_share, paywall: en_paywall, profile: en_profile, settings: en_settings, connections: en_connections, saved: en_saved, feedback: en_feedback, chat: en_chat, social: en_social, map: en_map, activity: en_activity, board: en_board, notifications: en_notifications, modals: en_modals, billing: en_billing, expanded_details: en_expanded_details, auth: en_auth },
-    es: { common: es_common, onboarding: es_onboarding, navigation: es_navigation, cards: es_cards, discover: es_discover, preferences: es_preferences, share: es_share, paywall: es_paywall, profile: es_profile, settings: es_settings, connections: es_connections, saved: es_saved, feedback: es_feedback, chat: es_chat, social: es_social, map: es_map, activity: es_activity, board: es_board, notifications: es_notifications, modals: es_modals, billing: es_billing, expanded_details: es_expanded_details, auth: es_auth },
-    bin: { common: bin_common, onboarding: bin_onboarding, navigation: bin_navigation, cards: bin_cards, discover: bin_discover, preferences: bin_preferences, share: bin_share, paywall: bin_paywall, profile: bin_profile, settings: bin_settings, connections: bin_connections, saved: bin_saved, feedback: bin_feedback, chat: bin_chat, social: bin_social, map: bin_map, activity: bin_activity, board: bin_board, notifications: bin_notifications, modals: bin_modals, billing: bin_billing, expanded_details: bin_expanded_details, auth: bin_auth },
-    ha: { common: ha_common, onboarding: ha_onboarding, navigation: ha_navigation, cards: ha_cards, discover: ha_discover, preferences: ha_preferences, share: ha_share, paywall: ha_paywall, profile: ha_profile, settings: ha_settings, connections: ha_connections, saved: ha_saved, feedback: ha_feedback, chat: ha_chat, social: ha_social, map: ha_map, activity: ha_activity, board: ha_board, notifications: ha_notifications, modals: ha_modals, billing: ha_billing, expanded_details: ha_expanded_details, auth: ha_auth },
-    ig: { common: ig_common, onboarding: ig_onboarding, navigation: ig_navigation, cards: ig_cards, discover: ig_discover, preferences: ig_preferences, share: ig_share, paywall: ig_paywall, profile: ig_profile, settings: ig_settings, connections: ig_connections, saved: ig_saved, feedback: ig_feedback, chat: ig_chat, social: ig_social, map: ig_map, activity: ig_activity, board: ig_board, notifications: ig_notifications, modals: ig_modals, billing: ig_billing, expanded_details: ig_expanded_details, auth: ig_auth },
-    yo: { common: yo_common, onboarding: yo_onboarding, navigation: yo_navigation, cards: yo_cards, discover: yo_discover, preferences: yo_preferences, share: yo_share, paywall: yo_paywall, profile: yo_profile, settings: yo_settings, connections: yo_connections, saved: yo_saved, feedback: yo_feedback, chat: yo_chat, social: yo_social, map: yo_map, activity: yo_activity, board: yo_board, notifications: yo_notifications, modals: yo_modals, billing: yo_billing, expanded_details: yo_expanded_details, auth: yo_auth },
-    fr: { common: fr_common, onboarding: fr_onboarding, navigation: fr_navigation, cards: fr_cards, discover: fr_discover, preferences: fr_preferences, share: fr_share, paywall: fr_paywall, profile: fr_profile, settings: fr_settings, connections: fr_connections, saved: fr_saved, feedback: fr_feedback, chat: fr_chat, social: fr_social, map: fr_map, activity: fr_activity, board: fr_board, notifications: fr_notifications, modals: fr_modals, billing: fr_billing, expanded_details: fr_expanded_details, auth: fr_auth },
-    nl: { common: nl_common, onboarding: nl_onboarding, navigation: nl_navigation, cards: nl_cards, discover: nl_discover, preferences: nl_preferences, share: nl_share, paywall: nl_paywall, profile: nl_profile, settings: nl_settings, connections: nl_connections, saved: nl_saved, feedback: nl_feedback, chat: nl_chat, social: nl_social, map: nl_map, activity: nl_activity, board: nl_board, notifications: nl_notifications, modals: nl_modals, billing: nl_billing, expanded_details: nl_expanded_details, auth: nl_auth },
-    de: { common: de_common, onboarding: de_onboarding, navigation: de_navigation, cards: de_cards, discover: de_discover, preferences: de_preferences, share: de_share, paywall: de_paywall, profile: de_profile, settings: de_settings, connections: de_connections, saved: de_saved, feedback: de_feedback, chat: de_chat, social: de_social, map: de_map, activity: de_activity, board: de_board, notifications: de_notifications, modals: de_modals, billing: de_billing, expanded_details: de_expanded_details, auth: de_auth },
-    pt: { common: pt_common, onboarding: pt_onboarding, navigation: pt_navigation, cards: pt_cards, discover: pt_discover, preferences: pt_preferences, share: pt_share, paywall: pt_paywall, profile: pt_profile, settings: pt_settings, connections: pt_connections, saved: pt_saved, feedback: pt_feedback, chat: pt_chat, social: pt_social, map: pt_map, activity: pt_activity, board: pt_board, notifications: pt_notifications, modals: pt_modals, billing: pt_billing, expanded_details: pt_expanded_details, auth: pt_auth },
-    ar: { common: ar_common, onboarding: ar_onboarding, navigation: ar_navigation, cards: ar_cards, discover: ar_discover, preferences: ar_preferences, share: ar_share, paywall: ar_paywall, profile: ar_profile, settings: ar_settings, connections: ar_connections, saved: ar_saved, feedback: ar_feedback, chat: ar_chat, social: ar_social, map: ar_map, activity: ar_activity, board: ar_board, notifications: ar_notifications, modals: ar_modals, billing: ar_billing, expanded_details: ar_expanded_details, auth: ar_auth },
-    bn: { common: bn_common, onboarding: bn_onboarding, navigation: bn_navigation, cards: bn_cards, discover: bn_discover, preferences: bn_preferences, share: bn_share, paywall: bn_paywall, profile: bn_profile, settings: bn_settings, connections: bn_connections, saved: bn_saved, feedback: bn_feedback, chat: bn_chat, social: bn_social, map: bn_map, activity: bn_activity, board: bn_board, notifications: bn_notifications, modals: bn_modals, billing: bn_billing, expanded_details: bn_expanded_details, auth: bn_auth },
-    zh: { common: zh_common, onboarding: zh_onboarding, navigation: zh_navigation, cards: zh_cards, discover: zh_discover, preferences: zh_preferences, share: zh_share, paywall: zh_paywall, profile: zh_profile, settings: zh_settings, connections: zh_connections, saved: zh_saved, feedback: zh_feedback, chat: zh_chat, social: zh_social, map: zh_map, activity: zh_activity, board: zh_board, notifications: zh_notifications, modals: zh_modals, billing: zh_billing, expanded_details: zh_expanded_details, auth: zh_auth },
-    hi: { common: hi_common, onboarding: hi_onboarding, navigation: hi_navigation, cards: hi_cards, discover: hi_discover, preferences: hi_preferences, share: hi_share, paywall: hi_paywall, profile: hi_profile, settings: hi_settings, connections: hi_connections, saved: hi_saved, feedback: hi_feedback, chat: hi_chat, social: hi_social, map: hi_map, activity: hi_activity, board: hi_board, notifications: hi_notifications, modals: hi_modals, billing: hi_billing, expanded_details: hi_expanded_details, auth: hi_auth },
-    id: { common: id_common, onboarding: id_onboarding, navigation: id_navigation, cards: id_cards, discover: id_discover, preferences: id_preferences, share: id_share, paywall: id_paywall, profile: id_profile, settings: id_settings, connections: id_connections, saved: id_saved, feedback: id_feedback, chat: id_chat, social: id_social, map: id_map, activity: id_activity, board: id_board, notifications: id_notifications, modals: id_modals, billing: id_billing, expanded_details: id_expanded_details, auth: id_auth },
-    ja: { common: ja_common, onboarding: ja_onboarding, navigation: ja_navigation, cards: ja_cards, discover: ja_discover, preferences: ja_preferences, share: ja_share, paywall: ja_paywall, profile: ja_profile, settings: ja_settings, connections: ja_connections, saved: ja_saved, feedback: ja_feedback, chat: ja_chat, social: ja_social, map: ja_map, activity: ja_activity, board: ja_board, notifications: ja_notifications, modals: ja_modals, billing: ja_billing, expanded_details: ja_expanded_details, auth: ja_auth },
-    ko: { common: ko_common, onboarding: ko_onboarding, navigation: ko_navigation, cards: ko_cards, discover: ko_discover, preferences: ko_preferences, share: ko_share, paywall: ko_paywall, profile: ko_profile, settings: ko_settings, connections: ko_connections, saved: ko_saved, feedback: ko_feedback, chat: ko_chat, social: ko_social, map: ko_map, activity: ko_activity, board: ko_board, notifications: ko_notifications, modals: ko_modals, billing: ko_billing, expanded_details: ko_expanded_details, auth: ko_auth },
-    ms: { common: ms_common, onboarding: ms_onboarding, navigation: ms_navigation, cards: ms_cards, discover: ms_discover, preferences: ms_preferences, share: ms_share, paywall: ms_paywall, profile: ms_profile, settings: ms_settings, connections: ms_connections, saved: ms_saved, feedback: ms_feedback, chat: ms_chat, social: ms_social, map: ms_map, activity: ms_activity, board: ms_board, notifications: ms_notifications, modals: ms_modals, billing: ms_billing, expanded_details: ms_expanded_details, auth: ms_auth },
-    el: { common: el_common, onboarding: el_onboarding, navigation: el_navigation, cards: el_cards, discover: el_discover, preferences: el_preferences, share: el_share, paywall: el_paywall, profile: el_profile, settings: el_settings, connections: el_connections, saved: el_saved, feedback: el_feedback, chat: el_chat, social: el_social, map: el_map, activity: el_activity, board: el_board, notifications: el_notifications, modals: el_modals, billing: el_billing, expanded_details: el_expanded_details, auth: el_auth },
-    he: { common: he_common, onboarding: he_onboarding, navigation: he_navigation, cards: he_cards, discover: he_discover, preferences: he_preferences, share: he_share, paywall: he_paywall, profile: he_profile, settings: he_settings, connections: he_connections, saved: he_saved, feedback: he_feedback, chat: he_chat, social: he_social, map: he_map, activity: he_activity, board: he_board, notifications: he_notifications, modals: he_modals, billing: he_billing, expanded_details: he_expanded_details, auth: he_auth },
-    it: { common: it_common, onboarding: it_onboarding, navigation: it_navigation, cards: it_cards, discover: it_discover, preferences: it_preferences, share: it_share, paywall: it_paywall, profile: it_profile, settings: it_settings, connections: it_connections, saved: it_saved, feedback: it_feedback, chat: it_chat, social: it_social, map: it_map, activity: it_activity, board: it_board, notifications: it_notifications, modals: it_modals, billing: it_billing, expanded_details: it_expanded_details, auth: it_auth },
-    pl: { common: pl_common, onboarding: pl_onboarding, navigation: pl_navigation, cards: pl_cards, discover: pl_discover, preferences: pl_preferences, share: pl_share, paywall: pl_paywall, profile: pl_profile, settings: pl_settings, connections: pl_connections, saved: pl_saved, feedback: pl_feedback, chat: pl_chat, social: pl_social, map: pl_map, activity: pl_activity, board: pl_board, notifications: pl_notifications, modals: pl_modals, billing: pl_billing, expanded_details: pl_expanded_details, auth: pl_auth },
-    ro: { common: ro_common, onboarding: ro_onboarding, navigation: ro_navigation, cards: ro_cards, discover: ro_discover, preferences: ro_preferences, share: ro_share, paywall: ro_paywall, profile: ro_profile, settings: ro_settings, connections: ro_connections, saved: ro_saved, feedback: ro_feedback, chat: ro_chat, social: ro_social, map: ro_map, activity: ro_activity, board: ro_board, notifications: ro_notifications, modals: ro_modals, billing: ro_billing, expanded_details: ro_expanded_details, auth: ro_auth },
-    ru: { common: ru_common, onboarding: ru_onboarding, navigation: ru_navigation, cards: ru_cards, discover: ru_discover, preferences: ru_preferences, share: ru_share, paywall: ru_paywall, profile: ru_profile, settings: ru_settings, connections: ru_connections, saved: ru_saved, feedback: ru_feedback, chat: ru_chat, social: ru_social, map: ru_map, activity: ru_activity, board: ru_board, notifications: ru_notifications, modals: ru_modals, billing: ru_billing, expanded_details: ru_expanded_details, auth: ru_auth },
-    sv: { common: sv_common, onboarding: sv_onboarding, navigation: sv_navigation, cards: sv_cards, discover: sv_discover, preferences: sv_preferences, share: sv_share, paywall: sv_paywall, profile: sv_profile, settings: sv_settings, connections: sv_connections, saved: sv_saved, feedback: sv_feedback, chat: sv_chat, social: sv_social, map: sv_map, activity: sv_activity, board: sv_board, notifications: sv_notifications, modals: sv_modals, billing: sv_billing, expanded_details: sv_expanded_details, auth: sv_auth },
-    th: { common: th_common, onboarding: th_onboarding, navigation: th_navigation, cards: th_cards, discover: th_discover, preferences: th_preferences, share: th_share, paywall: th_paywall, profile: th_profile, settings: th_settings, connections: th_connections, saved: th_saved, feedback: th_feedback, chat: th_chat, social: th_social, map: th_map, activity: th_activity, board: th_board, notifications: th_notifications, modals: th_modals, billing: th_billing, expanded_details: th_expanded_details, auth: th_auth },
-    tr: { common: tr_common, onboarding: tr_onboarding, navigation: tr_navigation, cards: tr_cards, discover: tr_discover, preferences: tr_preferences, share: tr_share, paywall: tr_paywall, profile: tr_profile, settings: tr_settings, connections: tr_connections, saved: tr_saved, feedback: tr_feedback, chat: tr_chat, social: tr_social, map: tr_map, activity: tr_activity, board: tr_board, notifications: tr_notifications, modals: tr_modals, billing: tr_billing, expanded_details: tr_expanded_details, auth: tr_auth },
-    uk: { common: uk_common, onboarding: uk_onboarding, navigation: uk_navigation, cards: uk_cards, discover: uk_discover, preferences: uk_preferences, share: uk_share, paywall: uk_paywall, profile: uk_profile, settings: uk_settings, connections: uk_connections, saved: uk_saved, feedback: uk_feedback, chat: uk_chat, social: uk_social, map: uk_map, activity: uk_activity, board: uk_board, notifications: uk_notifications, modals: uk_modals, billing: uk_billing, expanded_details: uk_expanded_details, auth: uk_auth },
-    vi: { common: vi_common, onboarding: vi_onboarding, navigation: vi_navigation, cards: vi_cards, discover: vi_discover, preferences: vi_preferences, share: vi_share, paywall: vi_paywall, profile: vi_profile, settings: vi_settings, connections: vi_connections, saved: vi_saved, feedback: vi_feedback, chat: vi_chat, social: vi_social, map: vi_map, activity: vi_activity, board: vi_board, notifications: vi_notifications, modals: vi_modals, billing: vi_billing, expanded_details: vi_expanded_details, auth: vi_auth },
+    en: {
+      common: en_common, onboarding: en_onboarding, navigation: en_navigation,
+      cards: en_cards, discover: en_discover, preferences: en_preferences,
+      share: en_share, paywall: en_paywall, profile: en_profile,
+      settings: en_settings, connections: en_connections, saved: en_saved,
+      feedback: en_feedback, chat: en_chat, social: en_social, map: en_map,
+      activity: en_activity, board: en_board, notifications: en_notifications,
+      modals: en_modals, billing: en_billing, expanded_details: en_expanded_details,
+      auth: en_auth,
+    },
   },
-  lng: getDefaultLanguageCode(),
+  lng: initialLang,
   fallbackLng: 'en',
-  ns: ['common', 'onboarding', 'navigation', 'cards', 'discover', 'preferences', 'share', 'paywall', 'profile', 'settings', 'connections', 'saved', 'feedback', 'chat', 'social', 'map', 'activity', 'board', 'notifications', 'modals', 'billing', 'expanded_details', 'auth'],
+  ns: NAMESPACES as unknown as string[],
   defaultNS: 'common',
   interpolation: { escapeValue: false },
+  // ORCH-0675 Wave 1 — DO NOT enable useSuspense:true. Would block first paint
+  // and reintroduce a different cold-start cost. Brief flash on cold start for
+  // non-en is the accepted Wave 1 trade-off.
   react: { useSuspense: false },
   compatibilityJSON: 'v4',
   pluralSeparator: '_',
 })
 
+// Kick off lazy load of the active language on cold start (if non-en) so UI
+// strings flip from en fallback to user's language ASAP. Fire-and-forget.
+if (initialLang !== 'en') {
+  ensureLanguageLoaded(initialLang).then(() => {
+    if (i18n.language !== initialLang) {
+      void i18n.changeLanguage(initialLang)
+    }
+  })
+}
+
+// Also handle persisted language preference (may differ from device default).
 getPersistedLanguage().then((stored) => {
   if (stored && stored !== i18n.language) {
-    i18n.changeLanguage(stored)
+    ensureLanguageLoaded(stored).then(() => {
+      void i18n.changeLanguage(stored)
+    })
   }
 })
 

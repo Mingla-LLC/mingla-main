@@ -21,6 +21,8 @@ import {
   Film,
   Palette,
   Gamepad2,
+  Coffee,
+  Drama,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -37,14 +39,22 @@ export const INTENT_ICON_MAP: Record<string, LucideIcon> = {
 
 // ─── Category slug → Lucide Icon ───────────────────────────────────────────
 // ORCH-0434: Updated to 8 visible categories with new slugs.
+// ORCH-0597 (Slice 5): split brunch_lunch_casual → brunch + casual_food.
+//   Legacy slug retained for resolution; remove after 2026-05-12.
+// ORCH-0598 (Slice 6): split movies_theatre → movies + theatre.
+//   Legacy slug retained for resolution; remove after 2026-05-13.
 
 export const CATEGORY_ICON_MAP: Record<string, LucideIcon> = {
   nature: Trees,
   drinks_and_music: Wine,
   icebreakers: Sparkles,
-  brunch_lunch_casual: UtensilsCrossed,
+  brunch: Coffee,
+  casual_food: UtensilsCrossed,
+  brunch_lunch_casual: UtensilsCrossed, // [TRANSITIONAL] legacy — remove after 2026-05-12
   upscale_fine_dining: ChefHat,
-  movies_theatre: Film,
+  movies: Film,
+  theatre: Drama,
+  movies_theatre: Film, // [TRANSITIONAL] legacy — remove after 2026-05-13
   creative_arts: Palette,
   play: Gamepad2,
 };

@@ -1,151 +1,24 @@
-import { useEffect, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAppStore } from '../store/appStore';
-import { supabase } from '../services/supabase';
-import * as savesService from '../services/savesService';
-import { savedCardKeys } from './queryKeys';
-
-// Re-export types for consumers
-export type { SavedExperience } from '../services/savesService';
-
-// ─── Query Hooks ─────────────────────────────────────────────────
-
-/** Fetch all saved experiences for the current user. Replaces useSaves().saves. */
-export function useSavesQuery() {
-  const { user } = useAppStore();
-  return useQuery({
-    queryKey: savedCardKeys.saves(user?.id ?? ''),
-    queryFn: () => savesService.fetchSaves(user!.id),
-    enabled: !!user?.id,
-    staleTime: 5 * 60 * 1000, // 5 min — saves change less frequently than boards
-  });
-}
-
-// ─── Mutation Hooks ──────────────────────────────────────────────
-
-/** Save an experience. */
-export function useAddSave() {
-  const queryClient = useQueryClient();
-  const { user } = useAppStore();
-
-  return useMutation({
-    mutationKey: ['saves', 'add'],
-    mutationFn: ({
-      experienceId,
-      status,
-      scheduledAt,
-    }: {
-      experienceId: string;
-      status?: string;
-      scheduledAt?: string;
-    }) => {
-      if (!user?.id) throw new Error('Not authenticated');
-      return savesService.addSave(user.id, experienceId, status, scheduledAt);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: savedCardKeys.all });
-    },
-    onError: (error) => {
-      console.error('[useAddSave] Failed:', error.message);
-    },
-  });
-}
-
-/** Update a saved experience. */
-export function useUpdateSave() {
-  const queryClient = useQueryClient();
-  const { user } = useAppStore();
-
-  return useMutation({
-    mutationKey: ['saves', 'update'],
-    mutationFn: ({
-      cardId,
-      updates,
-    }: {
-      cardId: string;
-      updates: Partial<savesService.SavedExperience>;
-    }) => {
-      if (!user?.id) throw new Error('Not authenticated');
-      return savesService.updateSave(user.id, cardId, updates);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: savedCardKeys.all });
-    },
-    onError: (error) => {
-      console.error('[useUpdateSave] Failed:', error.message);
-    },
-  });
-}
-
-/** Remove a saved experience. */
-export function useRemoveSave() {
-  const queryClient = useQueryClient();
-  const { user } = useAppStore();
-
-  return useMutation({
-    mutationKey: ['saves', 'remove'],
-    mutationFn: (cardId: string) => {
-      if (!user?.id) throw new Error('Not authenticated');
-      return savesService.removeSave(user.id, cardId);
-    },
-    onMutate: async (cardId) => {
-      await queryClient.cancelQueries({ queryKey: savedCardKeys.saves(user?.id ?? '') });
-
-      const previousSaves = queryClient.getQueryData<savesService.SavedExperience[]>(
-        savedCardKeys.saves(user?.id ?? ''),
-      );
-
-      // Optimistic removal
-      queryClient.setQueryData<savesService.SavedExperience[]>(
-        savedCardKeys.saves(user?.id ?? ''),
-        (old) => old?.filter(s => s.card_id !== cardId) ?? [],
-      );
-
-      return { previousSaves };
-    },
-    onError: (_error, _cardId, context) => {
-      if (context?.previousSaves) {
-        queryClient.setQueryData(
-          savedCardKeys.saves(user?.id ?? ''),
-          context.previousSaves,
-        );
-      }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: savedCardKeys.all });
-    },
-  });
-}
-
-// ─── Realtime Integration ────────────────────────────────────────
-
 /**
- * Hook to set up Realtime subscriptions for saved experiences.
- * Call this ONCE at a high level (e.g., alongside useBoardRealtimeSync).
+ * ORCH-0640 ch09 — Legacy save hooks retired (DEC-050).
+ *
+ * The original useSaveQueries hooks wrapped `savesService` (DELETED), which read/wrote
+ * the `saves` + `experiences` tables (both DROPPED in ch12). Those tables no longer
+ * exist.
+ *
+ * Replacement: use `savedCardsService` + `useSavedCards` (saved_card snapshot table).
+ * Existing callers that import from this file:
+ *   - `RealtimeSubscriptions.tsx` — uses useSavesRealtimeSync. Replaced with no-op.
+ *
+ * No other exports are needed. The file is kept (instead of deleted) only so that
+ * `RealtimeSubscriptions.tsx` still compiles without an OTA gap during cutover.
+ * Delete this file once RealtimeSubscriptions is amended to remove the import.
  */
-export function useSavesRealtimeSync() {
-  const queryClient = useQueryClient();
-  const { user } = useAppStore();
-  const userIdRef = useRef(user?.id);
-  userIdRef.current = user?.id;
 
-  useEffect(() => {
-    const userId = userIdRef.current;
-    if (!userId) return;
-
-    const channel = supabase
-      .channel(`saved_experiences_changes_rq_${userId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'saved_experiences', filter: `user_id=eq.${userId}` },
-        () => {
-          queryClient.invalidateQueries({ queryKey: savedCardKeys.all });
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient, user?.id]);
+// No-op: subscribes to nothing. `saved_card` table changes are watched via
+// `useSavedCards`' own React Query cache invalidation — no separate Realtime needed.
+export function useSavesRealtimeSync(): void {
+  // Intentionally empty.
 }
+
+// Type re-export is dropped — SavedExperience was tied to the deleted saves table.
+// If any consumer still needs it, they should use SavedCardModel from savedCardsService.

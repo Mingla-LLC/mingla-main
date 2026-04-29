@@ -7,7 +7,7 @@ import {
   Animated,
   Easing,
   Keyboard,
-  Dimensions,
+  useWindowDimensions,
   AccessibilityInfo,
 } from 'react-native';
 import Svg, { Defs, Rect, Mask } from 'react-native-svg';
@@ -58,7 +58,7 @@ export default function SpotlightOverlay(): React.ReactElement | null {
   const [bubbleHeight, setBubbleHeight] = useState(0);
   const hasEnteredRef = useRef(false);
 
-  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   // ── Accessibility ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -163,8 +163,13 @@ export default function SpotlightOverlay(): React.ReactElement | null {
   let arrowDirection: 'up' | 'down' | 'none' = 'none';
   let arrowX = 0;
 
-  if (!cutout) {
-    // Centered bubble (no measurement)
+  // ORCH-0635: step can opt into a screen-centered bubble regardless of cutout.
+  // Used by step 6 where the cutout is large (title + filter bar) and an auto-
+  // positioned bubble would hug an edge awkwardly.
+  const forceCenter = currentStepConfig.bubblePosition === 'center';
+
+  if (!cutout || forceCenter) {
+    // Centered bubble
     bubbleTop = (screenHeight - (bubbleHeight || 180)) / 2;
     bubbleLeft = (screenWidth - bubbleWidth) / 2;
     arrowDirection = 'none';

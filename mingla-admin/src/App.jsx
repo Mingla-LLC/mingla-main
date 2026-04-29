@@ -14,7 +14,7 @@ import { SeedPage } from "./pages/SeedPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { AdminPage } from "./pages/AdminPage";
 import { PlacePoolManagementPage } from "./pages/PlacePoolManagementPage";
-import { CardPoolManagementPage } from "./pages/CardPoolManagementPage";
+// ORCH-0671: PhotoPoolManagementPage DELETED — bouncer-blind ghost page replaced by Photos tab on Place Pool page.
 import { UserManagementPage } from "./pages/UserManagementPage";
 import { ContentModerationPage } from "./pages/ContentModerationPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
@@ -22,7 +22,11 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { EmailPage } from "./pages/EmailPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
 import { BetaFeedbackPage } from "./pages/BetaFeedbackPage";
-import { AIValidationPage } from "./pages/AIValidationPage";
+import { SignalLibraryPage } from "./pages/SignalLibraryPage";
+// ORCH-0640 ch08: AIValidationPage + CardPoolManagementPage DELETED.
+//   - Rules Filter tab rehomed to SignalLibraryPage via tab prop (ORCH-0640 DEC-045).
+//   - Seed / Refresh tabs rehomed to SeedPage.
+//   - Card Pool page has no successor (DEC-037 — card_pool archived).
 
 const PAGES = {
   overview: OverviewPage,
@@ -33,13 +37,13 @@ const PAGES = {
   tables: TableBrowserPage,
   seed: SeedPage,
   placepool: PlacePoolManagementPage,
-  cardpool: CardPoolManagementPage,
+  // ORCH-0671: 'photos' route deleted — getTabFromHash falls back to 'overview' via PAGES[hash] guard.
   feedback: BetaFeedbackPage,
   reports: ReportsPage,
   email: EmailPage,
   admin: AdminPage,
   settings: SettingsPage,
-  "ai-validation": AIValidationPage,
+  signals: SignalLibraryPage,
 };
 
 function getTabFromHash() {

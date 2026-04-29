@@ -18,6 +18,7 @@ import DateOptionsGrid from "./DateOptionsGrid";
 import WeekendDaySelection from "./WeekendDaySelection";
 import ProposeDateTimeFooter from "./ProposeDateTimeFooter";
 import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
+import { extractWeekdayText, isPlaceOpenAt } from "../../utils/openingHoursUtils";
 import { useTranslation } from 'react-i18next';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -113,67 +114,15 @@ export default function ProposeDateTimeModal({
     });
   };
 
-  /**
-   * Normalize openingHours from any format into a usable object.
-   */
-  const normalizeOpeningHours = (
-    raw: any,
-  ): { weekday_text?: string[]; open_now?: boolean } | null => {
-    if (!raw) return null;
-
-    let value = raw;
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (trimmed === "" || trimmed === '""') return null;
-
-      let attempts = 0;
-      while (typeof value === "string" && attempts < 3) {
-        try {
-          value = JSON.parse(value);
-          attempts++;
-        } catch {
-          break;
-        }
-      }
-    }
-
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      if (
-        value.weekday_text &&
-        Array.isArray(value.weekday_text) &&
-        value.weekday_text.length > 0
-      ) {
-        return { weekday_text: value.weekday_text, open_now: value.open_now };
-      }
-      return null;
-    }
-
-    if (Array.isArray(value) && value.length > 0) {
-      return { weekday_text: value };
-    }
-
-    if (typeof value === "string" && value.trim().length > 0) {
-      const lines = value
-        .split(/\n|;/)
-        .map((s: string) => s.trim())
-        .filter((s: string) => s.length > 0);
-      return lines.length > 0 ? { weekday_text: lines } : null;
-    }
-
-    return null;
-  };
-
-  const normalizedHours = useMemo(() => {
-    if (!card) return null;
-    return normalizeOpeningHours(card.openingHours);
-  }, [card]);
-
+  // [ORCH-0649 — CONSTITUTION #2] Local normalizeOpeningHours DELETED.
+  // extractWeekdayText (openingHoursUtils.ts) is the canonical reader — it
+  // handles Google v1 (weekdayDescriptions), Google legacy (weekday_text),
+  // Record<string,string>, plain string arrays, and JSON-stringified input,
+  // AND defensively rejects the pre-fix four-garbage-strings shape.
   const parsedOpeningHours = useMemo(() => {
-    if (!normalizedHours || !normalizedHours.weekday_text) return null;
-    return {
-      lines: normalizedHours.weekday_text,
-    };
-  }, [normalizedHours]);
+    const lines = extractWeekdayText(card?.openingHours ?? null);
+    return lines && lines.length > 0 ? { lines } : null;
+  }, [card?.openingHours]);
 
   // Live open/closed status computed from weekday_text against local clock
   const liveOpenStatus = useIsPlaceOpen(card?.openingHours ?? null);
@@ -278,129 +227,10 @@ export default function ProposeDateTimeModal({
     }
   };
 
-  const parseTimeString = (timeStr: string): number => {
-    const trimmed = timeStr.trim();
-    const match = trimmed.match(/(\d+):(\d+)\s*(AM|PM)/i);
-    if (!match) return 0;
-
-    let hours = parseInt(match[1], 10);
-    const minutes = parseInt(match[2], 10);
-    const period = match[3].toUpperCase();
-
-    if (period === "AM") {
-      if (hours === 12) hours = 0;
-    } else {
-      if (hours !== 12) hours += 12;
-    }
-
-    return hours * 60 + minutes;
-  };
-
-  const checkPlaceAvailability = (
-    dateToCheck: Date | null = null,
-  ): {
-    isOpen: boolean;
-    isAssumption: boolean;
-    reason?: string;
-  } => {
-    const date = dateToCheck || proposedDateTime;
-
-    if (!card || !date) {
-      return {
-        isOpen: true,
-        isAssumption: true,
-        reason: "No card or time selected",
-      };
-    }
-
-    const openingHours = normalizedHours;
-
-    if (
-      !openingHours ||
-      !openingHours.weekday_text ||
-      openingHours.weekday_text.length === 0
-    ) {
-      return {
-        isOpen: true,
-        isAssumption: true,
-        reason: "Opening hours data not available",
-      };
-    }
-
-    const dayOfWeek = date.getDay();
-    const dayNames = [
-      "Sunday",
-      "Monday",
-      "Tuesday",
-      "Wednesday",
-      "Thursday",
-      "Friday",
-      "Saturday",
-    ];
-    const selectedDayName = dayNames[dayOfWeek];
-
-    const dayHours = openingHours.weekday_text?.find((entry: string) =>
-      entry.startsWith(selectedDayName),
-    );
-
-    if (!dayHours) {
-      return { isOpen: false, isAssumption: false };
-    }
-
-    if (typeof dayHours !== "string") {
-      return {
-        isOpen: true,
-        isAssumption: true,
-        reason: "Invalid opening hours data format",
-      };
-    }
-
-    if (/open\s*24\s*hours?/i.test(dayHours)) {
-      return { isOpen: true, isAssumption: false };
-    }
-
-    if (/closed/i.test(dayHours)) {
-      return { isOpen: false, isAssumption: false };
-    }
-
-    let timeRangeMatch = dayHours.match(/:\s*(.+?)\s*–\s*(.+)$/);
-    if (!timeRangeMatch)
-      timeRangeMatch = dayHours.match(/:\s*(.+?)\s*-\s*(.+)$/);
-    if (!timeRangeMatch)
-      timeRangeMatch = dayHours.match(/:\s*(.+?)\s*to\s*(.+)$/i);
-    if (!timeRangeMatch) {
-      return {
-        isOpen: true,
-        isAssumption: true,
-        reason: "Could not parse opening hours format",
-      };
-    }
-
-    const openTimeStr = timeRangeMatch[1].trim();
-    const closeTimeStr = timeRangeMatch[2].trim();
-    const openTimeMinutes = parseTimeString(openTimeStr);
-    const closeTimeMinutes = parseTimeString(closeTimeStr);
-    const selectedHours = date.getHours();
-    const selectedMinutes = date.getMinutes();
-    const selectedTimeMinutes = selectedHours * 60 + selectedMinutes;
-
-    if (closeTimeMinutes === 0) {
-      const isOpen = selectedTimeMinutes >= openTimeMinutes;
-      return { isOpen, isAssumption: false };
-    }
-
-    if (openTimeMinutes < closeTimeMinutes) {
-      const isOpen =
-        selectedTimeMinutes >= openTimeMinutes &&
-        selectedTimeMinutes < closeTimeMinutes;
-      return { isOpen, isAssumption: false };
-    } else {
-      const isOpen =
-        selectedTimeMinutes >= openTimeMinutes ||
-        selectedTimeMinutes < closeTimeMinutes;
-      return { isOpen, isAssumption: false };
-    }
-  };
+  // [ORCH-0649 — CONSTITUTION #2] Local parseTimeString + checkPlaceAvailability
+  // DELETED. Canonical isPlaceOpenAt (openingHoursUtils.ts) is now the single
+  // owner of the open/closed decision. See call site below for the
+  // true | false | null → {isOpen, isAssumption, reason} mapping.
 
   const handleDatePickerChange = (_event: any, date?: Date) => {
     if (Platform.OS === "android") {
@@ -474,11 +304,18 @@ export default function ProposeDateTimeModal({
     setProposedDateTime(proposedDate);
 
     setTimeout(() => {
-      const result = checkPlaceAvailability(proposedDate);
-      setIsPlaceOpen(result.isOpen);
-      setAvailabilityAssumption(
-        result.isAssumption ? result.reason || "Availability assumed" : null,
-      );
+      // [ORCH-0649] Canonical isPlaceOpenAt → {isOpen, isAssumption, reason}.
+      // null result = "cannot determine" → treat as advisory (allow schedule
+      // but show warning), NOT as closed.
+      const weekdayText = extractWeekdayText(card?.openingHours ?? null);
+      const openAt = isPlaceOpenAt(weekdayText, proposedDate);
+      if (openAt === null) {
+        setIsPlaceOpen(true);
+        setAvailabilityAssumption(t('activity:proposeDateTimeModal.hoursUnknown'));
+      } else {
+        setIsPlaceOpen(openAt);
+        setAvailabilityAssumption(null);
+      }
       setIsAvailabilityChecked(true);
       setIsCheckingAvailability(false);
     }, 500);
@@ -873,6 +710,8 @@ export default function ProposeDateTimeModal({
                 onChange={handleDatePickerChange}
                 minimumDate={new Date()}
                 style={pickerModalStyles.picker}
+                themeVariant="dark"
+                textColor="#FFFFFF"
               />
             </SafeAreaView>
           </View>
@@ -908,6 +747,8 @@ export default function ProposeDateTimeModal({
                 is24Hour={false}
                 onChange={handleTimePickerChange}
                 style={pickerModalStyles.picker}
+                themeVariant="dark"
+                textColor="#FFFFFF"
               />
             </SafeAreaView>
           </View>

@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "Κάνε μια Βόλτα",
   "unknown": "Άγνωστο",
   "time_just_now": "Μόλις τώρα",
-
   "toast_invite_sent": "Πρόσκληση Στάλθηκε!",
   "toast_invite_sent_msg": "Πρόσκληση συνεργασίας στάλθηκε στον/στην {{name}}",
   "toast_member_promoted": "Μέλος Προαγώθηκε",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "Προστέθηκε σε {{count}} Πίνακες!",
   "toast_added_board_msg": "Ο/Η {{name}} προστέθηκε στον πίνακα συνεργασίας",
   "toast_added_boards_msg": "Ο/Η {{name}} προστέθηκε σε {{count}} πίνακες συνεργασίας",
-  "toast_card_shared": "Κάρτα Κοινοποιήθηκε!",
-  "toast_card_shared_msg": "Μια αποθηκευμένη εμπειρία κοινοποιήθηκε στον/στην {{name}}",
   "toast_friend_removed": "Φίλος Αφαιρέθηκε",
   "toast_friend_removed_msg": "Ο/Η {{name}} αφαιρέθηκε από τη λίστα φίλων σου",
   "toast_user_blocked": "Χρήστης Μπλοκαρίστηκε",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "για παρενόχληση",
   "toast_report_reason_other": "για παραβίαση κοινοτικών κανόνων",
   "user_fallback": "Χρήστης",
-
   "calendar_access_needed": "Απαιτείται Πρόσβαση Ημερολογίου",
   "calendar_access_needed_msg": "Το Mingla χρειάζεται πρόσβαση στο ημερολόγιο για να προσθέσει εκδηλώσεις. Ενεργοποίησέ το στις ρυθμίσεις.",
   "open_settings": "Άνοιγμα Ρυθμίσεων",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "Κάτι πήγε στραβά κατά την προσθήκη. Δοκίμασε ξανά.",
   "added_to_calendar": "Προστέθηκε",
   "add_to_calendar": "Προσθήκη στο ημερολόγιο",
-
   "confidence_excellent": "Εξαιρετικό Ταίριασμα",
   "confidence_good": "Καλό Ταίριασμα",
   "confidence_fair": "Μέτριο Ταίριασμα",
@@ -157,22 +152,28 @@
   "match_time": "Χρόνος",
   "match_popularity": "Δημοτικότητα",
   "match_factors": "Παράγοντες Ταιριάσματος",
-
   "stat_views": "Προβολές",
   "stat_likes": "Μου Αρέσει",
   "stat_saves": "Αποθηκεύσεις",
   "stat_shares": "Κοινοποιήσεις",
   "review_count_one": "{{count}} κριτική",
   "review_count_other": "{{count}} κριτικές",
-
   "profile_update_failed": "Αποτυχία Ενημέρωσης Προφίλ",
   "profile_update_failed_msg": "Αποτυχία ενημέρωσης προφίλ. Δοκίμασε ξανά.",
   "saved_experience": "Αποθηκευμένη Εμπειρία",
   "experience": "Εμπειρία",
   "solo_experience": "Ατομική Εμπειρία",
   "untitled": "Χωρίς Τίτλο",
-
   "error_sign_in_save": "Συνδέσου για να αποθηκεύσεις εμπειρίες",
   "error_boundary_title": "Κάτι πήγε στραβά",
-  "error_boundary_message": "Αντιμετωπίσαμε ένα απρόσμενο σφάλμα. Δοκίμασε ξανά."
+  "error_boundary_message": "Αντιμετωπίσαμε ένα απρόσμενο σφάλμα. Δοκίμασε ξανά.",
+  "category_icebreakers": "Πάγος",
+  "category_drinks_and_music": "Ποτά & Μουσική",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Καθημερινό",
+  "category_upscale_fine_dining": "Γκουρμέ",
+  "category_movies": "Ταινίες",
+  "category_theatre": "Θέατρο",
+  "category_brunch_lunch_casual": "Brunch, μεσημεριανό & καθημερινά",
+  "category_movies_theatre": "Ταινίες & Θέατρο"
 }

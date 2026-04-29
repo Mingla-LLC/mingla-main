@@ -1,0 +1,128 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Apple JWT Auto-Rotation
+#
+# Apple's Sign in with Apple OAuth client_secret JWTs MUST expire within 180
+# days (Apple policy, not configurable). This workflow rotates the JWT every
+# 5 months on the 1st of the month at 08:00 UTC, leaving ~30 days buffer
+# before the previous JWT actually expires.
+#
+# On any failure (token generation, Supabase PAT invalid, PATCH rejected,
+# post-PATCH verification fail), this workflow opens a GitHub Issue tagged
+# 'rotation-failure'. Triage that issue immediately: web Apple sign-in will
+# break for new users when the current JWT expires (~30 days away).
+#
+# Manual trigger: workflow_dispatch on the Actions tab. Use this for the
+# first-run verification, emergency early rotation, or after rotating the
+# Apple .p8 key (in which case update the APPLE_P8_PRIVATE_KEY +
+# APPLE_KEY_ID secrets first).
+#
+# Operator runbook:
+# 1. To rotate the .p8 key (Apple revokes / new key created):
+#    a. Apple Developer Console → Keys → create new "Sign in with Apple" key
+#    b. Download the .p8 file (one-time download)
+#    c. Note the new Key ID
+#    d. GitHub Settings → Secrets → update APPLE_P8_PRIVATE_KEY and APPLE_KEY_ID
+#    e. Trigger this workflow manually (workflow_dispatch) to validate
+#
+# 2. To rotate the Supabase PAT (token expired/revoked):
+#    a. Supabase Dashboard → Account Settings → Access Tokens → generate new
+#    b. GitHub Settings → Secrets → update SUPABASE_MANAGEMENT_TOKEN
+#    c. Trigger this workflow manually to validate
+#
+# 3. Emergency rotation (e.g. JWT exposed in logs):
+#    a. Trigger this workflow manually
+#    b. Verify the run succeeded
+#    c. Old JWT is invalidated automatically by the new one
+#
+# Per ORCH-BIZ-AUTH-APPLE-JWT-AUTOROTATE
+# Spec: Mingla_Artifacts/specs/SPEC_APPLE_JWT_AUTOROTATE.md
+# Investigation: Mingla_Artifacts/reports/INVESTIGATION_APPLE_JWT_AUTOROTATE.md
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Rotate Apple OAuth JWT
+
+on:
+  schedule:
+    # 0 8 1 */5 * = 08:00 UTC, day 1 of every 5th month
+    # That's roughly: Jan 1, Jun 1, Nov 1 (every 5 months from Jan)
+    # First fire after merge: next 1st-of-an-eligible-month at 08:00 UTC
+    # For Mingla: this lines up to start ~2026-06-01 onward (depending on merge date)
+    - cron: "0 8 1 */5 *"
+  workflow_dispatch:
+
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write   # to create rotation-failure issues
+      contents: read  # to checkout the script
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install jsonwebtoken
+        run: npm install --no-save jsonwebtoken@^9
+
+      - name: Run rotation script
+        id: rotate
+        env:
+          APPLE_P8_PRIVATE_KEY: ${{ secrets.APPLE_P8_PRIVATE_KEY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SERVICE_ID: ${{ secrets.APPLE_SERVICE_ID }}
+          APPLE_KEY_ID: ${{ secrets.APPLE_KEY_ID }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_MANAGEMENT_TOKEN }}
+        run: node scripts/rotate-apple-jwt.mjs
+
+      - name: Open issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const today = new Date().toISOString().split("T")[0];
+            const title = `🔴 Apple JWT rotation failed — ${today}`;
+            const body = [
+              `Auto-rotation of the Apple Sign in with Apple JWT failed.`,
+              ``,
+              `**Run:** ${runUrl}`,
+              `**Date:** ${today}`,
+              ``,
+              `## Impact`,
+              ``,
+              `Web Apple sign-in (Continue with Apple on \`mingla-business\` Expo Web) will break for NEW sign-in attempts when the previous JWT expires (~30 days from this run unless the previous run also failed).`,
+              ``,
+              `Existing signed-in users are NOT affected — their access/refresh tokens are independent of the JWT.`,
+              ``,
+              `## Triage`,
+              ``,
+              `1. Open the run URL above and read the logs.`,
+              `2. Match the exit code to the cause:`,
+              `   - **1** missing env var → check GitHub Actions secrets are set`,
+              `   - **2** JWT generation failed → \`.p8\` key may be malformed; verify \`APPLE_P8_PRIVATE_KEY\` content`,
+              `   - **3** Supabase PAT pre-flight 401/403 → \`SUPABASE_MANAGEMENT_TOKEN\` expired/revoked. Generate new PAT in Supabase Dashboard, update the secret`,
+              `   - **4** PATCH rejected → check response body in logs; could be Supabase API change or rate-limit`,
+              `   - **5** verification failed → manual rotation may have happened concurrently, or Supabase config got reset`,
+              `3. After fixing the underlying issue, re-run this workflow manually via \`workflow_dispatch\`.`,
+              `4. Verify rotation succeeded by checking Supabase Dashboard → Auth → Providers → Apple → Secret Key field is non-empty.`,
+              ``,
+              `## Reference`,
+              ``,
+              `- Spec: \`Mingla_Artifacts/specs/SPEC_APPLE_JWT_AUTOROTATE.md\``,
+              `- Investigation: \`Mingla_Artifacts/reports/INVESTIGATION_APPLE_JWT_AUTOROTATE.md\``,
+              `- Workflow file: \`.github/workflows/rotate-apple-jwt.yml\``,
+            ].join("\n");
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ["rotation-failure", "auth", "urgent"],
+            });

@@ -17,16 +17,35 @@ export interface ExpandedCardData {
   images: string[];
   rating: number;
   reviewCount: number;
-  priceRange: string;
-  distance: string;
-  travelTime: string;
+  // [ORCH-0649] priceRange + travelTime may be absent. Renderers use truthy
+  // guards (`{travelTime && ...}`) to hide pills. Never fabricate "N/A".
+  // [ORCH-0659/0660] distance + travelTime widened to string | null. travelMode
+  // added so the expanded-view metric pill icon matches the user's selected mode.
+  priceRange?: string;
+  distance: string | null;
+  travelTime?: string | null;
+  travelMode?: string;
   address: string;
+  // [ORCH-0649] openingHours arrives in multiple shapes across the codebase.
+  // extractWeekdayText (openingHoursUtils.ts) is the canonical reader — do
+  // NOT read .weekday_text or .weekdayDescriptions directly in components.
+  // 85.6% of place_pool rows are Google Places v1; ~0.1% legacy record.
   openingHours?:
     | string
     | {
+        // Google legacy
         open_now?: boolean;
         weekday_text?: string[];
       }
+    | {
+        // Google Places v1 (canonical — what admin-seed-places writes today)
+        openNow?: boolean;
+        periods?: unknown[];
+        nextOpenTime?: string;
+        nextCloseTime?: string;
+        weekdayDescriptions?: string[];
+      }
+    | Record<string, string>  // Mingla legacy ({ monday: "9-5", ... }) — 37 rows in pool
     | null;
   phone?: string;
   website?: string;
@@ -53,7 +72,9 @@ export interface ExpandedCardData {
     lng: number;
   };
   // Date/time for weather and timeline
-  selectedDateTime?: Date | string;
+  // [ORCH-0649] Must be a real Date when present. Was previously `Date | string`
+  // which allowed the literal "N/A" fallback — Constitution #9 violation.
+  selectedDateTime?: Date;
   // Stroll-specific data
   strollData?: {
     anchor: {
@@ -151,6 +172,12 @@ export interface ExpandedCardData {
   };
 }
 
+// ORCH-0640 rework v2: concrete aliases for the inline strollData/picnicData shapes,
+// exported so stopReplacementService (and other callers) can type edge-function
+// responses without widening to `unknown`.
+export type StrollData = NonNullable<ExpandedCardData['strollData']>;
+export type PicnicData = NonNullable<ExpandedCardData['picnicData']>;
+
 export interface WeatherData {
   temperature: number;
   condition: string;
@@ -237,7 +264,7 @@ export interface ExpandedCardModalProps {
     card: ExpandedCardData,
     picnicData: ExpandedCardData["picnicData"],
   ) => Promise<void> | void; // Callback to persist picnic data to database
-  hideTravelTime?: boolean;
+  // ORCH-0659/0660: hideTravelTime prop deleted — was dead code (zero callers).
   // Review navigation: swipe through reviewed cards in expanded view
   onNavigateNext?: () => void;
   onNavigatePrevious?: () => void;

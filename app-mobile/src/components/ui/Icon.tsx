@@ -64,6 +64,7 @@ import {
   CreditCard,
   Diamond,
   Download,
+  Drama,
   ExternalLink,
   Eye,
   EyeOff,
@@ -246,6 +247,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'copy-outline':               Copy,
   'create-outline':             SquarePen,
   'chef-hat':                   ChefHat,
+  'coffee':                     Coffee,
+  'coffee-outline':             Coffee,
+  'cafe':                       Coffee,
+  // 'cafe-outline' already mapped above at L205
   'credit-card':                CreditCard,
   'crown-outline':              Crown,
 
@@ -254,6 +259,9 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'diamond-outline':            Diamond,
   'document-text':              FileText,
   'download':                   Download,
+  // ORCH-0598 theatre chip — lucide Drama component (theatrical masks)
+  'drama':                      Drama,
+  'drama-masks':                Drama,
 
   // ─── E ───
   'earth-outline':              Globe,
@@ -417,6 +425,11 @@ const ICON_MAP: Record<string, LucideIcon> = {
   // ─── T ───
   'tag':                        Tag,
   'text':                       Type,
+  // ORCH-0598 theatre chip — 't' section for theater/theatre name aliases
+  'theater':                    Drama,
+  'theater-outline':            Drama,
+  'theatre':                    Drama,
+  'theatre-outline':            Drama,
   'thumbs-down':                ThumbsDown,
   'thumbs-up':                  ThumbsUp,
   'ticket-outline':             Ticket,

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import { NavigationProp } from '@react-navigation/native';
 
 interface NavigationContextType {
@@ -40,55 +40,56 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
   const [isSessionSwitcherOpen, setIsSessionSwitcherOpen] = useState(false);
   const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
 
-  const openCreateSessionModal = () => setIsCreateSessionModalOpen(true);
-  const closeCreateSessionModal = () => setIsCreateSessionModalOpen(false);
-  
-  const openCreateBoardModal = () => setIsCreateBoardModalOpen(true);
-  const closeCreateBoardModal = () => setIsCreateBoardModalOpen(false);
-  
-  const openSessionSwitcher = () => setIsSessionSwitcherOpen(true);
-  const closeSessionSwitcher = () => setIsSessionSwitcherOpen(false);
-  
-  const openPreferencesModal = () => setIsPreferencesModalOpen(true);
-  const closePreferencesModal = () => setIsPreferencesModalOpen(false);
+  // ORCH-0679 Wave 2A: useCallback wraps stabilize handler identities so the
+  // provider value below remains referentially equal across renders when no
+  // modal-flag state changes. Without this, every parent render rebuilt the
+  // value object → every context consumer re-rendered → memo barriers bust.
+  const openCreateSessionModal = useCallback(() => setIsCreateSessionModalOpen(true), []);
+  const closeCreateSessionModal = useCallback(() => setIsCreateSessionModalOpen(false), []);
 
-  const navigateToExperience = (_experienceId: string) => {
+  const openCreateBoardModal = useCallback(() => setIsCreateBoardModalOpen(true), []);
+  const closeCreateBoardModal = useCallback(() => setIsCreateBoardModalOpen(false), []);
+
+  const openSessionSwitcher = useCallback(() => setIsSessionSwitcherOpen(true), []);
+  const closeSessionSwitcher = useCallback(() => setIsSessionSwitcherOpen(false), []);
+
+  const openPreferencesModal = useCallback(() => setIsPreferencesModalOpen(true), []);
+  const closePreferencesModal = useCallback(() => setIsPreferencesModalOpen(false), []);
+
+  const navigateToExperience = useCallback((_experienceId: string) => {
     // Stub — requires stack navigation (not yet built)
-  };
+  }, []);
 
-  const navigateToBoard = (_boardId: string) => {
+  const navigateToBoard = useCallback((_boardId: string) => {
     // Stub — requires stack navigation (not yet built)
-  };
+  }, []);
 
-  const navigateToSession = (_sessionId: string) => {
+  const navigateToSession = useCallback((_sessionId: string) => {
     // Stub — requires stack navigation (not yet built)
-  };
+  }, []);
 
-  const navigateToConnections = () => {
-    // Navigate to Connections tab
+  const navigateToConnections = useCallback(() => {
     if (navigation) {
       navigation.navigate('Connections');
-    } else {
     }
-  };
+  }, [navigation]);
 
-  const navigateToSaved = () => {
-    // Navigate to Activity tab with saved tab active
+  const navigateToSaved = useCallback(() => {
     if (navigation) {
       navigation.navigate('Activity', { initialTab: 'saved' });
-    } else {
     }
-  };
+  }, [navigation]);
 
-  const navigateToSchedule = () => {
-    // Navigate to Activity tab (which contains scheduled activities)
+  const navigateToSchedule = useCallback(() => {
     if (navigation) {
       navigation.navigate('Activity');
-    } else {
     }
-  };
+  }, [navigation]);
 
-  const value: NavigationContextType = {
+  // ORCH-0679 Wave 2A: useMemo wrap (I-PROVIDER-VALUE-MEMOIZED) — value
+  // identity is stable when no modal-flag state changes. Critical for memo
+  // barriers on tab screens that consume Navigation context.
+  const value = useMemo<NavigationContextType>(() => ({
     isCreateSessionModalOpen,
     isCreateBoardModalOpen,
     isSessionSwitcherOpen,
@@ -107,7 +108,26 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({ children
     navigateToConnections,
     navigateToSaved,
     navigateToSchedule,
-  };
+  }), [
+    isCreateSessionModalOpen,
+    isCreateBoardModalOpen,
+    isSessionSwitcherOpen,
+    isPreferencesModalOpen,
+    openCreateSessionModal,
+    closeCreateSessionModal,
+    openCreateBoardModal,
+    closeCreateBoardModal,
+    openSessionSwitcher,
+    closeSessionSwitcher,
+    openPreferencesModal,
+    closePreferencesModal,
+    navigateToExperience,
+    navigateToBoard,
+    navigateToSession,
+    navigateToConnections,
+    navigateToSaved,
+    navigateToSchedule,
+  ]);
 
   return (
     <NavigationContext.Provider value={value}>

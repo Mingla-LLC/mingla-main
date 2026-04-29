@@ -24,17 +24,21 @@ interface CategoryTileProps {
   activeColor: string; // hex from category
   selected: boolean;
   onPress: () => void;
+  // Tile height in px. Parent measures the grid's available viewport with
+  // onLayout and passes a per-row height so all categories fit at a glance
+  // without scrolling — even on small Android devices.
+  tileHeight?: number;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 // OnboardingShell content: spacing.lg (24) × 2 horizontal padding → 48. Gap between 2 columns (10px).
 const ONBOARDING_CONTENT_PADDING_X = 48;
 const CATEGORY_COLUMN_GAP = 10;
 const TILE_WIDTH =
   (SCREEN_WIDTH - ONBOARDING_CONTENT_PADDING_X - CATEGORY_COLUMN_GAP) / 2;
-// 4 rows of tiles, filling ~55% of screen height (rest is header + headline + button)
-const ROW_GAP = 10;
-const TILE_HEIGHT = Math.floor((SCREEN_HEIGHT * 0.50 - ROW_GAP * 3) / 4);
+// Floor used by parent before grid is measured (first paint), and minimum
+// readable height that still fits a 22px icon + two-line label.
+const TILE_HEIGHT_MIN = 56;
 
 export const CategoryTile: React.FC<CategoryTileProps> = ({
   slug,
@@ -43,7 +47,9 @@ export const CategoryTile: React.FC<CategoryTileProps> = ({
   activeColor,
   selected,
   onPress,
+  tileHeight,
 }) => {
+  const resolvedHeight = Math.max(TILE_HEIGHT_MIN, tileHeight ?? TILE_HEIGHT_MIN);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = useCallback(() => {
@@ -81,6 +87,7 @@ export const CategoryTile: React.FC<CategoryTileProps> = ({
       <Animated.View
         style={[
           styles.tile,
+          { height: resolvedHeight },
           selected
             ? [
                 styles.tileSelected,
@@ -113,7 +120,6 @@ export const CategoryTile: React.FC<CategoryTileProps> = ({
 const styles = StyleSheet.create({
   tile: {
     width: TILE_WIDTH,
-    height: TILE_HEIGHT,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',

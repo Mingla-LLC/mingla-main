@@ -35,7 +35,16 @@
     "schedule_anyway": "Programma Comunque",
     "scheduled_toast": "Programmato! {{title}} è stato aggiunto al tuo calendario",
     "closed_message": "This place is closed at the selected date e time. Tap \"Programma\" to choose a different time.",
-    "share_prompt": "Condividi {{title}} with friends"
+    "share_prompt": "Condividi {{title}} with friends",
+    "back_to_date": "Torna alla data",
+    "confirm_date_title": "Data selezionata",
+    "confirm_date_message": "Hai scelto {{date}}. Continuare con la selezione dell'ora?",
+    "change_date": "Cambia data",
+    "pick_time": "Scegli l'ora",
+    "unverified_hours_title": "Orari non disponibili",
+    "unverified_hours_message": "Non siamo riusciti a verificare gli orari di {{venueName}} per quell'ora. Programmare comunque?",
+    "error_past_date_title": "Scegli un orario futuro",
+    "error_past_date_message": "Quell'orario è già passato. Scegli un orario futuro."
   },
   "busyness": {
     "traffic": "Traffico",

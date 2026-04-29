@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: colors.text.tertiary,
+    color: "rgba(255, 255, 255, 0.65)",
     marginTop: spacing.sm,
   },
   searchContainer: {

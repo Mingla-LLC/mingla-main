@@ -42,7 +42,7 @@ function transformCard(card: any): Recommendation {
     categoryIcon: card.categoryIcon || 'compass-outline',
     lat: card.lat ?? card.location?.lat ?? curatedLat,
     lng: card.lng ?? card.location?.lng ?? curatedLng,
-    timeAway: card.travelTime || '',
+    // ORCH-0659/0660: timeAway field deleted from Recommendation type.
     description: card.description || card.briefDescription || card.tagline || '',
     budget: card.priceRange || '',
     rating: card.rating || 0,
@@ -155,7 +155,10 @@ export function useMapCards(
       CURATED_TYPES.forEach((type, i) => {
         const result = results[i];
         if (result.status === 'fulfilled') {
-          const curatedCards = result.value;
+          // ORCH-0677 RC-2: response is now { cards, summary? }; map cards
+          // ignore the summary field (the map view does not need an empty
+          // verdict — it just renders whatever curated stops it gets).
+          const curatedCards = result.value.cards;
           console.log(`[useMapCards] Curated "${type}": ${curatedCards.length} cards returned`);
           for (const card of curatedCards) {
             if (card.stops && card.stops.length > 0) {

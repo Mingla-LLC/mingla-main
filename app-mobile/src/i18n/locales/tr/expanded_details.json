@@ -35,7 +35,16 @@
     "schedule_anyway": "Planla Anyway",
     "scheduled_toast": "Planlanmış! {{title}} has been moved to your calendar",
     "closed_message": "This place is closed at the selected date ve time. Tap \"Planla\" to choose a different time.",
-    "share_prompt": "Paylaş {{title}} with friends"
+    "share_prompt": "Paylaş {{title}} with friends",
+    "back_to_date": "Tarihe dön",
+    "confirm_date_title": "Tarih seçildi",
+    "confirm_date_message": "{{date}} seçtiniz. Saat seçimine devam edilsin mi?",
+    "change_date": "Tarihi değiştir",
+    "pick_time": "Saat seç",
+    "unverified_hours_title": "Çalışma saatleri yok",
+    "unverified_hours_message": "{{venueName}} mekânının o saatteki çalışma saatlerini doğrulayamadık. Yine de planlansın mı?",
+    "error_past_date_title": "Gelecekte bir saat seç",
+    "error_past_date_message": "O saat geçmiş. Lütfen gelecekte bir saat seçin."
   },
   "busyness": {
     "traffic": "Traffic",

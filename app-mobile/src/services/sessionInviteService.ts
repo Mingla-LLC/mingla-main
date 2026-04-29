@@ -25,9 +25,9 @@
  * Error surfacing: every failure path returns `{kind: 'error', message}`. Caller
  * (BoardSettingsDropdown) surfaces via Alert. No silent failures.
  */
-import { supabase } from './supabase';
 import { lookupPhone, createPendingSessionInvite } from './phoneLookupService';
 import { sendPhoneInvite } from './phoneInviteService';
+import { addFriendsToSessions } from './sessionMembershipService';
 
 export type InviteByPhoneOutcome =
   | { kind: 'warm'; userId: string; displayName: string | null }
@@ -48,93 +48,28 @@ export async function inviteByPhone(
     const lookupResult = await lookupPhone(phoneE164);
 
     // ── WARM PATH — existing Mingla user ──────────────────────────────────
+    // ORCH-0666: refactored to delegate to addFriendsToSessions. The atomic
+    // RPC handles participant pre-insert + invite insert + push edge fn in one
+    // transactional call. Constitution #2 single-owner.
     if (lookupResult.found && lookupResult.user) {
       const invitedUserId = lookupResult.user.id;
 
-      // Prevent self-invite
+      // Prevent self-invite (RPC also enforces, but fail fast for UX clarity)
       if (invitedUserId === inviterUserId) {
         return { kind: 'error', message: 'You cannot invite yourself' };
       }
 
-      // Idempotent participant pre-insert — check if already present
-      const { data: existingParticipant } = await supabase
-        .from('session_participants')
-        .select('user_id, has_accepted')
-        .eq('session_id', sessionId)
-        .eq('user_id', invitedUserId)
-        .maybeSingle();
+      const { results, errors } = await addFriendsToSessions({
+        sessionIds: [sessionId],
+        friendUserId: invitedUserId,
+        sessionNames: { [sessionId]: sessionName },
+      });
 
-      if (existingParticipant) {
-        if (existingParticipant.has_accepted) {
-          return { kind: 'error', message: 'This user is already in the session' };
-        }
-        // Has a pending participant row already — fall through to invite creation
-      } else {
-        const { error: partErr } = await supabase
-          .from('session_participants')
-          .insert({
-            session_id: sessionId,
-            user_id: invitedUserId,
-            has_accepted: false,
-          });
-        if (partErr) {
-          return {
-            kind: 'error',
-            message: partErr.message || 'Failed to add participant',
-          };
-        }
+      if (errors.length > 0) {
+        return { kind: 'error', message: errors[0].message };
       }
 
-      // Create pending invite row (may fail on duplicate UNIQUE — tolerate)
-      const { data: inviteData, error: inviteErr } = await supabase
-        .from('collaboration_invites')
-        .insert({
-          session_id: sessionId,
-          inviter_id: inviterUserId,
-          invited_user_id: invitedUserId,
-          status: 'pending',
-        })
-        .select('id')
-        .single();
-
-      if (inviteErr) {
-        // 23505 = unique_violation — invite already exists, proceed to notify
-        const code = (inviteErr as { code?: string }).code;
-        if (code !== '23505') {
-          return {
-            kind: 'error',
-            message: inviteErr.message || 'Failed to create invite',
-          };
-        }
-      }
-
-      // Fetch invitee email for notification
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('id', invitedUserId)
-        .maybeSingle();
-
-      if (profile?.email && inviteData) {
-        try {
-          await supabase.functions.invoke('send-collaboration-invite', {
-            body: {
-              inviterId: inviterUserId,
-              invitedUserId,
-              invitedUserEmail: profile.email,
-              sessionId,
-              sessionName,
-              inviteId: inviteData.id,
-            },
-          });
-        } catch (notifErr) {
-          // Non-fatal — the invite row exists; recipient can accept via UI.
-          console.warn(
-            '[sessionInviteService] notification send failed (non-fatal):',
-            notifErr
-          );
-        }
-      }
+      const result = results[0];
 
       const displayName =
         lookupResult.user.display_name ||
@@ -144,7 +79,24 @@ export async function inviteByPhone(
         lookupResult.user.username ||
         null;
 
-      return { kind: 'warm', userId: invitedUserId, displayName };
+      switch (result?.outcome) {
+        case 'invited':
+        case 'already_invited':
+          // Both surface as warm — pending invite is on its way.
+          return { kind: 'warm', userId: invitedUserId, displayName };
+        case 'already_member':
+          return { kind: 'error', message: 'This user is already in the session' };
+        case 'blocked':
+          return { kind: 'error', message: 'Cannot invite this user.' };
+        case 'session_invalid':
+          return { kind: 'error', message: 'This session is no longer available.' };
+        case 'not_session_member':
+          return { kind: 'error', message: 'You are no longer a member of this session.' };
+        case 'session_creator_self_invite':
+          return { kind: 'error', message: 'You cannot invite yourself' };
+        default:
+          return { kind: 'error', message: 'Could not send invite.' };
+      }
     }
 
     // ── COLD PATH — phone does not belong to any Mingla user ──────────────

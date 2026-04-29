@@ -128,6 +128,7 @@
     "pickADate": "日付を選ぶ",
     "changeTime": "時間を変更",
     "closedAtTime": "この場所は選択した時間に閉まっています。別の時間を選んでください。",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}。スケジュール前に営業時間をご確認ください。",
     "selectDate": "日付を選択",
     "selectTime": "時間を選択",

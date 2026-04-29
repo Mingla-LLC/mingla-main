@@ -5,6 +5,7 @@ import { Icon } from '../ui/Icon';
 import { colors, typography, fontWeights, radius, spacing } from '../../constants/designSystem';
 import { MentionChip } from './MentionChip';
 import { ReplyQuoteBlock } from './ReplyQuoteBlock';
+import type { CardPayload } from '../../services/messagingService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -12,10 +13,11 @@ interface MessageData {
   id: string;
   content: string;
   timestamp: string;
-  type: 'text' | 'image' | 'video' | 'file';
+  type: 'text' | 'image' | 'video' | 'file' | 'card';
   fileUrl?: string;
   fileName?: string;
   fileSize?: string;
+  cardPayload?: CardPayload;  // ORCH-0667
   isMe: boolean;
   failed?: boolean;
 }
@@ -36,6 +38,7 @@ interface MessageBubbleProps {
   isRead: boolean;
   replyTo?: ReplyToData;
   onScrollToMessage?: (messageId: string) => void;
+  onCardBubbleTap?: (payload: CardPayload) => void;  // ORCH-0667
 }
 
 /** Check if content has @mentions. */
@@ -138,7 +141,7 @@ const BORDER_RADIUS = {
   },
 } as const;
 
-export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isRead, replyTo, onScrollToMessage }: MessageBubbleProps) {
+export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isRead, replyTo, onScrollToMessage, onCardBubbleTap }: MessageBubbleProps) {
   const { t } = useTranslation(['chat', 'common']);
   const borderRadius = BORDER_RADIUS[isMe ? 'sent' : 'received'][groupPosition];
   const isGroupEnd = groupPosition === 'last' || groupPosition === 'solo';
@@ -230,6 +233,54 @@ export function MessageBubble({ message, isMe, groupPosition, showTimestamp, isR
                 </Text>
               </View>
             </View>
+          )}
+
+          {/* ORCH-0667: shared saved-card bubble */}
+          {message.type === 'card' && message.cardPayload && (
+            <TouchableOpacity
+              onPress={() => onCardBubbleTap?.(message.cardPayload!)}
+              activeOpacity={0.85}
+              style={styles.cardBubbleContainer}
+            >
+              {message.cardPayload.image ? (
+                <Image
+                  source={{ uri: message.cardPayload.image }}
+                  style={styles.cardBubbleImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.cardBubbleImage, styles.cardBubblePlaceholder]}>
+                  <Icon name="bookmark" size={24} color={isMe ? 'rgba(255,255,255,0.7)' : colors.text.tertiary} />
+                </View>
+              )}
+              <View style={styles.cardBubbleBody}>
+                <Text
+                  style={[styles.cardBubbleTitle, isMe ? styles.textSent : styles.textReceived]}
+                  numberOfLines={2}
+                >
+                  {message.cardPayload.title}
+                </Text>
+                {message.cardPayload.category ? (
+                  <View style={styles.cardBubbleChip}>
+                    <Text style={styles.cardBubbleChipText} numberOfLines={1}>
+                      {message.cardPayload.category}
+                    </Text>
+                  </View>
+                ) : null}
+                <Text
+                  style={[styles.cardBubbleHint, isMe ? styles.textSent : styles.textReceived]}
+                >
+                  {t('chat:cardBubbleTapHint')}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
+          {/* ORCH-0667: defense-in-depth — card-type message with missing payload */}
+          {message.type === 'card' && !message.cardPayload && (
+            <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived]}>
+              {t('chat:cardBubbleUnavailable')}
+            </Text>
           )}
 
           {/* Failed indicator */}
@@ -379,5 +430,46 @@ const styles = StyleSheet.create({
     fontSize: typography.xs.fontSize,
     color: colors.error[500],
     fontWeight: fontWeights.medium,
+  },
+  // ORCH-0667: shared-card bubble styles
+  cardBubbleContainer: {
+    width: SCREEN_WIDTH * 0.6,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  cardBubbleImage: {
+    width: '100%',
+    aspectRatio: 16 / 10,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+  },
+  cardBubblePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardBubbleBody: {
+    padding: 10,
+    gap: 4,
+  },
+  cardBubbleTitle: {
+    fontSize: 14,
+    fontWeight: fontWeights.semibold,
+  },
+  cardBubbleChip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginTop: 2,
+  },
+  cardBubbleChipText: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  cardBubbleHint: {
+    fontSize: 11,
+    opacity: 0.7,
+    marginTop: 2,
   },
 });

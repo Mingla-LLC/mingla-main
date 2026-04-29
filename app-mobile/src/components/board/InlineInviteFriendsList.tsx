@@ -27,8 +27,7 @@ import { getDisplayName } from "../../utils/getDisplayName";
 import { supabase } from "../../services/supabase";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../store/appStore";
-import { mixpanelService } from "../../services/mixpanelService";
-import { logAppsFlyerEvent } from "../../services/appsFlyerService";
+import { addFriendsToSessions } from "../../services/sessionMembershipService";
 
 interface FriendItem {
   id: string;
@@ -137,88 +136,24 @@ export const InlineInviteFriendsList: React.FC<InlineInviteFriendsListProps> = (
   const handleSendInvites = useCallback(async (): Promise<void> => {
     if (!user?.id || !sessionId || selectedFriends.length === 0) return;
 
+    // ORCH-0666: Refactored to delegate to `addFriendsToSessions`. The previous
+    // inline triplet (insert participant + insert invite + invoke push edge fn)
+    // is now atomic via the `add_friend_to_session` SECURITY DEFINER RPC. The
+    // service emits Mixpanel + AppsFlyer telemetry single-owner.
     setSending(true);
     try {
       let successCount = 0;
 
       for (const friend of selectedFriends) {
-        const { data: friendProfile } = await supabase
-          .from("profiles")
-          .select("email")
-          .eq("id", friend.id)
-          .single();
-
-        const { error: participantError } = await supabase
-          .from("session_participants")
-          .insert({
-            session_id: sessionId,
-            user_id: friend.id,
-            has_accepted: false,
-          });
-
-        if (participantError) {
-          console.error(
-            `[InlineInviteFriendsList] Error adding ${friend.name} as participant:`,
-            participantError
-          );
-          continue;
-        }
-
-        const { data: inviteData, error: inviteError } = await supabase
-          .from("collaboration_invites")
-          .insert({
-            session_id: sessionId,
-            inviter_id: user.id,
-            invited_user_id: friend.id,
-            status: "pending",
-          })
-          .select("id")
-          .single();
-
-        if (inviteError) {
-          console.error(
-            `[InlineInviteFriendsList] Error creating invite for ${friend.name}:`,
-            inviteError
-          );
-          continue;
-        }
-
-        const friendEmail = friendProfile?.email;
-        if (friendEmail && inviteData) {
-          try {
-            await supabase.functions.invoke("send-collaboration-invite", {
-              body: {
-                inviterId: user.id,
-                invitedUserId: friend.id,
-                invitedUserEmail: friendEmail,
-                sessionId,
-                sessionName,
-                inviteId: inviteData.id,
-              },
-            });
-          } catch (emailErr) {
-            console.error(
-              `[InlineInviteFriendsList] Failed to send invite notification to ${friend.name}:`,
-              emailErr
-            );
-          }
-        }
-
-        successCount++;
+        const { results } = await addFriendsToSessions({
+          sessionIds: [sessionId],
+          friendUserId: friend.id,
+          sessionNames: { [sessionId]: sessionName },
+        });
+        if (results[0]?.outcome === "invited") successCount++;
       }
 
       if (successCount > 0) {
-        mixpanelService.trackCollaborationInvitesSent({
-          sessionId,
-          sessionName,
-          invitedCount: selectedFriends.length,
-          successCount,
-        });
-        logAppsFlyerEvent("collaboration_invite_sent", {
-          session_id: sessionId,
-          invited_count: selectedFriends.length,
-          success_count: successCount,
-        });
         Alert.alert(
           t("board:inlineInviteFriendsList.invitesSent"),
           t("board:inlineInviteFriendsList.invitesSentMsg", {

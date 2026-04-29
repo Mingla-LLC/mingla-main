@@ -128,6 +128,7 @@
     "pickADate": "اختر تاريخاً",
     "changeTime": "تغيير الوقت",
     "closedAtTime": "هذا المكان مغلق في الوقت المحدد. يرجى اختيار وقت مختلف.",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}. يرجى التحقق من ساعات العمل قبل الجدولة.",
     "selectDate": "اختر التاريخ",
     "selectTime": "اختر الوقت",

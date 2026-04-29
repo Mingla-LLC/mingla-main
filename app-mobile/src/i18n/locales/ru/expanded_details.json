@@ -35,7 +35,16 @@
     "schedule_anyway": "Запланировать Anyway",
     "scheduled_toast": "Запланировано! {{title}} has been moved to your calendar",
     "closed_message": "This place is closed at the selected date и time. Tap \"Запланировать\" to choose a different time.",
-    "share_prompt": "Поделиться {{title}} with friends"
+    "share_prompt": "Поделиться {{title}} with friends",
+    "back_to_date": "Назад к дате",
+    "confirm_date_title": "Дата выбрана",
+    "confirm_date_message": "Вы выбрали {{date}}. Перейти к выбору времени?",
+    "change_date": "Изменить дату",
+    "pick_time": "Выбрать время",
+    "unverified_hours_title": "Часы работы недоступны",
+    "unverified_hours_message": "Мы не смогли проверить часы работы {{venueName}} на это время. Запланировать всё равно?",
+    "error_past_date_title": "Выберите будущее время",
+    "error_past_date_message": "Это время уже прошло. Пожалуйста, выберите будущее время."
   },
   "busyness": {
     "traffic": "Traffic",

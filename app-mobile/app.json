@@ -39,7 +39,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "softwareKeyboardLayoutMode": "pan",
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.mingla.app.v2",
       "intentFilters": [
         {
@@ -119,8 +119,7 @@
           "smallIconAccentColor": "#EB7825"
         }
       ],
-      "react-native-appsflyer",
-      "@maplibre/maplibre-react-native"
+      "react-native-appsflyer"
     ],
     "updates": {
       "enabled": true,
@@ -131,8 +130,6 @@
       "eas": {
         "projectId": "01f9ff7c-379a-4be5-9236-1195d6921c6d"
       },
-      "EXPO_PUBLIC_DISCOVER_MAP_PROVIDER": "maplibre",
-      "EXPO_PUBLIC_MAPLIBRE_STYLE_URL": "https://demotiles.maplibre.org/style.json",
       "GOOGLE_PROJECT_ID": "mingla-dev",
       "GOOGLE_WEB_CLIENT_SECRET": "",
       "GOOGLE_IOS_CLIENT_SECRET": ""

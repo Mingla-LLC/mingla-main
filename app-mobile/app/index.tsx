@@ -1,9 +1,9 @@
 import * as Sentry from "@sentry/react-native";
-import { Ionicons } from "@expo/vector-icons";
 import Feather from "@expo/vector-icons/Feather";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Platform,
   StatusBar,
   StyleSheet,
   Text,
@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { vs, ms, s } from "../src/utils/responsive";
+import { GlassBottomNav, type BottomNavPage } from "../src/components/GlassBottomNav";
 import { useAppLayout } from "../src/hooks/useAppLayout";
 import * as Linking from "expo-linking";
 import { useAppHandlers } from "../src/components/AppHandlers";
@@ -47,6 +48,7 @@ import ShareModal from "../src/components/ShareModal";
 import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
 import { CoachMarkProvider, useCoachMarkContext } from "../src/contexts/CoachMarkContext";
+import { useCoachMark } from "../src/hooks/useCoachMark";
 import SpotlightOverlay from "../src/components/SpotlightOverlay";
 import { CustomPaywallScreen } from "../src/components/CustomPaywallScreen";
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
@@ -94,15 +96,22 @@ import {
 
 const TAB_BAR_ICON_SIZE = ms(20);
 
-/** Wraps the tab bar and disables it when the coach mark is loading, pending, or active */
+/** Wraps the tab bar and disables it when the coach mark is loading, pending, or active.
+ *  ORCH-0589 v6 (U1) + v6.2 tune: paddingBottom: 6 — slim safety gap above the home
+ *  indicator zone. v6 had 0 (flush); v6.1 tried 5px; v6.2 bumped to 6px for a touch more
+ *  breathing room. `layout.bottomNavPadding` prop kept for rollback. */
 function CoachMarkNavigationGate({ layout, children }: { layout: any; children: React.ReactNode }) {
   const { isCoachLoading, isCoachPending, isCoachActive } = useCoachMarkContext();
   const locked = isCoachLoading || isCoachPending || isCoachActive;
+  // ORCH-0610 fix: iOS overlaps the home-indicator zone for tight bezel-hugging;
+  // Android respects insets.bottom so the nav clears the system navigation panel
+  // (gesture bar or 3-button nav).
+  const navBottom = Platform.OS === 'android' ? layout.insets.bottom + 6 : 11;
   return (
     <View
       style={[
         styles.bottomNavigation,
-        { paddingBottom: layout.bottomNavPadding },
+        { bottom: navBottom, paddingBottom: 0 },
       ]}
       pointerEvents={locked ? 'none' : 'auto'}
     >
@@ -111,26 +120,37 @@ function CoachMarkNavigationGate({ layout, children }: { layout: any; children: 
   );
 }
 
-// ── Sentry ──────────────────────────────────────────────────────────────────
-// Initialize BEFORE any React component renders. Sentry's native module
-// installs a global NSException handler that captures the crash details
-// (module name, method, exception reason) before the process terminates.
-// This is the ONLY way to identify unsymbolicated native crashes without Xcode.
-Sentry.init({
-  dsn: 'https://5bb11663dddc2efc612498d7a14b70f4@o4511136062701568.ingest.us.sentry.io/4511136064012288',
-  enableNativeFramesTracking: true,
-  enableAutoSessionTracking: true,
-  // Capture 100% of errors (we need every crash right now)
-  tracesSampleRate: 0,
-  // Attach breadcrumbs from our logger
-  maxBreadcrumbs: 50,
-  enabled: !__DEV__, // Only in production builds
-});
+/**
+ * ORCH-0635: GlassBottomNav wrapped with the step-3 (Likes tab) coach-mark hook.
+ * Must live UNDER CoachMarkProvider — AppContent itself runs OUTSIDE the provider
+ * because the provider is mounted inside AppContent's return JSX. This wrapper
+ * renders inside the provider's subtree so the hook resolves correctly.
+ */
+function GlassBottomNavWithCoach(
+  props: Omit<React.ComponentProps<typeof GlassBottomNav>, 'coachLikesRef'>,
+): React.ReactElement {
+  const coachLikes = useCoachMark(3, 12);
+  return <GlassBottomNav {...props} coachLikesRef={coachLikes.targetRef} />;
+}
+
+// ── ORCH-0679 Wave 2B-2: Sentry init moved to app/_layout.tsx ───────────────
+// I-SENTRY-SINGLE-INIT — Sentry.init() must be called exactly once across the
+// entire app-mobile/ codebase. The previous duplicate init here was deleted;
+// configs (enableNativeFramesTracking, enableAutoSessionTracking, tracesSampleRate,
+// maxBreadcrumbs, enabled:!__DEV__) are merged into _layout.tsx.
+// CI gate: scripts/ci/check-single-sentry-init.sh.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AppContent() {
   const state = useAppState();
   const handlers = useAppHandlers(state);
+  // ORCH-0679 Wave 2.5: useAppHandlers returns a fresh object every render
+  // (audit D-WAVE2-IMPL-2 / TS-1.5 — fix deferred to a separate wave). To let
+  // useCallback wraps below have stable identity without busting on `handlers`
+  // as a dep, callbacks read handlers via this ref. The ref is updated every
+  // render so the latest handlers are always used inside callback bodies.
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
   const layout = useAppLayout();
   const { t } = useTranslation(['navigation', 'common']);
 
@@ -986,20 +1006,29 @@ function AppContent() {
 
   // Transform friends to Friend format for session creation
   // dbFriends from useFriends has: id, friend_user_id, username, display_name, first_name, last_name, avatar_url
-  const availableFriendsForSessions: Friend[] = (dbFriends || []).map((friend: any) => ({
-    id: friend.friend_user_id || friend.id,
-    name: friend.display_name || 
-          (friend.first_name && friend.last_name ? `${friend.first_name} ${friend.last_name}` : null) ||
-          friend.first_name ||
-          friend.username || 
-          'Unknown',
-    username: friend.username,
-    avatar: friend.avatar_url,
-    status: 'offline' as const,
-  }));
+  // ORCH-0679 Wave 2.7 RC-2: useMemo wrap — without it, the .map() rebuilt a fresh
+  // array every render, busting HomePage memo on every parent re-render
+  // (independent of TS-1.5 / handlers.X). Forensics audit confirmed this was the
+  // second root cause of the post-Wave-2 render storm.
+  const availableFriendsForSessions = useMemo<Friend[]>(
+    () => (dbFriends || []).map((friend: any) => ({
+      id: friend.friend_user_id || friend.id,
+      name: friend.display_name ||
+            (friend.first_name && friend.last_name ? `${friend.first_name} ${friend.last_name}` : null) ||
+            friend.first_name ||
+            friend.username ||
+            'Unknown',
+      username: friend.username,
+      avatar: friend.avatar_url,
+      status: 'offline' as const,
+    })),
+    [dbFriends]
+  );
 
   // Handle notification tap → navigate to the relevant page (V2: ServerNotification)
-  const handleNotificationNavigate = (notification: ServerNotification) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped — all closure deps are setState
+  // setters (React-stable) so identity is permanently stable.
+  const handleNotificationNavigate = useCallback((notification: ServerNotification) => {
     const deepLink = notification.data?.deepLink as string | undefined;
     logger.action('Notification tapped', { type: notification.type, deepLink });
 
@@ -1076,28 +1105,42 @@ function AppContent() {
     } else {
       setCurrentPage('home');
     }
-  };
+  }, [
+    setCurrentPage,
+    setViewingFriendProfileId,
+    setPendingConnectionsPanel,
+    setPendingOpenDmUserId,
+    setPendingSessionOpen,
+    setShowPaywall,
+    setDeepLinkParams,
+  ]);
 
   // Session handlers for the CollaborationSessions bar
-  const handleSessionSelect = (sessionId: string | null) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped. handlers.handleModeChange is
+  // accessed via handlersRef.current to avoid the unstable handlers dep
+  // (TS-1.5 — AppHandlers fix deferred).
+  const handleSessionSelect = useCallback((sessionId: string | null) => {
     logger.action('Session selected', { sessionId });
     if (sessionId) {
       const session = boardsSessions?.find((s: any) => s.id === sessionId || s.session_id === sessionId);
       if (session) {
-        handlers.handleModeChange(session.name);
+        handlersRef.current.handleModeChange(session.name);
         setCurrentSessionId(sessionId);
       }
     }
-  };
+  }, [boardsSessions, setCurrentSessionId]);
 
-  const handleSoloSelect = () => {
+  const handleSoloSelect = useCallback(() => {
     logger.action('Solo mode selected');
-    handlers.handleModeChange('solo');
+    handlersRef.current.handleModeChange('solo');
     setCurrentSessionId(null);
-  };
+  }, [setCurrentSessionId]);
 
   // Helper function to refresh all sessions (active + pending)
-  const refreshAllSessions = async (options?: { showLoading?: boolean }) => {
+  // ORCH-0679 Wave 2A: useCallback-wrapped so its identity is stable across renders.
+  // Without this, every parent re-render rebuilds this fn → all consumers (HomePage,
+  // ConnectionsPage props) see a new ref → memo barriers bust → render storm.
+  const refreshAllSessions = useCallback(async (options?: { showLoading?: boolean }) => {
     if (!user?.id) {
       setIsLoadingBoards(false);
       return;
@@ -1281,7 +1324,37 @@ function AppContent() {
         return acc;
       }, []);
 
-      updateBoardsSessions(uniqueSessions);
+      // ORCH-0666: enrich each session with `pendingInviteeIds` — the friend IDs
+      // for whom the current user has outstanding pending invites. AddToBoardModal
+      // uses this to filter out friends who already have a pending invite to a
+      // given session (CF-2 close — pre-flight idempotency UX).
+      // Caller-scoped only (current user is the inviter); cross-user pending
+      // invitees are not surfaced — the RPC's `already_invited` outcome handles
+      // those cases gracefully at confirm time.
+      let pendingByInviter: { session_id: string; invited_user_id: string }[] = [];
+      try {
+        const { data: pendingRows } = await supabase
+          .from('collaboration_invites')
+          .select('session_id, invited_user_id')
+          .eq('inviter_id', user.id)
+          .eq('status', 'pending');
+        pendingByInviter = pendingRows || [];
+      } catch (e) {
+        // Non-fatal — filter just becomes a no-op.
+        console.warn('[refreshAllSessions] pendingInviteeIds fetch failed:', e);
+      }
+      const pendingMap = new Map<string, string[]>();
+      for (const row of pendingByInviter) {
+        const list = pendingMap.get(row.session_id) ?? [];
+        list.push(row.invited_user_id);
+        pendingMap.set(row.session_id, list);
+      }
+      const enriched = uniqueSessions.map((s: any) => ({
+        ...s,
+        pendingInviteeIds: pendingMap.get(s.id) ?? [],
+      }));
+
+      updateBoardsSessions(enriched);
     } finally {
       // Only clear loading if this is still the current generation.
       // If a newer call took over, it will clear loading when it finishes.
@@ -1289,9 +1362,12 @@ function AppContent() {
         setIsLoadingBoards(false);
       }
     }
-  };
+  }, [user?.id, updateBoardsSessions, setIsLoadingBoards]);
 
-  const handleCreateSession = async (sessionName: string, selectedFriends: Friend[] = [], phoneInvitees?: { phoneE164: string }[]) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped. Body uses handlers.handleModeChange
+  // via handlersRef.current; refreshAllSessions is already useCallback-wrapped
+  // from Wave 2A. Other deps are setState setters (React-stable) and user?.id.
+  const handleCreateSession = useCallback(async (sessionName: string, selectedFriends: Friend[] = [], phoneInvitees?: { phoneE164: string }[]) => {
     if (!user?.id) return;
     logger.action('Create session pressed', { name: sessionName, friendCount: selectedFriends.length });
     setIsCreatingSession(true);
@@ -1487,7 +1563,7 @@ function AppContent() {
       toastManager.success(message);
 
       // Switch to the new session
-      handlers.handleModeChange(sessionName);
+      handlersRef.current.handleModeChange(sessionName);
       setCurrentSessionId(session.id);
     } catch (error) {
       console.error('Error creating session:', error);
@@ -1501,9 +1577,11 @@ function AppContent() {
     } finally {
       setIsCreatingSession(false);
     }
-  };
+  }, [user?.id, refreshAllSessions, setIsCreatingSession, setCurrentSessionId]);
 
-  const handleAcceptInvite = async (sessionId: string) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped. Calls handleSessionSelect (now
+  // useCallback'd) — its identity is stable so safe in dep array.
+  const handleAcceptInvite = useCallback(async (sessionId: string) => {
     if (!user?.id) return;
     logger.action('Accept invite pressed', { sessionId });
     try {
@@ -1533,9 +1611,10 @@ function AppContent() {
       console.error('Error accepting invite:', error);
       toastManager.error('Failed to accept invite.');
     }
-  };
+  }, [user?.id, queryClient, refreshAllSessions, handleSessionSelect, setPendingSessionOpen]);
 
-  const handleDeclineInvite = async (sessionId: string) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped.
+  const handleDeclineInvite = useCallback(async (sessionId: string) => {
     if (!user?.id) return;
     logger.action('Decline invite pressed', { sessionId });
     try {
@@ -1561,9 +1640,10 @@ function AppContent() {
       console.error('Error declining invite:', error);
       toastManager.error('Failed to decline invite.');
     }
-  };
+  }, [user?.id, queryClient, refreshAllSessions]);
 
-  const handleCancelInvite = async (sessionId: string) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped.
+  const handleCancelInvite = useCallback(async (sessionId: string) => {
     if (!user?.id) return;
     logger.action('Cancel invite pressed', { sessionId });
     try {
@@ -1606,10 +1686,11 @@ function AppContent() {
       console.error('[CancelInvite] Error:', error);
       toastManager.error('Failed to cancel invite.');
     }
-  };
+  }, [user?.id, refreshAllSessions]);
 
   // ORCH-0437: Invite more people to an existing pending session
-  const handleInviteMoreToSession = async (sessionId: string, friend: { id: string; name: string; username?: string; avatar?: string }) => {
+  // ORCH-0679 Wave 2.5: useCallback-wrapped.
+  const handleInviteMoreToSession = useCallback(async (sessionId: string, friend: { id: string; name: string; username?: string; avatar?: string }) => {
     if (!user?.id) return;
     logger.action('Invite more to session', { sessionId, friendId: friend.id });
     try {
@@ -1687,7 +1768,7 @@ function AppContent() {
       console.error('Error inviting to session:', error);
       toastManager.error('Failed to send invite.');
     }
-  };
+  }, [user?.id, refreshAllSessions]);
 
   // Handle deep links for OAuth callback
   useEffect(() => {
@@ -1944,6 +2025,202 @@ function AppContent() {
     return () => { cancelled = true; };
   }, [currentMode, user?.id]);
 
+  // ─── ORCH-0679 Wave 2.6 — Hot-fix: hooks moved here from after early returns ───
+  // Wave 2A originally placed these AFTER `if (!_hasHydrated...) return` (line ~2026
+  // post-Wave-2.5), `if (showOnboardingFlow...)`, `if (!isAuthenticated)`, and
+  // `if (user && !profile)` early-return guards. That caused a Rules of Hooks
+  // violation when auth state transitioned (render 1: early return hit, hooks
+  // never called; render 2: hooks called for the first time → "Rendered more
+  // hooks than during the previous render"). Founder caught the crash on first
+  // dev-client cold start. This relocation puts every hook above all early
+  // returns. Static prevention: ESLint react-hooks/rules-of-hooks rule (added
+  // to CI in this wave). closeProfileOverlays moved from line ~2438 too.
+  // ─── ORCH-0679 Wave 2A — Hoisted tab props (I-TAB-PROPS-STABLE) ─────────────
+  // Every prop passed to a memoized tab below MUST be a stable reference.
+  // Inline arrow functions and object literals bust the React.memo barrier.
+  // CI gate: scripts/ci/check-no-inline-tab-props.sh (region-scoped — see gate).
+
+  const accountPreferencesMemo = useMemo(
+    () => ({
+      currency: accountPreferences?.currency || "USD",
+      measurementSystem:
+        (accountPreferences?.measurementSystem as "Metric" | "Imperial") || "Imperial",
+    }),
+    [accountPreferences?.currency, accountPreferences?.measurementSystem]
+  );
+
+  // ── Logging-only no-op handlers (no closure deps — empty array safe) ──
+  const handleAddToCalendar = useCallback((experienceData: any) => {
+    console.log("Add to calendar:", experienceData);
+  }, []);
+  const handlePurchaseComplete = useCallback((experienceData: any, purchaseOption: any) => {
+    console.log("Purchase complete:", experienceData, purchaseOption);
+  }, []);
+  const handleGenerateNewMockCard = useCallback(() => {
+    console.log("Generate new card");
+  }, []);
+  const handleScheduleFromSaved = useCallback((card: any) => {
+    console.log("Scheduling from saved:", card);
+  }, []);
+  const handlePurchaseFromSavedSaved = useCallback((card: any, option: any) => {
+    console.log("Purchasing from saved:", card, option);
+  }, []);
+  const handlePurchaseFromSavedLikes = useCallback((card: any, purchaseOption: any) => {
+    console.log("Purchasing from saved:", card, purchaseOption);
+  }, []);
+  const handleAddToCalendarFromLikes = useCallback((entry: any) => {
+    console.log("Adding to calendar:", entry);
+  }, []);
+  const handleShowQRCode = useCallback((entryId: string) => {
+    console.log("Showing QR code for:", entryId);
+  }, []);
+  const handleUpdateBoardSession = useCallback((board: any) => {
+    console.log("Updating board session:", board);
+  }, []);
+
+  // ── State-touching handlers ──
+  const handleResetCards = useCallback(() => {
+    setRemovedCardIds([]);
+  }, [setRemovedCardIds]);
+
+  const handleOpenSessionHandled = useCallback(() => {
+    setPendingSessionOpen(null);
+  }, [setPendingSessionOpen]);
+
+  const handleOpenPreferences = useCallback(() => {
+    logger.action('Open preferences pressed');
+    setShowPreferences(true);
+  }, [setShowPreferences]);
+
+  const handleOpenCollabPreferences = useCallback(() => {
+    logger.action('Open collab preferences pressed');
+    setShowCollabPreferences(true);
+  }, [setShowCollabPreferences]);
+
+  const handleSessionStateChangedShowLoading = useCallback(() => {
+    refreshAllSessions({ showLoading: true });
+  }, [refreshAllSessions]);
+
+  const handleOpenChatWithUserFromDiscover = useCallback((friendUserId: string) => {
+    setPendingOpenDmUserId(friendUserId);
+    setCurrentPage("connections");
+  }, [setPendingOpenDmUserId, setCurrentPage]);
+
+  const handleViewFriendProfile = useCallback((friendUserId: string) => {
+    setViewingFriendProfileId(friendUserId);
+  }, [setViewingFriendProfileId]);
+
+  const discoverDeepLinkParams = useMemo(
+    () => (currentPage === 'discover' ? deepLinkParams : null),
+    [currentPage, deepLinkParams]
+  );
+
+  const handleDeepLinkHandled = useCallback(() => {
+    setDeepLinkParams(null);
+  }, [setDeepLinkParams]);
+
+  const handleCreateSessionFromConnections = useCallback(async () => {
+    await refreshAllSessions({ showLoading: true });
+  }, [refreshAllSessions]);
+
+  const handleFriendAccepted = useCallback(() => {
+    refreshAllSessions({ showLoading: false });
+  }, [refreshAllSessions]);
+
+  const handleOpenDirectMessageHandled = useCallback(() => {
+    setPendingOpenDmUserId(null);
+  }, [setPendingOpenDmUserId]);
+
+  const handleInitialPanelHandled = useCallback(() => {
+    setPendingConnectionsPanel(null);
+  }, []);
+
+  const handleNavigationComplete = useCallback(() => {
+    setActivityNavigation(null);
+  }, [setActivityNavigation]);
+
+  const handleSignOutFromProfile = useCallback(async () => {
+    logger.action('Sign out pressed');
+    await handleSignOut();
+  }, [handleSignOut]);
+
+  const handleNavigateToConnectionsFromProfile = useCallback(() => {
+    logger.action('Navigate to connections from profile');
+    setPendingConnectionsPanel("friends");
+    setCurrentPage("connections");
+  }, [setCurrentPage]);
+
+  const savedExperiencesCountMemo = useMemo(
+    () => savedCards?.length ?? 0,
+    [savedCards]
+  );
+
+  const scheduledCountMemo = useMemo(
+    () => calendarEntries?.length ?? 0,
+    [calendarEntries]
+  );
+
+  // Ensure any full-screen profile overlays are closed when switching tabs/pages
+  // ORCH-0679 Wave 2.5: useCallback-wrapped — stable identity passed to
+  // GlassBottomNavWithCoach. Wave 2.6: relocated to above early returns.
+  const closeProfileOverlays = useCallback(() => {
+    setViewingFriendProfileId(null);
+  }, [setViewingFriendProfileId]);
+
+  // ─── ORCH-0679 Wave 2.7 — handlers.X stabilization (RC-1) ──────────────────
+  // useAppHandlers returns a fresh object every render (TS-1.5 — god-hook fix
+  // deferred). These wrappers read via handlersRef.current so empty dep arrays
+  // give permanently stable identity. Forensics audit
+  // (INVESTIGATION_ORCH-0679_WAVE2_DIAG_AUDIT.md) confirmed this was busting
+  // memo on 5 of 6 tabs (every tab with at least one handlers.X JSX prop).
+  // The 9 in-AppContent helpers were already wrapped in Wave 2.5; THESE are
+  // the JSX-prop-passed handlers.X that Wave 2.5 missed.
+  const stableHandleSaveCard = useCallback(
+    (card: any): Promise<boolean> => handlersRef.current.handleSaveCard(card),
+    []
+  );
+  const stableHandleShareCard = useCallback(
+    (experienceData: any): void => handlersRef.current.handleShareCard(experienceData),
+    []
+  );
+  const stableHandleShareSavedCard = useCallback(
+    (friend: any, suppressNotification?: boolean): void =>
+      handlersRef.current.handleShareSavedCard(friend, suppressNotification),
+    []
+  );
+  const stableHandleRemoveFriend = useCallback(
+    (friend: any, suppressNotification?: boolean): void =>
+      handlersRef.current.handleRemoveFriend(friend, suppressNotification),
+    []
+  );
+  const stableHandleBlockUser = useCallback(
+    (friend: any, suppressNotification?: boolean): void =>
+      handlersRef.current.handleBlockUser(friend, suppressNotification),
+    []
+  );
+  const stableHandleReportUser = useCallback(
+    (friend: any, suppressNotification?: boolean, reason?: string, details?: string): void =>
+      handlersRef.current.handleReportUser(friend, suppressNotification, reason, details),
+    []
+  );
+  const stableHandleModeChange = useCallback(
+    (mode: "solo" | string): Promise<void> => handlersRef.current.handleModeChange(mode),
+    []
+  );
+  const stableHandleRemoveFromCalendar = useCallback(
+    (entry: any): Promise<void> => handlersRef.current.handleRemoveFromCalendar(entry),
+    []
+  );
+  const stableHandleNavigateToActivity = useCallback(
+    (tab: "saved" | "calendar"): void => handlersRef.current.handleNavigateToActivity(tab),
+    []
+  );
+  const stableHandleNotificationsToggle = useCallback(
+    (enabled: boolean): Promise<void> => handlersRef.current.handleNotificationsToggle(enabled),
+    []
+  );
+  // ─── End ORCH-0679 Wave 2A/2.5/2.6/2.7 hoists ──────────────────────────────
+
   // RELIABILITY: Gate on !_hasHydrated || isLoadingAuth. This ensures the profile
   // gate below sees the Zustand-persisted profile value (from AsyncStorage rehydration)
   // instead of the default null. Without this, Android cold start with expired token
@@ -2019,6 +2296,7 @@ function AppContent() {
 
             onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
             currentMode={currentMode ?? "solo"}
+            boardsSessions={boardsSessions}
 
             userPreferences={userPreferences}
             accountPreferences={{
@@ -2099,16 +2377,13 @@ function AppContent() {
       case "connections":
         return (
           <ConnectionsPage
-            onSendCollabInvite={(friend: any) => {
-              console.log("Sending collaboration invite to:", friend);
-            }}
-            onAddToBoard={handlers.handleAddToBoard}
             onShareSavedCard={handlers.handleShareSavedCard}
             onRemoveFriend={handlers.handleRemoveFriend}
             onBlockUser={handlers.handleBlockUser}
             onReportUser={handlers.handleReportUser}
             accountPreferences={accountPreferences}
             boardsSessions={boardsSessions}
+            onRefreshSessions={refreshAllSessions}
             currentMode={currentMode ?? "solo"}
             onModeChange={handlers.handleModeChange}
             onUpdateBoardSession={(board: any) => {
@@ -2190,6 +2465,7 @@ function AppContent() {
 
             onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
             currentMode={currentMode ?? "solo"}
+            boardsSessions={boardsSessions}
 
             userPreferences={userPreferences}
             accountPreferences={{
@@ -2232,10 +2508,8 @@ function AppContent() {
     }
   };
 
-  // Ensure any full-screen profile overlays are closed when switching tabs/pages
-  const closeProfileOverlays = () => {
-    setViewingFriendProfileId(null);
-  };
+  // closeProfileOverlays useCallback was originally here — relocated to above
+  // early returns by Wave 2.6 hot-fix (Rules of Hooks compliance).
 
   // Show main app if user is authenticated AND has completed onboarding
   if (
@@ -2266,15 +2540,29 @@ function AppContent() {
               <NavigationProvider>
                 <CoachMarkProvider navigateToTab={(tab: string) => setCurrentPage(tab as any)}>
                 <ErrorBoundary>
-                  <View style={styles.safeArea}>
+                  <View style={styles.rootView}>
                     <StatusBar
-                      barStyle="dark-content"
+                      barStyle={currentPage === "home" || currentPage === "discover" || currentPage === "connections" || currentPage === "likes" ? "light-content" : "dark-content"}
                       translucent={true}
                       backgroundColor="transparent"
                     />
                     <View style={styles.container}>
-                      {/* Main Content — paddingTop for safe area; profile page manages its own for full-bleed gradient */}
-                      <View style={[styles.mainContent, { paddingTop: currentPage === "profile" ? 0 : layout.insets.top }]}>
+                      {/* ORCH-0589 v2 (G3) + ORCH-0590 Phase 3 + ORCH-0600 + ORCH-0610: Swipe,
+                          Profile, Discover, Connections, and Likes all render full-bleed —
+                          paddingTop 0 so the glass header extends under the status bar.
+                          ORCH-0610 fix: Home is the only page that reserves bottom nav space
+                          — the swipe card sits ABOVE the nav (flush with screen bezels). Other
+                          pages keep paddingBottom: 0 so their content scrolls under the floating
+                          glass nav. */}
+                      <View
+                        style={[
+                          styles.mainContent,
+                          {
+                            paddingTop: (currentPage === "profile" || currentPage === "home" || currentPage === "discover" || currentPage === "connections" || currentPage === "likes") ? 0 : layout.insets.top,
+                            paddingBottom: currentPage === "home" ? layout.bottomNavContentHeight + (Platform.OS === 'android' ? layout.insets.bottom + 18 : 23) : 0,
+                          },
+                        ]}
+                      >
                         {/* Full-screen overlays render ON TOP of tabs */}
                         {viewingFriendProfileId ? (
                           <ViewFriendProfileScreen
@@ -2294,172 +2582,145 @@ function AppContent() {
                           />
                         ) : null}
 
-                        {/* All 5 tabs always mounted — only active tab visible */}
-                        {/* Hidden when a full-screen overlay is active */}
+                        {/* ORCH-0679 Wave 2.8 Path B — only the active tab is mounted.
+                            Hidden tabs literally don't exist → no React.memo concerns,
+                            no context-propagation re-renders, no god-hook impact.
+                            Per-tab state preservation: scroll/filter/panel state lives
+                            in Zustand registry (see useTabScrollRegistry hook + appStore
+                            tabScroll/discoverFilters/savedFilters/connectionsActivePanel/
+                            connectionsFriendsModalTab/likesActiveTab fields).
+                            CI gate: scripts/ci/check-active-tab-only.sh enforces no
+                            regression to the all-mounted pattern.
+                            Hidden when a full-screen overlay is active. */}
                         {!isOverlayActive && (
                           <View style={{ flex: 1 }}>
-                            <View style={currentPage === 'home' ? styles.tabVisible : styles.tabHidden}>
-                              <HomePage
-                                isTabVisible={currentPage === 'home'}
-                                onOpenPreferences={() => {
-                                  logger.action('Open preferences pressed');
-                                  setShowPreferences(true);
-                                }}
-                                onOpenCollabPreferences={() => { logger.action('Open collab preferences pressed'); setShowCollabPreferences(true) }}
-                                currentMode={currentMode ?? "solo"}
-                                userPreferences={userPreferences}
-                                accountPreferences={{
-                                  currency: accountPreferences?.currency || "USD",
-                                  measurementSystem:
-                                    (accountPreferences?.measurementSystem as
-                                      | "Metric"
-                                      | "Imperial") || "Imperial",
-                                }}
-                                onAddToCalendar={(experienceData: any) =>
-                                  console.log("Add to calendar:", experienceData)
-                                }
-                                savedCards={savedCards}
-                                onSaveCard={handlers.handleSaveCard}
-                                onShareCard={handlers.handleShareCard}
-                                onPurchaseComplete={(experienceData: any, purchaseOption: any) =>
-                                  console.log("Purchase complete:", experienceData, purchaseOption)
-                                }
-                                removedCardIds={removedCardIds}
-                                onResetCards={() => setRemovedCardIds([])}
-                                generateNewMockCard={() => console.log("Generate new card")}
-                                refreshKey={preferencesRefreshKey}
-                                collaborationSessions={collaborationSessions}
-                                selectedSessionId={currentSessionId}
-                                onSessionSelect={handleSessionSelect}
-                                onSoloSelect={handleSoloSelect}
-                                onCreateSession={handleCreateSession}
-                                onAcceptInvite={handleAcceptInvite}
-                                onDeclineInvite={handleDeclineInvite}
-                                onCancelInvite={handleCancelInvite}
-                                onInviteMoreToSession={handleInviteMoreToSession}
-                                onSessionStateChanged={() => refreshAllSessions({ showLoading: true })}
-                                availableFriends={availableFriendsForSessions}
-                                isCreatingSession={isCreatingSession}
-                                onNotificationNavigate={handleNotificationNavigate}
-                                userId={user?.id}
-                                openSessionId={pendingSessionOpen}
-                                onOpenSessionHandled={() => setPendingSessionOpen(null)}
-                              />
-                            </View>
-                            <View style={currentPage === 'discover' ? styles.tabVisible : styles.tabHidden}>
-                              <DiscoverScreen
-                                isTabVisible={currentPage === 'discover'}
-                                onOpenChatWithUser={(friendUserId) => {
-                                  setPendingOpenDmUserId(friendUserId);
-                                  setCurrentPage("connections");
-                                }}
-                                onViewFriendProfile={(friendUserId) =>
-                                  setViewingFriendProfileId(friendUserId)
-                                }
-                                accountPreferences={{
-                                  currency: accountPreferences?.currency || "USD",
-                                  measurementSystem:
-                                    (accountPreferences?.measurementSystem as
-                                      | "Metric"
-                                      | "Imperial") || "Imperial",
-                                }}
-                                preferencesRefreshKey={preferencesRefreshKey}
-                                deepLinkParams={currentPage === 'discover' ? deepLinkParams : null}
-                                onDeepLinkHandled={() => setDeepLinkParams(null)}
-                              />
-                            </View>
-                            <View style={currentPage === 'connections' ? styles.tabVisible : styles.tabHidden}>
-                              <ConnectionsPage
-                                isTabVisible={currentPage === 'connections'}
-                                onSendCollabInvite={(friend: any) => {
-                                  console.log("Sending collaboration invite to:", friend);
-                                }}
-                                onAddToBoard={handlers.handleAddToBoard}
-                                onShareSavedCard={handlers.handleShareSavedCard}
-                                onRemoveFriend={handlers.handleRemoveFriend}
-                                onBlockUser={handlers.handleBlockUser}
-                                onReportUser={handlers.handleReportUser}
-                                accountPreferences={accountPreferences}
-                                boardsSessions={boardsSessions}
-                                currentMode={currentMode ?? "solo"}
-                                onModeChange={handlers.handleModeChange}
-                                onUpdateBoardSession={(board: any) => {
-                                  console.log("Updating board session:", board);
-                                }}
-                                onCreateSession={async () => {
-                                  await refreshAllSessions({ showLoading: true });
-                                }}
-                                onUnreadCountChange={setTotalUnreadMessages}
-                                onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
-                                onFriendAccepted={() => refreshAllSessions({ showLoading: false })}
-                                openDirectMessageWithUserId={pendingOpenDmUserId}
-                                onOpenDirectMessageHandled={() => setPendingOpenDmUserId(null)}
-                                initialPanel={pendingConnectionsPanel}
-                                onInitialPanelHandled={() => setPendingConnectionsPanel(null)}
-                              />
-                            </View>
-                            <View style={currentPage === 'saved' ? styles.tabVisible : styles.tabHidden}>
-                              <SavedExperiencesPage
-                                isTabVisible={currentPage === 'saved'}
-                                savedCards={savedCards}
-                                isLoading={isLoadingSavedCards}
-                                userPreferences={userPreferences}
-                                onScheduleFromSaved={(card: any) => {
-                                  console.log("Scheduling from saved:", card);
-                                }}
-                                onPurchaseFromSaved={(card: any, option: any) => {
-                                  console.log("Purchasing from saved:", card, option);
-                                }}
-                                onShareCard={handlers.handleShareCard}
-                              />
-                            </View>
-                            <View style={currentPage === 'likes' ? styles.tabVisible : styles.tabHidden}>
-                              <LikesPage
-                                isTabVisible={currentPage === 'likes'}
-                                savedCards={savedCards}
-                                isLoadingSavedCards={isLoadingSavedCards}
-                                isSavedCardsError={isSavedCardsError}
-                                onRetrySavedCards={refetchSavedCards}
-                                isLoadingCalendarEntries={isLoadingCalendarEntries}
-                                calendarEntries={calendarEntries}
-                                userPreferences={userPreferences}
-                                accountPreferences={accountPreferences}
-                                navigationData={activityNavigation}
-                                onNavigationComplete={() => setActivityNavigation(null)}
-                                onPurchaseFromSaved={(card: any, purchaseOption: any) => {
-                                  console.log("Purchasing from saved:", card, purchaseOption);
-                                }}
-                                onRemoveFromCalendar={handlers.handleRemoveFromCalendar}
-                                onShareCard={handlers.handleShareCard}
-                                onAddToCalendar={(entry: any) => {
-                                  console.log("Adding to calendar:", entry);
-                                }}
-                                onShowQRCode={(entryId: string) => {
-                                  console.log("Showing QR code for:", entryId);
-                                }}
-                              />
-                            </View>
-                            <View style={currentPage === 'profile' ? styles.tabVisible : styles.tabHidden}>
-                              <ProfilePage
-                                isTabVisible={currentPage === 'profile'}
-                                onSignOut={async () => {
-                                  logger.action('Sign out pressed');
-                                  await handleSignOut();
-                                }}
-                                onUserIdentityUpdate={handleUserIdentityUpdate}
-                                onNavigateToActivity={handlers.handleNavigateToActivity}
-                                onNavigateToConnections={() => {
-                                  logger.action('Navigate to connections from profile');
-                                  setPendingConnectionsPanel("friends");
-                                  setCurrentPage("connections");
-                                }}
-                                savedExperiences={savedCards?.length || 0}
-                                scheduledCount={calendarEntries?.length || 0}
-                                notificationsEnabled={notificationsEnabled}
-                                onNotificationsToggle={handlers.handleNotificationsToggle}
-                                userIdentity={userIdentity}
-                              />
-                            </View>
+                            {(() => {
+                              switch (currentPage) {
+                                case 'home':
+                                  return (
+                                    <HomePage
+                                      isTabVisible={true}
+                                      onOpenPreferences={handleOpenPreferences}
+                                      onOpenCollabPreferences={handleOpenCollabPreferences}
+                                      currentMode={currentMode ?? "solo"}
+                                      boardsSessions={boardsSessions}
+                                      userPreferences={userPreferences}
+                                      accountPreferences={accountPreferencesMemo}
+                                      onAddToCalendar={handleAddToCalendar}
+                                      savedCards={savedCards}
+                                      onSaveCard={stableHandleSaveCard}
+                                      onShareCard={stableHandleShareCard}
+                                      onPurchaseComplete={handlePurchaseComplete}
+                                      removedCardIds={removedCardIds}
+                                      onResetCards={handleResetCards}
+                                      generateNewMockCard={handleGenerateNewMockCard}
+                                      refreshKey={preferencesRefreshKey}
+                                      collaborationSessions={collaborationSessions}
+                                      selectedSessionId={currentSessionId}
+                                      onSessionSelect={handleSessionSelect}
+                                      onSoloSelect={handleSoloSelect}
+                                      onCreateSession={handleCreateSession}
+                                      onAcceptInvite={handleAcceptInvite}
+                                      onDeclineInvite={handleDeclineInvite}
+                                      onCancelInvite={handleCancelInvite}
+                                      onInviteMoreToSession={handleInviteMoreToSession}
+                                      onSessionStateChanged={handleSessionStateChangedShowLoading}
+                                      availableFriends={availableFriendsForSessions}
+                                      isCreatingSession={isCreatingSession}
+                                      onNotificationNavigate={handleNotificationNavigate}
+                                      userId={user?.id}
+                                      openSessionId={pendingSessionOpen}
+                                      onOpenSessionHandled={handleOpenSessionHandled}
+                                    />
+                                  );
+                                case 'discover':
+                                  return (
+                                    <DiscoverScreen
+                                      isTabVisible={true}
+                                      onOpenChatWithUser={handleOpenChatWithUserFromDiscover}
+                                      onViewFriendProfile={handleViewFriendProfile}
+                                      accountPreferences={accountPreferencesMemo}
+                                      preferencesRefreshKey={preferencesRefreshKey}
+                                      deepLinkParams={discoverDeepLinkParams}
+                                      onDeepLinkHandled={handleDeepLinkHandled}
+                                    />
+                                  );
+                                case 'connections':
+                                  return (
+                                    <ConnectionsPage
+                                      isTabVisible={true}
+                                      onShareSavedCard={stableHandleShareSavedCard}
+                                      onRemoveFriend={stableHandleRemoveFriend}
+                                      onBlockUser={stableHandleBlockUser}
+                                      onReportUser={stableHandleReportUser}
+                                      accountPreferences={accountPreferences}
+                                      boardsSessions={boardsSessions}
+                                      onRefreshSessions={refreshAllSessions}
+                                      currentMode={currentMode ?? "solo"}
+                                      onModeChange={stableHandleModeChange}
+                                      onUpdateBoardSession={handleUpdateBoardSession}
+                                      onCreateSession={handleCreateSessionFromConnections}
+                                      onUnreadCountChange={setTotalUnreadMessages}
+                                      onNavigateToFriendProfile={handleViewFriendProfile}
+                                      onFriendAccepted={handleFriendAccepted}
+                                      openDirectMessageWithUserId={pendingOpenDmUserId}
+                                      onOpenDirectMessageHandled={handleOpenDirectMessageHandled}
+                                      initialPanel={pendingConnectionsPanel}
+                                      onInitialPanelHandled={handleInitialPanelHandled}
+                                    />
+                                  );
+                                case 'saved':
+                                  return (
+                                    <SavedExperiencesPage
+                                      isTabVisible={true}
+                                      savedCards={savedCards}
+                                      isLoading={isLoadingSavedCards}
+                                      userPreferences={userPreferences}
+                                      onScheduleFromSaved={handleScheduleFromSaved}
+                                      onPurchaseFromSaved={handlePurchaseFromSavedSaved}
+                                      onShareCard={stableHandleShareCard}
+                                    />
+                                  );
+                                case 'likes':
+                                  return (
+                                    <LikesPage
+                                      isTabVisible={true}
+                                      savedCards={savedCards}
+                                      isLoadingSavedCards={isLoadingSavedCards}
+                                      isSavedCardsError={isSavedCardsError}
+                                      onRetrySavedCards={refetchSavedCards}
+                                      isLoadingCalendarEntries={isLoadingCalendarEntries}
+                                      calendarEntries={calendarEntries}
+                                      userPreferences={userPreferences}
+                                      accountPreferences={accountPreferences}
+                                      navigationData={activityNavigation}
+                                      onNavigationComplete={handleNavigationComplete}
+                                      onPurchaseFromSaved={handlePurchaseFromSavedLikes}
+                                      onRemoveFromCalendar={stableHandleRemoveFromCalendar}
+                                      onShareCard={stableHandleShareCard}
+                                      onAddToCalendar={handleAddToCalendarFromLikes}
+                                      onShowQRCode={handleShowQRCode}
+                                    />
+                                  );
+                                case 'profile':
+                                  return (
+                                    <ProfilePage
+                                      isTabVisible={true}
+                                      onSignOut={handleSignOutFromProfile}
+                                      onUserIdentityUpdate={handleUserIdentityUpdate}
+                                      onNavigateToActivity={stableHandleNavigateToActivity}
+                                      onNavigateToConnections={handleNavigateToConnectionsFromProfile}
+                                      savedExperiences={savedExperiencesCountMemo}
+                                      scheduledCount={scheduledCountMemo}
+                                      notificationsEnabled={notificationsEnabled}
+                                      onNotificationsToggle={stableHandleNotificationsToggle}
+                                      userIdentity={userIdentity}
+                                    />
+                                  );
+                                default:
+                                  return null;
+                              }
+                            })()}
                           </View>
                         )}
                       </View>
@@ -2467,200 +2728,28 @@ function AppContent() {
                       {/* Coach Mark Spotlight Overlay */}
                       <SpotlightOverlay />
 
-                      {/* Bottom Navigation — full-bleed: bg extends behind gesture bar */}
+                      {/* Bottom Navigation — ORCH-0589 floating glass capsule with orange spotlight. */}
                       <CoachMarkNavigationGate layout={layout}>
-                        <View style={styles.navigationContainer}>
-                          <TouchableOpacity
-                            onPress={() => {
-                              logger.action('Tab pressed: home');
+                        <View style={styles.glassNavWrapper}>
+                          <GlassBottomNavWithCoach
+                            currentPage={currentPage as BottomNavPage}
+                            onNavigate={(page: BottomNavPage) => {
+                              logger.action(`Tab pressed: ${page}`);
                               closeProfileOverlays();
-                              setCurrentPage("home");
+                              setCurrentPage(page);
                             }}
-                            style={styles.navItem}
-                          >
-                            <View style={styles.navIconContainer}>
-                              <Ionicons
-                                name="home-outline"
-                                size={TAB_BAR_ICON_SIZE}
-                                color={
-                                  currentPage === "home" ? "#eb7825" : "#9CA3AF"
-                                }
-                              />
-                            </View>
-                            <Text
-                              style={[
-                                styles.navText,
-                                currentPage === "home"
-                                  ? styles.navTextActive
-                                  : styles.navTextInactive,
-                              ]}
-                            >
-                              {t('navigation:tabs.explore')}
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              logger.action('Tab pressed: discover');
-                              closeProfileOverlays();
-                              setCurrentPage("discover");
+                            labels={{
+                              home: t('navigation:tabs.explore'),
+                              discover: t('navigation:tabs.discover'),
+                              connections: t('navigation:tabs.friends'),
+                              likes: t('navigation:tabs.likes'),
+                              profile: t('navigation:tabs.profile'),
                             }}
-                            style={styles.navItem}
-                          >
-                            <View style={styles.navIconContainer}>
-                              <Ionicons
-                                name="compass-outline"
-                                size={TAB_BAR_ICON_SIZE}
-                                color={
-                                  currentPage === "discover" ? "#eb7825" : "#9CA3AF"
-                                }
-                              />
-                            </View>
-                            <Text
-                              style={[
-                                styles.navText,
-                                currentPage === "discover"
-                                  ? styles.navTextActive
-                                  : styles.navTextInactive,
-                              ]}
-                            >
-                              {t('navigation:tabs.discover')}
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              logger.action('Tab pressed: connections');
-                              closeProfileOverlays();
-                              setCurrentPage("connections");
+                            badges={{
+                              connections: totalUnreadMessages,
+                              likes: totalUnreadBoardMessages,
                             }}
-                            style={styles.navItem}
-                          >
-                            <View style={styles.navIconContainer}>
-                              <Ionicons
-                                name="people-outline"
-                                size={TAB_BAR_ICON_SIZE}
-                                color={
-                                  currentPage === "connections"
-                                    ? "#eb7825"
-                                    : "#9CA3AF"
-                                }
-                              />
-                              {totalUnreadMessages > 0 && (
-                                <View style={styles.tabBadge}>
-                                  <Text style={styles.tabBadgeText}>
-                                    {totalUnreadMessages > 99
-                                      ? "99+"
-                                      : totalUnreadMessages}
-                                  </Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text
-                              style={[
-                                styles.navText,
-                                currentPage === "connections"
-                                  ? styles.navTextActive
-                                  : styles.navTextInactive,
-                              ]}
-                            >
-                              {t('navigation:tabs.friends')}
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              logger.action('Tab pressed: likes');
-                              closeProfileOverlays();
-                              setCurrentPage("likes");
-                            }}
-                            style={styles.navItem}
-                          >
-                            <View style={styles.navIconContainer}>
-                              <Ionicons
-                                name="heart-outline"
-                                size={TAB_BAR_ICON_SIZE}
-                                color={
-                                  currentPage === "likes"
-                                    ? "#eb7825"
-                                    : "#9CA3AF"
-                                }
-                              />
-                              {totalUnreadBoardMessages > 0 && (
-                                <View style={styles.tabBadge}>
-                                  <Text style={styles.tabBadgeText}>
-                                    {totalUnreadBoardMessages > 99
-                                      ? "99+"
-                                      : totalUnreadBoardMessages}
-                                  </Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text
-                              style={[
-                                styles.navText,
-                                currentPage === "likes"
-                                  ? styles.navTextActive
-                                  : styles.navTextInactive,
-                              ]}
-                            >
-                              {t('navigation:tabs.likes')}
-                            </Text>
-                          </TouchableOpacity>
-                          {/*    <TouchableOpacity
-                              onPress={() => {
-                                console.log("Navigating to saved");
-                                setCurrentPage("saved");
-                              }}
-                              style={styles.navItem}
-                            >
-                              <Ionicons
-                                name="bookmark"
-                                size={24}
-                                color={
-                                  currentPage === "saved"
-                                    ? "#eb7825"
-                                    : "#9CA3AF"
-                                }
-                              />
-                              <Text
-                                style={[
-                                  styles.navText,
-                                  currentPage === "saved"
-                                    ? styles.navTextActive
-                                    : styles.navTextInactive,
-                                ]}
-                              >
-                                Saved
-                              </Text>
-                            </TouchableOpacity> */}
-                          <TouchableOpacity
-                            onPress={() => {
-                              logger.action('Tab pressed: profile');
-                              closeProfileOverlays();
-                              setCurrentPage("profile");
-                            }}
-                            style={styles.navItem}
-                          >
-                            <View style={styles.navIconContainer}>
-                              <Ionicons
-                                name="person-outline"
-                                size={TAB_BAR_ICON_SIZE}
-                                color={
-                                  currentPage === "profile"
-                                    ? "#eb7825"
-                                    : "#9CA3AF"
-                                }
-                              />
-                            </View>
-                            <Text
-                              style={[
-                                styles.navText,
-                                currentPage === "profile"
-                                  ? styles.navTextActive
-                                  : styles.navTextInactive,
-                              ]}
-                            >
-                              {t('navigation:tabs.profile')}
-                            </Text>
-                          </TouchableOpacity>
+                          />
                         </View>
                       </CoachMarkNavigationGate>
                     </View>
@@ -2754,9 +2843,12 @@ function AppContent() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  // ORCH-0589 v3 (R1): black — the transparent bottomNavigation from v2 was
+  // showing this wrapper through. Page-level backgrounds cover this on non-Swipe
+  // pages; the Swipe page (HomePage) already uses black so no change is visible there.
+  rootView: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "#000000",
   },
   profileLoadingContainer: {
     flex: 1,
@@ -2790,87 +2882,30 @@ const styles = StyleSheet.create({
   mainContent: {
     flex: 1,
   },
-  tabVisible: {
-    flex: 1,
-  },
-  tabHidden: {
+  // ORCH-0679 Wave 2.8 Path B: tabVisible/tabHidden styles deleted.
+  // The all-tabs-always-mounted pattern was replaced with a switch(currentPage)
+  // IIFE that mounts only the active tab. CI gate: check-active-tab-only.sh
+  // enforces these style names cannot return.
+  // ORCH-0589 v5 (T5): paddingTop 8 → 0. Nav now sits flush above the safe-area
+  // bottom (home-indicator zone), giving the card 8pt more vertical space.
+  // paddingBottom (via layout.bottomNavPadding on CoachMarkNavigationGate) is
+  // preserved to keep home-indicator clearance.
+  // ORCH-0600: position absolute so page content extends full-bleed under the
+  // nav. Pages that need bottom clearance use layout.bottomNavTotalHeight.
+  bottomNavigation: {
     position: 'absolute',
-    top: 0,
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    opacity: 0,
-    pointerEvents: 'none',
+    backgroundColor: "transparent",
+    paddingTop: 0,
+    zIndex: 50,
+    elevation: 0,
   },
-  bottomNavigation: {
-    backgroundColor: "white",
-    borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-    paddingTop: 8,
-    zIndex: 1,
-    elevation: 1,
-  },
-  navigationContainer: {
-    flexDirection: "row",
-    justifyContent: "space-evenly",
-    alignItems: "center",
-    paddingHorizontal: s(8),
-    height: vs(56),
-  },
-  navItem: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: vs(5),
-    borderRadius: 8,
-  },
-  navIconContainer: {
-    position: "relative",
-    width: ms(22),
-    height: ms(22),
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tabBadge: {
-    position: "absolute",
-    top: -6,
-    right: -8,
-    minWidth: ms(18),
-    height: ms(18),
-    backgroundColor: "#eb7825",
-    borderRadius: ms(9),
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: "white",
-  },
-  tabBadgeText: {
-    fontSize: ms(10),
-    color: "white",
-    fontWeight: "700",
-  },
-  tabBadgeDot: {
-    position: "absolute",
-    top: -2,
-    right: -2,
-    width: ms(8),
-    height: ms(8),
-    backgroundColor: "#eb7825",
-    borderRadius: ms(4),
-    borderWidth: 1.5,
-    borderColor: "white",
-  },
-  navText: {
-    fontSize: ms(10),
-    marginTop: vs(2),
-  },
-  navTextActive: {
-    color: "#eb7825",
-    fontWeight: "600",
-  },
-  navTextInactive: {
-    color: "#9CA3AF",
+  // ORCH-0589 v5 (T1a): paddingHorizontal 20 → 8. Nav capsule visibly wider to
+  // match the card's full-bleed horizontal reach, while still floating (not edge-to-edge).
+  glassNavWrapper: {
+    paddingHorizontal: 8,
   },
   // Floating Help Button styles
   floatingButtonContainer: {

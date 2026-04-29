@@ -5,7 +5,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RecommendationCard, RecommendationsRequest } from '../types';
-import type { UserPreferences } from './experiencesService';
+import type { UserPreferences } from '../types/preferences'; // ORCH-0640 ch09: retargeted from deleted experiencesService
 import { supabase } from './supabase';
 
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
@@ -402,8 +402,13 @@ class OfflineService {
   private async executeAction(action: any): Promise<void> {
     switch (action.type) {
       case 'save_experience':
+        // ORCH-0640: saved_experiences dropped — savesService is deleted so no new
+        // save_experience actions are queued by modern code. This branch exists only
+        // to drain stale AsyncStorage queue entries from pre-ORCH-0640 builds; swap
+        // target to saved_card so the insert targets the live save authority.
+        // [TRANSITIONAL] drain-stale-queue shim — exits once ORCH-0640 OTA has soaked 30 days.
         await supabase
-          .from('saved_experiences')
+          .from('saved_card')
           .insert([action.data]);
         break;
       case 'like_recommendation':

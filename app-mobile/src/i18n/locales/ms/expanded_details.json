@@ -35,7 +35,16 @@
     "schedule_anyway": "Jadualkan Sahaja",
     "scheduled_toast": "Dijadualkan! {{title}} telah ditambah ke kalendar anda",
     "closed_message": "Tempat ini tutup pada tarikh dan masa yang dipilih. Ketik \"Jadualkan\" untuk memilih masa lain.",
-    "share_prompt": "Kongsi {{title}} dengan rakan"
+    "share_prompt": "Kongsi {{title}} dengan rakan",
+    "back_to_date": "Kembali ke tarikh",
+    "confirm_date_title": "Tarikh dipilih",
+    "confirm_date_message": "Anda memilih {{date}}. Teruskan ke pemilihan masa?",
+    "change_date": "Tukar tarikh",
+    "pick_time": "Pilih masa",
+    "unverified_hours_title": "Waktu operasi tidak tersedia",
+    "unverified_hours_message": "Kami tidak dapat mengesahkan waktu {{venueName}} pada masa itu. Jadualkan tetap?",
+    "error_past_date_title": "Pilih masa akan datang",
+    "error_past_date_message": "Masa itu telah berlalu. Sila pilih masa akan datang."
   },
   "busyness": {
     "traffic": "Trafik",

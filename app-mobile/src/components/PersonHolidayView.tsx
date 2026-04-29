@@ -36,7 +36,8 @@ import { colors } from "../constants/designSystem";
 import CalendarButton from "./CalendarButton";
 import ShuffleButton from "./ShuffleButton";
 import PersonTabBar from "./PersonTabBar";
-import PersonGridCard from "./PersonGridCard";
+// ORCH-0684: PersonGridCard import removed — never used by this file.
+// Other surfaces (PairedSavesListScreen, PairedProfileSection) still import it.
 import BilateralToggle from "./BilateralToggle";
 import VisitBadge from "./VisitBadge";
 import PairedProfileSection from "./profile/PairedProfileSection";
@@ -310,6 +311,10 @@ function CompactCard({
           {isCurated && stops > 0 ? ` · ${i18n.t('social:holiday.stops', { count: stops })}` : ""}
         </Text>
         <View style={styles.compactCardFooter}>
+          {/* ORCH-0684 D-Q5: hide price line when priceRange is null —
+              never render a fabricated default (Constitution #9). The
+              empty View placeholder preserves footer layout via
+              justifyContent:'space-between'. */}
           {priceRange ? (
             <Text style={[styles.compactCardPrice, isCurated && styles.compactCardPriceCurated]}>
               {priceRange}
@@ -348,6 +353,9 @@ function CardRow({
   excludeCardIds = [],
   enabled = true,
   onCardsLoaded,
+  mode,                  // ORCH-0684: bilateral toggle override
+  isCustomHoliday,       // ORCH-0684: composition rule routing
+  yearsElapsed,          // ORCH-0684: anniversary detection
 }: {
   pairedUserId: string;
   holidayKey: string;
@@ -361,6 +369,9 @@ function CardRow({
   excludeCardIds?: string[];
   enabled?: boolean;
   onCardsLoaded?: (cardIds: string[]) => void;
+  mode?: "default" | "individual" | "bilateral";
+  isCustomHoliday?: boolean;
+  yearsElapsed?: number;
 }) {
   const { t } = useTranslation(['social', 'common']);
   const { currency } = useLocalePreferences();
@@ -369,7 +380,9 @@ function CardRow({
   const hasLoc = location.latitude !== 0 || location.longitude !== 0;
 
   const { data, isLoading, isFetching, isError, refetch } = usePairedCards(
-    enabled && hasLoc ? { pairedUserId, holidayKey, location, sections, excludeCardIds } : null
+    enabled && hasLoc
+      ? { pairedUserId, holidayKey, location, sections, excludeCardIds, mode, isCustomHoliday, yearsElapsed }
+      : null
   );
 
   const allCards = data?.cards ?? [];
@@ -392,9 +405,9 @@ function CardRow({
   const shufflePairedCards = useShufflePairedCards();
   const handleShuffle = useCallback(async () => {
     reportedRef.current = false;
-    await shufflePairedCards(pairedUserId, holidayKey, sections, location, excludeCardIds);
+    await shufflePairedCards(pairedUserId, holidayKey, sections, location, excludeCardIds, isCustomHoliday, yearsElapsed);
     if (onShuffleCategories) onShuffleCategories();
-  }, [shufflePairedCards, pairedUserId, holidayKey, sections, location, excludeCardIds, onShuffleCategories]);
+  }, [shufflePairedCards, pairedUserId, holidayKey, sections, location, excludeCardIds, isCustomHoliday, yearsElapsed, onShuffleCategories]);
 
   // Signal parent that loading finished
   useEffect(() => {
@@ -536,6 +549,7 @@ function HolidaySectionView({
   fallbackCards, onCardPress,
   isExpanded, onToggle, onArchive,
   travelMode, excludeCardIds, enabled, onCardsLoaded,
+  mode,                  // ORCH-0684
 }: {
   holiday: HolidayDefinition;
   daysAway: number;
@@ -553,6 +567,7 @@ function HolidaySectionView({
   excludeCardIds?: string[];
   enabled?: boolean;
   onCardsLoaded?: (cardIds: string[]) => void;
+  mode?: "default" | "individual" | "bilateral";
 }) {
   const { t } = useTranslation(['social', 'common']);
   const { sections: aiSections, invalidate } = useHolidayCategories(holiday.id, holiday.name);
@@ -598,6 +613,8 @@ function HolidaySectionView({
             excludeCardIds={excludeCardIds}
             enabled={enabled}
             onCardsLoaded={onCardsLoaded}
+            mode={mode}
+            isCustomHoliday={false}
           />
         </>
       )}
@@ -611,6 +628,7 @@ function CustomHolidaySectionView({
   holiday, pairedUserId, pairingId, firstName, location,
   fallbackCards, onCardPress, isExpanded, onToggle, onDelete,
   travelMode, excludeCardIds, enabled, onCardsLoaded,
+  mode,                  // ORCH-0684
 }: {
   holiday: { id: string; name: string; month: number; day: number; year: number };
   pairedUserId: string; pairingId: string; firstName: string;
@@ -623,6 +641,7 @@ function CustomHolidaySectionView({
   excludeCardIds?: string[];
   enabled?: boolean;
   onCardsLoaded?: (cardIds: string[]) => void;
+  mode?: "default" | "individual" | "bilateral";
 }) {
   const { t } = useTranslation(['social', 'common']);
   const da = getDaysUntil(holiday.month - 1, holiday.day);
@@ -677,6 +696,9 @@ function CustomHolidaySectionView({
             excludeCardIds={excludeCardIds}
             enabled={enabled}
             onCardsLoaded={onCardsLoaded}
+            mode={mode}
+            isCustomHoliday={true}
+            yearsElapsed={elapsed > 0 ? elapsed : 0}
           />
         </>
       )}
@@ -701,7 +723,10 @@ export default function PersonHolidayView({
 
   // ── Preference Intelligence state ──────────────────────────────────────
   const [activeTab, setActiveTab] = useState(0); // 0=Picks, 1=Saves, 2=Visits
-  const [bilateralMode, setBilateralMode] = useState<"individual" | "bilateral">("individual");
+  // ORCH-0684 D-Q4: widened to include "default" so edge fn can auto-decide
+  // bilateral when both users meet the preference threshold. The AsyncStorage
+  // value (if set) is the user's explicit override.
+  const [bilateralMode, setBilateralMode] = useState<"default" | "individual" | "bilateral">("default");
   const [showSavesList, setShowSavesList] = useState(false);
   const [showVisitsList, setShowVisitsList] = useState(false);
 
@@ -736,16 +761,26 @@ export default function PersonHolidayView({
   // Stable combined exclude list for standard holidays
   const standardExcludeIds = useMemo(() => [...stage1Ids, ...stage2Ids], [stage1Ids, stage2Ids]);
 
-  // Load bilateral mode from AsyncStorage per paired person
+  // Load bilateral mode from AsyncStorage per paired person.
+  // ORCH-0684 D-Q4: only "individual" or "bilateral" persist as overrides;
+  // the absence of a value means "default" (auto-decide in edge fn).
   useEffect(() => {
     AsyncStorage.getItem(`bilateral_mode_${pairedUserId}`).then((stored) => {
-      if (stored === "bilateral") setBilateralMode("bilateral");
+      if (stored === "bilateral" || stored === "individual") {
+        setBilateralMode(stored);
+      } else {
+        setBilateralMode("default");
+      }
     }).catch(() => {});
   }, [pairedUserId]);
 
-  const handleModeChange = useCallback((mode: "individual" | "bilateral") => {
+  const handleModeChange = useCallback((mode: "default" | "individual" | "bilateral") => {
     setBilateralMode(mode);
-    AsyncStorage.setItem(`bilateral_mode_${pairedUserId}`, mode).catch(() => {});
+    if (mode === "default") {
+      AsyncStorage.removeItem(`bilateral_mode_${pairedUserId}`).catch(() => {});
+    } else {
+      AsyncStorage.setItem(`bilateral_mode_${pairedUserId}`, mode).catch(() => {});
+    }
   }, [pairedUserId]);
 
   // Paired saves & visits
@@ -874,6 +909,8 @@ export default function PersonHolidayView({
               travelMode={travelMode}
               excludeCardIds={[]}
               enabled={true}
+              mode={bilateralMode}
+              isCustomHoliday={false}
               onCardsLoaded={(ids) => {
                 setStage1Ids(ids);
                 setStage1Done(true);
@@ -906,6 +943,7 @@ export default function PersonHolidayView({
               travelMode={travelMode}
               excludeCardIds={stage1Ids}
               enabled={stage1Done}
+              mode={bilateralMode}
               onCardsLoaded={(ids) => {
                 setStage2Ids(prev => [...prev, ...ids]);
                 customLoadedRef.current += 1;
@@ -948,6 +986,7 @@ export default function PersonHolidayView({
               travelMode={travelMode}
               excludeCardIds={standardExcludeIds}
               enabled={stage2Done || (customHolidays?.length || 0) === 0}
+              mode={bilateralMode}
             />
           ))}
 

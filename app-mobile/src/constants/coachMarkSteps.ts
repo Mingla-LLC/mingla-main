@@ -1,92 +1,90 @@
+/**
+ * Coach mark step definitions — ORCH-0635 refresh (Pass 2, 8-step variant).
+ *
+ * Step-to-target wiring is by numeric stepId only (see useCoachMark.ts).
+ * The old `targetId` string field was dead metadata and has been removed.
+ *
+ * Spec: Mingla_Artifacts/outputs/DESIGN_ORCH-0635_COACH_MARK_REFRESH_SPEC.md §2
+ */
 export interface CoachStep {
   id: number;
   tab: 'home' | 'discover' | 'connections' | 'profile';
-  targetId: string;
   title: string;
   description: string;
   buttonLabel: string;
+  /** Override bubble position. 'auto' (default) places the bubble above/below the
+   *  cutout. 'center' renders the bubble in the middle of the screen — useful when
+   *  the cutout is large (e.g. a full screen section) and the bubble shouldn't hug it. */
+  bubblePosition?: 'auto' | 'center';
 }
 
 export const COACH_STEPS: CoachStep[] = [
   {
     id: 1,
     tab: 'home',
-    targetId: 'coach-card-deck',
-    title: 'Meet Your Deck',
-    description: 'Swipe right to save, left to pass. Tap any card for the full scoop.',
+    title: 'Meet your deck',
+    description: 'Swipe right to save, left to pass. Tap any card for the full story.',
     buttonLabel: 'Got it',
   },
   {
     id: 2,
     tab: 'home',
-    targetId: 'coach-preferences-btn',
-    title: 'Your Taste, Your Rules',
-    description: "Tell us what you're craving \u2014 categories, budget, how far you'll go.",
+    title: 'Your taste, your rules',
+    description: "Dial in your vibe — categories, budget, distance. It's all here.",
     buttonLabel: 'Got it',
   },
   {
     id: 3,
     tab: 'home',
-    targetId: 'coach-card-tap',
-    title: 'Lock It In',
-    description: 'Tap any card to expand it. Save for later or schedule it \u2014 your call.',
+    title: 'Where your saves live',
+    description: 'Every card you save lands in Likes. Scheduled plans too.',
     buttonLabel: 'Got it',
   },
   {
     id: 4,
     tab: 'home',
-    targetId: 'coach-create-session',
-    title: 'Better Together',
-    description: 'Start a session, invite your crew, and swipe the same deck together.',
+    title: 'Better together',
+    description: 'Start a session, invite your crew, swipe the same deck together.',
     buttonLabel: 'Got it',
   },
   {
     id: 5,
     tab: 'home',
-    targetId: 'coach-collab-prefs',
-    title: 'Set the Mood',
-    description: "Tap a session pill and this icon turns orange. Set your preferences \u2014 cards are built from what everyone picks, so make yours count.",
+    title: 'Back to solo',
+    description: 'Your deck, your rules. Tap Solo to switch back anytime.',
     buttonLabel: 'Got it',
   },
   {
     id: 6,
-    tab: 'home',
-    targetId: 'coach-solo-pill',
-    title: 'Back to You',
-    description: "Done planning with the group? Tap Solo to switch back to your own deck and preferences.",
+    tab: 'discover',
+    title: 'Events, near you',
+    description: 'Concerts, shows, experiences — all within reach.',
     buttonLabel: 'Got it',
+    // Cutout covers the entire header panel (title + filter bar). With a large
+    // top-of-screen target, the auto-positioned bubble would hug the bottom edge
+    // awkwardly. Center on screen for a cleaner read.
+    bubblePosition: 'center',
   },
   {
     id: 7,
-    tab: 'discover',
-    targetId: 'coach-discover-feed',
-    title: "What's Happening",
-    description: 'Browse concerts, events, and experiences near you. Filter by genre, date, or price.',
+    tab: 'connections',
+    title: 'Your people',
+    description: 'Friends, requests, blocks — everything social lives here.',
     buttonLabel: 'Got it',
   },
   {
     id: 8,
-    tab: 'connections',
-    targetId: 'coach-chat-header',
-    title: 'Your Social Hub',
-    description: 'Message friends, manage your circle, send pair requests, and invite people with a link. Everything social lives here.',
+    tab: 'profile',
+    title: 'Your rules',
+    description: 'Privacy, notifications, language — all in Account Settings.',
     buttonLabel: 'Got it',
   },
   {
     id: 9,
     tab: 'profile',
-    targetId: 'coach-privacy',
-    title: 'On Your Terms',
-    description: 'Control who sees you and what you share. Nobody gets in without your say-so.',
-    buttonLabel: 'Got it',
-  },
-  {
-    id: 10,
-    tab: 'profile',
-    targetId: 'coach-feedback',
-    title: "We're All Ears",
-    description: "Got thoughts? Record a quick voice note \u2014 bugs, ideas, vibes. We hear every one.",
-    buttonLabel: "Let's go!",
+    title: 'Tell us what works',
+    description: "Love something? Spot a bug? Tap here — we read every one.",
+    buttonLabel: "You're set",
   },
 ];
 

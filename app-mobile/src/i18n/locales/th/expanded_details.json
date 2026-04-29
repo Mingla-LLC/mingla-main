@@ -35,7 +35,16 @@
     "schedule_anyway": "ตั้งเวลาต่อไป",
     "scheduled_toast": "ตั้งเวลาแล้ว! {{title}} ถูกเพิ่มในปฏิทินของคุณ",
     "closed_message": "สถานที่นี้ปิดในวันที่และเวลาที่เลือก แตะ \"ตั้งเวลา\" เพื่อเลือกเวลาอื่น",
-    "share_prompt": "แชร์ {{title}} กับเพื่อน"
+    "share_prompt": "แชร์ {{title}} กับเพื่อน",
+    "back_to_date": "กลับไปที่วันที่",
+    "confirm_date_title": "เลือกวันที่แล้ว",
+    "confirm_date_message": "คุณเลือก {{date}} ดำเนินการต่อไปยังการเลือกเวลาหรือไม่?",
+    "change_date": "เปลี่ยนวันที่",
+    "pick_time": "เลือกเวลา",
+    "unverified_hours_title": "ไม่มีข้อมูลเวลาทำการ",
+    "unverified_hours_message": "เราไม่สามารถยืนยันเวลาทำการของ {{venueName}} ในช่วงเวลานั้นได้ จัดตารางต่อไปหรือไม่?",
+    "error_past_date_title": "เลือกเวลาในอนาคต",
+    "error_past_date_message": "เวลานั้นผ่านไปแล้ว โปรดเลือกเวลาในอนาคต"
   },
   "busyness": {
     "traffic": "การจราจร",

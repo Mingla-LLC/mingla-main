@@ -63,6 +63,43 @@ export const MINGLA_CATEGORY_PLACE_TYPES: Record<string, string[]> = {
     'live_music_venue', // ORCH-0434: added for Drinks & Music
     'karaoke',          // ORCH-0434: added for Drinks & Music
   ],
+  // ORCH-0598 (Slice 6): split "Movies & Theatre" into two separate canonical categories.
+  // Old display name retained as [TRANSITIONAL] below for pre-OTA clients (exit 2026-05-13).
+  'Movies': [
+    'movie_theater', 'drive_in',
+  ],
+  'Theatre': [
+    'performing_arts_theater', 'opera_house', 'auditorium', 'amphitheatre', 'concert_hall',
+  ],
+  // ORCH-0597 (Slice 5): split "Brunch, Lunch & Casual" into two separate canonical
+  // categories. Old display name retained as [TRANSITIONAL] alias (below) for pre-OTA
+  // clients during the 14-day soak window ending 2026-05-12.
+  'Brunch': [
+    'brunch_restaurant', 'breakfast_restaurant', 'cafe',
+    'american_restaurant', 'bistro', 'gastropub',
+    'bakery', 'diner',
+  ],
+  'Casual': [
+    'mexican_restaurant', 'thai_restaurant', 'pizza_restaurant', 'sandwich_shop',
+    'mediterranean_restaurant', 'indian_restaurant', 'chinese_restaurant',
+    'vietnamese_restaurant', 'korean_restaurant', 'japanese_restaurant',
+    'lebanese_restaurant', 'greek_restaurant', 'italian_restaurant',
+    'ramen_restaurant', 'noodle_shop', 'hamburger_restaurant',
+    'deli', 'bakery', 'cafe', 'diner', 'american_restaurant', 'barbecue_restaurant',
+    'seafood_restaurant', 'vegan_restaurant', 'vegetarian_restaurant',
+    'turkish_restaurant', 'spanish_restaurant', 'french_restaurant',
+    'sushi_restaurant', 'buffet_restaurant', 'food_court',
+    'afghani_restaurant', 'african_restaurant', 'asian_restaurant',
+    'barbecue_restaurant', 'brazilian_restaurant', 'indonesian_restaurant',
+    'middle_eastern_restaurant', 'hot_pot_restaurant', 'dim_sum_restaurant',
+    'argentinian_restaurant', 'basque_restaurant', 'persian_restaurant',
+    'scandinavian_restaurant', 'filipino_restaurant', 'soul_food_restaurant',
+    'cuban_restaurant', 'hawaiian_restaurant', 'ethiopian_restaurant',
+    'moroccan_restaurant', 'peruvian_restaurant', 'cajun_restaurant',
+    'fusion_restaurant', 'korean_barbecue_restaurant', 'tapas_restaurant',
+  ],
+  // [TRANSITIONAL] — pre-ORCH-0597 clients still send this bundled display name.
+  // Union of Brunch + Casual types. Remove after 2026-05-12.
   'Brunch, Lunch & Casual': [
     'restaurant', 'hamburger_restaurant', 'pizza_restaurant',
     'ramen_restaurant', 'sandwich_shop', 'sushi_restaurant', 'diner',
@@ -171,25 +208,51 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'drinks_and_music': 'Drinks & Music',
   'drinks-and-music': 'Drinks & Music',
   'drink': 'Drinks & Music',              // backward compat
+  // ORCH-0597 (Slice 5): split chips — NEW canonical routing.
+  'brunch': 'Brunch',
+  'Brunch': 'Brunch',
+  'casual_food': 'Casual',
+  'casual-food': 'Casual',
+  'casualfood': 'Casual',
+  'casual food': 'Casual',
+  'casual': 'Casual',
+  'Casual': 'Casual',
+  'casual_eats': 'Casual',   // ORCH-0597: legacy alias redirected to new Casual chip
+  'casual-eats': 'Casual',
+  'casualeats': 'Casual',
+  'casual eats': 'Casual',
+  // [TRANSITIONAL] legacy bundled chip slug + display name — resolves to
+  // the old bundled canonical entry so that CATEGORY_TO_SIGNAL routes to the
+  // backward-compat UNION (brunch + casual_food). Pre-OTA clients still send
+  // these. Remove after 2026-05-12.
   'brunch_lunch_casual': 'Brunch, Lunch & Casual',
   'brunch-lunch-casual': 'Brunch, Lunch & Casual',
-  'casual_eats': 'Brunch, Lunch & Casual', // backward compat
-  'casual-eats': 'Brunch, Lunch & Casual',
-  'casualeats': 'Brunch, Lunch & Casual',
-  'casual eats': 'Brunch, Lunch & Casual',
+  'brunch, lunch & casual': 'Brunch, Lunch & Casual',
   'upscale_fine_dining': 'Upscale & Fine Dining',
   'upscale-fine-dining': 'Upscale & Fine Dining',
   'fine_dining': 'Upscale & Fine Dining',  // backward compat
   'fine-dining': 'Upscale & Fine Dining',
   'finedining': 'Upscale & Fine Dining',
   'fine dining': 'Upscale & Fine Dining',
+  // ORCH-0598 (Slice 6): split chips — NEW canonical routing.
+  'movies': 'Movies',
+  'Movies': 'Movies',
+  'theatre': 'Theatre',
+  'Theatre': 'Theatre',
+  'theater': 'Theatre',
+  'Theater': 'Theatre',
+  // [TRANSITIONAL] legacy bundled slug + display name — resolves to 'Movies & Theatre'
+  // canonical so CATEGORY_TO_SIGNAL routes to backward-compat UNION (movies + theatre).
+  // Pre-OTA clients still send these. Remove after 2026-05-13.
   'movies_theatre': 'Movies & Theatre',
   'movies-theatre': 'Movies & Theatre',
-  'watch': 'Movies & Theatre',             // backward compat
-  'live_performance': 'Movies & Theatre',   // backward compat
-  'live-performance': 'Movies & Theatre',
-  'live performance': 'Movies & Theatre',
-  'liveperformance': 'Movies & Theatre',
+  // Legacy "watch"/"screen & relax"/"live_performance" intents redirected to Movies
+  // (primary intent of old bundle was cinema-first per OPEN-11).
+  'watch': 'Movies',
+  'live_performance': 'Theatre',   // live performance → theatre (performing arts)
+  'live-performance': 'Theatre',
+  'live performance': 'Theatre',
+  'liveperformance': 'Theatre',
   'creative_arts': 'Creative & Arts',
   'creative-arts': 'Creative & Arts',
   'creativearts': 'Creative & Arts',
@@ -235,12 +298,13 @@ const CATEGORY_ALIASES: Record<string, string> = {
   'dining_experiences': 'Upscale & Fine Dining',
   'dining-experiences': 'Upscale & Fine Dining',
   'dining': 'Upscale & Fine Dining',
-  'screen & relax': 'Movies & Theatre',
-  'screen_and_relax': 'Movies & Theatre',
-  'screen-and-relax': 'Movies & Theatre',
-  'screen&relax': 'Movies & Theatre',
-  'screenrelax': 'Movies & Theatre',
-  'screen_&_relax': 'Movies & Theatre',
+  // ORCH-0598: legacy "screen & relax" → Movies (cinema intent, not theatre)
+  'screen & relax': 'Movies',
+  'screen_and_relax': 'Movies',
+  'screen-and-relax': 'Movies',
+  'screen&relax': 'Movies',
+  'screenrelax': 'Movies',
+  'screen_&_relax': 'Movies',
   'creative & hands-on': 'Creative & Arts',
   'creative_and_hands_on': 'Creative & Arts',
   'creative-and-hands-on': 'Creative & Arts',
@@ -260,7 +324,7 @@ const CATEGORY_ALIASES: Record<string, string> = {
   // Short forms used by legacy recommendation endpoints
   'sip': 'Drinks & Music',
   'play_move': 'Play',
-  'screen_relax': 'Movies & Theatre',
+  'screen_relax': 'Movies',  // ORCH-0598: cinema intent → Movies chip
   'creative': 'Creative & Arts',
 };
 
@@ -338,6 +402,69 @@ export function filterOutIntents(categories: string[]): string[] {
 
 // ── All canonical category display names ──────────────────────────────────────
 export const ALL_CATEGORY_NAMES = Object.keys(MINGLA_CATEGORY_PLACE_TYPES);
+
+// ── ORCH-0684: primary_type → Mingla category (reverse map) ──────────────────
+// Used by get-person-hero-cards mapper to derive a Mingla category for a
+// place_pool row from its Google primary_type. Returns the FIRST category whose
+// place-type list contains the primary_type. Falls back to null when no match
+// — caller must emit empty string (Constitution #9 — never fabricate).
+//
+// Built lazily; cached after first call. Mingla has 13 categories × ~25 place
+// types each — lookup is O(categories × types) ~325 string comparisons; cheap.
+let _PRIMARY_TYPE_TO_CATEGORY_CACHE: Map<string, string> | null = null;
+
+function buildPrimaryTypeIndex(): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const [category, placeTypes] of Object.entries(MINGLA_CATEGORY_PLACE_TYPES)) {
+    for (const t of placeTypes) {
+      // First-write-wins: a primary_type may appear under multiple categories
+      // (e.g. 'restaurant' under both Casual and Fine Dining). The first
+      // category in MINGLA_CATEGORY_PLACE_TYPES insertion order claims it.
+      if (!index.has(t)) index.set(t, category);
+    }
+  }
+  return index;
+}
+
+/**
+ * Resolve a Google primary_type (e.g. 'italian_restaurant', 'park', 'movie_theater')
+ * to a Mingla canonical category display name (e.g. 'Brunch, Lunch & Casual',
+ * 'Nature & Views', 'Movies & Theatre'). Returns null when the type doesn't
+ * map to any Mingla category. Caller decides whether to fall back or skip.
+ *
+ * Optionally checks the place's `types[]` array as a secondary lookup if
+ * primary_type doesn't match — Google sometimes returns generic primary_types
+ * (`establishment`, `point_of_interest`) with the meaningful classification in
+ * the secondary array.
+ */
+export function mapPrimaryTypeToMinglaCategory(
+  primaryType: string | null | undefined,
+  fallbackTypes: string[] = [],
+): string | null {
+  if (!primaryType && fallbackTypes.length === 0) return null;
+  if (_PRIMARY_TYPE_TO_CATEGORY_CACHE === null) {
+    _PRIMARY_TYPE_TO_CATEGORY_CACHE = buildPrimaryTypeIndex();
+  }
+  if (primaryType) {
+    const cat = _PRIMARY_TYPE_TO_CATEGORY_CACHE.get(primaryType);
+    if (cat) return cat;
+  }
+  // Fallback: scan the secondary types array for a hit.
+  for (const t of fallbackTypes) {
+    const cat = _PRIMARY_TYPE_TO_CATEGORY_CACHE.get(t);
+    if (cat) return cat;
+  }
+  return null;
+}
+
+/**
+ * Convert a Mingla category display name to its DB slug.
+ * Wrapper around DISPLAY_TO_SLUG with a stricter null-vs-string contract.
+ */
+export function mapCategoryToSlug(category: string | null | undefined): string {
+  if (!category) return '';
+  return DISPLAY_TO_SLUG[category] ?? '';
+}
 
 // ── Display name ↔ DB slug mapping ────────────────────────────────────────
 // card_pool.category stores slugs; edge functions use display names from
@@ -633,18 +760,53 @@ export const EXCLUDED_VENUE_NAME_KEYWORDS: string[] = [
   'school', 'academy', 'institute',
   'training center', 'learning center',
   'university', 'college', 'seminary',
+  // ORCH-0631: Big-box retailer SUB-COUNTERS and "inside [store]" vendor kiosks.
+  // Whole stores (Walmart, Costco, Sam's Club, Walmart Supercenter, Walmart
+  // Neighborhood Market, Asda Superstore) are LEGITIMATE groceries/flowers
+  // destinations and are NOT in this list. Only the counters/departments inside
+  // them are rejected here. Keep in sync with bouncer.ts CHILD_VENUE_NAME_PATTERNS.
+  'walmart bakery', 'walmart deli', 'walmart cafe', 'walmart food court',
+  'walmart garden center', 'walmart pharmacy', 'walmart auto', 'walmart vision',
+  'walmart tire', 'walmart optical', 'walmart photo', 'walmart gas',
+  "sam's club bakery", "sam's club cafe", "sam's club deli", "sam's club food court",
+  "sam's club pharmacy", "sam's club optical", "sam's club tire", "sam's club gas",
+  'sams club bakery', 'sams club cafe', 'sams club deli',
+  'costco bakery', 'costco cafe', 'costco deli', 'costco food court',
+  'costco pharmacy', 'costco optical', 'costco tire', 'costco gas',
+  "bj's bakery", "bj's cafe", "bj's deli", "bj's food court", "bj's pharmacy",
+  'target cafe', 'target starbucks', 'target pharmacy', 'target optical', 'target photo',
+  // 3rd-party kiosks inside retailers
+  ' at walmart', ' at target', ' at costco', " at sam's club", ' at bjs',
+  // Vendor kiosks with explicit "inside" marker
+  '(inside ', '| inside ',
 ];
 
 // Backward-compatible alias
 export const CHILD_VENUE_NAME_KEYWORDS = EXCLUDED_VENUE_NAME_KEYWORDS;
 
+// ORCH-0631: Allowlist shared with Bouncer B9 — sync source is bouncer.ts
+// CHILD_VENUE_ALLOWLIST. Duplicated here (not imported) because this file is
+// loaded by edge functions that may not include bouncer.ts in their deploy
+// bundle. Keep in sync manually; audited via tests.
+const CHILD_VENUE_ALLOWLIST_LOWERCASE: ReadonlyArray<string> = [
+  'dalston superstore',
+];
+
+function isAllowlisted(placeNameLower: string): boolean {
+  const trimmed = placeNameLower.trim();
+  return CHILD_VENUE_ALLOWLIST_LOWERCASE.some((a) => a === trimmed);
+}
+
 /**
  * Returns true if the place name contains excluded keywords
- * (children's venues, schools, educational institutions).
- * Case-insensitive.
+ * (children's venues, schools, educational institutions, retail sub-venues).
+ * Case-insensitive. Checks ORCH-0631 allowlist first — allowlisted names
+ * always return false.
  */
 export function isExcludedVenueName(placeName: string): boolean {
-  const lower = ` ${placeName.toLowerCase()} `; // pad with spaces for word-boundary keywords
+  const raw = placeName.toLowerCase();
+  if (isAllowlisted(raw)) return false;
+  const lower = ` ${raw} `; // pad with spaces for word-boundary keywords
   return EXCLUDED_VENUE_NAME_KEYWORDS.some(kw => lower.includes(kw));
 }
 

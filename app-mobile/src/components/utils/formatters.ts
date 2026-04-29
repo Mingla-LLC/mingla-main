@@ -193,7 +193,12 @@ export function getCurrencyRate(currencyCode: string = 'USD'): number {
  * @returns Formatted distance string in the user's preferred system
  */
 export function parseAndFormatDistance(distanceString: string | undefined, system: 'Metric' | 'Imperial' = 'Imperial'): string {
-  if (!distanceString || distanceString.includes('undefined') || distanceString.includes('NaN')) return 'Nearby';
+  // ORCH-0659/0660 (rework v2): return empty string instead of literal 'Nearby'
+  // when input is missing/malformed. Caller branches on truthy/null to hide the
+  // pill — never fabricate a placeholder string (Constitution #9). Lines 223/230/238
+  // ('Nearby' for genuinely-tiny distances) intentionally preserved — defensible UX,
+  // i18n cleanup deferred to ORCH-0673.
+  if (!distanceString || distanceString.includes('undefined') || distanceString.includes('NaN')) return '';
 
   // Try to extract numeric value and unit from the string
   const kmMatch = distanceString.match(/([\d.]+)\s*km/i);

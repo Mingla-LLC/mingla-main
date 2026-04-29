@@ -3,21 +3,209 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { blockService } from './blockService';
 import { getDisplayName } from '../utils/getDisplayName';
 
+/**
+ * ORCH-0667 + ORCH-0685: snapshot payload for shared-card chat messages.
+ *
+ * Carries every ExpandedCardModal-render-relevant field so chat-shared cards
+ * render with ~95% parity to deck-tap cards (per ORCH-0685 DEC-1).
+ *
+ * EXPLICITLY EXCLUDED — do NOT add `travelTime`, `travelTimeMin`, `distance`,
+ * `distanceKm`, `distance_km` or any other recipient-relative field. Sender's
+ * value would fabricate for the recipient (Constitution #9 violation).
+ * Cross-ref: ORCH-0659/0660 distance/travel-time lesson.
+ * Enforced by: invariant I-CHAT-CARDPAYLOAD-NO-RECIPIENT-RELATIVE-FIELDS +
+ * CI gate in scripts/ci-check-invariants.sh.
+ *
+ * SIZE BUDGET: 5KB (preserved from ORCH-0667). Drop order under pressure
+ * defined in trimCardPayload below: drop optional rich fields first,
+ * essentials never dropped.
+ */
+export interface CardPayload {
+  // ── REQUIRED ESSENTIALS (never dropped under size pressure) ─────────────
+  id: string;                    // place_pool.id — analytics dedup; NOT for refetch
+  title: string;                 // hero / bubble title
+  category: string | null;       // canonical slug (e.g., 'casual_food'); rendered via getReadableCategoryName at consumer site
+  image: string | null;          // primary image URL
+
+  // ── ORCH-0685 DEC-1 ADDITIONS — modal-render-relevant ──────────────────
+  /** lat/lng pair. Required by ExpandedCardModal weather + busyness + booking fetch gates. */
+  location?: { lat: number; lng: number };
+  /** Google Place ID. Required by ExpandedCardModal booking dedup. */
+  placeId?: string;
+  /** Optional explicit icon name; falls back to getCategoryIcon(category) at render. */
+  categoryIcon?: string;
+  /** Render in CardInfoSection tag chips row. */
+  tags?: string[];
+  /** Forward-positioned per ORCH-0685.D-5 — modal does not render today; persisted for future enablement. */
+  matchFactors?: {
+    location: number;
+    budget: number;
+    category: number;
+    time: number;
+    popularity: number;
+  };
+  /** Forward-positioned per ORCH-0685.D-5 — modal does not render today. */
+  socialStats?: {
+    views: number;
+    likes: number;
+    saves: number;
+    shares?: number;
+  };
+  /** Phone number for booking + PracticalDetailsSection phone row. */
+  phone?: string;
+  /** Website URL for booking + PracticalDetailsSection website row. */
+  website?: string;
+  /** Opening-hours data; multiple legacy shapes per ExpandedCardData. */
+  openingHours?:
+    | string
+    | { open_now?: boolean; weekday_text?: string[] }
+    | { openNow?: boolean; periods?: unknown[]; nextOpenTime?: string; nextCloseTime?: string; weekdayDescriptions?: string[] }
+    | Record<string, string>
+    | null;
+  /** Date/time for weather + timeline. ISO string only (Date is not JSON-serializable). */
+  selectedDateTime?: string;
+
+  // ── ORCH-0667 ORIGINAL OPTIONAL FIELDS (preserved) ──────────────────────
+  images?: string[];             // gallery — drop under pressure
+  rating?: number;
+  reviewCount?: number;
+  priceRange?: string;
+  address?: string;
+  description?: string;          // capped 500 chars at trim
+  highlights?: string[];         // cap 5 × 80 chars at trim
+  matchScore?: number;
+}
+
 export interface DirectMessage {
   id: string;
   conversation_id: string;
   sender_id: string | null;
   content: string;
-  message_type: 'text' | 'image' | 'video' | 'file';
+  message_type: 'text' | 'image' | 'video' | 'file' | 'card';
   file_url?: string;
   file_name?: string;
   file_size?: number;
+  card_payload?: CardPayload;  // ORCH-0667: present iff message_type = 'card'
   reply_to_id?: string | null;
   created_at: string;
   updated_at?: string;
   deleted_at?: string | null;
   sender_name?: string;
   is_read?: boolean;
+}
+
+/**
+ * ORCH-0667 + ORCH-0685: trim a SavedCardModel to a CardPayload, enforcing
+ * the <5KB budget.
+ *
+ * Drop order under pressure (v2 — extended for ORCH-0685):
+ *   matchFactors → socialStats → tags → openingHours → highlights →
+ *   description → images → address
+ * Required fields {id, title, category, image} are NEVER dropped.
+ * NEW fields with hard render dependencies (location, placeId, categoryIcon)
+ * are also never dropped — without them, ExpandedCardModal sections silently
+ * skip (defeats the entire ORCH-0685 fix).
+ *
+ * FORBIDDEN FIELDS — do NOT extract under any circumstance:
+ *   - travelTime, travelTimeMin, distance, distanceKm, distance_km
+ *   - These are recipient-relative; sender's value fabricates (Constitution #9).
+ *   - Cross-ref: ORCH-0659/0660. Enforced by:
+ *     I-CHAT-CARDPAYLOAD-NO-RECIPIENT-RELATIVE-FIELDS (CI-gated).
+ */
+export function trimCardPayload(card: any): CardPayload {
+  // [ORCH-0685 RC-2 FIX] Required essentials — never dropped, never absent.
+  const trimmed: CardPayload = {
+    id: card.id,
+    title: card.title || 'Saved experience',
+    category: card.category ?? null,
+    image: card.image ?? null,
+  };
+
+  // [ORCH-0685 DEC-1] Hard-render-dependent additions (never dropped under pressure).
+  if (card.location && typeof card.location.lat === 'number' && typeof card.location.lng === 'number') {
+    trimmed.location = { lat: card.location.lat, lng: card.location.lng };
+  }
+  if (typeof card.placeId === 'string' && card.placeId.length > 0) {
+    trimmed.placeId = card.placeId;
+  }
+  if (typeof card.categoryIcon === 'string' && card.categoryIcon.length > 0) {
+    trimmed.categoryIcon = card.categoryIcon;
+  }
+
+  // [ORCH-0685 DEC-1] Soft-render fields (drop in size-guard order if budget exceeded).
+  if (Array.isArray(card.tags) && card.tags.length) {
+    trimmed.tags = card.tags
+      .slice(0, 10)
+      .map((t: any) => String(t).slice(0, 32));
+  }
+  if (card.matchFactors && typeof card.matchFactors === 'object') {
+    const mf = card.matchFactors;
+    trimmed.matchFactors = {
+      location: Number(mf.location) || 0,
+      budget: Number(mf.budget) || 0,
+      category: Number(mf.category) || 0,
+      time: Number(mf.time) || 0,
+      popularity: Number(mf.popularity) || 0,
+    };
+  }
+  if (card.socialStats && typeof card.socialStats === 'object') {
+    const ss = card.socialStats;
+    trimmed.socialStats = {
+      views: Number(ss.views) || 0,
+      likes: Number(ss.likes) || 0,
+      saves: Number(ss.saves) || 0,
+      shares: Number(ss.shares) || 0,
+    };
+  }
+  if (typeof card.phone === 'string' && card.phone.length > 0) trimmed.phone = card.phone;
+  if (typeof card.website === 'string' && card.website.length > 0) trimmed.website = card.website;
+  if (card.openingHours !== undefined && card.openingHours !== null) {
+    trimmed.openingHours = card.openingHours;
+  }
+  if (card.selectedDateTime instanceof Date) {
+    trimmed.selectedDateTime = card.selectedDateTime.toISOString();
+  } else if (typeof card.selectedDateTime === 'string' && card.selectedDateTime.length > 0) {
+    trimmed.selectedDateTime = card.selectedDateTime;
+  }
+
+  // [ORCH-0667 v1 fields — preserved]
+  if (Array.isArray(card.images) && card.images.length) {
+    trimmed.images = card.images.slice(0, 6);
+  }
+  if (typeof card.rating === 'number') trimmed.rating = card.rating;
+  if (typeof card.reviewCount === 'number') trimmed.reviewCount = card.reviewCount;
+  if (card.priceRange) trimmed.priceRange = card.priceRange;
+  if (card.address) trimmed.address = card.address;
+  if (card.description) {
+    trimmed.description = String(card.description).slice(0, 500);
+  }
+  if (Array.isArray(card.highlights) && card.highlights.length) {
+    trimmed.highlights = card.highlights
+      .slice(0, 5)
+      .map((h: any) => String(h).slice(0, 80));
+  }
+  if (typeof card.matchScore === 'number') trimmed.matchScore = card.matchScore;
+
+  // [ORCH-0685 §6.3] Size guard — drop optional fields in reverse priority if over budget.
+  // 'location', 'placeId', 'categoryIcon' are NOT in dropOrder — they unlock 3 modal sections.
+  const dropOrder: (keyof CardPayload)[] = [
+    'matchFactors',
+    'socialStats',
+    'tags',
+    'openingHours',
+    'highlights',
+    'description',
+    'images',
+    'address',
+  ];
+  let size = JSON.stringify(trimmed).length;
+  for (const key of dropOrder) {
+    if (size <= 5120) break;
+    delete trimmed[key];
+    size = JSON.stringify(trimmed).length;
+  }
+
+  return trimmed;
 }
 
 export interface Conversation {
@@ -514,6 +702,96 @@ export class MessagingService {
   }
 
   /**
+   * ORCH-0667: Send a card-type message containing a snapshot of the saved card.
+   * Mirrors sendMessage but with message_type='card' and card_payload populated.
+   * The `content` field carries forward-safe text so old-build clients (pre-fix)
+   * see "Shared an experience: {title}" instead of a blank bubble.
+   */
+  async sendCardMessage(
+    conversationId: string,
+    senderId: string,
+    card: any,
+  ): Promise<{ message: DirectMessage | null; error: string | null }> {
+    try {
+      const cardPayload = trimCardPayload(card);
+      const content = `Shared an experience: ${cardPayload.title}`;
+
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          sender_id: senderId,
+          content,
+          message_type: 'card',
+          card_payload: cardPayload,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === '42501' || error.message?.includes('policy')) {
+          return { message: null, error: 'Cannot send card to this user' };
+        }
+        throw error;
+      }
+
+      const enrichedMessage = await this.enrichMessage(data, senderId);
+
+      // Fan out push + in-app notification (non-blocking)
+      this.sendCardMessageNotifications(conversationId, senderId, enrichedMessage, cardPayload).catch((err) =>
+        console.error('Error sending card-share notifications:', err),
+      );
+
+      return { message: enrichedMessage, error: null };
+    } catch (error: any) {
+      console.error('Error sending card message:', error);
+      return { message: null, error: error.message || 'Failed to send card' };
+    }
+  }
+
+  /**
+   * ORCH-0667: Fan out card-share notifications via the notify-message pipeline.
+   * Mirrors sendMessageNotifications but with type='direct_card_message'.
+   */
+  private async sendCardMessageNotifications(
+    conversationId: string,
+    senderId: string,
+    message: DirectMessage,
+    cardPayload: CardPayload,
+  ): Promise<void> {
+    try {
+      const { data: participants, error: participantsError } = await supabase
+        .from('conversation_participants')
+        .select('user_id')
+        .eq('conversation_id', conversationId)
+        .neq('user_id', senderId);
+
+      if (participantsError || !participants || participants.length === 0) {
+        return;
+      }
+
+      for (const participant of participants) {
+        supabase.functions
+          .invoke('notify-message', {
+            body: {
+              type: 'direct_card_message',
+              senderId,
+              conversationId,
+              recipientId: participant.user_id,
+              messageId: message.id,
+              cardTitle: cardPayload.title,
+              cardId: cardPayload.id,
+              cardImageUrl: cardPayload.image,
+            },
+          })
+          .catch((err) => console.log('Card-share notification error (non-critical):', err));
+      }
+    } catch (error) {
+      console.error('Error sending card-share notifications:', error);
+    }
+  }
+
+  /**
    * Mark messages as read
    */
   async markAsRead(messageIds: string[], userId: string): Promise<{ error: string | null }> {
@@ -726,6 +1004,8 @@ export class MessagingService {
         messagePreview = '🎥 Video';
       } else if (message.message_type === 'file') {
         messagePreview = `📄 ${message.file_name || 'Document'}`;
+      } else if (message.message_type === 'card') {
+        messagePreview = `🔖 ${message.card_payload?.title || 'Shared experience'}`;
       } else if (messagePreview.length > 50) {
         messagePreview = messagePreview.substring(0, 50) + '...';
       }

@@ -35,7 +35,16 @@
     "schedule_anyway": "Programează Anyway",
     "scheduled_toast": "Programat! {{title}} has been moved to your calendar",
     "closed_message": "This place is closed at the selected date și time. Tap \"Programează\" to choose a different time.",
-    "share_prompt": "Distribuie {{title}} with friends"
+    "share_prompt": "Distribuie {{title}} with friends",
+    "back_to_date": "Înapoi la dată",
+    "confirm_date_title": "Dată selectată",
+    "confirm_date_message": "Ai ales {{date}}. Continui la selecția orei?",
+    "change_date": "Schimbă data",
+    "pick_time": "Alege ora",
+    "unverified_hours_title": "Program indisponibil",
+    "unverified_hours_message": "Nu am putut verifica programul {{venueName}} pentru acea oră. Programezi oricum?",
+    "error_past_date_title": "Alege o oră viitoare",
+    "error_past_date_message": "Acea oră a trecut deja. Te rog alege o oră viitoare."
   },
   "busyness": {
     "traffic": "Traffic",

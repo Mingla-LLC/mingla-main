@@ -144,7 +144,7 @@ export default function BusinessWelcomeScreen({
 
       setTimeout(() => {
         Animated.stagger(120, [
-          ...(Platform.OS === "ios"
+          ...(Platform.OS === "ios" || Platform.OS === "web"
             ? [
                 Animated.parallel([
                   Animated.timing(appleOpacity, {
@@ -329,7 +329,7 @@ export default function BusinessWelcomeScreen({
         </View>
 
         <View style={[styles.actionZone, { paddingBottom: Math.max(insets.bottom, vs(24)) }]}>
-          {Platform.OS === "ios" && (
+          {(Platform.OS === "ios" || Platform.OS === "web") && (
             <Animated.View
               style={[
                 styles.buttonAnimWrapper,

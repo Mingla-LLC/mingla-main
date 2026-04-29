@@ -128,6 +128,7 @@
     "pickADate": "Za\u0253i Rana",
     "changeTime": "Canza Lokaci",
     "closedAtTime": "Wannan wurin a rufe yake a lokacin da aka za\u0253a. Da fatan za a za\u0253i wani lokaci daban.",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}. Da fatan za a tabbatar da lokutan bu\u0257ewa kafin tsarawa.",
     "selectDate": "Za\u0253i Rana",
     "selectTime": "Za\u0253i Lokaci",

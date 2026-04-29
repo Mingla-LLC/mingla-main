@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "Rìnrìn Àjò",
   "unknown": "Àìmọ̀",
   "time_just_now": "Ní báyìí",
-
   "toast_invite_sent": "A Ti Fi Ìpè Ránṣẹ́!",
   "toast_invite_sent_msg": "A ti fi ìpè ìfọwọ́sowọ́pọ̀ ránṣẹ́ sí {{name}}",
   "toast_member_promoted": "A Ti Gbé Ọmọ Ẹgbẹ́ ga",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "A Ti Fi Kún Bọ́ọ̀dù {{count}}!",
   "toast_added_board_msg": "A ti fi {{name}} kún bọ́ọ̀dù ìfọwọ́sowọ́pọ̀",
   "toast_added_boards_msg": "A ti fi {{name}} kún àwọn bọ́ọ̀dù ìfọwọ́sowọ́pọ̀ {{count}}",
-  "toast_card_shared": "A Ti Pín Káàdì!",
-  "toast_card_shared_msg": "A ti pín ìrírí tí a tọ́jú pẹ̀lú {{name}}",
   "toast_friend_removed": "A Ti Yọ Ọ̀rẹ́",
   "toast_friend_removed_msg": "A ti yọ {{name}} kúrò nínú àkójọ àwọn ọ̀rẹ́ rẹ",
   "toast_user_blocked": "A Ti Dí Olùlò",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "fún ìpayà",
   "toast_report_reason_other": "fún ìrúfin àwọn òfin àwùjọ",
   "user_fallback": "Olùlò",
-
   "calendar_access_needed": "Àǹfààní Kàlẹ́ndà Nílò",
   "calendar_access_needed_msg": "Mingla nílò àǹfààní kàlẹ́ndà láti fi àwọn ìṣẹ̀lẹ̀ kún. Jọ̀wọ́ ṣí i nínú ètò ẹ̀rọ rẹ.",
   "open_settings": "Ṣí Ètò",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "Nǹkan kan ṣẹlẹ̀ nígbà tí a ń fi ìṣẹ̀lẹ̀ kún. Jọ̀wọ́ tún gbìyànjú.",
   "added_to_calendar": "A Ti Fi Kún",
   "add_to_calendar": "Fi kún kàlẹ́ndà",
-
   "confidence_excellent": "Ìbámu Tó Dára Jùlọ",
   "confidence_good": "Ìbámu Tó Dára",
   "confidence_fair": "Ìbámu Àárín",
@@ -157,22 +152,28 @@
   "match_time": "Àkókò",
   "match_popularity": "Gbajúmọ̀",
   "match_factors": "Àwọn Ohun Tí Ó Bá Mu",
-
   "stat_views": "Àwòran",
   "stat_likes": "Ìfẹ́ràn",
   "stat_saves": "Àwọn Ìpamọ́",
   "stat_shares": "Àwọn Ìpínpín",
   "review_count_one": "Àyẹ̀wò {{count}}",
   "review_count_other": "Àwọn àyẹ̀wò {{count}}",
-
   "profile_update_failed": "Ìmúdójúìwọ̀n Profáìlì Kùnà",
   "profile_update_failed_msg": "Kò le ṣe ìmúdójúìwọ̀n profáìlì. Jọ̀wọ́ tún gbìyànjú.",
   "saved_experience": "Ìrírí Tí A Tọ́jú",
   "experience": "Ìrírí",
   "solo_experience": "Ìrírí Àdáni",
   "untitled": "Aláìlórúkọ",
-
   "error_sign_in_save": "Jọ̀wọ́ wọlé láti tọ́jú àwọn ìrírí",
   "error_boundary_title": "Nǹkan kan kò tọ́",
-  "error_boundary_message": "A bá àṣìṣe tí a kò retí. Jọ̀wọ́ tún gbìyànjú."
+  "error_boundary_message": "A bá àṣìṣe tí a kò retí. Jọ̀wọ́ tún gbìyànjú.",
+  "category_icebreakers": "Icebreakers",
+  "category_drinks_and_music": "Drinks & Music",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Movies",
+  "category_theatre": "Theatre",
+  "category_brunch_lunch_casual": "Brunch, Lunch & Casual",
+  "category_movies_theatre": "Movies & Theatre"
 }

@@ -128,6 +128,7 @@
     "pickADate": "בחר תאריך",
     "changeTime": "שנה שעה",
     "closedAtTime": "המקום סגור בשעה שנבחרה. בחר שעה אחרת.",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}. אמת את שעות הפתיחה לפני התזמון.",
     "selectDate": "בחר תאריך",
     "selectTime": "בחר שעה",

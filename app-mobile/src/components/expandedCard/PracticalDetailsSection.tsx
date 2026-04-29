@@ -10,12 +10,20 @@ import { Icon } from "../ui/Icon";
 
 interface PracticalDetailsSectionProps {
   address?: string;
+  // [ORCH-0649] Mirrors the widened ExpandedCardData.openingHours union.
+  // Rendering inside this component (if any) must go through
+  // extractWeekdayText (openingHoursUtils.ts) — never read keys directly.
   openingHours?:
     | string
+    | { open_now?: boolean; weekday_text?: string[] }
     | {
-        open_now?: boolean;
-        weekday_text?: string[];
+        openNow?: boolean;
+        periods?: unknown[];
+        nextOpenTime?: string;
+        nextCloseTime?: string;
+        weekdayDescriptions?: string[];
       }
+    | Record<string, string>
     | null;
   phone?: string;
   website?: string;

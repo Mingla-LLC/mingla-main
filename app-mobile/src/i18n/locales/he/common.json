@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "טיול קצר",
   "unknown": "לא ידוע",
   "time_just_now": "הרגע",
-
   "toast_invite_sent": "הזמנה נשלחה!",
   "toast_invite_sent_msg": "הזמנת שיתוף נשלחה ל-{{name}}",
   "toast_member_promoted": "חבר קודם",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "נוסף ל-{{count}} לוחות!",
   "toast_added_board_msg": "{{name}} נוסף ללוח השיתוף",
   "toast_added_boards_msg": "{{name}} נוסף ל-{{count}} לוחות שיתוף",
-  "toast_card_shared": "כרטיס שותף!",
-  "toast_card_shared_msg": "חוויה שמורה שותפה עם {{name}}",
   "toast_friend_removed": "חבר הוסר",
   "toast_friend_removed_msg": "{{name}} הוסר מרשימת החברים שלך",
   "toast_user_blocked": "משתמש נחסם",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "בגלל הטרדה",
   "toast_report_reason_other": "בגלל הפרת כללי הקהילה",
   "user_fallback": "משתמש",
-
   "calendar_access_needed": "נדרשת גישה ליומן",
   "calendar_access_needed_msg": "Mingla צריך גישה ליומן כדי להוסיף אירועים. הפעל בהגדרות המכשיר.",
   "open_settings": "פתח הגדרות",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "משהו השתבש בהוספת האירוע. נסה שוב.",
   "added_to_calendar": "נוסף",
   "add_to_calendar": "הוסף ליומן",
-
   "confidence_excellent": "התאמה מצוינת",
   "confidence_good": "התאמה טובה",
   "confidence_fair": "התאמה סבירה",
@@ -157,22 +152,28 @@
   "match_time": "זמן",
   "match_popularity": "פופולריות",
   "match_factors": "גורמי התאמה",
-
   "stat_views": "צפיות",
   "stat_likes": "לייקים",
   "stat_saves": "שמירות",
   "stat_shares": "שיתופים",
   "review_count_one": "{{count}} ביקורת",
   "review_count_other": "{{count}} ביקורות",
-
   "profile_update_failed": "עדכון הפרופיל נכשל",
   "profile_update_failed_msg": "עדכון הפרופיל נכשל. נסה שוב.",
   "saved_experience": "חוויה שמורה",
   "experience": "חוויה",
   "solo_experience": "חוויה עצמאית",
   "untitled": "ללא כותרת",
-
   "error_sign_in_save": "התחבר כדי לשמור חוויות",
   "error_boundary_title": "משהו השתבש",
-  "error_boundary_message": "נתקלנו בשגיאה לא צפויה. נסה שוב."
+  "error_boundary_message": "נתקלנו בשגיאה לא צפויה. נסה שוב.",
+  "category_icebreakers": "שוברי קרח",
+  "category_drinks_and_music": "משקאות ומוזיקה",
+  "category_brunch": "ברנץ’",
+  "category_casual_food": "קז’ואל",
+  "category_upscale_fine_dining": "מסעדות יוקרה",
+  "category_movies": "סרטים",
+  "category_theatre": "תיאטרון",
+  "category_brunch_lunch_casual": "ברנץ’, צהריים וקז’ואל",
+  "category_movies_theatre": "סרטים ותיאטרון"
 }

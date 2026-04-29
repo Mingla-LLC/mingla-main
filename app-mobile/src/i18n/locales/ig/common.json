@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "Gaa Njem",
   "unknown": "Amaghị",
   "time_just_now": "Ugbu a",
-
   "toast_invite_sent": "Ezigara Oku!",
   "toast_invite_sent_msg": "Ezigara oku njikọ aka na aka {{name}}",
   "toast_member_promoted": "Ebuliri Onye Otu Elu",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "Etinyere na Bọọdụ {{count}}!",
   "toast_added_board_msg": "Etinyere {{name}} na bọọdụ njikọ aka na aka",
   "toast_added_boards_msg": "Etinyere {{name}} na bọọdụ njikọ aka na aka {{count}}",
-  "toast_card_shared": "Ekekọritara Kaadị!",
-  "toast_card_shared_msg": "Ekekọritara ahụmịhe echekwara na {{name}}",
   "toast_friend_removed": "Ewepụrụ Enyi",
   "toast_friend_removed_msg": "Ewepụrụ {{name}} na ndepụta ndị enyi gị",
   "toast_user_blocked": "Egbochiri Onye Ọrụ",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "maka mkpagbu",
   "toast_report_reason_other": "maka imebi iwu obodo",
   "user_fallback": "Onye ọrụ",
-
   "calendar_access_needed": "Achọrọ Ohere Kalenda",
   "calendar_access_needed_msg": "Mingla chọrọ ohere kalenda iji tinye ihe omume. Biko mee ka ọ rụọ ọrụ na ntọala ngwaọrụ gị.",
   "open_settings": "Mepee Ntọala",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "Ihe ụfọdụ meghị nke ọma mgbe a na-etinye ihe omume. Biko nwaa ọzọ.",
   "added_to_calendar": "Etinyere",
   "add_to_calendar": "Tinye na kalenda",
-
   "confidence_excellent": "Ndakọrịta Kachasị Mma",
   "confidence_good": "Ezigbo Ndakọrịta",
   "confidence_fair": "Ndakọrịta Nkwurịta",
@@ -157,22 +152,28 @@
   "match_time": "Oge",
   "match_popularity": "Ama ama",
   "match_factors": "Ihe Ndakọrịta",
-
   "stat_views": "Nlele",
   "stat_likes": "Ịhụnanya",
   "stat_saves": "Nchekwa",
   "stat_shares": "Nkekọrịta",
   "review_count_one": "Nyocha {{count}}",
   "review_count_other": "Nyocha {{count}}",
-
   "profile_update_failed": "Mmelite Profaịlụ Adaghị",
   "profile_update_failed_msg": "Enweghị ike ịmelite profaịlụ. Biko nwaa ọzọ.",
   "saved_experience": "Ahụmịhe Echekwara",
   "experience": "Ahụmịhe",
   "solo_experience": "Ahụmịhe Naanị Gị",
   "untitled": "Enweghị aha",
-
   "error_sign_in_save": "Biko banye iji chekwaa ahụmịhe",
   "error_boundary_title": "Ihe ụfọdụ agaghị nke ọma",
-  "error_boundary_message": "Anyị zutere njehie a na-atụghị anya ya. Biko nwaa ọzọ."
+  "error_boundary_message": "Anyị zutere njehie a na-atụghị anya ya. Biko nwaa ọzọ.",
+  "category_icebreakers": "Icebreakers",
+  "category_drinks_and_music": "Drinks & Music",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Movies",
+  "category_theatre": "Theatre",
+  "category_brunch_lunch_casual": "Brunch, Lunch & Casual",
+  "category_movies_theatre": "Movies & Theatre"
 }

@@ -10,11 +10,11 @@ import {
   Image,
   Alert,
   Platform,
-  Animated,
   Linking,
   Modal,
   Dimensions,
   ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import { Icon } from "./ui/Icon";
 import * as ImagePicker from "expo-image-picker";
@@ -33,16 +33,28 @@ import { SwipeableMessage } from "./chat/SwipeableMessage";
 import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
-import { DirectMessage, messagingService } from "../services/messagingService";
+import { DirectMessage, messagingService, CardPayload } from "../services/messagingService";
+import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
+import { savedCardsService } from "../services/savedCardsService";  // ORCH-0685
+import { useSavedCards } from "../hooks/useSavedCards";
+import ExpandedCardModal from "./ExpandedCardModal";  // ORCH-0667
+import type { ExpandedCardData } from "../types/expandedCardTypes";  // ORCH-0685
 import { useTranslation } from 'react-i18next';
 import { HapticFeedback } from "../utils/hapticFeedback";
-import { colors as dsColors, spacing as dsSpacing } from "../constants/designSystem";
+import { colors as dsColors, spacing as dsSpacing, glass } from "../constants/designSystem";
+import { colors } from "../constants/colors";
 import { useAppLayout } from "../hooks/useAppLayout";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BlurView } from "expo-blur";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 /** Vertical gap between composer border and input row; match bottom when keyboard is closed. */
 const INPUT_AREA_VERTICAL_PADDING = 6;
+/** ORCH-0600: breathing gap between floating glass input capsule and the bottom nav. */
+const INPUT_CAPSULE_MARGIN_BOTTOM = 14;
+/** ORCH-0600: intrinsic height of the glass input capsule (padding + 40pt controls). */
+const INPUT_CAPSULE_HEIGHT = 56;
 
 interface Message {
   id: string;
@@ -50,10 +62,11 @@ interface Message {
   senderName: string;
   content: string;
   timestamp: string;
-  type: "text" | "image" | "video" | "file";
+  type: "text" | "image" | "video" | "file" | "card";
   fileUrl?: string;
   fileName?: string;
   fileSize?: string;
+  cardPayload?: CardPayload;  // ORCH-0667
   isMe: boolean;
   unread?: boolean;
   failed?: boolean;
@@ -84,12 +97,15 @@ interface MessageInterfaceProps {
     replyToId?: string
   ) => void;
   messages: Message[];
-  onSendCollabInvite?: (friend: Friend) => void;
-  onAddToBoard?: (
-    sessionIds: string[],
-    friend: any,
-    suppressNotification?: boolean
-  ) => void;
+  /**
+   * ORCH-0666: invoked when user taps "Add to Board" in the more-options menu.
+   * Owner: ConnectionsPage (mounts AddToBoardModal with sessionMembershipService
+   * .addFriendsToSessions RPC). REQUIRED (not optional) — TypeScript catches
+   * missing wiring. Replaces dead-tap onAddToBoard + onSendCollabInvite chain
+   * that was fake-success theatre via in-component BoardSelection sub-UI
+   * (deleted in this cycle). Constitution #1 / #3 closures.
+   */
+  onOpenAddToBoardModal: (friend: Friend) => void;
   onShareSavedCard?: (friend: any, suppressNotification?: boolean) => void;
   onRemoveFriend?: (friend: any, suppressNotification?: boolean) => void;
   onBlockUser?: (friend: any, suppressNotification?: boolean) => void;
@@ -108,6 +124,16 @@ interface MessageInterfaceProps {
   currentUserId?: string | null;
   currentUserName?: string | null;
   broadcastSeenIds?: React.MutableRefObject<Set<string>>;
+  /**
+   * ORCH-0664 (REQUIRED): invoked when the chat:{conversationId} broadcast
+   * channel delivers a new incoming message. Owner: ConnectionsPage. The
+   * handler MUST add the message to UI state AND call
+   * broadcastSeenIds.add(msg.id) as a coupled operation (in that order) —
+   * partial implementations re-introduce the I-DEDUP-AFTER-DELIVERY bug
+   * class. Required (not optional) by contract; "no-op fallback" was the
+   * exact pre-0664 shape that silently dropped every received message.
+   */
+  onBroadcastReceive: (msg: DirectMessage) => void;
   isOffline?: boolean;
   onViewProfile?: (userId: string) => void;
 }
@@ -117,8 +143,7 @@ export default function MessageInterface({
   onBack,
   onSendMessage,
   messages,
-  onSendCollabInvite,
-  onAddToBoard,
+  onOpenAddToBoardModal,
   onShareSavedCard,
   onRemoveFriend,
   onBlockUser,
@@ -136,6 +161,7 @@ export default function MessageInterface({
   currentUserId = null,
   currentUserName = null,
   broadcastSeenIds: broadcastSeenIdsProp,
+  onBroadcastReceive,
   isOffline = false,
   onViewProfile,
 }: MessageInterfaceProps) {
@@ -159,7 +185,35 @@ export default function MessageInterface({
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
-  const [showBoardSelection, setShowBoardSelection] = useState(false);
+  // ORCH-0667: shared-card picker state
+  const [showSavedCardPicker, setShowSavedCardPicker] = useState(false);
+  const [pickerSubmittingCardId, setPickerSubmittingCardId] = useState<string | null>(null);
+  // ORCH-0685: typed state — replaces unsafe `any` typing (Constitution #12 fix).
+  // Populated via cardPayloadToExpandedCardData helper (cardPayloadAdapter.ts).
+  const [expandedCardFromChat, setExpandedCardFromChat] = useState<ExpandedCardData | null>(null);
+  const [showExpandedCardFromChat, setShowExpandedCardFromChat] = useState(false);
+  // ORCH-0685: Save handler state (CF-2 dead-tap fix).
+  const [isSavingSharedCard, setIsSavingSharedCard] = useState(false);
+  const [sharedCardIsSaved, setSharedCardIsSaved] = useState(false);
+  const savedCardsQuery = useSavedCards(currentUserId ?? undefined);
+
+  // ORCH-0685 cycle-3 (Pattern F): derive sharedCardIsSaved from the cached
+  // saves list so already-saved chat cards open with the "Saved" button on
+  // first paint instead of the stale "Save" default.
+  useEffect(() => {
+    if (!expandedCardFromChat) {
+      setSharedCardIsSaved(false);
+      return;
+    }
+    const list = savedCardsQuery.data;
+    if (!list) {
+      setSharedCardIsSaved(false);
+      return;
+    }
+    const isAlreadySaved = list.some((c) => c.id === expandedCardFromChat.id);
+    setSharedCardIsSaved(isAlreadySaved);
+  }, [expandedCardFromChat, savedCardsQuery.data]);
+
   const [revealedTimestampId, setRevealedTimestampId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
@@ -175,66 +229,35 @@ export default function MessageInterface({
     isMe: boolean;
   } | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [selectedBoards, setSelectedBoards] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const { bottomNavTotalHeight } = useAppLayout();
+  // ORCH-0610 fix: Android overlap — the Mingla nav uses bottom: insets.bottom + 6
+  // (see app/index.tsx CoachMarkNavigationGate) so its TOP edge is higher than
+  // bottomNavTotalHeight alone implies. Add 19pt to the input capsule's bottom
+  // offset (and matching chat-list padding) so the capsule clears the nav top
+  // with an 8pt visual gap. iOS nav uses bottom: 11 which is already below
+  // bottomNavTotalHeight, so no adjustment needed.
+  const ANDROID_NAV_OVERLAP_FIX = Platform.OS === 'android' ? 19 : 0;
+  const safeInsets = useSafeAreaInsets();
 
   // ── Keyboard handling via useKeyboard hook ─────────────────
   const { keyboardHeight, isVisible: keyboardVisible, dismiss: dismissKeyboard } = useKeyboard({
     disableLayoutAnimation: true, // We use animated values instead
   });
 
-  // Animated keyboard height (for smooth input bar transitions)
-  const animatedKeyboardHeight = useRef(new Animated.Value(0)).current;
-  /** IMEs often re-fire keyboard show with a smaller frame once typing starts; keep lift stable. */
-  const keyboardHeightMaxWhileOpenRef = useRef(0);
-  /** Android: avoid re-running Animated.timing on every keyboard frame (fights softwareKeyboardLayoutMode "pan"). */
-  const prevComposerLiftRef = useRef(0);
-  useEffect(() => {
-    // The keyboard height is measured from the screen bottom. The input bar sits above
-    // the bottom nav, so only the portion of the keyboard that extends above the bottom
-    // nav ("penetrationAboveTab") needs to be offset. bottomNavTotalHeight already
-    // accounts for content height + safe area, preventing any double-counting.
-    if (keyboardHeight <= 0) {
-      keyboardHeightMaxWhileOpenRef.current = 0;
-    } else {
-      keyboardHeightMaxWhileOpenRef.current = Math.max(
-        keyboardHeightMaxWhileOpenRef.current,
-        keyboardHeight
-      );
-    }
-    const effectiveKeyboardHeight =
-      keyboardHeight <= 0 ? 0 : keyboardHeightMaxWhileOpenRef.current;
-    const penetrationAboveTab = Math.max(0, effectiveKeyboardHeight - bottomNavTotalHeight);
-    const adjustedHeight = penetrationAboveTab;
-    const prevLift = prevComposerLiftRef.current;
-    prevComposerLiftRef.current = adjustedHeight;
-
-    if (Platform.OS === "android") {
-      if (adjustedHeight === 0) {
-        Animated.timing(animatedKeyboardHeight, {
-          toValue: 0,
-          duration: 220,
-          useNativeDriver: false,
-        }).start();
-      } else if (prevLift === 0) {
-        Animated.timing(animatedKeyboardHeight, {
-          toValue: adjustedHeight,
-          duration: 220,
-          useNativeDriver: false,
-        }).start();
-      } else {
-        animatedKeyboardHeight.setValue(adjustedHeight);
-      }
-    } else {
-      Animated.timing(animatedKeyboardHeight, {
-        toValue: adjustedHeight,
-        duration: 250,
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [keyboardHeight, bottomNavTotalHeight]);
+  // [REGRESSION GUARD] ORCH-0620 — Android keyboard handling relies on
+  // `softwareKeyboardLayoutMode: "resize"` in app.json. Switching back to "pan"
+  // reintroduces the OS-pan vs JS-lift race condition that clips the header and
+  // floats the composer mid-screen. See:
+  //   Mingla_Artifacts/outputs/INVESTIGATION_ANDROID_DM_KEYBOARD_BUG_REPORT.md
+  //
+  // Under "resize":
+  //   - Android OS shrinks the window when the keyboard opens. Absolute children
+  //     of MessageInterface (the input capsule) follow the shrunken bottom edge
+  //     naturally — no manual lift needed on Android.
+  //   - iOS does not resize/pan; we still manually lift the composer above the
+  //     keyboard using keyboardHeight.
 
   // ── Fallback broadcastSeenIds ref if not provided ─────────
   const localBroadcastSeenIds = useRef(new Set<string>());
@@ -252,23 +275,20 @@ export default function MessageInterface({
   });
 
   // ── Broadcast receiver (receive-only) ─────────────────────
-  // IMPORTANT: This hook subscribes to the `chat:{conversationId}` broadcast channel.
-  // ConnectionsPage.handleSendMessage depends on this channel being subscribed
-  // so that supabase.channel() returns the existing subscribed channel for sending.
-  // Do NOT remove this hook without moving the channel subscription to ConnectionsPage.
-  const handleBroadcastMessage = useCallback(
-    (_msg: DirectMessage) => {
-      // ConnectionsPage owns all message state — broadcast messages are deduplicated
-      // there via broadcastSeenIds ref + postgres_changes backup delivery.
-    },
-    []
-  );
-
+  // ORCH-0664: this hook subscribes to the `chat:{conversationId}` broadcast
+  // channel for instant incoming-message delivery. The handler is owned by
+  // ConnectionsPage (passed in via `onBroadcastReceive`); MessageInterface
+  // is just the mount point. ConnectionsPage.handleSendMessage also relies
+  // on this channel being subscribed so that `supabase.channel()` returns
+  // the existing subscribed instance for `.send()`. Do NOT remove this hook
+  // without first relocating both the broadcast subscription and the
+  // ConnectionsPage send-path channel reference (tracked as ORCH-0664.D-3 /
+  // HF-0664-A).
   useBroadcastReceiver({
     conversationId,
     currentUserId,
     broadcastSeenIds,
-    onBroadcastMessage: handleBroadcastMessage,
+    onBroadcastMessage: onBroadcastReceive,
   });
 
   // ── Message grouping (memoized) ───────────────────────────
@@ -606,42 +626,180 @@ export default function MessageInterface({
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
+  // ORCH-0685 cycle-3: brand-aligned notification rendering. Shared between
+  // the always-mounted panel and the chat-shared-card overlay panel so both
+  // surfaces look identical.
+  const getNotificationVisuals = (type: "success" | "error" | "info") => {
+    switch (type) {
+      case "success":
+        return {
+          stripeColor: colors.success,
+          bgColor: colors.successLight,
+          borderColor: colors.success,
+          iconName: "checkmark-circle" as const,
+          iconColor: colors.successDark,
+        };
+      case "error":
+        return {
+          stripeColor: colors.error,
+          bgColor: "#fef2f2",
+          borderColor: colors.error,
+          iconName: "alert-circle" as const,
+          iconColor: colors.error,
+        };
+      case "info":
+      default:
+        return {
+          stripeColor: colors.primary,
+          bgColor: colors.lightOrange,
+          borderColor: colors.primary,
+          iconName: "info" as const,
+          iconColor: colors.primary,
+        };
+    }
+  };
+
+  const renderNotificationCard = (notification: any, withPointerEvents: boolean) => {
+    const v = getNotificationVisuals(notification.type ?? "info");
+    return (
+      <View
+        key={notification.id}
+        style={[
+          styles.notification,
+          { backgroundColor: v.bgColor, borderColor: v.borderColor },
+        ]}
+        pointerEvents={withPointerEvents ? "auto" : undefined}
+      >
+        <View style={[styles.notificationIndicator, { backgroundColor: v.stripeColor }]} />
+        <View style={styles.notificationContent}>
+          <View style={styles.notificationTitleRow}>
+            <Icon name={v.iconName} size={18} color={v.iconColor} />
+            <Text style={styles.notificationTitle}>{notification.title}</Text>
+          </View>
+          {notification.message ? (
+            <Text style={styles.notificationMessage}>{notification.message}</Text>
+          ) : null}
+        </View>
+        <TouchableOpacity
+          onPress={() => dismissNotification(notification.id)}
+          style={styles.dismissButton}
+          accessibilityLabel="Dismiss notification"
+        >
+          <Icon name="close" size={14} color={colors.gray500} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   // More options handlers
 
+  // ORCH-0666: delegate to ConnectionsPage which mounts AddToBoardModal (real
+  // flow with sessionMembershipService.addFriendsToSessions RPC, sessionMembership
+  // toasts via addToBoardToasts util). The pre-0666 in-component BoardSelection
+  // sub-UI + onAddToBoard prop chain + handleBoardSelection success toast were
+  // fake-success theatre — Constitution #1 (dead tap once user navigated past)
+  // + #3 (silent fake-success). Empty-boards check + "no boards" toast are now
+  // owned by AddToBoardModal's empty-state UI. Deleted in cycle 2.
   const handleAddToBoard = () => {
-    if (boardsSessions.length === 0) {
+    setShowMoreOptionsMenu(false);
+    onOpenAddToBoardModal(friend);
+  };
+
+  // ORCH-0667: Real flow. Opens the saved-card picker.
+  // The lying success toast and the prop-call to onShareSavedCard (which was
+  // toast-only at the AppHandlers terminal) have been deleted per Constitution
+  // #1/#3/#9. Real success/failure toasts fire from handleSelectCardToShare
+  // based on the actual send result.
+  const handleShareSavedCard = () => {
+    setShowMoreOptionsMenu(false);
+    setShowSavedCardPicker(true);
+  };
+
+  // ORCH-0667: tap a card in the picker → send for real, then close + toast.
+  const handleSelectCardToShare = async (card: any) => {
+    if (pickerSubmittingCardId) return;  // double-tap guard
+    if (!conversationId || !currentUserId) {
       showNotification(
-        t('chat:noBoardsAvailable'),
-        t('chat:noBoardsMessage'),
-        "info"
+        t('chat:cardShareFailedTitle'),
+        t('chat:cardShareFailedToast'),
+        'error',
       );
-      setShowMoreOptionsMenu(false);
       return;
     }
-    setShowBoardSelection(true);
-    setShowMoreOptionsMenu(false);
-  };
 
-  const handleBoardSelection = (selectedBoards: string[]) => {
-    if (selectedBoards.length > 0) {
-      onAddToBoard?.(selectedBoards, friend, true);
-      showNotification(
-        t('chat:addedToBoard'),
-        selectedBoards.length > 1
-          ? t('chat:addedToBoardMessagePlural', { name: friend.name, count: selectedBoards.length })
-          : t('chat:addedToBoardMessage', { name: friend.name, count: selectedBoards.length })
+    setPickerSubmittingCardId(card.id);
+    try {
+      const { message, error } = await messagingService.sendCardMessage(
+        conversationId,
+        currentUserId,
+        card,
       );
+
+      if (error || !message) {
+        showNotification(
+          t('chat:cardShareFailedTitle'),
+          t('chat:cardShareFailedToast'),
+          'error',
+        );
+        return;
+      }
+
+      showNotification(
+        t('chat:cardSentTitle'),
+        t('chat:cardSentToast', { name: friend.name }),
+      );
+      setShowSavedCardPicker(false);
+    } finally {
+      setPickerSubmittingCardId(null);
     }
-    setShowBoardSelection(false);
   };
 
-  const handleShareSavedCard = () => {
-    onShareSavedCard?.(friend, true);
-    setShowMoreOptionsMenu(false);
-    showNotification(
-      t('chat:cardShared'),
-      t('chat:cardSharedMessage', { name: friend.name })
-    );
+  /**
+   * ORCH-0685 §9.4: Real Save handler for chat-mounted ExpandedCardModal.
+   * Replaces the no-op at the chat-mounted modal mount (CF-2 dead-tap fix).
+   *
+   * Behavior:
+   *   - Loading: button disabled while saving (via isSavingSharedCard guard).
+   *   - Success: sharedCardIsSaved → true (passed as isSaved prop on modal,
+   *     button transitions to "Saved" state). Success toast.
+   *   - Already-saved: savedCardsService.saveCard handles 23505 silently
+   *     (idempotent upsert). Treated as success — UI transitions to "Saved".
+   *   - Error: toast surfaces. sharedCardIsSaved stays false.
+   *   - Constitution #1: every tap produces real feedback.
+   *   - Constitution #3: errors surface, never swallowed.
+   */
+  const handleSaveSharedCard = async (cardData: ExpandedCardData): Promise<void> => {
+    if (isSavingSharedCard || sharedCardIsSaved) {
+      return;
+    }
+
+    if (!currentUserId) {
+      showNotification(
+        t('chat:cardSaveFailedTitle'),
+        t('chat:cardSaveFailedToast'),
+        'error',
+      );
+      return;
+    }
+
+    setIsSavingSharedCard(true);
+    try {
+      await savedCardsService.saveCard(currentUserId, cardData, 'solo');
+      setSharedCardIsSaved(true);
+      showNotification(
+        t('chat:cardSavedTitle'),
+        t('chat:cardSavedToast'),
+      );
+    } catch (error) {
+      console.error('[handleSaveSharedCard] saveCard failed', error);
+      showNotification(
+        t('chat:cardSaveFailedTitle'),
+        t('chat:cardSaveFailedToast'),
+        'error',
+      );
+    } finally {
+      setIsSavingSharedCard(false);
+    }
   };
 
   const handleRemoveFriend = () => {
@@ -668,14 +826,57 @@ export default function MessageInterface({
     );
   };
 
+  // ORCH-0620 composer position:
+  //   - inputBottomOffset: nav clearance so the composer floats above the bottom
+  //     nav when the keyboard is closed. On Android, + ANDROID_NAV_OVERLAP_FIX
+  //     because the nav uses bottom: insets.bottom + 6 (not 0).
+  //   - iOS keyboard lift: iOS never resizes/pans the window — always lift manually.
+  //     Safe because iOS fires keyboardWillShow BEFORE animation.
+  //   - Android adaptive lift: Expo maps softwareKeyboardLayoutMode="resize" to
+  //     adjustResize in the manifest. On Pixel/stock Android, this shrinks the
+  //     window and the absolute composer naturally lands above the keyboard — no
+  //     manual lift needed. BUT on Samsung / edge-to-edge / new architecture, the
+  //     OS often ignores resize and leaves the window full-size (a known OEM
+  //     quirk). We detect this at runtime by comparing the current window height
+  //     to its observed maximum. If the window did NOT shrink by approximately
+  //     keyboardHeight, we apply a manual lift to compensate. This is adaptive:
+  //     on devices where resize works, no lift. On devices where it's ignored,
+  //     full manual lift. No race condition because the layout update happens
+  //     in response to the same keyboardDidShow event that reveals the ignore.
+  const { height: currentWindowHeight } = useWindowDimensions();
+  const maxWindowHeightRef = useRef<number>(currentWindowHeight);
+  if (currentWindowHeight > maxWindowHeightRef.current) {
+    maxWindowHeightRef.current = currentWindowHeight;
+  }
+  const windowShrinkAmount = Math.max(0, maxWindowHeightRef.current - currentWindowHeight);
+  // On Android with edgeToEdge, the Keyboard event's `keyboardHeight` measures
+  // from the keyboard top down to the TOP of the gesture/nav bar — NOT to the
+  // physical screen bottom. The gesture bar (safeInsets.bottom) still sits
+  // between keyboard and screen bottom visually. To position the composer above
+  // the actual visible keyboard, we need to account for it.
+  const androidManualLift =
+    Platform.OS === 'android' && keyboardVisible
+      ? Math.max(0, keyboardHeight + safeInsets.bottom - windowShrinkAmount)
+      : 0;
+  const iosKeyboardLift = Platform.OS === 'ios' && keyboardVisible ? keyboardHeight : 0;
+
+  // When the keyboard is open, the floating bottom nav is hidden behind the
+  // keyboard — the composer only needs a small breathing gap above the keyboard
+  // top, not the full nav clearance. When closed, use full nav clearance so the
+  // composer floats above the nav capsule.
+  const inputBottomOffset = keyboardVisible
+    ? INPUT_CAPSULE_MARGIN_BOTTOM
+    : bottomNavTotalHeight + INPUT_CAPSULE_MARGIN_BOTTOM + ANDROID_NAV_OVERLAP_FIX;
+  const finalInputBottom = inputBottomOffset + iosKeyboardLift + androidManualLift;
+
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: safeInsets.top + 8 }]}>
         {/* Top Row: Back button, Avatar, Name and Status */}
         <View style={styles.headerTopRow}>
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Icon name="arrow-back" size={24} color="#6b7280" />
+            <Icon name="arrow-back" size={24} color="rgba(255, 255, 255, 0.72)" />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -725,7 +926,7 @@ export default function MessageInterface({
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Icon name="ellipsis-vertical" size={20} color="#6b7280" />
+            <Icon name="ellipsis-vertical" size={20} color="rgba(255, 255, 255, 0.72)" />
           </TouchableOpacity>
         </View>
 
@@ -733,17 +934,17 @@ export default function MessageInterface({
         {/* Commented out header icons temporarily */}
         {/* <View style={styles.headerActions}>
           <TouchableOpacity style={styles.actionButton}>
-            <Icon name="call" size={16} color="#6b7280" />
+            <Icon name="call" size={16} color="rgba(255, 255, 255, 0.72)" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton}>
-            <Icon name="videocam" size={16} color="#6b7280" />
+            <Icon name="videocam" size={16} color="rgba(255, 255, 255, 0.72)" />
           </TouchableOpacity>
           <View style={styles.moreOptionsContainer}>
             <TouchableOpacity
               onPress={() => setShowMoreOptionsMenu(!showMoreOptionsMenu)}
               style={styles.actionButton}
             >
-              <Icon name="ellipsis-horizontal" size={16} color="#6b7280" />
+              <Icon name="ellipsis-horizontal" size={16} color="rgba(255, 255, 255, 0.72)" />
             </TouchableOpacity>
 
             {showMoreOptionsMenu && (
@@ -752,14 +953,14 @@ export default function MessageInterface({
                   onPress={handleAddToBoard}
                   style={styles.menuItem}
                 >
-                  <Icon name="people" size={16} color="#6b7280" />
+                  <Icon name="people" size={16} color="rgba(255, 255, 255, 0.72)" />
                   <Text style={styles.menuItemText}>Add to Board</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleShareSavedCard}
                   style={styles.menuItem}
                 >
-                  <Icon name="bookmark" size={16} color="#6b7280" />
+                  <Icon name="bookmark" size={16} color="rgba(255, 255, 255, 0.72)" />
                   <Text style={styles.menuItemText}>Share Saved Card</Text>
                 </TouchableOpacity>
                 <View style={styles.menuDivider} />
@@ -874,8 +1075,16 @@ export default function MessageInterface({
                     fileUrl: item.message.fileUrl,
                     fileName: item.message.fileName,
                     fileSize: item.message.fileSize,
+                    cardPayload: item.message.cardPayload,  // ORCH-0667
                     isMe: item.message.isMe,
                     failed: item.message.failed,
+                  }}
+                  onCardBubbleTap={(payload) => {
+                    // ORCH-0685: typed conversion replaces unsafe `any` cast (Constitution #12 fix).
+                    setExpandedCardFromChat(cardPayloadToExpandedCardData(payload));
+                    setShowExpandedCardFromChat(true);
+                    // ORCH-0685 cycle-3: sharedCardIsSaved now derived via useEffect against
+                    // savedCardsQuery.data — no manual reset needed.
                   }}
                   isMe={item.message.isMe}
                   groupPosition={item.groupPosition}
@@ -902,7 +1111,16 @@ export default function MessageInterface({
           keyExtractor={(item) => item.message.id}
           inverted={true}
           style={styles.messagesContainer}
-          contentContainerStyle={styles.messagesContentContainer}
+          contentContainerStyle={[
+            styles.messagesContentContainer,
+            {
+              // ORCH-0620: inverted FlatList — paddingTop (pre-transform) becomes
+              // the VISUAL BOTTOM clearance after the scaleY:-1 flip. Clears the
+              // composer capsule (which sits at `finalInputBottom` above the
+              // window's bottom edge) + INPUT_CAPSULE_HEIGHT + 8pt breathing.
+              paddingTop: finalInputBottom + INPUT_CAPSULE_HEIGHT + 8,
+            },
+          ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
@@ -989,7 +1207,7 @@ export default function MessageInterface({
               onPress={handleRemoveFile}
               style={styles.removeFileButton}
             >
-              <Icon name="close" size={12} color="#6b7280" />
+              <Icon name="close" size={12} color="rgba(255, 255, 255, 0.72)" />
             </TouchableOpacity>
           </View>
         </View>
@@ -1052,42 +1270,58 @@ export default function MessageInterface({
       {/* Deleted Account Banner */}
       {isDeletedAccount && !isBlocked && !isUnfriended && (
         <View style={styles.blockedBanner}>
-          <Icon name="alert-circle" size={18} color="#6b7280" />
+          <Icon name="alert-circle" size={18} color="rgba(255, 255, 255, 0.72)" />
           <Text style={styles.blockedBannerText}>
             {t('chat:accountDeleted')}
           </Text>
         </View>
       )}
 
-      {/* Input Area - Hidden when blocked, unfriended, or account deleted */}
+      {/* Input Area - Floating glass capsule. ORCH-0610 forensic fix: bottom
+          is a STATIC value keyed off keyboardVisible (not an Animated.add).
+          When keyboard opens, the capsule is positioned at keyboardHeight + 8
+          from screen bottom — above the keyboard. OS `adjustPan` sees the
+          focused input is already visible above the keyboard and does NOT pan
+          the window, so the header stays at its original position. */}
       {!isBlocked && !isUnfriended && !isDeletedAccount && (
-      <Animated.View
+      <View
         style={[
-          styles.inputArea,
-          {
-            // Match padding below the row to padding above (inputArea.paddingTop / border).
-            paddingBottom: keyboardVisible ? 0 : INPUT_AREA_VERTICAL_PADDING,
-            marginBottom: animatedKeyboardHeight,
-          },
+          styles.inputCapsuleWrap,
+          { bottom: finalInputBottom },
         ]}
       >
         {/* Reply Preview Bar */}
         {replyingTo && (
-          <ReplyPreviewBar
-            senderName={replyingTo.senderName}
-            previewText={replyingTo.content}
-            isOwnMessage={replyingTo.isMe}
-            onClose={() => setReplyingTo(null)}
-          />
+          <View style={styles.replyPreviewWrap}>
+            <ReplyPreviewBar
+              senderName={replyingTo.senderName}
+              previewText={replyingTo.content}
+              isOwnMessage={replyingTo.isMe}
+              onClose={() => setReplyingTo(null)}
+            />
+          </View>
         )}
-        <View style={styles.inputContainer}>
+        <View style={styles.inputCapsule}>
+          <BlurView
+            intensity={glass.chrome.blur.intensity}
+            tint="dark"
+            experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: glass.chrome.tint.floor }]}
+          />
+          <View style={styles.inputContainer}>
           {/* Attachment Menu */}
           <View style={styles.attachmentContainer}>
             <TouchableOpacity
               onPress={() => setShowAttachmentMenu(!showAttachmentMenu)}
               style={styles.attachmentButton}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             >
-              <Icon name="attach" size={20} color="#6b7280" />
+              <Icon name="attach" size={20} color="rgba(255, 255, 255, 0.85)" />
             </TouchableOpacity>
 
             {showAttachmentMenu && (
@@ -1140,6 +1374,9 @@ export default function MessageInterface({
             )}
           </View>
 
+          {/* Separator — cutout between attach and text field */}
+          <View style={styles.capsuleSeparator} />
+
           {/* Message Input */}
           <TouchableOpacity
             style={styles.messageInputContainer}
@@ -1161,12 +1398,15 @@ export default function MessageInterface({
               placeholder={
                 selectedFile ? t('chat:addCaption') : t('chat:typeMessage')
               }
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="rgba(255, 255, 255, 0.4)"
               style={styles.messageInput}
               multiline={false}
               maxLength={1000}
             />
           </TouchableOpacity>
+
+          {/* Separator — cutout between text field and send */}
+          <View style={styles.capsuleSeparator} />
 
           {/* Send Button */}
           <TouchableOpacity
@@ -1180,88 +1420,126 @@ export default function MessageInterface({
             <Icon name="paper-plane" size={20} color="white" />
           </TouchableOpacity>
         </View>
-      </Animated.View>
+        </View>
+      </View>
       )}
 
       {/* Hidden File Input - Not supported in React Native */}
       {/* File selection will be handled through TouchableOpacity and native file picker */}
 
-      {/* Board Selection Modal */}
-      {showBoardSelection && (
+      {/* ORCH-0666 cycle 2: BoardSelection sub-UI deleted. ConnectionsPage owns
+          the real AddToBoardModal mount; MessageInterface delegates via the
+          required onOpenAddToBoardModal prop. */}
+
+      {/* ORCH-0667: shared-card picker modal */}
+      {showSavedCardPicker && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t('chat:addToBoard')}</Text>
+              <Text style={styles.modalTitle}>{t('chat:pickerTitle')}</Text>
               <TouchableOpacity
-                onPress={() => setShowBoardSelection(false)}
+                onPress={() => setShowSavedCardPicker(false)}
                 style={styles.modalCloseButton}
               >
-                <Icon name="close" size={12} color="#6b7280" />
+                <Icon name="close" size={12} color="rgba(255, 255, 255, 0.72)" />
               </TouchableOpacity>
             </View>
-
             <Text style={styles.modalSubtitle}>
-              {t('chat:selectBoardsSubtitle', { name: friend.name })}
+              {t('chat:pickerSubtitle', { name: friend.name })}
             </Text>
 
-            <ScrollView style={styles.boardList}>
-              {boardsSessions.map((board) => (
+            {savedCardsQuery.isLoading ? (
+              <View style={styles.boardList}>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={styles.savedCardSkeletonRow}>
+                    <View style={styles.savedCardSkeletonThumb} />
+                    <View style={styles.savedCardSkeletonText}>
+                      <View style={[styles.savedCardSkeletonBar, { width: '60%' }]} />
+                      <View style={[styles.savedCardSkeletonBar, { width: '40%', marginTop: 6 }]} />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (savedCardsQuery.data?.length ?? 0) === 0 ? (
+              <View style={styles.savedCardEmptyContainer}>
+                <Text style={styles.savedCardEmptyTitle}>
+                  {t('chat:noSavedCardsToShareTitle')}
+                </Text>
+                <Text style={styles.savedCardEmptyBody}>
+                  {t('chat:noSavedCardsToShareBody')}
+                </Text>
                 <TouchableOpacity
-                  key={board.id}
-                  onPress={() => {
-                    const isSelected = selectedBoards.includes(board.id);
-                    if (isSelected) {
-                      setSelectedBoards((prev) =>
-                        prev.filter((id) => id !== board.id)
-                      );
-                    } else {
-                      setSelectedBoards((prev) => [...prev, board.id]);
-                    }
-                  }}
-                  style={[
-                    styles.boardItem,
-                    selectedBoards.includes(board.id) &&
-                      styles.boardItemSelected,
-                  ]}
+                  onPress={() => setShowSavedCardPicker(false)}
+                  style={styles.confirmButton}
                 >
-                  <View
-                    style={[
-                      styles.checkbox,
-                      selectedBoards.includes(board.id) &&
-                        styles.checkboxSelected,
-                    ]}
-                  >
-                    {selectedBoards.includes(board.id) && (
-                      <Icon name="checkmark" size={12} color="white" />
-                    )}
-                  </View>
-                  <View style={styles.boardInfo}>
-                    <Text style={styles.boardName}>{board.name}</Text>
-                    <Text style={styles.boardParticipants}>
-                      {t('chat:boardParticipants', { count: board.participants?.length || 0 })}
-                    </Text>
-                  </View>
+                  <Text style={styles.confirmButtonText}>{t('chat:ok')}</Text>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => setShowBoardSelection(false)}
-                style={styles.cancelButton}
-              >
-                <Text style={styles.cancelButtonText}>{t('chat:cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleBoardSelection(selectedBoards)}
-                style={styles.confirmButton}
-              >
-                <Text style={styles.confirmButtonText}>{t('chat:addToBoardConfirm')}</Text>
-              </TouchableOpacity>
-            </View>
+              </View>
+            ) : (
+              <ScrollView style={styles.boardList}>
+                {savedCardsQuery.data?.map((card) => {
+                  const isSubmitting = pickerSubmittingCardId === card.id;
+                  const isOtherSubmitting =
+                    !!pickerSubmittingCardId && pickerSubmittingCardId !== card.id;
+                  return (
+                    <TouchableOpacity
+                      key={card.id}
+                      onPress={() => handleSelectCardToShare(card)}
+                      disabled={isSubmitting || isOtherSubmitting}
+                      style={[
+                        styles.savedCardRow,
+                        isSubmitting && { opacity: 0.5 },
+                      ]}
+                    >
+                      {card.image ? (
+                        <Image
+                          source={{ uri: card.image }}
+                          style={styles.savedCardThumb}
+                        />
+                      ) : (
+                        <View style={[styles.savedCardThumb, styles.savedCardThumbPlaceholder]}>
+                          <Icon name="bookmark" size={20} color="rgba(255,255,255,0.5)" />
+                        </View>
+                      )}
+                      <View style={styles.savedCardInfo}>
+                        <Text style={styles.savedCardTitle} numberOfLines={1}>
+                          {card.title}
+                        </Text>
+                        <Text style={styles.savedCardSubtitle} numberOfLines={1}>
+                          {isSubmitting ? t('chat:cardSending') : (card.category || '')}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
           </View>
         </View>
       )}
+
+      {/* ORCH-0667 + ORCH-0685: tap-to-expand shared card from chat with real Save wiring */}
+      {showExpandedCardFromChat && expandedCardFromChat && (
+        <ExpandedCardModal
+          visible={showExpandedCardFromChat}
+          card={expandedCardFromChat}
+          onClose={() => {
+            setShowExpandedCardFromChat(false);
+            setExpandedCardFromChat(null);
+            // ORCH-0685 cycle-3: useEffect on expandedCardFromChat=null resets
+            // sharedCardIsSaved automatically.
+          }}
+          onSave={handleSaveSharedCard}  // ORCH-0685: CF-2 dead-tap fix
+          isSaved={sharedCardIsSaved}    // ORCH-0685: button transitions to "Saved"
+          currentMode="solo"
+        />
+      )}
+
+      {/* [ORCH-0696 F-13 lock-in] Shape 2a Modal hack deleted post-bottom-sheet
+          conversion verified by operator live-fire on iOS + Android (2026-04-29).
+          DO NOT re-introduce — toasts now render naturally above @gorhom/bottom-sheet
+          (Animated.View, not native Modal portal). The notifications panel below
+          (around line 1632) remains as the canonical single mount point. */}
 
       {/* More options bottom sheet — ORCH-0435 */}
       <Modal
@@ -1340,37 +1618,7 @@ export default function MessageInterface({
       {/* Local Notifications */}
       {notifications.length > 0 && (
         <View style={styles.notificationsContainer}>
-          {notifications.map((notification) => (
-            <View key={notification.id} style={styles.notification}>
-              <View
-                style={[
-                  styles.notificationIndicator,
-                  {
-                    backgroundColor:
-                      notification.type === "success"
-                        ? "#10b981"
-                        : notification.type === "error"
-                        ? "#ef4444"
-                        : "#3b82f6",
-                  },
-                ]}
-              />
-              <View style={styles.notificationContent}>
-                <Text style={styles.notificationTitle}>
-                  {notification.title}
-                </Text>
-                <Text style={styles.notificationMessage}>
-                  {notification.message}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => dismissNotification(notification.id)}
-                style={styles.dismissButton}
-              >
-                <Icon name="close" size={12} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-          ))}
+          {notifications.map((notification) => renderNotificationCard(notification, false))}
         </View>
       )}
 
@@ -1381,7 +1629,7 @@ export default function MessageInterface({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "rgba(12, 14, 18, 1)", // ORCH-0600: dark canvas for glass design
   },
   offlineBanner: {
     flexDirection: "row",
@@ -1418,9 +1666,9 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 0,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-    backgroundColor: "white",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "rgba(12, 14, 18, 1)",
   },
   headerTopRow: {
     flexDirection: "row",
@@ -1467,19 +1715,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#10b981",
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: "white",
+    borderColor: "rgba(12, 14, 18, 1)",
   },
   userInfo: {
     flex: 1,
   },
   userName: {
     fontSize: 16,
-    fontWeight: "500",
-    color: "#111827",
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   userStatus: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.6)",
   },
   headerActions: {
     flexDirection: "row",
@@ -1491,7 +1739,9 @@ const styles = StyleSheet.create({
   actionButton: {
     width: 32,
     height: 32,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.14)", // __not_chrome__: chat-header utility button, separate design language from glass.chrome.* — see ORCH-0669 D-1
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
@@ -1567,12 +1817,12 @@ const styles = StyleSheet.create({
   emptyStateTitle: {
     fontSize: 16,
     fontWeight: "500",
-    color: "#111827",
+    color: "#FFFFFF",
     marginBottom: 8,
   },
   emptyStateText: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
   },
   messagesList: {
@@ -1593,20 +1843,29 @@ const styles = StyleSheet.create({
     maxWidth: "70%",
   },
   messageBubbleLeft: {
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.14)", // __not_chrome__: incoming message bubble, separate design language from glass.chrome.* — see ORCH-0669 D-1
   },
   messageBubbleRight: {
     backgroundColor: "#eb7825",
+    borderWidth: 1,
+    borderColor: "rgba(235, 120, 37, 0.55)",
+    shadowColor: "#eb7825",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
   },
   messageText: {
     fontSize: 16,
     lineHeight: 20,
   },
   messageTextLeft: {
-    color: "#111827",
+    color: "#FFFFFF",
   },
   messageTextRight: {
-    color: "white",
+    color: "#FFFFFF",
   },
   messageCaption: {
     marginBottom: 8,
@@ -1639,10 +1898,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   videoTextLeft: {
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.72)",
   },
   videoTextRight: {
-    color: "white",
+    color: "#FFFFFF",
   },
   fileContainer: {
     flexDirection: "row",
@@ -1652,7 +1911,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   fileContainerLeft: {
-    backgroundColor: "white",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
   },
   fileContainerRight: {
     backgroundColor: "rgba(255, 255, 255, 0.2)",
@@ -1665,7 +1924,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   fileIconLeft: {
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
   },
   fileIconRight: {
     backgroundColor: "rgba(255, 255, 255, 0.3)",
@@ -1679,24 +1938,24 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   fileNameLeft: {
-    color: "#111827",
+    color: "#FFFFFF",
   },
   fileNameRight: {
-    color: "white",
+    color: "#FFFFFF",
   },
   fileSize: {
     fontSize: 12,
     marginTop: 2,
   },
   fileSizeLeft: {
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.6)",
   },
   fileSizeRight: {
     color: "rgba(255, 255, 255, 0.7)",
   },
   messageTimestamp: {
     fontSize: 12,
-    color: "#9ca3af",
+    color: "rgba(255, 255, 255, 0.45)",
     marginTop: 4,
   },
   messageTimestampLeft: {
@@ -1812,27 +2071,54 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
   },
-  inputArea: {
-    borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
-    paddingHorizontal: 12,
-    paddingTop: INPUT_AREA_VERTICAL_PADDING,
-    paddingBottom: 0,
-    backgroundColor: "white",
+  // ORCH-0600: Floating glass input capsule — blurred pill with inner separators
+  // between attach / text / send, matching the home-chrome capsule language.
+  inputCapsuleWrap: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    zIndex: 60,
+  },
+  replyPreviewWrap: {
+    marginBottom: 6,
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: glass.chrome.tint.floor,
+    borderWidth: 1,
+    borderColor: glass.chrome.border.hairline,
+  },
+  inputCapsule: {
+    height: INPUT_CAPSULE_HEIGHT,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: glass.chrome.border.hairline,
+    overflow: "hidden",
+    shadowColor: glass.chrome.shadow.color,
+    shadowOffset: glass.chrome.shadow.offset,
+    shadowOpacity: glass.chrome.shadow.opacity,
+    shadowRadius: glass.chrome.shadow.radius,
+    elevation: glass.chrome.shadow.elevation,
   },
   inputContainer: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    paddingHorizontal: 6,
+  },
+  capsuleSeparator: {
+    width: StyleSheet.hairlineWidth,
+    height: 24,
+    backgroundColor: glass.chrome.border.hairline,
+    marginHorizontal: 4,
   },
   attachmentContainer: {
     position: "relative",
   },
   attachmentButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    backgroundColor: "transparent",
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1878,16 +2164,15 @@ const styles = StyleSheet.create({
   },
   messageInputContainer: {
     flex: 1,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 20,
-    paddingHorizontal: 16,
+    backgroundColor: "transparent",
+    paddingHorizontal: 8,
     paddingVertical: 10,
     minHeight: 40,
     justifyContent: "center",
   },
   messageInput: {
     fontSize: 16,
-    color: "#111827",
+    color: "#FFFFFF",
     padding: 0,
     margin: 0,
     includeFontPadding: false,
@@ -1991,6 +2276,79 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     marginTop: 2,
   },
+  // ORCH-0667: shared-card picker styles
+  savedCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.05)",
+  },
+  savedCardThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,0,0,0.06)",
+  },
+  savedCardThumbPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  savedCardInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  savedCardTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  savedCardSubtitle: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  savedCardSkeletonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  savedCardSkeletonThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
+  savedCardSkeletonText: {
+    flex: 1,
+  },
+  savedCardSkeletonBar: {
+    height: 10,
+    borderRadius: 4,
+    backgroundColor: "rgba(0,0,0,0.08)",
+  },
+  savedCardEmptyContainer: {
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    alignItems: "center",
+    gap: 12,
+  },
+  savedCardEmptyTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+    textAlign: "center",
+  },
+  savedCardEmptyBody: {
+    fontSize: 14,
+    color: "#6b7280",
+    textAlign: "center",
+    marginBottom: 8,
+  },
   modalActions: {
     flexDirection: "row",
     gap: 12,
@@ -2030,11 +2388,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   notification: {
-    backgroundColor: "white",
+    // backgroundColor + borderColor set inline per notification.type via getNotificationVisuals
     borderWidth: 1,
-    borderColor: "#e5e7eb",
     borderRadius: 12,
-    padding: 16,
+    paddingVertical: 14,
+    paddingRight: 14,
+    paddingLeft: 18, // 4px stripe + 14px gutter
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -2043,36 +2402,48 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 12,
+    overflow: "hidden",
   },
   notificationIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginTop: 8,
-    flexShrink: 0,
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    // backgroundColor set inline per notification.type
   },
   notificationContent: {
     flex: 1,
     minWidth: 0,
+    paddingVertical: 2,
+  },
+  notificationTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   notificationTitle: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 15,
+    fontWeight: "600",
     color: "#111827",
+    flexShrink: 1,
   },
   notificationMessage: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "#374151",
     marginTop: 4,
+    lineHeight: 19,
   },
   dismissButton: {
     width: 24,
     height: 24,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "transparent",
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    alignSelf: "flex-start",
+    marginTop: 2,
   },
   // ORCH-0435: Day separator
   daySeparator: {

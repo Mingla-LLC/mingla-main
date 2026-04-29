@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "rgba(255, 255, 255, 0.65)",
     marginTop: 8,
   },
   requestRow: {

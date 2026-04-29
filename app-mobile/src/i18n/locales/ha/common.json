@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "Yi Yawo",
   "unknown": "Ba a sani ba",
   "time_just_now": "Yanzu nan",
-
   "toast_invite_sent": "An Aika Gayyata!",
   "toast_invite_sent_msg": "An aika gayyatar haɗin gwiwa zuwa {{name}}",
   "toast_member_promoted": "An Ɗaga Memba",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "An Ƙara zuwa Hukumomi {{count}}!",
   "toast_added_board_msg": "An ƙara {{name}} zuwa hukumar haɗin gwiwa",
   "toast_added_boards_msg": "An ƙara {{name}} zuwa hukumomin haɗin gwiwa {{count}}",
-  "toast_card_shared": "An Raba Kati!",
-  "toast_card_shared_msg": "An raba gogaggen kwarewa tare da {{name}}",
   "toast_friend_removed": "An Cire Aboki",
   "toast_friend_removed_msg": "An cire {{name}} daga jerin abokanka",
   "toast_user_blocked": "An Toshe Mai Amfani",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "saboda cin mutunci",
   "toast_report_reason_other": "saboda karya ƙa'idojin al'umma",
   "user_fallback": "Mai amfani",
-
   "calendar_access_needed": "Ana Buƙatar Damar Kalanda",
   "calendar_access_needed_msg": "Mingla yana buƙatar damar kalanda don ƙara abubuwan da za a yi. Da fatan a kunna shi a cikin saitin na'urar ku.",
   "open_settings": "Buɗe Saituna",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "Wani abu ya faru yayin ƙara lamarin. Da fatan a sake gwadawa.",
   "added_to_calendar": "An Ƙara",
   "add_to_calendar": "Ƙara zuwa kalanda",
-
   "confidence_excellent": "Daidaitawa Mai Kyau",
   "confidence_good": "Daidaitawa Mai Kyau",
   "confidence_fair": "Daidaitawa Mai Sauƙi",
@@ -157,22 +152,28 @@
   "match_time": "Lokaci",
   "match_popularity": "Shaharar",
   "match_factors": "Dalilan Daidaitawa",
-
   "stat_views": "Dubawa",
   "stat_likes": "Soyayya",
   "stat_saves": "Ajiya",
   "stat_shares": "Rabawa",
   "review_count_one": "Bita {{count}}",
   "review_count_other": "Bitoci {{count}}",
-
   "profile_update_failed": "Sabunta Bayanan Ya Kasa",
   "profile_update_failed_msg": "An kasa sabunta bayanan. Da fatan a sake gwadawa.",
   "saved_experience": "Gogewar da aka Ajiye",
   "experience": "Gogewa",
   "solo_experience": "Gogewar Kai",
   "untitled": "Babu suna",
-
   "error_sign_in_save": "Da fatan a shiga don ajiye gogewa",
   "error_boundary_title": "Wani abu bai yi daidai ba",
-  "error_boundary_message": "Mun gamu da kuskure marar zato. Da fatan a sake gwadawa."
+  "error_boundary_message": "Mun gamu da kuskure marar zato. Da fatan a sake gwadawa.",
+  "category_icebreakers": "Icebreakers",
+  "category_drinks_and_music": "Drinks & Music",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Movies",
+  "category_theatre": "Theatre",
+  "category_brunch_lunch_casual": "Brunch, Lunch & Casual",
+  "category_movies_theatre": "Movies & Theatre"
 }

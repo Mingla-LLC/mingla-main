@@ -117,8 +117,6 @@
   "toast_added_to_boards": "Dodajed to {{count}} Boards!",
   "toast_added_board_msg": "{{name}} has been added to the collaboration board",
   "toast_added_boards_msg": "{{name}} has been added to {{count}} collaboration boards",
-  "toast_card_shared": "Card Udostępnijd!",
-  "toast_card_shared_msg": "A saved experience has been shared with {{name}}",
   "toast_friend_removed": "Znajomy Usuńd",
   "toast_friend_removed_msg": "{{name}} has been removed from your friends list",
   "toast_user_blocked": "Użytkownik Zablokujed",
@@ -168,5 +166,14 @@
   "untitled": "Untitled",
   "error_sign_in_save": "Please sign in to save experiences",
   "error_boundary_title": "Coś poszło nie tak",
-  "error_boundary_message": "We encountered an unexpected error. Please try again."
+  "error_boundary_message": "We encountered an unexpected error. Please try again.",
+  "category_icebreakers": "Lodołamacze",
+  "category_drinks_and_music": "Drinki i muzyka",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Wykwintne",
+  "category_movies": "Kino",
+  "category_theatre": "Teatr",
+  "category_brunch_lunch_casual": "Brunch, lunch i casual",
+  "category_movies_theatre": "Kino i teatr"
 }

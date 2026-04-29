@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "सैर करें",
   "unknown": "अज्ञात",
   "time_just_now": "अभी",
-
   "toast_invite_sent": "आमंत्रण भेजा गया!",
   "toast_invite_sent_msg": "{{name}} को सहयोग का आमंत्रण भेजा गया",
   "toast_member_promoted": "सदस्य को पदोन्नत किया गया",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "{{count}} बोर्ड में जोड़ा गया!",
   "toast_added_board_msg": "{{name}} को सहयोग बोर्ड में जोड़ा गया",
   "toast_added_boards_msg": "{{name}} को {{count}} सहयोग बोर्ड में जोड़ा गया",
-  "toast_card_shared": "कार्ड साझा किया गया!",
-  "toast_card_shared_msg": "{{name}} के साथ एक सहेजा गया अनुभव साझा किया गया",
   "toast_friend_removed": "मित्र हटाया गया",
   "toast_friend_removed_msg": "{{name}} को आपकी मित्र सूची से हटाया गया",
   "toast_user_blocked": "उपयोगकर्ता ब्लॉक किया गया",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "उत्पीड़न के लिए",
   "toast_report_reason_other": "सामुदायिक दिशानिर्देशों के उल्लंघन के लिए",
   "user_fallback": "उपयोगकर्ता",
-
   "calendar_access_needed": "कैलेंडर एक्सेस चाहिए",
   "calendar_access_needed_msg": "Mingla को इवेंट जोड़ने के लिए कैलेंडर एक्सेस चाहिए। कृपया अपनी डिवाइस सेटिंग्स में इसे चालू करें।",
   "open_settings": "सेटिंग्स खोलें",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "इवेंट जोड़ते समय कुछ गड़बड़ हो गई। कृपया फिर से कोशिश करें।",
   "added_to_calendar": "जोड़ दिया गया",
   "add_to_calendar": "कैलेंडर में जोड़ें",
-
   "confidence_excellent": "उत्कृष्ट मैच",
   "confidence_good": "अच्छा मैच",
   "confidence_fair": "ठीक-ठाक मैच",
@@ -157,22 +152,28 @@
   "match_time": "समय",
   "match_popularity": "लोकप्रियता",
   "match_factors": "मैच कारक",
-
   "stat_views": "व्यूज़",
   "stat_likes": "लाइक्स",
   "stat_saves": "सेव्स",
   "stat_shares": "शेयर",
   "review_count_one": "{{count}} समीक्षा",
   "review_count_other": "{{count}} समीक्षाएँ",
-
   "profile_update_failed": "प्रोफ़ाइल अपडेट विफल",
   "profile_update_failed_msg": "प्रोफ़ाइल अपडेट नहीं हो सकी। कृपया फिर से कोशिश करें।",
   "saved_experience": "सहेजा गया अनुभव",
   "experience": "अनुभव",
   "solo_experience": "एकल अनुभव",
   "untitled": "शीर्षकहीन",
-
   "error_sign_in_save": "अनुभव सहेजने के लिए साइन इन करें",
   "error_boundary_title": "कुछ गड़बड़ हो गई",
-  "error_boundary_message": "एक अप्रत्याशित त्रुटि हुई। कृपया फिर से कोशिश करें।"
+  "error_boundary_message": "एक अप्रत्याशित त्रुटि हुई। कृपया फिर से कोशिश करें।",
+  "category_icebreakers": "आइसब्रेकर",
+  "category_drinks_and_music": "पेय और संगीत",
+  "category_brunch": "ब्रंच",
+  "category_casual_food": "अनौपचारिक",
+  "category_upscale_fine_dining": "फ़ाइन डाइनिंग",
+  "category_movies": "फ़िल्में",
+  "category_theatre": "थिएटर",
+  "category_brunch_lunch_casual": "ब्रंच, लंच और अनौपचारिक",
+  "category_movies_theatre": "फ़िल्में और थिएटर"
 }

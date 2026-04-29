@@ -462,7 +462,7 @@ const CalendarTab = ({
       paddingHorizontal: 16,
     },
     calendarCard: {
-      backgroundColor: "#FFFFFF",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
       borderRadius: 16,
       borderWidth: 1,
       borderColor: "#f0f0f0",
@@ -527,12 +527,12 @@ const CalendarTab = ({
     cardTitle: {
       fontSize: 16,
       fontWeight: "600",
-      color: "#111827",
+      color: "#FFFFFF",
       marginBottom: 4,
     },
     cardSubtitle: {
       fontSize: 14,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
       marginBottom: 8,
     },
     eventDetailsContainer: {
@@ -546,7 +546,7 @@ const CalendarTab = ({
     },
     eventDetailText: {
       fontSize: 14,
-      color: "#111827",
+      color: "#FFFFFF",
     },
     statusIndicators: {
       flexDirection: "row",
@@ -702,9 +702,9 @@ const CalendarTab = ({
       width: 44,
       height: 44,
       borderRadius: 10,
-      backgroundColor: "white",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
       borderWidth: 1,
-      borderColor: "#e5e7eb",
+      borderColor: "rgba(255, 255, 255, 0.12)",
       alignItems: "center",
       justifyContent: "center",
     },
@@ -712,7 +712,7 @@ const CalendarTab = ({
       width: 40,
       height: 40,
       borderRadius: 12,
-      backgroundColor: "white",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
       borderWidth: 0.5,
       borderColor: "#ef4444", // Red border
       alignItems: "center",
@@ -720,7 +720,7 @@ const CalendarTab = ({
     },
     secondaryButton: {
       flex: 1,
-      backgroundColor: "white",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
       borderWidth: 1,
       borderColor: "#eb7825",
       paddingVertical: 12,
@@ -737,13 +737,13 @@ const CalendarTab = ({
       paddingHorizontal: 12,
       paddingVertical: 12,
       borderWidth: 1,
-      borderColor: "#e5e7eb",
+      borderColor: "rgba(255, 255, 255, 0.12)",
       borderRadius: 12,
     },
     tertiaryButtonIcon: {
       width: 20,
       height: 20,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
     },
     purchasedButton: {
       paddingHorizontal: 12,
@@ -774,7 +774,7 @@ const CalendarTab = ({
     expandedContent: {
       borderTopWidth: 1,
       borderTopColor: "#f3f4f6",
-      backgroundColor: "#f9fafb",
+      backgroundColor: "rgba(255, 255, 255, 0.04)",
     },
     imageGallery: {
       position: "relative",
@@ -819,7 +819,7 @@ const CalendarTab = ({
       borderRadius: 4,
     },
     activeIndicator: {
-      backgroundColor: "white",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
     },
     inactiveIndicator: {
       backgroundColor: "rgba(255, 255, 255, 0.5)",
@@ -831,12 +831,12 @@ const CalendarTab = ({
     sectionTitle: {
       fontSize: 16,
       fontWeight: "500",
-      color: "#111827",
+      color: "#FFFFFF",
       marginBottom: 8,
     },
     sectionText: {
       fontSize: 14,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
       lineHeight: 20,
     },
     highlightsContainer: {
@@ -872,7 +872,7 @@ const CalendarTab = ({
     },
     scheduleText: {
       fontSize: 14,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
     },
     preferencesContainer: {
       gap: 8,
@@ -880,7 +880,7 @@ const CalendarTab = ({
     preferencesTitle: {
       fontSize: 16,
       fontWeight: "500",
-      color: "#111827",
+      color: "#FFFFFF",
       marginBottom: 8,
     },
     preferencesList: {
@@ -904,7 +904,7 @@ const CalendarTab = ({
     contactTitle: {
       fontSize: 16,
       fontWeight: "500",
-      color: "#111827",
+      color: "#FFFFFF",
       marginBottom: 8,
     },
     contactRow: {
@@ -919,7 +919,7 @@ const CalendarTab = ({
     },
     contactText: {
       fontSize: 14,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
     },
     contactLink: {
       fontSize: 14,
@@ -933,7 +933,7 @@ const CalendarTab = ({
       marginVertical: 12,
       paddingHorizontal: 16,
       paddingVertical: 14,
-      backgroundColor: "#fffbf5",
+      backgroundColor: "rgba(235, 120, 37, 0.08)",
       borderRadius: 12,
       borderWidth: 1,
       borderColor: "#f5e6d3",
@@ -953,12 +953,12 @@ const CalendarTab = ({
     emptyStateTitle: {
       fontSize: 15,
       fontWeight: "600",
-      color: "#111827",
+      color: "#FFFFFF",
       marginBottom: 2,
     },
     emptyStateSubtitle: {
       fontSize: 13,
-      color: "#9ca3af",
+      color: "rgba(255, 255, 255, 0.55)",
       lineHeight: 18,
     },
     mainScrollView: {
@@ -973,7 +973,7 @@ const CalendarTab = ({
       justifyContent: "space-between",
       paddingHorizontal: 16,
       paddingVertical: 12,
-      backgroundColor: "#FFFFFF",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
       borderWidth: 1,
       borderColor: "#f0f0f0",
       borderRadius: 12,
@@ -992,11 +992,11 @@ const CalendarTab = ({
     accordionTitle: {
       fontSize: 16,
       fontWeight: "500",
-      color: "#111827",
+      color: "#FFFFFF",
     },
     accordionCount: {
       fontSize: 14,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
       marginLeft: 8,
     },
     accordionContentContainer: {
@@ -1032,7 +1032,7 @@ const CalendarTab = ({
     },
     loadingText: {
       fontSize: 14,
-      color: "#6b7280",
+      color: "rgba(255, 255, 255, 0.72)",
       marginTop: 8,
     },
   });
@@ -1135,9 +1135,10 @@ const CalendarTab = ({
         : [experience.image || entry.image].filter(Boolean),
       rating: experience.rating || entry.rating || 4.5,
       reviewCount: experience.reviewCount || entry.reviewCount || 0,
-      priceRange: experience.priceRange || entry.priceRange || "N/A",
+      // [ORCH-0649 — INVARIANT I-NO-FABRICATED-DISPLAY-N/A] no "N/A" fabrication.
+      priceRange: experience.priceRange || entry.priceRange || undefined,
       distance: (experience as any).distance || "",
-      travelTime: experience.travelTime || "N/A",
+      travelTime: experience.travelTime || undefined,
       address: experience.address || entry.address || "",
       openingHours: (experience as any).openingHours,
       phone: experience.phoneNumber || entry.phoneNumber,

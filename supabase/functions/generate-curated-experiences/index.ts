@@ -1,9 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { serveCuratedCardsFromPool } from '../_shared/cardPoolService.ts';
 import { SEEDING_CATEGORY_MAP } from '../_shared/seedingCategories.ts';
 import { googleLevelToTierSlug, slugMeetsMinimum } from '../_shared/priceTiers.ts';
 import { timeoutFetch } from '../_shared/timeoutFetch.ts';
+import { haversineKm, estimateTravelMinutes } from '../_shared/distanceMath.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * generate-curated-experiences  –  Pool-Only Curated Card Generator
@@ -125,47 +125,65 @@ interface ExperienceTypeDef {
   descriptionTone: 'adventure' | 'romantic' | 'stroll' | 'group' | 'picnic' | 'firstdate';
 }
 
-const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
+// ORCH-0677: CuratedSummary surfaced when cards.length === 0 so mobile can route
+// curated-only empty results to the EMPTY UI state instead of stuck-loading.
+// `pool_empty` = no anchor candidates; `no_viable_anchor` = anchors existed but
+// every reverse-anchor candidate failed; `pipeline_error` = caught exception.
+export type CuratedEmptyReason = 'pool_empty' | 'no_viable_anchor' | 'pipeline_error';
+export interface CuratedSummary {
+  emptyReason: CuratedEmptyReason;
+  candidateAnchorCount: number;
+  failedAnchorCount: number;
+}
+
+export const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
   {
+    // ORCH-0601 — 2-stop structure, 6 combos mixing cultural + physical activities.
+    // Slugs `hiking` (nature subset) and `museum` (creative_arts subset) route via
+    // COMBO_SLUG_TYPE_FILTER to narrow the filter signal to specific types.
+    // Food stops (casual_food, upscale_fine_dining) rank by `lively` for post-
+    // adventure energetic dining.
     id: 'adventurous',
     label: 'Adventurous',
     stops: [
-      { role: 'Activity' },
-      { role: 'Drinks' },
-      { role: 'Dinner' },
+      { role: 'auto' },  // slug-derived
+      { role: 'auto' },
     ],
     combos: [
-      ['nature', 'drinks_and_music', 'brunch_lunch_casual'],
-      ['nature', 'drinks_and_music', 'upscale_fine_dining'],
-      ['play', 'drinks_and_music', 'brunch_lunch_casual'],
-      ['play', 'drinks_and_music', 'upscale_fine_dining'],
+      ['play',          'casual_food'],
+      ['theatre',       'casual_food'],
+      ['hiking',        'casual_food'],
+      ['theatre',       'upscale_fine_dining'],
+      ['creative_arts', 'upscale_fine_dining'],
+      ['museum',        'upscale_fine_dining'],
     ],
     taglines: [
       'Explore the unexpected — your next discovery awaits',
-      'Three stops, endless possibilities',
       'Chart your own path through the city',
       'For the curious soul who loves to wander',
+      'Adventure is calling — pick your path',
     ],
     descriptionTone: 'adventure',
   },
   {
+    // ORCH-0599.4: First Date shrunk from 4 stops to 3; drops standalone Drinks stop
+    // (drinks is now one option at Stop 3). Replaces legacy movies_theatre + brunch_lunch_casual
+    // slugs with their split successors (movies, theatre, brunch, casual_food). All non-Flowers
+    // stops signal-ranked by `icebreakers` so conversation-friendly, low-pressure venues
+    // surface over high-intensity ones (eg. casual upscale bistros over Angus Barn).
     id: 'first-date',
     label: 'First Date',
     stops: [
       { role: 'Flowers', optional: true, dismissible: true },
       { role: 'Activity' },
-      { role: 'Dinner' },
-      { role: 'Drinks' },
+      { role: 'Wind Down' },
     ],
     combos: [
-      ['flowers', 'movies_theatre', 'upscale_fine_dining', 'drinks_and_music'],
-      ['flowers', 'movies_theatre', 'brunch_lunch_casual', 'drinks_and_music'],
-      ['flowers', 'creative_arts', 'upscale_fine_dining', 'drinks_and_music'],
-      ['flowers', 'creative_arts', 'brunch_lunch_casual', 'drinks_and_music'],
-      ['flowers', 'movies_theatre', 'upscale_fine_dining', 'drinks_and_music'],
-      ['flowers', 'movies_theatre', 'brunch_lunch_casual', 'drinks_and_music'],
-      ['flowers', 'icebreakers', 'upscale_fine_dining', 'drinks_and_music'],
-      ['flowers', 'icebreakers', 'brunch_lunch_casual', 'drinks_and_music'],
+      ['flowers', 'brunch',         'creative_arts'],
+      ['flowers', 'theatre',        'upscale_fine_dining'],
+      ['flowers', 'movies',         'upscale_fine_dining'],
+      ['flowers', 'play',           'drinks_and_music'],
+      ['flowers', 'play',           'upscale_fine_dining'],
     ],
     taglines: [
       'A thoughtful route for a great first impression',
@@ -176,17 +194,21 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
     descriptionTone: 'firstdate',
   },
   {
+    // ORCH-0599.3: Romantic shrunk from 4 stops to 3; drops Drinks (user directive 2026-04-21).
+    // Stops now signal-powered: Flowers ranked by `flowers` signal (filters out balloon/plant/
+    // non-bouquet false positives); Experience/Dinner ranked by `romantic` signal over the
+    // chip-filter signal (fine_dining/creative_arts/theatre ≥120) so intimate/candlelit
+    // date-night venues surface over group steakhouses and chain restaurants.
     id: 'romantic',
     label: 'Romantic',
     stops: [
       { role: 'Flowers', optional: true, dismissible: true },
       { role: 'Experience' },
       { role: 'Dinner' },
-      { role: 'Drinks' },
     ],
     combos: [
-      ['flowers', 'creative_arts', 'upscale_fine_dining', 'drinks_and_music'],
-      ['flowers', 'movies_theatre', 'upscale_fine_dining', 'drinks_and_music'],
+      ['flowers', 'creative_arts', 'upscale_fine_dining'],
+      ['flowers', 'theatre', 'upscale_fine_dining'],
     ],
     taglines: [
       'A curated route for two',
@@ -198,23 +220,26 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
   },
   {
     id: 'group-fun',
+    // ORCH-0628 — 2-stop structure, 5 combos mixing Activity-first and Food-first.
+    // Stop roles are slug-derived at build time (see SLUG_TO_STOP_ROLE) since position 0
+    // is sometimes Activity (play/movies/theatre) and sometimes Food (brunch).
     label: 'Group Fun',
     stops: [
-      { role: 'Activity' },
-      { role: 'Food' },
-      { role: 'Drinks' },
+      { role: 'auto' },  // slug-derived via SLUG_TO_STOP_ROLE (Group Fun only — mixed orderings)
+      { role: 'auto' },
     ],
     combos: [
-      ['play', 'brunch_lunch_casual', 'drinks_and_music'],
-      ['play', 'upscale_fine_dining', 'drinks_and_music'],
-      ['movies_theatre', 'brunch_lunch_casual', 'drinks_and_music'],
-      ['movies_theatre', 'upscale_fine_dining', 'drinks_and_music'],
+      ['play', 'upscale_fine_dining'],
+      ['play', 'casual_food'],
+      ['theatre', 'upscale_fine_dining'],
+      ['brunch', 'creative_arts'],
+      ['movies', 'upscale_fine_dining'],
     ],
     taglines: [
       'Rally the crew — adventure is calling',
-      'Three stops of pure group energy',
       'Good times are better together',
       'A plan the whole squad will love',
+      'Group energy, start to finish',
     ],
     descriptionTone: 'group',
   },
@@ -238,6 +263,8 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
     descriptionTone: 'picnic',
   },
   {
+    // ORCH-0601 — split stale brunch_lunch_casual into brunch + casual_food.
+    // Nature stop ranks by `scenic`, Food stops rank by `icebreakers`.
     id: 'take-a-stroll',
     label: 'Take a Stroll',
     stops: [
@@ -245,7 +272,8 @@ const EXPERIENCE_TYPES: ExperienceTypeDef[] = [
       { role: 'Food' },
     ],
     combos: [
-      ['nature', 'brunch_lunch_casual'],
+      ['nature', 'brunch'],
+      ['nature', 'casual_food'],
       ['nature', 'upscale_fine_dining'],
     ],
     taglines: [
@@ -274,36 +302,298 @@ for (const et of EXPERIENCE_TYPES) {
 
 // ── Single Card Query (curated cards built from singles) ──────────────────
 
-async function fetchSinglesForCategory(
-  categoryId: string,
+// ORCH-0634: fetchSinglesForCategory DELETED. The function read from
+// card_pool.contains('categories', [catId]) which silently returned zero rows
+// for the new split chip slugs (brunch, casual_food, movies, theatre) because
+// card_pool.categories stored old bundled slugs only. Replacement: every caller
+// now uses fetchSinglesForSignalRank via fetchForCombo (which always resolves
+// a signal via COMBO_SLUG_TO_FILTER_SIGNAL — no card_pool fallback).
+//
+// If you find yourself wanting to re-add this for any reason, stop. card_pool
+// is deprecated and ORCH-0640 will DROP the table. Use signal scores instead.
+
+// ── ORCH-0599.3: Signal-aware picker for Romantic experience stops ────────
+// Queries card_pool JOINed with place_scores to:
+//   1. Filter places that score >= filterMin on filterSignal (e.g., fine_dining >= 120)
+//   2. Rank results by rankSignal score DESC (e.g., romantic score)
+// This replaces rating-based shuffle ordering for Romantic-experience stops,
+// surfacing the most date-night-appropriate fine-dining/creative-arts/theatre
+// venues instead of a random upscale_fine_dining place.
+
+async function fetchSinglesForSignalRank(
+  filterSignal: string,
+  filterMin: number,
+  rankSignal: string,
   centerLat: number,
   centerLng: number,
   radiusMeters: number,
   limit: number = 50,
+  requiredTypes?: string[],  // ORCH-0601: optional sub-filter — places must have at least one of these types (e.g., 'hiking_area','museum')
 ): Promise<any[]> {
   const latDelta = radiusMeters / 111320;
   const lngDelta = radiusMeters / (111320 * Math.cos(centerLat * Math.PI / 180));
 
-  const { data, error } = await supabaseAdmin
-    .from('card_pool')
-    .select('id, place_pool_id, google_place_id, title, address, lat, lng, rating, review_count, price_min, price_max, price_tier, price_tiers, opening_hours, website, images, image_url, city_id, city, country, utc_offset_minutes, ai_categories, category, categories')
-    .eq('is_active', true)
-    .eq('card_type', 'single')
-    .contains('categories', [categoryId])
-    .gte('lat', centerLat - latDelta)
-    .lte('lat', centerLat + latDelta)
-    .gte('lng', centerLng - lngDelta)
-    .lte('lng', centerLng + lngDelta)
-    .order('rating', { ascending: false })
-    .limit(limit);
+  // ORCH-0653 v3.2: single RPC call replaces v3/v3.1 multi-step PostgREST
+  // pipeline. The RPC pushes the bbox + filter signal + rank signal query
+  // into Postgres so we never pass thousands of IDs through .in() over
+  // HTTP. Supabase edge proxy URL cap (~10-12KB) was rejecting v3.1's
+  // 500-ID chunks (~20KB URL); chunking smaller (200 IDs) would have cost
+  // ~25 sequential roundtrips per intent. The RPC = 2 roundtrips total
+  // (RPC + small hydrate), no URL constraint, server-side composite index
+  // on (signal_id, score) does the heavy lifting.
+  //
+  // Three-gate serving still enforced:
+  //   G1: pp.is_servable = true (RPC WHERE)
+  //   G2: ps_filter.score >= filter_min (RPC INNER JOIN ON)
+  //   G3: real stored_photo_urls (post-block .filter, unchanged)
 
-  if (error || !data) return [];
+  const { data: rankedPairs, error: rpcErr } = await supabaseAdmin.rpc(
+    'fetch_local_signal_ranked',
+    {
+      p_filter_signal: filterSignal,
+      p_filter_min: filterMin,
+      p_rank_signal: rankSignal,
+      p_lat_min: centerLat - latDelta,
+      p_lat_max: centerLat + latDelta,
+      p_lng_min: centerLng - lngDelta,
+      p_lng_max: centerLng + lngDelta,
+      p_required_types: requiredTypes ?? null,
+      p_limit: limit * 2,
+    }
+  );
 
-  // Only keep cards with images (should always be true, but safety net)
-  const filtered = data.filter((card: any) => card.images?.length > 0 || card.image_url);
-  // Shuffle to ensure variety across requests (all results are quality-filtered by DB query)
-  return shuffle(filtered);
+  // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
+  if (rpcErr) {
+    throw new Error(`[fetchSinglesForSignalRank] RPC fetch_local_signal_ranked (filter=${filterSignal}>=${filterMin} rank=${rankSignal} bbox=(${centerLat.toFixed(4)},${centerLng.toFixed(4)})±${Math.round(latDelta * 111320)}m types=${requiredTypes?.join('|') ?? 'any'}) failed: ${rpcErr.message}`);
+  }
+  if (!rankedPairs || rankedPairs.length === 0) return [];
+
+  const rankedIds = rankedPairs.map((p: any) => p.place_id);
+  const rankScoreById = new Map<string, number>();
+  for (const p of rankedPairs) rankScoreById.set(p.place_id, Number(p.rank_score));
+
+  // Hydrate the small ranked set. rankedIds is bounded by limit*2 ≤ ~100,
+  // well under any URL cap. No chunking needed.
+  const { data: places, error: placeErr } = await supabaseAdmin
+    .from('place_pool')
+    .select('id, google_place_id, name, address, lat, lng, rating, review_count, price_level, price_range_start_cents, price_range_end_cents, opening_hours, website, stored_photo_urls, photos, types, primary_type, utc_offset_minutes, ai_categories, city_id, city, country')
+    .in('id', rankedIds);
+
+  // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
+  if (placeErr) {
+    throw new Error(`[fetchSinglesForSignalRank] hydrate (place_pool .in over ${rankedIds.length} ranked IDs) failed: ${placeErr.message}`);
+  }
+  if (!places || places.length === 0) return [];
+
+  // Reorder hydrated rows to match RPC's score-DESC order.
+  const placeById = new Map<string, any>();
+  for (const pp of places) placeById.set(pp.id, pp);
+  const orderedPlaces = rankedIds.map((id: string) => placeById.get(id)).filter(Boolean);
+
+  // Step 4: apply G3 photo gate + shape each row as the assembler expects.
+  // Historical card_pool schema fields (title, images, image_url, etc.) are
+  // mapped from place_pool equivalents so generateCardsForType stays unchanged.
+  const withScore = orderedPlaces
+    .filter((pp: any) => {
+      const urls = pp.stored_photo_urls;
+      if (!Array.isArray(urls) || urls.length === 0) return false;
+      if (urls.length === 1 && urls[0] === '__backfill_failed__') return false;
+      return true;
+    })
+    .map((pp: any) => ({
+      // Identity — use place_pool_id for both id + place_pool_id so consumers
+      // that key on either work. card_pool.id is gone; downstream code that
+      // references card.id will get the place_pool UUID, which is unique.
+      id: pp.id,
+      place_pool_id: pp.id,
+      google_place_id: pp.google_place_id,
+      // Presentation (card_pool.title was a copy of place_pool.name)
+      title: pp.name,
+      address: pp.address,
+      lat: pp.lat,
+      lng: pp.lng,
+      rating: pp.rating,
+      review_count: pp.review_count,
+      // Price — derive legacy min/max/tier from place_pool columns
+      price_level: pp.price_level,
+      price_min: pp.price_range_start_cents != null ? Math.floor(pp.price_range_start_cents / 100) : null,
+      price_max: pp.price_range_end_cents != null ? Math.floor(pp.price_range_end_cents / 100) : null,
+      price_tier: null,      // card_pool had this; assembler tolerates null
+      price_tiers: null,
+      // Hours + meta
+      opening_hours: pp.opening_hours,
+      website: pp.website,
+      images: pp.stored_photo_urls,
+      image_url: pp.stored_photo_urls?.[0] ?? null,
+      city_id: pp.city_id,
+      city: pp.city,
+      country: pp.country,
+      utc_offset_minutes: pp.utc_offset_minutes,
+      // Categories — still passed through from place_pool.ai_categories.
+      // card_pool.categories is deprecated and not read anywhere post-ORCH-0634.
+      ai_categories: pp.ai_categories,
+      category: (pp.ai_categories?.[0] ?? null),
+      categories: pp.ai_categories,
+      // Types + signal rank score
+      types: pp.types,
+      primary_type: pp.primary_type,
+      _rankScore: rankScoreById.get(pp.id) ?? 0,
+    }))
+    .sort((a: any, b: any) => b._rankScore - a._rankScore)
+    .slice(0, limit);
+
+  return withScore;
 }
+
+// [CRITICAL — ORCH-0643] Every signal named in this map MUST have:
+//   (1) a row in signal_definitions with is_active=true and current_version_id set
+//   (2) at least one row in place_scores (via run-signal-scorer)
+// Before adding a new combo slug, verify both conditions via:
+//   SELECT sd.id, COUNT(ps.place_id)
+//   FROM signal_definitions sd
+//   LEFT JOIN place_scores ps ON ps.signal_id = sd.id
+//   WHERE sd.id = '<new_signal>'
+//   GROUP BY sd.id;
+// The `groceries` entry broke picnic-dates silently for weeks because
+// the signal was never registered (ORCH-0643 v1 BLOCKED, v2.1 fixed).
+// Do NOT add an entry here without confirming the signal scores exist.
+//
+// Mapping from combo category slug → filter signal. Chip slugs sometimes differ
+// from signal ids (e.g., chip 'upscale_fine_dining' uses signal 'fine_dining').
+const COMBO_SLUG_TO_FILTER_SIGNAL: Record<string, string> = {
+  'upscale_fine_dining': 'fine_dining',
+  'drinks_and_music': 'drinks',
+  'brunch_lunch_casual': 'brunch',
+  'casual_food': 'casual_food',
+  'brunch': 'brunch',
+  'movies': 'movies',
+  'theatre': 'theatre',
+  'movies_theatre': 'movies', // legacy TRANSITIONAL — movies union handled upstream
+  'creative_arts': 'creative_arts',
+  'nature': 'nature',
+  'play': 'play',
+  'icebreakers': 'icebreakers',
+  'flowers': 'flowers',
+  'groceries': 'groceries',
+  // ORCH-0601 — sub-category slugs. These reuse an existing signal but add a
+  // required-types filter (see COMBO_SLUG_TYPE_FILTER below). Used by Adventurous
+  // to distinguish "hiking trails" (nature subset) vs generic nature parks, and
+  // "museum" (creative_arts subset) vs generic galleries/art classes.
+  'hiking': 'nature',
+  'museum': 'creative_arts',
+};
+
+// ORCH-0601 — Slugs that narrow a filter signal to a sub-category via types.
+// A place passes the filter iff it scores >= filter_min on the filter signal
+// AND its place_pool.types overlaps with this list.
+const COMBO_SLUG_TYPE_FILTER: Record<string, string[]> = {
+  hiking: ['hiking_area', 'state_park', 'nature_preserve', 'national_park', 'wildlife_refuge', 'scenic_spot'],
+  museum: ['museum', 'art_museum'],
+};
+
+// Mapping from experience type id → (combo slug → rank signal). When an experience
+// type wants to rank a stop by a "vibe" signal instead of the chip's own signal,
+// declare it here. E.g., Romantic ranks non-flowers stops by the `romantic` signal.
+const EXPERIENCE_RANK_SIGNAL_OVERRIDE: Record<string, Record<string, string>> = {
+  'romantic': {
+    // NOTE: Flowers stop intentionally NOT signal-overridden. card_pool.categories=[flowers]
+    // was manually curated to the correct set of "big-store bouquet sources" (Trader Joe's,
+    // Wegmans, Whole Foods, Harris Teeter) which Google's raw florist type tag misses. The
+    // signal-aware picker would be stricter than needed. Legacy fetchSinglesForCategory
+    // returns the 5 curated big stores — matches user directive "only at the big stores".
+    // Non-Flowers romantic stops get signal-aware ranking by romantic vibe.
+    'creative_arts': 'romantic',
+    'theatre': 'romantic',
+    'upscale_fine_dining': 'romantic',
+  },
+  'first-date': {
+    // All non-Flowers stops rank by `icebreakers` vibe signal — conversation-friendly,
+    // low-pressure, casual. Surfaces bistros/cafés/accessible upscale over intense
+    // candlelit venues. Flowers stop inherits legacy card_pool curated big-store list.
+    'brunch': 'icebreakers',
+    'theatre': 'icebreakers',
+    'movies': 'icebreakers',
+    'play': 'icebreakers',
+    'creative_arts': 'icebreakers',
+    'upscale_fine_dining': 'icebreakers',
+    'drinks_and_music': 'icebreakers',
+  },
+  'group-fun': {
+    // ORCH-0628 — all stops rank by `lively` vibe signal. Surfaces bowling/arcade/
+    // sports-bar energy on Activity stop, group-friendly bistros over candlelit spots
+    // on Food stop, and lively upscale venues (Capital Grille, Sullivan's) over
+    // intimate ones (Second Empire) on Dinner stop.
+    'play': 'lively',
+    'theatre': 'lively',
+    'movies': 'lively',
+    'brunch': 'lively',
+    'creative_arts': 'lively',
+    'casual_food': 'lively',
+    'upscale_fine_dining': 'lively',
+  },
+  'adventurous': {
+    // ORCH-0601 — Activity stops (play, hiking, theatre, creative_arts, museum)
+    // rank by their own chip signal (no override). Food stops rank by `lively` —
+    // after an adventurous outing, surface energetic restaurants over intimate ones.
+    'casual_food': 'lively',
+    'upscale_fine_dining': 'lively',
+  },
+  'take-a-stroll': {
+    // ORCH-0601 — Nature stop ranks by `scenic` (trails/greenways/gardens over
+    // playgrounds). Food stops rank by `icebreakers` — casual conversation-friendly
+    // spots for post-walk dining, not intense candlelit venues.
+    'nature': 'scenic',
+    'brunch': 'icebreakers',
+    'casual_food': 'icebreakers',
+    'upscale_fine_dining': 'icebreakers',
+  },
+  'picnic-dates': {
+    // ORCH-0601 — Picnic Spot ranks by `picnic_friendly` (tables/shelters/lawns
+    // over hiking-heavy preserves). Pullen/Lake Johnson/Shelley > Williamson Preserve.
+    'nature': 'picnic_friendly',
+  },
+};
+
+// Per-slug stop role label for dynamic role assignment (ORCH-0628). When a typeDef's
+// stop roles are generic placeholders and combos mix orderings (Activity-first vs
+// Food-first), the display label should reflect the actual slug. Falls back to
+// stopDef.role if slug not in map.
+const SLUG_TO_STOP_ROLE: Record<string, string> = {
+  play: 'Activity',
+  movies: 'Movie',
+  theatre: 'Show',
+  creative_arts: 'Experience',
+  nature: 'Nature',
+  brunch: 'Brunch',
+  brunch_lunch_casual: 'Brunch',
+  casual_food: 'Food',
+  upscale_fine_dining: 'Dinner',
+  drinks_and_music: 'Drinks',
+  flowers: 'Flowers',
+  groceries: 'Groceries',
+  icebreakers: 'Icebreaker',
+  hiking: 'Hike',       // ORCH-0601
+  museum: 'Museum',     // ORCH-0601
+};
+
+// Resolves stop role label. Opt-in: only typeDefs with role='auto' get slug-derived
+// labels. Existing typeDefs (Romantic, First Date, Picnic Dates, etc.) keep their
+// curated role strings unchanged to preserve thematic copy ("Wind Down", "Experience").
+function resolveStopRole(slug: string, stopDef: StopDef): string {
+  if (stopDef.role === 'auto') {
+    return SLUG_TO_STOP_ROLE[slug] ?? 'Stop';
+  }
+  return stopDef.role;
+}
+
+// Per-stop filter_min override. Most signals use 120; movies is 80 (tiny universe);
+// flowers is 80 — keeps 2 boutique florists (Mio Kreations 155, Petal & Oak 102) + 12 Harris
+// Teeter locations with florist tag (97-136) while filtering out noise leaks: Fresh Market
+// (69, no florist tag), candy/chocolate/catering/bakery false positives scoring 50-66.
+const COMBO_SLUG_FILTER_MIN: Record<string, number> = {
+  'movies': 80,
+  'flowers': 80,
+};
 
 // ── Build stop from place_pool row ─────────────────────────────────────────
 
@@ -367,7 +657,13 @@ function buildCardStop(
     priceTier: card.price_tiers?.[0] || card.price_tier || 'chill',
     priceTiers: card.price_tiers?.length ? card.price_tiers : (card.price_tier ? [card.price_tier] : ['chill']),
     openingHours: card.opening_hours || {},
-    isOpenNow: true,
+    // ORCH-0677 D-3: derive truthfully from openingHours.openNow when present.
+    // Never fabricate `true` (Constitution #9). null = honestly unknown.
+    isOpenNow: (() => {
+      const oh = card.opening_hours;
+      if (oh && (oh.openNow === true || oh.openNow === false)) return oh.openNow;
+      return null;
+    })(),
     website: card.website || null,
     lat,
     lng,
@@ -438,7 +734,7 @@ async function generateCardsForType(
   travelConstraintValue: number,
   limit: number,
   skipDescriptions: boolean,
-): Promise<any[]> {
+): Promise<{ cards: any[]; summary?: CuratedSummary }> {
   const TRAVEL_SPEEDS_KMH: Record<string, number> = {
     walking: 4.5, biking: 14, transit: 20, driving: 35,
   };
@@ -460,13 +756,33 @@ async function generateCardsForType(
   // Pre-fetch places from place_pool for all categories in parallel
   const categoryPlaces: Record<string, any[]> = {};
 
+  // ORCH-0634: EVERY curated stop goes through the signal system. No card_pool
+  // fallback. Rank signal = experience override (e.g. Romantic ranks by 'romantic'
+  // vibe) if present, else the filter signal itself. Type filter (hiking/museum
+  // sub-cats) applies when set. Flowers is signal-routed at filter_min=60
+  // (see COMBO_SLUG_FILTER_MIN below) — the legacy curated-big-store-list
+  // exception is gone; the v1.3.0 flowers signal is the sole gate.
+  const signalOverride = EXPERIENCE_RANK_SIGNAL_OVERRIDE[typeDef.id];
+  const fetchForCombo = async (catId: string, fetchLat: number, fetchLng: number, fetchRadius: number, fetchLimit?: number): Promise<any[]> => {
+    const filterSignal = COMBO_SLUG_TO_FILTER_SIGNAL[catId];
+    if (!filterSignal) {
+      console.warn(`[generate-curated] Unknown combo slug "${catId}" — no COMBO_SLUG_TO_FILTER_SIGNAL entry. Returning [] (no card_pool fallback).`);
+      return [];
+    }
+    const rankOverride = signalOverride?.[catId];
+    const typeFilter = COMBO_SLUG_TYPE_FILTER[catId];
+    const filterMin = COMBO_SLUG_FILTER_MIN[catId] ?? 120;
+    const rankSignal = rankOverride ?? filterSignal; // no override → rank by filter signal itself
+    return fetchSinglesForSignalRank(filterSignal, filterMin, rankSignal, fetchLat, fetchLng, fetchRadius, fetchLimit ?? 50, typeFilter);
+  };
+
   if (hasReverseAnchor) {
     // For reverse-anchor types: find anchor category first, then query others near it
     const anchorStopIdx = typeDef.stops.findIndex(s => s.reverseAnchor);
     const anchorCategoryId = typeDef.combos[0][anchorStopIdx];
 
     // Fetch anchor places near user
-    categoryPlaces[anchorCategoryId] = await fetchSinglesForCategory(anchorCategoryId, lat, lng, clampedRadius);
+    categoryPlaces[anchorCategoryId] = await fetchForCombo(anchorCategoryId, lat, lng, clampedRadius);
     console.log(`[generateCardsForType:${typeDef.id}] anchor(${anchorCategoryId}): ${categoryPlaces[anchorCategoryId].length} places`);
 
     // Other categories will be fetched per-card near the anchor
@@ -474,7 +790,7 @@ async function generateCardsForType(
     // Standard: fetch all categories near user in parallel
     await Promise.all(
       [...allCategoryIds].map(async (catId) => {
-        categoryPlaces[catId] = await fetchSinglesForCategory(catId, lat, lng, clampedRadius);
+        categoryPlaces[catId] = await fetchForCombo(catId, lat, lng, clampedRadius);
         console.log(`[generateCardsForType:${typeDef.id}] ${catId}: ${categoryPlaces[catId].length} places`);
       })
     );
@@ -490,11 +806,30 @@ async function generateCardsForType(
   // Build cards
   const cards: any[] = [];
   const globalUsedPlaceIds = new Set<string>();
+  // ORCH-0677 RC-1: dead-anchor cycle prevention. Reverse-anchor types
+  // (currently picnic-dates) re-pick anchorPlaces[0] every iteration when
+  // the failed-anchor set is empty — leading to infinite retries on the
+  // same dead candidate. Tracking failures per-request lets the loop
+  // advance to the next anchor on the next iteration. Do not remove
+  // without re-running T-04 fixture (see SPEC_ORCH-0677 §6).
+  const failedAnchorIds = new Set<string>();
+  // Capture the anchor's place_id at the top of each reverse-anchor iteration
+  // so post-anchor gates (required_stops_short / travel_constraint / duplicate)
+  // can mark it as failed without needing to re-derive `anchor` from scope.
   const mainStopCount = typeDef.stops.filter(s => !s.optional).length;
   // ORCH-0434: Budget filtering removed. perStopBudget set to Infinity to disable.
   const perStopBudget = Infinity;
 
+  // ORCH-0677 §3.2: track candidate anchor count so summary can surface it
+  // when cards.length === 0. Only meaningful for reverse-anchor types.
+  const initialAnchorCount = hasReverseAnchor
+    ? (categoryPlaces[typeDef.combos[0][typeDef.stops.findIndex(s => s.reverseAnchor)]] || []).length
+    : 0;
+
   for (const combo of comboList) {
+    // ORCH-0677: per-iteration anchor identity, set once anchor is picked.
+    // Used by post-anchor gates to mark the anchor as failed.
+    let currentAnchorId: string | null = null;
     if (cards.length >= limit) break;
 
     const stops: any[] = [];
@@ -508,11 +843,23 @@ async function generateCardsForType(
       const anchorStopIdx = typeDef.stops.findIndex(s => s.reverseAnchor);
       const anchorCatId = combo[anchorStopIdx];
       const anchorPlaces = (categoryPlaces[anchorCatId] || []).filter(p => {
-        return !comboUsedIds.has(p.google_place_id);
+        // ORCH-0677 RC-1: also exclude anchors that have failed in a prior
+        // iteration of this request — without this, anchorPlaces[0] keeps
+        // re-picking the same dead anchor, producing 0 cards across all
+        // limit*2 iterations.
+        return !comboUsedIds.has(p.google_place_id)
+          && !failedAnchorIds.has(p.google_place_id);
       });
-      if (anchorPlaces.length === 0) { valid = false; }
+      if (anchorPlaces.length === 0) {
+        // No remaining anchor candidates (either none ever existed, or all
+        // viable anchors have been marked failed in prior iterations).
+        // Loop will exit on the next iteration since cards.length stays 0
+        // and the comboList eventually exhausts.
+        valid = false;
+      }
       else {
         const anchor = anchorPlaces[0];
+        currentAnchorId = anchor.google_place_id;   // ORCH-0677: for post-anchor gates
         comboUsedIds.add(anchor.google_place_id);
 
         // Fetch non-anchor categories near anchor (3km radius)
@@ -522,7 +869,7 @@ async function generateCardsForType(
           if (i === anchorStopIdx) continue;
           const catId = combo[i];
           if (!categoryPlaces[`${catId}_near_${anchor.google_place_id}`]) {
-            categoryPlaces[`${catId}_near_${anchor.google_place_id}`] = await fetchSinglesForCategory(catId, anchorLat, anchorLng, 3000, 20);
+            categoryPlaces[`${catId}_near_${anchor.google_place_id}`] = await fetchForCombo(catId, anchorLat, anchorLng, 3000, 20);
           }
         }
 
@@ -533,7 +880,7 @@ async function generateCardsForType(
 
           if (i === anchorStopIdx) {
             const stop = buildCardStop(
-              anchor, stops.length + 1, typeDef.stops.length, stopDef.role,
+              anchor, stops.length + 1, typeDef.stops.length, resolveStopRole(catId, stopDef),
               lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
               travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId },
             );
@@ -547,16 +894,25 @@ async function generateCardsForType(
               if (!stopDef.optional && p.price_min > perStopBudget) return false;
               return true;
             });
-            if (available.length === 0 && !stopDef.optional) { valid = false; break; }
+            if (available.length === 0 && !stopDef.optional) {
+              // ORCH-0677 RC-1: this anchor cannot complete a valid combo —
+              // mark it failed so the next iteration picks a different one.
+              failedAnchorIds.add(anchor.google_place_id);
+              valid = false; break;
+            }
             if (available.length === 0 && stopDef.optional) continue;
 
             const place = selectClosestHighestRated(available, prevLat, prevLng);
-            if (!place && !stopDef.optional) { valid = false; break; }
+            if (!place && !stopDef.optional) {
+              // ORCH-0677 RC-1: companion selection failed — mark anchor failed.
+              failedAnchorIds.add(anchor.google_place_id);
+              valid = false; break;
+            }
             if (!place) continue;
 
             comboUsedIds.add(place.google_place_id);
             const stop = buildCardStop(
-              place, stops.length + 1, typeDef.stops.length, stopDef.role,
+              place, stops.length + 1, typeDef.stops.length, resolveStopRole(catId, stopDef),
               lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
               travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId },
             );
@@ -585,6 +941,9 @@ async function generateCardsForType(
 
         if (available.length === 0) {
           if (stopDef.optional) continue; // Skip optional stops gracefully
+          // Standard branch — no anchor to mark. Combo-level retry is governed
+          // by the round-robin shuffle in comboList; no extra failure tracking
+          // needed here since standard types have multi-combo variety.
           valid = false;
           break;
         }
@@ -603,7 +962,7 @@ async function generateCardsForType(
 
         comboUsedIds.add(place.google_place_id);
         const stop = buildCardStop(
-          place, stops.length + 1, typeDef.stops.length, stopDef.role,
+          place, stops.length + 1, typeDef.stops.length, resolveStopRole(catId, stopDef),
           lat, lng, stops.length > 0 ? prevLat : null, stops.length > 0 ? prevLng : null,
           travelMode, { optional: stopDef.optional, dismissible: stopDef.dismissible, comboCategory: catId },
         );
@@ -616,7 +975,12 @@ async function generateCardsForType(
     // Validate: must have at least the required (non-optional) stops
     const requiredStops = typeDef.stops.filter(s => !s.optional).length;
     const builtRequired = stops.filter(s => !s.optional).length;
-    if (!valid || builtRequired < requiredStops) continue;
+    if (!valid || builtRequired < requiredStops) {
+      // ORCH-0677 RC-1: post-validation failure for reverse-anchor types
+      // marks the anchor failed so the loop progresses to the next.
+      if (hasReverseAnchor && currentAnchorId) failedAnchorIds.add(currentAnchorId);
+      continue;
+    }
 
     // Validate budget
     const totalMin = stops.filter(s => !s.optional).reduce((s, st) => s + st.priceMin, 0);
@@ -625,11 +989,21 @@ async function generateCardsForType(
 
     // Validate travel constraint
     const firstStop = stops.find(s => !s.optional);
-    if (firstStop && firstStop.travelTimeFromUserMin > travelConstraintValue * 1.5) continue;
+    if (firstStop && firstStop.travelTimeFromUserMin > travelConstraintValue * 1.5) {
+      // ORCH-0677 RC-1: travel-constraint failure for reverse-anchor types
+      // marks the anchor failed so the loop tries a different one.
+      if (hasReverseAnchor && currentAnchorId) failedAnchorIds.add(currentAnchorId);
+      continue;
+    }
 
     // Validate no duplicate places
     const placeIds = stops.map(s => s.placeId).filter(Boolean);
-    if (new Set(placeIds).size !== placeIds.length) continue;
+    if (new Set(placeIds).size !== placeIds.length) {
+      // ORCH-0677 RC-1: duplicate-place failure for reverse-anchor types
+      // marks the anchor failed so the loop tries a different one.
+      if (hasReverseAnchor && currentAnchorId) failedAnchorIds.add(currentAnchorId);
+      continue;
+    }
 
     const comboLabels = combo.map(catId => SEEDING_CATEGORY_MAP[catId]?.label || catId);
 
@@ -672,7 +1046,27 @@ async function generateCardsForType(
     cards.push(card);
   }
 
-  return cards;
+  // ORCH-0677 §3.2: when no cards built, surface an explicit verdict so mobile
+  // can route to EMPTY UI state instead of staying on INITIAL_LOADING.
+  let summary: CuratedSummary | undefined;
+  if (cards.length === 0) {
+    if (hasReverseAnchor) {
+      summary = {
+        emptyReason: initialAnchorCount === 0 ? 'pool_empty' : 'no_viable_anchor',
+        candidateAnchorCount: initialAnchorCount,
+        failedAnchorCount: failedAnchorIds.size,
+      };
+    } else {
+      // Standard branch: empty means none of the categories had viable picks.
+      summary = {
+        emptyReason: 'pool_empty',
+        candidateAnchorCount: 0,
+        failedAnchorCount: 0,
+      };
+    }
+  }
+
+  return { cards, summary };
 }
 
 // ── Utility functions ──────────────────────────────────────────────────────
@@ -686,25 +1080,8 @@ function shuffle<T>(array: T[]): T[] {
   return arr;
 }
 
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function estimateTravelMinutes(distKm: number, travelMode: string): number {
-  const config: Record<string, { speed: number; factor: number }> = {
-    walking:   { speed: 4.5, factor: 1.3 },
-    driving:   { speed: 35,  factor: 1.4 },
-    transit:   { speed: 20,  factor: 1.3 },
-    biking:    { speed: 14,  factor: 1.3 },
-    bicycling: { speed: 14,  factor: 1.3 },
-  };
-  const { speed, factor } = config[travelMode] ?? config.walking;
-  return Math.max(3, Math.round((distKm * factor / speed) * 60));
-}
+// ORCH-0659/0660: haversineKm + estimateTravelMinutes moved to
+// _shared/distanceMath.ts as the canonical owner. Imported above.
 
 // NEAREST-PLACE SELECTION (Block 8 — hardened 2026-03-22)
 // Picks the closest candidate by haversine distance. Pre-sorted array
@@ -1017,82 +1394,17 @@ serve(async (req) => {
     const radiusMeters = Math.round((speedKmh * 1000 / 60) * travelConstraintValue);
     const clampedRadius = Math.min(Math.max(radiusMeters, 500), 50000);
 
-    // warmPool support
-    if (warmPool && poolAdmin) {
-      try {
-        const poolResult = await serveCuratedCardsFromPool({
-          supabaseAdmin: poolAdmin,
-          userId: poolUserId,
-          lat: location.lat,
-          lng: location.lng,
-          radiusMeters: clampedRadius,
-          categories: [],
-          budgetMin: 0,
-          budgetMax: budgetMax,
-          limit: 40,
-          cardType: 'curated',
-          experienceType,
-        }, '');
-
-        if (poolResult.totalPoolSize >= 40) {
-          console.log('[warm-pool] Pool already warm:', poolResult.totalPoolSize, 'cards');
-          return new Response(JSON.stringify({
-            success: true, message: 'Pool already warm',
-            poolSize: poolResult.totalPoolSize,
-          }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-      } catch (err) {
-        console.warn('[warm-pool] Pool check failed, proceeding to warm:', err);
-      }
-    }
-
-    // Pool-first: try serving from pool for batch 0
-    if (poolAdmin && poolUserId !== 'anonymous' && batchSeed === 0) {
-      try {
-        const poolResult = await serveCuratedCardsFromPool({
-          supabaseAdmin: poolAdmin,
-          userId: poolUserId,
-          lat: location.lat,
-          lng: location.lng,
-          radiusMeters: clampedRadius,
-          categories: [],
-          budgetMin: budgetMin || 0,
-          budgetMax: budgetMax || 1000,
-          limit: limit || 20,
-          cardType: 'curated',
-          experienceType,
-        }, '');
-
-        if (poolResult.cards.length >= Math.ceil(limit * 0.75)) {
-          console.log(`[pool-first-curated] Served ${poolResult.cards.length} curated cards from pool`);
-          const normalizedPoolCards = poolResult.cards.map((card: any) => ({
-            ...card,
-            categoryLabel: card.categoryLabel || card.category || experienceType || 'Experience',
-          }));
-          return new Response(
-            JSON.stringify({
-              success: true,
-              cards: normalizedPoolCards,
-              meta: {
-                totalResults: poolResult.cards.length,
-                fromPool: poolResult.fromPool,
-                fromApi: poolResult.fromApi,
-                poolSize: poolResult.totalPoolSize,
-              },
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        console.log(`[pool-first-curated] Pool had only ${poolResult.cards.length} curated cards, falling back`);
-      } catch (poolError) {
-        console.warn('[pool-first-curated] Pool query failed, falling back:', poolError);
-      }
-    }
+    // ORCH-0640: Pool-first optimization blocks REMOVED. They read card_pool,
+    // which is dropped. All curated generation now flows through
+    // generateCardsForType() which composes stops from place_pool via the
+    // signal system (ORCH-0634 rewire).
 
     console.log(`[curated-v2] Generating ${experienceType} cards (limit: ${limit})`);
 
     const generateLimit = warmPool ? Math.min(limit, 15) : limit;
-    const cards = await generateCardsForType(
+    // ORCH-0677: generateCardsForType now returns { cards, summary? }; summary
+    // is set when cards.length === 0 to make the empty verdict explicit.
+    const { cards, summary } = await generateCardsForType(
       typeDef,
       location.lat, location.lng, budgetMax, travelMode,
       travelConstraintValue, generateLimit, skipDescriptions,
@@ -1100,165 +1412,138 @@ serve(async (req) => {
 
     console.log(`[curated-v2] Generated ${cards.length} ${experienceType} cards`);
 
-    // Fire-and-forget: Batch store in pool
+    // ORCH-0634: card_pool + card_pool_stops writeback REMOVED.
+    //
+    // Curated cards are no longer persisted anywhere (I-NO-CURATED-PERSISTENCE).
+    // Every request assembles fresh. Only the GPT teaser is cached, keyed by
+    // (experience_type + sorted stop place_pool_ids) via the curated_teaser_cache
+    // table. Cache key formula is LOCKED per ORCH-0640 coordination — do not
+    // change post-cutover (engagement_metrics.container_key reuses this formula).
+    //
+    // Fire-and-forget: compute cache keys, fetch any existing teasers, call GPT
+    // only for the subset that missed, upsert misses back. Served cards are
+    // decorated with their teaser in-place so the first-return response includes
+    // fresh text; on cache-miss we still return the card without blocking.
     if (poolAdmin && cards.length > 0) {
       (async () => {
         try {
-          // 1. Collect card rows for insertion
-          // Teaser text generation
-          const teaserTexts: string[] = [];
-          if (OPENAI_API_KEY) {
+          // Compute cache_key for each card. Stops may lack placePoolId for
+          // outlier shapes; those cards are left uncached (GPT would have had
+          // to generate anyway — harmless).
+          const cardsWithKeys = cards.map((card: any, idx: number) => {
+            const stops = (card.stops || []).filter((s: any) => !s.optional);
+            const stopIds = stops.map((s: any) => s.placePoolId).filter(Boolean).slice();
+            if (stopIds.length === 0) return { card, idx, key: null };
+            stopIds.sort(); // LOCKED: ascending string compare on canonical UUID
+            const input = `${experienceType}:${stopIds.join(',')}`;
+            // deno-lint-ignore no-explicit-any
+            return { card, idx, key: null as string | null, stopIds, input };
+          });
+
+          // Hash the inputs via Web Crypto (Deno built-in).
+          for (const entry of cardsWithKeys) {
+            // deno-lint-ignore no-explicit-any
+            const e = entry as any;
+            if (!e.input) continue;
+            const bytes = new TextEncoder().encode(e.input);
+            const digest = await crypto.subtle.digest('SHA-256', bytes);
+            e.key = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+          }
+
+          // Batch lookup — who's already cached?
+          // deno-lint-ignore no-explicit-any
+          const keys = (cardsWithKeys as any[]).map((e) => e.key).filter(Boolean) as string[];
+          if (keys.length === 0) return;
+          const { data: cachedRows, error: readErr } = await poolAdmin
+            .from('curated_teaser_cache')
+            .select('cache_key, one_liner, tip, shopping_list')
+            .in('cache_key', keys);
+          if (readErr) {
+            console.warn(`[curated-teaser-cache] read error: ${readErr.message}`);
+            return;
+          }
+          const cached = new Map<string, { one_liner: string; tip: string | null; shopping_list: string | null }>();
+          for (const row of cachedRows ?? []) {
+            cached.set(row.cache_key, {
+              one_liner: row.one_liner,
+              tip: row.tip,
+              shopping_list: row.shopping_list,
+            });
+          }
+
+          // For cache hits: bump last_served_at + serve_count (best-effort).
+          if (cached.size > 0) {
+            const hitKeys = [...cached.keys()];
+            await poolAdmin
+              .from('curated_teaser_cache')
+              // deno-lint-ignore no-explicit-any
+              .update({ last_served_at: new Date().toISOString() } as any)
+              .in('cache_key', hitKeys);
+          }
+
+          // For cache misses: batch-GPT only the missed subset.
+          // deno-lint-ignore no-explicit-any
+          const missEntries = (cardsWithKeys as any[]).filter((e) => e.key && !cached.has(e.key));
+          if (OPENAI_API_KEY && missEntries.length > 0) {
             try {
-              const batchPrompt = `Generate ${cards.length} unique teaser sentences for curated experiences. Each must be max 20 words, intriguing, and must NOT reveal place names or addresses. Focus on vibe/emotion/activity.\n\nGenerate exactly ${cards.length} teasers for "${experienceType}" experiences. Output ONLY a JSON array of ${cards.length} strings.`;
+              const batchPrompt = `Generate ${missEntries.length} unique teaser sentences for curated experiences. Each must be max 20 words, intriguing, and must NOT reveal place names or addresses. Focus on vibe/emotion/activity.\n\nGenerate exactly ${missEntries.length} teasers for "${experienceType}" experiences. Output ONLY a JSON array of ${missEntries.length} strings.`;
               const teaserRes = await timeoutFetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
-                body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: batchPrompt }], max_tokens: 50 * cards.length, temperature: 0.8 }),
+                body: JSON.stringify({
+                  model: 'gpt-4o-mini',
+                  messages: [{ role: 'user', content: batchPrompt }],
+                  max_tokens: 50 * missEntries.length,
+                  temperature: 0.8,
+                }),
                 timeoutMs: 10000,
               });
               const teaserJson = await teaserRes.json();
               const teaserContent = teaserJson.choices?.[0]?.message?.content?.trim() ?? '[]';
               const cleanContent = teaserContent.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
               const parsed = JSON.parse(cleanContent);
-              if (Array.isArray(parsed)) teaserTexts.push(...parsed);
-            } catch (teaserErr) {
-              console.warn('[curated-v2] Teaser generation failed:', teaserErr);
-            }
-          }
-
-          // Build card rows
-          const cardEntries = cards.map((card: any, cardIndex: number) => {
-            const stops = card.stops || [];
-            const mainStops = stops.filter((s: any) => !s.optional);
-            const stopGooglePlaceIds = stops.map((s: any) => s.placeId).filter(Boolean);
-            const stopPlacePoolIds = stops.map((s: any) => s.placePoolId).filter(Boolean);
-            const stopCardPoolIds = stops.map((s: any) => s.cardPoolId).filter(Boolean);
-            const popularityScore = Math.min(5, (card.matchScore || 85) / 20) * Math.log10(2);
-
-            // Category from single cards' AI categories
-            const stopCategorySlug = mainStops[0]?.aiCategories?.[0] || mainStops[0]?.placeType || 'brunch_lunch_casual';
-            const stopCategories = [...new Set(mainStops.flatMap((s: any) => s.aiCategories || []))];
-            const stopCityId = mainStops[0]?.cityId || null;
-
-            return {
-              row: {
-                card_type: 'curated' as const,
-                place_pool_id: null,
-                google_place_id: stopCardPoolIds.length > 0
-                  ? `curated-${[...stopCardPoolIds].sort().join('-')}`
-                  : mainStops[0]?.placeId || card.id || `curated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                title: card.title || `${experienceType} Experience`,
-                category: stopCategorySlug,
-                categories: stopCategories,
-                ai_approved: true,
-                description: card.tagline || '',
-                highlights: [],
-                image_url: mainStops[0]?.imageUrl || null,
-                images: mainStops.map((s: any) => s.imageUrl).filter(Boolean),
-                address: mainStops[0]?.address || '',
-                lat: mainStops[0]?.lat || location.lat,
-                lng: mainStops[0]?.lng || location.lng,
-                rating: Math.min(5, (card.matchScore || 85) / 20),
-                review_count: 0,
-                price_min: card.totalPriceMin || 0,
-                price_max: card.totalPriceMax || 0,
-                price_tier: mainStops[0]?.priceTier || 'comfy',
-                price_tiers: mainStops[0]?.priceTiers || (mainStops[0]?.priceTier ? [mainStops[0].priceTier] : ['comfy']),
-                opening_hours: null,
-                website: null,
-                popularity_score: popularityScore,
-                is_active: true,
-                curated_pairing_key: card.pairingKey || null,
-                experience_type: experienceType,
-                stops: card.stops,
-                tagline: card.tagline || '',
-                total_price_min: card.totalPriceMin || 0,
-                total_price_max: card.totalPriceMax || 0,
-                estimated_duration_minutes: card.estimatedDurationMinutes || 0,
-                shopping_list: card.shoppingList || null,
-                teaser_text: teaserTexts[cardIndex] || `A ${experienceType} experience with ${mainStops.length} curated stops`,
-                city_id: stopCityId,
-                city: mainStops[0]?.city || null,
-                country: mainStops[0]?.country || null,
-                utc_offset_minutes: mainStops[0]?.utc_offset_minutes ?? null,
-              },
-              stopPlacePoolIds,
-              stopGooglePlaceIds,
-              stopCardPoolIds,
-            };
-          });
-
-          // Insert cards + normalized stops
-          const cardRows = cardEntries.map((e: any) => e.row);
-          if (cardRows.length > 0) {
-            const { data: insertedCards, error: cardError } = await poolAdmin
-              .from('card_pool')
-              .upsert(cardRows, { onConflict: 'google_place_id' })
-              .select('id, google_place_id');
-
-            if (cardError) {
-              console.warn('[curated-v2] Batch card insert error:', cardError.message);
-            }
-
-            if (insertedCards?.length) {
-              const stopRows: any[] = [];
-              for (const inserted of insertedCards) {
-                const entry = cardEntries.find((e: any) => e.row.google_place_id === inserted.google_place_id);
-                if (!entry) continue;
-                for (let i = 0; i < entry.stopPlacePoolIds.length; i++) {
-                  stopRows.push({
-                    card_pool_id: inserted.id,
-                    place_pool_id: entry.stopPlacePoolIds[i],
-                    google_place_id: entry.stopGooglePlaceIds[i] || '',
-                    stop_order: i,
-                    stop_card_pool_id: entry.stopCardPoolIds?.[i] || null,
+              if (Array.isArray(parsed)) {
+                const rowsToInsert: Array<{
+                  cache_key: string;
+                  experience_type: string;
+                  stop_place_pool_ids: string[];
+                  one_liner: string;
+                  tip: string | null;
+                  shopping_list: string | null;
+                }> = [];
+                for (let i = 0; i < missEntries.length; i++) {
+                  const entry = missEntries[i];
+                  const teaserText = typeof parsed[i] === 'string' ? parsed[i] : null;
+                  if (!teaserText || !entry.key || !entry.stopIds) continue;
+                  rowsToInsert.push({
+                    cache_key: entry.key,
+                    experience_type: experienceType,
+                    stop_place_pool_ids: entry.stopIds,
+                    one_liner: teaserText,
+                    tip: null,
+                    shopping_list: entry.card.shoppingList ?? null,
                   });
                 }
-              }
-              if (stopRows.length > 0) {
-                const { error: stopsError } = await poolAdmin
-                  .from('card_pool_stops')
-                  .upsert(stopRows, { onConflict: 'card_pool_id,place_pool_id' });
-                if (stopsError) {
-                  console.warn('[curated-v2] Batch stops insert error:', stopsError.message);
+                if (rowsToInsert.length > 0) {
+                  const { error: upsertErr } = await poolAdmin
+                    .from('curated_teaser_cache')
+                    .upsert(rowsToInsert, { onConflict: 'cache_key', ignoreDuplicates: true });
+                  if (upsertErr) {
+                    console.warn(`[curated-teaser-cache] upsert error: ${upsertErr.message}`);
+                  } else {
+                    console.log(`[curated-teaser-cache] inserted ${rowsToInsert.length} new teasers (hits=${cached.size}/${keys.length})`);
+                  }
                 }
               }
-
-              // CRIT-001: Cleanup cards with missing stops
-              const insertedIds = insertedCards.map((c: any) => c.id);
-              const { data: stopCounts } = await poolAdmin
-                .from('card_pool_stops')
-                .select('card_pool_id')
-                .in('card_pool_id', insertedIds);
-
-              const actualStopCounts: Record<string, number> = {};
-              for (const row of (stopCounts || [])) {
-                actualStopCounts[row.card_pool_id] = (actualStopCounts[row.card_pool_id] || 0) + 1;
-              }
-
-              const expectedStopCounts: Record<string, number> = {};
-              for (const inserted of insertedCards) {
-                const entry = cardEntries.find((e: any) => e.row.google_place_id === inserted.google_place_id);
-                expectedStopCounts[inserted.id] = entry?.stopPlacePoolIds?.length || 0;
-              }
-
-              const invalidIds = insertedIds.filter((id: string) =>
-                (actualStopCounts[id] || 0) < (expectedStopCounts[id] || 1)
-              );
-              if (invalidIds.length > 0) {
-                await poolAdmin.from('card_pool').delete().in('id', invalidIds);
-                console.warn(`[curated-v2] CRIT-001: Deleted ${invalidIds.length} curated cards with missing/partial stops`);
-              }
-
-              // ORCH-0410: Serve-time impression recording REMOVED.
-              // Cards are no longer marked as "seen" on fresh generation.
-              // Interaction tracking is now client-side via record_card_interaction RPC (Phase 2-4).
-
-              console.log(`[curated-v2] Batch stored ${cardRows.length} cards in pool`);
+            } catch (teaserErr) {
+              console.warn(`[curated-teaser-cache] GPT teaser generation failed: ${(teaserErr as Error)?.message}`);
             }
+          } else if (cached.size > 0) {
+            console.log(`[curated-teaser-cache] all ${cached.size}/${keys.length} teasers from cache, zero GPT calls`);
           }
-        } catch (storeError) {
-          console.warn('[curated-v2] Pool batch store error:', storeError);
+        } catch (cacheErr) {
+          // Constitution #3: surface, do not swallow.
+          console.warn(`[curated-teaser-cache] unexpected error: ${(cacheErr as Error)?.message}`);
         }
       })();
     }
@@ -1282,6 +1567,11 @@ serve(async (req) => {
           pipeline: 'curated-v2',
         },
         ...(warmPool ? { success: true, poolSize: cards.length } : {}),
+        // ORCH-0677 §3.5: include `summary` only when cards is empty AND
+        // generateCardsForType produced a verdict. Mobile uses this to route
+        // curated-only empty results to EMPTY UI state. Legacy mobile builds
+        // ignore unknown fields per JSON forward-compat.
+        ...(normalizedCards.length === 0 && summary ? { summary } : {}),
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );

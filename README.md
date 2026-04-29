@@ -323,7 +323,6 @@ Mingla/
 - `discover-experiences` -- Daily curated experience serving
 - ~~Per-category discover functions~~ — Removed. `discover-cards` handles all categories in a single unified call.
 - `get-personalized-cards` -- Personalized card recommendations
-- `get-holiday-cards` -- Holiday-themed card serving
 - `get-person-hero-cards` -- Hero cards for paired people view
 - `get-paired-saves` -- Paired user saved cards
 - `get-companion-stops` -- Companion stop suggestions
@@ -335,13 +334,13 @@ Mingla/
 
 ### Generation and AI
 - `generate-single-cards` -- Batch single card generation from place pool
-- `generate-curated-experiences` -- Multi-stop itinerary generation
+- `generate-curated-experiences` -- Multi-stop itinerary generation. **Adding a new curated experience?** See [supabase/functions/generate-curated-experiences/EXPERIENCE_TEMPLATE.md](supabase/functions/generate-curated-experiences/EXPERIENCE_TEMPLATE.md) for the step-by-step template.
 - `generate-holiday-categories` -- Holiday category generation
 - `generate-ai-summary` -- AI place summaries
 - `generate-session-deck` -- Collaboration session deck generation
 - `ai-validate-cards` -- AI quality gate (GPT-5.4-mini with web search)
 - `ai-reason` -- AI reasoning for card decisions
-- `new-generate-experience-`, `night-out-experiences`, `holiday-experiences` -- Pool-first experience generators (Google API fallback)
+- `new-generate-experience-` -- Pool-first experience generator (Google API fallback). Under Phase 2 deletion review (ORCH-0570) pending 7-day runtime confirmation.
 
 ### Admin
 - `admin-seed-places` -- Tile-based place seeding with sequential batch approval

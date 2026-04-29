@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "お散歩",
   "unknown": "不明",
   "time_just_now": "たった今",
-
   "toast_invite_sent": "招待を送信しました！",
   "toast_invite_sent_msg": "{{name}}にコラボ招待を送信しました",
   "toast_member_promoted": "メンバーを昇格しました",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "{{count}}つのボードに追加しました！",
   "toast_added_board_msg": "{{name}}がコラボボードに追加されました",
   "toast_added_boards_msg": "{{name}}が{{count}}つのコラボボードに追加されました",
-  "toast_card_shared": "カードを共有しました！",
-  "toast_card_shared_msg": "保存した体験が{{name}}に共有されました",
   "toast_friend_removed": "友達を削除しました",
   "toast_friend_removed_msg": "{{name}}が友達リストから削除されました",
   "toast_user_blocked": "ユーザーをブロックしました",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "ハラスメント行為",
   "toast_report_reason_other": "コミュニティガイドライン違反",
   "user_fallback": "ユーザー",
-
   "calendar_access_needed": "カレンダーへのアクセスが必要です",
   "calendar_access_needed_msg": "イベントを追加するにはカレンダーへのアクセスが必要です。デバイスの設定で有効にしてください。",
   "open_settings": "設定を開く",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "イベントの追加中に問題が発生しました。もう一度お試しください。",
   "added_to_calendar": "追加済み",
   "add_to_calendar": "カレンダーに追加",
-
   "confidence_excellent": "最高の一致",
   "confidence_good": "良い一致",
   "confidence_fair": "まずまずの一致",
@@ -157,22 +152,28 @@
   "match_time": "時間",
   "match_popularity": "人気度",
   "match_factors": "一致要因",
-
   "stat_views": "閲覧数",
   "stat_likes": "いいね",
   "stat_saves": "保存数",
   "stat_shares": "共有数",
   "review_count_one": "{{count}}件のレビュー",
   "review_count_other": "{{count}}件のレビュー",
-
   "profile_update_failed": "プロフィールの更新に失敗しました",
   "profile_update_failed_msg": "プロフィールの更新に失敗しました。もう一度お試しください。",
   "saved_experience": "保存した体験",
   "experience": "体験",
   "solo_experience": "ソロ体験",
   "untitled": "無題",
-
   "error_sign_in_save": "体験を保存するにはサインインしてください",
   "error_boundary_title": "問題が発生しました",
-  "error_boundary_message": "予期しないエラーが発生しました。もう一度お試しください。"
+  "error_boundary_message": "予期しないエラーが発生しました。もう一度お試しください。",
+  "category_icebreakers": "アイスブレイカー",
+  "category_drinks_and_music": "ドリンク&音楽",
+  "category_brunch": "ブランチ",
+  "category_casual_food": "カジュアル",
+  "category_upscale_fine_dining": "ファインダイニング",
+  "category_movies": "映画",
+  "category_theatre": "劇場",
+  "category_brunch_lunch_casual": "ブランチ、ランチ、カジュアル",
+  "category_movies_theatre": "映画&劇場"
 }

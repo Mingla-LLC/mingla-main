@@ -99,7 +99,6 @@
   "intent_take_a_stroll": "Berjalan-jalan",
   "unknown": "Tidak diketahui",
   "time_just_now": "Baru sahaja",
-
   "toast_invite_sent": "Jemputan Dihantar!",
   "toast_invite_sent_msg": "Jemputan kolaborasi dihantar kepada {{name}}",
   "toast_member_promoted": "Ahli Dinaikkan Pangkat",
@@ -118,8 +117,6 @@
   "toast_added_to_boards": "Ditambah ke {{count}} Papan!",
   "toast_added_board_msg": "{{name}} telah ditambah ke papan kolaborasi",
   "toast_added_boards_msg": "{{name}} telah ditambah ke {{count}} papan kolaborasi",
-  "toast_card_shared": "Kad Dikongsi!",
-  "toast_card_shared_msg": "Pengalaman tersimpan telah dikongsi dengan {{name}}",
   "toast_friend_removed": "Rakan Dibuang",
   "toast_friend_removed_msg": "{{name}} telah dibuang dari senarai rakan anda",
   "toast_user_blocked": "Pengguna Disekat",
@@ -133,7 +130,6 @@
   "toast_report_reason_harassment": "kerana gangguan",
   "toast_report_reason_other": "kerana melanggar garis panduan komuniti",
   "user_fallback": "Pengguna",
-
   "calendar_access_needed": "Akses Kalendar Diperlukan",
   "calendar_access_needed_msg": "Mingla memerlukan akses kalendar untuk menambah acara. Sila aktifkan dalam tetapan peranti anda.",
   "open_settings": "Buka Tetapan",
@@ -146,7 +142,6 @@
   "calendar_error_msg": "Sesuatu tidak kena semasa menambah acara. Sila cuba lagi.",
   "added_to_calendar": "Ditambah",
   "add_to_calendar": "Tambah ke kalendar",
-
   "confidence_excellent": "Padanan Cemerlang",
   "confidence_good": "Padanan Baik",
   "confidence_fair": "Padanan Sederhana",
@@ -157,22 +152,28 @@
   "match_time": "Masa",
   "match_popularity": "Populariti",
   "match_factors": "Faktor Padanan",
-
   "stat_views": "Tontonan",
   "stat_likes": "Suka",
   "stat_saves": "Simpanan",
   "stat_shares": "Perkongsian",
   "review_count_one": "{{count}} ulasan",
   "review_count_other": "{{count}} ulasan",
-
   "profile_update_failed": "Kemas Kini Profil Gagal",
   "profile_update_failed_msg": "Gagal mengemas kini profil. Sila cuba lagi.",
   "saved_experience": "Pengalaman Tersimpan",
   "experience": "Pengalaman",
   "solo_experience": "Pengalaman Solo",
   "untitled": "Tanpa tajuk",
-
   "error_sign_in_save": "Sila log masuk untuk menyimpan pengalaman",
   "error_boundary_title": "Sesuatu tidak kena",
-  "error_boundary_message": "Kami mengalami ralat yang tidak dijangka. Sila cuba lagi."
+  "error_boundary_message": "Kami mengalami ralat yang tidak dijangka. Sila cuba lagi.",
+  "category_icebreakers": "Pemecah suasana",
+  "category_drinks_and_music": "Minuman & Muzik",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Kasual",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Filem",
+  "category_theatre": "Teater",
+  "category_brunch_lunch_casual": "Brunch, makan tengah hari & kasual",
+  "category_movies_theatre": "Filem & Teater"
 }

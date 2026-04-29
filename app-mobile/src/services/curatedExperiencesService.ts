@@ -1,5 +1,5 @@
 import { supabase, trackedInvoke } from './supabase';
-import type { CuratedExperienceCard } from '../types/curatedExperience';
+import type { CuratedExperienceCard, CuratedSummary } from '../types/curatedExperience';
 
 interface GenerateCuratedParams {
   experienceType: 'adventurous' | 'first-date' | 'romantic' | 'group-fun' | 'picnic-dates' | 'take-a-stroll';
@@ -15,8 +15,16 @@ interface GenerateCuratedParams {
   selectedCategories?: string[];
 }
 
+// ORCH-0677 RC-2: return shape now carries optional `summary` so deckService
+// can route curated-only empty results to the mobile EMPTY UI state. Legacy
+// edge fn responses without `summary` are treated as `pool_empty` upstream.
+export interface CuratedResponse {
+  cards: CuratedExperienceCard[];
+  summary?: CuratedSummary;
+}
+
 class CuratedExperiencesService {
-  async generateCuratedExperiences(params: GenerateCuratedParams): Promise<CuratedExperienceCard[]> {
+  async generateCuratedExperiences(params: GenerateCuratedParams): Promise<CuratedResponse> {
     const { sessionId, selectedCategories, ...edgeParams } = params;
     const body: Record<string, any> = {
       ...edgeParams,
@@ -44,7 +52,9 @@ class CuratedExperiencesService {
     // is ORCH-0495 territory (client warm-ping of discover-cards, deferred).
     const { data, error } = await trackedInvoke('generate-curated-experiences', { body });
     if (error) throw error;
-    return (data?.cards ?? []) as CuratedExperienceCard[];
+    const cards = (data?.cards ?? []) as CuratedExperienceCard[];
+    const summary = data?.summary as CuratedSummary | undefined;
+    return { cards, summary };
   }
 
   async warmPool(params: {

@@ -128,6 +128,7 @@
     "pickADate": "Pilih Tanggal",
     "changeTime": "Ubah Waktu",
     "closedAtTime": "Tempat ini tutup pada waktu yang dipilih. Silakan pilih waktu lain.",
+    "hoursUnknown": "We couldn't verify this place's hours. Please double-check before scheduling.",
     "assumptionWarning": "{{assumption}}. Silakan verifikasi jam buka sebelum menjadwalkan.",
     "selectDate": "Pilih Tanggal",
     "selectTime": "Pilih Waktu",

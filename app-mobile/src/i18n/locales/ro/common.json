@@ -117,8 +117,6 @@
   "toast_added_to_boards": "Adaugăed to {{count}} Boards!",
   "toast_added_board_msg": "{{name}} has been added to the collaboration board",
   "toast_added_boards_msg": "{{name}} has been added to {{count}} collaboration boards",
-  "toast_card_shared": "Card Distribuied!",
-  "toast_card_shared_msg": "A saved experience has been shared with {{name}}",
   "toast_friend_removed": "Prieten Removed",
   "toast_friend_removed_msg": "{{name}} has been removed from your friends list",
   "toast_user_blocked": "Utilizator Blocheazăed",
@@ -168,5 +166,14 @@
   "untitled": "Untitled",
   "error_sign_in_save": "Please sign in to save experiences",
   "error_boundary_title": "Ceva nu a mers bine",
-  "error_boundary_message": "We encountered an unexpected error. Please try again."
+  "error_boundary_message": "We encountered an unexpected error. Please try again.",
+  "category_icebreakers": "Sparge gheața",
+  "category_drinks_and_music": "Băuturi & Muzică",
+  "category_brunch": "Brunch",
+  "category_casual_food": "Casual",
+  "category_upscale_fine_dining": "Fine Dining",
+  "category_movies": "Filme",
+  "category_theatre": "Teatru",
+  "category_brunch_lunch_casual": "Brunch, prânz & casual",
+  "category_movies_theatre": "Filme & Teatru"
 }

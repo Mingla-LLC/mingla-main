@@ -1,6 +1,7 @@
 {
   "page": {
     "account_section": "ACCOUNT",
+    "stats_section": "YOUR JOURNEY",
     "billing_label": "Billing",
     "billing_description": "Manage your plan and subscription",
     "account_settings_label": "Account Settings",
@@ -51,7 +52,10 @@
     "motivation_close": "{{count}} more place to hit {{tier}}. You're close.",
     "motivation_close_plural": "{{count}} more places to hit {{tier}}. You're close.",
     "motivation_week": "A whole week. Consistency looks good on you.",
-    "motivation_month": "30 days straight. You might be unstoppable."
+    "motivation_month": "30 days straight. You might be unstoppable.",
+    "tier_context_one": "1 place to {{tier}}",
+    "tier_context_plural": "{{count}} places to {{tier}}",
+    "tier_context_max": "Max tier reached. Nice work."
   },
   "paired_section": {
     "see_all": "See all"
