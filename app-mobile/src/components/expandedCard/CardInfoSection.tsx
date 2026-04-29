@@ -116,7 +116,7 @@ export default function CardInfoSection({
       {/* Tags Row */}
       <View style={styles.tagsRow}>
         <View style={styles.categoryTag}>
-          <Icon name={getCategoryIcon()} size={14} color="#eb7825" />
+          <Icon name={getCategoryIcon()} size={14} color="#d97706" />
           <Text style={styles.categoryText}>{getReadableCategoryName(category)}</Text>
         </View>
         {romanticTag && (
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#ffffff",
+    color: "#111827",
     marginBottom: 12,
     lineHeight: 32,
   },
@@ -191,16 +191,16 @@ const styles = StyleSheet.create({
   categoryText: {
     fontSize: 14,
     fontWeight: "500",
-    color: "#eb7825",
+    color: "#d97706",
   },
   bullet: {
     fontSize: 14,
-    color: "rgba(255,255,255,0.70)",
+    color: "#6b7280",
     marginHorizontal: 8,
   },
   tagText: {
     fontSize: 14,
-    color: "rgba(255,255,255,0.70)",
+    color: "#6b7280",
     fontWeight: 600,
   },
   metricsRow: {
@@ -214,28 +214,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "#fff7ed",
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(235,120,37,0.45)",
+    borderColor: "#fed7aa",
   },
   metricPillText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#eb7825",
+    color: "#92400e",
   },
   description: {
     fontSize: 15,
-    color: "rgba(255,255,255,0.80)",
+    color: "#374151",
     lineHeight: 22,
     marginBottom: 8,
   },
   tip: {
     fontSize: 13,
     fontStyle: "italic",
-    color: "rgba(255,255,255,0.50)",
+    color: "#9CA3AF",
     marginTop: 2,
   },
 });

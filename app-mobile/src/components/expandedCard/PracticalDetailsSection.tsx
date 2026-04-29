@@ -66,10 +66,10 @@ export default function PracticalDetailsSection({
           activeOpacity={0.7}
         >
           <View style={styles.iconBadge}>
-            <Icon name="location" size={14} color="#eb7825" />
+            <Icon name="location" size={14} color="#ea580c" />
           </View>
           <Text style={styles.addressText} numberOfLines={2}>{address}</Text>
-          <Icon name="open-outline" size={13} color="rgba(255,255,255,0.50)" />
+          <Icon name="open-outline" size={13} color="#9ca3af" />
         </TouchableOpacity>
       )}
 
@@ -81,7 +81,7 @@ export default function PracticalDetailsSection({
             onPress={handlePhonePress}
             activeOpacity={0.7}
           >
-            <Icon name="call" size={13} color="#eb7825" />
+            <Icon name="call" size={13} color="#ea580c" />
             <Text style={styles.contactText} numberOfLines={1}>{phone}</Text>
           </TouchableOpacity>
         </View>
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
   addressRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "#fef7f0",
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "#fff7ed",
     borderWidth: 1,
     borderColor: "#eb782544",
     justifyContent: "center",
@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
   addressText: {
     flex: 1,
     fontSize: 13,
-    color: "rgba(255,255,255,0.80)",
+    color: "#374151",
     lineHeight: 18,
   },
   contactRow: {
@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "#fef7f0",
     borderRadius: 10,
     paddingVertical: 8,
     paddingHorizontal: 10,
@@ -142,6 +142,6 @@ const styles = StyleSheet.create({
   contactText: {
     flex: 1,
     fontSize: 12,
-    color: "rgba(255,255,255,0.80)",
+    color: "#374151",
   },
 });

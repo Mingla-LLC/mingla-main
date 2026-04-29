@@ -62,7 +62,7 @@ export function StopImageGallery({ images, onImagePress }: StopImageGalleryProps
     return (
       <View style={styles.container}>
         <View style={styles.placeholder}>
-          <Icon name="image-outline" size={32} color="rgba(255,255,255,0.50)" />
+          <Icon name="image-outline" size={32} color="#d1d5db" />
         </View>
       </View>
     );
@@ -115,7 +115,7 @@ export function StopImageGallery({ images, onImagePress }: StopImageGalleryProps
                   />
                 ) : (
                   <View style={styles.placeholder}>
-                    <ActivityIndicator size="small" color="rgba(255,255,255,0.50)" />
+                    <ActivityIndicator size="small" color="#d1d5db" />
                   </View>
                 )}
               </TouchableOpacity>
@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
     marginBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: '#f3f4f6',
     position: 'relative',
   },
   scrollView: {
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: '#f3f4f6',
   },
   dotsRow: {
     position: 'absolute',
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
   },
   dotActive: {
     width: 16,
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: '#ffffff',
   },
   dotInactive: {
     width: 5,
@@ -214,6 +214,6 @@ const styles = StyleSheet.create({
   counterText: {
     fontSize: 10,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.10)',
+    color: '#ffffff',
   },
 });

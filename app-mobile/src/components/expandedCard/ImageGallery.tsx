@@ -83,7 +83,7 @@ export default function ImageGallery({
     return (
       <View style={styles.container}>
         <View style={styles.placeholder}>
-          <Icon name="image-outline" size={48} color="rgba(255,255,255,0.50)" />
+          <Icon name="image-outline" size={48} color="#9ca3af" />
         </View>
       </View>
     );
@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: '#f3f4f6',
   },
   dotsContainer: {
     position: 'absolute',
@@ -194,13 +194,13 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.70)',
+    backgroundColor: '#6b7280',
   },
   dotActive: {
     width: 24,
     height: 6,
     borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: '#ffffff',
   },
   counter: {
     position: 'absolute',
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   counterText: {
-    color: 'rgba(255,255,255,0.10)',
+    color: '#ffffff',
     fontSize: 12,
     fontWeight: '600',
   },

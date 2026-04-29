@@ -1580,16 +1580,20 @@ export default function ExpandedCardModal({
       enablePanDownToClose
       onChange={handleSheetChange}
       handleIndicatorStyle={{
-        backgroundColor: glass.bottomSheet.handle.color,
+        // [ORCH-0696 hotfix-3] Conditional chrome theme:
+        //   • Ticketmaster events → dark sheet (designs perfect per operator)
+        //   • Place / curated cards → light sheet (operator directive: cards
+        //     keep their original light theme; only chrome is new)
+        backgroundColor: isNightOut ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.30)",
         width: glass.bottomSheet.handle.width,
         height: glass.bottomSheet.handle.height,
       }}
       backgroundStyle={{
-        backgroundColor: "rgba(12, 14, 18, 1)",
+        backgroundColor: isNightOut ? "rgba(12, 14, 18, 1)" : "#ffffff",
         borderTopLeftRadius: glass.bottomSheet.topRadius,
         borderTopRightRadius: glass.bottomSheet.topRadius,
         borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: glass.bottomSheet.hairline,
+        borderTopColor: isNightOut ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
       }}
       backdropComponent={renderBackdrop}
     >
@@ -1606,7 +1610,7 @@ export default function ExpandedCardModal({
               style={styles.reviewNavArrow}
               hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
             >
-              <Icon name="chevron-back" size={20} color={onNavigatePrevious ? '#eb7825' : 'rgba(255,255,255,0.30)'} />
+              <Icon name="chevron-back" size={20} color={onNavigatePrevious ? '#eb7825' : '#d1d5db'} />
             </TouchableOpacity>
             <Text style={styles.reviewNavCounter}>
               {navigationIndex + 1} of {navigationTotal}
@@ -1617,7 +1621,7 @@ export default function ExpandedCardModal({
               style={styles.reviewNavArrow}
               hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
             >
-              <Icon name="chevron-forward" size={20} color={onNavigateNext ? '#eb7825' : 'rgba(255,255,255,0.30)'} />
+              <Icon name="chevron-forward" size={20} color={onNavigateNext ? '#eb7825' : '#d1d5db'} />
             </TouchableOpacity>
           </View>
         </>
@@ -1687,12 +1691,12 @@ export default function ExpandedCardModal({
               <View
                 style={{
                   height: 200,
-                  backgroundColor: glass.surfaceDark.backgroundColor,
+                  backgroundColor: "#f3f4f6",
                   justifyContent: "center",
                   alignItems: "center",
                 }}
               >
-                <Text style={{ color: 'rgba(255,255,255,0.60)' }}>{t('cards:expanded.no_images')}</Text>
+                <Text>{t('cards:expanded.no_images')}</Text>
               </View>
             ))}
 
@@ -2045,9 +2049,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 8,
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: '#f9fafb',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
   },
   reviewNavArrow: {
     padding: 4,
@@ -2055,7 +2059,7 @@ const styles = StyleSheet.create({
   reviewNavCounter: {
     fontSize: 13,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.70)',
+    color: '#6b7280',
     marginHorizontal: 16,
   },
   scrollView: {
