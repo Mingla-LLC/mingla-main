@@ -348,6 +348,7 @@
 | AH-037 | ORCH-0332 + ORCH-0333 | Implementor | 2026-04-08 | IMPLEMENTATION_ORCH_0332_0333_CITY_UPDATE_TILE_REGEN_REPORT.md | APPROVED |
 | AH-038 | ORCH-0348 | Implementor | 2026-04-09 | IMPLEMENTATION_ORCH-0348_BETA_TESTER_AUTO_ASSIGN_REPORT.md | APPROVED — migration applied, SC-1 + SC-2 verified |
 | AH-INV-011 | ORCH-0352 | Investigator | 2026-04-09 | INVESTIGATION_FEEDBACK_RECORDING_FREEZE_REPORT.md | APPROVED — 2 root causes proven, implementor next |
+| AH-BIZ-001-A | ORCH-BIZ-CYCLE-0a-001 (Sub-phase A) | Implementor | 2026-04-28 | IMPLEMENTATION_ORCH-BIZ-CYCLE-0a-001.md | APPROVED — pure-JS deps + token extension + currentBrandStore.ts; tsc --noEmit exit 0; backward-compat preserved (I-1). Sub-phases B–F awaiting authorisation. |
 
 ## Historical (Pre-Orchestrator)
 

@@ -24,6 +24,9 @@
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
     "@supabase/supabase-js": "^2.74.0",
+    "@tanstack/query-async-storage-persister": "^5.100.6",
+    "@tanstack/react-query": "^5.100.6",
+    "@tanstack/react-query-persist-client": "^5.100.6",
     "expo": "~54.0.33",
     "expo-apple-authentication": "~8.0.8",
     "expo-constants": "~18.0.13",
@@ -41,6 +44,7 @@
     "expo-web-browser": "~15.0.10",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-error-boundary": "^6.1.1",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-reanimated": "~4.1.1",
@@ -48,7 +52,8 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-web": "~0.21.0",
-    "react-native-worklets": "0.5.1"
+    "react-native-worklets": "0.5.1",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
