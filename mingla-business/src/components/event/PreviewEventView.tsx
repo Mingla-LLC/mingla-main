@@ -11,7 +11,7 @@
  * Per Cycle 3 spec §3.10.
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -27,6 +27,11 @@ import {
 import type { Brand } from "../../store/currentBrandStore";
 import type { DraftEvent, TicketStub } from "../../store/draftEventStore";
 import { formatGbpRound } from "../../utils/currency";
+import {
+  formatDraftDateLine,
+  formatDraftDateSubline,
+  formatDraftDatesList,
+} from "../../utils/eventDateDisplay";
 
 import { EventCover } from "../ui/EventCover";
 import { GlassCard } from "../ui/GlassCard";
@@ -40,10 +45,18 @@ interface PreviewEventViewProps {
   onShareTap: () => void;
   /**
    * Tap-to-jump from a preview section to the wizard step that owns
-   * that field. Cycle 3 rework v3 ships this thinner version of inline
-   * editing; full inline-edit-in-preview defers to Cycle 9 J-E11.
+   * that field. Cycle 3 ships this thinner version of inline editing;
+   * full inline-edit-in-preview defers to Cycle 9 J-E11.
    */
   onEditStep: (step: number) => void;
+  /**
+   * Tap-to-edit a per-date override from the multi-date accordion.
+   * Cycle 4 Q-5 user-revised — opens MultiDateOverrideSheet directly
+   * (route handler owns sheet state for I-13 portal compliance).
+   * Only relevant for whenMode === "multi_date"; recurring rows are
+   * read-only (no per-occurrence overrides supported).
+   */
+  onEditMultiDateOverride?: (entryId: string) => void;
 }
 
 const SectionEditPencil: React.FC<{
@@ -60,27 +73,6 @@ const SectionEditPencil: React.FC<{
     <Icon name="edit" size={14} color={textTokens.tertiary} />
   </Pressable>
 );
-
-const formatDateLine = (
-  date: string | null,
-  doorsOpen: string | null,
-): string => {
-  if (date === null) return "Date TBD";
-  const parts = date.split("-");
-  if (parts.length !== 3) return date;
-  const d = new Date(
-    Number(parts[0]),
-    Number(parts[1]) - 1,
-    Number(parts[2]),
-  );
-  const datePart = d.toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-  if (doorsOpen === null) return datePart;
-  return `${datePart} · ${doorsOpen}`;
-};
 
 const PublicTicketRow: React.FC<{ ticket: TicketStub; isLast: boolean }> = ({
   ticket,
@@ -108,17 +100,33 @@ const PublicTicketRow: React.FC<{ ticket: TicketStub; isLast: boolean }> = ({
   );
 };
 
+const SHOW_INITIAL_DATES = 10;
+
 export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
   draft,
   brand,
   onBack,
   onShareTap,
   onEditStep,
+  onEditMultiDateOverride,
 }) => {
   const insets = useSafeAreaInsets();
-  const dateLine = formatDateLine(draft.date, draft.doorsOpen);
+  const dateLine = formatDraftDateLine(draft);
+  const subline = formatDraftDateSubline(draft);
+  const datesList = formatDraftDatesList(draft);
   const titleLine = draft.name.length > 0 ? draft.name : "Untitled event";
   const brandLetter = (brand?.displayName?.charAt(0) ?? "?").toUpperCase();
+  const [showAllDates, setShowAllDates] = useState<boolean>(false);
+  const [showOverflowDates, setShowOverflowDates] = useState<boolean>(false);
+
+  const isMultiDate = draft.whenMode === "multi_date";
+  const visibleDatesList: string[] = (() => {
+    if (!showAllDates) return [];
+    if (datesList.length <= SHOW_INITIAL_DATES || showOverflowDates) {
+      return datesList;
+    }
+    return datesList.slice(0, SHOW_INITIAL_DATES);
+  })();
 
   return (
     <View style={styles.host}>
@@ -186,6 +194,68 @@ export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
             <View style={styles.titleBlockText}>
               <Text style={styles.dateLine}>{dateLine}</Text>
               <Text style={styles.titleLine}>{titleLine}</Text>
+              {/* Recurring / multi-date pill + accordion expand */}
+              {subline !== null ? (
+                <View style={styles.recurrencePillRow}>
+                  <Pressable
+                    onPress={() => setShowAllDates((s) => !s)}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      showAllDates ? "Collapse date list" : "Show all dates"
+                    }
+                    style={styles.recurrencePill}
+                  >
+                    <Text style={styles.recurrencePillLabel}>
+                      {subline} · {showAllDates ? "Hide" : "Show all"}
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              {showAllDates && visibleDatesList.length > 0 ? (
+                <View style={styles.expandedDatesList}>
+                  {visibleDatesList.map((label, i) => {
+                    const entry =
+                      isMultiDate && draft.multiDates !== null
+                        ? draft.multiDates[i]
+                        : null;
+                    return (
+                      <View key={i} style={styles.expandedDateRow}>
+                        <Text style={styles.expandedDateText}>{label}</Text>
+                        {isMultiDate &&
+                        entry !== null &&
+                        onEditMultiDateOverride !== undefined ? (
+                          <Pressable
+                            onPress={() => onEditMultiDateOverride(entry.id)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Edit date ${i + 1}`}
+                            hitSlop={8}
+                            style={styles.expandedRowEditBtn}
+                          >
+                            <Icon
+                              name="edit"
+                              size={14}
+                              color={textTokens.tertiary}
+                            />
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                  {datesList.length > SHOW_INITIAL_DATES &&
+                  !showOverflowDates ? (
+                    <Pressable
+                      onPress={() => setShowOverflowDates(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Show all ${datesList.length} dates`}
+                      style={styles.showAllBtn}
+                    >
+                      <Text style={styles.showAllLabel}>
+                        Show all {datesList.length} dates
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
             <SectionEditPencil onPress={() => onEditStep(0)} label="title" />
           </View>
@@ -412,6 +482,59 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: accent.warm,
     marginBottom: 8,
+  },
+  recurrencePillRow: {
+    flexDirection: "row",
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  recurrencePill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+  },
+  recurrencePillLabel: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "600",
+    color: accent.warm,
+  },
+  expandedDatesList: {
+    marginBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  expandedDateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.md,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+  },
+  expandedDateText: {
+    flex: 1,
+    fontSize: typography.bodySm.fontSize,
+    color: textTokens.primary,
+  },
+  expandedRowEditBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  showAllBtn: {
+    paddingVertical: spacing.sm,
+    alignItems: "center",
+  },
+  showAllLabel: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+    color: accent.warm,
   },
   titleLine: {
     fontSize: 32,

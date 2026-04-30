@@ -35,6 +35,10 @@ import {
 } from "../../store/currentBrandStore";
 import { computePublishability } from "../../utils/draftEventValidation";
 import { formatGbpRound } from "../../utils/currency";
+import {
+  formatDraftDateLine,
+  formatDraftDateSubline,
+} from "../../utils/eventDateDisplay";
 
 import { EventCover } from "../ui/EventCover";
 import { GlassCard } from "../ui/GlassCard";
@@ -46,27 +50,6 @@ interface CreatorStep7PreviewProps extends StepBodyProps {
   brand: Brand | null;
   onTapMiniCard: () => void;
 }
-
-const formatDateLine = (
-  date: string | null,
-  doorsOpen: string | null,
-): string => {
-  if (date === null) return "Set a date in Step 2";
-  const parts = date.split("-");
-  if (parts.length !== 3) return date;
-  const d = new Date(
-    Number(parts[0]),
-    Number(parts[1]) - 1,
-    Number(parts[2]),
-  );
-  const datePart = d.toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-  if (doorsOpen === null) return datePart;
-  return `${datePart} · ${doorsOpen}`;
-};
 
 const formatPriceLine = (tickets: { isFree: boolean; priceGbp: number | null }[]): string => {
   if (tickets.length === 0) return "No tickets yet";
@@ -93,7 +76,8 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
   }, [onTapMiniCard]);
 
   // Mini card content
-  const dateLine = formatDateLine(draft.date, draft.doorsOpen);
+  const dateLine = formatDraftDateLine(draft);
+  const subline = formatDraftDateSubline(draft);
   const titleLine = draft.name.length > 0 ? draft.name : "Untitled event";
   const venueLine =
     draft.format === "online"
@@ -121,6 +105,13 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
           <Text style={styles.miniVenue} numberOfLines={1}>
             {venueLine} · {priceLine}
           </Text>
+          {subline !== null ? (
+            <View style={styles.recurrencePillRow}>
+              <View style={styles.recurrencePill}>
+                <Text style={styles.recurrencePillLabel}>{subline}</Text>
+              </View>
+            </View>
+          ) : null}
         </View>
       </Pressable>
 
@@ -248,6 +239,23 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     color: textTokens.secondary,
     marginTop: 2,
+  },
+  recurrencePillRow: {
+    flexDirection: "row",
+    marginTop: spacing.xs,
+  },
+  recurrencePill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+  },
+  recurrencePillLabel: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "600",
+    color: accent.warm,
   },
   statusCardWrap: {
     marginBottom: spacing.sm,

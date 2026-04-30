@@ -19,7 +19,8 @@
  * migrates drafts to server-side storage; this store contracts to a
  * cache + ID-only when backend lands.
  *
- * Per Cycle 3 spec §3.1.
+ * Per Cycle 3 spec §3.1; Cycle 4 spec §3.1 expands schema v2→v3 for
+ * recurring + multi-date events (additive — single-mode unchanged).
  */
 
 import { useMemo } from "react";
@@ -39,11 +40,6 @@ import { generateDraftId } from "../utils/draftEventId";
  * if the runtime can't resolve (extremely rare on Hermes/V8). Called at
  * draft creation time so each new draft inherits the device's local
  * zone — user can override via the Step 2 timezone sheet picker.
- *
- * The Step 2 sheet offers 6 common UK/EU presets. For exotic zones
- * (e.g., "America/Los_Angeles"), the Pressable display falls back to
- * the raw timezone string — `tzLabel` resolves via
- * `TIMEZONES.find(t => t.id === draft.timezone)?.label ?? draft.timezone`.
  *
  * Per Cycle 3 rework v2 Fix #4.
  */
@@ -69,9 +65,8 @@ export interface TicketStub {
   capacity: number | null;
   isFree: boolean;
   /**
-   * When true, this ticket has no capacity limit. Capacity field is
-   * ignored in display + validation. NEW in Cycle 3 rework v3 schema v2.
-   * Defaults to false for missing field (passthrough migration).
+   * When true, this ticket has no capacity limit. NEW in Cycle 3 rework
+   * v3 schema v2.
    */
   isUnlimited: boolean;
 }
@@ -79,6 +74,58 @@ export interface TicketStub {
 export type DraftEventFormat = "in_person" | "online" | "hybrid";
 export type DraftEventVisibility = "public" | "unlisted" | "private";
 export type DraftEventStatus = "draft" | "publishing" | "live";
+
+// ---- Cycle 4 — recurring + multi-date types (NEW) -------------------
+
+export type WhenMode = "single" | "recurring" | "multi_date";
+
+export type RecurrencePreset =
+  | "daily"
+  | "weekly"
+  | "biweekly"
+  | "monthly_dom"   // monthly by day-of-month, e.g. "every 15th"
+  | "monthly_dow"; // monthly by weekday, e.g. "every 1st Monday"
+
+export type Weekday = "MO" | "TU" | "WE" | "TH" | "FR" | "SA" | "SU";
+
+/** 1=first, 2=second, 3=third, 4=fourth, -1=last week of the month. */
+export type SetPos = 1 | 2 | 3 | 4 | -1;
+
+export type RecurrenceTermination =
+  | { kind: "count"; count: number }       // 1..52
+  | { kind: "until"; until: string };      // ISO YYYY-MM-DD; max 1 year from first
+
+export interface RecurrenceRule {
+  preset: RecurrencePreset;
+  /** Required for weekly, biweekly, monthly_dow. */
+  byDay?: Weekday;
+  /** Required for monthly_dom (1-28; clamped to 28 to avoid Feb-30 weirdness). */
+  byMonthDay?: number;
+  /** Required for monthly_dow. */
+  bySetPos?: SetPos;
+  termination: RecurrenceTermination;
+}
+
+export interface MultiDateOverrides {
+  title: string | null;
+  description: string | null;
+  venueName: string | null;
+  address: string | null;
+  onlineUrl: string | null;
+}
+
+export interface MultiDateEntry {
+  id: string;
+  /** ISO YYYY-MM-DD. */
+  date: string;
+  /** HH:MM 24-hour. */
+  startTime: string;
+  /** HH:MM 24-hour. */
+  endTime: string;
+  overrides: MultiDateOverrides;
+}
+
+// ---- DraftEvent (v3) ------------------------------------------------
 
 export interface DraftEvent {
   id: string;
@@ -88,32 +135,41 @@ export interface DraftEvent {
   description: string;
   format: DraftEventFormat;
   category: string | null;
-  // Step 2 — When
-  /** Locked to "once" in Cycle 3; Cycle 4 expands the union for recurrence. */
-  repeats: "once";
-  /** ISO YYYY-MM-DD. */
+  // Step 2 — When (Cycle 4 v3 — replaces `repeats`)
+  /**
+   * Mode of the When step. "single" = one date (Cycle 3 default behavior).
+   * "recurring" = pattern from RecurrenceRule. "multi_date" = explicit
+   * list in `multiDates`. NEW in Cycle 4.
+   */
+  whenMode: WhenMode;
+  /**
+   * ISO YYYY-MM-DD. In single mode: the event date. In recurring mode:
+   * first occurrence. In multi_date mode: ignored — see `multiDates[0]`.
+   */
   date: string | null;
   /** HH:mm 24-hour. */
   doorsOpen: string | null;
   /** HH:mm 24-hour. */
   endsAt: string | null;
-  /** Default "Europe/London". */
+  /** Default = device timezone (Europe/London fallback). */
   timezone: string;
+  /** Non-null only when whenMode === "recurring". NEW Cycle 4. */
+  recurrenceRule: RecurrenceRule | null;
+  /**
+   * Non-null only when whenMode === "multi_date". Length 0..24
+   * (validation enforces ≥2 to publish). Auto-sorted chronologically.
+   * NEW Cycle 4.
+   */
+  multiDates: MultiDateEntry[] | null;
   // Step 3 — Where
   venueName: string | null;
   address: string | null;
   /** Used when format ∈ {"online", "hybrid"}. */
   onlineUrl: string | null;
-  /**
-   * When true (default), the venue address is hidden from the public
-   * event page until a guest buys a ticket — only revealed via the
-   * post-purchase confirmation. When false, the address is shown
-   * publicly. NEW in Cycle 3 rework v3 schema v2. Defaults to true
-   * for missing field (passthrough migration).
-   */
+  /** When true (default), address hidden until ticket purchase. */
   hideAddressUntilTicket: boolean;
   // Step 4 — Cover
-  /** Hue 0-360 for EventCover. Default 25 (warm orange — designer reference). */
+  /** Hue 0-360 for EventCover. Default 25 (warm orange). */
   coverHue: number;
   // Step 5 — Tickets
   tickets: TicketStub[];
@@ -127,9 +183,7 @@ export interface DraftEvent {
   /** Highest step index user has reached (0..6). Resume jumps here. */
   lastStepReached: number;
   status: DraftEventStatus;
-  /** ISO 8601. */
   createdAt: string;
-  /** ISO 8601 — bumped on every updateDraft call. */
   updatedAt: string;
 }
 
@@ -158,11 +212,13 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   description: "",
   format: "in_person",
   category: null,
-  repeats: "once",
+  whenMode: "single",
   date: null,
   doorsOpen: null,
   endsAt: null,
   timezone: "Europe/London",
+  recurrenceRule: null,
+  multiDates: null,
   venueName: null,
   address: null,
   onlineUrl: null,
@@ -178,11 +234,31 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   status: "draft",
 };
 
-// v1 draft shape — used by the v1→v2 migrator only.
+// ---- Migration types (private) --------------------------------------
+
+// v1 — pre-J-A8 polish. tickets had no isUnlimited; no hideAddressUntilTicket.
 type V1TicketStub = Omit<TicketStub, "isUnlimited">;
-type V1DraftEvent = Omit<DraftEvent, "hideAddressUntilTicket" | "tickets"> & {
+type V1DraftEvent = Omit<
+  DraftEvent,
+  | "hideAddressUntilTicket"
+  | "tickets"
+  | "whenMode"
+  | "recurrenceRule"
+  | "multiDates"
+> & {
   tickets: V1TicketStub[];
   hideAddressUntilTicket?: boolean;
+  // v1 had a `repeats` literal field
+  repeats?: "once";
+};
+
+// v2 — Cycle 3 rework v3. Added isUnlimited, hideAddressUntilTicket. Still had repeats.
+type V2DraftEvent = Omit<
+  DraftEvent,
+  "whenMode" | "recurrenceRule" | "multiDates"
+> & {
+  /** Locked literal in v2; removed in v3 (replaced by whenMode). */
+  repeats?: "once";
 };
 
 const upgradeV1TicketToV2 = (t: V1TicketStub): TicketStub => ({
@@ -190,27 +266,45 @@ const upgradeV1TicketToV2 = (t: V1TicketStub): TicketStub => ({
   isUnlimited: false,
 });
 
-const upgradeV1DraftToV2 = (d: V1DraftEvent): DraftEvent => ({
+const upgradeV1DraftToV2 = (d: V1DraftEvent): V2DraftEvent => ({
   ...d,
   hideAddressUntilTicket: d.hideAddressUntilTicket ?? true,
   tickets: d.tickets.map(upgradeV1TicketToV2),
+  repeats: "once",
 });
 
+const upgradeV2DraftToV3 = (d: V2DraftEvent): DraftEvent => {
+  // Strip `repeats`; default whenMode to "single"; null both arrays.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { repeats: _drop, ...rest } = d;
+  return {
+    ...rest,
+    whenMode: "single",
+    recurrenceRule: null,
+    multiDates: null,
+  };
+};
+
 const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
+  // Store name unchanged (".v1") — versions are tracked by `version`,
+  // and renaming the storage key would orphan existing user drafts.
   name: "mingla-business.draftEvent.v1",
   storage: createJSONStorage(() => AsyncStorage),
-  partialize: (state) => ({ drafts: state.drafts }),
-  version: 2,
-  migrate: (persistedState, version) => {
+  partialize: (state): PersistedState => ({ drafts: state.drafts }),
+  version: 3,
+  migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
-      // No prior persistence; start clean.
       return { drafts: [] };
     }
     if (version === 1) {
-      // v1 → v2: add hideAddressUntilTicket (default true) +
-      // TicketStub.isUnlimited (default false). Passthrough otherwise.
+      // v1 → v3: chain v1→v2 then v2→v3
       const v1 = persistedState as { drafts: V1DraftEvent[] };
-      return { drafts: v1.drafts.map(upgradeV1DraftToV2) };
+      const v2Drafts = v1.drafts.map(upgradeV1DraftToV2);
+      return { drafts: v2Drafts.map(upgradeV2DraftToV3) };
+    }
+    if (version === 2) {
+      const v2 = persistedState as { drafts: V2DraftEvent[] };
+      return { drafts: v2.drafts.map(upgradeV2DraftToV3) };
     }
     return persistedState as PersistedState;
   },
@@ -226,9 +320,7 @@ export const useDraftEventStore = create<DraftEventState>()(
         const draft: DraftEvent = {
           ...DEFAULT_DRAFT_FIELDS,
           // Override hardcoded "Europe/London" default with device-detected
-          // zone (Cycle 3 rework v2 Fix #4). DEFAULT_DRAFT_FIELDS keeps the
-          // London fallback as a safety net for any code that constructs
-          // DEFAULT_DRAFT_FIELDS directly (e.g., test fixtures).
+          // zone (Cycle 3 rework v2 Fix #4).
           timezone: detectDeviceTimezone(),
           id: generateDraftId(),
           brandId,
@@ -266,7 +358,7 @@ export const useDraftEventStore = create<DraftEventState>()(
       },
 
       publishDraft: (id): void => {
-        // Cycle 3: fire-and-forget. Cycle 9 will retain as event record.
+        // Cycle 3 stub: fire-and-forget. Cycle 9 retains as event record.
         set((s) => ({ drafts: s.drafts.filter((d) => d.id !== id) }));
       },
 
@@ -279,14 +371,11 @@ export const useDraftEventStore = create<DraftEventState>()(
 );
 
 /**
- * Selector: drafts owned by the given brand (filters by brandId).
+ * Selector: drafts owned by the given brand.
  *
- * IMPORTANT — selects the raw `drafts` array (stable reference across
- * unchanged store state) and filters via useMemo. Inlining
- * `s.drafts.filter(...)` inside the selector would return a new array
- * reference every render → infinite useSyncExternalStore loop
- * ("getSnapshot should be cached"). Same pattern applies to any other
- * derived-array selector on this store.
+ * IMPORTANT — selects raw `drafts` (stable reference) and filters via
+ * useMemo. Inlining `s.drafts.filter(...)` would return a new array each
+ * render → infinite useSyncExternalStore loop.
  */
 export const useDraftsForBrand = (brandId: string | null): DraftEvent[] => {
   const drafts = useDraftEventStore((s) => s.drafts);
@@ -299,11 +388,6 @@ export const useDraftsForBrand = (brandId: string | null): DraftEvent[] => {
 
 /**
  * Selector: a single draft by id, or null.
- *
- * `.find()` on the same drafts array returns the same DraftEvent
- * reference (or undefined), so the selector is reference-stable —
- * but we still wrap in useMemo for symmetry + safety against future
- * rewrites that might add transformations.
  */
 export const useDraftById = (id: string | null): DraftEvent | null => {
   const drafts = useDraftEventStore((s) => s.drafts);

@@ -1,24 +1,24 @@
 /**
  * Per-step + publish-gate validation rules for the event creator wizard.
  *
- * Rules grounded in BUSINESS_PRD §U.5.1 required-to-publish list +
- * Cycle 3 spec §4 validation table. Each error returns a fieldKey for
- * inline rendering and a message for the J-E12 errors sheet.
+ * Rules grounded in BUSINESS_PRD §U.5.1 + Cycle 3 spec §4 + Cycle 4 spec
+ * §3.2 (recurring + multi-date branches).
  *
- * NEVER use this util to bypass user-visible field errors — it returns
- * structured error keys for the calling step body to map to component
- * state (red border, helper text). The publish gate uses the same
- * structure to drive the errors sheet's Fix-jump links.
- *
- * Per Cycle 3 spec §3.2.
+ * Each error returns a fieldKey for inline rendering and a message for
+ * the J-E12 errors sheet. NEVER use this util to bypass user-visible
+ * field errors — it returns structured error keys for the calling step
+ * body to map to component state (red border, helper text). The publish
+ * gate uses the same structure to drive the errors sheet's Fix-jump links.
  */
 
 import type {
   DraftEvent,
   DraftEventStatus,
   TicketStub,
+  RecurrenceRule,
 } from "../store/draftEventStore";
 import type { BrandStripeStatus } from "../store/currentBrandStore";
+import { weekdayOfIso, formatWeekdayLong } from "./recurrenceRule";
 
 export interface ValidationError {
   /** Identifier for the field — drives inline rendering + Fix-jump logic. */
@@ -62,7 +62,7 @@ export const validatePublish = (
     errors.push(...validateStep(step, draft));
   }
   // Cross-step: any paid ticket → Stripe must be active.
-  // Free-only events bypass this gate entirely (spec AC#33 / T-CYCLE-3-23).
+  // Free-only events bypass this gate (spec AC#33).
   const hasPaidTicket = draft.tickets.some(
     (t) => !t.isFree && (t.priceGbp ?? 0) > 0,
   );
@@ -94,7 +94,20 @@ const validateBasics = (d: DraftEvent): ValidationError[] => {
   return errs;
 };
 
+// ---- Step 2 — When (mode-branched) ----------------------------------
+
 const validateWhen = (d: DraftEvent): ValidationError[] => {
+  switch (d.whenMode) {
+    case "single":
+      return validateWhenSingle(d);
+    case "recurring":
+      return validateWhenRecurring(d);
+    case "multi_date":
+      return validateWhenMultiDate(d);
+  }
+};
+
+const validateWhenSingle = (d: DraftEvent): ValidationError[] => {
   const errs: ValidationError[] = [];
   if (d.date === null) {
     errs.push({ fieldKey: "date", step: 1, message: "Set the event date." });
@@ -117,6 +130,185 @@ const validateWhen = (d: DraftEvent): ValidationError[] => {
   }
   return errs;
 };
+
+const validateWhenRecurring = (d: DraftEvent): ValidationError[] => {
+  const errs: ValidationError[] = [];
+  // First occurrence shares the parent date/doors/ends fields.
+  if (d.date === null) {
+    errs.push({
+      fieldKey: "date",
+      step: 1,
+      message: "Set the first occurrence date.",
+    });
+  } else if (parseDateString(d.date) < startOfToday()) {
+    errs.push({
+      fieldKey: "date",
+      step: 1,
+      message: "First occurrence can't be in the past.",
+    });
+  }
+  if (d.doorsOpen === null) {
+    errs.push({
+      fieldKey: "doorsOpen",
+      step: 1,
+      message: "Set the door-open time.",
+    });
+  }
+  if (d.endsAt === null) {
+    errs.push({ fieldKey: "endsAt", step: 1, message: "Set the end time." });
+  }
+  // Recurrence rule
+  if (d.recurrenceRule === null) {
+    errs.push({
+      fieldKey: "recurrence",
+      step: 1,
+      message: "Pick a repeat pattern.",
+    });
+  } else {
+    errs.push(...validateRecurrenceRule(d.recurrenceRule, d.date));
+  }
+  return errs;
+};
+
+const validateRecurrenceRule = (
+  r: RecurrenceRule,
+  firstDateIso: string | null,
+): ValidationError[] => {
+  const errs: ValidationError[] = [];
+  // Preset-specific param checks
+  if (
+    (r.preset === "weekly" || r.preset === "biweekly" || r.preset === "monthly_dow") &&
+    r.byDay === undefined
+  ) {
+    errs.push({
+      fieldKey: "recurrence.byDay",
+      step: 1,
+      message: "Pick a day of the week.",
+    });
+  }
+  if (
+    r.preset === "monthly_dom" &&
+    (r.byMonthDay === undefined || r.byMonthDay < 1 || r.byMonthDay > 28)
+  ) {
+    errs.push({
+      fieldKey: "recurrence.byMonthDay",
+      step: 1,
+      message: "Pick a valid day (1–28).",
+    });
+  }
+  if (r.preset === "monthly_dow" && r.bySetPos === undefined) {
+    errs.push({
+      fieldKey: "recurrence.bySetPos",
+      step: 1,
+      message: "Pick which week (1st, 2nd, etc.).",
+    });
+  }
+  // Day-of-week mismatch check (REVISED 2026-04-30 — replaces auto-snap UX).
+  // When byDay is set AND firstDate is set, the first occurrence's actual
+  // weekday MUST match. User fixes manually (no silent snap).
+  if (
+    (r.preset === "weekly" ||
+      r.preset === "biweekly" ||
+      r.preset === "monthly_dow") &&
+    r.byDay !== undefined &&
+    firstDateIso !== null
+  ) {
+    const dowOfDate = weekdayOfIso(firstDateIso);
+    if (dowOfDate !== r.byDay) {
+      errs.push({
+        fieldKey: "recurrence.dayMismatch",
+        step: 1,
+        message: `First occurrence is ${formatWeekdayLong(dowOfDate)} but pattern is ${formatWeekdayLong(r.byDay)}. Pick a matching date or change the day.`,
+      });
+    }
+  }
+  // Termination check
+  if (r.termination.kind === "count") {
+    if (
+      !Number.isFinite(r.termination.count) ||
+      r.termination.count < 1 ||
+      r.termination.count > 52
+    ) {
+      errs.push({
+        fieldKey: "recurrence.count",
+        step: 1,
+        message: "Number of occurrences must be 1–52.",
+      });
+    }
+  } else {
+    // until kind
+    const untilDate = parseDateString(r.termination.until);
+    if (firstDateIso !== null) {
+      const firstDate = parseDateString(firstDateIso);
+      if (untilDate <= firstDate) {
+        errs.push({
+          fieldKey: "recurrence.until",
+          step: 1,
+          message: "End date must be after the first occurrence.",
+        });
+      }
+    }
+    const oneYearOut = new Date();
+    oneYearOut.setFullYear(oneYearOut.getFullYear() + 1);
+    if (untilDate > oneYearOut) {
+      errs.push({
+        fieldKey: "recurrence.until",
+        step: 1,
+        message: "End date can't be more than 1 year out.",
+      });
+    }
+  }
+  return errs;
+};
+
+const validateWhenMultiDate = (d: DraftEvent): ValidationError[] => {
+  const errs: ValidationError[] = [];
+  const dates = d.multiDates ?? [];
+  if (dates.length < 2) {
+    errs.push({
+      fieldKey: "multiDates.minCount",
+      step: 1,
+      message: "Add at least 2 dates.",
+    });
+    return errs;
+  }
+  if (dates.length > 24) {
+    errs.push({
+      fieldKey: "multiDates.maxCount",
+      step: 1,
+      message: "Maximum is 24 dates.",
+    });
+    return errs;
+  }
+  // No past dates
+  const today = startOfToday();
+  for (let i = 0; i < dates.length; i++) {
+    const e = dates[i];
+    if (parseDateString(e.date) < today) {
+      errs.push({
+        fieldKey: `multiDates[${i}].date`,
+        step: 1,
+        message: `Date ${i + 1} (${e.date}) is in the past.`,
+      });
+    }
+  }
+  // No duplicate date+startTime
+  const seen = new Set<string>();
+  for (let i = 0; i < dates.length; i++) {
+    const key = `${dates[i].date}T${dates[i].startTime}`;
+    if (seen.has(key)) {
+      errs.push({
+        fieldKey: `multiDates[${i}].duplicate`,
+        step: 1,
+        message: `Date ${i + 1} duplicates an earlier date+time. Remove or change it.`,
+      });
+    }
+    seen.add(key);
+  }
+  return errs;
+};
+
+// ---- Step 3 — Where -------------------------------------------------
 
 const validateWhere = (d: DraftEvent): ValidationError[] => {
   const errs: ValidationError[] = [];
@@ -161,21 +353,11 @@ const validateWhere = (d: DraftEvent): ValidationError[] => {
  *   - "zoom.us/j/123"             (lenient: auto-prepends https://)
  *   - "www.meet.com/abc"          (lenient: auto-prepends https://)
  *
- * Rejects:
- *   - "hello"                     (no domain)
- *   - "abc.def"  with empty path  (depends on tld; we require host has dot)
- *   - "ftp://..."                 (only http/https for conferencing links)
- *   - non-parseable garbage
- *
- * Uses `new URL()` (available on Expo SDK 54 Hermes) for robust parse +
- * a host-shape sanity check (must include a dot — disqualifies single
- * words that happen to be valid hostnames like "localhost").
+ * Rejects: single-word inputs, ftp://, garbage.
  */
 const isValidUrl = (raw: string): boolean => {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return false;
-  // Lenient: prepend https:// when no protocol specified so users can
-  // paste just "zoom.us/j/123" without manually typing the scheme.
   const candidate = /^https?:\/\//i.test(trimmed)
     ? trimmed
     : `https://${trimmed}`;
@@ -183,9 +365,6 @@ const isValidUrl = (raw: string): boolean => {
     const u = new URL(candidate);
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
     if (u.hostname.length === 0) return false;
-    // Require a dot in the hostname so single-word inputs like
-    // "garbage" (which would parse as a relative-protocol-prepended
-    // URL) get rejected.
     if (!u.hostname.includes(".")) return false;
     return true;
   } catch {
@@ -194,7 +373,6 @@ const isValidUrl = (raw: string): boolean => {
 };
 
 const validateCover = (_d: DraftEvent): ValidationError[] => {
-  // coverHue always set (default 25); always passes.
   return [];
 };
 
@@ -235,7 +413,6 @@ const validateTickets = (d: DraftEvent): ValidationError[] => {
 };
 
 const validateSettings = (_d: DraftEvent): ValidationError[] => {
-  // visibility always set (default public); always passes.
   return [];
 };
 
@@ -291,7 +468,6 @@ const startOfToday = (): Date => {
 };
 
 const parseDateString = (iso: string): Date => {
-  // Treat as midnight local time of that date.
   const parts = iso.split("-");
   if (parts.length !== 3) return new Date(iso);
   const year = Number(parts[0]);

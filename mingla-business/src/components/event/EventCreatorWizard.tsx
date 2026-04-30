@@ -61,6 +61,7 @@ import {
   validateStep,
   type ValidationError,
 } from "../../utils/draftEventValidation";
+import { expandRecurrenceToDates } from "../../utils/recurrenceRule";
 
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -405,6 +406,23 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const showStripeBannerInDock =
     isLastStep && publishability.status === "blocked-stripe";
 
+  // Publish modal copy varies per whenMode (Cycle 4 spec §3.8.2).
+  const publishModalTitle = useMemo<string>(() => {
+    switch (liveDraft.whenMode) {
+      case "single":
+        return "Publish event?";
+      case "recurring": {
+        const count =
+          liveDraft.recurrenceRule !== null && liveDraft.date !== null
+            ? expandRecurrenceToDates(liveDraft.recurrenceRule, liveDraft.date).length
+            : 0;
+        return `Publish recurring event? ${count} occurrences will be created.`;
+      }
+      case "multi_date":
+        return `Publish event with ${liveDraft.multiDates?.length ?? 0} dates?`;
+    }
+  }, [liveDraft.whenMode, liveDraft.recurrenceRule, liveDraft.date, liveDraft.multiDates]);
+
   // ---- Render step body ----
 
   const renderStepBody = (): React.ReactElement => {
@@ -614,7 +632,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         visible={publishConfirmVisible}
         onClose={() => setPublishConfirmVisible(false)}
         onConfirm={handleConfirmPublish}
-        title="Publish event?"
+        title={publishModalTitle}
         description="Public sale starts immediately. You can edit details after publishing."
         confirmLabel="Publish"
       />
