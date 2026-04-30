@@ -141,28 +141,41 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         ) : null}
 
         <View style={styles.actions}>
-          <Button label={cancelLabel} onPress={onClose} variant="secondary" size="md" />
-          {variant === "holdToConfirm" ? (
-            <Pressable
-              onPressIn={handleHoldStart}
-              onPressOut={handleHoldEnd}
-              accessibilityRole="button"
-              accessibilityLabel={`Hold to ${confirmLabel.toLowerCase()}`}
-              style={styles.holdButton}
-            >
-              <Animated.View style={[styles.holdFill, progressBarStyle]} />
-              <Text style={styles.holdLabel}>
-                {isHolding ? "Hold to confirm…" : confirmLabel}
-              </Text>
-            </Pressable>
-          ) : (
+          <View style={styles.actionFlex}>
             <Button
-              label={confirmLabel}
-              onPress={triggerConfirm}
-              variant={destructive ? "destructive" : "primary"}
+              label={cancelLabel}
+              onPress={onClose}
+              variant="secondary"
               size="md"
-              disabled={!typeMatches}
+              fullWidth
             />
+          </View>
+          {variant === "holdToConfirm" ? (
+            <View style={styles.actionFlex}>
+              <Pressable
+                onPressIn={handleHoldStart}
+                onPressOut={handleHoldEnd}
+                accessibilityRole="button"
+                accessibilityLabel={`Hold to ${confirmLabel.toLowerCase()}`}
+                style={styles.holdButton}
+              >
+                <Animated.View style={[styles.holdFill, progressBarStyle]} />
+                <Text style={styles.holdLabel}>
+                  {isHolding ? "Hold to confirm…" : confirmLabel}
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.actionFlex}>
+              <Button
+                label={confirmLabel}
+                onPress={triggerConfirm}
+                variant={destructive ? "destructive" : "primary"}
+                size="md"
+                disabled={!typeMatches}
+                fullWidth
+              />
+            </View>
           )}
         </View>
       </View>
@@ -200,10 +213,15 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: "row",
-    justifyContent: "flex-end",
     alignItems: "center",
     gap: spacing.sm,
     marginTop: spacing.sm,
+  },
+  // Each action button takes equal flex space — Cancel and Confirm sit
+  // side-by-side at 50/50 width, gap between, naturally centered as a
+  // pair across the dialog. Matches iOS native alert layout.
+  actionFlex: {
+    flex: 1,
   },
   holdButton: {
     height: 44,

@@ -25,6 +25,9 @@
  *                              (passthrough migration; new fields start undefined)
  *   v6 (Cycle 2 J-A8 polish): adds contact.phoneCountryIso?
  *                              (passthrough migration; defaults to "GB" at read sites)
+ *   v7 (Cycle 2 J-A9): adds members?: BrandMember[] + pendingInvitations?:
+ *                       BrandInvitation[] (passthrough migration; both arrays
+ *                       start undefined, defaulted to [] at read sites)
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -35,7 +38,71 @@ import {
   type PersistOptions,
 } from "zustand/middleware";
 
+// BrandRole: from the brand list, what role does the CURRENT USER hold on
+// this brand? Used for permission gating in the founder-facing UI (top-nav
+// chip, brand-list rendering).
+//
+// BrandMemberRole (below): from a brand's perspective, what role does a
+// given team member hold on this brand? Used for member rendering + role
+// assignment in the J-A9 team UI.
+//
+// These are intentionally SEPARATE enums — do NOT collapse them. Cycle 1
+// only models owner/admin from the current-user perspective; J-A9 models
+// the full 6-role spectrum from the team-member perspective. Future cycles
+// may extend BrandRole to include 'admin' subtypes (e.g., 'event_manager')
+// once permission gating per role is wired up at the route level.
 export type BrandRole = "owner" | "admin";
+
+/**
+ * Full role enum used by team members on a brand. NEW in J-A9 schema v7.
+ * Per Designer Handoff §6.2.2.
+ */
+export type BrandMemberRole =
+  | "owner"
+  | "brand_admin"
+  | "event_manager"
+  | "finance_manager"
+  | "marketing_manager"
+  | "scanner";
+
+/**
+ * Roles that can be ASSIGNED via invite. Owner is excluded — exactly one
+ * owner per brand; ownership transfer is post-MVP. NEW in J-A9 schema v7.
+ */
+export type InviteRole = Exclude<BrandMemberRole, "owner">;
+
+/**
+ * Member status. Future-proof for `'suspended'` (post-MVP suspension flow).
+ * NEW in J-A9 schema v7.
+ */
+export type BrandMemberStatus = "active";
+
+export interface BrandMember {
+  id: string;
+  name: string;
+  email: string;
+  role: BrandMemberRole;
+  status: BrandMemberStatus;
+  /** ISO 8601 timestamp when the member joined the brand. */
+  joinedAt: string;
+  /** ISO 8601 timestamp of last activity. Optional — future B1 wiring. */
+  lastActiveAt?: string;
+  /** Avatar photo URL. Optional; rendering falls back to initial. */
+  photo?: string;
+}
+
+export type BrandInvitationStatus = "pending";
+
+export interface BrandInvitation {
+  id: string;
+  email: string;
+  role: InviteRole;
+  /** ISO 8601 timestamp when the invitation was sent. */
+  invitedAt: string;
+  /** Optional note from inviter, shown on the accept screen (B1 cycle). */
+  note?: string;
+  status: BrandInvitationStatus;
+}
 
 export interface BrandStats {
   events: number;
@@ -118,6 +185,18 @@ export type Brand = {
    * always shows attendees regardless of this toggle.
    */
   displayAttendeeCount?: boolean;
+  /**
+   * Active team members on this brand. Owner is always pinned at index 0
+   * by the rendering layer (BrandTeamView). NEW in J-A9 schema v7.
+   * Undefined treated as `[]` at read sites.
+   */
+  members?: BrandMember[];
+  /**
+   * Pending invitations for this brand. Rendered as greyed rows in the
+   * team list with Resend / Cancel actions. NEW in J-A9 schema v7.
+   * Undefined treated as `[]` at read sites.
+   */
+  pendingInvitations?: BrandInvitation[];
 };
 
 export type CurrentBrandState = {
@@ -153,13 +232,13 @@ const upgradeV2BrandToV3 = (b: V2Brand): Brand => ({
 });
 
 const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
-  name: "mingla-business.currentBrand.v6",
+  name: "mingla-business.currentBrand.v7",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state) => ({
     currentBrand: state.currentBrand,
     brands: state.brands,
   }),
-  version: 6,
+  version: 7,
   migrate: (persistedState, version) => {
     // v1 → v5: schema changed from {id, displayName} to full Brand shape.
     // Cycle 0a never seeded brands, so resetting is safe and avoids partial
@@ -183,6 +262,9 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
     // guards on each social chip skip undefined fields.
     // v5 → v6: passthrough. New optional `contact.phoneCountryIso` field
     // starts undefined; phone Input defaults to "GB" at read sites.
+    // v6 → v7: passthrough. New optional `members` + `pendingInvitations`
+    // arrays start undefined; team list renders empty-state when both
+    // absent. Read sites default to `[]`.
     return persistedState as PersistedState;
   },
 };

@@ -90,52 +90,41 @@ interface OperationsRow {
   icon: IconName;
   label: string;
   sub: string;
-  toastMessage: string;
+  /** Tap handler — navigation when the journey is live, fireToast when not. */
+  onPress: () => void;
 }
 
-const OPERATIONS_ROWS: OperationsRow[] = [
-  // [TRANSITIONAL] inert rows — exit when J-A9/J-A10/J-A12 lands per row.
-  {
-    icon: "bank",
-    label: "Payments & Stripe",
-    sub: "Not connected",
-    toastMessage: "Stripe Connect lands in J-A10.",
-  },
-  {
-    icon: "users",
-    label: "Team & permissions",
-    sub: "1 member",
-    toastMessage: "Team UI lands in J-A9.",
-  },
-  {
-    icon: "receipt",
-    label: "Tax & VAT",
-    sub: "Not configured",
-    toastMessage: "Tax settings land in a later cycle.",
-  },
-  {
-    icon: "chart",
-    label: "Finance reports",
-    sub: "Stripe-ready CSVs",
-    toastMessage: "Finance reports land in J-A12.",
-  },
-];
-
+/**
+ * Pattern note: BrandProfileViewProps grows a navigation callback prop per
+ * cycle as Operations rows go live. Current set:
+ *   - J-A8: onEdit (sticky-shelf "Edit brand")
+ *   - J-A9: onTeam (Operations row "Team & permissions")
+ *   - J-A10 (next): onPayments + onPaymentsOnboard
+ *   - J-A12 (later): onReports
+ * Each callback is owned by the route file (see app/brand/[id]/index.tsx),
+ * which calls router.push to navigate. This view component never imports
+ * `useRouter` — keeps the view re-renderable in tests / web parity.
+ */
 export interface BrandProfileViewProps {
   brand: Brand | null;
   onBack: () => void;
   /**
    * Called when user taps the sticky-shelf "Edit brand" button.
-   * Receives the brand id so the parent route can navigate. Pattern
-   * mirrors any future view→edit pair (J-A9 Team, J-A10 Payments, etc.).
+   * Receives the brand id so the parent route can navigate.
    */
   onEdit: (brandId: string) => void;
+  /**
+   * Called when user taps the "Team & permissions" Operations row.
+   * Receives the brand id. NEW in J-A9. Pattern mirrors `onEdit`.
+   */
+  onTeam: (brandId: string) => void;
 }
 
 export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   brand,
   onBack,
   onEdit,
+  onTeam,
 }) => {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
@@ -183,6 +172,44 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     if (brand === null) return [];
     return STUB_PAST_EVENTS[brand.id] ?? [];
   }, [brand]);
+
+  // Hook-derived Operations rows. Per-row onPress closes over either
+  // fireToast (still-TRANSITIONAL rows) or the live navigation callback
+  // (Team row — J-A9 wired onTeam). Sub-text on Team row reflects
+  // dynamic member count from the brand's members array.
+  // [TRANSITIONAL] inert rows — exit when J-A10/J-A12 lands per row.
+  // J-A9 row exited 2026-04-29 (commit pending) — Team is now live.
+  const operationsRows = useMemo<OperationsRow[]>(() => {
+    const memberCount = (brand?.members ?? []).length;
+    return [
+      {
+        icon: "bank",
+        label: "Payments & Stripe",
+        sub: "Not connected",
+        onPress: () => fireToast("Stripe Connect lands in J-A10."),
+      },
+      {
+        icon: "users",
+        label: "Team & permissions",
+        sub: `${memberCount} ${memberCount === 1 ? "member" : "members"}`,
+        onPress: () => {
+          if (brand !== null) onTeam(brand.id);
+        },
+      },
+      {
+        icon: "receipt",
+        label: "Tax & VAT",
+        sub: "Not configured",
+        onPress: () => fireToast("Tax settings land in a later cycle."),
+      },
+      {
+        icon: "chart",
+        label: "Finance reports",
+        sub: "Stripe-ready CSVs",
+        onPress: () => fireToast("Finance reports land in J-A12."),
+      },
+    ];
+  }, [brand, fireToast, onTeam]);
 
   // ----- Not Found state -----
   if (brand === null) {
@@ -346,12 +373,12 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
 
         {/* SECTION D — Operations List */}
         <GlassCard variant="base" padding={0}>
-          {OPERATIONS_ROWS.map((row, index) => {
-            const isLast = index === OPERATIONS_ROWS.length - 1;
+          {operationsRows.map((row, index) => {
+            const isLast = index === operationsRows.length - 1;
             return (
               <Pressable
                 key={row.label}
-                onPress={() => fireToast(row.toastMessage)}
+                onPress={row.onPress}
                 accessibilityRole="button"
                 accessibilityLabel={row.label}
                 style={[styles.opsRow, !isLast && styles.opsRowDivider]}
