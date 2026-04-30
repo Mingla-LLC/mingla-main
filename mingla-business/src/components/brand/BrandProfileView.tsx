@@ -124,11 +124,18 @@ const OPERATIONS_ROWS: OperationsRow[] = [
 export interface BrandProfileViewProps {
   brand: Brand | null;
   onBack: () => void;
+  /**
+   * Called when user taps the sticky-shelf "Edit brand" button.
+   * Receives the brand id so the parent route can navigate. Pattern
+   * mirrors any future view→edit pair (J-A9 Team, J-A10 Payments, etc.).
+   */
+  onEdit: (brandId: string) => void;
 }
 
 export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   brand,
   onBack,
+  onEdit,
 }) => {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
@@ -141,10 +148,11 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
-  // [TRANSITIONAL] Edit CTA — exit when J-A8 (/brand/[id]/edit) lands.
   const handleEdit = useCallback((): void => {
-    fireToast("Editing lands in J-A8.");
-  }, [fireToast]);
+    if (brand !== null) {
+      onEdit(brand.id);
+    }
+  }, [brand, onEdit]);
 
   // [TRANSITIONAL] View-public CTA — exit when /brand/[id]/preview lands (Cycle 3+).
   const handleViewPublic = useCallback((): void => {
@@ -207,12 +215,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
 
   // ----- Populated state -----
   const hasBio = typeof brand.bio === "string" && brand.bio.trim().length > 0;
-  const hasContact =
-    brand.contact !== undefined &&
-    (typeof brand.contact.email === "string" || typeof brand.contact.phone === "string");
-  const hasLinks =
-    brand.links !== undefined &&
-    (typeof brand.links.website === "string" || typeof brand.links.instagram === "string");
 
   const initial = brand.displayName.charAt(0).toUpperCase();
 
@@ -259,45 +261,59 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             </Pressable>
           )}
 
-          {hasContact ? (
-            <View style={styles.contactCol}>
-              {typeof brand.contact?.email === "string" ? (
-                <View style={styles.contactRow}>
-                  <Icon name="mail" size={16} color={textTokens.tertiary} />
-                  <Text style={styles.contactText} numberOfLines={1}>{brand.contact.email}</Text>
-                </View>
-              ) : null}
-              {typeof brand.contact?.phone === "string" ? (
-                <View style={styles.contactRow}>
-                  <Icon name="bell" size={16} color={textTokens.tertiary} />
-                  <Text style={styles.contactText} numberOfLines={1}>{brand.contact.phone}</Text>
-                </View>
-              ) : null}
-            </View>
-          ) : null}
-
-          {hasLinks ? (
-            <View style={styles.linksRow}>
-              {typeof brand.links?.website === "string" ? (
-                <Pressable
-                  onPress={handleOpenLink}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open website ${brand.links.website}`}
-                >
-                  <Pill variant="info">{brand.links.website}</Pill>
-                </Pressable>
-              ) : null}
-              {typeof brand.links?.instagram === "string" ? (
-                <Pressable
-                  onPress={handleOpenLink}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open Instagram ${brand.links.instagram}`}
-                >
-                  <Pill variant="info">{brand.links.instagram}</Pill>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
+          {(() => {
+            // Build the icon-chip list — only render chips for non-empty fields.
+            // Order: email → phone → website → instagram → tiktok → x →
+            // facebook → youtube → linkedin → threads. Hide entire row when
+            // every contact + social field is empty (clean look per spec).
+            const chips: Array<{ key: string; icon: IconName; aria: string }> = [];
+            if (typeof brand.contact?.email === "string" && brand.contact.email.length > 0) {
+              chips.push({ key: "email", icon: "mail", aria: `Email ${brand.contact.email}` });
+            }
+            if (typeof brand.contact?.phone === "string" && brand.contact.phone.length > 0) {
+              chips.push({ key: "phone", icon: "phone", aria: `Phone ${brand.contact.phone}` });
+            }
+            if (typeof brand.links?.website === "string" && brand.links.website.length > 0) {
+              chips.push({ key: "website", icon: "globe", aria: `Website ${brand.links.website}` });
+            }
+            if (typeof brand.links?.instagram === "string" && brand.links.instagram.length > 0) {
+              chips.push({ key: "instagram", icon: "instagram", aria: `Instagram ${brand.links.instagram}` });
+            }
+            if (typeof brand.links?.tiktok === "string" && brand.links.tiktok.length > 0) {
+              chips.push({ key: "tiktok", icon: "tiktok", aria: `TikTok ${brand.links.tiktok}` });
+            }
+            if (typeof brand.links?.x === "string" && brand.links.x.length > 0) {
+              chips.push({ key: "x", icon: "x", aria: `X ${brand.links.x}` });
+            }
+            if (typeof brand.links?.facebook === "string" && brand.links.facebook.length > 0) {
+              chips.push({ key: "facebook", icon: "facebook", aria: `Facebook ${brand.links.facebook}` });
+            }
+            if (typeof brand.links?.youtube === "string" && brand.links.youtube.length > 0) {
+              chips.push({ key: "youtube", icon: "youtube", aria: `YouTube ${brand.links.youtube}` });
+            }
+            if (typeof brand.links?.linkedin === "string" && brand.links.linkedin.length > 0) {
+              chips.push({ key: "linkedin", icon: "linkedin", aria: `LinkedIn ${brand.links.linkedin}` });
+            }
+            if (typeof brand.links?.threads === "string" && brand.links.threads.length > 0) {
+              chips.push({ key: "threads", icon: "threads", aria: `Threads ${brand.links.threads}` });
+            }
+            if (chips.length === 0) return null;
+            return (
+              <View style={styles.socialsRow}>
+                {chips.map((chip) => (
+                  <Pressable
+                    key={chip.key}
+                    onPress={handleOpenLink}
+                    accessibilityRole="button"
+                    accessibilityLabel={chip.aria}
+                    style={styles.socialChip}
+                  >
+                    <Icon name={chip.icon} size={18} color={accent.warm} />
+                  </Pressable>
+                ))}
+              </View>
+            );
+          })()}
         </GlassCard>
 
         {/* SECTION B — Stats Strip */}
@@ -538,27 +554,22 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
 
-  contactCol: {
-    gap: spacing.xs,
-    marginTop: spacing.md,
-  },
-  contactRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  contactText: {
-    flex: 1,
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.primary,
-  },
-
-  linksRow: {
+  // Socials row (J-A8 polish — replaces contactCol + linksRow) -----------
+  socialsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
     marginTop: spacing.md,
+  },
+  socialChip: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   // Stats Strip ----------------------------------------------------------

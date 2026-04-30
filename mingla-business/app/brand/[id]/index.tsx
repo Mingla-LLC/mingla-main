@@ -40,9 +40,13 @@ export default function BrandProfileRoute(): React.ReactElement {
     }
   };
 
+  const handleOpenEdit = (brandId: string): void => {
+    router.push(`/brand/${brandId}/edit` as never);
+  };
+
   return (
     <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>
-      <BrandProfileView brand={brand} onBack={handleBack} />
+      <BrandProfileView brand={brand} onBack={handleBack} onEdit={handleOpenEdit} />
     </View>
   );
 }
