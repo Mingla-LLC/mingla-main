@@ -242,21 +242,42 @@ fi
 
 c_step "Adding all created issues to project '$PROJECT_TITLE'"
 
-gh issue list --repo "$OWNER/$REPO" --state all --label epic --limit 50 --json number,url \
-  | jq -r '.[].url' \
-  | while read -r URL; do
-    gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$URL" >/dev/null 2>&1 \
-      && c_ok "  → project: $URL" \
-      || c_skip "  · already in project: $URL"
-  done
+# Pre-fetch existing items so we can skip them (rate-limit friendly).
+EXISTING_ITEM_NUMS=$(gh api graphql -f query="
+query {
+  organization(login: \"$OWNER\") {
+    projectV2(number: $PROJECT_NUMBER) {
+      items(first: 200) {
+        nodes { content { ... on Issue { number } } }
+      }
+    }
+  }
+}" 2>/dev/null | jq -r '.data.organization.projectV2.items.nodes[].content.number // empty' || echo "")
 
-gh issue list --repo "$OWNER/$REPO" --state all --label user-story --limit 50 --json number,url \
+add_to_project() {
+  local URL="$1"
+  local NUM
+  NUM=$(echo "$URL" | grep -oE '[0-9]+$')
+  if echo "$EXISTING_ITEM_NUMS" | grep -qx "$NUM"; then
+    c_skip "  · #$NUM already in project"
+    return 0
+  fi
+  if gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$URL" >/dev/null 2>&1; then
+    c_ok "  → #$NUM added"
+  else
+    c_err "  ✗ #$NUM add failed"
+  fi
+}
+
+# Add epics
+gh issue list --repo "$OWNER/$REPO" --state all --label epic --limit 100 --json url \
   | jq -r '.[].url' \
-  | while read -r URL; do
-    gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$URL" >/dev/null 2>&1 \
-      && c_ok "  → project: $URL" \
-      || c_skip "  · already in project: $URL"
-  done
+  | while read -r URL; do add_to_project "$URL"; done
+
+# Add user stories
+gh issue list --repo "$OWNER/$REPO" --state all --label user-story --limit 100 --json url \
+  | jq -r '.[].url' \
+  | while read -r URL; do add_to_project "$URL"; done
 
 # ---- 8. Summary -----------------------------------------------------
 
