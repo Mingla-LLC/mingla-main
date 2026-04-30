@@ -16,11 +16,28 @@
  *
  * Caller MUST wrap the app root in `GestureHandlerRootView` (Expo Router
  * 6 includes one by default; if not, add at the top of `app/_layout.tsx`).
+ *
+ * # Overlay portal (Cycle 2 J-A8 polish — RC-1 fix)
+ * Wrapped in React Native's native `Modal` component so the overlay
+ * (scrim + panel) renders at the OS-level root window regardless of
+ * where in the React tree the consumer mounts this Sheet. Without this
+ * portal, `StyleSheet.absoluteFill` would resolve to the nearest
+ * positioned ancestor — for consumers inside a ScrollView, that's the
+ * ScrollView's content container (not the screen), causing the scrim
+ * and bottomDock to anchor to invisible coordinates.
+ *
+ * If you remove the Modal wrapper, the Sheet will appear to "work"
+ * for short forms (where contentContainer ≈ viewport) but will silently
+ * break for long forms (BrandEditView, EventCreator, etc.). Always
+ * keep the Modal wrapper. Same pattern recommended for Modal.tsx and
+ * ConfirmDialog.tsx (HF-1 — separate dispatch). Codified as invariant
+ * I-13: kit overlay primitives must portal to screen root.
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Dimensions, Pressable, StyleSheet, View } from "react-native";
+import { Dimensions, Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
+import { BlurView } from "expo-blur";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
@@ -34,12 +51,33 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
+  blurIntensity as blurIntensityTokens,
   glass,
   radius as radiusTokens,
+  shadows,
   spacing,
 } from "../../constants/designSystem";
 
-import { GlassCard } from "./GlassCard";
+// Inline glass-stack background — mirrors GlassChrome's L1-L4 visual layers
+// but with each layer absolute-filled at the body level so the body can be
+// `flex: 1` with internal `flex: 1` children that fill correctly. Going via
+// GlassCard/GlassChrome was causing flex-collapse for consumers like the
+// country picker (D-IMPL-44 family — GlassChrome's content View has
+// `position: relative` with no flex, so `flex: 1` children inside collapse).
+// Same pattern that TopSheet uses for the same reason.
+const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
+
+const supportsBackdropFilter: boolean =
+  Platform.OS === "web" &&
+  typeof globalThis !== "undefined" &&
+  typeof (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS?.supports === "function" &&
+  ((globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("backdrop-filter", "blur(10px)") ||
+    (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("-webkit-backdrop-filter", "blur(10px)"));
+
+const useBlurOnWeb = (): boolean => {
+  if (Platform.OS !== "web") return true;
+  return supportsBackdropFilter;
+};
 
 export type SheetSnapPoint = "peek" | "half" | "full";
 
@@ -168,44 +206,91 @@ export const Sheet: React.FC<SheetProps> = ({
 
   if (!mounted) return null;
 
+  const blurOk = useBlurOnWeb();
+  const blurIntensity = blurIntensityTokens.cardElevated;
+
   return (
-    <View
-      pointerEvents={visible ? "auto" : "none"}
-      style={StyleSheet.absoluteFill}
-      testID={testID}
+    <Modal
+      visible={mounted}
+      transparent
+      animationType="none"
+      onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <Animated.View
-        style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimStyle]}
+      <View
+        pointerEvents={visible ? "auto" : "none"}
+        style={StyleSheet.absoluteFill}
+        testID={testID}
       >
-        <Pressable style={styles.scrimPress} onPress={handleScrimPress} />
-      </Animated.View>
-      <View style={styles.bottomDock} pointerEvents="box-none">
-        <GestureDetector gesture={panGesture}>
-          <Animated.View
-            style={[
-              styles.panel,
-              { height: sheetHeight },
-              panelStyle,
-              style,
-            ]}
-          >
-            <View style={styles.handleWrap}>
-              <View style={styles.handle} />
-            </View>
-            <View style={styles.body}>
-              <GlassCard
-                variant="elevated"
-                radius="xl"
-                padding={spacing.lg}
-                style={styles.card}
-              >
-                {children}
-              </GlassCard>
-            </View>
-          </Animated.View>
-        </GestureDetector>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimStyle]}
+        >
+          <Pressable style={styles.scrimPress} onPress={handleScrimPress} />
+        </Animated.View>
+        <View style={styles.bottomDock} pointerEvents="box-none">
+          <GestureDetector gesture={panGesture}>
+            <Animated.View
+              style={[
+                styles.panel,
+                { height: sheetHeight },
+                shadows.glassCardElevated,
+                panelStyle,
+                style,
+              ]}
+            >
+              {/* L1 — Blur base */}
+              {blurOk ? (
+                <BlurView
+                  intensity={blurIntensity}
+                  tint="dark"
+                  style={[StyleSheet.absoluteFill, styles.bodyClip]}
+                />
+              ) : (
+                <View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    styles.bodyClip,
+                    { backgroundColor: FALLBACK_BACKGROUND },
+                  ]}
+                />
+              )}
+              {/* L2 — Tint floor */}
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  styles.bodyClip,
+                  { backgroundColor: glass.tint.profileElevated },
+                ]}
+              />
+              {/* L3 — Top edge highlight */}
+              <View
+                style={[
+                  styles.topHighlight,
+                  { backgroundColor: glass.highlight.profileElevated },
+                ]}
+              />
+              {/* L4 — Hairline border */}
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  styles.bodyClip,
+                  {
+                    borderColor: glass.border.profileElevated,
+                    borderWidth: StyleSheet.hairlineWidth,
+                  },
+                ]}
+                pointerEvents="none"
+              />
+              {/* Content layer — handle + flex:1 body, layered above visuals */}
+              <View style={styles.handleWrap}>
+                <View style={styles.handle} />
+              </View>
+              <View style={styles.body}>{children}</View>
+            </Animated.View>
+          </GestureDetector>
+        </View>
       </View>
-    </View>
+    </Modal>
   );
 };
 
@@ -221,8 +306,22 @@ const styles = StyleSheet.create({
   },
   panel: {
     width: "100%",
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.lg,
+    borderTopLeftRadius: radiusTokens.xl,
+    borderTopRightRadius: radiusTokens.xl,
+    // Clip child visual layers to the rounded panel shape (top corners
+    // rounded; bottom edges flush with viewport bottom).
+    overflow: "hidden",
+  },
+  bodyClip: {
+    borderTopLeftRadius: radiusTokens.xl,
+    borderTopRightRadius: radiusTokens.xl,
+  },
+  topHighlight: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
   },
   handleWrap: {
     alignItems: "center",
@@ -236,13 +335,8 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
-  },
-  card: {
-    flex: 1,
-    borderTopLeftRadius: radiusTokens.xl,
-    borderTopRightRadius: radiusTokens.xl,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
   },
 });
 

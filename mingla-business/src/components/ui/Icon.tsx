@@ -83,7 +83,15 @@ export type IconName =
   | "notebook"
   | "award"
   | "trending"
-  | "inbox";
+  | "inbox"
+  | "phone"
+  | "instagram"
+  | "tiktok"
+  | "x"
+  | "facebook"
+  | "youtube"
+  | "linkedin"
+  | "threads";
 
 export interface IconProps {
   name: IconName;
@@ -337,6 +345,44 @@ const RENDERERS: Record<IconName, Renderer> = {
       <Rect x="3" y="3" width="18" height="18" rx="2" />
       <Path d="M3 13h5l2 3h4l2-3h5" />
     </>
+  ),
+  // J-A8 polish (DEC-082) — additive icon expansion for contact + social platforms.
+  // Lucide-derived line glyphs at 24×24, strokeWidth 1.75 (inherits from Svg parent).
+  // Threads is an "@"-derived approximation per D-FORENSICS-A8P-1; designer-review-pending.
+  phone: () => (
+    <Path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+  ),
+  instagram: (color) => (
+    <>
+      <Rect x="2" y="2" width="20" height="20" rx="5" />
+      <Path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <Circle cx="17.5" cy="6.5" r="1" fill={color} stroke="none" />
+    </>
+  ),
+  tiktok: () => (
+    <Path d="M16 8v8a4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4M16 8a5 5 0 0 0 5 5V9a5 5 0 0 1-5-5z" />
+  ),
+  x: () => (
+    <Path d="M4 4l7 9-7 9h2.5l5.5-7 5.5 7H22l-7-9 7-9h-2.5L14 11 8.5 4H4z" />
+  ),
+  facebook: () => (
+    <Path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+  ),
+  youtube: () => (
+    <>
+      <Path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z" />
+      <Path d="M9.75 15.02l5.75-3.27-5.75-3.27v6.54z" />
+    </>
+  ),
+  linkedin: () => (
+    <>
+      <Path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4V8h4v2c1-1 2-2 4-2z" />
+      <Rect x="2" y="9" width="4" height="12" />
+      <Circle cx="4" cy="4" r="2" />
+    </>
+  ),
+  threads: () => (
+    <Path d="M12 21a9 9 0 1 1 9-9c0 2-1 4-3 5M9 11c1-2 3-3 5-2 1 1 1 3-1 4M11 14c-1-1-1-3 0-4 2-1 4 1 4 3-1 2-3 2-4 1" />
   ),
 };
 

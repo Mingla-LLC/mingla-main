@@ -3,8 +3,9 @@
  *
  * [TRANSITIONAL] stub data — replaces real backend. Removed in B1 backend
  * cycle when brand CRUD endpoints land. All consumers (Home hero, brand
- * switcher, J-A7 brand profile) read from currentBrandStore which is seeded
- * from this list via the dev "Seed 4 stub brands" button on Account.
+ * switcher, J-A7 brand profile, J-A8 brand edit) read from currentBrandStore
+ * which is seeded from this list via the dev "Seed 4 stub brands" button on
+ * Account.
  *
  * Cycle 1: Sunday Languor has a `currentLiveEvent` (matches dispatch AC#3
  * hero figure: "Slow Burn vol. 4 — Live tonight £8,420 / £12,000").
@@ -12,6 +13,19 @@
  * Cycle 2 J-A7 (schema v3): each brand now carries bio, tagline, contact,
  * links, and stats.attendees so the brand profile screen renders meaningful
  * content immediately after seeding. Bio uses 3 sentences min per brand.
+ *
+ * Cycle 2 J-A8 (schema v4): each brand carries `displayAttendeeCount: true`
+ * explicit so the edit screen's Display toggle renders ON by default.
+ *
+ * Cycle 2 J-A8 polish (schema v5): brands gain mixed coverage across the 6
+ * new social platforms (tiktok, x, facebook, youtube, linkedin, threads) so
+ * smoke tests hit different chip counts on the J-A7 profile hero — Lonely
+ * Moth (all 8 platforms), Sunday Languor (6), The Long Lunch (3), Hidden
+ * Rooms (2 = website + instagram only).
+ *
+ * Cycle 2 J-A8 polish URL fix: social fields now store full HTTPS URLs (not
+ * @-handles or bare slugs) so the public profile (Cycle 3+) can call
+ * `Linking.openURL` directly with zero per-platform URL reconstruction.
  */
 
 import type { Brand } from "./currentBrandStore";
@@ -29,12 +43,20 @@ export const STUB_BRANDS: Brand[] = [
     contact: {
       email: "hello@lonelymoth.events",
       phone: "+44 7700 900 312",
+      phoneCountryIso: "GB",
     },
     links: {
-      website: "lonelymoth.events",
-      instagram: "@lonely.moth.events",
+      website: "https://lonelymoth.events",
+      instagram: "https://instagram.com/lonely.moth.events",
+      tiktok: "https://tiktok.com/@lonelymoth",
+      x: "https://x.com/lonelymothldn",
+      facebook: "https://facebook.com/lonelymothldn",
+      youtube: "https://youtube.com/@lonelymoth",
+      linkedin: "https://linkedin.com/company/lonely-moth",
+      threads: "https://threads.net/@lonely.moth.events",
       custom: [],
     },
+    displayAttendeeCount: true,
   },
   {
     id: "tll",
@@ -49,10 +71,12 @@ export const STUB_BRANDS: Brand[] = [
       email: "table@thelonglunch.co.uk",
     },
     links: {
-      website: "thelonglunch.co.uk",
-      instagram: "@thelonglunch",
+      website: "https://thelonglunch.co.uk",
+      instagram: "https://instagram.com/thelonglunch",
+      tiktok: "https://tiktok.com/@thelonglunch",
       custom: [],
     },
+    displayAttendeeCount: true,
   },
   {
     id: "sl",
@@ -70,12 +94,18 @@ export const STUB_BRANDS: Brand[] = [
     contact: {
       email: "hi@sundaylanguor.com",
       phone: "+44 7700 900 781",
+      phoneCountryIso: "GB",
     },
     links: {
-      website: "sundaylanguor.com",
-      instagram: "@sundaylanguor",
+      website: "https://sundaylanguor.com",
+      instagram: "https://instagram.com/sundaylanguor",
+      tiktok: "https://tiktok.com/@sundaylanguor",
+      x: "https://x.com/sundaylanguor",
+      youtube: "https://youtube.com/@sundaylanguor",
+      threads: "https://threads.net/@sundaylanguor",
       custom: [],
     },
+    displayAttendeeCount: true,
   },
   {
     id: "hr",
@@ -90,10 +120,11 @@ export const STUB_BRANDS: Brand[] = [
       email: "rooms@hidden-rooms.co.uk",
     },
     links: {
-      website: "hidden-rooms.co.uk",
-      instagram: "@hidden.rooms",
+      website: "https://hidden-rooms.co.uk",
+      instagram: "https://instagram.com/hidden.rooms",
       custom: [],
     },
+    displayAttendeeCount: true,
   },
 ];
 

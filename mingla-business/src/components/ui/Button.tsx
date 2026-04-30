@@ -187,16 +187,28 @@ export const Button: React.FC<ButtonProps> = ({
   const containerRadius = shape === "pill" ? radiusTokens.full : radiusTokens.md;
   const iconSize = SIZE_ICON[size];
 
+  // Disabled state visual — muted grey background + tertiary text +
+  // light border. Replaces the previous opacity-only treatment which was
+  // too subtle on saturated variants (the warm-orange `primary` at 0.32
+  // opacity still read as active). Same disabled palette regardless of
+  // variant — clarity over variant-specific dimming. Continues DEC-079
+  // additive carve-out family (existing primitive, improved disabled
+  // signal; no new variant, no API change).
+  const DISABLED_BACKGROUND = "rgba(255, 255, 255, 0.06)";
+  const DISABLED_BORDER = "rgba(255, 255, 255, 0.10)";
+
   const containerStaticStyle: ViewStyle = {
     height: containerHeight,
     paddingHorizontal: SIZE_PADDING_X[size],
     borderRadius: containerRadius,
-    backgroundColor: tokens.background,
-    borderColor: tokens.border,
-    borderWidth: tokens.borderWidth ?? 0,
+    backgroundColor: disabled ? DISABLED_BACKGROUND : tokens.background,
+    borderColor: disabled ? DISABLED_BORDER : tokens.border,
+    borderWidth: disabled ? 1 : (tokens.borderWidth ?? 0),
     alignSelf: fullWidth ? "stretch" : "auto",
-    opacity: disabled ? 0.32 : 1,
+    opacity: disabled ? 0.6 : 1,
   };
+
+  const resolvedTextColor = disabled ? textTokens.tertiary : tokens.text;
 
   // PressableStateCallbackType in the installed RN version does not declare
   // `focused`/`hovered` — both fields are passed at runtime on web. We widen
@@ -223,14 +235,14 @@ export const Button: React.FC<ButtonProps> = ({
       >
         <View style={styles.content}>
           {loading ? (
-            <Spinner size={iconSize <= 18 ? 24 : iconSize <= 22 ? 24 : 36} color={tokens.text} />
+            <Spinner size={iconSize <= 18 ? 24 : iconSize <= 22 ? 24 : 36} color={resolvedTextColor} />
           ) : leadingIcon !== undefined ? (
-            <Icon name={leadingIcon} size={iconSize} color={tokens.text} />
+            <Icon name={leadingIcon} size={iconSize} color={resolvedTextColor} />
           ) : null}
           <Text
             style={[
               SIZE_LABEL[size],
-              { color: tokens.text },
+              { color: resolvedTextColor },
               loading ? styles.labelDimmed : null,
               labelStyle,
             ]}
@@ -239,7 +251,7 @@ export const Button: React.FC<ButtonProps> = ({
             {label}
           </Text>
           {!loading && trailingIcon !== undefined ? (
-            <Icon name={trailingIcon} size={iconSize} color={tokens.text} />
+            <Icon name={trailingIcon} size={iconSize} color={resolvedTextColor} />
           ) : null}
         </View>
       </Animated.View>
