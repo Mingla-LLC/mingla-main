@@ -35,6 +35,12 @@
  *                       optional fields start undefined; defaulted at read
  *                       sites — stripeStatus → "not_connected", balances → 0,
  *                       payouts/refunds → []).
+ *   v9 (Cycle 2 J-A12): adds events?: BrandEventStub[] (passthrough
+ *                       migration; new optional field starts undefined;
+ *                       defaulted to [] at read sites). FINAL Cycle-2
+ *                       schema bump. Real per-event records ship Cycle 3
+ *                       in a separate table; this Brand-level stub array
+ *                       drives J-A12 finance reports until then.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -154,6 +160,39 @@ export interface BrandRefund {
   refundedAt: string;
   /** Optional human-readable reason. Surfaces in row sub-text. */
   reason?: string;
+}
+
+/**
+ * Stub of an event for Brand-level summarization. NEW in J-A12 schema v9.
+ *
+ * Real event records ship in Cycle 3 (event creator) and live in a
+ * separate table; this Brand-level stub field exists ONLY to drive the
+ * J-A12 finance reports' Top events list + revenue breakdown until
+ * Cycle 3 wires per-event records.
+ *
+ * Per Designer Handoff finance-reports design (screens-brand.jsx
+ * FinanceReportsScreen line 411-417).
+ */
+export interface BrandEventStub {
+  id: string;
+  title: string;
+  /**
+   * Gross revenue from this event in GBP whole-units (before fees / refunds).
+   * Drives both the Top events list amount and the breakdown computation.
+   */
+  revenueGbp: number;
+  /** Number of tickets sold for this event. */
+  soldCount: number;
+  /** Status drives the row sub-text label fallback. */
+  status: "upcoming" | "in_progress" | "ended";
+  /** ISO 8601 — when the event was held (or scheduled to be held). */
+  heldAt: string;
+  /**
+   * Optional explicit context blurb for the row sub-text (e.g.,
+   * "in person", "brunch series"). When undefined, rendering falls back
+   * to a status-derived label (e.g., "ended", "upcoming").
+   */
+  contextLabel?: string;
 }
 
 export interface BrandStats {
@@ -281,6 +320,13 @@ export type Brand = {
    * Sorted newest-first by refundedAt at render time.
    */
   refunds?: BrandRefund[];
+  /**
+   * Recent events for finance-reports rendering. NEW in J-A12 schema v9.
+   * Undefined treated as `[]` at read sites. Real per-event records ship
+   * Cycle 3 (event creator) in a separate table; this Brand-level stub
+   * exists ONLY to populate J-A12 finance reports until Cycle 3 lands.
+   */
+  events?: BrandEventStub[];
 };
 
 export type CurrentBrandState = {
@@ -316,13 +362,13 @@ const upgradeV2BrandToV3 = (b: V2Brand): Brand => ({
 });
 
 const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
-  name: "mingla-business.currentBrand.v8",
+  name: "mingla-business.currentBrand.v9",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state) => ({
     currentBrand: state.currentBrand,
     brands: state.brands,
   }),
-  version: 8,
+  version: 9,
   migrate: (persistedState, version) => {
     // v1 → v5: schema changed from {id, displayName} to full Brand shape.
     // Cycle 0a never seeded brands, so resetting is safe and avoids partial
@@ -353,6 +399,9 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
     // `pendingBalanceGbp`, `lastPayoutAt`, `payouts`, `refunds` fields start
     // undefined; J-A7 banner + payments dashboard render not_connected/empty
     // states when absent. Read sites default to "not_connected" / 0 / [].
+    // v8 → v9: passthrough. New optional `events` array starts undefined;
+    // finance reports render empty-state when absent. Read sites default
+    // to []. FINAL Cycle-2 schema bump — real per-event records ship Cycle 3.
     return persistedState as PersistedState;
   },
 };

@@ -45,6 +45,8 @@ import type {
   BrandRefund,
   BrandStripeStatus,
 } from "../../store/currentBrandStore";
+import { formatGbp } from "../../utils/currency";
+import { formatRelativeTime } from "../../utils/relativeTime";
 
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -60,39 +62,6 @@ interface ToastState {
   visible: boolean;
   message: string;
 }
-
-// Currency formatter (Constitution #10) — ALL currency display passes
-// through Intl.NumberFormat. NO ad-hoc £${n} concatenation. Duplicated
-// from J-A7's formatGbp; D-INV-A10-2 watch-point THRESHOLD HIT (3+ uses)
-// — defer lift to src/utils/formatGbp.ts during J-A12 polish bundle.
-const formatGbp = (value: number): string =>
-  new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-    maximumFractionDigits: 2,
-  }).format(value);
-
-// Relative-time formatter — duplicated from J-A9 BrandTeamView /
-// BrandMemberDetailView. D-INV-A10-3 watch-point THRESHOLD HIT — same
-// lift opportunity as formatGbp during J-A12 polish.
-const formatRelativeTime = (iso: string): string => {
-  const then = new Date(iso).getTime();
-  const now = Date.now();
-  const diffSec = Math.max(0, Math.floor((now - then) / 1000));
-  if (diffSec < 60) return "just now";
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay === 1) return "yesterday";
-  if (diffDay < 7) return `${diffDay}d ago`;
-  if (diffDay < 30) return `${Math.floor(diffDay / 7)}w ago`;
-  return new Date(iso).toLocaleDateString("en-GB", {
-    month: "short",
-    day: "numeric",
-  });
-};
 
 // Status-banner config table. `null` entry suppresses the banner entirely
 // (active state's affirmative signal is the populated KPIs).
@@ -165,12 +134,19 @@ export interface BrandPaymentsViewProps {
    * shell. NOT called when status is restricted (Resolve fires Toast).
    */
   onOpenOnboard: () => void;
+  /**
+   * Called when user taps the "Export finance report" Button — routes to
+   * the finance reports surface. NEW in J-A12 (replaces prior TRANSITIONAL
+   * Toast).
+   */
+  onOpenReports: () => void;
 }
 
 export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   brand,
   onBack,
   onOpenOnboard,
+  onOpenReports,
 }) => {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
@@ -189,11 +165,9 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     fireToast("Stripe support lands in B2.");
   }, [fireToast]);
 
-  // [TRANSITIONAL] Export CTA fires Toast — exit when J-A12 ships the
-  // finance reports detail screen with real CSV export.
   const handleExport = useCallback((): void => {
-    fireToast("Finance reports land in J-A12.");
-  }, [fireToast]);
+    onOpenReports();
+  }, [onOpenReports]);
 
   const stripeStatus = brand?.stripeStatus ?? "not_connected";
   const bannerConfig = BANNER_CONFIG[stripeStatus];

@@ -31,6 +31,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { Brand, BrandStripeStatus } from "../../store/currentBrandStore";
+import { formatGbp, formatCount } from "../../utils/currency";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -42,15 +43,6 @@ import { KpiTile } from "../ui/KpiTile";
 import { Pill } from "../ui/Pill";
 import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
-
-const formatGbp = (value: number): string =>
-  new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-    maximumFractionDigits: 0,
-  }).format(value);
-
-const formatCount = (value: number): string => value.toLocaleString("en-GB");
 
 interface ToastState {
   visible: boolean;
@@ -98,14 +90,18 @@ interface OperationsRow {
 
 /**
  * Pattern note: BrandProfileViewProps grows a navigation callback prop per
- * cycle as Operations rows + the Stripe banner go live. Current set:
+ * cycle as Operations rows + the Stripe banner go live. Current set
+ * (FINAL for Cycle 2):
  *   - J-A8: onEdit (sticky-shelf "Edit brand")
  *   - J-A9: onTeam (Operations row "Team & permissions")
  *   - J-A10: onStripe (Stripe banner) + onPayments (Operations row "Payments & Stripe")
- *   - J-A12 (later): onReports (Operations row "Finance reports")
+ *   - J-A12: onReports (Operations row "Finance reports")
  * Each callback is owned by the route file (see app/brand/[id]/index.tsx),
  * which calls router.push to navigate. This view component never imports
  * `useRouter` — keeps the view re-renderable in tests / web parity.
+ *
+ * Tax & VAT row (Operations row #3) stays TRANSITIONAL Toast until §5.3.6
+ * settings cycle — no `onTax` prop yet.
  */
 export interface BrandProfileViewProps {
   brand: Brand | null;
@@ -131,6 +127,12 @@ export interface BrandProfileViewProps {
    * Receives the brand id. NEW in J-A10.
    */
   onPayments: (brandId: string) => void;
+  /**
+   * Called when user taps the "Finance reports" Operations row.
+   * Receives the brand id. NEW in J-A12 — final navigation prop in
+   * the Cycle-2 chain.
+   */
+  onReports: (brandId: string) => void;
 }
 
 // Status-driven J-A7 banner copy. When entry is `null`, banner is
@@ -170,6 +172,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onTeam,
   onStripe,
   onPayments,
+  onReports,
 }) => {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
@@ -255,10 +258,12 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         icon: "chart",
         label: "Finance reports",
         sub: "Stripe-ready CSVs",
-        onPress: () => fireToast("Finance reports land in J-A12."),
+        onPress: () => {
+          if (brand !== null) onReports(brand.id);
+        },
       },
     ];
-  }, [brand, fireToast, onTeam, onPayments]);
+  }, [brand, fireToast, onTeam, onPayments, onReports]);
 
   // ----- Not Found state -----
   if (brand === null) {

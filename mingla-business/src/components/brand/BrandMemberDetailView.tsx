@@ -45,6 +45,7 @@ import type {
   BrandMember,
   BrandMemberRole,
 } from "../../store/currentBrandStore";
+import { formatJoinedDate, formatRelativeTime } from "../../utils/relativeTime";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -70,33 +71,6 @@ const ROLE_LABEL: Record<BrandMemberRole, string> = {
   marketing_manager: "Marketing",
   scanner: "Scanner",
 };
-
-// Inline relative-time / joined-date formatters — duplicated from
-// BrandTeamView. DEC-079 closure: lift to src/utils/ on 3+ uses (D-INV-A9-5).
-const formatRelativeTime = (iso: string): string => {
-  const then = new Date(iso).getTime();
-  const now = Date.now();
-  const diffSec = Math.max(0, Math.floor((now - then) / 1000));
-  if (diffSec < 60) return "just now";
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay === 1) return "yesterday";
-  if (diffDay < 7) return `${diffDay}d ago`;
-  if (diffDay < 30) return `${Math.floor(diffDay / 7)}w ago`;
-  return new Date(iso).toLocaleDateString("en-GB", {
-    month: "short",
-    day: "numeric",
-  });
-};
-
-const formatJoinedDate = (iso: string): string =>
-  new Date(iso).toLocaleDateString("en-GB", {
-    month: "short",
-    year: "numeric",
-  });
 
 // ---------------------------------------------------------------------------
 // BrandMemberDetailView

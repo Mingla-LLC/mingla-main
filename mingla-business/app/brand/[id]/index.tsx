@@ -59,6 +59,10 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/brand/${brandId}/payments` as never);
   };
 
+  const handleOpenReports = (brandId: string): void => {
+    router.push(`/brand/${brandId}/payments/reports` as never);
+  };
+
   return (
     <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>
       <BrandProfileView
@@ -68,6 +72,7 @@ export default function BrandProfileRoute(): React.ReactElement {
         onTeam={handleOpenTeam}
         onStripe={handleOpenStripe}
         onPayments={handleOpenPayments}
+        onReports={handleOpenReports}
       />
     </View>
   );

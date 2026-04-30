@@ -1,17 +1,14 @@
 /**
- * /brand/[id]/payments — payments dashboard (J-A11 §5.3.7).
+ * /brand/[id]/payments/reports — finance reports surface (J-A12 §5.3.7-reports).
  *
  * Reads the dynamic `id` segment, resolves the brand from useBrandList(),
- * and renders BrandPaymentsView. When `id` doesn't match any brand, the
- * view's not-found state takes over.
+ * and renders BrandFinanceReportsView. When `id` doesn't match any brand,
+ * the view's not-found state takes over.
  *
- * Format-agnostic ID resolver per Cycle 2 invariant I-11. DO NOT add
- * normalization logic; the find() handles all ID shapes.
+ * Format-agnostic ID resolver per Cycle 2 invariant I-11.
+ * Host-bg cascade per Cycle 2 invariant I-12.
  *
- * Host-bg cascade per Cycle 2 invariant I-12 (canvas.discover required
- * on every non-tab route).
- *
- * Per spec §3.3.
+ * Per spec §3.5.
  */
 
 import React from "react";
@@ -19,11 +16,11 @@ import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandPaymentsView } from "../../../../src/components/brand/BrandPaymentsView";
+import { BrandFinanceReportsView } from "../../../../src/components/brand/BrandFinanceReportsView";
 import { canvas } from "../../../../src/constants/designSystem";
 import { useBrandList } from "../../../../src/store/currentBrandStore";
 
-export default function BrandPaymentsRoute(): React.ReactElement {
+export default function BrandFinanceReportsRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string | string[] }>();
@@ -37,19 +34,11 @@ export default function BrandPaymentsRoute(): React.ReactElement {
   const handleBack = (): void => {
     if (router.canGoBack()) {
       router.back();
+    } else if (brand !== null) {
+      router.replace(`/brand/${brand.id}/payments` as never);
     } else {
       router.replace("/(tabs)/account" as never);
     }
-  };
-
-  const handleOpenOnboard = (): void => {
-    if (brand === null) return;
-    router.push(`/brand/${brand.id}/payments/onboard` as never);
-  };
-
-  const handleOpenReports = (): void => {
-    if (brand === null) return;
-    router.push(`/brand/${brand.id}/payments/reports` as never);
   };
 
   return (
@@ -60,12 +49,7 @@ export default function BrandPaymentsRoute(): React.ReactElement {
         backgroundColor: canvas.discover, // I-12
       }}
     >
-      <BrandPaymentsView
-        brand={brand}
-        onBack={handleBack}
-        onOpenOnboard={handleOpenOnboard}
-        onOpenReports={handleOpenReports}
-      />
+      <BrandFinanceReportsView brand={brand} onBack={handleBack} />
     </View>
   );
 }

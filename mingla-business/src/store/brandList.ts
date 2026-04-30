@@ -120,6 +120,7 @@ export const STUB_BRANDS: Brand[] = [
     pendingBalanceGbp: 0,
     payouts: [],
     refunds: [],
+    events: [],
   },
   {
     id: "tll",
@@ -166,6 +167,7 @@ export const STUB_BRANDS: Brand[] = [
     pendingBalanceGbp: 0,
     payouts: [],
     refunds: [],
+    events: [],
   },
   {
     id: "sl",
@@ -239,6 +241,42 @@ export const STUB_BRANDS: Brand[] = [
       { id: "r_sl_2", amountGbp: 24.00, currency: "GBP", eventTitle: "Slow Burn vol. 4", refundedAt: "2026-04-25T15:30:00Z", reason: "Couldn't make it" },
       { id: "r_sl_1", amountGbp: 48.00, currency: "GBP", eventTitle: "Slow Burn vol. 3", refundedAt: "2026-04-22T11:00:00Z" },
     ],
+    events: [
+      {
+        id: "e_sl_4",
+        title: "Slow Burn vol. 4",
+        revenueGbp: 8420,
+        soldCount: 284,
+        status: "ended",
+        heldAt: "2026-04-26T20:00:00Z",
+        contextLabel: "in person",
+      },
+      {
+        id: "e_sl_brunches",
+        title: "Sunday Languor — March brunches",
+        revenueGbp: 5420,
+        soldCount: 248,
+        status: "ended",
+        heldAt: "2026-03-30T11:30:00Z",
+        contextLabel: "brunch series",
+      },
+      {
+        id: "e_sl_sitdown",
+        title: "A Long Sit-Down",
+        revenueGbp: 1920,
+        soldCount: 32,
+        status: "upcoming",
+        heldAt: "2026-05-15T19:00:00Z",
+      },
+      {
+        id: "e_sl_3",
+        title: "Slow Burn vol. 3",
+        revenueGbp: 2960,
+        soldCount: 392,
+        status: "ended",
+        heldAt: "2026-03-15T20:00:00Z",
+      },
+    ],
   },
   {
     id: "hr",
@@ -278,6 +316,16 @@ export const STUB_BRANDS: Brand[] = [
       { id: "p_hr_1", amountGbp: 88.00, currency: "GBP", status: "paid", arrivedAt: "2026-04-09T10:00:00Z" },
     ],
     refunds: [],
+    events: [
+      {
+        id: "e_hr_studio",
+        title: "Hidden Rooms — Studio",
+        revenueGbp: 88,
+        soldCount: 50,
+        status: "ended",
+        heldAt: "2026-04-09T20:00:00Z",
+      },
+    ],
   },
 ];
 
