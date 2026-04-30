@@ -17,6 +17,9 @@
  * Format a numeric GBP value as a locale-aware currency string.
  * Always uses `en-GB` locale + GBP currency + max 2 fraction digits.
  *
+ * Use for transaction line items, fee breakdowns, payout/refund rows,
+ * and active balances — anywhere pence-level accuracy matters.
+ *
  * @example formatGbp(156.20)  → "£156.20"
  * @example formatGbp(0)       → "£0.00"
  * @example formatGbp(8420)    → "£8,420.00"
@@ -26,6 +29,23 @@ export const formatGbp = (value: number): string =>
     style: "currency",
     currency: "GBP",
     maximumFractionDigits: 2,
+  }).format(value);
+
+/**
+ * Format a numeric GBP value rounded to whole pounds (no decimals).
+ *
+ * Use for KPI tiles and headline scan numbers — anywhere a glanceable
+ * round figure is preferred over pence-level precision.
+ *
+ * @example formatGbpRound(24180)    → "£24,180"
+ * @example formatGbpRound(156.20)   → "£156"
+ * @example formatGbpRound(0)        → "£0"
+ */
+export const formatGbpRound = (value: number): string =>
+  new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    maximumFractionDigits: 0,
   }).format(value);
 
 /**

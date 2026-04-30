@@ -38,13 +38,7 @@ import {
   useCurrentBrand,
   type Brand,
 } from "../../src/store/currentBrandStore";
-
-const formatGbp = (value: number): string =>
-  new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-    maximumFractionDigits: 0,
-  }).format(value);
+import { formatGbpRound } from "../../src/utils/currency";
 
 interface ToastState {
   visible: boolean;
@@ -166,10 +160,10 @@ export default function HomeTab(): React.ReactElement {
                 <Text style={styles.heroEventName}>{liveEvent.name}</Text>
                 <View style={styles.heroAmountRow}>
                   <Text style={styles.heroAmountSold}>
-                    {formatGbp(liveEvent.soldGbp)}
+                    {formatGbpRound(liveEvent.soldGbp)}
                   </Text>
                   <Text style={styles.heroAmountGoal}>
-                    {" "}/ {formatGbp(liveEvent.goalGbp)}
+                    {" "}/ {formatGbpRound(liveEvent.goalGbp)}
                   </Text>
                 </View>
                 <View style={styles.progressBarTrack}>
@@ -200,7 +194,7 @@ export default function HomeTab(): React.ReactElement {
             ) : (
               <KpiTile
                 label="Last 7 days"
-                value={formatGbp(currentBrand.stats.rev)}
+                value={formatGbpRound(currentBrand.stats.rev)}
                 delta="+18%"
                 deltaUp
               />

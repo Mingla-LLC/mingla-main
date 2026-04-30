@@ -61,7 +61,7 @@ import type {
   BrandEventStub,
   BrandRefund,
 } from "../../store/currentBrandStore";
-import { formatCount, formatGbp } from "../../utils/currency";
+import { formatCount, formatGbp, formatGbpRound } from "../../utils/currency";
 
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -391,7 +391,7 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
               <Text style={styles.headlineLabel}>
                 {`Net revenue · ${PERIOD_LABEL[period]}`}
               </Text>
-              <Text style={styles.headlineValue}>{formatGbp(netToBank)}</Text>
+              <Text style={styles.headlineValue}>{formatGbpRound(netToBank)}</Text>
               {sparklineBars.length > 0 ? (
                 <View style={styles.sparklineRow}>
                   {sparklineBars.map((heightPct, i) => {
@@ -461,7 +461,7 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
                       </Text>
                     </View>
                     <Text style={styles.eventAmount}>
-                      {formatGbp(event.revenueGbp)}
+                      {formatGbpRound(event.revenueGbp)}
                     </Text>
                   </View>
                 );
