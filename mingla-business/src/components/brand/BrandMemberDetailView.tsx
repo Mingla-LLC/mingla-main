@@ -25,7 +25,6 @@
 
 import React, { useCallback, useState } from "react";
 import {
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -35,7 +34,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
   glass,
   radius as radiusTokens,
   spacing,
@@ -48,6 +46,7 @@ import type {
   BrandMemberRole,
 } from "../../store/currentBrandStore";
 
+import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
@@ -98,52 +97,6 @@ const formatJoinedDate = (iso: string): string =>
     month: "short",
     year: "numeric",
   });
-
-// ---------------------------------------------------------------------------
-// Avatar84 — 84×84 hero avatar. Inline per DEC-079 (duplicated from J-A7
-// hero pattern; D-INV-A9-3 watch-point — promote to kit Avatar primitive
-// once usage hits 3+ instances).
-// ---------------------------------------------------------------------------
-interface Avatar84Props {
-  name: string;
-  photo?: string;
-}
-
-const Avatar84: React.FC<Avatar84Props> = ({ name, photo }) => {
-  const initial = name.charAt(0).toUpperCase();
-  return (
-    <View style={avatarStyles.wrap}>
-      {photo !== undefined ? (
-        <Image source={{ uri: photo }} style={avatarStyles.image} />
-      ) : (
-        <Text style={avatarStyles.initial}>{initial}</Text>
-      )}
-    </View>
-  );
-};
-
-const avatarStyles = StyleSheet.create({
-  wrap: {
-    width: 84,
-    height: 84,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-  },
-  initial: {
-    fontSize: 36,
-    fontWeight: "700",
-    color: accent.warm,
-  },
-});
 
 // ---------------------------------------------------------------------------
 // BrandMemberDetailView
@@ -316,7 +269,7 @@ export const BrandMemberDetailView: React.FC<BrandMemberDetailViewProps> = ({
         {/* Identity block */}
         <GlassCard variant="elevated" padding={spacing.lg}>
           <View style={styles.identityCol}>
-            <Avatar84 name={member.name} photo={member.photo} />
+            <Avatar name={member.name} size="hero" photo={member.photo} />
             <Text style={styles.identityName}>{member.name}</Text>
             <View style={styles.identityPillRow}>
               <Pill variant={member.role === "owner" ? "accent" : "draft"}>

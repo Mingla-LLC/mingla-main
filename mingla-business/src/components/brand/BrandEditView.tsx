@@ -44,6 +44,7 @@ import {
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 
+import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
@@ -308,7 +309,6 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   }
 
   // ----- Populated state -----
-  const initial = brand.displayName.charAt(0).toUpperCase();
   const toggleValue = draft.displayAttendeeCount ?? true;
 
   const saveButton = (
@@ -346,11 +346,15 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* SECTION A — Photo card (read-mostly with TRANSITIONAL upload) */}
+          {/* SECTION A — Photo card (read-mostly with TRANSITIONAL upload).
+              Avatar + pencil-button overlay are wrapped in a relative-
+              positioned View so the absolute-positioned pencil anchors
+              against the avatar's bounding box. The Avatar primitive
+              itself stays atomic (no children prop) per kit discipline. */}
           <GlassCard variant="elevated" padding={spacing.lg}>
             <View style={styles.photoBlock}>
-              <View style={styles.heroAvatar}>
-                <Text style={styles.heroAvatarInitial}>{initial}</Text>
+              <View style={styles.heroAvatarWrap}>
+                <Avatar name={brand.displayName} size="hero" />
                 <Pressable
                   onPress={handlePhotoEdit}
                   accessibilityRole="button"
@@ -608,21 +612,12 @@ const styles = StyleSheet.create({
   photoBlock: {
     alignItems: "center",
   },
-  heroAvatar: {
-    width: 84,
-    height: 84,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-    alignItems: "center",
-    justifyContent: "center",
+  // Wrapper around the Avatar primitive — relative-positioned so the
+  // absolute pencil-edit button (sibling) anchors against the avatar's
+  // bounding box. Replaces the prior `heroAvatar` inline composition.
+  heroAvatarWrap: {
+    position: "relative",
     marginBottom: spacing.sm,
-  },
-  heroAvatarInitial: {
-    fontSize: 36,
-    fontWeight: "700",
-    color: accent.warm,
   },
   photoEditBtn: {
     position: "absolute",

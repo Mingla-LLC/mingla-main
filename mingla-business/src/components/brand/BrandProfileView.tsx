@@ -31,6 +31,7 @@ import {
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 
+import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { EventCover } from "../ui/EventCover";
 import { GlassCard } from "../ui/GlassCard";
@@ -243,8 +244,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // ----- Populated state -----
   const hasBio = typeof brand.bio === "string" && brand.bio.trim().length > 0;
 
-  const initial = brand.displayName.charAt(0).toUpperCase();
-
   return (
     <View style={styles.host}>
       <View style={styles.barWrap}>
@@ -263,9 +262,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         {/* SECTION A — Hero */}
         <GlassCard variant="elevated" padding={spacing.lg}>
           <View style={styles.heroAvatarRow}>
-            <View style={styles.heroAvatar}>
-              <Text style={styles.heroAvatarInitial}>{initial}</Text>
-            </View>
+            <Avatar name={brand.displayName} size="hero" />
           </View>
           <Text style={styles.heroName}>{brand.displayName}</Text>
           {typeof brand.tagline === "string" && brand.tagline.length > 0 ? (
@@ -524,21 +521,6 @@ const styles = StyleSheet.create({
   heroAvatarRow: {
     alignItems: "center",
     marginBottom: spacing.md,
-  },
-  heroAvatar: {
-    width: 84,
-    height: 84,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroAvatarInitial: {
-    fontSize: 36,
-    fontWeight: "700",
-    color: accent.warm,
   },
   heroName: {
     fontSize: typography.h2.fontSize,

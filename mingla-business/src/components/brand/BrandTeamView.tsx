@@ -14,7 +14,8 @@
  * I-13: BrandInviteSheet portals via kit Sheet primitive.
  *
  * Inline composition (DEC-079 closure):
- *   - Avatar40 (D-INV-A9-3 watch-point — promote to kit Avatar primitive on 3+ uses)
+ *   - Avatar (kit primitive) — promoted 2026-04-30 from D-INV-A9-3 watch-point
+ *     after 4-use threshold hit. See `src/components/ui/Avatar.tsx`.
  *   - formatRelativeTime / formatJoinedDate (D-INV-A9-5 watch-point — promote on 3+ uses)
  *   - FAB (D-INV-A9-6 watch-point — promote on 3+ uses)
  *
@@ -23,7 +24,6 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -47,6 +47,7 @@ import type {
   BrandMemberRole,
 } from "../../store/currentBrandStore";
 
+import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -100,56 +101,6 @@ const sortMembers = (members: BrandMember[]): BrandMember[] => {
     .sort((a, b) => (a.joinedAt < b.joinedAt ? 1 : -1));
   return owner !== undefined ? [owner, ...others] : others;
 };
-
-// ---------------------------------------------------------------------------
-// Avatar40 — circular 40×40 with fallback initial. Inline per DEC-079.
-// Promote to kit Avatar primitive on 3+ uses (currently 2: this + member-detail
-// uses Avatar84 which is a separate inline; D-INV-A9-3 watch-point).
-// ---------------------------------------------------------------------------
-interface Avatar40Props {
-  name: string;
-  photo?: string;
-  dimmed?: boolean;
-}
-
-const Avatar40: React.FC<Avatar40Props> = ({ name, photo, dimmed = false }) => {
-  const initial = name.charAt(0).toUpperCase();
-  return (
-    <View style={[avatarStyles.wrap, dimmed && avatarStyles.dimmed]}>
-      {photo !== undefined ? (
-        <Image source={{ uri: photo }} style={avatarStyles.image} />
-      ) : (
-        <Text style={avatarStyles.initial}>{initial}</Text>
-      )}
-    </View>
-  );
-};
-
-const avatarStyles = StyleSheet.create({
-  wrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  dimmed: {
-    opacity: 0.5,
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-  },
-  initial: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: accent.warm,
-  },
-});
 
 // ---------------------------------------------------------------------------
 // BrandTeamView
@@ -273,7 +224,7 @@ export const BrandTeamView: React.FC<BrandTeamViewProps> = ({
               accessibilityLabel={`Open ${member.name}`}
               style={styles.memberRow}
             >
-              <Avatar40 name={member.name} photo={member.photo} />
+              <Avatar name={member.name} size="row" photo={member.photo} />
               <View style={styles.memberTextCol}>
                 <Text style={styles.memberName} numberOfLines={1}>
                   {member.name}
@@ -325,7 +276,7 @@ export const BrandTeamView: React.FC<BrandTeamViewProps> = ({
             <View style={styles.rowsCol}>
               {pendingInvites.map((invitation) => (
                 <View key={invitation.id} style={styles.pendingRow}>
-                  <Avatar40 name={invitation.email} dimmed />
+                  <Avatar name={invitation.email} size="row" dimmed />
                   <View style={styles.memberTextCol}>
                     <Text
                       style={[styles.memberName, styles.pendingDimmed]}
