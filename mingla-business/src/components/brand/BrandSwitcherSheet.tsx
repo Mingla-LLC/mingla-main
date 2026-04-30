@@ -70,7 +70,7 @@ const buildBrand = (displayName: string): Brand => ({
   displayName: displayName.trim(),
   slug: slugify(displayName),
   role: "owner" as BrandRole,
-  stats: { events: 0, followers: 0, rev: 0 },
+  stats: { events: 0, followers: 0, rev: 0, attendees: 0 },
   currentLiveEvent: null,
 });
 

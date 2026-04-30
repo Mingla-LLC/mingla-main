@@ -14,16 +14,20 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { Button } from "../../src/components/ui/Button";
 import { GlassCard } from "../../src/components/ui/GlassCard";
+import { Icon } from "../../src/components/ui/Icon";
 import { Toast } from "../../src/components/ui/Toast";
 import { TopBar } from "../../src/components/ui/TopBar";
 import {
+  accent,
+  glass,
+  radius as radiusTokens,
   spacing,
   text as textTokens,
   typography,
@@ -77,6 +81,13 @@ export default function AccountTab(): React.ReactElement {
   const handleOpenSwitcher = useCallback((): void => {
     setSheetVisible(true);
   }, []);
+
+  const handleOpenBrandProfile = useCallback(
+    (brandId: string): void => {
+      router.push(`/brand/${brandId}` as never);
+    },
+    [router],
+  );
 
   const handleCloseSheet = useCallback((): void => {
     setSheetVisible(false);
@@ -144,6 +155,40 @@ export default function AccountTab(): React.ReactElement {
             </View>
           ) : null}
         </GlassCard>
+
+        {brands.length > 0 ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.title}>Your brands</Text>
+            <Text style={styles.body}>Tap a brand to open its profile.</Text>
+            <View style={styles.brandRowsCol}>
+              {brands.map((brand) => (
+                <Pressable
+                  key={brand.id}
+                  onPress={() => handleOpenBrandProfile(brand.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${brand.displayName} profile`}
+                  style={styles.brandRow}
+                >
+                  <View style={styles.brandAvatar}>
+                    <Text style={styles.brandInitial}>
+                      {brand.displayName.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.brandTextCol}>
+                    <Text style={styles.brandName} numberOfLines={1}>
+                      {brand.displayName}
+                    </Text>
+                    <Text style={styles.brandSub} numberOfLines={1}>
+                      {brand.stats.events} events ·{" "}
+                      {brand.stats.followers.toLocaleString("en-GB")} followers
+                    </Text>
+                  </View>
+                  <Icon name="chevR" size={16} color={textTokens.tertiary} />
+                </Pressable>
+              ))}
+            </View>
+          </GlassCard>
+        ) : null}
 
         {__DEV__ ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
@@ -246,5 +291,53 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: spacing.xl,
     paddingHorizontal: spacing.md,
+  },
+
+  // Your brands rows ----------------------------------------------------
+  brandRowsCol: {
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radiusTokens.lg,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+  },
+  brandAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: radiusTokens.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+  },
+  brandInitial: {
+    fontSize: typography.body.fontSize,
+    fontWeight: "700",
+    color: accent.warm,
+  },
+  brandTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  brandName: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  brandSub: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    marginTop: 2,
   },
 });
