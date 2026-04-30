@@ -35,6 +35,17 @@
  *   - Sunday Languor: 2 active (owner + finance_manager) + 1 pending (with note)
  *   - Hidden Rooms: 1 active (owner only — empty-state demo) + 0 pending
  * Last-active timestamps are stub for J-A9; real session tracking lands B1.
+ *
+ * Cycle 2 J-A10/J-A11 (schema v8): each brand carries stripeStatus + payouts
+ * + refunds + balances + lastPayoutAt to drive the payments dashboard's 4
+ * banner states + 3 KPI tiles + recent payouts/refunds lists. Coverage
+ * spread:
+ *   - Lonely Moth: not_connected (drives J-A7 Connect banner; £0/£0/—)
+ *   - The Long Lunch: onboarding (Verifying banner; £0/£0/—)
+ *   - Sunday Languor: active (no banner; populated KPIs + 4 payouts + 2 refunds)
+ *   - Hidden Rooms: restricted (red Action Required banner; £0/£0/£88; 1 historical payout)
+ * Real Stripe data lands in B2 (real Stripe webhooks); these stub values
+ * are deliberately TRANSITIONAL.
  */
 
 import type { Brand } from "./currentBrandStore";
@@ -104,6 +115,11 @@ export const STUB_BRANDS: Brand[] = [
         status: "pending",
       },
     ],
+    stripeStatus: "not_connected",
+    availableBalanceGbp: 0,
+    pendingBalanceGbp: 0,
+    payouts: [],
+    refunds: [],
   },
   {
     id: "tll",
@@ -145,6 +161,11 @@ export const STUB_BRANDS: Brand[] = [
       },
     ],
     pendingInvitations: [],
+    stripeStatus: "onboarding",
+    availableBalanceGbp: 0,
+    pendingBalanceGbp: 0,
+    payouts: [],
+    refunds: [],
   },
   {
     id: "sl",
@@ -204,6 +225,20 @@ export const STUB_BRANDS: Brand[] = [
         status: "pending",
       },
     ],
+    stripeStatus: "active",
+    availableBalanceGbp: 156.20,
+    pendingBalanceGbp: 45.60,
+    lastPayoutAt: "2026-04-27T10:00:00Z",
+    payouts: [
+      { id: "p_sl_4", amountGbp: 156.20, currency: "GBP", status: "in_transit", arrivedAt: "2026-05-01T10:00:00Z" },
+      { id: "p_sl_3", amountGbp: 482.50, currency: "GBP", status: "paid", arrivedAt: "2026-04-27T10:00:00Z" },
+      { id: "p_sl_2", amountGbp: 312.80, currency: "GBP", status: "paid", arrivedAt: "2026-04-20T10:00:00Z" },
+      { id: "p_sl_1", amountGbp: 198.40, currency: "GBP", status: "paid", arrivedAt: "2026-04-13T10:00:00Z" },
+    ],
+    refunds: [
+      { id: "r_sl_2", amountGbp: 24.00, currency: "GBP", eventTitle: "Slow Burn vol. 4", refundedAt: "2026-04-25T15:30:00Z", reason: "Couldn't make it" },
+      { id: "r_sl_1", amountGbp: 48.00, currency: "GBP", eventTitle: "Slow Burn vol. 3", refundedAt: "2026-04-22T11:00:00Z" },
+    ],
   },
   {
     id: "hr",
@@ -235,6 +270,14 @@ export const STUB_BRANDS: Brand[] = [
       },
     ],
     pendingInvitations: [],
+    stripeStatus: "restricted",
+    availableBalanceGbp: 0,
+    pendingBalanceGbp: 0,
+    lastPayoutAt: "2026-04-09T10:00:00Z",
+    payouts: [
+      { id: "p_hr_1", amountGbp: 88.00, currency: "GBP", status: "paid", arrivedAt: "2026-04-09T10:00:00Z" },
+    ],
+    refunds: [],
   },
 ];
 

@@ -28,6 +28,13 @@
  *   v7 (Cycle 2 J-A9): adds members?: BrandMember[] + pendingInvitations?:
  *                       BrandInvitation[] (passthrough migration; both arrays
  *                       start undefined, defaulted to [] at read sites)
+ *   v8 (Cycle 2 J-A10/J-A11): adds stripeStatus?: BrandStripeStatus +
+ *                       availableBalanceGbp? + pendingBalanceGbp? +
+ *                       lastPayoutAt? + payouts?: BrandPayout[] +
+ *                       refunds?: BrandRefund[] (passthrough migration; new
+ *                       optional fields start undefined; defaulted at read
+ *                       sites — stripeStatus → "not_connected", balances → 0,
+ *                       payouts/refunds → []).
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -102,6 +109,51 @@ export interface BrandInvitation {
   /** Optional note from inviter, shown on the accept screen (B1 cycle). */
   note?: string;
   status: BrandInvitationStatus;
+}
+
+/**
+ * Brand's Stripe Connect state. NEW in J-A10 schema v8.
+ *
+ * - not_connected: brand has not started Stripe Connect onboarding
+ * - onboarding: submitted but Stripe is verifying (KYC in progress)
+ * - active: fully verified, can sell tickets and receive payouts
+ * - restricted: Stripe has flagged the account; payouts paused until resolved
+ *
+ * Per Designer Handoff §5.3.7 + §6.3.3.
+ */
+export type BrandStripeStatus =
+  | "not_connected"
+  | "onboarding"
+  | "active"
+  | "restricted";
+
+/** Payout status. NEW in J-A10 schema v8. */
+export type BrandPayoutStatus = "paid" | "in_transit" | "failed";
+
+export interface BrandPayout {
+  id: string;
+  /** Amount in GBP, positive number. Caller formats via Intl.NumberFormat. */
+  amountGbp: number;
+  currency: "GBP";
+  status: BrandPayoutStatus;
+  /** ISO 8601 timestamp when funds arrived (paid) or expected (in_transit). */
+  arrivedAt: string;
+}
+
+export interface BrandRefund {
+  id: string;
+  /**
+   * Refund amount in GBP, positive number (the refund value, not negative).
+   * The minus prefix on display is a render-time concern.
+   */
+  amountGbp: number;
+  currency: "GBP";
+  /** Display title of the event the refund relates to. */
+  eventTitle: string;
+  /** ISO 8601 timestamp when the refund processed. */
+  refundedAt: string;
+  /** Optional human-readable reason. Surfaces in row sub-text. */
+  reason?: string;
 }
 
 export interface BrandStats {
@@ -197,6 +249,38 @@ export type Brand = {
    * Undefined treated as `[]` at read sites.
    */
   pendingInvitations?: BrandInvitation[];
+  /**
+   * Stripe Connect status. NEW in J-A10 schema v8. Undefined treated as
+   * `"not_connected"` at read sites — drives the J-A7 banner + payments
+   * dashboard banner variant.
+   */
+  stripeStatus?: BrandStripeStatus;
+  /**
+   * Available balance (clears for next payout) in GBP whole-units.
+   * NEW in J-A10 schema v8. Undefined treated as 0 at read sites.
+   */
+  availableBalanceGbp?: number;
+  /**
+   * Pending balance (Stripe escrow window before clearing) in GBP whole-units.
+   * NEW in J-A10 schema v8. Undefined treated as 0 at read sites.
+   */
+  pendingBalanceGbp?: number;
+  /**
+   * ISO 8601 timestamp of the most recent payout. NEW in J-A10 schema v8.
+   * Undefined when no payouts have occurred. Drives the "Last payout"
+   * KPI tile sub-text (relative time).
+   */
+  lastPayoutAt?: string;
+  /**
+   * Recent payouts. NEW in J-A10 schema v8. Undefined treated as `[]`.
+   * Sorted newest-first by arrivedAt at render time.
+   */
+  payouts?: BrandPayout[];
+  /**
+   * Recent refunds. NEW in J-A10 schema v8. Undefined treated as `[]`.
+   * Sorted newest-first by refundedAt at render time.
+   */
+  refunds?: BrandRefund[];
 };
 
 export type CurrentBrandState = {
@@ -232,13 +316,13 @@ const upgradeV2BrandToV3 = (b: V2Brand): Brand => ({
 });
 
 const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
-  name: "mingla-business.currentBrand.v7",
+  name: "mingla-business.currentBrand.v8",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state) => ({
     currentBrand: state.currentBrand,
     brands: state.brands,
   }),
-  version: 7,
+  version: 8,
   migrate: (persistedState, version) => {
     // v1 → v5: schema changed from {id, displayName} to full Brand shape.
     // Cycle 0a never seeded brands, so resetting is safe and avoids partial
@@ -265,6 +349,10 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
     // v6 → v7: passthrough. New optional `members` + `pendingInvitations`
     // arrays start undefined; team list renders empty-state when both
     // absent. Read sites default to `[]`.
+    // v7 → v8: passthrough. New optional `stripeStatus`, `availableBalanceGbp`,
+    // `pendingBalanceGbp`, `lastPayoutAt`, `payouts`, `refunds` fields start
+    // undefined; J-A7 banner + payments dashboard render not_connected/empty
+    // states when absent. Read sites default to "not_connected" / 0 / [].
     return persistedState as PersistedState;
   },
 };

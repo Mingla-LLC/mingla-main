@@ -25,11 +25,12 @@ import {
   accent,
   glass,
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import type { Brand } from "../../store/currentBrandStore";
+import type { Brand, BrandStripeStatus } from "../../store/currentBrandStore";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -97,11 +98,11 @@ interface OperationsRow {
 
 /**
  * Pattern note: BrandProfileViewProps grows a navigation callback prop per
- * cycle as Operations rows go live. Current set:
+ * cycle as Operations rows + the Stripe banner go live. Current set:
  *   - J-A8: onEdit (sticky-shelf "Edit brand")
  *   - J-A9: onTeam (Operations row "Team & permissions")
- *   - J-A10 (next): onPayments + onPaymentsOnboard
- *   - J-A12 (later): onReports
+ *   - J-A10: onStripe (Stripe banner) + onPayments (Operations row "Payments & Stripe")
+ *   - J-A12 (later): onReports (Operations row "Finance reports")
  * Each callback is owned by the route file (see app/brand/[id]/index.tsx),
  * which calls router.push to navigate. This view component never imports
  * `useRouter` — keeps the view re-renderable in tests / web parity.
@@ -116,16 +117,59 @@ export interface BrandProfileViewProps {
   onEdit: (brandId: string) => void;
   /**
    * Called when user taps the "Team & permissions" Operations row.
-   * Receives the brand id. NEW in J-A9. Pattern mirrors `onEdit`.
+   * Receives the brand id. NEW in J-A9.
    */
   onTeam: (brandId: string) => void;
+  /**
+   * Called when user taps the Stripe banner (any visible state — banner is
+   * suppressed when stripeStatus === "active"). NEW in J-A10. Pattern
+   * continues onEdit + onTeam.
+   */
+  onStripe: (brandId: string) => void;
+  /**
+   * Called when user taps the "Payments & Stripe" Operations row.
+   * Receives the brand id. NEW in J-A10.
+   */
+  onPayments: (brandId: string) => void;
 }
+
+// Status-driven J-A7 banner copy. When entry is `null`, banner is
+// SUPPRESSED (active state — populated KPIs on the dashboard are the
+// affirmative signal, not a "you're good" green banner).
+const J_A7_BANNER_COPY: Record<
+  BrandStripeStatus,
+  { title: string; sub: string } | null
+> = {
+  not_connected: {
+    title: "Connect Stripe to sell tickets",
+    sub: "Get paid for your events. Setup takes 5 minutes.",
+  },
+  onboarding: {
+    title: "Onboarding submitted — verifying",
+    sub: "We'll email you when Stripe finishes verifying your details.",
+  },
+  active: null,
+  restricted: {
+    title: "Action required",
+    sub: "Stripe has limited your account. Tap to resolve.",
+  },
+};
+
+// Operations row #1 dynamic sub-text per stripe status.
+const OPERATIONS_SUB_TEXT: Record<BrandStripeStatus, string> = {
+  not_connected: "Not connected",
+  onboarding: "Onboarding…",
+  active: "Active",
+  restricted: "Action required",
+};
 
 export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   brand,
   onBack,
   onEdit,
   onTeam,
+  onStripe,
+  onPayments,
 }) => {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
@@ -149,10 +193,11 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     fireToast("Public preview lands in Cycle 3+.");
   }, [fireToast]);
 
-  // [TRANSITIONAL] Stripe banner — exit when Brand.stripeStatus field lands (J-A10).
   const handleStripeBanner = useCallback((): void => {
-    fireToast("Stripe Connect lands in J-A10.");
-  }, [fireToast]);
+    if (brand !== null) {
+      onStripe(brand.id);
+    }
+  }, [brand, onStripe]);
 
   // [TRANSITIONAL] Empty-bio CTA — exit when J-A8 lands.
   const handleEmptyBio = useCallback((): void => {
@@ -175,19 +220,22 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   }, [brand]);
 
   // Hook-derived Operations rows. Per-row onPress closes over either
-  // fireToast (still-TRANSITIONAL rows) or the live navigation callback
-  // (Team row — J-A9 wired onTeam). Sub-text on Team row reflects
-  // dynamic member count from the brand's members array.
-  // [TRANSITIONAL] inert rows — exit when J-A10/J-A12 lands per row.
-  // J-A9 row exited 2026-04-29 (commit pending) — Team is now live.
+  // fireToast (still-TRANSITIONAL rows) or the live navigation callback.
+  // Live wirings: J-A8 onEdit (sticky shelf — separate from this list) ·
+  // J-A9 onTeam (Team row) · J-A10 onPayments (Payments row).
+  // [TRANSITIONAL] remaining inert rows — exit when J-A12 (Finance reports)
+  // lands. Tax & VAT row stays TRANSITIONAL until §5.3.6 settings cycle.
   const operationsRows = useMemo<OperationsRow[]>(() => {
     const memberCount = (brand?.members ?? []).length;
+    const stripeStatus = brand?.stripeStatus ?? "not_connected";
     return [
       {
         icon: "bank",
         label: "Payments & Stripe",
-        sub: "Not connected",
-        onPress: () => fireToast("Stripe Connect lands in J-A10."),
+        sub: OPERATIONS_SUB_TEXT[stripeStatus],
+        onPress: () => {
+          if (brand !== null) onPayments(brand.id);
+        },
       },
       {
         icon: "users",
@@ -210,7 +258,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         onPress: () => fireToast("Finance reports land in J-A12."),
       },
     ];
-  }, [brand, fireToast, onTeam]);
+  }, [brand, fireToast, onTeam, onPayments]);
 
   // ----- Not Found state -----
   if (brand === null) {
@@ -347,26 +395,49 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           <KpiTile label="GMV" value={formatGbp(brand.stats.rev)} sub="all time" style={styles.statCell} />
         </View>
 
-        {/* SECTION C — Stripe-Not-Connected Banner */}
-        {/* [TRANSITIONAL] always-on banner — replaced by stripe-state-driven banner in J-A10. */}
-        <Pressable
-          onPress={handleStripeBanner}
-          accessibilityRole="button"
-          accessibilityLabel="Connect Stripe"
-        >
-          <GlassCard variant="base" padding={spacing.md}>
-            <View style={styles.bannerRow}>
-              <View style={styles.bannerIconWrap}>
-                <Icon name="bank" size={20} color={accent.warm} />
-              </View>
-              <View style={styles.bannerTextCol}>
-                <Text style={styles.bannerTitle}>Connect Stripe to sell tickets</Text>
-                <Text style={styles.bannerSub}>Get paid for your events. Setup takes 5 minutes.</Text>
-              </View>
-              <Icon name="chevR" size={16} color={textTokens.tertiary} />
-            </View>
-          </GlassCard>
-        </Pressable>
+        {/* SECTION C — Status-driven Stripe banner. Suppressed entirely
+            when stripeStatus === "active" (J_A7_BANNER_COPY entry is null
+            — populated KPIs + payments dashboard are the affirmative
+            signal, not a green "you're good" banner). */}
+        {(() => {
+          const stripeStatus = brand.stripeStatus ?? "not_connected";
+          const bannerCopy = J_A7_BANNER_COPY[stripeStatus];
+          if (bannerCopy === null) return null;
+          const isRestricted = stripeStatus === "restricted";
+          return (
+            <Pressable
+              onPress={handleStripeBanner}
+              accessibilityRole="button"
+              accessibilityLabel={bannerCopy.title}
+            >
+              <GlassCard
+                variant="base"
+                padding={spacing.md}
+                style={isRestricted ? styles.bannerDestructive : undefined}
+              >
+                <View style={styles.bannerRow}>
+                  <View
+                    style={[
+                      styles.bannerIconWrap,
+                      isRestricted && styles.bannerIconWrapDestructive,
+                    ]}
+                  >
+                    <Icon
+                      name="bank"
+                      size={20}
+                      color={isRestricted ? semantic.error : accent.warm}
+                    />
+                  </View>
+                  <View style={styles.bannerTextCol}>
+                    <Text style={styles.bannerTitle}>{bannerCopy.title}</Text>
+                    <Text style={styles.bannerSub}>{bannerCopy.sub}</Text>
+                  </View>
+                  <Icon name="chevR" size={16} color={textTokens.tertiary} />
+                </View>
+              </GlassCard>
+            </Pressable>
+          );
+        })()}
 
         {/* SECTION D — Operations List */}
         <GlassCard variant="base" padding={0}>
@@ -596,6 +667,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
   },
+  bannerDestructive: {
+    borderColor: "rgba(239, 68, 68, 0.45)",
+    borderWidth: 1,
+  },
   bannerIconWrap: {
     width: 36,
     height: 36,
@@ -605,6 +680,10 @@ const styles = StyleSheet.create({
     borderColor: accent.border,
     alignItems: "center",
     justifyContent: "center",
+  },
+  bannerIconWrapDestructive: {
+    backgroundColor: semantic.errorTint,
+    borderColor: "rgba(239, 68, 68, 0.45)",
   },
   bannerTextCol: {
     flex: 1,

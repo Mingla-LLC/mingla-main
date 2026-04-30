@@ -48,6 +48,17 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/brand/${brandId}/team` as never);
   };
 
+  // Both Stripe banner tap AND Operations row tap go to the dashboard.
+  // Banner taps INSIDE the dashboard handle onboarding routing — this
+  // avoids deep-linking straight to onboarding without context.
+  const handleOpenStripe = (brandId: string): void => {
+    router.push(`/brand/${brandId}/payments` as never);
+  };
+
+  const handleOpenPayments = (brandId: string): void => {
+    router.push(`/brand/${brandId}/payments` as never);
+  };
+
   return (
     <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>
       <BrandProfileView
@@ -55,6 +66,8 @@ export default function BrandProfileRoute(): React.ReactElement {
         onBack={handleBack}
         onEdit={handleOpenEdit}
         onTeam={handleOpenTeam}
+        onStripe={handleOpenStripe}
+        onPayments={handleOpenPayments}
       />
     </View>
   );
