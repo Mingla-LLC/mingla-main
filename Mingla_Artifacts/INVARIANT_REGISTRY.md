@@ -7,6 +7,52 @@
 
 ---
 
+## Mingla Business invariants (2026-04-30) — Cycle 2 + Cycle 3 close-cycle promotions
+
+### I-11 Format-agnostic ID resolver (mingla-business)
+
+**Rule:** Every dynamic-segment Expo Router route in `mingla-business/` (e.g. `/brand/[id]/`, `/event/[id]/edit`, `/event/[id]/preview`) resolves the dynamic-segment value to a domain object via `find((b) => b.id === idParam)` against the Zustand store list — with NO normalization (no lowercasing, no trimming, no prefix stripping). Stub-data IDs (`lm`, `b_<ts36>`, `d_<ts36>`, `e_<ts36>`), backend UUIDs, and any future ID shapes all flow through the same resolver unchanged.
+
+**Why:** ID format may evolve as backend cycles land. Normalization in the route handler creates a translation layer that drifts under pressure. The store is the single source of truth for IDs.
+
+**Established by:** Cycle 2 J-A7 (`brand/[id]/index.tsx`), Cycle 3 (`event/[id]/edit.tsx`, `event/[id]/preview.tsx`).
+
+**Enforcement:** Code review during implementor dispatch. Verification via grep for `idParam.toLowerCase()` / `.replace(...)` / `.trim()` inside route handlers — should return zero hits.
+
+**Test:** Any consumer with a stub `lm` brand id can resolve through the route. Manually navigate to `/brand/lm/` → BrandProfileView renders. Same pattern for drafts: `/event/d_<ts36>/edit` → wizard renders.
+
+---
+
+### I-12 Host-bg cascade (mingla-business)
+
+**Rule:** Every non-tab Expo Router route in `mingla-business/` MUST set `backgroundColor: canvas.discover` on its host View, applied via the safe-area-inset+host pattern: `<View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>`. Tab routes (`(tabs)/home`, `(tabs)/account`, `(tabs)/events`) inherit the canvas via the parent layout.
+
+**Why:** Without canvas.discover, dark-mode glass primitives (GlassCard, GlassChrome) render against the native bg colour (often white on iOS), breaking the dark-glass aesthetic and causing contrast failures.
+
+**Established by:** Cycle 2 J-A7..J-A12 (every brand-side dynamic-segment route).
+
+**Enforcement:** Code review. Grep `app/**/*.tsx` (excluding tabs) for `backgroundColor: canvas.discover` — every dynamic-segment route should match.
+
+**Documented exception:** `app/event/[id]/preview.tsx` uses designer's `#0c0e12` for the hero treatment instead of canvas.discover — flagged in route docstring; deliberate per Cycle 3 spec §3.10.
+
+**Test:** Cold-start the app and navigate to any deep route — background reads dark glass, never light/native.
+
+---
+
+### I-13 Overlay-portal contract (mingla-business)
+
+**Rule:** Every kit primitive that mounts an overlay (Sheet, Modal, ConfirmDialog, TopSheet) MUST wrap its render tree in React Native's native `Modal` component (aliased as `RNModal`) with `transparent: true` so the overlay portals to the OS-level root window. Without portal wrapping, `StyleSheet.absoluteFill` resolves to the nearest positioned ancestor (e.g., a parent ScrollView's content rect), causing scrim + panel to mis-anchor when the consumer is mounted inside ScrollViews / nested layouts.
+
+**Why:** Cycle 2 J-A8 polish RC-1 caught the bug on Sheet (BrandEditView's discard sheet centered within the form ScrollView, not the screen). Cycle 3 close caught the same bug on Modal (delete-ticket ConfirmDialog centered within Step 5's body, not the screen). Portal wrapping is the structural fix; both Sheet and Modal now satisfy.
+
+**Established by:** Sheet — Cycle 2 J-A8 polish RC-1 (DEC-080 era). Modal — Cycle 3 close (DEC-085, this cycle).
+
+**Enforcement:** Code review during implementor dispatch — any new overlay primitive must use the RNModal portal pattern. Header docstring on Sheet (lines 30-44) and Modal (lines 13-30 post-DEC-085) explains the contract.
+
+**Test:** Mount a ConfirmDialog inside a ScrollView nested inside a parent View → tap to open → dialog must center on screen, scrim must cover the entire viewport. If dialog appears mis-centered, the portal wrapping is missing.
+
+---
+
 ## ORCH-0686 invariants (2026-04-26) — Photo backfill mode CHECK alignment + TS/SQL parity
 
 ### I-PHOTO-FILTER-EXPLICIT

@@ -1,26 +1,47 @@
 /**
- * Events tab — placeholder for Cycle 0a. Cycle 9 lands the events list
- * + creation flow + Manage menu per BUSINESS_PRD §5.0.
+ * Events tab — Drafts section (Cycle 3 partial-light).
  *
- * Cycle 2 J-A8 polish: brand-chip wired to BrandSwitcherSheet (matches
- * home.tsx + account.tsx pattern). Was previously firing the Cycle 0a
- * Toast fallback because `onBrandTap` was never passed.
+ * Cycle 3 lights up the Drafts section ONLY. Live / Upcoming / Past
+ * sections land Cycle 9 per BUSINESS_PRD §5.0. Originally a placeholder
+ * deferred entirely to Cycle 9, but Cycle 3 ships drafts here so J-E4
+ * resume has a destination beyond Home.
+ *
+ * Cycle 2 J-A8 polish wired the brand-chip to BrandSwitcherSheet
+ * (matches home.tsx + account.tsx pattern).
  */
 
 import React, { useCallback, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
+import { EventCover } from "../../src/components/ui/EventCover";
 import { GlassCard } from "../../src/components/ui/GlassCard";
+import { IconChrome } from "../../src/components/ui/IconChrome";
+import { Pill } from "../../src/components/ui/Pill";
 import { Toast } from "../../src/components/ui/Toast";
 import { TopBar } from "../../src/components/ui/TopBar";
 import {
+  accent,
+  glass,
+  radius as radiusTokens,
   spacing,
   text as textTokens,
   typography,
 } from "../../src/constants/designSystem";
-import type { Brand } from "../../src/store/currentBrandStore";
+import {
+  useCurrentBrand,
+  type Brand,
+} from "../../src/store/currentBrandStore";
+import { useDraftsForBrand } from "../../src/store/draftEventStore";
+import { formatRelativeTime } from "../../src/utils/relativeTime";
 
 interface ToastState {
   visible: boolean;
@@ -29,6 +50,9 @@ interface ToastState {
 
 export default function EventsTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const currentBrand = useCurrentBrand();
+  const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
 
@@ -48,16 +72,96 @@ export default function EventsTab(): React.ReactElement {
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
+  const handleBuildEvent = useCallback((): void => {
+    if (currentBrand === null) {
+      setToast({ visible: true, message: "Create a brand first." });
+      setSheetVisible(true);
+      return;
+    }
+    router.push("/event/create" as never);
+  }, [currentBrand, router]);
+
+  const handleOpenDraft = useCallback(
+    (draftId: string): void => {
+      router.push(`/event/${draftId}/edit` as never);
+    },
+    [router],
+  );
+
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
       <View style={styles.barWrap}>
-        <TopBar leftKind="brand" onBrandTap={handleOpenSwitcher} />
+        <TopBar
+          leftKind="brand"
+          onBrandTap={handleOpenSwitcher}
+          rightSlot={
+            <IconChrome
+              icon="plus"
+              size={36}
+              onPress={handleBuildEvent}
+              accessibilityLabel="Build a new event"
+            />
+          }
+        />
       </View>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.title}>Events</Text>
-          <Text style={styles.body}>Cycle 9 lands content here.</Text>
-        </GlassCard>
+        <Text style={styles.headerTitle}>Events</Text>
+
+        {/* Drafts section */}
+        <Text style={styles.sectionLabel}>DRAFTS</Text>
+        {drafts.length === 0 ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.emptyTitle}>No drafts yet</Text>
+            <Text style={styles.emptyBody}>
+              Tap "Build a new event" below to start your first draft.
+            </Text>
+            <Pressable
+              onPress={handleBuildEvent}
+              accessibilityRole="button"
+              accessibilityLabel="Build a new event"
+              style={styles.emptyCta}
+            >
+              <Text style={styles.emptyCtaLabel}>Build a new event</Text>
+            </Pressable>
+          </GlassCard>
+        ) : (
+          <View style={styles.draftsCol}>
+            {drafts.map((draft) => (
+              <Pressable
+                key={draft.id}
+                onPress={() => handleOpenDraft(draft.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Resume draft: ${draft.name || "Untitled"}`}
+                style={styles.draftRow}
+              >
+                <View style={styles.draftCoverWrap}>
+                  <EventCover
+                    hue={draft.coverHue}
+                    radius={12}
+                    label=""
+                    height={56}
+                    width={56}
+                  />
+                </View>
+                <View style={styles.draftTextCol}>
+                  <View style={styles.draftPillRow}>
+                    <Pill variant="draft">Draft</Pill>
+                  </View>
+                  <Text style={styles.draftTitle} numberOfLines={1}>
+                    {draft.name.length > 0 ? draft.name : "Untitled draft"}
+                  </Text>
+                  <Text style={styles.draftSub} numberOfLines={1}>
+                    {`Step ${draft.lastStepReached + 1} of 7 · ${formatRelativeTime(draft.updatedAt)}`}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        <Text style={styles.footerNote}>
+          Live, Upcoming, and Past sections land Cycle 9.
+        </Text>
       </ScrollView>
 
       <BrandSwitcherSheet
@@ -92,19 +196,95 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     gap: spacing.md,
   },
-  title: {
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
-    letterSpacing: typography.h2.letterSpacing,
+  headerTitle: {
+    fontSize: typography.h1.fontSize,
+    lineHeight: typography.h1.lineHeight,
+    fontWeight: typography.h1.fontWeight,
+    letterSpacing: typography.h1.letterSpacing,
+    color: textTokens.primary,
+    marginBottom: spacing.sm,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: textTokens.tertiary,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  emptyTitle: {
+    fontSize: typography.h3.fontSize,
+    lineHeight: typography.h3.lineHeight,
+    fontWeight: typography.h3.fontWeight,
+    letterSpacing: typography.h3.letterSpacing,
     color: textTokens.primary,
     marginBottom: spacing.xs,
   },
-  body: {
+  emptyBody: {
     fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: typography.bodySm.fontWeight,
     color: textTokens.secondary,
+    marginBottom: spacing.md,
+  },
+  emptyCta: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.md,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+    alignSelf: "flex-start",
+  },
+  emptyCtaLabel: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+    color: accent.warm,
+  },
+  draftsCol: {
+    gap: spacing.sm,
+  },
+  draftRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radiusTokens.lg,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+  },
+  draftCoverWrap: {
+    width: 56,
+    height: 56,
+    flexShrink: 0,
+  },
+  draftTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  draftPillRow: {
+    flexDirection: "row",
+    marginBottom: 2,
+  },
+  draftTitle: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
+    marginBottom: 2,
+  },
+  draftSub: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
+  },
+  footerNote: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    fontStyle: "italic",
+    textAlign: "center",
+    marginTop: spacing.lg,
   },
   toastWrap: {
     position: "absolute",
