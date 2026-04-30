@@ -1,0 +1,7 @@
+Phase 1 — Foundations	Cycles 0a + 0b. Design tokens, glass primitives, 3-tab nav, AuthScreen, web bundle. ~72 hrs estimated.
+Phase 2 — Core Wedge	Cycles 1–5. Sign-in → brand → event creation (single/recurring/multi-date) → tickets. The MVP wedge spine. ~220 hrs estimated.
+Phase 3 — Public Surfaces	Cycles 6–8. Public event page + brand/organiser pages + checkout flow. Expo Web served from mingla-business per DEC-081. ~124 hrs estimated.
+Phase 4 — Event Management	Cycles 9–13. Event detail dashboard, orders, refunds, guests, scanner, door payments, end-of-night reconciliation. ~196 hrs estimated.
+Phase 5 — Account + Polish	Cycles 14–17. Account profile/settings/delete-flow, marketing landing, cross-cutting screens, refinement pass. ~180 hrs estimated.
+Phase 6 — Backend MVP	Backend cycles B1–B4. Schema + RLS, Stripe Connect live, checkout live, scanner + door payments live. ~204 hrs estimated. Marks the MVP cutline.
+Phase 7 — Post-MVP	Backend cycles B5 (marketing infrastructure) + B6 (chat agent). Strictly post-launch enhancements per DEC-070 and §U.0 PRD gate. ~180 hrs estimated.
