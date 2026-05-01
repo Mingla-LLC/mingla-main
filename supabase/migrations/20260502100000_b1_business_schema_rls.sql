@@ -748,7 +748,8 @@ CREATE POLICY "Brand team can select ticket_types"
   );
 
 DROP POLICY IF EXISTS "Finance or event manager can insert ticket_types" ON public.ticket_types;
-CREATE POLICY "Finance or event manager can insert ticket_types"
+DROP POLICY IF EXISTS "Brand finance_manager rank or above can insert ticket_types" ON public.ticket_types;
+CREATE POLICY "Brand finance_manager rank or above can insert ticket_types"
   ON public.ticket_types
   FOR INSERT
   TO authenticated
@@ -765,7 +766,8 @@ CREATE POLICY "Finance or event manager can insert ticket_types"
   );
 
 DROP POLICY IF EXISTS "Finance or event manager can update ticket_types" ON public.ticket_types;
-CREATE POLICY "Finance or event manager can update ticket_types"
+DROP POLICY IF EXISTS "Brand finance_manager rank or above can update ticket_types" ON public.ticket_types;
+CREATE POLICY "Brand finance_manager rank or above can update ticket_types"
   ON public.ticket_types
   FOR UPDATE
   TO authenticated
@@ -791,7 +793,8 @@ CREATE POLICY "Finance or event manager can update ticket_types"
   );
 
 DROP POLICY IF EXISTS "Finance or event manager can delete ticket_types" ON public.ticket_types;
-CREATE POLICY "Finance or event manager can delete ticket_types"
+DROP POLICY IF EXISTS "Brand finance_manager rank or above can delete ticket_types" ON public.ticket_types;
+CREATE POLICY "Brand finance_manager rank or above can delete ticket_types"
   ON public.ticket_types
   FOR DELETE
   TO authenticated
@@ -1208,7 +1211,16 @@ BEGIN
       RAISE EXCEPTION 'Scanners may only update check-in fields on tickets';
     END IF;
 
+    -- Check-in: valid -> used — bind scanner identity and timestamp (Copilot review).
     IF OLD.status = 'valid' AND NEW.status = 'used' THEN
+      IF NEW.used_by_scanner_id IS DISTINCT FROM auth.uid() THEN
+        RAISE EXCEPTION 'used_by_scanner_id must equal the scanning user';
+      END IF;
+      IF NEW.used_at IS NULL THEN
+        NEW.used_at := now();
+      ELSIF NEW.used_at > now() + interval '2 minutes' THEN
+        RAISE EXCEPTION 'used_at cannot be more than 2 minutes in the future';
+      END IF;
       RETURN NEW;
     END IF;
 
@@ -1711,26 +1723,28 @@ CREATE POLICY "Brand admin plus can manage door_sales_ledger"
 -- 20260502100009_b1_phase9_public_views.sql
 -- =====================================================================
 -- Cycle B1 Phase 9 — Public reads (BUSINESS_PROJECT_PLAN §B.8) + grants.
--- Uses RLS on base tables for anon; views use security_invoker so policies apply.
+-- security_invoker views: RLS on base tables applies. Policies below allow both
+-- anon (logged-out share pages) and authenticated (logged-in attendee browsing)
+-- to read the same published-public rows without brand membership.
 
--- Anon can read published public events (for share pages / mingla-web).
 DROP POLICY IF EXISTS "Anon can read published public events" ON public.events;
-CREATE POLICY "Anon can read published public events"
+DROP POLICY IF EXISTS "Public can read published events (anon or authenticated)" ON public.events;
+CREATE POLICY "Public can read published events (anon or authenticated)"
   ON public.events
   FOR SELECT
-  TO anon
+  TO anon, authenticated
   USING (
     deleted_at IS NULL
     AND visibility = 'public'
     AND status IN ('scheduled', 'live')
   );
 
--- Brands that have at least one live public event (limits draft-only brands).
 DROP POLICY IF EXISTS "Anon can read brands with public events" ON public.brands;
-CREATE POLICY "Anon can read brands with public events"
+DROP POLICY IF EXISTS "Public can read brands with public events (anon or authenticated)" ON public.brands;
+CREATE POLICY "Public can read brands with public events (anon or authenticated)"
   ON public.brands
   FOR SELECT
-  TO anon
+  TO anon, authenticated
   USING (
     deleted_at IS NULL
     AND EXISTS (
@@ -1743,12 +1757,12 @@ CREATE POLICY "Anon can read brands with public events"
     )
   );
 
--- Organiser profile: only accounts that have a brand with a public live event.
 DROP POLICY IF EXISTS "Anon can read organiser public profiles" ON public.creator_accounts;
-CREATE POLICY "Anon can read organiser public profiles"
+DROP POLICY IF EXISTS "Public can read organiser profiles for share pages (anon or authenticated)" ON public.creator_accounts;
+CREATE POLICY "Public can read organiser profiles for share pages (anon or authenticated)"
   ON public.creator_accounts
   FOR SELECT
-  TO anon
+  TO anon, authenticated
   USING (
     deleted_at IS NULL
     AND EXISTS (
@@ -1767,12 +1781,12 @@ CREATE POLICY "Anon can read organiser public profiles"
     )
   );
 
--- Public event dates (schedules on share pages).
 DROP POLICY IF EXISTS "Anon can read dates for public events" ON public.event_dates;
-CREATE POLICY "Anon can read dates for public events"
+DROP POLICY IF EXISTS "Public can read event dates for published events (anon or authenticated)" ON public.event_dates;
+CREATE POLICY "Public can read event dates for published events (anon or authenticated)"
   ON public.event_dates
   FOR SELECT
-  TO anon
+  TO anon, authenticated
   USING (
     EXISTS (
       SELECT 1
@@ -1784,12 +1798,12 @@ CREATE POLICY "Anon can read dates for public events"
     )
   );
 
--- Ticket types visible for published public events (pricing on public pages).
 DROP POLICY IF EXISTS "Anon can read ticket types for public events" ON public.ticket_types;
-CREATE POLICY "Anon can read ticket types for public events"
+DROP POLICY IF EXISTS "Public can read ticket types for published events (anon or authenticated)" ON public.ticket_types;
+CREATE POLICY "Public can read ticket types for published events (anon or authenticated)"
   ON public.ticket_types
   FOR SELECT
-  TO anon
+  TO anon, authenticated
   USING (
     deleted_at IS NULL
     AND is_hidden IS NOT TRUE
@@ -1879,9 +1893,9 @@ SELECT
 FROM public.creator_accounts
 WHERE deleted_at IS NULL;
 
-COMMENT ON VIEW public.events_public_view IS 'Public published events (B1 §B.8); RLS via anon policies + view filter.';
-COMMENT ON VIEW public.brands_public_view IS 'Brands with at least one public live event (B1 §B.8).';
-COMMENT ON VIEW public.organisers_public_view IS 'Subset of creator_accounts for public organiser cards (B1 §B.8).';
+COMMENT ON VIEW public.events_public_view IS 'Public published events (B1 §B.8); RLS allows anon + authenticated for published rows.';
+COMMENT ON VIEW public.brands_public_view IS 'Brands with at least one public live event (B1 §B.8); same RLS as base table.';
+COMMENT ON VIEW public.organisers_public_view IS 'Organiser-facing columns; RLS limits to accounts with a public published brand event.';
 
 GRANT SELECT ON public.events_public_view TO anon, authenticated;
 GRANT SELECT ON public.brands_public_view TO anon, authenticated;
