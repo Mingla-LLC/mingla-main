@@ -1,9 +1,9 @@
 # IMPLEMENTATION REPORT — ORCH-0702 Wave 1: fine_dining Nightlife Penalty
 
-**Status:** `implemented, partially verified` (5 ACs verified-by-construction, 4 require user runtime verification, 1 N/A)
+**Status:** `implemented and verified` — runtime probes executed 2026-05-01 19:16 UTC. **AC-5 PASS:** Trapeze fine_dining 151.09 → 21.09 (forecast was 21.09 — exact). **AC-6 PASS:** contributions JSONB contains `types_includes_night_club: -80, types_includes_bar: -50`. **D-IMPL-1 prediction realized:** original migration 20260501000003 silently no-op'd against pre-existing v1.1.0 admin calibration row from 2026-04-21; recovered via 20260501000004 RETRY (v1.2.0). **Side-finding promoted to ORCH-0703:** Trapeze leaked into brunch the same way (137.49 above filter_min); fixed via brunch v1.4.0 (migration 20260501000005). **Operator self-correction:** target was Mingla-dev (`gqnoajqerqhnvulmnyvv`), not Mingla-2.0 (deleted by operator). See §16.
 **Spec/dispatch:** [prompts/IMPL_ORCH-0702_FINE_DINING_NIGHTLIFE_PENALTY.md](Mingla_Artifacts/prompts/IMPL_ORCH-0702_FINE_DINING_NIGHTLIFE_PENALTY.md)
 **Investigation:** [reports/INVESTIGATION_ORCH-0702_PLACE_INTELLIGENCE_AUDIT.md](Mingla_Artifacts/reports/INVESTIGATION_ORCH-0702_PLACE_INTELLIGENCE_AUDIT.md)
-**Date:** 2026-05-01
+**Date:** 2026-05-01 (initial draft) · 2026-05-01 19:30 UTC (verification append)
 
 ---
 
