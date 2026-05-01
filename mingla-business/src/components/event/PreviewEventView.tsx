@@ -32,11 +32,18 @@ import {
   formatDraftDateSubline,
   formatDraftDatesList,
 } from "../../utils/eventDateDisplay";
+import {
+  formatTicketBadges,
+  formatTicketButtonLabel,
+  formatTicketSubline,
+  sortTicketsByDisplayOrder,
+} from "../../utils/ticketDisplay";
 
 import { EventCover } from "../ui/EventCover";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
+import { Pill } from "../ui/Pill";
 
 interface PreviewEventViewProps {
   draft: DraftEvent;
@@ -83,17 +90,71 @@ const PublicTicketRow: React.FC<{ ticket: TicketStub; isLast: boolean }> = ({
     : ticket.priceGbp !== null
       ? formatGbpRound(ticket.priceGbp)
       : "—";
+  const subLine = formatTicketSubline(ticket);
+  const badges = formatTicketBadges(ticket);
+  const buttonLabel = formatTicketButtonLabel(ticket);
+  const isDisabled = ticket.visibility === "disabled";
+  const capacityLine = ticket.isUnlimited
+    ? "Unlimited"
+    : ticket.capacity !== null
+      ? `${ticket.capacity} available`
+      : "Available";
+
   return (
-    <View style={[styles.ticketRow, !isLast && styles.ticketRowDivider]}>
+    <View
+      style={[
+        styles.ticketRow,
+        !isLast && styles.ticketRowDivider,
+        isDisabled && styles.ticketRowDisabled,
+      ]}
+    >
       <View style={styles.ticketTextCol}>
         <Text style={styles.ticketName}>{ticket.name}</Text>
+        {/* Sub-line uses ticketDisplay helper (modifiers) — fall back
+            to capacity-only when no modifiers stack. */}
         <Text style={styles.ticketSub}>
-          {ticket.isUnlimited
-            ? "Unlimited"
-            : ticket.capacity !== null
-              ? `${ticket.capacity} available`
-              : "Available"}
+          {subLine.length > 0 && subLine !== priceLabel
+            ? subLine
+            : capacityLine}
         </Text>
+        {badges.length > 0 ? (
+          <View style={styles.ticketBadgesRow}>
+            {badges.map((b) => (
+              <Pill
+                key={b.label}
+                variant={
+                  b.variant === "warning"
+                    ? "warn"
+                    : b.variant === "muted"
+                      ? "draft"
+                      : b.variant === "accent"
+                        ? "accent"
+                        : "info"
+                }
+              >
+                {b.label}
+              </Pill>
+            ))}
+          </View>
+        ) : null}
+        {/* Buyer button — Cycle 5 ships UI label only; real buyer flow
+            (Stripe checkout, password gate, approval submit) lands
+            Cycles 8/B3 + Cycle 10/B4 + B5. */}
+        <View
+          style={[
+            styles.ticketBuyerBtn,
+            isDisabled && styles.ticketBuyerBtnDisabled,
+          ]}
+        >
+          <Text
+            style={[
+              styles.ticketBuyerBtnLabel,
+              isDisabled && styles.ticketBuyerBtnLabelDisabled,
+            ]}
+          >
+            {buttonLabel}
+          </Text>
+        </View>
       </View>
       <Text style={styles.ticketPrice}>{priceLabel}</Text>
     </View>
@@ -354,11 +415,15 @@ export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
             </GlassCard>
           ) : (
             <View style={styles.ticketsCol}>
-              {draft.tickets.map((t, i) => (
+              {/* Cycle 5 — render in displayOrder. The real public page
+                  (Cycle 6) will skip visibility="hidden" tickets entirely;
+                  this preview renders them WITH a badge so organisers can
+                  see what they configured. */}
+              {sortTicketsByDisplayOrder(draft.tickets).map((t, i, arr) => (
                 <PublicTicketRow
                   key={t.id}
                   ticket={t}
-                  isLast={i === draft.tickets.length - 1}
+                  isLast={i === arr.length - 1}
                 />
               ))}
             </View>
@@ -610,7 +675,7 @@ const styles = StyleSheet.create({
   },
   ticketRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     gap: spacing.sm,
@@ -618,6 +683,9 @@ const styles = StyleSheet.create({
   ticketRowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: glass.border.profileBase,
+  },
+  ticketRowDisabled: {
+    opacity: 0.5,
   },
   ticketTextCol: {
     flex: 1,
@@ -631,6 +699,34 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
     marginTop: 2,
+  },
+  ticketBadgesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  ticketBuyerBtn: {
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radiusTokens.md,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+    alignSelf: "flex-start",
+  },
+  ticketBuyerBtnDisabled: {
+    backgroundColor: glass.tint.profileBase,
+    borderColor: glass.border.profileBase,
+  },
+  ticketBuyerBtnLabel: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "600",
+    color: accent.warm,
+  },
+  ticketBuyerBtnLabelDisabled: {
+    color: textTokens.tertiary,
   },
   ticketPrice: {
     fontSize: typography.bodySm.fontSize,

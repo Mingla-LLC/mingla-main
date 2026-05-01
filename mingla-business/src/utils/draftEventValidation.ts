@@ -387,6 +387,8 @@ const validateTickets = (d: DraftEvent): ValidationError[] => {
     return errs;
   }
   d.tickets.forEach((t: TicketStub, i: number): void => {
+    const label = t.name.length > 0 ? t.name : `ticket ${i + 1}`;
+    // Existing v3 rules
     if (t.name.trim().length === 0) {
       errs.push({
         fieldKey: `tickets[${i}].name`,
@@ -398,14 +400,49 @@ const validateTickets = (d: DraftEvent): ValidationError[] => {
       errs.push({
         fieldKey: `tickets[${i}].price`,
         step: 4,
-        message: `Set a price for ${t.name || `ticket ${i + 1}`}, or mark it free.`,
+        message: `Set a price for ${label}, or mark it free.`,
       });
     }
     if (!t.isUnlimited && (t.capacity === null || t.capacity <= 0)) {
       errs.push({
         fieldKey: `tickets[${i}].capacity`,
         step: 4,
-        message: `Set a capacity for ${t.name || `ticket ${i + 1}`}, or mark it unlimited.`,
+        message: `Set a capacity for ${label}, or mark it unlimited.`,
+      });
+    }
+    // Cycle 5 (v4) rules — modifier validation
+    if (
+      t.passwordProtected &&
+      (t.password === null || t.password.length < 4)
+    ) {
+      errs.push({
+        fieldKey: `tickets[${i}].password`,
+        step: 4,
+        message: "Password must be at least 4 characters.",
+      });
+    }
+    if (t.waitlistEnabled && t.isUnlimited) {
+      errs.push({
+        fieldKey: `tickets[${i}].waitlistConflict`,
+        step: 4,
+        message: "Unlimited tickets don't need a waitlist — turn one off.",
+      });
+    }
+    if (t.minPurchaseQty < 1) {
+      errs.push({
+        fieldKey: `tickets[${i}].minPurchaseQty`,
+        step: 4,
+        message: "Minimum purchase must be at least 1.",
+      });
+    }
+    if (
+      t.maxPurchaseQty !== null &&
+      t.maxPurchaseQty < t.minPurchaseQty
+    ) {
+      errs.push({
+        fieldKey: `tickets[${i}].maxPurchaseQty`,
+        step: 4,
+        message: "Maximum can't be less than minimum.",
       });
     }
   });

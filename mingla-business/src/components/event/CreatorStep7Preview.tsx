@@ -39,16 +39,20 @@ import {
   formatDraftDateLine,
   formatDraftDateSubline,
 } from "../../utils/eventDateDisplay";
+import { formatEventLevelTicketBadges } from "../../utils/ticketDisplay";
 
 import { EventCover } from "../ui/EventCover";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
+import { Pill } from "../ui/Pill";
 
 import { type StepBodyProps } from "./types";
 
 interface CreatorStep7PreviewProps extends StepBodyProps {
   brand: Brand | null;
   onTapMiniCard: () => void;
+  /** Connect-Stripe CTA handler — wired to the StripeBlockedCard button. */
+  onConnectStripe: () => void;
 }
 
 const formatPriceLine = (tickets: { isFree: boolean; priceGbp: number | null }[]): string => {
@@ -67,6 +71,7 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
   draft,
   brand,
   onTapMiniCard,
+  onConnectStripe,
 }) => {
   const stripeStatus: BrandStripeStatus = brand?.stripeStatus ?? "not_connected";
   const publishability = computePublishability(draft, stripeStatus);
@@ -84,6 +89,8 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
       ? "Online"
       : draft.venueName ?? "Set a venue in Step 3";
   const priceLine = formatPriceLine(draft.tickets);
+  // Cycle 5 — aggregated event-level ticket-modifier badges.
+  const ticketBadges = formatEventLevelTicketBadges(draft.tickets);
 
   return (
     <View>
@@ -112,6 +119,15 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
               </View>
             </View>
           ) : null}
+          {ticketBadges.length > 0 ? (
+            <View style={styles.ticketBadgesRow}>
+              {ticketBadges.map((b) => (
+                <Pill key={b.label} variant="info">
+                  {b.label}
+                </Pill>
+              ))}
+            </View>
+          ) : null}
         </View>
       </Pressable>
 
@@ -124,7 +140,7 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
             draftName={titleLine}
           />
         ) : publishability.status === "blocked-stripe" ? (
-          <StripeBlockedCard />
+          <StripeBlockedCard onConnectStripe={onConnectStripe} />
         ) : (
           <ErrorsBlockedCard count={publishability.errorCount} />
         )}
@@ -171,7 +187,13 @@ const ReadyCard: React.FC<ReadyCardProps> = ({ isFreeOnly, brandSlug, draftName 
   </GlassCard>
 );
 
-const StripeBlockedCard: React.FC = () => (
+interface StripeBlockedCardProps {
+  onConnectStripe: () => void;
+}
+
+const StripeBlockedCard: React.FC<StripeBlockedCardProps> = ({
+  onConnectStripe,
+}) => (
   <GlassCard variant="base" padding={spacing.md} style={styles.warnCard}>
     <View style={styles.statusRow}>
       <Icon name="flag" size={20} color={accent.warm} />
@@ -182,6 +204,15 @@ const StripeBlockedCard: React.FC = () => (
         </Text>
       </View>
     </View>
+    <Pressable
+      onPress={onConnectStripe}
+      accessibilityRole="button"
+      accessibilityLabel="Connect Stripe"
+      style={styles.connectStripeBtn}
+    >
+      <Text style={styles.connectStripeLabel}>Connect Stripe</Text>
+      <Icon name="chevR" size={14} color={accent.warm} />
+    </Pressable>
   </GlassCard>
 );
 
@@ -244,6 +275,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginTop: spacing.xs,
   },
+  ticketBadgesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
   recurrencePill: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
@@ -299,5 +336,23 @@ const styles = StyleSheet.create({
   warnCard: {
     borderColor: accent.border,
     borderWidth: 1,
+  },
+  connectStripeBtn: {
+    marginTop: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.md,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+  },
+  connectStripeLabel: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+    color: accent.warm,
   },
 });

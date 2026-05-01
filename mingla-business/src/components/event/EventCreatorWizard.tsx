@@ -30,7 +30,6 @@ import {
   Keyboard,
   type KeyboardEvent,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -397,14 +396,17 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     onOpenStripeOnboard();
   }, [onOpenStripeOnboard]);
 
-  // Step 7 renders Step-7-aware status; expose Stripe-blocked banner state.
+  // Step 7 publishability — drives StripeBlockedCard visibility (in body)
+  // and Publish button disabled state (in dock).
   const publishability = useMemo(
     () => computePublishability(liveDraft, stripeStatus),
     [liveDraft, stripeStatus],
   );
 
-  const showStripeBannerInDock =
-    isLastStep && publishability.status === "blocked-stripe";
+  // Cycle 5: Publish button disabled when Stripe is required but not
+  // connected. The Stripe-blocked-card in Step 7 body owns the
+  // "Connect Stripe" CTA — the dock banner was removed for cleaner UX.
+  const publishDisabled = publishability.status === "blocked-stripe";
 
   // Publish modal copy varies per whenMode (Cycle 4 spec §3.8.2).
   const publishModalTitle = useMemo<string>(() => {
@@ -453,6 +455,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
             {...baseProps}
             brand={brand}
             onTapMiniCard={onOpenPreview}
+            onConnectStripe={handleConnectStripe}
           />
         );
       default:
@@ -540,25 +543,12 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         radius="xxl"
         style={styles.dock}
       >
-        {showStripeBannerInDock ? (
-          <Pressable
-            onPress={handleConnectStripe}
-            accessibilityRole="button"
-            accessibilityLabel="Connect Stripe"
-            style={styles.stripeBanner}
-          >
-            <Text style={styles.stripeBannerLabel}>
-              Connect Stripe to publish paid tickets
-            </Text>
-            <Text style={styles.stripeBannerLink}>Connect Stripe →</Text>
-          </Pressable>
-        ) : null}
-
         {isLastStep ? (
-          // Step 7 — uniform with Steps 2-6 dock layout.
-          // Preview public page CTA was relocated to the body (under
-          // the Ready-to-publish status card) per founder directive
-          // so the dock stays sleek and consistent across the wizard.
+          // Step 7 — uniform Back + Publish dock. The Stripe-blocked
+          // banner was removed from the dock in Cycle 5; the Connect
+          // Stripe CTA now lives inside the body's StripeBlockedCard.
+          // Publish button is disabled when blocked-stripe so the user
+          // is forced to use the body-side CTA before publishing.
           <View style={styles.dockButtonRow}>
             <View style={styles.dockBackCell}>
               <Button
@@ -577,6 +567,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
                 size="md"
                 onPress={handlePublishTap}
                 loading={isPublishing}
+                disabled={publishDisabled}
                 fullWidth
               />
             </View>
@@ -737,26 +728,6 @@ const styles = StyleSheet.create({
   },
   dockPublishCell: {
     flex: 2,
-  },
-  stripeBanner: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radiusTokens.md,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-    marginBottom: spacing.sm,
-  },
-  stripeBannerLabel: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
-  stripeBannerLink: {
-    fontSize: typography.caption.fontSize,
-    color: accent.warm,
-    marginTop: 2,
-    fontWeight: "600",
   },
   toastWrap: {
     position: "absolute",

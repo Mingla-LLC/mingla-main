@@ -52,6 +52,14 @@ const detectDeviceTimezone = (): string => {
   }
 };
 
+/**
+ * Ticket card visibility on the public event page. Cycle 5 (schema v4).
+ *   - "public":   shown to everyone on the public page (default)
+ *   - "hidden":   only shown via direct link with token (skipped on public list)
+ *   - "disabled": shown but greyed out + "Sales paused" pill; not purchasable
+ */
+export type TicketVisibility = "public" | "hidden" | "disabled";
+
 export interface TicketStub {
   id: string;
   name: string;
@@ -69,6 +77,34 @@ export interface TicketStub {
    * v3 schema v2.
    */
   isUnlimited: boolean;
+  // ---- Cycle 5 modifiers (schema v4 — additive, layered booleans) ----
+  /** Public/hidden/disabled — see TicketVisibility comment. Default "public". */
+  visibility: TicketVisibility;
+  /**
+   * Sort order within an event (0..N-1). Auto-managed by reorder UI.
+   * NEVER mutated outside `ticketDisplay.ts` helpers (renormalize/move).
+   */
+  displayOrder: number;
+  /** When true, buyers request access; organiser approves/rejects (Cycle 10/B4). */
+  approvalRequired: boolean;
+  /** When true, buyer must enter `password` on the public page to unlock checkout. */
+  passwordProtected: boolean;
+  /**
+   * Local-only in Cycle 5; backend hashes at B4. Required when
+   * passwordProtected=true; min 4 chars enforced by validation.
+   */
+  password: string | null;
+  /**
+   * When true, buyer can join a waitlist when capacity is reached.
+   * Real waitlist UX/emails land Cycle 10 + B5.
+   */
+  waitlistEnabled: boolean;
+  /** Minimum tickets per buyer transaction. Default 1. */
+  minPurchaseQty: number;
+  /** Maximum tickets per buyer transaction. null = no cap. Default null. */
+  maxPurchaseQty: number | null;
+  /** When true, buyer can transfer ticket to another email/identity. Default true. */
+  allowTransfers: boolean;
 }
 
 export type DraftEventFormat = "in_person" | "online" | "hybrid";
@@ -236,8 +272,11 @@ const DEFAULT_DRAFT_FIELDS: Omit<
 
 // ---- Migration types (private) --------------------------------------
 
-// v1 — pre-J-A8 polish. tickets had no isUnlimited; no hideAddressUntilTicket.
-type V1TicketStub = Omit<TicketStub, "isUnlimited">;
+// v1 — pre-J-A8 polish. Tickets had 5 fields, no isUnlimited.
+type V1TicketStub = Pick<
+  TicketStub,
+  "id" | "name" | "priceGbp" | "capacity" | "isFree"
+>;
 type V1DraftEvent = Omit<
   DraftEvent,
   | "hideAddressUntilTicket"
@@ -252,16 +291,32 @@ type V1DraftEvent = Omit<
   repeats?: "once";
 };
 
-// v2 — Cycle 3 rework v3. Added isUnlimited, hideAddressUntilTicket. Still had repeats.
+// v2/v3 — Cycle 3+4. Tickets had 6 fields (= v1 + isUnlimited). Cycle 4
+// dropped `repeats` from v3, but tickets stayed unchanged through both
+// versions, so a single shape covers both v2 and v3 ticket states.
+type V3TicketStub = Pick<
+  TicketStub,
+  "id" | "name" | "priceGbp" | "capacity" | "isFree" | "isUnlimited"
+>;
+// v2 draft (still has `repeats`)
 type V2DraftEvent = Omit<
   DraftEvent,
-  "whenMode" | "recurrenceRule" | "multiDates"
+  | "whenMode"
+  | "recurrenceRule"
+  | "multiDates"
+  | "tickets"
 > & {
+  tickets: V3TicketStub[];
   /** Locked literal in v2; removed in v3 (replaced by whenMode). */
   repeats?: "once";
 };
+// v3 draft (no `repeats`, has whenMode/recurrence/multiDates, but tickets
+// still v3 shape — Cycle 4 didn't change ticket fields)
+type V3DraftEvent = Omit<DraftEvent, "tickets"> & {
+  tickets: V3TicketStub[];
+};
 
-const upgradeV1TicketToV2 = (t: V1TicketStub): TicketStub => ({
+const upgradeV1TicketToV2 = (t: V1TicketStub): V3TicketStub => ({
   ...t,
   isUnlimited: false,
 });
@@ -273,7 +328,7 @@ const upgradeV1DraftToV2 = (d: V1DraftEvent): V2DraftEvent => ({
   repeats: "once",
 });
 
-const upgradeV2DraftToV3 = (d: V2DraftEvent): DraftEvent => {
+const upgradeV2DraftToV3 = (d: V2DraftEvent): V3DraftEvent => {
   // Strip `repeats`; default whenMode to "single"; null both arrays.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { repeats: _drop, ...rest } = d;
@@ -285,26 +340,52 @@ const upgradeV2DraftToV3 = (d: V2DraftEvent): DraftEvent => {
   };
 };
 
+// v3 → v4: extend each ticket with 9 modifier fields (Cycle 5).
+const upgradeV3TicketToV4 = (t: V3TicketStub, idx: number): TicketStub => ({
+  ...t,
+  visibility: "public",
+  displayOrder: idx,
+  approvalRequired: false,
+  passwordProtected: false,
+  password: null,
+  waitlistEnabled: false,
+  minPurchaseQty: 1,
+  maxPurchaseQty: null,
+  allowTransfers: true,
+});
+
+const upgradeV3DraftToV4 = (d: V3DraftEvent): DraftEvent => ({
+  ...d,
+  tickets: d.tickets.map(upgradeV3TicketToV4),
+});
+
 const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   // Store name unchanged (".v1") — versions are tracked by `version`,
   // and renaming the storage key would orphan existing user drafts.
   name: "mingla-business.draftEvent.v1",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state): PersistedState => ({ drafts: state.drafts }),
-  version: 3,
+  version: 4,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { drafts: [] };
     }
     if (version === 1) {
-      // v1 → v3: chain v1→v2 then v2→v3
+      // v1 → v4: chain v1→v2 then v2→v3 then v3→v4
       const v1 = persistedState as { drafts: V1DraftEvent[] };
       const v2Drafts = v1.drafts.map(upgradeV1DraftToV2);
-      return { drafts: v2Drafts.map(upgradeV2DraftToV3) };
+      const v3Drafts = v2Drafts.map(upgradeV2DraftToV3);
+      return { drafts: v3Drafts.map(upgradeV3DraftToV4) };
     }
     if (version === 2) {
+      // v2 → v4: chain v2→v3 then v3→v4
       const v2 = persistedState as { drafts: V2DraftEvent[] };
-      return { drafts: v2.drafts.map(upgradeV2DraftToV3) };
+      const v3Drafts = v2.drafts.map(upgradeV2DraftToV3);
+      return { drafts: v3Drafts.map(upgradeV3DraftToV4) };
+    }
+    if (version === 3) {
+      const v3 = persistedState as { drafts: V3DraftEvent[] };
+      return { drafts: v3.drafts.map(upgradeV3DraftToV4) };
     }
     return persistedState as PersistedState;
   },

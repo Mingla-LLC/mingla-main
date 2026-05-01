@@ -53,6 +53,36 @@
 
 ---
 
+### I-14 Date-display single source (mingla-business)
+
+**Rule:** All event date/time display formatting MUST flow through `mingla-business/src/utils/eventDateDisplay.ts`. No component implements its own ISO-to-label formatter. Helpers exported: `formatShortDate`, `formatLongDate`, `formatSingleDateLine`, `formatRecurringSummary`, `formatMultiDateSummary`, `formatRecurringDatesList`, `formatMultiDateList`, `formatDraftDateLine`, `formatDraftDateSubline`, `formatDraftDatesList`.
+
+**Why:** Cycle 4 found 3 duplicated `formatDateLine` / `formatDateLabel` implementations across `CreatorStep2When`, `CreatorStep7Preview`, and `PreviewEventView` (HIDDEN-2 in investigation). Three copies of the same formatter drifting independently is a Constitution #2 violation waiting to happen — when recurring/multi-date support landed in Cycle 4, ANY missed copy would have rendered stale single-date strings.
+
+**Established by:** Cycle 4 — ORCH-BIZ-CYCLE-4-RECURRING-MULTIDATE close (2026-04-30, commit `7d3d61ba`).
+
+**Enforcement:** Header docstring at `eventDateDisplay.ts:1-12` declares the rule. Code review during forensics + implementor dispatch — any local ISO-to-label formatter introduced in an event component must be flagged and lifted into the helper.
+
+**Test that catches a regression:** `grep -rn "toLocaleDateString\|formatDateLabel\|formatDateLine" mingla-business/src/components/event/` → only hits should be inside `eventDateDisplay.ts`'s own implementation. Anywhere else is a violation.
+
+---
+
+### I-15 Ticket-display single source (mingla-business)
+
+**Rule:** All ticket modifier display formatting MUST flow through `mingla-business/src/utils/ticketDisplay.ts`. No component implements its own ticket-modifier formatter. Helpers exported: `formatTicketSubline`, `formatTicketCapacity`, `formatTicketBadges`, `formatTicketButtonLabel`, `formatEventLevelTicketBadges`, `sortTicketsByDisplayOrder`, `renormalizeDisplayOrder`, `moveTicketUp`, `moveTicketDown`, `nextDisplayOrder`.
+
+**Sub-rule:** `displayOrder` is OWNED by this helper. NEVER mutate it inline in components. Reorder operations always go through `moveTicketUp` / `moveTicketDown` / `renormalizeDisplayOrder`. New tickets get their position via `nextDisplayOrder`.
+
+**Why:** Cycle 5 added 9 modifier fields to `TicketStub`. Without a single source for display logic, the same modifiers would render inconsistently across Step 5 TicketCard, Step 7 mini-card, and PreviewEventView's PublicTicketRow — and a bug in `renormalizeDisplayOrder` (re-sorting before renumbering) silently undid reorder operations until centralised + fixed.
+
+**Established by:** Cycle 5 — ORCH-BIZ-CYCLE-5-TICKET-TYPES close (2026-04-30).
+
+**Enforcement:** Header docstring at `ticketDisplay.ts:1-15` declares the rule. The displayOrder ownership note is repeated as a code comment at the top of every reorder/duplicate/delete handler in `CreatorStep5Tickets.tsx`.
+
+**Test that catches a regression:** `grep -rn "displayOrder" mingla-business/src/components/event/CreatorStep5Tickets.tsx` should show `displayOrder` only in (a) helper-call sites or (b) `nextDisplayOrder()` invocations. Direct assignment outside the helper = violation.
+
+---
+
 ## ORCH-0686 invariants (2026-04-26) — Photo backfill mode CHECK alignment + TS/SQL parity
 
 ### I-PHOTO-FILTER-EXPLICIT
