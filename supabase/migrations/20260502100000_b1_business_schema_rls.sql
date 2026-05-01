@@ -250,10 +250,12 @@ AS $$
       (
         SELECT max(public.biz_role_rank(m.role))
         FROM public.brand_team_members m
+        INNER JOIN public.brands b ON b.id = m.brand_id
         WHERE m.brand_id = p_brand_id
           AND m.user_id = p_user_id
           AND m.removed_at IS NULL
           AND m.accepted_at IS NOT NULL
+          AND b.deleted_at IS NULL
       ),
       0
     )
@@ -1119,6 +1121,33 @@ COMMENT ON TABLE public.tickets IS 'Issued attendee tickets; issuance via servic
 
 ALTER TABLE public.tickets ENABLE ROW LEVEL SECURITY;
 
+CREATE OR REPLACE FUNCTION public.biz_tickets_enforce_consistent_event()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_order_event uuid;
+  v_tt_event uuid;
+BEGIN
+  SELECT o.event_id INTO v_order_event FROM public.orders o WHERE o.id = NEW.order_id;
+  SELECT tt.event_id INTO v_tt_event FROM public.ticket_types tt WHERE tt.id = NEW.ticket_type_id;
+  IF v_order_event IS DISTINCT FROM v_tt_event THEN
+    RAISE EXCEPTION 'tickets: order.event_id and ticket_type.event_id must match';
+  END IF;
+  IF NEW.event_id IS DISTINCT FROM v_order_event THEN
+    RAISE EXCEPTION 'tickets.event_id must match order and ticket_type event';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_tickets_consistent_event ON public.tickets;
+CREATE TRIGGER trg_tickets_consistent_event
+  BEFORE INSERT OR UPDATE ON public.tickets
+  FOR EACH ROW
+  EXECUTE FUNCTION public.biz_tickets_enforce_consistent_event();
+
 CREATE TABLE IF NOT EXISTS public.scan_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   ticket_id uuid NOT NULL REFERENCES public.tickets (id) ON DELETE CASCADE,
@@ -1149,6 +1178,31 @@ CREATE INDEX IF NOT EXISTS idx_scan_events_scanned_at ON public.scan_events (sca
 COMMENT ON TABLE public.scan_events IS 'Append-only scan audit trail (B1 §B.5).';
 
 ALTER TABLE public.scan_events ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE FUNCTION public.biz_scan_events_enforce_ticket_event()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_ticket_event uuid;
+BEGIN
+  SELECT t.event_id INTO v_ticket_event FROM public.tickets t WHERE t.id = NEW.ticket_id;
+  IF v_ticket_event IS NULL THEN
+    RAISE EXCEPTION 'scan_events: ticket not found';
+  END IF;
+  IF NEW.event_id IS DISTINCT FROM v_ticket_event THEN
+    RAISE EXCEPTION 'scan_events.event_id must match tickets.event_id';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_scan_events_ticket_event ON public.scan_events;
+CREATE TRIGGER trg_scan_events_ticket_event
+  BEFORE INSERT OR UPDATE ON public.scan_events
+  FOR EACH ROW
+  EXECUTE FUNCTION public.biz_scan_events_enforce_ticket_event();
 
 -- ---------------------------------------------------------------------------
 -- Trigger: scanners may only mutate check-in columns; finance+ bypasses.
@@ -1885,18 +1939,124 @@ CREATE OR REPLACE VIEW public.organisers_public_view
 WITH (security_invoker = true)
 AS
 SELECT
-  id,
-  display_name,
-  avatar_url,
-  business_name,
-  created_at
-FROM public.creator_accounts
-WHERE deleted_at IS NULL;
+  ca.id,
+  ca.display_name,
+  ca.avatar_url,
+  ca.business_name,
+  ca.created_at
+FROM public.creator_accounts ca
+WHERE ca.deleted_at IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM public.brands b
+    WHERE b.account_id = ca.id
+      AND b.deleted_at IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM public.events e
+        WHERE e.brand_id = b.id
+          AND e.deleted_at IS NULL
+          AND e.visibility = 'public'
+          AND e.status IN ('scheduled', 'live')
+      )
+  );
 
 COMMENT ON VIEW public.events_public_view IS 'Public published events (B1 §B.8); RLS allows anon + authenticated for published rows.';
 COMMENT ON VIEW public.brands_public_view IS 'Brands with at least one public live event (B1 §B.8); same RLS as base table.';
-COMMENT ON VIEW public.organisers_public_view IS 'Organiser-facing columns; RLS limits to accounts with a public published brand event.';
+COMMENT ON VIEW public.organisers_public_view IS 'Organisers with a published public event; explicit filter + RLS (avoids “own row” widening).';
 
 GRANT SELECT ON public.events_public_view TO anon, authenticated;
 GRANT SELECT ON public.brands_public_view TO anon, authenticated;
 GRANT SELECT ON public.organisers_public_view TO anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Hardening (Copilot): narrow anon base-table column exposure; lock down biz_*.
+-- authenticated still uses full table SELECT + RLS — use *_public_view on
+-- share pages to avoid reading stripe/tax columns when not needed.
+-- ---------------------------------------------------------------------------
+
+REVOKE SELECT ON public.creator_accounts FROM anon;
+GRANT SELECT (
+  id,
+  display_name,
+  avatar_url,
+  business_name,
+  created_at,
+  deleted_at
+) ON public.creator_accounts TO anon;
+
+REVOKE SELECT ON public.brands FROM anon;
+GRANT SELECT (
+  id,
+  account_id,
+  name,
+  slug,
+  description,
+  profile_photo_url,
+  contact_email,
+  contact_phone,
+  social_links,
+  custom_links,
+  display_attendee_count,
+  default_currency,
+  created_at,
+  updated_at,
+  deleted_at
+) ON public.brands TO anon;
+
+REVOKE ALL ON FUNCTION public.biz_role_rank(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_brand_effective_rank(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_is_brand_member_for_read(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_is_brand_admin_plus(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_event_brand_id(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_is_event_manager_plus(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_can_read_order(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_can_manage_orders_for_event(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_order_brand_id(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_can_manage_payments_for_brand(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_prevent_brand_account_id_change() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_prevent_event_brand_id_change() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_prevent_event_dates_event_id_change() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_tickets_enforce_update() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_tickets_enforce_consistent_event() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_scan_events_block_mutate() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_scan_events_enforce_ticket_event() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_audit_log_block_mutate() FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION public.biz_role_rank(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_brand_effective_rank(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_is_brand_member_for_read(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_is_brand_admin_plus(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_event_brand_id(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_is_event_manager_plus(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_can_read_order(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_can_manage_orders_for_event(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_order_brand_id(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_can_manage_payments_for_brand(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_prevent_brand_account_id_change() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_prevent_event_brand_id_change() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_prevent_event_dates_event_id_change() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_tickets_enforce_update() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_tickets_enforce_consistent_event() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_scan_events_block_mutate() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_scan_events_enforce_ticket_event() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_audit_log_block_mutate() TO authenticated;
+
+GRANT EXECUTE ON FUNCTION public.biz_role_rank(text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_brand_effective_rank(uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_is_brand_member_for_read(uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_is_brand_admin_plus(uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_event_brand_id(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_is_event_manager_plus(uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_can_read_order(uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_can_manage_orders_for_event(uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_order_brand_id(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_can_manage_payments_for_brand(uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_prevent_brand_account_id_change() TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_prevent_event_brand_id_change() TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_prevent_event_dates_event_id_change() TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_tickets_enforce_update() TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_tickets_enforce_consistent_event() TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_scan_events_block_mutate() TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_scan_events_enforce_ticket_event() TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_audit_log_block_mutate() TO service_role;
