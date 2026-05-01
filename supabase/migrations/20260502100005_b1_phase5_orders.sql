@@ -54,7 +54,7 @@ CREATE TRIGGER trg_orders_updated_at
   EXECUTE FUNCTION public.update_updated_at_column();
 
 COMMENT ON TABLE public.orders IS 'Ticket / door orders (B1 §B.4).';
-COMMENT ON COLUMN public.orders.created_by_scanner_id IS 'FK to event_scanners added in phase 6 migration.';
+COMMENT ON COLUMN public.orders.created_by_scanner_id IS 'Scanner auth user who recorded a door sale (B1); FK added in phase 6.';
 
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
