@@ -18,7 +18,7 @@
  * Per Cycle 4 spec §3.5.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -151,6 +151,18 @@ const blankOverrides: MultiDateOverrides = {
   onlineUrl: null,
 };
 
+// Hidden HTML5 inputs for web picker triggering. Positioned absolutely
+// with opacity 0 — NOT display:none (display:none breaks showPicker()
+// and .click()). Triggered programmatically from row Pressables via
+// inputRef.current.showPicker() (with .click() fallback).
+const HIDDEN_WEB_INPUT_STYLE = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  opacity: 0,
+  pointerEvents: "none",
+} as const;
+
 const WEEKDAY_OPTS: ReadonlyArray<{ id: Weekday; label: string; short: string }> = [
   { id: "MO", label: "Monday", short: "Mon" },
   { id: "TU", label: "Tuesday", short: "Tue" },
@@ -188,6 +200,20 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   // ---- Picker state (date + time + termination-until) ----
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
   const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
+
+  // ---- Web hidden input refs (one per main picker mode).
+  // Tap row → handleOpenPicker(mode) on web triggers refs[mode].showPicker()
+  // (with .click() fallback). Browser opens native picker directly — no Sheet,
+  // no Done button. Inputs render at component bottom in the JSX. ----
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
+  const doorsOpenInputRef = useRef<HTMLInputElement | null>(null);
+  const endsAtInputRef = useRef<HTMLInputElement | null>(null);
+  const untilDateInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ---- Web hidden input refs for AddDateSheet inner pickers ----
+  const addDateInputRef = useRef<HTMLInputElement | null>(null);
+  const addDateStartInputRef = useRef<HTMLInputElement | null>(null);
+  const addDateEndInputRef = useRef<HTMLInputElement | null>(null);
 
   // ---- Sheet visibilities ----
   const [tzSheetVisible, setTzSheetVisible] = useState<boolean>(false);
@@ -259,6 +285,30 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
 
   const handleOpenPicker = useCallback(
     (mode: PickerMode): void => {
+      // Web: trigger the hidden HTML5 input directly. Browser opens its
+      // native picker — no Sheet, no Done button. Selection commits via
+      // the input's onChange (renders below).
+      if (Platform.OS === "web") {
+        let ref: React.RefObject<HTMLInputElement | null> | null = null;
+        if (mode === "date") ref = dateInputRef;
+        else if (mode === "doorsOpen") ref = doorsOpenInputRef;
+        else if (mode === "endsAt") ref = endsAtInputRef;
+        else if (mode === "untilDate") ref = untilDateInputRef;
+        const el = ref?.current;
+        if (el !== null && el !== undefined) {
+          if (typeof el.showPicker === "function") {
+            try {
+              el.showPicker();
+            } catch {
+              el.click();
+            }
+          } else {
+            el.click();
+          }
+        }
+        return;
+      }
+      // Native (iOS/Android): existing Sheet+spinner / dialog flow.
       let initial: Date;
       if (mode === "date") initial = dateFromIso(draft.date);
       else if (mode === "doorsOpen") initial = dateFromHhmm(draft.doorsOpen, "21:00");
@@ -292,8 +342,11 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   );
 
   const handleClosePicker = useCallback((): void => {
+    // Done button commits the Sheet's temp value on iOS + Web (both use
+    // a Sheet wrap with explicit Done). Android commits per-tap inline
+    // and never reaches this handler with a pending temp value.
     if (
-      Platform.OS === "ios" &&
+      Platform.OS !== "android" &&
       tempPickerValue !== null &&
       pickerMode !== null
     ) {
@@ -645,6 +698,29 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
 
   const handleAddDateOpenPicker = useCallback(
     (mode: "date" | "start" | "end"): void => {
+      // Web: trigger hidden HTML5 input directly (no Sheet wrap).
+      if (Platform.OS === "web") {
+        const ref =
+          mode === "date"
+            ? addDateInputRef
+            : mode === "start"
+              ? addDateStartInputRef
+              : addDateEndInputRef;
+        const el = ref.current;
+        if (el !== null) {
+          if (typeof el.showPicker === "function") {
+            try {
+              el.showPicker();
+            } catch {
+              el.click();
+            }
+          } else {
+            el.click();
+          }
+        }
+        return;
+      }
+      // Native: existing Sheet/dialog flow.
       let initial: Date;
       if (mode === "date") {
         initial = addDateValue !== null ? dateFromIso(addDateValue) : new Date();
@@ -676,8 +752,9 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   );
 
   const handleAddDateClosePicker = useCallback((): void => {
+    // iOS + Web both Done-commit; Android commits inline via per-change.
     if (
-      Platform.OS === "ios" &&
+      Platform.OS !== "android" &&
       addDateTempValue !== null &&
       addDatePickerMode !== null
     ) {
@@ -999,7 +1076,10 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
         </Text>
       </View>
 
-      {/* Date/time picker (iOS Sheet wrap, Android native dialog) */}
+      {/* Date/time picker — iOS Sheet wrap, Android native dialog.
+          Web is handled via hidden HTML5 inputs at the bottom of this
+          render — handleOpenPicker triggers them on web and returns early
+          before reaching this Sheet/dialog flow. */}
       {Platform.OS === "ios" ? (
         <Sheet
           visible={pickerMode !== null}
@@ -1032,7 +1112,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             ) : null}
           </View>
         </Sheet>
-      ) : pickerMode !== null ? (
+      ) : Platform.OS === "android" && pickerMode !== null ? (
         <DateTimePicker
           value={
             pickerMode === "date"
@@ -1051,6 +1131,87 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           minimumDate={pickerMinimumDate}
           is24Hour
         />
+      ) : null}
+
+      {/* Hidden HTML5 inputs for web direct-tap pickers. Triggered by
+          handleOpenPicker via showPicker()/.click() on row tap. The
+          inputs render in the DOM with opacity 0 (NOT display:none —
+          that would break programmatic triggering). Selection commits
+          via onChange directly through commitPickerValue. No Sheet,
+          no Done button on web. */}
+      {Platform.OS === "web" ? (
+        <>
+          <input
+            ref={dateInputRef}
+            type="date"
+            value={draft.date ?? ""}
+            min={isoFromDate(new Date())}
+            onChange={(e) => {
+              const v = (e.target as unknown as { value: string }).value;
+              if (v.length === 0) return;
+              const [y, m, d] = v.split("-").map(Number);
+              commitPickerValue("date", new Date(y, m - 1, d, 0, 0, 0, 0));
+            }}
+            aria-label="Event date"
+            style={HIDDEN_WEB_INPUT_STYLE}
+          />
+          <input
+            ref={doorsOpenInputRef}
+            type="time"
+            value={draft.doorsOpen ?? ""}
+            onChange={(e) => {
+              const v = (e.target as unknown as { value: string }).value;
+              if (v.length === 0) return;
+              const [h, mm] = v.split(":").map(Number);
+              const next = new Date();
+              next.setHours(h, mm, 0, 0);
+              commitPickerValue("doorsOpen", next);
+            }}
+            aria-label="Doors open time"
+            style={HIDDEN_WEB_INPUT_STYLE}
+          />
+          <input
+            ref={endsAtInputRef}
+            type="time"
+            value={draft.endsAt ?? ""}
+            onChange={(e) => {
+              const v = (e.target as unknown as { value: string }).value;
+              if (v.length === 0) return;
+              const [h, mm] = v.split(":").map(Number);
+              const next = new Date();
+              next.setHours(h, mm, 0, 0);
+              commitPickerValue("endsAt", next);
+            }}
+            aria-label="Event end time"
+            style={HIDDEN_WEB_INPUT_STYLE}
+          />
+          <input
+            ref={untilDateInputRef}
+            type="date"
+            value={
+              draft.recurrenceRule?.termination.kind === "until"
+                ? draft.recurrenceRule.termination.until
+                : ""
+            }
+            min={
+              draft.date !== null
+                ? (() => {
+                    const firstDay = dateFromIso(draft.date);
+                    firstDay.setDate(firstDay.getDate() + 1);
+                    return isoFromDate(firstDay);
+                  })()
+                : isoFromDate(new Date())
+            }
+            onChange={(e) => {
+              const v = (e.target as unknown as { value: string }).value;
+              if (v.length === 0) return;
+              const [y, m, d] = v.split("-").map(Number);
+              commitPickerValue("untilDate", new Date(y, m - 1, d, 0, 0, 0, 0));
+            }}
+            aria-label="Recurrence until date"
+            style={HIDDEN_WEB_INPUT_STYLE}
+          />
+        </>
       ) : null}
 
       {/* Recurrence preset sheet */}
@@ -1401,9 +1562,9 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           </View>
         </ScrollView>
 
-        {/* AddDateSheet inner picker — separate Sheet not used; render
-            inline DateTimePicker instead since AddDateSheet itself is
-            already inside a Sheet. iOS spinner inline at bottom. */}
+        {/* AddDateSheet inner picker — iOS spinner inline / Android dialog.
+            Web is handled via hidden inputs at AddDateSheet bottom (below);
+            handleAddDateOpenPicker triggers them on web and returns early. */}
         {addDatePickerMode !== null && Platform.OS === "ios" ? (
           <View style={styles.addDateInlinePicker}>
             <View style={styles.iosPickerDoneRow}>
@@ -1430,7 +1591,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
               />
             ) : null}
           </View>
-        ) : addDatePickerMode !== null && Platform.OS !== "ios" ? (
+        ) : Platform.OS === "android" && addDatePickerMode !== null ? (
           <DateTimePicker
             value={addDateTempValue ?? new Date()}
             mode={addDatePickerMode === "date" ? "date" : "time"}
@@ -1439,6 +1600,50 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             minimumDate={addDatePickerMode === "date" ? new Date() : undefined}
             is24Hour
           />
+        ) : null}
+
+        {/* Hidden HTML5 inputs for AddDateSheet web direct-tap pickers.
+            Triggered by handleAddDateOpenPicker via showPicker()/.click(). */}
+        {Platform.OS === "web" ? (
+          <>
+            <input
+              ref={addDateInputRef}
+              type="date"
+              value={addDateValue ?? ""}
+              min={isoFromDate(new Date())}
+              onChange={(e) => {
+                const v = (e.target as unknown as { value: string }).value;
+                if (v.length === 0) return;
+                setAddDateValue(v);
+              }}
+              aria-label="Date for new entry"
+              style={HIDDEN_WEB_INPUT_STYLE}
+            />
+            <input
+              ref={addDateStartInputRef}
+              type="time"
+              value={addDateStartTime}
+              onChange={(e) => {
+                const v = (e.target as unknown as { value: string }).value;
+                if (v.length === 0) return;
+                setAddDateStartTime(v);
+              }}
+              aria-label="Start time"
+              style={HIDDEN_WEB_INPUT_STYLE}
+            />
+            <input
+              ref={addDateEndInputRef}
+              type="time"
+              value={addDateEndTime}
+              onChange={(e) => {
+                const v = (e.target as unknown as { value: string }).value;
+                if (v.length === 0) return;
+                setAddDateEndTime(v);
+              }}
+              aria-label="End time"
+              style={HIDDEN_WEB_INPUT_STYLE}
+            />
+          </>
         ) : null}
       </Sheet>
 

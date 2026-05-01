@@ -98,6 +98,13 @@ const STEPPER_STEPS: StepperStep[] = STEP_DEFS.map((s, i) => ({
 
 export type WizardExitMode = "published" | "discarded" | "abandoned";
 
+/** Slug pair returned to the route handler so it can navigate to the
+ * public event page after a successful publish (Cycle 6). */
+export interface PublishedEventSlug {
+  brandSlug: string;
+  eventSlug: string;
+}
+
 export interface EventCreatorWizardProps {
   /** Resolved draft from useDraftById in the route handler. */
   draft: DraftEvent;
@@ -107,7 +114,10 @@ export interface EventCreatorWizardProps {
   /** True for /event/create flow; false for /event/[id]/edit (resume). Drives chrome icon + discard semantics. */
   isCreateMode: boolean;
   /** Called when wizard exits — caller routes appropriately + shows Toast. */
-  onExit: (mode: WizardExitMode, ctx?: { name?: string }) => void;
+  onExit: (
+    mode: WizardExitMode,
+    ctx?: { name?: string; slug?: PublishedEventSlug },
+  ) => void;
   /** Push to /event/[id]/preview when user taps mini-card or Preview button. */
   onOpenPreview: () => void;
   /** Push to /brand/[brandId]/payments/onboard when J-E3 path hit. */
@@ -380,10 +390,25 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     const draftName = liveDraft.name;
     // Simulated 1.2s submit per spec AC#28.
     await new Promise<void>((resolve) => setTimeout(resolve, 1200));
-    publishDraft(liveDraft.id);
+    // Cycle 6 — publishDraft now returns the new LiveEvent so we can
+    // navigate to its public URL. Falls back to old behavior if the
+    // publish failed (brand missing) — caller stays on Step 7.
+    const liveEvent = publishDraft(liveDraft.id);
     setIsPublishing(false);
     setPublishConfirmVisible(false);
-    onExit("published", { name: draftName });
+    if (liveEvent !== null) {
+      onExit("published", {
+        name: draftName,
+        slug: {
+          brandSlug: liveEvent.brandSlug,
+          eventSlug: liveEvent.eventSlug,
+        },
+      });
+    } else {
+      // Publish failed — preserve draft, signal abandoned with current name
+      // so the route handler shows a friendly toast.
+      onExit("abandoned", { name: draftName });
+    }
   }, [liveDraft.id, liveDraft.name, publishDraft, onExit]);
 
   const handleFixJump = useCallback((step: number): void => {

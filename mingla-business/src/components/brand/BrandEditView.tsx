@@ -399,6 +399,90 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             />
           </View>
 
+          {/* SECTION B-2 — Brand kind (Cycle 7 v10).
+              Drives whether the public brand page shows a location after the
+              handle. Pop-up = no location shown. Physical = address rendered. */}
+          <Text style={styles.sectionLabel}>BRAND KIND</Text>
+          <View style={styles.fieldsCol}>
+            <View style={styles.kindRow}>
+              <Pressable
+                onPress={() => setDraft({ ...draft, kind: "physical" })}
+                accessibilityRole="button"
+                accessibilityState={{ selected: draft.kind === "physical" }}
+                accessibilityLabel="Physical space"
+                style={[
+                  styles.kindPill,
+                  draft.kind === "physical" && styles.kindPillActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.kindPillLabel,
+                    draft.kind === "physical" && styles.kindPillLabelActive,
+                  ]}
+                >
+                  Physical space
+                </Text>
+                <Text
+                  style={[
+                    styles.kindPillSub,
+                    draft.kind === "physical" && styles.kindPillSubActive,
+                  ]}
+                >
+                  A venue you own or lease
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setDraft({ ...draft, kind: "popup" })}
+                accessibilityRole="button"
+                accessibilityState={{ selected: draft.kind === "popup" }}
+                accessibilityLabel="Pop-up"
+                style={[
+                  styles.kindPill,
+                  draft.kind === "popup" && styles.kindPillActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.kindPillLabel,
+                    draft.kind === "popup" && styles.kindPillLabelActive,
+                  ]}
+                >
+                  Pop-up
+                </Text>
+                <Text
+                  style={[
+                    styles.kindPillSub,
+                    draft.kind === "popup" && styles.kindPillSubActive,
+                  ]}
+                >
+                  Events at varying venues
+                </Text>
+              </Pressable>
+            </View>
+            {draft.kind === "physical" ? (
+              <View>
+                <Input
+                  variant="text"
+                  value={draft.address ?? ""}
+                  onChangeText={(v) =>
+                    setDraft({
+                      ...draft,
+                      address: v.length === 0 ? null : v,
+                    })
+                  }
+                  placeholder="e.g. 12 Old Street, London EC1V 9HL"
+                  leadingIcon="location"
+                  accessibilityLabel="Brand address"
+                  clearable
+                />
+                <Text style={styles.kindHint}>
+                  Shown to buyers on your public brand page. Use neighborhood only if you'd rather not share the exact address.
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
           {/* SECTION C — Contact */}
           <Text style={styles.sectionLabel}>CONTACT</Text>
           <View style={styles.fieldsCol}>
@@ -659,6 +743,47 @@ const styles = StyleSheet.create({
   },
   fieldsCol: {
     gap: spacing.sm,
+  },
+
+  // Brand kind pills (Cycle 7 v10) -----------------------------------
+  kindRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  kindPill: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.lg,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+  },
+  kindPillActive: {
+    borderColor: accent.warm,
+    backgroundColor: "rgba(235, 120, 37, 0.10)",
+  },
+  kindPillLabel: {
+    fontSize: typography.body.fontSize,
+    fontWeight: "600",
+    color: textTokens.secondary,
+    marginBottom: 2,
+  },
+  kindPillLabelActive: {
+    color: textTokens.primary,
+  },
+  kindPillSub: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+  },
+  kindPillSubActive: {
+    color: textTokens.secondary,
+  },
+  kindHint: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
 
   // Display toggle row --------------------------------------------------

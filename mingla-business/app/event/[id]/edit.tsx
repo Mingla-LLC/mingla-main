@@ -80,13 +80,26 @@ export default function EventEditRoute(): React.ReactElement {
   }, [draft]);
 
   const handleExit = React.useCallback(
-    (mode: WizardExitMode, ctx?: { name?: string }): void => {
+    (
+      mode: WizardExitMode,
+      ctx?: {
+        name?: string;
+        slug?: { brandSlug: string; eventSlug: string };
+      },
+    ): void => {
       if (mode === "published") {
         const name = ctx?.name ?? "Event";
         setToast({ visible: true, message: `${name} is live.` });
-        // Published events live on Home + Events tab; Home is the
-        // brand-anchored landing.
-        router.replace("/(tabs)/home" as never);
+        // Cycle 6 — route to the new public event page when slug is
+        // provided. Falls back to home tab when slug missing (e.g.
+        // pre-Cycle-6 draft or publish-failed-but-flagged-published).
+        if (ctx?.slug !== undefined) {
+          router.replace(
+            `/e/${ctx.slug.brandSlug}/${ctx.slug.eventSlug}` as never,
+          );
+        } else {
+          router.replace("/(tabs)/home" as never);
+        }
       } else {
         // Discarded / abandoned (chrome X close) — route to Events tab
         // so the founder lands where they can see drafts + start a new

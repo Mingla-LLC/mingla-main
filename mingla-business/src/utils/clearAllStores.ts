@@ -17,8 +17,10 @@
 
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 import { useDraftEventStore } from "../store/draftEventStore";
+import { useLiveEventStore } from "../store/liveEventStore";
 
 export const clearAllStores = (): void => {
   useCurrentBrandStore.getState().reset();
   useDraftEventStore.getState().reset();
+  useLiveEventStore.getState().reset(); // NEW Cycle 6 — Constitution #6
 };

@@ -89,6 +89,23 @@ interface OperationsRow {
 }
 
 /**
+ * Normalize a social-link field value into a full URL. Founders may type
+ * either a full URL (`https://instagram.com/lonelymoth`) or a handle
+ * (`@lonelymoth` / `lonelymoth`). Mirrors the pattern in PublicBrandPage.
+ *
+ * Cycle 7 FX1 — added inline rather than lifted to a shared util; lift
+ * only if a 3rd consumer appears.
+ */
+const normalizeSocialUrl = (raw: string, base: string): string => {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  const handle = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
+  return `${base}${handle}`;
+};
+
+/**
  * Pattern note: BrandProfileViewProps grows a navigation callback prop per
  * cycle as Operations rows + the Stripe banner go live. Current set
  * (FINAL for Cycle 2):
@@ -133,6 +150,27 @@ export interface BrandProfileViewProps {
    * the Cycle-2 chain.
    */
   onReports: (brandId: string) => void;
+  /**
+   * Called when user taps "View public page". Receives the brand SLUG
+   * (not id) — the public page route is `/b/{brandSlug}`.
+   * NEW in Cycle 7 FX1 — replaces Cycle-2 J-A7 TRANSITIONAL Toast now
+   * that Cycle 7 has shipped the public brand page.
+   */
+  onViewPublic: (brandSlug: string) => void;
+  /**
+   * Called when user taps the empty-events "Build a new event" CTA.
+   * Routes to `/event/create` (the Cycle 3 wedge).
+   * NEW in Cycle 7 FX1 — replaces Cycle-2 J-A7 TRANSITIONAL Toast that
+   * was supposed to retire when Cycle 3 shipped (pre-existing miss).
+   */
+  onCreateEvent: () => void;
+  /**
+   * Called when user taps a social chip on the brand profile. Receives
+   * the normalized full URL. Caller wires to `Linking.openURL`.
+   * NEW in Cycle 7 FX1 — replaces Cycle-2 J-A7 TRANSITIONAL Toast.
+   * Mirrors the new ShareModal social-link pattern from Cycle 7.
+   */
+  onOpenLink: (url: string) => void;
 }
 
 // Status-driven J-A7 banner copy. When entry is `null`, banner is
@@ -173,6 +211,9 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onStripe,
   onPayments,
   onReports,
+  onViewPublic,
+  onCreateEvent,
+  onOpenLink,
 }) => {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
@@ -191,10 +232,11 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     }
   }, [brand, onEdit]);
 
-  // [TRANSITIONAL] View-public CTA — exit when /brand/[id]/preview lands (Cycle 3+).
+  // Cycle 7 FX1: routes to /b/{brand.slug} via parent route handler.
+  // Retired Cycle-2 J-A7 TRANSITIONAL Toast (exit condition met by Cycle 7).
   const handleViewPublic = useCallback((): void => {
-    fireToast("Public preview lands in Cycle 3+.");
-  }, [fireToast]);
+    if (brand !== null) onViewPublic(brand.slug);
+  }, [brand, onViewPublic]);
 
   const handleStripeBanner = useCallback((): void => {
     if (brand !== null) {
@@ -207,15 +249,20 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     fireToast("Editing lands in J-A8.");
   }, [fireToast]);
 
-  // [TRANSITIONAL] Empty-events CTA — exit when Cycle 3 (event creator) lands.
+  // Cycle 7 FX1: routes to /event/create via parent route handler.
+  // Retired Cycle-2 J-A7 TRANSITIONAL Toast (exit condition met by Cycle 3).
   const handleCreateEvent = useCallback((): void => {
-    fireToast("Event creation lands in Cycle 3.");
-  }, [fireToast]);
+    onCreateEvent();
+  }, [onCreateEvent]);
 
-  // [TRANSITIONAL] Social chip taps — exit when external-link handling lands (Cycle 3+).
-  const handleOpenLink = useCallback((): void => {
-    fireToast("Opening links lands in a later cycle.");
-  }, [fireToast]);
+  // Cycle 7 FX1: opens external URL via parent route handler (Linking.openURL).
+  // Retired Cycle-2 J-A7 TRANSITIONAL Toast.
+  const handleOpenLink = useCallback(
+    (url: string): void => {
+      onOpenLink(url);
+    },
+    [onOpenLink],
+  );
 
   const pastEvents = useMemo<StubPastEventRow[]>(() => {
     if (brand === null) return [];
@@ -343,36 +390,39 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             // Order: email → phone → website → instagram → tiktok → x →
             // facebook → youtube → linkedin → threads. Hide entire row when
             // every contact + social field is empty (clean look per spec).
-            const chips: Array<{ key: string; icon: IconName; aria: string }> = [];
+            // Each chip carries its `url` (already-normalized full URL or
+            // `mailto:`/`tel:` scheme). Tap → onOpenLink(url) → parent calls
+            // Linking.openURL. Cycle 7 FX1 retired the Cycle-2 dead-Toast.
+            const chips: Array<{ key: string; icon: IconName; aria: string; url: string }> = [];
             if (typeof brand.contact?.email === "string" && brand.contact.email.length > 0) {
-              chips.push({ key: "email", icon: "mail", aria: `Email ${brand.contact.email}` });
+              chips.push({ key: "email", icon: "mail", aria: `Email ${brand.contact.email}`, url: `mailto:${brand.contact.email}` });
             }
             if (typeof brand.contact?.phone === "string" && brand.contact.phone.length > 0) {
-              chips.push({ key: "phone", icon: "phone", aria: `Phone ${brand.contact.phone}` });
+              chips.push({ key: "phone", icon: "phone", aria: `Phone ${brand.contact.phone}`, url: `tel:${brand.contact.phone}` });
             }
             if (typeof brand.links?.website === "string" && brand.links.website.length > 0) {
-              chips.push({ key: "website", icon: "globe", aria: `Website ${brand.links.website}` });
+              chips.push({ key: "website", icon: "globe", aria: `Website ${brand.links.website}`, url: normalizeSocialUrl(brand.links.website, "https://") });
             }
             if (typeof brand.links?.instagram === "string" && brand.links.instagram.length > 0) {
-              chips.push({ key: "instagram", icon: "instagram", aria: `Instagram ${brand.links.instagram}` });
+              chips.push({ key: "instagram", icon: "instagram", aria: `Instagram ${brand.links.instagram}`, url: normalizeSocialUrl(brand.links.instagram, "https://instagram.com/") });
             }
             if (typeof brand.links?.tiktok === "string" && brand.links.tiktok.length > 0) {
-              chips.push({ key: "tiktok", icon: "tiktok", aria: `TikTok ${brand.links.tiktok}` });
+              chips.push({ key: "tiktok", icon: "tiktok", aria: `TikTok ${brand.links.tiktok}`, url: normalizeSocialUrl(brand.links.tiktok, "https://tiktok.com/@") });
             }
             if (typeof brand.links?.x === "string" && brand.links.x.length > 0) {
-              chips.push({ key: "x", icon: "x", aria: `X ${brand.links.x}` });
+              chips.push({ key: "x", icon: "x", aria: `X ${brand.links.x}`, url: normalizeSocialUrl(brand.links.x, "https://x.com/") });
             }
             if (typeof brand.links?.facebook === "string" && brand.links.facebook.length > 0) {
-              chips.push({ key: "facebook", icon: "facebook", aria: `Facebook ${brand.links.facebook}` });
+              chips.push({ key: "facebook", icon: "facebook", aria: `Facebook ${brand.links.facebook}`, url: normalizeSocialUrl(brand.links.facebook, "https://facebook.com/") });
             }
             if (typeof brand.links?.youtube === "string" && brand.links.youtube.length > 0) {
-              chips.push({ key: "youtube", icon: "youtube", aria: `YouTube ${brand.links.youtube}` });
+              chips.push({ key: "youtube", icon: "youtube", aria: `YouTube ${brand.links.youtube}`, url: normalizeSocialUrl(brand.links.youtube, "https://youtube.com/@") });
             }
             if (typeof brand.links?.linkedin === "string" && brand.links.linkedin.length > 0) {
-              chips.push({ key: "linkedin", icon: "linkedin", aria: `LinkedIn ${brand.links.linkedin}` });
+              chips.push({ key: "linkedin", icon: "linkedin", aria: `LinkedIn ${brand.links.linkedin}`, url: normalizeSocialUrl(brand.links.linkedin, "https://linkedin.com/company/") });
             }
             if (typeof brand.links?.threads === "string" && brand.links.threads.length > 0) {
-              chips.push({ key: "threads", icon: "threads", aria: `Threads ${brand.links.threads}` });
+              chips.push({ key: "threads", icon: "threads", aria: `Threads ${brand.links.threads}`, url: normalizeSocialUrl(brand.links.threads, "https://threads.net/@") });
             }
             if (chips.length === 0) return null;
             return (
@@ -380,7 +430,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
                 {chips.map((chip) => (
                   <Pressable
                     key={chip.key}
-                    onPress={handleOpenLink}
+                    onPress={() => handleOpenLink(chip.url)}
                     accessibilityRole="button"
                     accessibilityLabel={chip.aria}
                     style={styles.socialChip}

@@ -69,6 +69,11 @@ const buildBrand = (displayName: string): Brand => ({
   id: `b_${Date.now().toString(36)}`,
   displayName: displayName.trim(),
   slug: slugify(displayName),
+  // Cycle 7 schema v10: default new brands to "popup" (safer — no fake
+  // address shown). Founder switches to "physical" + adds address via
+  // BrandEditView when applicable.
+  kind: "popup",
+  address: null,
   role: "owner" as BrandRole,
   stats: { events: 0, followers: 0, rev: 0, attendees: 0 },
   currentLiveEvent: null,

@@ -12,14 +12,30 @@
  */
 
 import type {
-  DraftEvent,
   MultiDateEntry,
   RecurrenceRule,
+  WhenMode,
 } from "../store/draftEventStore";
 import {
   expandRecurrenceToDates,
   formatRecurrenceLabel,
 } from "./recurrenceRule";
+
+/**
+ * Structural type accepted by the `formatDraft*` helpers below.
+ *
+ * Both `DraftEvent` and `LiveEvent` (Cycle 6+) satisfy this shape.
+ * Using a structural type lets these display helpers serve both the
+ * organiser-side draft surfaces AND the buyer-side public page without
+ * casts. Constitution #2 + I-14 — single source for date display.
+ */
+export interface EventDateLike {
+  whenMode: WhenMode;
+  date: string | null;
+  doorsOpen: string | null;
+  recurrenceRule: RecurrenceRule | null;
+  multiDates: MultiDateEntry[] | null;
+}
 
 const parseIso = (iso: string): Date => {
   const parts = iso.split("-");
@@ -123,7 +139,7 @@ export const formatMultiDateList = (entries: MultiDateEntry[]): string[] => {
  * Multi-date mode: first entry's date.
  * Falls back to "Date TBD" if no date is resolvable.
  */
-export const formatDraftDateLine = (draft: DraftEvent): string => {
+export const formatDraftDateLine = (draft: EventDateLike): string => {
   if (draft.whenMode === "single") {
     return formatSingleDateLine(draft.date, draft.doorsOpen);
   }
@@ -140,7 +156,7 @@ export const formatDraftDateLine = (draft: DraftEvent): string => {
  * Returns the secondary "pill" sub-line for recurring/multi-date modes.
  * Empty (null) for single mode.
  */
-export const formatDraftDateSubline = (draft: DraftEvent): string | null => {
+export const formatDraftDateSubline = (draft: EventDateLike): string | null => {
   if (draft.whenMode === "single") return null;
   if (draft.whenMode === "recurring") {
     if (draft.recurrenceRule === null || draft.date === null) {
@@ -157,7 +173,7 @@ export const formatDraftDateSubline = (draft: DraftEvent): string | null => {
  * Returns the accordion-expand list for a draft (multi-mode only).
  * Returns empty array for single mode (no expansion needed).
  */
-export const formatDraftDatesList = (draft: DraftEvent): string[] => {
+export const formatDraftDatesList = (draft: EventDateLike): string[] => {
   if (draft.whenMode === "single") return [];
   if (draft.whenMode === "recurring") {
     if (draft.recurrenceRule === null || draft.date === null) return [];

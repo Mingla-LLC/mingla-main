@@ -34,6 +34,8 @@ import {
 } from "zustand/middleware";
 
 import { generateDraftId } from "../utils/draftEventId";
+import { convertDraftToLiveEvent } from "../utils/liveEventConverter";
+import type { LiveEvent } from "./liveEventStore";
 
 /**
  * Detect device's IANA timezone via Intl. Falls back to "Europe/London"
@@ -105,6 +107,25 @@ export interface TicketStub {
   maxPurchaseQty: number | null;
   /** When true, buyer can transfer ticket to another email/identity. Default true. */
   allowTransfers: boolean;
+  // ---- Cycle 6 (5b absorption — schema v4 → v5, additive) ----
+  /**
+   * Optional description of what this ticket includes (e.g. "VIP includes
+   * dinner + early entry + meet-and-greet"). Buyer-facing; rendered on
+   * the public event page. Max ~280 chars (UI-enforced; not validated).
+   */
+  description: string | null;
+  /**
+   * ISO 8601 datetime — when sales open for this ticket. null = no
+   * pre-sale window (sales open at publish time). Drives the J-P3
+   * pre-sale variant on the public event page.
+   */
+  saleStartAt: string | null;
+  /**
+   * ISO 8601 datetime — when sales close for this ticket. null = no
+   * end (sales open until event date). UI-enforced ordering: must be
+   * after saleStartAt if both set.
+   */
+  saleEndAt: string | null;
 }
 
 export type DraftEventFormat = "in_person" | "online" | "hybrid";
@@ -233,8 +254,16 @@ export interface DraftEventState {
   ) => void;
   setLastStep: (id: string, step: number) => void;
   deleteDraft: (id: string) => void;
-  /** Cycle 3 stub: marks "live" then disposes. Cycle 9 retains as event record. */
-  publishDraft: (id: string) => void;
+  /**
+   * Convert a draft into a LiveEvent (in liveEventStore) and remove the
+   * draft. Atomic ownership transfer (I-16 — live-event ownership
+   * separation). Returns the new LiveEvent for navigation purposes, or
+   * null if the publish failed (e.g., brand was deleted) — caller should
+   * preserve the draft on null.
+   *
+   * Refactored Cycle 6. Was previously a deletion stub.
+   */
+  publishDraft: (id: string) => LiveEvent | null;
   reset: () => void;
 }
 
@@ -340,8 +369,21 @@ const upgradeV2DraftToV3 = (d: V2DraftEvent): V3DraftEvent => {
   };
 };
 
+// v4 ticket — Cycle 5 shape. v3 fields + 9 modifier fields.
+// Cycle 6 v5 ADDS: description, saleStartAt, saleEndAt.
+type V4TicketStub = Omit<
+  TicketStub,
+  "description" | "saleStartAt" | "saleEndAt"
+>;
+type V4DraftEvent = Omit<DraftEvent, "tickets"> & {
+  tickets: V4TicketStub[];
+};
+
 // v3 → v4: extend each ticket with 9 modifier fields (Cycle 5).
-const upgradeV3TicketToV4 = (t: V3TicketStub, idx: number): TicketStub => ({
+const upgradeV3TicketToV4 = (
+  t: V3TicketStub,
+  idx: number,
+): V4TicketStub => ({
   ...t,
   visibility: "public",
   displayOrder: idx,
@@ -354,9 +396,23 @@ const upgradeV3TicketToV4 = (t: V3TicketStub, idx: number): TicketStub => ({
   allowTransfers: true,
 });
 
-const upgradeV3DraftToV4 = (d: V3DraftEvent): DraftEvent => ({
+const upgradeV3DraftToV4 = (d: V3DraftEvent): V4DraftEvent => ({
   ...d,
   tickets: d.tickets.map(upgradeV3TicketToV4),
+});
+
+// v4 → v5: extend each ticket with description + sale period fields
+// (Cycle 6 — 5b absorption). Additive only.
+const upgradeV4TicketToV5 = (t: V4TicketStub): TicketStub => ({
+  ...t,
+  description: null,
+  saleStartAt: null,
+  saleEndAt: null,
+});
+
+const upgradeV4DraftToV5 = (d: V4DraftEvent): DraftEvent => ({
+  ...d,
+  tickets: d.tickets.map(upgradeV4TicketToV5),
 });
 
 const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
@@ -365,27 +421,33 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   name: "mingla-business.draftEvent.v1",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state): PersistedState => ({ drafts: state.drafts }),
-  version: 4,
+  version: 5,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { drafts: [] };
     }
     if (version === 1) {
-      // v1 → v4: chain v1→v2 then v2→v3 then v3→v4
+      // v1 → v5: chain v1→v2 → v3 → v4 → v5
       const v1 = persistedState as { drafts: V1DraftEvent[] };
       const v2Drafts = v1.drafts.map(upgradeV1DraftToV2);
       const v3Drafts = v2Drafts.map(upgradeV2DraftToV3);
-      return { drafts: v3Drafts.map(upgradeV3DraftToV4) };
+      const v4Drafts = v3Drafts.map(upgradeV3DraftToV4);
+      return { drafts: v4Drafts.map(upgradeV4DraftToV5) };
     }
     if (version === 2) {
-      // v2 → v4: chain v2→v3 then v3→v4
       const v2 = persistedState as { drafts: V2DraftEvent[] };
       const v3Drafts = v2.drafts.map(upgradeV2DraftToV3);
-      return { drafts: v3Drafts.map(upgradeV3DraftToV4) };
+      const v4Drafts = v3Drafts.map(upgradeV3DraftToV4);
+      return { drafts: v4Drafts.map(upgradeV4DraftToV5) };
     }
     if (version === 3) {
       const v3 = persistedState as { drafts: V3DraftEvent[] };
-      return { drafts: v3.drafts.map(upgradeV3DraftToV4) };
+      const v4Drafts = v3.drafts.map(upgradeV3DraftToV4);
+      return { drafts: v4Drafts.map(upgradeV4DraftToV5) };
+    }
+    if (version === 4) {
+      const v4 = persistedState as { drafts: V4DraftEvent[] };
+      return { drafts: v4.drafts.map(upgradeV4DraftToV5) };
     }
     return persistedState as PersistedState;
   },
@@ -438,9 +500,21 @@ export const useDraftEventStore = create<DraftEventState>()(
         set((s) => ({ drafts: s.drafts.filter((d) => d.id !== id) }));
       },
 
-      publishDraft: (id): void => {
-        // Cycle 3 stub: fire-and-forget. Cycle 9 retains as event record.
+      publishDraft: (id): LiveEvent | null => {
+        // Cycle 6 — atomic ownership transfer (I-16).
+        // 1. Find the draft.
+        const draft = get().drafts.find((d) => d.id === id);
+        if (draft === undefined) return null;
+        // 2. Convert to LiveEvent + push to liveEventStore (the converter
+        //    is the I-16 chokepoint — see `liveEventConverter.ts`).
+        //    If conversion fails (e.g., brand deleted), preserve the draft.
+        const liveEvent = convertDraftToLiveEvent(draft);
+        if (liveEvent === null) return null;
+        // 3. Delete the draft only AFTER successful conversion. This
+        //    ordering is intentional: if step 2 throws or returns null,
+        //    the draft survives so the user can retry publish.
         set((s) => ({ drafts: s.drafts.filter((d) => d.id !== id) }));
+        return liveEvent;
       },
 
       reset: (): void => {

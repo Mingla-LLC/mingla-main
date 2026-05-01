@@ -103,6 +103,16 @@ const hhmmFromDate = (d: Date): string => {
 
 type TimePickerMode = "start" | "end" | null;
 
+// Hidden HTML5 inputs for web direct-tap pickers — opacity 0 + 1×1px,
+// NOT display:none (display:none breaks showPicker()/.click()).
+const HIDDEN_WEB_INPUT_STYLE = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  opacity: 0,
+  pointerEvents: "none",
+} as const;
+
 // ---- Component ------------------------------------------------------
 
 export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
@@ -130,6 +140,11 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
   // Time picker
   const [pickerMode, setPickerMode] = useState<TimePickerMode>(null);
   const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
+
+  // Web hidden input refs — tap row → showPicker()/.click() opens browser
+  // native time picker directly. No Sheet, no Done button on web.
+  const startTimeInputRef = useRef<HTMLInputElement | null>(null);
+  const endTimeInputRef = useRef<HTMLInputElement | null>(null);
 
   // Keyboard awareness (per global rule).
   const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
@@ -199,6 +214,24 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
 
   const handleOpenTimePicker = useCallback(
     (mode: "start" | "end"): void => {
+      // Web: trigger hidden input directly. Browser opens native time picker.
+      if (Platform.OS === "web") {
+        const ref = mode === "start" ? startTimeInputRef : endTimeInputRef;
+        const el = ref.current;
+        if (el !== null) {
+          if (typeof el.showPicker === "function") {
+            try {
+              el.showPicker();
+            } catch {
+              el.click();
+            }
+          } else {
+            el.click();
+          }
+        }
+        return;
+      }
+      // Native (iOS/Android): existing Sheet/dialog flow.
       const initial = mode === "start" ? dateFromHhmm(startTime) : dateFromHhmm(endTime);
       setTempPickerValue(initial);
       setPickerMode(mode);
@@ -229,8 +262,9 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
   );
 
   const handleCloseTimePicker = useCallback((): void => {
+    // iOS + Web both Done-commit; Android commits inline via per-change.
     if (
-      Platform.OS === "ios" &&
+      Platform.OS !== "android" &&
       tempPickerValue !== null &&
       pickerMode !== null
     ) {
@@ -436,12 +470,9 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
 
       </ScrollView>
 
-      {/* Time picker docked at the BOTTOM of the Sheet body (NOT inside
-          the ScrollView). This anchors the iOS spinner to the visible
-          bottom regardless of how far the user has scrolled in the form.
-          Wrapped in a GlassCard so the spinner reads as a glass surface
-          (L1-L4 blur + tint + highlight + border) rather than a flat
-          rectangle pasted on top of the form. */}
+      {/* Time picker dock — iOS Sheet+spinner. Web is handled via hidden
+          inputs at component bottom (below); handleOpenTimePicker triggers
+          them on web and returns early before reaching this dock. */}
       {pickerMode !== null && Platform.OS === "ios" ? (
         <View style={styles.pickerDockWrap}>
           <GlassCard
@@ -479,7 +510,7 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
       </View>
 
       {/* Android native time-picker dialog (auto-dismisses) */}
-      {pickerMode !== null && Platform.OS !== "ios" ? (
+      {pickerMode !== null && Platform.OS === "android" ? (
         <DateTimePicker
           value={
             pickerMode === "start"
@@ -491,6 +522,36 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
           onChange={handleTimePickerChange}
           is24Hour
         />
+      ) : null}
+
+      {/* Hidden HTML5 inputs for web direct-tap pickers. */}
+      {Platform.OS === "web" ? (
+        <>
+          <input
+            ref={startTimeInputRef}
+            type="time"
+            value={startTime}
+            onChange={(e) => {
+              const v = (e.target as unknown as { value: string }).value;
+              if (v.length === 0) return;
+              setStartTime(v);
+            }}
+            aria-label="Start time"
+            style={HIDDEN_WEB_INPUT_STYLE}
+          />
+          <input
+            ref={endTimeInputRef}
+            type="time"
+            value={endTime}
+            onChange={(e) => {
+              const v = (e.target as unknown as { value: string }).value;
+              if (v.length === 0) return;
+              setEndTime(v);
+            }}
+            aria-label="End time"
+            style={HIDDEN_WEB_INPUT_STYLE}
+          />
+        </>
       ) : null}
     </Sheet>
   );

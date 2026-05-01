@@ -13,7 +13,7 @@
  */
 
 import React from "react";
-import { View } from "react-native";
+import { Linking, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -63,6 +63,23 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/brand/${brandId}/payments/reports` as never);
   };
 
+  // Cycle 7 FX1 — retired BrandProfileView TRANSITIONAL Toasts.
+  const handleViewPublic = (brandSlug: string): void => {
+    router.push(`/b/${brandSlug}` as never);
+  };
+
+  const handleCreateEvent = (): void => {
+    router.push("/event/create" as never);
+  };
+
+  const handleOpenLink = (url: string): void => {
+    // Linking.openURL is async + user-cancellable. We swallow rejections
+    // because there's no useful surface — most failures (no app installed,
+    // malformed URL) are best handled by native dialogs that fire from
+    // openURL itself before resolving.
+    Linking.openURL(url).catch(() => {});
+  };
+
   return (
     <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>
       <BrandProfileView
@@ -73,6 +90,9 @@ export default function BrandProfileRoute(): React.ReactElement {
         onStripe={handleOpenStripe}
         onPayments={handleOpenPayments}
         onReports={handleOpenReports}
+        onViewPublic={handleViewPublic}
+        onCreateEvent={handleCreateEvent}
+        onOpenLink={handleOpenLink}
       />
     </View>
   );

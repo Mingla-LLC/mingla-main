@@ -41,6 +41,13 @@
  *                       schema bump. Real per-event records ship Cycle 3
  *                       in a separate table; this Brand-level stub array
  *                       drives J-A12 finance reports until then.
+ *   v10 (Cycle 7 public brand page): adds kind: "physical" | "popup"
+ *                       (required, default "popup") + address: string | null
+ *                       (default null). Operator-steered addendum to Cycle 7
+ *                       so the public brand page renders truthful location:
+ *                       physical brands show address after handle, pop-up
+ *                       brands show clean handle-only (no faked location).
+ *                       Per Constitution #9 (no fabricated data).
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -256,7 +263,37 @@ export interface BrandLinks {
 export type Brand = {
   id: string;
   displayName: string;
+  /**
+   * URL-safe brand slug. FROZEN at brand creation per I-17.
+   * NEVER add an edit path — IG-bio links and shared brand URLs
+   * (Cycle 7 `/b/{brandSlug}` surface) depend on this slug being
+   * immutable. If a future cycle needs brand renaming for typo
+   * correction, ship a slug-redirect table + 301 to the new slug;
+   * do NOT mutate this field directly.
+   */
   slug: string;
+  /**
+   * Brand kind. Drives whether the public brand page shows a location
+   * after the handle. NEW in Cycle 7 schema v10.
+   *   - "physical" — brand owns/leases a venue. Public page renders address.
+   *   - "popup"    — brand operates across multiple venues. No location shown.
+   *
+   * Required field. Defaults to "popup" on migration from v9 (safer default —
+   * no fake address shown). Set per-brand in stub data; founder edits via
+   * BrandEditView.
+   */
+  kind: "physical" | "popup";
+  /**
+   * Public-facing address for physical brands. Free-form string (matches
+   * the existing event-venue pattern). Only meaningful when
+   * `kind === "physical"`. UI hides the address input entirely when
+   * kind === "popup". When kind switches popup → physical, any previously-
+   * entered address is preserved and re-shown (don't clear).
+   *
+   * NEW in Cycle 7 schema v10. Optional — null even on physical brands
+   * means founder hasn't shared an address yet (clean omission, no fake).
+   */
+  address: string | null;
   photo?: string;
   role: BrandRole;
   stats: BrandStats;
@@ -351,7 +388,12 @@ type V2Brand = {
   currentLiveEvent: BrandLiveEvent | null;
 };
 
-const upgradeV2BrandToV3 = (b: V2Brand): Brand => ({
+/**
+ * v2 → v3 upgrade returns a v9-shaped brand (the v3..v9 fields are all
+ * optional/passthrough). The migrate function chains this output through
+ * upgradeV9BrandToV10 to land at the current Brand shape.
+ */
+const upgradeV2BrandToV3 = (b: V2Brand): V9Brand => ({
   ...b,
   stats: {
     events: b.stats.events,
@@ -361,14 +403,28 @@ const upgradeV2BrandToV3 = (b: V2Brand): Brand => ({
   },
 });
 
+/** v9 brand shape — used internally by the v9 → v10 migrator only. */
+type V9Brand = Omit<Brand, "kind" | "address">;
+
+/**
+ * v9 → v10 migration: add `kind` (default "popup") + `address` (default null).
+ * Pop-up is the safer default — no fake address shown; founder upgrades to
+ * "physical" + address via BrandEditView when applicable.
+ */
+const upgradeV9BrandToV10 = (b: V9Brand): Brand => ({
+  ...b,
+  kind: "popup",
+  address: null,
+});
+
 const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
-  name: "mingla-business.currentBrand.v9",
+  name: "mingla-business.currentBrand.v10",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state) => ({
     currentBrand: state.currentBrand,
     brands: state.brands,
   }),
-  version: 9,
+  version: 10,
   migrate: (persistedState, version) => {
     // v1 → v5: schema changed from {id, displayName} to full Brand shape.
     // Cycle 0a never seeded brands, so resetting is safe and avoids partial
@@ -380,9 +436,14 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
     // remain undefined and render with empty-state guards.
     if (version === 2) {
       const v2 = persistedState as { currentBrand: V2Brand | null; brands: V2Brand[] };
+      // v2 → v9-shaped → v10 in one chain.
+      const v9CurrentBrand =
+        v2.currentBrand !== null ? upgradeV2BrandToV3(v2.currentBrand) : null;
+      const v9Brands = v2.brands.map(upgradeV2BrandToV3);
       return {
-        currentBrand: v2.currentBrand !== null ? upgradeV2BrandToV3(v2.currentBrand) : null,
-        brands: v2.brands.map(upgradeV2BrandToV3),
+        currentBrand:
+          v9CurrentBrand !== null ? upgradeV9BrandToV10(v9CurrentBrand) : null,
+        brands: v9Brands.map(upgradeV9BrandToV10),
       };
     }
     // v3 → v4: passthrough. New optional `displayAttendeeCount` field starts
@@ -402,6 +463,16 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
     // v8 → v9: passthrough. New optional `events` array starts undefined;
     // finance reports render empty-state when absent. Read sites default
     // to []. FINAL Cycle-2 schema bump — real per-event records ship Cycle 3.
+    if (version >= 3 && version < 10) {
+      // v9 → v10: add kind (default "popup") + address (default null).
+      // Pop-up is the safer default — no fake address shown.
+      const v9 = persistedState as { currentBrand: V9Brand | null; brands: V9Brand[] };
+      return {
+        currentBrand:
+          v9.currentBrand !== null ? upgradeV9BrandToV10(v9.currentBrand) : null,
+        brands: v9.brands.map(upgradeV9BrandToV10),
+      };
+    }
     return persistedState as PersistedState;
   },
 };

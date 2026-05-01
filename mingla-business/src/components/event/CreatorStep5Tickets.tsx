@@ -21,8 +21,9 @@
  * Per Cycle 5 spec §3.4 + §3.5 + §3.6.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,6 +31,9 @@ import {
   TextInput,
   View,
 } from "react-native";
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -240,6 +244,27 @@ interface VisibilitySheetProps {
   onSelect: (v: TicketVisibility) => void;
 }
 
+// Web-only helpers for the datetime-local sale period picker.
+// HTML5 `<input type="datetime-local">` value format is "YYYY-MM-DDTHH:MM".
+const datetimeLocalFromDate = (d: Date): string => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+};
+
+// Hidden HTML5 inputs for web direct-tap pickers — opacity 0 + 1×1px,
+// NOT display:none (display:none breaks showPicker()/.click()).
+const HIDDEN_WEB_INPUT_STYLE = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  opacity: 0,
+  pointerEvents: "none",
+} as const;
+
 const VISIBILITY_OPTIONS: ReadonlyArray<{
   id: TicketVisibility;
   label: string;
@@ -342,6 +367,22 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
   const [maxQtyText, setMaxQtyText] = useState<string>("");
   const [allowTransfers, setAllowTransfers] = useState<boolean>(true);
 
+  // Cycle 6 (5b absorption — schema v5):
+  const [description, setDescription] = useState<string>("");
+  const [saleStartAt, setSaleStartAt] = useState<string | null>(null);
+  const [saleEndAt, setSaleEndAt] = useState<string | null>(null);
+  // Sale-period picker — bottom-docked inline (same pattern as
+  // MultiDateOverrideSheet's time picker). NOT a nested Sheet.
+  const [salePickerMode, setSalePickerMode] = useState<
+    "start" | "end" | null
+  >(null);
+  const [salePickerTemp, setSalePickerTemp] = useState<Date | null>(null);
+
+  // Web hidden input refs — tap row → showPicker()/.click() opens browser
+  // native datetime picker directly. No Sheet, no Done button on web.
+  const saleStartInputRef = useRef<HTMLInputElement | null>(null);
+  const saleEndInputRef = useRef<HTMLInputElement | null>(null);
+
   // Password reveal toggle. Resets to hidden every time the sheet opens
   // (security: never reveal on resume).
   const [passwordRevealed, setPasswordRevealed] = useState<boolean>(false);
@@ -390,6 +431,9 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
         initial.maxPurchaseQty !== null ? String(initial.maxPurchaseQty) : "",
       );
       setAllowTransfers(initial.allowTransfers);
+      setDescription(initial.description ?? "");
+      setSaleStartAt(initial.saleStartAt);
+      setSaleEndAt(initial.saleEndAt);
     } else {
       setName("");
       setIsFree(false);
@@ -404,6 +448,9 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
       setMinQtyText("1");
       setMaxQtyText("");
       setAllowTransfers(true);
+      setDescription("");
+      setSaleStartAt(null);
+      setSaleEndAt(null);
     }
   }, [visible, initial]);
 
@@ -422,6 +469,12 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
     parsedMaxQty !== null &&
     Number.isFinite(parsedMinQty) &&
     parsedMaxQty < parsedMinQty;
+  // Cycle 6 (5b absorption) — sale period validation
+  const descriptionTooLong = description.length > 280;
+  const saleEndBeforeStart =
+    saleStartAt !== null &&
+    saleEndAt !== null &&
+    new Date(saleEndAt).getTime() <= new Date(saleStartAt).getTime();
 
   // Save is gated by name + ALL inline validation hints. The publish-gate
   // validator (validateTickets) catches the same conditions globally;
@@ -432,7 +485,102 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
     !passwordTooShort &&
     !waitlistConflict &&
     !minTooLow &&
-    !maxLessThanMin;
+    !maxLessThanMin &&
+    !descriptionTooLong &&
+    !saleEndBeforeStart;
+
+  // Sale period picker handlers — bottom-docked inline DateTimePicker
+  // (matches MultiDateOverrideSheet's pattern for in-sheet pickers).
+  const handleOpenSalePicker = useCallback(
+    (mode: "start" | "end"): void => {
+      // Web: trigger hidden input directly. Browser opens native datetime
+      // picker. No Sheet, no Done button on web.
+      if (Platform.OS === "web") {
+        const ref = mode === "start" ? saleStartInputRef : saleEndInputRef;
+        const el = ref.current;
+        if (el !== null) {
+          if (typeof el.showPicker === "function") {
+            try {
+              el.showPicker();
+            } catch {
+              el.click();
+            }
+          } else {
+            el.click();
+          }
+        }
+        return;
+      }
+      // Native (iOS/Android): existing Sheet/dialog flow.
+      const initialIso = mode === "start" ? saleStartAt : saleEndAt;
+      const initial =
+        initialIso !== null ? new Date(initialIso) : new Date();
+      setSalePickerTemp(initial);
+      setSalePickerMode(mode);
+    },
+    [saleStartAt, saleEndAt],
+  );
+
+  const commitSalePickerValue = useCallback(
+    (mode: "start" | "end" | null, d: Date): void => {
+      const iso = d.toISOString();
+      if (mode === "start") setSaleStartAt(iso);
+      else if (mode === "end") setSaleEndAt(iso);
+    },
+    [],
+  );
+
+  const handleSalePickerChange = useCallback(
+    (event: DateTimePickerEvent, selected?: Date): void => {
+      if (Platform.OS === "android") {
+        const mode = salePickerMode;
+        setSalePickerMode(null);
+        if (event.type === "dismissed" || selected === undefined) return;
+        commitSalePickerValue(mode, selected);
+        return;
+      }
+      // iOS: track temp value; commit on Done.
+      if (selected !== undefined) setSalePickerTemp(selected);
+    },
+    [salePickerMode, commitSalePickerValue],
+  );
+
+  const handleCloseSalePicker = useCallback((): void => {
+    // iOS + Web both Done-commit; Android commits inline via per-change.
+    if (
+      Platform.OS !== "android" &&
+      salePickerTemp !== null &&
+      salePickerMode !== null
+    ) {
+      commitSalePickerValue(salePickerMode, salePickerTemp);
+    }
+    setSalePickerMode(null);
+    setSalePickerTemp(null);
+  }, [salePickerMode, salePickerTemp, commitSalePickerValue]);
+
+  const handleClearSaleStart = useCallback((): void => {
+    setSaleStartAt(null);
+  }, []);
+
+  const handleClearSaleEnd = useCallback((): void => {
+    setSaleEndAt(null);
+  }, []);
+
+  const formatSaleDateTime = (iso: string | null): string => {
+    if (iso === null) return "Not scheduled";
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return iso;
+    }
+  };
 
   const handleSave = useCallback((): void => {
     const parsedPrice = isFree ? null : parseFloat(priceText);
@@ -469,6 +617,9 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
       minPurchaseQty: safeMinQty,
       maxPurchaseQty: safeMaxQty,
       allowTransfers,
+      description: description.trim().length > 0 ? description.trim() : null,
+      saleStartAt,
+      saleEndAt,
     };
     onSave(ticket);
   }, [
@@ -485,6 +636,9 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
     parsedMinQty,
     parsedMaxQty,
     allowTransfers,
+    description,
+    saleStartAt,
+    saleEndAt,
     initial,
     nextOrder,
     onSave,
@@ -529,6 +683,38 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
                 accessibilityLabel="Ticket name"
               />
             </View>
+          </View>
+
+          {/* Description (optional, max 280) — Cycle 6 5b absorption */}
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Description (optional)</Text>
+            <View
+              style={[
+                styles.descriptionWrap,
+                descriptionTooLong && styles.inputWrapError,
+              ]}
+            >
+              <TextInput
+                value={description}
+                onChangeText={setDescription}
+                placeholder="What this ticket includes (e.g. dinner, early entry, meet-and-greet)"
+                placeholderTextColor={textTokens.quaternary}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+                style={styles.textInputMultiline}
+                accessibilityLabel="Ticket description"
+              />
+            </View>
+            {descriptionTooLong ? (
+              <Text style={styles.helperError}>
+                Max 280 characters ({description.length} / 280).
+              </Text>
+            ) : (
+              <Text style={styles.helperHint}>
+                {description.length} / 280 characters
+              </Text>
+            )}
           </View>
 
           {/* Free toggle */}
@@ -734,6 +920,89 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
             </Text>
           ) : null}
 
+          {/* ───── Section: Sale period (Cycle 6 5b absorption) ───── */}
+          <Text style={styles.sectionHeader}>Sale period (optional)</Text>
+
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Sales open</Text>
+            <View style={styles.saleRow}>
+              <Pressable
+                onPress={() => handleOpenSalePicker("start")}
+                accessibilityRole="button"
+                accessibilityLabel="Set sale start date and time"
+                style={styles.salePickerRow}
+              >
+                <Text
+                  style={
+                    saleStartAt !== null
+                      ? styles.pickerValue
+                      : styles.pickerPlaceholder
+                  }
+                >
+                  {formatSaleDateTime(saleStartAt)}
+                </Text>
+              </Pressable>
+              {saleStartAt !== null ? (
+                <Pressable
+                  onPress={handleClearSaleStart}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear sale start"
+                  hitSlop={6}
+                  style={styles.clearBtn}
+                >
+                  <Icon name="close" size={14} color={textTokens.tertiary} />
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Sales close</Text>
+            <View
+              style={[
+                styles.saleRow,
+                saleEndBeforeStart && styles.inputWrapError,
+              ]}
+            >
+              <Pressable
+                onPress={() => handleOpenSalePicker("end")}
+                accessibilityRole="button"
+                accessibilityLabel="Set sale end date and time"
+                style={styles.salePickerRow}
+              >
+                <Text
+                  style={
+                    saleEndAt !== null
+                      ? styles.pickerValue
+                      : styles.pickerPlaceholder
+                  }
+                >
+                  {formatSaleDateTime(saleEndAt)}
+                </Text>
+              </Pressable>
+              {saleEndAt !== null ? (
+                <Pressable
+                  onPress={handleClearSaleEnd}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear sale end"
+                  hitSlop={6}
+                  style={styles.clearBtn}
+                >
+                  <Icon name="close" size={14} color={textTokens.tertiary} />
+                </Pressable>
+              ) : null}
+            </View>
+            {saleEndBeforeStart ? (
+              <Text style={styles.helperError}>
+                Sales close must be after sales open.
+              </Text>
+            ) : (
+              <Text style={styles.helperHint}>
+                Leave blank for sales-open-immediately and sales-close-at-event-start.
+              </Text>
+            )}
+          </View>
+
           {/* ───── Section: Transfer ───── */}
           <Text style={styles.sectionHeader}>Transfer</Text>
 
@@ -775,7 +1044,104 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
             </View>
           </GlassCard>
         </ScrollView>
+
+        {/* Sale period picker dock — iOS Sheet+spinner / Android dialog.
+            Web is handled via hidden inputs at component bottom (below);
+            handleOpenSalePicker triggers them on web and returns early. */}
+        {salePickerMode !== null && Platform.OS === "ios" ? (
+          <View style={styles.salePickerDockWrap}>
+            <GlassCard
+              variant="elevated"
+              radius="xl"
+              padding={spacing.md}
+              style={styles.salePickerDockCard}
+            >
+              <View style={styles.salePickerDockRow}>
+                <Text style={styles.salePickerDockTitle}>
+                  {salePickerMode === "start" ? "Sales open" : "Sales close"}
+                </Text>
+                <Button
+                  label="Done"
+                  variant="primary"
+                  size="md"
+                  onPress={handleCloseSalePicker}
+                />
+              </View>
+              {salePickerTemp !== null ? (
+                <DateTimePicker
+                  value={salePickerTemp}
+                  mode="datetime"
+                  display="spinner"
+                  onChange={handleSalePickerChange}
+                  is24Hour
+                  textColor="#FFFFFF"
+                  themeVariant="dark"
+                  style={styles.salePicker}
+                />
+              ) : null}
+            </GlassCard>
+          </View>
+        ) : null}
       </View>
+
+      {/* Android native datetime dialog — auto-dismisses */}
+      {salePickerMode !== null && Platform.OS === "android" ? (
+        <DateTimePicker
+          value={
+            salePickerMode === "start"
+              ? saleStartAt !== null
+                ? new Date(saleStartAt)
+                : new Date()
+              : saleEndAt !== null
+                ? new Date(saleEndAt)
+                : new Date()
+          }
+          mode="datetime"
+          display="default"
+          onChange={handleSalePickerChange}
+          is24Hour
+        />
+      ) : null}
+
+      {/* Hidden HTML5 inputs for web direct-tap pickers. */}
+      {Platform.OS === "web" ? (
+        <>
+          <input
+            ref={saleStartInputRef}
+            type="datetime-local"
+            value={
+              saleStartAt !== null ? datetimeLocalFromDate(new Date(saleStartAt)) : ""
+            }
+            onChange={(e) => {
+              const v = (e.target as unknown as { value: string }).value;
+              if (v.length === 0) return;
+              const [datePart, timePart] = v.split("T");
+              const [y, m, d] = datePart.split("-").map(Number);
+              const [h, mm] = timePart.split(":").map(Number);
+              setSaleStartAt(new Date(y, m - 1, d, h, mm, 0, 0).toISOString());
+            }}
+            aria-label="Sales open date and time"
+            style={HIDDEN_WEB_INPUT_STYLE}
+          />
+          <input
+            ref={saleEndInputRef}
+            type="datetime-local"
+            value={
+              saleEndAt !== null ? datetimeLocalFromDate(new Date(saleEndAt)) : ""
+            }
+            onChange={(e) => {
+              const v = (e.target as unknown as { value: string }).value;
+              if (v.length === 0) return;
+              const [datePart, timePart] = v.split("T");
+              const [y, m, d] = datePart.split("-").map(Number);
+              const [h, mm] = timePart.split(":").map(Number);
+              setSaleEndAt(new Date(y, m - 1, d, h, mm, 0, 0).toISOString());
+            }}
+            aria-label="Sales close date and time"
+            style={HIDDEN_WEB_INPUT_STYLE}
+          />
+        </>
+      ) : null}
 
       <VisibilitySheet
         visible={visSheetVisible}
@@ -1329,6 +1695,11 @@ const styles = StyleSheet.create({
     lineHeight: typography.body.lineHeight,
     color: textTokens.primary,
   },
+  pickerPlaceholder: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    color: textTokens.tertiary,
+  },
 
   // Toggle row (reused for Free / Unlimited / new modifiers)
   toggleRow: {
@@ -1402,6 +1773,73 @@ const styles = StyleSheet.create({
   },
   actionCell: {
     flex: 1,
+  },
+
+  // Description (Cycle 6 5b absorption) ------------------------------
+  descriptionWrap: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: 80,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  textInputMultiline: {
+    flex: 1,
+    fontSize: typography.body.fontSize,
+    color: textTokens.primary,
+    padding: 0,
+    margin: 0,
+    minHeight: 64,
+  },
+
+  // Sale period (Cycle 6 5b absorption) -------------------------------
+  saleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  salePickerRow: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  clearBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: glass.tint.profileElevated,
+    borderWidth: 1,
+    borderColor: glass.border.profileElevated,
+  },
+  salePickerDockWrap: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  salePickerDockCard: {
+    // GlassCard provides surface; no extra styling.
+  },
+  salePickerDockRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.sm,
+  },
+  salePickerDockTitle: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  salePicker: {
+    width: "100%",
   },
 
   // Visibility sub-sheet rows
