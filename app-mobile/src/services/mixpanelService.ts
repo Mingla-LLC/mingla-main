@@ -294,6 +294,11 @@ class MixpanelService {
     constraintValue?: number;
     dateOption?: string | null;
     location?: string;
+    // ORCH-0699 D-OBS-4: diagnostic fields for toggle visibility
+    intent_toggle_on?: boolean;
+    category_toggle_on?: boolean;
+    categories_raw_count?: number;
+    intents_raw_count?: number;
   }): void {
     this.track("Preferences Updated", {
       is_collaboration_mode: props.isCollaborationMode,
@@ -307,6 +312,11 @@ class MixpanelService {
       constraint_value: props.constraintValue,
       date_option: props.dateOption,
       location: props.location,
+      // ORCH-0699 D-OBS-4: forward diagnostic fields to Mixpanel
+      intent_toggle_on: props.intent_toggle_on,
+      category_toggle_on: props.category_toggle_on,
+      categories_raw_count: props.categories_raw_count,
+      intents_raw_count: props.intents_raw_count,
     });
   }
 

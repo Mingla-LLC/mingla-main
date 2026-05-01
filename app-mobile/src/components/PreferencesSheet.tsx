@@ -907,20 +907,37 @@ export default function PreferencesSheet({
             await Promise.resolve(onSave(preferences));
           }
         }
+        // ORCH-0699 D-OBS-4: Record EFFECTIVE counts/arrays so analytics match
+        // what the deck actually receives. Raw counts misled "% users who picked
+        // X" reports — we kept attributing pills the deck never saw because the
+        // toggle gate (introduced in this same fix) makes hidden-section pills
+        // invisible to the deck. Use LOCAL intentToggle/categoryToggle state
+        // (lines 206-207), NOT userPrefs.* — at save time, local state is the
+        // source of truth (cache hasn't been written yet).
+        // Diagnostic fields (OQ-3) preserve raw counts + toggle bools so PMs
+        // can see opt-out rate and section-disable behavior in Mixpanel.
+        const effectiveCategoriesAnalytics = categoryToggle ? finalCategories : [];
+        const effectiveIntentsAnalytics = intentToggle ? finalIntents : [];
+
         logAppsFlyerEvent('preferences_updated', {
           is_collaboration: isCollaborationMode,
-          categories_count: finalCategories.length,
-          intents_count: finalIntents.length,
+          categories_count: effectiveCategoriesAnalytics.length,
+          intents_count: effectiveIntentsAnalytics.length,
         });
         mixpanelService.trackPreferencesUpdated({
           isCollaborationMode,
-          changesCount: finalCategories.length + finalIntents.length,
-          intents: finalIntents,
-          categories: finalCategories,
+          changesCount: effectiveCategoriesAnalytics.length + effectiveIntentsAnalytics.length,
+          intents: effectiveIntentsAnalytics,
+          categories: effectiveCategoriesAnalytics,
           travelMode,
           constraintType: 'time',
           constraintValue: typeof constraintValue === 'number' ? constraintValue : 30,
           dateOption: selectedDateOption ?? null,
+          // ORCH-0699 D-OBS-4 diagnostic fields (OQ-3) — raw vs effective + toggle state
+          intent_toggle_on: intentToggle,
+          category_toggle_on: categoryToggle,
+          categories_raw_count: finalCategories.length,
+          intents_raw_count: finalIntents.length,
         });
       } catch (error) {
         console.warn("[PreferencesSheet] Save failed:", error);
