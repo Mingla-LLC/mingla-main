@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Mingla Business — Partner App</title>
+<link rel="stylesheet" href="tokens.css"/>
+<style>
+  html, body { background: #0a0b0f; min-height: 100vh; }
+  body {
+    color: rgba(255,255,255,0.92);
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+  }
+  .canvas-page {
+    background:
+      radial-gradient(80% 50% at 50% 0%, rgba(235,120,37,0.06), transparent 60%),
+      #0a0b0f;
+    min-height: 100vh;
+    padding: 48px 64px 96px;
+  }
+  .doc-header {
+    max-width: 1480px;
+    margin: 0 auto 56px;
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 32px;
+  }
+  .doc-header .left { max-width: 720px; }
+  .pre { font-family: var(--font-mono); font-size: 11px; color: rgba(255,255,255,0.4); letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 12px; }
+  h1.doc-title { font-size: 48px; font-weight: 700; letter-spacing: -1px; margin: 0 0 12px; line-height: 1.05; }
+  .doc-sub { font-size: 16px; color: rgba(255,255,255,0.6); line-height: 1.6; margin: 0; }
+  .doc-header .meta {
+    display: flex; gap: 32px;
+  }
+  .meta-item .k { font-family: var(--font-mono); font-size: 10px; color: rgba(255,255,255,0.4); letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 4px; }
+  .meta-item .v { font-size: 13px; font-weight: 500; }
+  .section { max-width: 1480px; margin: 0 auto 56px; }
+  .section-h {
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 0 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 32px;
+  }
+  .section-num {
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--accent); letter-spacing: 2px;
+    background: var(--accent-tint); border: 1px solid var(--accent-border);
+    padding: 4px 8px; border-radius: 6px;
+  }
+  .section-title { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; margin: 0; }
+  .section-desc { font-size: 14px; color: rgba(255,255,255,0.55); margin-left: auto; max-width: 380px; line-height: 1.5; }
+
+  /* Style guide */
+  .swatch-grid {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px;
+  }
+  .swatch {
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .swatch .chip { height: 80px; }
+  .swatch .meta {
+    padding: 10px 12px;
+  }
+  .swatch .name { font-size: 12px; font-weight: 600; }
+  .swatch .val { font-family: var(--font-mono); font-size: 10px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+
+  .type-grid { display: flex; flex-direction: column; gap: 18px; }
+  .type-row {
+    display: grid; grid-template-columns: 200px 1fr 220px;
+    gap: 24px; align-items: baseline;
+    padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .type-row .role { font-family: var(--font-mono); font-size: 11px; color: rgba(255,255,255,0.5); letter-spacing: 1.4px; text-transform: uppercase; }
+  .type-row .meta { font-family: var(--font-mono); font-size: 11px; color: rgba(255,255,255,0.4); }
+
+  .components-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+  }
+  .comp-card {
+    border-radius: 16px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    padding: 24px;
+  }
+  .comp-card .title {
+    font-size: 13px; font-weight: 600; margin-bottom: 16px;
+    color: rgba(255,255,255,0.6);
+    font-family: var(--font-mono); letter-spacing: 1.4px; text-transform: uppercase;
+  }
+  .comp-card .demo { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+
+  /* Phone array */
+  .phones-row {
+    display: flex; gap: 56px; align-items: flex-start;
+    overflow-x: auto; padding: 16px 8px 32px;
+    scroll-snap-type: x mandatory;
+  }
+  .phone-cell {
+    flex-shrink: 0;
+    scroll-snap-align: start;
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+  }
+  .phone-cell .label {
+    font-family: var(--font-mono); font-size: 11px; color: rgba(255,255,255,0.5);
+    letter-spacing: 1.4px; text-transform: uppercase;
+  }
+
+  /* Live prototype hero */
+  .hero-stage {
+    background:
+      radial-gradient(60% 60% at 30% 20%, rgba(235,120,37,0.10), transparent 70%),
+      radial-gradient(50% 50% at 80% 80%, rgba(120,70,200,0.08), transparent 70%),
+      rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 32px;
+    padding: 56px 48px;
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    gap: 56px;
+    align-items: center;
+  }
+  .hero-side h2 {
+    font-size: 36px; font-weight: 700; letter-spacing: -0.6px;
+    margin: 0 0 16px; line-height: 1.1;
+  }
+  .hero-side p {
+    font-size: 16px; color: rgba(255,255,255,0.6);
+    line-height: 1.6; margin: 0 0 24px;
+  }
+  .flow-list {
+    display: flex; flex-direction: column; gap: 8px;
+    margin-bottom: 24px;
+  }
+  .flow-list .step {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  .flow-list .step .n {
+    width: 22px; height: 22px; border-radius: 999px;
+    background: var(--accent-tint); color: var(--accent);
+    border: 1px solid var(--accent-border);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+  .badge-mono {
+    font-family: var(--font-mono); font-size: 10px;
+    color: rgba(255,255,255,0.6); letter-spacing: 0.8px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    padding: 4px 8px; border-radius: 6px;
+  }
+
+  .footer-note {
+    max-width: 1480px; margin: 64px auto 0;
+    padding: 24px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    font-family: var(--font-mono); font-size: 11px; color: rgba(255,255,255,0.4);
+    letter-spacing: 0.8px;
+    display: flex; justify-content: space-between; gap: 24px;
+  }
+</style>
+</head>
+<body>
+
+<div class="canvas-page">
+
+  <header class="doc-header">
+    <div class="left">
+      <div class="pre">Mingla Business · v0.4 · partner-side mobile + web</div>
+      <h1 class="doc-title">Floating&nbsp;glass.<br/>Operator&nbsp;confidence.</h1>
+      <p class="doc-sub">
+        Partner-side product where event organisers run their lifecycle — create a brand, build an event, sell tickets online and at the door, scan guests in, settle payouts. Mingla is an experience / date-planning / social-experiences app; this is the operator's surface for it.
+      </p>
+    </div>
+    <div class="meta">
+      <div class="meta-item"><div class="k">Form factor</div><div class="v">iPhone 14 · 390 × 844</div></div>
+      <div class="meta-item"><div class="k">Mode</div><div class="v">Dark default</div></div>
+      <div class="meta-item"><div class="k">Status</div><div class="v">Clickable prototype</div></div>
+    </div>
+  </header>
+
+  <!-- HERO: Live prototype -->
+  <section class="section">
+    <div class="section-h">
+      <span class="section-num">01 · PROTOTYPE</span>
+      <h2 class="section-title">Clickable mobile prototype</h2>
+      <p class="section-desc">Tap end-to-end without instructions. Auth → onboarding → home → event creator → publish → manage → scan → refund → delete account. All without dead-ends.</p>
+    </div>
+
+    <div class="hero-stage">
+      <div class="hero-side">
+        <h2>Walk it like a real user.</h2>
+        <p>Every interaction in the founder brief is wired up. Tap the brand name in the top bar to switch between Lonely Moth, The Long Lunch, Sunday Languor, and Hidden Rooms. Tap the Market tab to see audience + email + SMS + journeys live. The phone on the right is not a screenshot — drive it.</p>
+        <div class="flow-list">
+          <div class="step"><span class="n">01</span> Sign in → onboarding → home</div>
+          <div class="step"><span class="n">02</span> Tap "Lonely Moth" → switch brand → "Manage all brands"</div>
+          <div class="step"><span class="n">03</span> Open brand profile → Stripe → finance reports</div>
+          <div class="step"><span class="n">04</span> Build event → preview → publish</div>
+          <div class="step"><span class="n">05</span> Market tab → email composer (3-step wizard)</div>
+          <div class="step"><span class="n">06</span> Market tab → journeys → visual flow editor</div>
+          <div class="step"><span class="n">07</span> Audience → contact profile · scanner · refund</div>
+        </div>
+        <div class="badges">
+          <span class="badge-mono">5-TAB NAV</span>
+          <span class="badge-mono">MULTI-BRAND</span>
+          <span class="badge-mono">STRIPE LINKED</span>
+          <span class="badge-mono">EMAIL · SMS · JOURNEYS</span>
+          <span class="badge-mono">AUDIENCE SEGMENTS</span>
+          <span class="badge-mono">DARK · GLASS · WCAG AA</span>
+        </div>
+      </div>
+      <div class="hero-phone">
+        <div class="phone-cell">
+          <span class="label">Live · tap to drive</span>
+          <div id="prototype-mount"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- KEY SCREENS -->
+  <section class="section">
+    <div class="section-h">
+      <span class="section-num">02 · SCREENS</span>
+      <h2 class="section-title">Key screens — at a glance</h2>
+      <p class="section-desc">Every screen in the prototype, side-by-side. Each is reachable inside the live prototype above.</p>
+    </div>
+    <div class="phones-row" id="phones-row"></div>
+  </section>
+
+  <!-- STYLE GUIDE: Color -->
+  <section class="section">
+    <div class="section-h">
+      <span class="section-num">03 · COLOR</span>
+      <h2 class="section-title">Color tokens</h2>
+      <p class="section-desc">Every value extracted from the consumer Mingla app. Warm-orange spotlight is the spotlight — never wallpaper.</p>
+    </div>
+    <div class="swatch-grid" id="color-grid"></div>
+  </section>
+
+  <!-- STYLE GUIDE: Type -->
+  <section class="section">
+    <div class="section-h">
+      <span class="section-num">04 · TYPE</span>
+      <h2 class="section-title">Type scale</h2>
+      <p class="section-desc">SF Pro / Inter on every platform. Numbers in finance tables use JetBrains Mono with tabular-nums so columns align.</p>
+    </div>
+    <div class="type-grid" id="type-grid"></div>
+  </section>
+
+  <!-- STYLE GUIDE: Components -->
+  <section class="section">
+    <div class="section-h">
+      <span class="section-num">05 · COMPONENTS</span>
+      <h2 class="section-title">Component primitives</h2>
+      <p class="section-desc">Every reusable piece. Buttons, pills, inputs, status, icon-chrome — all in dark-mode default.</p>
+    </div>
+    <div class="components-grid" id="comp-grid"></div>
+  </section>
+
+  <!-- STYLE GUIDE: Glass -->
+  <section class="section">
+    <div class="section-h">
+      <span class="section-num">06 · GLASS</span>
+      <h2 class="section-title">The five-layer glass stack</h2>
+      <p class="section-desc">Backdrop blur · tint floor · top highlight · hairline border · drop shadow. Order is non-negotiable. Omitting any layer reads as 'translucent panel' not 'glass.'</p>
+    </div>
+    <div id="glass-grid"></div>
+  </section>
+
+  <div class="footer-note">
+    <span>Mingla Business · designer handoff · self-contained</span>
+    <span>Never describe Mingla as a dating app · it's an experience / date-planning / social-experiences app</span>
+  </div>
+</div>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="primitives.jsx"></script>
+<script type="text/babel" src="chrome.jsx"></script>
+<script type="text/babel" src="screens-auth.jsx"></script>
+<script type="text/babel" src="screens-home.jsx"></script>
+<script type="text/babel" src="screens-creator.jsx"></script>
+<script type="text/babel" src="screens-ops.jsx"></script>
+<script type="text/babel" src="screens-extra.jsx"></script>
+<script type="text/babel" src="screen-public-brand.jsx"></script>
+<script type="text/babel" src="screen-events-list.jsx"></script>
+<script type="text/babel" src="screens-brand.jsx"></script>
+<script type="text/babel" src="screens-marketing.jsx"></script>
+<script type="text/babel" src="screens-marketing-compose.jsx"></script>
+<script type="text/babel" src="app.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// =================================================================
+// DOC RENDERERS
+// =================================================================
+
+// COLOR SWATCHES
+const colors = [
+  { name: "primary.500", val: "#f97316", text: "#fff" },
+  { name: "primary.600", val: "#ea580c", text: "#fff" },
+  { name: "accent.warm", val: "#eb7825", text: "#fff" },
+  { name: "accent.tint", val: "rgba(235,120,37,0.28)", text: "#fff" },
+  { name: "canvas", val: "#0c0e12", text: "#fff" },
+  { name: "canvas.profile", val: "#141113", text: "#fff" },
+  { name: "glass.chrome", val: "rgba(12,14,18,0.48)", text: "#fff" },
+  { name: "glass.card", val: "rgba(255,255,255,0.04)", text: "#fff" },
+  { name: "glass.card.elev", val: "rgba(255,255,255,0.06)", text: "#fff" },
+  { name: "border.card", val: "rgba(255,255,255,0.08)", text: "#fff" },
+  { name: "highlight.card.elev", val: "rgba(255,255,255,0.14)", text: "#fff" },
+  { name: "border.pending", val: "rgba(255,255,255,0.28)", text: "#fff" },
+  { name: "success", val: "#22c55e", text: "#fff" },
+  { name: "warning", val: "#f59e0b", text: "#000" },
+  { name: "error", val: "#ef4444", text: "#fff" },
+  { name: "info", val: "#3b82f6", text: "#fff" },
+  { name: "text.primary", val: "rgba(255,255,255,0.96)", text: "#000" },
+  { name: "text.tertiary", val: "rgba(255,255,255,0.52)", text: "#000" },
+];
+
+const ColorGrid = () => (
+  <>
+    {colors.map((c) => (
+      <div className="swatch" key={c.name}>
+        <div className="chip" style={{
+          background: c.val.startsWith("rgba(255,255,255")
+            ? `linear-gradient(135deg, ${c.val} 0%, ${c.val} 100%), repeating-linear-gradient(45deg, #1a1d23 0 8px, #14171c 8px 16px)`
+            : c.val,
+        }}/>
+        <div className="meta">
+          <div className="name">{c.name}</div>
+          <div className="val">{c.val}</div>
+        </div>
+      </div>
+    ))}
+  </>
+);
+
+// TYPE GRID
+const types = [
+  { role: "display", size: 32, weight: 700, ls: -0.4, sample: "Slow Burn vol. 4" },
+  { role: "h1", size: 26, weight: 700, ls: -0.2, sample: "Hey, Sara" },
+  { role: "h2", size: 24, weight: 700, ls: -0.2, sample: "Upcoming events" },
+  { role: "h3", size: 20, weight: 600, ls: 0, sample: "Ticket types" },
+  { role: "body-lg", size: 18, weight: 500, ls: 0, sample: "Friday · Hidden Rooms · From £25" },
+  { role: "body", size: 16, weight: 400, ls: 0, sample: "We use Stripe to settle payments to your bank." },
+  { role: "body-sm", size: 14, weight: 400, ls: 0, sample: "Stripe is connected. Tickets will go live shortly." },
+  { role: "caption", size: 12, weight: 500, ls: 0.2, sample: "Address shown after checkout" },
+  { role: "label-cap", size: 12, weight: 600, ls: 1.4, sample: "LIVE TONIGHT", upper: true },
+  { role: "stat-value", size: 26, weight: 700, ls: -0.4, sample: "£8,420.00", mono: true },
+];
+const TypeGrid = () => (
+  <>
+    {types.map((t) => (
+      <div className="type-row" key={t.role}>
+        <div className="role">{t.role}</div>
+        <div style={{
+          fontSize: t.size, fontWeight: t.weight, letterSpacing: t.ls,
+          fontFamily: t.mono ? "var(--font-mono)" : "var(--font-sans)",
+          textTransform: t.upper ? "uppercase" : "none",
+          color: "white",
+        }}>{t.sample}</div>
+        <div className="meta">{t.size}px / {t.weight} / {t.ls > 0 ? "+" : ""}{t.ls}</div>
+      </div>
+    ))}
+  </>
+);
+
+// COMPONENTS
+const CompGrid = () => (
+  <>
+    <div className="comp-card">
+      <div className="title">Buttons</div>
+      <div className="demo">
+        <button className="btn btn-primary">Publish event</button>
+        <button className="btn btn-secondary">Preview</button>
+        <button className="btn btn-ghost">I'll do this later</button>
+        <button className="btn btn-destructive">Delete account</button>
+      </div>
+    </div>
+    <div className="comp-card">
+      <div className="title">Status pills</div>
+      <div className="demo">
+        <span className="pill pill-live"><span className="dot" style={{background:"var(--success)"}}/>LIVE</span>
+        <span className="pill pill-draft">DRAFT</span>
+        <span className="pill pill-warn">PENDING</span>
+        <span className="pill pill-accent">PREVIEW</span>
+      </div>
+    </div>
+    <div className="comp-card">
+      <div className="title">Inputs</div>
+      <div className="demo" style={{width: "100%"}}>
+        <input className="input" placeholder="Brand name" defaultValue="Lonely Moth"/>
+        <input className="input" placeholder="Subdomain"/>
+      </div>
+    </div>
+    <div className="comp-card">
+      <div className="title">Glass card · base</div>
+      <div className="demo" style={{width: "100%"}}>
+        <div className="glass-card" style={{padding: 16, width: "100%"}}>
+          <div style={{fontSize: 11, color: "var(--text-tertiary)", letterSpacing: 1.4, fontWeight: 600, textTransform: "uppercase", marginBottom: 4}}>LAST 7 DAYS</div>
+          <div className="mono" style={{fontSize: 22, fontWeight: 700}}>£24,180</div>
+        </div>
+      </div>
+    </div>
+    <div className="comp-card">
+      <div className="title">Glass card · elevated</div>
+      <div className="demo" style={{width: "100%"}}>
+        <div className="glass-card-elev" style={{padding: 16, width: "100%"}}>
+          <div style={{display: "flex", gap: 8, alignItems: "center", marginBottom: 8}}>
+            <span className="dot live-pulse" style={{background:"var(--success)"}}/>
+            <span style={{fontSize: 11, color: "var(--success)", fontWeight: 700, letterSpacing: 1.4}}>LIVE TONIGHT</span>
+          </div>
+          <div className="mono" style={{fontSize: 22, fontWeight: 700}}>£8,420 / £12,000</div>
+        </div>
+      </div>
+    </div>
+    <div className="comp-card">
+      <div className="title">Toggles & dots</div>
+      <div className="demo">
+        <div style={{display: "flex", alignItems: "center", gap: 8}}>
+          <div style={{width: 44, height: 26, borderRadius: 999, background: "var(--accent)", position: "relative"}}>
+            <div style={{position: "absolute", top: 3, left: 21, width: 20, height: 20, borderRadius: 999, background: "white"}}/>
+          </div>
+          <span style={{fontSize: 13}}>Allow ticket transfers · ON</span>
+        </div>
+        <div style={{display: "flex", alignItems: "center", gap: 8}}>
+          <div style={{width: 44, height: 26, borderRadius: 999, background: "rgba(255,255,255,0.16)", position: "relative"}}>
+            <div style={{position: "absolute", top: 3, left: 3, width: 20, height: 20, borderRadius: 999, background: "white"}}/>
+          </div>
+          <span style={{fontSize: 13}}>Require approval · OFF</span>
+        </div>
+      </div>
+    </div>
+  </>
+);
+
+// GLASS LAYERS
+const GlassGrid = () => (
+  <div style={{
+    display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16,
+    padding: 32,
+    background: `
+      radial-gradient(60% 80% at 50% 0%, rgba(235,120,37,0.18), transparent 70%),
+      repeating-linear-gradient(45deg, oklch(0.30 0.10 280) 0px, oklch(0.30 0.10 280) 14px, oklch(0.25 0.08 280) 14px, oklch(0.25 0.08 280) 28px)
+    `,
+    borderRadius: 24,
+  }}>
+    {[
+      { layer: "L1", title: "Backdrop blur", note: "blur(28px) saturate(140%)" },
+      { layer: "L2", title: "Tint floor", note: "rgba(12,14,18,0.48)" },
+      { layer: "L3", title: "Top highlight", note: "1px rgba(255,255,255,0.14)" },
+      { layer: "L4", title: "Hairline border", note: "1px rgba(255,255,255,0.06)" },
+      { layer: "L5", title: "Drop shadow", note: "0 4px 12px / 0.28" },
+    ].map((g) => (
+      <div key={g.layer} className="glass-card-elev" style={{padding: 18, height: 130, display: "flex", flexDirection: "column", justifyContent: "space-between"}}>
+        <div className="mono" style={{fontSize: 11, color: "var(--accent)", letterSpacing: 2, fontWeight: 700}}>{g.layer}</div>
+        <div>
+          <div style={{fontWeight: 600, fontSize: 14, marginBottom: 4}}>{g.title}</div>
+          <div className="mono" style={{fontSize: 10, color: "rgba(255,255,255,0.5)"}}>{g.note}</div>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+// =================================================================
+// PHONE WRAPPER
+// =================================================================
+const PhoneFrame = ({ children, scale = 0.78 }) => (
+  <div style={{
+    width: 390 * scale, height: 844 * scale,
+    transform: `scale(${scale})`,
+    transformOrigin: "top left",
+  }}>
+    <div style={{ width: 390, height: 844, transform: `scale(1)`, transformOrigin: "top left", position: "relative" }}>
+      <IOSFrame width={390} height={844}>
+        <div style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: 47 }}>
+          {children}
+        </div>
+      </IOSFrame>
+    </div>
+  </div>
+);
+
+// Static phone preview (no state)
+const StaticPhone = ({ scale = 0.5, label, children }) => (
+  <div className="phone-cell">
+    <span className="label">{label}</span>
+    <div style={{
+      width: 390 * scale, height: 844 * scale,
+      position: "relative",
+    }}>
+      <div style={{
+        position: "absolute", top: 0, left: 0,
+        width: 390, height: 844,
+        transform: `scale(${scale})`, transformOrigin: "top left",
+      }}>
+        <IOSFrame width={390} height={844}>
+          <div style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: 47, pointerEvents: "none" }}>
+            {children}
+          </div>
+        </IOSFrame>
+      </div>
+    </div>
+  </div>
+);
+
+// =================================================================
+// MOUNT
+// =================================================================
+
+// Live prototype phone
+const LivePhone = () => (
+  <div style={{
+    width: 390 * 0.86, height: 844 * 0.86,
+    position: "relative",
+  }}>
+    <div style={{
+      position: "absolute", top: 0, left: 0,
+      width: 390, height: 844,
+      transform: `scale(0.86)`, transformOrigin: "top left",
+    }}>
+      <IOSFrame width={390} height={844}>
+        <div style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: 47 }}>
+          <PrototypeApp/>
+        </div>
+      </IOSFrame>
+    </div>
+  </div>
+);
+
+ReactDOM.createRoot(document.getElementById("prototype-mount")).render(<LivePhone/>);
+
+// Static screen tour
+const tour = [
+  { l: "01 · AUTH",         c: <AuthScreen onSignIn={()=>{}}/> },
+  { l: "02 · ONBOARDING",   c: <OnboardingScreen step={1} onNext={()=>{}} onBack={()=>{}}/> },
+  { l: "03 · HOME",         c: <HomeScreen onTab={()=>{}} onOpenEvent={()=>{}} onCreate={()=>{}}/> },
+  { l: "04 · EVENTS LIST", c: <EventsListScreen onTab={()=>{}} onOpenEvent={()=>{}} onCreate={()=>{}} onPublic={()=>{}} onBrand={()=>{}}/> },
+  { l: "05 · EVENT DETAIL", c: <EventDetailScreen onBack={()=>{}} onTab={()=>{}} onOrders={()=>{}} onScanner={()=>{}} onShare={()=>{}} onGuests={()=>{}} onPublic={()=>{}} onBrand={()=>{}}/> },
+  { l: "06 · CREATOR · TICKETS", c: <EventCreatorScreen step={4} onNext={()=>{}} onBack={()=>{}} onPreview={()=>{}} onPublish={()=>{}}/> },
+  { l: "07 · PUBLIC PAGE",  c: <PublicEventScreen onBack={()=>{}}/> },
+  { l: "08 · BRAND PAGE",   c: <PublicBrandScreen onBack={()=>{}} following={false} onFollow={()=>{}}/> },
+  { l: "09 · ORDERS",       c: <OrdersScreen onBack={()=>{}} onOrder={()=>{}}/> },
+  { l: "10 · ORDER DETAIL", c: <OrderDetailScreen onBack={()=>{}} onRefund={()=>{}} refunded={false}/> },
+  { l: "11 · GUESTS",       c: <GuestsScreen onBack={()=>{}} onApprove={()=>{}} approvedIdx={-1}/> },
+  { l: "12 · SCANNER · IDLE", c: <ScannerScreen onBack={()=>{}} scanState="idle" onScan={()=>{}} onCash={()=>{}} onManual={()=>{}}/> },
+  { l: "13 · SCANNER · OK", c: <ScannerScreen onBack={()=>{}} scanState="success" onScan={()=>{}} onCash={()=>{}} onManual={()=>{}}/> },
+  { l: "14 · SCANNER · DUPE", c: <ScannerScreen onBack={()=>{}} scanState="duplicate" onScan={()=>{}} onCash={()=>{}} onManual={()=>{}}/> },
+  { l: "15 · CASH SALE",    c: <CashSaleScreen onBack={()=>{}} onConfirm={()=>{}}/> },
+  { l: "16 · TICKET QR",    c: <TicketQRScreen onBack={()=>{}}/> },
+  { l: "17 · ACCOUNT",      c: <AccountScreen onTab={()=>{}} onDelete={()=>{}}/> },
+  { l: "18 · DELETE FLOW",  c: <DeleteScreen step={2} onBack={()=>{}} onConfirm={()=>{}}/> },
+  { l: "19 · CHAT (SOON)",  c: <ChatScreen onTab={()=>{}}/> },
+  { l: "20 · BRANDS LIST",  c: <BrandsListScreen onBack={()=>{}} onOpen={()=>{}} onCreate={()=>{}}/> },
+  { l: "21 · BRAND PROFILE", c: <BrandProfileScreen onBack={()=>{}} onPayments={()=>{}} onTeam={()=>{}} onPublic={()=>{}}/> },
+  { l: "22 · BRAND PAYMENTS", c: <BrandPaymentsScreen onBack={()=>{}} onReports={()=>{}}/> },
+  { l: "23 · FINANCE",      c: <FinanceReportsScreen onBack={()=>{}}/> },
+  { l: "24 · MARKETING",    c: <MarketingScreen onTab={()=>{}} onAudience={()=>{}} onEmail={()=>{}} onSms={()=>{}} onJourneys={()=>{}} onCampaign={()=>{}} onTracking={()=>{}} onTemplates={()=>{}}/> },
+  { l: "25 · AUDIENCE",     c: <AudienceScreen onBack={()=>{}} onProfile={()=>{}}/> },
+  { l: "26 · CONTACT",      c: <ContactProfileScreen onBack={()=>{}}/> },
+  { l: "27 · EMAIL TEMPLATES", c: <EmailTemplatesScreen onBack={()=>{}} onPick={()=>{}}/> },
+  { l: "28 · EMAIL · SETUP", c: <EmailComposerScreen onBack={()=>{}} onSchedule={()=>{}} onAudience={()=>{}} onPreview={()=>{}}/> },
+  { l: "29 · SMS COMPOSE",  c: <SmsComposerScreen onBack={()=>{}}/> },
+  { l: "30 · JOURNEYS",     c: <JourneysScreen onBack={()=>{}} onJourney={()=>{}}/> },
+  { l: "31 · JOURNEY FLOW", c: <JourneyDetailScreen onBack={()=>{}}/> },
+];
+ReactDOM.createRoot(document.getElementById("phones-row")).render(
+  <>{tour.map((s, i) => <StaticPhone key={i} label={s.l} scale={0.55}>{s.c}</StaticPhone>)}</>
+);
+
+ReactDOM.createRoot(document.getElementById("color-grid")).render(<ColorGrid/>);
+ReactDOM.createRoot(document.getElementById("type-grid")).render(<TypeGrid/>);
+ReactDOM.createRoot(document.getElementById("comp-grid")).render(<CompGrid/>);
+ReactDOM.createRoot(document.getElementById("glass-grid")).render(<GlassGrid/>);
+</script>
+</body>
+</html>

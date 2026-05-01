@@ -83,6 +83,41 @@
 
 ---
 
+### I-16 Live-event ownership separation (mingla-business)
+
+**Rule:** Published live events live ONLY in `liveEventStore`. They are NEVER created, mutated, or deleted from any other path. `publishDraft` in `draftEventStore` is the SINGLE atomic ownership-transfer point: find draft → call `convertDraftToLiveEvent` (the I-16 chokepoint) → push to `liveEventStore.addLiveEvent` → AND ONLY THEN delete the draft. If conversion fails (e.g., brand deleted), the draft is preserved so the user can retry.
+
+**Sub-rule:** `addLiveEvent` MUST have exactly ONE caller — `liveEventConverter.convertDraftToLiveEvent`. No component, no other store, no edge function may push to `liveEventStore` directly. Grep-verifiable: `grep -rn "addLiveEvent" mingla-business/src` should return ONE match outside `liveEventStore.ts` (the converter call site).
+
+**Why:** Cycle 6 introduced `liveEventStore` as a sibling to `draftEventStore`. Without a single chokepoint, either (a) drafts and live events could co-exist for the same logical event (which is canonical?) or (b) a publish flow that fails mid-way could orphan data in the live store while the draft survives. Constitution #2 (one owner per truth) demands the atomic transfer pattern.
+
+**Established by:** Cycle 6 — ORCH-BIZ-CYCLE-6-PUBLIC-EVENT-PAGE close (2026-05-01).
+
+**Enforcement:** Inline `[I-16 GUARD]` comment at the `addLiveEvent` declaration in `liveEventStore.ts` documents the chokepoint rule. Header docstring on `liveEventConverter.ts` reiterates the contract.
+
+**Test that catches a regression:** `grep -rn "addLiveEvent\|liveEventStore.getState" mingla-business/src` — every match outside `liveEventStore.ts` itself + `liveEventConverter.ts` (one call site) is a violation. Also: `grep -rn "publishDraft" mingla-business/src` to verify that publish is the ONLY mutation that creates a LiveEvent.
+
+---
+
+### I-17 Brand-slug stability (mingla-business)
+
+**Rule:** `brand.slug` is FROZEN at brand creation. NO edit path may EVER be added in `BrandEditView`, settings, or any other UI surface. Shared brand URLs (IG bio, WhatsApp status, email signature, business cards) depend on this slug being immutable.
+
+**Sub-rule:** If a future cycle needs brand renaming for typo correction or rebrand, ship a slug-redirect table (`oldSlug → newSlug`) + a 301-style redirect handler in the route layer. NEVER mutate `brand.slug` directly. Old links MUST continue resolving for a generous grace period (recommend ≥12 months).
+
+**Why:** Cycle 7 ships `/b/{brandSlug}` as the IG-bio-link surface. Founders treat the URL as permanent. If slug ever becomes editable without a redirect path, every shared link breaks instantly — the founder loses every visitor who ever bookmarked, screenshotted, or shared the URL. Mirrors Cycle 6 event-slug freeze (`liveEvent.brandSlug` and `liveEvent.eventSlug` are both frozen at publish).
+
+**Established by:** Cycle 7 — ORCH-BIZ-CYCLE-7 close (2026-05-01).
+
+**Enforcement:**
+- Inline LOCK comment in `currentBrandStore.ts` Brand type at the `slug` field declaration documents the rule.
+- `BrandEditView.tsx:20` header docstring already notes slug is read-only — Cycle 7 spec re-affirmed.
+- `BrandEditView.tsx:368-369` renders `slug` as plain `<Text>` (NOT TextInput) — verified at investigation phase (forensics §3 OBS-1).
+
+**Test that catches a regression:** `grep -rn "setBrand.*slug\|brand\.slug\s*=\s*" mingla-business/src` — any direct mutation outside `currentBrandStore.setBrands` initialization is a violation. Also: any new `<TextInput>` or `<Input variant="text">` in any `Brand*View.tsx` whose `value={...slug...}` and `onChangeText={...slug...}` is a violation.
+
+---
+
 ## ORCH-0686 invariants (2026-04-26) — Photo backfill mode CHECK alignment + TS/SQL parity
 
 ### I-PHOTO-FILTER-EXPLICIT
