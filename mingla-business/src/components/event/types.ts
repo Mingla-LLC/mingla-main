@@ -13,7 +13,7 @@ import type { ValidationError } from "../../utils/draftEventValidation";
 
 export interface StepBodyProps {
   draft: DraftEvent;
-  /** Patches the draft via draftEventStore.updateDraft. */
+  /** Patches the draft via draftEventStore.updateDraft (create-flow) or local state setter (edit-published flow). */
   updateDraft: (
     patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>,
   ) => void;
@@ -30,6 +30,19 @@ export interface StepBodyProps {
    * scroll-to-focused-input for multilines in this nested layout.
    */
   scrollToBottom: () => void;
+  /**
+   * When provided, the step body is in edit-after-publish mode (ORCH-0704 v2).
+   * Currently only Step 5 reads this for tier price/capacity/delete lock UX.
+   * Other steps ignore it transparently.
+   *
+   * In ORCH-0704 stub mode the soldCountByTier map is always empty
+   * (useOrderStore not yet built — Cycle 9c flips to live counts).
+   *
+   * Per ORCH-0704 v2 spec §3.4.1.
+   */
+  editMode?: {
+    soldCountByTier: Record<string, number>;
+  };
 }
 
 export const errorForKey = (

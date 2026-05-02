@@ -27,6 +27,7 @@ import {
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { DraftEvent } from "../../store/draftEventStore";
 import type { Brand } from "../../store/currentBrandStore";
+import { useOrderStore } from "../../store/orderStore";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 import { formatGbpRound } from "../../utils/currency";
 
@@ -93,8 +94,9 @@ export const EventListCard: React.FC<EventListCardProps> = ({
     if (hasUnlimited && cap === 0) return 0;
     return cap;
   }, [event.tickets]);
-  const soldCount = 0; // [Cycle 9c] derive from useOrderStore
-  const revenueGbp = 0; // [Cycle 9c] derive from useOrderStore
+  // Cycle 9c — derive from useOrderStore (subscribes to live updates).
+  const soldCount = useOrderStore((s) => s.getSoldCountForEvent(event.id));
+  const revenueGbp = useOrderStore((s) => s.getRevenueForEvent(event.id));
   const pct =
     totalCapacity > 0
       ? Math.min(100, Math.round((soldCount / totalCapacity) * 100))

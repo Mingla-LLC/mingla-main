@@ -67,6 +67,13 @@ export interface EventManageMenuProps {
    */
   onDeleteDraft: () => void;
   /**
+   * Open Orders ledger — Cycle 9c. Wired by parent to
+   * `router.push('/event/${eventId}/orders')`. Used by both the "Orders"
+   * action (non-draft) and the "Issue refunds" action (past — refunds
+   * happen via the Orders ledger, not a separate screen).
+   */
+  onOpenOrders: () => void;
+  /**
    * TRANSITIONAL toast — parent wraps in absolute-positioned Toast and
    * fires the message after closing the sheet.
    */
@@ -95,17 +102,16 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
   onEndSales,
   onCancelEvent,
   onDeleteDraft,
+  onOpenOrders,
   onTransitionalToast,
 }) => {
   const actions = useMemo<MenuAction[]>((): MenuAction[] => {
     const list: MenuAction[] = [];
 
     // Edit details — drafts go to the wizard (existing Cycle 3 route);
-    // non-drafts (live / upcoming / past) require Cycle 9b's edit-after-
-    // publish wizard mode, which doesn't exist yet. 9a fires a TRANSITIONAL
-    // toast for non-drafts to avoid the silent bounce-to-home that the
-    // existing edit.tsx triggers when fed a non-draft id (useDraftById
-    // returns null → redirect).
+    // non-drafts (live / upcoming / past) route to the focused
+    // EditPublishedScreen via ?mode=edit-published. The route handler
+    // (edit.tsx) branches on the mode query param. Cycle 9b-2.
     list.push({
       key: "edit",
       icon: "edit",
@@ -113,11 +119,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
       tone: "default",
       onPress: () => {
         onClose();
-        if (status === "draft") {
-          onEdit();
-        } else {
-          onTransitionalToast("Edit-after-publish lands Cycle 9b-2.");
-        }
+        onEdit();
       },
     });
 
@@ -149,7 +151,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
       });
     }
 
-    // Orders — non-draft (live + upcoming + past)
+    // Orders — non-draft (live + upcoming + past) — Cycle 9c live wire
     if (status !== "draft") {
       list.push({
         key: "orders",
@@ -158,7 +160,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
         tone: "default",
         onPress: () => {
           onClose();
-          onTransitionalToast("Orders ledger lands Cycle 9c.");
+          onOpenOrders();
         },
       });
     }
@@ -258,7 +260,10 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
         tone: "default",
         onPress: () => {
           onClose();
-          onTransitionalToast("Refund ops land Cycle 9c.");
+          // Cycle 9c — past-event refunds happen via the Orders ledger
+          // (no separate "issue refunds" screen). Same destination as the
+          // Orders action above — operator picks the order and refunds.
+          onOpenOrders();
         },
       });
       list.push({
@@ -274,7 +279,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
     }
 
     return list;
-  }, [status, onClose, onEdit, onViewPublic, onShare, onEndSales, onCancelEvent, onDeleteDraft, onTransitionalToast]);
+  }, [status, onClose, onEdit, onViewPublic, onShare, onEndSales, onCancelEvent, onDeleteDraft, onOpenOrders, onTransitionalToast]);
 
   // Snap calculation — content fit per DEC-084 numeric snap support.
   // Each row ~52px + header padding ~32 + safe spacing ~28 = ~112 + N×52.

@@ -7,6 +7,49 @@
 
 ---
 
+## Mingla Business invariants (2026-05-02) — ORCH-0704 v2 close-cycle promotions
+
+### I-19 Immutable order financials (mingla-business)
+
+**Rule:** An order's `totalGbpAtPurchase`, `lines[i].unitPriceGbpAtPurchase`, `lines[i].ticketNameAtPurchase`, `lines[i].isFreeAtPurchase`, `lines[i].quantity`, `currency`, and `buyer` snapshot are write-once at order insertion to `useOrderStore`. No subsequent operator action — including event edit, tier rename, tier reprice, refund, cancel — mutates these fields. Refund/cancel mutations create NEW records (`RefundRecord`) and update `status` + `refundedAmountGbp` + `refunds[]` aggregates only; original snapshots are NEVER overwritten.
+
+**Why:** Buyer protection. Operator edits to a published event apply to displayable info (name, date, venue) but MUST NOT retroactively change what the buyer paid for. If the operator renames a tier "VIP" → "VIP+ Lounge" or changes the price, the buyer's order and ticket still show "VIP" at the price they paid. This invariant is the load-bearing contract for the full-edit-after-publish capability shipped in DEC-087.
+
+**Established by:** ORCH-0704 v2 close (2026-05-02). Order shape spec'd in [SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH_v2.md](specs/SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH_v2.md) §3.1.5 as forward-looking schema; Cycle 9c implementor builds `useOrderStore` honouring this contract.
+
+**Enforcement:**
+- TypeScript: order line snapshot fields will be `Readonly<...>` at the type level when returned from selectors (Cycle 9c implementation rule).
+- Runtime: `useOrderStore` exposes ONLY `recordOrder` (write-once on confirmation entry), `recordRefund` (creates RefundRecord, updates aggregates), `cancelOrder` (sets status=cancelled, cancelledAt). NO `updateLine`, NO `updateBuyer`, NO `updatePrice` mutations.
+- CI gate (post-Stripe, B-cycle): SQL CHECK or trigger on `order_line_items` preventing UPDATE to `unit_price_gbp_at_purchase`, `ticket_name_at_purchase`, `is_free_at_purchase`, `quantity` columns once non-null.
+
+**Test that catches a regression:** Build a stub `OrderRecord`, run operator edit on the LiveEvent (rename tier + change price), assert `OrderRecord.lines[i].ticketNameAtPurchase` and `unitPriceGbpAtPurchase` are unchanged. (Cannot test in ORCH-0704 stub mode — `useOrderStore` doesn't exist yet. Test ships in Cycle 9c.)
+
+---
+
+### I-20 Edit reason mandatory + audit log permanence (mingla-business)
+
+**Rule:** Every successful `useLiveEventStore.updateLiveEventFields` call MUST:
+1. Receive a non-empty `reason: string` (10 ≤ trimmed-length ≤ 200) from the caller.
+2. Append exactly one entry to `useEventEditLogStore` BEFORE returning success.
+3. Fire the notification stack via `eventChangeNotifier.notifyEventChanged` BEFORE returning success.
+
+The audit log entry, once written, is immutable. `useEventEditLogStore` exposes ONLY `recordEdit` (append) + reads (`getEditsForEvent`, `getLatestEditForEvent`, `getEditsForEventSince`) + `reset` (logout). There is NO `updateEdit` and NO `deleteEdit`. Logout clears the store entirely (Const #6 owns the data lifetime).
+
+**Why:** Buyer trust + operator accountability + dispute audit trail. Every edit to a published event has a reason recorded — buyers see it in their notification copy ("Reason: Venue change due to weather") + the buyer order detail page (Cycle 9c) renders the edit history. The append-only log is the source of truth for the material-change banner; mutating or deleting entries would break buyer confidence in the audit trail.
+
+**Established by:** ORCH-0704 v2 close (2026-05-02). Implemented in `mingla-business/src/store/eventEditLogStore.ts` + `mingla-business/src/store/liveEventStore.ts:updateLiveEventFields`.
+
+**Enforcement:**
+- Compile-time: `updateLiveEventFields(id, patch, context, reason: string)` requires `reason` parameter; passing missing argument is a TS error.
+- Runtime: store mutation rejects with `{ok: false, reason: "missing_edit_reason"}` (empty trimmed) or `{ok: false, reason: "invalid_edit_reason"}` (length < 10 or > 200) BEFORE applying patch — no edit log entry, no notification fires.
+- API surface: `useEventEditLogStore` mutation surface is `recordEdit` + `reset` only. Adding any update / delete API is a violation.
+- UI: `ChangeSummaryModal` v2 disables Save until reason length valid; live char counter `{N} / 200`.
+- Logout: `clearAllStores.ts` calls `useEventEditLogStore.getState().reset()`.
+
+**Test that catches a regression:** Unit test calling `updateLiveEventFields(id, {description: "x"}, ctx, "")` returns `{ok: false, reason: "missing_edit_reason"}`. Unit test calling with `reason: "abc"` (3 chars) returns `{ok: false, reason: "invalid_edit_reason"}`. Manual: edit a published event → ChangeSummaryModal opens → Save button disabled until reason ≥10 chars. After save, `useEventEditLogStore.getEditsForEvent(eventId)` returns the new entry with the typed reason. After logout, `useEventEditLogStore.getState().entries` is `[]`.
+
+---
+
 ## Mingla Business invariants (2026-04-30) — Cycle 2 + Cycle 3 close-cycle promotions
 
 ### I-11 Format-agnostic ID resolver (mingla-business)

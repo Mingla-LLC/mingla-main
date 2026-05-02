@@ -17,10 +17,14 @@
 
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 import { useDraftEventStore } from "../store/draftEventStore";
+import { useEventEditLogStore } from "../store/eventEditLogStore";
 import { useLiveEventStore } from "../store/liveEventStore";
+import { useOrderStore } from "../store/orderStore";
 
 export const clearAllStores = (): void => {
   useCurrentBrandStore.getState().reset();
   useDraftEventStore.getState().reset();
   useLiveEventStore.getState().reset(); // NEW Cycle 6 — Constitution #6
+  useEventEditLogStore.getState().reset(); // NEW ORCH-0704 v2 — Constitution #6
+  useOrderStore.getState().reset(); // NEW Cycle 9c — Constitution #6
 };

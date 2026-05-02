@@ -297,7 +297,11 @@ export default function EventsTab(): React.ReactElement {
 
   const handleManageEdit = useCallback((): void => {
     if (manageCtx === null) return;
-    router.push(`/event/${manageCtx.event.id}/edit` as never);
+    // Cycle 9b-2: drafts route to wizard; non-drafts (live/upcoming/past)
+    // route to the focused EditPublishedScreen via ?mode=edit-published.
+    const suffix =
+      manageCtx.kind === "draft" ? "" : "?mode=edit-published";
+    router.push(`/event/${manageCtx.event.id}/edit${suffix}` as never);
     setManageCtx(null);
   }, [manageCtx, router]);
 
@@ -504,6 +508,12 @@ export default function EventsTab(): React.ReactElement {
           onEndSales={handleManageEndSales}
           onCancelEvent={handleManageCancelEvent}
           onDeleteDraft={handleManageDeleteDraft}
+          onOpenOrders={() => {
+            handleManageClose();
+            router.push(
+              `/event/${manageCtx.event.id}/orders` as never,
+            );
+          }}
           onTransitionalToast={showTransitionalToast}
         />
       ) : null}

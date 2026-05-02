@@ -83,6 +83,12 @@ interface TicketCardProps {
   onMoveUp: () => void;
   onMoveDown: () => void;
   errorMessage?: string;
+  /**
+   * Sold count for this tier (ORCH-0704 v2 edit-published mode). When
+   * > 0, hides the Delete button + shows a "Sold: N" line. Defaults
+   * to 0 in create-flow (no edit mode passed).
+   */
+  soldCount?: number;
 }
 
 const TicketCard: React.FC<TicketCardProps> = ({
@@ -95,7 +101,9 @@ const TicketCard: React.FC<TicketCardProps> = ({
   onMoveUp,
   onMoveDown,
   errorMessage,
+  soldCount = 0,
 }) => {
+  const hasSales = soldCount > 0;
   const subLine = formatTicketSubline(ticket);
   const badges = formatTicketBadges(ticket);
   const capacityLabel = formatTicketCapacity(ticket);
@@ -181,15 +189,17 @@ const TicketCard: React.FC<TicketCardProps> = ({
                 >
                   <Icon name="edit" size={16} color={textTokens.tertiary} />
                 </Pressable>
-                <Pressable
-                  onPress={onDelete}
-                  accessibilityRole="button"
-                  accessibilityLabel="Delete ticket"
-                  hitSlop={8}
-                  style={styles.cardActionButton}
-                >
-                  <Icon name="trash" size={16} color={semantic.error} />
-                </Pressable>
+                {hasSales ? null : (
+                  <Pressable
+                    onPress={onDelete}
+                    accessibilityRole="button"
+                    accessibilityLabel="Delete ticket"
+                    hitSlop={8}
+                    style={styles.cardActionButton}
+                  >
+                    <Icon name="trash" size={16} color={semantic.error} />
+                  </Pressable>
+                )}
               </View>
             </View>
 
@@ -202,6 +212,12 @@ const TicketCard: React.FC<TicketCardProps> = ({
                 <Text style={styles.cardStatLabel}>Capacity</Text>
                 <Text style={styles.cardStatValue}>{capacityLabel}</Text>
               </View>
+              {hasSales ? (
+                <View style={styles.cardStatCell}>
+                  <Text style={styles.cardStatLabel}>Sold</Text>
+                  <Text style={styles.cardStatValue}>{soldCount}</Text>
+                </View>
+              ) : null}
             </View>
 
             {/* Badges row — modifiers + visibility states */}
@@ -339,6 +355,15 @@ interface TicketStubSheetProps {
   initial: TicketStub | null;
   /** Used for new tickets — appends at end. */
   nextOrder: number;
+  /**
+   * Sold count for this tier (ORCH-0704 v2 edit-published mode). When > 0:
+   *   - Lock banner shown at top
+   *   - Price + isFree + isUnlimited fields rendered disabled
+   *   - Capacity shows inline floor error if user enters value < soldCount
+   *   - Bottom Delete CTA hidden
+   * Defaults to 0 (create-flow / no-sales-tier).
+   */
+  soldCount?: number;
 }
 
 const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
@@ -347,7 +372,11 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
   onSave,
   initial,
   nextOrder,
+  soldCount = 0,
 }) => {
+  // ORCH-0704 v2: when this tier has sales, lock price + isFree + isUnlimited
+  // fields and surface the refund-first messaging.
+  const isPriceLocked = soldCount > 0;
   const insets = useSafeAreaInsets();
 
   // Existing v3 state
@@ -476,6 +505,14 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
     saleEndAt !== null &&
     new Date(saleEndAt).getTime() <= new Date(saleStartAt).getTime();
 
+  // ORCH-0704 v2 — capacity floor inline validation when tier has sales.
+  const parsedCapacityValue = parseInt(capacityText, 10);
+  const capacityBelowSold =
+    isPriceLocked &&
+    !isUnlimited &&
+    Number.isFinite(parsedCapacityValue) &&
+    parsedCapacityValue < soldCount;
+
   // Save is gated by name + ALL inline validation hints. The publish-gate
   // validator (validateTickets) catches the same conditions globally;
   // gating Save locally prevents the user from persisting bad combinations
@@ -487,7 +524,8 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
     !minTooLow &&
     !maxLessThanMin &&
     !descriptionTooLong &&
-    !saleEndBeforeStart;
+    !saleEndBeforeStart &&
+    !capacityBelowSold;
 
   // Sale period picker handlers — bottom-docked inline DateTimePicker
   // (matches MultiDateOverrideSheet's pattern for in-sheet pickers).
@@ -670,6 +708,24 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
             {isEditMode ? "Edit ticket" : "Add ticket type"}
           </Text>
 
+          {/* ORCH-0704 v2 — refund-first lock banner shown when this tier has sales */}
+          {isPriceLocked ? (
+            <View style={styles.lockBanner}>
+              <Icon name="flag" size={16} color={accent.warm} />
+              <View style={styles.lockBannerTextCol}>
+                <Text style={styles.lockBannerTitle}>
+                  {soldCount} ticket{soldCount === 1 ? "" : "s"} sold
+                </Text>
+                <Text style={styles.lockBannerBody}>
+                  Existing buyers are protected at the price they paid. To
+                  change price or free/paid, refund those buyers first
+                  (then add a new tier). Other modifiers, description, and
+                  visibility can be edited.
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
           {/* Name */}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Name</Text>
@@ -717,20 +773,34 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
             )}
           </View>
 
-          {/* Free toggle */}
-          <ToggleRow
-            label="Free ticket"
-            sub="No charge — guests register for free."
-            value={isFree}
-            onChange={setIsFree}
-            accessibilityLabel="Free ticket"
-          />
+          {/* Free toggle — ORCH-0704 v2: locked when sales exist */}
+          <View
+            pointerEvents={isPriceLocked ? "none" : "auto"}
+            style={isPriceLocked ? styles.disabledRow : undefined}
+          >
+            <ToggleRow
+              label="Free ticket"
+              sub={
+                isPriceLocked
+                  ? "Locked — refund existing buyers to change."
+                  : "No charge — guests register for free."
+              }
+              value={isFree}
+              onChange={setIsFree}
+              accessibilityLabel="Free ticket"
+            />
+          </View>
 
-          {/* Price (when not free) */}
+          {/* Price (when not free) — ORCH-0704 v2: locked when sales exist */}
           {!isFree ? (
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Price (£)</Text>
-              <View style={styles.inputWrap}>
+              <View
+                style={[
+                  styles.inputWrap,
+                  isPriceLocked ? styles.inputWrapDisabled : null,
+                ]}
+              >
                 <TextInput
                   value={priceText}
                   onChangeText={setPriceText}
@@ -738,26 +808,47 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
                   placeholderTextColor={textTokens.quaternary}
                   keyboardType="decimal-pad"
                   style={styles.textInput}
+                  editable={!isPriceLocked}
                   accessibilityLabel="Ticket price in pounds"
                 />
               </View>
+              {isPriceLocked ? (
+                <Text style={styles.helperHint}>
+                  Existing buyers locked at £{priceText || "—"}. Change
+                  applies to new buyers only — refund first to change.
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
-          {/* Unlimited toggle */}
-          <ToggleRow
-            label="Unlimited capacity"
-            sub="No cap on how many people can buy this ticket."
-            value={isUnlimited}
-            onChange={setIsUnlimited}
-            accessibilityLabel="Unlimited capacity"
-          />
+          {/* Unlimited toggle — ORCH-0704 v2: locked when sales exist */}
+          <View
+            pointerEvents={isPriceLocked ? "none" : "auto"}
+            style={isPriceLocked ? styles.disabledRow : undefined}
+          >
+            <ToggleRow
+              label="Unlimited capacity"
+              sub={
+                isPriceLocked
+                  ? "Locked — refund existing buyers to change."
+                  : "No cap on how many people can buy this ticket."
+              }
+              value={isUnlimited}
+              onChange={setIsUnlimited}
+              accessibilityLabel="Unlimited capacity"
+            />
+          </View>
 
-          {/* Capacity (when not unlimited) */}
+          {/* Capacity (when not unlimited) — ORCH-0704 v2: floor at soldCount */}
           {!isUnlimited ? (
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Capacity</Text>
-              <View style={styles.inputWrap}>
+              <View
+                style={[
+                  styles.inputWrap,
+                  capacityBelowSold && styles.inputWrapError,
+                ]}
+              >
                 <TextInput
                   value={capacityText}
                   onChangeText={setCapacityText}
@@ -768,6 +859,16 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
                   accessibilityLabel="Ticket capacity"
                 />
               </View>
+              {capacityBelowSold ? (
+                <Text style={styles.helperError}>
+                  Can't go below {soldCount} tickets sold. Increase capacity
+                  or refund existing buyers first.
+                </Text>
+              ) : isPriceLocked ? (
+                <Text style={styles.helperHint}>
+                  Minimum capacity = {soldCount} (already sold).
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -1202,7 +1303,10 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   updateDraft,
   errors,
   showErrors,
+  editMode,
 }) => {
+  // ORCH-0704 v2 — sold-count map. Empty in create-flow + ORCH-0704 stub mode.
+  const soldCountByTier = editMode?.soldCountByTier ?? {};
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   const [editingTicketId, setEditingTicketId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -1392,6 +1496,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
                 onMoveUp={() => handleMoveUp(t.id)}
                 onMoveDown={() => handleMoveDown(t.id)}
                 errorMessage={firstError}
+                soldCount={soldCountByTier[t.id] ?? 0}
               />
             );
           })}
@@ -1435,6 +1540,9 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
         onSave={handleSaveTicket}
         initial={editingTicket}
         nextOrder={nextOrder}
+        soldCount={
+          editingTicket !== null ? (soldCountByTier[editingTicket.id] ?? 0) : 0
+        }
       />
 
       <ConfirmDialog
@@ -1659,6 +1767,39 @@ const styles = StyleSheet.create({
   },
   inputWrapError: {
     borderColor: semantic.error,
+  },
+  // ORCH-0704 v2 — disabled state for locked tier fields (price/free/unlimited)
+  inputWrapDisabled: {
+    opacity: 0.5,
+  },
+  disabledRow: {
+    opacity: 0.5,
+  },
+  // ORCH-0704 v2 — refund-first lock banner inside TicketStubSheet
+  lockBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radiusTokens.md,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+    marginBottom: spacing.lg,
+  },
+  lockBannerTextCol: {
+    flex: 1,
+    gap: 4,
+  },
+  lockBannerTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  lockBannerBody: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: textTokens.secondary,
   },
   textInput: {
     flex: 1,

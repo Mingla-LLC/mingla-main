@@ -42,6 +42,10 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { useLiveEventStore } from "../../../src/store/liveEventStore";
+import {
+  useOrderStore,
+  type OrderRecord,
+} from "../../../src/store/orderStore";
 import { formatGbp } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { buildQrPayload } from "../../../src/utils/stubOrderId";
@@ -143,6 +147,44 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
       router.replace(`/checkout/${eventId}` as never);
     }
   }, [result, eventId, router]);
+
+  // ----- Cycle 9c — buyer→founder order persistence (I-18) -----
+  // Records the OrderRecord into useOrderStore so the operator's Orders
+  // ledger reflects this purchase. Idempotent dedupe by orderId — safe
+  // to fire on every mount; recordOrder returns existing if id present.
+  useEffect(() => {
+    if (eventId === null || result === null || event === null) return;
+    const order: OrderRecord = {
+      id: result.orderId,
+      eventId,
+      brandId: event.brandId,
+      buyer: {
+        name: buyer.name,
+        email: buyer.email,
+        phone: buyer.phone,
+        marketingOptIn: buyer.marketingOptIn,
+      },
+      lines: lines.map((l) => ({
+        ticketTypeId: l.ticketTypeId,
+        ticketNameAtPurchase: l.ticketName,
+        unitPriceGbpAtPurchase: l.unitPriceGbp,
+        isFreeAtPurchase: l.isFree,
+        quantity: l.quantity,
+        refundedQuantity: 0,
+        refundedAmountGbp: 0,
+      })),
+      totalGbpAtPurchase: result.totalGbp,
+      currency: "GBP",
+      paymentMethod: result.paymentMethod,
+      paidAt: result.paidAt,
+      status: "paid",
+      refundedAmountGbp: 0,
+      refunds: [],
+      cancelledAt: null,
+      lastSeenEventUpdatedAt: event.updatedAt,
+    };
+    useOrderStore.getState().recordOrder(order);
+  }, [eventId, event, result, lines, buyer]);
 
   // ----- Handlers -----
   const handleBackToEvent = useCallback((): void => {

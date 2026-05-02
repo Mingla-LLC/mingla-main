@@ -39,8 +39,57 @@ import type { LiveEvent } from "../../../src/store/liveEventStore";
 import { useDraftById } from "../../../src/store/draftEventStore";
 import type { TicketStub } from "../../../src/store/draftEventStore";
 import { useBrandList } from "../../../src/store/currentBrandStore";
+import { useOrderStore } from "../../../src/store/orderStore";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { formatGbp } from "../../../src/utils/currency";
+
+// ----- Activity feed types (Cycle 9c rework v3) --------------------
+
+type ActivityEvent =
+  | {
+      kind: "purchase";
+      orderId: string;
+      buyerName: string;
+      summary: string;
+      amountGbp: number;
+      at: string;
+    }
+  | {
+      kind: "refund";
+      orderId: string;
+      buyerName: string;
+      summary: string;
+      amountGbp: number;
+      at: string;
+    }
+  | {
+      kind: "cancel";
+      orderId: string;
+      buyerName: string;
+      summary: string;
+      at: string;
+    };
+
+const ACTIVITY_RELATIVE_TIME_MS = {
+  minute: 60 * 1000,
+  hour: 60 * 60 * 1000,
+  day: 24 * 60 * 60 * 1000,
+};
+
+const formatActivityRelativeTime = (iso: string): string => {
+  const now = Date.now();
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const delta = now - then;
+  if (delta < ACTIVITY_RELATIVE_TIME_MS.minute) return "just now";
+  if (delta < ACTIVITY_RELATIVE_TIME_MS.hour) {
+    return `${Math.floor(delta / ACTIVITY_RELATIVE_TIME_MS.minute)}m ago`;
+  }
+  if (delta < ACTIVITY_RELATIVE_TIME_MS.day) {
+    return `${Math.floor(delta / ACTIVITY_RELATIVE_TIME_MS.hour)}h ago`;
+  }
+  return `${Math.floor(delta / ACTIVITY_RELATIVE_TIME_MS.day)}d ago`;
+};
 
 import { Button } from "../../../src/components/ui/Button";
 import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
@@ -150,7 +199,11 @@ export default function EventDetailScreen(): React.ReactElement {
 
   const handleEdit = useCallback((): void => {
     if (id !== null) {
-      router.push(`/event/${id}/edit` as never);
+      // Cycle 9b-2: EventDetail is live-only (drafts redirect before
+      // reaching here). Always route with ?mode=edit-published so
+      // edit.tsx renders the focused EditPublishedScreen instead of
+      // the create wizard (which would bounce to home for non-drafts).
+      router.push(`/event/${id}/edit?mode=edit-published` as never);
     }
   }, [id, router]);
 
@@ -172,8 +225,10 @@ export default function EventDetailScreen(): React.ReactElement {
   }, [showToast]);
 
   const handleOrders = useCallback((): void => {
-    showToast("Orders ledger lands Cycle 9c.");
-  }, [showToast]);
+    if (id !== null) {
+      router.push(`/event/${id}/orders` as never);
+    }
+  }, [router, id]);
 
   const handleGuests = useCallback((): void => {
     showToast("Guests + approval flow lands Cycle 10 + B4.");
@@ -257,9 +312,85 @@ export default function EventDetailScreen(): React.ReactElement {
   const status = deriveLiveStatus(event);
   const dateLine = formatDraftDateLine(event);
 
-  // Stub KPIs in 9a — populate from useOrderStore in 9c
-  const revenueGbp = 0; // [Cycle 9c]
-  const payoutGbp = 0; // [Cycle 9c] revenueGbp × 0.96 stub Stripe fee retention
+  // Cycle 9c — populated from useOrderStore (subscribes to live updates).
+  const revenueGbp = useOrderStore((s) =>
+    event !== null ? s.getRevenueForEvent(event.id) : 0,
+  );
+  // [TRANSITIONAL] payout = revenue × 0.96 (4% stub Stripe fee retention).
+  // EXIT: B-cycle wires real Stripe payouts; payout comes from Stripe API.
+  const payoutGbp = Math.round(revenueGbp * 96) / 100;
+  // Total tickets sold across all tiers — drives "X sold" subtext on Orders ActionTile.
+  const totalSoldCount = useOrderStore((s) =>
+    event !== null ? s.getSoldCountForEvent(event.id) : 0,
+  );
+  // Per-tier sold count map — stable ref via raw entries + useMemo (same
+  // pattern as Cycle 9c rework v2 fix; avoids infinite-loop on
+  // getSoldCountByTier returning a fresh object each call).
+  const allOrderEntries = useOrderStore((s) => s.entries);
+  const soldCountByTier = useMemo<Record<string, number>>(() => {
+    if (event === null) return {};
+    const eventOrders = allOrderEntries.filter(
+      (o) =>
+        o.eventId === event.id &&
+        (o.status === "paid" || o.status === "refunded_partial"),
+    );
+    const map: Record<string, number> = {};
+    for (const order of eventOrders) {
+      for (const line of order.lines) {
+        const live = Math.max(0, line.quantity - line.refundedQuantity);
+        if (live === 0) continue;
+        map[line.ticketTypeId] = (map[line.ticketTypeId] ?? 0) + live;
+      }
+    }
+    return map;
+  }, [allOrderEntries, event]);
+
+  // Cycle 9c rework v3 — activity feed derived from useOrderStore
+  // (purchase / refund / cancel events for this event, newest 5).
+  const recentActivity = useMemo<ActivityEvent[]>(() => {
+    if (event === null) return [];
+    const eventOrders = allOrderEntries.filter((o) => o.eventId === event.id);
+    const events: ActivityEvent[] = [];
+    for (const o of eventOrders) {
+      const buyerName =
+        o.buyer.name.trim().length > 0 ? o.buyer.name : "Anonymous";
+      const totalQty = o.lines.reduce((s, l) => s + l.quantity, 0);
+      const purchaseSummary =
+        o.lines.length === 1
+          ? `bought ${o.lines[0].quantity}× ${o.lines[0].ticketNameAtPurchase}`
+          : `bought ${totalQty}× tickets`;
+      events.push({
+        kind: "purchase",
+        orderId: o.id,
+        buyerName,
+        summary: purchaseSummary,
+        amountGbp: o.totalGbpAtPurchase,
+        at: o.paidAt,
+      });
+      for (const r of o.refunds) {
+        const refundedQty = r.lines.reduce((s, l) => s + l.quantity, 0);
+        events.push({
+          kind: "refund",
+          orderId: o.id,
+          buyerName,
+          summary: `refunded ${refundedQty}× tickets`,
+          amountGbp: r.amountGbp,
+          at: r.refundedAt,
+        });
+      }
+      if (o.status === "cancelled" && o.cancelledAt !== null) {
+        events.push({
+          kind: "cancel",
+          orderId: o.id,
+          buyerName,
+          summary: "cancelled their order",
+          at: o.cancelledAt,
+        });
+      }
+    }
+    events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+    return events.slice(0, 5);
+  }, [allOrderEntries, event]);
 
   return (
     <View style={styles.host}>
@@ -328,7 +459,7 @@ export default function EventDetailScreen(): React.ReactElement {
           <ActionTile
             icon="ticket"
             label="Orders"
-            sub={`${0} sold`}
+            sub={`${totalSoldCount} sold`}
             onPress={handleOrders}
           />
           <ActionTile
@@ -367,15 +498,30 @@ export default function EventDetailScreen(): React.ReactElement {
               .filter((t) => t.visibility !== "hidden")
               .sort((a, b) => a.displayOrder - b.displayOrder)
               .map((ticket) => (
-                <TicketTypeRow key={ticket.id} ticket={ticket} />
+                <TicketTypeRow
+                  key={ticket.id}
+                  ticket={ticket}
+                  soldCount={soldCountByTier[ticket.id] ?? 0}
+                />
               ))}
           </View>
         )}
 
-        {/* Recent activity section */}
+        {/* Recent activity section — Cycle 9c rework v3 live wire */}
         <Text style={styles.sectionLabelSpacer}>RECENT ACTIVITY</Text>
         <GlassCard variant="base" radius="md" padding={spacing.md}>
-          <Text style={styles.emptySectionText}>No activity yet.</Text>
+          {recentActivity.length === 0 ? (
+            <Text style={styles.emptySectionText}>No activity yet.</Text>
+          ) : (
+            <View style={styles.activityList}>
+              {recentActivity.map((a) => (
+                <ActivityRow
+                  key={`${a.kind}-${a.orderId}-${a.at}`}
+                  event={a}
+                />
+              ))}
+            </View>
+          )}
         </GlassCard>
 
         {/* Cancel event CTA — opens ConfirmDialog with typeToConfirm
@@ -435,6 +581,10 @@ export default function EventDetailScreen(): React.ReactElement {
           onDeleteDraft={() => {
             setManageMenuVisible(false);
             handleDeleteDraftStub();
+          }}
+          onOpenOrders={() => {
+            setManageMenuVisible(false);
+            router.push(`/event/${event.id}/orders` as never);
           }}
           onTransitionalToast={showToast}
         />
@@ -608,11 +758,12 @@ const pillStyles = StyleSheet.create({
 
 interface TicketTypeRowProps {
   ticket: TicketStub;
+  /** Cycle 9c — derived in parent from useOrderStore (per-tier live count). */
+  soldCount: number;
 }
 
-const TicketTypeRow: React.FC<TicketTypeRowProps> = ({ ticket }) => {
-  // soldCount stub = 0 in 9a; populated from useOrderStore in 9c
-  const sold = 0;
+const TicketTypeRow: React.FC<TicketTypeRowProps> = ({ ticket, soldCount }) => {
+  const sold = soldCount;
   const cap = ticket.isUnlimited
     ? Number.POSITIVE_INFINITY
     : (ticket.capacity ?? 0);
@@ -691,6 +842,133 @@ const ticketRowStyles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.0,
     color: semantic.error,
+  },
+});
+
+// ---- ActivityRow (composed inline — Cycle 9c rework v3) ------------
+
+interface ActivityRowProps {
+  event: ActivityEvent;
+}
+
+interface ActivityKindSpec {
+  iconName: IconName;
+  iconColor: string;
+  badgeBg: string;
+  amountColor: string | null;
+  amountSign: "+" | "-" | null;
+}
+
+const activityKindSpec = (kind: ActivityEvent["kind"]): ActivityKindSpec => {
+  if (kind === "purchase") {
+    return {
+      iconName: "ticket",
+      iconColor: "#34c759",
+      badgeBg: "rgba(34, 197, 94, 0.18)",
+      amountColor: "#34c759",
+      amountSign: "+",
+    };
+  }
+  if (kind === "refund") {
+    return {
+      iconName: "refund",
+      iconColor: accent.warm,
+      badgeBg: "rgba(235, 120, 37, 0.18)",
+      amountColor: accent.warm,
+      amountSign: "-",
+    };
+  }
+  return {
+    iconName: "close",
+    iconColor: textTokens.tertiary,
+    badgeBg: "rgba(120, 120, 120, 0.18)",
+    amountColor: null,
+    amountSign: null,
+  };
+};
+
+const ActivityRow: React.FC<ActivityRowProps> = ({ event: a }) => {
+  const spec = activityKindSpec(a.kind);
+  const relTime = formatActivityRelativeTime(a.at);
+  // Purchase with totalGbpAtPurchase === 0 renders "Free" instead of "+£0.00"
+  let amountLabel: string | null = null;
+  if (a.kind === "purchase") {
+    amountLabel =
+      a.amountGbp === 0 ? "Free" : `${spec.amountSign ?? ""}${formatGbp(a.amountGbp)}`;
+  } else if (a.kind === "refund") {
+    amountLabel = `${spec.amountSign ?? ""}${formatGbp(a.amountGbp)}`;
+  }
+
+  return (
+    <View style={activityRowStyles.host}>
+      <View
+        style={[activityRowStyles.iconBadge, { backgroundColor: spec.badgeBg }]}
+      >
+        <Icon name={spec.iconName} size={16} color={spec.iconColor} />
+      </View>
+      <View style={activityRowStyles.col}>
+        <Text style={activityRowStyles.name} numberOfLines={1}>
+          {a.buyerName}
+        </Text>
+        <Text style={activityRowStyles.summary} numberOfLines={1}>
+          {a.summary}
+        </Text>
+        <Text style={activityRowStyles.time} numberOfLines={1}>
+          {relTime}
+        </Text>
+      </View>
+      {amountLabel !== null && spec.amountColor !== null ? (
+        <Text
+          style={[activityRowStyles.amount, { color: spec.amountColor }]}
+          numberOfLines={1}
+        >
+          {amountLabel}
+        </Text>
+      ) : null}
+    </View>
+  );
+};
+
+const activityRowStyles = StyleSheet.create({
+  host: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  iconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  col: {
+    flex: 1,
+    minWidth: 0,
+  },
+  name: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  summary: {
+    fontSize: 12,
+    color: textTokens.secondary,
+    marginTop: 1,
+  },
+  time: {
+    fontSize: 11,
+    color: textTokens.tertiary,
+    marginTop: 1,
+  },
+  amount: {
+    fontSize: 13,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
+    flexShrink: 0,
+    marginLeft: spacing.sm,
   },
 });
 
@@ -781,6 +1059,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   ticketTypesList: {
+    gap: spacing.xs,
+  },
+  activityList: {
     gap: spacing.xs,
   },
   emptySectionText: {
