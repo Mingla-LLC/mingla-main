@@ -255,16 +255,12 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
 
   const handleBuyerAction = useCallback(
     (action: "buy" | "free" | "approval" | "password" | "waitlist"): void => {
-      // [TRANSITIONAL] All buyer-flow actions stub to toasts in Cycle 6.
-      // Real flows land in subsequent cycles per memory:
+      // Cycle 8: "buy" + "free" route to checkout (J-C1 → J-C5). Other
+      // cases stay TRANSITIONAL until their respective cycles land.
       switch (action) {
         case "buy":
-          showToast(
-            "Online checkout lands Cycle 8. Your card won't be charged yet.",
-          );
-          return;
         case "free":
-          showToast("Free ticket flow lands Cycle 8.");
+          router.push(`/checkout/${event.id}` as never);
           return;
         case "approval":
           showToast("Approval flow lands Cycle 10 + B4.");
@@ -277,7 +273,7 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
           return;
       }
     },
-    [showToast],
+    [router, event.id, showToast],
   );
 
   return (
