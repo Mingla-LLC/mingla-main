@@ -1,16 +1,21 @@
 /**
- * Events tab — Drafts section (Cycle 3 partial-light).
+ * Events tab — Cycle 9a full pipeline view.
  *
- * Cycle 3 lights up the Drafts section ONLY. Live / Upcoming / Past
- * sections land Cycle 9 per BUSINESS_PRD §5.0. Originally a placeholder
- * deferred entirely to Cycle 9, but Cycle 3 ships drafts here so J-E4
- * resume has a destination beyond Home.
+ * Founder's home for managing their event pipeline. Five filter pills
+ * (All / Live / Upcoming / Drafts / Past) drive a unified list of
+ * EventListCards. Manage menu Sheet exposes 11 context-aware actions.
  *
- * Cycle 2 J-A8 polish wired the brand-chip to BrandSwitcherSheet
- * (matches home.tsx + account.tsx pattern).
+ * Lives INSIDE `(tabs)` group → tab bar visible, founder-context only
+ * (per `feedback_anon_buyer_routes.md` — buyer routes live OUTSIDE tabs).
+ *
+ * Cycle 3 originally lit drafts only; Cycle 9a replaces with full
+ * pipeline view per Const #8 (subtract before adding — old drafts-only
+ * footer note removed cleanly).
+ *
+ * Per Cycle 9 spec §3.A.2.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -22,16 +27,16 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
-import { EventCover } from "../../src/components/ui/EventCover";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { IconChrome } from "../../src/components/ui/IconChrome";
-import { Pill } from "../../src/components/ui/Pill";
+import { ShareModal } from "../../src/components/ui/ShareModal";
 import { Toast } from "../../src/components/ui/Toast";
 import { TopBar } from "../../src/components/ui/TopBar";
 import {
   accent,
   glass,
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -41,11 +46,53 @@ import {
   type Brand,
 } from "../../src/store/currentBrandStore";
 import { useDraftsForBrand } from "../../src/store/draftEventStore";
-import { formatRelativeTime } from "../../src/utils/relativeTime";
+import type { DraftEvent } from "../../src/store/draftEventStore";
+import {
+  useLiveEventsForBrand,
+} from "../../src/store/liveEventStore";
+import type { LiveEvent } from "../../src/store/liveEventStore";
+
+import {
+  EventListCard,
+  type EventCardStatus,
+} from "../../src/components/event/EventListCard";
+import { EventManageMenu } from "../../src/components/event/EventManageMenu";
+
+type EventFilter = "all" | "live" | "upcoming" | "draft" | "past";
 
 interface ToastState {
   visible: boolean;
   message: string;
+}
+
+interface ManageContext {
+  event: LiveEvent | DraftEvent;
+  kind: "live" | "draft";
+  status: EventCardStatus;
+}
+
+const canonicalEventUrl = (event: LiveEvent): string =>
+  `https://business.mingla.com/e/${event.brandSlug}/${event.eventSlug}`;
+
+const deriveLiveStatus = (event: LiveEvent): EventCardStatus => {
+  if (event.status === "cancelled") return "past";
+  if (event.endedAt !== null) return "past";
+  if (event.date === null) return "upcoming";
+  const eventTime = new Date(event.date).getTime();
+  if (!Number.isFinite(eventTime)) return "upcoming";
+  const liveWindowStart = eventTime - 4 * 60 * 60 * 1000;
+  const liveWindowEnd = eventTime + 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  if (now >= liveWindowStart && now < liveWindowEnd) return "live";
+  if (now < liveWindowStart) return "upcoming";
+  return "past";
+};
+
+interface PillSpec {
+  key: EventFilter;
+  label: string;
+  count: number;
+  showLivePulse?: boolean;
 }
 
 export default function EventsTab(): React.ReactElement {
@@ -53,9 +100,123 @@ export default function EventsTab(): React.ReactElement {
   const router = useRouter();
   const currentBrand = useCurrentBrand();
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
-  const [sheetVisible, setSheetVisible] = useState<boolean>(false);
-  const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
+  const liveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
 
+  const [sheetVisible, setSheetVisible] = useState<boolean>(false);
+  const [toast, setToast] = useState<ToastState>({
+    visible: false,
+    message: "",
+  });
+  const [manageCtx, setManageCtx] = useState<ManageContext | null>(null);
+  const [shareEvent, setShareEvent] = useState<LiveEvent | null>(null);
+
+  // ----- Categorize events into status buckets -------------------
+  const liveEventEntries = useMemo<
+    Array<{ event: LiveEvent; status: EventCardStatus }>
+  >(() => {
+    return liveEvents.map((e) => ({ event: e, status: deriveLiveStatus(e) }));
+  }, [liveEvents]);
+
+  const counts = useMemo<Record<EventFilter, number>>(() => {
+    const c: Record<EventFilter, number> = {
+      all: liveEvents.length + drafts.length,
+      live: liveEventEntries.filter((e) => e.status === "live").length,
+      upcoming: liveEventEntries.filter((e) => e.status === "upcoming").length,
+      draft: drafts.length,
+      past: liveEventEntries.filter((e) => e.status === "past").length,
+    };
+    return c;
+  }, [liveEvents.length, drafts.length, liveEventEntries]);
+
+  // Default filter: Upcoming (Q-9-12); fallback chain.
+  const defaultFilter = useMemo<EventFilter>((): EventFilter => {
+    if (counts.upcoming > 0) return "upcoming";
+    if (counts.live > 0) return "live";
+    if (counts.draft > 0) return "draft";
+    if (counts.past > 0) return "past";
+    return "all";
+  }, [counts]);
+
+  const [filter, setFilter] = useState<EventFilter>(defaultFilter);
+
+  // ----- Filtered list (in display order: live → upcoming → past, then drafts) -----
+  const filteredItems = useMemo<
+    Array<{
+      key: string;
+      event: LiveEvent | DraftEvent;
+      kind: "live" | "draft";
+      status: EventCardStatus;
+    }>
+  >(() => {
+    const liveItems = liveEventEntries.map((e) => ({
+      key: `live-${e.event.id}`,
+      event: e.event,
+      kind: "live" as const,
+      status: e.status,
+    }));
+    const draftItems = drafts.map((d) => ({
+      key: `draft-${d.id}`,
+      event: d,
+      kind: "draft" as const,
+      status: "draft" as EventCardStatus,
+    }));
+    const all = [...liveItems, ...draftItems];
+
+    const filtered = (() => {
+      if (filter === "all") return all;
+      if (filter === "draft") return draftItems;
+      return liveItems.filter((i) => i.status === filter);
+    })();
+
+    // Sort: live first, then upcoming (date asc), then past (date desc), then drafts (updatedAt desc)
+    return filtered.slice().sort((a, b) => {
+      const orderRank: Record<EventCardStatus, number> = {
+        live: 0,
+        upcoming: 1,
+        past: 2,
+        draft: 3,
+      };
+      const aRank = orderRank[a.status];
+      const bRank = orderRank[b.status];
+      if (aRank !== bRank) return aRank - bRank;
+      // same status — secondary sort
+      if (a.status === "upcoming") {
+        const ad = (a.event as LiveEvent).date ?? "";
+        const bd = (b.event as LiveEvent).date ?? "";
+        return ad.localeCompare(bd);
+      }
+      if (a.status === "past") {
+        const ad = (a.event as LiveEvent).date ?? "";
+        const bd = (b.event as LiveEvent).date ?? "";
+        return bd.localeCompare(ad);
+      }
+      if (a.status === "draft") {
+        const aU = (a.event as DraftEvent).updatedAt ?? "";
+        const bU = (b.event as DraftEvent).updatedAt ?? "";
+        return bU.localeCompare(aU);
+      }
+      return 0;
+    });
+  }, [filter, liveEventEntries, drafts]);
+
+  // ----- Pill specs ----------------------------------------------
+  const pillSpecs = useMemo<PillSpec[]>(
+    () => [
+      { key: "all", label: "All", count: counts.all },
+      {
+        key: "live",
+        label: "Live",
+        count: counts.live,
+        showLivePulse: counts.live > 0,
+      },
+      { key: "upcoming", label: "Upcoming", count: counts.upcoming },
+      { key: "draft", label: "Drafts", count: counts.draft },
+      { key: "past", label: "Past", count: counts.past },
+    ],
+    [counts],
+  );
+
+  // ----- Handlers -------------------------------------------------
   const handleOpenSwitcher = useCallback((): void => {
     setSheetVisible(true);
   }, []);
@@ -81,13 +242,63 @@ export default function EventsTab(): React.ReactElement {
     router.push("/event/create" as never);
   }, [currentBrand, router]);
 
-  const handleOpenDraft = useCallback(
-    (draftId: string): void => {
-      router.push(`/event/${draftId}/edit` as never);
+  const handleOpenItem = useCallback(
+    (item: {
+      event: LiveEvent | DraftEvent;
+      kind: "live" | "draft";
+    }): void => {
+      if (item.kind === "draft") {
+        router.push(`/event/${item.event.id}/edit` as never);
+      } else {
+        router.push(`/event/${item.event.id}` as never);
+      }
     },
     [router],
   );
 
+  const handleManageOpen = useCallback(
+    (item: {
+      event: LiveEvent | DraftEvent;
+      kind: "live" | "draft";
+      status: EventCardStatus;
+    }): void => {
+      setManageCtx({
+        event: item.event,
+        kind: item.kind,
+        status: item.status,
+      });
+    },
+    [],
+  );
+
+  const handleManageClose = useCallback((): void => {
+    setManageCtx(null);
+  }, []);
+
+  const showTransitionalToast = useCallback((message: string): void => {
+    setToast({ visible: true, message });
+  }, []);
+
+  const handleManageEdit = useCallback((): void => {
+    if (manageCtx === null) return;
+    router.push(`/event/${manageCtx.event.id}/edit` as never);
+    setManageCtx(null);
+  }, [manageCtx, router]);
+
+  const handleManageViewPublic = useCallback((): void => {
+    if (manageCtx === null || manageCtx.kind !== "live") return;
+    const live = manageCtx.event as LiveEvent;
+    router.push(`/e/${live.brandSlug}/${live.eventSlug}` as never);
+    setManageCtx(null);
+  }, [manageCtx, router]);
+
+  const handleManageShare = useCallback((): void => {
+    if (manageCtx === null || manageCtx.kind !== "live") return;
+    setShareEvent(manageCtx.event as LiveEvent);
+    setManageCtx(null);
+  }, [manageCtx]);
+
+  // ----- Render ---------------------------------------------------
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
       <View style={styles.barWrap}>
@@ -104,64 +315,92 @@ export default function EventsTab(): React.ReactElement {
           }
         />
       </View>
-      <ScrollView contentContainerStyle={styles.scroll}>
+
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.headerTitle}>Events</Text>
 
-        {/* Drafts section */}
-        <Text style={styles.sectionLabel}>DRAFTS</Text>
-        {drafts.length === 0 ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.emptyTitle}>No drafts yet</Text>
-            <Text style={styles.emptyBody}>
-              Tap "Build a new event" below to start your first draft.
-            </Text>
-            <Pressable
-              onPress={handleBuildEvent}
-              accessibilityRole="button"
-              accessibilityLabel="Build a new event"
-              style={styles.emptyCta}
-            >
-              <Text style={styles.emptyCtaLabel}>Build a new event</Text>
-            </Pressable>
-          </GlassCard>
-        ) : (
-          <View style={styles.draftsCol}>
-            {drafts.map((draft) => (
+        {/* Filter pills row */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pillsRow}
+          style={styles.pillsScroll}
+        >
+          {pillSpecs.map((p) => {
+            const active = filter === p.key;
+            return (
               <Pressable
-                key={draft.id}
-                onPress={() => handleOpenDraft(draft.id)}
-                accessibilityRole="button"
-                accessibilityLabel={`Resume draft: ${draft.name || "Untitled"}`}
-                style={styles.draftRow}
+                key={p.key}
+                onPress={() => setFilter(p.key)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`${p.label}, ${p.count}`}
+                style={({ pressed }) => [
+                  styles.pill,
+                  active && styles.pillActive,
+                  pressed && styles.pillPressed,
+                ]}
               >
-                <View style={styles.draftCoverWrap}>
-                  <EventCover
-                    hue={draft.coverHue}
-                    radius={12}
-                    label=""
-                    height={56}
-                    width={56}
-                  />
-                </View>
-                <View style={styles.draftTextCol}>
-                  <View style={styles.draftPillRow}>
-                    <Pill variant="draft">Draft</Pill>
-                  </View>
-                  <Text style={styles.draftTitle} numberOfLines={1}>
-                    {draft.name.length > 0 ? draft.name : "Untitled draft"}
-                  </Text>
-                  <Text style={styles.draftSub} numberOfLines={1}>
-                    {`Step ${draft.lastStepReached + 1} of 7 · ${formatRelativeTime(draft.updatedAt)}`}
-                  </Text>
-                </View>
+                {p.showLivePulse ? (
+                  <View style={styles.pillLiveDot} />
+                ) : null}
+                <Text style={[styles.pillLabel, active && styles.pillLabelActive]}>
+                  {p.label}
+                </Text>
+                <Text
+                  style={[styles.pillCount, active && styles.pillCountActive]}
+                >
+                  {p.count}
+                </Text>
               </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {/* List */}
+        {filteredItems.length === 0 ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.emptyTitle}>
+              {filter === "all"
+                ? "No events yet"
+                : "No events here"}
+            </Text>
+            <Text style={styles.emptyBody}>
+              {filter === "all"
+                ? 'Tap the + button above to start your first event.'
+                : filter === "draft"
+                  ? "No drafts in progress. Tap + to build one."
+                  : `Tap "All" to see everything.`}
+            </Text>
+            {filter === "all" || filter === "draft" ? (
+              <Pressable
+                onPress={handleBuildEvent}
+                accessibilityRole="button"
+                accessibilityLabel="Build a new event"
+                style={styles.emptyCta}
+              >
+                <Text style={styles.emptyCtaLabel}>Build a new event</Text>
+              </Pressable>
+            ) : null}
+          </GlassCard>
+        ) : currentBrand !== null ? (
+          <View style={styles.list}>
+            {filteredItems.map((item) => (
+              <EventListCard
+                key={item.key}
+                event={item.event}
+                kind={item.kind}
+                brand={currentBrand}
+                status={item.status}
+                onOpen={() => handleOpenItem(item)}
+                onManageOpen={() => handleManageOpen(item)}
+              />
             ))}
           </View>
-        )}
-
-        <Text style={styles.footerNote}>
-          Live, Upcoming, and Past sections land Cycle 9.
-        </Text>
+        ) : null}
       </ScrollView>
 
       <BrandSwitcherSheet
@@ -170,6 +409,33 @@ export default function EventsTab(): React.ReactElement {
         onBrandCreated={handleBrandCreated}
       />
 
+      {/* Manage menu — Sheet primitive */}
+      {manageCtx !== null && currentBrand !== null ? (
+        <EventManageMenu
+          visible
+          onClose={handleManageClose}
+          event={manageCtx.event}
+          status={manageCtx.status}
+          brand={currentBrand}
+          onShare={handleManageShare}
+          onEdit={handleManageEdit}
+          onViewPublic={handleManageViewPublic}
+          onTransitionalToast={showTransitionalToast}
+        />
+      ) : null}
+
+      {/* Share modal — opened from manage menu */}
+      {shareEvent !== null ? (
+        <ShareModal
+          visible
+          onClose={() => setShareEvent(null)}
+          url={canonicalEventUrl(shareEvent)}
+          title={`${shareEvent.name} on Mingla`}
+          description={shareEvent.description.slice(0, 200) || shareEvent.name}
+        />
+      ) : null}
+
+      {/* Toast wrap — absolute-positioned per memory rule */}
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast
           visible={toast.visible}
@@ -204,14 +470,56 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     marginBottom: spacing.sm,
   },
-  sectionLabel: {
+  pillsScroll: {
+    marginHorizontal: -spacing.md,
+  },
+  pillsRow: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  pill: {
+    height: 34,
+    paddingHorizontal: spacing.md - 2,
+    borderRadius: radiusTokens.full,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  pillActive: {
+    backgroundColor: accent.tint,
+    borderColor: accent.border,
+  },
+  pillPressed: {
+    opacity: 0.7,
+  },
+  pillLabel: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: textTokens.primary,
+  },
+  pillLabelActive: {
+    color: textTokens.primary,
+  },
+  pillCount: {
     fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
+    fontWeight: "600",
     color: textTokens.tertiary,
-    marginTop: spacing.xs,
-    marginBottom: spacing.xs,
+    fontVariant: ["tabular-nums"],
+  },
+  pillCountActive: {
+    color: accent.warm,
+  },
+  pillLiveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: semantic.success,
+  },
+  list: {
+    gap: spacing.sm,
   },
   emptyTitle: {
     fontSize: typography.h3.fontSize,
@@ -240,57 +548,13 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: accent.warm,
   },
-  draftsCol: {
-    gap: spacing.sm,
-  },
-  draftRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
-  draftCoverWrap: {
-    width: 56,
-    height: 56,
-    flexShrink: 0,
-  },
-  draftTextCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  draftPillRow: {
-    flexDirection: "row",
-    marginBottom: 2,
-  },
-  draftTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: "600",
-    color: textTokens.primary,
-    marginBottom: 2,
-  },
-  draftSub: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
-  },
-  footerNote: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    fontStyle: "italic",
-    textAlign: "center",
-    marginTop: spacing.lg,
-  },
   toastWrap: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: spacing.xl,
     paddingHorizontal: spacing.md,
+    zIndex: 100,
+    elevation: 12,
   },
 });
