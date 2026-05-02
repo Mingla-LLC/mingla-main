@@ -148,6 +148,15 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
           updateDraft({ passwordProtected: !draft.passwordProtected })
         }
       />
+
+      <ToggleRow
+        label="Private guest list"
+        sub="Hide attendee count from buyers."
+        on={draft.privateGuestList}
+        onToggle={() =>
+          updateDraft({ privateGuestList: !draft.privateGuestList })
+        }
+      />
     </View>
   );
 };

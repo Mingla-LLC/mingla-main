@@ -236,6 +236,8 @@ export interface DraftEvent {
   allowTransfers: boolean;
   hideRemainingCount: boolean;
   passwordProtected: boolean;
+  /** Cycle 10: hide guest count from buyer-side surfaces. I-26 — operator-only flag; no buyer surface honors this in Cycle 10. */
+  privateGuestList: boolean;
   // Meta
   /** Highest step index user has reached (0..6). Resume jumps here. */
   lastStepReached: number;
@@ -295,6 +297,7 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   allowTransfers: true,
   hideRemainingCount: false,
   passwordProtected: false,
+  privateGuestList: false,
   lastStepReached: 0,
   status: "draft",
 };

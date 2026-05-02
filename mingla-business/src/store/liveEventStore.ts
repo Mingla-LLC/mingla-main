@@ -91,6 +91,7 @@ export type EditableLiveEventFields = Pick<
   | "allowTransfers"
   | "hideRemainingCount"
   | "passwordProtected"
+  | "privateGuestList"
 >;
 
 /**
@@ -156,6 +157,8 @@ export interface LiveEvent {
   allowTransfers: boolean;
   hideRemainingCount: boolean;
   passwordProtected: boolean;
+  /** Cycle 10: hide attendee count from buyer-side surfaces. I-26 — operator-only flag; buyer surfaces honor this when added (NOT in Cycle 10). */
+  privateGuestList: boolean;
   // Forward-compat for Cycle 9 (orders) — empty until B3 wires Stripe
   // [TRANSITIONAL] orders array empty in Cycle 6; populated by B3 webhooks.
   orders: never[];

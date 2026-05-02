@@ -62,6 +62,7 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   allowTransfers: e.allowTransfers,
   hideRemainingCount: e.hideRemainingCount,
   passwordProtected: e.passwordProtected,
+  privateGuestList: e.privateGuestList,
   // DraftEvent-only fields (wizard-internal; stubbed for edit mode)
   lastStepReached: 0,
   status: "live" as const,
@@ -99,6 +100,7 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   allowTransfers: "Allow transfers",
   hideRemainingCount: "Hide remaining count",
   passwordProtected: "Password protected",
+  privateGuestList: "Private guest list",
 };
 
 /**
@@ -135,6 +137,7 @@ export const SAFE_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "allowTransfers",
   "passwordProtected",
   "visibility",
+  "privateGuestList",
 ];
 
 /**
@@ -204,6 +207,9 @@ export const editableDraftToPatch = (
   }
   if (original.passwordProtected !== edited.passwordProtected) {
     patch.passwordProtected = edited.passwordProtected;
+  }
+  if (original.privateGuestList !== edited.privateGuestList) {
+    patch.privateGuestList = edited.privateGuestList;
   }
   return patch;
 };

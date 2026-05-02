@@ -267,8 +267,10 @@ export default function EventDetailScreen(): React.ReactElement {
   }, [router, id]);
 
   const handleGuests = useCallback((): void => {
-    showToast("Guests + approval flow lands Cycle 10 + B4.");
-  }, [showToast]);
+    if (id !== null) {
+      router.push(`/event/${id}/guests` as never);
+    }
+  }, [router, id]);
 
   const handleBrandPage = useCallback((): void => {
     if (brand !== null) {
