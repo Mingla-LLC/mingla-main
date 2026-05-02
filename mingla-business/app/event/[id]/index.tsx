@@ -40,10 +40,14 @@ import { useDraftById } from "../../../src/store/draftEventStore";
 import type { TicketStub } from "../../../src/store/draftEventStore";
 import { useBrandList } from "../../../src/store/currentBrandStore";
 import { useOrderStore } from "../../../src/store/orderStore";
+import {
+  useEventEditLogStore,
+  type EditSeverity,
+} from "../../../src/store/eventEditLogStore";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { formatGbp } from "../../../src/utils/currency";
 
-// ----- Activity feed types (Cycle 9c rework v3) --------------------
+// ----- Activity feed types (Cycle 9c rework v3 + Cycle 9c-2 ext) ---
 
 type ActivityEvent =
   | {
@@ -68,6 +72,26 @@ type ActivityEvent =
       buyerName: string;
       summary: string;
       at: string;
+    }
+  | {
+      kind: "event_edit";
+      editId: string;
+      severity: EditSeverity;
+      summary: string;
+      reason: string;
+      at: string;
+    }
+  | {
+      kind: "event_sales_ended";
+      eventId: string;
+      summary: string;
+      at: string;
+    }
+  | {
+      kind: "event_cancelled";
+      eventId: string;
+      summary: string;
+      at: string;
     };
 
 const ACTIVITY_RELATIVE_TIME_MS = {
@@ -89,6 +113,18 @@ const formatActivityRelativeTime = (iso: string): string => {
     return `${Math.floor(delta / ACTIVITY_RELATIVE_TIME_MS.hour)}h ago`;
   }
   return `${Math.floor(delta / ACTIVITY_RELATIVE_TIME_MS.day)}d ago`;
+};
+
+// React keys differ per kind: order-level uses orderId, event-level uses
+// editId or eventId (no orderId field on the new kinds).
+const activityRowKey = (a: ActivityEvent): string => {
+  if (a.kind === "purchase" || a.kind === "refund" || a.kind === "cancel") {
+    return `${a.kind}-${a.orderId}-${a.at}`;
+  }
+  if (a.kind === "event_edit") {
+    return `${a.kind}-${a.editId}`;
+  }
+  return `${a.kind}-${a.eventId}-${a.at}`;
 };
 
 import { Button } from "../../../src/components/ui/Button";
@@ -345,12 +381,17 @@ export default function EventDetailScreen(): React.ReactElement {
     return map;
   }, [allOrderEntries, event]);
 
-  // Cycle 9c rework v3 — activity feed derived from useOrderStore
-  // (purchase / refund / cancel events for this event, newest 5).
+  // Cycle 9c-2 — event edit log entries (raw subscription, mirrors orderStore pattern).
+  const allEditEntries = useEventEditLogStore((s) => s.entries);
+
+  // Cycle 9c rework v3 + Cycle 9c-2 — activity feed merges 6 streams:
+  // order-level (purchase / refund / cancel) + event-level (edit / sales-ended / cancelled).
   const recentActivity = useMemo<ActivityEvent[]>(() => {
     if (event === null) return [];
-    const eventOrders = allOrderEntries.filter((o) => o.eventId === event.id);
     const events: ActivityEvent[] = [];
+
+    // ---- Order-level streams (Cycle 9c v3) -----------------------
+    const eventOrders = allOrderEntries.filter((o) => o.eventId === event.id);
     for (const o of eventOrders) {
       const buyerName =
         o.buyer.name.trim().length > 0 ? o.buyer.name : "Anonymous";
@@ -388,9 +429,52 @@ export default function EventDetailScreen(): React.ReactElement {
         });
       }
     }
+
+    // ---- Event-edit stream (Cycle 9c-2) --------------------------
+    // Filter to entries with NO orderId — order-level entries (refund /
+    // cancel reasons recorded via recordEdit) already render via the
+    // order streams above, so including them here would double-count.
+    const eventEdits = allEditEntries.filter(
+      (e) => e.eventId === event.id && e.orderId === undefined,
+    );
+    for (const e of eventEdits) {
+      // Multi-field edits collapse to first diff line for brevity in the
+      // 5-row capped feed. Full diff lives on the buyer-side material-change
+      // banner via getEditsForEventSince.
+      const summary =
+        e.diffSummary.length > 0 ? e.diffSummary[0] : "edited the event";
+      events.push({
+        kind: "event_edit",
+        editId: e.id,
+        severity: e.severity,
+        summary,
+        reason: e.reason,
+        at: e.editedAt,
+      });
+    }
+
+    // ---- Lifecycle streams (Cycle 9c-2) --------------------------
+    if (event.endedAt !== null) {
+      events.push({
+        kind: "event_sales_ended",
+        eventId: event.id,
+        summary: "Ticket sales ended",
+        at: event.endedAt,
+      });
+    }
+    if (event.status === "cancelled" && event.cancelledAt !== null) {
+      events.push({
+        kind: "event_cancelled",
+        eventId: event.id,
+        summary: "Event cancelled",
+        at: event.cancelledAt,
+      });
+    }
+
+    // Newest first across all 6 streams; cap at 5.
     events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
     return events.slice(0, 5);
-  }, [allOrderEntries, event]);
+  }, [allOrderEntries, allEditEntries, event]);
 
   return (
     <View style={styles.host}>
@@ -516,7 +600,7 @@ export default function EventDetailScreen(): React.ReactElement {
             <View style={styles.activityList}>
               {recentActivity.map((a) => (
                 <ActivityRow
-                  key={`${a.kind}-${a.orderId}-${a.at}`}
+                  key={activityRowKey(a)}
                   event={a}
                 />
               ))}
@@ -859,8 +943,8 @@ interface ActivityKindSpec {
   amountSign: "+" | "-" | null;
 }
 
-const activityKindSpec = (kind: ActivityEvent["kind"]): ActivityKindSpec => {
-  if (kind === "purchase") {
+const activityKindSpec = (event: ActivityEvent): ActivityKindSpec => {
+  if (event.kind === "purchase") {
     return {
       iconName: "ticket",
       iconColor: "#34c759",
@@ -869,7 +953,7 @@ const activityKindSpec = (kind: ActivityEvent["kind"]): ActivityKindSpec => {
       amountSign: "+",
     };
   }
-  if (kind === "refund") {
+  if (event.kind === "refund") {
     return {
       iconName: "refund",
       iconColor: accent.warm,
@@ -878,26 +962,78 @@ const activityKindSpec = (kind: ActivityEvent["kind"]): ActivityKindSpec => {
       amountSign: "-",
     };
   }
+  if (event.kind === "cancel") {
+    return {
+      iconName: "close",
+      iconColor: textTokens.tertiary,
+      badgeBg: "rgba(120, 120, 120, 0.18)",
+      amountColor: null,
+      amountSign: null,
+    };
+  }
+  if (event.kind === "event_edit") {
+    // Severity drives color: additive = info-blue (quiet), material = accent.warm (louder).
+    // "destructive" not reachable here — those are order-level (refund/cancel) and
+    // already rendered via the order streams + filtered out at recentActivity build.
+    if (event.severity === "material") {
+      return {
+        iconName: "edit",
+        iconColor: accent.warm,
+        badgeBg: "rgba(235, 120, 37, 0.18)",
+        amountColor: null,
+        amountSign: null,
+      };
+    }
+    return {
+      iconName: "edit",
+      iconColor: "#3b82f6",
+      badgeBg: "rgba(59, 130, 246, 0.18)",
+      amountColor: null,
+      amountSign: null,
+    };
+  }
+  if (event.kind === "event_sales_ended") {
+    return {
+      iconName: "clock",
+      iconColor: "#3b82f6",
+      badgeBg: "rgba(59, 130, 246, 0.18)",
+      amountColor: null,
+      amountSign: null,
+    };
+  }
+  // event_cancelled — same close icon as order-cancel but red severity to
+  // signal "everyone affected" vs grey "one buyer affected".
   return {
     iconName: "close",
-    iconColor: textTokens.tertiary,
-    badgeBg: "rgba(120, 120, 120, 0.18)",
+    iconColor: semantic.error,
+    badgeBg: "rgba(239, 68, 68, 0.18)",
     amountColor: null,
     amountSign: null,
   };
 };
 
 const ActivityRow: React.FC<ActivityRowProps> = ({ event: a }) => {
-  const spec = activityKindSpec(a.kind);
+  const spec = activityKindSpec(a);
   const relTime = formatActivityRelativeTime(a.at);
-  // Purchase with totalGbpAtPurchase === 0 renders "Free" instead of "+£0.00"
+
+  // Amount label only applies to order-level kinds with money flow.
+  // Purchase with totalGbpAtPurchase === 0 renders "Free" instead of "+£0.00".
   let amountLabel: string | null = null;
   if (a.kind === "purchase") {
     amountLabel =
-      a.amountGbp === 0 ? "Free" : `${spec.amountSign ?? ""}${formatGbp(a.amountGbp)}`;
+      a.amountGbp === 0
+        ? "Free"
+        : `${spec.amountSign ?? ""}${formatGbp(a.amountGbp)}`;
   } else if (a.kind === "refund") {
     amountLabel = `${spec.amountSign ?? ""}${formatGbp(a.amountGbp)}`;
   }
+
+  // Row shape branches by stream:
+  //  - order-level (purchase / refund / cancel): {buyerName} \\ {summary} \\ relTime
+  //  - event_edit: {summary} \\ {reason} \\ relTime  (no buyer)
+  //  - event_sales_ended / event_cancelled: {summary} \\ relTime  (no buyer, no reason)
+  const isOrderLevel =
+    a.kind === "purchase" || a.kind === "refund" || a.kind === "cancel";
 
   return (
     <View style={activityRowStyles.host}>
@@ -907,12 +1043,27 @@ const ActivityRow: React.FC<ActivityRowProps> = ({ event: a }) => {
         <Icon name={spec.iconName} size={16} color={spec.iconColor} />
       </View>
       <View style={activityRowStyles.col}>
-        <Text style={activityRowStyles.name} numberOfLines={1}>
-          {a.buyerName}
-        </Text>
-        <Text style={activityRowStyles.summary} numberOfLines={1}>
-          {a.summary}
-        </Text>
+        {isOrderLevel ? (
+          <>
+            <Text style={activityRowStyles.name} numberOfLines={1}>
+              {a.buyerName}
+            </Text>
+            <Text style={activityRowStyles.summary} numberOfLines={1}>
+              {a.summary}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text style={activityRowStyles.name} numberOfLines={1}>
+              {a.summary}
+            </Text>
+            {a.kind === "event_edit" && a.reason.trim().length > 0 ? (
+              <Text style={activityRowStyles.summary} numberOfLines={1}>
+                {a.reason}
+              </Text>
+            ) : null}
+          </>
+        )}
         <Text style={activityRowStyles.time} numberOfLines={1}>
           {relTime}
         </Text>
