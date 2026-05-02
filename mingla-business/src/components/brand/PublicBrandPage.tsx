@@ -30,6 +30,15 @@
  * `past` variant renders the "this event has ended" state).
  *
  * Per Cycle 7 spec §1-§11 (forensics) + §12 (orchestrator addendum).
+ *
+ * Platform notes (color formats — Cycle 7 FX3 lesson):
+ *   Inline `backgroundColor` strings on RN Views go through
+ *   `@react-native/normalize-colors`, which accepts ONLY hex / rgb / rgba /
+ *   hsl / hsla / hwb. CSS Color Module 4 functions (`oklch`, `lab`, `lch`,
+ *   `color-mix`) silently fail on iOS+Android (component renders transparent,
+ *   no error logged) and dim into invisibility on web when stacked under a
+ *   dark overlay. ALWAYS use `hsl(hue, 60%, 45%)` for any inline color
+ *   driven by hue — mirror `EventCover.tsx`'s `baseColour` pattern.
  */
 
 import React, { useCallback, useMemo, useState } from "react";
@@ -140,8 +149,11 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({ brand }) => {
   }, [brand.stats]);
 
   const handleClose = useCallback((): void => {
-    router.replace("/(tabs)/account" as never);
-  }, [router]);
+    // Cycle 7 FX3: route to founder brand profile, NOT all the way to
+    // Account tab. Founder lands on /brand/{brand.id} where they can
+    // Edit, Team, Stripe, etc. From there native back returns to Account.
+    router.replace(`/brand/${brand.id}` as never);
+  }, [router, brand.id]);
 
   const handleEventCardPress = useCallback(
     (event: LiveEvent): void => {
@@ -222,9 +234,16 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({ brand }) => {
         </Head>
       ) : null}
 
-      {/* Cover band hero */}
+      {/* Cover band hero — hue driven by brand.coverHue (Cycle 7 FX2 + FX3).
+          Uses hsl() — RN normalize-colors only accepts hex/rgb/hsl/hwb.
+          See header docstring "Platform notes" for the lesson. */}
       <View style={styles.heroWrap} pointerEvents="none">
-        <View style={styles.heroGradient} />
+        <View
+          style={[
+            styles.heroGradient,
+            { backgroundColor: `hsl(${brand.coverHue}, 60%, 45%)` },
+          ]}
+        />
         <View style={styles.heroFade} />
       </View>
 
@@ -260,26 +279,34 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({ brand }) => {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Brand identity card */}
-        <View style={styles.identityRow}>
+        {/* Brand identity column — Linktree-style centered (Cycle 7 FX2).
+            Avatar overlaps the cover band by ~42px (half-in-half-out). */}
+        <View style={styles.identityCentered}>
           <Avatar
             name={brand.displayName}
             size="hero"
             photo={brand.photo}
-            style={styles.heroAvatar}
+            style={styles.heroAvatarCentered}
           />
-          <View style={styles.identityText}>
-            <Text style={styles.brandName}>{brand.displayName}</Text>
-            <Text style={styles.handleLine}>{handleSubline}</Text>
-          </View>
+          <Text style={styles.brandNameCentered}>{brand.displayName}</Text>
+          <Text style={styles.handleLineCentered}>{handleSubline}</Text>
         </View>
 
-        {/* Tagline / bio (lead) */}
+        {/* Tagline / bio (lead) — centered */}
         {brand.bio !== undefined && brand.bio.trim().length > 0 ? (
-          <Text style={styles.bioLead}>{brand.bio}</Text>
+          <Text style={styles.bioLeadCentered}>{brand.bio}</Text>
         ) : brand.tagline !== undefined && brand.tagline.trim().length > 0 ? (
-          <Text style={styles.bioLead}>{brand.tagline}</Text>
+          <Text style={styles.bioLeadCentered}>{brand.tagline}</Text>
         ) : null}
+
+        {/* Social icons row — Linktree-style icons-only, always visible.
+            Promoted from the empty-Upcoming fallback to a permanent slot
+            below the bio (Cycle 7 FX2). */}
+        <SocialLinksRow
+          links={brand.links}
+          onPress={handleSocialPress}
+          compact
+        />
 
         {/* Stats card (only when ≥1 non-zero stat) */}
         {showStatsCard ? (
@@ -422,16 +449,11 @@ const UpcomingTab: React.FC<UpcomingTabProps> = ({
   onSocialPress,
 }) => {
   if (events.length === 0) {
+    // Cycle 7 FX2: socials moved to permanent slot below bio (above tabs),
+    // so the empty-tab copy doesn't need to repeat them here.
     return (
       <View style={styles.emptyTabWrap}>
         <Text style={styles.emptyTabTitle}>No upcoming events yet</Text>
-        <Text style={styles.emptyTabBody}>
-          Follow {brand.displayName} on social for updates.
-        </Text>
-        <SocialLinksRow
-          links={brand.links}
-          onPress={onSocialPress}
-        />
       </View>
     );
   }
@@ -526,6 +548,12 @@ const AboutTab: React.FC<AboutTabProps> = ({ brand, onSocialPress }) => {
 interface SocialLinksRowProps {
   links?: Brand["links"];
   onPress: (url: string) => void;
+  /**
+   * Compact mode renders circular icons-only chips (Linktree style).
+   * Default false renders labelled pills (used in About tab).
+   * NEW in Cycle 7 FX2.
+   */
+  compact?: boolean;
 }
 
 interface SocialEntry {
@@ -534,7 +562,11 @@ interface SocialEntry {
   label: string;
 }
 
-const SocialLinksRow: React.FC<SocialLinksRowProps> = ({ links, onPress }) => {
+const SocialLinksRow: React.FC<SocialLinksRowProps> = ({
+  links,
+  onPress,
+  compact = false,
+}) => {
   const entries = useMemo<SocialEntry[]>(() => {
     if (links === undefined) return [];
     const out: SocialEntry[] = [];
@@ -544,35 +576,35 @@ const SocialLinksRow: React.FC<SocialLinksRowProps> = ({ links, onPress }) => {
     if (links.instagram !== undefined && links.instagram.length > 0) {
       out.push({
         url: normalizeSocialUrl(links.instagram, "https://instagram.com/"),
-        icon: "share",
+        icon: "instagram",
         label: "Instagram",
       });
     }
     if (links.tiktok !== undefined && links.tiktok.length > 0) {
       out.push({
         url: normalizeSocialUrl(links.tiktok, "https://tiktok.com/@"),
-        icon: "share",
+        icon: "tiktok",
         label: "TikTok",
       });
     }
     if (links.x !== undefined && links.x.length > 0) {
       out.push({
         url: normalizeSocialUrl(links.x, "https://x.com/"),
-        icon: "share",
+        icon: "x",
         label: "X",
       });
     }
     if (links.youtube !== undefined && links.youtube.length > 0) {
       out.push({
         url: normalizeSocialUrl(links.youtube, "https://youtube.com/@"),
-        icon: "share",
+        icon: "youtube",
         label: "YouTube",
       });
     }
     if (links.threads !== undefined && links.threads.length > 0) {
       out.push({
         url: normalizeSocialUrl(links.threads, "https://threads.net/@"),
-        icon: "share",
+        icon: "threads",
         label: "Threads",
       });
     }
@@ -582,17 +614,21 @@ const SocialLinksRow: React.FC<SocialLinksRowProps> = ({ links, onPress }) => {
   if (entries.length === 0) return null;
 
   return (
-    <View style={styles.socialsRow}>
+    <View style={[styles.socialsRow, compact && styles.socialsRowCompact]}>
       {entries.map((s) => (
         <Pressable
           key={s.url}
           onPress={() => onPress(s.url)}
           accessibilityRole="link"
           accessibilityLabel={s.label}
-          style={styles.socialBtn}
+          style={compact ? styles.socialBtnIconOnly : styles.socialBtn}
         >
-          <Icon name={s.icon} size={18} color={textTokens.secondary} />
-          <Text style={styles.socialLabel}>{s.label}</Text>
+          <Icon
+            name={s.icon}
+            size={compact ? 20 : 18}
+            color={compact ? accent.warm : textTokens.secondary}
+          />
+          {compact ? null : <Text style={styles.socialLabel}>{s.label}</Text>}
         </Pressable>
       ))}
     </View>
@@ -644,7 +680,7 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
       <View
         style={[
           styles.eventCover,
-          { backgroundColor: `oklch(0.45 0.16 ${event.coverHue})` },
+          { backgroundColor: `hsl(${event.coverHue}, 60%, 45%)` },
         ]}
       />
       <View style={styles.eventBody}>
@@ -697,7 +733,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 220,
+    height: 180,
     zIndex: 0,
     overflow: "hidden",
   },
@@ -707,7 +743,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(235, 120, 37, 0.18)",
+    // Defensive fallback — visible if inline color fails for any reason.
+    // Inline override at the call site uses hsl(brand.coverHue, 60%, 45%).
+    // Use hsl/rgb/hex/hwb ONLY — RN normalize-colors rejects oklch/lab/lch
+    // (CSS Color Module 4 functions are web-only on inline RN styles).
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
   },
   heroFade: {
     position: "absolute",
@@ -715,7 +755,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(12, 14, 18, 0.55)",
+    // 30% body-color overlay — keeps a subtle bottom-edge fade without
+    // dimming the cover hue into invisibility (Cycle 7 FX3 reduced from
+    // 0.55, which made even valid colors read as near-black on web).
+    backgroundColor: "rgba(12, 14, 18, 0.30)",
   },
   floatingChrome: {
     position: "absolute",
@@ -733,18 +776,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xl,
   },
-  identityRow: {
-    flexDirection: "row",
-    gap: spacing.md,
-    alignItems: "flex-start",
+  // Cycle 7 FX2 — Linktree-style centered identity column.
+  identityCentered: {
+    alignItems: "center",
     marginBottom: spacing.md,
   },
-  heroAvatar: {
-    marginTop: -18,
+  heroAvatarCentered: {
+    marginTop: -42,
   },
-  identityText: {
-    flex: 1,
-    paddingTop: 4,
+  brandNameCentered: {
+    fontSize: 22,
+    fontWeight: "700",
+    letterSpacing: -0.3,
+    color: textTokens.primary,
+    marginTop: spacing.sm,
+    textAlign: "center",
+  },
+  handleLineCentered: {
+    fontSize: 13,
+    color: textTokens.tertiary,
+    marginTop: 2,
+    textAlign: "center",
   },
   brandName: {
     fontSize: 22,
@@ -757,11 +809,16 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginTop: 2,
   },
-  bioLead: {
+  // Cycle 7 FX2 — centered bio with max-width.
+  bioLeadCentered: {
     fontSize: 15,
     color: textTokens.secondary,
     lineHeight: 22,
     marginBottom: spacing.md,
+    textAlign: "center",
+    maxWidth: 540,
+    alignSelf: "center",
+    paddingHorizontal: spacing.sm,
   },
   statsCard: {
     marginBottom: spacing.md,
@@ -911,6 +968,13 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: spacing.sm,
   },
+  // Cycle 7 FX2 — Linktree-style icons-only row, centered.
+  socialsRowCompact: {
+    justifyContent: "center",
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
+    gap: spacing.md,
+  },
   socialBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -919,6 +983,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  // Cycle 7 FX2 — circular icon-only chip for compact mode.
+  socialBtnIconOnly: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
   },

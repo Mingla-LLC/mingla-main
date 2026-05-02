@@ -48,6 +48,14 @@
  *                       physical brands show address after handle, pop-up
  *                       brands show clean handle-only (no faked location).
  *                       Per Constitution #9 (no fabricated data).
+ *   v11 (Cycle 7 FX2 brand cover editing): adds coverHue: number (required,
+ *                       default 25 = warm orange matching accent.warm).
+ *                       Drives the gradient on the public brand page hero.
+ *                       Founder picks from a 6-swatch row in BrandEditView
+ *                       (mirrors Cycle 3 CreatorStep4Cover hue array
+ *                       [25, 100, 180, 220, 290, 320]). Hue-only stub for
+ *                       now; image upload lands in B-cycle when storage
+ *                       pipelines + edge functions are ready.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -294,6 +302,16 @@ export type Brand = {
    * means founder hasn't shared an address yet (clean omission, no fake).
    */
   address: string | null;
+  /**
+   * Cover band hue — drives the gradient on the public brand page hero.
+   * Founder picks from a 6-swatch row in BrandEditView. Defaults to 25
+   * (warm orange — matches the existing accent.warm Cycle 0 scheme).
+   *
+   * NEW in Cycle 7 FX2 schema v11. Hue-only stub for now; image upload
+   * lands in B-cycle when storage pipelines + edge functions are ready
+   * (mirrors the event-cover Cycle 3 hue-only pattern).
+   */
+  coverHue: number;
   photo?: string;
   role: BrandRole;
   stats: BrandStats;
@@ -404,27 +422,40 @@ const upgradeV2BrandToV3 = (b: V2Brand): V9Brand => ({
 });
 
 /** v9 brand shape — used internally by the v9 → v10 migrator only. */
-type V9Brand = Omit<Brand, "kind" | "address">;
+type V9Brand = Omit<Brand, "kind" | "address" | "coverHue">;
+
+/** v10 brand shape — used internally by the v10 → v11 migrator only. */
+type V10Brand = Omit<Brand, "coverHue">;
 
 /**
  * v9 → v10 migration: add `kind` (default "popup") + `address` (default null).
  * Pop-up is the safer default — no fake address shown; founder upgrades to
  * "physical" + address via BrandEditView when applicable.
  */
-const upgradeV9BrandToV10 = (b: V9Brand): Brand => ({
+const upgradeV9BrandToV10 = (b: V9Brand): V10Brand => ({
   ...b,
   kind: "popup",
   address: null,
 });
 
+/**
+ * v10 → v11 migration: add `coverHue` (default 25 = warm orange).
+ * Mirrors event-cover Cycle 3 hue-only pattern. Founder edits via
+ * BrandEditView's BRAND COVER section.
+ */
+const upgradeV10BrandToV11 = (b: V10Brand): Brand => ({
+  ...b,
+  coverHue: 25,
+});
+
 const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
-  name: "mingla-business.currentBrand.v10",
+  name: "mingla-business.currentBrand.v11",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state) => ({
     currentBrand: state.currentBrand,
     brands: state.brands,
   }),
-  version: 10,
+  version: 11,
   migrate: (persistedState, version) => {
     // v1 → v5: schema changed from {id, displayName} to full Brand shape.
     // Cycle 0a never seeded brands, so resetting is safe and avoids partial
@@ -436,14 +467,17 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
     // remain undefined and render with empty-state guards.
     if (version === 2) {
       const v2 = persistedState as { currentBrand: V2Brand | null; brands: V2Brand[] };
-      // v2 → v9-shaped → v10 in one chain.
+      // v2 → v9-shaped → v10 → v11 in one chain.
       const v9CurrentBrand =
         v2.currentBrand !== null ? upgradeV2BrandToV3(v2.currentBrand) : null;
       const v9Brands = v2.brands.map(upgradeV2BrandToV3);
+      const v10CurrentBrand =
+        v9CurrentBrand !== null ? upgradeV9BrandToV10(v9CurrentBrand) : null;
+      const v10Brands = v9Brands.map(upgradeV9BrandToV10);
       return {
         currentBrand:
-          v9CurrentBrand !== null ? upgradeV9BrandToV10(v9CurrentBrand) : null,
-        brands: v9Brands.map(upgradeV9BrandToV10),
+          v10CurrentBrand !== null ? upgradeV10BrandToV11(v10CurrentBrand) : null,
+        brands: v10Brands.map(upgradeV10BrandToV11),
       };
     }
     // v3 → v4: passthrough. New optional `displayAttendeeCount` field starts
@@ -464,13 +498,24 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
     // finance reports render empty-state when absent. Read sites default
     // to []. FINAL Cycle-2 schema bump — real per-event records ship Cycle 3.
     if (version >= 3 && version < 10) {
-      // v9 → v10: add kind (default "popup") + address (default null).
-      // Pop-up is the safer default — no fake address shown.
+      // v9 → v10 → v11: add kind/address then coverHue.
       const v9 = persistedState as { currentBrand: V9Brand | null; brands: V9Brand[] };
+      const v10CurrentBrand =
+        v9.currentBrand !== null ? upgradeV9BrandToV10(v9.currentBrand) : null;
+      const v10Brands = v9.brands.map(upgradeV9BrandToV10);
       return {
         currentBrand:
-          v9.currentBrand !== null ? upgradeV9BrandToV10(v9.currentBrand) : null,
-        brands: v9.brands.map(upgradeV9BrandToV10),
+          v10CurrentBrand !== null ? upgradeV10BrandToV11(v10CurrentBrand) : null,
+        brands: v10Brands.map(upgradeV10BrandToV11),
+      };
+    }
+    if (version === 10) {
+      // v10 → v11: add coverHue (default 25 = warm orange).
+      const v10 = persistedState as { currentBrand: V10Brand | null; brands: V10Brand[] };
+      return {
+        currentBrand:
+          v10.currentBrand !== null ? upgradeV10BrandToV11(v10.currentBrand) : null,
+        brands: v10.brands.map(upgradeV10BrandToV11),
       };
     }
     return persistedState as PersistedState;

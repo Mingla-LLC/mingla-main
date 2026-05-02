@@ -74,6 +74,9 @@ const buildBrand = (displayName: string): Brand => ({
   // BrandEditView when applicable.
   kind: "popup",
   address: null,
+  // Cycle 7 FX2 schema v11: default new brands to hue 25 (warm orange,
+  // matches accent.warm). Founder picks a different hue via BrandEditView.
+  coverHue: 25,
   role: "owner" as BrandRole,
   stats: { events: 0, followers: 0, rev: 0, attendees: 0 },
   currentLiveEvent: null,

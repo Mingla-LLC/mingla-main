@@ -627,6 +627,178 @@ write-path is fixed will be re-undone by the next seed.
 
 ---
 
+## 11.4 Quantified data addendum (2026-05-01, via Supabase Management API direct SQL)
+
+Probes H1/H2/H5/H6 + §11.5.a + ORCH-0701 + Marbles IMAX verify executed via the
+Supabase Management API `/v1/projects/{ref}/database/query` endpoint, bypassing
+the broken `@supabase/mcp-server-supabase@0.8.0` Content API parser bug.
+Confidence on all probe verdicts now elevated from **L** to **H** (live data).
+
+### H1 — A3 leak quantification (Movies chip, signal_score >= 80)
+
+**241 venues total served. 69 are cinemas (29%). 172 are non-cinema (71% leakage).**
+
+| primary_type | count | top score |
+|---|---|---|
+| `performing_arts_theater` | **113** | 198.49 |
+| `movie_theater` ✓ | 69 | 98.02 |
+| `concert_hall` | 17 | 93.79 |
+| `event_venue` | 8 | 84.51 |
+| `live_music_venue` | 7 | 95.41 |
+| `null` | 5 | 94.63 |
+| `association_or_organization` | 4 | 90.92 |
+| `cultural_center` | 3 | 84.46 |
+| `arena` | 2 | 94.50 |
+| `museum` | 2 | 94.92 |
+| `service` | 2 | 80.21 |
+| `tourist_attraction` | 2 | 87.67 |
+| `amphitheatre` | 1 | **151.93** |
+| `art_gallery` | 1 | 106.51 |
+| `art_museum` | 1 | 80.64 |
+| `comedy_club` | 1 | 87.29 |
+| `dance_hall` | 1 | 83.21 |
+| `historical_landmark` | 1 | 92.50 |
+| `library` | 1 | 81.59 |
+
+**Top 5 named leak offenders:**
+1. The Carolina Theatre (Durham) — `performing_arts_theater`, score 197.41
+2. Museum of Discovery and Science (Fort Lauderdale) — `museum`, 164.37
+3. JFK Center for the Performing Arts (Washington) — `performing_arts_theater`, 158.29
+4. La Monnaie - De Munt (Brussels) — `performing_arts_theater`, 154.90
+5. Coastal Credit Union Music Park (Raleigh) — `amphitheatre`, 151.93 ← likely the
+   venue powering operator's empirical "Movies pill shows theatres" observation
+   in the Raleigh test region
+
+A3 verdict (cycle-2 §0): elevated from H confidence on architecture to H+
+confidence on architecture AND blast radius.
+
+### H2 — Theatre symmetry (Theatre chip, signal_score >= 120)
+
+**Operator's "Theatre is clean" empirical observation is INCOMPLETE.** Theatre
+also leaks, but at lower rate (~35% vs Movies' 71%):
+
+- Correct types (canonical Theatre): 95 performing_arts_theater + 17 concert_hall
+  + 1 amphitheatre = ~113 (~65% of served)
+- Leakers: 26 parks + 11 live_music_venue + 7 null + 4 museum + 3 church +
+  3 event_venue + 2 history_museum + 2 tourist_attraction + 2 movie_theater +
+  2 restaurant + 2 association_or_organization + various 1-counts including
+  night_club, indoor_playground, sports_activity_location, etc.
+
+Implication for SPEC: Theatre needs the same scorer tightening as Movies. Both
+chips fix in the same SPEC pass. Cycle-2 G10 pattern-class assessment confirmed
+empirically.
+
+### H5.a — Preferences cohort migration completeness
+
+**0 stragglers.** Zero `preferences` rows still contain `'movies_theatre'` in
+`categories` or `'Movies & Theatre'` in `display_categories`. ORCH-0598's
+`UPDATE` migration at `20260423300001_orch_0598_signal_batch.sql:312-332` ran
+cleanly. **Mobile-side last-mile alias** at `deckService.ts:260`
+(`CATEGORY_PILL_MAP['movies_theatre'] = 'movies'`) **can be deleted in the same
+SPEC pass** — no user pref state requires it as a safety net anymore.
+
+### H6 — ai_categories audit
+
+**2,449 total rows in `place_pool` tagged with `'movies_theatre'` in
+`ai_categories`.** Of those:
+- 469 are `movie_theater` / `drive_in` — would correctly map to `'movies'` on backfill
+- 1,980 are non-cinema — would map to `'theatre'` (or get a more specific tag
+  per primary_type) on backfill
+
+Top tagged primary_types:
+- `performing_arts_theater`: 1,175
+- `movie_theater`: 469 (correct cinema)
+- `event_venue`: 131
+- `concert_hall`: 120
+- `live_music_venue`: 92
+- `bar`: 45 ← AI categorizer false-positive (bars tagged as movies_theatre)
+- `amphitheatre`: 44
+- `comedy_club`: 43
+- `null`: 42
+- `cultural_center`: 38
+- `restaurant`: 28 ← false-positive
+- `pub`: 21 ← false-positive
+- 50+ other types with smaller counts (cocktail_bar, brewery, opera_house,
+  auditorium, restaurants of every cuisine, university, synagogue, etc.)
+
+**A2 leak surface = 2,449 rows.** Backfill closes it in one `UPDATE` statement.
+Backfill SQL (cycle-2 §10 H6.c) is correct as written — confidence elevated to H
+that this is a one-shot SQL operation, not an ongoing data flow.
+
+### §11.5.a — Seed-write defect activity check
+
+**Last 7 days of place_pool inserts in the cinema/theatre/concert/etc. universe:
+105 total. ZERO got `movies_theatre` ai_category. ZERO got `movies` or `theatre`
+either** (likely tagged with other specific categories per the AI pipeline that
+has since been updated).
+
+**Critical implication:** the cycle-2 §11.5 "actively bleeding" framing was
+overstated. The seed-write code path EXISTS in `seedingCategories.ts:336-386`
+and `SeedTab.jsx:31-74` and would emit bundled tags IF executed against a
+theatre/cinema venue, but it has NOT been executed in the past 7 days. The
+2,449 legacy-tagged rows are FROZEN historical data, not a moving target.
+
+**SPEC scope simplifies:**
+- "Stop the bleed first" deletion-order step demoted from S0 emergency to S2
+  defensive cleanup
+- A2 backfill becomes one-shot SQL, not a coordinated migration race
+- Seed pipeline code fix (SeedTab.jsx + seedingCategories.ts) becomes pure
+  hygiene — eliminates a future regression vector but doesn't unblock the
+  primary fix
+
+### ORCH-0701 — Paragon Theaters root cause
+
+Paragon Theaters - Fenton + Axis15 Extreme (Cary, NC):
+- Primary type: `movie_theater` ✓
+- `is_servable`: `true` ✓
+- `is_active`: `true` ✓
+- Has photos: `true` ✓
+- Movies signal score: **75.13** ← below `filter_min: 80`
+
+**Pure scoring miss.** Paragon competes with The Cary Theater, Regal Crossroads
+- Cary, and Regal Brier Creek for the Cary deck slot and loses on score (lower
+review count and/or rating). Three SPEC-time options:
+
+1. **Lower `filter_min` to 70** — surfaces Paragon AND adds ~unknown additional
+   leakers (would need re-running H1.a at threshold 70 to quantify)
+2. **Tighten scorer to drop the 172 leakers AND raise cinema relative score** —
+   removing the ceiling effect of high-scoring non-cinemas may naturally lift
+   Paragon's relative rank, even if absolute score stays 75
+3. **Add chain-name boost** — explicit text-pattern match for known cinema
+   chain names (Paragon, Regal, AMC, Cinemark, Alamo, etc.)
+
+Recommended sequence: **scorer tightening first** (closes 172 leaks). Then
+re-run H1.a SQL to quantify the remaining cinema set. If Paragon now surfaces
+naturally (because the 172 leakers no longer compete), no further fix needed.
+If still missing, add chain-name boost or lower filter_min.
+
+### Marbles IMAX verification
+
+Marbles IMAX (Raleigh): `primary_type: movie_theater`, `is_servable: true`,
+`is_active: true`, score 160.95. **Operator's "leave IMAX as is" directive is
+naturally satisfied** because IMAX venues ARE classified as `movie_theater` in
+Google's primary type system. They're correctly served as cinemas through the
+canonical Movies path, not through soft-scorer leakage. Top IMAX in the data:
+AutoNation IMAX 3D Theater scoring 175.67.
+
+### Confidence calibration update (cycle-2 §10 final)
+
+| Thread | Prior verdict | Quantified verdict | Confidence |
+|---|---|---|---|
+| H1 (A3 leak) | "Architecturally certain, count L" | 172 / 241 (71% leak); 113 performing_arts_theaters worst class | **H+** |
+| H2 (Theatre symmetry) | "Operator-stated clean, M" | Theatre ALSO leaks (~35%); operator's framing incomplete | **H** |
+| H5 (cohort migration) | "Migration SQL correct, M on whether ran" | 0 stragglers; migration ran cleanly | **H** |
+| H6 (ai_categories) | "Backfill correct, count L" | 2,449 rows total, 1,980 non-cinema | **H** |
+| §11.5.a (seed bleed) | "Code exists H, executing M" | Not executing today (0 in last 7d); historical rows frozen | **H** (downgraded urgency) |
+| ORCH-0701 (Paragon) | Unknown | Pure scoring miss at 75.13 vs filter_min 80 | **H** |
+| H4 (pin pathway) | A3 confirmed at H | Confirmed + ranked: A3 > A2 > A1 > A2-write-path (now dormant) | **H** |
+| H3 (legacy sweep) | 92 files enumerated H | Unchanged | **H** |
+| H7 (scorer analysis) | 3 options enumerated | Option 2 (penalty raise) most aligned with operator's IMAX directive | **H on options** |
+
+**Cycle-2 final verdict:** all threads H confidence. SPEC is unblocked.
+
+---
+
 ## 11.5 Self-correction addendum (2026-05-01, post-operator-pushback)
 
 Operator asked "are you 100% sure?" on §3.A2-write-path. Honest recalibration after
@@ -727,6 +899,244 @@ process gate should be: any "actively writing/serving today" claim requires a
 runtime verification probe before that wording is allowed in the verdict line.**
 Until MCP is loaded, "write-path code exists and would do X if executed" is the
 correct ceiling for forensics confidence.
+
+---
+
+## 11.6 ai_categories audit + SPEC scope correction (2026-05-01, post-quantified-data + post-operator-correction)
+
+After the §11.4 quantified data landed, the orchestrator presented a SPEC
+draft (saved to `prompts/SPEC_ORCH-0700_DISPATCH.md` v1) that included an
+S-3 deliverable: backfill 2,449 stale `ai_categories: ['movies_theatre']`
+rows. Operator pushback was sharp and correct:
+
+> "ai_categories has been deprecated. We now use is_servable: true. We need
+> to clean up any of ai_categories if it still exists and is causing
+> confusion. We need a deep audit before we go making things worse."
+
+**Orchestrator-conducted audit (chat 2026-05-01) — findings:**
+
+Live readers of `place_pool.ai_categories` (4 sites):
+
+1. `supabase/functions/generate-curated-experiences/index.ts:379, 432-436, 681`
+   — passthrough: SELECTs ai_categories, sets `card.category = pp.ai_categories[0]`
+   on the response card. THIS is the only consumer-visible effect. Mobile
+   renders `card.category` for label display, filtering, and analytics.
+
+2. `supabase/functions/_shared/stopAlternatives.ts:84, 86, 134-135` — used by
+   `replace-curated-stop`. SELECTs ai_categories, FILTERS via
+   `.contains('ai_categories', [categoryId])`, uses `place.ai_categories[0]` as
+   `firstCategory` for the response. **However:** mobile sends
+   `categoryId: 'movies'` (the canonical post-split slug, sourced from
+   `stop.comboCategory` per `ExpandedCardModal.tsx:673`) and
+   `replace-curated-stop:13` VALID_CATEGORIES does NOT include `'movies'` →
+   request rejected at validator with HTTP 400 → the `.contains` query never
+   fires for canonical-chip-slug requests. **Effectively dead path** for the
+   live mobile flow.
+
+3. `mingla-admin/src/pages/PlacePoolManagementPage.jsx:361, 373, 381-382, 405-411, 484-487, 568-602, 1031-1063`
+   — admin Place Pool edit form. Allows admin to manually edit ai_categories.
+   The admin UI itself documents at lines 405-410: *"the pipeline that
+   populated them was archived — they are now stale-data only. Only
+   ai_categories is actively editable (admin-driven classification). Bouncer
+   is the authoritative quality gate going forward."*
+
+4. `scripts/verify-places-pipeline.mjs:772-776, 897-901` — admin one-off script
+   that WRITES ai_categories + AI metadata cluster (`ai_reason`,
+   `ai_primary_identity`, `ai_confidence`, `ai_web_evidence`). Per the admin UI
+   comment, this script IS the archived AI validation pipeline. Per cycle-2
+   §11.4 H6 quantified data, no recent inserts have ai_categories tags →
+   confirms the script is not actively running.
+
+**Mobile (`app-mobile/src`) reader sweep:** ZERO references to ai_categories,
+ai_reason, ai_primary_identity, ai_confidence, ai_web_evidence. Consumer
+mobile is fully decoupled from these columns.
+
+**Audit verdict:** ai_categories is in a "dead-system-with-vestigial-readers"
+state. Discover deck doesn't read it (uses signal_score on place_scores).
+Person-hero doesn't read it (uses `mapPrimaryTypeToMinglaCategory` from
+primary_type). The TWO live edge function readers (curated chain +
+admin-only) can be migrated to `mapPrimaryTypeToMinglaCategory` (the same
+pattern person-hero already uses correctly).
+
+### SPEC scope correction (operator-locked 2026-05-01 chat)
+
+**Original draft S-3 (REJECTED):** backfill 2,449 ai_categories rows from
+`'movies_theatre'` to `'movies'` or `'theatre'` based on primary_type.
+
+**Operator's revised direction:** "Yes — and you're right to push for the
+bigger fix. My 'one-line change' was a half-measure." Specifically:
+
+- Migrate every reader of `ai_categories` AND the AI metadata cluster
+  (`ai_reason`, `ai_primary_identity`, `ai_confidence`, `ai_web_evidence`) to
+  the new system (Bouncer + `is_servable: true` + signal scorer + `place_scores`
+  + `mapPrimaryTypeToMinglaCategory`).
+- DROP all five columns from `place_pool` after readers migrated.
+- Remove the admin Place Pool Page ai_categories editing UI (admin manual
+  override retired; Bouncer + scorer is the only authority going forward).
+- Stop or delete the `verify-places-pipeline.mjs` write path.
+- Optionally drop `_archive_card_pool` + `_orch_0588_dead_cards_backup`
+  backup tables (zero current readers per audit; pure hygiene).
+- Take a backup snapshot of the columns before drop:
+  `CREATE TABLE _archive_orch_0700_ai_metadata AS SELECT id, ai_categories,
+  ai_reason, ai_primary_identity, ai_confidence, ai_web_evidence FROM
+  place_pool WHERE ai_categories IS NOT NULL OR ai_primary_identity IS NOT NULL`
+  Drop the snapshot 30 days post-deploy if nothing surfaces.
+
+**SPEC dispatch v2 BLOCKED on independent verification:** operator additionally
+requested a forensics sub-audit before SPEC ships the destructive column-drop
+migration. Two things to verify at H confidence:
+
+1. Did the orchestrator audit miss any reader (hidden / dynamic / cross-domain)?
+2. Does the NEW system (Bouncer + signal scorer + `is_servable` + `place_scores`
+   + `mapPrimaryTypeToMinglaCategory`) depend on these columns directly or
+   transitively? If yes, the decommission breaks the new system.
+
+**Sub-audit dispatch:**
+[prompts/FORENSICS_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md](Mingla_Artifacts/prompts/FORENSICS_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md)
+
+9 mandatory threads: V1 exhaustive reader sweep across mingla-business / app-
+mobile/app / mingla-admin / supabase/functions / migrations / scripts / cron
+/ RLS / indexes / triggers / functions / views / FKs. V2 NEW-system
+independence proof per component (Bouncer / signal scorer / signal definitions
+/ query_servable_places_by_signal / get-person-hero-cards / mapPrimaryType /
+cohort tables). V3 saved-card historical impact (do user-saved rows with
+`category='movies_theatre'` need backfill?). V4 holiday + curated chain
+category bleed verification. V5 backup tables zero-reader confirmation.
+V6 schema dependency probe (DDL prerequisites for column drop — indexes,
+triggers, RPCs, RLS, CHECK constraints, FKs). V7 quantification (how many
+rows lose data, when last written, value distribution). V8 operator-workflow
+impact + replacement guidance for admin manual classification. V9 dependency
+verification on the NEW serving system end-to-end.
+
+**Path-to-SPEC:** sub-audit returns → orchestrator REVIEW → SPEC writer
+ingests both cycle-2 + sub-audit reports → SPEC dispatch v2 written + saved
+to `prompts/SPEC_ORCH-0700_DISPATCH.md` (overwrites v1 draft).
+
+### Confidence calibration update (cycle-2 §11.4 + §11.5 + §11.6 final)
+
+| Thread | Verdict | Confidence |
+|---|---|---|
+| H1 (A3 leak) | 172/241 = 71% leakage; named offenders | H+ |
+| H2 (Theatre symmetry) | Theatre also leaks (~35%) | H |
+| H3 (legacy sweep) | 92 files enumerated | H |
+| H4 (pin pathway) | A3 confirmed; A1 still alive but small surface | H |
+| H5 (cohort migration) | 0 stragglers; clean | H |
+| H6 (ai_categories tagged rows) | 2,449 stale rows; data dormant | H |
+| §11.5.a (seed bleed) | 0 inserts last 7 days; not bleeding | H |
+| ORCH-0701 (Paragon) | scoring miss at 75.13 vs 80; pure scorer fix | H |
+| §11.6 (ai_categories audit) | dead system w/ vestigial readers; SPEC scope expanded to column decommission; sub-audit gating SPEC | H on architecture, gating sub-audit on V1-V9 |
+
+---
+
+## 11.7 Sub-audit RETURNED + REVIEW APPROVED 10/10 (2026-05-01)
+
+Sub-audit dispatch
+[`prompts/FORENSICS_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md`](../prompts/FORENSICS_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md)
+returned [`reports/INVESTIGATION_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md`](INVESTIGATION_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md).
+
+**Verdict: SAFE WITH CAVEATS at H confidence.** The orchestrator audit (§11.6
+above) found 4 readers; the sub-audit found **5 additional dependencies** the
+orchestrator missed by relying on file grep alone. The orchestrator's
+file-grep-only methodology was the gap — should have queried `pg_views`,
+`pg_matviews`, `pg_proc.prosrc`, `pg_indexes`, `pg_trigger`, `pg_policy`,
+`cron.job` directly. Codified as D-SUB-1 process improvement.
+
+### Sub-audit's NEW dependencies (orchestrator missed)
+
+1. **`admin_place_pool_mv` materialized view** — projects both
+   `pp.ai_categories` and a derived `primary_category = COALESCE(ai_categories[1], 'uncategorized')`.
+   Has 3 indexes including `admin_place_pool_mv_primary_category_servable`.
+2. **Cron job 13 `refresh_admin_place_pool_mv`** — refreshes the MV every
+   10 minutes. Live and active.
+3. **`admin_photo_pool_categories` RPC** — groups by `ai_categories[1]`
+4. **`admin_photo_pool_locations` RPC** — groups by `ai_categories[1]`
+5. **`admin_pool_category_detail` RPC** — filters by `p_category = ANY(ai_categories)`
+6. **`admin_rules_preview_impact` RPC** — rules engine; reads `ai_categories`
+   for demotion/strip rule kinds
+
+### NEW system independence — H+ confidence
+
+Bouncer (`bouncer.ts:23-36` `PlaceRow` interface) and signal scorer
+(`signalScorer.ts:34-63` `PlaceForScoring` interface) both contain ZERO AI
+metadata fields. Bouncer's invariant comment line 12 explicit:
+*"I-BOUNCER-DETERMINISTIC: NO AI, NO keyword matching for category judgment."*
+The signal scorer's `computeScore()` only consults types, ratings, reviews,
+text patterns, and boolean serves_* fields. **Dropping the columns does NOT
+break the new system.**
+
+### Quantification (H confidence, direct DB query)
+
+| Column | Rows populated | % of pool |
+|---|---|---|
+| `ai_categories` | 41,301 | 59.3% |
+| `ai_reason` | 58,829 | 84.5% |
+| `ai_primary_identity` | 58,774 | 84.4% |
+| `ai_confidence` | 58,774 | 84.4% |
+| `ai_web_evidence` | 56,479 | 81.1% |
+| **Total `place_pool` rows** | 69,599 | — |
+
+Most recent ai_categories write: **2026-04-26 23:46 UTC** (5 days ago).
+Pipeline dormant but recently active. Backup snapshot mandatory before drop.
+
+### saved_card historical impact (V3)
+
+Zero `'movies_theatre'` rows in `saved_card.category`. ✓ A2 leak does NOT
+propagate to historical saves. **However:** 9 distinct legacy values from
+pre-ORCH-0434 exist (watch, picnic_park, Wellness, casual_eats, nature_views,
+fine_dining, drink, Watch, upscale_fine_dining-as-slug). Pre-existing data
+drift, NOT part of ORCH-0700. Surface as separate ORCH for saved_card
+taxonomy normalization (D-SUB-2).
+
+### Mandatory DDL prerequisite ordering (10 steps, per sub-audit V6)
+
+1. Pause cron job 13 (`UPDATE cron.job SET active = false WHERE jobid = 13`)
+2. Rewrite `admin_rules_preview_impact` (replace `ai_categories` reads with
+   `seeding_category` or `primary_type` scope)
+3. Rewrite the 3 admin photo-pool RPCs (`admin_photo_pool_categories`,
+   `admin_photo_pool_locations`, `admin_pool_category_detail`) — replace
+   `ai_categories[1]` grouping with `seeding_category` or `primary_type`
+4. Migrate the 2 edge function consumers
+   (`generate-curated-experiences:435` passthrough → `mapPrimaryTypeToMinglaCategory`;
+   `stopAlternatives.ts:84-86, 134-135` → primary_type-based filter)
+5. Update admin Place Pool Page UI to remove ai_categories editing
+6. Drop the MV (`DROP MATERIALIZED VIEW admin_place_pool_mv CASCADE`)
+7. Drop columns: `ALTER TABLE place_pool DROP COLUMN ai_categories,
+   ai_reason, ai_primary_identity, ai_confidence, ai_web_evidence`
+8. Optionally rebuild `admin_place_pool_mv` WITHOUT ai_categories +
+   primary_category (use `seeding_category` for grouping)
+9. Re-enable cron job 13 (or DROP if MV is retired)
+10. Stop or delete `scripts/verify-places-pipeline.mjs` writes
+
+### REVIEW verdict
+
+**APPROVED 10/10:**
+- Verdict honest (SAFE WITH CAVEATS, not "ship it")
+- 5 missed deps surfaced with file:line + SQL evidence
+- NEW system independence proven at H+ via direct interface reads
+- DDL prerequisite ordering specified
+- saved_card historical impact verified
+- Backup tables status documented (drop schedule confirmed for tomorrow)
+- 6 discoveries triaged (D-SUB-1 through D-SUB-6)
+- NEW invariant proposed: **I-MV-COLUMN-COVERAGE** (every MV-projected column
+  must be enumerated in a project-wide manifest; column drops require MV
+  rebuild step in same migration)
+- Scope respected — no solution-territory creep
+- Confidence calibration honest (H+ on Bouncer/scorer; H on most threads;
+  M on saved_card rendering verdict pending mobile UI test)
+
+### SPEC v2 scope FINAL (operator-locked + sub-audit-expanded)
+
+| Deliverable | Source | Status |
+|---|---|---|
+| S-1 Movies signal v1.1.0 tighten | Cycle-2 §11.4 H1 + operator-locked H7-A | Carries from SPEC v1 |
+| S-2 Theatre signal v1.1.0 tighten | Cycle-2 §11.4 H2 + operator-locked H7-A | Carries from SPEC v1 |
+| ~~S-3 Backfill 2,449 ai_categories rows~~ | Cycle-2 §11.6 | **REPLACED** |
+| **S-3 NEW** Decommission ai_categories + AI metadata cluster | Operator chat 2026-05-01 + sub-audit V1+V6 | EXPANDED scope (5 dependencies + 2 edge fn migrations + admin UI removal + script delete + backup snapshot) |
+| S-4 Delete `[TRANSITIONAL]` union mappings | Cycle-1 + cycle-2 | Carries from SPEC v1 |
+| S-5 Legacy bundled-chip code cleanup | Cycle-1 H3 + cycle-2 §11.4 | Carries from SPEC v1 |
+| S-6 Verification + tests | Cycle-2 + sub-audit | EXPANDED with sub-audit's 10-step migration verification |
+| **S-7 NEW** Process improvements | Sub-audit D-SUB-1 + I-MV-COLUMN-COVERAGE | NEW |
+| ORCH-0701 Paragon | Cycle-2 + bundled into SPEC | Carries from SPEC v1 |
 
 ---
 

@@ -47,6 +47,7 @@ import type { Brand } from "../../store/currentBrandStore";
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { EventCover } from "../ui/EventCover";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
@@ -65,6 +66,11 @@ const SIMULATED_SAVE_DELAY_MS = 300;
 // Brief delay after Toast appears before navigating back so the success
 // feedback is visually registered.
 const POST_SAVE_NAV_DELAY_MS = 300;
+
+// Cycle 7 FX2 cover-hue tiles — MIRROR Cycle 3 CreatorStep4Cover.tsx
+// hue array verbatim. If the event-cover palette ever expands, brand
+// covers should follow (keep these arrays in sync).
+const COVER_HUE_TILES: readonly number[] = [25, 100, 180, 220, 290, 320] as const;
 
 interface InlineToggleProps {
   value: boolean;
@@ -397,6 +403,50 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               placeholder="Tell people about your brand"
               accessibilityLabel="Bio / description"
             />
+          </View>
+
+          {/* SECTION B-1.5 — Brand cover (Cycle 7 FX2 v11).
+              Hue-only stub mirrors Cycle 3 CreatorStep4Cover pattern.
+              Live preview reflects current hue selection; tap a swatch
+              to update draft.coverHue. Image upload deferred to B-cycle. */}
+          <Text style={styles.sectionLabel}>BRAND COVER</Text>
+          <View style={styles.fieldsCol}>
+            <View style={styles.coverPreviewWrap}>
+              <EventCover
+                hue={draft.coverHue}
+                radius={radiusTokens.lg}
+                label=""
+                height={120}
+              />
+            </View>
+            <Text style={styles.kindHint}>
+              This shows up at the top of your public brand page.
+            </Text>
+            <View style={styles.coverHueRow}>
+              {COVER_HUE_TILES.map((hue) => {
+                const active = draft.coverHue === hue;
+                return (
+                  <Pressable
+                    key={hue}
+                    onPress={() => setDraft({ ...draft, coverHue: hue })}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`Cover hue ${hue}${active ? " (selected)" : ""}`}
+                    style={[
+                      styles.coverHueTile,
+                      active && styles.coverHueTileActive,
+                    ]}
+                  >
+                    <View style={styles.coverHueTileInner}>
+                      <EventCover hue={hue} radius={radiusTokens.md} label="" />
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.coverComingSoonCaption}>
+              Photo and video uploads coming soon.
+            </Text>
           </View>
 
           {/* SECTION B-2 — Brand kind (Cycle 7 v10).
@@ -784,6 +834,43 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginTop: spacing.xs,
     paddingHorizontal: spacing.xs,
+  },
+
+  // Brand cover hue picker (Cycle 7 FX2 v11) -------------------------
+  coverPreviewWrap: {
+    borderRadius: radiusTokens.lg,
+    overflow: "hidden",
+    marginBottom: spacing.xs,
+  },
+  coverHueRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  coverHueTile: {
+    width: "31%",
+    aspectRatio: 1,
+    padding: 2,
+    borderRadius: radiusTokens.md + 2,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  coverHueTileActive: {
+    borderColor: accent.warm,
+  },
+  coverHueTileInner: {
+    flex: 1,
+    borderRadius: radiusTokens.md,
+    overflow: "hidden",
+  },
+  coverComingSoonCaption: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    fontStyle: "italic",
+    textAlign: "center",
+    marginTop: spacing.sm,
   },
 
   // Display toggle row --------------------------------------------------
