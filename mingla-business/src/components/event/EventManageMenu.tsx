@@ -46,10 +46,26 @@ export interface EventManageMenuProps {
   brand: Brand;
   /** Open Cycle 7 ShareModal (parent owns share state). */
   onShare: () => void;
-  /** Edit details — router.push to /event/{id}/edit. */
+  /** Edit details — router.push to /event/{id}/edit. Drafts only in 9b-1. */
   onEdit: () => void;
   /** View public page — router.push to /b/{brand.slug}/{event.eventSlug}. */
   onViewPublic: () => void;
+  /**
+   * End ticket sales — parent opens EndSalesSheet. Cycle 9b-1.
+   * Live events only (gated by status).
+   */
+  onEndSales: () => void;
+  /**
+   * Cancel event — parent opens ConfirmDialog (typeToConfirm).
+   * Cycle 9b-1 +fix. Live + upcoming events (gated by status). For drafts,
+   * the menu shows Delete event instead (drafts have no public footprint).
+   */
+  onCancelEvent: () => void;
+  /**
+   * Delete event (drafts only) — parent opens ConfirmDialog. Cycle 9b-1.
+   * Drafts only — live/upcoming events show Cancel event instead.
+   */
+  onDeleteDraft: () => void;
   /**
    * TRANSITIONAL toast — parent wraps in absolute-positioned Toast and
    * fires the message after closing the sheet.
@@ -76,6 +92,9 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
   onShare,
   onEdit,
   onViewPublic,
+  onEndSales,
+  onCancelEvent,
+  onDeleteDraft,
   onTransitionalToast,
 }) => {
   const actions = useMemo<MenuAction[]>((): MenuAction[] => {
@@ -97,7 +116,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
         if (status === "draft") {
           onEdit();
         } else {
-          onTransitionalToast("Edit-after-publish lands Cycle 9b.");
+          onTransitionalToast("Edit-after-publish lands Cycle 9b-2.");
         }
       },
     });
@@ -181,7 +200,24 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
         tone: "warn",
         onPress: () => {
           onClose();
-          onTransitionalToast("End ticket sales lands Cycle 9b.");
+          onEndSales();
+        },
+      });
+    }
+
+    // Cancel event — live + upcoming. For live, it's a stronger action
+    // than End sales (cancel notifies buyers + refunds). For upcoming,
+    // it replaces "Delete event" since live/upcoming events have public
+    // footprints and shouldn't be hard-deleted.
+    if (status === "live" || status === "upcoming") {
+      list.push({
+        key: "cancel-event",
+        icon: "trash",
+        label: "Cancel event",
+        tone: "danger",
+        onPress: () => {
+          onClose();
+          onCancelEvent();
         },
       });
     }
@@ -199,15 +235,17 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
       });
     }
 
-    if (status === "draft" || status === "upcoming") {
+    // Delete event — drafts ONLY. Upcoming/live events use "Cancel event"
+    // above (they have public footprints, shouldn't be hard-deleted).
+    if (status === "draft") {
       list.push({
         key: "delete",
         icon: "trash",
-        label: "Delete event",
+        label: "Delete draft",
         tone: "danger",
         onPress: () => {
           onClose();
-          onTransitionalToast("Delete event lands Cycle 9b.");
+          onDeleteDraft();
         },
       });
     }
@@ -236,7 +274,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
     }
 
     return list;
-  }, [status, onClose, onEdit, onViewPublic, onShare, onTransitionalToast]);
+  }, [status, onClose, onEdit, onViewPublic, onShare, onEndSales, onCancelEvent, onDeleteDraft, onTransitionalToast]);
 
   // Snap calculation — content fit per DEC-084 numeric snap support.
   // Each row ~52px + header padding ~32 + safe spacing ~28 = ~112 + N×52.

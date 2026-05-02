@@ -43,6 +43,7 @@ import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { formatGbp } from "../../../src/utils/currency";
 
 import { Button } from "../../../src/components/ui/Button";
+import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { EventCover } from "../../../src/components/ui/EventCover";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -54,8 +55,13 @@ import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { Toast } from "../../../src/components/ui/Toast";
 import { TopBar } from "../../../src/components/ui/TopBar";
 
+import { EndSalesSheet } from "../../../src/components/event/EndSalesSheet";
 import { EventDetailKpiCard } from "../../../src/components/event/EventDetailKpiCard";
 import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
+
+const CANCEL_PROCESSING_MS = 1200;
+const cancelSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 // ----- Status derivation (mirrors EventListCard) -------------------
 
@@ -111,10 +117,15 @@ export default function EventDetailScreen(): React.ReactElement {
   // ----- State ---------------------------------------------------
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
   const [manageMenuVisible, setManageMenuVisible] = useState<boolean>(false);
+  const [endSalesVisible, setEndSalesVisible] = useState<boolean>(false);
+  const [cancelDialogVisible, setCancelDialogVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: "",
   });
+
+  // ----- Mutations ----------------------------------------------
+  const updateLifecycle = useLiveEventStore((s) => s.updateLifecycle);
 
   // ----- Handlers -------------------------------------------------
   const handleBack = useCallback((): void => {
@@ -173,6 +184,50 @@ export default function EventDetailScreen(): React.ReactElement {
       router.push(`/brand/${brand.id}` as never);
     }
   }, [brand, router]);
+
+  // ----- Lifecycle handlers (9b-1) -------------------------------
+  const handleEndSalesOpen = useCallback((): void => {
+    setEndSalesVisible(true);
+  }, []);
+
+  const handleEndSalesConfirm = useCallback((): void => {
+    if (id !== null) {
+      updateLifecycle(id, { endedAt: new Date().toISOString() });
+    }
+    setEndSalesVisible(false);
+    showToast("Ticket sales ended.");
+  }, [id, updateLifecycle, showToast]);
+
+  const handleCancelDialogOpen = useCallback((): void => {
+    setCancelDialogVisible(true);
+  }, []);
+
+  const handleCancelConfirm = useCallback(async (): Promise<void> => {
+    if (id === null) return;
+    // 1.2s simulated processing per spec §3.0.1 Q-9-3.
+    await cancelSleep(CANCEL_PROCESSING_MS);
+    updateLifecycle(id, {
+      status: "cancelled",
+      cancelledAt: new Date().toISOString(),
+    });
+    setCancelDialogVisible(false);
+    // [TRANSITIONAL] Buyer email cascade is a no-op stub — B-cycle
+    // wires Resend + auto-refund triggers.
+    showToast(
+      "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
+    );
+    router.replace("/(tabs)/events" as never);
+  }, [id, updateLifecycle, router, showToast]);
+
+  const handleDeleteDraftStub = useCallback((): void => {
+    // Cycle 9b-1 EventDetail is for LIVE events only — draft delete is
+    // wired in events.tsx parent. EventDetail's manage menu wiring sees
+    // status !== "draft" so this won't be invoked, but the prop is
+    // required by the menu's interface.
+    showToast(
+      "Draft delete not available from Event Detail. Use Events tab.",
+    );
+  }, [showToast]);
 
   // ----- Render not-found shell -----------------------------------
   if (id === null || (liveEvent === null && draftEvent === null)) {
@@ -323,7 +378,9 @@ export default function EventDetailScreen(): React.ReactElement {
           <Text style={styles.emptySectionText}>No activity yet.</Text>
         </GlassCard>
 
-        {/* Cancel event CTA placeholder — lands in 9b */}
+        {/* Cancel event CTA — opens ConfirmDialog with typeToConfirm
+            (case-sensitive match on event.name; ConfirmDialog primitive
+            default per DEC-079 — no kit extension for case folding). */}
         {status === "live" || status === "upcoming" ? (
           <View style={styles.cancelCtaWrap}>
             <Button
@@ -331,7 +388,7 @@ export default function EventDetailScreen(): React.ReactElement {
               variant="ghost"
               size="md"
               fullWidth
-              onPress={() => showToast("Cancel event lands Cycle 9b.")}
+              onPress={handleCancelDialogOpen}
               accessibilityLabel="Cancel event"
             />
           </View>
@@ -367,9 +424,44 @@ export default function EventDetailScreen(): React.ReactElement {
             setManageMenuVisible(false);
             handleViewPublic();
           }}
+          onEndSales={() => {
+            setManageMenuVisible(false);
+            handleEndSalesOpen();
+          }}
+          onCancelEvent={() => {
+            setManageMenuVisible(false);
+            handleCancelDialogOpen();
+          }}
+          onDeleteDraft={() => {
+            setManageMenuVisible(false);
+            handleDeleteDraftStub();
+          }}
           onTransitionalToast={showToast}
         />
       ) : null}
+
+      {/* End sales sheet — opens from manage menu's "End ticket sales" */}
+      <EndSalesSheet
+        visible={endSalesVisible}
+        onClose={() => setEndSalesVisible(false)}
+        onConfirm={handleEndSalesConfirm}
+        eventName={event.name.trim().length > 0 ? event.name : "this event"}
+      />
+
+      {/* Cancel event ConfirmDialog — typeToConfirm variant */}
+      <ConfirmDialog
+        visible={cancelDialogVisible}
+        onClose={() => setCancelDialogVisible(false)}
+        onConfirm={handleCancelConfirm}
+        title="Cancel this event?"
+        description="This is serious. Buyers will be notified by email and refunded automatically when those wire up (B-cycle). You can't undo this."
+        variant="typeToConfirm"
+        confirmText={event.name.trim().length > 0 ? event.name : event.eventSlug}
+        confirmLabel="Cancel event"
+        cancelLabel="Keep event live"
+        destructive
+      />
+
 
       {/* TRANSITIONAL toast wrap — top-anchored per memory rule */}
       <View style={styles.toastWrap} pointerEvents="box-none">

@@ -27,6 +27,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
+import { ConfirmDialog } from "../../src/components/ui/ConfirmDialog";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { ShareModal } from "../../src/components/ui/ShareModal";
@@ -48,14 +49,17 @@ import {
 import { useDraftsForBrand } from "../../src/store/draftEventStore";
 import type { DraftEvent } from "../../src/store/draftEventStore";
 import {
+  useLiveEventStore,
   useLiveEventsForBrand,
 } from "../../src/store/liveEventStore";
 import type { LiveEvent } from "../../src/store/liveEventStore";
+import { useDraftEventStore } from "../../src/store/draftEventStore";
 
 import {
   EventListCard,
   type EventCardStatus,
 } from "../../src/components/event/EventListCard";
+import { EndSalesSheet } from "../../src/components/event/EndSalesSheet";
 import { EventManageMenu } from "../../src/components/event/EventManageMenu";
 
 type EventFilter = "all" | "live" | "upcoming" | "draft" | "past";
@@ -109,6 +113,18 @@ export default function EventsTab(): React.ReactElement {
   });
   const [manageCtx, setManageCtx] = useState<ManageContext | null>(null);
   const [shareEvent, setShareEvent] = useState<LiveEvent | null>(null);
+  // 9b-1 lifecycle action state — End sales + Cancel event + Delete draft
+  const [endSalesEvent, setEndSalesEvent] = useState<LiveEvent | null>(null);
+  const [cancelEvent, setCancelEvent] = useState<LiveEvent | null>(null);
+  const [cancelSubmitting, setCancelSubmitting] = useState<boolean>(false);
+  const [deleteDraftCtx, setDeleteDraftCtx] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
+  // Mutations for lifecycle actions (9b-1)
+  const updateLifecycle = useLiveEventStore((s) => s.updateLifecycle);
+  const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
 
   // ----- Categorize events into status buckets -------------------
   const liveEventEntries = useMemo<
@@ -298,6 +314,64 @@ export default function EventsTab(): React.ReactElement {
     setManageCtx(null);
   }, [manageCtx]);
 
+  // 9b-1 lifecycle handlers ----------------------------------------
+  const handleManageEndSales = useCallback((): void => {
+    if (manageCtx === null || manageCtx.kind !== "live") return;
+    setEndSalesEvent(manageCtx.event as LiveEvent);
+    setManageCtx(null);
+  }, [manageCtx]);
+
+  const handleEndSalesConfirm = useCallback((): void => {
+    if (endSalesEvent === null) return;
+    updateLifecycle(endSalesEvent.id, {
+      endedAt: new Date().toISOString(),
+    });
+    setEndSalesEvent(null);
+    setToast({ visible: true, message: "Ticket sales ended." });
+  }, [endSalesEvent, updateLifecycle]);
+
+  const handleManageCancelEvent = useCallback((): void => {
+    if (manageCtx === null || manageCtx.kind !== "live") return;
+    setCancelEvent(manageCtx.event as LiveEvent);
+    setManageCtx(null);
+  }, [manageCtx]);
+
+  const handleCancelEventConfirm = useCallback(async (): Promise<void> => {
+    if (cancelEvent === null) return;
+    setCancelSubmitting(true);
+    // 1.2s simulated processing per Q-9-3.
+    await new Promise<void>((resolve) => setTimeout(resolve, 1200));
+    updateLifecycle(cancelEvent.id, {
+      status: "cancelled",
+      cancelledAt: new Date().toISOString(),
+    });
+    setCancelSubmitting(false);
+    setCancelEvent(null);
+    // [TRANSITIONAL] Buyer email cascade is a no-op stub — B-cycle wires Resend.
+    setToast({
+      visible: true,
+      message:
+        "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
+    });
+  }, [cancelEvent, updateLifecycle]);
+
+  const handleManageDeleteDraft = useCallback((): void => {
+    if (manageCtx === null || manageCtx.kind !== "draft") return;
+    const draft = manageCtx.event as DraftEvent;
+    setDeleteDraftCtx({
+      id: draft.id,
+      name: draft.name.length > 0 ? draft.name : "Untitled draft",
+    });
+    setManageCtx(null);
+  }, [manageCtx]);
+
+  const handleDeleteDraftConfirm = useCallback((): void => {
+    if (deleteDraftCtx === null) return;
+    deleteDraft(deleteDraftCtx.id);
+    setDeleteDraftCtx(null);
+    setToast({ visible: true, message: "Draft deleted." });
+  }, [deleteDraftCtx, deleteDraft]);
+
   // ----- Render ---------------------------------------------------
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
@@ -317,7 +391,14 @@ export default function EventsTab(): React.ReactElement {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          // Bottom nav clearance — BottomNav primitive is 64px tall +
+          // ~16-32px floating margin + safe-area inset. Generous 120
+          // ensures the last event card is fully visible above the nav
+          // even on phones with home-indicator bottom inset.
+          { paddingBottom: insets.bottom + 120 },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.headerTitle}>Events</Text>
@@ -420,9 +501,67 @@ export default function EventsTab(): React.ReactElement {
           onShare={handleManageShare}
           onEdit={handleManageEdit}
           onViewPublic={handleManageViewPublic}
+          onEndSales={handleManageEndSales}
+          onCancelEvent={handleManageCancelEvent}
+          onDeleteDraft={handleManageDeleteDraft}
           onTransitionalToast={showTransitionalToast}
         />
       ) : null}
+
+      {/* End sales sheet — opened from manage menu's End ticket sales */}
+      {endSalesEvent !== null ? (
+        <EndSalesSheet
+          visible
+          onClose={() => setEndSalesEvent(null)}
+          onConfirm={handleEndSalesConfirm}
+          eventName={
+            endSalesEvent.name.trim().length > 0
+              ? endSalesEvent.name
+              : "this event"
+          }
+        />
+      ) : null}
+
+      {/* Delete draft ConfirmDialog — opened from manage menu's Delete event (drafts only) */}
+      <ConfirmDialog
+        visible={deleteDraftCtx !== null}
+        onClose={() => setDeleteDraftCtx(null)}
+        onConfirm={handleDeleteDraftConfirm}
+        title="Delete this draft?"
+        description={
+          deleteDraftCtx !== null
+            ? `"${deleteDraftCtx.name}" will be permanently removed. This can't be undone.`
+            : ""
+        }
+        variant="simple"
+        confirmLabel="Delete draft"
+        cancelLabel="Keep draft"
+        destructive
+      />
+
+      {/* Cancel event ConfirmDialog — typeToConfirm variant; opened from
+          manage menu's Cancel event (live + upcoming). */}
+      <ConfirmDialog
+        visible={cancelEvent !== null}
+        onClose={() => {
+          if (cancelSubmitting) return;
+          setCancelEvent(null);
+        }}
+        onConfirm={handleCancelEventConfirm}
+        title="Cancel this event?"
+        description="This is serious. Buyers will be notified by email and refunded automatically when those wire up (B-cycle). You can't undo this."
+        variant="typeToConfirm"
+        confirmText={
+          cancelEvent !== null
+            ? cancelEvent.name.trim().length > 0
+              ? cancelEvent.name
+              : cancelEvent.eventSlug
+            : ""
+        }
+        confirmLabel="Cancel event"
+        cancelLabel="Keep event live"
+        destructive
+      />
 
       {/* Share modal — opened from manage menu */}
       {shareEvent !== null ? (
@@ -459,7 +598,9 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.lg,
+    paddingTop: spacing.lg,
+    // paddingBottom is set inline on the ScrollView with insets.bottom + 120
+    // to clear the floating BottomNav (64px nav + ~16-32px margin + safe-area).
     gap: spacing.md,
   },
   headerTitle: {

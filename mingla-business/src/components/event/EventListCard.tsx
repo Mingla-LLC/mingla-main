@@ -178,6 +178,13 @@ export const EventListCard: React.FC<EventListCardProps> = ({
             </Text>
           ) : null}
         </View>
+
+        {/* Tap affordance — chevron-right at the inner end of the card
+            body (NOT the right rail with manage IconChrome). Tells the
+            user the card body is tappable and leads somewhere. */}
+        <View style={styles.tapAffordance} pointerEvents="none">
+          <Icon name="chevR" size={18} color={textTokens.tertiary} />
+        </View>
       </Pressable>
 
       {/* Right rail: manage icon + revenue/delta footer */}
@@ -295,6 +302,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
     justifyContent: "space-between",
     paddingRight: 44, // clearance for manage IconChrome on right rail
+  },
+  tapAffordance: {
+    width: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 36, // clearance for manage IconChrome on right rail
   },
   pillRow: {
     flexDirection: "row",
