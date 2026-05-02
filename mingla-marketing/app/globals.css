@@ -1,0 +1,245 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  /* ----- Fonts (matches live usemingla.com brand) ----- */
+  --font-sans: var(--font-nunito);
+  --font-display: var(--font-mochiy);
+  --font-mono: ui-monospace, "JetBrains Mono", monospace;
+
+  /* ----- Surfaces (matches mingla-business canvas tokens) ----- */
+  --color-parchment: #faf8f4; /* legacy light surface, retained for cross-surface consistency */
+  --color-ink: #0e0e10;
+  --color-vellum: #f4efe7;
+  --color-smoke: #0c0e12;     /* canvas-discover */
+  --color-obsidian: #08090c;  /* canvas-depth */
+
+  /* ----- Brand accent (matches mingla-business accent.warm — #eb7825) ----- */
+  --color-warm: #eb7825;
+  --color-warm-hover: #c45f1a;
+  --color-warm-glow: rgba(235, 120, 37, 0.35);
+  --color-warm-tint: rgba(235, 120, 37, 0.28);
+
+  /* Coral palette retained for utility shades (hover bg, etc.). */
+  --color-coral-50: #fff7ed;
+  --color-coral-100: #ffedd5;
+  --color-coral-200: #fed7aa;
+  --color-coral-300: #fdba74;
+  --color-coral-400: #fb923c;
+  --color-coral-500: #f97316;
+  --color-coral-600: #ea580c;
+  --color-coral-700: #c2410c;
+
+  /* ----- Secondaries ----- */
+  --color-moss: #5c7a5a;
+  --color-butter: #f4d679;
+  --color-plum: #1a0f1f;
+
+  /* ----- Text (theme-aware via --token-* indirection so Tailwind
+            utilities resolve at runtime, not at build) ----- */
+  --color-text-primary: var(--token-text-primary);
+  --color-text-secondary: var(--token-text-secondary);
+  --color-text-muted: var(--token-text-muted);
+  --color-text-on-dark: rgba(255, 255, 255, 0.96);
+
+  /* ----- Semantic ----- */
+  --color-success: #3f8b5c;
+  --color-warning: #c97b26;
+  --color-danger: #b83a2e;
+
+  /* ----- Theme-aware surface accents (auto-flip via data-theme="light") ----- */
+  --color-divider: var(--token-divider);
+  --color-divider-strong: var(--token-divider-strong);
+  --color-stripe: var(--token-stripe);
+  --color-stripe-strong: var(--token-stripe-strong);
+
+  /* ----- Radius ----- */
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-2xl: 36px;
+}
+
+/* Glass surface tokens — light theme default */
+/* Theme-aware tokens (dark by default, flip when [data-theme="light"]
+   is on an ancestor — and flip back when [data-theme="dark"] is on a
+   nested ancestor below the light scope, used for cinematic sections). */
+:root,
+[data-theme="dark"] {
+  --token-text-primary: rgba(255, 255, 255, 0.96);
+  --token-text-secondary: rgba(255, 255, 255, 0.72);
+  --token-text-muted: rgba(255, 255, 255, 0.52);
+  --token-divider: rgba(255, 255, 255, 0.06);
+  --token-divider-strong: rgba(255, 255, 255, 0.10);
+  --token-stripe: rgba(255, 255, 255, 0.02);
+  --token-stripe-strong: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="light"] {
+  /* Text flips to ink on parchment */
+  --token-text-primary: #0e0e10;
+  --token-text-secondary: rgba(14, 14, 16, 0.68);
+  --token-text-muted: rgba(14, 14, 16, 0.48);
+
+  /* Light Liquid Glass — frosted-white over parchment */
+  --glass-soft-bg:
+    radial-gradient(ellipse 110% 70% at 30% -10%, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 60%),
+    linear-gradient(135deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.20) 100%),
+    rgba(255, 255, 255, 0.55);
+  --glass-strong-bg:
+    radial-gradient(ellipse 110% 70% at 30% -10%, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0) 60%),
+    linear-gradient(135deg, rgba(255,255,255,0.40) 0%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.30) 100%),
+    rgba(255, 255, 255, 0.75);
+  --glass-frost-bg: rgba(255, 255, 255, 0.40);
+  --glass-border: rgba(14, 14, 16, 0.10);
+  --glass-inner-glow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -1px 0 rgba(14, 14, 16, 0.04),
+    inset 1px 0 0 rgba(255, 255, 255, 0.3),
+    inset -1px 0 0 rgba(255, 255, 255, 0.3);
+  --glass-shadow: 0 1px 2px rgba(14, 14, 16, 0.06);
+
+  /* Theme-aware surface accents */
+  --token-divider: rgba(14, 14, 16, 0.08);
+  --token-divider-strong: rgba(14, 14, 16, 0.12);
+  --token-stripe: rgba(14, 14, 16, 0.02);
+  --token-stripe-strong: rgba(14, 14, 16, 0.04);
+}
+
+:root,
+[data-theme="dark"] {
+  /* ----- Liquid Glass recipe -----
+     Three-layer background:
+       1. Specular highlight (radial, top-left) — the "wet droplet" reflection
+       2. Asymmetric surface lighting (diagonal linear gradient)
+       3. Base charcoal tint
+     Plus a four-sided inner edge for perceived rim thickness. */
+  --glass-soft-bg:
+    radial-gradient(ellipse 110% 70% at 30% -10%, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0) 60%),
+    linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.01) 50%, rgba(255,255,255,0.05) 100%),
+    rgba(12, 14, 18, 0.28);
+
+  --glass-strong-bg:
+    radial-gradient(ellipse 110% 70% at 30% -10%, rgba(255,255,255,0.26) 0%, rgba(255,255,255,0) 60%),
+    linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.06) 100%),
+    rgba(12, 14, 18, 0.42);
+
+  --glass-frost-bg:
+    radial-gradient(ellipse 110% 70% at 30% -10%, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0) 60%),
+    rgba(255, 255, 255, 0.04);
+
+  --glass-border: rgba(255, 255, 255, 0.18);
+
+  /* Four-sided inner edge: bright top, faint bottom, faint sides — gives
+     the panel a perceived rim thickness (the "Liquid Glass" tell). */
+  --glass-inner-glow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.40),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+    inset 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset -1px 0 0 rgba(255, 255, 255, 0.08);
+
+  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
+}
+
+/* Cinematic dark variant kept identical (whole site is already dark). */
+[data-cinematic="dark"] {
+  --glass-soft-bg:
+    radial-gradient(ellipse 110% 70% at 30% -10%, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0) 60%),
+    linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.01) 50%, rgba(255,255,255,0.05) 100%),
+    rgba(12, 14, 18, 0.28);
+  --glass-strong-bg:
+    radial-gradient(ellipse 110% 70% at 30% -10%, rgba(255,255,255,0.26) 0%, rgba(255,255,255,0) 60%),
+    linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.06) 100%),
+    rgba(12, 14, 18, 0.42);
+  --glass-frost-bg:
+    radial-gradient(ellipse 110% 70% at 30% -10%, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0) 60%),
+    rgba(255, 255, 255, 0.04);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-inner-glow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.40),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+    inset 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset -1px 0 0 rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
+}
+
+/* ----- Base ----- */
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: var(--color-smoke);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  text-rendering: optimizeLegibility;
+}
+
+/* ----- Glass utilities -----
+   Clean frosted-glass: no saturate boost (no warm halo), heavier blur for the
+   true frost feel, bright refractive border, minimal depth shadow. */
+@layer utilities {
+  /* Liquid Glass utilities — heavy blur + saturate for vibrancy boost on
+     anything visible behind, layered specular gradient bg, four-sided rim. */
+  .glass-soft {
+    background: var(--glass-soft-bg);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    backdrop-filter: blur(30px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-inner-glow), var(--glass-shadow);
+  }
+
+  .glass-strong {
+    background: var(--glass-strong-bg);
+    -webkit-backdrop-filter: blur(36px) saturate(200%);
+    backdrop-filter: blur(36px) saturate(200%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-inner-glow), var(--glass-shadow);
+  }
+
+  .glass-frost {
+    background: var(--glass-frost-bg);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    backdrop-filter: blur(40px) saturate(180%);
+    border: 1px solid var(--glass-border);
+  }
+
+  /* Safari/older browser fallback (no backdrop-filter support) */
+  @supports not (backdrop-filter: blur(1px)) {
+    .glass-soft,
+    .glass-strong,
+    .glass-frost {
+      background: rgba(20, 22, 28, 0.85);
+    }
+  }
+
+  .font-display {
+    font-family: var(--font-display), system-ui, sans-serif;
+  }
+
+  .ease-out-quart {
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--color-coral-500);
+    outline-offset: 2px;
+    border-radius: inherit;
+  }
+}
+
+/* ----- Reduced motion ----- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
