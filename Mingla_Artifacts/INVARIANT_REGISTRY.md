@@ -7,6 +7,76 @@
 
 ---
 
+## Queued for ORCH-0707 CLOSE (DRAFT until tester PASS)
+
+### I-CURATED-LABEL-SOURCE (DRAFT)
+
+**Rule:** Every curated experience stop's `placeType` field MUST be the `comboCategory` slug of the combo slot the place was selected to fill. The label MUST NEVER be derived from `place_pool.ai_categories[0]` or any per-place "primary signal" computation.
+
+**Why:** The slot fills the place; the place doesn't choose its label. Constitution #2 (one-owner-per-truth) — for curated stops, the slot semantics are the owner. Constitution #9 (no-fabricated-data) — empty stops return null, never invent a category. Constitution #13 (exclusion-consistency) — same selection logic in curated pipeline + stopAlternatives (both use signal scores).
+
+**Enforcement mechanism:** CI test `no_ai_categories_reads_in_curated_pipeline` (Deno test in `supabase/functions/_shared/__tests__/`) parses each of `generate-curated-experiences/index.ts`, `_shared/stopAlternatives.ts`, `_shared/signalRankFetch.ts` and asserts `ai_categories` does not appear (excluding code-comments).
+
+**Test that catches a regression:** the CI test fails if ANY future PR re-introduces `ai_categories` read in those files.
+
+**Status:** DRAFT until ORCH-0707 tester PASS; then ACTIVE.
+
+**Established:** 2026-05-02 by ORCH-0707 forensics investigation §C3 (the comboCategory authority architectural finding) and operator's OQ-6 affirmation.
+
+---
+
+## Queued for ORCH-0700 CLOSE (DRAFT until tester PASS)
+
+### I-CATEGORY-DERIVED-ON-DROP (DRAFT — partial flip post-ORCH-0700; full-flip post-ORCH-0707 follow-up)
+
+**Rule:** Mingla category for any place is derived from `mapPrimaryTypeToMinglaCategory(primary_type, types)` (admin-display contexts) OR from `place_scores.signal_id` (curated/serving contexts). Never from a stored interpretation column on `place_pool`.
+
+**Status:** PARTIAL after ORCH-0700 close — `seeding_category` dropped; `ai_categories` family still alive (deferred to ORCH-0707 follow-up). FULL after ORCH-0707 follow-up migration drops the 5 ai_* columns.
+
+**Why:** Constitution #2 (one-owner-per-truth) — Google's raw type data is the owner; interpretation layers are derivations not stored facts. Constitution #8 (subtract-before-adding) — drop the interpretation columns once derivation function is canonical.
+
+**Enforcement mechanism:** schema check (CI test that asserts no AI/seeding interpretation columns exist on place_pool); migration sequencing rule (drop column only after all readers verified migrated).
+
+**Test that catches a regression:** any new PR that adds an interpretation column to place_pool fails the schema check.
+
+**Status:** DRAFT until ORCH-0707 follow-up tester PASS; then ACTIVE-FULL.
+
+**Established:** 2026-05-02 by ORCH-0700 cycle-3 audit (the 4-system architectural mapping: seeding pipeline / scoring pipeline / serving / rules engine).
+
+---
+
+## Queued for ORCH-0708 CLOSE — Wave 2 Phase 1 photo-aesthetic scoring (DRAFT until tester PASS)
+
+These two invariants are queued for codification when ORCH-0708 closes (operator smoke PASS on Raleigh/Cary/Durham). Status: **DRAFT**. Orchestrator promotes to ACTIVE in CLOSE protocol. Spec contract: [reports/SPEC_ORCH-0708_PHOTO_AESTHETIC_SCORING_INTEGRATION.md](reports/SPEC_ORCH-0708_PHOTO_AESTHETIC_SCORING_INTEGRATION.md) §12.
+
+### I-PHOTO-AESTHETIC-DATA-SOLE-OWNER (DRAFT, ORCH-0708)
+
+**Rule:** `place_pool.photo_aesthetic_data jsonb` is written ONLY by the `score-place-photo-aesthetics` edge function. NO other writer — bouncer, signal scorer, admin-seed-places, backfill-place-photos, run-pre-photo-bouncer, run-bouncer, any future edge function, or any direct admin SQL — may insert or update this column. Service-role direct edits (e.g., emergency operator SQL) require an explicit DEC entry citing the override.
+
+**Why:** Constitution #2 (one owner per truth). The photo-aesthetic-data column has a single owner so its semantics + idempotency fingerprint stay consistent. If admin-seed-places re-seeded a place and accidentally wrote `photo_aesthetic_data` from Google's photo metadata (different shape entirely), or if the bouncer started embedding aesthetic data, the JSONB contract would silently drift and the scorer would compute against unstable inputs.
+
+**Enforcement mechanism:**
+1. Code-level — `score-place-photo-aesthetics/index.ts` is the only file that writes the column via service_role client; CI grep gate on every PR (a PR that adds `photo_aesthetic_data` as a target of `.update()` or `INSERT INTO place_pool` outside that one edge function fails review unless explicitly overridden in the PR description).
+2. Schema-level — `admin-seed-places/index.ts` per-row UPDATE block (lines 1023-1099) has a protective comment block citing this invariant + ORCH-0708. CI gate on every admin-seed-places PR confirms the comment + the absence of `photo_aesthetic_data` from the UPDATE column list.
+3. Documentation-level — `place_pool.photo_aesthetic_data` `COMMENT ON COLUMN` SQL string explicitly names this invariant.
+
+**Test that catches regression:** post-deploy SQL probe `SELECT COUNT(*) FROM information_schema.column_privileges WHERE table_name='place_pool' AND column_name='photo_aesthetic_data' AND grantee != 'service_role';` should return zero. Any other consumer that gets write access on this column = invariant violation.
+
+### I-PHOTO-AESTHETIC-CACHE-FINGERPRINT (DRAFT, ORCH-0708)
+
+**Rule:** Every `photo_aesthetic_data` JSONB blob persisted by `score-place-photo-aesthetics` MUST contain a `photos_fingerprint` field equal to `sha256(stored_photo_urls.slice(0,5).join('|'))` computed at scoring time. The edge function MUST skip places where the live `place_pool.stored_photo_urls` produces the same fingerprint as the persisted `photo_aesthetic_data->>'photos_fingerprint'` (idempotent skip), unless the run was started with `force_rescore: true`.
+
+**Why:** photo backfill is expensive (~$0.0035 per place at Haiku batch+cache). Re-running scoring on places whose photos haven't changed wastes budget and produces non-deterministic re-scoring (Claude vision is mildly stochastic). Fingerprint comparison guarantees idempotency at the data layer. When Google detail-refresh changes `stored_photo_urls` (which happens on re-seed per ORCH-0550.1), the fingerprint changes and the place re-enters scoring naturally.
+
+**Enforcement mechanism:**
+1. Edge function self-test — `score-place-photo-aesthetics/index.ts` includes a Deno test asserting that two consecutive runs against the same place (with unchanged photos, no force_rescore) result in exactly one Anthropic API call.
+2. Cost telemetry — `photo_aesthetic_runs.actual_cost_usd` after a no-op re-run should be near $0 (only the eligibility query, no Claude calls). Operator runs the same test scope twice during smoke; second run cost <$0.10 = invariant holds.
+3. Schema-level — `photo_aesthetic_data` JSONB schema documented in `COMMENT ON COLUMN` includes `photos_fingerprint` as REQUIRED.
+
+**Test that catches regression:** post-deploy SQL probe — for any place with `photo_aesthetic_data IS NOT NULL`, assert `photo_aesthetic_data ? 'photos_fingerprint'` returns true for 100% of rows. Any row missing the fingerprint = invariant violation (likely a buggy edge-function path that wrote the JSON without computing the fingerprint).
+
+---
+
 ## Mingla Business invariants (2026-05-02) — ORCH-0704 v2 close-cycle promotions
 
 ### I-19 Immutable order financials (mingla-business)
