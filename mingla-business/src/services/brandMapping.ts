@@ -208,7 +208,7 @@ export interface MapUiToBrandInsertInput {
 
 export function mapUiToBrandInsert(input: MapUiToBrandInsertInput): BrandTableInsert {
   const { accountId, brand } = input;
-  return {
+  const row: BrandTableInsert = {
     account_id: accountId,
     name: brand.displayName.trim(),
     slug: brand.slug.trim(),
@@ -218,13 +218,16 @@ export function mapUiToBrandInsert(input: MapUiToBrandInsertInput): BrandTableIn
     contact_phone: brand.contact?.phone?.trim() || null,
     social_links: linksToSocialJson(brand.links),
     custom_links: brand.links?.custom?.length ? brand.links.custom : [],
-    display_attendee_count: brand.displayAttendeeCount ?? true,
     tax_settings: {},
     default_currency: "GBP",
     stripe_connect_id: null,
     stripe_payouts_enabled: false,
     stripe_charges_enabled: false,
   };
+  if (brand.displayAttendeeCount !== undefined) {
+    row.display_attendee_count = brand.displayAttendeeCount;
+  }
+  return row;
 }
 
 export interface MapUiToBrandUpdateOptions {

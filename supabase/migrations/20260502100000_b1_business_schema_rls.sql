@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS public.brands (
   contact_phone text,
   social_links jsonb NOT NULL DEFAULT '{}'::jsonb,
   custom_links jsonb NOT NULL DEFAULT '[]'::jsonb,
-  display_attendee_count boolean NOT NULL DEFAULT false,
+  display_attendee_count boolean NOT NULL DEFAULT true,
   tax_settings jsonb NOT NULL DEFAULT '{}'::jsonb,
   default_currency char(3) NOT NULL DEFAULT 'GBP',
   stripe_connect_id text,
@@ -294,7 +294,7 @@ CREATE POLICY "Brand members can select brands"
   TO authenticated
   USING (
     deleted_at IS NULL
-    AND public.biz_is_brand_member_for_read(id, auth.uid())
+    AND public.biz_is_brand_member_for_read_for_caller(id)
   );
 
 DROP POLICY IF EXISTS "Account owner can insert brand" ON public.brands;
@@ -312,15 +312,15 @@ CREATE POLICY "Brand admin plus can update brands"
   ON public.brands
   FOR UPDATE
   TO authenticated
-  USING (public.biz_is_brand_admin_plus(id, auth.uid()))
-  WITH CHECK (public.biz_is_brand_admin_plus(id, auth.uid()));
+  USING (public.biz_is_brand_admin_plus_for_caller(id))
+  WITH CHECK (public.biz_is_brand_admin_plus_for_caller(id));
 
 DROP POLICY IF EXISTS "Brand admin plus can delete brands" ON public.brands;
 CREATE POLICY "Brand admin plus can delete brands"
   ON public.brands
   FOR DELETE
   TO authenticated
-  USING (public.biz_is_brand_admin_plus(id, auth.uid()));
+  USING (public.biz_is_brand_admin_plus_for_caller(id));
 
 -- ---------------------------------------------------------------------------
 -- RLS: brand_team_members (admin manages; users see self)
@@ -333,7 +333,7 @@ CREATE POLICY "Members and admins read brand_team_members"
   TO authenticated
   USING (
     user_id = auth.uid()
-    OR public.biz_is_brand_admin_plus(brand_id, auth.uid())
+    OR public.biz_is_brand_admin_plus_for_caller(brand_id)
   );
 
 DROP POLICY IF EXISTS "Brand admin plus insert brand_team_members" ON public.brand_team_members;
@@ -341,22 +341,22 @@ CREATE POLICY "Brand admin plus insert brand_team_members"
   ON public.brand_team_members
   FOR INSERT
   TO authenticated
-  WITH CHECK (public.biz_is_brand_admin_plus(brand_id, auth.uid()));
+  WITH CHECK (public.biz_is_brand_admin_plus_for_caller(brand_id));
 
 DROP POLICY IF EXISTS "Brand admin plus update brand_team_members" ON public.brand_team_members;
 CREATE POLICY "Brand admin plus update brand_team_members"
   ON public.brand_team_members
   FOR UPDATE
   TO authenticated
-  USING (public.biz_is_brand_admin_plus(brand_id, auth.uid()))
-  WITH CHECK (public.biz_is_brand_admin_plus(brand_id, auth.uid()));
+  USING (public.biz_is_brand_admin_plus_for_caller(brand_id))
+  WITH CHECK (public.biz_is_brand_admin_plus_for_caller(brand_id));
 
 DROP POLICY IF EXISTS "Brand admin plus delete brand_team_members" ON public.brand_team_members;
 CREATE POLICY "Brand admin plus delete brand_team_members"
   ON public.brand_team_members
   FOR DELETE
   TO authenticated
-  USING (public.biz_is_brand_admin_plus(brand_id, auth.uid()));
+  USING (public.biz_is_brand_admin_plus_for_caller(brand_id));
 
 -- ---------------------------------------------------------------------------
 -- RLS: brand_invitations (brand admin only)
@@ -367,7 +367,7 @@ CREATE POLICY "Brand admin plus select invitations"
   ON public.brand_invitations
   FOR SELECT
   TO authenticated
-  USING (public.biz_is_brand_admin_plus(brand_id, auth.uid()));
+  USING (public.biz_is_brand_admin_plus_for_caller(brand_id));
 
 DROP POLICY IF EXISTS "Brand admin plus insert invitations" ON public.brand_invitations;
 CREATE POLICY "Brand admin plus insert invitations"
@@ -375,7 +375,7 @@ CREATE POLICY "Brand admin plus insert invitations"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    public.biz_is_brand_admin_plus(brand_id, auth.uid())
+    public.biz_is_brand_admin_plus_for_caller(brand_id)
     AND invited_by = auth.uid()
   );
 
@@ -384,15 +384,15 @@ CREATE POLICY "Brand admin plus update invitations"
   ON public.brand_invitations
   FOR UPDATE
   TO authenticated
-  USING (public.biz_is_brand_admin_plus(brand_id, auth.uid()))
-  WITH CHECK (public.biz_is_brand_admin_plus(brand_id, auth.uid()));
+  USING (public.biz_is_brand_admin_plus_for_caller(brand_id))
+  WITH CHECK (public.biz_is_brand_admin_plus_for_caller(brand_id));
 
 DROP POLICY IF EXISTS "Brand admin plus delete invitations" ON public.brand_invitations;
 CREATE POLICY "Brand admin plus delete invitations"
   ON public.brand_invitations
   FOR DELETE
   TO authenticated
-  USING (public.biz_is_brand_admin_plus(brand_id, auth.uid()));
+  USING (public.biz_is_brand_admin_plus_for_caller(brand_id));
 
 -- =====================================================================
 -- 20260502100003_b1_phase3_events.sql
@@ -567,7 +567,7 @@ CREATE POLICY "Brand team can select events"
   TO authenticated
   USING (
     deleted_at IS NULL
-    AND public.biz_is_brand_member_for_read(brand_id, auth.uid())
+    AND public.biz_is_brand_member_for_read_for_caller(brand_id)
   );
 
 DROP POLICY IF EXISTS "Event manager plus can insert events" ON public.events;
@@ -578,7 +578,7 @@ CREATE POLICY "Event manager plus can insert events"
   WITH CHECK (
     deleted_at IS NULL
     AND created_by = auth.uid()
-    AND public.biz_brand_effective_rank(brand_id, auth.uid())
+    AND public.biz_brand_effective_rank_for_caller(brand_id)
       >= public.biz_role_rank('event_manager'::text)
   );
 
@@ -588,11 +588,11 @@ CREATE POLICY "Event manager plus can update events"
   FOR UPDATE
   TO authenticated
   USING (
-    public.biz_brand_effective_rank(brand_id, auth.uid())
+    public.biz_brand_effective_rank_for_caller(brand_id)
       >= public.biz_role_rank('event_manager'::text)
   )
   WITH CHECK (
-    public.biz_brand_effective_rank(brand_id, auth.uid())
+    public.biz_brand_effective_rank_for_caller(brand_id)
       >= public.biz_role_rank('event_manager'::text)
   );
 
@@ -602,7 +602,7 @@ CREATE POLICY "Event manager plus can delete events"
   FOR DELETE
   TO authenticated
   USING (
-    public.biz_brand_effective_rank(brand_id, auth.uid())
+    public.biz_brand_effective_rank_for_caller(brand_id)
       >= public.biz_role_rank('event_manager'::text)
   );
 
@@ -621,7 +621,7 @@ CREATE POLICY "Brand team can select event_dates"
       FROM public.events e
       WHERE e.id = event_dates.event_id
         AND e.deleted_at IS NULL
-        AND public.biz_is_brand_member_for_read(e.brand_id, auth.uid())
+        AND public.biz_is_brand_member_for_read_for_caller(e.brand_id)
     )
   );
 
@@ -631,7 +631,7 @@ CREATE POLICY "Event manager plus can insert event_dates"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    public.biz_is_event_manager_plus(event_id, auth.uid())
+    public.biz_is_event_manager_plus_for_caller(event_id)
   );
 
 DROP POLICY IF EXISTS "Event manager plus can update event_dates" ON public.event_dates;
@@ -639,15 +639,15 @@ CREATE POLICY "Event manager plus can update event_dates"
   ON public.event_dates
   FOR UPDATE
   TO authenticated
-  USING (public.biz_is_event_manager_plus(event_id, auth.uid()))
-  WITH CHECK (public.biz_is_event_manager_plus(event_id, auth.uid()));
+  USING (public.biz_is_event_manager_plus_for_caller(event_id))
+  WITH CHECK (public.biz_is_event_manager_plus_for_caller(event_id));
 
 DROP POLICY IF EXISTS "Event manager plus can delete event_dates" ON public.event_dates;
 CREATE POLICY "Event manager plus can delete event_dates"
   ON public.event_dates
   FOR DELETE
   TO authenticated
-  USING (public.biz_is_event_manager_plus(event_id, auth.uid()));
+  USING (public.biz_is_event_manager_plus_for_caller(event_id));
 
 -- =====================================================================
 -- 20260502100004_b1_phase4_ticket_types_waitlist.sql
@@ -745,7 +745,7 @@ CREATE POLICY "Brand team can select ticket_types"
       FROM public.events e
       WHERE e.id = ticket_types.event_id
         AND e.deleted_at IS NULL
-        AND public.biz_is_brand_member_for_read(e.brand_id, auth.uid())
+        AND public.biz_is_brand_member_for_read_for_caller(e.brand_id)
     )
   );
 
@@ -762,7 +762,7 @@ CREATE POLICY "Brand finance_manager rank or above can insert ticket_types"
       FROM public.events e
       WHERE e.id = ticket_types.event_id
         AND e.deleted_at IS NULL
-        AND public.biz_brand_effective_rank(e.brand_id, auth.uid())
+        AND public.biz_brand_effective_rank_for_caller(e.brand_id)
           >= public.biz_role_rank('finance_manager'::text)
     )
   );
@@ -779,7 +779,7 @@ CREATE POLICY "Brand finance_manager rank or above can update ticket_types"
       FROM public.events e
       WHERE e.id = ticket_types.event_id
         AND e.deleted_at IS NULL
-        AND public.biz_brand_effective_rank(e.brand_id, auth.uid())
+        AND public.biz_brand_effective_rank_for_caller(e.brand_id)
           >= public.biz_role_rank('finance_manager'::text)
     )
   )
@@ -789,7 +789,7 @@ CREATE POLICY "Brand finance_manager rank or above can update ticket_types"
       FROM public.events e
       WHERE e.id = ticket_types.event_id
         AND e.deleted_at IS NULL
-        AND public.biz_brand_effective_rank(e.brand_id, auth.uid())
+        AND public.biz_brand_effective_rank_for_caller(e.brand_id)
           >= public.biz_role_rank('finance_manager'::text)
     )
   );
@@ -806,7 +806,7 @@ CREATE POLICY "Brand finance_manager rank or above can delete ticket_types"
       FROM public.events e
       WHERE e.id = ticket_types.event_id
         AND e.deleted_at IS NULL
-        AND public.biz_brand_effective_rank(e.brand_id, auth.uid())
+        AND public.biz_brand_effective_rank_for_caller(e.brand_id)
           >= public.biz_role_rank('finance_manager'::text)
     )
   );
@@ -823,7 +823,7 @@ CREATE POLICY "Brand team can select waitlist_entries"
       FROM public.events e
       WHERE e.id = waitlist_entries.event_id
         AND e.deleted_at IS NULL
-        AND public.biz_is_brand_member_for_read(e.brand_id, auth.uid())
+        AND public.biz_is_brand_member_for_read_for_caller(e.brand_id)
     )
   );
 
@@ -949,7 +949,7 @@ CREATE POLICY "Buyer or brand team can select orders"
   ON public.orders
   FOR SELECT
   TO authenticated
-  USING (public.biz_can_read_order(id, auth.uid()));
+  USING (public.biz_can_read_order_for_caller(id));
 
 DROP POLICY IF EXISTS "Finance plus can insert orders" ON public.orders;
 CREATE POLICY "Finance plus can insert orders"
@@ -957,7 +957,7 @@ CREATE POLICY "Finance plus can insert orders"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    public.biz_can_manage_orders_for_event(event_id, auth.uid())
+    public.biz_can_manage_orders_for_event_for_caller(event_id)
   );
 
 DROP POLICY IF EXISTS "Finance plus can update orders" ON public.orders;
@@ -965,15 +965,15 @@ CREATE POLICY "Finance plus can update orders"
   ON public.orders
   FOR UPDATE
   TO authenticated
-  USING (public.biz_can_manage_orders_for_event(event_id, auth.uid()))
-  WITH CHECK (public.biz_can_manage_orders_for_event(event_id, auth.uid()));
+  USING (public.biz_can_manage_orders_for_event_for_caller(event_id))
+  WITH CHECK (public.biz_can_manage_orders_for_event_for_caller(event_id));
 
 DROP POLICY IF EXISTS "Finance plus can delete orders" ON public.orders;
 CREATE POLICY "Finance plus can delete orders"
   ON public.orders
   FOR DELETE
   TO authenticated
-  USING (public.biz_can_manage_orders_for_event(event_id, auth.uid()));
+  USING (public.biz_can_manage_orders_for_event_for_caller(event_id));
 
 -- order_line_items RLS (inherit order access)
 DROP POLICY IF EXISTS "Order parties can select line items" ON public.order_line_items;
@@ -981,7 +981,7 @@ CREATE POLICY "Order parties can select line items"
   ON public.order_line_items
   FOR SELECT
   TO authenticated
-  USING (public.biz_can_read_order(order_id, auth.uid()));
+  USING (public.biz_can_read_order_for_caller(order_id));
 
 DROP POLICY IF EXISTS "Finance plus can insert line items" ON public.order_line_items;
 CREATE POLICY "Finance plus can insert line items"
@@ -993,7 +993,7 @@ CREATE POLICY "Finance plus can insert line items"
       SELECT 1
       FROM public.orders o
       WHERE o.id = order_line_items.order_id
-        AND public.biz_can_manage_orders_for_event(o.event_id, auth.uid())
+        AND public.biz_can_manage_orders_for_event_for_caller(o.event_id)
     )
   );
 
@@ -1007,7 +1007,7 @@ CREATE POLICY "Finance plus can update line items"
       SELECT 1
       FROM public.orders o
       WHERE o.id = order_line_items.order_id
-        AND public.biz_can_manage_orders_for_event(o.event_id, auth.uid())
+        AND public.biz_can_manage_orders_for_event_for_caller(o.event_id)
     )
   )
   WITH CHECK (
@@ -1015,7 +1015,7 @@ CREATE POLICY "Finance plus can update line items"
       SELECT 1
       FROM public.orders o
       WHERE o.id = order_line_items.order_id
-        AND public.biz_can_manage_orders_for_event(o.event_id, auth.uid())
+        AND public.biz_can_manage_orders_for_event_for_caller(o.event_id)
     )
   );
 
@@ -1029,7 +1029,7 @@ CREATE POLICY "Finance plus can delete line items"
       SELECT 1
       FROM public.orders o
       WHERE o.id = order_line_items.order_id
-        AND public.biz_can_manage_orders_for_event(o.event_id, auth.uid())
+        AND public.biz_can_manage_orders_for_event_for_caller(o.event_id)
     )
   );
 
@@ -1229,8 +1229,8 @@ BEGIN
 
   v_brand := public.biz_event_brand_id(OLD.event_id);
   v_is_team :=
-    public.biz_is_brand_member_for_read(v_brand, auth.uid())
-    AND public.biz_brand_effective_rank(v_brand, auth.uid())
+    public.biz_is_brand_member_for_read_for_caller(v_brand)
+    AND public.biz_brand_effective_rank_for_caller(v_brand)
       >= public.biz_role_rank('finance_manager'::text);
 
   v_is_scanner := EXISTS (
@@ -1326,8 +1326,8 @@ CREATE POLICY "Event manager plus can manage scanner_invitations"
   ON public.scanner_invitations
   FOR ALL
   TO authenticated
-  USING (public.biz_is_event_manager_plus(event_id, auth.uid()))
-  WITH CHECK (public.biz_is_event_manager_plus(event_id, auth.uid()));
+  USING (public.biz_is_event_manager_plus_for_caller(event_id))
+  WITH CHECK (public.biz_is_event_manager_plus_for_caller(event_id));
 
 -- ---------------------------------------------------------------------------
 -- RLS: event_scanners
@@ -1340,7 +1340,7 @@ CREATE POLICY "Scanners and managers read event_scanners"
   TO authenticated
   USING (
     user_id = auth.uid()
-    OR public.biz_is_event_manager_plus(event_id, auth.uid())
+    OR public.biz_is_event_manager_plus_for_caller(event_id)
   );
 
 DROP POLICY IF EXISTS "Event manager plus insert event_scanners" ON public.event_scanners;
@@ -1349,7 +1349,7 @@ CREATE POLICY "Event manager plus insert event_scanners"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    public.biz_is_event_manager_plus(event_id, auth.uid())
+    public.biz_is_event_manager_plus_for_caller(event_id)
     AND assigned_by = auth.uid()
   );
 
@@ -1358,15 +1358,15 @@ CREATE POLICY "Event manager plus update event_scanners"
   ON public.event_scanners
   FOR UPDATE
   TO authenticated
-  USING (public.biz_is_event_manager_plus(event_id, auth.uid()))
-  WITH CHECK (public.biz_is_event_manager_plus(event_id, auth.uid()));
+  USING (public.biz_is_event_manager_plus_for_caller(event_id))
+  WITH CHECK (public.biz_is_event_manager_plus_for_caller(event_id));
 
 DROP POLICY IF EXISTS "Event manager plus delete event_scanners" ON public.event_scanners;
 CREATE POLICY "Event manager plus delete event_scanners"
   ON public.event_scanners
   FOR DELETE
   TO authenticated
-  USING (public.biz_is_event_manager_plus(event_id, auth.uid()));
+  USING (public.biz_is_event_manager_plus_for_caller(event_id));
 
 -- ---------------------------------------------------------------------------
 -- RLS: tickets
@@ -1715,14 +1715,85 @@ AS $$
   );
 $$;
 
+-- PostgREST: only caller-scoped entry points for authenticated (no arbitrary p_user_id).
+CREATE OR REPLACE FUNCTION public.biz_brand_effective_rank_for_caller(p_brand_id uuid)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_brand_effective_rank(p_brand_id, auth.uid());
+$$;
+
+CREATE OR REPLACE FUNCTION public.biz_is_brand_member_for_read_for_caller(p_brand_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_is_brand_member_for_read(p_brand_id, auth.uid());
+$$;
+
+CREATE OR REPLACE FUNCTION public.biz_is_brand_admin_plus_for_caller(p_brand_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_is_brand_admin_plus(p_brand_id, auth.uid());
+$$;
+
+CREATE OR REPLACE FUNCTION public.biz_is_event_manager_plus_for_caller(p_event_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_is_event_manager_plus(p_event_id, auth.uid());
+$$;
+
+CREATE OR REPLACE FUNCTION public.biz_can_read_order_for_caller(p_order_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_can_read_order(p_order_id, auth.uid());
+$$;
+
+CREATE OR REPLACE FUNCTION public.biz_can_manage_orders_for_event_for_caller(p_event_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_can_manage_orders_for_event(p_event_id, auth.uid());
+$$;
+
+CREATE OR REPLACE FUNCTION public.biz_can_manage_payments_for_brand_for_caller(p_brand_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_can_manage_payments_for_brand(p_brand_id, auth.uid());
+$$;
+
 -- stripe_connect_accounts
 DROP POLICY IF EXISTS "Brand admin plus can manage stripe_connect_accounts" ON public.stripe_connect_accounts;
 CREATE POLICY "Brand admin plus can manage stripe_connect_accounts"
   ON public.stripe_connect_accounts
   FOR ALL
   TO authenticated
-  USING (public.biz_can_manage_payments_for_brand(brand_id, auth.uid()))
-  WITH CHECK (public.biz_can_manage_payments_for_brand(brand_id, auth.uid()));
+  USING (public.biz_can_manage_payments_for_brand_for_caller(brand_id))
+  WITH CHECK (public.biz_can_manage_payments_for_brand_for_caller(brand_id));
 
 -- payouts
 DROP POLICY IF EXISTS "Brand admin plus can manage payouts" ON public.payouts;
@@ -1730,8 +1801,8 @@ CREATE POLICY "Brand admin plus can manage payouts"
   ON public.payouts
   FOR ALL
   TO authenticated
-  USING (public.biz_can_manage_payments_for_brand(brand_id, auth.uid()))
-  WITH CHECK (public.biz_can_manage_payments_for_brand(brand_id, auth.uid()));
+  USING (public.biz_can_manage_payments_for_brand_for_caller(brand_id))
+  WITH CHECK (public.biz_can_manage_payments_for_brand_for_caller(brand_id));
 
 -- refunds (via order → brand)
 DROP POLICY IF EXISTS "Brand admin plus can manage refunds" ON public.refunds;
@@ -1740,15 +1811,13 @@ CREATE POLICY "Brand admin plus can manage refunds"
   FOR ALL
   TO authenticated
   USING (
-    public.biz_can_manage_payments_for_brand(
-      public.biz_order_brand_id(order_id),
-      auth.uid()
+    public.biz_can_manage_payments_for_brand_for_caller(
+      public.biz_order_brand_id(order_id)
     )
   )
   WITH CHECK (
-    public.biz_can_manage_payments_for_brand(
-      public.biz_order_brand_id(order_id),
-      auth.uid()
+    public.biz_can_manage_payments_for_brand_for_caller(
+      public.biz_order_brand_id(order_id)
     )
   );
 
@@ -1759,15 +1828,13 @@ CREATE POLICY "Brand admin plus can manage door_sales_ledger"
   FOR ALL
   TO authenticated
   USING (
-    public.biz_can_manage_payments_for_brand(
-      public.biz_event_brand_id(event_id),
-      auth.uid()
+    public.biz_can_manage_payments_for_brand_for_caller(
+      public.biz_event_brand_id(event_id)
     )
   )
   WITH CHECK (
-    public.biz_can_manage_payments_for_brand(
-      public.biz_event_brand_id(event_id),
-      auth.uid()
+    public.biz_can_manage_payments_for_brand_for_caller(
+      public.biz_event_brand_id(event_id)
     )
   );
 
@@ -1878,7 +1945,6 @@ AS
 SELECT
   id,
   brand_id,
-  created_by,
   title,
   description,
   slug,
@@ -2014,6 +2080,13 @@ REVOKE ALL ON FUNCTION public.biz_can_read_order(uuid, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.biz_can_manage_orders_for_event(uuid, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.biz_order_brand_id(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.biz_can_manage_payments_for_brand(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_brand_effective_rank_for_caller(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_is_brand_member_for_read_for_caller(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_is_brand_admin_plus_for_caller(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_is_event_manager_plus_for_caller(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_can_read_order_for_caller(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_can_manage_orders_for_event_for_caller(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_can_manage_payments_for_brand_for_caller(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.biz_prevent_brand_account_id_change() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.biz_prevent_event_brand_id_change() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.biz_prevent_event_dates_event_id_change() FROM PUBLIC;
@@ -2024,15 +2097,15 @@ REVOKE ALL ON FUNCTION public.biz_scan_events_enforce_ticket_event() FROM PUBLIC
 REVOKE ALL ON FUNCTION public.biz_audit_log_block_mutate() FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION public.biz_role_rank(text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.biz_brand_effective_rank(uuid, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.biz_is_brand_member_for_read(uuid, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.biz_is_brand_admin_plus(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_event_brand_id(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.biz_is_event_manager_plus(uuid, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.biz_can_read_order(uuid, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.biz_can_manage_orders_for_event(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_order_brand_id(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.biz_can_manage_payments_for_brand(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_brand_effective_rank_for_caller(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_is_brand_member_for_read_for_caller(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_is_brand_admin_plus_for_caller(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_is_event_manager_plus_for_caller(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_can_read_order_for_caller(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_can_manage_orders_for_event_for_caller(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_can_manage_payments_for_brand_for_caller(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_prevent_brand_account_id_change() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_prevent_event_brand_id_change() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_prevent_event_dates_event_id_change() TO authenticated;
@@ -2052,6 +2125,13 @@ GRANT EXECUTE ON FUNCTION public.biz_can_read_order(uuid, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_can_manage_orders_for_event(uuid, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_order_brand_id(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_can_manage_payments_for_brand(uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_brand_effective_rank_for_caller(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_is_brand_member_for_read_for_caller(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_is_brand_admin_plus_for_caller(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_is_event_manager_plus_for_caller(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_can_read_order_for_caller(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_can_manage_orders_for_event_for_caller(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_can_manage_payments_for_brand_for_caller(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_prevent_brand_account_id_change() TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_prevent_event_brand_id_change() TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_prevent_event_dates_event_id_change() TO service_role;
