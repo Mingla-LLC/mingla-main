@@ -92,6 +92,7 @@ export type EditableLiveEventFields = Pick<
   | "hideRemainingCount"
   | "passwordProtected"
   | "privateGuestList"
+  | "inPersonPaymentsEnabled"
 >;
 
 /**
@@ -159,6 +160,8 @@ export interface LiveEvent {
   passwordProtected: boolean;
   /** Cycle 10: hide attendee count from buyer-side surfaces. I-26 — operator-only flag; buyer surfaces honor this when added (NOT in Cycle 10). */
   privateGuestList: boolean;
+  /** Cycle 12: when true, J-D1 "Door Sales" ActionTile + /event/{id}/door route reachable. Default false. */
+  inPersonPaymentsEnabled: boolean;
   // Forward-compat for Cycle 9 (orders) — empty until B3 wires Stripe
   // [TRANSITIONAL] orders array empty in Cycle 6; populated by B3 webhooks.
   orders: never[];
@@ -223,12 +226,41 @@ export interface LiveEventState {
 
 type PersistedState = Pick<LiveEventState, "events">;
 
+// Cycle 12 — v1 LiveEvent + V1 TicketStub (no availableAt + no
+// inPersonPaymentsEnabled). v2 adds both fields with safe defaults.
+type V1LiveTicketStub = Omit<TicketStub, "availableAt">;
+type V1LiveEvent = Omit<LiveEvent, "tickets" | "inPersonPaymentsEnabled"> & {
+  tickets: V1LiveTicketStub[];
+};
+
+const upgradeV1LiveTicketToV2 = (t: V1LiveTicketStub): TicketStub => ({
+  ...t,
+  availableAt: "both",
+});
+
+const upgradeV1LiveEventToV2 = (e: V1LiveEvent): LiveEvent => ({
+  ...e,
+  tickets: e.tickets.map(upgradeV1LiveTicketToV2),
+  inPersonPaymentsEnabled: false,
+});
+
 const persistOptions: PersistOptions<LiveEventState, PersistedState> = {
   name: "mingla-business.liveEvent.v1",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state): PersistedState => ({ events: state.events }),
-  version: 1,
-  // No migrate function — net new store. Future cycles add migrators here.
+  version: 2,
+  migrate: (persistedState, version): PersistedState => {
+    if (version < 1) {
+      return { events: [] };
+    }
+    if (version === 1) {
+      // v1 → v2: tickets gain availableAt:"both"; event gains
+      // inPersonPaymentsEnabled:false. Cycle 12 additive migrate.
+      const v1 = persistedState as { events: V1LiveEvent[] };
+      return { events: v1.events.map(upgradeV1LiveEventToV2) };
+    }
+    return persistedState as PersistedState;
+  },
 };
 
 export const useLiveEventStore = create<LiveEventState>()(

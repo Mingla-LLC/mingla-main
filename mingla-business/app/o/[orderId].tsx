@@ -72,6 +72,13 @@ const PAYMENT_METHOD_LABEL: Record<CheckoutPaymentMethod, string> = {
   apple_pay: "Apple Pay",
   google_pay: "Google Pay",
   free: "Free",
+  // Cycle 12 door methods — defensive fallbacks. I-29 means door payments
+  // never reach the buyer-side order detail surface; these labels exist only
+  // for type-exhaustiveness on the Record.
+  cash: "Cash",
+  card_reader: "Card reader",
+  nfc: "NFC tap",
+  manual: "Manual",
 };
 
 const isWeb = Platform.OS === "web";

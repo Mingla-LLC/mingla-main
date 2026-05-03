@@ -94,11 +94,14 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
     }
   }, [visible]);
 
-  // Visible (non-hidden) ticket types for picker
+  // Visible (non-hidden) ticket types for picker.
+  // Cycle 12 I-30: comps stay tied to "both" tiers only — door-only tiers
+  // are walk-up-only and don't surface as comp options (use case is unclear;
+  // deferred). Online-only tiers are fine as comps (operator-side advance grant).
   const pickableTickets = useMemo<TicketStub[]>(
     () =>
       event.tickets
-        .filter((t) => t.visibility !== "hidden")
+        .filter((t) => t.visibility !== "hidden" && t.availableAt === "both")
         .sort((a, b) => a.displayOrder - b.displayOrder),
     [event.tickets],
   );

@@ -73,6 +73,9 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
   const [name, setName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [canManualCheckIn, setCanManualCheckIn] = useState<boolean>(false);
+  // Cycle 12 — semantics: "can take cash + manual payments at the door".
+  // Card reader + NFC remain TRANSITIONAL until B-cycle Stripe Terminal SDK.
+  const [canAcceptPayments, setCanAcceptPayments] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
   // Reset state on visible flip → true
@@ -81,6 +84,7 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
       setName("");
       setEmail("");
       setCanManualCheckIn(false);
+      setCanAcceptPayments(false);
       setSubmitting(false);
     }
   }, [visible]);
@@ -107,9 +111,9 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
           permissions: {
             canScan: true,
             canManualCheckIn,
-            // ALWAYS false in Cycle 11 — gated on §6.2 B-cycle scanner-payments.
-            // EXIT: B-cycle enables this toggle.
-            canAcceptPayments: false,
+            // Cycle 12 — semantics = cash + manual today; card + NFC TRANSITIONAL
+            // until B-cycle Stripe Terminal SDK. Operator-controllable per scanner.
+            canAcceptPayments,
           },
           invitedBy: operatorAccountId,
         });
@@ -124,6 +128,7 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
     email,
     name,
     canManualCheckIn,
+    canAcceptPayments,
     operatorAccountId,
     onSuccess,
   ]);
@@ -234,19 +239,34 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
             </Pressable>
           </View>
 
-          {/* Can accept payments — DISABLED in Cycle 11 (locked decision #6) */}
-          <View style={[styles.toggleRow, styles.toggleRowDisabled]}>
+          {/* Cycle 12 — Accept door payments toggle (FLIPPED from Cycle 11
+              hardcoded-false). Semantics: cash + manual today; card reader + NFC
+              remain TRANSITIONAL until B-cycle Stripe Terminal SDK. */}
+          <View style={styles.toggleRow}>
             <View style={styles.toggleCol}>
-              <Text style={[styles.toggleLabel, styles.toggleLabelDisabled]}>
-                Accept door payments
-              </Text>
+              <Text style={styles.toggleLabel}>Accept payments at the door</Text>
               <Text style={styles.toggleSubline}>
-                Door payments coming in B-cycle.
+                They can take cash and manual payments. Card reader and NFC tap-to-pay land in B-cycle.
               </Text>
             </View>
-            <View style={[styles.toggleTrack, styles.toggleTrackDisabled]}>
-              <View style={styles.toggleThumb} />
-            </View>
+            <Pressable
+              onPress={() => !submitting && setCanAcceptPayments((v) => !v)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: canAcceptPayments }}
+              accessibilityLabel="Accept payments at the door"
+              disabled={submitting}
+              style={[
+                styles.toggleTrack,
+                canAcceptPayments && styles.toggleTrackOn,
+              ]}
+            >
+              <View
+                style={[
+                  styles.toggleThumb,
+                  canAcceptPayments && styles.toggleThumbOn,
+                ]}
+              />
+            </Pressable>
           </View>
 
           {/* TRANSITIONAL footer */}

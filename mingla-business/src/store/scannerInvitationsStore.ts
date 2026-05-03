@@ -43,8 +43,9 @@ export interface ScannerPermissions {
   canScan: boolean;
   /** Operator-set — controls J-S5 manual check-in CTA visibility for this scanner. */
   canManualCheckIn: boolean;
-  // ALWAYS false in Cycle 11 — gated on §6.2 B-cycle scanner-payments.
-  // EXIT: B-cycle enables this toggle.
+  // Cycle 12 — operator-controllable per scanner. Semantics = "can take
+  // cash + manual payments at the door". Card reader + NFC remain
+  // TRANSITIONAL until B-cycle Stripe Terminal SDK lands.
   canAcceptPayments: boolean;
 }
 

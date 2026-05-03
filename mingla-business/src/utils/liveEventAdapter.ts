@@ -63,6 +63,7 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   hideRemainingCount: e.hideRemainingCount,
   passwordProtected: e.passwordProtected,
   privateGuestList: e.privateGuestList,
+  inPersonPaymentsEnabled: e.inPersonPaymentsEnabled,
   // DraftEvent-only fields (wizard-internal; stubbed for edit mode)
   lastStepReached: 0,
   status: "live" as const,
@@ -101,6 +102,7 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   hideRemainingCount: "Hide remaining count",
   passwordProtected: "Password protected",
   privateGuestList: "Private guest list",
+  inPersonPaymentsEnabled: "In-person payments",
 };
 
 /**

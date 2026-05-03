@@ -658,6 +658,9 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
       description: description.trim().length > 0 ? description.trim() : null,
       saleStartAt,
       saleEndAt,
+      // Cycle 12 — preserve when editing; default "both" for new tiers
+      // (visible online + door). I-30 enforced via filter chains downstream.
+      availableAt: initial?.availableAt ?? "both",
     };
     onSave(ticket);
   }, [
