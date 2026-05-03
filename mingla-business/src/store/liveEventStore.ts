@@ -228,9 +228,20 @@ type PersistedState = Pick<LiveEventState, "events">;
 
 // Cycle 12 — v1 LiveEvent + V1 TicketStub (no availableAt + no
 // inPersonPaymentsEnabled). v2 adds both fields with safe defaults.
+//
+// Cycle 12 rework — privateGuestList is also marked optional in V1 because
+// pre-Cycle-10 published events were persisted under v1 BEFORE that field
+// was added (Cycle 10 added the field without a persist version bump). The
+// migrate now backfills it to false so EditPublishedScreen's diff display
+// never sees undefined for this field.
 type V1LiveTicketStub = Omit<TicketStub, "availableAt">;
-type V1LiveEvent = Omit<LiveEvent, "tickets" | "inPersonPaymentsEnabled"> & {
+type V1LiveEvent = Omit<
+  LiveEvent,
+  "tickets" | "inPersonPaymentsEnabled" | "privateGuestList"
+> & {
   tickets: V1LiveTicketStub[];
+  /** Pre-Cycle-10 events may not have this field. */
+  privateGuestList?: boolean;
 };
 
 const upgradeV1LiveTicketToV2 = (t: V1LiveTicketStub): TicketStub => ({
@@ -242,6 +253,8 @@ const upgradeV1LiveEventToV2 = (e: V1LiveEvent): LiveEvent => ({
   ...e,
   tickets: e.tickets.map(upgradeV1LiveTicketToV2),
   inPersonPaymentsEnabled: false,
+  // Cycle 12 rework — backfill pre-Cycle-10 events.
+  privateGuestList: e.privateGuestList ?? false,
 });
 
 const persistOptions: PersistOptions<LiveEventState, PersistedState> = {

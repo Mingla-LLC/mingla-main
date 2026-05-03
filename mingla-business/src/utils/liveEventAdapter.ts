@@ -213,6 +213,13 @@ export const editableDraftToPatch = (
   if (original.privateGuestList !== edited.privateGuestList) {
     patch.privateGuestList = edited.privateGuestList;
   }
+  // Cycle 12 rework — patch builder must include the door-sales toggle.
+  // Phase 1 wired this field into FIELD_LABELS + the snapshot extract +
+  // the editable-keys union but missed the patch check, so toggling fell
+  // through to "No changes to save" silently. Mirrors privateGuestList.
+  if (original.inPersonPaymentsEnabled !== edited.inPersonPaymentsEnabled) {
+    patch.inPersonPaymentsEnabled = edited.inPersonPaymentsEnabled;
+  }
   return patch;
 };
 
@@ -251,6 +258,14 @@ const formatValueForKey = (
   key: keyof EditableLiveEventFields,
   value: unknown,
 ): string => {
+  // Cycle 12 rework — undefined guard. Pre-Cycle-10 published events
+  // can carry undefined for fields added after the persist version they
+  // were stored under (e.g., privateGuestList added in Cycle 10 with no
+  // migrate). Without this guard, the JSON.stringify(undefined) fallback
+  // returns the literal value `undefined`, then truncate(undefined).length
+  // crashes the EditPublishedScreen render. Treat undefined the same as
+  // null (both render as "(empty)").
+  if (value === undefined) return "(empty)";
   if (value === null) return "(empty)";
   if (typeof value === "string") {
     return value.length === 0 ? "(empty)" : truncate(value);
