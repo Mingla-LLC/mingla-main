@@ -93,6 +93,7 @@ export const convertDraftToLiveEvent = (
     hideRemainingCount: draft.hideRemainingCount,
     passwordProtected: draft.passwordProtected,
     privateGuestList: draft.privateGuestList,
+    inPersonPaymentsEnabled: draft.inPersonPaymentsEnabled,
     // Forward-compat for Cycle 9
     orders: [],
     // Meta

@@ -298,6 +298,7 @@ const TICKET_FIELD_LABELS: Record<string, string> = {
   maxPurchaseQty: "Max purchase qty",
   allowTransfers: "Allow transfers",
   displayOrder: "Display order",
+  availableAt: "Available at",
 };
 
 const TicketsDiffSubRenderer: React.FC<TicketsDiffSubRendererProps> = ({

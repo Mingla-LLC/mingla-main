@@ -7,11 +7,32 @@
 
 ---
 
-## Queued for ORCH-0707 CLOSE (DRAFT until tester PASS)
+## ACTIVE (post ORCH-0700 Phase 3B CLOSE 2026-05-03)
+
+### I-CATEGORY-SLUG-CANONICAL — Every category slug producer must emit canonical 10
+
+**Statement:** Any helper function (SQL, TypeScript, or other) that produces a category slug for a `place_pool` row MUST return a value within the canonical 10-slug set defined by `Object.values(DISPLAY_TO_SLUG)` in `supabase/functions/_shared/categoryPlaceTypes.ts:473-484`. NULL is acceptable (Constitution #9 — never fabricate). Any other value is a violation.
+
+**Canonical 10:** `nature, icebreakers, drinks_and_music, brunch_lunch_casual, upscale_fine_dining, movies_theatre, creative_arts, play, flowers, groceries`.
+
+**Rationale:** ORCH-0700 Phase 1 helper `pg_map_primary_type_to_mingla_category` shipped with an invented 11-slug taxonomy (`brunch`+`casual_food` split; `movies`+`theatre` split; no `groceries` — grocery types absorbed into `flowers`). Admin Place Pool dashboard reads matview `primary_category` expecting canonical display slugs; mismatch caused 3 cells to render 0 globally for ~6 hours until Phase 3B (Migration 7) corrected the helper. The bug class: a helper that produces values no consumer can resolve.
+
+**Enforcement (3 gates):**
+1. **SQL self-verify probes** in helper migration: 16 input/output assertions inside DO block; CREATE OR REPLACE migration aborts via RAISE EXCEPTION on regression.
+2. **Matview post-refresh probe** in helper migration: scans `admin_place_pool_mv` for any `primary_category` value not in canonical set ∪ {`uncategorized`}; aborts on offending row.
+3. **TS unit test** `supabase/functions/_shared/__tests__/derivePoolCategory_canonical.test.ts`: 21 Deno tests. Critical assertion: `for slug in ALL_DERIVED_CATEGORY_SLUGS: assert(Object.values(DISPLAY_TO_SLUG).includes(slug))`.
+
+**Test that catches a regression:** any new PR that adds a bucket to `derivePoolCategory.ts` `ORDERED_BUCKETS` whose slug isn't in `DISPLAY_TO_SLUG` fails the unit test immediately at deno test time. Any new SQL helper that emits a non-canonical slug fails its self-verify probe at migration apply time.
+
+**Established:** 2026-05-03 by ORCH-0700 Phase 3B forensics + spec + implementor. Operator-confirmed Path A (display-label semantic for matview `primary_category`).
+
+---
+
+## ACTIVE (post ORCH-0707 CLOSE 2026-05-02)
 
 ### I-CURATED-LABEL-SOURCE — Curated stop label authority
 
-**Status:** DRAFT (registered 2026-05-02 by ORCH-0707 implementor; orchestrator flips DRAFT → ACTIVE on tester PASS per post-PASS protocol)
+**Status:** ACTIVE (registered 2026-05-02 by ORCH-0707 implementor; flipped DRAFT → ACTIVE 2026-05-03 alongside ORCH-0700 Phase 3B CLOSE since ORCH-0707 work is live + verified)
 
 **Statement:** The `placeType` field on every curated stop (response of `generate-curated-experiences`) AND every alternative (response of `replace-curated-stop`) MUST be the comboCategory slug — i.e., the slug of the combo slot the place was selected to fill. It MUST NEVER be derived from `place_pool.ai_categories`, `place_pool.ai_primary_identity`, or any other deprecated AI-derived per-place column.
 
@@ -30,23 +51,21 @@
 
 ---
 
-## Queued for ORCH-0700 CLOSE (DRAFT until tester PASS)
+## ACTIVE-FULL (post ORCH-0700 Phase 3B CLOSE 2026-05-03)
 
-### I-CATEGORY-DERIVED-ON-DROP (DRAFT — partial flip post-ORCH-0700; full-flip post-ORCH-0707 follow-up)
+### I-CATEGORY-DERIVED-ON-DROP — No stored interpretation columns on place_pool
 
-**Rule:** Mingla category for any place is derived from `mapPrimaryTypeToMinglaCategory(primary_type, types)` (admin-display contexts) OR from `place_scores.signal_id` (curated/serving contexts). Never from a stored interpretation column on `place_pool`.
+**Rule:** Mingla category for any place is derived from `pg_map_primary_type_to_mingla_category(primary_type, types)` (admin-display contexts via matview `admin_place_pool_mv.primary_category`) OR from `place_scores.signal_id` (curated/serving contexts). Never from a stored interpretation column on `place_pool`.
 
-**Status:** PARTIAL after ORCH-0700 close — `seeding_category` dropped; `ai_categories` family still alive (deferred to ORCH-0707 follow-up). FULL after ORCH-0707 follow-up migration drops the 5 ai_* columns.
+**Status:** ACTIVE-FULL as of 2026-05-03. Migration 6 atomically dropped all 6 stored interpretation columns: `seeding_category, ai_categories, ai_reason, ai_primary_identity, ai_confidence, ai_web_evidence`. Archive table `_archive_orch_0700_doomed_columns` retains 69,599-row backup until 2026-06-02.
 
 **Why:** Constitution #2 (one-owner-per-truth) — Google's raw type data is the owner; interpretation layers are derivations not stored facts. Constitution #8 (subtract-before-adding) — drop the interpretation columns once derivation function is canonical.
 
-**Enforcement mechanism:** schema check (CI test that asserts no AI/seeding interpretation columns exist on place_pool); migration sequencing rule (drop column only after all readers verified migrated).
+**Enforcement mechanism:** schema check (no AI/seeding interpretation columns physically exist on place_pool post-Migration-6); the 3 regression gates of I-CATEGORY-SLUG-CANONICAL also enforce this transitively.
 
-**Test that catches a regression:** any new PR that adds an interpretation column to place_pool fails the schema check.
+**Test that catches a regression:** any new PR that adds an interpretation column to place_pool would surface immediately on schema review (no automated CI gate yet — flag for future).
 
-**Status:** DRAFT until ORCH-0707 follow-up tester PASS; then ACTIVE-FULL.
-
-**Established:** 2026-05-02 by ORCH-0700 cycle-3 audit (the 4-system architectural mapping: seeding pipeline / scoring pipeline / serving / rules engine).
+**Established:** 2026-05-02 by ORCH-0700 cycle-3 audit (the 4-system architectural mapping: seeding pipeline / scoring pipeline / serving / rules engine). Flipped DRAFT → ACTIVE-FULL 2026-05-03 by ORCH-0700 Phase 3B CLOSE.
 
 ---
 
@@ -211,6 +230,48 @@ These two invariants are queued for codification when ORCH-0708 closes (operator
 - When backend lands, `useScannerInvitationsStore` contracts to a cache (or removes entirely if backend is sole authority).
 
 **Test that catches a regression:** SC-19 + SC-20 + T-21: TRANSITIONAL banner visible always; canAcceptPayments toggle DISABLED + always false; toast on confirm matches the deferred-email copy.
+
+> **Cycle 12 amendment:** the `canAcceptPayments` type-lock was FLIPPED per Cycle 12 Decision #4 — operator can now toggle the permission per scanner. Semantics: "can take cash + manual payments at the door". Card reader + NFC tap-to-pay remain TRANSITIONAL until B-cycle Stripe Terminal SDK + platform NFC integrations land. The flip is a permission-shape change, NOT a functional-flow change — the rest of I-28 (UI-only invitation, no email, no acceptance flow, no auth gate) stays in force. Reference: `mingla-business/src/components/scanners/InviteScannerSheet.tsx` post-Cycle-12 commit.
+
+---
+
+### I-29 Door sales NEVER fabricated as phantom OrderRecord rows (mingla-business — Cycle 12)
+
+**Rule:** Door sales live in `useDoorSalesStore.entries` ONLY. NEVER as phantom `OrderRecord` rows in `useOrderStore`. The `CheckoutPaymentMethod` union extension (Cycle 12 §4.8) adds `"cash" | "card_reader" | "nfc" | "manual"` values, but online checkout flow (`app/checkout/[eventId]/payment.tsx`) MUST filter to `"card" | "apple_pay" | "google_pay" | "free"` ONLY when constructing OrderResult — door payment methods MUST NEVER appear in buyer flow. The anon-tolerant buyer routes (`app/o/`, `app/e/`, `app/checkout/`) MUST NOT import `useDoorSalesStore`.
+
+**Why:** Mirrors I-25 (comp guests in `useGuestStore` only) — same architectural rule applied to a different surface. I-19 (immutable order financials) requires write-once snapshot fields on `OrderRecord`; door sales have parallel write-once snapshot fields on `DoorSaleRecord`. Calling them "orders" is a category error that would cascade into checkout-flow type checks that don't make sense for in-person walk-ups (e.g., `paymentIntentId`, `stripeFee`). Operators want a separate ledger; auditors need a clear separation between the online (Stripe-mediated) and in-person (manual cash/card-reader) financial event streams.
+
+**Established by:** Cycle 12 close (2026-05-03). Code: `mingla-business/src/store/doorSalesStore.ts` + `mingla-business/app/event/[id]/door/`. Anon-route safety enforced by 0-hit grep across `app/o/`, `app/e/`, `app/checkout/`.
+
+**Enforcement (Cycle 12):**
+- Convention + grep test (T-39 + T-41): `useDoorSalesStore` MUST NOT appear in `app/o/`, `app/e/`, `app/checkout/` (anon-tolerant routes per I-21).
+- `CheckoutPaymentMethod` union extension is type-only; runtime filter at the buyer-flow boundary (Cycle 8 J-C3 payment screen).
+- Door payment methods are never persisted to `OrderRecord.paymentMethod` (the type union union allows door values for forward-compat with the merged `CheckoutPaymentMethod` shape, but the store mutation layer rejects them).
+
+**EXIT CONDITION:** None — this is a permanent architectural separation. B-cycle wires backend writes to `door_sales_ledger` (PR #59 schema), keeping door sales separate from the `orders` table forever.
+
+**Test that catches a regression:** T-39 + T-41 grep; SC-31 banned-subscription pattern; visual check that the J-G1 list distinguishes ONLINE / COMP / DOOR row kinds.
+
+---
+
+### I-30 Door-tier vs online-tier separation enforced via `availableAt` (mingla-business — Cycle 12)
+
+**Rule:** `TicketStub.availableAt: "online" | "door" | "both"` is the source of truth for which surface a tier appears on. Online checkout (Cycle 8 J-C1 picker at `app/checkout/[eventId]/index.tsx`) MUST filter `availableAt !== "door"` — surfaces only `"online"` + `"both"`. Door sale flow (Cycle 12 J-D3 picker in `DoorSaleNewSheet.tsx`) MUST filter `availableAt !== "online"` — surfaces only `"door"` + `"both"`. Comp guest flow (Cycle 10 `AddCompGuestSheet`) MUST filter `availableAt === "both"` ONLY — comps stay tied to "both" tiers; door-only AND online-only tiers DO NOT surface for comps (use case is unclear; deferred per investigation OBS-3).
+
+**Why:** Operators want pricing flexibility — charge £25 advance / £30 at door is a common pattern. Without enforcement, an operator could accidentally make door-only tiers show up online (and vice versa), creating customer confusion + revenue loss. The `availableAt` field is additive (default `"both"` for migrated tiers) — no operator action needed for backward-compat. Persist v5→v6 migrate function defaults `"both"` for all pre-Cycle-12 tier rows.
+
+**Established by:** Cycle 12 close (2026-05-03). Code: `mingla-business/src/store/draftEventStore.ts` (TicketStub.availableAt + persist v5→v6 migrate); `mingla-business/app/checkout/[eventId]/index.tsx` (J-C1 filter); `mingla-business/src/components/door/DoorSaleNewSheet.tsx` (J-D3 filter); `mingla-business/src/components/guests/AddCompGuestSheet.tsx` (comp filter).
+
+**Enforcement (Cycle 12):**
+- Convention + 3 grep tests:
+  - T-42 J-C1: `availableAt !== "door"` filter present in `app/checkout/[eventId]/index.tsx`
+  - T-43 J-D3: `availableAt !== "online"` filter present in `DoorSaleNewSheet.tsx`
+  - T-44 AddCompGuestSheet: `availableAt === "both"` filter present
+- Persist v5→v6 migrate ships safe default `availableAt: "both"` for all pre-Cycle-12 tiers (verified by tsc + cold-start hydration test).
+
+**EXIT CONDITION:** None — this is a permanent separation. B-cycle backend wire reuses the same field on the `tickets` table (no migration drift).
+
+**Test that catches a regression:** T-42 + T-43 + T-44 grep; SC-26 + SC-27 + SC-29 manual smoke (door-only tier hidden in online checkout; door-only tier hidden in comp picker; cold-start hydration preserves `availableAt: "both"` for all migrated tiers).
 
 ---
 

@@ -30,11 +30,18 @@ import {
   type OrderRecord,
 } from "../../../../src/store/orderStore";
 import { useScanStore } from "../../../../src/store/scanStore";
+import {
+  useDoorSalesStore,
+  type DoorPaymentMethod,
+  type DoorSaleRecord,
+} from "../../../../src/store/doorSalesStore";
 import { useCurrentBrandStore } from "../../../../src/store/currentBrandStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { formatGbp } from "../../../../src/utils/currency";
 import { expandTicketIds } from "../../../../src/utils/expandTicketIds";
+import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
 
+import { DoorRefundSheet } from "../../../../src/components/door/DoorRefundSheet";
 import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { GlassCard } from "../../../../src/components/ui/GlassCard";
@@ -83,14 +90,41 @@ const getInitials = (name: string): string => {
 
 const parseGuestId = (
   raw: string,
-): { kind: "order" | "comp"; innerId: string } | null => {
+): { kind: "order" | "comp" | "door"; innerId: string } | null => {
   if (raw.startsWith("order-")) {
     return { kind: "order", innerId: raw.slice("order-".length) };
   }
   if (raw.startsWith("comp-")) {
     return { kind: "comp", innerId: raw.slice("comp-".length) };
   }
+  // Cycle 12 — door sale rows from J-G1 use the "door-" prefix.
+  if (raw.startsWith("door-")) {
+    return { kind: "door", innerId: raw.slice("door-".length) };
+  }
   return null;
+};
+
+// Cycle 12 — door-sale helpers mirror the order/comp helpers above.
+const PAYMENT_METHOD_LABELS: Record<DoorPaymentMethod, string> = {
+  cash: "Cash",
+  card_reader: "Card reader",
+  nfc: "NFC tap",
+  manual: "Manual",
+};
+
+interface DoorStatusPillSpec {
+  variant: "info" | "warn" | "draft" | "accent";
+  label: string;
+}
+
+const doorStatusPill = (
+  status: DoorSaleRecord["status"],
+): DoorStatusPillSpec => {
+  if (status === "completed") return { variant: "info", label: "PAID" };
+  if (status === "refunded_full") return { variant: "warn", label: "REFUNDED" };
+  if (status === "refunded_partial") return { variant: "accent", label: "PARTIAL" };
+  const _exhaust: never = status;
+  return _exhaust;
 };
 
 interface OrderStatusPillSpec {
@@ -155,6 +189,12 @@ export default function GuestDetailRoute(): React.ReactElement {
       ? s.getCompEntryById(parsed.innerId)
       : null,
   );
+  // Cycle 12 — single-existing-reference selector; safe to subscribe.
+  const sale = useDoorSalesStore((s) =>
+    parsed !== null && parsed.kind === "door"
+      ? s.getSaleById(parsed.innerId)
+      : null,
+  );
 
   // Cross-event purchase history for this buyer's email (same brand only).
   const allOrderEntries = useOrderStore((s) => s.entries);
@@ -217,9 +257,31 @@ export default function GuestDetailRoute(): React.ReactElement {
     );
   }, [isOrderCandidate, order]);
 
+  // Cycle 12 — door candidate hooks. Per ORCH-0710 lesson: all useMemos
+  // sit BEFORE the early-return shell. Each one short-circuits with empty
+  // result if guard data isn't ready.
+  const isDoorCandidate =
+    parsed !== null && parsed.kind === "door" && sale !== null;
+
+  const expandedDoorTickets = useMemo(() => {
+    if (!isDoorCandidate || sale === null) return [];
+    return expandDoorTickets(sale.id, sale.lines);
+  }, [isDoorCandidate, sale]);
+
+  const refundedQtyByTier = useMemo<Map<string, number>>(() => {
+    if (!isDoorCandidate || sale === null) return new Map();
+    const map = new Map<string, number>();
+    for (const l of sale.lines) {
+      map.set(l.ticketTypeId, l.refundedQuantity);
+    }
+    return map;
+  }, [isDoorCandidate, sale]);
+
   const [removeOpen, setRemoveOpen] = useState<boolean>(false);
   const [removeReason, setRemoveReason] = useState<string>("");
   const [removing, setRemoving] = useState<boolean>(false);
+  // Cycle 12 — door refund sheet state.
+  const [refundOpen, setRefundOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: "",
@@ -319,7 +381,8 @@ export default function GuestDetailRoute(): React.ReactElement {
     parsed === null ||
     event === null ||
     (parsed.kind === "order" && order === null) ||
-    (parsed.kind === "comp" && comp === null)
+    (parsed.kind === "comp" && comp === null) ||
+    (parsed.kind === "door" && sale === null)
   ) {
     return (
       <View
@@ -351,6 +414,9 @@ export default function GuestDetailRoute(): React.ReactElement {
 
   const isOrder = parsed.kind === "order" && order !== null;
   const isComp = parsed.kind === "comp" && comp !== null;
+  // Cycle 12 — door narrowing. After the not-found shell guards above,
+  // when parsed.kind === "door" then sale is non-null.
+  const isDoor = parsed.kind === "door" && sale !== null;
 
   // ORCH-0710 fix — derived check-in counts, sourced from useMemos above
   // the early-return shell so hook count is stable across renders.
@@ -362,11 +428,38 @@ export default function GuestDetailRoute(): React.ReactElement {
       : "Anonymous"
     : isComp
       ? comp.name
-      : "Guest";
-  const email = isOrder ? order.buyer.email : isComp ? comp.email : "";
-  const phone = isOrder ? order.buyer.phone : isComp ? comp.phone : "";
+      : isDoor
+        ? sale.buyerName.trim().length > 0
+          ? sale.buyerName
+          : "Walk-up"
+        : "Guest";
+  const email = isOrder
+    ? order.buyer.email
+    : isComp
+      ? comp.email
+      : isDoor
+        ? sale.buyerEmail
+        : "";
+  const phone = isOrder
+    ? order.buyer.phone
+    : isComp
+      ? comp.phone
+      : isDoor
+        ? sale.buyerPhone
+        : "";
   const hue = hashStringToHue(parsed.innerId);
   const initials = getInitials(name);
+
+  // Cycle 12 — door refund handler. Per OBS-1, the buyer stays CHECKED IN
+  // (DoorRefundSheet's handler does NOT touch useScanStore).
+  const handleDoorRefundSuccess = (updated: DoorSaleRecord): void => {
+    setRefundOpen(false);
+    const refundedAmount =
+      updated.refunds[updated.refunds.length - 1]?.amountGbp ?? 0;
+    showToast(
+      `Refunded ${formatGbp(refundedAmount)}. ${name} stays checked in.`,
+    );
+  };
 
   return (
     <View
@@ -420,10 +513,16 @@ export default function GuestDetailRoute(): React.ReactElement {
               <Pill variant={orderStatusPill(order.status).variant}>
                 {orderStatusPill(order.status).label}
               </Pill>
-            ) : (
+            ) : isComp ? (
               <Pill variant="accent">COMP</Pill>
-            )}
-            {/* Cycle 11 — derived check-in pill. */}
+            ) : isDoor ? (
+              <Pill variant={doorStatusPill(sale.status).variant}>
+                {doorStatusPill(sale.status).label}
+              </Pill>
+            ) : null}
+            {/* Cycle 11 + 12 — derived check-in pill.
+                Door sales are auto-checked-in per Decision #5; OBS-1 means
+                refund does NOT void check-in. Always show CHECKED IN. */}
             {isOrder ? (
               totalLiveQty === 0 ? null : orderCheckedCount === 0 ? (
                 <View style={styles.checkInPill}>
@@ -442,6 +541,8 @@ export default function GuestDetailRoute(): React.ReactElement {
                   <Text style={styles.checkInPillText}>NOT CHECKED IN</Text>
                 </View>
               )
+            ) : isDoor ? (
+              <Pill variant="info">CHECKED IN</Pill>
             ) : null}
           </View>
         </View>
@@ -531,6 +632,40 @@ export default function GuestDetailRoute(): React.ReactElement {
                 />
               )}
             </View>
+          ) : isDoor ? (
+            <View style={styles.ticketRowsList}>
+              {expandedDoorTickets.map((t, idx) => {
+                const lineRefundedQty =
+                  refundedQtyByTier.get(
+                    sale.lines[t.lineIdx]?.ticketTypeId ?? "",
+                  ) ?? 0;
+                // A seat is "refund-applied" if its line index is < refundedQty
+                // for that tier (oldest seats refund first by convention).
+                const seatRefundApplied = t.seatIdx < lineRefundedQty;
+                return (
+                  <View key={t.ticketId} style={styles.perTicketRow}>
+                    <View style={styles.perTicketHeader}>
+                      <View style={styles.perTicketCol}>
+                        <Text style={styles.perTicketName} numberOfLines={1}>
+                          {t.ticketName}
+                        </Text>
+                        <Text style={styles.perTicketSubline}>
+                          {t.isFreeAtSale
+                            ? "Free"
+                            : formatGbp(t.unitPriceGbpAtSale)}{" "}
+                          · #{idx + 1}
+                        </Text>
+                      </View>
+                      {seatRefundApplied ? (
+                        <Pill variant="warn">REFUNDED</Pill>
+                      ) : (
+                        <Pill variant="info">CHECKED IN</Pill>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
           ) : null}
         </GlassCard>
 
@@ -579,6 +714,63 @@ export default function GuestDetailRoute(): React.ReactElement {
                       {formatRelativeTime(order.cancelledAt)}
                     </Text>
                   </View>
+                </>
+              ) : null}
+            </GlassCard>
+          </>
+        ) : null}
+
+        {/* Cycle 12 — DOOR SALE PAYMENT section (door only) */}
+        {isDoor ? (
+          <>
+            <Text style={styles.sectionLabel}>PAYMENT</Text>
+            <GlassCard variant="base" radius="md" padding={spacing.md}>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Payment method</Text>
+                <Text style={styles.summaryValue}>
+                  {PAYMENT_METHOD_LABELS[sale.paymentMethod]}
+                </Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Total</Text>
+                <Text style={styles.summaryValue}>
+                  {formatGbp(sale.totalGbpAtSale)}
+                </Text>
+              </View>
+              {sale.refundedAmountGbp > 0 ? (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Refunded</Text>
+                  <Text style={styles.summaryValueWarn}>
+                    −{formatGbp(sale.refundedAmountGbp)}
+                  </Text>
+                </View>
+              ) : null}
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Recorded</Text>
+                <Text style={styles.summaryValue}>
+                  {formatRelativeTime(sale.recordedAt)}
+                </Text>
+              </View>
+              {sale.notes.trim().length > 0 ? (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.notesLabel}>Notes</Text>
+                  <Text style={styles.notesText}>{sale.notes}</Text>
+                </>
+              ) : null}
+              {sale.refunds.length > 0 ? (
+                <>
+                  <View style={styles.divider} />
+                  {sale.refunds.map((r) => (
+                    <View key={r.id} style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>
+                        Refunded {formatRelativeTime(r.refundedAt)}
+                      </Text>
+                      <Text style={styles.summaryValueWarn}>
+                        −{formatGbp(r.amountGbp)}
+                      </Text>
+                    </View>
+                  ))}
                 </>
               ) : null}
             </GlassCard>
@@ -660,6 +852,20 @@ export default function GuestDetailRoute(): React.ReactElement {
             />
           </View>
         ) : null}
+
+        {/* Cycle 12 — Refund CTA (door sales only; hidden when fully refunded) */}
+        {isDoor && sale.status !== "refunded_full" ? (
+          <View style={styles.removeCtaWrap}>
+            <Button
+              label="Refund door sale"
+              variant="ghost"
+              size="md"
+              fullWidth
+              onPress={() => setRefundOpen(true)}
+              accessibilityLabel="Refund door sale"
+            />
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* Remove confirm sheet (inline — ConfirmDialog has no reasoned variant) */}
@@ -737,6 +943,18 @@ export default function GuestDetailRoute(): React.ReactElement {
             </View>
           </View>
         </Sheet>
+      ) : null}
+
+      {/* Cycle 12 — door refund sheet (door only).
+          OBS-1 lock is enforced inside DoorRefundSheet's handleConfirm:
+          NO useScanStore touch. Buyer stays CHECKED IN. */}
+      {isDoor ? (
+        <DoorRefundSheet
+          visible={refundOpen}
+          sale={sale}
+          onClose={() => setRefundOpen(false)}
+          onSuccess={handleDoorRefundSuccess}
+        />
       ) : null}
 
       {/* Toast */}

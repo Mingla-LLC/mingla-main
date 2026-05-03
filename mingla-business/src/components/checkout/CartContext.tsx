@@ -49,7 +49,18 @@ export interface BuyerDetails {
   marketingOptIn: boolean;
 }
 
-export type CheckoutPaymentMethod = "card" | "apple_pay" | "google_pay" | "free";
+export type CheckoutPaymentMethod =
+  // Online (Cycle 8 — buyer route)
+  | "card"
+  | "apple_pay"
+  | "google_pay"
+  | "free"
+  // Door (Cycle 12 — operator route, ds_xxx sales).
+  // I-29: door payment methods MUST NOT appear in /checkout buyer flow.
+  | "cash"
+  | "card_reader"  // [TRANSITIONAL] B-cycle Stripe Terminal SDK — disabled in J-D3 picker
+  | "nfc"          // [TRANSITIONAL] B-cycle platform NFC — disabled in J-D3 picker
+  | "manual";
 
 export interface OrderResult {
   orderId: string;

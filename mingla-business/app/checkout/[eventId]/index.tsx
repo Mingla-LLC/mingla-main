@@ -50,8 +50,11 @@ import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 const sortByDisplayOrder = (a: TicketStub, b: TicketStub): number =>
   a.displayOrder - b.displayOrder;
 
+// Cycle 12 I-30 — door-only tiers excluded from online checkout. SUBTRACT
+// before adding pattern: this filter MUST stay in place forever; door-only
+// tiers exist for J-D3 (operator door sale flow) only.
 const isVisibleForBuyer = (t: TicketStub): boolean =>
-  t.visibility !== "hidden";
+  t.visibility !== "hidden" && t.availableAt !== "door";
 
 const computeIsPast = (event: LiveEvent): boolean => {
   if (event.status === "cancelled") return true;

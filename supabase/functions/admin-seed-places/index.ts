@@ -9,6 +9,7 @@ import {
   resolveSeedingCategory,
   type SeedingCategoryConfig,
 } from "../_shared/seedingCategories.ts";
+import { derivePoolCategory } from "../_shared/derivePoolCategory.ts";
 // Phase 2: type exclusion imports removed — AI is the sole quality gate
 // import { GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
 
@@ -250,7 +251,7 @@ function calculateTileEstimates(
 // ── Google Place → place_pool row (selective fields for upsert) ─────────────
 
 // deno-lint-ignore no-explicit-any
-function transformGooglePlaceForSeed(gPlace: any, cityId: string, seedingCategory: string, country: string, city: string) {
+function transformGooglePlaceForSeed(gPlace: any, cityId: string, country: string, city: string) {
   const priceLevel = gPlace.priceLevel as string | undefined;
   const priceInfo = PRICE_LEVEL_MAP[priceLevel ?? ""] ?? {
     tier: null,
@@ -366,7 +367,6 @@ function transformGooglePlaceForSeed(gPlace: any, cityId: string, seedingCategor
     refresh_failures: 0,
     is_active: true,
     city_id: cityId,
-    seeding_category: seedingCategory,
     country: country,
     city: city,
     utc_offset_minutes: (gPlace.utcOffsetMinutes as number) ?? null,
@@ -579,26 +579,29 @@ async function handleCoverageCheck(body: any, supabase: any) {
   const { cityId } = body;
   if (!cityId) throw new Error("cityId is required");
 
-  // Count places per seeding_category for this city
-  // Must override Supabase default 1000-row limit to get accurate counts
+  // ORCH-0700 Phase 3: count places per Mingla category, derived client-side from
+  // primary_type + types (place_pool.seeding_category column dropped in Migration 6).
+  // Must override Supabase default 1000-row limit to get accurate counts.
   const { data: rows, error } = await supabase
     .from("place_pool")
-    .select("seeding_category")
+    .select("primary_type, types")
     .eq("city_id", cityId)
     .eq("is_active", true)
     .limit(10000);
 
   if (error) throw new Error(`Coverage check failed: ${error.message}`);
 
-  // Tally per category
+  // Tally per derived category (matches the SQL helper byte-for-byte).
   const counts: Record<string, number> = {};
-  for (const r of (rows || [])) {
-    const cat = r.seeding_category || "unknown";
+  for (const r of (rows || []) as Array<{ primary_type: string | null; types: string[] | null }>) {
+    const cat = derivePoolCategory(r.primary_type, r.types) ?? "unknown";
     counts[cat] = (counts[cat] || 0) + 1;
   }
 
-  // Build coverage report grouped by app category slug (ORCH-0434: 10 categories, not 13)
-  // Multiple seeding configs may share one app slug (e.g. nature_views + picnic_park → nature)
+  // Build coverage report grouped by app category slug (ORCH-0434: 10 categories, not 13).
+  // The derived helper already returns app-slug-aligned values (e.g. "nature",
+  // "casual_food"), so no second-pass aggregation is needed — the legacy
+  // SEEDING_CATEGORIES.id → appCategorySlug fan-in disappears.
   const appSlugSet = new Set<string>();
   const appSlugConfigs: { slug: string; label: string; appCategory: string }[] = [];
   for (const cat of SEEDING_CATEGORIES) {
@@ -608,13 +611,7 @@ async function handleCoverageCheck(body: any, supabase: any) {
     }
   }
   const coverage = appSlugConfigs.map(({ slug, label, appCategory }) => {
-    // Count places that have the new app slug in seeding_category (post-migration)
-    // Also count any legacy old IDs that map to this app slug
-    const configs = SEEDING_CATEGORIES.filter(c => c.appCategorySlug === slug);
-    let count = counts[slug] || 0;
-    for (const c of configs) {
-      if (c.id !== slug) count += counts[c.id] || 0;
-    }
+    const count = counts[slug] || 0;
     return {
       categoryId: slug,
       label,
@@ -1000,7 +997,7 @@ async function handleRunNextBatch(body: any, supabase: any) {
       // Upsert to place_pool
       if (uniquePlaces.size > 0) {
         const rows = Array.from(uniquePlaces.values()).map((p) =>
-          transformGooglePlaceForSeed(p, batch.city_id, config.appCategorySlug, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
+          transformGooglePlaceForSeed(p, batch.city_id, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
         );
 
         // Step 1: Insert new places only
@@ -1442,7 +1439,7 @@ async function handleRetryBatch(body: any, supabase: any) {
 
       if (uniquePlaces.size > 0) {
         const rows = Array.from(uniquePlaces.values()).map((p) =>
-          transformGooglePlaceForSeed(p, batch.city_id, config.appCategorySlug, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
+          transformGooglePlaceForSeed(p, batch.city_id, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
         );
 
         // Step 1: Insert new places only

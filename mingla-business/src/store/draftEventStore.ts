@@ -62,6 +62,14 @@ const detectDeviceTimezone = (): string => {
  */
 export type TicketVisibility = "public" | "hidden" | "disabled";
 
+/**
+ * Cycle 12 — controls which checkout surface this tier appears on. I-30.
+ *   - "online": only visible at /checkout/{eventId} buyer flow.
+ *   - "door":   only visible at /event/{id}/door door-sale flow.
+ *   - "both":   visible everywhere (default for migrated tiers).
+ */
+export type TicketAvailableAt = "online" | "door" | "both";
+
 export interface TicketStub {
   id: string;
   name: string;
@@ -126,6 +134,14 @@ export interface TicketStub {
    * after saleStartAt if both set.
    */
   saleEndAt: string | null;
+  // ---- Cycle 12 (schema v6 — additive) ----
+  /**
+   * I-30 enforced — controls which checkout surface this tier appears on.
+   * Online checkout filters availableAt !== "door"; door sale flow filters
+   * availableAt !== "online". AddCompGuestSheet filters availableAt === "both".
+   * Default "both" for migrated tiers (additive, safe).
+   */
+  availableAt: TicketAvailableAt;
 }
 
 export type DraftEventFormat = "in_person" | "online" | "hybrid";
@@ -238,6 +254,11 @@ export interface DraftEvent {
   passwordProtected: boolean;
   /** Cycle 10: hide guest count from buyer-side surfaces. I-26 — operator-only flag; no buyer surface honors this in Cycle 10. */
   privateGuestList: boolean;
+  /**
+   * Cycle 12: when true, /event/{id}/door surface is reachable + "Door Sales"
+   * ActionTile appears on Event Detail. Default false; operator opt-in.
+   */
+  inPersonPaymentsEnabled: boolean;
   // Meta
   /** Highest step index user has reached (0..6). Resume jumps here. */
   lastStepReached: number;
@@ -298,6 +319,7 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   hideRemainingCount: false,
   passwordProtected: false,
   privateGuestList: false,
+  inPersonPaymentsEnabled: false,
   lastStepReached: 0,
   status: "draft",
 };
@@ -343,8 +365,10 @@ type V2DraftEvent = Omit<
   repeats?: "once";
 };
 // v3 draft (no `repeats`, has whenMode/recurrence/multiDates, but tickets
-// still v3 shape — Cycle 4 didn't change ticket fields)
-type V3DraftEvent = Omit<DraftEvent, "tickets"> & {
+// still v3 shape — Cycle 4 didn't change ticket fields).
+// Cycle 12: explicitly excludes inPersonPaymentsEnabled (added v6) so this
+// historical shape stays correct after the DraftEvent type grew.
+type V3DraftEvent = Omit<DraftEvent, "tickets" | "inPersonPaymentsEnabled"> & {
   tickets: V3TicketStub[];
 };
 
@@ -374,11 +398,12 @@ const upgradeV2DraftToV3 = (d: V2DraftEvent): V3DraftEvent => {
 
 // v4 ticket — Cycle 5 shape. v3 fields + 9 modifier fields.
 // Cycle 6 v5 ADDS: description, saleStartAt, saleEndAt.
+// Cycle 12 v6 ADDS: availableAt — explicitly excluded here to keep v4 shape correct.
 type V4TicketStub = Omit<
   TicketStub,
-  "description" | "saleStartAt" | "saleEndAt"
+  "description" | "saleStartAt" | "saleEndAt" | "availableAt"
 >;
-type V4DraftEvent = Omit<DraftEvent, "tickets"> & {
+type V4DraftEvent = Omit<DraftEvent, "tickets" | "inPersonPaymentsEnabled"> & {
   tickets: V4TicketStub[];
 };
 
@@ -406,16 +431,36 @@ const upgradeV3DraftToV4 = (d: V3DraftEvent): V4DraftEvent => ({
 
 // v4 → v5: extend each ticket with description + sale period fields
 // (Cycle 6 — 5b absorption). Additive only.
-const upgradeV4TicketToV5 = (t: V4TicketStub): TicketStub => ({
+const upgradeV4TicketToV5 = (t: V4TicketStub): V5TicketStub => ({
   ...t,
   description: null,
   saleStartAt: null,
   saleEndAt: null,
 });
 
-const upgradeV4DraftToV5 = (d: V4DraftEvent): DraftEvent => ({
+const upgradeV4DraftToV5 = (d: V4DraftEvent): V5DraftEvent => ({
   ...d,
   tickets: d.tickets.map(upgradeV4TicketToV5),
+});
+
+// v5 ticket — Cycle 6 shape. Cycle 12 v6 ADDS: availableAt.
+type V5TicketStub = Omit<TicketStub, "availableAt">;
+type V5DraftEvent = Omit<DraftEvent, "tickets" | "inPersonPaymentsEnabled"> & {
+  tickets: V5TicketStub[];
+};
+
+// v5 → v6: extend each ticket with availableAt (default "both") +
+// extend draft with inPersonPaymentsEnabled (default false). Cycle 12.
+// Additive only; defaults preserve existing operator behavior.
+const upgradeV5TicketToV6 = (t: V5TicketStub): TicketStub => ({
+  ...t,
+  availableAt: "both",
+});
+
+const upgradeV5DraftToV6 = (d: V5DraftEvent): DraftEvent => ({
+  ...d,
+  tickets: d.tickets.map(upgradeV5TicketToV6),
+  inPersonPaymentsEnabled: false,
 });
 
 const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
@@ -424,33 +469,41 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   name: "mingla-business.draftEvent.v1",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state): PersistedState => ({ drafts: state.drafts }),
-  version: 5,
+  version: 6,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { drafts: [] };
     }
     if (version === 1) {
-      // v1 → v5: chain v1→v2 → v3 → v4 → v5
+      // v1 → v6: chain v1→v2 → v3 → v4 → v5 → v6
       const v1 = persistedState as { drafts: V1DraftEvent[] };
       const v2Drafts = v1.drafts.map(upgradeV1DraftToV2);
       const v3Drafts = v2Drafts.map(upgradeV2DraftToV3);
       const v4Drafts = v3Drafts.map(upgradeV3DraftToV4);
-      return { drafts: v4Drafts.map(upgradeV4DraftToV5) };
+      const v5Drafts = v4Drafts.map(upgradeV4DraftToV5);
+      return { drafts: v5Drafts.map(upgradeV5DraftToV6) };
     }
     if (version === 2) {
       const v2 = persistedState as { drafts: V2DraftEvent[] };
       const v3Drafts = v2.drafts.map(upgradeV2DraftToV3);
       const v4Drafts = v3Drafts.map(upgradeV3DraftToV4);
-      return { drafts: v4Drafts.map(upgradeV4DraftToV5) };
+      const v5Drafts = v4Drafts.map(upgradeV4DraftToV5);
+      return { drafts: v5Drafts.map(upgradeV5DraftToV6) };
     }
     if (version === 3) {
       const v3 = persistedState as { drafts: V3DraftEvent[] };
       const v4Drafts = v3.drafts.map(upgradeV3DraftToV4);
-      return { drafts: v4Drafts.map(upgradeV4DraftToV5) };
+      const v5Drafts = v4Drafts.map(upgradeV4DraftToV5);
+      return { drafts: v5Drafts.map(upgradeV5DraftToV6) };
     }
     if (version === 4) {
       const v4 = persistedState as { drafts: V4DraftEvent[] };
-      return { drafts: v4.drafts.map(upgradeV4DraftToV5) };
+      const v5Drafts = v4.drafts.map(upgradeV4DraftToV5);
+      return { drafts: v5Drafts.map(upgradeV5DraftToV6) };
+    }
+    if (version === 5) {
+      const v5 = persistedState as { drafts: V5DraftEvent[] };
+      return { drafts: v5.drafts.map(upgradeV5DraftToV6) };
     }
     return persistedState as PersistedState;
   },

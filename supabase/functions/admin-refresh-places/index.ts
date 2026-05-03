@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { derivePoolCategory, googleTypesForCategory } from "../_shared/derivePoolCategory.ts";
 
 // ── Admin-Triggered Place Refresh Edge Function ─────────────────────────────
 // Processes pending place_refresh entries from admin_backfill_log.
@@ -496,12 +497,35 @@ function applyRefreshFilters(query: any, f: RefreshFilters) {
   if (f.filterCategories !== null) {
     const concrete = f.filterCategories.filter((c) => c !== UNCATEGORIZED_LABEL);
     const includeUncat = f.filterCategories.includes(UNCATEGORIZED_LABEL);
+    // ORCH-0700 Phase 3: filter by derived category. Each Mingla category slug
+    // expands to a list of Google place_types; a row matches the filter when
+    // its primary_type IS in that union OR its types[] array overlaps it.
+    // "Uncategorized" = neither primary_type nor any types[] element maps to a
+    // known Mingla category — no SQL predicate can express that exactly without
+    // calling the helper, so we approximate via "primary_type IS NULL" which
+    // captures rows missing Google's primary_type signal entirely. Tighter
+    // semantics would require an admin RPC that wraps the helper.
+    const allTypesForConcrete = concrete.flatMap((slug) => googleTypesForCategory(slug));
     if (concrete.length > 0 && includeUncat) {
-      query = query.or(`seeding_category.in.(${concrete.join(",")}),seeding_category.is.null`);
+      if (allTypesForConcrete.length > 0) {
+        // Either matches a concrete category OR has no primary_type (proxy for uncat).
+        const typeListQuoted = allTypesForConcrete.map((t) => `"${t}"`).join(",");
+        const typeListBraces = allTypesForConcrete.join(",");
+        query = query.or(`primary_type.in.(${typeListQuoted}),primary_type.is.null,types.ov.{${typeListBraces}}`);
+      } else {
+        // Concrete slugs all unknown — fall back to uncat-only.
+        query = query.is("primary_type", null);
+      }
     } else if (concrete.length > 0) {
-      query = query.in("seeding_category", concrete);
+      if (allTypesForConcrete.length > 0) {
+        const typeListQuoted = allTypesForConcrete.map((t) => `"${t}"`).join(",");
+        const typeListBraces = allTypesForConcrete.join(",");
+        query = query.or(`primary_type.in.(${typeListQuoted}),types.ov.{${typeListBraces}}`);
+      }
+      // If concrete categories exist but none resolve to Google types (unknown slug),
+      // intentionally apply no filter — caller picked nothing valid, return all.
     } else if (includeUncat) {
-      query = query.is("seeding_category", null);
+      query = query.is("primary_type", null);
     }
   }
 
@@ -528,18 +552,19 @@ async function handlePreviewRefreshCost(
 ) {
   const filters = normalizeFilters(body);
 
-  // Pull all matching place_pool rows (id + seeding_category only — minimal payload)
-  let query = supabase.from("place_pool").select("seeding_category", { count: "exact" });
+  // ORCH-0700 Phase 3: pull primary_type + types so we can derive the Mingla
+  // category client-side (the legacy cached-category column was dropped in Migration 6).
+  let query = supabase.from("place_pool").select("primary_type, types", { count: "exact" });
   query = applyRefreshFilters(query, filters);
   const { data, count, error } = await query.limit(100000);
   if (error) throw new Error(`Preview query failed: ${error.message}`);
 
   const totalPlaces = count ?? (data?.length ?? 0);
 
-  // Compute per-category breakdown
+  // Compute per-category breakdown using the derived helper (mirrors SQL helper byte-for-byte).
   const breakdownMap = new Map<string, number>();
-  for (const row of (data ?? [])) {
-    const key = row.seeding_category ?? UNCATEGORIZED_LABEL;
+  for (const row of (data ?? []) as Array<{ primary_type: string | null; types: string[] | null }>) {
+    const key = derivePoolCategory(row.primary_type, row.types) ?? UNCATEGORIZED_LABEL;
     breakdownMap.set(key, (breakdownMap.get(key) ?? 0) + 1);
   }
   const breakdown = Array.from(breakdownMap.entries())
@@ -597,13 +622,18 @@ async function handleCreateRefreshRun(
     );
   }
 
-  // Step 2 — resolve target place_ids (ordered by category, then last_detail_refresh ASC NULLS FIRST)
+  // Step 2 — resolve target place_ids (ordered by primary_type as a stable
+  // proxy for category, then last_detail_refresh ASC NULLS FIRST).
+  // ORCH-0700 Phase 3: ordered by primary_type (the legacy cached-category column
+  // was dropped in Migration 6). primary_type ordering keeps batches loosely
+  // category-clustered — close enough for refresh sequencing where strict ordering
+  // isn't load-bearing.
   let query = supabase
     .from("place_pool")
-    .select("id, seeding_category, last_detail_refresh");
+    .select("id, primary_type, last_detail_refresh");
   query = applyRefreshFilters(query, filters);
   const { data: places, error: queryErr } = await query
-    .order("seeding_category", { ascending: true, nullsFirst: false })
+    .order("primary_type", { ascending: true, nullsFirst: false })
     .order("last_detail_refresh", { ascending: true, nullsFirst: true })
     .limit(100000);
 
