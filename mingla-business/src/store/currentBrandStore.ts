@@ -518,6 +518,13 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
         brands: v10.brands.map(upgradeV10BrandToV11),
       };
     }
+    // v3 → v4: passthrough. New optional `displayAttendeeCount` field starts
+    // undefined for all brands; read sites default to `true`.
+    // v4 → v5: passthrough. New optional `links.tiktok/x/facebook/youtube/
+    // linkedin/threads` fields start undefined for all brands; render-time
+    // guards on each social chip skip undefined fields.
+    // v5 → v6: passthrough. New optional `contact.phoneCountryIso` field
+    // starts undefined; phone Input defaults to "GB" at read sites.
     return persistedState as PersistedState;
   },
 };

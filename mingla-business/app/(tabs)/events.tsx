@@ -708,4 +708,11 @@ const styles = StyleSheet.create({
     zIndex: 100,
     elevation: 12,
   },
+  toastWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: spacing.xl,
+    paddingHorizontal: spacing.md,
+  },
 });
