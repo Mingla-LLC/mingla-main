@@ -38,6 +38,7 @@ import {
   useOrderStore,
   type OrderRecord,
 } from "../../../../src/store/orderStore";
+import { useScanStore } from "../../../../src/store/scanStore";
 import { useCurrentBrandStore } from "../../../../src/store/currentBrandStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { exportGuestsCsv } from "../../../../src/utils/guestCsvExport";
@@ -206,6 +207,30 @@ export default function EventGuestsListRoute(): React.ReactElement {
     [merged, search],
   );
 
+  // Cycle 11 J-S6 — derived check-in counts per order + comp.
+  // Raw subscription + useMemo per selector pattern rule.
+  const allScanEntries = useScanStore((s) => s.entries);
+  const orderCheckInCounts = useMemo<Map<string, number>>(() => {
+    const map = new Map<string, number>();
+    for (const scan of allScanEntries) {
+      if (scan.scanResult !== "success") continue;
+      // Skip comp manual scans (orderId === "" for comps).
+      if (scan.orderId === "") continue;
+      map.set(scan.orderId, (map.get(scan.orderId) ?? 0) + 1);
+    }
+    return map;
+  }, [allScanEntries]);
+  const compCheckInIds = useMemo<Set<string>>(() => {
+    const set = new Set<string>();
+    for (const scan of allScanEntries) {
+      if (scan.scanResult !== "success") continue;
+      if (scan.via !== "manual") continue;
+      if (!scan.ticketId.startsWith("cg_")) continue;
+      set.add(scan.ticketId);
+    }
+    return set;
+  }, [allScanEntries]);
+
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
@@ -368,6 +393,8 @@ export default function EventGuestsListRoute(): React.ReactElement {
               <GuestRowCard
                 key={`${row.kind}-${row.id}`}
                 row={row}
+                orderCheckInCounts={orderCheckInCounts}
+                compCheckInIds={compCheckInIds}
                 onPress={() => handleOpenRow(row)}
               />
             ))}
@@ -404,10 +431,17 @@ export default function EventGuestsListRoute(): React.ReactElement {
 
 interface GuestRowCardProps {
   row: GuestRow;
+  orderCheckInCounts: Map<string, number>;
+  compCheckInIds: Set<string>;
   onPress: () => void;
 }
 
-const GuestRowCard: React.FC<GuestRowCardProps> = ({ row, onPress }) => {
+const GuestRowCard: React.FC<GuestRowCardProps> = ({
+  row,
+  orderCheckInCounts,
+  compCheckInIds,
+  onPress,
+}) => {
   const isOrder = row.kind === "order";
   const name =
     isOrder
@@ -425,6 +459,40 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({ row, onPress }) => {
   const hue = hashStringToHue(row.id);
   const initials = getInitials(name);
   const subline = `${email} · ${ticketSummary} · ${relativeTime}`;
+
+  // Cycle 11 J-S6 — derived check-in pill state.
+  let checkInPillNode: React.ReactElement | null = null;
+  if (isOrder) {
+    const totalLiveQty = row.order.lines.reduce(
+      (sum, l) => sum + Math.max(0, l.quantity - l.refundedQuantity),
+      0,
+    );
+    const checkedCount = orderCheckInCounts.get(row.order.id) ?? 0;
+    if (totalLiveQty === 0) {
+      checkInPillNode = null;
+    } else if (checkedCount === 0) {
+      checkInPillNode = (
+        <View style={styles.checkInPill}>
+          <Text style={styles.checkInPillText}>NOT CHECKED IN</Text>
+        </View>
+      );
+    } else if (checkedCount < totalLiveQty) {
+      checkInPillNode = (
+        <Pill variant="accent">{`${checkedCount} OF ${totalLiveQty} CHECKED IN`}</Pill>
+      );
+    } else {
+      checkInPillNode = <Pill variant="info">ALL CHECKED IN</Pill>;
+    }
+  } else {
+    const compChecked = compCheckInIds.has(row.comp.id);
+    checkInPillNode = compChecked ? (
+      <Pill variant="info">CHECKED IN</Pill>
+    ) : (
+      <View style={styles.checkInPill}>
+        <Text style={styles.checkInPillText}>NOT CHECKED IN</Text>
+      </View>
+    );
+  }
 
   const a11yLabel = isOrder
     ? `Guest ${name}, ${ticketSummary}, ${orderStatusPill(row.order.status).label}`
@@ -460,9 +528,7 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({ row, onPress }) => {
           ) : (
             <Pill variant="accent">COMP</Pill>
           )}
-          <View style={styles.checkInPill}>
-            <Text style={styles.checkInPillText}>NOT CHECKED IN</Text>
-          </View>
+          {checkInPillNode}
         </View>
       </View>
     </Pressable>

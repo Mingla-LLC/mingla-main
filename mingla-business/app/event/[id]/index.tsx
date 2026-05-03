@@ -40,6 +40,7 @@ import { useDraftById } from "../../../src/store/draftEventStore";
 import type { TicketStub } from "../../../src/store/draftEventStore";
 import { useBrandList } from "../../../src/store/currentBrandStore";
 import { useOrderStore } from "../../../src/store/orderStore";
+import { useScanStore } from "../../../src/store/scanStore";
 import {
   useEventEditLogStore,
   type EditSeverity,
@@ -92,6 +93,18 @@ type ActivityEvent =
       eventId: string;
       summary: string;
       at: string;
+    }
+  // Cycle 11 — event_scan kind. Buyer is the SUBJECT (not actor), so
+  // ActivityRow renders summary as primary line per §4.8.
+  | {
+      kind: "event_scan";
+      scanId: string;
+      ticketId: string;
+      orderId: string;
+      buyerName: string;
+      ticketName: string;
+      summary: string; // e.g., "Tunde checked in"
+      at: string;
     };
 
 const ACTIVITY_RELATIVE_TIME_MS = {
@@ -123,6 +136,9 @@ const activityRowKey = (a: ActivityEvent): string => {
   }
   if (a.kind === "event_edit") {
     return `${a.kind}-${a.editId}`;
+  }
+  if (a.kind === "event_scan") {
+    return `${a.kind}-${a.scanId}`;
   }
   return `${a.kind}-${a.eventId}-${a.at}`;
 };
@@ -256,9 +272,18 @@ export default function EventDetailScreen(): React.ReactElement {
   }, []);
 
   // ----- Action grid handlers -----------------------------------
+  // Cycle 11 — SUBTRACT toast (Const #8) and route to scanner camera.
   const handleScanTickets = useCallback((): void => {
-    showToast("Scanner lands Cycle 11.");
-  }, [showToast]);
+    if (id !== null) {
+      router.push(`/event/${id}/scanner` as never);
+    }
+  }, [router, id]);
+
+  const handleScanners = useCallback((): void => {
+    if (id !== null) {
+      router.push(`/event/${id}/scanners` as never);
+    }
+  }, [router, id]);
 
   const handleOrders = useCallback((): void => {
     if (id !== null) {
@@ -385,9 +410,11 @@ export default function EventDetailScreen(): React.ReactElement {
 
   // Cycle 9c-2 — event edit log entries (raw subscription, mirrors orderStore pattern).
   const allEditEntries = useEventEditLogStore((s) => s.entries);
+  // Cycle 11 — scan entries (raw subscription).
+  const allScanEntries = useScanStore((s) => s.entries);
 
-  // Cycle 9c rework v3 + Cycle 9c-2 — activity feed merges 6 streams:
-  // order-level (purchase / refund / cancel) + event-level (edit / sales-ended / cancelled).
+  // Cycle 9c rework v3 + Cycle 9c-2 + Cycle 11 — activity feed merges 7 streams:
+  // order-level (purchase / refund / cancel) + event-level (edit / sales-ended / cancelled / scan).
   const recentActivity = useMemo<ActivityEvent[]>(() => {
     if (event === null) return [];
     const events: ActivityEvent[] = [];
@@ -473,10 +500,32 @@ export default function EventDetailScreen(): React.ReactElement {
       });
     }
 
-    // Newest first across all 6 streams; cap at 5.
+    // ---- Scan stream (Cycle 11) ---------------------------------
+    // Successful scans only — failed scans don't surface to feed.
+    const eventScans = allScanEntries.filter(
+      (s) => s.eventId === event.id && s.scanResult === "success",
+    );
+    for (const scan of eventScans) {
+      const buyerName =
+        scan.buyerNameAtScan.trim().length > 0
+          ? scan.buyerNameAtScan
+          : "Guest";
+      events.push({
+        kind: "event_scan",
+        scanId: scan.id,
+        ticketId: scan.ticketId,
+        orderId: scan.orderId,
+        buyerName,
+        ticketName: scan.ticketNameAtScan,
+        summary: `${buyerName} checked in`,
+        at: scan.scannedAt,
+      });
+    }
+
+    // Newest first across all 7 streams; cap at 5.
     events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
     return events.slice(0, 5);
-  }, [allOrderEntries, allEditEntries, event]);
+  }, [allOrderEntries, allEditEntries, allScanEntries, event]);
 
   return (
     <View style={styles.host}>
@@ -541,6 +590,11 @@ export default function EventDetailScreen(): React.ReactElement {
             label="Scan tickets"
             primary
             onPress={handleScanTickets}
+          />
+          <ActionTile
+            icon="users"
+            label="Scanners"
+            onPress={handleScanners}
           />
           <ActionTile
             icon="ticket"
@@ -999,6 +1053,17 @@ const activityKindSpec = (event: ActivityEvent): ActivityKindSpec => {
       iconName: "clock",
       iconColor: "#3b82f6",
       badgeBg: "rgba(59, 130, 246, 0.18)",
+      amountColor: null,
+      amountSign: null,
+    };
+  }
+  if (event.kind === "event_scan") {
+    // Cycle 11 — same success-green as purchase but with check icon to
+    // emphasise check-in vs new sale.
+    return {
+      iconName: "check",
+      iconColor: "#34c759",
+      badgeBg: "rgba(52, 199, 89, 0.18)",
       amountColor: null,
       amountSign: null,
     };

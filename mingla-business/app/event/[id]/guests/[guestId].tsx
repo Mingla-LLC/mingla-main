@@ -29,8 +29,11 @@ import {
   useOrderStore,
   type OrderRecord,
 } from "../../../../src/store/orderStore";
+import { useScanStore } from "../../../../src/store/scanStore";
 import { useCurrentBrandStore } from "../../../../src/store/currentBrandStore";
+import { useAuth } from "../../../../src/context/AuthContext";
 import { formatGbp } from "../../../../src/utils/currency";
+import { expandTicketIds } from "../../../../src/utils/expandTicketIds";
 
 import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
@@ -136,6 +139,12 @@ export default function GuestDetailRoute(): React.ReactElement {
   const brand = useCurrentBrandStore((s) =>
     event !== null ? s.brands.find((b) => b.id === event.brandId) ?? null : null,
   );
+  const { user } = useAuth();
+  const operatorAccountId = user?.id ?? "anonymous";
+
+  // Cycle 11 J-S5/S6 — derived check-in state from useScanStore.
+  // Raw subscription + useMemo per selector pattern rule.
+  const allScanEntries = useScanStore((s) => s.entries);
   const order = useOrderStore((s) =>
     parsed !== null && parsed.kind === "order"
       ? s.getOrderById(parsed.innerId)
@@ -163,6 +172,50 @@ export default function GuestDetailRoute(): React.ReactElement {
         (a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime(),
       );
   }, [allOrderEntries, order]);
+
+  // Cycle 11 J-S5 — per-ticket check-in derivation. Hooks must run BEFORE
+  // the early-return shell below (React Rules of Hooks). Each branch
+  // internally short-circuits with empty result when guard data isn't ready
+  // yet (e.g., cold-start render before persist hydration completes).
+  // ORCH-0710 fix — see prompts/IMPLEMENTOR_BIZ_CYCLE_11_RETRY_ORCH-0710_ORCH-0711.md.
+  const isOrderCandidate =
+    parsed !== null && parsed.kind === "order" && order !== null;
+  const isCompCandidate =
+    parsed !== null && parsed.kind === "comp" && comp !== null;
+
+  const expandedTickets = useMemo(() => {
+    if (!isOrderCandidate || order === null) return [];
+    return expandTicketIds(order.id, order.lines);
+  }, [isOrderCandidate, order]);
+
+  const orderCheckedTicketIds = useMemo(() => {
+    if (!isOrderCandidate || order === null) return new Set<string>();
+    const set = new Set<string>();
+    for (const scan of allScanEntries) {
+      if (scan.scanResult !== "success") continue;
+      if (scan.orderId !== order.id) continue;
+      set.add(scan.ticketId);
+    }
+    return set;
+  }, [allScanEntries, isOrderCandidate, order]);
+
+  const compCheckedIn = useMemo<boolean>(() => {
+    if (!isCompCandidate || comp === null) return false;
+    return allScanEntries.some(
+      (s) =>
+        s.scanResult === "success" &&
+        s.via === "manual" &&
+        s.ticketId === comp.id,
+    );
+  }, [allScanEntries, isCompCandidate, comp]);
+
+  const totalLiveQty = useMemo<number>(() => {
+    if (!isOrderCandidate || order === null) return 0;
+    return order.lines.reduce(
+      (sum, l) => sum + Math.max(0, l.quantity - l.refundedQuantity),
+      0,
+    );
+  }, [isOrderCandidate, order]);
 
   const [removeOpen, setRemoveOpen] = useState<boolean>(false);
   const [removeReason, setRemoveReason] = useState<string>("");
@@ -204,6 +257,34 @@ export default function GuestDetailRoute(): React.ReactElement {
   const trimmedRemoveReasonLen = removeReason.trim().length;
   const removeReasonValid =
     trimmedRemoveReasonLen >= 10 && trimmedRemoveReasonLen <= 200;
+
+  // Cycle 11 J-S5 — manual check-in handler. Records via=manual scan;
+  // activity feed picks up via event_scan kind. orderId === "" indicates
+  // comp manual check-in (synthetic ticketId = comp.id).
+  const handleManualCheckIn = useCallback(
+    (args: {
+      ticketId: string;
+      orderId: string;
+      buyerName: string;
+      ticketName: string;
+    }): void => {
+      if (event === null) return;
+      useScanStore.getState().recordScan({
+        ticketId: args.ticketId,
+        orderId: args.orderId,
+        eventId: event.id,
+        brandId: event.brandId,
+        scannerUserId: operatorAccountId,
+        scanResult: "success",
+        via: "manual",
+        offlineQueued: true,
+        buyerNameAtScan: args.buyerName,
+        ticketNameAtScan: args.ticketName,
+      });
+      showToast(`${args.buyerName} checked in`);
+    },
+    [event, operatorAccountId, showToast],
+  );
 
   const handleRemoveConfirm = useCallback((): void => {
     if (comp === null || event === null) return;
@@ -270,6 +351,10 @@ export default function GuestDetailRoute(): React.ReactElement {
 
   const isOrder = parsed.kind === "order" && order !== null;
   const isComp = parsed.kind === "comp" && comp !== null;
+
+  // ORCH-0710 fix — derived check-in counts, sourced from useMemos above
+  // the early-return shell so hook count is stable across renders.
+  const orderCheckedCount = orderCheckedTicketIds.size;
 
   const name = isOrder
     ? order.buyer.name.trim().length > 0
@@ -338,37 +423,86 @@ export default function GuestDetailRoute(): React.ReactElement {
             ) : (
               <Pill variant="accent">COMP</Pill>
             )}
-            <View style={styles.checkInPill}>
-              <Text style={styles.checkInPillText}>NOT CHECKED IN</Text>
-            </View>
+            {/* Cycle 11 — derived check-in pill. */}
+            {isOrder ? (
+              totalLiveQty === 0 ? null : orderCheckedCount === 0 ? (
+                <View style={styles.checkInPill}>
+                  <Text style={styles.checkInPillText}>NOT CHECKED IN</Text>
+                </View>
+              ) : orderCheckedCount < totalLiveQty ? (
+                <Pill variant="accent">{`${orderCheckedCount} OF ${totalLiveQty} CHECKED IN`}</Pill>
+              ) : (
+                <Pill variant="info">ALL CHECKED IN</Pill>
+              )
+            ) : isComp ? (
+              compCheckedIn ? (
+                <Pill variant="info">CHECKED IN</Pill>
+              ) : (
+                <View style={styles.checkInPill}>
+                  <Text style={styles.checkInPillText}>NOT CHECKED IN</Text>
+                </View>
+              )
+            ) : null}
           </View>
         </View>
 
-        {/* Tickets section */}
+        {/* Tickets section — Cycle 11 J-S5: per-ticket rows with check-in
+            state pill + "Mark checked in" CTA per row. */}
         <Text style={styles.sectionLabel}>TICKETS</Text>
         <GlassCard variant="base" radius="md" padding={spacing.md}>
           {isOrder ? (
-            <View style={styles.linesList}>
-              {order.lines.map((l) => (
-                <View key={l.ticketTypeId} style={styles.lineRow}>
-                  <View style={styles.lineCol}>
-                    <Text style={styles.lineName} numberOfLines={1}>
-                      {l.ticketNameAtPurchase}
-                    </Text>
-                    <Text style={styles.lineSubline}>
-                      {l.quantity}× ·{" "}
-                      {l.isFreeAtPurchase
-                        ? "Free"
-                        : formatGbp(l.unitPriceGbpAtPurchase)}
-                    </Text>
+            <View style={styles.ticketRowsList}>
+              {expandedTickets.map((t, idx) => {
+                const checked = orderCheckedTicketIds.has(t.ticketId);
+                const buyerName =
+                  order.buyer.name.trim().length > 0
+                    ? order.buyer.name
+                    : "Anonymous";
+                return (
+                  <View key={t.ticketId} style={styles.perTicketRow}>
+                    <View style={styles.perTicketHeader}>
+                      <View style={styles.perTicketCol}>
+                        <Text style={styles.perTicketName} numberOfLines={1}>
+                          {t.ticketName}
+                        </Text>
+                        <Text style={styles.perTicketSubline}>
+                          {t.isFreeAtPurchase
+                            ? "Free"
+                            : formatGbp(t.unitPriceGbpAtPurchase)}{" "}
+                          · #{idx + 1}
+                        </Text>
+                      </View>
+                      {checked ? (
+                        <Pill variant="info">CHECKED IN</Pill>
+                      ) : (
+                        <View style={styles.perTicketPillNone}>
+                          <Text style={styles.perTicketPillNoneText}>
+                            NOT CHECKED IN
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    {!checked ? (
+                      <View style={styles.perTicketCtaWrap}>
+                        <Button
+                          label="Mark checked in"
+                          variant="primary"
+                          size="sm"
+                          onPress={() =>
+                            handleManualCheckIn({
+                              ticketId: t.ticketId,
+                              orderId: order.id,
+                              buyerName,
+                              ticketName: t.ticketName,
+                            })
+                          }
+                          accessibilityLabel={`Mark ticket ${idx + 1} checked in`}
+                        />
+                      </View>
+                    ) : null}
                   </View>
-                  <Text style={styles.lineTotal}>
-                    {l.isFreeAtPurchase
-                      ? "—"
-                      : formatGbp(l.quantity * l.unitPriceGbpAtPurchase)}
-                  </Text>
-                </View>
-              ))}
+                );
+              })}
             </View>
           ) : isComp ? (
             <View style={styles.lineRow}>
@@ -378,7 +512,24 @@ export default function GuestDetailRoute(): React.ReactElement {
                 </Text>
                 <Text style={styles.lineSubline}>1× Comp</Text>
               </View>
-              <Text style={styles.lineTotal}>—</Text>
+              {compCheckedIn ? (
+                <Pill variant="info">CHECKED IN</Pill>
+              ) : (
+                <Button
+                  label="Mark checked in"
+                  variant="primary"
+                  size="sm"
+                  onPress={() =>
+                    handleManualCheckIn({
+                      ticketId: comp.id,
+                      orderId: "",
+                      buyerName: comp.name,
+                      ticketName: comp.ticketNameAtCreation ?? "Comp",
+                    })
+                  }
+                  accessibilityLabel="Mark comp guest checked in"
+                />
+              )}
             </View>
           ) : null}
         </GlassCard>
@@ -703,6 +854,50 @@ const styles = StyleSheet.create({
   },
   linesList: {
     gap: spacing.sm,
+  },
+  ticketRowsList: {
+    gap: spacing.md - 2,
+  },
+  perTicketRow: {
+    paddingVertical: spacing.xs,
+    gap: 6,
+  },
+  perTicketHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  perTicketCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  perTicketName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  perTicketSubline: {
+    fontSize: 12,
+    color: textTokens.tertiary,
+    marginTop: 2,
+  },
+  perTicketPillNone: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radiusTokens.sm,
+    backgroundColor: "rgba(120, 120, 120, 0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(120, 120, 120, 0.32)",
+  },
+  perTicketPillNoneText: {
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 1.0,
+    color: textTokens.tertiary,
+  },
+  perTicketCtaWrap: {
+    alignSelf: "flex-end",
   },
   lineRow: {
     flexDirection: "row",
