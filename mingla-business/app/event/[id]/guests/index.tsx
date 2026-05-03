@@ -39,6 +39,11 @@ import {
   type OrderRecord,
 } from "../../../../src/store/orderStore";
 import { useScanStore } from "../../../../src/store/scanStore";
+import {
+  useDoorSalesStore,
+  type DoorPaymentMethod,
+  type DoorSaleRecord,
+} from "../../../../src/store/doorSalesStore";
 import { useCurrentBrandStore } from "../../../../src/store/currentBrandStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { exportGuestsCsv } from "../../../../src/utils/guestCsvExport";
@@ -54,7 +59,9 @@ import { Toast } from "../../../../src/components/ui/Toast";
 
 type GuestRow =
   | { kind: "order"; id: string; order: OrderRecord; sortKey: string }
-  | { kind: "comp"; id: string; comp: CompGuestEntry; sortKey: string };
+  | { kind: "comp"; id: string; comp: CompGuestEntry; sortKey: string }
+  // Cycle 12 — door sale rows (auto-checked-in by Decision #5).
+  | { kind: "door"; id: string; sale: DoorSaleRecord; sortKey: string };
 
 const RELATIVE_TIME_MS = {
   minute: 60 * 1000,
@@ -116,11 +123,23 @@ const matchesSearch = (row: GuestRow, q: string): boolean => {
       o.buyer.phone.toLowerCase().includes(lower)
     );
   }
-  const c = row.comp;
+  if (row.kind === "comp") {
+    const c = row.comp;
+    return (
+      c.name.toLowerCase().includes(lower) ||
+      c.email.toLowerCase().includes(lower) ||
+      c.phone.toLowerCase().includes(lower)
+    );
+  }
+  // Cycle 12 — door sale predicate. Walk-up sales with empty buyerName
+  // still match search "walk" so operators can find them.
+  const s = row.sale;
+  const haystack =
+    s.buyerName.length > 0 ? s.buyerName : "Walk-up";
   return (
-    c.name.toLowerCase().includes(lower) ||
-    c.email.toLowerCase().includes(lower) ||
-    c.phone.toLowerCase().includes(lower)
+    haystack.toLowerCase().includes(lower) ||
+    s.buyerEmail.toLowerCase().includes(lower) ||
+    s.buyerPhone.toLowerCase().includes(lower)
   );
 };
 
@@ -146,6 +165,41 @@ const orderStatusPill = (status: OrderRecord["status"]): OrderStatusPillSpec => 
   }
 };
 
+// Cycle 12 — door sale payment + status pill (composed from method + status).
+const doorPaymentPill = (
+  method: DoorPaymentMethod,
+  status: DoorSaleRecord["status"],
+): OrderStatusPillSpec => {
+  if (status === "refunded_full") return { variant: "warn", label: "REFUNDED" };
+  if (status === "refunded_partial") {
+    return { variant: "accent", label: "PARTIAL" };
+  }
+  switch (method) {
+    case "cash":
+      return { variant: "info", label: "CASH" };
+    case "card_reader":
+      return { variant: "info", label: "CARD" };
+    case "nfc":
+      return { variant: "info", label: "NFC" };
+    case "manual":
+      return { variant: "draft", label: "MANUAL" };
+    default: {
+      const _exhaust: never = method;
+      return _exhaust;
+    }
+  }
+};
+
+const summarizeDoorTickets = (lines: DoorSaleRecord["lines"]): string => {
+  if (lines.length === 0) return "—";
+  if (lines.length === 1) {
+    const l = lines[0];
+    return `${l.quantity}× ${l.ticketNameAtSale}`;
+  }
+  const total = lines.reduce((s, l) => s + l.quantity, 0);
+  return `${total} tickets`;
+};
+
 export default function EventGuestsListRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -166,6 +220,8 @@ export default function EventGuestsListRoute(): React.ReactElement {
   // Raw subscriptions — merge in useMemo to maintain stable refs.
   const allOrderEntries = useOrderStore((s) => s.entries);
   const allCompEntries = useGuestStore((s) => s.entries);
+  // Cycle 12 — door sale entries merged into the J-G1 list.
+  const allDoorEntries = useDoorSalesStore((s) => s.entries);
 
   const merged = useMemo<GuestRow[]>(() => {
     if (typeof eventId !== "string") return [];
@@ -185,10 +241,18 @@ export default function EventGuestsListRoute(): React.ReactElement {
         comp: c,
         sortKey: c.addedAt,
       }));
-    return [...orders, ...comps].sort(
+    const doorRows = allDoorEntries
+      .filter((s) => s.eventId === eventId)
+      .map<GuestRow>((s) => ({
+        kind: "door",
+        id: s.id,
+        sale: s,
+        sortKey: s.recordedAt,
+      }));
+    return [...orders, ...comps, ...doorRows].sort(
       (a, b) => new Date(b.sortKey).getTime() - new Date(a.sortKey).getTime(),
     );
-  }, [allOrderEntries, allCompEntries, eventId]);
+  }, [allOrderEntries, allCompEntries, allDoorEntries, eventId]);
 
   const [searchOpen, setSearchOpen] = useState<boolean>(false);
   const [search, setSearch] = useState<string>("");
@@ -443,24 +507,43 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
   onPress,
 }) => {
   const isOrder = row.kind === "order";
-  const name =
-    isOrder
-      ? row.order.buyer.name.trim().length > 0
+  const isComp = row.kind === "comp";
+  // (kind === "door" is the implicit else branch — narrowing handles it.)
+
+  let name: string;
+  let email: string;
+  let ticketSummary: string;
+  let relativeTime: string;
+
+  if (isOrder) {
+    name =
+      row.order.buyer.name.trim().length > 0
         ? row.order.buyer.name
-        : "Anonymous"
-      : row.comp.name;
-  const email = isOrder ? row.order.buyer.email : row.comp.email;
-  const ticketSummary = isOrder
-    ? summarizeOrderTickets(row.order.lines)
-    : `1× ${row.comp.ticketNameAtCreation ?? "Comp"}`;
-  const relativeTime = formatRelativeTime(
-    isOrder ? row.order.paidAt : row.comp.addedAt,
-  );
+        : "Anonymous";
+    email = row.order.buyer.email;
+    ticketSummary = summarizeOrderTickets(row.order.lines);
+    relativeTime = formatRelativeTime(row.order.paidAt);
+  } else if (isComp) {
+    name = row.comp.name;
+    email = row.comp.email;
+    ticketSummary = `1× ${row.comp.ticketNameAtCreation ?? "Comp"}`;
+    relativeTime = formatRelativeTime(row.comp.addedAt);
+  } else {
+    // Door
+    name = row.sale.buyerName.trim().length > 0 ? row.sale.buyerName : "Walk-up";
+    email = row.sale.buyerEmail;
+    ticketSummary = summarizeDoorTickets(row.sale.lines);
+    relativeTime = formatRelativeTime(row.sale.recordedAt);
+  }
+
   const hue = hashStringToHue(row.id);
   const initials = getInitials(name);
-  const subline = `${email} · ${ticketSummary} · ${relativeTime}`;
+  const sublineLeft = email.length > 0 ? `${email} · ` : "";
+  const subline = `${sublineLeft}${ticketSummary} · ${relativeTime}`;
 
-  // Cycle 11 J-S6 — derived check-in pill state.
+  // Cycle 11 J-S6 + Cycle 12 — derived check-in pill state.
+  // Door sales are auto-checked-in at sale time per Decision #5 + OBS-1
+  // (refund does NOT void check-in). Always CHECKED IN.
   let checkInPillNode: React.ReactElement | null = null;
   if (isOrder) {
     const totalLiveQty = row.order.lines.reduce(
@@ -483,7 +566,7 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
     } else {
       checkInPillNode = <Pill variant="info">ALL CHECKED IN</Pill>;
     }
-  } else {
+  } else if (isComp) {
     const compChecked = compCheckInIds.has(row.comp.id);
     checkInPillNode = compChecked ? (
       <Pill variant="info">CHECKED IN</Pill>
@@ -492,11 +575,25 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
         <Text style={styles.checkInPillText}>NOT CHECKED IN</Text>
       </View>
     );
+  } else {
+    // Door — always CHECKED IN (auto-check-in at sale; refund doesn't void).
+    checkInPillNode = <Pill variant="info">CHECKED IN</Pill>;
   }
 
-  const a11yLabel = isOrder
-    ? `Guest ${name}, ${ticketSummary}, ${orderStatusPill(row.order.status).label}`
-    : `Comp guest ${name}, ${ticketSummary}`;
+  let kindPillNode: React.ReactElement;
+  let a11yLabel: string;
+  if (isOrder) {
+    const spec = orderStatusPill(row.order.status);
+    kindPillNode = <Pill variant={spec.variant}>{spec.label}</Pill>;
+    a11yLabel = `Guest ${name}, ${ticketSummary}, ${spec.label}`;
+  } else if (isComp) {
+    kindPillNode = <Pill variant="accent">COMP</Pill>;
+    a11yLabel = `Comp guest ${name}, ${ticketSummary}`;
+  } else {
+    const spec = doorPaymentPill(row.sale.paymentMethod, row.sale.status);
+    kindPillNode = <Pill variant={spec.variant}>{spec.label}</Pill>;
+    a11yLabel = `Door sale ${name}, ${ticketSummary}, ${spec.label}`;
+  }
 
   return (
     <Pressable
@@ -521,13 +618,7 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
           {subline}
         </Text>
         <View style={styles.rowPills}>
-          {isOrder ? (
-            <Pill variant={orderStatusPill(row.order.status).variant}>
-              {orderStatusPill(row.order.status).label}
-            </Pill>
-          ) : (
-            <Pill variant="accent">COMP</Pill>
-          )}
+          {kindPillNode}
           {checkInPillNode}
         </View>
       </View>

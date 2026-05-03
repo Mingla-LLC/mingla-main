@@ -40,6 +40,7 @@ import { useDraftById } from "../../../src/store/draftEventStore";
 import type { TicketStub } from "../../../src/store/draftEventStore";
 import { useBrandList } from "../../../src/store/currentBrandStore";
 import { useOrderStore } from "../../../src/store/orderStore";
+import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
 import { useScanStore } from "../../../src/store/scanStore";
 import {
   useEventEditLogStore,
@@ -303,6 +304,13 @@ export default function EventDetailScreen(): React.ReactElement {
     }
   }, [brand, router]);
 
+  // Cycle 12 — J-D1 Door Sales action tile handler.
+  const handleDoorSales = useCallback((): void => {
+    if (id !== null) {
+      router.push(`/event/${id}/door` as never);
+    }
+  }, [router, id]);
+
   // ----- Lifecycle handlers (9b-1) -------------------------------
   const handleEndSalesOpen = useCallback((): void => {
     setEndSalesVisible(true);
@@ -386,6 +394,32 @@ export default function EventDetailScreen(): React.ReactElement {
   const totalSoldCount = useOrderStore((s) =>
     event !== null ? s.getSoldCountForEvent(event.id) : 0,
   );
+  // Cycle 12 — door sale KPIs (gated on event.inPersonPaymentsEnabled below
+  // when rendering the J-D1 ActionTile). Per SPEC §4.5 selector pattern rule
+  // (and dispatch §2.7 grep ban): NEVER subscribe to fresh-computation
+  // selectors directly. Use raw entries + useMemo (mirrors soldCountByTier
+  // pattern just above for orderStore).
+  const allDoorEntries = useDoorSalesStore((s) => s.entries);
+  const doorSoldCount = useMemo<number>(() => {
+    if (event === null) return 0;
+    let count = 0;
+    for (const sale of allDoorEntries) {
+      if (sale.eventId !== event.id) continue;
+      for (const line of sale.lines) {
+        count += Math.max(0, line.quantity - line.refundedQuantity);
+      }
+    }
+    return count;
+  }, [allDoorEntries, event]);
+  const doorRevenue = useMemo<number>(() => {
+    if (event === null) return 0;
+    let revenue = 0;
+    for (const sale of allDoorEntries) {
+      if (sale.eventId !== event.id) continue;
+      revenue += sale.totalGbpAtSale - sale.refundedAmountGbp;
+    }
+    return revenue;
+  }, [allDoorEntries, event]);
   // Per-tier sold count map — stable ref via raw entries + useMemo (same
   // pattern as Cycle 9c rework v2 fix; avoids infinite-loop on
   // getSoldCountByTier returning a fresh object each call).
@@ -619,6 +653,15 @@ export default function EventDetailScreen(): React.ReactElement {
               label="Brand page"
               sub={`@${brand.slug}`}
               onPress={handleBrandPage}
+            />
+          ) : null}
+          {/* Cycle 12 — J-D1 Door Sales tile, gated on per-event toggle. */}
+          {event.inPersonPaymentsEnabled ? (
+            <ActionTile
+              icon="ticket"
+              label="Door Sales"
+              sub={`${doorSoldCount} sold · ${formatGbp(doorRevenue)}`}
+              onPress={handleDoorSales}
             />
           ) : null}
         </View>

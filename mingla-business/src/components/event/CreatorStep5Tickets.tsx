@@ -46,6 +46,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type {
+  TicketAvailableAt,
   TicketStub,
   TicketVisibility,
 } from "../../store/draftEventStore";
@@ -346,6 +347,80 @@ const VisibilitySheet: React.FC<VisibilitySheetProps> = ({
   );
 };
 
+// ---- Available-at sub-sheet (Cycle 12) ------------------------------
+
+interface AvailableAtSheetProps {
+  visible: boolean;
+  current: TicketAvailableAt;
+  onClose: () => void;
+  onSelect: (v: TicketAvailableAt) => void;
+}
+
+const AVAILABLE_AT_OPTIONS: ReadonlyArray<{
+  id: TicketAvailableAt;
+  label: string;
+  sub: string;
+}> = [
+  {
+    id: "both",
+    label: "Online and at the door",
+    sub: "Buyers see this tier on the public page; you can also sell it at the door.",
+  },
+  {
+    id: "online",
+    label: "Online only",
+    sub: "Hidden from the door-sale flow. Buyers must purchase via the public link.",
+  },
+  {
+    id: "door",
+    label: "Door only",
+    sub: "Hidden from the public page. Only sellable in person at the door.",
+  },
+];
+
+const AvailableAtSheet: React.FC<AvailableAtSheetProps> = ({
+  visible,
+  current,
+  onClose,
+  onSelect,
+}) => {
+  return (
+    <Sheet visible={visible} onClose={onClose} snapPoint="half">
+      <ScrollView contentContainerStyle={styles.sheetContent}>
+        <Text style={styles.sheetTitle}>Available at</Text>
+        {AVAILABLE_AT_OPTIONS.map((opt) => {
+          const active = current === opt.id;
+          return (
+            <Pressable
+              key={opt.id}
+              onPress={() => onSelect(opt.id)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={opt.label}
+              style={[styles.visRow, active && styles.visRowActive]}
+            >
+              <View style={styles.visRowTextCol}>
+                <Text
+                  style={[
+                    styles.visRowLabel,
+                    active && styles.visRowLabelActive,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+                <Text style={styles.visRowSub}>{opt.sub}</Text>
+              </View>
+              {active ? (
+                <Icon name="check" size={18} color={accent.warm} />
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </Sheet>
+  );
+};
+
 // ---- TicketStubSheet ------------------------------------------------
 
 interface TicketStubSheetProps {
@@ -419,6 +494,10 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
   // Visibility sub-sheet
   const [visSheetVisible, setVisSheetVisible] = useState<boolean>(false);
 
+  // Cycle 12 — Available-at sub-sheet
+  const [availableAt, setAvailableAt] = useState<TicketAvailableAt>("both");
+  const [availSheetVisible, setAvailSheetVisible] = useState<boolean>(false);
+
   // Keyboard awareness — handled natively via the ScrollView's
   // `automaticallyAdjustKeyboardInsets` prop below. iOS adds bottom
   // contentInsets = keyboardHeight AND auto-scrolls the focused
@@ -463,6 +542,7 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
       setDescription(initial.description ?? "");
       setSaleStartAt(initial.saleStartAt);
       setSaleEndAt(initial.saleEndAt);
+      setAvailableAt(initial.availableAt);
     } else {
       setName("");
       setIsFree(false);
@@ -480,6 +560,7 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
       setDescription("");
       setSaleStartAt(null);
       setSaleEndAt(null);
+      setAvailableAt("both");
     }
   }, [visible, initial]);
 
@@ -658,9 +739,10 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
       description: description.trim().length > 0 ? description.trim() : null,
       saleStartAt,
       saleEndAt,
-      // Cycle 12 — preserve when editing; default "both" for new tiers
-      // (visible online + door). I-30 enforced via filter chains downstream.
-      availableAt: initial?.availableAt ?? "both",
+      // Cycle 12 — operator-controlled per tier via Available-at picker.
+      // Default "both" for new tiers (visible online + door). I-30 enforced
+      // via filter chains downstream (J-C1 picker, J-D3 picker, AddCompGuestSheet).
+      availableAt,
     };
     onSave(ticket);
   }, [
@@ -680,6 +762,7 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
     description,
     saleStartAt,
     saleEndAt,
+    availableAt,
     initial,
     nextOrder,
     onSave,
@@ -688,6 +771,11 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
   // Visibility row label
   const visibilityLabel =
     VISIBILITY_OPTIONS.find((o) => o.id === visibility)?.label ?? "Public";
+
+  // Cycle 12 — Available-at row label
+  const availableAtLabel =
+    AVAILABLE_AT_OPTIONS.find((o) => o.id === availableAt)?.label ??
+    "Online and at the door";
 
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="full">
@@ -885,6 +973,20 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
               style={styles.pickerRow}
             >
               <Text style={styles.pickerValue}>{visibilityLabel}</Text>
+              <Icon name="chevD" size={16} color={textTokens.tertiary} />
+            </Pressable>
+          </View>
+
+          {/* ───── Section: Available at (Cycle 12) ───── */}
+          <Text style={styles.sectionHeader}>Available at</Text>
+          <View style={styles.field}>
+            <Pressable
+              onPress={() => setAvailSheetVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Available at: ${availableAtLabel}`}
+              style={styles.pickerRow}
+            >
+              <Text style={styles.pickerValue}>{availableAtLabel}</Text>
               <Icon name="chevD" size={16} color={textTokens.tertiary} />
             </Pressable>
           </View>
@@ -1254,6 +1356,16 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
         onSelect={(v) => {
           setVisibility(v);
           setVisSheetVisible(false);
+        }}
+      />
+
+      <AvailableAtSheet
+        visible={availSheetVisible}
+        current={availableAt}
+        onClose={() => setAvailSheetVisible(false)}
+        onSelect={(v) => {
+          setAvailableAt(v);
+          setAvailSheetVisible(false);
         }}
       />
     </Sheet>

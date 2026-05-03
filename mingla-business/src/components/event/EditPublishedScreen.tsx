@@ -577,7 +577,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             changedKeys.has("requireApproval") ||
             changedKeys.has("allowTransfers") ||
             changedKeys.has("hideRemainingCount") ||
-            changedKeys.has("passwordProtected")))
+            changedKeys.has("passwordProtected") ||
+            // Cycle 12 — in-person payments toggle is a Settings field.
+            changedKeys.has("inPersonPaymentsEnabled")))
       ) {
         out.add(sec.key);
       }

@@ -212,6 +212,48 @@ These two invariants are queued for codification when ORCH-0708 closes (operator
 
 **Test that catches a regression:** SC-19 + SC-20 + T-21: TRANSITIONAL banner visible always; canAcceptPayments toggle DISABLED + always false; toast on confirm matches the deferred-email copy.
 
+> **Cycle 12 amendment:** the `canAcceptPayments` type-lock was FLIPPED per Cycle 12 Decision #4 — operator can now toggle the permission per scanner. Semantics: "can take cash + manual payments at the door". Card reader + NFC tap-to-pay remain TRANSITIONAL until B-cycle Stripe Terminal SDK + platform NFC integrations land. The flip is a permission-shape change, NOT a functional-flow change — the rest of I-28 (UI-only invitation, no email, no acceptance flow, no auth gate) stays in force. Reference: `mingla-business/src/components/scanners/InviteScannerSheet.tsx` post-Cycle-12 commit.
+
+---
+
+### I-29 Door sales NEVER fabricated as phantom OrderRecord rows (mingla-business — Cycle 12)
+
+**Rule:** Door sales live in `useDoorSalesStore.entries` ONLY. NEVER as phantom `OrderRecord` rows in `useOrderStore`. The `CheckoutPaymentMethod` union extension (Cycle 12 §4.8) adds `"cash" | "card_reader" | "nfc" | "manual"` values, but online checkout flow (`app/checkout/[eventId]/payment.tsx`) MUST filter to `"card" | "apple_pay" | "google_pay" | "free"` ONLY when constructing OrderResult — door payment methods MUST NEVER appear in buyer flow. The anon-tolerant buyer routes (`app/o/`, `app/e/`, `app/checkout/`) MUST NOT import `useDoorSalesStore`.
+
+**Why:** Mirrors I-25 (comp guests in `useGuestStore` only) — same architectural rule applied to a different surface. I-19 (immutable order financials) requires write-once snapshot fields on `OrderRecord`; door sales have parallel write-once snapshot fields on `DoorSaleRecord`. Calling them "orders" is a category error that would cascade into checkout-flow type checks that don't make sense for in-person walk-ups (e.g., `paymentIntentId`, `stripeFee`). Operators want a separate ledger; auditors need a clear separation between the online (Stripe-mediated) and in-person (manual cash/card-reader) financial event streams.
+
+**Established by:** Cycle 12 close (2026-05-03). Code: `mingla-business/src/store/doorSalesStore.ts` + `mingla-business/app/event/[id]/door/`. Anon-route safety enforced by 0-hit grep across `app/o/`, `app/e/`, `app/checkout/`.
+
+**Enforcement (Cycle 12):**
+- Convention + grep test (T-39 + T-41): `useDoorSalesStore` MUST NOT appear in `app/o/`, `app/e/`, `app/checkout/` (anon-tolerant routes per I-21).
+- `CheckoutPaymentMethod` union extension is type-only; runtime filter at the buyer-flow boundary (Cycle 8 J-C3 payment screen).
+- Door payment methods are never persisted to `OrderRecord.paymentMethod` (the type union union allows door values for forward-compat with the merged `CheckoutPaymentMethod` shape, but the store mutation layer rejects them).
+
+**EXIT CONDITION:** None — this is a permanent architectural separation. B-cycle wires backend writes to `door_sales_ledger` (PR #59 schema), keeping door sales separate from the `orders` table forever.
+
+**Test that catches a regression:** T-39 + T-41 grep; SC-31 banned-subscription pattern; visual check that the J-G1 list distinguishes ONLINE / COMP / DOOR row kinds.
+
+---
+
+### I-30 Door-tier vs online-tier separation enforced via `availableAt` (mingla-business — Cycle 12)
+
+**Rule:** `TicketStub.availableAt: "online" | "door" | "both"` is the source of truth for which surface a tier appears on. Online checkout (Cycle 8 J-C1 picker at `app/checkout/[eventId]/index.tsx`) MUST filter `availableAt !== "door"` — surfaces only `"online"` + `"both"`. Door sale flow (Cycle 12 J-D3 picker in `DoorSaleNewSheet.tsx`) MUST filter `availableAt !== "online"` — surfaces only `"door"` + `"both"`. Comp guest flow (Cycle 10 `AddCompGuestSheet`) MUST filter `availableAt === "both"` ONLY — comps stay tied to "both" tiers; door-only AND online-only tiers DO NOT surface for comps (use case is unclear; deferred per investigation OBS-3).
+
+**Why:** Operators want pricing flexibility — charge £25 advance / £30 at door is a common pattern. Without enforcement, an operator could accidentally make door-only tiers show up online (and vice versa), creating customer confusion + revenue loss. The `availableAt` field is additive (default `"both"` for migrated tiers) — no operator action needed for backward-compat. Persist v5→v6 migrate function defaults `"both"` for all pre-Cycle-12 tier rows.
+
+**Established by:** Cycle 12 close (2026-05-03). Code: `mingla-business/src/store/draftEventStore.ts` (TicketStub.availableAt + persist v5→v6 migrate); `mingla-business/app/checkout/[eventId]/index.tsx` (J-C1 filter); `mingla-business/src/components/door/DoorSaleNewSheet.tsx` (J-D3 filter); `mingla-business/src/components/guests/AddCompGuestSheet.tsx` (comp filter).
+
+**Enforcement (Cycle 12):**
+- Convention + 3 grep tests:
+  - T-42 J-C1: `availableAt !== "door"` filter present in `app/checkout/[eventId]/index.tsx`
+  - T-43 J-D3: `availableAt !== "online"` filter present in `DoorSaleNewSheet.tsx`
+  - T-44 AddCompGuestSheet: `availableAt === "both"` filter present
+- Persist v5→v6 migrate ships safe default `availableAt: "both"` for all pre-Cycle-12 tiers (verified by tsc + cold-start hydration test).
+
+**EXIT CONDITION:** None — this is a permanent separation. B-cycle backend wire reuses the same field on the `tickets` table (no migration drift).
+
+**Test that catches a regression:** T-42 + T-43 + T-44 grep; SC-26 + SC-27 + SC-29 manual smoke (door-only tier hidden in online checkout; door-only tier hidden in comp picker; cold-start hydration preserves `availableAt: "both"` for all migrated tiers).
+
 ---
 
 ### I-19 Immutable order financials (mingla-business)

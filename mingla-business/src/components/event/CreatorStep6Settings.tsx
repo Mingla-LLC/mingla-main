@@ -157,6 +157,18 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
           updateDraft({ privateGuestList: !draft.privateGuestList })
         }
       />
+
+      {/* Cycle 12 — In-person payments */}
+      <ToggleRow
+        label="In-person payments"
+        sub='Sell tickets at the door. Adds a "Door Sales" tile to your event.'
+        on={draft.inPersonPaymentsEnabled}
+        onToggle={() =>
+          updateDraft({
+            inPersonPaymentsEnabled: !draft.inPersonPaymentsEnabled,
+          })
+        }
+      />
     </View>
   );
 };
