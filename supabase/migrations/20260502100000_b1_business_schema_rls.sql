@@ -284,6 +284,97 @@ AS $$
 $$;
 
 -- ---------------------------------------------------------------------------
+-- B1.5 ORCH-0706 ORDERING FIX (applied on Seth before merge to main):
+-- The 7 *_for_caller wrappers below were originally defined ~line 1718 of
+-- the merged migration. Some POLICY USING-clauses at line 290+ reference
+-- these wrappers, so PostgreSQL fails at CREATE POLICY with "function
+-- does not exist". The wrappers must be defined BEFORE the first
+-- CREATE POLICY that uses them.
+--
+-- Wrapper bodies reference 2-arg helpers (biz_is_event_manager_plus,
+-- biz_can_read_order, biz_can_manage_orders_for_event,
+-- biz_can_manage_payments_for_brand) that are defined LATER in this
+-- migration. SET LOCAL check_function_bodies = off allows these forward
+-- references to be deferred until first call (after migration commits,
+-- when all referenced functions exist).
+--
+-- The original wrapper block at line 1718 is removed in this fix.
+-- ---------------------------------------------------------------------------
+
+SET LOCAL check_function_bodies = off;
+
+-- PostgREST: only caller-scoped entry points for authenticated (no arbitrary p_user_id).
+CREATE OR REPLACE FUNCTION public.biz_brand_effective_rank_for_caller(p_brand_id uuid)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_brand_effective_rank(p_brand_id, auth.uid());
+$$;
+
+CREATE OR REPLACE FUNCTION public.biz_is_brand_member_for_read_for_caller(p_brand_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_is_brand_member_for_read(p_brand_id, auth.uid());
+$$;
+
+CREATE OR REPLACE FUNCTION public.biz_is_brand_admin_plus_for_caller(p_brand_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_is_brand_admin_plus(p_brand_id, auth.uid());
+$$;
+
+CREATE OR REPLACE FUNCTION public.biz_is_event_manager_plus_for_caller(p_event_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_is_event_manager_plus(p_event_id, auth.uid());
+$$;
+
+CREATE OR REPLACE FUNCTION public.biz_can_read_order_for_caller(p_order_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_can_read_order(p_order_id, auth.uid());
+$$;
+
+CREATE OR REPLACE FUNCTION public.biz_can_manage_orders_for_event_for_caller(p_event_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_can_manage_orders_for_event(p_event_id, auth.uid());
+$$;
+
+CREATE OR REPLACE FUNCTION public.biz_can_manage_payments_for_brand_for_caller(p_brand_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.biz_can_manage_payments_for_brand(p_brand_id, auth.uid());
+$$;
+
+-- ---------------------------------------------------------------------------
 -- RLS: brands
 -- ---------------------------------------------------------------------------
 
@@ -1715,76 +1806,10 @@ AS $$
   );
 $$;
 
--- PostgREST: only caller-scoped entry points for authenticated (no arbitrary p_user_id).
-CREATE OR REPLACE FUNCTION public.biz_brand_effective_rank_for_caller(p_brand_id uuid)
-RETURNS integer
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-  SELECT public.biz_brand_effective_rank(p_brand_id, auth.uid());
-$$;
-
-CREATE OR REPLACE FUNCTION public.biz_is_brand_member_for_read_for_caller(p_brand_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-  SELECT public.biz_is_brand_member_for_read(p_brand_id, auth.uid());
-$$;
-
-CREATE OR REPLACE FUNCTION public.biz_is_brand_admin_plus_for_caller(p_brand_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-  SELECT public.biz_is_brand_admin_plus(p_brand_id, auth.uid());
-$$;
-
-CREATE OR REPLACE FUNCTION public.biz_is_event_manager_plus_for_caller(p_event_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-  SELECT public.biz_is_event_manager_plus(p_event_id, auth.uid());
-$$;
-
-CREATE OR REPLACE FUNCTION public.biz_can_read_order_for_caller(p_order_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-  SELECT public.biz_can_read_order(p_order_id, auth.uid());
-$$;
-
-CREATE OR REPLACE FUNCTION public.biz_can_manage_orders_for_event_for_caller(p_event_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-  SELECT public.biz_can_manage_orders_for_event(p_event_id, auth.uid());
-$$;
-
-CREATE OR REPLACE FUNCTION public.biz_can_manage_payments_for_brand_for_caller(p_brand_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-  SELECT public.biz_can_manage_payments_for_brand(p_brand_id, auth.uid());
-$$;
+-- (B1.5 ORCH-0706 ORDERING FIX: the 7 *_for_caller wrappers originally
+--  defined here were moved to before the first CREATE POLICY that uses
+--  them — see the SET LOCAL check_function_bodies = off block at ~line 286.
+--  This original location is now empty.)
 
 -- stripe_connect_accounts
 DROP POLICY IF EXISTS "Brand admin plus can manage stripe_connect_accounts" ON public.stripe_connect_accounts;

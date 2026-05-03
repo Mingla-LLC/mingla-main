@@ -25,12 +25,15 @@ import {
   accent,
   glass,
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import type { Brand } from "../../store/currentBrandStore";
+import type { Brand, BrandStripeStatus } from "../../store/currentBrandStore";
+import { formatGbpRound, formatCount } from "../../utils/currency";
 
+import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { EventCover } from "../ui/EventCover";
 import { GlassCard } from "../ui/GlassCard";
@@ -40,15 +43,6 @@ import { KpiTile } from "../ui/KpiTile";
 import { Pill } from "../ui/Pill";
 import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
-
-const formatGbp = (value: number): string =>
-  new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-    maximumFractionDigits: 0,
-  }).format(value);
-
-const formatCount = (value: number): string => value.toLocaleString("en-GB");
 
 interface ToastState {
   visible: boolean;
@@ -90,52 +84,136 @@ interface OperationsRow {
   icon: IconName;
   label: string;
   sub: string;
-  toastMessage: string;
+  /** Tap handler — navigation when the journey is live, fireToast when not. */
+  onPress: () => void;
 }
 
-const OPERATIONS_ROWS: OperationsRow[] = [
-  // [TRANSITIONAL] inert rows — exit when J-A9/J-A10/J-A12 lands per row.
-  {
-    icon: "bank",
-    label: "Payments & Stripe",
-    sub: "Not connected",
-    toastMessage: "Stripe Connect lands in J-A10.",
-  },
-  {
-    icon: "users",
-    label: "Team & permissions",
-    sub: "1 member",
-    toastMessage: "Team UI lands in J-A9.",
-  },
-  {
-    icon: "receipt",
-    label: "Tax & VAT",
-    sub: "Not configured",
-    toastMessage: "Tax settings land in a later cycle.",
-  },
-  {
-    icon: "chart",
-    label: "Finance reports",
-    sub: "Stripe-ready CSVs",
-    toastMessage: "Finance reports land in J-A12.",
-  },
-];
+/**
+ * Normalize a social-link field value into a full URL. Founders may type
+ * either a full URL (`https://instagram.com/lonelymoth`) or a handle
+ * (`@lonelymoth` / `lonelymoth`). Mirrors the pattern in PublicBrandPage.
+ *
+ * Cycle 7 FX1 — added inline rather than lifted to a shared util; lift
+ * only if a 3rd consumer appears.
+ */
+const normalizeSocialUrl = (raw: string, base: string): string => {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  const handle = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
+  return `${base}${handle}`;
+};
 
+/**
+ * Pattern note: BrandProfileViewProps grows a navigation callback prop per
+ * cycle as Operations rows + the Stripe banner go live. Current set
+ * (FINAL for Cycle 2):
+ *   - J-A8: onEdit (sticky-shelf "Edit brand")
+ *   - J-A9: onTeam (Operations row "Team & permissions")
+ *   - J-A10: onStripe (Stripe banner) + onPayments (Operations row "Payments & Stripe")
+ *   - J-A12: onReports (Operations row "Finance reports")
+ * Each callback is owned by the route file (see app/brand/[id]/index.tsx),
+ * which calls router.push to navigate. This view component never imports
+ * `useRouter` — keeps the view re-renderable in tests / web parity.
+ *
+ * Tax & VAT row (Operations row #3) stays TRANSITIONAL Toast until §5.3.6
+ * settings cycle — no `onTax` prop yet.
+ */
 export interface BrandProfileViewProps {
   brand: Brand | null;
   onBack: () => void;
   /**
    * Called when user taps the sticky-shelf "Edit brand" button.
-   * Receives the brand id so the parent route can navigate. Pattern
-   * mirrors any future view→edit pair (J-A9 Team, J-A10 Payments, etc.).
+   * Receives the brand id so the parent route can navigate.
    */
   onEdit: (brandId: string) => void;
+  /**
+   * Called when user taps the "Team & permissions" Operations row.
+   * Receives the brand id. NEW in J-A9.
+   */
+  onTeam: (brandId: string) => void;
+  /**
+   * Called when user taps the Stripe banner (any visible state — banner is
+   * suppressed when stripeStatus === "active"). NEW in J-A10. Pattern
+   * continues onEdit + onTeam.
+   */
+  onStripe: (brandId: string) => void;
+  /**
+   * Called when user taps the "Payments & Stripe" Operations row.
+   * Receives the brand id. NEW in J-A10.
+   */
+  onPayments: (brandId: string) => void;
+  /**
+   * Called when user taps the "Finance reports" Operations row.
+   * Receives the brand id. NEW in J-A12 — final navigation prop in
+   * the Cycle-2 chain.
+   */
+  onReports: (brandId: string) => void;
+  /**
+   * Called when user taps "View public page". Receives the brand SLUG
+   * (not id) — the public page route is `/b/{brandSlug}`.
+   * NEW in Cycle 7 FX1 — replaces Cycle-2 J-A7 TRANSITIONAL Toast now
+   * that Cycle 7 has shipped the public brand page.
+   */
+  onViewPublic: (brandSlug: string) => void;
+  /**
+   * Called when user taps the empty-events "Build a new event" CTA.
+   * Routes to `/event/create` (the Cycle 3 wedge).
+   * NEW in Cycle 7 FX1 — replaces Cycle-2 J-A7 TRANSITIONAL Toast that
+   * was supposed to retire when Cycle 3 shipped (pre-existing miss).
+   */
+  onCreateEvent: () => void;
+  /**
+   * Called when user taps a social chip on the brand profile. Receives
+   * the normalized full URL. Caller wires to `Linking.openURL`.
+   * NEW in Cycle 7 FX1 — replaces Cycle-2 J-A7 TRANSITIONAL Toast.
+   * Mirrors the new ShareModal social-link pattern from Cycle 7.
+   */
+  onOpenLink: (url: string) => void;
 }
+
+// Status-driven J-A7 banner copy. When entry is `null`, banner is
+// SUPPRESSED (active state — populated KPIs on the dashboard are the
+// affirmative signal, not a "you're good" green banner).
+const J_A7_BANNER_COPY: Record<
+  BrandStripeStatus,
+  { title: string; sub: string } | null
+> = {
+  not_connected: {
+    title: "Connect Stripe to sell tickets",
+    sub: "Get paid for your events. Setup takes 5 minutes.",
+  },
+  onboarding: {
+    title: "Onboarding submitted — verifying",
+    sub: "We'll email you when Stripe finishes verifying your details.",
+  },
+  active: null,
+  restricted: {
+    title: "Action required",
+    sub: "Stripe has limited your account. Tap to resolve.",
+  },
+};
+
+// Operations row #1 dynamic sub-text per stripe status.
+const OPERATIONS_SUB_TEXT: Record<BrandStripeStatus, string> = {
+  not_connected: "Not connected",
+  onboarding: "Onboarding…",
+  active: "Active",
+  restricted: "Action required",
+};
 
 export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   brand,
   onBack,
   onEdit,
+  onTeam,
+  onStripe,
+  onPayments,
+  onReports,
+  onViewPublic,
+  onCreateEvent,
+  onOpenLink,
 }) => {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
@@ -154,35 +232,85 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     }
   }, [brand, onEdit]);
 
-  // [TRANSITIONAL] View-public CTA — exit when /brand/[id]/preview lands (Cycle 3+).
+  // Cycle 7 FX1: routes to /b/{brand.slug} via parent route handler.
+  // Retired Cycle-2 J-A7 TRANSITIONAL Toast (exit condition met by Cycle 7).
   const handleViewPublic = useCallback((): void => {
-    fireToast("Public preview lands in Cycle 3+.");
-  }, [fireToast]);
+    if (brand !== null) onViewPublic(brand.slug);
+  }, [brand, onViewPublic]);
 
-  // [TRANSITIONAL] Stripe banner — exit when Brand.stripeStatus field lands (J-A10).
   const handleStripeBanner = useCallback((): void => {
-    fireToast("Stripe Connect lands in J-A10.");
-  }, [fireToast]);
+    if (brand !== null) {
+      onStripe(brand.id);
+    }
+  }, [brand, onStripe]);
 
   // [TRANSITIONAL] Empty-bio CTA — exit when J-A8 lands.
   const handleEmptyBio = useCallback((): void => {
     fireToast("Editing lands in J-A8.");
   }, [fireToast]);
 
-  // [TRANSITIONAL] Empty-events CTA — exit when Cycle 3 (event creator) lands.
+  // Cycle 7 FX1: routes to /event/create via parent route handler.
+  // Retired Cycle-2 J-A7 TRANSITIONAL Toast (exit condition met by Cycle 3).
   const handleCreateEvent = useCallback((): void => {
-    fireToast("Event creation lands in Cycle 3.");
-  }, [fireToast]);
+    onCreateEvent();
+  }, [onCreateEvent]);
 
-  // [TRANSITIONAL] Social chip taps — exit when external-link handling lands (Cycle 3+).
-  const handleOpenLink = useCallback((): void => {
-    fireToast("Opening links lands in a later cycle.");
-  }, [fireToast]);
+  // Cycle 7 FX1: opens external URL via parent route handler (Linking.openURL).
+  // Retired Cycle-2 J-A7 TRANSITIONAL Toast.
+  const handleOpenLink = useCallback(
+    (url: string): void => {
+      onOpenLink(url);
+    },
+    [onOpenLink],
+  );
 
   const pastEvents = useMemo<StubPastEventRow[]>(() => {
     if (brand === null) return [];
     return STUB_PAST_EVENTS[brand.id] ?? [];
   }, [brand]);
+
+  // Hook-derived Operations rows. Per-row onPress closes over either
+  // fireToast (still-TRANSITIONAL rows) or the live navigation callback.
+  // Live wirings: J-A8 onEdit (sticky shelf — separate from this list) ·
+  // J-A9 onTeam (Team row) · J-A10 onPayments (Payments row).
+  // [TRANSITIONAL] remaining inert rows — exit when J-A12 (Finance reports)
+  // lands. Tax & VAT row stays TRANSITIONAL until §5.3.6 settings cycle.
+  const operationsRows = useMemo<OperationsRow[]>(() => {
+    const memberCount = (brand?.members ?? []).length;
+    const stripeStatus = brand?.stripeStatus ?? "not_connected";
+    return [
+      {
+        icon: "bank",
+        label: "Payments & Stripe",
+        sub: OPERATIONS_SUB_TEXT[stripeStatus],
+        onPress: () => {
+          if (brand !== null) onPayments(brand.id);
+        },
+      },
+      {
+        icon: "users",
+        label: "Team & permissions",
+        sub: `${memberCount} ${memberCount === 1 ? "member" : "members"}`,
+        onPress: () => {
+          if (brand !== null) onTeam(brand.id);
+        },
+      },
+      {
+        icon: "receipt",
+        label: "Tax & VAT",
+        sub: "Not configured",
+        onPress: () => fireToast("Tax settings land in a later cycle."),
+      },
+      {
+        icon: "chart",
+        label: "Finance reports",
+        sub: "Stripe-ready CSVs",
+        onPress: () => {
+          if (brand !== null) onReports(brand.id);
+        },
+      },
+    ];
+  }, [brand, fireToast, onTeam, onPayments, onReports]);
 
   // ----- Not Found state -----
   if (brand === null) {
@@ -216,8 +344,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // ----- Populated state -----
   const hasBio = typeof brand.bio === "string" && brand.bio.trim().length > 0;
 
-  const initial = brand.displayName.charAt(0).toUpperCase();
-
   return (
     <View style={styles.host}>
       <View style={styles.barWrap}>
@@ -236,9 +362,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         {/* SECTION A — Hero */}
         <GlassCard variant="elevated" padding={spacing.lg}>
           <View style={styles.heroAvatarRow}>
-            <View style={styles.heroAvatar}>
-              <Text style={styles.heroAvatarInitial}>{initial}</Text>
-            </View>
+            <Avatar name={brand.displayName} size="hero" />
           </View>
           <Text style={styles.heroName}>{brand.displayName}</Text>
           {typeof brand.tagline === "string" && brand.tagline.length > 0 ? (
@@ -266,36 +390,39 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             // Order: email → phone → website → instagram → tiktok → x →
             // facebook → youtube → linkedin → threads. Hide entire row when
             // every contact + social field is empty (clean look per spec).
-            const chips: Array<{ key: string; icon: IconName; aria: string }> = [];
+            // Each chip carries its `url` (already-normalized full URL or
+            // `mailto:`/`tel:` scheme). Tap → onOpenLink(url) → parent calls
+            // Linking.openURL. Cycle 7 FX1 retired the Cycle-2 dead-Toast.
+            const chips: Array<{ key: string; icon: IconName; aria: string; url: string }> = [];
             if (typeof brand.contact?.email === "string" && brand.contact.email.length > 0) {
-              chips.push({ key: "email", icon: "mail", aria: `Email ${brand.contact.email}` });
+              chips.push({ key: "email", icon: "mail", aria: `Email ${brand.contact.email}`, url: `mailto:${brand.contact.email}` });
             }
             if (typeof brand.contact?.phone === "string" && brand.contact.phone.length > 0) {
-              chips.push({ key: "phone", icon: "phone", aria: `Phone ${brand.contact.phone}` });
+              chips.push({ key: "phone", icon: "phone", aria: `Phone ${brand.contact.phone}`, url: `tel:${brand.contact.phone}` });
             }
             if (typeof brand.links?.website === "string" && brand.links.website.length > 0) {
-              chips.push({ key: "website", icon: "globe", aria: `Website ${brand.links.website}` });
+              chips.push({ key: "website", icon: "globe", aria: `Website ${brand.links.website}`, url: normalizeSocialUrl(brand.links.website, "https://") });
             }
             if (typeof brand.links?.instagram === "string" && brand.links.instagram.length > 0) {
-              chips.push({ key: "instagram", icon: "instagram", aria: `Instagram ${brand.links.instagram}` });
+              chips.push({ key: "instagram", icon: "instagram", aria: `Instagram ${brand.links.instagram}`, url: normalizeSocialUrl(brand.links.instagram, "https://instagram.com/") });
             }
             if (typeof brand.links?.tiktok === "string" && brand.links.tiktok.length > 0) {
-              chips.push({ key: "tiktok", icon: "tiktok", aria: `TikTok ${brand.links.tiktok}` });
+              chips.push({ key: "tiktok", icon: "tiktok", aria: `TikTok ${brand.links.tiktok}`, url: normalizeSocialUrl(brand.links.tiktok, "https://tiktok.com/@") });
             }
             if (typeof brand.links?.x === "string" && brand.links.x.length > 0) {
-              chips.push({ key: "x", icon: "x", aria: `X ${brand.links.x}` });
+              chips.push({ key: "x", icon: "x", aria: `X ${brand.links.x}`, url: normalizeSocialUrl(brand.links.x, "https://x.com/") });
             }
             if (typeof brand.links?.facebook === "string" && brand.links.facebook.length > 0) {
-              chips.push({ key: "facebook", icon: "facebook", aria: `Facebook ${brand.links.facebook}` });
+              chips.push({ key: "facebook", icon: "facebook", aria: `Facebook ${brand.links.facebook}`, url: normalizeSocialUrl(brand.links.facebook, "https://facebook.com/") });
             }
             if (typeof brand.links?.youtube === "string" && brand.links.youtube.length > 0) {
-              chips.push({ key: "youtube", icon: "youtube", aria: `YouTube ${brand.links.youtube}` });
+              chips.push({ key: "youtube", icon: "youtube", aria: `YouTube ${brand.links.youtube}`, url: normalizeSocialUrl(brand.links.youtube, "https://youtube.com/@") });
             }
             if (typeof brand.links?.linkedin === "string" && brand.links.linkedin.length > 0) {
-              chips.push({ key: "linkedin", icon: "linkedin", aria: `LinkedIn ${brand.links.linkedin}` });
+              chips.push({ key: "linkedin", icon: "linkedin", aria: `LinkedIn ${brand.links.linkedin}`, url: normalizeSocialUrl(brand.links.linkedin, "https://linkedin.com/company/") });
             }
             if (typeof brand.links?.threads === "string" && brand.links.threads.length > 0) {
-              chips.push({ key: "threads", icon: "threads", aria: `Threads ${brand.links.threads}` });
+              chips.push({ key: "threads", icon: "threads", aria: `Threads ${brand.links.threads}`, url: normalizeSocialUrl(brand.links.threads, "https://threads.net/@") });
             }
             if (chips.length === 0) return null;
             return (
@@ -303,7 +430,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
                 {chips.map((chip) => (
                   <Pressable
                     key={chip.key}
-                    onPress={handleOpenLink}
+                    onPress={() => handleOpenLink(chip.url)}
                     accessibilityRole="button"
                     accessibilityLabel={chip.aria}
                     style={styles.socialChip}
@@ -320,38 +447,61 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         <View style={styles.statsRow}>
           <KpiTile label="Events" value={brand.stats.events} sub="all time" style={styles.statCell} />
           <KpiTile label="Attendees" value={formatCount(brand.stats.attendees)} sub="all time" style={styles.statCell} />
-          <KpiTile label="GMV" value={formatGbp(brand.stats.rev)} sub="all time" style={styles.statCell} />
+          <KpiTile label="GMV" value={formatGbpRound(brand.stats.rev)} sub="all time" style={styles.statCell} />
         </View>
 
-        {/* SECTION C — Stripe-Not-Connected Banner */}
-        {/* [TRANSITIONAL] always-on banner — replaced by stripe-state-driven banner in J-A10. */}
-        <Pressable
-          onPress={handleStripeBanner}
-          accessibilityRole="button"
-          accessibilityLabel="Connect Stripe"
-        >
-          <GlassCard variant="base" padding={spacing.md}>
-            <View style={styles.bannerRow}>
-              <View style={styles.bannerIconWrap}>
-                <Icon name="bank" size={20} color={accent.warm} />
-              </View>
-              <View style={styles.bannerTextCol}>
-                <Text style={styles.bannerTitle}>Connect Stripe to sell tickets</Text>
-                <Text style={styles.bannerSub}>Get paid for your events. Setup takes 5 minutes.</Text>
-              </View>
-              <Icon name="chevR" size={16} color={textTokens.tertiary} />
-            </View>
-          </GlassCard>
-        </Pressable>
+        {/* SECTION C — Status-driven Stripe banner. Suppressed entirely
+            when stripeStatus === "active" (J_A7_BANNER_COPY entry is null
+            — populated KPIs + payments dashboard are the affirmative
+            signal, not a green "you're good" banner). */}
+        {(() => {
+          const stripeStatus = brand.stripeStatus ?? "not_connected";
+          const bannerCopy = J_A7_BANNER_COPY[stripeStatus];
+          if (bannerCopy === null) return null;
+          const isRestricted = stripeStatus === "restricted";
+          return (
+            <Pressable
+              onPress={handleStripeBanner}
+              accessibilityRole="button"
+              accessibilityLabel={bannerCopy.title}
+            >
+              <GlassCard
+                variant="base"
+                padding={spacing.md}
+                style={isRestricted ? styles.bannerDestructive : undefined}
+              >
+                <View style={styles.bannerRow}>
+                  <View
+                    style={[
+                      styles.bannerIconWrap,
+                      isRestricted && styles.bannerIconWrapDestructive,
+                    ]}
+                  >
+                    <Icon
+                      name="bank"
+                      size={20}
+                      color={isRestricted ? semantic.error : accent.warm}
+                    />
+                  </View>
+                  <View style={styles.bannerTextCol}>
+                    <Text style={styles.bannerTitle}>{bannerCopy.title}</Text>
+                    <Text style={styles.bannerSub}>{bannerCopy.sub}</Text>
+                  </View>
+                  <Icon name="chevR" size={16} color={textTokens.tertiary} />
+                </View>
+              </GlassCard>
+            </Pressable>
+          );
+        })()}
 
         {/* SECTION D — Operations List */}
         <GlassCard variant="base" padding={0}>
-          {OPERATIONS_ROWS.map((row, index) => {
-            const isLast = index === OPERATIONS_ROWS.length - 1;
+          {operationsRows.map((row, index) => {
+            const isLast = index === operationsRows.length - 1;
             return (
               <Pressable
                 key={row.label}
-                onPress={() => fireToast(row.toastMessage)}
+                onPress={row.onPress}
                 accessibilityRole="button"
                 accessibilityLabel={row.label}
                 style={[styles.opsRow, !isLast && styles.opsRowDivider]}
@@ -498,21 +648,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: spacing.md,
   },
-  heroAvatar: {
-    width: 84,
-    height: 84,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroAvatarInitial: {
-    fontSize: 36,
-    fontWeight: "700",
-    color: accent.warm,
-  },
   heroName: {
     fontSize: typography.h2.fontSize,
     lineHeight: typography.h2.lineHeight,
@@ -587,6 +722,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
   },
+  bannerDestructive: {
+    borderColor: "rgba(239, 68, 68, 0.45)",
+    borderWidth: 1,
+  },
   bannerIconWrap: {
     width: 36,
     height: 36,
@@ -596,6 +735,10 @@ const styles = StyleSheet.create({
     borderColor: accent.border,
     alignItems: "center",
     justifyContent: "center",
+  },
+  bannerIconWrapDestructive: {
+    backgroundColor: semantic.errorTint,
+    borderColor: "rgba(239, 68, 68, 0.45)",
   },
   bannerTextCol: {
     flex: 1,

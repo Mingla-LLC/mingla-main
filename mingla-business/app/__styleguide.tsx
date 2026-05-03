@@ -62,6 +62,7 @@ import {
   text as textTokens,
   typography,
 } from "../src/constants/designSystem";
+import { formatGbpRound } from "../src/utils/currency";
 
 // ---------------------------------------------------------------------------
 // Inline helpers
@@ -135,10 +136,6 @@ const STYLEGUIDE_TABS: BottomNavTab[] = [
   { id: "events", icon: "calendar", label: "Events" },
   { id: "account", icon: "user", label: "Account" },
 ];
-
-// Pre-formatted currency demo values per I-10 (caller pre-formats; KpiTile is currency-neutral)
-const formatGBP = (amount: number): string =>
-  new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(amount);
 
 // ---------------------------------------------------------------------------
 // Error-throwing helper (for ErrorBoundary demo)
@@ -522,10 +519,10 @@ export default function StyleguideScreen(): React.ReactElement {
           <Text style={sectionStyles.label}>KpiTile (delta states)</Text>
           <View style={demoStyles.kpiRow}>
             <View style={demoStyles.kpiItem}>
-              <KpiTile label="Tickets sold" value={formatGBP(3420)} delta="+12%" deltaUp sub="vs last week" />
+              <KpiTile label="Tickets sold" value={formatGbpRound(3420)} delta="+12%" deltaUp sub="vs last week" />
             </View>
             <View style={demoStyles.kpiItem}>
-              <KpiTile label="Refunds" value={formatGBP(95)} delta="-3%" deltaUp={false} sub="vs last week" />
+              <KpiTile label="Refunds" value={formatGbpRound(95)} delta="-3%" deltaUp={false} sub="vs last week" />
             </View>
             <View style={demoStyles.kpiItem}>
               <KpiTile label="Attendees" value={482} delta="—" />

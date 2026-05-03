@@ -69,6 +69,14 @@ const buildBrand = (displayName: string): Brand => ({
   id: `b_${Date.now().toString(36)}`,
   displayName: displayName.trim(),
   slug: slugify(displayName),
+  // Cycle 7 schema v10: default new brands to "popup" (safer — no fake
+  // address shown). Founder switches to "physical" + adds address via
+  // BrandEditView when applicable.
+  kind: "popup",
+  address: null,
+  // Cycle 7 FX2 schema v11: default new brands to hue 25 (warm orange,
+  // matches accent.warm). Founder picks a different hue via BrandEditView.
+  coverHue: 25,
   role: "owner" as BrandRole,
   stats: { events: 0, followers: 0, rev: 0, attendees: 0 },
   currentLiveEvent: null,

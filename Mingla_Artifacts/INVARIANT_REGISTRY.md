@@ -7,6 +7,289 @@
 
 ---
 
+## Queued for ORCH-0707 CLOSE (DRAFT until tester PASS)
+
+### I-CURATED-LABEL-SOURCE — Curated stop label authority
+
+**Status:** DRAFT (registered 2026-05-02 by ORCH-0707 implementor; orchestrator flips DRAFT → ACTIVE on tester PASS per post-PASS protocol)
+
+**Statement:** The `placeType` field on every curated stop (response of `generate-curated-experiences`) AND every alternative (response of `replace-curated-stop`) MUST be the comboCategory slug — i.e., the slug of the combo slot the place was selected to fill. It MUST NEVER be derived from `place_pool.ai_categories`, `place_pool.ai_primary_identity`, or any other deprecated AI-derived per-place column.
+
+**Rationale:** A place can score high on multiple signals (e.g., Alamo Drafthouse on both `movies` and `drinks`). The "best signal" of a place is not the same question as "which slot did this place fill." The combo defines the slot; the slot defines the label.
+
+**Enforcement:**
+1. **Structural (TypeScript):** `buildCardStop` opts.comboCategory is required — compilation fails if any call site omits it.
+2. **CI test:** `supabase/functions/_shared/__tests__/no_ai_categories_in_curated.test.ts` asserts zero non-comment `ai_categories` references in `generate-curated-experiences/index.ts`, `_shared/stopAlternatives.ts`, `_shared/signalRankFetch.ts`.
+3. **Runtime:** `resolveFilterSignal(categoryId)` throws if the slug is not registered in `COMBO_SLUG_TO_FILTER_SIGNAL` — no silent empty-result fallback.
+
+**Tests:** T-01, T-02, T-04, T-05, T-07 (see SPEC_ORCH-0707).
+
+**Related invariants:** I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME (single owner for distance/time math), I-CURATED-SELECTION-3-GATE (G1/G2/G3 serving gates).
+
+**Established:** 2026-05-02 by ORCH-0707 forensics investigation §C3 (the comboCategory authority architectural finding) and operator's OQ-6 affirmation.
+
+---
+
+## Queued for ORCH-0700 CLOSE (DRAFT until tester PASS)
+
+### I-CATEGORY-DERIVED-ON-DROP (DRAFT — partial flip post-ORCH-0700; full-flip post-ORCH-0707 follow-up)
+
+**Rule:** Mingla category for any place is derived from `mapPrimaryTypeToMinglaCategory(primary_type, types)` (admin-display contexts) OR from `place_scores.signal_id` (curated/serving contexts). Never from a stored interpretation column on `place_pool`.
+
+**Status:** PARTIAL after ORCH-0700 close — `seeding_category` dropped; `ai_categories` family still alive (deferred to ORCH-0707 follow-up). FULL after ORCH-0707 follow-up migration drops the 5 ai_* columns.
+
+**Why:** Constitution #2 (one-owner-per-truth) — Google's raw type data is the owner; interpretation layers are derivations not stored facts. Constitution #8 (subtract-before-adding) — drop the interpretation columns once derivation function is canonical.
+
+**Enforcement mechanism:** schema check (CI test that asserts no AI/seeding interpretation columns exist on place_pool); migration sequencing rule (drop column only after all readers verified migrated).
+
+**Test that catches a regression:** any new PR that adds an interpretation column to place_pool fails the schema check.
+
+**Status:** DRAFT until ORCH-0707 follow-up tester PASS; then ACTIVE-FULL.
+
+**Established:** 2026-05-02 by ORCH-0700 cycle-3 audit (the 4-system architectural mapping: seeding pipeline / scoring pipeline / serving / rules engine).
+
+---
+
+## Queued for ORCH-0708 CLOSE — Wave 2 Phase 1 photo-aesthetic scoring (DRAFT until tester PASS)
+
+These two invariants are queued for codification when ORCH-0708 closes (operator smoke PASS on Raleigh/Cary/Durham). Status: **DRAFT**. Orchestrator promotes to ACTIVE in CLOSE protocol. Spec contract: [reports/SPEC_ORCH-0708_PHOTO_AESTHETIC_SCORING_INTEGRATION.md](reports/SPEC_ORCH-0708_PHOTO_AESTHETIC_SCORING_INTEGRATION.md) §12.
+
+### I-PHOTO-AESTHETIC-DATA-SOLE-OWNER (DRAFT, ORCH-0708)
+
+**Rule:** `place_pool.photo_aesthetic_data jsonb` is written ONLY by the `score-place-photo-aesthetics` edge function. NO other writer — bouncer, signal scorer, admin-seed-places, backfill-place-photos, run-pre-photo-bouncer, run-bouncer, any future edge function, or any direct admin SQL — may insert or update this column. Service-role direct edits (e.g., emergency operator SQL) require an explicit DEC entry citing the override.
+
+**Why:** Constitution #2 (one owner per truth). The photo-aesthetic-data column has a single owner so its semantics + idempotency fingerprint stay consistent. If admin-seed-places re-seeded a place and accidentally wrote `photo_aesthetic_data` from Google's photo metadata (different shape entirely), or if the bouncer started embedding aesthetic data, the JSONB contract would silently drift and the scorer would compute against unstable inputs.
+
+**Enforcement mechanism:**
+1. Code-level — `score-place-photo-aesthetics/index.ts` is the only file that writes the column via service_role client; CI grep gate on every PR (a PR that adds `photo_aesthetic_data` as a target of `.update()` or `INSERT INTO place_pool` outside that one edge function fails review unless explicitly overridden in the PR description).
+2. Schema-level — `admin-seed-places/index.ts` per-row UPDATE block (lines 1023-1099) has a protective comment block citing this invariant + ORCH-0708. CI gate on every admin-seed-places PR confirms the comment + the absence of `photo_aesthetic_data` from the UPDATE column list.
+3. Documentation-level — `place_pool.photo_aesthetic_data` `COMMENT ON COLUMN` SQL string explicitly names this invariant.
+
+**Test that catches regression:** post-deploy SQL probe `SELECT COUNT(*) FROM information_schema.column_privileges WHERE table_name='place_pool' AND column_name='photo_aesthetic_data' AND grantee != 'service_role';` should return zero. Any other consumer that gets write access on this column = invariant violation.
+
+### I-PHOTO-AESTHETIC-CACHE-FINGERPRINT (DRAFT, ORCH-0708)
+
+**Rule:** Every `photo_aesthetic_data` JSONB blob persisted by `score-place-photo-aesthetics` MUST contain a `photos_fingerprint` field equal to `sha256(stored_photo_urls.slice(0,5).join('|'))` computed at scoring time. The edge function MUST skip places where the live `place_pool.stored_photo_urls` produces the same fingerprint as the persisted `photo_aesthetic_data->>'photos_fingerprint'` (idempotent skip), unless the run was started with `force_rescore: true`.
+
+**Why:** photo backfill is expensive (~$0.0035 per place at Haiku batch+cache). Re-running scoring on places whose photos haven't changed wastes budget and produces non-deterministic re-scoring (Claude vision is mildly stochastic). Fingerprint comparison guarantees idempotency at the data layer. When Google detail-refresh changes `stored_photo_urls` (which happens on re-seed per ORCH-0550.1), the fingerprint changes and the place re-enters scoring naturally.
+
+**Enforcement mechanism:**
+1. Edge function self-test — `score-place-photo-aesthetics/index.ts` includes a Deno test asserting that two consecutive runs against the same place (with unchanged photos, no force_rescore) result in exactly one Anthropic API call.
+2. Cost telemetry — `photo_aesthetic_runs.actual_cost_usd` after a no-op re-run should be near $0 (only the eligibility query, no Claude calls). Operator runs the same test scope twice during smoke; second run cost <$0.10 = invariant holds.
+3. Schema-level — `photo_aesthetic_data` JSONB schema documented in `COMMENT ON COLUMN` includes `photos_fingerprint` as REQUIRED.
+
+**Test that catches regression:** post-deploy SQL probe — for any place with `photo_aesthetic_data IS NOT NULL`, assert `photo_aesthetic_data ? 'photos_fingerprint'` returns true for 100% of rows. Any row missing the fingerprint = invariant violation (likely a buggy edge-function path that wrote the JSON without computing the fingerprint).
+
+---
+
+## Mingla Business invariants (2026-05-03) — ORCH-0706 close-cycle DB-enforced hardening
+
+### I-22 Event slug FROZEN (mingla-business — DB-enforced)
+
+**Rule:** `events.slug` is immutable after row creation. Any UPDATE that changes `slug` is rejected by trigger `trg_events_immutable_slug` (function `biz_prevent_event_slug_change`) with error: `events.slug is immutable (Cycle 7 share URLs depend on permanence; create a new event instead of renaming)`.
+
+**Why:** Cycle 7 public-event URLs at `mingla-business/app/e/[brandSlug]/[eventSlug].tsx` resolve events by `(brandSlug, eventSlug)` tuple. Renaming the slug 404s every previously-shared event link (operator share modal, social embeds, email blasts, IG bios). Buyers who saved the link or have it in their email confirmation lose access.
+
+**Established by:** ORCH-0706 close (2026-05-03). Migration: `supabase/migrations/20260503100000_b1_5_pr_59_hardening.sql`.
+
+**Enforcement:**
+- DB trigger: `trg_events_immutable_slug BEFORE UPDATE ON public.events FOR EACH ROW EXECUTE FUNCTION public.biz_prevent_event_slug_change()` — verified live via metadata query.
+- Function body: raises EXCEPTION when `NEW.slug IS DISTINCT FROM OLD.slug`.
+- Even role-based bypass impossible: trigger fires for all roles including service_role.
+
+**Test that catches a regression:** `UPDATE public.events SET slug = 'forbidden' WHERE id = (...);` MUST raise the immutability error. (See SC-2 in [`specs/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md`](specs/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md) §5.)
+
+---
+
+### I-23 events.created_by FROZEN (mingla-business — DB-enforced)
+
+**Rule:** `events.created_by` (the `auth.users.id` of whoever created the event) is immutable after row creation. Any UPDATE that changes `created_by` is rejected by trigger `trg_events_immutable_created_by` (function `biz_prevent_event_created_by_change`) with error: `events.created_by is immutable (audit-trail integrity)`. Even `event_manager+` role-holders cannot rewrite the field.
+
+**Why:** Audit-trail integrity. Without this, an event manager added to an event after creation could silently rewrite the `created_by` field to themselves, corrupting the original-creator audit signal. If something goes wrong six months later — refund disputes, legal questions, attribution arguments — the database evidence stays clean.
+
+**Established by:** ORCH-0706 close (2026-05-03). Migration: `supabase/migrations/20260503100000_b1_5_pr_59_hardening.sql`.
+
+**Enforcement:**
+- DB trigger: `trg_events_immutable_created_by BEFORE UPDATE ON public.events FOR EACH ROW EXECUTE FUNCTION public.biz_prevent_event_created_by_change()`.
+- Function body: raises EXCEPTION when `NEW.created_by IS DISTINCT FROM OLD.created_by`.
+
+**Test that catches a regression:** `UPDATE public.events SET created_by = (different uuid) WHERE id = (...);` MUST raise the immutability error. (See SC-3 in SPEC §5.)
+
+---
+
+### I-24 audit_log + scan_events Option B append-only carve-out (mingla-business — documented)
+
+**Rule:** `audit_log` and `scan_events` tables are append-only for non-service-role callers. Service role (`auth.uid() IS NULL`) MAY mutate (UPDATE/DELETE) for reconciliation jobs and migration scripts. Application code MUST NOT mutate; new entries via INSERT only. The carve-out is documented verbatim in `COMMENT ON TABLE` for both tables — no future investigator should see "append-only" in the schema and assume it means strict-no-mutations-ever.
+
+**Why:** Reconciliation jobs are an operational reality (partial scanner sync repair, double-charged refund recovery, mis-attributed door sale). Strict-no-mutations-ever (Option A) creates real on-call pain the first time bad data lands and we cannot fix it without dropping and recreating triggers. The cost of Option B (this carve-out) is one paragraph of comment text; the cost of Option A is a midnight-emergency migration.
+
+**Established by:** ORCH-0706 close (2026-05-03). DEC-089. Migration: `supabase/migrations/20260503100000_b1_5_pr_59_hardening.sql`.
+
+**Enforcement:**
+- DB triggers `trg_audit_log_block_update` + `trg_scan_events_block_update` (PR #59 — UNCHANGED by ORCH-0706): raise EXCEPTION on UPDATE/DELETE if `auth.uid() IS NOT NULL`. Service role calls (auth.uid() = NULL) silently RETURN COALESCE(NEW, OLD) without raising.
+- COMMENT ON TABLE for both tables disclose the carve-out: *"Append-only for non-service-role callers. Service role (auth.uid() IS NULL) may UPDATE/DELETE for reconciliation jobs and migration scripts. Application code MUST NOT mutate; new entries via INSERT only. (B1.5 — ORCH-0706 SF-4)"*
+
+**Test that catches a regression:** `SELECT obj_description('public.audit_log'::regclass)` MUST include the carve-out language. Authenticated UPDATE on either table MUST raise; service-role UPDATE MUST succeed. (See SC-4a/b/c/d in SPEC §5.)
+
+**Forward path (if SOC2 Type II audit demands strict append-only):** Drop the `IF auth.uid() IS NULL THEN RETURN COALESCE(NEW, OLD); END IF;` short-circuit in both trigger functions (~8 LOC per function). Then RAISE EXCEPTION fires for all roles. Update I-24 statement + COMMENT ON TABLE to reflect strict mode.
+
+---
+
+### I-19 Immutable order financials (mingla-business)
+
+**Rule:** An order's `totalGbpAtPurchase`, `lines[i].unitPriceGbpAtPurchase`, `lines[i].ticketNameAtPurchase`, `lines[i].isFreeAtPurchase`, `lines[i].quantity`, `currency`, and `buyer` snapshot are write-once at order insertion to `useOrderStore`. No subsequent operator action — including event edit, tier rename, tier reprice, refund, cancel — mutates these fields. Refund/cancel mutations create NEW records (`RefundRecord`) and update `status` + `refundedAmountGbp` + `refunds[]` aggregates only; original snapshots are NEVER overwritten.
+
+**Why:** Buyer protection. Operator edits to a published event apply to displayable info (name, date, venue) but MUST NOT retroactively change what the buyer paid for. If the operator renames a tier "VIP" → "VIP+ Lounge" or changes the price, the buyer's order and ticket still show "VIP" at the price they paid. This invariant is the load-bearing contract for the full-edit-after-publish capability shipped in DEC-087.
+
+**Established by:** ORCH-0704 v2 close (2026-05-02). Order shape spec'd in [SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH_v2.md](specs/SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH_v2.md) §3.1.5 as forward-looking schema; Cycle 9c implementor builds `useOrderStore` honouring this contract.
+
+**Enforcement:**
+- TypeScript: order line snapshot fields will be `Readonly<...>` at the type level when returned from selectors (Cycle 9c implementation rule).
+- Runtime: `useOrderStore` exposes ONLY `recordOrder` (write-once on confirmation entry), `recordRefund` (creates RefundRecord, updates aggregates), `cancelOrder` (sets status=cancelled, cancelledAt). NO `updateLine`, NO `updateBuyer`, NO `updatePrice` mutations.
+- CI gate (post-Stripe, B-cycle): SQL CHECK or trigger on `order_line_items` preventing UPDATE to `unit_price_gbp_at_purchase`, `ticket_name_at_purchase`, `is_free_at_purchase`, `quantity` columns once non-null.
+
+**Test that catches a regression:** Build a stub `OrderRecord`, run operator edit on the LiveEvent (rename tier + change price), assert `OrderRecord.lines[i].ticketNameAtPurchase` and `unitPriceGbpAtPurchase` are unchanged. (Cannot test in ORCH-0704 stub mode — `useOrderStore` doesn't exist yet. Test ships in Cycle 9c.)
+
+---
+
+### I-20 Edit reason mandatory + audit log permanence (mingla-business)
+
+**Rule:** Every successful `useLiveEventStore.updateLiveEventFields` call MUST:
+1. Receive a non-empty `reason: string` (10 ≤ trimmed-length ≤ 200) from the caller.
+2. Append exactly one entry to `useEventEditLogStore` BEFORE returning success.
+3. Fire the notification stack via `eventChangeNotifier.notifyEventChanged` BEFORE returning success.
+
+The audit log entry, once written, is immutable. `useEventEditLogStore` exposes ONLY `recordEdit` (append) + reads (`getEditsForEvent`, `getLatestEditForEvent`, `getEditsForEventSince`) + `reset` (logout). There is NO `updateEdit` and NO `deleteEdit`. Logout clears the store entirely (Const #6 owns the data lifetime).
+
+**Why:** Buyer trust + operator accountability + dispute audit trail. Every edit to a published event has a reason recorded — buyers see it in their notification copy ("Reason: Venue change due to weather") + the buyer order detail page (Cycle 9c) renders the edit history. The append-only log is the source of truth for the material-change banner; mutating or deleting entries would break buyer confidence in the audit trail.
+
+**Established by:** ORCH-0704 v2 close (2026-05-02). Implemented in `mingla-business/src/store/eventEditLogStore.ts` + `mingla-business/src/store/liveEventStore.ts:updateLiveEventFields`.
+
+**Enforcement:**
+- Compile-time: `updateLiveEventFields(id, patch, context, reason: string)` requires `reason` parameter; passing missing argument is a TS error.
+- Runtime: store mutation rejects with `{ok: false, reason: "missing_edit_reason"}` (empty trimmed) or `{ok: false, reason: "invalid_edit_reason"}` (length < 10 or > 200) BEFORE applying patch — no edit log entry, no notification fires.
+- API surface: `useEventEditLogStore` mutation surface is `recordEdit` + `reset` only. Adding any update / delete API is a violation.
+- UI: `ChangeSummaryModal` v2 disables Save until reason length valid; live char counter `{N} / 200`.
+- Logout: `clearAllStores.ts` calls `useEventEditLogStore.getState().reset()`.
+
+**Test that catches a regression:** Unit test calling `updateLiveEventFields(id, {description: "x"}, ctx, "")` returns `{ok: false, reason: "missing_edit_reason"}`. Unit test calling with `reason: "abc"` (3 chars) returns `{ok: false, reason: "invalid_edit_reason"}`. Manual: edit a published event → ChangeSummaryModal opens → Save button disabled until reason ≥10 chars. After save, `useEventEditLogStore.getEditsForEvent(eventId)` returns the new entry with the typed reason. After logout, `useEventEditLogStore.getState().entries` is `[]`.
+
+---
+
+## Mingla Business invariants (2026-04-30) — Cycle 2 + Cycle 3 close-cycle promotions
+
+### I-11 Format-agnostic ID resolver (mingla-business)
+
+**Rule:** Every dynamic-segment Expo Router route in `mingla-business/` (e.g. `/brand/[id]/`, `/event/[id]/edit`, `/event/[id]/preview`) resolves the dynamic-segment value to a domain object via `find((b) => b.id === idParam)` against the Zustand store list — with NO normalization (no lowercasing, no trimming, no prefix stripping). Stub-data IDs (`lm`, `b_<ts36>`, `d_<ts36>`, `e_<ts36>`), backend UUIDs, and any future ID shapes all flow through the same resolver unchanged.
+
+**Why:** ID format may evolve as backend cycles land. Normalization in the route handler creates a translation layer that drifts under pressure. The store is the single source of truth for IDs.
+
+**Established by:** Cycle 2 J-A7 (`brand/[id]/index.tsx`), Cycle 3 (`event/[id]/edit.tsx`, `event/[id]/preview.tsx`).
+
+**Enforcement:** Code review during implementor dispatch. Verification via grep for `idParam.toLowerCase()` / `.replace(...)` / `.trim()` inside route handlers — should return zero hits.
+
+**Test:** Any consumer with a stub `lm` brand id can resolve through the route. Manually navigate to `/brand/lm/` → BrandProfileView renders. Same pattern for drafts: `/event/d_<ts36>/edit` → wizard renders.
+
+---
+
+### I-12 Host-bg cascade (mingla-business)
+
+**Rule:** Every non-tab Expo Router route in `mingla-business/` MUST set `backgroundColor: canvas.discover` on its host View, applied via the safe-area-inset+host pattern: `<View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>`. Tab routes (`(tabs)/home`, `(tabs)/account`, `(tabs)/events`) inherit the canvas via the parent layout.
+
+**Why:** Without canvas.discover, dark-mode glass primitives (GlassCard, GlassChrome) render against the native bg colour (often white on iOS), breaking the dark-glass aesthetic and causing contrast failures.
+
+**Established by:** Cycle 2 J-A7..J-A12 (every brand-side dynamic-segment route).
+
+**Enforcement:** Code review. Grep `app/**/*.tsx` (excluding tabs) for `backgroundColor: canvas.discover` — every dynamic-segment route should match.
+
+**Documented exception:** `app/event/[id]/preview.tsx` uses designer's `#0c0e12` for the hero treatment instead of canvas.discover — flagged in route docstring; deliberate per Cycle 3 spec §3.10.
+
+**Test:** Cold-start the app and navigate to any deep route — background reads dark glass, never light/native.
+
+---
+
+### I-13 Overlay-portal contract (mingla-business)
+
+**Rule:** Every kit primitive that mounts an overlay (Sheet, Modal, ConfirmDialog, TopSheet) MUST wrap its render tree in React Native's native `Modal` component (aliased as `RNModal`) with `transparent: true` so the overlay portals to the OS-level root window. Without portal wrapping, `StyleSheet.absoluteFill` resolves to the nearest positioned ancestor (e.g., a parent ScrollView's content rect), causing scrim + panel to mis-anchor when the consumer is mounted inside ScrollViews / nested layouts.
+
+**Why:** Cycle 2 J-A8 polish RC-1 caught the bug on Sheet (BrandEditView's discard sheet centered within the form ScrollView, not the screen). Cycle 3 close caught the same bug on Modal (delete-ticket ConfirmDialog centered within Step 5's body, not the screen). Portal wrapping is the structural fix; both Sheet and Modal now satisfy.
+
+**Established by:** Sheet — Cycle 2 J-A8 polish RC-1 (DEC-080 era). Modal — Cycle 3 close (DEC-085, this cycle).
+
+**Enforcement:** Code review during implementor dispatch — any new overlay primitive must use the RNModal portal pattern. Header docstring on Sheet (lines 30-44) and Modal (lines 13-30 post-DEC-085) explains the contract.
+
+**Test:** Mount a ConfirmDialog inside a ScrollView nested inside a parent View → tap to open → dialog must center on screen, scrim must cover the entire viewport. If dialog appears mis-centered, the portal wrapping is missing.
+
+---
+
+### I-14 Date-display single source (mingla-business)
+
+**Rule:** All event date/time display formatting MUST flow through `mingla-business/src/utils/eventDateDisplay.ts`. No component implements its own ISO-to-label formatter. Helpers exported: `formatShortDate`, `formatLongDate`, `formatSingleDateLine`, `formatRecurringSummary`, `formatMultiDateSummary`, `formatRecurringDatesList`, `formatMultiDateList`, `formatDraftDateLine`, `formatDraftDateSubline`, `formatDraftDatesList`.
+
+**Why:** Cycle 4 found 3 duplicated `formatDateLine` / `formatDateLabel` implementations across `CreatorStep2When`, `CreatorStep7Preview`, and `PreviewEventView` (HIDDEN-2 in investigation). Three copies of the same formatter drifting independently is a Constitution #2 violation waiting to happen — when recurring/multi-date support landed in Cycle 4, ANY missed copy would have rendered stale single-date strings.
+
+**Established by:** Cycle 4 — ORCH-BIZ-CYCLE-4-RECURRING-MULTIDATE close (2026-04-30, commit `7d3d61ba`).
+
+**Enforcement:** Header docstring at `eventDateDisplay.ts:1-12` declares the rule. Code review during forensics + implementor dispatch — any local ISO-to-label formatter introduced in an event component must be flagged and lifted into the helper.
+
+**Test that catches a regression:** `grep -rn "toLocaleDateString\|formatDateLabel\|formatDateLine" mingla-business/src/components/event/` → only hits should be inside `eventDateDisplay.ts`'s own implementation. Anywhere else is a violation.
+
+---
+
+### I-15 Ticket-display single source (mingla-business)
+
+**Rule:** All ticket modifier display formatting MUST flow through `mingla-business/src/utils/ticketDisplay.ts`. No component implements its own ticket-modifier formatter. Helpers exported: `formatTicketSubline`, `formatTicketCapacity`, `formatTicketBadges`, `formatTicketButtonLabel`, `formatEventLevelTicketBadges`, `sortTicketsByDisplayOrder`, `renormalizeDisplayOrder`, `moveTicketUp`, `moveTicketDown`, `nextDisplayOrder`.
+
+**Sub-rule:** `displayOrder` is OWNED by this helper. NEVER mutate it inline in components. Reorder operations always go through `moveTicketUp` / `moveTicketDown` / `renormalizeDisplayOrder`. New tickets get their position via `nextDisplayOrder`.
+
+**Why:** Cycle 5 added 9 modifier fields to `TicketStub`. Without a single source for display logic, the same modifiers would render inconsistently across Step 5 TicketCard, Step 7 mini-card, and PreviewEventView's PublicTicketRow — and a bug in `renormalizeDisplayOrder` (re-sorting before renumbering) silently undid reorder operations until centralised + fixed.
+
+**Established by:** Cycle 5 — ORCH-BIZ-CYCLE-5-TICKET-TYPES close (2026-04-30).
+
+**Enforcement:** Header docstring at `ticketDisplay.ts:1-15` declares the rule. The displayOrder ownership note is repeated as a code comment at the top of every reorder/duplicate/delete handler in `CreatorStep5Tickets.tsx`.
+
+**Test that catches a regression:** `grep -rn "displayOrder" mingla-business/src/components/event/CreatorStep5Tickets.tsx` should show `displayOrder` only in (a) helper-call sites or (b) `nextDisplayOrder()` invocations. Direct assignment outside the helper = violation.
+
+---
+
+### I-16 Live-event ownership separation (mingla-business)
+
+**Rule:** Published live events live ONLY in `liveEventStore`. They are NEVER created, mutated, or deleted from any other path. `publishDraft` in `draftEventStore` is the SINGLE atomic ownership-transfer point: find draft → call `convertDraftToLiveEvent` (the I-16 chokepoint) → push to `liveEventStore.addLiveEvent` → AND ONLY THEN delete the draft. If conversion fails (e.g., brand deleted), the draft is preserved so the user can retry.
+
+**Sub-rule:** `addLiveEvent` MUST have exactly ONE caller — `liveEventConverter.convertDraftToLiveEvent`. No component, no other store, no edge function may push to `liveEventStore` directly. Grep-verifiable: `grep -rn "addLiveEvent" mingla-business/src` should return ONE match outside `liveEventStore.ts` (the converter call site).
+
+**Why:** Cycle 6 introduced `liveEventStore` as a sibling to `draftEventStore`. Without a single chokepoint, either (a) drafts and live events could co-exist for the same logical event (which is canonical?) or (b) a publish flow that fails mid-way could orphan data in the live store while the draft survives. Constitution #2 (one owner per truth) demands the atomic transfer pattern.
+
+**Established by:** Cycle 6 — ORCH-BIZ-CYCLE-6-PUBLIC-EVENT-PAGE close (2026-05-01).
+
+**Enforcement:** Inline `[I-16 GUARD]` comment at the `addLiveEvent` declaration in `liveEventStore.ts` documents the chokepoint rule. Header docstring on `liveEventConverter.ts` reiterates the contract.
+
+**Test that catches a regression:** `grep -rn "addLiveEvent\|liveEventStore.getState" mingla-business/src` — every match outside `liveEventStore.ts` itself + `liveEventConverter.ts` (one call site) is a violation. Also: `grep -rn "publishDraft" mingla-business/src` to verify that publish is the ONLY mutation that creates a LiveEvent.
+
+---
+
+### I-17 Brand-slug stability (mingla-business)
+
+**Rule:** `brand.slug` is FROZEN at brand creation. NO edit path may EVER be added in `BrandEditView`, settings, or any other UI surface. Shared brand URLs (IG bio, WhatsApp status, email signature, business cards) depend on this slug being immutable.
+
+**Sub-rule:** If a future cycle needs brand renaming for typo correction or rebrand, ship a slug-redirect table (`oldSlug → newSlug`) + a 301-style redirect handler in the route layer. NEVER mutate `brand.slug` directly. Old links MUST continue resolving for a generous grace period (recommend ≥12 months).
+
+**Why:** Cycle 7 ships `/b/{brandSlug}` as the IG-bio-link surface. Founders treat the URL as permanent. If slug ever becomes editable without a redirect path, every shared link breaks instantly — the founder loses every visitor who ever bookmarked, screenshotted, or shared the URL. Mirrors Cycle 6 event-slug freeze (`liveEvent.brandSlug` and `liveEvent.eventSlug` are both frozen at publish).
+
+**Established by:** Cycle 7 — ORCH-BIZ-CYCLE-7 close (2026-05-01).
+
+**Enforcement:**
+- **DB trigger (PROMOTED 2026-05-03 — ORCH-0706 close):** `trg_brands_immutable_slug BEFORE UPDATE ON public.brands FOR EACH ROW EXECUTE FUNCTION public.biz_prevent_brand_slug_change()` raises EXCEPTION on any UPDATE that changes `slug`. Even service_role mutations are rejected. Verified live via behavioral test (ORCH-0706 close 2026-05-03).
+- Inline LOCK comment in `currentBrandStore.ts` Brand type at the `slug` field declaration documents the rule.
+- `BrandEditView.tsx:20` header docstring already notes slug is read-only — Cycle 7 spec re-affirmed.
+- `BrandEditView.tsx:368-369` renders `slug` as plain `<Text>` (NOT TextInput) — verified at investigation phase (forensics §3 OBS-1).
+
+**Test that catches a regression:** `UPDATE public.brands SET slug = 'forbidden' WHERE id = ...;` MUST raise the immutability error (see SC-1 in ORCH-0706 SPEC §5). Also: `grep -rn "setBrand.*slug\|brand\.slug\s*=\s*" mingla-business/src` — any direct mutation outside `currentBrandStore.setBrands` initialization is a violation. Also: any new `<TextInput>` or `<Input variant="text">` in any `Brand*View.tsx` whose `value={...slug...}` and `onChangeText={...slug...}` is a violation.
+
+**ORCH-0706 promotion (2026-05-03):** I-17 was originally consumer-side convention only (TypeScript LOCK comment). DB-side enforcement was missing — operator could in theory directly UPDATE the column via Supabase dashboard SQL. ORCH-0706 added `trg_brands_immutable_slug` to make the rule structurally enforceable across all access paths (service_role calls included).
+
+---
+
 ## ORCH-0686 invariants (2026-04-26) — Photo backfill mode CHECK alignment + TS/SQL parity
 
 ### I-PHOTO-FILTER-EXPLICIT

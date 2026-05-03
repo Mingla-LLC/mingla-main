@@ -480,28 +480,55 @@ export const RecommendationsProvider: React.FC<
 
   // ── Stabilize deck params — only compute once preferences are known or timed out
   const stableDeckParams = useMemo(() => {
+    // ORCH-0699: Toggle gate. ORCH-0434 added intent_toggle/category_toggle
+    // columns + persisted them on save, but never plumbed them through to the
+    // deck consumer — so flipping a toggle was decorative for weeks (the bool
+    // was written to DB and React Query cache but no read-site honored it).
+    // The gate MUST live at this layer because the query key downstream is
+    // built from these arrays (useDeckCards.buildDeckQueryKey hashes raw
+    // categories + intents) — empty effective arrays change the key value
+    // and trigger React Query refetch automatically. No manual invalidation.
+    // DO NOT remove without first plumbing toggle bools through useDeckCards
+    // interface + buildDeckQueryKey + deckService wire payload. See
+    // INVESTIGATION_ORCH-0699 + SPEC_ORCH-0699 for full chain.
+    //
     // Defensive normalization: converts any display names to slugs, drops invalids.
     // Prevents corrupted DB data from reaching the deck. See ORCH-0346.
     const rawCats = userPrefs?.categories ?? [];
     const cats = rawCats.length > 0 ? normalizeCategoryArray(rawCats) : [];
     const ints = userPrefs?.intents ?? [];
 
+    // ORCH-0699: defensive `?? true` because `userPrefs` itself can be undefined
+    // during initial load; toggle columns are NOT NULL DEFAULT true at the schema
+    // level so they're always present once userPrefs is defined.
+    const intentToggle = userPrefs?.intent_toggle ?? true;
+    const categoryToggle = userPrefs?.category_toggle ?? true;
+
+    const effectiveCats = categoryToggle ? cats : [];
+    const effectiveInts = intentToggle ? ints : [];
+
     // Still loading and nothing to show yet — wait for preferences to settle.
-    if (cats.length === 0 && ints.length === 0 && isLoadingPreferences) return null;
+    // ORCH-0699: use effective arrays so a user with toggle-off + populated pills
+    // still passes the guard (cache is hydrated, just gated).
+    if (effectiveCats.length === 0 && effectiveInts.length === 0 && isLoadingPreferences) return null;
 
     // Determine categories: respect the user's explicit selection.
     // Default categories ONLY apply when preferences genuinely have no signal at all
     // (no categories AND no intents) — i.e. a brand-new user or a network failure.
     // When the user has intents but zero categories, that's an intentional choice
     // ("show me only curated experiences") — empty categories must stay empty.
-    const hasAnySignal = cats.length > 0 || ints.length > 0;
+    // ORCH-0699 OQ-1(a): hasAnySignal computed from EFFECTIVE arrays so the
+    // both-toggles-off corrupted-cold-start path falls back to defaults instead
+    // of producing a blank deck (in-sheet validation at PreferencesSheet.tsx:695
+    // prevents this state via the UI; this is defense-in-depth for cache hydration).
+    const hasAnySignal = effectiveCats.length > 0 || effectiveInts.length > 0;
     return {
-      categories: cats.length > 0
-        ? cats
+      categories: effectiveCats.length > 0
+        ? effectiveCats
         : hasAnySignal
           ? []                                      // user chose intents only — respect that
           : ["nature", "drinks_and_music", "icebreakers"],     // true empty state — sensible default
-      intents: ints,
+      intents: effectiveInts,
     };
   }, [
     // Use JSON.stringify to prevent array-reference changes from causing recomputation
@@ -509,6 +536,8 @@ export const RecommendationsProvider: React.FC<
     JSON.stringify(userPrefs?.categories ?? []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     JSON.stringify(userPrefs?.intents ?? []),
+    userPrefs?.intent_toggle,
+    userPrefs?.category_toggle,
     isLoadingPreferences,
   ]);
 

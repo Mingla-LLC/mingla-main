@@ -81,11 +81,33 @@ const useBlurOnWeb = (): boolean => {
 
 export type SheetSnapPoint = "peek" | "half" | "full";
 
+/**
+ * Sheet snap value — string preset (peek/half/full) or numeric pixel
+ * height. Numeric values are clamped to [120px, 95% screen]. Pass a
+ * measured content height (e.g. from `onLayout`) for content-fit sheets
+ * with no wasted bottom padding. NEW in Cycle 3 J-A12 polish — additive
+ * to Sheet's API; existing string callers (peek/half/full) unaffected.
+ *
+ * Example:
+ * ```ts
+ * const [contentH, setContentH] = useState<number | null>(null);
+ * <Sheet snapPoint={contentH ?? "half"}>
+ *   <View onLayout={(e) => setContentH(e.nativeEvent.layout.height)}>
+ *     ...
+ *   </View>
+ * </Sheet>
+ * ```
+ *
+ * Per Cycle 3 rework v3 ticket-sheet auto-fit (DEC-pending — additive
+ * carve-out of DEC-079; documented as discovery for orchestrator).
+ */
+export type SheetSnapValue = SheetSnapPoint | number;
+
 export interface SheetProps {
   visible: boolean;
   onClose: () => void;
   children: React.ReactNode;
-  snapPoint?: SheetSnapPoint;
+  snapPoint?: SheetSnapValue;
   /** Tap on scrim closes sheet. Default `true`. */
   dismissOnScrimTap?: boolean;
   testID?: string;
@@ -97,6 +119,9 @@ const SNAP_RATIOS: Record<SheetSnapPoint, number> = {
   half: 0.5,
   full: 0.9,
 };
+
+const MIN_SNAP_PX = 120;
+const MAX_SNAP_RATIO = 0.95;
 
 const SCRIM_COLOR = "rgba(0, 0, 0, 0.5)";
 const CLOSE_THRESHOLD_PX = 80;
@@ -116,7 +141,14 @@ export const Sheet: React.FC<SheetProps> = ({
   style,
 }) => {
   const screenHeight = Dimensions.get("window").height;
-  const sheetHeight = screenHeight * SNAP_RATIOS[snapPoint];
+  // Compute panel height: numeric snap (clamped) OR ratio-based preset.
+  const sheetHeight =
+    typeof snapPoint === "number"
+      ? Math.min(
+          Math.max(snapPoint, MIN_SNAP_PX),
+          screenHeight * MAX_SNAP_RATIO,
+        )
+      : screenHeight * SNAP_RATIOS[snapPoint];
   const closedY = sheetHeight; // pushed fully off-screen
   const openY = 0;
 

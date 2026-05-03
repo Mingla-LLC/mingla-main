@@ -11,10 +11,16 @@
  *
  * Stub event-list rows are [TRANSITIONAL] hardcoded — replaced by real event
  * fetch in B1+ when event endpoints land.
+ *
+ * Cycle 3 wires draft rows from draftEventStore — those rows ARE real (not
+ * stub). Stub rows below remain until Cycle 9 ships the live events list.
+ * Cycle 3 also retires 2 TRANSITIONAL Toasts ("Event creation lands Cycle 3"
+ * + "Events list lands Cycle 3") — both now navigate.
  */
 
 import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
@@ -38,13 +44,9 @@ import {
   useCurrentBrand,
   type Brand,
 } from "../../src/store/currentBrandStore";
-
-const formatGbp = (value: number): string =>
-  new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-    maximumFractionDigits: 0,
-  }).format(value);
+import { useDraftsForBrand } from "../../src/store/draftEventStore";
+import { formatGbpRound } from "../../src/utils/currency";
+import { formatRelativeTime } from "../../src/utils/relativeTime";
 
 interface ToastState {
   visible: boolean;
@@ -92,8 +94,10 @@ const greetingLabel = (): string => {
 
 export default function HomeTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const brands = useBrandList();
   const currentBrand = useCurrentBrand();
+  const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
 
@@ -114,8 +118,24 @@ export default function HomeTab(): React.ReactElement {
   }, []);
 
   const handleBuildEvent = useCallback((): void => {
-    setToast({ visible: true, message: "Event creation lands in Cycle 3." });
-  }, []);
+    if (currentBrand === null) {
+      setToast({ visible: true, message: "Create a brand first." });
+      setSheetVisible(true);
+      return;
+    }
+    router.push("/event/create" as never);
+  }, [currentBrand, router]);
+
+  const handleSeeAllEvents = useCallback((): void => {
+    router.push("/(tabs)/events" as never);
+  }, [router]);
+
+  const handleOpenDraft = useCallback(
+    (draftId: string): void => {
+      router.push(`/event/${draftId}/edit` as never);
+    },
+    [router],
+  );
 
   const isEmpty = brands.length === 0 || currentBrand === null;
   const liveEvent = currentBrand?.currentLiveEvent ?? null;
@@ -166,10 +186,10 @@ export default function HomeTab(): React.ReactElement {
                 <Text style={styles.heroEventName}>{liveEvent.name}</Text>
                 <View style={styles.heroAmountRow}>
                   <Text style={styles.heroAmountSold}>
-                    {formatGbp(liveEvent.soldGbp)}
+                    {formatGbpRound(liveEvent.soldGbp)}
                   </Text>
                   <Text style={styles.heroAmountGoal}>
-                    {" "}/ {formatGbp(liveEvent.goalGbp)}
+                    {" "}/ {formatGbpRound(liveEvent.goalGbp)}
                   </Text>
                 </View>
                 <View style={styles.progressBarTrack}>
@@ -200,7 +220,7 @@ export default function HomeTab(): React.ReactElement {
             ) : (
               <KpiTile
                 label="Last 7 days"
-                value={formatGbp(currentBrand.stats.rev)}
+                value={formatGbpRound(currentBrand.stats.rev)}
                 delta="+18%"
                 deltaUp
               />
@@ -224,7 +244,7 @@ export default function HomeTab(): React.ReactElement {
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Upcoming</Text>
               <Pressable
-                onPress={() => setToast({ visible: true, message: "Events list lands in Cycle 3." })}
+                onPress={handleSeeAllEvents}
                 accessibilityRole="link"
                 accessibilityLabel="See all upcoming events"
               >
@@ -233,6 +253,41 @@ export default function HomeTab(): React.ReactElement {
             </View>
 
             <View style={styles.eventsCol}>
+              {/* Cycle 3 — real draft rows from draftEventStore (NOT stub). */}
+              {drafts.map((draft) => (
+                <Pressable
+                  key={draft.id}
+                  onPress={() => handleOpenDraft(draft.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Resume draft: ${draft.name || "Untitled"}`}
+                  style={styles.eventRow}
+                >
+                  <View style={styles.eventCoverWrap}>
+                    <EventCover
+                      hue={draft.coverHue}
+                      radius={12}
+                      label=""
+                      height={56}
+                      width={56}
+                    />
+                  </View>
+                  <View style={styles.eventTextCol}>
+                    <View style={styles.eventPillRow}>
+                      <Pill variant="draft">Draft</Pill>
+                    </View>
+                    <Text style={styles.eventTitle} numberOfLines={1}>
+                      {draft.name.length > 0 ? draft.name : "Untitled draft"}
+                    </Text>
+                    <Text style={styles.eventWhen} numberOfLines={1}>
+                      {`Step ${draft.lastStepReached + 1} of 7 · ${formatRelativeTime(draft.updatedAt)}`}
+                    </Text>
+                  </View>
+                  <View style={styles.eventSoldCol}>
+                    <Text style={styles.eventSoldValue}>—</Text>
+                    <Text style={styles.eventSoldLabel}>resume</Text>
+                  </View>
+                </Pressable>
+              ))}
               {liveEvent !== null ? (
                 <View style={styles.eventRow}>
                   <View style={styles.eventCoverWrap}>

@@ -63,17 +63,30 @@ export function aggregateCollabPrefs(
     };
   }
 
-  // Categories: UNION (R3.1) — combine everyone's categories, deduplicate
+  // Categories: UNION (R3.1) — combine everyone's categories, deduplicate.
+  // ORCH-0699: Per-row toggle gate. If a participant flipped "See popular options?"
+  // OFF in their preferences sheet, their selected categories MUST be excluded from
+  // the union — otherwise their hidden pills would contaminate everyone's deck.
+  // The gate is per-row (not per-aggregator) so opted-in participants still get
+  // their R3.1 UNION semantics; opted-out participants contribute zero category
+  // signal. `?? true` defensive default for legacy collab rows that pre-date
+  // ORCH-0434 (BoardSessionPreferences.category_toggle is optional in the type).
+  // DO NOT remove without first plumbing toggle data through the deck wire payload.
   const categorySet = new Set<string>();
   for (const row of rows) {
+    if (!(row.category_toggle ?? true)) continue;
     for (const cat of (row.categories || [])) {
       categorySet.add(cat);
     }
   }
 
-  // Intents: UNION (R3.9) — combine everyone's intents, deduplicate
+  // Intents: UNION (R3.9) — combine everyone's intents, deduplicate.
+  // ORCH-0699: Per-row toggle gate (mirrors categories above). Skip rows whose
+  // intent_toggle is false — see comment block on the categories loop for full
+  // rationale.
   const intentSet = new Set<string>();
   for (const row of rows) {
+    if (!(row.intent_toggle ?? true)) continue;
     for (const intent of (row.intents || [])) {
       intentSet.add(intent);
     }

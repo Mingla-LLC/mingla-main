@@ -16,6 +16,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../services/supabase";
 import { ensureCreatorAccount } from "../services/creatorAccount";
+import { clearAllStores } from "../utils/clearAllStores";
 
 const webClientId =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
@@ -99,6 +100,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(s?.user ?? null);
       if (s?.user) {
         await ensureCreatorAccount(s.user);
+      } else if (_event === "SIGNED_OUT") {
+        // Defensive Constitution #6 coverage — clears stores even when
+        // signout happens server-side (token revoked, session expired)
+        // without going through our signOut() button.
+        clearAllStores();
       }
       setLoading(false);
     });
@@ -313,6 +319,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         /* ignore */
       }
     }
+    // Constitution #6 — clear all client-side persisted stores.
+    // NEW Cycle 3 wire-up; before this, currentBrandStore + draftEventStore
+    // survived signout (a pre-existing gap closed by Cycle 3 spec §3.11).
+    clearAllStores();
   }, []);
 
   const value = useMemo(

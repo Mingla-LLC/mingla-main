@@ -1,0 +1,63 @@
+epic	5319e7	A cycle-level container; contains user-story sub-issues
+user-story	0e8a16	A journey-level deliverable using the gherkin AC template
+task	1d76db	A concrete sub-task under a user story
+bug	d73a4a	Something is broken in shipped code
+spike	fbca04	Time-boxed investigation; no code changes guaranteed
+phase:foundations	c5def5	Phase 1 — design tokens, primitives, nav, auth
+phase:core-wedge	bfdadc	Phase 2 — sign-in → brand → event → ticket
+phase:public-surfaces	d4c5f9	Phase 3 — public event/brand/checkout pages
+phase:management	fef2c0	Phase 4 — orders, refunds, scanner, door payments
+phase:account-polish	c2e0c6	Phase 5 — account, marketing landing, polish
+phase:backend-mvp	0e8a16	Phase 6 — schema, RLS, Stripe live, scanner live
+phase:post-mvp	5319e7	Phase 7 — marketing infra, chat agent
+cycle:0a	ededed	Foundation: tokens, glass primitives, 3-tab nav, AuthScreen
+cycle:0b	ededed	Web foundation: Expo Web auth + bundle
+cycle:1	ededed	Sign-in → Home → brand creation
+cycle:2	ededed	Brands inventory: list, profile, edit, team, finance
+cycle:3	ededed	Event creator 7-step wizard + draft + publish gate
+cycle:4	ededed	Recurring + multi-date + per-date overrides
+cycle:5	ededed	Ticket types: free/paid/approval/password/waitlist + reorder
+cycle:6	ededed	Public event page + variants
+cycle:7	ededed	Public brand + organiser page + share modal
+cycle:8	ededed	Checkout flow (UI + payment stubs)
+cycle:9	ededed	Event management: dashboard, orders, refunds, cancel
+cycle:10	ededed	Guests: pending approvals, manual add/check-in, attendee detail
+cycle:11	ededed	Scanner mode: camera, states, manual lookup, activity log
+cycle:12	ededed	Door payments: cash, card-reader, NFC, manual, receipt
+cycle:13	ededed	End-of-night reconciliation report
+cycle:14	ededed	Account: edit profile, settings, delete-flow, sign out
+cycle:15	ededed	Marketing landing + organiser login + magic-link
+cycle:16	ededed	Cross-cutting: offline, force-update, error, 404, splash
+cycle:17	ededed	Refinement pass — apply all founder feedback
+cycle:b1	c5def5	Backend: schema + RLS for all MVP tables
+cycle:b2	c5def5	Backend: Stripe Connect wired live
+cycle:b3	c5def5	Backend: checkout wired live (Stripe Payment Element)
+cycle:b4	c5def5	Backend: scanner + door payments live
+cycle:b5	c5def5	Backend: marketing infra (email, SMS, CRM, tracking, analytics)
+cycle:b6	c5def5	Backend: chat agent (M19+ from old plan)
+area:account	d4c5f9	Account creation, profile, settings, delete
+area:brand	d4c5f9	Brand creation, profile, team, switching
+area:event	d4c5f9	Event creator wizard, draft, publish
+area:tickets	d4c5f9	Ticket types, prices, capacity, waitlist
+area:scanner	d4c5f9	Scanner mode, QR, check-ins, offline
+area:payments	d4c5f9	Stripe Connect, online/door payments, refunds, payouts
+area:marketing	d4c5f9	Email, SMS, CRM, nurturing, campaigns
+area:analytics	d4c5f9	Brand + event analytics dashboards
+area:agent	d4c5f9	Chat agent surfaces (post-MVP only)
+area:permissions	d4c5f9	Roles, RLS, audit log
+area:public-pages	d4c5f9	Public event/brand/organiser pages, share, SEO
+area:platform	d4c5f9	Foundation, design system, infra, devex
+layer:ui	fef2c0	Component, screen, hook, navigation
+layer:backend	fef2c0	Edge function, service, RLS, RPC
+layer:db	fef2c0	Migration, schema, constraint, index
+layer:api	fef2c0	External API integration (Stripe, OneSignal, etc.)
+layer:design	fef2c0	Design tokens, visual treatment, /ui-ux-pro-max review
+platform:mobile	bfdadc	iOS + Android (Expo native)
+platform:web	bfdadc	Expo Web (mingla-business serves web too per DEC-081)
+platform:both	bfdadc	Required on mobile AND web for parity
+mvp	0e8a16	Required for the launch wedge (private beta)
+post-mvp	c5def5	Deferred until after MVP ships
+priority:p0	d73a4a	Blocks MVP / blocks current cycle
+priority:p1	fbca04	Required this cycle
+priority:p2	bfdadc	Required this phase
+priority:p3	ededed	Nice-to-have / opportunistic

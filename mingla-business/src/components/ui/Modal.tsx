@@ -9,10 +9,28 @@
  * `easings.in`. Reduce-motion: opacity-only.
  *
  * Body uses `GlassCard variant="elevated"` with radius `xl`.
+ *
+ * # Overlay portal (Cycle 3 rework v3 fix)
+ * Wrapped in React Native's native `Modal` component (aliased as
+ * `RNModal`) so the overlay (scrim + panel) renders at the OS-level
+ * root window regardless of where in the React tree the consumer
+ * mounts this Modal. Without this portal, `StyleSheet.absoluteFill`
+ * would resolve to the nearest positioned ancestor — for consumers
+ * inside a ScrollView (e.g. ConfirmDialog rendered inside a step body
+ * inside the wizard's ScrollView), the scrim + panel anchor to the
+ * ScrollView's content rect rather than the screen, causing the
+ * dialog to appear off-center. Same fix Sheet primitive received in
+ * Cycle 2 J-A8 polish (RC-1) for the I-13 overlay-portal contract.
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import {
+  Modal as RNModal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import Animated, {
   Easing,
@@ -151,31 +169,39 @@ export const Modal: React.FC<ModalProps> = ({
   if (!mounted) return null;
 
   return (
-    <View
-      pointerEvents={visible ? "auto" : "none"}
-      style={StyleSheet.absoluteFill}
-      testID={testID}
+    <RNModal
+      visible={mounted}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={onClose}
     >
-      <Animated.View
-        style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimStyle]}
+      <View
+        pointerEvents={visible ? "auto" : "none"}
+        style={StyleSheet.absoluteFill}
+        testID={testID}
       >
-        <Pressable style={styles.scrimPress} onPress={handleScrimPress} />
-      </Animated.View>
-      <View style={styles.center} pointerEvents="box-none">
         <Animated.View
-          style={[
-            styles.panelWrap,
-            Platform.OS === "web" ? { maxWidth } : null,
-            panelStyle,
-            style,
-          ]}
+          style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimStyle]}
         >
-          <GlassCard variant="elevated" radius="xl" padding={spacing.lg}>
-            {children}
-          </GlassCard>
+          <Pressable style={styles.scrimPress} onPress={handleScrimPress} />
         </Animated.View>
+        <View style={styles.center} pointerEvents="box-none">
+          <Animated.View
+            style={[
+              styles.panelWrap,
+              Platform.OS === "web" ? { maxWidth } : null,
+              panelStyle,
+              style,
+            ]}
+          >
+            <GlassCard variant="elevated" radius="xl" padding={spacing.lg}>
+              {children}
+            </GlassCard>
+          </Animated.View>
+        </View>
       </View>
-    </View>
+    </RNModal>
   );
 };
 

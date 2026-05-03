@@ -44,8 +44,10 @@ import {
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 
+import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { EventCover } from "../ui/EventCover";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
@@ -64,6 +66,11 @@ const SIMULATED_SAVE_DELAY_MS = 300;
 // Brief delay after Toast appears before navigating back so the success
 // feedback is visually registered.
 const POST_SAVE_NAV_DELAY_MS = 300;
+
+// Cycle 7 FX2 cover-hue tiles — MIRROR Cycle 3 CreatorStep4Cover.tsx
+// hue array verbatim. If the event-cover palette ever expands, brand
+// covers should follow (keep these arrays in sync).
+const COVER_HUE_TILES: readonly number[] = [25, 100, 180, 220, 290, 320] as const;
 
 interface InlineToggleProps {
   value: boolean;
@@ -308,7 +315,6 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   }
 
   // ----- Populated state -----
-  const initial = brand.displayName.charAt(0).toUpperCase();
   const toggleValue = draft.displayAttendeeCount ?? true;
 
   const saveButton = (
@@ -346,11 +352,15 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* SECTION A — Photo card (read-mostly with TRANSITIONAL upload) */}
+          {/* SECTION A — Photo card (read-mostly with TRANSITIONAL upload).
+              Avatar + pencil-button overlay are wrapped in a relative-
+              positioned View so the absolute-positioned pencil anchors
+              against the avatar's bounding box. The Avatar primitive
+              itself stays atomic (no children prop) per kit discipline. */}
           <GlassCard variant="elevated" padding={spacing.lg}>
             <View style={styles.photoBlock}>
-              <View style={styles.heroAvatar}>
-                <Text style={styles.heroAvatarInitial}>{initial}</Text>
+              <View style={styles.heroAvatarWrap}>
+                <Avatar name={brand.displayName} size="hero" />
                 <Pressable
                   onPress={handlePhotoEdit}
                   accessibilityRole="button"
@@ -393,6 +403,134 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               placeholder="Tell people about your brand"
               accessibilityLabel="Bio / description"
             />
+          </View>
+
+          {/* SECTION B-1.5 — Brand cover (Cycle 7 FX2 v11).
+              Hue-only stub mirrors Cycle 3 CreatorStep4Cover pattern.
+              Live preview reflects current hue selection; tap a swatch
+              to update draft.coverHue. Image upload deferred to B-cycle. */}
+          <Text style={styles.sectionLabel}>BRAND COVER</Text>
+          <View style={styles.fieldsCol}>
+            <View style={styles.coverPreviewWrap}>
+              <EventCover
+                hue={draft.coverHue}
+                radius={radiusTokens.lg}
+                label=""
+                height={120}
+              />
+            </View>
+            <Text style={styles.kindHint}>
+              This shows up at the top of your public brand page.
+            </Text>
+            <View style={styles.coverHueRow}>
+              {COVER_HUE_TILES.map((hue) => {
+                const active = draft.coverHue === hue;
+                return (
+                  <Pressable
+                    key={hue}
+                    onPress={() => setDraft({ ...draft, coverHue: hue })}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`Cover hue ${hue}${active ? " (selected)" : ""}`}
+                    style={[
+                      styles.coverHueTile,
+                      active && styles.coverHueTileActive,
+                    ]}
+                  >
+                    <View style={styles.coverHueTileInner}>
+                      <EventCover hue={hue} radius={radiusTokens.md} label="" />
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.coverComingSoonCaption}>
+              Photo and video uploads coming soon.
+            </Text>
+          </View>
+
+          {/* SECTION B-2 — Brand kind (Cycle 7 v10).
+              Drives whether the public brand page shows a location after the
+              handle. Pop-up = no location shown. Physical = address rendered. */}
+          <Text style={styles.sectionLabel}>BRAND KIND</Text>
+          <View style={styles.fieldsCol}>
+            <View style={styles.kindRow}>
+              <Pressable
+                onPress={() => setDraft({ ...draft, kind: "physical" })}
+                accessibilityRole="button"
+                accessibilityState={{ selected: draft.kind === "physical" }}
+                accessibilityLabel="Physical space"
+                style={[
+                  styles.kindPill,
+                  draft.kind === "physical" && styles.kindPillActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.kindPillLabel,
+                    draft.kind === "physical" && styles.kindPillLabelActive,
+                  ]}
+                >
+                  Physical space
+                </Text>
+                <Text
+                  style={[
+                    styles.kindPillSub,
+                    draft.kind === "physical" && styles.kindPillSubActive,
+                  ]}
+                >
+                  A venue you own or lease
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setDraft({ ...draft, kind: "popup" })}
+                accessibilityRole="button"
+                accessibilityState={{ selected: draft.kind === "popup" }}
+                accessibilityLabel="Pop-up"
+                style={[
+                  styles.kindPill,
+                  draft.kind === "popup" && styles.kindPillActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.kindPillLabel,
+                    draft.kind === "popup" && styles.kindPillLabelActive,
+                  ]}
+                >
+                  Pop-up
+                </Text>
+                <Text
+                  style={[
+                    styles.kindPillSub,
+                    draft.kind === "popup" && styles.kindPillSubActive,
+                  ]}
+                >
+                  Events at varying venues
+                </Text>
+              </Pressable>
+            </View>
+            {draft.kind === "physical" ? (
+              <View>
+                <Input
+                  variant="text"
+                  value={draft.address ?? ""}
+                  onChangeText={(v) =>
+                    setDraft({
+                      ...draft,
+                      address: v.length === 0 ? null : v,
+                    })
+                  }
+                  placeholder="e.g. 12 Old Street, London EC1V 9HL"
+                  leadingIcon="location"
+                  accessibilityLabel="Brand address"
+                  clearable
+                />
+                <Text style={styles.kindHint}>
+                  Shown to buyers on your public brand page. Use neighborhood only if you'd rather not share the exact address.
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           {/* SECTION C — Contact */}
@@ -608,21 +746,12 @@ const styles = StyleSheet.create({
   photoBlock: {
     alignItems: "center",
   },
-  heroAvatar: {
-    width: 84,
-    height: 84,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-    alignItems: "center",
-    justifyContent: "center",
+  // Wrapper around the Avatar primitive — relative-positioned so the
+  // absolute pencil-edit button (sibling) anchors against the avatar's
+  // bounding box. Replaces the prior `heroAvatar` inline composition.
+  heroAvatarWrap: {
+    position: "relative",
     marginBottom: spacing.sm,
-  },
-  heroAvatarInitial: {
-    fontSize: 36,
-    fontWeight: "700",
-    color: accent.warm,
   },
   photoEditBtn: {
     position: "absolute",
@@ -664,6 +793,84 @@ const styles = StyleSheet.create({
   },
   fieldsCol: {
     gap: spacing.sm,
+  },
+
+  // Brand kind pills (Cycle 7 v10) -----------------------------------
+  kindRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  kindPill: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.lg,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+  },
+  kindPillActive: {
+    borderColor: accent.warm,
+    backgroundColor: "rgba(235, 120, 37, 0.10)",
+  },
+  kindPillLabel: {
+    fontSize: typography.body.fontSize,
+    fontWeight: "600",
+    color: textTokens.secondary,
+    marginBottom: 2,
+  },
+  kindPillLabelActive: {
+    color: textTokens.primary,
+  },
+  kindPillSub: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+  },
+  kindPillSubActive: {
+    color: textTokens.secondary,
+  },
+  kindHint: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.tertiary,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+
+  // Brand cover hue picker (Cycle 7 FX2 v11) -------------------------
+  coverPreviewWrap: {
+    borderRadius: radiusTokens.lg,
+    overflow: "hidden",
+    marginBottom: spacing.xs,
+  },
+  coverHueRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  coverHueTile: {
+    width: "31%",
+    aspectRatio: 1,
+    padding: 2,
+    borderRadius: radiusTokens.md + 2,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  coverHueTileActive: {
+    borderColor: accent.warm,
+  },
+  coverHueTileInner: {
+    flex: 1,
+    borderRadius: radiusTokens.md,
+    overflow: "hidden",
+  },
+  coverComingSoonCaption: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    fontStyle: "italic",
+    textAlign: "center",
+    marginTop: spacing.sm,
   },
 
   // Display toggle row --------------------------------------------------
