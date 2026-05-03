@@ -221,7 +221,6 @@ function transformGooglePlace(gPlace: Record<string, unknown>) {
     last_detail_refresh: new Date().toISOString(),
     refresh_failures: 0,
     is_active: true,
-    seeding_category: null as string | null,
   };
 }
 
@@ -313,25 +312,27 @@ async function handleSearch(body: any) {
 // deno-lint-ignore no-explicit-any
 async function handlePush(body: any) {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const { places, seedingCategory, cityId } = body;
+  const { places, cityId } = body;
 
   if (!Array.isArray(places) || places.length === 0) {
     throw new Error("No places provided to push.");
   }
 
+  // ORCH-0700 Phase 3: seedingCategory body param + per-place override removed.
+  // Category is now derived from primary_type + types via pg_map_primary_type_to_mingla_category
+  // at read time — no admin override capability remains. Callers passing seedingCategory
+  // in the request body have it silently ignored (acceptable per spec; admin UI flag
+  // for orchestrator if dropdown still appears).
   // deno-lint-ignore no-explicit-any
   const rows = places.map((p: any) => {
     if (!p.rawGoogleData) {
       throw new Error(`Missing rawGoogleData for place: ${p.name || "unknown"}`);
     }
     const row = transformGooglePlace(p.rawGoogleData);
-    // Apply seeding category from admin selection (or per-place override)
-    if (p.seedingCategory || seedingCategory) {
-      row.seeding_category = p.seedingCategory || seedingCategory;
-    }
     // Link to canonical city if provided
     if (cityId) {
-      row.city_id = cityId;
+      // deno-lint-ignore no-explicit-any
+      (row as any).city_id = cityId;
     }
     return row;
   });
