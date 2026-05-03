@@ -21,6 +21,8 @@ import { useEventEditLogStore } from "../store/eventEditLogStore";
 import { useGuestStore } from "../store/guestStore";
 import { useLiveEventStore } from "../store/liveEventStore";
 import { useOrderStore } from "../store/orderStore";
+import { useScanStore } from "../store/scanStore";
+import { useScannerInvitationsStore } from "../store/scannerInvitationsStore";
 
 export const clearAllStores = (): void => {
   useCurrentBrandStore.getState().reset();
@@ -29,4 +31,6 @@ export const clearAllStores = (): void => {
   useEventEditLogStore.getState().reset(); // NEW ORCH-0704 v2 — Constitution #6
   useOrderStore.getState().reset(); // NEW Cycle 9c — Constitution #6
   useGuestStore.getState().reset(); // NEW Cycle 10 — Constitution #6
+  useScanStore.getState().reset(); // NEW Cycle 11 — Constitution #6
+  useScannerInvitationsStore.getState().reset(); // NEW Cycle 11 — Constitution #6
 };

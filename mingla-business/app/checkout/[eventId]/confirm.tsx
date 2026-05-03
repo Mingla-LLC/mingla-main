@@ -31,7 +31,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import QRCode from "react-native-qrcode-svg";
 
 import {
   accent,
@@ -48,7 +47,7 @@ import {
 } from "../../../src/store/orderStore";
 import { formatGbp } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
-import { buildQrPayload } from "../../../src/utils/stubOrderId";
+import { expandTicketIds } from "../../../src/utils/expandTicketIds";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -56,8 +55,7 @@ import { Icon } from "../../../src/components/ui/Icon";
 import { Toast } from "../../../src/components/ui/Toast";
 
 import { useCart } from "../../../src/components/checkout/CartContext";
-
-const QR_SIZE = 200;
+import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
 
 // Wallet button visibility:
 //   - iOS native: Apple Wallet only (Apple's platform)
@@ -206,15 +204,27 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
   }, []);
 
   // ----- Memos -----
-  const firstQrPayload = useMemo<string | null>(() => {
-    if (result === null || result.ticketIds.length === 0) return null;
-    return buildQrPayload(result.orderId, result.ticketIds[0]);
-  }, [result]);
+  // Cycle 11 J-S8 — multi-ticket QR carousel.
+  // Build CarouselTicket[] inline from the cart's `lines` so each row
+  // gets the operator-frozen ticketName + a deterministic ticketId.
+  const carouselTickets = useMemo(() => {
+    if (result === null || result.ticketIds.length === 0) return [];
+    const orderLines = lines.map((l) => ({
+      ticketTypeId: l.ticketTypeId,
+      ticketNameAtPurchase: l.ticketName,
+      unitPriceGbpAtPurchase: l.unitPriceGbp,
+      isFreeAtPurchase: l.isFree,
+      quantity: l.quantity,
+      refundedQuantity: 0,
+      refundedAmountGbp: 0,
+    }));
+    return expandTicketIds(result.orderId, orderLines).map((t) => ({
+      ticketId: t.ticketId,
+      ticketName: t.ticketName,
+    }));
+  }, [result, lines]);
 
-  const totalTickets = useMemo<number>(() => {
-    if (result === null) return 0;
-    return result.ticketIds.length;
-  }, [result]);
+  const totalTickets = carouselTickets.length;
 
   // Render an empty shell while the defensive useEffect redirects.
   if (event === null || result === null) {
@@ -285,31 +295,19 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
           </Text>
         </GlassCard>
 
-        {/* QR */}
+        {/* QR — Cycle 11 J-S8 multi-ticket carousel. Single-ticket case
+            renders one QR with no dots/swipe affordance (visual parity). */}
         <GlassCard
           variant="base"
           radius="lg"
           padding={spacing.md}
           style={styles.qrCard}
         >
-          {firstQrPayload !== null ? (
-            <View style={styles.qrWrap}>
-              <View style={styles.qrInner}>
-                <QRCode
-                  value={firstQrPayload}
-                  size={QR_SIZE}
-                  color="#000000"
-                  backgroundColor="#ffffff"
-                />
-              </View>
-              <Text style={styles.qrCaption}>Show this at the door</Text>
-              {totalTickets > 1 ? (
-                <Text style={styles.qrMultiNote}>
-                  This QR is for ticket 1 of {totalTickets}. Multi-ticket viewer
-                  lands in a future update.
-                </Text>
-              ) : null}
-            </View>
+          {totalTickets > 0 ? (
+            <TicketQrCarousel
+              orderId={result.orderId}
+              tickets={carouselTickets}
+            />
           ) : null}
         </GlassCard>
 
@@ -491,28 +489,6 @@ const styles = StyleSheet.create({
   qrCard: {
     marginBottom: spacing.md,
     alignItems: "center",
-  },
-  qrWrap: {
-    alignItems: "center",
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  qrInner: {
-    padding: spacing.sm,
-    backgroundColor: "#ffffff",
-    borderRadius: radiusTokens.md,
-  },
-  qrCaption: {
-    fontSize: 13,
-    color: textTokens.secondary,
-    fontWeight: "500",
-  },
-  qrMultiNote: {
-    fontSize: 11,
-    color: textTokens.tertiary,
-    textAlign: "center",
-    fontStyle: "italic",
-    maxWidth: 280,
   },
   walletRow: {
     flexDirection: "row",

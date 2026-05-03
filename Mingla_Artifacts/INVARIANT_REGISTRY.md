@@ -135,6 +135,85 @@ These two invariants are queued for codification when ORCH-0708 closes (operator
 
 ---
 
+## Mingla Business invariants (2026-05-02) — Cycle 10 guest list (BACKFILLED 2026-05-03)
+
+> **Backfill note:** Cycle 10 closed Grade A on commit `dc75b5dd` and SPEC §8.2 locked I-25 + I-26 IDs, but the formal registry entries below were omitted from CLOSE Step 1 SYNC. Cycle 11 implementor surfaced this as a discovery in [`reports/IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT.md`](reports/IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT.md) §12 D1. Backfilled here 2026-05-03 to keep registry truthful.
+
+### I-25 Comp guests in `useGuestStore.entries` ONLY (mingla-business)
+
+**Rule:** Comp guests live in `useGuestStore.entries` only — NEVER as phantom OrderRecord rows. `CheckoutPaymentMethod` union NEVER includes `"comp"`. Future cycles that introduce manual-add features MUST extend `useGuestStore` (or its B-cycle backend equivalent), NEVER fabricate orders.
+
+**Why:** I-19 requires write-once order financials. Comp guests are operator-created and don't pay — calling them orders is a category error that cascades into checkout-flow type checks that don't make sense for a non-purchase. Cycle 10's separate-`useGuestStore` strategy keeps semantics clean.
+
+**Established by:** Cycle 10 close (2026-05-02). Commit `dc75b5dd`. SPEC: [`specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md`](specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md) §8.2.
+
+**Enforcement:** Convention + static check (T-26 + SC-21). Cycle 11 honors: comp manual check-ins write to `useScanStore` with `orderId === ""` + `via: "manual"` + ticketId starting with `cg_`; never round-trip back to `useGuestStore` as a phantom order.
+
+**Test that catches a regression:** `grep -rEn "CheckoutPaymentMethod.*comp" mingla-business/` MUST return 0 hits. Any new code that adds `"comp"` to the payment-method union or constructs an OrderRecord with `paymentMethod: "comp"` violates this invariant.
+
+---
+
+### I-26 `LiveEvent.privateGuestList` operator-only flag (mingla-business — Cycle 10)
+
+**Rule:** `LiveEvent.privateGuestList` is a UI flag introduced in Cycle 10 that affects NO buyer-facing surface in Cycle 10. Future cycles that add buyer surfaces (e.g., guest-list preview on `/o/[orderId]`) MUST honor this flag — when `true`, hide attendee count or show only "you're confirmed" — but Cycle 10 SPEC + IMPL did NOT preempt that surface.
+
+**Why:** Buyer-side guest-list-preview is its own cycle decision (Cycle 10 locked decision #7 — operator-only). Pre-implementing the buyer surface from Cycle 10 would couple two design decisions that should remain independent.
+
+**Established by:** Cycle 10 close (2026-05-02). Commit `dc75b5dd`. SPEC: [`specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md`](specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md) §8.2.
+
+**Enforcement:** Static check (T-27 + SC-22). `grep -rn "privateGuestList\|useGuestStore" mingla-business/app/o/ mingla-business/app/e/` MUST return 0 hits. Cycle 11 preserved: J-S8 modifications to `/o/[orderId]` for QR carousel did NOT introduce `useGuestStore` or `privateGuestList` references.
+
+**Test that catches a regression:** Same grep test above. Any new buyer-route code that reads either symbol violates this invariant.
+
+---
+
+## Mingla Business invariants (2026-05-03) — Cycle 11 QR scanner + check-in
+
+### I-27 Single successful scan per ticketId (mingla-business — client-enforced; B-cycle DB-enforced)
+
+**Rule:** For each unique `ticketId` in the system, there is AT MOST ONE `ScanRecord` with `scanResult === "success"`. Cycle 11 enforces single-device via `useScanStore.getSuccessfulScanByTicketId(ticketId)` lookup before recording new success scans. Subsequent scans of the same ticket return the duplicate-overlay state (J-S2 duplicate kind) with relative-time of the original check-in.
+
+**Why:** Door integrity. Two-tap re-entry would either let one person in twice with the same ticket (cost: lost revenue, capacity over-count) OR show a stale "already used" without proof of when (cost: door-staff confusion, buyer dispute). Single-scan-per-ticket is the contract that lets door staff trust the duplicate signal.
+
+**Established by:** Cycle 11 close (2026-05-03). Code: `mingla-business/src/store/scanStore.ts` + `mingla-business/app/event/[id]/scanner/index.tsx` J-S1 handler.
+
+**Enforcement (Cycle 11 — single-device):**
+- `useScanStore.getSuccessfulScanByTicketId(ticketId)` lookup before recordScan(success) on every camera scan.
+- Duplicate guard fires duplicate-overlay state + Warning haptic; ScanRecord NOT recorded for the duplicate attempt.
+- Cross-device dedup is NOT enforced — two operators on two devices can both record success for the same ticketId. Behaviour documented in §10 forward backend handoff.
+
+**Enforcement (B-cycle — DB-enforced):**
+- Either `CREATE UNIQUE INDEX ON scan_events (ticket_id) WHERE scan_result = 'success';` (partial UNIQUE) OR edge-function `scan-ticket` does pre-insert lookup. Recommend partial index for atomicity.
+- Cross-device + offline-replay dedup falls out naturally from the DB constraint.
+
+**Test that catches a regression:** Scan the same valid QR twice on the same device → first scan: success overlay; second scan: duplicate overlay with timestamp of first. (See SC-4 + T-06 in [`specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md`](specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md) §6/§7.)
+
+---
+
+### I-28 Scanner-invitation UI without functional flow until B-cycle (mingla-business — TRANSITIONAL)
+
+**Rule:** Cycle 11's `useScannerInvitationsStore.recordInvitation` creates a pending invitation in client-side store ONLY. NO email is sent. NO acceptance flow exists. NO auth gate is enforced for non-operator users (operator-as-scanner is the only working identity model). Invitation rows MAY remain `status: "pending"` indefinitely until B-cycle wires backend functional flow. The `permissions.canAcceptPayments` field is type-locked to `false` for the entire cycle (visible toggle is disabled).
+
+**Why:** Door staff need to be visible in the operator's organiser ledger BEFORE the email + acceptance backend exists, so the operator can plan staffing without losing the data when B-cycle ships. Building the UI now + a client-side store + TRANSITIONAL banner is honest state — Const #1 No dead taps says the tap creates a visible pending entry, which it does. The `[TRANSITIONAL]` markers + EXIT CONDITION ensure no future investigator mistakes the UI scaffolding for a working invite-flow.
+
+**Established by:** Cycle 11 close (2026-05-03). Code: `mingla-business/src/store/scannerInvitationsStore.ts` + `mingla-business/src/components/scanners/InviteScannerSheet.tsx` + `mingla-business/app/event/[id]/scanners/index.tsx`.
+
+**Enforcement (Cycle 11):**
+- `[TRANSITIONAL]` headers on store + sheet with EXIT CONDITION.
+- Visible TRANSITIONAL banner on `/event/{id}/scanners` route at top of content (always rendered, not dismissible) with copy: *"Scanner emails ship in B-cycle. Invitations are stored locally for now."*
+- Confirm-success toast: *"Invitation pending — emails ship in B-cycle."*
+- `canAcceptPayments` toggle visually disabled with copy: *"Door payments coming in B-cycle."*
+
+**EXIT CONDITION (B-cycle):**
+- Edge function `invite-scanner` (writes to `scanner_invitations` + sends Resend email)
+- Edge function `accept-scanner-invitation` (writes to `event_scanners` on token-gated route)
+- `/event/{id}/scanner` route auth gate checks `event_scanners` membership for non-operator users
+- When backend lands, `useScannerInvitationsStore` contracts to a cache (or removes entirely if backend is sole authority).
+
+**Test that catches a regression:** SC-19 + SC-20 + T-21: TRANSITIONAL banner visible always; canAcceptPayments toggle DISABLED + always false; toast on confirm matches the deferred-email copy.
+
+---
+
 ### I-19 Immutable order financials (mingla-business)
 
 **Rule:** An order's `totalGbpAtPurchase`, `lines[i].unitPriceGbpAtPurchase`, `lines[i].ticketNameAtPurchase`, `lines[i].isFreeAtPurchase`, `lines[i].quantity`, `currency`, and `buyer` snapshot are write-once at order insertion to `useOrderStore`. No subsequent operator action — including event edit, tier rename, tier reprice, refund, cancel — mutates these fields. Refund/cancel mutations create NEW records (`RefundRecord`) and update `status` + `refundedAmountGbp` + `refunds[]` aggregates only; original snapshots are NEVER overwritten.
