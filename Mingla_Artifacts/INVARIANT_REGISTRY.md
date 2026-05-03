@@ -7,11 +7,32 @@
 
 ---
 
-## Queued for ORCH-0707 CLOSE (DRAFT until tester PASS)
+## ACTIVE (post ORCH-0700 Phase 3B CLOSE 2026-05-03)
+
+### I-CATEGORY-SLUG-CANONICAL — Every category slug producer must emit canonical 10
+
+**Statement:** Any helper function (SQL, TypeScript, or other) that produces a category slug for a `place_pool` row MUST return a value within the canonical 10-slug set defined by `Object.values(DISPLAY_TO_SLUG)` in `supabase/functions/_shared/categoryPlaceTypes.ts:473-484`. NULL is acceptable (Constitution #9 — never fabricate). Any other value is a violation.
+
+**Canonical 10:** `nature, icebreakers, drinks_and_music, brunch_lunch_casual, upscale_fine_dining, movies_theatre, creative_arts, play, flowers, groceries`.
+
+**Rationale:** ORCH-0700 Phase 1 helper `pg_map_primary_type_to_mingla_category` shipped with an invented 11-slug taxonomy (`brunch`+`casual_food` split; `movies`+`theatre` split; no `groceries` — grocery types absorbed into `flowers`). Admin Place Pool dashboard reads matview `primary_category` expecting canonical display slugs; mismatch caused 3 cells to render 0 globally for ~6 hours until Phase 3B (Migration 7) corrected the helper. The bug class: a helper that produces values no consumer can resolve.
+
+**Enforcement (3 gates):**
+1. **SQL self-verify probes** in helper migration: 16 input/output assertions inside DO block; CREATE OR REPLACE migration aborts via RAISE EXCEPTION on regression.
+2. **Matview post-refresh probe** in helper migration: scans `admin_place_pool_mv` for any `primary_category` value not in canonical set ∪ {`uncategorized`}; aborts on offending row.
+3. **TS unit test** `supabase/functions/_shared/__tests__/derivePoolCategory_canonical.test.ts`: 21 Deno tests. Critical assertion: `for slug in ALL_DERIVED_CATEGORY_SLUGS: assert(Object.values(DISPLAY_TO_SLUG).includes(slug))`.
+
+**Test that catches a regression:** any new PR that adds a bucket to `derivePoolCategory.ts` `ORDERED_BUCKETS` whose slug isn't in `DISPLAY_TO_SLUG` fails the unit test immediately at deno test time. Any new SQL helper that emits a non-canonical slug fails its self-verify probe at migration apply time.
+
+**Established:** 2026-05-03 by ORCH-0700 Phase 3B forensics + spec + implementor. Operator-confirmed Path A (display-label semantic for matview `primary_category`).
+
+---
+
+## ACTIVE (post ORCH-0707 CLOSE 2026-05-02)
 
 ### I-CURATED-LABEL-SOURCE — Curated stop label authority
 
-**Status:** DRAFT (registered 2026-05-02 by ORCH-0707 implementor; orchestrator flips DRAFT → ACTIVE on tester PASS per post-PASS protocol)
+**Status:** ACTIVE (registered 2026-05-02 by ORCH-0707 implementor; flipped DRAFT → ACTIVE 2026-05-03 alongside ORCH-0700 Phase 3B CLOSE since ORCH-0707 work is live + verified)
 
 **Statement:** The `placeType` field on every curated stop (response of `generate-curated-experiences`) AND every alternative (response of `replace-curated-stop`) MUST be the comboCategory slug — i.e., the slug of the combo slot the place was selected to fill. It MUST NEVER be derived from `place_pool.ai_categories`, `place_pool.ai_primary_identity`, or any other deprecated AI-derived per-place column.
 
@@ -30,23 +51,21 @@
 
 ---
 
-## Queued for ORCH-0700 CLOSE (DRAFT until tester PASS)
+## ACTIVE-FULL (post ORCH-0700 Phase 3B CLOSE 2026-05-03)
 
-### I-CATEGORY-DERIVED-ON-DROP (DRAFT — partial flip post-ORCH-0700; full-flip post-ORCH-0707 follow-up)
+### I-CATEGORY-DERIVED-ON-DROP — No stored interpretation columns on place_pool
 
-**Rule:** Mingla category for any place is derived from `mapPrimaryTypeToMinglaCategory(primary_type, types)` (admin-display contexts) OR from `place_scores.signal_id` (curated/serving contexts). Never from a stored interpretation column on `place_pool`.
+**Rule:** Mingla category for any place is derived from `pg_map_primary_type_to_mingla_category(primary_type, types)` (admin-display contexts via matview `admin_place_pool_mv.primary_category`) OR from `place_scores.signal_id` (curated/serving contexts). Never from a stored interpretation column on `place_pool`.
 
-**Status:** PARTIAL after ORCH-0700 close — `seeding_category` dropped; `ai_categories` family still alive (deferred to ORCH-0707 follow-up). FULL after ORCH-0707 follow-up migration drops the 5 ai_* columns.
+**Status:** ACTIVE-FULL as of 2026-05-03. Migration 6 atomically dropped all 6 stored interpretation columns: `seeding_category, ai_categories, ai_reason, ai_primary_identity, ai_confidence, ai_web_evidence`. Archive table `_archive_orch_0700_doomed_columns` retains 69,599-row backup until 2026-06-02.
 
 **Why:** Constitution #2 (one-owner-per-truth) — Google's raw type data is the owner; interpretation layers are derivations not stored facts. Constitution #8 (subtract-before-adding) — drop the interpretation columns once derivation function is canonical.
 
-**Enforcement mechanism:** schema check (CI test that asserts no AI/seeding interpretation columns exist on place_pool); migration sequencing rule (drop column only after all readers verified migrated).
+**Enforcement mechanism:** schema check (no AI/seeding interpretation columns physically exist on place_pool post-Migration-6); the 3 regression gates of I-CATEGORY-SLUG-CANONICAL also enforce this transitively.
 
-**Test that catches a regression:** any new PR that adds an interpretation column to place_pool fails the schema check.
+**Test that catches a regression:** any new PR that adds an interpretation column to place_pool would surface immediately on schema review (no automated CI gate yet — flag for future).
 
-**Status:** DRAFT until ORCH-0707 follow-up tester PASS; then ACTIVE-FULL.
-
-**Established:** 2026-05-02 by ORCH-0700 cycle-3 audit (the 4-system architectural mapping: seeding pipeline / scoring pipeline / serving / rules engine).
+**Established:** 2026-05-02 by ORCH-0700 cycle-3 audit (the 4-system architectural mapping: seeding pipeline / scoring pipeline / serving / rules engine). Flipped DRAFT → ACTIVE-FULL 2026-05-03 by ORCH-0700 Phase 3B CLOSE.
 
 ---
 

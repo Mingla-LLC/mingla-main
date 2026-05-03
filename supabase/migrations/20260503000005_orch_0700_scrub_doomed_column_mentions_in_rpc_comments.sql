@@ -361,8 +361,8 @@ CREATE OR REPLACE FUNCTION public.admin_virtual_tile_intelligence(
   p_city text
 )
 RETURNS TABLE(
-  r_idx integer,
-  c_idx integer,
+  row_idx integer,
+  col_idx integer,
   center_lat double precision,
   center_lng double precision,
   active_places bigint,
@@ -413,10 +413,10 @@ BEGIN
   -- ORCH-0700: derived_category via helper.
   RETURN QUERY
   SELECT
-    r_idx,
-    c_idx,
-    v_min_lat + r_idx * v_cell_lat + v_cell_lat / 2.0 AS center_lat,
-    v_min_lng + c_idx * v_cell_lng + v_cell_lng / 2.0 AS center_lng,
+    row_idx,
+    col_idx,
+    v_min_lat + row_idx * v_cell_lat + v_cell_lat / 2.0 AS center_lat,
+    v_min_lng + col_idx * v_cell_lng + v_cell_lng / 2.0 AS center_lng,
     COUNT(*) AS active_places,
     COUNT(*) FILTER (WHERE pp.stored_photo_urls IS NOT NULL
       AND array_length(pp.stored_photo_urls, 1) > 0) AS with_photos,
@@ -429,13 +429,13 @@ BEGIN
     SELECT
       pp2.*,
       public.pg_map_primary_type_to_mingla_category(pp2.primary_type, pp2.types) AS derived_category,
-      FLOOR((pp2.lat - v_min_lat) / v_cell_lat)::INTEGER AS r_idx,
-      FLOOR((pp2.lng - v_min_lng) / v_cell_lng)::INTEGER AS c_idx
+      FLOOR((pp2.lat - v_min_lat) / v_cell_lat)::INTEGER AS row_idx,
+      FLOOR((pp2.lng - v_min_lng) / v_cell_lng)::INTEGER AS col_idx
     FROM public.place_pool pp2
     WHERE pp2.country = p_country AND pp2.city = p_city AND pp2.is_active
   ) pp
-  GROUP BY r_idx, c_idx
-  ORDER BY r_idx, c_idx;
+  GROUP BY row_idx, col_idx
+  ORDER BY row_idx, col_idx;
 END;
 $$;
 
