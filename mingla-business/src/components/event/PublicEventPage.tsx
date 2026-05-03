@@ -636,10 +636,17 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   const isVisDisabled = ticket.visibility === "disabled";
   const isSoldOutTicket =
     !ticket.isUnlimited && (ticket.capacity ?? 0) === 0;
+  // Cycle 12 — door-only tiers are info-only on the public page. Buyer
+  // can see them (so they know about door pricing) but can't buy online.
+  // The J-C1 buyer cart filter at app/checkout/[eventId]/index.tsx hides
+  // these tiers from the cart anyway; this guard prevents the buyer from
+  // ever reaching that empty-cart state by tap.
+  const isDoorOnly = ticket.availableAt === "door";
 
   // Decide what action this ticket's button fires.
   const handleTap = (): void => {
     if (variant === "past" || isVisDisabled) return;
+    if (isDoorOnly) return; // Cycle 12 — info-only display; no purchase path
     if (variant === "pre-sale") return; // disabled during pre-sale
     if (isSoldOutTicket && ticket.waitlistEnabled) {
       onBuyerAction("waitlist");
@@ -662,6 +669,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
     if (variant === "past") return "Sales ended";
     if (variant === "pre-sale") return "On sale soon";
     if (isVisDisabled) return "Sales paused";
+    if (isDoorOnly) return "Pay at the door"; // Cycle 12 — info-only
     if (isSoldOutTicket && ticket.waitlistEnabled) return "Join waitlist";
     if (isSoldOutTicket) return "Sold out";
     return buttonLabel;
@@ -671,6 +679,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
     variant === "past" ||
     variant === "pre-sale" ||
     isVisDisabled ||
+    isDoorOnly || // Cycle 12 — door-only tiers are info-only on buyer surfaces
     (isSoldOutTicket && !ticket.waitlistEnabled);
 
   return (

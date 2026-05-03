@@ -74,9 +74,33 @@ export const formatTicketBadges = (t: TicketStub): TicketBadge[] => {
   if (t.visibility === "hidden") {
     badges.push({ label: "Hidden — direct link only", variant: "muted" });
   }
+  // Cycle 12 — surface door-only / online-only tiers so the operator (and
+  // the buyer-side renderer) can immediately see which surface this tier
+  // belongs to. "both" gets no badge (default; would clutter every row).
+  if (t.availableAt === "door") {
+    badges.push({ label: "Door only", variant: "info" });
+  } else if (t.availableAt === "online") {
+    badges.push({ label: "Online only", variant: "info" });
+  }
   if (t.approvalRequired) badges.push({ label: "Approval required", variant: "info" });
   if (t.passwordProtected) badges.push({ label: "Password required", variant: "info" });
   if (t.waitlistEnabled) badges.push({ label: "+ Waitlist", variant: "info" });
+  // Cycle 12 rework — surface the rest of the operator's ticket sheet
+  // configuration as muted chips. Only emitted when non-default, so a
+  // "vanilla" tier (no sale window, min=1, no max, transfers on) stays
+  // chip-free below the line.
+  if (t.saleStartAt !== null || t.saleEndAt !== null) {
+    badges.push({ label: "Sale window scheduled", variant: "muted" });
+  }
+  if (t.minPurchaseQty > 1) {
+    badges.push({ label: `Min ${t.minPurchaseQty} per buyer`, variant: "muted" });
+  }
+  if (t.maxPurchaseQty !== null) {
+    badges.push({ label: `Max ${t.maxPurchaseQty} per buyer`, variant: "muted" });
+  }
+  if (!t.allowTransfers) {
+    badges.push({ label: "Transfers disabled", variant: "muted" });
+  }
   return badges;
 };
 

@@ -106,6 +106,20 @@ type ActivityEvent =
       ticketName: string;
       summary: string; // e.g., "Tunde checked in"
       at: string;
+    }
+  // Cycle 12 — door refund stream. Mirrors order `refund` shape but keyed
+  // differently so the feed can distinguish door (cash/manual money returned
+  // at the door) from online (Stripe-mediated). Door refunds never touch
+  // useScanStore (OBS-1 lock — refund is money-only, not attendance) so they
+  // need their own stream sourced directly from useDoorSalesStore.
+  | {
+      kind: "event_door_refund";
+      saleId: string;       // ds_xxx parent door sale
+      refundId: string;     // dr_xxx refund record
+      buyerName: string;    // sale.buyerName or "Walk-up"
+      summary: string;      // "{buyer} — refunded £X (door)"
+      amountGbp: number;
+      at: string;           // refund.refundedAt ISO
     };
 
 const ACTIVITY_RELATIVE_TIME_MS = {
@@ -140,6 +154,9 @@ const activityRowKey = (a: ActivityEvent): string => {
   }
   if (a.kind === "event_scan") {
     return `${a.kind}-${a.scanId}`;
+  }
+  if (a.kind === "event_door_refund") {
+    return `${a.kind}-${a.refundId}`;
   }
   return `${a.kind}-${a.eventId}-${a.at}`;
 };
@@ -556,10 +573,32 @@ export default function EventDetailScreen(): React.ReactElement {
       });
     }
 
-    // Newest first across all 7 streams; cap at 5.
+    // ---- Cycle 12 — door refund stream (OBS-1 — money-only, no scan) ---
+    // Door refunds never touch useScanStore (financial event ≠ attendance
+    // event). Walk doorSalesStore directly so the financial event surfaces
+    // in the feed alongside online refunds. summary uses "(door)" suffix
+    // for clarity vs Stripe-mediated online refunds.
+    const eventDoorSales = allDoorEntries.filter((s) => s.eventId === event.id);
+    for (const sale of eventDoorSales) {
+      const buyerName =
+        sale.buyerName.trim().length > 0 ? sale.buyerName : "Walk-up";
+      for (const r of sale.refunds) {
+        events.push({
+          kind: "event_door_refund",
+          saleId: sale.id,
+          refundId: r.id,
+          buyerName,
+          summary: `${buyerName} — refunded ${formatGbp(r.amountGbp)} (door)`,
+          amountGbp: r.amountGbp,
+          at: r.refundedAt,
+        });
+      }
+    }
+
+    // Newest first across all 8 streams; cap at 5.
     events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
     return events.slice(0, 5);
-  }, [allOrderEntries, allEditEntries, allScanEntries, event]);
+  }, [allOrderEntries, allEditEntries, allScanEntries, allDoorEntries, event]);
 
   return (
     <View style={styles.host}>
@@ -1111,6 +1150,18 @@ const activityKindSpec = (event: ActivityEvent): ActivityKindSpec => {
       amountSign: null,
     };
   }
+  if (event.kind === "event_door_refund") {
+    // Cycle 12 — same warm-orange treatment as order `refund` so refunds
+    // feel consistent across online + door streams. summary already carries
+    // "(door)" suffix for the buyer to disambiguate.
+    return {
+      iconName: "refund",
+      iconColor: accent.warm,
+      badgeBg: "rgba(235, 120, 37, 0.18)",
+      amountColor: accent.warm,
+      amountSign: "-",
+    };
+  }
   // event_cancelled — same close icon as order-cancel but red severity to
   // signal "everyone affected" vs grey "one buyer affected".
   return {
@@ -1136,14 +1187,25 @@ const ActivityRow: React.FC<ActivityRowProps> = ({ event: a }) => {
         : `${spec.amountSign ?? ""}${formatGbp(a.amountGbp)}`;
   } else if (a.kind === "refund") {
     amountLabel = `${spec.amountSign ?? ""}${formatGbp(a.amountGbp)}`;
+  } else if (a.kind === "event_door_refund") {
+    // Cycle 12 — door refund renders amount the same as online refund
+    // (warm color + minus sign) so the operator's eye sweep across the
+    // feed sees "money out" consistently regardless of channel.
+    amountLabel = `${spec.amountSign ?? ""}${formatGbp(a.amountGbp)}`;
   }
 
   // Row shape branches by stream:
-  //  - order-level (purchase / refund / cancel): {buyerName} \\ {summary} \\ relTime
+  //  - order-level (purchase / refund / cancel / event_door_refund):
+  //    {buyerName} \\ {summary} \\ relTime
   //  - event_edit: {summary} \\ {reason} \\ relTime  (no buyer)
   //  - event_sales_ended / event_cancelled: {summary} \\ relTime  (no buyer, no reason)
+  //  - event_scan: same shape as event-level (no separate buyer line);
+  //    summary already carries the buyer name ("Tunde checked in").
   const isOrderLevel =
-    a.kind === "purchase" || a.kind === "refund" || a.kind === "cancel";
+    a.kind === "purchase" ||
+    a.kind === "refund" ||
+    a.kind === "cancel" ||
+    a.kind === "event_door_refund";
 
   return (
     <View style={activityRowStyles.host}>
