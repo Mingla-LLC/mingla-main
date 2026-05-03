@@ -82,7 +82,58 @@ These two invariants are queued for codification when ORCH-0708 closes (operator
 
 ---
 
-## Mingla Business invariants (2026-05-02) — ORCH-0704 v2 close-cycle promotions
+## Mingla Business invariants (2026-05-03) — ORCH-0706 close-cycle DB-enforced hardening
+
+### I-22 Event slug FROZEN (mingla-business — DB-enforced)
+
+**Rule:** `events.slug` is immutable after row creation. Any UPDATE that changes `slug` is rejected by trigger `trg_events_immutable_slug` (function `biz_prevent_event_slug_change`) with error: `events.slug is immutable (Cycle 7 share URLs depend on permanence; create a new event instead of renaming)`.
+
+**Why:** Cycle 7 public-event URLs at `mingla-business/app/e/[brandSlug]/[eventSlug].tsx` resolve events by `(brandSlug, eventSlug)` tuple. Renaming the slug 404s every previously-shared event link (operator share modal, social embeds, email blasts, IG bios). Buyers who saved the link or have it in their email confirmation lose access.
+
+**Established by:** ORCH-0706 close (2026-05-03). Migration: `supabase/migrations/20260503100000_b1_5_pr_59_hardening.sql`.
+
+**Enforcement:**
+- DB trigger: `trg_events_immutable_slug BEFORE UPDATE ON public.events FOR EACH ROW EXECUTE FUNCTION public.biz_prevent_event_slug_change()` — verified live via metadata query.
+- Function body: raises EXCEPTION when `NEW.slug IS DISTINCT FROM OLD.slug`.
+- Even role-based bypass impossible: trigger fires for all roles including service_role.
+
+**Test that catches a regression:** `UPDATE public.events SET slug = 'forbidden' WHERE id = (...);` MUST raise the immutability error. (See SC-2 in [`specs/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md`](specs/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md) §5.)
+
+---
+
+### I-23 events.created_by FROZEN (mingla-business — DB-enforced)
+
+**Rule:** `events.created_by` (the `auth.users.id` of whoever created the event) is immutable after row creation. Any UPDATE that changes `created_by` is rejected by trigger `trg_events_immutable_created_by` (function `biz_prevent_event_created_by_change`) with error: `events.created_by is immutable (audit-trail integrity)`. Even `event_manager+` role-holders cannot rewrite the field.
+
+**Why:** Audit-trail integrity. Without this, an event manager added to an event after creation could silently rewrite the `created_by` field to themselves, corrupting the original-creator audit signal. If something goes wrong six months later — refund disputes, legal questions, attribution arguments — the database evidence stays clean.
+
+**Established by:** ORCH-0706 close (2026-05-03). Migration: `supabase/migrations/20260503100000_b1_5_pr_59_hardening.sql`.
+
+**Enforcement:**
+- DB trigger: `trg_events_immutable_created_by BEFORE UPDATE ON public.events FOR EACH ROW EXECUTE FUNCTION public.biz_prevent_event_created_by_change()`.
+- Function body: raises EXCEPTION when `NEW.created_by IS DISTINCT FROM OLD.created_by`.
+
+**Test that catches a regression:** `UPDATE public.events SET created_by = (different uuid) WHERE id = (...);` MUST raise the immutability error. (See SC-3 in SPEC §5.)
+
+---
+
+### I-24 audit_log + scan_events Option B append-only carve-out (mingla-business — documented)
+
+**Rule:** `audit_log` and `scan_events` tables are append-only for non-service-role callers. Service role (`auth.uid() IS NULL`) MAY mutate (UPDATE/DELETE) for reconciliation jobs and migration scripts. Application code MUST NOT mutate; new entries via INSERT only. The carve-out is documented verbatim in `COMMENT ON TABLE` for both tables — no future investigator should see "append-only" in the schema and assume it means strict-no-mutations-ever.
+
+**Why:** Reconciliation jobs are an operational reality (partial scanner sync repair, double-charged refund recovery, mis-attributed door sale). Strict-no-mutations-ever (Option A) creates real on-call pain the first time bad data lands and we cannot fix it without dropping and recreating triggers. The cost of Option B (this carve-out) is one paragraph of comment text; the cost of Option A is a midnight-emergency migration.
+
+**Established by:** ORCH-0706 close (2026-05-03). DEC-089. Migration: `supabase/migrations/20260503100000_b1_5_pr_59_hardening.sql`.
+
+**Enforcement:**
+- DB triggers `trg_audit_log_block_update` + `trg_scan_events_block_update` (PR #59 — UNCHANGED by ORCH-0706): raise EXCEPTION on UPDATE/DELETE if `auth.uid() IS NOT NULL`. Service role calls (auth.uid() = NULL) silently RETURN COALESCE(NEW, OLD) without raising.
+- COMMENT ON TABLE for both tables disclose the carve-out: *"Append-only for non-service-role callers. Service role (auth.uid() IS NULL) may UPDATE/DELETE for reconciliation jobs and migration scripts. Application code MUST NOT mutate; new entries via INSERT only. (B1.5 — ORCH-0706 SF-4)"*
+
+**Test that catches a regression:** `SELECT obj_description('public.audit_log'::regclass)` MUST include the carve-out language. Authenticated UPDATE on either table MUST raise; service-role UPDATE MUST succeed. (See SC-4a/b/c/d in SPEC §5.)
+
+**Forward path (if SOC2 Type II audit demands strict append-only):** Drop the `IF auth.uid() IS NULL THEN RETURN COALESCE(NEW, OLD); END IF;` short-circuit in both trigger functions (~8 LOC per function). Then RAISE EXCEPTION fires for all roles. Update I-24 statement + COMMENT ON TABLE to reflect strict mode.
+
+---
 
 ### I-19 Immutable order financials (mingla-business)
 
@@ -228,11 +279,14 @@ The audit log entry, once written, is immutable. `useEventEditLogStore` exposes 
 **Established by:** Cycle 7 — ORCH-BIZ-CYCLE-7 close (2026-05-01).
 
 **Enforcement:**
+- **DB trigger (PROMOTED 2026-05-03 — ORCH-0706 close):** `trg_brands_immutable_slug BEFORE UPDATE ON public.brands FOR EACH ROW EXECUTE FUNCTION public.biz_prevent_brand_slug_change()` raises EXCEPTION on any UPDATE that changes `slug`. Even service_role mutations are rejected. Verified live via behavioral test (ORCH-0706 close 2026-05-03).
 - Inline LOCK comment in `currentBrandStore.ts` Brand type at the `slug` field declaration documents the rule.
 - `BrandEditView.tsx:20` header docstring already notes slug is read-only — Cycle 7 spec re-affirmed.
 - `BrandEditView.tsx:368-369` renders `slug` as plain `<Text>` (NOT TextInput) — verified at investigation phase (forensics §3 OBS-1).
 
-**Test that catches a regression:** `grep -rn "setBrand.*slug\|brand\.slug\s*=\s*" mingla-business/src` — any direct mutation outside `currentBrandStore.setBrands` initialization is a violation. Also: any new `<TextInput>` or `<Input variant="text">` in any `Brand*View.tsx` whose `value={...slug...}` and `onChangeText={...slug...}` is a violation.
+**Test that catches a regression:** `UPDATE public.brands SET slug = 'forbidden' WHERE id = ...;` MUST raise the immutability error (see SC-1 in ORCH-0706 SPEC §5). Also: `grep -rn "setBrand.*slug\|brand\.slug\s*=\s*" mingla-business/src` — any direct mutation outside `currentBrandStore.setBrands` initialization is a violation. Also: any new `<TextInput>` or `<Input variant="text">` in any `Brand*View.tsx` whose `value={...slug...}` and `onChangeText={...slug...}` is a violation.
+
+**ORCH-0706 promotion (2026-05-03):** I-17 was originally consumer-side convention only (TypeScript LOCK comment). DB-side enforcement was missing — operator could in theory directly UPDATE the column via Supabase dashboard SQL. ORCH-0706 added `trg_brands_immutable_slug` to make the rule structurally enforceable across all access paths (service_role calls included).
 
 ---
 
