@@ -9,17 +9,22 @@
 
 ## Queued for ORCH-0707 CLOSE (DRAFT until tester PASS)
 
-### I-CURATED-LABEL-SOURCE (DRAFT)
+### I-CURATED-LABEL-SOURCE — Curated stop label authority
 
-**Rule:** Every curated experience stop's `placeType` field MUST be the `comboCategory` slug of the combo slot the place was selected to fill. The label MUST NEVER be derived from `place_pool.ai_categories[0]` or any per-place "primary signal" computation.
+**Status:** DRAFT (registered 2026-05-02 by ORCH-0707 implementor; orchestrator flips DRAFT → ACTIVE on tester PASS per post-PASS protocol)
 
-**Why:** The slot fills the place; the place doesn't choose its label. Constitution #2 (one-owner-per-truth) — for curated stops, the slot semantics are the owner. Constitution #9 (no-fabricated-data) — empty stops return null, never invent a category. Constitution #13 (exclusion-consistency) — same selection logic in curated pipeline + stopAlternatives (both use signal scores).
+**Statement:** The `placeType` field on every curated stop (response of `generate-curated-experiences`) AND every alternative (response of `replace-curated-stop`) MUST be the comboCategory slug — i.e., the slug of the combo slot the place was selected to fill. It MUST NEVER be derived from `place_pool.ai_categories`, `place_pool.ai_primary_identity`, or any other deprecated AI-derived per-place column.
 
-**Enforcement mechanism:** CI test `no_ai_categories_reads_in_curated_pipeline` (Deno test in `supabase/functions/_shared/__tests__/`) parses each of `generate-curated-experiences/index.ts`, `_shared/stopAlternatives.ts`, `_shared/signalRankFetch.ts` and asserts `ai_categories` does not appear (excluding code-comments).
+**Rationale:** A place can score high on multiple signals (e.g., Alamo Drafthouse on both `movies` and `drinks`). The "best signal" of a place is not the same question as "which slot did this place fill." The combo defines the slot; the slot defines the label.
 
-**Test that catches a regression:** the CI test fails if ANY future PR re-introduces `ai_categories` read in those files.
+**Enforcement:**
+1. **Structural (TypeScript):** `buildCardStop` opts.comboCategory is required — compilation fails if any call site omits it.
+2. **CI test:** `supabase/functions/_shared/__tests__/no_ai_categories_in_curated.test.ts` asserts zero non-comment `ai_categories` references in `generate-curated-experiences/index.ts`, `_shared/stopAlternatives.ts`, `_shared/signalRankFetch.ts`.
+3. **Runtime:** `resolveFilterSignal(categoryId)` throws if the slug is not registered in `COMBO_SLUG_TO_FILTER_SIGNAL` — no silent empty-result fallback.
 
-**Status:** DRAFT until ORCH-0707 tester PASS; then ACTIVE.
+**Tests:** T-01, T-02, T-04, T-05, T-07 (see SPEC_ORCH-0707).
+
+**Related invariants:** I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME (single owner for distance/time math), I-CURATED-SELECTION-3-GATE (G1/G2/G3 serving gates).
 
 **Established:** 2026-05-02 by ORCH-0707 forensics investigation §C3 (the comboCategory authority architectural finding) and operator's OQ-6 affirmation.
 

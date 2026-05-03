@@ -4,6 +4,19 @@ import { SEEDING_CATEGORY_MAP } from '../_shared/seedingCategories.ts';
 import { googleLevelToTierSlug, slugMeetsMinimum } from '../_shared/priceTiers.ts';
 import { timeoutFetch } from '../_shared/timeoutFetch.ts';
 import { haversineKm, estimateTravelMinutes } from '../_shared/distanceMath.ts';
+// ORCH-0707: signal-rank helper + maps moved to _shared/signalRankFetch.ts
+// (single source of truth shared with stopAlternatives.ts).
+import {
+  fetchSinglesForSignalRank,
+  COMBO_SLUG_TO_FILTER_SIGNAL,
+  COMBO_SLUG_TYPE_FILTER,
+  COMBO_SLUG_FILTER_MIN,
+} from '../_shared/signalRankFetch.ts';
+// ORCH-0707: duration map centralised in _shared/curatedConstants.ts.
+import {
+  CATEGORY_DURATION_MINUTES,
+  CATEGORY_DEFAULT_DURATION,
+} from '../_shared/curatedConstants.ts';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * generate-curated-experiences  –  Pool-Only Curated Card Generator
@@ -320,176 +333,14 @@ for (const et of EXPERIENCE_TYPES) {
 // surfacing the most date-night-appropriate fine-dining/creative-arts/theatre
 // venues instead of a random upscale_fine_dining place.
 
-async function fetchSinglesForSignalRank(
-  filterSignal: string,
-  filterMin: number,
-  rankSignal: string,
-  centerLat: number,
-  centerLng: number,
-  radiusMeters: number,
-  limit: number = 50,
-  requiredTypes?: string[],  // ORCH-0601: optional sub-filter — places must have at least one of these types (e.g., 'hiking_area','museum')
-): Promise<any[]> {
-  const latDelta = radiusMeters / 111320;
-  const lngDelta = radiusMeters / (111320 * Math.cos(centerLat * Math.PI / 180));
-
-  // ORCH-0653 v3.2: single RPC call replaces v3/v3.1 multi-step PostgREST
-  // pipeline. The RPC pushes the bbox + filter signal + rank signal query
-  // into Postgres so we never pass thousands of IDs through .in() over
-  // HTTP. Supabase edge proxy URL cap (~10-12KB) was rejecting v3.1's
-  // 500-ID chunks (~20KB URL); chunking smaller (200 IDs) would have cost
-  // ~25 sequential roundtrips per intent. The RPC = 2 roundtrips total
-  // (RPC + small hydrate), no URL constraint, server-side composite index
-  // on (signal_id, score) does the heavy lifting.
-  //
-  // Three-gate serving still enforced:
-  //   G1: pp.is_servable = true (RPC WHERE)
-  //   G2: ps_filter.score >= filter_min (RPC INNER JOIN ON)
-  //   G3: real stored_photo_urls (post-block .filter, unchanged)
-
-  const { data: rankedPairs, error: rpcErr } = await supabaseAdmin.rpc(
-    'fetch_local_signal_ranked',
-    {
-      p_filter_signal: filterSignal,
-      p_filter_min: filterMin,
-      p_rank_signal: rankSignal,
-      p_lat_min: centerLat - latDelta,
-      p_lat_max: centerLat + latDelta,
-      p_lng_min: centerLng - lngDelta,
-      p_lng_max: centerLng + lngDelta,
-      p_required_types: requiredTypes ?? null,
-      p_limit: limit * 2,
-    }
-  );
-
-  // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
-  if (rpcErr) {
-    throw new Error(`[fetchSinglesForSignalRank] RPC fetch_local_signal_ranked (filter=${filterSignal}>=${filterMin} rank=${rankSignal} bbox=(${centerLat.toFixed(4)},${centerLng.toFixed(4)})±${Math.round(latDelta * 111320)}m types=${requiredTypes?.join('|') ?? 'any'}) failed: ${rpcErr.message}`);
-  }
-  if (!rankedPairs || rankedPairs.length === 0) return [];
-
-  const rankedIds = rankedPairs.map((p: any) => p.place_id);
-  const rankScoreById = new Map<string, number>();
-  for (const p of rankedPairs) rankScoreById.set(p.place_id, Number(p.rank_score));
-
-  // Hydrate the small ranked set. rankedIds is bounded by limit*2 ≤ ~100,
-  // well under any URL cap. No chunking needed.
-  const { data: places, error: placeErr } = await supabaseAdmin
-    .from('place_pool')
-    .select('id, google_place_id, name, address, lat, lng, rating, review_count, price_level, price_range_start_cents, price_range_end_cents, opening_hours, website, stored_photo_urls, photos, types, primary_type, utc_offset_minutes, ai_categories, city_id, city, country')
-    .in('id', rankedIds);
-
-  // ORCH-0653: throw on error (Constitution #3); empty result still legitimate.
-  if (placeErr) {
-    throw new Error(`[fetchSinglesForSignalRank] hydrate (place_pool .in over ${rankedIds.length} ranked IDs) failed: ${placeErr.message}`);
-  }
-  if (!places || places.length === 0) return [];
-
-  // Reorder hydrated rows to match RPC's score-DESC order.
-  const placeById = new Map<string, any>();
-  for (const pp of places) placeById.set(pp.id, pp);
-  const orderedPlaces = rankedIds.map((id: string) => placeById.get(id)).filter(Boolean);
-
-  // Step 4: apply G3 photo gate + shape each row as the assembler expects.
-  // Historical card_pool schema fields (title, images, image_url, etc.) are
-  // mapped from place_pool equivalents so generateCardsForType stays unchanged.
-  const withScore = orderedPlaces
-    .filter((pp: any) => {
-      const urls = pp.stored_photo_urls;
-      if (!Array.isArray(urls) || urls.length === 0) return false;
-      if (urls.length === 1 && urls[0] === '__backfill_failed__') return false;
-      return true;
-    })
-    .map((pp: any) => ({
-      // Identity — use place_pool_id for both id + place_pool_id so consumers
-      // that key on either work. card_pool.id is gone; downstream code that
-      // references card.id will get the place_pool UUID, which is unique.
-      id: pp.id,
-      place_pool_id: pp.id,
-      google_place_id: pp.google_place_id,
-      // Presentation (card_pool.title was a copy of place_pool.name)
-      title: pp.name,
-      address: pp.address,
-      lat: pp.lat,
-      lng: pp.lng,
-      rating: pp.rating,
-      review_count: pp.review_count,
-      // Price — derive legacy min/max/tier from place_pool columns
-      price_level: pp.price_level,
-      price_min: pp.price_range_start_cents != null ? Math.floor(pp.price_range_start_cents / 100) : null,
-      price_max: pp.price_range_end_cents != null ? Math.floor(pp.price_range_end_cents / 100) : null,
-      price_tier: null,      // card_pool had this; assembler tolerates null
-      price_tiers: null,
-      // Hours + meta
-      opening_hours: pp.opening_hours,
-      website: pp.website,
-      images: pp.stored_photo_urls,
-      image_url: pp.stored_photo_urls?.[0] ?? null,
-      city_id: pp.city_id,
-      city: pp.city,
-      country: pp.country,
-      utc_offset_minutes: pp.utc_offset_minutes,
-      // Categories — still passed through from place_pool.ai_categories.
-      // card_pool.categories is deprecated and not read anywhere post-ORCH-0634.
-      ai_categories: pp.ai_categories,
-      category: (pp.ai_categories?.[0] ?? null),
-      categories: pp.ai_categories,
-      // Types + signal rank score
-      types: pp.types,
-      primary_type: pp.primary_type,
-      _rankScore: rankScoreById.get(pp.id) ?? 0,
-    }))
-    .sort((a: any, b: any) => b._rankScore - a._rankScore)
-    .slice(0, limit);
-
-  return withScore;
-}
-
-// [CRITICAL — ORCH-0643] Every signal named in this map MUST have:
-//   (1) a row in signal_definitions with is_active=true and current_version_id set
-//   (2) at least one row in place_scores (via run-signal-scorer)
-// Before adding a new combo slug, verify both conditions via:
-//   SELECT sd.id, COUNT(ps.place_id)
-//   FROM signal_definitions sd
-//   LEFT JOIN place_scores ps ON ps.signal_id = sd.id
-//   WHERE sd.id = '<new_signal>'
-//   GROUP BY sd.id;
-// The `groceries` entry broke picnic-dates silently for weeks because
-// the signal was never registered (ORCH-0643 v1 BLOCKED, v2.1 fixed).
-// Do NOT add an entry here without confirming the signal scores exist.
+// ORCH-0707: fetchSinglesForSignalRank moved to _shared/signalRankFetch.ts
+// (single source of truth shared with stopAlternatives.ts). The function
+// signature now takes (supabaseAdmin, params) — the caller passes its
+// already-in-scope admin client explicitly. See call site in fetchForCombo
+// below for the new invocation pattern.
 //
-// Mapping from combo category slug → filter signal. Chip slugs sometimes differ
-// from signal ids (e.g., chip 'upscale_fine_dining' uses signal 'fine_dining').
-const COMBO_SLUG_TO_FILTER_SIGNAL: Record<string, string> = {
-  'upscale_fine_dining': 'fine_dining',
-  'drinks_and_music': 'drinks',
-  'brunch_lunch_casual': 'brunch',
-  'casual_food': 'casual_food',
-  'brunch': 'brunch',
-  'movies': 'movies',
-  'theatre': 'theatre',
-  'movies_theatre': 'movies', // legacy TRANSITIONAL — movies union handled upstream
-  'creative_arts': 'creative_arts',
-  'nature': 'nature',
-  'play': 'play',
-  'icebreakers': 'icebreakers',
-  'flowers': 'flowers',
-  'groceries': 'groceries',
-  // ORCH-0601 — sub-category slugs. These reuse an existing signal but add a
-  // required-types filter (see COMBO_SLUG_TYPE_FILTER below). Used by Adventurous
-  // to distinguish "hiking trails" (nature subset) vs generic nature parks, and
-  // "museum" (creative_arts subset) vs generic galleries/art classes.
-  'hiking': 'nature',
-  'museum': 'creative_arts',
-};
-
-// ORCH-0601 — Slugs that narrow a filter signal to a sub-category via types.
-// A place passes the filter iff it scores >= filter_min on the filter signal
-// AND its place_pool.types overlaps with this list.
-const COMBO_SLUG_TYPE_FILTER: Record<string, string[]> = {
-  hiking: ['hiking_area', 'state_park', 'nature_preserve', 'national_park', 'wildlife_refuge', 'scenic_spot'],
-  museum: ['museum', 'art_museum'],
-};
+// COMBO_SLUG_TO_FILTER_SIGNAL, COMBO_SLUG_TYPE_FILTER, and the [CRITICAL —
+// ORCH-0643] warning block also moved to _shared/signalRankFetch.ts.
 
 // Mapping from experience type id → (combo slug → rank signal). When an experience
 // type wants to rank a stop by a "vibe" signal instead of the chip's own signal,
@@ -586,25 +437,11 @@ function resolveStopRole(slug: string, stopDef: StopDef): string {
   return stopDef.role;
 }
 
-// Per-stop filter_min override. Most signals use 120; movies is 80 (tiny universe);
-// flowers is 80 — keeps 2 boutique florists (Mio Kreations 155, Petal & Oak 102) + 12 Harris
-// Teeter locations with florist tag (97-136) while filtering out noise leaks: Fresh Market
-// (69, no florist tag), candy/chocolate/catering/bakery false positives scoring 50-66.
-const COMBO_SLUG_FILTER_MIN: Record<string, number> = {
-  'movies': 80,
-  'flowers': 80,
-};
+// ORCH-0707: COMBO_SLUG_FILTER_MIN moved to _shared/signalRankFetch.ts.
+// ORCH-0707: CATEGORY_DURATION_MINUTES + CATEGORY_DEFAULT_DURATION moved to
+// _shared/curatedConstants.ts (single source of truth shared with stopAlternatives.ts).
 
 // ── Build stop from place_pool row ─────────────────────────────────────────
-
-// Duration map by Mingla category (replaces STOP_DURATION_MINUTES keyed by Google type)
-// ORCH-0434: Updated to new canonical slugs.
-const CATEGORY_DURATION_MINUTES: Record<string, number> = {
-  brunch_lunch_casual: 60, upscale_fine_dining: 90, drinks_and_music: 60,
-  icebreakers: 45, nature: 60, movies_theatre: 120,
-  creative_arts: 90, play: 90, flowers: 15, groceries: 20,
-};
-const CATEGORY_DEFAULT_DURATION = 60;
 
 function buildCardStop(
   card: any,
@@ -616,7 +453,9 @@ function buildCardStop(
   prevLat: number | null,
   prevLng: number | null,
   travelMode: string,
-  opts?: { optional?: boolean; dismissible?: boolean; comboCategory?: string },
+  // ORCH-0707: comboCategory is REQUIRED. TypeScript fails compilation at any
+  // call site that omits it — structural safeguard for I-CURATED-LABEL-SOURCE.
+  opts: { optional?: boolean; dismissible?: boolean; comboCategory: string },
 ): any {
   const lat = card.lat ?? 0;
   const lng = card.lng ?? 0;
@@ -645,7 +484,10 @@ function buildCardStop(
     placePoolId: card.place_pool_id || '',
     cardPoolId: card.id,
     placeName: card.title || 'Unknown Place',
-    placeType: card.category || 'place',
+    // ORCH-0707 / I-CURATED-LABEL-SOURCE: comboCategory is the authority for the
+    // stop's category label. NEVER derive from place_pool.ai_categories — that
+    // column is deprecated and dropped in the ORCH-0707 follow-up migration.
+    placeType: opts.comboCategory,
     address: card.address || '',
     rating: card.rating ?? 0,
     reviewCount: card.review_count ?? 0,
@@ -672,14 +514,18 @@ function buildCardStop(
     travelTimeFromPreviousStopMin: travelFromPrev !== null ? Math.round(travelFromPrev) : null,
     travelModeFromPreviousStop: stopNumber > 1 ? travelMode : null,
     aiDescription: '',
-    estimatedDurationMinutes: CATEGORY_DURATION_MINUTES[card.category] || CATEGORY_DEFAULT_DURATION,
-    ...(opts?.optional ? { optional: true } : {}),
-    ...(opts?.dismissible ? { dismissible: true } : {}),
+    // ORCH-0707: keyed by comboCategory (per I-CURATED-LABEL-SOURCE);
+    // ?? instead of || so a literal 0 isn't coerced to default (Constitution #9).
+    estimatedDurationMinutes: CATEGORY_DURATION_MINUTES[opts.comboCategory] ?? CATEGORY_DEFAULT_DURATION,
+    ...(opts.optional ? { optional: true } : {}),
+    ...(opts.dismissible ? { dismissible: true } : {}),
     cityId: card.city_id || null,
     city: card.city || null,
     country: card.country || null,
-    aiCategories: card.ai_categories || card.categories || [],
-    ...(opts?.comboCategory ? { comboCategory: opts.comboCategory } : {}),
+    // ORCH-0707: aiCategories field REMOVED from wire payload (mobile CuratedStop
+    // type doesn't declare it; silently dropped today). per OQ-2.
+    // ORCH-0707: comboCategory always emitted (no longer conditional spread).
+    comboCategory: opts.comboCategory,
   };
 }
 
@@ -702,8 +548,10 @@ function buildCardFromStops(
   const totalDuration = mainStops.reduce((sum, s) => sum + s.estimatedDurationMinutes, 0)
     + mainStops.slice(1).reduce((sum, s) => sum + (s.travelTimeFromPreviousStopMin || 0), 0);
 
-  // Derive category from first main stop's AI categories
-  const category = mainStops[0]?.aiCategories?.[0] || mainStops[0]?.placeType || 'brunch_lunch_casual';
+  // ORCH-0707: top-level `category` field removed from wire payload (mobile
+  // CuratedExperienceCard type doesn't declare it; silently dropped today). Per OQ-3.
+  // categoryLabel below is the consumed field, sourced from experience type
+  // (CURATED_TYPE_LABELS) — no ai_categories read remaining anywhere in this file.
 
   return {
     id: `curated_${experienceType}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -712,7 +560,6 @@ function buildCardFromStops(
     pairingKey,
     title,
     tagline,
-    category,
     categoryLabel: CURATED_TYPE_LABELS[experienceType] || 'Explore',
     stops,
     totalPriceMin,
@@ -773,7 +620,18 @@ async function generateCardsForType(
     const typeFilter = COMBO_SLUG_TYPE_FILTER[catId];
     const filterMin = COMBO_SLUG_FILTER_MIN[catId] ?? 120;
     const rankSignal = rankOverride ?? filterSignal; // no override → rank by filter signal itself
-    return fetchSinglesForSignalRank(filterSignal, filterMin, rankSignal, fetchLat, fetchLng, fetchRadius, fetchLimit ?? 50, typeFilter);
+    // ORCH-0707: helper moved to _shared/signalRankFetch.ts; pass supabaseAdmin
+    // as first arg + a SignalRankParams object instead of positional arguments.
+    return fetchSinglesForSignalRank(supabaseAdmin, {
+      filterSignal,
+      filterMin,
+      rankSignal,
+      centerLat: fetchLat,
+      centerLng: fetchLng,
+      radiusMeters: fetchRadius,
+      limit: fetchLimit ?? 50,
+      requiredTypes: typeFilter,
+    });
   };
 
   if (hasReverseAnchor) {
