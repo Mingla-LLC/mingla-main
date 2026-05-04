@@ -14,6 +14,7 @@ import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { Input } from "../ui/Input";
+import { PhotoLightbox } from "../ui/PhotoLightbox";
 import {
   MINGLA_SIGNAL_IDS,
   DEFAULT_CANDIDATE_SCORE_THRESHOLD,
@@ -22,7 +23,7 @@ import {
 
 // ── Candidate picker modal ──────────────────────────────────────────────────
 
-function CandidatePicker({ open, onClose, signalId, anchorIndex, onPick }) {
+function CandidatePicker({ open, onClose, signalId, anchorIndex, onPick, onOpenLightbox }) {
   const { addToast } = useToast();
   const [threshold, setThreshold] = useState(DEFAULT_CANDIDATE_SCORE_THRESHOLD);
   const [candidates, setCandidates] = useState([]);
@@ -134,9 +135,18 @@ function CandidatePicker({ open, onClose, signalId, anchorIndex, onPick }) {
                   {photos.length > 0 && (
                     <div className="grid grid-cols-5 gap-1">
                       {photos.map((url, idx) => (
-                        <div key={url + idx} className="aspect-square rounded overflow-hidden border border-[var(--gray-200)]">
+                        <button
+                          key={url + idx}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenLightbox?.(photos, idx);
+                          }}
+                          aria-label={`Open photo ${idx + 1} of ${photos.length}`}
+                          className="aspect-square rounded overflow-hidden border border-[var(--gray-200)] hover:border-[var(--color-brand-500)] transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+                        >
                           <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                        </div>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -171,7 +181,7 @@ function CandidatePicker({ open, onClose, signalId, anchorIndex, onPick }) {
 
 // ── Slot card ───────────────────────────────────────────────────────────────
 
-function AnchorSlot({ signalId, anchorIndex, anchor, onPickClick, onUncommit, onDelete }) {
+function AnchorSlot({ signalId, anchorIndex, anchor, onPickClick, onUncommit, onDelete, onOpenLightbox }) {
   if (!anchor) {
     return (
       <div className="border border-dashed border-[var(--gray-300)] rounded-lg p-4 flex flex-col items-center justify-center gap-2 min-h-[120px]">
@@ -204,9 +214,15 @@ function AnchorSlot({ signalId, anchorIndex, anchor, onPickClick, onUncommit, on
       {photos.length > 0 && (
         <div className="grid grid-cols-4 gap-1">
           {photos.map((url, idx) => (
-            <div key={url + idx} className="aspect-square rounded overflow-hidden border border-[var(--gray-200)]">
+            <button
+              key={url + idx}
+              type="button"
+              onClick={() => onOpenLightbox?.(photos, idx)}
+              aria-label={`Open photo ${idx + 1} of ${photos.length}`}
+              className="aspect-square rounded overflow-hidden border border-[var(--gray-200)] hover:border-[var(--color-brand-500)] transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+            >
               <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -220,7 +236,7 @@ function AnchorSlot({ signalId, anchorIndex, anchor, onPickClick, onUncommit, on
 
 // ── Section: per signal ─────────────────────────────────────────────────────
 
-function SignalSection({ signalId, anchors, onPickAnchor, onDeleteAnchor }) {
+function SignalSection({ signalId, anchors, onPickAnchor, onDeleteAnchor, onOpenLightbox }) {
   const slots = [1, 2].map((idx) => ({
     anchorIndex: idx,
     anchor: anchors.find((a) => a.anchor_index === idx) || null,
@@ -244,6 +260,7 @@ function SignalSection({ signalId, anchors, onPickAnchor, onDeleteAnchor }) {
             anchor={anchor}
             onPickClick={() => onPickAnchor(signalId, anchorIndex)}
             onDelete={onDeleteAnchor}
+            onOpenLightbox={onOpenLightbox}
           />
         ))}
       </div>
@@ -261,6 +278,12 @@ export function SignalAnchorsTab() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSignal, setPickerSignal] = useState(null);
   const [pickerIndex, setPickerIndex] = useState(null);
+  const [lightbox, setLightbox] = useState(null); // { photos: string[], startIndex: number } | null
+
+  function openLightbox(photos, startIndex = 0) {
+    if (!photos || photos.length === 0) return;
+    setLightbox({ photos, startIndex });
+  }
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -374,6 +397,7 @@ export function SignalAnchorsTab() {
               anchors={anchors.filter((a) => a.signal_id === sid)}
               onPickAnchor={openPicker}
               onDeleteAnchor={handleDelete}
+              onOpenLightbox={openLightbox}
             />
           ))}
         </div>
@@ -385,7 +409,16 @@ export function SignalAnchorsTab() {
         signalId={pickerSignal}
         anchorIndex={pickerIndex}
         onPick={handlePick}
+        onOpenLightbox={openLightbox}
       />
+
+      {lightbox && (
+        <PhotoLightbox
+          photos={lightbox.photos}
+          startIndex={lightbox.startIndex}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </SectionCard>
   );
 }
