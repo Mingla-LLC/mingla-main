@@ -251,7 +251,7 @@ export function ExplorerHero() {
           container enforces the same fluid side padding as the section,
           so chips never sit closer than 16px (or further than 40px) from
           a viewport edge. */}
-      <div className="absolute inset-x-0 bottom-8 z-10 px-[clamp(1.5rem,4vw,2.5rem)]">
+      <div className="absolute inset-x-0 bottom-8 z-10 px-[clamp(0.75rem,4vw,2.5rem)]">
       <motion.nav
         aria-label="Site"
         initial={reduced ? false : { opacity: 0, y: 8 }}
@@ -268,7 +268,7 @@ export function ExplorerHero() {
             key={chip.href}
             href={chip.href}
             className={cn(
-              'glass-soft inline-flex h-8 items-center whitespace-nowrap rounded-full px-2.5 text-[11px] font-medium text-text-secondary transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:text-text-primary hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring sm:h-9 sm:px-4 sm:text-sm',
+              'glass-soft inline-flex h-7 items-center whitespace-nowrap rounded-full px-2 text-[10px] font-medium text-text-secondary transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:text-text-primary hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring sm:h-9 sm:px-4 sm:text-sm',
               chip.mobileOnly && 'md:hidden',
             )}
           >
