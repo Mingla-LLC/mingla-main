@@ -6,11 +6,11 @@
 
 import { supabase } from "../../lib/supabase";
 
-// photo_aesthetic_data is intentionally OMITTED — added in Phase 2 (score-place-photo-aesthetics
-// edge function ships the column). CompareWithClaudeTab gracefully falls back to the
-// pre-backfill placeholder when the field is absent.
+// photo_aesthetic_data added back: ORCH-0708 Phase 1 migration created the
+// column. CompareWithClaudeTab needs it to compute the per-field diff. If
+// absent (no Claude run yet), the tab still falls back to pre-backfill copy.
 const PLACE_POOL_COLS =
-  "id, name, primary_type, types, rating, review_count, address, city, stored_photo_urls";
+  "id, name, primary_type, types, rating, review_count, address, city, stored_photo_urls, photo_aesthetic_data";
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 
