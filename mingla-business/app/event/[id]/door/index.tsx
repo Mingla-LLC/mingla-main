@@ -283,8 +283,15 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
       return;
     }
     try {
-      await exportDoorSalesCsv({ event, sales: eventSales });
-      showToast(`Exported ${eventSales.length} door sale(s).`);
+      // Cycle 13 v2 (D-CYCLE13-IMPL-6): honest toast per export result.
+      // Native dismissed = silent (no false-positive success).
+      const result = await exportDoorSalesCsv({ event, sales: eventSales });
+      if (result.method === "downloaded") {
+        showToast(`Downloaded ${eventSales.length} door sale(s).`);
+      } else if (result.method === "shared") {
+        showToast(`${eventSales.length} door sale(s) — CSV shared.`);
+      }
+      // result.method === "dismissed" → silent.
     } catch (_err) {
       showToast("Couldn't export. Tap to try again.");
     }

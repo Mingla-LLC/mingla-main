@@ -587,6 +587,193 @@ Hand back to `/mingla-orchestrator` for REVIEW + (if APPROVED) optional `/mingla
 
 ---
 
+## 17 — Rework v2 — Honest export toast (D-CYCLE13-IMPL-6)
+
+**Status:** `implemented and verified` (static + tsc + grep). Manual smoke required for SC-v2-6 (silent dismiss path).
+**Mode:** REWORK
+**Dispatch:** [`prompts/IMPLEMENTOR_BIZ_CYCLE_13_REWORK_v2_HONEST_EXPORT_TOAST.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_13_REWORK_v2_HONEST_EXPORT_TOAST.md)
+**Date:** 2026-05-04 (post Cycle 13 commit `0ab7e63d`)
+
+### 17.1 Symptom
+
+Operator device smoke 2026-05-04 (post Cycle 13 ship): tapped export icon on `/event/[id]/reconciliation` → native iOS share sheet appeared → operator dismissed → toast fired `"Exported reconciliation report."`. **No actual export happened, but the UI claimed success — Const #3 silent-failure violation.**
+
+### 17.2 Root cause
+
+`downloadCsvNative` in `src/utils/guestCsvExport.ts` awaited `Share.share()` without checking `result.action`. RN's Share.share resolves on BOTH `sharedAction` (user picked destination) AND `dismissedAction` (user dismissed) — pre-rework code hit the success branch in both cases.
+
+Same bug existed in:
+- Cycle 10 J-G6 export (`exportGuestsCsv` caller `app/event/[id]/guests/index.tsx:321-332`)
+- Cycle 12 J-D5 export (`exportDoorSalesCsv` caller `app/event/[id]/door/index.tsx:260-272`)
+- Cycle 13 J-R3 export (`exportReconciliationCsv` caller `app/event/[id]/reconciliation.tsx:189-216`)
+
+All 3 inherited the silent `await` and the unconditional success toast.
+
+### 17.3 Fix shape
+
+1. **NEW `ExportResult` discriminated union** in `guestCsvExport.ts`: `{ method: "downloaded" | "shared" | "dismissed" }`
+2. **Modified `downloadCsvNative`** to capture `Share.share()` result.action and return `"shared" | "dismissed"`
+3. **Modified 3 export wrappers** to return `Promise<ExportResult>` (was `Promise<void>`)
+4. **Adapted 3 caller `handleExport` blocks** with adaptive toast logic per `result.method`
+
+**Operator-locked decision (D-CYCLE13-IMPL-6 chat 2026-05-04):** "go tight fix" — fix at the source so all 3 export flows benefit. Defer proper file-share UX (`expo-sharing` + `expo-file-system` install per D-CYCLE10-IMPL-1) to B-cycle.
+
+### 17.4 Old → New receipts (4 MOD files)
+
+#### `src/utils/guestCsvExport.ts`
+
+**What it did before:** `downloadCsvNative` awaited `Share.share()` without checking `result.action`. 3 export wrappers returned `Promise<void>`. Pre-rework Cycle 13 IMPL had no `ExportResult` type.
+
+**What it does now:** Adds NEW `ExportResult` discriminated union (`downloaded | shared | dismissed`). `downloadCsvNative` now captures `result.action` and returns `"shared" | "dismissed"`. All 3 export wrappers (`exportGuestsCsv` / `exportDoorSalesCsv` / `exportReconciliationCsv`) return `Promise<ExportResult>`. Web path returns `{ method: "downloaded" }` after `downloadCsvWeb`. Native path returns `{ method: action }` from the `downloadCsvNative` discriminator. Heading docstring on `ExportResult` cites D-CYCLE13-IMPL-6 + D-CYCLE10-IMPL-1 forward-compat path.
+
+**Why:** D-CYCLE13-IMPL-6 + Const #3 (no silent failures).
+
+**Lines changed:** ~+30 / -10 (net ~+20).
+
+#### `app/event/[id]/reconciliation.tsx`
+
+**What it did before:** `handleExport` awaited `exportReconciliationCsv` and unconditionally fired `showToast("Exported reconciliation report.")` on the success path.
+
+**What it does now:** Captures `result` from `exportReconciliationCsv`. Branches:
+- `result.method === "downloaded"` → `"Downloaded reconciliation report."`
+- `result.method === "shared"` → `"Reconciliation CSV shared."`
+- `result.method === "dismissed"` → silent (no toast — operator knows they dismissed)
+
+**Why:** D-CYCLE13-IMPL-6 + Const #3.
+
+**Lines changed:** +12 / -1.
+
+#### `app/event/[id]/door/index.tsx`
+
+**What it did before:** `handleExport` unconditionally fired `showToast(`Exported ${eventSales.length} door sale(s).`)` on success path.
+
+**What it does now:** Captures `result`. Branches:
+- `downloaded` → `"Downloaded {N} door sale(s)."`
+- `shared` → `"{N} door sale(s) — CSV shared."`
+- `dismissed` → silent
+
+**Why:** D-CYCLE13-IMPL-6 + Const #3.
+
+**Lines changed:** +9 / -1.
+
+#### `app/event/[id]/guests/index.tsx`
+
+**What it did before:** `handleExport` unconditionally fired `showToast(`Exported ${merged.length} guests.`)` on success path.
+
+**What it does now:** Captures `result`. Branches:
+- `downloaded` → `"Downloaded {N} guest(s)."`
+- `shared` → `"{N} guest(s) — CSV shared."`
+- `dismissed` → silent
+
+**Why:** D-CYCLE13-IMPL-6 + Const #3.
+
+**Lines changed:** +9 / -1.
+
+### 17.5 SC-v2 verification matrix
+
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| SC-v2-1 | `ExportResult` exported | ✅ PASS | grep + tsc resolution |
+| SC-v2-2 | `downloadCsvNative` returns `"shared" \| "dismissed"` | ✅ PASS | code-trace: line 321 `result.action === "sharedAction" ? "shared" : "dismissed"` |
+| SC-v2-3 | 3 export wrappers return `Promise<ExportResult>` | ✅ PASS | tsc clean + grep |
+| SC-v2-4 | Web path → `{ method: "downloaded" }` | ✅ PASS | code-trace |
+| SC-v2-5 | Native shared → `"...CSV shared."` toast (per flow) | ✅ PASS (static) | code-trace; manual smoke required for visual confirmation |
+| SC-v2-6 | Native dismissed → NO toast fires (silent) | ✅ PASS (static) | code-trace; manual smoke required for visual confirmation |
+| SC-v2-7 | Native dismissed → exporting state cleared | ✅ PASS | finally block sets `setExporting(false)` (reconciliation route only — door/guests don't have this state, but their CTAs aren't disable-during-submit anyway) |
+| SC-v2-8 | Error path → unchanged "Couldn't export..." | ✅ PASS | catch block unchanged |
+| SC-v2-9 | tsc clean | ✅ PASS | only 2 pre-existing errors persist |
+| SC-v2-10 | All 3 export flows adapted | ✅ PASS | grep `result.method === "downloaded"\|result.method === "shared"\|result.method === "dismissed"` returns 3 file matches: guests/index.tsx + door/index.tsx + reconciliation.tsx |
+
+### 17.6 Constitutional compliance (delta from Cycle 13 IMPL)
+
+- **Const #3 no silent failures:** RESOLVED — toast now matches outcome. Pre-rework was a Const #3 violation in disguise (`catch` block surfaced errors fine, but the `try`-success-path wrongly toasted on dismiss).
+- **Const #1 no dead taps:** preserved — export icon still tappable.
+- **Const #7 label temporary:** D-CYCLE10-IMPL-1 TRANSITIONAL marker stays (proper file-share UX is the EXIT condition for B-cycle).
+
+### 17.7 Side effect — Cycle 10 + Cycle 12 ALSO gain honest toasts
+
+The fix at the source (`guestCsvExport.ts`) means all 3 export flows now toast honestly without separate fixes:
+- Cycle 10 J-G6 guest list export
+- Cycle 12 J-D5 door sales export
+- Cycle 13 J-R3 reconciliation export
+
+This is a quiet improvement: pre-rework, those 2 sibling exports also lied on dismiss; post-rework they are honest too. Documented for tester regression awareness — operators retesting Cycle 10 J-G6 + Cycle 12 J-D5 will notice the new dismiss-silent behavior is correct (not a regression).
+
+### 17.8 Files touched (rework v2)
+
+| Path | Action | LOC delta |
+|------|--------|-----------|
+| `mingla-business/src/utils/guestCsvExport.ts` | MOD | ~+30 / -10 (ExportResult type + downloadCsvNative discriminator + 3 wrappers) |
+| `mingla-business/app/event/[id]/reconciliation.tsx` | MOD | +12 / -1 (handleExport adaptive toast) |
+| `mingla-business/app/event/[id]/door/index.tsx` | MOD | +9 / -1 (handleExport adaptive toast) |
+| `mingla-business/app/event/[id]/guests/index.tsx` | MOD | +9 / -1 (handleExport adaptive toast) |
+| `Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION_REPORT.md` | MOD (this section) | +~140 |
+
+**Totals:** 4 MOD code files + 1 MOD report. ~+60 / -13 net code LOC.
+
+### 17.9 Verification commands run
+
+```bash
+cd mingla-business
+
+# tsc clean (only 2 pre-existing errors)
+npx tsc --noEmit | grep -v "\\.expo[/\\\\]types[/\\\\]router\\.d\\.ts"
+# → 2 errors (D-CYCLE12-IMPL-1 + D-CYCLE12-IMPL-2)
+
+# All 3 callers adapted
+grep -rE 'result\\.method === "(downloaded|shared|dismissed)"' "app/event/[id]"
+# → 3 files: guests/index.tsx + door/index.tsx + reconciliation.tsx
+
+# Share.share action handling
+grep -nE '"sharedAction"|"dismissedAction"' src/utils/guestCsvExport.ts
+# → line 310 (docstring) + line 321 (code)
+```
+
+### 17.10 Manual smoke required (operator device run, ~5 min)
+
+1. Open `/event/{id}/reconciliation` on past event with data
+2. Tap export icon → share sheet appears → **dismiss without picking** → verify NO TOAST appears (silent)
+3. Tap export icon again → share sheet appears → **pick "Mail" or "Notes"** → verify toast: `"Reconciliation CSV shared."`
+4. Repeat steps 2-3 on `/event/{id}/door` (Cycle 12) and `/event/{id}/guests` (Cycle 10) — verify same dismiss-silent / pick-shared behavior with sibling toast strings
+5. Web context (if testing web bundle): tap export → file downloads → verify toast: `"Downloaded reconciliation report."` (or sibling per flow)
+
+### 17.11 Updated commit message proposal
+
+```
+fix(business): Cycle 13 v2 — honest export toast (D-CYCLE13-IMPL-6 + Const #3)
+
+Native CSV export was firing "Exported successfully" toast even when the
+operator dismissed the share sheet without picking a destination — caught
+at Cycle 13 device smoke 2026-05-04 (Const #3 silent-failure violation).
+
+Fix at the source in guestCsvExport.ts: NEW ExportResult discriminated union
+(downloaded | shared | dismissed). downloadCsvNative now captures
+Share.share() result.action and returns the discriminator. 3 export wrappers
+(exportGuestsCsv + exportDoorSalesCsv + exportReconciliationCsv) return
+Promise<ExportResult>. Caller handleExport blocks in 3 routes adapt their
+toast strings: web "Downloaded..."; native shared "...CSV shared."; native
+dismissed → silent (no false-positive success toast).
+
+Side effect: Cycle 10 J-G6 + Cycle 12 J-D5 ALSO gain honest toasts in same
+change (they shared the same lie). TRANSITIONAL D-CYCLE10-IMPL-1 native CSV
+text-content limitation persists; full file-share UX (expo-sharing +
+expo-file-system) defers to B-cycle.
+
+4 MOD: guestCsvExport.ts (~+30/-10) + reconciliation.tsx (+12/-1) +
+door/index.tsx (+9/-1) + guests/index.tsx (+9/-1). tsc clean.
+
+Closes D-CYCLE13-IMPL-6.
+```
+
+### 17.12 Discoveries for orchestrator (rework v2)
+
+**None new.** All findings tracked under existing IDs:
+- D-CYCLE13-IMPL-6 (the fix itself — closed by this rework)
+- D-CYCLE10-IMPL-1 (TRANSITIONAL native file-share UX) — still open as B-cycle backlog
+- Pre-existing Cycle 12 errors (D-CYCLE12-IMPL-1/2) still persist in tsc output (not Cycle 13 scope)
+
+---
+
 ## 16 — Cross-references
 
 - Dispatch: [`prompts/IMPLEMENTOR_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md)

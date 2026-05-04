@@ -268,10 +268,35 @@ const downloadCsvWeb = (csv: string, filename: string): void => {
   g.URL.revokeObjectURL(url);
 };
 
+/**
+ * Cycle 13 v2 — Export-result discriminator (D-CYCLE13-IMPL-6 fix).
+ *
+ * Const #3 — no silent failures. Native Share.share() resolves on BOTH
+ * sharedAction (user picked a destination) AND dismissedAction (user
+ * dismissed the share sheet). Pre-rework code awaited without checking
+ * result.action and toasted success unconditionally — meaning a dismissed
+ * share sheet still fired a "successfully exported" toast (caught at
+ * Cycle 13 device smoke 2026-05-04).
+ *
+ * The rework returns a discriminated union so callers can adapt their toast
+ * copy honestly:
+ *   - "downloaded" → web Blob+anchor.click() actually fired
+ *   - "shared" → native share sheet completed (user picked Mail/Notes/etc.)
+ *   - "dismissed" → native share sheet dismissed (user backed out — silent toast)
+ *
+ * The TRANSITIONAL native-Share-text-content limitation (D-CYCLE10-IMPL-1)
+ * persists; full file-share UX (`expo-sharing` + `expo-file-system` install +
+ * Sharing.shareAsync()) defers to B-cycle.
+ */
+export type ExportResult =
+  | { method: "downloaded" }
+  | { method: "shared" }
+  | { method: "dismissed" };
+
 const downloadCsvNative = async (
   csv: string,
   filename: string,
-): Promise<void> => {
+): Promise<"shared" | "dismissed"> => {
   // [TRANSITIONAL] Native CSV file export is degraded — RN built-in
   // Share API can't share files directly without expo-sharing +
   // expo-file-system (not installed in mingla-business). For now,
@@ -279,7 +304,11 @@ const downloadCsvNative = async (
   // target app or copy to clipboard. Discovery D-CYCLE10-IMPL-1
   // recommends adding expo-sharing + expo-file-system in a future
   // cycle to enable proper file-share UX on iOS/Android.
-  await Share.share(
+  //
+  // Cycle 13 v2 (D-CYCLE13-IMPL-6): capture result.action so callers can
+  // toast honestly. RN's Share.share() returns
+  // { action: "sharedAction" | "dismissedAction"; activityType?: string }.
+  const result = await Share.share(
     {
       message: csv,
       title: filename,
@@ -289,18 +318,20 @@ const downloadCsvNative = async (
       subject: filename,
     },
   );
+  return result.action === "sharedAction" ? "shared" : "dismissed";
 };
 
 export const exportGuestsCsv = async (
   args: ExportGuestsCsvArgs,
-): Promise<void> => {
+): Promise<ExportResult> => {
   const csv = serializeGuestsToCsv(args.rows);
   const filename = `${args.event.eventSlug}-guest-list-${formatYmdToday()}.csv`;
   if (Platform.OS === "web") {
     downloadCsvWeb(csv, filename);
-    return;
+    return { method: "downloaded" };
   }
-  await downloadCsvNative(csv, filename);
+  const action = await downloadCsvNative(csv, filename);
+  return { method: action };
 };
 
 // ---- Cycle 12 — door-sales-only export (J-D5 reconciliation) -------
@@ -312,7 +343,7 @@ export interface ExportDoorSalesCsvArgs {
 
 export const exportDoorSalesCsv = async (
   args: ExportDoorSalesCsvArgs,
-): Promise<void> => {
+): Promise<ExportResult> => {
   // Reuse the merged serializer with door-only rows for consistent CSV shape.
   const rows: ExportGuestRow[] = args.sales.map((s) => ({
     kind: "door",
@@ -324,9 +355,10 @@ export const exportDoorSalesCsv = async (
   const filename = `${args.event.eventSlug}-door-sales-${formatYmdToday()}.csv`;
   if (Platform.OS === "web") {
     downloadCsvWeb(csv, filename);
-    return;
+    return { method: "downloaded" };
   }
-  await downloadCsvNative(csv, filename);
+  const action = await downloadCsvNative(csv, filename);
+  return { method: action };
 };
 
 // ---- Cycle 13 — cross-source reconciliation export (J-R3) -----------
@@ -353,7 +385,7 @@ export interface ExportReconciliationCsvArgs {
  */
 export const exportReconciliationCsv = async (
   args: ExportReconciliationCsvArgs,
-): Promise<void> => {
+): Promise<ExportResult> => {
   const rows: ExportGuestRow[] = [
     ...args.orders.map(
       (o): ExportGuestRow => ({
@@ -401,7 +433,8 @@ export const exportReconciliationCsv = async (
   const filename = `${args.event.eventSlug}-reconciliation-${formatYmdToday()}.csv`;
   if (Platform.OS === "web") {
     downloadCsvWeb(csv, filename);
-    return;
+    return { method: "downloaded" };
   }
-  await downloadCsvNative(csv, filename);
+  const action = await downloadCsvNative(csv, filename);
+  return { method: action };
 };

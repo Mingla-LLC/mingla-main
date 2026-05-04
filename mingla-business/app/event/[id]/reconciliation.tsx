@@ -190,14 +190,23 @@ export default function ReconciliationRoute(): React.ReactElement {
     if (event === null || !hasAnyData || exporting) return;
     setExporting(true);
     try {
-      await exportReconciliationCsv({
+      // Cycle 13 v2 (D-CYCLE13-IMPL-6): honest toast per export result.
+      // Web → file actually downloaded. Native shared → user picked a
+      // destination. Native dismissed → silent (no toast — user knew they
+      // dismissed; pre-rework wrongly toasted success on this path).
+      const result = await exportReconciliationCsv({
         event,
         orders: eventOrders,
         doorSales: eventDoorSales,
         comps: eventComps,
         summary,
       });
-      showToast("Exported reconciliation report.");
+      if (result.method === "downloaded") {
+        showToast("Downloaded reconciliation report.");
+      } else if (result.method === "shared") {
+        showToast("Reconciliation CSV shared.");
+      }
+      // result.method === "dismissed" → silent.
     } catch (_err) {
       showToast("Couldn't export. Tap to try again.");
     } finally {
