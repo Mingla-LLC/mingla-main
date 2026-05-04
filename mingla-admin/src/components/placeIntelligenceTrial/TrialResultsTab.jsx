@@ -6,7 +6,7 @@
  * showing collage + Q1 (open exploration) + Q2 (per-signal evaluation).
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Play, RefreshCw, Square, Sparkles, ChevronDown, ChevronRight,
   CheckCircle, XCircle,
@@ -174,6 +174,11 @@ export function TrialResultsTab() {
   const [progress, setProgress] = useState(null); // { phase, current, total, succeeded, failed, costSoFar }
   const stopRef = useState({ stop: false })[0];
 
+  // Synchronous guard against double-invocation (React state is async, so
+  // disabled={preparing} can let a fast double-click squeeze through before
+  // React applies the disabled state).
+  const isRunningRef = useRef(false);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
@@ -225,8 +230,13 @@ export function TrialResultsTab() {
   }
 
   async function handlePrepareAll() {
+    // Synchronous guard — prevents double-invocation race (React state async)
+    if (isRunningRef.current) return;
+    isRunningRef.current = true;
+
     if (committedCount === 0) {
       addToast({ variant: "warning", title: "No anchors committed yet" });
+      isRunningRef.current = false;
       return;
     }
     setPreparing(true);
@@ -274,13 +284,19 @@ export function TrialResultsTab() {
     } finally {
       setPreparing(false);
       setProgress(null);
+      isRunningRef.current = false;
     }
   }
 
   async function handleRunTrial() {
+    // Synchronous guard against double-invocation race
+    if (isRunningRef.current) return;
+    isRunningRef.current = true;
+
     if (!window.confirm(
       `About to run trial for ${committedCount} places. Estimated cost ~$${(committedCount * 0.045).toFixed(2)}, ~${Math.ceil(committedCount * 1.2)} minute wall time. Don't refresh the page during the run. Continue?`
     )) {
+      isRunningRef.current = false;
       return;
     }
 
@@ -350,6 +366,7 @@ export function TrialResultsTab() {
     } finally {
       setRunning(false);
       setProgress(null);
+      isRunningRef.current = false;
     }
   }
 
