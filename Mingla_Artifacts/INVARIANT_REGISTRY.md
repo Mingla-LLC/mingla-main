@@ -152,6 +152,8 @@ These two invariants are queued for codification when ORCH-0708 closes (operator
 
 **Forward path (if SOC2 Type II audit demands strict append-only):** Drop the `IF auth.uid() IS NULL THEN RETURN COALESCE(NEW, OLD); END IF;` short-circuit in both trigger functions (~8 LOC per function). Then RAISE EXCEPTION fires for all roles. Update I-24 statement + COMMENT ON TABLE to reflect strict mode.
 
+> **Cycle 13b amendment (2026-05-04):** a new SELECT policy `"Brand admin plus reads brand audit_log"` was added (PostgreSQL multi-policy OR-merge). Brand admins now see ALL `audit_log` rows for brands where `biz_is_brand_admin_plus_for_caller(brand_id)` returns true; sub-rank users (event_manager+ on brands but below brand_admin) still see only their own rows via the original `"Users can read own audit_log rows"` policy. Append-only INSERT carve-out unchanged — service-role retains UPDATE/DELETE per Option B; non-service callers are still blocked from mutations via the existing trigger. Migration: `supabase/migrations/20260504100001_b1_phase7_audit_log_brand_admin_select.sql`.
+
 ---
 
 ## Mingla Business invariants (2026-05-02) — Cycle 10 guest list (BACKFILLED 2026-05-03)
@@ -1590,4 +1592,52 @@ grep -E "WHEN .(scanner|marketing_manager|finance_manager|event_manager|brand_ad
 ```
 
 **Test that catches a regression:** T-34 SQL parity grep — values disagree → CI fails.
+
+---
+
+### I-33 `permissions_override` jsonb shape MUST be deny-list (mingla-business — Cycle 13a/13b — ACTIVE post-Cycle-13b CLOSE)
+
+**Statement (DRAFT):** When `brand_team_members.permissions_override` jsonb gets a downstream consumer (UI editor + interpreter), the shape MUST be a deny-list against existing `MIN_RANK` action constants from `mingla-business/src/utils/permissionGates.ts`:
+
+```json
+{ "DENIED": ["EDIT_TICKET_PRICE", "REFUND_ORDER", "..."] }
+```
+
+Other shapes (allow-list / parameterized restrictions / `event_scope` arrays) are explicitly REJECTED. See DEC-093 + Cycle 13b forensics §4.
+
+**Why:** Cycle 13a shipped the column unconsumed (returned by `useCurrentBrandRole.permissionsOverride` but never interpreted downstream). Cycle 13b forensics found no validated operator use case for an editor (DEFER per Q2 lock). Locking the SHAPE now means when operator surfaces a real "restrict X without changing role Y" ask, the editor ships in <1 day on top of stable contracts.
+
+**Why deny-list (not allow-list):** Allow-list would let operators GRANT actions above the role's natural rank — that is role escalation, which `permissions_override` should never enable. Deny-list ONLY restricts; role hierarchy stays intact; semantically safer + simpler.
+
+**Established by (DRAFT):** Cycle 13b forensics 2026-05-04 + operator lock ("Q2 — Agreed (defer + lock shape)").
+
+**Enforcement (when ACTIVE post-13b CLOSE):** Convention. The first downstream consumer (Cycle 13c override editor or B-cycle backend interpreter) MUST follow this shape. CI gate optional — gate the consumer-side parser to reject non-deny-list shapes.
+
+**EXIT CONDITION:** None — this is a permanent forward-compat invariant. The deny-list shape is the locked contract for `permissions_override` jsonb across all future cycles.
+
+**Test that catches a regression (when ACTIVE):** First downstream consumer ships with a parser that rejects shapes with keys other than `DENIED`. Invariant violation = parser accepts an `ALLOWED` or `event_scope` key.
+
+**Status:** ACTIVE post-Cycle-13b CLOSE 2026-05-04.
+
+---
+
+### I-34 `permissions_matrix` table DECOMMISSIONED (post Cycle 13b CLOSE)
+
+**Statement:** The `permissions_matrix` table is dropped post-Cycle-13b. Mobile-side authority for role→action allowance is `MIN_RANK` constants in `mingla-business/src/utils/permissionGates.ts`. Backend-side authority is `biz_role_rank(p_role text)` SQL function (PR #59 lines 11-30) plus the SECURITY DEFINER helpers built on it (`biz_is_brand_admin_plus_for_caller`, `biz_is_event_manager_plus_for_caller`, etc.). NO future migration may re-create `permissions_matrix` without an explicit DEC entry overriding this invariant.
+
+**Why:** PR #59 author shipped the table as scaffolding for runtime role→action checks. Cycle 13a chose role-rank thresholds in `permissionGates.ts` instead — proving the matrix was never load-bearing. Verified by Cycle 13b forensics: 0 mobile reads, 0 backend RLS reads, only 5 sentinel seed rows. Const #2 (one owner per truth) + Const #8 (subtract before adding) demand the drop.
+
+**Established by:** Cycle 13b CLOSE 2026-05-04 + DEC-093 (operator-locked Q4 = Path B drop).
+
+**Enforcement:** Convention. Optional CI gate: any future migration containing `CREATE TABLE ... permissions_matrix` requires DEC review. Mobile grep gate: `grep -rn "permissions_matrix" mingla-business/` returns 0 hits (verified post-Cycle-13b).
+
+**EXIT CONDITION:** None — permanent decommission. Re-creation requires explicit DEC override (e.g., if operator validates a runtime-mutable permissions matrix use case in a future cycle, that cycle's spec adds a DEC + a new migration with full justification).
+
+**Related artifacts:**
+- Memory: `feedback_permissions_matrix_decommissioned.md` (flips DRAFT → ACTIVE on 13b CLOSE)
+- DEC-093 (DECISION_LOG)
+- Cycle 13b forensics §6 Thread 4 + Path B recommendation
+- Drop migration: `supabase/migrations/20260504100000_b1_phase7_drop_permissions_matrix.sql`
+
+**Test that catches a regression:** Migration grep — any future `supabase/migrations/*.sql` file containing `CREATE TABLE` and `permissions_matrix` should fail review unless paired with a DEC override entry.
 

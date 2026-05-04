@@ -125,8 +125,8 @@ export default function AuditLogRoute(): React.ReactElement {
             <View style={styles.banner}>
               <Text style={styles.bannerText}>
                 Audit log fills as the backend wires server-side recording in
-                B-cycle. You currently see your own actions only — brand-wide
-                visibility for admins lands later.
+                B-cycle. Brand admins see all team actions; team members see
+                their own.
               </Text>
             </View>
 

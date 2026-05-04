@@ -331,9 +331,6 @@ export default function EventScannersListRoute(): React.ReactElement {
               >
                 {invitationStatusPill(activeActionInvitation.status).label}
               </Pill>
-              {activeActionInvitation.permissions.canManualCheckIn ? (
-                <Pill variant="info">CAN MANUAL CHECK-IN</Pill>
-              ) : null}
             </View>
             <View style={styles.actionSpacer} />
             {activeActionInvitation.status === "pending" ? (
@@ -416,11 +413,6 @@ const InvitationRow: React.FC<InvitationRowProps> = ({ invitation, onPress }) =>
         </Text>
         <View style={styles.rowPills}>
           <Pill variant={pill.variant}>{pill.label}</Pill>
-          {invitation.permissions.canManualCheckIn ? (
-            <View style={styles.permPill}>
-              <Text style={styles.permPillText}>CAN MANUAL CHECK-IN</Text>
-            </View>
-          ) : null}
         </View>
       </View>
     </Pressable>

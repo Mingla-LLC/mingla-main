@@ -13,6 +13,11 @@
  * Mirrors AddCompGuestSheet pattern (Cycle 10).
  *
  * Per Cycle 11 SPEC §4.10/J-S7 sub-sheet.
+ *
+ * Cycle 13b Q1 (SPEC §4.6): `canManualCheckIn` toggle DROPPED. The field was
+ * decorative in Cycle 11/12 (gated 0 consumers in scan logic, only rendered
+ * an informational pill on the team list). Per DEC-093 + I-34. The
+ * `canAcceptPayments` toggle (Cycle 12 Decision #4) STAYS unchanged.
  */
 
 import React, { useCallback, useEffect, useState } from "react";
@@ -72,7 +77,6 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
 }) => {
   const [name, setName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
-  const [canManualCheckIn, setCanManualCheckIn] = useState<boolean>(false);
   // Cycle 12 — semantics: "can take cash + manual payments at the door".
   // Card reader + NFC remain TRANSITIONAL until B-cycle Stripe Terminal SDK.
   const [canAcceptPayments, setCanAcceptPayments] = useState<boolean>(false);
@@ -83,7 +87,6 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
     if (visible) {
       setName("");
       setEmail("");
-      setCanManualCheckIn(false);
       setCanAcceptPayments(false);
       setSubmitting(false);
     }
@@ -110,7 +113,6 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
           inviteeName: name.trim(),
           permissions: {
             canScan: true,
-            canManualCheckIn,
             // Cycle 12 — semantics = cash + manual today; card + NFC TRANSITIONAL
             // until B-cycle Stripe Terminal SDK. Operator-controllable per scanner.
             canAcceptPayments,
@@ -127,7 +129,6 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
     brandId,
     email,
     name,
-    canManualCheckIn,
     canAcceptPayments,
     operatorAccountId,
     onSuccess,
@@ -209,34 +210,6 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
             {email.length > 0 && !emailValid ? (
               <Text style={styles.errorText}>Enter a valid email.</Text>
             ) : null}
-          </View>
-
-          {/* Can manual check-in toggle */}
-          <View style={styles.toggleRow}>
-            <View style={styles.toggleCol}>
-              <Text style={styles.toggleLabel}>Allow manual check-in</Text>
-              <Text style={styles.toggleSubline}>
-                They can mark guests checked in without scanning a QR.
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => !submitting && setCanManualCheckIn((v) => !v)}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: canManualCheckIn }}
-              accessibilityLabel="Allow manual check-in"
-              disabled={submitting}
-              style={[
-                styles.toggleTrack,
-                canManualCheckIn && styles.toggleTrackOn,
-              ]}
-            >
-              <View
-                style={[
-                  styles.toggleThumb,
-                  canManualCheckIn && styles.toggleThumbOn,
-                ]}
-              />
-            </Pressable>
           </View>
 
           {/* Cycle 12 — Accept door payments toggle (FLIPPED from Cycle 11
