@@ -150,7 +150,7 @@ export function ExplorerHero() {
     <section className="relative flex h-[100svh] items-center justify-center overflow-hidden px-6 pb-20 pt-20 md:px-10">
       <div className="relative mx-auto flex w-full max-w-4xl flex-col items-center text-center">
         {/* Headline */}
-        <h1 className="font-display text-3xl leading-[1.05] tracking-[-0.005em] text-text-primary sm:text-4xl md:text-5xl">
+        <h1 className="font-display text-3xl leading-[1.05] tracking-[-0.005em] text-text-primary sm:text-4xl md:text-5xl lg:text-6xl">
           <StaggeredHeadline text="Find a vibe," />
           <br />
           <span className="text-warm">
@@ -167,7 +167,7 @@ export function ExplorerHero() {
             delay: reduced ? 0 : 1.0,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="mt-3 flex max-w-2xl flex-col items-center gap-y-1.5 text-sm leading-snug text-text-secondary sm:mt-5 sm:gap-y-2 sm:text-base"
+          className="mt-3 flex max-w-2xl flex-col items-center gap-y-1.5 text-sm leading-snug text-text-secondary sm:mt-5 sm:gap-y-2 sm:text-base md:text-lg"
         >
           <span>Tonight you might feel like</span>
           {/* pb-1.5 extends the cycling word's layout box to contain the
@@ -201,7 +201,7 @@ export function ExplorerHero() {
             delay: reduced ? 0 : 1.4,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="mt-5 flex justify-center sm:mt-8"
+          className="mt-5 flex justify-center sm:mt-8 lg:scale-110 xl:scale-[1.18]"
         >
           <HeroVibeDeck />
         </motion.div>
