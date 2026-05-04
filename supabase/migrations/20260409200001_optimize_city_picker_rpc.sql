@@ -1,3 +1,4 @@
+-- ORCH-0721 (2026-05-04): CONCURRENTLY removed from indexes (lines 12, 17) — Supabase migration runner wraps each file in a single transaction; CONCURRENTLY is incompatible. Indexes are dropped 16 days later by 20260425000004 anyway, so the brief write-lock on a near-empty fresh DB is harmless. Production is unaffected (ORCH-0640 already dropped these indexes; ORCH-0646 rescued the RPCs to use is_servable). Forensics: Mingla_Artifacts/reports/INVESTIGATION_ORCH-0721_MIGRATION_PIPELINE_TIME_BOMB.md
 -- ORCH-0344: Fix statement timeout on Place Pool page load
 --
 -- Root cause: place_pool is 836MB (55k rows with large JSONB/TOAST columns).
@@ -8,12 +9,12 @@
 -- Measured improvement: 10s → 240ms per query.
 
 -- ── Index 1: city_id + is_active + ai_approved (for picker & overview counts) ──
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_place_pool_city_active_approved
+CREATE INDEX IF NOT EXISTS idx_place_pool_city_active_approved
   ON public.place_pool (city_id, is_active, ai_approved)
   WHERE city_id IS NOT NULL;
 
 -- ── Index 2: approved places with photos (for photo_pct calculations) ──────────
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_place_pool_approved_with_photos
+CREATE INDEX IF NOT EXISTS idx_place_pool_approved_with_photos
   ON public.place_pool (city_id)
   WHERE is_active AND ai_approved = true
     AND stored_photo_urls IS NOT NULL AND array_length(stored_photo_urls, 1) > 0;
