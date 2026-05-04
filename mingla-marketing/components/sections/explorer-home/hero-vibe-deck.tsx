@@ -90,11 +90,9 @@ const exitAnim = {
 const enterAnim = { y: -30, scale: 0.88, x: 0 }
 const AUTO_MS = 4200
 
-// Card geometry — sized so the deck + the rest of the hero content
-// (headline + subhead + CTA + chips) fit in 100svh on every md+ viewport,
-// down to 720p laptops in landscape.
+// Card geometry — sized so the deck fits in the locked-height hero.
 const CARD_W = 320
-const CARD_H = 180
+const CARD_H = 210
 
 export function HeroVibeDeck() {
   const reduced = useMinglaReducedMotion()
@@ -128,7 +126,7 @@ export function HeroVibeDeck() {
       aria-hidden="true"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      style={{ width: CARD_W + 20, height: CARD_H + 40 }}
+      style={{ width: CARD_W + 20, height: CARD_H + 50 }}
       className="relative overflow-hidden"
     >
       <AnimatePresence initial={false}>
@@ -176,7 +174,7 @@ function DeckCard({ card, position, reduced }: DeckCardProps) {
       }}
       className="glass-soft absolute flex flex-col gap-2 overflow-hidden rounded-2xl p-3 will-change-transform"
     >
-      <div className="relative h-[100px] w-full overflow-hidden rounded-xl ring-1 ring-glass-border">
+      <div className="relative h-[120px] w-full overflow-hidden rounded-xl ring-1 ring-glass-border">
         <img
           src={card.image}
           alt={card.imageAlt}

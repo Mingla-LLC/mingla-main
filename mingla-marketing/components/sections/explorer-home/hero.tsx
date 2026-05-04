@@ -147,7 +147,7 @@ export function ExplorerHero() {
   const reduced = useMinglaReducedMotion()
 
   return (
-    <section className="relative flex h-[100svh] items-start justify-center overflow-hidden px-6 pb-20 pt-20 md:px-10">
+    <section className="relative flex h-[100svh] items-center justify-center overflow-hidden px-6 pb-20 pt-20 md:px-10">
       <div className="relative mx-auto flex w-full max-w-4xl flex-col items-center text-center">
         {/* Headline */}
         <h1 className="font-display text-3xl leading-[1.05] tracking-[-0.005em] text-text-primary sm:text-4xl md:text-5xl">
@@ -167,12 +167,16 @@ export function ExplorerHero() {
             delay: reduced ? 0 : 1.0,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="mt-2 max-w-2xl text-sm leading-snug text-text-secondary sm:mt-3 sm:text-base sm:leading-relaxed"
+          className="mt-3 flex max-w-2xl flex-col items-center gap-y-1.5 text-sm leading-snug text-text-secondary sm:mt-5 sm:gap-y-2 sm:text-base"
         >
-          Tonight you might feel like{' '}
-          <CyclingPhrase words={VIBES} startDelayMs={1500} />
-          <br />
-          Mingla finds the night that fits.
+          <span>Tonight you might feel like</span>
+          {/* pb-1.5 extends the cycling word's layout box to contain the
+              -bottom-1 underline (4px offset + 2px height = 6px = pb-1.5),
+              so the gap above and below this line read visually equal. */}
+          <span className="block pb-1.5">
+            <CyclingPhrase words={VIBES} startDelayMs={1500} />
+          </span>
+          <span>Mingla finds the night that fits.</span>
         </motion.p>
 
         {/* CTA */}
@@ -184,7 +188,7 @@ export function ExplorerHero() {
             delay: reduced ? 0 : 1.2,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="mt-3 flex flex-wrap items-center justify-center gap-3 sm:mt-4"
+          className="mt-4 flex flex-wrap items-center justify-center gap-3 sm:mt-6"
         >
           <Button size="lg" variant="glass">Get the app</Button>
         </motion.div>
@@ -197,7 +201,7 @@ export function ExplorerHero() {
             delay: reduced ? 0 : 1.4,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="mt-5 hidden justify-center md:flex"
+          className="mt-5 flex justify-center sm:mt-8"
         >
           <HeroVibeDeck />
         </motion.div>
@@ -213,14 +217,14 @@ export function ExplorerHero() {
           delay: reduced ? 0 : 1.5,
           ease: [0.16, 1, 0.3, 1],
         }}
-        className="absolute bottom-6 left-1/2 flex max-w-[calc(100%-1rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1.5 sm:gap-2"
+        className="absolute bottom-6 left-1/2 flex max-w-[calc(100%-0.5rem)] -translate-x-1/2 items-center justify-center gap-1 sm:gap-2"
       >
         {SITE_CHIPS.map((chip) => (
           <Link
             key={chip.href}
             href={chip.href}
             className={cn(
-              'glass-soft inline-flex h-9 items-center whitespace-nowrap rounded-full px-3 text-xs font-medium text-text-secondary transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:text-text-primary hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring sm:px-4 sm:text-sm',
+              'glass-soft inline-flex h-8 items-center whitespace-nowrap rounded-full px-2.5 text-[11px] font-medium text-text-secondary transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:text-text-primary hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring sm:h-9 sm:px-4 sm:text-sm',
               chip.mobileOnly && 'md:hidden',
             )}
           >
