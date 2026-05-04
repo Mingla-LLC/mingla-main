@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { HeroVibeDeck } from '@/components/sections/explorer-home/hero-vibe-deck'
+import { cn } from '@/lib/cn'
 
 // ---------------------------------------------------------------
 // Mingla Explorer Hero
@@ -17,9 +18,14 @@ import { HeroVibeDeck } from '@/components/sections/explorer-home/hero-vibe-deck
 interface ChipLink {
   href: string
   label: string
+  /** When true, render only below the md breakpoint (mobile-only).
+      The surface toggle in the header is hidden on mobile, so the
+      bottom row carries the cross-link there. */
+  mobileOnly?: boolean
 }
 
 const SITE_CHIPS: ChipLink[] = [
+  { href: '/organisers', label: 'Organiser', mobileOnly: true },
   { href: '/about', label: 'About' },
   { href: '/support', label: 'Support' },
   { href: '/privacy', label: 'Privacy' },
@@ -141,10 +147,10 @@ export function ExplorerHero() {
   const reduced = useMinglaReducedMotion()
 
   return (
-    <section className="relative flex h-[100svh] min-h-[720px] items-center justify-center overflow-hidden px-6 pb-24 pt-20 md:px-10 md:pt-24">
+    <section className="relative flex h-[100svh] items-start justify-center overflow-hidden px-6 pb-20 pt-20 md:px-10">
       <div className="relative mx-auto flex w-full max-w-4xl flex-col items-center text-center">
         {/* Headline */}
-        <h1 className="font-display text-4xl leading-[1.08] tracking-[-0.005em] text-text-primary sm:text-5xl md:text-6xl">
+        <h1 className="font-display text-3xl leading-[1.05] tracking-[-0.005em] text-text-primary sm:text-4xl md:text-5xl">
           <StaggeredHeadline text="Find a vibe," />
           <br />
           <span className="text-warm">
@@ -161,7 +167,7 @@ export function ExplorerHero() {
             delay: reduced ? 0 : 1.0,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="mt-4 max-w-2xl text-base leading-relaxed text-text-secondary md:text-lg"
+          className="mt-2 max-w-2xl text-sm leading-snug text-text-secondary sm:mt-3 sm:text-base sm:leading-relaxed"
         >
           Tonight you might feel like{' '}
           <CyclingPhrase words={VIBES} startDelayMs={1500} />
@@ -178,7 +184,7 @@ export function ExplorerHero() {
             delay: reduced ? 0 : 1.2,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="mt-5 flex flex-wrap items-center justify-center gap-3"
+          className="mt-3 flex flex-wrap items-center justify-center gap-3 sm:mt-4"
         >
           <Button size="lg" variant="glass">Get the app</Button>
         </motion.div>
@@ -191,7 +197,7 @@ export function ExplorerHero() {
             delay: reduced ? 0 : 1.4,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="mt-6 flex justify-center"
+          className="mt-5 hidden justify-center md:flex"
         >
           <HeroVibeDeck />
         </motion.div>
@@ -207,13 +213,16 @@ export function ExplorerHero() {
           delay: reduced ? 0 : 1.5,
           ease: [0.16, 1, 0.3, 1],
         }}
-        className="absolute bottom-6 left-1/2 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center justify-center gap-1.5 sm:gap-2"
+        className="absolute bottom-6 left-1/2 flex max-w-[calc(100%-1rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1.5 sm:gap-2"
       >
         {SITE_CHIPS.map((chip) => (
           <Link
             key={chip.href}
             href={chip.href}
-            className="glass-soft inline-flex h-9 items-center whitespace-nowrap rounded-full px-3 text-xs font-medium text-text-secondary transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:text-text-primary hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring sm:px-4 sm:text-sm"
+            className={cn(
+              'glass-soft inline-flex h-9 items-center whitespace-nowrap rounded-full px-3 text-xs font-medium text-text-secondary transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:text-text-primary hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring sm:px-4 sm:text-sm',
+              chip.mobileOnly && 'md:hidden',
+            )}
           >
             {chip.label}
           </Link>
