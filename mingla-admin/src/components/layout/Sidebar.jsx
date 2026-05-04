@@ -18,6 +18,7 @@ import {
   Activity,
   Camera,
   Sparkles,
+  Microscope,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -30,7 +31,7 @@ import minglaLogo from "../../assets/mingla-logo.png";
 
 const ICON_MAP = {
   LayoutDashboard, Database, Terminal, Globe, Flag, Shield, Users, Layers,
-  BarChart3, Mail, Settings, CreditCard, Mic, Rocket, Brain, Activity, Camera, Sparkles,
+  BarChart3, Mail, Settings, CreditCard, Mic, Rocket, Brain, Activity, Camera, Sparkles, Microscope,
 };
 
 export function Sidebar({

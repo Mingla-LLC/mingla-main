@@ -1043,6 +1043,11 @@ async function handleRunNextBatch(body: any, supabase: any) {
                   // by score-place-photo-aesthetics. A re-seed must NOT clobber it.
                   // The fingerprint check inside the scorer detects photo rotation and
                   // re-scores automatically when stored_photo_urls change.
+                  //
+                  // I-COLLAGE-SOLE-OWNER (ORCH-0712): photo_collage_url +
+                  // photo_collage_fingerprint are INTENTIONALLY EXCLUDED. Owned exclusively
+                  // by run-place-intelligence-trial compose_collage action. A re-seed must
+                  // NOT clobber the cached collage. Fingerprint detects rotation.
                   name: row.name,
                   address: row.address,
                   lat: row.lat,
@@ -1486,6 +1491,11 @@ async function handleRetryBatch(body: any, supabase: any) {
                   // by score-place-photo-aesthetics. A re-seed must NOT clobber it.
                   // The fingerprint check inside the scorer detects photo rotation and
                   // re-scores automatically when stored_photo_urls change.
+                  //
+                  // I-COLLAGE-SOLE-OWNER (ORCH-0712): photo_collage_url +
+                  // photo_collage_fingerprint are INTENTIONALLY EXCLUDED. Owned exclusively
+                  // by run-place-intelligence-trial compose_collage action. A re-seed must
+                  // NOT clobber the cached collage. Fingerprint detects rotation.
                   name: row.name,
                   address: row.address,
                   lat: row.lat,
