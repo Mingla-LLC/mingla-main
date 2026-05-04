@@ -235,6 +235,24 @@ export const serializeGuestsToCsv = (
         formatGbpForCsv(net),
       ];
       lines.push(fields.map(csvEscape).join(","));
+    } else {
+      // Cycle 12 — door sale row.
+      const s = row.sale;
+      const buyerName = s.buyerName.length > 0 ? s.buyerName : "Walk-up";
+      const fields = [
+        "DOOR",
+        buyerName,
+        s.buyerEmail,
+        s.buyerPhone,
+        doorTicketSummary(s.lines),
+        String(doorQuantity(s.lines)),
+        doorStatusLabel(s.status),
+        doorPaymentLabel(s.paymentMethod),
+        s.id,
+        formatYmd(s.recordedAt),
+        s.notes,
+      ];
+      lines.push(fields.map(csvEscape).join(","));
     }
   }
 
@@ -437,4 +455,30 @@ export const exportReconciliationCsv = async (
   }
   const action = await downloadCsvNative(csv, filename);
   return { method: action };
+};
+
+// ---- Cycle 12 — door-sales-only export (J-D5 reconciliation) -------
+
+export interface ExportDoorSalesCsvArgs {
+  event: LiveEvent;
+  sales: DoorSaleRecord[];
+}
+
+export const exportDoorSalesCsv = async (
+  args: ExportDoorSalesCsvArgs,
+): Promise<void> => {
+  // Reuse the merged serializer with door-only rows for consistent CSV shape.
+  const rows: ExportGuestRow[] = args.sales.map((s) => ({
+    kind: "door",
+    id: s.id,
+    sale: s,
+    sortKey: s.recordedAt,
+  }));
+  const csv = serializeGuestsToCsv(rows);
+  const filename = `${args.event.eventSlug}-door-sales-${formatYmdToday()}.csv`;
+  if (Platform.OS === "web") {
+    downloadCsvWeb(csv, filename);
+    return;
+  }
+  await downloadCsvNative(csv, filename);
 };
