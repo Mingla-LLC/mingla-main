@@ -5,7 +5,14 @@ import { useAuth } from "../src/context/AuthContext";
 import BusinessWelcomeScreen from "../src/components/auth/BusinessWelcomeScreen";
 
 export default function Index() {
-  const { user, loading, signInWithGoogle, signInWithApple } = useAuth();
+  const {
+    user,
+    loading,
+    signInWithGoogle,
+    signInWithApple,
+    signInWithEmail,
+    verifyEmailOtp,
+  } = useAuth();
 
   if (loading) {
     return (
@@ -21,6 +28,8 @@ export default function Index() {
       <BusinessWelcomeScreen
         onGoogleSignIn={async () => { await signInWithGoogle(); }}
         onAppleSignIn={async () => { await signInWithApple(); }}
+        onEmailSignIn={signInWithEmail}
+        onVerifyEmailOtp={verifyEmailOtp}
       />
     );
   }

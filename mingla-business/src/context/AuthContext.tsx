@@ -59,6 +59,21 @@ type AuthContextValue = {
   loading: boolean;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signInWithApple: () => Promise<{ error: Error | null }>;
+  /**
+   * Cycle 15 — additive email-OTP sign-in (DEC-097). Step 1: send
+   * 6-digit code to email. Caller transitions UI to OTP-input mode
+   * on success.
+   */
+  signInWithEmail: (email: string) => Promise<{ error: Error | null }>;
+  /**
+   * Cycle 15 — Step 2: verify 6-digit code. On success, SIGNED_IN
+   * event fires + AuthContext listener handles ensureCreatorAccount
+   * + tryRecoverAccountIfDeleted (I-35 gate per Cycle 14 v2).
+   */
+  verifyEmailOtp: (
+    email: string,
+    code: string,
+  ) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   /**
    * Cycle 14 — set to a value when account recovery just fired on sign-in
@@ -343,6 +358,86 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Cycle 15 — additive email + 6-digit OTP sign-in (DEC-097 + I-35).
+  // Step 1 of 2-step flow: send the OTP code to email. Caller transitions
+  // UI to OTP-input state on success; user pastes code → caller invokes
+  // verifyEmailOtp() below. Works identically on iOS, Android, web —
+  // signInWithOtp is platform-agnostic (no native SDK dependency).
+  const signInWithEmail = useCallback(
+    async (email: string): Promise<{ error: Error | null }> => {
+      const trimmed = email.trim().toLowerCase();
+      if (!trimmed) {
+        return { error: new Error("Enter your email address.") };
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(trimmed)) {
+        return { error: new Error("That doesn't look like a valid email.") };
+      }
+      const { error } = await supabase.auth.signInWithOtp({
+        email: trimmed,
+        options: {
+          shouldCreateUser: true,
+        },
+      });
+      if (error) {
+        // Surface rate-limit error explicitly per D-CYCLE15-FOR-6 + DEC-097
+        // D-15-8 ("Too many attempts. Wait a minute before trying again.").
+        if (
+          error.message.toLowerCase().includes("rate limit") ||
+          error.message.toLowerCase().includes("too many")
+        ) {
+          return {
+            error: new Error(
+              "Too many attempts. Wait a minute before trying again.",
+            ),
+          };
+        }
+        return { error: new Error(error.message) };
+      }
+      return { error: null };
+    },
+    [],
+  );
+
+  // Cycle 15 — Step 2 of 2-step flow: verify the 6-digit OTP code.
+  // type: "email" covers both magic-link and OTP-token modes; Supabase
+  // project email template config determines which mode is active. On
+  // success, Supabase fires onAuthStateChange(SIGNED_IN, session) which
+  // the existing listener handles (ensureCreatorAccount + tryRecoverAccountIfDeleted
+  // gated to SIGNED_IN per Cycle 14 v2 fix Bug B — preserves I-35 contract).
+  const verifyEmailOtp = useCallback(
+    async (
+      email: string,
+      code: string,
+    ): Promise<{ error: Error | null }> => {
+      const trimmedEmail = email.trim().toLowerCase();
+      const trimmedCode = code.trim();
+      if (!/^\d{6}$/.test(trimmedCode)) {
+        return {
+          error: new Error("Enter the 6-digit code from your email."),
+        };
+      }
+      const { error } = await supabase.auth.verifyOtp({
+        email: trimmedEmail,
+        token: trimmedCode,
+        type: "email",
+      });
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes("expired") || msg.includes("invalid")) {
+          return {
+            error: new Error(
+              "That code didn't match or has expired. Try again.",
+            ),
+          };
+        }
+        return { error: new Error(error.message) };
+      }
+      return { error: null };
+    },
+    [],
+  );
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     // GoogleSignin native SDK is iOS/Android-only — gate per Cycle 0b.
@@ -368,6 +463,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       signInWithGoogle,
       signInWithApple,
+      signInWithEmail,
+      verifyEmailOtp,
       signOut,
       lastRecoveryEvent,
       clearLastRecoveryEvent,
@@ -378,6 +475,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       signInWithGoogle,
       signInWithApple,
+      signInWithEmail,
+      verifyEmailOtp,
       signOut,
       lastRecoveryEvent,
       clearLastRecoveryEvent,
