@@ -6,8 +6,11 @@
 
 import { supabase } from "../../lib/supabase";
 
+// photo_aesthetic_data is intentionally OMITTED — added in Phase 2 (score-place-photo-aesthetics
+// edge function ships the column). CompareWithClaudeTab gracefully falls back to the
+// pre-backfill placeholder when the field is absent.
 const PLACE_POOL_COLS =
-  "id, name, primary_type, types, rating, review_count, address, city, stored_photo_urls, photo_aesthetic_data";
+  "id, name, primary_type, types, rating, review_count, address, city, stored_photo_urls";
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 
