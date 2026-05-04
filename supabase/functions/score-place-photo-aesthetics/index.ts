@@ -41,7 +41,7 @@ const MAX_PHOTOS_PER_PLACE = 5;
 const DEFAULT_BATCH_SIZE = 25;
 const ESTIMATED_COST_PER_PLACE_SYNC = 0.008; // ~$0.008/place (sync, no batch discount, no caching benefit on first call)
 const ESTIMATED_COST_PER_PLACE_BATCH = 0.004; // ~$0.004/place (batch API 50% off + caching)
-const COST_GUARD_USD = 5.0;
+const COST_GUARD_USD = 7.0;
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
