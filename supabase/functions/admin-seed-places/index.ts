@@ -1037,6 +1037,12 @@ async function handleRunNextBatch(body: any, supabase: any) {
                   // ORCH-0550.1 — re-seed must write every new column so a repeat
                   // tile pass cannot degrade a previously-enriched row
                   // (I-REFRESH-NEVER-DEGRADES).
+                  //
+                  // I-PHOTO-AESTHETIC-DATA-SOLE-OWNER (ORCH-0708): photo_aesthetic_data
+                  // is INTENTIONALLY EXCLUDED from this UPDATE. It is owned exclusively
+                  // by score-place-photo-aesthetics. A re-seed must NOT clobber it.
+                  // The fingerprint check inside the scorer detects photo rotation and
+                  // re-scores automatically when stored_photo_urls change.
                   name: row.name,
                   address: row.address,
                   lat: row.lat,
@@ -1474,6 +1480,12 @@ async function handleRetryBatch(body: any, supabase: any) {
                   // ORCH-0550.1 — re-seed must write every new column so a repeat
                   // tile pass cannot degrade a previously-enriched row
                   // (I-REFRESH-NEVER-DEGRADES).
+                  //
+                  // I-PHOTO-AESTHETIC-DATA-SOLE-OWNER (ORCH-0708): photo_aesthetic_data
+                  // is INTENTIONALLY EXCLUDED from this UPDATE. It is owned exclusively
+                  // by score-place-photo-aesthetics. A re-seed must NOT clobber it.
+                  // The fingerprint check inside the scorer detects photo rotation and
+                  // re-scores automatically when stored_photo_urls change.
                   name: row.name,
                   address: row.address,
                   lat: row.lat,

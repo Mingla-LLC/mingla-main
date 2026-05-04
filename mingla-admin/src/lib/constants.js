@@ -144,6 +144,7 @@ export const NAV_GROUPS = [
     items: [
       { id: "signals", label: "Signal Library", icon: "Activity" },
       { id: "photo-labeling", label: "Photo Labeling", icon: "Camera" },
+      { id: "photo-scorer", label: "Photo Scorer", icon: "Sparkles" },
     ],
   },
   {
