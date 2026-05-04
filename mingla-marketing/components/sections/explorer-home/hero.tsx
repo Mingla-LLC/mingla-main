@@ -148,12 +148,13 @@ export function ExplorerHero() {
 
   return (
     <section className="relative flex h-[100svh] flex-col overflow-hidden px-[clamp(1rem,4vw,2.5rem)]">
-      {/* Top spacer — fixed gap below the floating header (header bottom
-          sits at 56px from viewport top; this 80px row gives a 24px buffer). */}
+      {/* Top spacer — fluid gap below the floating header (header bottom
+          sits at 56px from viewport top). Floor 80 keeps tiny phones intact;
+          11vh grows breathing room on tablet/desktop. */}
       <div
         aria-hidden="true"
         className="shrink-0"
-        style={{ height: 'clamp(80px, 9vh, 140px)' }}
+        style={{ height: 'clamp(80px, 11vh, 160px)' }}
       />
 
       {/* Content area — fills the middle. Typography and the deck use
@@ -238,19 +239,19 @@ export function ExplorerHero() {
         </motion.div>
       </div>
 
-      {/* Bottom spacer — fixed gap above the chip row (chips sit ~60px
-          from bottom; this 80px row gives a 20px buffer). */}
+      {/* Bottom spacer — fluid gap above the chip row, mirrors the top spacer
+          so breathing room is symmetric on every viewport. */}
       <div
         aria-hidden="true"
         className="shrink-0"
-        style={{ height: 'clamp(80px, 9vh, 140px)' }}
+        style={{ height: 'clamp(80px, 11vh, 160px)' }}
       />
 
       {/* Chip-style site links at the bottom of the hero. The outer
           container enforces the same fluid side padding as the section,
           so chips never sit closer than 16px (or further than 40px) from
           a viewport edge. */}
-      <div className="absolute inset-x-0 bottom-6 z-10 px-[clamp(1.5rem,4vw,2.5rem)]">
+      <div className="absolute inset-x-0 bottom-8 z-10 px-[clamp(1.5rem,4vw,2.5rem)]">
       <motion.nav
         aria-label="Site"
         initial={reduced ? false : { opacity: 0, y: 8 }}
