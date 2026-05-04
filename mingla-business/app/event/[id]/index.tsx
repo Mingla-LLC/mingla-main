@@ -177,6 +177,8 @@ import { TopBar } from "../../../src/components/ui/TopBar";
 import { EndSalesSheet } from "../../../src/components/event/EndSalesSheet";
 import { EventDetailKpiCard } from "../../../src/components/event/EventDetailKpiCard";
 import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
+import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../../src/utils/permissionGates";
 
 const CANCEL_PROCESSING_MS = 1200;
 const cancelSleep = (ms: number): Promise<void> =>
@@ -224,6 +226,11 @@ export default function EventDetailScreen(): React.ReactElement {
     }
     return null;
   }, [liveEvent, draftEvent, brands]);
+
+  // Cycle 13a J-T6 G1: gate Edit / End sales / Cancel / Delete on EDIT_EVENT.
+  // Hook ordering: ALL hooks run on every render before any early-return shell.
+  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
+  const canEditEvent = canPerformAction(currentRank, "EDIT_EVENT");
 
   // ----- Defensive: draft → redirect to edit ---------------------
   useEffect(() => {
@@ -746,10 +753,9 @@ export default function EventDetailScreen(): React.ReactElement {
           )}
         </GlassCard>
 
-        {/* Cancel event CTA — opens ConfirmDialog with typeToConfirm
-            (case-sensitive match on event.name; ConfirmDialog primitive
-            default per DEC-079 — no kit extension for case folding). */}
-        {status === "live" || status === "upcoming" ? (
+        {/* Cancel event CTA — opens ConfirmDialog with typeToConfirm.
+            Cycle 13a J-T6 G1: gated on EDIT_EVENT; hidden for sub-rank users. */}
+        {(status === "live" || status === "upcoming") && canEditEvent ? (
           <View style={styles.cancelCtaWrap}>
             <Button
               label="Cancel event"
@@ -809,6 +815,7 @@ export default function EventDetailScreen(): React.ReactElement {
             router.push(`/event/${event.id}/orders` as never);
           }}
           onTransitionalToast={showToast}
+          canEditEvent={canEditEvent}
         />
       ) : null}
 

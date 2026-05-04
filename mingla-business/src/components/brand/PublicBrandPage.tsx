@@ -136,12 +136,11 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({ brand }) => {
       .slice(0, PAST_EVENT_CAP);
   }, [allEvents]);
 
-  const verifiedHostSinceYear = useMemo<number | null>(() => {
-    const owner = (brand.members ?? []).find((m) => m.role === "owner");
-    if (owner === undefined) return null;
-    const joined = new Date(owner.joinedAt);
-    return Number.isFinite(joined.getTime()) ? joined.getFullYear() : null;
-  }, [brand.members]);
+  // Cycle 13a (DEC-092): brand.members dropped. The "Verified host since YYYY"
+  // pill on the public page is suppressed in 13a; restoring it is a B-cycle
+  // task once `creator_accounts.created_at` (or brand_team_members.invited_at
+  // for the owner row) is wired through React Query.
+  const verifiedHostSinceYear = useMemo<number | null>(() => null, []);
 
   const showStatsCard = useMemo<boolean>(() => {
     const s = brand.stats;

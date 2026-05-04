@@ -43,6 +43,12 @@ export interface StepBodyProps {
   editMode?: {
     soldCountByTier: Record<string, number>;
   };
+  /**
+   * Cycle 13a J-T6 G2: when false, ticket price input is uneditable with a
+   * helper hint pointing the operator at finance_manager+. Defaults to true
+   * for the create-flow + non-rank-aware callers.
+   */
+  canEditTicketPrice?: boolean;
 }
 
 export const errorForKey = (

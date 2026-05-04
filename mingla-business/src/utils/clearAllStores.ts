@@ -24,6 +24,7 @@ import { useOrderStore } from "../store/orderStore";
 import { useScanStore } from "../store/scanStore";
 import { useScannerInvitationsStore } from "../store/scannerInvitationsStore";
 import { useDoorSalesStore } from "../store/doorSalesStore";
+import { useBrandTeamStore } from "../store/brandTeamStore";
 
 export const clearAllStores = (): void => {
   useCurrentBrandStore.getState().reset();
@@ -35,4 +36,5 @@ export const clearAllStores = (): void => {
   useScanStore.getState().reset(); // NEW Cycle 11 — Constitution #6
   useScannerInvitationsStore.getState().reset(); // NEW Cycle 11 — Constitution #6
   useDoorSalesStore.getState().reset(); // NEW Cycle 12 — Constitution #6
+  useBrandTeamStore.getState().reset(); // NEW Cycle 13a — Constitution #6
 };

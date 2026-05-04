@@ -24,6 +24,13 @@
  *   - #9 no fabricated data: store starts EMPTY; never seeded.
  *
  * Per Cycle 11 SPEC §4.7.
+ *
+ * Cycle 13a continuity: the brand-team-member equivalent of this scanner
+ * invitation pattern ships at `src/store/brandTeamStore.ts` (Cycle 13a SPEC
+ * §4.7). Both stores follow the I-28 / I-31 TRANSITIONAL UI-only pattern
+ * until B-cycle wires the corresponding edge functions
+ * (`invite-scanner` / `invite-brand-member`). NO logic change to this file —
+ * cross-reference only.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";

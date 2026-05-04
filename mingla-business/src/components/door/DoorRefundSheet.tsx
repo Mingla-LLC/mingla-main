@@ -45,6 +45,12 @@ import { formatGbp } from "../../utils/currency";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 
+import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+import {
+  canPerformAction,
+  gateCaptionFor,
+} from "../../utils/permissionGates";
+
 const REASON_MIN = 10;
 const REASON_MAX = 200;
 const REFUND_PROCESSING_MS = 1200;
@@ -110,7 +116,13 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
   const reasonValid =
     trimmedLen >= REASON_MIN && trimmedLen <= REASON_MAX;
   const hasRefundQty = refundTotalGbp > 0 || perLineRefund.some((p) => p.selectedQty > 0);
-  const canSubmit = !submitting && reasonValid && hasRefundQty;
+
+  // Cycle 13a J-T6 G4: Confirm CTA gated on REFUND_DOOR_SALE (finance_manager+).
+  // Hooks run on every render before any early-return shell (ORCH-0710).
+  const { rank: currentRank } = useCurrentBrandRole(sale.brandId);
+  const canRefund = canPerformAction(currentRank, "REFUND_DOOR_SALE");
+
+  const canSubmit = !submitting && reasonValid && hasRefundQty && canRefund;
 
   const handleStepperChange = useCallback(
     (ticketTypeId: string, delta: number, max: number): void => {
@@ -360,6 +372,11 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
             disabled={!canSubmit}
             accessibilityLabel="Send refund"
           />
+          {!canRefund ? (
+            <Text style={styles.gateCaption}>
+              {gateCaptionFor("REFUND_DOOR_SALE")}
+            </Text>
+          ) : null}
           <View style={styles.actionSpacer} />
           <Button
             label="Cancel"
@@ -558,6 +575,12 @@ const styles = StyleSheet.create({
   },
   actionSpacer: {
     height: spacing.sm,
+  },
+  gateCaption: {
+    fontSize: 12,
+    color: textTokens.tertiary,
+    marginTop: 6,
+    textAlign: "center",
   },
 });
 

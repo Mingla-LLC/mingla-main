@@ -44,6 +44,9 @@ import { Sheet } from "../../../../src/components/ui/Sheet";
 import { Toast } from "../../../../src/components/ui/Toast";
 import { Button } from "../../../../src/components/ui/Button";
 
+import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../../../src/utils/permissionGates";
+
 import { InviteScannerSheet } from "../../../../src/components/scanners/InviteScannerSheet";
 
 // ---- Helpers --------------------------------------------------------
@@ -124,6 +127,11 @@ export default function EventScannersListRoute(): React.ReactElement {
   const brand = useCurrentBrandStore((s) =>
     event !== null ? s.brands.find((b) => b.id === event.brandId) ?? null : null,
   );
+
+  // Cycle 13a J-T6 G6: scanner invite + revoke gated on MANAGE_SCANNERS
+  // (event_manager+). Hooks run on every render before any early-return shell.
+  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
+  const canManageScanners = canPerformAction(currentRank, "MANAGE_SCANNERS");
 
   // Raw subscription + useMemo for fresh-array filter (selector pattern rule).
   const allInvitations = useScannerInvitationsStore((s) => s.entries);
@@ -229,12 +237,14 @@ export default function EventScannersListRoute(): React.ReactElement {
         />
         <Text style={styles.chromeTitle}>Scanners</Text>
         <View style={styles.chromeRight}>
-          <IconChrome
-            icon="plus"
-            size={36}
-            onPress={() => setInviteSheetOpen(true)}
-            accessibilityLabel="Invite scanner"
-          />
+          {canManageScanners ? (
+            <IconChrome
+              icon="plus"
+              size={36}
+              onPress={() => setInviteSheetOpen(true)}
+              accessibilityLabel="Invite scanner"
+            />
+          ) : null}
         </View>
       </View>
 
@@ -258,12 +268,20 @@ export default function EventScannersListRoute(): React.ReactElement {
             <EmptyState
               illustration="user"
               title="No scanners invited"
-              description="Invite door staff or backup scanners. They'll receive access when emails ship in B-cycle."
-              cta={{
-                label: "Invite scanner",
-                onPress: () => setInviteSheetOpen(true),
-                variant: "primary",
-              }}
+              description={
+                canManageScanners
+                  ? "Invite door staff or backup scanners. They'll receive access when emails ship in B-cycle."
+                  : "Ask your event manager or above to invite door staff."
+              }
+              cta={
+                canManageScanners
+                  ? {
+                      label: "Invite scanner",
+                      onPress: () => setInviteSheetOpen(true),
+                      variant: "primary",
+                    }
+                  : undefined
+              }
             />
           </View>
         ) : (
@@ -324,6 +342,7 @@ export default function EventScannersListRoute(): React.ReactElement {
                 variant="destructive"
                 size="lg"
                 fullWidth
+                disabled={!canManageScanners}
                 onPress={() => handleRevoke(activeActionInvitation.id)}
                 accessibilityLabel="Revoke pending invitation"
               />

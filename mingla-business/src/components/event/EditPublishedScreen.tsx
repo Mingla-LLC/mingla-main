@@ -98,6 +98,9 @@ import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
 import { CreatorStep6Settings } from "./CreatorStep6Settings";
 import { EditAfterPublishBanner } from "./EditAfterPublishBanner";
 
+import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../utils/permissionGates";
+
 // ---- Section configuration -----------------------------------------
 
 type SectionKey = "basics" | "when" | "where" | "cover" | "tickets" | "settings";
@@ -245,6 +248,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     () => getSoldCountContextForEvent(liveEvent),
     [liveEvent],
   );
+
+  // Cycle 13a J-T6 G2: ticket price editability gated on EDIT_TICKET_PRICE
+  // (finance_manager+). Hook ordering: runs every render before any early
+  // return shell (ORCH-0710 lesson).
+  const { rank: currentRank } = useCurrentBrandRole(liveEvent?.brandId ?? null);
+  const canEditTicketPrice = canPerformAction(currentRank, "EDIT_TICKET_PRICE");
 
   // ---- Update handler — local state only ----
   const handleUpdateDraft = useCallback(
@@ -514,6 +523,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         onShowToast: showToast,
         scrollToBottom,
         editMode: { soldCountByTier: soldCountCtx.soldCountByTier },
+        canEditTicketPrice,
       };
       switch (key) {
         case "basics":

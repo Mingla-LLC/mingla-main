@@ -54,6 +54,12 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 
+import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+import {
+  canPerformAction,
+  gateCaptionFor,
+} from "../../utils/permissionGates";
+
 const REASON_MIN = 10;
 const REASON_MAX = 200;
 const REFUND_PROCESSING_MS = 1200;
@@ -133,9 +139,16 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
   const partialHasSelection = mode === "partial" && partialTotalGbp > 0;
   const fullHasAmount = mode === "full" && refundAmount > 0;
+
+  // Cycle 13a J-T6 G3: Confirm CTA gated on REFUND_ORDER (finance_manager+).
+  // Hooks run on every render before any early-return shell (ORCH-0710).
+  const { rank: currentRank } = useCurrentBrandRole(order.brandId);
+  const canRefund = canPerformAction(currentRank, "REFUND_ORDER");
+
   const canSubmit =
     !submitting &&
     reasonValid &&
+    canRefund &&
     (mode === "full" ? fullHasAmount : partialHasSelection);
 
   const handleStepperChange = useCallback(
@@ -441,6 +454,11 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
             disabled={!canSubmit}
             accessibilityLabel="Send refund"
           />
+          {!canRefund ? (
+            <Text style={styles.gateCaption}>
+              {gateCaptionFor("REFUND_ORDER")}
+            </Text>
+          ) : null}
           <View style={styles.actionSpacer} />
           <Button
             label="Cancel"
@@ -643,6 +661,12 @@ const styles = StyleSheet.create({
   },
   actionSpacer: {
     height: spacing.sm,
+  },
+  gateCaption: {
+    fontSize: 12,
+    color: textTokens.tertiary,
+    marginTop: 6,
+    textAlign: "center",
   },
 });
 

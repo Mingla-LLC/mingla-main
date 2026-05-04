@@ -1548,3 +1548,46 @@ sed -n '1860,2020p' app-mobile/src/components/ExpandedCardModal.tsx | grep -cE '
 **Established by:** ORCH-0685.
 
 **Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md) §10.2.
+
+---
+
+### I-31 Brand-team-member invitation UI is TRANSITIONAL until B-cycle (mingla-business — Cycle 13a)
+
+**Statement:** `useBrandTeamStore.recordInvitation` creates a pending invitation in client-side persisted store ONLY. NO email is sent. NO acceptance flow exists. NO functional sync to `brand_team_members` DB table. Mirrors I-28 verbatim for brand-level (not event-level) invitations. EXIT condition: B-cycle wires `invite-brand-member` + `accept-brand-invitation` edge functions per BUSINESS_PRD §16.4.
+
+**Why:** Cycle 13a ships the operator-facing UI for team management ahead of the backend write path. Without I-31, future skills could mistake the local-only invitation flow for a fully wired feature. The `[TRANSITIONAL]` header on `brandTeamStore.ts` + the visible TRANSITIONAL banner on the team list route + on `InviteBrandMemberSheet` + on the audit log route are all part of the I-31 surface.
+
+**Established by:** Cycle 13a close (2026-05-04 / DEC-092). Code: `mingla-business/src/store/brandTeamStore.ts` + `mingla-business/src/components/team/InviteBrandMemberSheet.tsx` + `mingla-business/app/brand/[id]/team.tsx` + `mingla-business/app/brand/[id]/audit-log.tsx`.
+
+**Enforcement (Cycle 13a):**
+- Convention + grep test: `brandTeamStore.ts` MUST NOT call any edge function (no `supabase.functions.invoke`). Implementor verifies in IMPL report §verification matrix.
+- TRANSITIONAL banner copy verbatim: "Testing mode — invitations are stored locally for now. Emails ship in B-cycle."
+
+**EXIT CONDITION:** B-cycle wires the two edge functions. When backend lands, `useBrandTeamStore` either contracts to a cache (Cycle 9c orderStore pattern) or is removed entirely if React Query becomes sole authority.
+
+**Test that catches a regression:** T-38 grep for `supabase.functions.invoke` inside `brandTeamStore.ts` returns 0 hits. TRANSITIONAL banner present on team list + invite sheet + audit log routes.
+
+---
+
+### I-32 Mobile UI gates MUST mirror RLS role-rank semantics (mingla-business — Cycle 13a)
+
+**Statement:** Mobile-side rank thresholds for action gates MUST match the SQL `biz_role_rank()` function values verbatim. Mobile reads `useCurrentBrandRole()` + compares against `BRAND_ROLE_RANK` constants in `src/utils/brandRole.ts` (which mirror SQL exactly: `scanner: 10, marketing_manager: 20, finance_manager: 30, event_manager: 40, brand_admin: 50, account_owner: 60`). RLS server-side is the safety net; mobile is the UX convenience layer; both MUST agree on rank thresholds.
+
+**Why:** A mismatch between mobile gate thresholds and RLS server-side enforcement creates UX dishonesty (Const #1 dead taps) — mobile shows an action enabled, then RLS denies the underlying write. Or worse: mobile hides an action that RLS would have allowed, blocking valid operator workflows. Single source of truth (SQL `biz_role_rank`) prevents the drift.
+
+**Established by:** Cycle 13a close (2026-05-04 / DEC-092). Source of truth: `supabase/migrations/20260502100000_b1_business_schema_rls.sql:11-30`. Mobile mirror: `mingla-business/src/utils/brandRole.ts` (header comment cites the source line numbers).
+
+**Enforcement (Cycle 13a):** Convention + CI grep test. Both outputs below MUST agree on the 6 (role, rank) pairs:
+
+```bash
+# Mobile-side
+grep -E "(scanner|marketing_manager|finance_manager|event_manager|brand_admin|account_owner): \d+" \
+  mingla-business/src/utils/brandRole.ts
+
+# SQL source of truth
+grep -E "WHEN .(scanner|marketing_manager|finance_manager|event_manager|brand_admin|account_owner). THEN \d+" \
+  supabase/migrations/20260502100000_b1_business_schema_rls.sql
+```
+
+**Test that catches a regression:** T-34 SQL parity grep — values disagree → CI fails.
+

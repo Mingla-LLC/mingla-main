@@ -667,6 +667,16 @@ tools, scanner tools, and payment capabilities.
 - Ticket scanner permissions
 - Scanner payment permissions
 
+> **Note (added 2026-05-04 per Cycle 13a SPEC §4.16 / DEC-092):** the canonical role
+> enum shipped in PR #59 has **6 roles** (`account_owner`, `brand_admin`, `event_manager`,
+> `finance_manager`, `marketing_manager`, `scanner`). The eight bullets above resolve as:
+> "Brand owner" reads as `account_owner`-or-`brand_admin` context-dependent (not a
+> separate role); "Scanner payment permissions" lives as the `take_payments` boolean on
+> the scanner role's `permissions` jsonb (Cycle 11 + 12 surface). No DB migration needed —
+> Cycle 13a builds against the 6-role enum. SQL `biz_role_rank()` (migration
+> `20260502100000_b1_business_schema_rls.sql:11-30`) is the source of truth; mobile
+> mirrors verbatim per I-32.
+
 ### 11.2 Access Restrictions
 
 - Restrict access by brand

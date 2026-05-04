@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 
 const SIZE_CLASSES = {
@@ -15,52 +15,60 @@ export function Modal({ open, onClose, title, size = "md", destructive = false, 
   const modalRef = useRef(null);
   const previousFocusRef = useRef(null);
 
-  const handleEscape = useCallback(
-    (e) => {
-      if (e.key === "Escape") {
-        // Don't close if user is typing in an input/textarea/select
-        const tag = document.activeElement?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-          document.activeElement.blur();
-          return;
-        }
-        onClose();
-      }
-    },
-    [onClose]
-  );
-
-  const handleTabKey = useCallback((e) => {
-    if (e.key !== "Tab" || !modalRef.current) return;
-    const focusable = modalRef.current.querySelectorAll(FOCUSABLE_SELECTOR);
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (e.shiftKey) {
-      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
-    } else {
-      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
-    }
-  }, []);
+  // Keep the latest onClose in a ref so the keydown effect only depends on
+  // `open`. Prior versions depended on `handleEscape` (which depended on
+  // onClose), so any parent re-render that recreated an inline onClose prop
+  // re-fired the effect — its cleanup re-focused the launcher button, which
+  // stole focus from any input the user was typing in. (ORCH-0708 surfaced
+  // this when typing in the LabelEditor textareas: only 1 char per refresh.)
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
-    if (open) {
-      previousFocusRef.current = document.activeElement;
-      document.addEventListener("keydown", handleEscape);
-      document.addEventListener("keydown", handleTabKey);
-      document.body.style.overflow = "hidden";
-      requestAnimationFrame(() => {
-        // Focus the modal container, not the first button (which is the X close button)
-        modalRef.current?.focus();
-      });
-    }
+    if (!open) return undefined;
+
+    previousFocusRef.current = document.activeElement;
+    document.body.style.overflow = "hidden";
+
+    const handleEscape = (e) => {
+      if (e.key !== "Escape") return;
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+        document.activeElement.blur();
+        return;
+      }
+      onCloseRef.current?.();
+    };
+
+    const handleTabKey = (e) => {
+      if (e.key !== "Tab" || !modalRef.current) return;
+      const focusable = modalRef.current.querySelectorAll(FOCUSABLE_SELECTOR);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    document.addEventListener("keydown", handleTabKey);
+    requestAnimationFrame(() => {
+      // Focus the modal container, not the first button (which is the X close button)
+      modalRef.current?.focus();
+    });
+
     return () => {
       document.removeEventListener("keydown", handleEscape);
       document.removeEventListener("keydown", handleTabKey);
       document.body.style.overflow = "";
       if (previousFocusRef.current?.focus) previousFocusRef.current.focus();
     };
-  }, [open, handleEscape, handleTabKey]);
+  }, [open]);
 
   if (!open) return null;
 

@@ -27,14 +27,11 @@
  * @-handles or bare slugs) so the public profile (Cycle 3+) can call
  * `Linking.openURL` directly with zero per-platform URL reconstruction.
  *
- * Cycle 2 J-A9 (schema v7): each brand carries `members[]` + `pendingInvitations[]`
- * with realistic team coverage so the team UI renders meaningful content
- * immediately after seeding. Coverage spread for visual variety:
- *   - Lonely Moth: 3 active (owner + admin + event_manager) + 1 pending
- *   - The Long Lunch: 2 active (owner + admin) + 0 pending
- *   - Sunday Languor: 2 active (owner + finance_manager) + 1 pending (with note)
- *   - Hidden Rooms: 1 active (owner only — empty-state demo) + 0 pending
- * Last-active timestamps are stub for J-A9; real session tracking lands B1.
+ * Cycle 13a (DEC-092): J-A9 `members[]` + `pendingInvitations[]` stub seeds
+ * REMOVED. Brand-team state authority is now `src/store/brandTeamStore.ts`
+ * which starts EMPTY (per Const #9 — no fabricated data) and accumulates real
+ * invitations via the operator's invite-flow UI. Solo-operator default is
+ * synthesized at read sites by `useCurrentBrandRole` (account_owner fallback).
  *
  * Cycle 2 J-A10/J-A11 (schema v8): each brand carries stripeStatus + payouts
  * + refunds + balances + lastPayoutAt to drive the payments dashboard's 4
@@ -80,44 +77,6 @@ export const STUB_BRANDS: Brand[] = [
       custom: [],
     },
     displayAttendeeCount: true,
-    members: [
-      {
-        id: "m_lm_sara",
-        name: "Sara Marlowe",
-        email: "sara@lonelymoth.events",
-        role: "owner",
-        status: "active",
-        joinedAt: "2024-03-12T09:00:00Z",
-        lastActiveAt: "2026-04-29T14:20:00Z",
-      },
-      {
-        id: "m_lm_marcus",
-        name: "Marcus Chen",
-        email: "marcus@lonelymoth.events",
-        role: "brand_admin",
-        status: "active",
-        joinedAt: "2025-07-01T10:00:00Z",
-        lastActiveAt: "2026-04-29T11:45:00Z",
-      },
-      {
-        id: "m_lm_liz",
-        name: "Liz Okafor",
-        email: "liz.okafor@gmail.com",
-        role: "event_manager",
-        status: "active",
-        joinedAt: "2026-01-15T13:00:00Z",
-        lastActiveAt: "2026-04-28T18:00:00Z",
-      },
-    ],
-    pendingInvitations: [
-      {
-        id: "i_lm_joel",
-        email: "joel.parker@gmail.com",
-        role: "scanner",
-        invitedAt: "2026-04-27T10:00:00Z",
-        status: "pending",
-      },
-    ],
     stripeStatus: "not_connected",
     availableBalanceGbp: 0,
     pendingBalanceGbp: 0,
@@ -147,27 +106,6 @@ export const STUB_BRANDS: Brand[] = [
       custom: [],
     },
     displayAttendeeCount: true,
-    members: [
-      {
-        id: "m_tll_ada",
-        name: "Ada Kwame",
-        email: "ada@thelonglunch.co.uk",
-        role: "owner",
-        status: "active",
-        joinedAt: "2024-08-20T09:00:00Z",
-        lastActiveAt: "2026-04-29T08:30:00Z",
-      },
-      {
-        id: "m_tll_liam",
-        name: "Liam Reeves",
-        email: "liam@thelonglunch.co.uk",
-        role: "brand_admin",
-        status: "active",
-        joinedAt: "2024-09-01T09:00:00Z",
-        lastActiveAt: "2026-04-29T07:15:00Z",
-      },
-    ],
-    pendingInvitations: [],
     stripeStatus: "onboarding",
     availableBalanceGbp: 0,
     pendingBalanceGbp: 0,
@@ -206,36 +144,6 @@ export const STUB_BRANDS: Brand[] = [
       custom: [],
     },
     displayAttendeeCount: true,
-    members: [
-      {
-        id: "m_sl_mira",
-        name: "Mira Patel",
-        email: "mira@sundaylanguor.com",
-        role: "owner",
-        status: "active",
-        joinedAt: "2023-05-10T09:00:00Z",
-        lastActiveAt: "2026-04-29T16:00:00Z",
-      },
-      {
-        id: "m_sl_tom",
-        name: "Tom Reilly",
-        email: "tom@sundaylanguor.com",
-        role: "finance_manager",
-        status: "active",
-        joinedAt: "2025-02-22T11:00:00Z",
-        lastActiveAt: "2026-04-26T10:00:00Z",
-      },
-    ],
-    pendingInvitations: [
-      {
-        id: "i_sl_sam",
-        email: "sam.morgan@hotmail.com",
-        role: "marketing_manager",
-        invitedAt: "2026-04-25T14:00:00Z",
-        note: "Help us with the May launch newsletter.",
-        status: "pending",
-      },
-    ],
     stripeStatus: "active",
     availableBalanceGbp: 156.20,
     pendingBalanceGbp: 45.60,
@@ -308,18 +216,6 @@ export const STUB_BRANDS: Brand[] = [
       custom: [],
     },
     displayAttendeeCount: true,
-    members: [
-      {
-        id: "m_hr_maya",
-        name: "Maya Okonkwo",
-        email: "maya@hidden-rooms.co.uk",
-        role: "owner",
-        status: "active",
-        joinedAt: "2024-11-05T09:00:00Z",
-        lastActiveAt: "2026-04-28T20:00:00Z",
-      },
-    ],
-    pendingInvitations: [],
     stripeStatus: "restricted",
     availableBalanceGbp: 0,
     pendingBalanceGbp: 0,
