@@ -200,7 +200,7 @@ serve(async (req: Request) => {
 
     if (!body.action) {
       return json({
-        error: "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'prepare_all' | 'run_trial' | 'run_status' | 'cancel_trial'",
+        error: "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial'",
       }, 400);
     }
 
@@ -227,10 +227,10 @@ serve(async (req: Request) => {
         return await handleFetchReviews(supabaseAdmin, body, serperKey);
       case "compose_collage":
         return await handleComposeCollage(supabaseAdmin, body);
-      case "prepare_all":
-        return await handlePrepareAll(supabaseAdmin, body, serperKey);
-      case "run_trial":
-        return await handleRunTrial(supabaseAdmin, body, anthropicKey, user.id);
+      case "start_run":
+        return await handleStartRun(supabaseAdmin, body, user.id);
+      case "run_trial_for_place":
+        return await handleRunTrialForPlace(supabaseAdmin, body, anthropicKey);
       case "run_status":
         return await handleRunStatus(supabaseAdmin, body);
       case "cancel_trial":
@@ -504,54 +504,17 @@ async function handleComposeCollage(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// prepare_all — fetch_reviews + compose_collage for every committed anchor
+// start_run — create run_id + pre-insert pending rows; returns immediately.
+// Browser then loops calling run_trial_for_place per anchor.
+//
+// IMPORTANT: this replaces the old "run_trial" bulk handler. Bulk processing
+// of 32 places in one edge function invocation hit the Supabase 150s wall-time
+// limit. Per-place architecture mirrors PhotoScorerPage's batch loop pattern.
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function handlePrepareAll(
+async function handleStartRun(
   db: SupabaseClient,
-  body: Record<string, unknown>,
-  serperKey: string,
-): Promise<Response> {
-  const force = !!body.force_refresh;
-  const { data: anchors, error: anchErr } = await db
-    .from("signal_anchors")
-    .select("place_pool_id, signal_id")
-    .not("committed_at", "is", null);
-  if (anchErr) return json({ error: anchErr.message }, 500);
-
-  const places = (anchors || []).map((a) => ({ place_pool_id: a.place_pool_id, signal_id: a.signal_id }));
-  if (places.length === 0) return json({ status: "nothing_to_do", reason: "No committed anchors yet." });
-
-  const results: Array<Record<string, unknown>> = [];
-  for (const p of places) {
-    // Reviews
-    const reviewsRes = await handleFetchReviews(db, { place_pool_id: p.place_pool_id, force_refresh: force }, serperKey);
-    const reviewsBody = await reviewsRes.json();
-    // Collage
-    const collageRes = await handleComposeCollage(db, { place_pool_id: p.place_pool_id, force });
-    const collageBody = await collageRes.json();
-    results.push({
-      place_pool_id: p.place_pool_id,
-      signal_id: p.signal_id,
-      reviews: reviewsBody,
-      collage: collageBody,
-    });
-  }
-
-  return json({
-    totalPlaces: places.length,
-    results,
-  });
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// run_trial — Q1 + Q2 Claude calls per place
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function handleRunTrial(
-  db: SupabaseClient,
-  body: Record<string, unknown>,
-  anthropicKey: string,
+  _body: Record<string, unknown>,
   userId: string,
 ): Promise<Response> {
   const { data: anchors, error: anchErr } = await db
@@ -564,7 +527,7 @@ async function handleRunTrial(
     return json({ error: "no committed anchors — pick anchors first" }, 400);
   }
 
-  // Cost guard
+  // Cost guard (estimate only; actual usage tracked per-place)
   const estCost = anchors.length * 0.045;
   if (estCost > COST_GUARD_USD) {
     return json({
@@ -573,9 +536,8 @@ async function handleRunTrial(
   }
 
   const runId = crypto.randomUUID();
-  console.log(`[place-intel-trial:run_trial] starting run ${runId} for ${anchors.length} places`);
+  console.log(`[place-intel-trial:start_run] creating run ${runId} for ${anchors.length} places (userId=${userId})`);
 
-  // Pre-create pending rows so the UI sees them
   const pendingRows = anchors.map((a) => ({
     run_id: runId,
     place_pool_id: a.place_pool_id,
@@ -591,51 +553,63 @@ async function handleRunTrial(
     .insert(pendingRows);
   if (insertErr) return json({ error: insertErr.message }, 500);
 
-  // Process each place sequentially (rate-limit safety)
-  let placeIdx = 0;
-  let succeeded = 0;
-  let failed = 0;
-  let totalCost = 0;
-
-  for (const a of anchors) {
-    if (placeIdx > 0) {
-      await new Promise((r) => setTimeout(r, PER_PLACE_THROTTLE_MS));
-    }
-    placeIdx++;
-
-    try {
-      const cost = await processOnePlace({
-        db,
-        anthropicKey,
-        runId,
-        anchor: a,
-        userId,
-      });
-      totalCost += cost;
-      succeeded++;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[place-intel-trial:run_trial] place ${a.place_pool_id} failed:`, msg);
-      await db
-        .from("place_intelligence_trial_runs")
-        .update({
-          status: "failed",
-          error_message: msg.slice(0, 500),
-          completed_at: new Date().toISOString(),
-        })
-        .eq("run_id", runId)
-        .eq("place_pool_id", a.place_pool_id);
-      failed++;
-    }
-  }
-
   return json({
     runId,
     totalPlaces: anchors.length,
-    succeeded,
-    failed,
-    totalCostUsd: +totalCost.toFixed(6),
+    estimatedCostUsd: +estCost.toFixed(4),
+    anchors: anchors.map((a) => ({
+      place_pool_id: a.place_pool_id,
+      signal_id: a.signal_id,
+      anchor_index: a.anchor_index,
+    })),
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// run_trial_for_place — Q1 + Q2 Claude calls for ONE place. Browser loops
+// this per anchor with throttle between calls.
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function handleRunTrialForPlace(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+  anthropicKey: string,
+): Promise<Response> {
+  const runId = body.run_id as string;
+  const placePoolId = body.place_pool_id as string;
+  const signalId = body.signal_id as string;
+  const anchorIndex = body.anchor_index as number;
+
+  if (!runId || !placePoolId || !signalId || anchorIndex == null) {
+    return json({ error: "run_id, place_pool_id, signal_id, anchor_index all required" }, 400);
+  }
+
+  try {
+    const cost = await processOnePlace({
+      db,
+      anthropicKey,
+      runId,
+      anchor: { place_pool_id: placePoolId, signal_id: signalId, anchor_index: anchorIndex },
+    });
+    return json({
+      ok: true,
+      place_pool_id: placePoolId,
+      cost_usd: +cost.toFixed(6),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[place-intel-trial:run_trial_for_place] ${placePoolId} failed:`, msg);
+    await db
+      .from("place_intelligence_trial_runs")
+      .update({
+        status: "failed",
+        error_message: msg.slice(0, 500),
+        completed_at: new Date().toISOString(),
+      })
+      .eq("run_id", runId)
+      .eq("place_pool_id", placePoolId);
+    return json({ error: msg, place_pool_id: placePoolId }, 500);
+  }
 }
 
 interface AnchorRow {
@@ -649,7 +623,6 @@ async function processOnePlace(args: {
   anthropicKey: string;
   runId: string;
   anchor: AnchorRow;
-  userId: string;
 }): Promise<number> {
   const { db, anthropicKey, runId, anchor } = args;
 
@@ -669,7 +642,7 @@ async function processOnePlace(args: {
   if (ppErr || !pp) throw new Error(`place_pool fetch failed: ${ppErr?.message ?? "not found"}`);
 
   if (!pp.photo_collage_url) {
-    throw new Error("prerequisites_missing: photo_collage_url is null — call prepare_all first");
+    throw new Error("prerequisites_missing: photo_collage_url is null — fetch_reviews + compose_collage must run before run_trial_for_place");
   }
 
   // Load reviews

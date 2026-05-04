@@ -156,6 +156,12 @@ function PlaceResultCard({ row }) {
 
 // ── Tab ─────────────────────────────────────────────────────────────────────
 
+// Browser-side throttle between Q1 and Q2 of a single place is enforced by
+// the edge function (30s sleep between calls). Browser throttle here is
+// between PLACES — Anthropic tier-1 rate limit is 50K input tokens/min and
+// each place sends ~25K (collage + reviews). Two places per minute max.
+const PER_PLACE_BROWSER_THROTTLE_MS = 9_000;
+
 export function TrialResultsTab() {
   const { addToast } = useToast();
   const [committedCount, setCommittedCount] = useState(0);
@@ -163,7 +169,10 @@ export function TrialResultsTab() {
   const [loading, setLoading] = useState(true);
   const [preparing, setPreparing] = useState(false);
   const [running, setRunning] = useState(false);
-  const [activeRunId, setActiveRunId] = useState(null);
+
+  // Live progress for the currently-running prepare or trial loop
+  const [progress, setProgress] = useState(null); // { phase, current, total, succeeded, failed, costSoFar }
+  const stopRef = useState({ stop: false })[0];
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -205,62 +214,148 @@ export function TrialResultsTab() {
     return bDate.localeCompare(aDate);
   });
 
+  async function loadCommittedAnchors() {
+    const { data, error } = await supabase
+      .from("signal_anchors")
+      .select("place_pool_id, signal_id, anchor_index, place:place_pool!place_pool_id(name)")
+      .not("committed_at", "is", null)
+      .order("signal_id");
+    if (error) throw error;
+    return data || [];
+  }
+
   async function handlePrepareAll() {
     if (committedCount === 0) {
       addToast({ variant: "warning", title: "No anchors committed yet" });
       return;
     }
     setPreparing(true);
+    stopRef.stop = false;
+
+    let succeeded = 0;
+    let failed = 0;
     try {
-      const { data, error } = await invokeWithRefresh("run-place-intelligence-trial", {
-        body: { action: "prepare_all", force_refresh: false },
-      });
-      if (error) {
-        const msg = await extractFunctionError(error, "prepare_all failed");
-        throw new Error(msg);
+      const anchors = await loadCommittedAnchors();
+      setProgress({ phase: "prepare", current: 0, total: anchors.length, succeeded: 0, failed: 0 });
+
+      for (let i = 0; i < anchors.length; i++) {
+        if (stopRef.stop) break;
+        const a = anchors[i];
+        setProgress((p) => ({ ...p, current: i + 1, currentPlace: a.place?.name || a.place_pool_id }));
+
+        try {
+          // Fetch reviews
+          const { error: rErr } = await invokeWithRefresh("run-place-intelligence-trial", {
+            body: { action: "fetch_reviews", place_pool_id: a.place_pool_id, force_refresh: false },
+          });
+          if (rErr) throw new Error(await extractFunctionError(rErr, "fetch_reviews failed"));
+
+          // Compose collage
+          const { error: cErr } = await invokeWithRefresh("run-place-intelligence-trial", {
+            body: { action: "compose_collage", place_pool_id: a.place_pool_id, force: false },
+          });
+          if (cErr) throw new Error(await extractFunctionError(cErr, "compose_collage failed"));
+
+          succeeded++;
+        } catch (err) {
+          console.error(`[TrialResultsTab] prepare ${a.place_pool_id} failed:`, err);
+          failed++;
+        }
+        setProgress((p) => ({ ...p, succeeded, failed }));
       }
       addToast({
-        variant: "success",
-        title: `Prepared ${data.totalPlaces} places`,
-        description: "Reviews + collages ready. Click Run trial.",
+        variant: succeeded === anchors.length ? "success" : "warning",
+        title: `Prepared ${succeeded} of ${anchors.length} places`,
+        description: failed > 0 ? `${failed} failed — see console for details. Some places may have no photos or unreachable URLs.` : "Reviews + collages ready. Click Run trial.",
       });
     } catch (err) {
-      console.error("[TrialResultsTab] prepare_all failed:", err);
+      console.error("[TrialResultsTab] prepare loop failed:", err);
       addToast({ variant: "error", title: "Prepare failed", description: err.message });
     } finally {
       setPreparing(false);
+      setProgress(null);
     }
   }
 
   async function handleRunTrial() {
     if (!window.confirm(
-      `About to run trial for ${committedCount} places. Estimated cost ~$${(committedCount * 0.045).toFixed(2)}, ~${Math.ceil(committedCount * 1.2)} minute wall time. Continue?`
+      `About to run trial for ${committedCount} places. Estimated cost ~$${(committedCount * 0.045).toFixed(2)}, ~${Math.ceil(committedCount * 1.2)} minute wall time. Don't refresh the page during the run. Continue?`
     )) {
       return;
     }
 
     setRunning(true);
+    stopRef.stop = false;
+
     try {
-      const { data, error } = await invokeWithRefresh("run-place-intelligence-trial", {
-        body: { action: "run_trial" },
+      // Step 1: create run_id + pending rows
+      const { data: created, error: startErr } = await invokeWithRefresh("run-place-intelligence-trial", {
+        body: { action: "start_run" },
       });
-      if (error) {
-        const msg = await extractFunctionError(error, "run_trial failed");
-        throw new Error(msg);
-      }
-      setActiveRunId(data.runId);
+      if (startErr) throw new Error(await extractFunctionError(startErr, "start_run failed"));
+      const runId = created?.runId;
+      const anchors = created?.anchors || [];
+      if (!runId || anchors.length === 0) throw new Error("start_run returned no anchors");
+
       addToast({
-        variant: "success",
+        variant: "info",
+        title: `Trial started`,
+        description: `${anchors.length} places · est ${formatCost(created.estimatedCostUsd)} · run ${runId.slice(0, 8)}…`,
+      });
+
+      let succeeded = 0;
+      let failed = 0;
+      let totalCost = 0;
+      setProgress({ phase: "trial", current: 0, total: anchors.length, succeeded: 0, failed: 0, runId });
+
+      for (let i = 0; i < anchors.length; i++) {
+        if (stopRef.stop) break;
+        const a = anchors[i];
+
+        // Throttle BEFORE each call (skip first)
+        if (i > 0) {
+          await new Promise((r) => setTimeout(r, PER_PLACE_BROWSER_THROTTLE_MS));
+        }
+        setProgress((p) => ({ ...p, current: i + 1, currentPlace: `${a.signal_id} #${a.anchor_index}` }));
+
+        try {
+          const { data: result, error: e } = await invokeWithRefresh("run-place-intelligence-trial", {
+            body: {
+              action: "run_trial_for_place",
+              run_id: runId,
+              place_pool_id: a.place_pool_id,
+              signal_id: a.signal_id,
+              anchor_index: a.anchor_index,
+            },
+          });
+          if (e) throw new Error(await extractFunctionError(e, "run_trial_for_place failed"));
+          totalCost += Number(result?.cost_usd || 0);
+          succeeded++;
+        } catch (err) {
+          console.error(`[TrialResultsTab] run_trial_for_place ${a.place_pool_id} failed:`, err);
+          failed++;
+        }
+        setProgress((p) => ({ ...p, succeeded, failed, costSoFar: totalCost }));
+      }
+
+      addToast({
+        variant: succeeded === anchors.length ? "success" : "warning",
         title: `Trial complete`,
-        description: `${data.succeeded} succeeded, ${data.failed} failed, cost ${formatCost(data.totalCostUsd)}`,
+        description: `${succeeded} succeeded · ${failed} failed · cost ${formatCost(totalCost)}`,
       });
       await refresh();
     } catch (err) {
-      console.error("[TrialResultsTab] run_trial failed:", err);
-      addToast({ variant: "error", title: "Run trial failed", description: err.message });
+      console.error("[TrialResultsTab] trial loop failed:", err);
+      addToast({ variant: "error", title: "Trial failed", description: err.message });
     } finally {
       setRunning(false);
+      setProgress(null);
     }
+  }
+
+  function handleCancel() {
+    stopRef.stop = true;
+    addToast({ variant: "info", title: "Cancelling…", description: "Will stop after the current place." });
   }
 
   const canRun = committedCount > 0 && !running && !preparing;
@@ -303,7 +398,39 @@ export function TrialResultsTab() {
           >
             2. Run trial ({committedCount} places)
           </Button>
+          {(preparing || running) && (
+            <Button variant="danger" size="sm" icon={Square} onClick={handleCancel}>
+              Cancel
+            </Button>
+          )}
         </div>
+
+        {progress && (
+          <div className="border border-[var(--gray-200)] rounded-lg p-3 space-y-2 bg-[var(--color-info-50)]">
+            <div className="flex items-baseline justify-between">
+              <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                {progress.phase === "prepare" ? "Preparing data" : "Running trial"}
+              </h4>
+              <span className="text-xs font-mono text-[var(--color-text-secondary)]">
+                {progress.current} / {progress.total}
+                {progress.currentPlace && <span className="ml-2 text-[var(--color-text-tertiary)]">· {progress.currentPlace}</span>}
+              </span>
+            </div>
+            <div className="h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[var(--color-brand-500)] transition-all duration-200"
+                style={{ width: `${Math.round((progress.current / progress.total) * 100)}%` }}
+              />
+            </div>
+            <div className="flex items-center gap-3 text-xs font-mono">
+              <span className="text-[var(--color-success-700)]">✓ {progress.succeeded || 0}</span>
+              <span className="text-[var(--color-error-700)]">✗ {progress.failed || 0}</span>
+              {progress.costSoFar != null && (
+                <span className="text-[var(--color-text-secondary)] ml-auto">cost so far: {formatCost(progress.costSoFar)}</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {loading && allRows.length === 0 && (
           <div className="flex items-center justify-center py-12"><Spinner size="md" /></div>
