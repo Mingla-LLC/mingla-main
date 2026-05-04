@@ -16,6 +16,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../services/supabase";
 import { ensureCreatorAccount } from "../services/creatorAccount";
+import { tryRecoverAccountIfDeleted } from "../hooks/useAccountDeletion";
 import { clearAllStores } from "../utils/clearAllStores";
 
 const webClientId =
@@ -59,6 +60,14 @@ type AuthContextValue = {
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signInWithApple: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  /**
+   * Cycle 14 — set to a value when account recovery just fired on sign-in
+   * (creator_accounts.deleted_at was non-null and got auto-cleared per
+   * D-CYCLE14-FOR-6 + I-35). Consumer (account.tsx) reads + clears via
+   * clearLastRecoveryEvent to show a one-time "Welcome back" toast.
+   */
+  lastRecoveryEvent: { recoveredAt: string } | null;
+  clearLastRecoveryEvent: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -67,6 +76,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  // Cycle 14 — D-CYCLE14-FOR-6 + I-35: recover-on-sign-in flag.
+  const [lastRecoveryEvent, setLastRecoveryEvent] = useState<{
+    recoveredAt: string;
+  } | null>(null);
+  const clearLastRecoveryEvent = useCallback((): void => {
+    setLastRecoveryEvent(null);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -86,6 +102,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(s?.user ?? null);
       if (s?.user) {
         await ensureCreatorAccount(s.user);
+        // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
+        // If creator_accounts.deleted_at is non-null, clear it and emit
+        // recovery event so account.tsx shows "Welcome back" toast.
+        const recovered = await tryRecoverAccountIfDeleted(s.user.id);
+        if (recovered && mounted) {
+          setLastRecoveryEvent({ recoveredAt: new Date().toISOString() });
+        }
       }
       setLoading(false);
     };
@@ -100,6 +123,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(s?.user ?? null);
       if (s?.user) {
         await ensureCreatorAccount(s.user);
+        // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
+        const recovered = await tryRecoverAccountIfDeleted(s.user.id);
+        if (recovered && mounted) {
+          setLastRecoveryEvent({ recoveredAt: new Date().toISOString() });
+        }
       } else if (_event === "SIGNED_OUT") {
         // Defensive Constitution #6 coverage — clears stores even when
         // signout happens server-side (token revoked, session expired)
@@ -333,8 +361,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithGoogle,
       signInWithApple,
       signOut,
+      lastRecoveryEvent,
+      clearLastRecoveryEvent,
     }),
-    [user, session, loading, signInWithGoogle, signInWithApple, signOut]
+    [
+      user,
+      session,
+      loading,
+      signInWithGoogle,
+      signInWithApple,
+      signOut,
+      lastRecoveryEvent,
+      clearLastRecoveryEvent,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

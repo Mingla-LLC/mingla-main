@@ -1643,3 +1643,25 @@ Other shapes (allow-list / parameterized restrictions / `event_scope` arrays) ar
 
 **Test that catches a regression:** Migration grep — any future `supabase/migrations/*.sql` file containing `CREATE TABLE` and `permissions_matrix` should fail review unless paired with a DEC override entry.
 
+---
+
+### I-35 `creator_accounts.deleted_at` is the soft-delete marker (mingla-business — Cycle 14)
+
+**Statement:** Account soft-deletion semantics are encoded in `public.creator_accounts.deleted_at` (timestamptz, nullable). Mobile UPDATEs the column via existing self-write UPDATE RLS policy (origin migration `20260404000001_creator_accounts.sql` lines 42-50). Recovery-on-sign-in auto-clears the marker if the user signs in within the 30-day window. After the 30-day window, B-cycle cron service-role flips `account_deletion_requests.status = 'completed'` + calls `auth.admin.deleteUser` → CASCADE through ~80 tables (mirrors consumer-app `delete-user` edge fn pattern at `supabase/functions/delete-user/index.ts`).
+
+**Rules:**
+- Mobile MAY UPDATE `deleted_at` to `now()` (request soft-delete) OR `null` (recovery).
+- Mobile MUST NOT UPDATE `deleted_at` to any other value (no future-dated soft-deletes; no past-dated retroactive marks).
+- Mobile MUST NOT INSERT into `account_deletion_requests` directly — that table is service-role-only (B-cycle edge fn writes audit rows; PR #59 RLS line 70 confirms).
+- Auto-recovery fires in `AuthContext` bootstrap + onAuthStateChange after `ensureCreatorAccount(user)` — mobile does NOT prompt the user explicitly; signing in IS the recovery action (per D-CYCLE14-FOR-6 lock).
+
+**Why:** GDPR R4 critical-path mandates a 30-day recovery window. The schema-level marker pattern (instead of a separate `is_deleted` boolean) lets B-cycle cron compute "elapsed days" trivially via `now() - deleted_at`. Recovery-as-sign-in matches industry standard (Apple ID, Google Account, Stripe).
+
+**Established by:** Cycle 14 SPEC §4.9 + DEC-096 D-14-12/13/14 (operator-locked 2026-05-04).
+
+**Enforcement:** Convention. Optional CI gate: grep mobile codebase for `deleted_at:` and verify the only RHS values are `new Date().toISOString()` OR `null`. Future tightening: B-cycle adds DB CHECK constraint `(deleted_at IS NULL OR deleted_at <= now())`.
+
+**EXIT CONDITION:** None — permanent invariant. The 30-day window is a permanent product semantics; B-cycle hard-delete cron honors it.
+
+**Test that catches a regression:** grep `\.update\({ deleted_at:` in mobile code returns ONLY `new Date().toISOString()` and `null` literals. If any future code writes a different value, the invariant is violated.
+
