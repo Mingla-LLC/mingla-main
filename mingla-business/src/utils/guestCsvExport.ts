@@ -5,7 +5,15 @@
  * Web uses Blob + anchor-download. Filename format:
  * `{event-slug}-guest-list-{YYYY-MM-DD}.csv`. RFC 4180 quoting.
  *
- * Per Cycle 10 SPEC §4.8 + §5/J-G6.
+ * Cycle 12: extended with `kind: "door"` rows; door-only export wrapper.
+ *
+ * Cycle 13 (DEC-095 D-13-8): extended `serializeGuestsToCsv` with
+ * Gross/Refunded/Net columns at positions 12-14 + optional summary stanza
+ * preamble (5 lines starting with `#`) + new `exportReconciliationCsv`
+ * wrapper for J-R3 reconciliation export. Native CSV degradation
+ * (D-CYCLE10-IMPL-1 — Share.share text-content) persists.
+ *
+ * Per Cycle 10 SPEC §4.8 + Cycle 12 SPEC §4.20 + Cycle 13 SPEC §4.2.3.
  */
 
 import { Platform, Share } from "react-native";
@@ -17,6 +25,7 @@ import type {
   DoorPaymentMethod,
   DoorSaleRecord,
 } from "../store/doorSalesStore";
+import type { ReconciliationSummary } from "./reconciliation";
 
 // Re-typed locally to avoid importing the screen-level GuestRow shape
 // here (keeps the utility decoupled from the J-G1 implementation).
@@ -98,12 +107,36 @@ const doorStatusLabel = (status: DoorSaleRecord["status"]): string => {
   return _exhaust;
 };
 
+/**
+ * Cycle 13 (DEC-095 D-13-8): summary stanza shape — 5 lines of `#`-prefixed
+ * comment metadata prepended to the CSV when reconciliation export is fired.
+ * Spreadsheet apps typically skip `#`-prefixed lines (RFC 4180 leaves comment
+ * conventions to consumers; Excel + Google Sheets both treat them as data
+ * unless explicitly skipped — operator may need to filter row 1-5 manually
+ * during import). Acceptable: the data still imports; comment lines are
+ * discarded once.
+ */
+export interface ReconciliationCsvSummary {
+  eventName: string;
+  status: string;
+  totalLiveTickets: number;
+  grossRevenue: number;
+  totalRefunded: number;
+  netRevenue: number;
+  uniqueScannedTickets: number;
+}
+
+const formatGbpForCsv = (n: number): string => n.toFixed(2);
+
 export const serializeGuestsToCsv = (
   rows: ExportGuestRow[],
+  summary?: ReconciliationCsvSummary,
 ): string => {
   // Cycle 12 — added "Kind" column at front (ONLINE | COMP | DOOR) +
   // "Payment method" column (online sales: card/apple/google; door sales:
   // cash/card_reader/nfc/manual; comps: blank).
+  // Cycle 13 — added "Gross", "Refunded", "Net" columns at positions 12-14
+  // for accountant-friendly per-row refund attribution (DEC-095 D-13-8).
   const headers = [
     "Kind",
     "Name",
@@ -116,12 +149,32 @@ export const serializeGuestsToCsv = (
     "Order/Sale ID",
     "Date",
     "Notes",
+    "Gross",
+    "Refunded",
+    "Net",
   ];
-  const lines: string[] = [headers.join(",")];
+
+  // Cycle 13 — optional summary stanza (5 lines of `#`-prefixed metadata)
+  // prepended to the CSV when reconciliation export is fired.
+  const stanzaLines: string[] = [];
+  if (summary !== undefined) {
+    stanzaLines.push(`# ${summary.eventName} — ${summary.status}`);
+    stanzaLines.push(
+      `# Tickets: ${summary.totalLiveTickets} live · ${summary.uniqueScannedTickets} scanned`,
+    );
+    stanzaLines.push(`# Revenue: gross ${formatGbpForCsv(summary.grossRevenue)} GBP`);
+    stanzaLines.push(`# Refunded: ${formatGbpForCsv(summary.totalRefunded)} GBP`);
+    stanzaLines.push(`# Net: ${formatGbpForCsv(summary.netRevenue)} GBP`);
+  }
+
+  const lines: string[] = [...stanzaLines, headers.join(",")];
 
   for (const row of rows) {
     if (row.kind === "order") {
       const o = row.order;
+      const grossPaid = o.totalGbpAtPurchase;
+      const refunded = o.refundedAmountGbp;
+      const net = Math.max(0, grossPaid - refunded);
       const fields = [
         "ONLINE",
         o.buyer.name,
@@ -134,6 +187,9 @@ export const serializeGuestsToCsv = (
         o.id,
         formatYmd(o.paidAt),
         "",
+        formatGbpForCsv(grossPaid),
+        formatGbpForCsv(refunded),
+        formatGbpForCsv(net),
       ];
       lines.push(fields.map(csvEscape).join(","));
     } else if (row.kind === "comp") {
@@ -150,12 +206,18 @@ export const serializeGuestsToCsv = (
         c.id,
         formatYmd(c.addedAt),
         c.notes,
+        "0.00",
+        "0.00",
+        "0.00",
       ];
       lines.push(fields.map(csvEscape).join(","));
     } else {
       // Cycle 12 — door sale row.
       const s = row.sale;
       const buyerName = s.buyerName.length > 0 ? s.buyerName : "Walk-up";
+      const grossPaid = s.totalGbpAtSale;
+      const refunded = s.refundedAmountGbp;
+      const net = Math.max(0, grossPaid - refunded);
       const fields = [
         "DOOR",
         buyerName,
@@ -168,6 +230,9 @@ export const serializeGuestsToCsv = (
         s.id,
         formatYmd(s.recordedAt),
         s.notes,
+        formatGbpForCsv(grossPaid),
+        formatGbpForCsv(refunded),
+        formatGbpForCsv(net),
       ];
       lines.push(fields.map(csvEscape).join(","));
     }
@@ -257,6 +322,83 @@ export const exportDoorSalesCsv = async (
   }));
   const csv = serializeGuestsToCsv(rows);
   const filename = `${args.event.eventSlug}-door-sales-${formatYmdToday()}.csv`;
+  if (Platform.OS === "web") {
+    downloadCsvWeb(csv, filename);
+    return;
+  }
+  await downloadCsvNative(csv, filename);
+};
+
+// ---- Cycle 13 — cross-source reconciliation export (J-R3) -----------
+
+export interface ExportReconciliationCsvArgs {
+  event: LiveEvent;
+  /** Pre-filtered (eventId-scoped) at the route layer. */
+  orders: OrderRecord[];
+  doorSales: DoorSaleRecord[];
+  comps: CompGuestEntry[];
+  /** ReconciliationSummary from computeReconciliation; populates the 5-line summary stanza prefix. */
+  summary: ReconciliationSummary;
+}
+
+/**
+ * Cycle 13 J-R3 reconciliation export (DEC-095 D-13-7 + D-13-8 + D-13-9).
+ * - Joins orders + door sales + comps into a single newest-first ledger
+ * - Prepends 5-line summary stanza (event name + status + tickets + revenue + refunded + net)
+ * - 14-column row shape (Kind/Name/Email/Phone/Ticket type/Quantity/Status/Payment method/ID/Date/Notes/Gross/Refunded/Net)
+ * - Filename `{slug}-reconciliation-{YYYY-MM-DD}.csv`
+ * - Web: Blob + anchor-download. Native: Share.share text content (TRANSITIONAL D-CYCLE10-IMPL-1).
+ *
+ * PDF DEFERRED to B-cycle email-attachment-via-Resend per D-13-7 (no expo-print dep).
+ */
+export const exportReconciliationCsv = async (
+  args: ExportReconciliationCsvArgs,
+): Promise<void> => {
+  const rows: ExportGuestRow[] = [
+    ...args.orders.map(
+      (o): ExportGuestRow => ({
+        kind: "order",
+        id: o.id,
+        order: o,
+        sortKey: o.paidAt,
+      }),
+    ),
+    ...args.doorSales.map(
+      (s): ExportGuestRow => ({
+        kind: "door",
+        id: s.id,
+        sale: s,
+        sortKey: s.recordedAt,
+      }),
+    ),
+    ...args.comps.map(
+      (c): ExportGuestRow => ({
+        kind: "comp",
+        id: c.id,
+        comp: c,
+        sortKey: c.addedAt,
+      }),
+    ),
+  ];
+  // Newest-first sort across all 3 kinds for consistent reading
+  rows.sort((a, b) =>
+    a.sortKey > b.sortKey ? -1 : a.sortKey < b.sortKey ? 1 : 0,
+  );
+
+  const stanza: ReconciliationCsvSummary = {
+    eventName: args.event.name,
+    status: args.summary.headlineCopy,
+    totalLiveTickets: args.summary.totalLiveTickets,
+    grossRevenue: args.summary.grossRevenue,
+    totalRefunded: args.summary.totalRefunded,
+    // grossRevenue is already net of refunds (live amount); we surface it again
+    // here under "Net" so the 5-line preamble reads cleanly to an accountant.
+    netRevenue: args.summary.grossRevenue,
+    uniqueScannedTickets: args.summary.uniqueScannedTickets,
+  };
+
+  const csv = serializeGuestsToCsv(rows, stanza);
+  const filename = `${args.event.eventSlug}-reconciliation-${formatYmdToday()}.csv`;
   if (Platform.OS === "web") {
     downloadCsvWeb(csv, filename);
     return;

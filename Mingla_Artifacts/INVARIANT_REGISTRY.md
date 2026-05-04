@@ -1593,6 +1593,8 @@ grep -E "WHEN .(scanner|marketing_manager|finance_manager|event_manager|brand_ad
 
 **Test that catches a regression:** T-34 SQL parity grep — values disagree → CI fails.
 
+**Cycle 13 amendment (2026-05-04 / DEC-095):** NEW `MIN_RANK.VIEW_RECONCILIATION = finance_manager (30)` declared client-side (D-13-3). **Forward-compat note:** because Cycle 13 reconciliation is reads-only over local Zustand stores (no server reads), there is NO server RLS counterpart yet — the gate is mobile-UX only. When B-cycle ships server-side reconciliation RPC (e.g., `compute_event_reconciliation` SECURITY DEFINER wrapper backed by `biz_is_finance_manager_plus_for_caller` or equivalent), the RLS policy MUST mirror the finance_manager+ rank gate to preserve I-32. Until then, the mobile gate is the sole enforcement point for VIEW_RECONCILIATION (acceptable since the data being gated is already operator-side and reads-only over local persisted state — sub-rank operator hitting `/event/{id}/reconciliation` directly via deep-link sees a friendly NotAuthorizedShell, never a 404). Established by Cycle 13 SPEC §4.4 + DEC-095.
+
 ---
 
 ### I-33 `permissions_override` jsonb shape MUST be deny-list (mingla-business — Cycle 13a/13b — ACTIVE post-Cycle-13b CLOSE)

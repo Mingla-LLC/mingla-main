@@ -19,6 +19,10 @@ export const MIN_RANK = {
   EDIT_TICKET_PRICE: BRAND_ROLE_RANK.finance_manager, // 30
   REFUND_ORDER: BRAND_ROLE_RANK.finance_manager, // 30
   REFUND_DOOR_SALE: BRAND_ROLE_RANK.finance_manager, // 30
+  // Cycle 13 — read-only reconciliation surface (D-13-3 per DEC-095).
+  // Forward-compat: when B-cycle wires server-side reconciliation RPC, the
+  // RLS policy MUST mirror finance_manager+ rank gate to preserve I-32.
+  VIEW_RECONCILIATION: BRAND_ROLE_RANK.finance_manager, // 30
   ADD_COMP_GUEST: BRAND_ROLE_RANK.event_manager, // 40
   MANAGE_SCANNERS: BRAND_ROLE_RANK.event_manager, // 40
   CREATE_EVENT: BRAND_ROLE_RANK.event_manager, // 40

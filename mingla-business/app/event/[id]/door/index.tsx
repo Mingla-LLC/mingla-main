@@ -48,9 +48,12 @@ import { exportDoorSalesCsv } from "../../../../src/utils/guestCsvExport";
 
 import { DoorSaleNewSheet } from "../../../../src/components/door/DoorSaleNewSheet";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
+import { Icon } from "../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
 import { Pill } from "../../../../src/components/ui/Pill";
 import { Toast } from "../../../../src/components/ui/Toast";
+import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../../../src/utils/permissionGates";
 
 // ---- Helpers --------------------------------------------------------
 
@@ -157,6 +160,15 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
       : null,
   );
 
+  // Cycle 13 — permission gate for the "View full reconciliation" polish CTA
+  // (D-CYCLE13-RECON-FOR-4). Same VIEW_RECONCILIATION rank used by the
+  // dedicated reconciliation route + Event Detail action grid tile.
+  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
+  const canViewReconciliation = canPerformAction(
+    currentRank,
+    "VIEW_RECONCILIATION",
+  );
+
   // Cycle 12 — raw entries + useMemo per selector pattern rule (SC-31 / T-38).
   const allEntries = useDoorSalesStore((s) => s.entries);
   const eventSales = useMemo<DoorSaleRecord[]>(() => {
@@ -246,6 +258,13 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   const handleNewSale = useCallback((): void => {
     setNewSheetOpen(true);
   }, []);
+
+  // Cycle 13 — D-CYCLE13-RECON-FOR-4 polish: navigate to full cross-source reconciliation.
+  const handleViewReconciliation = useCallback((): void => {
+    if (typeof eventId === "string") {
+      router.push(`/event/${eventId}/reconciliation` as never);
+    }
+  }, [router, eventId]);
 
   const handleNewSaleSuccess = useCallback(
     (sale: DoorSaleRecord): void => {
@@ -344,6 +363,26 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Cycle 13 — D-CYCLE13-RECON-FOR-4 polish: link to full cross-source
+            reconciliation report (gated finance_manager+ rank 30). */}
+        {canViewReconciliation ? (
+          <Pressable
+            onPress={handleViewReconciliation}
+            accessibilityRole="button"
+            accessibilityLabel="View full reconciliation report"
+            style={({ pressed }) => [
+              styles.viewReconCta,
+              pressed && styles.viewReconCtaPressed,
+            ]}
+          >
+            <Icon name="chart" size={16} color={accent.warm} />
+            <Text style={styles.viewReconCtaLabel}>
+              View full reconciliation report
+            </Text>
+            <Icon name="chevR" size={16} color={textTokens.tertiary} />
+          </Pressable>
+        ) : null}
+
         {/* TESTING MODE banner — same copy as DoorSaleNewSheet (Const #7). */}
         <View style={styles.banner}>
           <Text style={styles.bannerTitle}>TESTING MODE</Text>
@@ -579,6 +618,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     gap: spacing.md,
+  },
+
+  // Cycle 13 — D-CYCLE13-RECON-FOR-4 polish CTA -----------------------
+  viewReconCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.sm + 2,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  viewReconCtaPressed: {
+    opacity: 0.7,
+  },
+  viewReconCtaLabel: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: textTokens.primary,
   },
 
   // Banner -----------------------------------------------------------
