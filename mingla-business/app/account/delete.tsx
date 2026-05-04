@@ -183,9 +183,11 @@ export default function DeleteAccountRoute(): React.ReactElement {
       showToast(
         "Account scheduled for deletion. Recover within 30 days by signing in again.",
       );
-      // 1.2s → signOut → navigate
-      setTimeout((): void => {
-        void signOut();
+      // 1.2s → signOut → navigate. Await signOut so SIGNED_OUT fires +
+      // AuthContext clears user before router.replace evaluates index gate
+      // (Cycle 14 v2 fix Bug A — operator smoke Step 6 race).
+      setTimeout(async (): Promise<void> => {
+        await signOut();
         router.replace("/" as never);
       }, SIGN_OUT_DELAY_MS);
     } catch (_err) {

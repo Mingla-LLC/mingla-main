@@ -124,9 +124,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (s?.user) {
         await ensureCreatorAccount(s.user);
         // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
-        const recovered = await tryRecoverAccountIfDeleted(s.user.id);
-        if (recovered && mounted) {
-          setLastRecoveryEvent({ recoveredAt: new Date().toISOString() });
+        // GATE to SIGNED_IN only — TOKEN_REFRESHED + USER_UPDATED + INITIAL_SESSION
+        // also fire with s.user, and would otherwise un-delete an account
+        // mid-delete-flow (race between requestDeletion's deleted_at=now() write
+        // and the next token-refresh tick). Bootstrap above handles cold-start
+        // recovery; only true SIGNED_IN events should trigger recovery from
+        // onAuthStateChange. Cycle 14 v2 fix Bug B.
+        if (_event === "SIGNED_IN") {
+          const recovered = await tryRecoverAccountIfDeleted(s.user.id);
+          if (recovered && mounted) {
+            setLastRecoveryEvent({ recoveredAt: new Date().toISOString() });
+          }
         }
       } else if (_event === "SIGNED_OUT") {
         // Defensive Constitution #6 coverage — clears stores even when

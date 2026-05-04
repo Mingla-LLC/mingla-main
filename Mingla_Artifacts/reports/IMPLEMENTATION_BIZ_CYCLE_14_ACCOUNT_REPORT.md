@@ -600,3 +600,129 @@ If any step fails → reply with "failed at step N: [symptom]" + I'll write rewo
 - Consumer-app delete-user (B-cycle architectural model — DO NOT modify): `supabase/functions/delete-user/index.ts`
 - INVARIANT_REGISTRY: I-19 / I-21 / I-25..31 (preserved) + I-32 / I-33 / I-34 (preserved) + **I-35 (NEW)**
 - Memory rules honored (§8): 11 entries
+
+---
+
+## 17 — Rework v2 (delete-flow signOut race + recovery over-firing)
+
+**Origin:** Operator device smoke 2026-05-04 — Step 6 FAIL. Operator completed full 4-step delete flow, success animation played, but landed on Home tab with session intact (NOT signed out). Two bugs surfaced — Bug A produced the symptom; Bug B is a latent silent-data-corruption sibling on the same surface.
+
+### 17.1 Bug A — `app/account/delete.tsx:187-192` (race fix)
+
+**Before (Cycle 14 v1):**
+```ts
+// 1.2s → signOut → navigate
+setTimeout((): void => {
+  void signOut();
+  router.replace("/" as never);
+}, SIGN_OUT_DELAY_MS);
+```
+
+**After (Cycle 14 v2):**
+```ts
+// 1.2s → signOut → navigate. Await signOut so SIGNED_OUT fires +
+// AuthContext clears user before router.replace evaluates index gate
+// (Cycle 14 v2 fix Bug A — operator smoke Step 6 race).
+setTimeout(async (): Promise<void> => {
+  await signOut();
+  router.replace("/" as never);
+}, SIGN_OUT_DELAY_MS);
+```
+
+**Mechanism:** `void signOut()` was fire-and-forget; `router.replace("/")` ran synchronously. By the time `index.tsx` evaluated `if (!user)`, `user` was still populated (Supabase signOut RPC hadn't completed) → `Redirect href={AppRoutes.home}` → `/(tabs)/home`. The `(tabs)/_layout.tsx` has no auth guard, so the user stayed there. `await signOut()` blocks until the SIGNED_OUT auth event handler has fired and cleared `user`; THEN navigation runs and the index gate routes correctly to BusinessWelcomeScreen.
+
+**Lines changed:** +6 / -4 (3 LOC of new comment explaining the fix; 1 LOC change `void` → `await` + signature `(): void` → `async (): Promise<void>`).
+
+### 17.2 Bug B — `app/src/context/AuthContext.tsx:124-138` (recovery gate)
+
+**Before (Cycle 14 v1):**
+```ts
+if (s?.user) {
+  await ensureCreatorAccount(s.user);
+  // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
+  const recovered = await tryRecoverAccountIfDeleted(s.user.id);
+  if (recovered && mounted) {
+    setLastRecoveryEvent({ recoveredAt: new Date().toISOString() });
+  }
+}
+```
+
+**After (Cycle 14 v2):**
+```ts
+if (s?.user) {
+  await ensureCreatorAccount(s.user);
+  // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
+  // GATE to SIGNED_IN only — TOKEN_REFRESHED + USER_UPDATED + INITIAL_SESSION
+  // also fire with s.user, and would otherwise un-delete an account
+  // mid-delete-flow (race between requestDeletion's deleted_at=now() write
+  // and the next token-refresh tick). Bootstrap above handles cold-start
+  // recovery; only true SIGNED_IN events should trigger recovery from
+  // onAuthStateChange. Cycle 14 v2 fix Bug B.
+  if (_event === "SIGNED_IN") {
+    const recovered = await tryRecoverAccountIfDeleted(s.user.id);
+    if (recovered && mounted) {
+      setLastRecoveryEvent({ recoveredAt: new Date().toISOString() });
+    }
+  }
+}
+```
+
+**Mechanism:** `onAuthStateChange` fires for every auth event with `s.user` populated — `INITIAL_SESSION`, `TOKEN_REFRESHED`, `USER_UPDATED`, `SIGNED_IN`. v1 ran recovery on all of them. So if a `TOKEN_REFRESHED` fired between `requestDeletion()` (which writes `deleted_at = now()`) and `signOut()` (which fires SIGNED_OUT), the recovery helper would race in and UPDATE `deleted_at = null`, silently reversing the delete. v2 gates recovery to `_event === "SIGNED_IN"` only. Bootstrap call (line 108) still handles the cold-start path — operator who left the app while soft-deleted, returns later with cached session, gets recovered + sees toast on next mount. The `else if (_event === "SIGNED_OUT")` branch remains unchanged (defensive `clearAllStores()`).
+
+**Lines changed:** +9 / -2 (additional comment block + nesting under `if (_event === "SIGNED_IN")` gate).
+
+### 17.3 Verification
+
+| Test | Status | Evidence |
+|------|--------|----------|
+| T-41 (NEW) delete.tsx await pattern | ✅ PASS | `grep -nE "void signOut\(\)\|await signOut\(\)" mingla-business/app/account/delete.tsx` → 1 hit `await signOut()` line 190; 0 hits `void signOut()` |
+| T-42 (NEW) AuthContext SIGNED_IN gate | ✅ PASS | `grep -nE '_event === "SIGNED_IN"\|tryRecoverAccountIfDeleted' mingla-business/src/context/AuthContext.tsx` → import line 19 + bootstrap call line 108 + SIGNED_IN gate line 133 + onAuthStateChange call line 134 |
+| T-43 (NEW) tsc clean | ✅ PASS | `cd mingla-business && npx tsc --noEmit` → only D-CYCLE12-IMPL-1 + D-CYCLE12-IMPL-2 pre-existing; zero new errors |
+
+### 17.4 SC re-verification (impacted only)
+
+| SC | Description | Status (v2) |
+|----|-------------|-------------|
+| SC-16 | Step 4 success path → toast → 1.2s → signOut → router.replace("/") | ✅ PASS (static) — sequence now `setStep(4) → toast → 1.2s → await signOut → router.replace("/")`; index gate sees user=null → BusinessWelcomeScreen |
+| SC-22 | Recovery on sign-in fires "Welcome back" toast | ✅ PASS (static) — bootstrap path unchanged + SIGNED_IN gate inside onAuthStateChange covers fresh sign-in events; cold-start case + new-sign-in case both trigger toast |
+
+Other 34 SC unchanged — no other surfaces touched.
+
+### 17.5 Invariant verification (v2 delta)
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| I-35 (Cycle 14 NEW) | ✅ Preserved + STRENGTHENED | v2 closes the silent-un-delete race window. The marker is now atomically protected from race against any non-SIGNED_IN auth event; only an explicit fresh sign-in can trigger recovery, which is the contracted behavior. |
+
+### 17.6 Constitutional re-scan (impacted only)
+
+| # | Principle | v2 status |
+|---|-----------|-----------|
+| 3 | No silent failures | ✅ STRENGTHENED — Bug A was a silent UX failure (user thinks signed out but isn't); Bug B was a silent data-integrity failure (delete reversed by token refresh). Both eliminated. |
+| 6 | Logout clears | ✅ Strengthened by ordering — clearAllStores now runs (via SIGNED_OUT branch) BEFORE navigation, not racing with it. |
+| 12 | Validate at right time | ✅ STRENGTHENED — recovery now validates at the contracted moment (fresh sign-in), not opportunistically on every token tick. |
+
+### 17.7 Files touched (v2 delta)
+
+| Path | Action | LOC delta |
+|------|--------|-----------|
+| `mingla-business/app/account/delete.tsx` | MOD (Bug A) | +6 / -4 |
+| `mingla-business/src/context/AuthContext.tsx` | MOD (Bug B) | +9 / -2 |
+| `Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_14_ACCOUNT_REPORT.md` | MOD (this section) | +90 / 0 |
+
+**v2 totals:** 2 file edits + this report append. ~+15 / -6 net code LOC.
+
+### 17.8 Status
+
+`implemented and verified` (static) — all 3 grep gates PASS, tsc clean. Device retest required for runtime verification of SC-16 + SC-22 (smoke §15.4 Step 5 + Step 6).
+
+### 17.9 Discoveries for orchestrator (v2)
+
+None. Both bugs were inside the rework dispatch scope; no new side issues surfaced during the 6-LOC edit.
+
+### 17.10 Hand-back
+
+Hand back to `/mingla-orchestrator` for REVIEW + (if APPROVED) operator runs:
+1. Re-commit + push (single small commit on top of `622ae5d4`)
+2. Operator device retest of smoke §15.4 Steps 5 + 6 only (delete dry-run + delete LIVE + recovery flow)
+3. On retest PASS → orchestrator fires CLOSE protocol
