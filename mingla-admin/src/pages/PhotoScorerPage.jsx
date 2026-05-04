@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState, useCallback } from "react";
-import { Sparkles, Play, RefreshCw, Pause, Square, AlertTriangle, CheckCircle, DollarSign } from "lucide-react";
+import { Sparkles, Play, RefreshCw, Pause, Square, AlertTriangle, CheckCircle, DollarSign, Target } from "lucide-react";
 import { supabase, invokeWithRefresh } from "../lib/supabase";
 import { extractFunctionError } from "../lib/edgeFunctionError";
 import { useToast } from "../context/ToastContext";
@@ -360,6 +360,243 @@ function CityScorerCard({ city }) {
   );
 }
 
+// ── Fixtures-only scorer ────────────────────────────────────────────────────
+// Cheapest validation path: scores ONLY the operator's committed fixtures
+// (~30 places at ~$0.24). Use this first to validate Claude calibration
+// before deciding whether full-city runs are worth the spend.
+
+function FixturesOnlyCard() {
+  const { addToast } = useToast();
+  const [fixtureIds, setFixtureIds] = useState([]);
+  const [fixtureCount, setFixtureCount] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [forceRescore, setForceRescore] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [runId, setRunId] = useState(null);
+  const [runProgress, setRunProgress] = useState(null);
+  const [batches, setBatches] = useState([]);
+  const stopRef = useState({ stop: false })[0];
+
+  const loadFixtures = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("photo_aesthetic_labels")
+        .select("place_pool_id, city")
+        .eq("role", "fixture")
+        .not("committed_at", "is", null);
+      if (error) throw error;
+      const ids = (data || []).map((r) => r.place_pool_id);
+      setFixtureIds(ids);
+      setFixtureCount(ids.length);
+    } catch (err) {
+      console.error("[FixturesOnlyCard] load failed:", err);
+      addToast({ variant: "error", title: "Couldn't load fixtures", description: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => {
+    loadFixtures();
+  }, [loadFixtures]);
+
+  async function refreshBatches(currentRunId) {
+    try {
+      const { data } = await supabase
+        .from("photo_aesthetic_batches")
+        .select("id, batch_index, status, succeeded, failed, skipped, cost_usd, error_message, place_count")
+        .eq("run_id", currentRunId)
+        .order("batch_index");
+      if (data) setBatches(data);
+    } catch (err) {
+      console.error("[FixturesOnlyCard] batch refresh failed:", err);
+    }
+  }
+
+  async function startRun() {
+    if (fixtureIds.length === 0) {
+      addToast({ variant: "warning", title: "No committed fixtures yet", description: "Label fixtures first via Photo Labeling." });
+      return;
+    }
+
+    setRunning(true);
+    stopRef.stop = false;
+
+    try {
+      const { data: created, error: createErr } = await invokeWithRefresh("score-place-photo-aesthetics", {
+        body: {
+          action: "create_run",
+          scope_type: "place_ids",
+          place_ids: fixtureIds,
+          force_rescore: forceRescore,
+          use_batch_api: false,
+          batch_size: 25,
+        },
+      });
+      if (createErr) {
+        const msg = await extractFunctionError(createErr, "Couldn't create run");
+        throw new Error(msg);
+      }
+      if (created?.status === "nothing_to_do") {
+        addToast({ variant: "info", title: "Nothing to do", description: created.reason });
+        setRunning(false);
+        return;
+      }
+      const newRunId = created?.runId;
+      if (!newRunId) throw new Error("create_run returned no runId");
+
+      addToast({
+        variant: "info",
+        title: "Fixtures-only run started",
+        description: `${created.totalPlaces} fixtures, est ${formatCost(created.estimatedCostUsd)}`,
+      });
+      setRunId(newRunId);
+
+      while (!stopRef.stop) {
+        const { data: batch, error: batchErr } = await invokeWithRefresh("score-place-photo-aesthetics", {
+          body: { action: "run_next_batch", run_id: newRunId },
+        });
+        if (batchErr) {
+          const msg = await extractFunctionError(batchErr, "Batch failed");
+          throw new Error(msg);
+        }
+        if (batch?.runProgress) setRunProgress(batch.runProgress);
+        await refreshBatches(newRunId);
+        if (batch?.done) {
+          addToast({
+            variant: "success",
+            title: "Fixtures-only run complete",
+            description: `${batch.runProgress?.total_succeeded ?? 0} succeeded, ${batch.runProgress?.total_failed ?? 0} failed, cost ${formatCost(batch.runProgress?.actual_cost_usd)}. Open Photo Labeling > Compare with Claude.`,
+          });
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    } catch (err) {
+      console.error("[FixturesOnlyCard] start failed:", err);
+      addToast({ variant: "error", title: "Run failed", description: err.message });
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function cancelRun() {
+    if (!runId) return;
+    stopRef.stop = true;
+    try {
+      await invokeWithRefresh("score-place-photo-aesthetics", {
+        body: { action: "cancel_run", run_id: runId },
+      });
+      addToast({ variant: "info", title: "Cancelled" });
+    } catch (err) {
+      console.error("[FixturesOnlyCard] cancel failed:", err);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const estimatedCost = fixtureCount != null ? +(fixtureCount * 0.008).toFixed(4) : null;
+
+  return (
+    <SectionCard
+      title="Fixtures only — fast validation"
+      subtitle="Score just your 30 committed fixtures (the answer-key set). Cheapest, fastest first run."
+      action={
+        <Button size="sm" variant="ghost" icon={RefreshCw} onClick={loadFixtures} disabled={loading || running}>
+          Refresh
+        </Button>
+      }
+    >
+      <div className="space-y-4">
+        {loading && (
+          <div className="flex items-center justify-center py-6">
+            <Spinner size="md" />
+          </div>
+        )}
+
+        {!loading && fixtureCount != null && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              <div className="bg-[var(--gray-50)] rounded-lg p-3">
+                <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono mb-1">Committed fixtures</div>
+                <div className="text-xl font-mono font-semibold text-[var(--color-text-primary)]">{fixtureCount}</div>
+              </div>
+              <div className="bg-[var(--gray-50)] rounded-lg p-3">
+                <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono mb-1">Est. cost (sync)</div>
+                <div className="text-xl font-mono font-semibold text-[var(--color-success-700)]">{formatCost(estimatedCost)}</div>
+              </div>
+              <div className="bg-[var(--gray-50)] rounded-lg p-3">
+                <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono mb-1">Wall time</div>
+                <div className="text-xl font-mono font-semibold text-[var(--color-text-primary)]">~30s</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 text-sm">
+              <Toggle
+                label="Force re-score (overwrite existing)"
+                checked={forceRescore}
+                onChange={setForceRescore}
+                disabled={running}
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                icon={running ? null : Target}
+                onClick={startRun}
+                loading={running}
+                disabled={running || fixtureCount === 0}
+              >
+                {running ? "Scoring fixtures…" : "Score 30 fixtures only"}
+              </Button>
+              {running && runId && (
+                <Button variant="danger" icon={Square} onClick={cancelRun}>
+                  Cancel
+                </Button>
+              )}
+            </div>
+
+            {fixtureCount === 0 && (
+              <AlertCard variant="warning" title="No committed fixtures">
+                Go to Photo Labeling → Fixtures tab and commit at least one fixture first.
+              </AlertCard>
+            )}
+          </>
+        )}
+
+        {runProgress && (
+          <div className="border-t border-[var(--gray-200)] pt-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs font-mono">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)]">Status</div>
+                <div className="text-[var(--color-text-primary)]">{runProgress.status}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)]">Succeeded</div>
+                <div className="text-[var(--color-success-700)]">{runProgress.total_succeeded}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)]">Failed</div>
+                <div className="text-[var(--color-error-700)]">{runProgress.total_failed}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)]">Skipped</div>
+                <div className="text-[var(--color-text-secondary)]">{runProgress.total_skipped}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)]">Cost</div>
+                <div className="text-[var(--color-success-700)]">{formatCost(runProgress.actual_cost_usd)}</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export function PhotoScorerPage() {
@@ -381,14 +618,20 @@ export function PhotoScorerPage() {
         </div>
       </div>
 
-      <AlertCard variant="info" title="What this does">
-        Each place gets one Claude vision call against its top 5 photos. Output is
-        sanitized against the canonical enum set, fingerprinted by photo URLs (so
-        photo rotation triggers automatic re-score), and persisted to
-        <code className="mx-1 px-1 py-0.5 rounded bg-[var(--gray-100)] text-[var(--color-text-primary)] text-xs">place_pool.photo_aesthetic_data</code>.
-        Once at least one fixture is scored, the Photo Labeling → Compare with Claude
-        tab activates with per-fixture PASS/FAIL diffs.
+      <AlertCard variant="info" title="Recommended order">
+        <strong>Start with "Score 30 fixtures only"</strong> below — it's $0.24 and ~30 seconds.
+        That's all you need to validate Claude's calibration via the Compare-with-Claude tab.
+        Only run full-city scoring once you've confirmed the diffs look reasonable.
       </AlertCard>
+
+      <FixturesOnlyCard />
+
+      <div className="border-t border-[var(--gray-200)] pt-4">
+        <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-1">Per-city full runs</h2>
+        <p className="text-sm text-[var(--color-text-secondary)] mb-4">
+          Score every active+servable+photographed place in a city. Use this AFTER fixtures-only validation.
+        </p>
+      </div>
 
       <div className="grid grid-cols-1 gap-4">
         {FIXTURE_CITIES.map((city) => (
