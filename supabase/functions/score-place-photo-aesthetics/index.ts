@@ -38,7 +38,11 @@ const MODEL_NAME_SHORT = "claude-haiku-4-5";
 const ANTHROPIC_VERSION = "2023-06-01";
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 const MAX_PHOTOS_PER_PLACE = 5;
-const DEFAULT_BATCH_SIZE = 25;
+// Tier-1 rate-limit math: 50K input tokens/min ÷ ~7.5K per call = ~6.6 calls/min.
+// 9s per-place throttle × 5 places = 45s throttle + ~25s call latency = ~70s/batch.
+// Comfortably under the Supabase edge function 150s default timeout.
+// Larger batches require Batch API mode (which doesn't tick the per-minute limit).
+const DEFAULT_BATCH_SIZE = 5;
 const ESTIMATED_COST_PER_PLACE_SYNC = 0.008; // ~$0.008/place (sync, no batch discount, no caching benefit on first call)
 const ESTIMATED_COST_PER_PLACE_BATCH = 0.004; // ~$0.004/place (batch API 50% off + caching)
 const COST_GUARD_USD = 7.0;
@@ -403,22 +407,51 @@ async function callClaudeVisionForPlace(args: {
     tools: [PHOTO_AESTHETIC_TOOL],
   };
 
-  const res = await fetch(ANTHROPIC_MESSAGES_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify(reqBody),
-  });
+  // Retry on 429 (rate limit) and 5xx with exponential backoff.
+  // Anthropic tier-1 limit is 50K input tokens/minute = ~7 requests/min at our
+  // ~7.5K-token-per-call size. The per-place throttle in handleRunNextBatch
+  // keeps us under that, but bursts at session start can still hit the wall.
+  const MAX_ATTEMPTS = 4;
+  const BASE_BACKOFF_MS = 12_000; // 12s — enough to clear a per-minute rate window
+  let res: Response;
+  let lastErrText = "";
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    res = await fetch(ANTHROPIC_MESSAGES_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify(reqBody),
+    });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Anthropic ${res.status}: ${errText.slice(0, 500)}`);
+    if (res.ok) break;
+
+    const status = res.status;
+    lastErrText = await res.text();
+
+    const isRetryable = status === 429 || (status >= 500 && status < 600);
+    if (!isRetryable || attempt === MAX_ATTEMPTS) {
+      throw new Error(`Anthropic ${status}: ${lastErrText.slice(0, 500)}`);
+    }
+
+    // Honor Retry-After header if present (429s often include it in seconds)
+    const retryAfter = res.headers.get("retry-after");
+    const retryAfterMs = retryAfter ? Math.min(60_000, Math.max(1_000, Number(retryAfter) * 1000)) : 0;
+    const backoffMs = retryAfterMs || (BASE_BACKOFF_MS * Math.pow(2, attempt - 1));
+    console.log(`[score-place-photo-aesthetics] ${status} on attempt ${attempt}/${MAX_ATTEMPTS}, sleeping ${backoffMs}ms`);
+    await new Promise((r) => setTimeout(r, backoffMs));
   }
 
-  const payload = await res.json();
+  // TypeScript can't tell that `res` is definitely assigned after the loop's
+  // success path, but the throw above guarantees we either break with res.ok
+  // or throw. Reassert for the type checker:
+  if (!res!.ok) {
+    throw new Error(`Anthropic exhausted retries: ${lastErrText.slice(0, 500)}`);
+  }
+
+  const payload = await res!.json();
   const toolUseBlock = (payload?.content || []).find(
     (b: { type: string; name?: string }) => b.type === "tool_use" && b.name === PHOTO_AESTHETIC_TOOL.name,
   );
@@ -771,6 +804,13 @@ async function handleRunNextBatch(
     return json({ error: "Failed to load batch places" }, 500);
   }
 
+  // Per-place throttle to stay under Anthropic tier-1 rate limit (50K input
+  // tokens/minute). Each call is ~7.5K tokens raw → max ~6.6 calls/min before
+  // hitting 429. After the first cached call, subsequent system prompts cost
+  // only ~10% toward the rate limit, so a 9-second delay leaves headroom for
+  // retries.
+  const PER_PLACE_THROTTLE_MS = 9_000;
+  let placeIdx = 0;
   for (const placeRow of places as ScorablePlace[]) {
     // Idempotency double-check (in case fingerprint changed since create_run)
     if (!runRow.force_rescore && placeRow.photo_aesthetic_data) {
@@ -778,8 +818,14 @@ async function handleRunNextBatch(
       const currentFp = await photoFingerprint(placeRow.stored_photo_urls);
       if (existingFp && existingFp === currentFp) {
         skipped++;
+        placeIdx++;
         continue;
       }
+    }
+
+    // Throttle BEFORE the call (skip first place — it goes immediately).
+    if (placeIdx > 0) {
+      await new Promise((r) => setTimeout(r, PER_PLACE_THROTTLE_MS));
     }
 
     try {
@@ -809,6 +855,7 @@ async function handleRunNextBatch(
       }
       failed++;
     }
+    placeIdx++;
   }
 
   // Mark batch completed

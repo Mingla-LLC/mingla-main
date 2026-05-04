@@ -431,7 +431,8 @@ function FixturesOnlyCard() {
           place_ids: fixtureIds,
           force_rescore: forceRescore,
           use_batch_api: false,
-          batch_size: 25,
+          // batch_size omitted — uses edge function default (5) which fits
+          // under the Supabase 150s timeout when per-place throttle is active
         },
       });
       if (createErr) {
@@ -528,7 +529,7 @@ function FixturesOnlyCard() {
               </div>
               <div className="bg-[var(--gray-50)] rounded-lg p-3">
                 <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono mb-1">Wall time</div>
-                <div className="text-xl font-mono font-semibold text-[var(--color-text-primary)]">~30s</div>
+                <div className="text-xl font-mono font-semibold text-[var(--color-text-primary)]">~5 min</div>
               </div>
             </div>
 
