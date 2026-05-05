@@ -97,17 +97,18 @@ COMMENT ON COLUMN public.place_intelligence_trial_runs.retry_count IS
   'ORCH-0734: number of Gemini retries beyond the initial call. 0 = first call succeeded; 1 = MALFORMED_FUNCTION_CALL retried once successfully; ≥1 with status=failed = retry exhausted.';
 
 -- ─────────────────────────────────────────────────────────────────────────
--- 10. Add defensive FK on place_pool.city_id → seeding_cities.id.
---     ON DELETE SET NULL preserves places when a city is hard-deleted
---     (recovery from soft-delete pattern; no business signal demands RESTRICT).
+-- (Investigation F-3 was a false positive — `place_pool_city_id_fkey`
+--  already exists with the exact definition we would have added:
+--  `FOREIGN KEY (city_id) REFERENCES seeding_cities(id) ON DELETE SET NULL`.
+--  Verified post-failure via pg_constraint at ORCH-0734 deploy time.
+--  The investigator's information_schema.constraint_column_usage query
+--  was filtered by referenced-table privileges and silently dropped the
+--  row. Future investigations: prefer pg_constraint for FK existence checks.
+--  Step 10 (defensive FK addition) is a no-op and removed.
 -- ─────────────────────────────────────────────────────────────────────────
 
-ALTER TABLE public.place_pool
-  ADD CONSTRAINT place_pool_city_id_fkey
-  FOREIGN KEY (city_id) REFERENCES public.seeding_cities(id) ON DELETE SET NULL;
-
 -- ─────────────────────────────────────────────────────────────────────────
--- 11. Document seeding_cities canonical authority (per F-4)
+-- 10. Document seeding_cities canonical authority (per F-4)
 -- ─────────────────────────────────────────────────────────────────────────
 
 COMMENT ON TABLE public.seeding_cities IS
@@ -138,8 +139,8 @@ COMMIT;
 --       ADD CONSTRAINT place_intelligence_trial_runs_anchor_index_check
 --       CHECK ((anchor_index = ANY (ARRAY[1, 2])));
 --
---     -- Reverse the place_pool FK
---     ALTER TABLE public.place_pool
---       DROP CONSTRAINT place_pool_city_id_fkey;
 --   COMMIT;
+--
+-- (place_pool_city_id_fkey not touched at apply time — it pre-existed; no
+--  rollback step needed for it.)
 -- ─────────────────────────────────────────────────────────────────────────
