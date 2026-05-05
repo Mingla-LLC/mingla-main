@@ -90,9 +90,12 @@ const exitAnim = {
 const enterAnim = { y: -30, scale: 0.88, x: 0 }
 const AUTO_MS = 4200
 
-// Card geometry — sized so the deck fits in the locked-height hero.
-const CARD_W = 320
-const CARD_H = 210
+// Card geometry — sized so the deck fits inside the wrapper's max-width
+// AND inside the section's vertical content area without overlapping the
+// chip footer on tight viewports. Container = (CARD_W + 20) × (CARD_H + 50)
+// = 300 × 200.
+const CARD_W = 280
+const CARD_H = 150
 
 export function HeroVibeDeck() {
   const reduced = useMinglaReducedMotion()
@@ -174,7 +177,7 @@ function DeckCard({ card, position, reduced }: DeckCardProps) {
       }}
       className="glass-soft absolute flex flex-col gap-2 overflow-hidden rounded-2xl p-3 will-change-transform"
     >
-      <div className="relative h-[120px] w-full overflow-hidden rounded-xl ring-1 ring-glass-border">
+      <div className="relative h-[80px] w-full overflow-hidden rounded-xl ring-1 ring-glass-border">
         <img
           src={card.image}
           alt={card.imageAlt}

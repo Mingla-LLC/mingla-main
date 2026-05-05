@@ -439,6 +439,13 @@ interface TicketStubSheetProps {
    * Defaults to 0 (create-flow / no-sales-tier).
    */
   soldCount?: number;
+  /**
+   * Cycle 13a J-T6 G2: when false, the Price field is rendered uneditable
+   * with a helper hint pointing the operator at a finance_manager+ ask.
+   * Defaults to true so create-flow + non-rank-aware callers stay backward
+   * compatible.
+   */
+  canEditPrice?: boolean;
 }
 
 const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
@@ -448,10 +455,14 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
   initial,
   nextOrder,
   soldCount = 0,
+  canEditPrice = true,
 }) => {
   // ORCH-0704 v2: when this tier has sales, lock price + isFree + isUnlimited
   // fields and surface the refund-first messaging.
-  const isPriceLocked = soldCount > 0;
+  // Cycle 13a J-T6 G2: ALSO lock when caller's rank is below
+  // MIN_RANK.EDIT_TICKET_PRICE — finance_manager+ only.
+  const isPriceLocked = soldCount > 0 || !canEditPrice;
+  const isPriceLockedByRank = !canEditPrice && soldCount === 0;
   const insets = useSafeAreaInsets();
 
   // Existing v3 state
@@ -903,7 +914,12 @@ const TicketStubSheet: React.FC<TicketStubSheetProps> = ({
                   accessibilityLabel="Ticket price in pounds"
                 />
               </View>
-              {isPriceLocked ? (
+              {isPriceLockedByRank ? (
+                <Text style={styles.helperHint}>
+                  You can&apos;t change ticket prices with your current role. A
+                  finance manager or above can.
+                </Text>
+              ) : isPriceLocked ? (
                 <Text style={styles.helperHint}>
                   Existing buyers locked at £{priceText || "—"}. Change
                   applies to new buyers only — refund first to change.
@@ -1419,6 +1435,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   errors,
   showErrors,
   editMode,
+  canEditTicketPrice = true,
 }) => {
   // ORCH-0704 v2 — sold-count map. Empty in create-flow + ORCH-0704 stub mode.
   const soldCountByTier = editMode?.soldCountByTier ?? {};
@@ -1658,6 +1675,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
         soldCount={
           editingTicket !== null ? (soldCountByTier[editingTicket.id] ?? 0) : 0
         }
+        canEditPrice={canEditTicketPrice}
       />
 
       <ConfirmDialog

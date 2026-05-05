@@ -23,6 +23,9 @@ import { EmailPage } from "./pages/EmailPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
 import { BetaFeedbackPage } from "./pages/BetaFeedbackPage";
 import { SignalLibraryPage } from "./pages/SignalLibraryPage";
+import { PhotoLabelingPage } from "./pages/PhotoLabelingPage";
+import { PhotoScorerPage } from "./pages/PhotoScorerPage";
+import { PlaceIntelligenceTrialPage } from "./pages/PlaceIntelligenceTrialPage";
 // ORCH-0640 ch08: AIValidationPage + CardPoolManagementPage DELETED.
 //   - Rules Filter tab rehomed to SignalLibraryPage via tab prop (ORCH-0640 DEC-045).
 //   - Seed / Refresh tabs rehomed to SeedPage.
@@ -44,6 +47,9 @@ const PAGES = {
   admin: AdminPage,
   settings: SettingsPage,
   signals: SignalLibraryPage,
+  "photo-labeling": PhotoLabelingPage,
+  "photo-scorer": PhotoScorerPage,
+  "place-intelligence-trial": PlaceIntelligenceTrialPage,
 };
 
 function getTabFromHash() {

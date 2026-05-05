@@ -63,6 +63,11 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/brand/${brandId}/payments/reports` as never);
   };
 
+  // Cycle 13a (SPEC §4.14): brand-admin+ menu row → audit log viewer.
+  const handleOpenAuditLog = (brandId: string): void => {
+    router.push(`/brand/${brandId}/audit-log` as never);
+  };
+
   // Cycle 7 FX1 — retired BrandProfileView TRANSITIONAL Toasts.
   const handleViewPublic = (brandSlug: string): void => {
     router.push(`/b/${brandSlug}` as never);
@@ -90,6 +95,7 @@ export default function BrandProfileRoute(): React.ReactElement {
         onStripe={handleOpenStripe}
         onPayments={handleOpenPayments}
         onReports={handleOpenReports}
+        onAuditLog={handleOpenAuditLog}
         onViewPublic={handleViewPublic}
         onCreateEvent={handleCreateEvent}
         onOpenLink={handleOpenLink}

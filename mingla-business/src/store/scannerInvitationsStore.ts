@@ -24,6 +24,19 @@
  *   - #9 no fabricated data: store starts EMPTY; never seeded.
  *
  * Per Cycle 11 SPEC §4.7.
+ *
+ * Cycle 13a continuity: the brand-team-member equivalent of this scanner
+ * invitation pattern ships at `src/store/brandTeamStore.ts` (Cycle 13a SPEC
+ * §4.7). Both stores follow the I-28 / I-31 TRANSITIONAL UI-only pattern
+ * until B-cycle wires the corresponding edge functions
+ * (`invite-scanner` / `invite-brand-member`). NO logic change to this file —
+ * cross-reference only.
+ *
+ * Cycle 13b Q1 (SPEC §4.5 / DEC-093): `canManualCheckIn` field DROPPED from
+ * `ScannerPermissions`. The field was decorative in Cycle 11/12 (gated 0
+ * consumers in scan logic, only rendered an informational pill on the team
+ * list). Persist v1→v2 migration strips the field on hydrate. The
+ * `canAcceptPayments` toggle (Cycle 12 Decision #4) STAYS unchanged.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -41,8 +54,6 @@ export type ScannerInvitationStatus = "pending" | "accepted" | "revoked";
 export interface ScannerPermissions {
   /** Always true — scanners can always scan. */
   canScan: boolean;
-  /** Operator-set — controls J-S5 manual check-in CTA visibility for this scanner. */
-  canManualCheckIn: boolean;
   // Cycle 12 — operator-controllable per scanner. Semantics = "can take
   // cash + manual payments at the door". Card reader + NFC remain
   // TRANSITIONAL until B-cycle Stripe Terminal SDK lands.
@@ -106,10 +117,35 @@ const persistOptions: PersistOptions<
   ScannerInvitationsStoreState,
   PersistedState
 > = {
-  name: "mingla-business.scannerInvitationsStore.v1",
+  name: "mingla-business.scannerInvitationsStore.v2",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (s): PersistedState => ({ entries: s.entries }),
-  version: 1,
+  version: 2,
+  migrate: (persistedState, version) => {
+    // v1 → v2 (Cycle 13b Q1 / SPEC §4.5): drop `canManualCheckIn` from each
+    // entry's permissions. The field was decorative-only in Cycle 11/12 —
+    // never consumed in scan logic. Verbatim destructure ensures the key
+    // is GONE post-hydrate, not just `undefined`.
+    if (version === 1) {
+      const v1 = persistedState as {
+        entries: Array<{
+          permissions: {
+            canScan: boolean;
+            canManualCheckIn?: boolean;
+            canAcceptPayments: boolean;
+          };
+          [key: string]: unknown;
+        }>;
+      };
+      return {
+        entries: (v1.entries ?? []).map((e) => {
+          const { canManualCheckIn: _drop, ...restPerms } = e.permissions;
+          return { ...e, permissions: restPerms };
+        }),
+      } as PersistedState;
+    }
+    return persistedState as PersistedState;
+  },
 };
 
 // ---- Store ----------------------------------------------------------

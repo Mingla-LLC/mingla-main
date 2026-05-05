@@ -31,3 +31,28 @@ export async function ensureCreatorAccount(user: User): Promise<void> {
     console.warn("[creator_accounts] upsert failed:", error.message);
   }
 }
+
+/**
+ * Update creator_accounts row by id. Throws on error (caller surfaces toast).
+ *
+ * Cycle 14 NEW per SPEC §4.4.1. Used by useUpdateCreatorAccount mutation
+ * (src/hooks/useCreatorAccount.ts) for J-A1 edit-profile + J-A2 marketing
+ * toggle double-wire flows.
+ *
+ * RLS: existing self-write UPDATE policy on creator_accounts (line 42-50 of
+ * 20260404000001_creator_accounts.sql) permits auth.uid() = id.
+ */
+export async function updateCreatorAccount(
+  userId: string,
+  patch: {
+    display_name?: string;
+    avatar_url?: string | null;
+    marketing_opt_in?: boolean;
+  },
+): Promise<void> {
+  const { error } = await supabase
+    .from("creator_accounts")
+    .update(patch)
+    .eq("id", userId);
+  if (error) throw error;
+}

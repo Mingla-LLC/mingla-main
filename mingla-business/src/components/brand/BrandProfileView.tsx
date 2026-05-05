@@ -32,6 +32,8 @@ import {
 } from "../../constants/designSystem";
 import type { Brand, BrandStripeStatus } from "../../store/currentBrandStore";
 import { formatGbpRound, formatCount } from "../../utils/currency";
+import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../utils/permissionGates";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -151,6 +153,13 @@ export interface BrandProfileViewProps {
    */
   onReports: (brandId: string) => void;
   /**
+   * Called when user taps the "Audit log" Operations row.
+   * Receives the brand id. NEW in Cycle 13a (SPEC §4.14). The row is
+   * gated on rank >= MIN_RANK.VIEW_AUDIT_LOG so only brand_admin+
+   * sees this entry point in the menu.
+   */
+  onAuditLog: (brandId: string) => void;
+  /**
    * Called when user taps "View public page". Receives the brand SLUG
    * (not id) — the public page route is `/b/{brandSlug}`.
    * NEW in Cycle 7 FX1 — replaces Cycle-2 J-A7 TRANSITIONAL Toast now
@@ -211,6 +220,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onStripe,
   onPayments,
   onReports,
+  onAuditLog,
   onViewPublic,
   onCreateEvent,
   onOpenLink,
@@ -275,10 +285,16 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // J-A9 onTeam (Team row) · J-A10 onPayments (Payments row).
   // [TRANSITIONAL] remaining inert rows — exit when J-A12 (Finance reports)
   // lands. Tax & VAT row stays TRANSITIONAL until §5.3.6 settings cycle.
+  // Cycle 13a (SPEC §4.14): Audit log row gated on brand_admin+ rank.
+  // useCurrentBrandRole runs every render with the current brand id; null
+  // brand short-circuits via the hook's `enabled` flag, never an early return
+  // before this hook (preserves ORCH-0710 hook ordering).
+  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
+  const canViewAuditLog = canPerformAction(currentRank, "VIEW_AUDIT_LOG");
+
   const operationsRows = useMemo<OperationsRow[]>(() => {
-    const memberCount = (brand?.members ?? []).length;
     const stripeStatus = brand?.stripeStatus ?? "not_connected";
-    return [
+    const rows: OperationsRow[] = [
       {
         icon: "bank",
         label: "Payments & Stripe",
@@ -290,7 +306,10 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       {
         icon: "users",
         label: "Team & permissions",
-        sub: `${memberCount} ${memberCount === 1 ? "member" : "members"}`,
+        // Cycle 13a: brand.members is dropped (DEC-092). Member count now lives
+        // in brandTeamStore + useCurrentBrandRole synthesis; the row caption is
+        // a static prompt rather than a live count to avoid an extra hook here.
+        sub: "Invite team members and set roles",
         onPress: () => {
           if (brand !== null) onTeam(brand.id);
         },
@@ -310,7 +329,18 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         },
       },
     ];
-  }, [brand, fireToast, onTeam, onPayments, onReports]);
+    if (canViewAuditLog) {
+      rows.push({
+        icon: "shield",
+        label: "Audit log",
+        sub: "Recent actions on this brand",
+        onPress: () => {
+          if (brand !== null) onAuditLog(brand.id);
+        },
+      });
+    }
+    return rows;
+  }, [brand, fireToast, onTeam, onPayments, onReports, onAuditLog, canViewAuditLog]);
 
   // ----- Not Found state -----
   if (brand === null) {

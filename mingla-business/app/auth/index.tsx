@@ -6,7 +6,14 @@ import { useAuth } from "../../src/context/AuthContext";
 
 export default function AuthIndex() {
   const router = useRouter();
-  const { user, loading, signInWithGoogle, signInWithApple } = useAuth();
+  const {
+    user,
+    loading,
+    signInWithGoogle,
+    signInWithApple,
+    signInWithEmail,
+    verifyEmailOtp,
+  } = useAuth();
 
   useEffect(() => {
     if (!loading && user) {
@@ -23,6 +30,8 @@ export default function AuthIndex() {
       onAppleSignIn={async () => {
         await signInWithApple();
       }}
+      onEmailSignIn={signInWithEmail}
+      onVerifyEmailOtp={verifyEmailOtp}
     />
   );
 }

@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { HeroVibeDeck } from '@/components/sections/explorer-home/hero-vibe-deck'
+import { cn } from '@/lib/cn'
 
 // ---------------------------------------------------------------
 // Mingla Explorer Hero
@@ -17,9 +18,14 @@ import { HeroVibeDeck } from '@/components/sections/explorer-home/hero-vibe-deck
 interface ChipLink {
   href: string
   label: string
+  /** When true, render only below the md breakpoint (mobile-only).
+      The surface toggle in the header is hidden on mobile, so the
+      bottom row carries the cross-link there. */
+  mobileOnly?: boolean
 }
 
 const SITE_CHIPS: ChipLink[] = [
+  { href: '/organisers', label: 'Organiser', mobileOnly: true },
   { href: '/about', label: 'About' },
   { href: '/support', label: 'Support' },
   { href: '/privacy', label: 'Privacy' },
@@ -141,13 +147,29 @@ export function ExplorerHero() {
   const reduced = useMinglaReducedMotion()
 
   return (
-    <section className="relative flex h-[100svh] min-h-[720px] items-center justify-center overflow-hidden px-6 pb-24 pt-20 md:px-10 md:pt-24">
-      <div className="relative mx-auto flex w-full max-w-4xl flex-col items-center text-center">
+    <section className="relative flex h-[100svh] flex-col overflow-hidden px-[clamp(1rem,4vw,2.5rem)]">
+      {/* Top spacer — fluid gap below the floating header (header bottom
+          sits at 56px from viewport top). Floor 80 keeps tiny phones intact;
+          11vh grows breathing room on tablet/desktop. */}
+      <div
+        aria-hidden="true"
+        className="shrink-0"
+        style={{ height: 'clamp(80px, 11vh, 160px)' }}
+      />
+
+      {/* Content area — fills the middle. Typography and the deck use
+          clamp(min, vh-based, max) so they scale with available height. */}
+      <div className="relative mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center text-center">
         {/* Headline */}
-        <h1 className="font-display text-4xl leading-[1.08] tracking-[-0.005em] text-text-primary sm:text-5xl md:text-6xl">
-          <StaggeredHeadline text="Find a vibe," />
+        <h1
+          className="font-display leading-[1.05] tracking-[-0.005em] text-text-primary"
+          style={{ fontSize: 'clamp(1.875rem, 6vmin, 4rem)' }}
+        >
+          <span className="whitespace-nowrap">
+            <StaggeredHeadline text="Find a vibe," />
+          </span>
           <br />
-          <span className="text-warm">
+          <span className="whitespace-nowrap text-warm">
             <StaggeredHeadline text="not a venue." delay={0.36} />
           </span>
         </h1>
@@ -161,12 +183,20 @@ export function ExplorerHero() {
             delay: reduced ? 0 : 1.0,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="mt-4 max-w-2xl text-base leading-relaxed text-text-secondary md:text-lg"
+          className="flex max-w-2xl flex-col items-center gap-y-1.5 leading-snug text-text-secondary sm:gap-y-2"
+          style={{
+            fontSize: 'clamp(0.875rem, 1.9vmin, 1.25rem)',
+            marginTop: 'clamp(0.5rem, 2.2vmin, 1.5rem)',
+          }}
         >
-          Tonight you might feel like{' '}
-          <CyclingPhrase words={VIBES} startDelayMs={1500} />
-          <br />
-          Mingla finds the night that fits.
+          <span>Tonight you might feel like</span>
+          {/* pb-1.5 contains the cycling word's -bottom-1 + h-[2px]
+              underline inside the wrapper's box so the gap above and below
+              the underlined line read visually equal. */}
+          <span className="block pb-1.5">
+            <CyclingPhrase words={VIBES} startDelayMs={1500} />
+          </span>
+          <span>Mingla finds the night that fits.</span>
         </motion.p>
 
         {/* CTA */}
@@ -178,7 +208,8 @@ export function ExplorerHero() {
             delay: reduced ? 0 : 1.2,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="mt-5 flex flex-wrap items-center justify-center gap-3"
+          className="flex flex-wrap items-center justify-center gap-3"
+          style={{ marginTop: 'clamp(0.75rem, 2.8vmin, 2rem)' }}
         >
           <Button size="lg" variant="glass">Get the app</Button>
         </motion.div>
@@ -191,13 +222,36 @@ export function ExplorerHero() {
             delay: reduced ? 0 : 1.4,
             ease: [0.16, 1, 0.3, 1],
           }}
-          className="mt-6 flex justify-center"
+          className="flex w-full justify-center"
+          style={{ marginTop: 'clamp(1rem, 3.3vmin, 2.5rem)' }}
         >
-          <HeroVibeDeck />
+          <div
+            className="mx-auto flex justify-center"
+            style={{
+              maxWidth: 'min(300px, calc(100vw - clamp(48px, 12vw, 96px)))',
+              transform:
+                'scale(clamp(0.85, calc(0.85 + (100vmin - 360px) / 1500px), 1.15))',
+              transformOrigin: 'center',
+            }}
+          >
+            <HeroVibeDeck />
+          </div>
         </motion.div>
       </div>
 
-      {/* Chip-style site links at the bottom of the hero */}
+      {/* Bottom spacer — fluid gap above the chip row, mirrors the top spacer
+          so breathing room is symmetric on every viewport. */}
+      <div
+        aria-hidden="true"
+        className="shrink-0"
+        style={{ height: 'clamp(80px, 11vh, 160px)' }}
+      />
+
+      {/* Chip-style site links at the bottom of the hero. The outer
+          container enforces the same fluid side padding as the section,
+          so chips never sit closer than 16px (or further than 40px) from
+          a viewport edge. */}
+      <div className="absolute inset-x-0 bottom-8 z-10 px-[clamp(0.75rem,4vw,2.5rem)]">
       <motion.nav
         aria-label="Site"
         initial={reduced ? false : { opacity: 0, y: 8 }}
@@ -207,18 +261,22 @@ export function ExplorerHero() {
           delay: reduced ? 0 : 1.5,
           ease: [0.16, 1, 0.3, 1],
         }}
-        className="absolute bottom-6 left-1/2 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center justify-center gap-1.5 sm:gap-2"
+        className="mx-auto flex items-center justify-center gap-1 sm:gap-2"
       >
         {SITE_CHIPS.map((chip) => (
           <Link
             key={chip.href}
             href={chip.href}
-            className="glass-soft inline-flex h-9 items-center whitespace-nowrap rounded-full px-3 text-xs font-medium text-text-secondary transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:text-text-primary hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring sm:px-4 sm:text-sm"
+            className={cn(
+              'glass-soft inline-flex h-7 items-center whitespace-nowrap rounded-full px-2 text-[10px] font-medium text-text-secondary transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:text-text-primary hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring sm:h-9 sm:px-4 sm:text-sm',
+              chip.mobileOnly && 'md:hidden',
+            )}
           >
             {chip.label}
           </Link>
         ))}
       </motion.nav>
+      </div>
     </section>
   )
 }

@@ -56,6 +56,17 @@
  *                       [25, 100, 180, 220, 290, 320]). Hue-only stub for
  *                       now; image upload lands in B-cycle when storage
  *                       pipelines + edge functions are ready.
+ *   v12 (Cycle 13a — DEC-092): DROPS J-A9 fields `members?: BrandMember[]`
+ *                       and `pendingInvitations?: BrandInvitation[]` along
+ *                       with the BrandMember / BrandInvitation /
+ *                       BrandMemberRole / InviteRole / BrandMemberStatus /
+ *                       BrandInvitationStatus types. Brand-team state
+ *                       authority moves to `src/store/brandTeamStore.ts`
+ *                       (Cycle 13a SPEC §4.7) per Const #2 (one owner per
+ *                       truth) + Const #8 (subtract before adding). v11→v12
+ *                       migration silently strips both fields from cached
+ *                       brands; any local stub data lost is acceptable per
+ *                       I-31 TRANSITIONAL semantics.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -70,67 +81,14 @@ import {
 // this brand? Used for permission gating in the founder-facing UI (top-nav
 // chip, brand-list rendering).
 //
-// BrandMemberRole (below): from a brand's perspective, what role does a
-// given team member hold on this brand? Used for member rendering + role
-// assignment in the J-A9 team UI.
-//
-// These are intentionally SEPARATE enums — do NOT collapse them. Cycle 1
-// only models owner/admin from the current-user perspective; J-A9 models
-// the full 6-role spectrum from the team-member perspective. Future cycles
-// may extend BrandRole to include 'admin' subtypes (e.g., 'event_manager')
-// once permission gating per role is wired up at the route level.
+// Cycle 13a (DEC-092): the J-A9 BrandMemberRole + BrandMember + BrandInvitation
+// + InviteRole types were dropped. The canonical 6-role enum now lives in
+// `src/utils/brandRole.ts` (mirrors SQL biz_role_rank verbatim per I-32).
+// Brand membership state lives in `src/store/brandTeamStore.ts` (TRANSITIONAL
+// per I-31 until B-cycle wires invite-brand-member edge function). v11→v12
+// persist migration silently strips `members` + `pendingInvitations` from
+// the local cache.
 export type BrandRole = "owner" | "admin";
-
-/**
- * Full role enum used by team members on a brand. NEW in J-A9 schema v7.
- * Per Designer Handoff §6.2.2.
- */
-export type BrandMemberRole =
-  | "owner"
-  | "brand_admin"
-  | "event_manager"
-  | "finance_manager"
-  | "marketing_manager"
-  | "scanner";
-
-/**
- * Roles that can be ASSIGNED via invite. Owner is excluded — exactly one
- * owner per brand; ownership transfer is post-MVP. NEW in J-A9 schema v7.
- */
-export type InviteRole = Exclude<BrandMemberRole, "owner">;
-
-/**
- * Member status. Future-proof for `'suspended'` (post-MVP suspension flow).
- * NEW in J-A9 schema v7.
- */
-export type BrandMemberStatus = "active";
-
-export interface BrandMember {
-  id: string;
-  name: string;
-  email: string;
-  role: BrandMemberRole;
-  status: BrandMemberStatus;
-  /** ISO 8601 timestamp when the member joined the brand. */
-  joinedAt: string;
-  /** ISO 8601 timestamp of last activity. Optional — future B1 wiring. */
-  lastActiveAt?: string;
-  /** Avatar photo URL. Optional; rendering falls back to initial. */
-  photo?: string;
-}
-
-export type BrandInvitationStatus = "pending";
-
-export interface BrandInvitation {
-  id: string;
-  email: string;
-  role: InviteRole;
-  /** ISO 8601 timestamp when the invitation was sent. */
-  invitedAt: string;
-  /** Optional note from inviter, shown on the accept screen (B1 cycle). */
-  note?: string;
-  status: BrandInvitationStatus;
-}
 
 /**
  * Brand's Stripe Connect state. NEW in J-A10 schema v8.
@@ -332,18 +290,6 @@ export type Brand = {
    */
   displayAttendeeCount?: boolean;
   /**
-   * Active team members on this brand. Owner is always pinned at index 0
-   * by the rendering layer (BrandTeamView). NEW in J-A9 schema v7.
-   * Undefined treated as `[]` at read sites.
-   */
-  members?: BrandMember[];
-  /**
-   * Pending invitations for this brand. Rendered as greyed rows in the
-   * team list with Resend / Cancel actions. NEW in J-A9 schema v7.
-   * Undefined treated as `[]` at read sites.
-   */
-  pendingInvitations?: BrandInvitation[];
-  /**
    * Stripe Connect status. NEW in J-A10 schema v8. Undefined treated as
    * `"not_connected"` at read sites — drives the J-A7 banner + payments
    * dashboard banner variant.
@@ -421,11 +367,24 @@ const upgradeV2BrandToV3 = (b: V2Brand): V9Brand => ({
   },
 });
 
+/**
+ * Pre-v12 J-A9 fields (DEC-092 dropped): used internally by the v11 → v12
+ * migrator to silently strip leaked keys without referencing the dropped
+ * BrandMember / BrandInvitation types.
+ */
+type V11Extras = {
+  members?: unknown;
+  pendingInvitations?: unknown;
+};
+
 /** v9 brand shape — used internally by the v9 → v10 migrator only. */
-type V9Brand = Omit<Brand, "kind" | "address" | "coverHue">;
+type V9Brand = Omit<Brand, "kind" | "address" | "coverHue"> & V11Extras;
 
 /** v10 brand shape — used internally by the v10 → v11 migrator only. */
-type V10Brand = Omit<Brand, "coverHue">;
+type V10Brand = Omit<Brand, "coverHue"> & V11Extras;
+
+/** v11 brand shape — used internally by the v11 → v12 migrator only. */
+type V11Brand = Brand & V11Extras;
 
 /**
  * v9 → v10 migration: add `kind` (default "popup") + `address` (default null).
@@ -443,19 +402,29 @@ const upgradeV9BrandToV10 = (b: V9Brand): V10Brand => ({
  * Mirrors event-cover Cycle 3 hue-only pattern. Founder edits via
  * BrandEditView's BRAND COVER section.
  */
-const upgradeV10BrandToV11 = (b: V10Brand): Brand => ({
+const upgradeV10BrandToV11 = (b: V10Brand): V11Brand => ({
   ...b,
   coverHue: 25,
 });
 
+/**
+ * v11 → v12 migration (Cycle 13a / DEC-092): silently strip the dropped
+ * J-A9 fields `members` + `pendingInvitations` from the cached brand.
+ * Brand-team state moves to `brandTeamStore` per Cycle 13a SPEC §4.7.
+ */
+const upgradeV11BrandToV12 = (b: V11Brand): Brand => {
+  const { members: _m, pendingInvitations: _p, ...rest } = b;
+  return rest;
+};
+
 const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
-  name: "mingla-business.currentBrand.v11",
+  name: "mingla-business.currentBrand.v12",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state) => ({
     currentBrand: state.currentBrand,
     brands: state.brands,
   }),
-  version: 11,
+  version: 12,
   migrate: (persistedState, version) => {
     // v1 → v5: schema changed from {id, displayName} to full Brand shape.
     // Cycle 0a never seeded brands, so resetting is safe and avoids partial
@@ -467,17 +436,20 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
     // remain undefined and render with empty-state guards.
     if (version === 2) {
       const v2 = persistedState as { currentBrand: V2Brand | null; brands: V2Brand[] };
-      // v2 → v9-shaped → v10 → v11 in one chain.
+      // v2 → v9-shaped → v10 → v11 → v12 in one chain.
       const v9CurrentBrand =
         v2.currentBrand !== null ? upgradeV2BrandToV3(v2.currentBrand) : null;
       const v9Brands = v2.brands.map(upgradeV2BrandToV3);
       const v10CurrentBrand =
         v9CurrentBrand !== null ? upgradeV9BrandToV10(v9CurrentBrand) : null;
       const v10Brands = v9Brands.map(upgradeV9BrandToV10);
+      const v11CurrentBrand =
+        v10CurrentBrand !== null ? upgradeV10BrandToV11(v10CurrentBrand) : null;
+      const v11Brands = v10Brands.map(upgradeV10BrandToV11);
       return {
         currentBrand:
-          v10CurrentBrand !== null ? upgradeV10BrandToV11(v10CurrentBrand) : null,
-        brands: v10Brands.map(upgradeV10BrandToV11),
+          v11CurrentBrand !== null ? upgradeV11BrandToV12(v11CurrentBrand) : null,
+        brands: v11Brands.map(upgradeV11BrandToV12),
       };
     }
     // v3 → v4: passthrough. New optional `displayAttendeeCount` field starts
@@ -498,24 +470,39 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
     // finance reports render empty-state when absent. Read sites default
     // to []. FINAL Cycle-2 schema bump — real per-event records ship Cycle 3.
     if (version >= 3 && version < 10) {
-      // v9 → v10 → v11: add kind/address then coverHue.
+      // v3-v9 → v10 → v11 → v12: add kind/address, then coverHue, then drop J-A9 keys.
       const v9 = persistedState as { currentBrand: V9Brand | null; brands: V9Brand[] };
       const v10CurrentBrand =
         v9.currentBrand !== null ? upgradeV9BrandToV10(v9.currentBrand) : null;
       const v10Brands = v9.brands.map(upgradeV9BrandToV10);
+      const v11CurrentBrand =
+        v10CurrentBrand !== null ? upgradeV10BrandToV11(v10CurrentBrand) : null;
+      const v11Brands = v10Brands.map(upgradeV10BrandToV11);
       return {
         currentBrand:
-          v10CurrentBrand !== null ? upgradeV10BrandToV11(v10CurrentBrand) : null,
-        brands: v10Brands.map(upgradeV10BrandToV11),
+          v11CurrentBrand !== null ? upgradeV11BrandToV12(v11CurrentBrand) : null,
+        brands: v11Brands.map(upgradeV11BrandToV12),
       };
     }
     if (version === 10) {
-      // v10 → v11: add coverHue (default 25 = warm orange).
+      // v10 → v11 → v12: add coverHue, then drop J-A9 keys.
       const v10 = persistedState as { currentBrand: V10Brand | null; brands: V10Brand[] };
+      const v11CurrentBrand =
+        v10.currentBrand !== null ? upgradeV10BrandToV11(v10.currentBrand) : null;
+      const v11Brands = v10.brands.map(upgradeV10BrandToV11);
       return {
         currentBrand:
-          v10.currentBrand !== null ? upgradeV10BrandToV11(v10.currentBrand) : null,
-        brands: v10.brands.map(upgradeV10BrandToV11),
+          v11CurrentBrand !== null ? upgradeV11BrandToV12(v11CurrentBrand) : null,
+        brands: v11Brands.map(upgradeV11BrandToV12),
+      };
+    }
+    if (version === 11) {
+      // v11 → v12 (Cycle 13a): drop J-A9 members + pendingInvitations.
+      const v11 = persistedState as { currentBrand: V11Brand | null; brands: V11Brand[] };
+      return {
+        currentBrand:
+          v11.currentBrand !== null ? upgradeV11BrandToV12(v11.currentBrand) : null,
+        brands: v11.brands.map(upgradeV11BrandToV12),
       };
     }
     // v3 → v4: passthrough. New optional `displayAttendeeCount` field starts

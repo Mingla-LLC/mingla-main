@@ -47,6 +47,7 @@ import {
   type EditSeverity,
 } from "../../../src/store/eventEditLogStore";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
+import { deriveLiveStatus } from "../../../src/utils/eventLifecycle";
 import { formatGbp } from "../../../src/utils/currency";
 
 // ----- Activity feed types (Cycle 9c rework v3 + Cycle 9c-2 ext) ---
@@ -174,30 +175,31 @@ import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { Toast } from "../../../src/components/ui/Toast";
 import { TopBar } from "../../../src/components/ui/TopBar";
 
+import { ActionTile } from "../../../src/components/event/ActionTile";
 import { EndSalesSheet } from "../../../src/components/event/EndSalesSheet";
 import { EventDetailKpiCard } from "../../../src/components/event/EventDetailKpiCard";
 import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
+import { ReconciliationCtaTile } from "../../../src/components/event/ReconciliationCtaTile";
+import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../../src/utils/permissionGates";
 
 const CANCEL_PROCESSING_MS = 1200;
 const cancelSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 // ----- Status derivation (mirrors EventListCard) -------------------
+//
+// Cycle 13: deriveLiveStatus extracted to src/utils/eventLifecycle.ts so the
+// new reconciliation route can share the same predicate (Const #2 — one owner
+// per truth). The util returns 4 states (live/upcoming/past/cancelled); this
+// screen collapses cancelled→past for the HeroStatusPill's existing 3-state
+// ENDED treatment (no UX change).
 
 type EventStatus = "live" | "upcoming" | "past";
 
-const deriveLiveStatus = (event: LiveEvent): EventStatus => {
-  if (event.status === "cancelled") return "past";
-  if (event.endedAt !== null) return "past";
-  if (event.date === null) return "upcoming";
-  const eventTime = new Date(event.date).getTime();
-  if (!Number.isFinite(eventTime)) return "upcoming";
-  const liveWindowStart = eventTime - 4 * 60 * 60 * 1000;
-  const liveWindowEnd = eventTime + 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  if (now >= liveWindowStart && now < liveWindowEnd) return "live";
-  if (now < liveWindowStart) return "upcoming";
-  return "past";
+const deriveScreenStatus = (event: LiveEvent): EventStatus => {
+  const lifecycle = deriveLiveStatus(event);
+  return lifecycle === "cancelled" ? "past" : lifecycle;
 };
 
 const canonicalUrl = (event: LiveEvent): string =>
@@ -224,6 +226,11 @@ export default function EventDetailScreen(): React.ReactElement {
     }
     return null;
   }, [liveEvent, draftEvent, brands]);
+
+  // Cycle 13a J-T6 G1: gate Edit / End sales / Cancel / Delete on EDIT_EVENT.
+  // Hook ordering: ALL hooks run on every render before any early-return shell.
+  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
+  const canEditEvent = canPerformAction(currentRank, "EDIT_EVENT");
 
   // ----- Defensive: draft → redirect to edit ---------------------
   useEffect(() => {
@@ -328,6 +335,13 @@ export default function EventDetailScreen(): React.ReactElement {
     }
   }, [router, id]);
 
+  // Cycle 13 — J-R1 Reconciliation action tile handler (DEC-095 D-13-1).
+  const handleReconciliation = useCallback((): void => {
+    if (id !== null) {
+      router.push(`/event/${id}/reconciliation` as never);
+    }
+  }, [router, id]);
+
   // ----- Lifecycle handlers (9b-1) -------------------------------
   const handleEndSalesOpen = useCallback((): void => {
     setEndSalesVisible(true);
@@ -397,7 +411,7 @@ export default function EventDetailScreen(): React.ReactElement {
   }
 
   const event = liveEvent;
-  const status = deriveLiveStatus(event);
+  const status = deriveScreenStatus(event);
   const dateLine = formatDraftDateLine(event);
 
   // Cycle 9c — populated from useOrderStore (subscribes to live updates).
@@ -703,6 +717,11 @@ export default function EventDetailScreen(): React.ReactElement {
               onPress={handleDoorSales}
             />
           ) : null}
+          {/* Cycle 13 — J-R1 Reconciliation tile, permission-gated (finance_manager+). */}
+          <ReconciliationCtaTile
+            brandId={brand?.id ?? null}
+            onPress={handleReconciliation}
+          />
         </View>
 
         {/* Revenue card */}
@@ -746,10 +765,9 @@ export default function EventDetailScreen(): React.ReactElement {
           )}
         </GlassCard>
 
-        {/* Cancel event CTA — opens ConfirmDialog with typeToConfirm
-            (case-sensitive match on event.name; ConfirmDialog primitive
-            default per DEC-079 — no kit extension for case folding). */}
-        {status === "live" || status === "upcoming" ? (
+        {/* Cancel event CTA — opens ConfirmDialog with typeToConfirm.
+            Cycle 13a J-T6 G1: gated on EDIT_EVENT; hidden for sub-rank users. */}
+        {(status === "live" || status === "upcoming") && canEditEvent ? (
           <View style={styles.cancelCtaWrap}>
             <Button
               label="Cancel event"
@@ -809,6 +827,7 @@ export default function EventDetailScreen(): React.ReactElement {
             router.push(`/event/${event.id}/orders` as never);
           }}
           onTransitionalToast={showToast}
+          canEditEvent={canEditEvent}
         />
       ) : null}
 
@@ -848,80 +867,8 @@ export default function EventDetailScreen(): React.ReactElement {
   );
 }
 
-// ---- Action tile (composed inline — NOT a kit primitive) ----------
-
-interface ActionTileProps {
-  icon: IconName;
-  label: string;
-  sub?: string;
-  primary?: boolean;
-  onPress: () => void;
-}
-
-const ActionTile: React.FC<ActionTileProps> = ({
-  icon,
-  label,
-  sub,
-  primary = false,
-  onPress,
-}) => (
-  <Pressable
-    onPress={onPress}
-    accessibilityRole="button"
-    accessibilityLabel={label}
-    style={({ pressed }) => [
-      tileStyles.host,
-      primary && tileStyles.hostPrimary,
-      pressed && tileStyles.hostPressed,
-    ]}
-  >
-    <Icon
-      name={icon}
-      size={20}
-      color={primary ? accent.warm : textTokens.primary}
-    />
-    <Text style={tileStyles.label} numberOfLines={1}>
-      {label}
-    </Text>
-    {sub !== undefined ? (
-      <Text style={tileStyles.sub} numberOfLines={1}>
-        {sub}
-      </Text>
-    ) : null}
-  </Pressable>
-);
-
-const tileStyles = StyleSheet.create({
-  host: {
-    flexBasis: "48%",
-    flexGrow: 0,
-    minHeight: 76,
-    padding: spacing.md - 2,
-    backgroundColor: glass.tint.profileBase,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    alignItems: "flex-start",
-    justifyContent: "center",
-    gap: 4,
-  },
-  hostPrimary: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
-  },
-  hostPressed: {
-    opacity: 0.7,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
-  sub: {
-    fontSize: 11,
-    color: textTokens.tertiary,
-  },
-});
+// Cycle 13: ActionTile extracted to src/components/event/ActionTile.tsx
+// (Step 6 implementation order). Imported above with EventManageMenu et al.
 
 // ---- Hero status pill (composed inline — handles "live"/"upcoming"/"past") ----
 

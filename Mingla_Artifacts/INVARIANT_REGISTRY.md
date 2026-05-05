@@ -152,6 +152,8 @@ These two invariants are queued for codification when ORCH-0708 closes (operator
 
 **Forward path (if SOC2 Type II audit demands strict append-only):** Drop the `IF auth.uid() IS NULL THEN RETURN COALESCE(NEW, OLD); END IF;` short-circuit in both trigger functions (~8 LOC per function). Then RAISE EXCEPTION fires for all roles. Update I-24 statement + COMMENT ON TABLE to reflect strict mode.
 
+> **Cycle 13b amendment (2026-05-04):** a new SELECT policy `"Brand admin plus reads brand audit_log"` was added (PostgreSQL multi-policy OR-merge). Brand admins now see ALL `audit_log` rows for brands where `biz_is_brand_admin_plus_for_caller(brand_id)` returns true; sub-rank users (event_manager+ on brands but below brand_admin) still see only their own rows via the original `"Users can read own audit_log rows"` policy. Append-only INSERT carve-out unchanged — service-role retains UPDATE/DELETE per Option B; non-service callers are still blocked from mutations via the existing trigger. Migration: `supabase/migrations/20260504100001_b1_phase7_audit_log_brand_admin_select.sql`.
+
 ---
 
 ## Mingla Business invariants (2026-05-02) — Cycle 10 guest list (BACKFILLED 2026-05-03)
@@ -1548,3 +1550,140 @@ sed -n '1860,2020p' app-mobile/src/components/ExpandedCardModal.tsx | grep -cE '
 **Established by:** ORCH-0685.
 
 **Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md) §10.2.
+
+---
+
+### I-31 Brand-team-member invitation UI is TRANSITIONAL until B-cycle (mingla-business — Cycle 13a)
+
+**Statement:** `useBrandTeamStore.recordInvitation` creates a pending invitation in client-side persisted store ONLY. NO email is sent. NO acceptance flow exists. NO functional sync to `brand_team_members` DB table. Mirrors I-28 verbatim for brand-level (not event-level) invitations. EXIT condition: B-cycle wires `invite-brand-member` + `accept-brand-invitation` edge functions per BUSINESS_PRD §16.4.
+
+**Why:** Cycle 13a ships the operator-facing UI for team management ahead of the backend write path. Without I-31, future skills could mistake the local-only invitation flow for a fully wired feature. The `[TRANSITIONAL]` header on `brandTeamStore.ts` + the visible TRANSITIONAL banner on the team list route + on `InviteBrandMemberSheet` + on the audit log route are all part of the I-31 surface.
+
+**Established by:** Cycle 13a close (2026-05-04 / DEC-092). Code: `mingla-business/src/store/brandTeamStore.ts` + `mingla-business/src/components/team/InviteBrandMemberSheet.tsx` + `mingla-business/app/brand/[id]/team.tsx` + `mingla-business/app/brand/[id]/audit-log.tsx`.
+
+**Enforcement (Cycle 13a):**
+- Convention + grep test: `brandTeamStore.ts` MUST NOT call any edge function (no `supabase.functions.invoke`). Implementor verifies in IMPL report §verification matrix.
+- TRANSITIONAL banner copy verbatim: "Testing mode — invitations are stored locally for now. Emails ship in B-cycle."
+
+**EXIT CONDITION:** B-cycle wires the two edge functions. When backend lands, `useBrandTeamStore` either contracts to a cache (Cycle 9c orderStore pattern) or is removed entirely if React Query becomes sole authority.
+
+**Test that catches a regression:** T-38 grep for `supabase.functions.invoke` inside `brandTeamStore.ts` returns 0 hits. TRANSITIONAL banner present on team list + invite sheet + audit log routes.
+
+---
+
+### I-32 Mobile UI gates MUST mirror RLS role-rank semantics (mingla-business — Cycle 13a)
+
+**Statement:** Mobile-side rank thresholds for action gates MUST match the SQL `biz_role_rank()` function values verbatim. Mobile reads `useCurrentBrandRole()` + compares against `BRAND_ROLE_RANK` constants in `src/utils/brandRole.ts` (which mirror SQL exactly: `scanner: 10, marketing_manager: 20, finance_manager: 30, event_manager: 40, brand_admin: 50, account_owner: 60`). RLS server-side is the safety net; mobile is the UX convenience layer; both MUST agree on rank thresholds.
+
+**Why:** A mismatch between mobile gate thresholds and RLS server-side enforcement creates UX dishonesty (Const #1 dead taps) — mobile shows an action enabled, then RLS denies the underlying write. Or worse: mobile hides an action that RLS would have allowed, blocking valid operator workflows. Single source of truth (SQL `biz_role_rank`) prevents the drift.
+
+**Established by:** Cycle 13a close (2026-05-04 / DEC-092). Source of truth: `supabase/migrations/20260502100000_b1_business_schema_rls.sql:11-30`. Mobile mirror: `mingla-business/src/utils/brandRole.ts` (header comment cites the source line numbers).
+
+**Enforcement (Cycle 13a):** Convention + CI grep test. Both outputs below MUST agree on the 6 (role, rank) pairs:
+
+```bash
+# Mobile-side
+grep -E "(scanner|marketing_manager|finance_manager|event_manager|brand_admin|account_owner): \d+" \
+  mingla-business/src/utils/brandRole.ts
+
+# SQL source of truth
+grep -E "WHEN .(scanner|marketing_manager|finance_manager|event_manager|brand_admin|account_owner). THEN \d+" \
+  supabase/migrations/20260502100000_b1_business_schema_rls.sql
+```
+
+**Test that catches a regression:** T-34 SQL parity grep — values disagree → CI fails.
+
+**Cycle 13 amendment (2026-05-04 / DEC-095):** NEW `MIN_RANK.VIEW_RECONCILIATION = finance_manager (30)` declared client-side (D-13-3). **Forward-compat note:** because Cycle 13 reconciliation is reads-only over local Zustand stores (no server reads), there is NO server RLS counterpart yet — the gate is mobile-UX only. When B-cycle ships server-side reconciliation RPC (e.g., `compute_event_reconciliation` SECURITY DEFINER wrapper backed by `biz_is_finance_manager_plus_for_caller` or equivalent), the RLS policy MUST mirror the finance_manager+ rank gate to preserve I-32. Until then, the mobile gate is the sole enforcement point for VIEW_RECONCILIATION (acceptable since the data being gated is already operator-side and reads-only over local persisted state — sub-rank operator hitting `/event/{id}/reconciliation` directly via deep-link sees a friendly NotAuthorizedShell, never a 404). Established by Cycle 13 SPEC §4.4 + DEC-095.
+
+---
+
+### I-33 `permissions_override` jsonb shape MUST be deny-list (mingla-business — Cycle 13a/13b — ACTIVE post-Cycle-13b CLOSE)
+
+**Statement (DRAFT):** When `brand_team_members.permissions_override` jsonb gets a downstream consumer (UI editor + interpreter), the shape MUST be a deny-list against existing `MIN_RANK` action constants from `mingla-business/src/utils/permissionGates.ts`:
+
+```json
+{ "DENIED": ["EDIT_TICKET_PRICE", "REFUND_ORDER", "..."] }
+```
+
+Other shapes (allow-list / parameterized restrictions / `event_scope` arrays) are explicitly REJECTED. See DEC-093 + Cycle 13b forensics §4.
+
+**Why:** Cycle 13a shipped the column unconsumed (returned by `useCurrentBrandRole.permissionsOverride` but never interpreted downstream). Cycle 13b forensics found no validated operator use case for an editor (DEFER per Q2 lock). Locking the SHAPE now means when operator surfaces a real "restrict X without changing role Y" ask, the editor ships in <1 day on top of stable contracts.
+
+**Why deny-list (not allow-list):** Allow-list would let operators GRANT actions above the role's natural rank — that is role escalation, which `permissions_override` should never enable. Deny-list ONLY restricts; role hierarchy stays intact; semantically safer + simpler.
+
+**Established by (DRAFT):** Cycle 13b forensics 2026-05-04 + operator lock ("Q2 — Agreed (defer + lock shape)").
+
+**Enforcement (when ACTIVE post-13b CLOSE):** Convention. The first downstream consumer (Cycle 13c override editor or B-cycle backend interpreter) MUST follow this shape. CI gate optional — gate the consumer-side parser to reject non-deny-list shapes.
+
+**EXIT CONDITION:** None — this is a permanent forward-compat invariant. The deny-list shape is the locked contract for `permissions_override` jsonb across all future cycles.
+
+**Test that catches a regression (when ACTIVE):** First downstream consumer ships with a parser that rejects shapes with keys other than `DENIED`. Invariant violation = parser accepts an `ALLOWED` or `event_scope` key.
+
+**Status:** ACTIVE post-Cycle-13b CLOSE 2026-05-04.
+
+---
+
+### I-34 `permissions_matrix` table DECOMMISSIONED (post Cycle 13b CLOSE)
+
+**Statement:** The `permissions_matrix` table is dropped post-Cycle-13b. Mobile-side authority for role→action allowance is `MIN_RANK` constants in `mingla-business/src/utils/permissionGates.ts`. Backend-side authority is `biz_role_rank(p_role text)` SQL function (PR #59 lines 11-30) plus the SECURITY DEFINER helpers built on it (`biz_is_brand_admin_plus_for_caller`, `biz_is_event_manager_plus_for_caller`, etc.). NO future migration may re-create `permissions_matrix` without an explicit DEC entry overriding this invariant.
+
+**Why:** PR #59 author shipped the table as scaffolding for runtime role→action checks. Cycle 13a chose role-rank thresholds in `permissionGates.ts` instead — proving the matrix was never load-bearing. Verified by Cycle 13b forensics: 0 mobile reads, 0 backend RLS reads, only 5 sentinel seed rows. Const #2 (one owner per truth) + Const #8 (subtract before adding) demand the drop.
+
+**Established by:** Cycle 13b CLOSE 2026-05-04 + DEC-093 (operator-locked Q4 = Path B drop).
+
+**Enforcement:** Convention. Optional CI gate: any future migration containing `CREATE TABLE ... permissions_matrix` requires DEC review. Mobile grep gate: `grep -rn "permissions_matrix" mingla-business/` returns 0 hits (verified post-Cycle-13b).
+
+**EXIT CONDITION:** None — permanent decommission. Re-creation requires explicit DEC override (e.g., if operator validates a runtime-mutable permissions matrix use case in a future cycle, that cycle's spec adds a DEC + a new migration with full justification).
+
+**Related artifacts:**
+- Memory: `feedback_permissions_matrix_decommissioned.md` (flips DRAFT → ACTIVE on 13b CLOSE)
+- DEC-093 (DECISION_LOG)
+- Cycle 13b forensics §6 Thread 4 + Path B recommendation
+- Drop migration: `supabase/migrations/20260504100000_b1_phase7_drop_permissions_matrix.sql`
+
+**Test that catches a regression:** Migration grep — any future `supabase/migrations/*.sql` file containing `CREATE TABLE` and `permissions_matrix` should fail review unless paired with a DEC override entry.
+
+---
+
+### I-35 `creator_accounts.deleted_at` is the soft-delete marker (mingla-business — Cycle 14)
+
+**Statement:** Account soft-deletion semantics are encoded in `public.creator_accounts.deleted_at` (timestamptz, nullable). Mobile UPDATEs the column via existing self-write UPDATE RLS policy (origin migration `20260404000001_creator_accounts.sql` lines 42-50). Recovery-on-sign-in auto-clears the marker if the user signs in within the 30-day window. After the 30-day window, B-cycle cron service-role flips `account_deletion_requests.status = 'completed'` + calls `auth.admin.deleteUser` → CASCADE through ~80 tables (mirrors consumer-app `delete-user` edge fn pattern at `supabase/functions/delete-user/index.ts`).
+
+**Rules:**
+- Mobile MAY UPDATE `deleted_at` to `now()` (request soft-delete) OR `null` (recovery).
+- Mobile MUST NOT UPDATE `deleted_at` to any other value (no future-dated soft-deletes; no past-dated retroactive marks).
+- Mobile MUST NOT INSERT into `account_deletion_requests` directly — that table is service-role-only (B-cycle edge fn writes audit rows; PR #59 RLS line 70 confirms).
+- Auto-recovery fires in `AuthContext` bootstrap + onAuthStateChange after `ensureCreatorAccount(user)` — mobile does NOT prompt the user explicitly; signing in IS the recovery action (per D-CYCLE14-FOR-6 lock).
+
+**Why:** GDPR R4 critical-path mandates a 30-day recovery window. The schema-level marker pattern (instead of a separate `is_deleted` boolean) lets B-cycle cron compute "elapsed days" trivially via `now() - deleted_at`. Recovery-as-sign-in matches industry standard (Apple ID, Google Account, Stripe).
+
+**Established by:** Cycle 14 SPEC §4.9 + DEC-096 D-14-12/13/14 (operator-locked 2026-05-04).
+
+**Enforcement:** Convention. Optional CI gate: grep mobile codebase for `deleted_at:` and verify the only RHS values are `new Date().toISOString()` OR `null`. Future tightening: B-cycle adds DB CHECK constraint `(deleted_at IS NULL OR deleted_at <= now())`.
+
+**EXIT CONDITION:** None — permanent invariant. The 30-day window is a permanent product semantics; B-cycle hard-delete cron honors it.
+
+**Test that catches a regression:** grep `\.update\({ deleted_at:` in mobile code returns ONLY `new Date().toISOString()` and `null` literals. If any future code writes a different value, the invariant is violated.
+
+---
+
+### I-36 ROOT-ERROR-BOUNDARY — `app/_layout.tsx` MUST wrap `<Stack>` with `<ErrorBoundary>` (mingla-business — Cycle 16a — ACTIVE post-Cycle-16a CLOSE 2026-05-04)
+
+**Statement:** `mingla-business/app/_layout.tsx` MUST wrap the Expo Router `<Stack>` with `<ErrorBoundary>` (the kit primitive at `src/components/ui/ErrorBoundary.tsx`). Component throws anywhere in the route tree MUST hit the kit's branded fallback (`DefaultFallback`: "Something broke. We're on it." + Try again + Get help) — NOT Expo Router's generic crash UI.
+
+**Rules:**
+- The wrap MUST live inside `RootLayoutInner` (or equivalent component that consumes `useAuth()`) so the splash + AuthContext loading state can synchronize with it.
+- The `onError` prop SHOULD pass `Sentry.captureException` (gated by `if (sentryDsn)` env-absent guard for TRANSITIONAL ship per DEC-098 D-16-2).
+- `Sentry.captureException` MUST receive React component-stack as a `contexts.react.componentStack` hint for stack-trace readability.
+- The "Get help" button MUST open `mailto:support@mingla.app` via `Linking.openURL` (or, post-Sentry-feedback-widget integration, `Sentry.captureUserFeedback`).
+
+**Why:** Cycle 0a Sub-phase C.3 shipped the ErrorBoundary primitive (`react-error-boundary v6` wrapper with Mingla DefaultFallback) but never wired it at root in `app/_layout.tsx`. For 7+ months, component crashes have hit Expo Router's generic crash UI instead of the branded fallback — silent monitoring failure. Cycle 16a J-X3 closes this gap permanently. The invariant prevents the regression where a future refactor removes the wrap.
+
+**Established by:** Cycle 16a SPEC §3.1.1 + DEC-098 (D-16-2 separate Sentry project locked 2026-05-04).
+
+**Enforcement:** CI grep gate. `grep -c "<ErrorBoundary" mingla-business/app/_layout.tsx` MUST return ≥1. Recommended addition to local pre-commit hook (or `.github/workflows/` lint check when CI ships).
+
+**EXIT CONDITION:** None — permanent invariant. The branded fallback IS the production crash UX; Sentry capture + Get help mailto are the load-bearing recovery paths.
+
+**Test that catches a regression:** Grep gate above. Additionally: any rendered component that throws synchronously inside a tab MUST surface the DefaultFallback render path (manual smoke or RTL test).
+

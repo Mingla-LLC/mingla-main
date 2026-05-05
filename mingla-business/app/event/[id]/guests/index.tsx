@@ -321,11 +321,18 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const handleExport = useCallback(async (): Promise<void> => {
     if (event === null) return;
     try {
-      await exportGuestsCsv({
+      // Cycle 13 v2 (D-CYCLE13-IMPL-6): honest toast per export result.
+      // Native dismissed = silent (no false-positive success).
+      const result = await exportGuestsCsv({
         event,
         rows: merged,
       });
-      showToast(`Exported ${merged.length} guests.`);
+      if (result.method === "downloaded") {
+        showToast(`Downloaded ${merged.length} guest(s).`);
+      } else if (result.method === "shared") {
+        showToast(`${merged.length} guest(s) — CSV shared.`);
+      }
+      // result.method === "dismissed" → silent.
     } catch (_err) {
       showToast("Couldn't export. Tap to try again.");
     }

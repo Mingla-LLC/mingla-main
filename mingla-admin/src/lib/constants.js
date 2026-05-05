@@ -143,6 +143,9 @@ export const NAV_GROUPS = [
     label: "Quality Gates",
     items: [
       { id: "signals", label: "Signal Library", icon: "Activity" },
+      { id: "photo-labeling", label: "Photo Labeling", icon: "Camera" },
+      { id: "photo-scorer", label: "Photo Scorer", icon: "Sparkles" },
+      { id: "place-intelligence-trial", label: "Intelligence Trial", icon: "Microscope" },
     ],
   },
   {

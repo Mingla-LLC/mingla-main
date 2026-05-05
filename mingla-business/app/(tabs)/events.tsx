@@ -61,6 +61,8 @@ import {
 } from "../../src/components/event/EventListCard";
 import { EndSalesSheet } from "../../src/components/event/EndSalesSheet";
 import { EventManageMenu } from "../../src/components/event/EventManageMenu";
+import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../src/utils/permissionGates";
 
 type EventFilter = "all" | "live" | "upcoming" | "draft" | "past";
 
@@ -105,6 +107,11 @@ export default function EventsTab(): React.ReactElement {
   const currentBrand = useCurrentBrand();
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const liveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
+
+  // Cycle 13a J-T6 G7: "Create event" CTA gated on CREATE_EVENT
+  // (event_manager+). Hooks run on every render before any early-return shell.
+  const { rank: currentRank } = useCurrentBrandRole(currentBrand?.id ?? null);
+  const canCreateEvent = canPerformAction(currentRank, "CREATE_EVENT");
 
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastState>({
@@ -384,12 +391,14 @@ export default function EventsTab(): React.ReactElement {
           leftKind="brand"
           onBrandTap={handleOpenSwitcher}
           rightSlot={
-            <IconChrome
-              icon="plus"
-              size={36}
-              onPress={handleBuildEvent}
-              accessibilityLabel="Build a new event"
-            />
+            canCreateEvent ? (
+              <IconChrome
+                icon="plus"
+                size={36}
+                onPress={handleBuildEvent}
+                accessibilityLabel="Build a new event"
+              />
+            ) : null
           }
         />
       </View>
@@ -460,7 +469,7 @@ export default function EventsTab(): React.ReactElement {
                   ? "No drafts in progress. Tap + to build one."
                   : `Tap "All" to see everything.`}
             </Text>
-            {filter === "all" || filter === "draft" ? (
+            {(filter === "all" || filter === "draft") && canCreateEvent ? (
               <Pressable
                 onPress={handleBuildEvent}
                 accessibilityRole="button"

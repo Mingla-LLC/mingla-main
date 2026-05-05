@@ -13,7 +13,7 @@
  */
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Linking, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import {
   ErrorBoundary as ReactErrorBoundary,
@@ -42,12 +42,15 @@ export interface ErrorBoundaryProps {
 }
 
 const handleGetHelp = (): void => {
-  // [TRANSITIONAL] Cycle 14 wires Sentry feedback link / in-app support flow.
-  // Until then, this is a no-op + dev-only console log.
-  if (__DEV__) {
-    // eslint-disable-next-line no-console
-    console.log("[ErrorBoundary] Get help tapped (Sentry / support wiring deferred to Cycle 14)");
-  }
+  // [TRANSITIONAL] Cycle 16a J-X3 — Open mail-to support link as the active
+  // help path. EXIT condition: Sentry feedback widget integrated in a future
+  // polish cycle (would replace mailto with Sentry.captureUserFeedback +
+  // attached error context). Until then, mailto is the production support flow.
+  void Linking.openURL("mailto:support@mingla.app").catch(() => {
+    // No-op — operator's device may lack a mail client. Constitution #3
+    // documented exemption: this is a fallback help action, not a primary
+    // flow. The user can manually email if openURL doesn't resolve.
+  });
 };
 
 export const DefaultFallback: React.FC<FallbackProps> = ({ resetErrorBoundary }) => (

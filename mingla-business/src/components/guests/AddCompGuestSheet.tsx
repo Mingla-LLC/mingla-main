@@ -40,6 +40,12 @@ import type { TicketStub } from "../../store/draftEventStore";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 
+import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+import {
+  canPerformAction,
+  gateCaptionFor,
+} from "../../utils/permissionGates";
+
 const REASON_MIN = 10;
 const REASON_MAX = 200;
 const NAME_MAX = 120;
@@ -117,7 +123,12 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
     trimmedReasonLen >= REASON_MIN && trimmedReasonLen <= REASON_MAX;
   const isValid =
     nameValid && emailValid && phoneValid && notesValid && reasonValid;
-  const canSubmit = !submitting && isValid;
+
+  // Cycle 13a J-T6 G5: Confirm CTA gated on ADD_COMP_GUEST (event_manager+).
+  const { rank: currentRank } = useCurrentBrandRole(brandId);
+  const canAddCompGuest = canPerformAction(currentRank, "ADD_COMP_GUEST");
+
+  const canSubmit = !submitting && isValid && canAddCompGuest;
 
   const handleConfirm = useCallback(async (): Promise<void> => {
     if (!canSubmit) return;
@@ -403,6 +414,11 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
             disabled={!canSubmit}
             accessibilityLabel="Add comp guest"
           />
+          {!canAddCompGuest ? (
+            <Text style={styles.gateCaption}>
+              {gateCaptionFor("ADD_COMP_GUEST")}
+            </Text>
+          ) : null}
           <View style={styles.actionSpacer} />
           <Button
             label="Cancel"
@@ -532,6 +548,12 @@ const styles = StyleSheet.create({
   },
   actionSpacer: {
     height: spacing.sm,
+  },
+  gateCaption: {
+    fontSize: 12,
+    color: textTokens.tertiary,
+    marginTop: 6,
+    textAlign: "center",
   },
 });
 

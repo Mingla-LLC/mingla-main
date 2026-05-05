@@ -78,6 +78,12 @@ export interface EventManageMenuProps {
    * fires the message after closing the sheet.
    */
   onTransitionalToast: (message: string) => void;
+  /**
+   * Cycle 13a (J-T6 G1): when false, the Edit details, End ticket sales,
+   * Cancel event, and Delete event rows are hidden. Defaults to true so
+   * existing call sites remain backward compatible.
+   */
+  canEditEvent?: boolean;
 }
 
 type ActionTone = "default" | "accent" | "warn" | "danger";
@@ -104,6 +110,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
   onDeleteDraft,
   onOpenOrders,
   onTransitionalToast,
+  canEditEvent = true,
 }) => {
   const actions = useMemo<MenuAction[]>((): MenuAction[] => {
     const list: MenuAction[] = [];
@@ -112,16 +119,19 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
     // non-drafts (live / upcoming / past) route to the focused
     // EditPublishedScreen via ?mode=edit-published. The route handler
     // (edit.tsx) branches on the mode query param. Cycle 9b-2.
-    list.push({
-      key: "edit",
-      icon: "edit",
-      label: status === "past" ? "View details" : "Edit details",
-      tone: "default",
-      onPress: () => {
-        onClose();
-        onEdit();
-      },
-    });
+    // Cycle 13a J-T6 G1: gated on EDIT_EVENT — hidden for sub-rank users.
+    if (canEditEvent) {
+      list.push({
+        key: "edit",
+        icon: "edit",
+        label: status === "past" ? "View details" : "Edit details",
+        tone: "default",
+        onPress: () => {
+          onClose();
+          onEdit();
+        },
+      });
+    }
 
     // View public page — non-draft only (drafts have no public)
     if (status !== "draft") {
@@ -194,7 +204,9 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
       });
     }
 
-    if (status === "live") {
+    // Cycle 13a J-T6 G1: end sales + cancel + delete are part of EDIT_EVENT
+    // gate. Hidden for sub-rank users.
+    if (status === "live" && canEditEvent) {
       list.push({
         key: "end-sales",
         icon: "close",
@@ -211,7 +223,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
     // than End sales (cancel notifies buyers + refunds). For upcoming,
     // it replaces "Delete event" since live/upcoming events have public
     // footprints and shouldn't be hard-deleted.
-    if (status === "live" || status === "upcoming") {
+    if ((status === "live" || status === "upcoming") && canEditEvent) {
       list.push({
         key: "cancel-event",
         icon: "trash",
@@ -239,7 +251,8 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
 
     // Delete event — drafts ONLY. Upcoming/live events use "Cancel event"
     // above (they have public footprints, shouldn't be hard-deleted).
-    if (status === "draft") {
+    // Cycle 13a J-T6 G1: gated on EDIT_EVENT.
+    if (status === "draft" && canEditEvent) {
       list.push({
         key: "delete",
         icon: "trash",
@@ -279,7 +292,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
     }
 
     return list;
-  }, [status, onClose, onEdit, onViewPublic, onShare, onEndSales, onCancelEvent, onDeleteDraft, onOpenOrders, onTransitionalToast]);
+  }, [status, onClose, onEdit, onViewPublic, onShare, onEndSales, onCancelEvent, onDeleteDraft, onOpenOrders, onTransitionalToast, canEditEvent]);
 
   // Snap calculation — content fit per DEC-084 numeric snap support.
   // Each row ~52px + header padding ~32 + safe spacing ~28 = ~112 + N×52.

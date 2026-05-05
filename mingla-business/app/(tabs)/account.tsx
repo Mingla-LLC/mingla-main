@@ -13,7 +13,7 @@
  * Cycle 14 lands real Account features (profile, settings, delete-flow).
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,12 +22,14 @@ import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherShee
 import { Button } from "../../src/components/ui/Button";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
+import type { IconName } from "../../src/components/ui/Icon";
 import { Toast } from "../../src/components/ui/Toast";
 import { TopBar } from "../../src/components/ui/TopBar";
 import {
   accent,
   glass,
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -48,7 +50,7 @@ interface ToastState {
 export default function AccountTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, signOut } = useAuth();
+  const { user, signOut, lastRecoveryEvent, clearLastRecoveryEvent } = useAuth();
   const brands = useBrandList();
   const setBrands = useCurrentBrandStore((s) => s.setBrands);
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
@@ -56,6 +58,17 @@ export default function AccountTab(): React.ReactElement {
 
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
+
+  // Cycle 14 — D-CYCLE14-FOR-6 + I-35: consume recover-on-sign-in event
+  useEffect(() => {
+    if (lastRecoveryEvent !== null) {
+      setToast({
+        visible: true,
+        message: "Welcome back — your account has been recovered.",
+      });
+      clearLastRecoveryEvent();
+    }
+  }, [lastRecoveryEvent, clearLastRecoveryEvent]);
 
   const handleSignOut = useCallback(async (): Promise<void> => {
     try {
@@ -76,6 +89,19 @@ export default function AccountTab(): React.ReactElement {
 
   const handleOpenStyleguide = useCallback((): void => {
     router.push("/__styleguide" as never);
+  }, [router]);
+
+  // Cycle 14 — Settings hub navigation handlers per SPEC §4.7.1.
+  const handleEditProfile = useCallback((): void => {
+    router.push("/account/edit-profile" as never);
+  }, [router]);
+
+  const handleNotifications = useCallback((): void => {
+    router.push("/account/notifications" as never);
+  }, [router]);
+
+  const handleDeleteAccount = useCallback((): void => {
+    router.push("/account/delete" as never);
   }, [router]);
 
   const handleOpenSwitcher = useCallback((): void => {
@@ -131,18 +157,20 @@ export default function AccountTab(): React.ReactElement {
       <ScrollView contentContainerStyle={styles.scroll}>
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.title}>Account</Text>
-          <Text style={styles.body}>Cycle 14 lands settings here.</Text>
           <Text style={styles.email} numberOfLines={1}>
             Signed in as {emailLabel}
           </Text>
           <View style={styles.signOutRow}>
             <Button
-              label="Sign out"
+              label="Sign out everywhere"
               onPress={handleSignOut}
               variant="secondary"
               size="md"
             />
           </View>
+          <Text style={styles.signOutCaption}>
+            Signs you out on every device.
+          </Text>
           {__DEV__ ? (
             <View style={styles.styleguideRow}>
               <Button
@@ -154,6 +182,32 @@ export default function AccountTab(): React.ReactElement {
               />
             </View>
           ) : null}
+        </GlassCard>
+
+        {/* Cycle 14 — Settings hub: 3 sub-route nav rows per SPEC §4.7.1 + DEC-096 D-14-17. */}
+        <GlassCard variant="elevated" padding={spacing.lg}>
+          <Text style={styles.title}>Settings</Text>
+          <Text style={styles.body}>
+            Manage your profile, notifications, and account.
+          </Text>
+          <View style={styles.navRowsCol}>
+            <SettingsNavRow
+              icon="user"
+              label="Edit profile"
+              onPress={handleEditProfile}
+            />
+            <SettingsNavRow
+              icon="bell"
+              label="Notifications"
+              onPress={handleNotifications}
+            />
+            <SettingsNavRow
+              icon="trash"
+              label="Delete account"
+              destructive
+              onPress={handleDeleteAccount}
+            />
+          </View>
         </GlassCard>
 
         {brands.length > 0 ? (
@@ -236,6 +290,55 @@ export default function AccountTab(): React.ReactElement {
   );
 }
 
+// Cycle 14 — SettingsNavRow inline component per SPEC §4.7.1.
+// Mirrors brandRow visual rhythm but with optional destructive variant.
+interface SettingsNavRowProps {
+  icon: IconName;
+  label: string;
+  destructive?: boolean;
+  onPress: () => void;
+}
+
+const SettingsNavRow: React.FC<SettingsNavRowProps> = ({
+  icon,
+  label,
+  destructive = false,
+  onPress,
+}) => (
+  <Pressable
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel={label}
+    style={({ pressed }) => [
+      styles.navRow,
+      pressed && styles.navRowPressed,
+    ]}
+  >
+    <View
+      style={[
+        styles.navIconBadge,
+        destructive && styles.navIconBadgeDestructive,
+      ]}
+    >
+      <Icon
+        name={icon}
+        size={18}
+        color={destructive ? semantic.error : textTokens.primary}
+      />
+    </View>
+    <Text
+      style={[
+        styles.navLabel,
+        destructive && styles.navLabelDestructive,
+      ]}
+      numberOfLines={1}
+    >
+      {label}
+    </Text>
+    <Icon name="chevR" size={16} color={textTokens.tertiary} />
+  </Pressable>
+);
+
 const styles = StyleSheet.create({
   host: {
     flex: 1,
@@ -277,9 +380,56 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginTop: spacing.lg,
   },
+  signOutCaption: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: typography.caption.fontWeight,
+    color: textTokens.tertiary,
+    marginTop: spacing.xs,
+  },
   styleguideRow: {
     flexDirection: "row",
     marginTop: spacing.sm,
+  },
+  // Cycle 14 — Settings nav rows
+  navRowsCol: {
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  navRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radiusTokens.lg,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+  },
+  navRowPressed: {
+    opacity: 0.7,
+  },
+  navIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: radiusTokens.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  },
+  navIconBadgeDestructive: {
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+  },
+  navLabel: {
+    flex: 1,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  navLabelDestructive: {
+    color: semantic.error,
   },
   devBtnRow: {
     flexDirection: "row",
