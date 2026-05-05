@@ -1,14 +1,21 @@
 /**
- * TrialResultsTab — ORCH-0712
+ * TrialResultsTab — ORCH-0712 → ORCH-0734
  *
- * Top: aggregate stats + Run trial button (gated on prerequisites).
+ * ORCH-0712 originally targeted 32 committed anchors. ORCH-0734 (2026-05-05)
+ * replaced anchor scope with city-scoped sampled-sync: operator picks a city +
+ * sample size (50-500, default 200), edge fn loads stratified random sample of
+ * is_servable place_pool rows, browser drives one row per place per run.
+ * Legacy 32-anchor rows preserve signal_id + anchor_index as audit trail.
+ *
+ * Top: city picker + sample size + single "Run trial" button (collapses
+ *      former two-step prepare→run flow into one button per operator decision).
  * Below: scrollable list of past runs with per-place expandable cards
- * showing collage + Q1 (open exploration) + Q2 (per-signal evaluation).
+ *        showing collage + Q2 (per-signal evaluation). Q1 dropped at v3.
  */
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
-  Play, RefreshCw, Square, Sparkles, ChevronDown, ChevronRight,
+  Play, RefreshCw, Square, ChevronDown, ChevronRight,
   CheckCircle, XCircle,
 } from "lucide-react";
 import { supabase, invokeWithRefresh } from "../../lib/supabase";
@@ -17,7 +24,6 @@ import { useToast } from "../../context/ToastContext";
 import { SectionCard, AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
-import { MINGLA_SIGNAL_IDS, TOTAL_ANCHORS_TARGET } from "../../constants/placeIntelligenceTrial";
 
 function formatCost(n) {
   if (n == null) return "—";
@@ -41,9 +47,13 @@ function PlaceResultCard({ row }) {
         className="w-full px-4 py-3 flex items-center gap-3 hover:bg-[var(--gray-50)] transition-colors duration-150 cursor-pointer"
       >
         {expanded ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
-        <span className="text-[10px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded bg-[var(--color-brand-50)] text-[var(--color-brand-700)]">
-          {row.signal_id} #{row.anchor_index}
-        </span>
+        {/* ORCH-0734 — anchor badge only renders for legacy 32-anchor rows.
+            City-runs rows (signal_id=null, city_id set) skip the badge. */}
+        {row.signal_id && row.anchor_index != null && (
+          <span className="text-[10px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded bg-[var(--color-brand-50)] text-[var(--color-brand-700)]">
+            {row.signal_id} #{row.anchor_index}
+          </span>
+        )}
         <span className="text-sm font-semibold text-[var(--color-text-primary)] truncate flex-1 text-left">
           {place?.name || row.place_pool_id}
         </span>
@@ -193,52 +203,86 @@ function PlaceResultCard({ row }) {
 
 // ── Tab ─────────────────────────────────────────────────────────────────────
 
-// ORCH-0733 — Anthropic dropped per DEC-101; Gemini sole provider.
+// ORCH-0733 — Anthropic dropped per DEC-101/DEC-102; Gemini sole provider.
 // Browser-side per-place throttle for Gemini Flash 2.5: free tier is 15 RPM
 // (~4s floor); paid tier 1 is effectively unbounded. 1s pad keeps under both.
-// Map shape preserved (defensive) so legacy v1/v2/v3 historical Anthropic rows
-// continue to render correctly via the model badge in PlaceResultCard.
 const PER_PLACE_BROWSER_THROTTLE_MS = 1_000;
 
-// ORCH-0733 — Anthropic dropped per DEC-101; Gemini sole provider.
-// Per-place cost for Gemini 2.5 Flash on v3/v4 prompt: ~$0.0038 measured on
-// run fe15cb99 (32 anchors → $0.1212). Used for confirm-dialog estimate.
-const PER_PLACE_COST_USD = 0.0038;
+// ORCH-0734 — actual measured cost on run e15f5d8f (32 anchors → $0.1292).
+// Used for confirm-dialog estimate. Adjusted from 0.0038 (rounded estimate
+// from earlier v3 measurement) to 0.0040 (defensive over-estimate; harmless).
+const PER_PLACE_COST_USD = 0.0040;
+
+// ORCH-0734 — sample-mode bounds. Operator picks 50-500 places per city run.
+const SAMPLE_SIZE_DEFAULT = 200;
+const SAMPLE_SIZE_MIN = 50;
+const SAMPLE_SIZE_MAX = 500;
+
+// ORCH-0734 — combined per-place wall time estimate: ~22s Gemini + ~5s prepare
+// (fetch_reviews + compose_collage) + 1s throttle ≈ 28-30s steady-state. 30s
+// chosen for the confirm-dialog estimate to surface honest expectations.
+const PER_PLACE_WALL_SECONDS = 30;
 
 export function TrialResultsTab() {
   const { addToast } = useToast();
-  const [committedCount, setCommittedCount] = useState(0);
+  // ORCH-0734 — anchor scope replaced with city scope.
+  const [cities, setCities] = useState([]); // [{id, name, country, servable_count}]
+  const [cityId, setCityId] = useState(null);
+  const [sampleSize, setSampleSize] = useState(SAMPLE_SIZE_DEFAULT);
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [preparing, setPreparing] = useState(false);
   const [running, setRunning] = useState(false);
-  // ORCH-0733 — Anthropic dropped per DEC-101; Gemini sole provider; provider state removed.
 
-  // Live progress for the currently-running prepare or trial loop
+  // Live progress for the currently-running trial loop. Phase transitions
+  // "preparing" → "trial" so operator sees both halves of the collapsed flow.
   const [progress, setProgress] = useState(null); // { phase, current, total, succeeded, failed, costSoFar }
   const stopRef = useState({ stop: false })[0];
 
   // Synchronous guard against double-invocation (React state is async, so
-  // disabled={preparing} can let a fast double-click squeeze through before
+  // disabled={running} can let a fast double-click squeeze through before
   // React applies the disabled state).
   const isRunningRef = useRef(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const { count } = await supabase
-        .from("signal_anchors")
-        .select("id", { count: "exact", head: true })
-        .not("committed_at", "is", null);
-      setCommittedCount(count || 0);
+      // ORCH-0734 — load seeded cities + their servable counts. Filter to
+      // cities with non-zero servable for the picker (zero-servable cities
+      // can't be picked; would just produce empty runs).
+      const [cityRowsRes, servableRes, runsRes] = await Promise.all([
+        supabase
+          .from("seeding_cities")
+          .select("id, name, country")
+          .eq("status", "seeded")
+          .order("name"),
+        supabase
+          .from("place_pool")
+          .select("city_id")
+          .eq("is_servable", true),
+        supabase
+          .from("place_intelligence_trial_runs")
+          .select("*, place:place_pool!place_pool_id(id, name, primary_type)")
+          .order("created_at", { ascending: false })
+          .limit(200),
+      ]);
+      if (cityRowsRes.error) throw cityRowsRes.error;
+      if (servableRes.error) throw servableRes.error;
+      if (runsRes.error) throw runsRes.error;
 
-      const { data, error } = await supabase
-        .from("place_intelligence_trial_runs")
-        .select("*, place:place_pool!place_pool_id(id, name, primary_type)")
-        .order("created_at", { ascending: false })
-        .limit(200);
-      if (error) throw error;
-      setAllRows(data || []);
+      // Aggregate servable counts client-side. At ~50K place_pool rows this
+      // is a few-MB select; acceptable for an admin tool. If needed, lift
+      // to a Postgres view in a future cycle.
+      const countMap = new Map();
+      for (const row of servableRes.data || []) {
+        if (!row.city_id) continue;
+        countMap.set(row.city_id, (countMap.get(row.city_id) || 0) + 1);
+      }
+      const enriched = (cityRowsRes.data || [])
+        .map((c) => ({ ...c, servable_count: countMap.get(c.id) || 0 }))
+        .filter((c) => c.servable_count > 0);
+      setCities(enriched);
+
+      setAllRows(runsRes.data || []);
     } catch (err) {
       console.error("[TrialResultsTab] load failed:", err);
       addToast({ variant: "error", title: "Couldn't load results", description: err.message });
@@ -263,84 +307,36 @@ export function TrialResultsTab() {
     return bDate.localeCompare(aDate);
   });
 
-  async function loadCommittedAnchors() {
-    const { data, error } = await supabase
-      .from("signal_anchors")
-      .select("place_pool_id, signal_id, anchor_index, place:place_pool!place_pool_id(name)")
-      .not("committed_at", "is", null)
-      .order("signal_id");
-    if (error) throw error;
-    return data || [];
-  }
-
-  async function handlePrepareAll() {
-    // Synchronous guard — prevents double-invocation race (React state async)
-    if (isRunningRef.current) return;
-    isRunningRef.current = true;
-
-    if (committedCount === 0) {
-      addToast({ variant: "warning", title: "No anchors committed yet" });
-      isRunningRef.current = false;
-      return;
-    }
-    setPreparing(true);
-    stopRef.stop = false;
-
-    let succeeded = 0;
-    let failed = 0;
-    try {
-      const anchors = await loadCommittedAnchors();
-      setProgress({ phase: "prepare", current: 0, total: anchors.length, succeeded: 0, failed: 0 });
-
-      for (let i = 0; i < anchors.length; i++) {
-        if (stopRef.stop) break;
-        const a = anchors[i];
-        setProgress((p) => ({ ...p, current: i + 1, currentPlace: a.place?.name || a.place_pool_id }));
-
-        try {
-          // Fetch reviews
-          const { error: rErr } = await invokeWithRefresh("run-place-intelligence-trial", {
-            body: { action: "fetch_reviews", place_pool_id: a.place_pool_id, force_refresh: false },
-          });
-          if (rErr) throw new Error(await extractFunctionError(rErr, "fetch_reviews failed"));
-
-          // Compose collage
-          const { error: cErr } = await invokeWithRefresh("run-place-intelligence-trial", {
-            body: { action: "compose_collage", place_pool_id: a.place_pool_id, force: false },
-          });
-          if (cErr) throw new Error(await extractFunctionError(cErr, "compose_collage failed"));
-
-          succeeded++;
-        } catch (err) {
-          console.error(`[TrialResultsTab] prepare ${a.place_pool_id} failed:`, err);
-          failed++;
-        }
-        setProgress((p) => ({ ...p, succeeded, failed }));
-      }
-      addToast({
-        variant: succeeded === anchors.length ? "success" : "warning",
-        title: `Prepared ${succeeded} of ${anchors.length} places`,
-        description: failed > 0 ? `${failed} failed — see console for details. Some places may have no photos or unreachable URLs.` : "Reviews + collages ready. Click Run trial.",
-      });
-    } catch (err) {
-      console.error("[TrialResultsTab] prepare loop failed:", err);
-      addToast({ variant: "error", title: "Prepare failed", description: err.message });
-    } finally {
-      setPreparing(false);
-      setProgress(null);
-      isRunningRef.current = false;
-    }
-  }
-
+  // ORCH-0734 — collapsed prepare→run flow into single button. Internally:
+  // phase 1 (prepare): fetch_reviews + compose_collage per place.
+  // phase 2 (trial): run_trial_for_place per place.
+  // Operator sees progress through both phases; Stop covers both.
   async function handleRunTrial() {
     // Synchronous guard against double-invocation race
     if (isRunningRef.current) return;
     isRunningRef.current = true;
 
-    const estCost = (committedCount * PER_PLACE_COST_USD).toFixed(2);
+    if (!cityId) {
+      addToast({ variant: "warning", title: "Pick a city first" });
+      isRunningRef.current = false;
+      return;
+    }
+    const selectedCity = cities.find((c) => c.id === cityId);
+    if (!selectedCity) {
+      addToast({ variant: "error", title: "Selected city not found" });
+      isRunningRef.current = false;
+      return;
+    }
+
+    const effectiveSample = Math.min(sampleSize, selectedCity.servable_count);
+    const estCost = (effectiveSample * PER_PLACE_COST_USD).toFixed(2);
+    const estMinutes = Math.ceil((effectiveSample * PER_PLACE_WALL_SECONDS) / 60);
 
     if (!window.confirm(
-      `About to run trial for ${committedCount} places using Gemini 2.5 Flash. Estimated cost ~$${estCost}, ~${Math.ceil(committedCount * 1.2)} minute wall time. Don't refresh the page during the run. Continue?`
+      `About to run trial for ${effectiveSample} places sampled from ${selectedCity.name}, ${selectedCity.country} ` +
+      `(${selectedCity.servable_count} servable total) using Gemini 2.5 Flash. ` +
+      `Estimated cost ~$${estCost}, ~${estMinutes} minute wall time. ` +
+      `Don't refresh the page during the run. Continue?`
     )) {
       isRunningRef.current = false;
       return;
@@ -350,61 +346,103 @@ export function TrialResultsTab() {
     stopRef.stop = false;
 
     try {
-      // Step 1: create run_id + pending rows
+      // Step 1: create run_id + pending rows for the sampled places
       const { data: created, error: startErr } = await invokeWithRefresh("run-place-intelligence-trial", {
-        body: { action: "start_run" },
+        body: { action: "start_run", city_id: cityId, sample_size: sampleSize },
       });
       if (startErr) throw new Error(await extractFunctionError(startErr, "start_run failed"));
       const runId = created?.runId;
-      const anchors = created?.anchors || [];
-      if (!runId || anchors.length === 0) throw new Error("start_run returned no anchors");
+      const places = created?.anchors || []; // shape preserved for browser-loop compat
+      if (!runId || places.length === 0) throw new Error("start_run returned no places");
 
       addToast({
         variant: "info",
         title: `Trial started`,
-        description: `${anchors.length} places · est ${formatCost(created.estimatedCostUsd)} · run ${runId.slice(0, 8)}…`,
+        description: `${created.cityName} · ${places.length} places · est ${formatCost(created.estimatedCostUsd)} · run ${runId.slice(0, 8)}…`,
       });
 
+      // Phase 1: prepare (fetch_reviews + compose_collage per place).
+      // Counts succeeded/failed at prepare phase but does NOT block phase 2 —
+      // failed prepares result in run_trial_for_place errors which are
+      // counted in phase 2's failure column. This honors operator's "one
+      // button" choice while keeping per-phase observability.
+      let prepareSucceeded = 0;
+      let prepareFailed = 0;
+      setProgress({ phase: "prepare", current: 0, total: places.length, succeeded: 0, failed: 0, runId });
+
+      for (let i = 0; i < places.length; i++) {
+        if (stopRef.stop) break;
+        const p = places[i];
+        setProgress((s) => ({ ...s, current: i + 1, currentPlace: p.place_pool_id.slice(0, 8) }));
+
+        try {
+          const { error: rErr } = await invokeWithRefresh("run-place-intelligence-trial", {
+            body: { action: "fetch_reviews", place_pool_id: p.place_pool_id, force_refresh: false },
+          });
+          if (rErr) throw new Error(await extractFunctionError(rErr, "fetch_reviews failed"));
+
+          const { error: cErr } = await invokeWithRefresh("run-place-intelligence-trial", {
+            body: { action: "compose_collage", place_pool_id: p.place_pool_id, force: false },
+          });
+          if (cErr) throw new Error(await extractFunctionError(cErr, "compose_collage failed"));
+
+          prepareSucceeded++;
+        } catch (err) {
+          console.error(`[TrialResultsTab] prepare ${p.place_pool_id} failed:`, err);
+          prepareFailed++;
+        }
+        setProgress((s) => ({ ...s, succeeded: prepareSucceeded, failed: prepareFailed }));
+      }
+
+      // Phase 2: Gemini per place. Skip places that failed prepare; let the
+      // edge fn surface "prerequisites_missing" for those (counted as failed
+      // in phase 2 too, which double-counts a few places — acceptable for
+      // the simpler UX of a single button).
       let succeeded = 0;
       let failed = 0;
       let totalCost = 0;
-      setProgress({ phase: "trial", current: 0, total: anchors.length, succeeded: 0, failed: 0, runId });
+      setProgress({ phase: "trial", current: 0, total: places.length, succeeded: 0, failed: 0, runId });
 
-      for (let i = 0; i < anchors.length; i++) {
+      for (let i = 0; i < places.length; i++) {
         if (stopRef.stop) break;
-        const a = anchors[i];
+        const p = places[i];
 
-        // Throttle BEFORE each call (skip first). Gemini-only per ORCH-0733; 1s pad keeps
-        // under Gemini Flash 2.5 free-tier 15-RPM floor with ample headroom.
+        // Throttle BEFORE each call (skip first). Gemini Flash 2.5 paid tier
+        // 1 has effectively no RPM cap; 1s is defensive against accidental
+        // free-tier deployment.
         if (i > 0) {
           await new Promise((r) => setTimeout(r, PER_PLACE_BROWSER_THROTTLE_MS));
         }
-        setProgress((p) => ({ ...p, current: i + 1, currentPlace: `${a.signal_id} #${a.anchor_index}` }));
+        setProgress((s) => ({ ...s, current: i + 1, currentPlace: p.place_pool_id.slice(0, 8) }));
 
         try {
           const { data: result, error: e } = await invokeWithRefresh("run-place-intelligence-trial", {
             body: {
               action: "run_trial_for_place",
               run_id: runId,
-              place_pool_id: a.place_pool_id,
-              signal_id: a.signal_id,
-              anchor_index: a.anchor_index,
+              place_pool_id: p.place_pool_id,
+              // ORCH-0734 — signal_id and anchor_index intentionally omitted for city-runs.
             },
           });
           if (e) throw new Error(await extractFunctionError(e, "run_trial_for_place failed"));
           totalCost += Number(result?.cost_usd || 0);
           succeeded++;
         } catch (err) {
-          console.error(`[TrialResultsTab] run_trial_for_place ${a.place_pool_id} failed:`, err);
+          console.error(`[TrialResultsTab] run_trial_for_place ${p.place_pool_id} failed:`, err);
           failed++;
         }
-        setProgress((p) => ({ ...p, succeeded, failed, costSoFar: totalCost }));
+        setProgress((s) => ({ ...s, succeeded, failed, costSoFar: totalCost }));
       }
 
+      const partialSuccess = succeeded > 0 && failed > 0;
       addToast({
-        variant: succeeded === anchors.length ? "success" : "warning",
+        variant: succeeded === places.length ? "success" : (partialSuccess ? "warning" : "error"),
         title: `Trial complete`,
-        description: `${succeeded} succeeded · ${failed} failed · cost ${formatCost(totalCost)}`,
+        description:
+          `${succeeded} succeeded · ${failed} failed · cost ${formatCost(totalCost)}` +
+          (failed > 0
+            ? ` · Some failures expected from missing photos (~5-15%) or intermittent Gemini flakes.`
+            : ""),
       });
       await refresh();
     } catch (err) {
@@ -422,60 +460,117 @@ export function TrialResultsTab() {
     addToast({ variant: "info", title: "Cancelling…", description: "Will stop after the current place." });
   }
 
-  const canRun = committedCount > 0 && !running && !preparing;
+  const selectedCity = cities.find((c) => c.id === cityId) || null;
+  const effectiveSample = selectedCity ? Math.min(sampleSize, selectedCity.servable_count) : 0;
+  const estCostUsd = (effectiveSample * PER_PLACE_COST_USD).toFixed(2);
+  const estMinutes = Math.ceil((effectiveSample * PER_PLACE_WALL_SECONDS) / 60);
+  const canRun = !!cityId && !running && !loading;
 
   return (
     <SectionCard
       title="Trial Results"
-      subtitle={`${committedCount} anchors committed · ${runIds.length} historical run${runIds.length === 1 ? "" : "s"}`}
+      subtitle={`${cities.length} cit${cities.length === 1 ? "y" : "ies"} available · ${runIds.length} historical run${runIds.length === 1 ? "" : "s"}`}
       action={
         <Button size="sm" variant="ghost" icon={RefreshCw} onClick={refresh} disabled={loading}>Refresh</Button>
       }
     >
       <div className="space-y-4">
-        {/* Run controls */}
+        {/* ORCH-0734 — city + sample size + single Run button. Operator picks
+            a city from servable-non-zero list, sets sample size 50-500, clicks
+            Run. Internal flow runs prepare phase then trial phase per place
+            with progress observable through both. */}
         <div className="flex flex-col gap-3 p-4 border border-[var(--gray-200)] rounded-lg bg-[var(--gray-50)]">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex-1">
-              <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">Trial run</h4>
-              <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
-                Step 1: Fetch reviews + build collages for all committed anchors.
-                Step 2: Run Q2 per place via Gemini 2.5 Flash. Step 3: Read results below.
-              </p>
+          <div className="flex flex-col md:flex-row md:items-end gap-3">
+            <div className="flex-1 min-w-0">
+              <label
+                htmlFor="trial-city-picker"
+                className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5"
+              >
+                City
+              </label>
+              <select
+                id="trial-city-picker"
+                value={cityId || ""}
+                onChange={(e) => setCityId(e.target.value || null)}
+                disabled={running || loading}
+                className={[
+                  "w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
+                  "border border-[var(--gray-300)] rounded-lg outline-none transition-all duration-150",
+                  "px-3 cursor-pointer",
+                  "focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
+                  "disabled:opacity-50 disabled:cursor-not-allowed",
+                ].join(" ")}
+              >
+                <option value="">Choose a city…</option>
+                {cities.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}, {c.country} — {c.servable_count} servable
+                  </option>
+                ))}
+              </select>
             </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={Sparkles}
-              onClick={handlePrepareAll}
-              loading={preparing}
-              disabled={preparing || running || committedCount === 0}
-            >
-              1. Prepare reviews + collages
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              icon={Play}
-              onClick={handleRunTrial}
-              loading={running}
-              disabled={!canRun}
-            >
-              2. Run trial ({committedCount} places)
-            </Button>
-            {(preparing || running) && (
-              <Button variant="danger" size="sm" icon={Square} onClick={handleCancel}>
-                Cancel
+            <div className="w-full md:w-40">
+              <label
+                htmlFor="trial-sample-size"
+                className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5"
+              >
+                Sample size
+              </label>
+              <input
+                id="trial-sample-size"
+                type="number"
+                min={SAMPLE_SIZE_MIN}
+                max={SAMPLE_SIZE_MAX}
+                step={50}
+                value={sampleSize}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isInteger(n)) {
+                    setSampleSize(Math.max(SAMPLE_SIZE_MIN, Math.min(SAMPLE_SIZE_MAX, n)));
+                  }
+                }}
+                disabled={running || loading}
+                className={[
+                  "w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
+                  "border border-[var(--gray-300)] rounded-lg outline-none transition-all duration-150",
+                  "px-3 tabular-nums",
+                  "focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
+                  "disabled:opacity-50 disabled:cursor-not-allowed",
+                ].join(" ")}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Play}
+                onClick={handleRunTrial}
+                loading={running}
+                disabled={!canRun}
+              >
+                Run trial{selectedCity ? ` (${effectiveSample})` : ""}
               </Button>
+              {running && (
+                <Button variant="danger" size="sm" icon={Square} onClick={handleCancel}>
+                  Cancel
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="text-xs text-[var(--color-text-tertiary)]">
+            Stratified random — top half by review_count + random fill of bottom half.
+            {selectedCity ? (
+              <>
+                {` ${effectiveSample} of ${selectedCity.servable_count} servable places · ~$${estCostUsd} · ~${estMinutes} min wall time`}
+              </>
+            ) : (
+              <>{` Range ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX}, default ${SAMPLE_SIZE_DEFAULT}.`}</>
             )}
           </div>
-          {/* ORCH-0733 — Provider toggle removed. Gemini 2.5 Flash is sole provider per DEC-101. */}
           <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-[var(--gray-200)]">
             <span className="text-xs text-[var(--color-text-tertiary)] uppercase tracking-wide font-mono shrink-0">AI Provider</span>
-            <span className="text-xs">
-              <span className="font-medium text-[var(--color-text-primary)]">Gemini 2.5 Flash</span>
-              <span className="text-[var(--color-text-tertiary)]">{` · est $${(committedCount * PER_PLACE_COST_USD).toFixed(2)} · v4 prompt`}</span>
-            </span>
+            <span className="text-xs font-medium text-[var(--color-text-primary)]">Gemini 2.5 Flash</span>
+            <span className="text-xs text-[var(--color-text-tertiary)]">· v4 prompt</span>
             <span className="text-[10px] text-[var(--color-text-tertiary)] italic ml-auto">
               Locked sole provider. Anthropic dropped 2026-05-05 after A/B comparison.
             </span>
@@ -515,7 +610,7 @@ export function TrialResultsTab() {
 
         {!loading && runIds.length === 0 && (
           <AlertCard variant="info" title="No trials yet">
-            Pick anchors on the Signal Anchors tab, prepare data, then run the trial.
+            Pick a city + sample size, then click Run trial. Results will appear here once the run completes.
           </AlertCard>
         )}
 

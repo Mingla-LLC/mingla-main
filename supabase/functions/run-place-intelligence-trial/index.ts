@@ -316,7 +316,7 @@ serve(async (req: Request) => {
 
     switch (body.action) {
       case "preview_run":
-        return await handlePreviewRun(supabaseAdmin);
+        return await handlePreviewRun(supabaseAdmin, body);
       case "fetch_reviews":
         return await handleFetchReviews(supabaseAdmin, body, serperKey);
       case "compose_collage":
@@ -339,43 +339,71 @@ serve(async (req: Request) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// preview_run
+// preview_run — ORCH-0734 city-scoped sampled-sync
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function handlePreviewRun(db: SupabaseClient): Promise<Response> {
-  const { data, error } = await db
-    .from("signal_anchors")
-    .select("id, signal_id, anchor_index, place_pool_id, committed_at")
-    .not("committed_at", "is", null);
-  if (error) return json({ error: error.message }, 500);
+const PER_PLACE_COST_USD = 0.0040; // ORCH-0734 — measured on run e15f5d8f (32 anchors → $0.1292)
+const SAMPLE_SIZE_DEFAULT = 200;
+const SAMPLE_SIZE_MIN = 50;
+const SAMPLE_SIZE_MAX = 500;
 
-  const committed = data || [];
-  const totalPlaces = committed.length;
-  const expectedPlaces = MINGLA_SIGNAL_IDS.length * 2;
-  // ~$0.045 per place (Q1 + Q2 combined); see spec §F10
-  const estimatedCostUsd = +(totalPlaces * 0.045).toFixed(4);
+async function handlePreviewRun(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const cityId = body.city_id;
+  if (!cityId || typeof cityId !== "string") {
+    return json({ error: "city_id required (uuid)" }, 400);
+  }
+
+  const sampleSizeRaw = body.sample_size ?? SAMPLE_SIZE_DEFAULT;
+  const sampleSize = typeof sampleSizeRaw === "number" && Number.isInteger(sampleSizeRaw)
+    ? sampleSizeRaw
+    : NaN;
+  if (!Number.isInteger(sampleSize) || sampleSize < SAMPLE_SIZE_MIN || sampleSize > SAMPLE_SIZE_MAX) {
+    return json({
+      error: `sample_size must be integer ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX} (default ${SAMPLE_SIZE_DEFAULT})`,
+    }, 400);
+  }
+
+  const { data: city, error: cityErr } = await db
+    .from("seeding_cities")
+    .select("id, name, country")
+    .eq("id", cityId)
+    .maybeSingle();
+  if (cityErr) return json({ error: cityErr.message }, 500);
+  if (!city) return json({ error: "city_id does not exist in seeding_cities" }, 400);
+
+  const { count, error: countErr } = await db
+    .from("place_pool")
+    .select("id", { count: "exact", head: true })
+    .eq("is_servable", true)
+    .eq("city_id", cityId);
+  if (countErr) return json({ error: countErr.message }, 500);
+  const totalServable = count ?? 0;
+
+  if (totalServable === 0) {
+    return json({ error: "No servable places in city" }, 400);
+  }
+
+  const effectiveSampleSize = Math.min(sampleSize, totalServable);
+  const estimatedCostUsd = +(effectiveSampleSize * PER_PLACE_COST_USD).toFixed(4);
+
+  if (estimatedCostUsd > COST_GUARD_USD) {
+    return json({
+      error: `cost guard tripped: estimated $${estimatedCostUsd.toFixed(2)} > $${COST_GUARD_USD}`,
+    }, 400);
+  }
 
   return json({
-    totalPlaces,
-    expectedPlaces,
-    fullyCommitted: totalPlaces === expectedPlaces,
+    cityId: city.id,
+    cityName: city.name,
+    cityCountry: city.country,
+    totalServable,
+    effectiveSampleSize,
     estimatedCostUsd,
     costGuardUsd: COST_GUARD_USD,
-    perSignal: aggregateBySignal(committed),
   });
-}
-
-function aggregateBySignal(rows: Array<{ signal_id: string; anchor_index: number }>) {
-  const out: Record<string, { committed: number; missing: number[] }> = {};
-  for (const sid of MINGLA_SIGNAL_IDS) {
-    out[sid] = { committed: 0, missing: [1, 2] };
-  }
-  for (const r of rows) {
-    if (!out[r.signal_id]) continue;
-    out[r.signal_id].committed++;
-    out[r.signal_id].missing = out[r.signal_id].missing.filter((i) => i !== r.anchor_index);
-  }
-  return out;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -608,23 +636,74 @@ async function handleComposeCollage(
 
 async function handleStartRun(
   db: SupabaseClient,
-  _body: Record<string, unknown>,
+  body: Record<string, unknown>,
   userId: string,
 ): Promise<Response> {
-  // ORCH-0733 — Anthropic dropped; Gemini 2.5 Flash sole provider. No provider param.
-  const { data: anchors, error: anchErr } = await db
-    .from("signal_anchors")
-    .select("place_pool_id, signal_id, anchor_index")
-    .not("committed_at", "is", null)
-    .order("signal_id");
-  if (anchErr) return json({ error: anchErr.message }, 500);
-  if (!anchors || anchors.length === 0) {
-    return json({ error: "no committed anchors — pick anchors first" }, 400);
+  // ORCH-0734 — city-scoped sampled-sync. Operator picks city + sample size;
+  // edge fn loads servable places via stratified random sample (top half by
+  // review_count + random fill of bottom half), pre-inserts pending rows.
+  // Per F-8 verified row cardinality: 1 row per (run_id, place_pool_id);
+  // signal_id and anchor_index are NULL for city-runs (legacy 32-anchor rows
+  // preserve their values as audit trail).
+  // Per DEC-102: Gemini 2.5 Flash sole provider. No provider param.
+
+  const cityId = body.city_id;
+  if (!cityId || typeof cityId !== "string") {
+    return json({ error: "city_id required (uuid)" }, 400);
   }
 
-  // Gemini 2.5 Flash: ~$0.005/place at v3/v4 rates. Cost guard $5.
-  const perPlaceEstimate = 0.005;
-  const estCost = anchors.length * perPlaceEstimate;
+  const sampleSizeRaw = body.sample_size ?? SAMPLE_SIZE_DEFAULT;
+  const sampleSize = typeof sampleSizeRaw === "number" && Number.isInteger(sampleSizeRaw)
+    ? sampleSizeRaw
+    : NaN;
+  if (!Number.isInteger(sampleSize) || sampleSize < SAMPLE_SIZE_MIN || sampleSize > SAMPLE_SIZE_MAX) {
+    return json({
+      error: `sample_size must be integer ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX} (default ${SAMPLE_SIZE_DEFAULT})`,
+    }, 400);
+  }
+
+  // Validate city exists
+  const { data: city, error: cityErr } = await db
+    .from("seeding_cities")
+    .select("id, name, country")
+    .eq("id", cityId)
+    .maybeSingle();
+  if (cityErr) return json({ error: cityErr.message }, 500);
+  if (!city) return json({ error: "city_id does not exist in seeding_cities" }, 400);
+
+  // Load all servable place IDs for the city, ranked by review_count desc
+  // (deterministic ordering for the top-half pick). We do client-side
+  // stratified sampling here because pure SQL random sampling on potentially
+  // 3K+ rows is fine for sample mode but we want explicit shuffle control.
+  const { data: pool, error: poolErr } = await db
+    .from("place_pool")
+    .select("id, review_count")
+    .eq("is_servable", true)
+    .eq("city_id", cityId)
+    .order("review_count", { ascending: false, nullsFirst: false });
+  if (poolErr) return json({ error: poolErr.message }, 500);
+  if (!pool || pool.length === 0) {
+    return json({ error: "No servable places in city" }, 400);
+  }
+
+  const totalServable = pool.length;
+  const effectiveSampleSize = Math.min(sampleSize, totalServable);
+
+  // Stratified random: top half by review_count + random fill of bottom half.
+  // ceil() biases toward the deterministic top-N when sample_size is odd.
+  const topHalfCount = Math.ceil(effectiveSampleSize / 2);
+  const bottomFillCount = effectiveSampleSize - topHalfCount;
+  const topHalfIds = pool.slice(0, topHalfCount).map((p) => p.id);
+  const remaining = pool.slice(topHalfCount).map((p) => p.id);
+  // Fisher-Yates shuffle for the random-fill portion
+  for (let i = remaining.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [remaining[i], remaining[j]] = [remaining[j], remaining[i]];
+  }
+  const bottomFillIds = remaining.slice(0, bottomFillCount);
+  const sampledIds = [...topHalfIds, ...bottomFillIds];
+
+  const estCost = +(effectiveSampleSize * PER_PLACE_COST_USD).toFixed(4);
   if (estCost > COST_GUARD_USD) {
     return json({
       error: `cost guard tripped: estimated $${estCost.toFixed(2)} > $${COST_GUARD_USD}`,
@@ -632,33 +711,45 @@ async function handleStartRun(
   }
 
   const runId = crypto.randomUUID();
-  console.log(`[place-intel-trial:start_run] creating run ${runId} for ${anchors.length} places (provider=gemini, userId=${userId})`);
+  console.log(
+    `[place-intel-trial:start_run] city=${city.name} (${cityId}) ` +
+    `sample=${effectiveSampleSize}/${totalServable} run=${runId} userId=${userId}`,
+  );
 
-  const pendingRows = anchors.map((a) => ({
+  // Pre-insert pending rows. Per F-8: 1 row per place; signal_id + anchor_index
+  // are NULL for city-runs. UPSERT on (run_id, place_pool_id) UNIQUE is
+  // defensive; new run_id is freshly generated each call.
+  const pendingRows = sampledIds.map((ppId) => ({
     run_id: runId,
-    place_pool_id: a.place_pool_id,
-    signal_id: a.signal_id,
-    anchor_index: a.anchor_index,
+    place_pool_id: ppId,
+    city_id: cityId,
+    signal_id: null,
+    anchor_index: null,
     input_payload: {},
     status: "pending",
     prompt_version: PROMPT_VERSION,
     model: GEMINI_MODEL_NAME_SHORT,
+    retry_count: 0,
   }));
   const { error: insertErr } = await db
     .from("place_intelligence_trial_runs")
-    .insert(pendingRows);
+    .upsert(pendingRows, { onConflict: "run_id,place_pool_id" });
   if (insertErr) return json({ error: insertErr.message }, 500);
 
   return json({
     runId,
-    totalPlaces: anchors.length,
-    estimatedCostUsd: +estCost.toFixed(4),
+    cityId: city.id,
+    cityName: city.name,
+    cityCountry: city.country,
+    totalServable,
+    totalPlaces: effectiveSampleSize,
+    estimatedCostUsd: estCost,
     provider: "gemini",
     model: GEMINI_MODEL_NAME_SHORT,
-    anchors: anchors.map((a) => ({
-      place_pool_id: a.place_pool_id,
-      signal_id: a.signal_id,
-      anchor_index: a.anchor_index,
+    // Shape preserved for browser-loop compatibility. signal_id is null for city-runs.
+    anchors: sampledIds.map((ppId) => ({
+      place_pool_id: ppId,
+      signal_id: null,
     })),
   });
 }
@@ -674,16 +765,18 @@ async function handleRunTrialForPlace(
   geminiKey: string,
 ): Promise<Response> {
   // ORCH-0733 — Anthropic dropped; provider param removed. Gemini 2.5 Flash always.
+  // ORCH-0734 — signal_id and anchor_index are now optional (null for city-runs;
+  // legacy 32-anchor callers may still send them but they're not required).
   const runId = body.run_id as string;
   const placePoolId = body.place_pool_id as string;
-  const signalId = body.signal_id as string;
-  const anchorIndex = body.anchor_index as number;
+  const signalId = (body.signal_id ?? null) as string | null;
+  const anchorIndex = (body.anchor_index ?? null) as number | null;
 
   if (!geminiKey) {
     return json({ error: "GEMINI_API_KEY not configured (operator: `supabase secrets set GEMINI_API_KEY=...`)" }, 500);
   }
-  if (!runId || !placePoolId || !signalId || anchorIndex == null) {
-    return json({ error: "run_id, place_pool_id, signal_id, anchor_index all required" }, 400);
+  if (!runId || !placePoolId) {
+    return json({ error: "run_id, place_pool_id required" }, 400);
   }
 
   try {
@@ -716,8 +809,9 @@ async function handleRunTrialForPlace(
 
 interface AnchorRow {
   place_pool_id: string;
-  signal_id: string;
-  anchor_index: number;
+  // ORCH-0734 — signal_id + anchor_index nullable (city-runs places have no anchor metadata).
+  signal_id: string | null;
+  anchor_index: number | null;
 }
 
 async function processOnePlace(args: {
@@ -789,7 +883,8 @@ async function processOnePlace(args: {
   // ORCH-0733 — Q2 only via Gemini 2.5 Flash (sole provider).
   // Q1 removed in v3 (harvested research into signal-lab/PROPOSALS.md).
   // Anthropic dropped in v4 (commented-preserved helpers above for `git revert`).
-  const { aggregate: q2, totalCostUsd: q2Cost } = await callGeminiQuestion({
+  // ORCH-0734 — `retried` field surfaces when MALFORMED_FUNCTION_CALL forced retry.
+  const { aggregate: q2, totalCostUsd: q2Cost, retried } = await callGeminiQuestion({
     apiKey: geminiKey,
     systemPrompt,
     userTextBlock,
@@ -798,6 +893,7 @@ async function processOnePlace(args: {
   });
 
   // Persist. q1_response is nullable (verified) → write null on v3+ runs.
+  // ORCH-0734 — retry_count tracks Gemini MALFORMED_FUNCTION_CALL retries (0 or 1).
   await db
     .from("place_intelligence_trial_runs")
     .update({
@@ -810,6 +906,7 @@ async function processOnePlace(args: {
       status: "completed",
       model: GEMINI_MODEL_NAME_SHORT,
       model_version: GEMINI_MODEL_ID,
+      retry_count: retried ? 1 : 0,
       completed_at: new Date().toISOString(),
     })
     .eq("run_id", runId)
@@ -892,13 +989,21 @@ async function callQuestion(args: {
 // where args matches the tool's input_schema (same shape as Anthropic's
 // tool_use.input).
 
+// ORCH-0734 — retry-once on MALFORMED_FUNCTION_CALL. Gemini returns HTTP 200
+// with a malformed payload ~3% of the time; bit-identical retry usually
+// succeeds (live evidence: Harris Teeter / flowers failed in run e15f5d8f
+// but same row succeeded in v3 run fe15cb99). HTTP-level retry is handled
+// upstream in callGeminiWithRetry; this layer handles the structured-output
+// flake specifically.
+const MAX_MALFORMED_RETRIES = 1;
+
 async function callGeminiQuestion(args: {
   apiKey: string;
   systemPrompt: string;
   userTextBlock: string;
   collageUrl: string;
   tool: typeof Q2_TOOL;
-}): Promise<{ aggregate: any; totalCostUsd: number }> {
+}): Promise<{ aggregate: any; totalCostUsd: number; retried: boolean }> {
   const { apiKey, systemPrompt, userTextBlock, collageUrl, tool } = args;
 
   // Fetch + base64-encode collage (Gemini inline_data requires bytes; URL fetch unsupported)
@@ -938,27 +1043,54 @@ async function callGeminiQuestion(args: {
     },
   };
 
-  const { payload, usage } = await callGeminiWithRetry(apiKey, reqBody);
-  const candidates = payload?.candidates || [];
-  if (candidates.length === 0) {
-    throw new Error("Gemini returned no candidates");
-  }
-  const parts = candidates[0]?.content?.parts || [];
-  const fnCallPart = parts.find(
-    (p: { functionCall?: { name?: string } }) => p.functionCall?.name === tool.name,
-  );
-  if (!fnCallPart?.functionCall?.args) {
+  // ORCH-0734 — retry-once loop on MALFORMED_FUNCTION_CALL. Cost accumulates
+  // across both attempts (Gemini bills for failed completions). On retry
+  // success, the cost field reflects combined tokens for honest reporting.
+  let totalCost = 0;
+  let lastFinishReason: string | null = null;
+  let attempt = 0;
+
+  while (attempt <= MAX_MALFORMED_RETRIES) {
+    attempt++;
+    const { payload, usage } = await callGeminiWithRetry(apiKey, reqBody);
+    totalCost += computeCostUsdGemini({
+      promptTokens: usage.promptTokenCount,
+      candidatesTokens: usage.candidatesTokenCount,
+    });
+
+    const candidates = payload?.candidates || [];
+    if (candidates.length === 0) {
+      throw new Error("Gemini returned no candidates");
+    }
     const finishReason = candidates[0]?.finishReason || "unknown";
-    throw new Error(`Gemini returned no function_call for ${tool.name} (finishReason=${finishReason})`);
+    const parts = candidates[0]?.content?.parts || [];
+    const fnCallPart = parts.find(
+      (p: { functionCall?: { name?: string } }) => p.functionCall?.name === tool.name,
+    );
+
+    if (fnCallPart?.functionCall?.args) {
+      // Success — return aggregate. retried=true if we needed >1 attempt.
+      return {
+        aggregate: fnCallPart.functionCall.args,
+        totalCostUsd: totalCost,
+        retried: attempt > 1,
+      };
+    }
+
+    lastFinishReason = finishReason;
+    // Only retry on MALFORMED_FUNCTION_CALL (the known intermittent flake).
+    // Other finish reasons (SAFETY, RECITATION, MAX_TOKENS, etc.) are
+    // not retry-friendly with the same prompt — fail fast.
+    if (finishReason !== "MALFORMED_FUNCTION_CALL" || attempt > MAX_MALFORMED_RETRIES) {
+      throw new Error(`Gemini returned no function_call for ${tool.name} (finishReason=${finishReason})`);
+    }
+    console.log(
+      `[place-intel-trial] MALFORMED_FUNCTION_CALL retry attempt ${attempt + 1}/${MAX_MALFORMED_RETRIES + 1}`,
+    );
+    // Loop continues for retry with same reqBody.
   }
-  const aggregate = fnCallPart.functionCall.args;
 
-  const cost = computeCostUsdGemini({
-    promptTokens: usage.promptTokenCount,
-    candidatesTokens: usage.candidatesTokenCount,
-  });
-
-  return { aggregate, totalCostUsd: cost };
+  throw new Error(`Gemini retry exhausted (finishReason=${lastFinishReason})`);
 }
 
 function buildSystemPrompt(): string {
