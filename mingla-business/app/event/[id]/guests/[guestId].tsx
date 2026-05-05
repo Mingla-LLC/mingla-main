@@ -40,6 +40,7 @@ import { useAuth } from "../../../../src/context/AuthContext";
 import { formatGbp } from "../../../../src/utils/currency";
 import { expandTicketIds } from "../../../../src/utils/expandTicketIds";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
+import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
 
 import { DoorRefundSheet } from "../../../../src/components/door/DoorRefundSheet";
 import { Button } from "../../../../src/components/ui/Button";
@@ -102,14 +103,6 @@ const parseGuestId = (
     return { kind: "door", innerId: raw.slice("door-".length) };
   }
   return null;
-};
-
-// Cycle 12 — door-sale helpers mirror the order/comp helpers above.
-const PAYMENT_METHOD_LABELS: Record<DoorPaymentMethod, string> = {
-  cash: "Cash",
-  card_reader: "Card reader",
-  nfc: "NFC tap",
-  manual: "Manual",
 };
 
 interface DoorStatusPillSpec {

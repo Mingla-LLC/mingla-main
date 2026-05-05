@@ -45,6 +45,7 @@ import { useCurrentBrandStore } from "../../../../src/store/currentBrandStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { formatGbp } from "../../../../src/utils/currency";
 import { exportDoorSalesCsv } from "../../../../src/utils/guestCsvExport";
+import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
 
 import { DoorSaleNewSheet } from "../../../../src/components/door/DoorSaleNewSheet";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
@@ -130,13 +131,6 @@ const doorPaymentPill = (
       return _exhaust;
     }
   }
-};
-
-const PAYMENT_METHOD_LABELS: Record<DoorPaymentMethod, string> = {
-  cash: "Cash",
-  card_reader: "Card reader",
-  nfc: "NFC tap",
-  manual: "Manual",
 };
 
 // ---- Screen ---------------------------------------------------------

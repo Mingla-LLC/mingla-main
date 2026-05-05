@@ -2,11 +2,8 @@
  * Recurrence-rule helpers — preset → display label, expansion to dates,
  * RFC 5545 RRULE string emitter, weekday helpers.
  *
- * Per Cycle 4 spec §3.4.
- *
- * The RFC 5545 emit (`recurrenceRuleToRfc5545`) is unused in Cycle 4
- * (frontend-only — DEC-071) but exported so Cycle 9 backend integration
- * is one import away. [TRANSITIONAL] consumed by Cycle 9 publish edge fn.
+ * Per Cycle 4 spec §3.4. Used by Cycle 4 wizard validators (CreatorStep2When,
+ * draftEventValidation) AND Cycle 9 publish flow (liveEventStore conversion).
  */
 
 import type {
@@ -221,8 +218,7 @@ export const expandRecurrenceToDates = (
 /**
  * Convert RecurrenceRule to RFC 5545 RRULE string.
  *
- * [TRANSITIONAL] consumed by Cycle 9 publish edge function. Unused in
- * Cycle 4 — kept exported so Cycle 9 backend wires up cleanly.
+ * Used by Cycle 9 publish edge function consumption layer.
  *
  * Format:
  *   daily       → "FREQ=DAILY;COUNT=N" or "FREQ=DAILY;UNTIL=YYYYMMDDT000000Z"

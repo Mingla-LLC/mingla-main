@@ -48,8 +48,41 @@ export interface TopBarProps {
   title?: string;
   /** Back-button handler (`back` variant). */
   onBack?: () => void;
-  /** Right slot content. If undefined, renders default search + bell IconChromes. */
+  /**
+   * Right slot content. If defined, REPLACES the default `[search, bell]`
+   * cluster.
+   *
+   * Per I-37: `leftKind="brand"` consumers MUST NOT pass `rightSlot=` —
+   * use `extraRightSlot` to ADD icons after the default cluster instead.
+   *
+   * For `leftKind="back"` consumers, `rightSlot=` is the canonical
+   * suppress/replace mechanism. Three documented patterns:
+   *   - `rightSlot={null}` → suppresses default cluster entirely
+   *     (e.g., `app/brand/[id]/audit-log.tsx`, `app/brand/[id]/team.tsx`
+   *      loading branch)
+   *   - `rightSlot={<View />}` → empty placeholder for layout balance
+   *     (e.g., `BrandProfileView.tsx`, `BrandPaymentsView.tsx` ready/loading
+   *      branches)
+   *   - `rightSlot={<page-specific-action>}` → page-specific replace
+   *     (e.g., `BrandEditView.tsx` Save button, `event/[id]/index.tsx`
+   *      Share + Manage cluster, `team.tsx` invite Plus)
+   *
+   * Strict-grep CI gate enforces I-37 — `.github/workflows/strict-grep-
+   * mingla-business.yml` fails CI if any `<TopBar leftKind="brand">`
+   * consumer passes `rightSlot=`.
+   */
   rightSlot?: React.ReactNode;
+  /**
+   * Optional icons composed AFTER the default `[search, bell]` cluster.
+   * Use this for primary-tab page-specific extras (e.g., events tab `+`).
+   * Renders inside the same flex row, gap=spacing.sm, in source order.
+   *
+   * Per I-37: ONLY honored when `rightSlot` is undefined. If both are
+   * passed, `rightSlot` wins (preserves back-route compatibility);
+   * the strict-grep CI gate flags `leftKind="brand"` consumers that
+   * pass `rightSlot=` as I-37 violations.
+   */
+  extraRightSlot?: React.ReactNode;
   /** Bell badge count when default right slot renders. */
   unreadCount?: number;
   /**
@@ -75,10 +108,16 @@ interface ToastState {
 const truncate = (value: string, max: number): string =>
   value.length <= max ? value : `${value.slice(0, max - 1)}…`;
 
-const DefaultRightSlot: React.FC<{ unreadCount: number | undefined }> = ({
+/**
+ * Default right-slot icons (search + bell). Rendered WITHOUT outer View
+ * wrap so the parent render branch can compose with `extraRightSlot` in
+ * one flex row. The wrapping `<View style={styles.rightCluster}>` lives
+ * in the TopBar render branch below.
+ */
+const DefaultRightSlotInner: React.FC<{ unreadCount: number | undefined }> = ({
   unreadCount,
 }) => (
-  <View style={styles.rightCluster}>
+  <>
     {/* [TRANSITIONAL] right-slot icons render but onPress is unwired in
         Cycle 0a — Cycle 1+ wires search + notifications navigation. */}
     <IconChrome icon="search" size={36} accessibilityLabel="Search" />
@@ -88,7 +127,7 @@ const DefaultRightSlot: React.FC<{ unreadCount: number | undefined }> = ({
       badge={unreadCount}
       accessibilityLabel="Notifications"
     />
-  </View>
+  </>
 );
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -96,6 +135,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   title,
   onBack,
   rightSlot,
+  extraRightSlot,
   unreadCount,
   onBrandTap,
   testID,
@@ -181,7 +221,12 @@ export const TopBar: React.FC<TopBarProps> = ({
         <View style={styles.barInner}>
           <View style={styles.leftSlot}>{renderLeft()}</View>
           <View style={styles.rightSlot}>
-            {rightSlot ?? <DefaultRightSlot unreadCount={unreadCount} />}
+            {rightSlot !== undefined ? rightSlot : (
+              <View style={styles.rightCluster}>
+                <DefaultRightSlotInner unreadCount={unreadCount} />
+                {extraRightSlot}
+              </View>
+            )}
           </View>
         </View>
       </GlassChrome>

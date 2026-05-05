@@ -1687,3 +1687,23 @@ Other shapes (allow-list / parameterized restrictions / `event_scope` arrays) ar
 
 **Test that catches a regression:** Grep gate above. Additionally: any rendered component that throws synchronously inside a tab MUST surface the DefaultFallback render path (manual smoke or RTL test).
 
+---
+
+### I-37 TOPBAR-DEFAULT-CLUSTER-ON-PRIMARY-TABS — `<TopBar leftKind="brand">` consumers MUST render the default `[search, bell]` cluster (mingla-business — Cycle 17b — ACTIVE post-Cycle-17b CLOSE 2026-05-05)
+
+**Statement:** Every `mingla-business` `<TopBar>` consumer with `leftKind="brand"` (primary tab routes — currently `app/(tabs)/home.tsx`, `app/(tabs)/events.tsx`, `app/(tabs)/account.tsx`, plus dev `app/__styleguide.tsx` brand fixture) MUST render the default `[search, bell]` cluster on the right side of the top bar. Page-specific extras (e.g., the `+` icon on events tab) MUST compose via the NEW `extraRightSlot` prop, NOT replace via `rightSlot`.
+
+**Scope:** `leftKind="brand"` consumers ONLY. `leftKind="back"` consumers (sub-route pages: Edit Brand, Audit Log, Brand Payments, Brand Profile, Brand Finance Reports, Event Detail, Team list, etc.) are OUT of scope — they intentionally suppress the default cluster via `rightSlot={null}` or `rightSlot={<View />}` for focused-task UX.
+
+**Why this exists:** Pre-17a, `events.tsx` replaced the default cluster with a single `+` icon, removing search + bell from that tab — operator-flagged as broken founder UX (founder feedback 2026-05-04). Cycle 17a tactical fix was an inline cluster within `rightSlot={<View>...</View>}`. Cycle 17b structural fix introduces `extraRightSlot` prop and codifies the rule. Founder feedback: search + bell + `+` should all be present together on the events tab.
+
+**CI enforcement:** `.github/workflows/strict-grep-mingla-business.yml` job `i37-topbar-default-cluster` running `.github/scripts/strict-grep/i37-topbar-cluster.mjs` — fails CI on PR if any `<TopBar leftKind="brand">` consumer passes `rightSlot=` (instead of `extraRightSlot=`). Allowlist via inline comment `// orch-strict-grep-allow leftKind-brand-rightSlot — <reason>` immediately above the offending JSX block.
+
+**Established by:** Cycle 17b SPEC binding contract; D-CYCLE17A-FOR-3 anchor; DEC-101 lock entry.
+
+**EXIT condition:** None — permanent invariant. If the design system ever pivots to per-tab top-bar variations, supersede via NEW invariant; do not silently relax.
+
+**Cross-reference:** Cycle 17a §A.1 tactical fix (`events.tsx:393-417`) deleted at 17b CLOSE; Cycle 17b SPEC §A-§D; founder feedback `Mingla_Artifacts/FOUNDER_FEEDBACK.md` 2026-05-04 sub-item 2; `.github/scripts/strict-grep/README.md` registry pattern.
+
+**Test that catches a regression:** CI grep gate above. Synthetic violation fixture: `<TopBar leftKind="brand" rightSlot={<View />} />` → exit 1 with rich error. Allowlist fixture: same JSX with `// orch-strict-grep-allow leftKind-brand-rightSlot — <reason>` comment immediately above → exit 0.
+

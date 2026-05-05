@@ -282,9 +282,9 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // Hook-derived Operations rows. Per-row onPress closes over either
   // fireToast (still-TRANSITIONAL rows) or the live navigation callback.
   // Live wirings: J-A8 onEdit (sticky shelf — separate from this list) ·
-  // J-A9 onTeam (Team row) · J-A10 onPayments (Payments row).
-  // [TRANSITIONAL] remaining inert rows — exit when J-A12 (Finance reports)
-  // lands. Tax & VAT row stays TRANSITIONAL until §5.3.6 settings cycle.
+  // J-A9 onTeam (Team row) · J-A10 onPayments (Payments row) ·
+  // J-A12 onReports (Finance reports row).
+  // [TRANSITIONAL] Tax & VAT row stays TRANSITIONAL until §5.3.6 settings cycle.
   // Cycle 13a (SPEC §4.14): Audit log row gated on brand_admin+ rank.
   // useCurrentBrandRole runs every render with the current brand id; null
   // brand short-circuits via the hook's `enabled` flag, never an early return

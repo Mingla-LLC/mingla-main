@@ -1,0 +1,39 @@
+name: Strict Grep Gates (Mingla Business)
+
+on:
+  pull_request:
+    branches: [main, Seth]
+    paths:
+      - "mingla-business/**"
+      - ".github/scripts/strict-grep/**"
+      - ".github/workflows/strict-grep-mingla-business.yml"
+
+# Registry pattern (per DEC-101 D-17b-5):
+# Each invariant CI gate is its own modular Node.js script in
+# .github/scripts/strict-grep/. Adding a new gate = add one script + one
+# job below. Each job runs in parallel; any failure fails the PR.
+#
+# Currently registered gates:
+#   - I-37 (i37-topbar-cluster.mjs) — primary-tab default cluster (Cycle 17b)
+#
+# Future gates to register (proposed but not yet implemented):
+#   - I-32 rank parity (Cycle 13a proposal)
+#   - I-34 canManualCheckIn decommission (Cycle 13b proposal)
+#   - I-36 ROOT-ERROR-BOUNDARY (Cycle 16a proposal)
+#
+# When adding a new gate, follow the 4 steps in
+# .github/scripts/strict-grep/README.md.
+
+jobs:
+  i37-topbar-default-cluster:
+    name: "I-37: TopBar primary-tab default cluster"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Babel parser
+        run: npm install --no-save @babel/parser @babel/traverse
+      - name: Run I-37 gate
+        run: node .github/scripts/strict-grep/i37-topbar-cluster.mjs

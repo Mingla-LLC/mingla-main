@@ -181,6 +181,14 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     id: row.id,
     displayName: row.name,
     slug: row.slug,
+    // [TRANSITIONAL] Cycle 7 FX2 added kind/address/coverHue to UI Brand type but
+    // brands table doesn't carry these columns yet. Defaults: popup (safer — no fake
+    // address shown), null address, hue 25 (warm-orange — matches accent.warm scheme).
+    // EXIT: B-cycle adds the 3 columns to brands table → BrandRow interface + this
+    // mapper read from `row` directly. Per Cycle 17a §A.3; closes D-CYCLE12-IMPL-2.
+    kind: "popup" as const,
+    address: null,
+    coverHue: 25,
     photo: row.profile_photo_url ?? undefined,
     role: options.role,
     stats: options.stats ?? { ...EMPTY_BRAND_STATS },
