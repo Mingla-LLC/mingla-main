@@ -1,3 +1,4 @@
+-- ORCH-0722 (2026-05-04): Two DROP FUNCTION IF EXISTS statements added before Steps 6 and 10 to neutralize OUT-param-shape bombs (check_pairing_allowed 2→4 cols + admin_list_subscriptions 14→13 cols). Postgres rejects CREATE OR REPLACE FUNCTION when RETURNS TABLE shape differs (SQLSTATE 42P13). Production unaffected — historical apply via dashboard SQL editor where DROP+REPL was issued manually. Forensics: Mingla_Artifacts/reports/INVESTIGATION_ORCH-0722_SIBLING_TIME_BOMB_AUDIT.md. Sibling fix: ORCH-0721 commit 4e8f784d (CONCURRENTLY removed from 20260409200001).
 -- ============================================================
 -- ORCH-0372: Price Tier Restructure
 -- Migrates from 3 tiers (free/pro/elite) to 2 tiers (free/mingla_plus).
@@ -137,6 +138,9 @@ $$;
 -- ─── Step 6: Replace check_pairing_allowed() ────────────────────────────────
 -- Changed from binary (elite-only) to count-based (free=1, mingla_plus=unlimited)
 
+-- ORCH-0722 (2026-05-04): DROP first because the new RETURNS TABLE shape (4 cols) differs from the prior definition (2 cols, 20260315000008:41). Postgres CREATE OR REPLACE FUNCTION rejects OUT-param row-shape changes (SQLSTATE 42P13). Production already has the new shape (applied via dashboard SQL editor).
+DROP FUNCTION IF EXISTS check_pairing_allowed(UUID);
+
 CREATE OR REPLACE FUNCTION check_pairing_allowed(p_user_id UUID)
 RETURNS TABLE(allowed BOOLEAN, current_count INTEGER, max_allowed INTEGER, tier TEXT)
 LANGUAGE plpgsql SECURITY DEFINER AS $$
@@ -255,6 +259,9 @@ END;
 $$;
 
 -- ─── Step 10: Replace admin_list_subscriptions() ────────────────────────────
+
+-- ORCH-0722 (2026-05-04): DROP first because the new RETURNS TABLE shape (13 cols) differs from the prior definition (14 cols, 20260317100001:153 — referral_bonus_used_months column removed in this migration). Postgres CREATE OR REPLACE FUNCTION rejects OUT-param row-shape changes (SQLSTATE 42P13). Production already has the new shape (applied via dashboard SQL editor).
+DROP FUNCTION IF EXISTS admin_list_subscriptions(TEXT, TEXT, INTEGER, INTEGER);
 
 CREATE OR REPLACE FUNCTION admin_list_subscriptions(
   p_search TEXT DEFAULT NULL,
