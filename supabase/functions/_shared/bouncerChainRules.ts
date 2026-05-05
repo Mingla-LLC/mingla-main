@@ -58,7 +58,11 @@ export const FAST_FOOD_NAME_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: st
   FF_PATTERN("popeyes",           'popeyes'),
   FF_PATTERN("panda express",     'panda_express'),
   FF_PATTERN("domino's",          'dominos'),
-  FF_PATTERN("papa john",         'papa_johns'),
+  // [ORCH-0735 v3: split "papa john" into both plural forms. The original
+  //  "papa john" matched "Papa John's" (apostrophe = non-word boundary) but
+  //  NOT "Papa Johns" (s = word char, \b suppressed). Live data has both forms.]
+  FF_PATTERN("papa johns",        'papa_johns'),    // plural / no-apostrophe form
+  FF_PATTERN("papa john's",       'papa_johns'),    // apostrophe-canonical form
   FF_PATTERN("pizza hut",         'pizza_hut'),
   FF_PATTERN("little caesar",     'little_caesars'),
   FF_PATTERN("sonic drive",       'sonic_drive_in'),
@@ -84,7 +88,10 @@ export const FAST_FOOD_NAME_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: st
   FF_PATTERN("panera bread",      'panera_bread'),
   FF_PATTERN("jersey mike",       'jersey_mikes'),
   FF_PATTERN("jimmy john",        'jimmy_johns'),
-  FF_PATTERN("firehouse sub",     'firehouse_subs'),
+  // [ORCH-0735 v3: "firehouse sub" did NOT match "Firehouse Subs" (plural, no
+  //  apostrophe). Venue data overwhelmingly uses plural form (Raleigh ×2 leaked).
+  //  Singular variant intentionally dropped — re-add via ORCH-0739 if needed.]
+  FF_PATTERN("firehouse subs",    'firehouse_subs'),
   FF_PATTERN("qdoba",             'qdoba'),
   FF_PATTERN("potbelly",          'potbelly'),
   FF_PATTERN("sweetgreen",        'sweetgreen'),
@@ -103,7 +110,11 @@ export const FAST_FOOD_NAME_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: st
 
   // ── B.3 — Sweet treats / desserts ───────────────────────────────────────
   FF_PATTERN("baskin-robbins",    'baskin_robbins'),
-  FF_PATTERN("cold stone creamery", 'cold_stone_creamery'),
+  // [ORCH-0735 v3: widened from "cold stone creamery" to "cold stone" — Lagos venue
+  //  "Cold Stone Bode Thomas, Surulere" leaked v2. Word-boundary still anchors so
+  //  arbitrary "cold stone" prose won't false-match. Label preserved for stability.]
+  FF_PATTERN("cold stone",        'cold_stone_creamery'),
+  FF_PATTERN("dairy queen",       'dairy_queen'),  // ORCH-0735 v3: missing pattern (Baltimore/FtL/Raleigh leaks)
   FF_PATTERN("häagen-dazs",       'haagen_dazs'),
   FF_PATTERN("haagen-dazs",       'haagen_dazs_alt'),
   FF_PATTERN("insomnia cookies",  'insomnia_cookies'),
@@ -113,7 +124,7 @@ export const FAST_FOOD_NAME_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: st
   FF_PATTERN("rita's italian ice", 'ritas_italian_ice'),
 
   // ── B.4 — International (existing) ──────────────────────────────────────
-  FF_PATTERN("quick",             'quick_belgium'),
+  // [ORCH-0735 v2 rework: `quick` (Belgian) DROPPED — false-positive rate too high; word too common in restaurant names. ~2 chain hits vs ~5 false. Operator may re-add with stricter pattern in future ORCH.]
   FF_PATTERN("nordsee",           'nordsee'),
   FF_PATTERN("jollibee",          'jollibee'),
   FF_PATTERN("pollo tropical",    'pollo_tropical'),
@@ -146,9 +157,9 @@ export const FAST_FOOD_NAME_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: st
   FF_PATTERN("tully's coffee",    'tullys_coffee'),
 
   // ── D — UK chain additions ────────────────────────────────────────────
-  FF_PATTERN("leon",              'leon_uk'),
+  // [ORCH-0735 v2 rework: `leon` (UK Leon chain) DROPPED — `\bleon\b` matched independent restaurants like "Pupuseria Maria de Leon Bus". ~1 chain hit vs ~16 false. Future ORCH may re-add with chain-context anchor. Multi-word `léon de bruxelles` / `leon de bruxelles` kept below — they are precise enough.]
   FF_PATTERN("itsu",              'itsu'),
-  FF_PATTERN("wasabi",            'wasabi'),
+  // [ORCH-0735 v2 rework: `wasabi` (UK chain) DROPPED — `\bwasabi\b` matched independent Asian/sushi places. ~1-2 chain hits vs ~4-5 false.]
   FF_PATTERN("eat.",              'eat_uk'),
   FF_PATTERN("patisserie valerie", 'patisserie_valerie'),
   FF_PATTERN("wetherspoons",      'wetherspoons'),
@@ -171,7 +182,7 @@ export const FAST_FOOD_NAME_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: st
   FF_PATTERN("flunch",            'flunch_france'),
   FF_PATTERN("buffalo grill",     'buffalo_grill_france'),
   FF_PATTERN("la boucherie",      'la_boucherie_france'),
-  FF_PATTERN("paul",              'paul_france_bakery'),
+  // [ORCH-0735 v2 rework: `paul` (French Paul bakery) DROPPED — `\bpaul\b` matched parks/churches/people/independents (74 hits / ~2 chain / ~72 false). Catastrophic precision; future re-add must be highly specific (e.g., 'paul boulangerie', 'paul bakery').]
   FF_PATTERN("brioche dorée",     'brioche_doree'),
   FF_PATTERN("brioche doree",     'brioche_doree_ascii'),
   FF_PATTERN("class' croute",     'class_croute'),
@@ -218,6 +229,7 @@ export const CASUAL_CHAIN_NAME_PATTERNS: ReadonlyArray<{ pattern: RegExp; label:
   FF_PATTERN("ihop",               'ihop'),
   FF_PATTERN("waffle house",      'waffle_house'),
   FF_PATTERN("cracker barrel",    'cracker_barrel'),
+  FF_PATTERN("bob evans",         'bob_evans'),    // ORCH-0735 v3: missing pattern (Durham leak)
   FF_PATTERN("texas roadhouse",   'texas_roadhouse'),
   FF_PATTERN("red robin",         'red_robin'),
   FF_PATTERN("buffalo wild wings", 'buffalo_wild_wings'),

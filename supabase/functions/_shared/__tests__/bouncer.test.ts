@@ -547,14 +547,22 @@ Deno.test("T-B11-17: Mr Bigg's Lagos blocked (B11 because no fast_food primary_t
   assertEquals(v.reasons, ['B11:chain_brand:mr_biggs_ng']);
 });
 
-Deno.test('T-B11-18: Quick Belgian fast food blocked', () => {
+Deno.test('T-B11-18 (v2 rework + v3 cleanup): "Quick" admits because pattern DROPPED', () => {
+  // v2 dropped the `quick` pattern from FAST_FOOD_NAME_PATTERNS (74 false-positive
+  // hits / 2 chain hits). Test was originally a REJECT assertion using the
+  // (now-removed) `quick_belgium` label. v3 flips to ADMIT to match v2's drop —
+  // mirrors the T-LEON-INDEPENDENT flip pattern. T-QUICK-INDEPENDENT-ADMIT
+  // (v2-added) covers the explicit independent-name guard.
   const place = basePlace({
     name: 'Quick',
     types: ['restaurant'],
   });
   const v = bounce(place);
-  assertEquals(v.is_servable, false);
-  assertEquals(v.reasons, ['B11:chain_brand:quick_belgium']);
+  assertEquals(
+    v.is_servable,
+    true,
+    `v3 cleanup: "Quick" must admit after v2 dropped the pattern. Reasons: ${JSON.stringify(v.reasons)}`,
+  );
 });
 
 // ───── B12 — Casual full-service chain blocklist (8 fixtures) ─────────────
@@ -817,25 +825,24 @@ Deno.test('T-CAVA-VARIANT: "Cavalry Pub" must NOT match Cava regex', () => {
   assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
 });
 
-Deno.test('T-LEON-INDEPENDENT: independent restaurant with "Leon" in name should NOT match `leon` UK chain', () => {
-  // The `leon` pattern is for the UK fast-food chain. Word-boundary protects
-  // independents like "Léon de Lyon Restaurant" (different chain).
-  // NOTE: this is a known edge case — "Leon" is a common name. The current
-  // pattern \bleon\b will match "Leon Restaurant" (false positive). Document
-  // this limitation; operator may need to refine pattern in a future ORCH if
-  // false positives surface. For now, this test asserts the problematic case
-  // for transparency.
+Deno.test('T-LEON-INDEPENDENT (v2 rework): "Leon Restaurant" admits because `leon` pattern DROPPED', () => {
+  // v2 rework (ORCH-0735): the standalone `\bleon\b` pattern was DROPPED from
+  // FAST_FOOD_NAME_PATTERNS because it false-matched independent restaurants
+  // with surname Leon (e.g., "Pupuseria Maria de Leon Bus"). After the drop,
+  // any place named "Leon" admits via default bouncer rules. UK Leon chain
+  // rows (~1 in pool) accepted as cost of precision protection. The
+  // multi-word patterns `léon de bruxelles` / `leon de bruxelles` are
+  // preserved separately — those are precise enough.
   const place = basePlace({
     name: 'Leon Restaurant',
     types: ['restaurant'],
   });
   const v = bounce(place);
-  // Currently expected: B11 fires because \bleon\b matches "Leon".
-  // This is intentional per operator decision; UK Leon chain is in scope.
-  // If operator wants to allow "Leon"-named independents, they must add
-  // specific patterns (e.g., 'leon @ liverpool street') or move to allowlist.
-  assertEquals(v.is_servable, false);
-  assertEquals(v.reasons, ['B11:chain_brand:leon_uk']);
+  assertEquals(
+    v.is_servable,
+    true,
+    `v2 regression: independent "Leon Restaurant" must admit. Reasons: ${JSON.stringify(v.reasons)}`,
+  );
 });
 
 // ───── Pre-photo pass parity (B10/B11/B12 photo-independent) (2 fixtures) ─
@@ -916,4 +923,183 @@ Deno.test('T-EDGE-02: "Starbucks at Marriott Hotel" — B11 fires', () => {
   const v = bounce(place);
   assertEquals(v.is_servable, false);
   assertEquals(v.reasons, ['B11:chain_brand:starbucks']);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORCH-0735 v2 REWORK — false-positive admit guards
+// (added after dry-run surfaced collisions on `leon`/`paul`/`wasabi`/`quick`)
+// ═══════════════════════════════════════════════════════════════════════════
+
+Deno.test('T-LEON-PUPUSERIA-ADMIT (v2 rework): "Pupuseria Maria de Leon Bus" must admit', () => {
+  // The `leon` pattern was DROPPED in v2 because it false-matched proper-noun
+  // "Leon" inside independent restaurant names. Live evidence: Durham dry-run
+  // 2026-05-05 fired B11:chain_brand:leon_uk on this exact place name.
+  // If a future PR re-adds `leon` to FAST_FOOD_NAME_PATTERNS without
+  // chain-context anchoring, this fixture fails. DO NOT "fix" by removing
+  // this test — operator-locked admit decision.
+  const place = basePlace({
+    name: 'Pupuseria Maria de Leon Bus',
+    types: ['mexican_restaurant', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(
+    v.is_servable,
+    true,
+    `v2 regression: independent pupuseria with surname "Leon" must admit. Reasons: ${JSON.stringify(v.reasons)}`,
+  );
+});
+
+Deno.test('T-PAUL-INDEPENDENT-ADMIT (v2 rework): "Paul and Jack" bakery must admit', () => {
+  // The `paul` pattern was DROPPED in v2 — too many parks/churches/people
+  // named Paul, plus independent restaurants like "Paul and Jack" bakery.
+  // Live evidence: pool-wide query found 74 `paul` matches; only ~2 actual
+  // Paul-chain bakeries in Brussels.
+  const place = basePlace({
+    name: 'Paul and Jack',
+    types: ['bakery'],
+  });
+  const v = bounce(place);
+  assertEquals(
+    v.is_servable,
+    true,
+    `v2 regression: independent "Paul and Jack" bakery must admit. Reasons: ${JSON.stringify(v.reasons)}`,
+  );
+});
+
+Deno.test('T-WASABI-INDEPENDENT-ADMIT (v2 rework): "Wasabi Sushi Lounge" admits', () => {
+  // The `wasabi` pattern was DROPPED in v2 — too generic for Asian restaurant
+  // names. Pool-wide query found 6 `wasabi` matches; only ~1-2 actual UK
+  // Wasabi chain locations.
+  const place = basePlace({
+    name: 'Wasabi Sushi Lounge',
+    types: ['japanese_restaurant', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(
+    v.is_servable,
+    true,
+    `v2 regression: independent Wasabi sushi place must admit. Reasons: ${JSON.stringify(v.reasons)}`,
+  );
+});
+
+Deno.test('T-QUICK-INDEPENDENT-ADMIT (v2 rework): "Quick Bites Cafe" admits', () => {
+  // The `quick` pattern was DROPPED in v2 — too generic adjective. Pool-wide
+  // query found 7 `quick` matches; only ~2 actual Belgian Quick chain rows.
+  const place = basePlace({
+    name: 'Quick Bites Cafe',
+    types: ['cafe', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(
+    v.is_servable,
+    true,
+    `v2 regression: independent "Quick Bites Cafe" must admit. Reasons: ${JSON.stringify(v.reasons)}`,
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORCH-0735 v3 PATCH — pluralization + missing-pattern fixes
+// (added after live-fire SC-16 probe surfaced 12 chain rows still admitted
+//  across 9 cities post-v2 deploy 2026-05-05)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ───── v3 Reject confirmations (verify patches actually fire) ─────────────
+
+Deno.test('T-DAIRY-QUEEN-REJECT (v3): Dairy Queen blocked by new pattern', () => {
+  // v3 Change 1: ADD `dairy queen` to FAST_FOOD_NAME_PATTERNS.
+  // Live evidence: SC-16 probe found 3 admitted Dairy Queen rows
+  // (Baltimore, Fort Lauderdale, Raleigh) — all `ice_cream_shop` primary_type
+  // so B10 didn't catch them; needs explicit name pattern.
+  const place = basePlace({
+    name: 'Dairy Queen',
+    types: ['ice_cream_shop', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:dairy_queen']);
+});
+
+Deno.test('T-PAPA-JOHNS-PLURAL-REJECT (v3): "Papa Johns Pizza" blocked by widened pattern', () => {
+  // v3 Change 4: split `papa john` into `papa johns` + `papa john's`.
+  // Live evidence: SC-16 probe found 2 "Papa Johns Pizza" rows admitted in
+  // Raleigh — original `\bpapa john\b` failed because "ns" has no \b boundary
+  // (both letters), so the bare-plural form leaked.
+  const place = basePlace({
+    name: 'Papa Johns Pizza',
+    types: ['pizza_restaurant', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:papa_johns']);
+});
+
+// ───── v3 Admit-regression-guards (probe false-positives must STAY admitted) ─
+
+Deno.test('T-PERKINS-ORCHARD-ADMIT (v3): independent "Perkins Orchard" admits', () => {
+  // SC-16 probe regex caught the substring "perkins" → flagged as Perkins
+  // diner-chain leak. Reality: Durham fruit orchard, no chain. We have NO
+  // `perkins` pattern in any list — admits via default rules. Guard prevents
+  // future PR from adding `perkins` without considering this fixture.
+  const place = basePlace({
+    name: 'Perkins Orchard',
+    types: ['tourist_attraction', 'farm', 'park'],
+    website: 'https://perkinsorchard.com',
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `v3 regression: Perkins Orchard must admit. Reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test('T-SALADELIA-DUKE-ADMIT (v3): independent café in Duke library admits', () => {
+  // SC-16 probe regex caught "perkins" inside "Saladelia - Perkins Library @ Duke".
+  // Reality: independent café operating inside Duke University's Perkins Library.
+  // Same `perkins` no-pattern protection as T-PERKINS-ORCHARD-ADMIT.
+  const place = basePlace({
+    name: 'Saladelia - Perkins Library @ Duke',
+    types: ['coffee_shop', 'cafe', 'restaurant'],
+    website: 'https://saladelia.com',
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `v3 regression: Saladelia café must admit. Reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test('T-WELLWITHWENDY-ADMIT (v3): wellness clinic with "Wendy" in name admits', () => {
+  // SC-16 probe regex caught "wendy" as Wendy's chain. Reality: "Well With Wendy"
+  // is a colon-hydrotherapy / health-coaching clinic. Our `wendy's` pattern
+  // (with apostrophe-s) does NOT match "Wendy" alone — admits correctly today.
+  // Guard prevents future PR from adding bare `wendy` without consideration.
+  const place = basePlace({
+    name: 'Well With Wendy - Colon Hydrotherapy',
+    types: ['wellness_center', 'health'],
+    website: 'https://wellwithwendy.com',
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `v3 regression: Well With Wendy clinic must admit. Reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test('T-ROMANOS-PIZZERIA-INDIE-ADMIT (v3): independent "Romanos Pizzeria" admits', () => {
+  // SC-16 probe regex caught "romanos" assuming it was Romano's Macaroni Grill.
+  // Reality: independent Baltimore pizzeria. We have NO `romanos` pattern
+  // (the chain "Romano's Macaroni Grill" is also not on our list). Admits
+  // correctly today. Guard prevents future PR conflating the two.
+  const place = basePlace({
+    name: 'Romanos Pizzeria',
+    types: ['pizza_restaurant', 'restaurant'],
+    website: 'https://romanospizzeria-baltimore.com',
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `v3 regression: indie Romanos Pizzeria must admit. Reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test('T-SONIC-ROOM-LAGOS-ADMIT (v3): Lagos sound-room nightclub admits', () => {
+  // SC-16 probe regex caught "sonic" assuming Sonic Drive-In chain. Reality:
+  // SONIC ROOM LAGOS is a nightclub / sound room. Our `sonic drive` pattern
+  // (multi-word) does NOT match "Sonic Room" — admits correctly today. Guard
+  // prevents future PR from adding bare `sonic` without consideration.
+  const place = basePlace({
+    name: 'SONIC ROOM LAGOS',
+    types: ['night_club', 'bar'],
+    website: 'https://sonicroomlagos.com',
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `v3 regression: Sonic Room nightclub must admit. Reasons: ${JSON.stringify(v.reasons)}`);
 });
