@@ -7,9 +7,9 @@
 >
 > Cutoffs in the table below were derived from **Anthropic Haiku 4.5 v3 calibration**.
 >
-> Per **DEC-101 (post-ORCH-0733, 2026-05-05)**, the trial pipeline is now **Gemini 2.5 Flash sole provider** + **prompt v4** (anti-VETO discipline + contradictory-evidence weighting fixes). Live evidence: comparison run `fe15cb99` showed Gemini scores 5–15 points HIGHER than Anthropic on positive matches and over-fires VETO ~3× more than Anthropic. v4 prompt fixes the VETO over-fire pattern.
+> Per **DEC-102 (ORCH-0733 CLOSE, 2026-05-05)**, the trial pipeline is now **Gemini 2.5 Flash sole provider** + **prompt v4** (anti-VETO discipline + contradictory-evidence weighting fixes). Live evidence: comparison run `fe15cb99` showed Gemini scores 5–15 points HIGHER than Anthropic on positive matches and over-fires VETO ~3× more than Anthropic. v4 prompt fixes the VETO over-fire pattern.
 >
-> **Cutoffs need re-derivation** from a fresh Gemini v4 calibration sweep — pending operator-gated verification of v4 prompt behavior. Until re-derivation, the cutoffs below remain the spec writer's reference but should be assumed **+5–10 inflated** for Gemini matching. Treat all cutoff numbers as Anthropic-baseline UNTIL DEC-102 locks Gemini-specific cutoffs.
+> **Cutoffs need re-derivation** from a fresh Gemini v4 calibration sweep — pending operator-gated verification of v4 prompt behavior. Until re-derivation, the cutoffs below remain the spec writer's reference but should be assumed **+5–10 inflated** for Gemini matching. Treat all cutoff numbers as Anthropic-baseline UNTIL DEC-103 locks Gemini-specific cutoffs.
 
 **Scoring scale:** `score_0_to_100` integer per [`run-place-intelligence-trial/index.ts`](../../supabase/functions/run-place-intelligence-trial/index.ts) system prompt rubric:
 - 90-100 = anchor-quality / world-class
