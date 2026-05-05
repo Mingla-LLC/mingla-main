@@ -30,7 +30,6 @@ import {
 } from "../../../../src/constants/designSystem";
 import {
   useDoorSalesStore,
-  type DoorPaymentMethod,
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
 import { useLiveEventStore } from "../../../../src/store/liveEventStore";

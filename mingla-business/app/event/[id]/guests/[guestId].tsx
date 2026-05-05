@@ -32,7 +32,6 @@ import {
 import { useScanStore } from "../../../../src/store/scanStore";
 import {
   useDoorSalesStore,
-  type DoorPaymentMethod,
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
 import { useCurrentBrandStore } from "../../../../src/store/currentBrandStore";

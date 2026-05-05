@@ -340,82 +340,12 @@ export type CurrentBrandState = {
 
 type PersistedState = Pick<CurrentBrandState, "currentBrand" | "brands">;
 
-/** v2 brand shape — used internally by the v2 → v3 migrator only. */
-type V2BrandStats = { events: number; followers: number; rev: number; attendees?: number };
-type V2Brand = {
-  id: string;
-  displayName: string;
-  slug: string;
-  photo?: string;
-  role: BrandRole;
-  stats: V2BrandStats;
-  currentLiveEvent: BrandLiveEvent | null;
-};
-
-/**
- * v2 → v3 upgrade returns a v9-shaped brand (the v3..v9 fields are all
- * optional/passthrough). The migrate function chains this output through
- * upgradeV9BrandToV10 to land at the current Brand shape.
- */
-const upgradeV2BrandToV3 = (b: V2Brand): V9Brand => ({
-  ...b,
-  stats: {
-    events: b.stats.events,
-    followers: b.stats.followers,
-    rev: b.stats.rev,
-    attendees: b.stats.attendees ?? 0,
-  },
-});
-
-/**
- * Pre-v12 J-A9 fields (DEC-092 dropped): used internally by the v11 → v12
- * migrator to silently strip leaked keys without referencing the dropped
- * BrandMember / BrandInvitation types.
- */
-type V11Extras = {
-  members?: unknown;
-  pendingInvitations?: unknown;
-};
-
-/** v9 brand shape — used internally by the v9 → v10 migrator only. */
-type V9Brand = Omit<Brand, "kind" | "address" | "coverHue"> & V11Extras;
-
-/** v10 brand shape — used internally by the v10 → v11 migrator only. */
-type V10Brand = Omit<Brand, "coverHue"> & V11Extras;
-
-/** v11 brand shape — used internally by the v11 → v12 migrator only. */
-type V11Brand = Brand & V11Extras;
-
-/**
- * v9 → v10 migration: add `kind` (default "popup") + `address` (default null).
- * Pop-up is the safer default — no fake address shown; founder upgrades to
- * "physical" + address via BrandEditView when applicable.
- */
-const upgradeV9BrandToV10 = (b: V9Brand): V10Brand => ({
-  ...b,
-  kind: "popup",
-  address: null,
-});
-
-/**
- * v10 → v11 migration: add `coverHue` (default 25 = warm orange).
- * Mirrors event-cover Cycle 3 hue-only pattern. Founder edits via
- * BrandEditView's BRAND COVER section.
- */
-const upgradeV10BrandToV11 = (b: V10Brand): V11Brand => ({
-  ...b,
-  coverHue: 25,
-});
-
-/**
- * v11 → v12 migration (Cycle 13a / DEC-092): silently strip the dropped
- * J-A9 fields `members` + `pendingInvitations` from the cached brand.
- * Brand-team state moves to `brandTeamStore` per Cycle 13a SPEC §4.7.
- */
-const upgradeV11BrandToV12 = (b: V11Brand): Brand => {
-  const { members: _m, pendingInvitations: _p, ...rest } = b;
-  return rest;
-};
+// Cycle 17d §E — v1-v11 migrator helpers + V2/V9/V10/V11 type defs deleted.
+// No live users on those versions; reset path in migrate() below is safe per
+// Cycle 0a "never seeded brands" precedent. Original chain (Cycle 0a-13a:
+// v1 → v2 → v3 → v9 → v10 → v11 → v12) preserved at commit aae7784d for audit
+// trail. Trimmed: ~75 LOC across 4 helper fns + 4 type defs + the v3-v11
+// migrate() branches in persistOptions below.
 
 const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
   name: "mingla-business.currentBrand.v12",
@@ -426,92 +356,17 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
   }),
   version: 12,
   migrate: (persistedState, version) => {
-    // v1 → v5: schema changed from {id, displayName} to full Brand shape.
-    // Cycle 0a never seeded brands, so resetting is safe and avoids partial
-    // record bugs from a half-populated v1 entry.
-    if (version < 2) {
+    // Cycle 17d §E — v1-v11 dead branches removed. No live users on those versions.
+    // If a stale install lands here, reset to default state. Safe per Cycle 0a
+    // "never seeded brands" precedent — losing local brand cache forces re-fetch
+    // from server (or in 17e-A's wired DB layer, no-op since brands table is the
+    // source of truth and currentBrandStore is a read-through cache going forward).
+    //
+    // Original migrate() body (Cycle 0a-13a chain v1→v2→v3→v9→v10→v11→v12) at
+    // commit aae7784d for audit trail.
+    if (version < 12) {
       return { currentBrand: null, brands: [] };
     }
-    // v2 → v3+: add stats.attendees (default 0); bio, tagline, contact, links
-    // remain undefined and render with empty-state guards.
-    if (version === 2) {
-      const v2 = persistedState as { currentBrand: V2Brand | null; brands: V2Brand[] };
-      // v2 → v9-shaped → v10 → v11 → v12 in one chain.
-      const v9CurrentBrand =
-        v2.currentBrand !== null ? upgradeV2BrandToV3(v2.currentBrand) : null;
-      const v9Brands = v2.brands.map(upgradeV2BrandToV3);
-      const v10CurrentBrand =
-        v9CurrentBrand !== null ? upgradeV9BrandToV10(v9CurrentBrand) : null;
-      const v10Brands = v9Brands.map(upgradeV9BrandToV10);
-      const v11CurrentBrand =
-        v10CurrentBrand !== null ? upgradeV10BrandToV11(v10CurrentBrand) : null;
-      const v11Brands = v10Brands.map(upgradeV10BrandToV11);
-      return {
-        currentBrand:
-          v11CurrentBrand !== null ? upgradeV11BrandToV12(v11CurrentBrand) : null,
-        brands: v11Brands.map(upgradeV11BrandToV12),
-      };
-    }
-    // v3 → v4: passthrough. New optional `displayAttendeeCount` field starts
-    // undefined for all brands; read sites default to `true`.
-    // v4 → v5: passthrough. New optional `links.tiktok/x/facebook/youtube/
-    // linkedin/threads` fields start undefined for all brands; render-time
-    // guards on each social chip skip undefined fields.
-    // v5 → v6: passthrough. New optional `contact.phoneCountryIso` field
-    // starts undefined; phone Input defaults to "GB" at read sites.
-    // v6 → v7: passthrough. New optional `members` + `pendingInvitations`
-    // arrays start undefined; team list renders empty-state when both
-    // absent. Read sites default to `[]`.
-    // v7 → v8: passthrough. New optional `stripeStatus`, `availableBalanceGbp`,
-    // `pendingBalanceGbp`, `lastPayoutAt`, `payouts`, `refunds` fields start
-    // undefined; J-A7 banner + payments dashboard render not_connected/empty
-    // states when absent. Read sites default to "not_connected" / 0 / [].
-    // v8 → v9: passthrough. New optional `events` array starts undefined;
-    // finance reports render empty-state when absent. Read sites default
-    // to []. FINAL Cycle-2 schema bump — real per-event records ship Cycle 3.
-    if (version >= 3 && version < 10) {
-      // v3-v9 → v10 → v11 → v12: add kind/address, then coverHue, then drop J-A9 keys.
-      const v9 = persistedState as { currentBrand: V9Brand | null; brands: V9Brand[] };
-      const v10CurrentBrand =
-        v9.currentBrand !== null ? upgradeV9BrandToV10(v9.currentBrand) : null;
-      const v10Brands = v9.brands.map(upgradeV9BrandToV10);
-      const v11CurrentBrand =
-        v10CurrentBrand !== null ? upgradeV10BrandToV11(v10CurrentBrand) : null;
-      const v11Brands = v10Brands.map(upgradeV10BrandToV11);
-      return {
-        currentBrand:
-          v11CurrentBrand !== null ? upgradeV11BrandToV12(v11CurrentBrand) : null,
-        brands: v11Brands.map(upgradeV11BrandToV12),
-      };
-    }
-    if (version === 10) {
-      // v10 → v11 → v12: add coverHue, then drop J-A9 keys.
-      const v10 = persistedState as { currentBrand: V10Brand | null; brands: V10Brand[] };
-      const v11CurrentBrand =
-        v10.currentBrand !== null ? upgradeV10BrandToV11(v10.currentBrand) : null;
-      const v11Brands = v10.brands.map(upgradeV10BrandToV11);
-      return {
-        currentBrand:
-          v11CurrentBrand !== null ? upgradeV11BrandToV12(v11CurrentBrand) : null,
-        brands: v11Brands.map(upgradeV11BrandToV12),
-      };
-    }
-    if (version === 11) {
-      // v11 → v12 (Cycle 13a): drop J-A9 members + pendingInvitations.
-      const v11 = persistedState as { currentBrand: V11Brand | null; brands: V11Brand[] };
-      return {
-        currentBrand:
-          v11.currentBrand !== null ? upgradeV11BrandToV12(v11.currentBrand) : null,
-        brands: v11.brands.map(upgradeV11BrandToV12),
-      };
-    }
-    // v3 → v4: passthrough. New optional `displayAttendeeCount` field starts
-    // undefined for all brands; read sites default to `true`.
-    // v4 → v5: passthrough. New optional `links.tiktok/x/facebook/youtube/
-    // linkedin/threads` fields start undefined for all brands; render-time
-    // guards on each social chip skip undefined fields.
-    // v5 → v6: passthrough. New optional `contact.phoneCountryIso` field
-    // starts undefined; phone Input defaults to "GB" at read sites.
     return persistedState as PersistedState;
   },
 };
