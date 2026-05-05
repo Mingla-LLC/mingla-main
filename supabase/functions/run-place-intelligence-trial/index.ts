@@ -15,7 +15,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   MINGLA_SIGNAL_IDS,
-  computeCostUsd,
+  // ORCH-0733 — computeCostUsd dropped from active import; only referenced
+  // in commented-historical Anthropic helper. Re-add if Anthropic is ever
+  // re-enabled (would also need DEC entry).
   computeCostUsdGemini,
 } from "../_shared/photoAestheticEnums.ts";
 import {
@@ -31,16 +33,24 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ORCH-0733 — Anthropic Claude Haiku 4.5 dropped from active trial pipeline per
+// DEC-101. Constants preserved as commented historical reference for `git
+// revert`-cheap reversal if HYBRID architecture is ever revisited. DO NOT
+// re-enable without a DEC entry. Live evidence: comparison run fe15cb99
+// vs Anthropic baseline 942fbddf — Gemini 2.5 Flash matched quality at
+// −71% cost; HYBRID rejected, Gemini-only locked.
+/*
 const MODEL_ID = "claude-haiku-4-5-20251001";
 const MODEL_NAME_SHORT = "claude-haiku-4-5";
 const ANTHROPIC_VERSION = "2023-06-01";
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
-// ORCH-0713 Gemini A/B comparison (2026-05-05) — alternate provider path.
-// Anthropic stays the default; operator opts in per run via `provider` body param.
+type Provider = "anthropic" | "gemini";
+*/
+
+// ORCH-0713 Gemini A/B (2026-05-05) — became sole provider per ORCH-0733.
 const GEMINI_MODEL_ID = "gemini-2.5-flash";
 const GEMINI_MODEL_NAME_SHORT = "gemini-2.5-flash";
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
-type Provider = "anthropic" | "gemini";
 const SERPER_REVIEWS_URL = "https://google.serper.dev/reviews";
 const COLLAGE_BUCKET = "place-collages";
 // PROMPT_VERSION:
@@ -54,7 +64,17 @@ const COLLAGE_BUCKET = "place-collages";
 //       exploration, re-add Q1 as a separate one-shot fn rather than reintroducing
 //       the dual-call pattern here. Collage TARGET_SIZE shrunk 1024→768 in
 //       _shared/imageCollage.ts (companion change).
-const PROMPT_VERSION = "v3";
+//  v4 — ORCH-0733: tighter VETO discipline + contradictory-evidence weighting
+//       guidance to correct Gemini drifts surfaced in run fe15cb99 vs Anthropic
+//       v3 baseline 942fbddf. (1) Adds explicit anti-VETO examples (Mala Pata
+//       not-a-theatre is score=1-5, NOT VETO; rubric says "structural
+//       wrongness only"). (2) Adds contradictory-evidence section: places like
+//       Anthony's Runway 84 are romantic anchors despite "loud" reviews; score
+//       the place's POSITIONING + AMBIANCE, not review-mood swings. Operator-
+//       anchored fact: Anthony's IS a nice romantic dinner spot. Also: this
+//       version coincides with Anthropic provider being dropped from the trial
+//       pipeline; Gemini 2.5 Flash is now the sole provider per DEC-101.
+const PROMPT_VERSION = "v4";
 const COST_GUARD_USD = 5.0;
 
 // Anthropic rate-limit throttle (per Phase 1 pattern + bigger payloads)
@@ -78,8 +98,12 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-// ─── Anthropic call helper with retry ───────────────────────────────────────
-
+// ─── Anthropic call helper with retry — DEPRECATED (ORCH-0733) ──────────────
+// Preserved as commented historical reference for `git revert`-cheap reversal.
+// Anthropic dropped from trial pipeline per DEC-101 after Gemini A/B comparison.
+// DO NOT re-enable without a DEC entry. Constants (MODEL_ID, ANTHROPIC_VERSION,
+// ANTHROPIC_MESSAGES_URL) are also commented above.
+/*
 interface AnthropicUsage {
   input_tokens: number;
   output_tokens: number;
@@ -125,6 +149,7 @@ async function callAnthropicWithRetry(
   const usage: AnthropicUsage = payload?.usage || { input_tokens: 0, output_tokens: 0 };
   return { payload, usage };
 }
+*/
 
 // ─── Gemini call helper with retry (ORCH-0713 A/B comparison) ───────────────
 
@@ -254,13 +279,12 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+    // ORCH-0733 — Anthropic dropped from trial pipeline; Gemini 2.5 Flash is sole provider per DEC-101.
+    // ANTHROPIC_API_KEY env var no longer required (helpers preserved as commented historical reference).
     const geminiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
     const serperKey = Deno.env.get("SERPER_API_KEY") ?? "";
 
-    // ANTHROPIC_API_KEY required for default path; GEMINI_API_KEY required only when
-    // body.provider="gemini" (validated inside handleRunTrialForPlace).
-    if (!anthropicKey) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+    if (!geminiKey) return json({ error: "GEMINI_API_KEY not configured" }, 500);
     if (!serperKey) return json({ error: "SERPER_API_KEY not configured" }, 500);
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -300,7 +324,7 @@ serve(async (req: Request) => {
       case "start_run":
         return await handleStartRun(supabaseAdmin, body, user.id);
       case "run_trial_for_place":
-        return await handleRunTrialForPlace(supabaseAdmin, body, anthropicKey, geminiKey);
+        return await handleRunTrialForPlace(supabaseAdmin, body, geminiKey);
       case "run_status":
         return await handleRunStatus(supabaseAdmin, body);
       case "cancel_trial":
@@ -584,16 +608,10 @@ async function handleComposeCollage(
 
 async function handleStartRun(
   db: SupabaseClient,
-  body: Record<string, unknown>,
+  _body: Record<string, unknown>,
   userId: string,
 ): Promise<Response> {
-  // ORCH-0713 Gemini A/B — provider param. Default 'anthropic' for backward compat.
-  const rawProvider = (body.provider as string) || "anthropic";
-  if (rawProvider !== "anthropic" && rawProvider !== "gemini") {
-    return json({ error: `Invalid provider '${rawProvider}'. Must be 'anthropic' or 'gemini'.` }, 400);
-  }
-  const provider: Provider = rawProvider;
-
+  // ORCH-0733 — Anthropic dropped; Gemini 2.5 Flash sole provider. No provider param.
   const { data: anchors, error: anchErr } = await db
     .from("signal_anchors")
     .select("place_pool_id, signal_id, anchor_index")
@@ -604,9 +622,8 @@ async function handleStartRun(
     return json({ error: "no committed anchors — pick anchors first" }, 400);
   }
 
-  // Per-place cost estimate by provider (rough; actual usage tracked per-place).
-  // Anthropic v3: ~$0.013/place. Gemini 2.5 Flash: ~$0.005/place. Cost guard $5.
-  const perPlaceEstimate = provider === "gemini" ? 0.005 : 0.013;
+  // Gemini 2.5 Flash: ~$0.005/place at v3/v4 rates. Cost guard $5.
+  const perPlaceEstimate = 0.005;
   const estCost = anchors.length * perPlaceEstimate;
   if (estCost > COST_GUARD_USD) {
     return json({
@@ -615,12 +632,8 @@ async function handleStartRun(
   }
 
   const runId = crypto.randomUUID();
-  console.log(`[place-intel-trial:start_run] creating run ${runId} for ${anchors.length} places (provider=${provider}, userId=${userId})`);
+  console.log(`[place-intel-trial:start_run] creating run ${runId} for ${anchors.length} places (provider=gemini, userId=${userId})`);
 
-  // Tag pending rows with the provider's model name so Trial Results UI can
-  // distinguish Anthropic vs Gemini runs at a glance (and so processOnePlace
-  // doesn't have to re-derive on completion).
-  const modelShort = provider === "gemini" ? GEMINI_MODEL_NAME_SHORT : MODEL_NAME_SHORT;
   const pendingRows = anchors.map((a) => ({
     run_id: runId,
     place_pool_id: a.place_pool_id,
@@ -629,7 +642,7 @@ async function handleStartRun(
     input_payload: {},
     status: "pending",
     prompt_version: PROMPT_VERSION,
-    model: modelShort,
+    model: GEMINI_MODEL_NAME_SHORT,
   }));
   const { error: insertErr } = await db
     .from("place_intelligence_trial_runs")
@@ -640,8 +653,8 @@ async function handleStartRun(
     runId,
     totalPlaces: anchors.length,
     estimatedCostUsd: +estCost.toFixed(4),
-    provider,
-    model: modelShort,
+    provider: "gemini",
+    model: GEMINI_MODEL_NAME_SHORT,
     anchors: anchors.map((a) => ({
       place_pool_id: a.place_pool_id,
       signal_id: a.signal_id,
@@ -658,23 +671,17 @@ async function handleStartRun(
 async function handleRunTrialForPlace(
   db: SupabaseClient,
   body: Record<string, unknown>,
-  anthropicKey: string,
   geminiKey: string,
 ): Promise<Response> {
+  // ORCH-0733 — Anthropic dropped; provider param removed. Gemini 2.5 Flash always.
   const runId = body.run_id as string;
   const placePoolId = body.place_pool_id as string;
   const signalId = body.signal_id as string;
   const anchorIndex = body.anchor_index as number;
-  // ORCH-0713 Gemini A/B — provider param. Default 'anthropic' for backward compat.
-  const rawProvider = (body.provider as string) || "anthropic";
-  if (rawProvider !== "anthropic" && rawProvider !== "gemini") {
-    return json({ error: `Invalid provider '${rawProvider}'. Must be 'anthropic' or 'gemini'.` }, 400);
-  }
-  const provider: Provider = rawProvider;
-  if (provider === "gemini" && !geminiKey) {
+
+  if (!geminiKey) {
     return json({ error: "GEMINI_API_KEY not configured (operator: `supabase secrets set GEMINI_API_KEY=...`)" }, 500);
   }
-
   if (!runId || !placePoolId || !signalId || anchorIndex == null) {
     return json({ error: "run_id, place_pool_id, signal_id, anchor_index all required" }, 400);
   }
@@ -682,9 +689,7 @@ async function handleRunTrialForPlace(
   try {
     const cost = await processOnePlace({
       db,
-      anthropicKey,
       geminiKey,
-      provider,
       runId,
       anchor: { place_pool_id: placePoolId, signal_id: signalId, anchor_index: anchorIndex },
     });
@@ -717,13 +722,12 @@ interface AnchorRow {
 
 async function processOnePlace(args: {
   db: SupabaseClient;
-  anthropicKey: string;
   geminiKey: string;
-  provider: Provider;
   runId: string;
   anchor: AnchorRow;
 }): Promise<number> {
-  const { db, anthropicKey, geminiKey, provider, runId, anchor } = args;
+  // ORCH-0733 — Anthropic dropped; Gemini 2.5 Flash sole provider.
+  const { db, geminiKey, runId, anchor } = args;
 
   // Mark running
   await db
@@ -782,28 +786,18 @@ async function processOnePlace(args: {
     prompt_version: PROMPT_VERSION,
   };
 
-  // ORCH-0713 v3 — Q2 only. Q1 removed (research-only, harvested into signal-lab/PROPOSALS.md).
-  // ORCH-0713 Gemini A/B — branch on provider. Same prompt + same anchor input;
-  // only the model + API call differ. Outputs share the q2_response shape.
-  const { aggregate: q2, totalCostUsd: q2Cost } = provider === "gemini"
-    ? await callGeminiQuestion({
-        apiKey: geminiKey,
-        systemPrompt,
-        userTextBlock,
-        collageUrl: pp.photo_collage_url,
-        tool: Q2_TOOL,
-      })
-    : await callQuestion({
-        apiKey: anthropicKey,
-        systemPrompt,
-        userTextBlock,
-        collageUrl: pp.photo_collage_url,
-        tool: Q2_TOOL,
-        cacheSystem: true,
-      });
+  // ORCH-0733 — Q2 only via Gemini 2.5 Flash (sole provider).
+  // Q1 removed in v3 (harvested research into signal-lab/PROPOSALS.md).
+  // Anthropic dropped in v4 (commented-preserved helpers above for `git revert`).
+  const { aggregate: q2, totalCostUsd: q2Cost } = await callGeminiQuestion({
+    apiKey: geminiKey,
+    systemPrompt,
+    userTextBlock,
+    collageUrl: pp.photo_collage_url,
+    tool: Q2_TOOL,
+  });
 
-  // Persist. q1_response is nullable (verified) → write null on v3 runs.
-  // model + model_version disambiguate Anthropic vs Gemini runs in the table.
+  // Persist. q1_response is nullable (verified) → write null on v3+ runs.
   await db
     .from("place_intelligence_trial_runs")
     .update({
@@ -814,8 +808,8 @@ async function processOnePlace(args: {
       q2_response: q2,
       cost_usd: +q2Cost.toFixed(6),
       status: "completed",
-      model: provider === "gemini" ? GEMINI_MODEL_NAME_SHORT : MODEL_NAME_SHORT,
-      model_version: provider === "gemini" ? GEMINI_MODEL_ID : MODEL_ID,
+      model: GEMINI_MODEL_NAME_SHORT,
+      model_version: GEMINI_MODEL_ID,
       completed_at: new Date().toISOString(),
     })
     .eq("run_id", runId)
@@ -824,6 +818,12 @@ async function processOnePlace(args: {
   return q2Cost;
 }
 
+// ─── Anthropic Q2 wrapper — DEPRECATED (ORCH-0733) ──────────────────────────
+// Preserved as commented historical reference for `git revert`-cheap reversal.
+// Anthropic dropped from trial pipeline per DEC-101 after Gemini A/B comparison.
+// DO NOT re-enable without a DEC entry. Helpers (callAnthropicWithRetry,
+// AnthropicUsage) are also commented above.
+/*
 async function callQuestion(args: {
   apiKey: string;
   systemPrompt: string;
@@ -874,6 +874,7 @@ async function callQuestion(args: {
 
   return { aggregate, totalCostUsd: cost };
 }
+*/
 
 // ─── Gemini equivalent of callQuestion (ORCH-0713 A/B comparison) ───────────
 // Same inputs (system prompt, user text block, collage URL, Q2 tool schema).
@@ -1010,7 +1011,31 @@ function buildSystemPrompt(): string {
     "DO NOT use inappropriate_for for 'place is not a destination for this signal' — that's a low score (1-29).",
     "When in doubt, prefer a low score over inappropriate_for.",
     "",
-    "Examples to calibrate:",
+    "# CRITICAL — anti-VETO examples (ORCH-0733 — fixes Gemini over-VETO drift)",
+    "The following cases MUST be LOW SCORES (1-15), NOT VETO. Restaurants that aren't a particular cuisine, indoor venues that aren't outdoor, casual venues that aren't upscale — ALL are LOW SCORES, not VETOs. VETO is reserved for STRUCTURAL business-model wrongness only.",
+    "  - Mala Pata Molino + Cocina / `theatre` → score 1-5, NOT VETO (it's a restaurant, not a theatre — that's a fit gap, not structural wrongness)",
+    "  - Mala Pata / `play` → score 1-5, NOT VETO (restaurant, not arcade)",
+    "  - Mala Pata / `groceries` → score 1-15, NOT VETO (restaurant, not grocery store)",
+    "  - Mala Pata / `picnic_friendly` → score 1-10, NOT VETO (no picnic lawn)",
+    "  - Mala Pata / `nature` → score 1-5, NOT VETO (commercial complex location)",
+    "  - Mala Pata / `flowers` → score 1-5, NOT VETO (no floral retail; tangential decor doesn't matter)",
+    "  - Wang's Kitchen / `fine_dining` → score 1-15, NOT VETO (casual cheap restaurant; not fine dining is a fit gap, not structural wrongness)",
+    "  - Big Ed's City Market / `nature` → score 1-10, NOT VETO (indoor restaurant)",
+    "  - Taza Grill / `creative_arts` → score 1-10, NOT VETO (restaurant; tangential art doesn't matter)",
+    "  - National Gallery / `nature` → score 1-10, NOT VETO (indoor museum on a square)",
+    "",
+    "# WEIGHING CONTRADICTORY EVIDENCE (ORCH-0733 — fixes Gemini negative-review over-weighting)",
+    "When reviews contain BOTH positive ambiance markers AND negative caveats (noise, service inconsistency, crowding), DO NOT let one negative review theme collapse the score. The signal asks: 'is this place a destination for X?' Score the place's CORE IDENTITY + STRUCTURAL OFFERING + POSITIONING — not review-mood swings.",
+    "",
+    "Examples of correct contradictory-evidence weighting:",
+    "  - Anthony's Runway 84 / `romantic` → score 70-80. Reviews say 'loud, chaotic supper club' AND 'candle-lit, occasion-dining, anniversary destination, fine plating, wine program.' The romantic signal is about INTENT + AMBIANCE + occasion-positioning, NOT silence. Anthony's IS a nice romantic dinner spot — operator-anchored fact.",
+    "  - A 'lively' venue with 'sometimes inconsistent service' reviews still scores 80-95 for `lively` if the energy + crowd + music are present. Service caveats deduct ~5-10, NOT 30.",
+    "  - A 'fine dining' venue with 'expensive but uneven service' reviews still scores 75-90 for `fine_dining` if tasting menu / sommelier / formal plating exist. Bad-service reviews deduct ~5-10, NOT collapse to weak-fit.",
+    "  - Restaurants with mixed reviews about wait times still score 70-90 for `casual_food` if the food is well-reviewed.",
+    "",
+    "Negative caveats reduce the score by 5-15 points typically; they DO NOT drop a place from 'strong fit' (70-89) to 'weak' (30-49). Use the FULL rubric range and prioritize the place's core identity + structural offering over review-mood swings.",
+    "",
+    "Examples to calibrate (positive anchors + edge cases):",
     "  - Bayfront Floral & Event Design / `flowers` → inappropriate_for=true, score=0 (event-only; Mingla flowers signal is grab-and-go)",
     "  - Harris Teeter / `flowers` → inappropriate_for=false, score 55-70 (real grocery flower aisle)",
     "  - Mala Pata Molino + Cocina / `groceries` → inappropriate_for=false, score 1-15 (restaurant, not grocery — low fit but not structurally wrong)",
@@ -1018,6 +1043,8 @@ function buildSystemPrompt(): string {
     "  - National Gallery / `casual_food` → inappropriate_for=false, score 1-15 (museum cafe might exist; not a food destination)",
     "  - Lekki Conservation Centre / `nature` → inappropriate_for=false, score 90-100",
     "  - Lekki Conservation Centre / `fine_dining` → inappropriate_for=false, score 1-10 (no fine_dining at the preserve)",
+    "  - Anthony's Runway 84 / `romantic` → inappropriate_for=false, score 70-80 (operator-anchored romantic destination; review noise is a deduction, NOT a verdict)",
+    "  - Calusso / `brunch` → inappropriate_for=true, score=0 (serves_brunch=false explicit + dinner-only hours = STRUCTURAL wrongness)",
   ].join("\n");
 }
 

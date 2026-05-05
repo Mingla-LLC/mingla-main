@@ -193,27 +193,17 @@ function PlaceResultCard({ row }) {
 
 // ── Tab ─────────────────────────────────────────────────────────────────────
 
-// Browser-side per-place throttle. Provider-aware:
-//   - Anthropic Tier 1 = 50K input tokens/min ÷ ~7.5K per call = 9s floor
-//   - Gemini Flash 2.5 free tier = 15 RPM (~4s floor); paid tier 1 effectively
-//     unbounded. 1s pad keeps under both with headroom.
-// Default to 9s on unknown provider value (defensive).
-const PER_PLACE_BROWSER_THROTTLE_MS_BY_PROVIDER = {
-  anthropic: 9_000,
-  gemini: 1_000,
-};
+// ORCH-0733 — Anthropic dropped per DEC-101; Gemini sole provider.
+// Browser-side per-place throttle for Gemini Flash 2.5: free tier is 15 RPM
+// (~4s floor); paid tier 1 is effectively unbounded. 1s pad keeps under both.
+// Map shape preserved (defensive) so legacy v1/v2/v3 historical Anthropic rows
+// continue to render correctly via the model badge in PlaceResultCard.
+const PER_PLACE_BROWSER_THROTTLE_MS = 1_000;
 
-// ORCH-0713 Gemini A/B comparison — per-place cost estimate by provider for the
-// confirm-dialog message and the eyeballed bill. Anthropic v3 measured ~$0.013;
-// Gemini 2.5 Flash projected ~$0.005 (verify on first sweep).
-const PER_PLACE_COST_BY_PROVIDER = {
-  anthropic: 0.013,
-  gemini: 0.005,
-};
-const PROVIDER_LABEL = {
-  anthropic: "Anthropic Claude Haiku 4.5",
-  gemini: "Gemini 2.5 Flash",
-};
+// ORCH-0733 — Anthropic dropped per DEC-101; Gemini sole provider.
+// Per-place cost for Gemini 2.5 Flash on v3/v4 prompt: ~$0.0038 measured on
+// run fe15cb99 (32 anchors → $0.1212). Used for confirm-dialog estimate.
+const PER_PLACE_COST_USD = 0.0038;
 
 export function TrialResultsTab() {
   const { addToast } = useToast();
@@ -222,9 +212,7 @@ export function TrialResultsTab() {
   const [loading, setLoading] = useState(true);
   const [preparing, setPreparing] = useState(false);
   const [running, setRunning] = useState(false);
-  // ORCH-0713 Gemini A/B — provider selection for the next Run Trial click.
-  // Anthropic stays the default (preserves backward compat + matches DEC-099 architecture).
-  const [provider, setProvider] = useState("anthropic");
+  // ORCH-0733 — Anthropic dropped per DEC-101; Gemini sole provider; provider state removed.
 
   // Live progress for the currently-running prepare or trial loop
   const [progress, setProgress] = useState(null); // { phase, current, total, succeeded, failed, costSoFar }
@@ -349,12 +337,10 @@ export function TrialResultsTab() {
     if (isRunningRef.current) return;
     isRunningRef.current = true;
 
-    const perPlace = PER_PLACE_COST_BY_PROVIDER[provider] ?? 0.013;
-    const estCost = (committedCount * perPlace).toFixed(2);
-    const providerLabel = PROVIDER_LABEL[provider] ?? provider;
+    const estCost = (committedCount * PER_PLACE_COST_USD).toFixed(2);
 
     if (!window.confirm(
-      `About to run trial for ${committedCount} places using ${providerLabel}. Estimated cost ~$${estCost}, ~${Math.ceil(committedCount * 1.2)} minute wall time. Don't refresh the page during the run. Continue?`
+      `About to run trial for ${committedCount} places using Gemini 2.5 Flash. Estimated cost ~$${estCost}, ~${Math.ceil(committedCount * 1.2)} minute wall time. Don't refresh the page during the run. Continue?`
     )) {
       isRunningRef.current = false;
       return;
@@ -366,7 +352,7 @@ export function TrialResultsTab() {
     try {
       // Step 1: create run_id + pending rows
       const { data: created, error: startErr } = await invokeWithRefresh("run-place-intelligence-trial", {
-        body: { action: "start_run", provider },
+        body: { action: "start_run" },
       });
       if (startErr) throw new Error(await extractFunctionError(startErr, "start_run failed"));
       const runId = created?.runId;
@@ -388,11 +374,10 @@ export function TrialResultsTab() {
         if (stopRef.stop) break;
         const a = anchors[i];
 
-        // Throttle BEFORE each call (skip first). Provider-aware: Gemini's
-        // tighter 1s gives ~5x speedup vs Anthropic's 9s on the same sweep.
+        // Throttle BEFORE each call (skip first). Gemini-only per ORCH-0733; 1s pad keeps
+        // under Gemini Flash 2.5 free-tier 15-RPM floor with ample headroom.
         if (i > 0) {
-          const throttleMs = PER_PLACE_BROWSER_THROTTLE_MS_BY_PROVIDER[provider] ?? 9_000;
-          await new Promise((r) => setTimeout(r, throttleMs));
+          await new Promise((r) => setTimeout(r, PER_PLACE_BROWSER_THROTTLE_MS));
         }
         setProgress((p) => ({ ...p, current: i + 1, currentPlace: `${a.signal_id} #${a.anchor_index}` }));
 
@@ -404,7 +389,6 @@ export function TrialResultsTab() {
               place_pool_id: a.place_pool_id,
               signal_id: a.signal_id,
               anchor_index: a.anchor_index,
-              provider,
             },
           });
           if (e) throw new Error(await extractFunctionError(e, "run_trial_for_place failed"));
@@ -456,7 +440,7 @@ export function TrialResultsTab() {
               <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">Trial run</h4>
               <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
                 Step 1: Fetch reviews + build collages for all committed anchors.
-                Step 2: Run Q2 per place via the selected provider. Step 3: Read results below.
+                Step 2: Run Q2 per place via Gemini 2.5 Flash. Step 3: Read results below.
               </p>
             </div>
             <Button
@@ -485,41 +469,15 @@ export function TrialResultsTab() {
               </Button>
             )}
           </div>
-          {/* ORCH-0713 Gemini A/B comparison — provider toggle. Anthropic default. */}
+          {/* ORCH-0733 — Provider toggle removed. Gemini 2.5 Flash is sole provider per DEC-101. */}
           <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-[var(--gray-200)]">
-            <span className="text-xs text-[var(--color-text-tertiary)] uppercase tracking-wide font-mono shrink-0">Provider</span>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input
-                type="radio"
-                name="trial-provider"
-                value="anthropic"
-                checked={provider === "anthropic"}
-                onChange={() => setProvider("anthropic")}
-                disabled={running || preparing}
-                className="cursor-pointer"
-              />
-              <span>
-                <span className="font-medium text-[var(--color-text-primary)]">Claude Haiku 4.5</span>
-                <span className="text-[var(--color-text-tertiary)]">{` · est $${(committedCount * PER_PLACE_COST_BY_PROVIDER.anthropic).toFixed(2)}`}</span>
-              </span>
-            </label>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input
-                type="radio"
-                name="trial-provider"
-                value="gemini"
-                checked={provider === "gemini"}
-                onChange={() => setProvider("gemini")}
-                disabled={running || preparing}
-                className="cursor-pointer"
-              />
-              <span>
-                <span className="font-medium text-[var(--color-text-primary)]">Gemini 2.5 Flash</span>
-                <span className="text-[var(--color-text-tertiary)]">{` · est $${(committedCount * PER_PLACE_COST_BY_PROVIDER.gemini).toFixed(2)}`}</span>
-              </span>
-            </label>
+            <span className="text-xs text-[var(--color-text-tertiary)] uppercase tracking-wide font-mono shrink-0">AI Provider</span>
+            <span className="text-xs">
+              <span className="font-medium text-[var(--color-text-primary)]">Gemini 2.5 Flash</span>
+              <span className="text-[var(--color-text-tertiary)]">{` · est $${(committedCount * PER_PLACE_COST_USD).toFixed(2)} · v4 prompt`}</span>
+            </span>
             <span className="text-[10px] text-[var(--color-text-tertiary)] italic ml-auto">
-              Same prompt + same anchors. Results stored separately for comparison.
+              Locked sole provider. Anthropic dropped 2026-05-05 after A/B comparison.
             </span>
           </div>
         </div>
