@@ -7,6 +7,43 @@
 
 ---
 
+## ACTIVE (post ORCH-0735 CLOSE 2026-05-05)
+
+### I-BOUNCER-EXCLUDES-FAST-FOOD-AND-CHAINS — Bouncer must reject fast-food + chain restaurants
+
+**Statement:** Every `place_pool` row with `is_servable=true` post-bouncer-pass MUST satisfy ALL of:
+1. `primary_type` is NOT in `EXCLUDED_FAST_FOOD_TYPES` (5 types: `fast_food_restaurant`, `snack_bar`, `food_court`, `cafeteria`, `convenience_store`) — enforced by B10
+2. `name` does NOT match any `FAST_FOOD_NAME_PATTERNS` regex UNLESS allowlisted by `UPSCALE_CHAIN_ALLOWLIST` substring match — enforced by B11
+3. `name` does NOT match any `CASUAL_CHAIN_NAME_PATTERNS` regex UNLESS allowlisted — enforced by B12
+
+All four arrays live in `supabase/functions/_shared/bouncerChainRules.ts` (Path A per DEC-107). Bouncer applies them deterministically (no AI) in both pre-photo and final passes (per `I-TWO-PASS-BOUNCER-RULE-PARITY`).
+
+**Authority:** `supabase/functions/_shared/bouncerChainRules.ts` is the canonical source. The parallel `rule_sets` / `rule_set_versions` / `rule_entries` Postgres tables are decoupled and scheduled for ORCH-0736 decommission. Editing rule_sets via the admin UI does NOT affect production.
+
+**Rationale:** ORCH-0735 surfaced the gap when an ORCH-0734 Cary 50-place sweep admitted Chick-fil-A with `casual_food=95` Gemini score. Fast-food and casual-chain admission contradicts Mingla's positioning as a date / experience app. Pre-ORCH-0735 the bouncer had no fast-food rule; the rules-engine database that would have provided the data had no production consumer (~600-1000 rows that should have been excluded across 9 cities). Path A code-constants chosen over Path B "wire DB consumer" because (1) data lives + ships together; (2) admin UI changes were already silently ineffective (Const #1 dead-tap); (3) rules-engine schema is overhead without production use.
+
+**Enforcement (4 gates):**
+1. **Test fixtures** — 58 fixtures in `supabase/functions/_shared/__tests__/bouncer.test.ts` covering positive matches (B10/B11/B12), negative matches (independents survive), allowlist bypass, two-pass parity, and 9 explicit admit-regression-guards (T-CAVA-ADMIT, T-LPQ-ADMIT, T-LEON-PUPUSERIA-ADMIT, T-PAUL-INDEPENDENT-ADMIT, T-WASABI-INDEPENDENT-ADMIT, T-QUICK-INDEPENDENT-ADMIT, T-PERKINS-ORCHARD-ADMIT, T-SALADELIA-DUKE-ADMIT, T-WELLWITHWENDY-ADMIT, T-ROMANOS-PIZZERIA-INDIE-ADMIT, T-SONIC-ROOM-LAGOS-ADMIT) preventing regression of operator-locked admit decisions.
+2. **Pre-photo / final pass parity** — both invocations of `bounce()` consume the same arrays via `matchFastFoodPattern()` / `matchCasualChainPattern()` / `isUpscaleChainAllowlisted()` helpers. Two-pass parity preserved.
+3. **Word-boundary discipline** — `FF_PATTERN(substr, label)` builder anchors every pattern with `\b...\b` (case-insensitive). Subset / substring false-matches blocked at the regex layer. v2 dropped 4 high-collision patterns (paul/leon/wasabi/quick — false-positive rate 70-95%) where word-boundary alone was insufficient.
+4. **Post-deploy SC-16 probe** — operator-runnable SQL probe across all servable cities returns admitted-chain count. Verified zero real chain leakage 2026-05-05 across Durham/Cary/FortLauderdale/Baltimore/Raleigh/Lagos/Brussels/Washington/London (5 remaining hits in probe regex are documented false positives, each protected by an explicit admit-regression-guard fixture).
+
+**Test that catches a regression:** any new PR that (a) silently removes a chain pattern → the corresponding T-B11-* / T-B12-* fixture asserts reject, will fail; (b) silently adds a too-greedy pattern → the corresponding admit-regression-guard fixture (T-CAVA-ADMIT etc.) will fail. Plus the live SC-16 probe catches data-side drift.
+
+**Established:** 2026-05-05 by ORCH-0735 (forensics → SPEC → IMPL v1 → IMPL v2 false-positive rework → IMPL v3 pluralization + missing-pattern patch → 9-city live sweep + SC-16 probe PASS). DEC-107 logs the decision. Memory `feedback_bouncer_chain_rules_in_code.md` (ACTIVE) documents the Path A workflow + decommission guidance.
+
+**Cross-references:**
+- DEC-107 (Decision Log) — Path A code-constants + I-BOUNCER-EXCLUDES-FAST-FOOD-AND-CHAINS ratification
+- ORCH-0735 SPEC (`Mingla_Artifacts/specs/SPEC_ORCH-0735_BOUNCER_CHAIN_FAST_FOOD_RULES.md`)
+- ORCH-0735 INVESTIGATION (`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0735_BOUNCER_CHAIN_GAP.md`)
+- ORCH-0735 IMPL reports v1 / v2 / v3 (`Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0735_BOUNCER_RULES_REPORT*.md`)
+- I-BOUNCER-DETERMINISTIC (preserved)
+- I-TWO-PASS-BOUNCER-RULE-PARITY (preserved)
+- ORCH-0736 (queued) — decommissions parallel rule_sets DB tables + admin RPCs
+- ORCH-0738 (queued) — refactors `run-bouncer/index.ts` to streaming write-as-you-go (Washington partial-write side-discovery from v3 sweep)
+
+---
+
 ## ACTIVE (post ORCH-0700 Phase 3B CLOSE 2026-05-03)
 
 ### I-CATEGORY-SLUG-CANONICAL — Every category slug producer must emit canonical 10
@@ -1749,4 +1786,67 @@ Other shapes (allow-list / parameterized restrictions / `event_scope` arrays) ar
 - Violation: `<Pressable onPress={() => {}}><View /></Pressable>` → exit 1 with rich error.
 - Implicit-Text pass: `<Pressable onPress={() => {}}><Text>Save</Text></Pressable>` → exit 0 with INFO log.
 - Allowlist pass: violation JSX with `// orch-strict-grep-allow pressable-no-label — <reason>` immediately above → exit 0.
+
+---
+
+### I-PROPOSED-A BRAND-LIST-FILTERS-DELETED — Every read of `brands` MUST filter `deleted_at IS NULL` (mingla-business — Cycle 17e-A — status: DRAFT — flips ACTIVE on Cycle 17e-A CLOSE)
+
+**Statement:** Every code path in `mingla-business/src/services/` + `mingla-business/src/hooks/` that reads from the `brands` Supabase table MUST filter `deleted_at IS NULL` (either via `.is("deleted_at", null)` chain at the service layer OR via a JOIN with `deleted_at IS NULL` predicate when joined from another table). Unfiltered reads risk surfacing soft-deleted brands to the operator UI, breaking the soft-delete contract codified by Decision D-17d-FOUNDER-1A (DEC-105 + DEC-109).
+
+**Scope:** `mingla-business/src/services/` + `mingla-business/src/hooks/` only. `mingla-business/app/` is presumption-allowed since it consumes services/hooks only (not raw Supabase). `app-mobile/` and `mingla-admin/` are out of scope (different products with different brand semantics).
+
+**Why this exists:** Cycle 17e-A wires brand soft-delete via `deleted_at = now()` UPDATE. Forensics §B verified `idx_brands_account_id` and `idx_brands_slug_active` both filter `WHERE deleted_at IS NULL` so the indexes won't serve soft-deleted rows — but service code calling `.from("brands").select()` without the chain would still see them via sequential scan or via the unique-on-active-only constraint not blocking re-reads. Per `feedback_supabase_neq_null` precedent, soft-delete filters MUST use `.is("deleted_at", null)` (NEVER `.neq()` — Postgres treats `NULL != value` as NULL/falsy). Without enforcement, future engineers may add raw queries that surface ghost brands.
+
+**CI enforcement:** NEW `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-a-brand-list-filters-deleted` running `.github/scripts/strict-grep/i-proposed-a-brand-list-filters-deleted.mjs` (Babel AST traversal mirroring i37/i38/i39 registry pattern). Fails CI on PR if any `from("brands")` call expression in scope path lacks `is("deleted_at", null)` chain AND lacks allowlist comment. Allowlist via `// orch-strict-grep-allow brands-deleted-filter — <reason>` immediately above the call expression.
+
+**Established by:** Cycle 17e-A SPEC §5.2 + §F service contracts; forensics anchor F-A + F-B; DEC-109 lock entry [DEC ID confirmed at CLOSE — DEC-107 reserved by ORCH-0735, DEC-108 by ORCH-0736].
+
+**EXIT condition:** None — permanent invariant. If hard-delete pattern ever supersedes soft-delete (per a future GDPR ORCH), supersede via NEW invariant; do not silently relax.
+
+**Cross-reference:** Cycle 17e-A SPEC `SPEC_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md` §3.2.4-§3.2.7; forensics report `INVESTIGATION_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md` F-A + F-B; `.github/scripts/strict-grep/README.md` registry pattern; `feedback_supabase_neq_null` memory rule.
+
+**Test that catches a regression:** CI grep gate. Synthetic fixtures (verified at IMPL pre-flight):
+- Violation: `await supabase.from("brands").select("*").eq("account_id", id)` (no `.is("deleted_at", null)`) → exit 1 with rich error.
+- Pass: `await supabase.from("brands").select("*").eq("account_id", id).is("deleted_at", null)` → exit 0.
+- Allowlist pass: violation expression with `// orch-strict-grep-allow brands-deleted-filter — <reason>` comment immediately above → exit 0.
+
+---
+
+### I-PROPOSED-B BRAND-SOFT-DELETE-CASCADES-DEFAULT — Soft-deleting a brand MUST clear the matching `creator_accounts.default_brand_id` pointer (mingla-business — Cycle 17e-A — status: DRAFT — flips ACTIVE on Cycle 17e-A CLOSE)
+
+**Statement:** Every soft-delete of a brand row (i.e., `UPDATE brands SET deleted_at = <ts> WHERE id = ?`) MUST be paired with `UPDATE creator_accounts SET default_brand_id = NULL WHERE default_brand_id = ?`. Without this cleanup, the operator's `default_brand_id` pointer becomes stale (pointing at a soft-deleted brand); on cold-start, the app tries to default to a brand the SELECT chain filters out, leaving the operator stuck in a "select a brand" empty state.
+
+**Scope:** mingla-business service layer (`brandsService.ts:softDeleteBrand`). The default_brand_id cleanup is service-layer responsibility, not implicitly cascaded by FK (`creator_accounts.default_brand_id` FK uses `ON DELETE SET NULL` which fires only on hard-delete, not soft-delete UPDATE).
+
+**Why this exists:** Forensics finding F-H surfaced this as S2-medium hidden flaw. Real-world scenario: operator soft-deletes their default brand → next cold-start hydrates `useCreatorAccount().data.default_brand_id` to the now-soft-deleted brand id → `useBrand(id)` returns null (RLS + .is filter) → UI lands on "select a brand" prompt with no obvious next step. The fix is service-layer paired UPDATE, not schema-level cascade.
+
+**Test enforcement:** SC-SVC-8 + T-12 in Cycle 17e-A SPEC enforce functionally. No structural CI gate (logic-level constraint not grep-able as a single pattern). Tester verifies via service-level test: soft-delete a brand that IS the user's default; assert `creator_accounts.default_brand_id` becomes NULL post-call.
+
+**Established by:** Cycle 17e-A SPEC §3.2.7 Step 3 + §5.2 + T-12 + R-3 mitigation; forensics anchor F-H; DEC-109 lock entry.
+
+**EXIT condition:** None — permanent invariant unless hard-delete pattern ever supersedes soft-delete (FK SET NULL would fire automatically and obviate this). Then supersede via NEW invariant.
+
+**Cross-reference:** Cycle 17e-A SPEC §3.2.7 (verbatim Step 3 in `softDeleteBrand`); forensics report F-H; baseline migration line 13266 (`creator_accounts.default_brand_id` FK with `ON DELETE SET NULL`).
+
+**Test that catches a regression:** Service-layer test T-12 in SPEC §6. Future regression risk: if the paired UPDATE is removed from `softDeleteBrand`, T-12 fails immediately. No CI gate — relies on tester rigor + SPEC §3.2.7 verbatim contract.
+
+---
+
+### I-PROPOSED-C BRAND-CRUD-VIA-REACT-QUERY — Brand list state lives in React Query, NOT Zustand (mingla-business — Cycle 17e-A — status: DRAFT — flips ACTIVE on Cycle 17e-A CLOSE)
+
+**Statement:** The `mingla-business` brand list (post-Cycle-17e-A) is server state owned by the React Query hook `useBrands(accountId)` per Const #5 (server state stays server-side). The Zustand `currentBrandStore` keeps ONLY selection state (`currentBrand: Brand | null`). The legacy `setBrands(brands: Brand[])` action and `brands: Brand[]` array MUST NOT exist post-17e-A. CI gate enforces zero `setBrands\(` references in `mingla-business/src/`.
+
+**Scope:** `mingla-business/src/` only. App/route layer (`mingla-business/app/`) is presumption-allowed since it consumes hooks/store only (post-IMPL it imports `useBrands` instead of `useBrandList`).
+
+**Why this exists:** Pre-17e-A, `currentBrandStore` held a `brands: Brand[]` array as TRANSITIONAL local cache, with 5 setBrands callers writing phone-only state (forensics F-A). Cycle 17e-A wires real DB CRUD; brands becomes server state per Const #5; `setBrands` becomes vestigial. The CI gate prevents future engineers from re-introducing a parallel Zustand-side cache that diverges from React Query truth.
+
+**CI enforcement:** NEW `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-c-brand-crud-via-react-query` running `.github/scripts/strict-grep/i-proposed-c-brand-crud-via-react-query.mjs`. Fails CI on PR if any line in `mingla-business/src/` matches `\bsetBrands\s*\(` (regex; both call expression and method definition). Allowlist via `// orch-strict-grep-allow setBrands-call — <reason>` (none expected post-17e-A).
+
+**Established by:** Cycle 17e-A SPEC §3.6 + §5.2 + Const #5 enforcement; forensics anchor F-A + F-E + §8.3 architecture proposal; DEC-109 lock entry.
+
+**EXIT condition:** None — permanent invariant. If a future architecture pivot returns brand list to Zustand (unlikely; Const #5 is constitutional), supersede via NEW invariant + Const amendment.
+
+**Cross-reference:** Cycle 17e-A SPEC §3.6 (v12→v13 migrate function); forensics §F + §8.3; Constitution Rule #5 (server state server-side).
+
+**Test that catches a regression:** CI grep gate above. Synthetic violation fixture: `setBrands([newBrand]);` line in any `.ts`/`.tsx` under `mingla-business/src/` → exit 1 with rich error. Allowlist pass: same line with `// orch-strict-grep-allow setBrands-call — <reason>` immediately above → exit 0.
 
