@@ -3,9 +3,6 @@ project_id = "gqnoajqerqhnvulmnyvv"
 [functions.weather]
 verify_jwt = false
 
-[functions.places]
-verify_jwt = false
-
 [functions.ai-reason]
 verify_jwt = true
 
@@ -16,9 +13,6 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.send-collaboration-invite]
-verify_jwt = true
-
-[functions.generate-session-deck]
 verify_jwt = true
 
 [functions.ticketmaster-events]
