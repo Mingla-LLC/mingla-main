@@ -1,5 +1,9 @@
 // ORCH-0588 Slice 1 — Bouncer v2 pure logic.
 // ORCH-0678 — extended with opts.skipStoredPhotoCheck for two-pass design.
+// ORCH-0735 — added B10 (fast-food primary types), B11 (chain-name fast-food /
+// snack / coffee blacklist), B12 (casual full-service chain blacklist) per
+// DEC-107. Chain lists in _shared/bouncerChainRules.ts (Path A code-constants;
+// rule_sets DB tables decoupled, scheduled for ORCH-0736 decommission).
 //
 // Imported by:
 //   - run-bouncer/index.ts          → calls bounce(place); writes is_servable
@@ -11,12 +15,26 @@
 //
 // Invariant I-BOUNCER-DETERMINISTIC: NO AI, NO keyword matching for category judgment.
 // Type lists + data-integrity rules + cluster-aware website/hours requirements.
+// B10/B11/B12 (ORCH-0735) preserve this — pure type-list + regex matching.
 //
 // I-TWO-PASS-BOUNCER-RULE-PARITY (ORCH-0678): rule body must remain identical across
 // both passes. The skipStoredPhotoCheck flag is the ONLY allowed difference — it
 // suppresses B8 in the pre-photo pass (the photo-download step happens between the
 // two passes; pre-photo can't yet check stored photos because they don't exist yet).
 // Adding any other pass-specific branch is a violation — file a new ORCH instead.
+// B10/B11/B12 are photo-independent and fire identically in both passes.
+//
+// I-BOUNCER-EXCLUDES-FAST-FOOD-AND-CHAINS (ORCH-0735): every is_servable=true row
+// post-deploy MUST satisfy: primary_type NOT IN EXCLUDED_FAST_FOOD_TYPES + name
+// NOT MATCHING FAST_FOOD/CASUAL patterns UNLESS allowlisted.
+
+// ORCH-0735 — chain rule constants (Path A code-constants per DEC-107)
+import {
+  EXCLUDED_FAST_FOOD_TYPES,
+  FAST_FOOD_NAME_PATTERNS,
+  CASUAL_CHAIN_NAME_PATTERNS,
+  UPSCALE_CHAIN_ALLOWLIST,
+} from './bouncerChainRules.ts';
 
 export type Cluster = 'A_COMMERCIAL' | 'B_CULTURAL' | 'C_NATURAL' | 'EXCLUDED';
 
@@ -154,6 +172,48 @@ export function matchChildVenuePattern(name: string | null): string | null {
   return null;
 }
 
+// ─── ORCH-0735 (B11/B12) — chain-name allowlist / blacklist helpers ─────────
+
+/**
+ * Returns true if name contains any UPSCALE_CHAIN_ALLOWLIST substring
+ * (case-insensitive). Bypasses B11 + B12 — for chains that ARE date-worthy
+ * despite being chains (Capital Grille, Hawksmoor, Cipriani, Carbone,
+ * Gordon Ramsay restaurants, The Ivy, Daniel Boulud, Nobu, etc.).
+ */
+export function isUpscaleChainAllowlisted(name: string | null): boolean {
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  return UPSCALE_CHAIN_ALLOWLIST.some((allowed) => lower.includes(allowed.toLowerCase()));
+}
+
+/**
+ * B11: returns the matching label if the name indicates a fast-food / cheap-snack
+ * / coffee chain, else null. Allowlist short-circuits — allowlisted names
+ * always return null (so e.g. "Hawksmoor" wouldn't accidentally match a
+ * fast-food substring).
+ */
+export function matchFastFoodPattern(name: string | null): string | null {
+  if (!name) return null;
+  if (isUpscaleChainAllowlisted(name)) return null;
+  for (const { pattern, label } of FAST_FOOD_NAME_PATTERNS) {
+    if (pattern.test(name)) return label;
+  }
+  return null;
+}
+
+/**
+ * B12: returns the matching label if the name indicates a full-service casual
+ * chain (Olive Garden, Applebee's, etc.), else null. Allowlist short-circuits.
+ */
+export function matchCasualChainPattern(name: string | null): string | null {
+  if (!name) return null;
+  if (isUpscaleChainAllowlisted(name)) return null;
+  for (const { pattern, label } of CASUAL_CHAIN_NAME_PATTERNS) {
+    if (pattern.test(name)) return label;
+  }
+  return null;
+}
+
 // Domain blocklist for B5 (own-domain rule). Social / aggregator / builder subdomains all fail.
 export const SOCIAL_DOMAINS: ReadonlyArray<string> = [
   'facebook.com', 'instagram.com', 'twitter.com', 'x.com', 'tiktok.com',
@@ -227,6 +287,49 @@ export function bounce(
   const childVenueLabel = matchChildVenuePattern(place.name);
   if (childVenueLabel) {
     return { is_servable: false, cluster, reasons: [`B9:child_venue:${childVenueLabel}`] };
+  }
+
+  // ─── ORCH-0735 NEW RULES (B10/B11/B12) ───────────────────────────────────
+  //
+  // Rule order: B10 (type) → B11 (fast-food/snack/coffee name) → B12 (casual
+  // chain name with allowlist bypass). All three short-circuit — chain status
+  // is structural, NEVER admit, no other reasons matter. Placed AFTER B1/B2/B3/B9
+  // (which gate on operational/data integrity / sub-venue status) but BEFORE
+  // B7-B9 quality rules (photos, hours, website) so chain rejection doesn't
+  // require photos to fire. Photo-independent → I-TWO-PASS-BOUNCER-RULE-PARITY
+  // preserved (fires identically with opts.skipStoredPhotoCheck=true).
+
+  // B10: fast-food / cheap-snack PRIMARY TYPE blocklist (per D-7)
+  // Short-circuit — primary_type is structural, no other reasons matter.
+  if (place.types?.some((t) => EXCLUDED_FAST_FOOD_TYPES.includes(t))) {
+    const matched = (place.types ?? []).find((t) => EXCLUDED_FAST_FOOD_TYPES.includes(t));
+    return {
+      is_servable: false,
+      cluster,
+      reasons: [`B10:fast_food_type:${matched ?? 'unknown'}`],
+    };
+  }
+
+  // B11: fast-food / coffee / cheap-snack CHAIN-NAME blocklist (per D-2/D-7/D-11)
+  // Allowlist (UPSCALE_CHAIN_ALLOWLIST) short-circuits inside helper.
+  const fastFoodLabel = matchFastFoodPattern(place.name);
+  if (fastFoodLabel) {
+    return {
+      is_servable: false,
+      cluster,
+      reasons: [`B11:chain_brand:${fastFoodLabel}`],
+    };
+  }
+
+  // B12: casual full-service chain blocklist (per D-3/D-6)
+  // Allowlist short-circuits — Cipriani / Carbone / Capital Grille etc. survive.
+  const casualChainLabel = matchCasualChainPattern(place.name);
+  if (casualChainLabel) {
+    return {
+      is_servable: false,
+      cluster,
+      reasons: [`B12:casual_chain:${casualChainLabel}`],
+    };
   }
 
   // B7: Google photos required (universal — applies to all clusters including Natural).

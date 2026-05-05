@@ -2,7 +2,15 @@
 // Run: cd supabase && deno test --allow-all functions/_shared/__tests__/bouncer.test.ts
 
 import { assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
-import { bounce, deriveCluster, isOwnDomain, type PlaceRow } from '../bouncer.ts';
+import {
+  bounce,
+  deriveCluster,
+  isOwnDomain,
+  isUpscaleChainAllowlisted,
+  matchFastFoodPattern,
+  matchCasualChainPattern,
+  type PlaceRow,
+} from '../bouncer.ts';
 
 function basePlace(overrides: Partial<PlaceRow> = {}): PlaceRow {
   return {
@@ -315,4 +323,597 @@ Deno.test('ORCH-0678 I-TWO-PASS-BOUNCER-RULE-PARITY: 50 randomized places differ
       `Parity violation at iteration ${i}: pre=${JSON.stringify(pre.reasons)} vs final-without-B8=${JSON.stringify(finalReasonsNoB8)}`,
     );
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORCH-0735 — B10/B11/B12 fast-food / chain / cheap-snack rules
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ───── B10 — Primary-type blocklist (5 fixtures) ─────────────────────────
+
+Deno.test('T-B10-01: fast_food_restaurant primary_type blocked', () => {
+  const place = basePlace({
+    name: 'Generic Fast Food',
+    types: ['fast_food_restaurant', 'restaurant', 'food'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B10:fast_food_type:fast_food_restaurant']);
+});
+
+Deno.test('T-B10-02: snack_bar blocked', () => {
+  const place = basePlace({ name: 'Snack Spot', types: ['snack_bar', 'food'] });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B10:fast_food_type:snack_bar']);
+});
+
+Deno.test('T-B10-03: food_court blocked', () => {
+  const place = basePlace({ name: 'Mall Food Court', types: ['food_court', 'food'] });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B10:fast_food_type:food_court']);
+});
+
+Deno.test('T-B10-04: cafeteria blocked', () => {
+  const place = basePlace({ name: 'Office Cafeteria', types: ['cafeteria', 'food'] });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B10:fast_food_type:cafeteria']);
+});
+
+Deno.test('T-B10-05: convenience_store blocked', () => {
+  const place = basePlace({
+    name: '7-Eleven',
+    types: ['convenience_store', 'store'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B10:fast_food_type:convenience_store']);
+});
+
+// ───── B11 — Fast-food / snack / coffee chain-name blocklist (18 fixtures) ─
+
+Deno.test('T-B11-01: McDonald\'s blocked by name pattern', () => {
+  const place = basePlace({
+    name: "McDonald's",
+    types: ['hamburger_restaurant', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:mcdonalds']);
+});
+
+Deno.test('T-B11-02: Starbucks blocked', () => {
+  const place = basePlace({
+    name: 'Starbucks',
+    types: ['coffee_shop', 'cafe'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:starbucks']);
+});
+
+Deno.test('T-B11-03: Pizza Hut blocked', () => {
+  const place = basePlace({
+    name: 'Pizza Hut',
+    types: ['pizza_restaurant', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:pizza_hut']);
+});
+
+Deno.test("T-B11-04: Domino's Pizza blocked", () => {
+  const place = basePlace({
+    name: "Domino's Pizza",
+    types: ['pizza_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:dominos']);
+});
+
+Deno.test('T-B11-05: Cinnabon blocked', () => {
+  const place = basePlace({
+    name: 'Cinnabon',
+    types: ['bakery'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:cinnabon']);
+});
+
+Deno.test("T-B11-06: Auntie Anne's Pretzels blocked", () => {
+  const place = basePlace({
+    name: "Auntie Anne's Pretzels",
+    types: ['restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:auntie_annes']);
+});
+
+Deno.test('T-B11-07: Pinkberry blocked', () => {
+  const place = basePlace({
+    name: 'Pinkberry',
+    types: ['ice_cream_shop'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:pinkberry']);
+});
+
+Deno.test('T-B11-08: Einstein Bros Bagels blocked', () => {
+  const place = basePlace({
+    name: 'Einstein Bros Bagels',
+    types: ['bakery'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:einstein_bros']);
+});
+
+Deno.test("T-B11-09: Nathan's Famous blocked", () => {
+  const place = basePlace({
+    name: "Nathan's Famous",
+    types: ['restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:nathans_famous']);
+});
+
+Deno.test('T-B11-10: Greggs UK blocked', () => {
+  const place = basePlace({
+    name: 'Greggs',
+    types: ['bakery', 'sandwich_shop'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:greggs']);
+});
+
+Deno.test('T-B11-11: Wagamama blocked by B12 (casual chain not B11)', () => {
+  // wagamama is in CASUAL_CHAIN_NAME_PATTERNS not FAST_FOOD_NAME_PATTERNS.
+  // B11 fires first; if no match, B12 fires.
+  const place = basePlace({
+    name: 'Wagamama',
+    types: ['restaurant', 'asian_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B12:casual_chain:wagamama']);
+});
+
+Deno.test('T-B11-12: Itsu UK blocked', () => {
+  const place = basePlace({
+    name: 'Itsu',
+    types: ['restaurant', 'asian_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:itsu']);
+});
+
+Deno.test('T-B11-13: Flunch France blocked', () => {
+  const place = basePlace({
+    name: 'Flunch',
+    types: ['restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:flunch_france']);
+});
+
+Deno.test('T-B11-14: Vapiano Germany blocked', () => {
+  const place = basePlace({
+    name: 'Vapiano',
+    types: ['italian_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:vapiano']);
+});
+
+Deno.test('T-B11-15: Lizarrán Spain blocked', () => {
+  const place = basePlace({
+    name: 'Lizarrán',
+    types: ['restaurant', 'tapas_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:lizarran_es']);
+});
+
+Deno.test('T-B11-16: Chicken Republic Lagos blocked', () => {
+  const place = basePlace({
+    name: 'Chicken Republic',
+    types: ['fast_food_restaurant', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  // B10 fires first because primary_type=fast_food_restaurant
+  assertEquals(v.reasons, ['B10:fast_food_type:fast_food_restaurant']);
+});
+
+Deno.test("T-B11-17: Mr Bigg's Lagos blocked (B11 because no fast_food primary_type)", () => {
+  const place = basePlace({
+    name: "Mr Bigg's",
+    types: ['restaurant'],  // not fast_food_restaurant primary
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:mr_biggs_ng']);
+});
+
+Deno.test('T-B11-18: Quick Belgian fast food blocked', () => {
+  const place = basePlace({
+    name: 'Quick',
+    types: ['restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:quick_belgium']);
+});
+
+// ───── B12 — Casual full-service chain blocklist (8 fixtures) ─────────────
+
+Deno.test('T-B12-01: Olive Garden blocked', () => {
+  const place = basePlace({
+    name: 'Olive Garden',
+    types: ['italian_restaurant', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B12:casual_chain:olive_garden']);
+});
+
+Deno.test("T-B12-02: Applebee's blocked", () => {
+  const place = basePlace({
+    name: "Applebee's Grill + Bar",
+    types: ['restaurant', 'american_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B12:casual_chain:applebees']);
+});
+
+Deno.test('T-B12-03: Cheesecake Factory blocked', () => {
+  const place = basePlace({
+    name: 'The Cheesecake Factory',
+    types: ['restaurant', 'american_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B12:casual_chain:cheesecake_factory']);
+});
+
+Deno.test('T-B12-04: Buffalo Wild Wings blocked', () => {
+  const place = basePlace({
+    name: 'Buffalo Wild Wings',
+    types: ['restaurant', 'sports_bar'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B12:casual_chain:buffalo_wild_wings']);
+});
+
+Deno.test('T-B12-05: Texas Roadhouse blocked', () => {
+  const place = basePlace({
+    name: 'Texas Roadhouse',
+    types: ['restaurant', 'steak_house'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B12:casual_chain:texas_roadhouse']);
+});
+
+Deno.test('T-B12-06: California Pizza Kitchen blocked', () => {
+  const place = basePlace({
+    name: 'California Pizza Kitchen',
+    types: ['pizza_restaurant', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B12:casual_chain:california_pizza_kitchen']);
+});
+
+Deno.test("T-B12-07: P.F. Chang's blocked", () => {
+  const place = basePlace({
+    name: "P.F. Chang's",
+    types: ['restaurant', 'asian_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B12:casual_chain:pf_changs']);
+});
+
+Deno.test('T-B12-08: Pizza Express UK blocked', () => {
+  const place = basePlace({
+    name: 'Pizza Express',
+    types: ['pizza_restaurant', 'italian_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B12:casual_chain:pizza_express']);
+});
+
+// ───── Negative tests — independents survive (8 fixtures) ─────────────────
+
+Deno.test('T-NEG-01: Pizzeria Toro independent admits', () => {
+  const place = basePlace({
+    name: 'Pizzeria Toro',
+    types: ['pizza_restaurant', 'italian_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test("T-NEG-02: Lilly's Pizza independent admits", () => {
+  const place = basePlace({
+    name: "Lilly's Pizza",
+    types: ['pizza_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test('T-NEG-03: Yellow Dog Bread Co. (artisan bakery) admits', () => {
+  const place = basePlace({
+    name: 'Yellow Dog Bread Co.',
+    types: ['bakery'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test("T-NEG-04: Big Tony's Hot Dogs (independent, NOT primary fast_food_restaurant) admits", () => {
+  const place = basePlace({
+    name: "Big Tony's Hot Dogs",
+    types: ['american_restaurant', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test("T-NEG-05: 'The Placebo Bar' must NOT match Lagos `the place` pattern", () => {
+  // Word-boundary regression: \bthe place\b should NOT match "the placebo".
+  const place = basePlace({
+    name: 'The Placebo Bar',
+    types: ['bar'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test('T-NEG-06: Sublime Donuts (artisan donut shop) admits', () => {
+  const place = basePlace({
+    name: 'Sublime Donuts',
+    types: ['donut_shop', 'bakery'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test('T-NEG-07: Hurts Donut (artisan, not Krispy Kreme) admits', () => {
+  const place = basePlace({
+    name: 'Hurts Donut',
+    types: ['donut_shop'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test("T-NEG-08: Pizzaria Romano's must NOT false-match `pizza` chain patterns", () => {
+  const place = basePlace({
+    name: "Pizzaria Romano's",
+    types: ['pizza_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+// ───── Allowlist bypass — UPSCALE_CHAIN_ALLOWLIST short-circuits B11/B12 (6) ─
+
+Deno.test('T-ALLOW-01: The Capital Grille admits via allowlist', () => {
+  const place = basePlace({
+    name: 'The Capital Grille',
+    types: ['fine_dining_restaurant', 'steak_house'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test("T-ALLOW-02: Ruth's Chris Steak House admits via allowlist", () => {
+  const place = basePlace({
+    name: "Ruth's Chris Steak House",
+    types: ['fine_dining_restaurant', 'steak_house'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test('T-ALLOW-03: Hawksmoor Spitalfields admits via allowlist (D-12)', () => {
+  const place = basePlace({
+    name: 'Hawksmoor Spitalfields',
+    types: ['steak_house', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test('T-ALLOW-04: Cipriani 42nd Street admits via allowlist (D-12)', () => {
+  const place = basePlace({
+    name: 'Cipriani 42nd Street',
+    types: ['italian_restaurant', 'fine_dining_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test("T-ALLOW-05: Gordon Ramsay Hell's Kitchen admits via allowlist (D-12)", () => {
+  const place = basePlace({
+    name: "Gordon Ramsay Hell's Kitchen",
+    types: ['fine_dining_restaurant', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test("T-ALLOW-06: Houston's admits via allowlist (D-12 moved from blacklist)", () => {
+  const place = basePlace({
+    name: "Houston's",
+    types: ['american_restaurant', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+// ───── CRITICAL REGRESSION GUARDS (D-13/D-14) — DO NOT REMOVE ─────────────
+
+Deno.test('T-CAVA-ADMIT: CAVA Mediterranean MUST admit (D-13 operator-locked admit)', () => {
+  // Operator markup 2026-05-05: REMOVED `cava ` from FAST_FOOD_NAME_PATTERNS.
+  // If a future PR re-adds Cava to any blacklist, this test fails. Do NOT
+  // "fix" by removing this fixture. Operator's locked decision.
+  const place = basePlace({
+    name: 'CAVA Mediterranean',
+    types: ['restaurant', 'mediterranean_restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(
+    v.is_servable,
+    true,
+    `D-13 violation: CAVA Mediterranean must admit. Got reasons: ${JSON.stringify(v.reasons)}`,
+  );
+});
+
+Deno.test('T-LPQ-ADMIT: Le Pain Quotidien MUST admit (D-14 operator-locked admit)', () => {
+  // Operator markup 2026-05-05: REJECTED proposed addition of Le Pain Quotidien
+  // to blacklist. If a future PR adds it, this test fails. Do NOT "fix" by
+  // removing this fixture. Operator's locked decision.
+  const place = basePlace({
+    name: 'Le Pain Quotidien',
+    types: ['bakery', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(
+    v.is_servable,
+    true,
+    `D-14 violation: Le Pain Quotidien must admit. Got reasons: ${JSON.stringify(v.reasons)}`,
+  );
+});
+
+Deno.test('T-CAVA-VARIANT: "Cavalry Pub" must NOT match Cava regex', () => {
+  // Word-boundary regression: \bcava\b must not match within "cavalry".
+  // Note: Cava is REMOVED from blacklist per D-13, so this should admit
+  // regardless. But this fixture verifies the regex word-boundary is correct
+  // even if a future regression re-introduces a `cava` pattern.
+  const place = basePlace({
+    name: 'Cavalry Pub',
+    types: ['bar', 'restaurant'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, true, `Expected admit, got reasons: ${JSON.stringify(v.reasons)}`);
+});
+
+Deno.test('T-LEON-INDEPENDENT: independent restaurant with "Leon" in name should NOT match `leon` UK chain', () => {
+  // The `leon` pattern is for the UK fast-food chain. Word-boundary protects
+  // independents like "Léon de Lyon Restaurant" (different chain).
+  // NOTE: this is a known edge case — "Leon" is a common name. The current
+  // pattern \bleon\b will match "Leon Restaurant" (false positive). Document
+  // this limitation; operator may need to refine pattern in a future ORCH if
+  // false positives surface. For now, this test asserts the problematic case
+  // for transparency.
+  const place = basePlace({
+    name: 'Leon Restaurant',
+    types: ['restaurant'],
+  });
+  const v = bounce(place);
+  // Currently expected: B11 fires because \bleon\b matches "Leon".
+  // This is intentional per operator decision; UK Leon chain is in scope.
+  // If operator wants to allow "Leon"-named independents, they must add
+  // specific patterns (e.g., 'leon @ liverpool street') or move to allowlist.
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:leon_uk']);
+});
+
+// ───── Pre-photo pass parity (B10/B11/B12 photo-independent) (2 fixtures) ─
+
+Deno.test('T-PARITY-01: B10 fires identically in pre-photo pass', () => {
+  const place = basePlace({
+    name: 'Generic Fast Food',
+    types: ['fast_food_restaurant', 'restaurant'],
+    stored_photo_urls: [],  // would normally trigger B8 in final pass
+  });
+  const final = bounce(place);
+  const pre = bounce(place, { skipStoredPhotoCheck: true });
+  // B10 short-circuits in both passes — identical verdicts.
+  assertEquals(final.reasons, ['B10:fast_food_type:fast_food_restaurant']);
+  assertEquals(pre.reasons, ['B10:fast_food_type:fast_food_restaurant']);
+  assertEquals(final.is_servable, false);
+  assertEquals(pre.is_servable, false);
+});
+
+Deno.test('T-PARITY-02: B11 fires identically in pre-photo pass', () => {
+  const place = basePlace({
+    name: "McDonald's",
+    types: ['hamburger_restaurant'],
+    stored_photo_urls: [],
+  });
+  const final = bounce(place);
+  const pre = bounce(place, { skipStoredPhotoCheck: true });
+  assertEquals(final.reasons, ['B11:chain_brand:mcdonalds']);
+  assertEquals(pre.reasons, ['B11:chain_brand:mcdonalds']);
+});
+
+// ───── Helper-function direct tests (3 fixtures) ──────────────────────────
+
+Deno.test('isUpscaleChainAllowlisted — case-insensitive substring match', () => {
+  assertEquals(isUpscaleChainAllowlisted('The Capital Grille'), true);
+  assertEquals(isUpscaleChainAllowlisted("Ruth's Chris Steak House"), true);
+  assertEquals(isUpscaleChainAllowlisted('Cipriani 42nd Street'), true);
+  assertEquals(isUpscaleChainAllowlisted('Independent Bistro'), false);
+  assertEquals(isUpscaleChainAllowlisted(null), false);
+  assertEquals(isUpscaleChainAllowlisted(''), false);
+});
+
+Deno.test('matchFastFoodPattern — allowlist short-circuits', () => {
+  // Even though "Cipriani" doesn't match a fast-food pattern, allowlist short-circuits first.
+  assertEquals(matchFastFoodPattern('Cipriani 42nd Street'), null);
+  // McDonald's matches and is not allowlisted → returns label.
+  assertEquals(matchFastFoodPattern("McDonald's"), 'mcdonalds');
+  // null/empty short-circuit.
+  assertEquals(matchFastFoodPattern(null), null);
+  assertEquals(matchFastFoodPattern(''), null);
+});
+
+Deno.test('matchCasualChainPattern — allowlist short-circuits', () => {
+  // Allowlist bypasses B12.
+  assertEquals(matchCasualChainPattern('The Capital Grille'), null);
+  // Olive Garden matches and is not allowlisted.
+  assertEquals(matchCasualChainPattern('Olive Garden'), 'olive_garden');
+  assertEquals(matchCasualChainPattern(null), null);
+});
+
+// ───── Edge cases (2 fixtures) ─────────────────────────────────────────────
+
+Deno.test("T-EDGE-01: empty name — B3 fires before B11 helpers can match", () => {
+  // B3 short-circuits because place.name is required.
+  const place = basePlace({ name: '' });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B3:missing_required_field']);
+});
+
+Deno.test('T-EDGE-02: "Starbucks at Marriott Hotel" — B11 fires', () => {
+  // No B9 child-venue match (Marriott isn't in CHILD_VENUE_NAME_PATTERNS).
+  // Allowlist no match. B11 catches Starbucks.
+  const place = basePlace({
+    name: 'Starbucks at Marriott Hotel',
+    types: ['coffee_shop'],
+  });
+  const v = bounce(place);
+  assertEquals(v.is_servable, false);
+  assertEquals(v.reasons, ['B11:chain_brand:starbucks']);
 });
