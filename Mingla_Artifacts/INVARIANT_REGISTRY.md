@@ -1707,3 +1707,46 @@ Other shapes (allow-list / parameterized restrictions / `event_scope` arrays) ar
 
 **Test that catches a regression:** CI grep gate above. Synthetic violation fixture: `<TopBar leftKind="brand" rightSlot={<View />} />` → exit 1 with rich error. Allowlist fixture: same JSX with `// orch-strict-grep-allow leftKind-brand-rightSlot — <reason>` comment immediately above → exit 0.
 
+---
+
+### I-38 ICONCHROME-TOUCH-TARGET-AA-COMPLIANT — Every `<IconChrome>` consumer MUST have effective touch area ≥ 44×44pt (mingla-business — Cycle 17c — ACTIVE post-Cycle-17c CLOSE 2026-05-05)
+
+**Statement:** Every `mingla-business` `<IconChrome>` JSX consumer (in `mingla-business/app/` + `mingla-business/src/`) MUST resolve to an effective touchable area of ≥ 44×44pt. The primitive's baked-in default `hitSlop={{top:4,bottom:4,left:4,right:4}}` (Cycle 17c §A.1) plus `DEFAULT_SIZE = 36` yields effective `36 + 4 + 4 = 44` per dimension, satisfying WCAG AA / Apple HIG. Consumers MAY override `size=` and/or `hitSlop=`; combined effective dimensions must remain ≥ 44 OR carry an allowlist comment.
+
+**Scope:** `mingla-business` only. `app-mobile/` + `mingla-admin/` accessibility audits are separate cycles.
+
+**Why this exists:** Pre-17c, every IconChrome consumer rendered a 36×36 touch surface (kit-wide), below WCAG AA. Forensics report `INVESTIGATION_BIZ_CYCLE_17C_WCAG_AUDIT.md` §A documented 58 occurrences across 28 files. Motor-impaired or older users mis-tap small icons; App/Play Store reviewers flag this in automated scans. Cycle 17c bakes default `hitSlop` into the primitive (visual size unchanged) and codifies the rule with this invariant.
+
+**CI enforcement:** `.github/workflows/strict-grep-mingla-business.yml` job `i38-icon-chrome-touch-target` running `.github/scripts/strict-grep/i38-icon-chrome-touch-target.mjs` (Babel AST traversal). Fails CI on PR if any `<IconChrome>` consumer's effective dimensions (`size + slop_left + slop_right` × `size + slop_top + slop_bottom`) fall below 44 without an allowlist comment.
+
+**Established by:** Cycle 17c SPEC §A + §G; D-CYCLE17A-IMPL-5 + D-CYCLE17B-QA-5 forensics anchors; DEC-103 lock entry [DEC ID confirmed at CLOSE — may bump to DEC-104 if ORCH-0733 closes first].
+
+**EXIT condition:** None — permanent invariant. If the design system ever pivots away from `IconChrome` as the canonical glass icon button, supersede via NEW invariant; do not silently relax.
+
+**Cross-reference:** Forensics report `INVESTIGATION_BIZ_CYCLE_17C_WCAG_AUDIT.md`; SPEC `SPEC_BIZ_CYCLE_17C_WCAG_AUDIT.md` §A; `.github/scripts/strict-grep/README.md` registry pattern.
+
+**Test that catches a regression:** CI grep gate above. Synthetic violation fixture: `<IconChrome icon="search" size={20} hitSlop={{top:0,bottom:0,left:0,right:0}} accessibilityLabel="..." />` → exit 1 with rich error showing 20×20 effective. Allowlist fixture: same JSX with `// orch-strict-grep-allow icon-chrome-touch-target — <reason>` comment immediately above → exit 0.
+
+---
+
+### I-39 INTERACTIVE-PRESSABLE-ACCESSIBILITY-LABEL — Every interactive `<Pressable>` / `<TouchableOpacity>` MUST have explicit `accessibilityLabel=` (mingla-business — Cycle 17c — ACTIVE post-Cycle-17c CLOSE 2026-05-05)
+
+**Statement:** Every `<Pressable>` or `<TouchableOpacity>` JSX element in `mingla-business/app/` + `mingla-business/src/` that has an `onPress=` attribute (i.e., is interactive) MUST set an explicit `accessibilityLabel=` attribute on the same element OR carry an allowlist comment. An inner `<Text>{string-literal}</Text>` or `<Text>{template-literal}</Text>` child is permitted as P2 implicit-label fallback (logged as INFO by the gate) but explicit labels are preferred for cross-platform consistency (RN VoiceOver/TalkBack derivation is platform-version-dependent).
+
+**Scope:** `mingla-business` only. Internal UI primitives in `mingla-business/src/components/ui/` may use allowlist comments more liberally — they expose label props to consumers; the consumers are gate-enforced.
+
+**Why this exists:** Pre-17c, ~88 raw missing-label occurrences existed per master inventory (count later refined to ~8-10 actual gaps post-17a/17b primitive auto-pass-through). Screen-reader users (VoiceOver, TalkBack) need explicit labels to navigate confidently; implicit-Text fallback is platform-version-dependent. Cycle 17c removes the IconChrome `?? icon` silent fallback (Cycle 17c §A.1), closes the explicit gaps (§B + §C + §D), and codifies the rule with this invariant.
+
+**CI enforcement:** `.github/workflows/strict-grep-mingla-business.yml` job `i39-pressable-label` running `.github/scripts/strict-grep/i39-pressable-label.mjs` (Babel AST traversal). Fails CI on PR if any interactive `<Pressable>` / `<TouchableOpacity>` without `accessibilityLabel=` AND without inner `<Text>` literal child AND without allowlist comment.
+
+**Established by:** Cycle 17c SPEC §B + §C + §D + §H; forensics report §B; DEC-103 lock entry [DEC ID confirmed at CLOSE].
+
+**EXIT condition:** None — permanent invariant.
+
+**Cross-reference:** Forensics report `INVESTIGATION_BIZ_CYCLE_17C_WCAG_AUDIT.md`; SPEC `SPEC_BIZ_CYCLE_17C_WCAG_AUDIT.md` §B/§C/§D/§H; `.github/scripts/strict-grep/README.md`.
+
+**Test that catches a regression:** CI grep gate above. Three fixtures verified Cycle 17c §H.3:
+- Violation: `<Pressable onPress={() => {}}><View /></Pressable>` → exit 1 with rich error.
+- Implicit-Text pass: `<Pressable onPress={() => {}}><Text>Save</Text></Pressable>` → exit 0 with INFO log.
+- Allowlist pass: violation JSX with `// orch-strict-grep-allow pressable-no-label — <reason>` immediately above → exit 0.
+

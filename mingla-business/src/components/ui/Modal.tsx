@@ -184,7 +184,12 @@ export const Modal: React.FC<ModalProps> = ({
         <Animated.View
           style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimStyle]}
         >
-          <Pressable style={styles.scrimPress} onPress={handleScrimPress} />
+          <Pressable
+            style={styles.scrimPress}
+            onPress={handleScrimPress}
+            accessibilityLabel="Dismiss modal"
+            accessibilityRole="button"
+          />
         </Animated.View>
         <View style={styles.center} pointerEvents="box-none">
           <Animated.View

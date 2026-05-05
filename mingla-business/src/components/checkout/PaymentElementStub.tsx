@@ -278,6 +278,7 @@ export const PaymentElementStub: React.FC<PaymentElementStubProps> = ({
             onPress={() => setForce3DS((v) => !v)}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: force3DS }}
+            accessibilityLabel="Force 3DS challenge (stub only)"
             style={styles.devToggleRow}
           >
             <View
@@ -295,6 +296,7 @@ export const PaymentElementStub: React.FC<PaymentElementStubProps> = ({
             onPress={() => setForceDecline((v) => !v)}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: forceDecline }}
+            accessibilityLabel="Force payment decline (stub only)"
             style={styles.devToggleRow}
           >
             <View

@@ -272,7 +272,12 @@ export const TopSheet: React.FC<TopSheetProps> = ({
           scrimStyle,
         ]}
       >
-        <Pressable style={styles.scrimPress} onPress={handleScrimPress} />
+        <Pressable
+          style={styles.scrimPress}
+          onPress={handleScrimPress}
+          accessibilityLabel="Dismiss sheet"
+          accessibilityRole="button"
+        />
       </Animated.View>
       <View
         style={[

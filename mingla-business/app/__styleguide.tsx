@@ -465,11 +465,11 @@ export default function StyleguideScreen(): React.ReactElement {
         <Section title="6. Glass surfaces" subtitle="IconChrome · GlassChrome · GlassCard · EventCover">
           <Text style={sectionStyles.label}>IconChrome variants</Text>
           <View style={demoStyles.iconChromeRow}>
-            <IconChrome icon="search" />
-            <IconChrome icon="bell" badge={3} />
-            <IconChrome icon="bell" badge={120} />
-            <IconChrome icon="settings" active />
-            <IconChrome icon="settings" disabled />
+            <IconChrome icon="search" accessibilityLabel="Search (demo)" />
+            <IconChrome icon="bell" badge={3} accessibilityLabel="Notifications (demo, 3 unread)" />
+            <IconChrome icon="bell" badge={120} accessibilityLabel="Notifications (demo, 99+ unread)" />
+            <IconChrome icon="settings" active accessibilityLabel="Settings (demo, active)" />
+            <IconChrome icon="settings" disabled accessibilityLabel="Settings (demo, disabled)" />
           </View>
 
           <Text style={sectionStyles.label}>GlassChrome intensity comparison</Text>

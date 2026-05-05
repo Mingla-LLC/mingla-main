@@ -14,6 +14,8 @@ scaffold rewrite needed.
 | Invariant | Script | Cycle | Cross-reference |
 |---|---|---|---|
 | I-37 | `i37-topbar-cluster.mjs` | 17b | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-37 |
+| I-38 | `i38-icon-chrome-touch-target.mjs` | 17c | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-38 |
+| I-39 | `i39-pressable-label.mjs` | 17c | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-39 |
 
 ## Future gates (proposed but not yet implemented)
 
@@ -78,6 +80,10 @@ The `<gate-tag>` is gate-specific. Examples:
 Each gate script reads the line immediately above its detected violation
 and skips if the verbatim allowlist tag is present. Anything else (no
 comment, wrong tag, malformed) is still a violation.
+
+Other registered gate tags:
+- I-38: `// orch-strict-grep-allow icon-chrome-touch-target — <reason>`
+- I-39: `// orch-strict-grep-allow pressable-no-label — <reason>`
 
 ## Conventions
 

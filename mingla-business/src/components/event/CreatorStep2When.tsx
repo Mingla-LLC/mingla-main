@@ -1233,6 +1233,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                 onPress={() => handleSelectPreset(opt.id)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
+                accessibilityLabel={opt.label}
                 style={[styles.sheetRow, active && styles.sheetRowActive]}
               >
                 <View style={styles.sheetRowTextCol}>

@@ -15,6 +15,8 @@ on:
 #
 # Currently registered gates:
 #   - I-37 (i37-topbar-cluster.mjs) — primary-tab default cluster (Cycle 17b)
+#   - I-38 (i38-icon-chrome-touch-target.mjs) — IconChrome touch-target ≥ 44 effective (Cycle 17c)
+#   - I-39 (i39-pressable-label.mjs) — Pressable accessibilityLabel coverage (Cycle 17c)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -37,3 +39,29 @@ jobs:
         run: npm install --no-save @babel/parser @babel/traverse
       - name: Run I-37 gate
         run: node .github/scripts/strict-grep/i37-topbar-cluster.mjs
+
+  i38-icon-chrome-touch-target:
+    name: "I-38: IconChrome touch-target >= 44 effective"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Babel parser
+        run: npm install --no-save @babel/parser @babel/traverse
+      - name: Run I-38 gate
+        run: node .github/scripts/strict-grep/i38-icon-chrome-touch-target.mjs
+
+  i39-pressable-label:
+    name: "I-39: Pressable accessibilityLabel coverage"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Babel parser
+        run: npm install --no-save @babel/parser @babel/traverse
+      - name: Run I-39 gate
+        run: node .github/scripts/strict-grep/i39-pressable-label.mjs
