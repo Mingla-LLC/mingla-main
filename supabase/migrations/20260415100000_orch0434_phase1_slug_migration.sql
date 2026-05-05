@@ -1,4 +1,4 @@
--- ORCH-0724/0725 (2026-05-05): Pre-UPDATE DELETE inserted at Section 8 (before line 240) to neutralize SQLSTATE 23505 PK collision on `category_type_exclusions_pkey`. Original UPDATE at line 240 collapses (nature_views, amusement_park) and (nature, amusement_park) onto the same PK; original post-UPDATE dedupe at lines 254-258 only handles legacy/legacy collapses and never fires because the UPDATE crashes first. Production unaffected — historical apply via dashboard SQL editor (incremental). Forensics: Mingla_Artifacts/reports/INVESTIGATION_ORCH-0725_TRACK_H_APPLY_TIME_AUDIT.md. Sibling fixes: ORCH-0721 commit 4e8f784d (CONCURRENTLY) + ORCH-0722 commit cd276c3b (OUT-param shape × 2).
+-- ORCH-0724/0725/0727 (2026-05-05): Section 8 entirely replaced with Option B (INSERT…ON CONFLICT + DELETE) to neutralize SQLSTATE 23505 PK collision on `category_type_exclusions_pkey`. Original UPDATE collapses multi-legacy rows onto same canonical PK. ORCH-0724/0725 Option A (pre-DELETE) handled legacy/canonical collisions only and missed legacy/legacy collapses; commit 27d8c0c1 still failed on PR #62 push 4. ORCH-0727 reworks to Option B which handles ALL collision cases via ON CONFLICT DO NOTHING. Production unaffected — same end state (legacy slugs removed, canonical preserved/inserted). Sibling fixes: ORCH-0721 commit 4e8f784d (CONCURRENTLY) + ORCH-0722 commit cd276c3b (OUT-param shape × 2). Forensics: Mingla_Artifacts/reports/INVESTIGATION_ORCH-0725_TRACK_H_APPLY_TIME_AUDIT.md §6 Option B.
 -- ============================================================================
 -- ORCH-0434 Phase 1: Database Foundation — Category Slug Migration
 -- ============================================================================
@@ -234,25 +234,24 @@ WHERE categories IS NOT NULL AND array_length(categories, 1) > 0;
 
 
 -- ════════════════════════════════════════════════════════════════════════════
--- SECTION 8: Slug Migration — category_type_exclusions
+-- SECTION 8: Slug Migration — category_type_exclusions (ORCH-0727 Option B)
 -- ════════════════════════════════════════════════════════════════════════════
 -- Column is category_slug (NOT category).
+--
+-- ORCH-0727 (2026-05-05): Replaced original UPDATE + post-UPDATE dedupe DELETE
+-- with Option B INSERT…ON CONFLICT + DELETE pattern. Original UPDATE collapsed
+-- multi-legacy rows onto same canonical PK → SQLSTATE 23505. ORCH-0724/0725
+-- Option A pre-DELETE handled only legacy/canonical collisions and missed
+-- legacy/legacy collapses (commit 27d8c0c1 still failed on PR #62 push 4).
+-- Option B handles all 3 collision cases (legacy/canonical, legacy/legacy,
+-- no-collision) via ON CONFLICT DO NOTHING. Same end state: legacy slugs
+-- removed, canonical slugs preserved/inserted. Production unaffected.
 
--- ORCH-0724/0725 (2026-05-05): Pre-delete legacy-slug rows whose
--- post-rename target already exists with the same excluded_type.
--- Without this, the UPDATE below trips SQLSTATE 23505 (PK collision on
--- category_type_exclusions_pkey) when two rows would share
--- (category_slug, excluded_type) post-rename. The original post-UPDATE
--- DELETE (a few lines below) handles legacy/legacy collapses
--- (e.g., picnic_park + nature_views → nature) but never fires because
--- the UPDATE crashes first. Production unaffected — historical apply
--- via dashboard SQL editor where the rename was incremental.
-DELETE FROM category_type_exclusions a
-USING category_type_exclusions b
-WHERE a.excluded_type = b.excluded_type
-  AND a.category_slug != b.category_slug
-  AND b.category_slug IN ('nature','drinks_and_music','icebreakers','brunch_lunch_casual','upscale_fine_dining','movies_theatre','creative_arts','play','flowers','groceries')
-  AND CASE a.category_slug
+-- 8a: Insert canonical-slug rows for each legacy row, skipping any whose
+-- (category_slug, excluded_type) already exists.
+INSERT INTO category_type_exclusions (category_slug, excluded_type)
+SELECT
+  CASE category_slug
     WHEN 'nature_views'     THEN 'nature'
     WHEN 'picnic_park'      THEN 'nature'
     WHEN 'drink'            THEN 'drinks_and_music'
@@ -262,28 +261,22 @@ WHERE a.excluded_type = b.excluded_type
     WHEN 'watch'            THEN 'movies_theatre'
     WHEN 'live_performance' THEN 'movies_theatre'
     WHEN 'wellness'         THEN 'brunch_lunch_casual'
-    ELSE a.category_slug
-  END = b.category_slug;
+  END AS new_slug,
+  excluded_type
+FROM category_type_exclusions
+WHERE category_slug IN (
+  'nature_views','picnic_park','drink','first_meet','casual_eats',
+  'fine_dining','watch','live_performance','wellness'
+)
+ON CONFLICT (category_slug, excluded_type) DO NOTHING;
 
-UPDATE category_type_exclusions SET category_slug = CASE category_slug
-  WHEN 'nature_views'     THEN 'nature'
-  WHEN 'picnic_park'      THEN 'nature'
-  WHEN 'drink'            THEN 'drinks_and_music'
-  WHEN 'first_meet'       THEN 'icebreakers'
-  WHEN 'casual_eats'      THEN 'brunch_lunch_casual'
-  WHEN 'fine_dining'      THEN 'upscale_fine_dining'
-  WHEN 'watch'            THEN 'movies_theatre'
-  WHEN 'live_performance' THEN 'movies_theatre'
-  WHEN 'wellness'         THEN 'brunch_lunch_casual'
-  ELSE category_slug
-END;
-
--- Deduplicate: merges (nature_views + picnic_park → nature) may create duplicate rows
-DELETE FROM category_type_exclusions a
-USING category_type_exclusions b
-WHERE a.ctid < b.ctid
-  AND a.category_slug = b.category_slug
-  AND a.excluded_type = b.excluded_type;
+-- 8b: Delete the legacy-slug rows. Canonical rows (preserved or freshly
+-- inserted by 8a) are untouched.
+DELETE FROM category_type_exclusions
+WHERE category_slug IN (
+  'nature_views','picnic_park','drink','first_meet','casual_eats',
+  'fine_dining','watch','live_performance','wellness'
+);
 
 
 -- ════════════════════════════════════════════════════════════════════════════
