@@ -1,3 +1,4 @@
+-- ORCH-0724/0725 (2026-05-05): Pre-UPDATE DELETE inserted at Section 8 (before line 240) to neutralize SQLSTATE 23505 PK collision on `category_type_exclusions_pkey`. Original UPDATE at line 240 collapses (nature_views, amusement_park) and (nature, amusement_park) onto the same PK; original post-UPDATE dedupe at lines 254-258 only handles legacy/legacy collapses and never fires because the UPDATE crashes first. Production unaffected — historical apply via dashboard SQL editor (incremental). Forensics: Mingla_Artifacts/reports/INVESTIGATION_ORCH-0725_TRACK_H_APPLY_TIME_AUDIT.md. Sibling fixes: ORCH-0721 commit 4e8f784d (CONCURRENTLY) + ORCH-0722 commit cd276c3b (OUT-param shape × 2).
 -- ============================================================================
 -- ORCH-0434 Phase 1: Database Foundation — Category Slug Migration
 -- ============================================================================
@@ -236,6 +237,33 @@ WHERE categories IS NOT NULL AND array_length(categories, 1) > 0;
 -- SECTION 8: Slug Migration — category_type_exclusions
 -- ════════════════════════════════════════════════════════════════════════════
 -- Column is category_slug (NOT category).
+
+-- ORCH-0724/0725 (2026-05-05): Pre-delete legacy-slug rows whose
+-- post-rename target already exists with the same excluded_type.
+-- Without this, the UPDATE below trips SQLSTATE 23505 (PK collision on
+-- category_type_exclusions_pkey) when two rows would share
+-- (category_slug, excluded_type) post-rename. The original post-UPDATE
+-- DELETE (a few lines below) handles legacy/legacy collapses
+-- (e.g., picnic_park + nature_views → nature) but never fires because
+-- the UPDATE crashes first. Production unaffected — historical apply
+-- via dashboard SQL editor where the rename was incremental.
+DELETE FROM category_type_exclusions a
+USING category_type_exclusions b
+WHERE a.excluded_type = b.excluded_type
+  AND a.category_slug != b.category_slug
+  AND b.category_slug IN ('nature','drinks_and_music','icebreakers','brunch_lunch_casual','upscale_fine_dining','movies_theatre','creative_arts','play','flowers','groceries')
+  AND CASE a.category_slug
+    WHEN 'nature_views'     THEN 'nature'
+    WHEN 'picnic_park'      THEN 'nature'
+    WHEN 'drink'            THEN 'drinks_and_music'
+    WHEN 'first_meet'       THEN 'icebreakers'
+    WHEN 'casual_eats'      THEN 'brunch_lunch_casual'
+    WHEN 'fine_dining'      THEN 'upscale_fine_dining'
+    WHEN 'watch'            THEN 'movies_theatre'
+    WHEN 'live_performance' THEN 'movies_theatre'
+    WHEN 'wellness'         THEN 'brunch_lunch_casual'
+    ELSE a.category_slug
+  END = b.category_slug;
 
 UPDATE category_type_exclusions SET category_slug = CASE category_slug
   WHEN 'nature_views'     THEN 'nature'
