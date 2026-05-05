@@ -181,6 +181,13 @@ export const PRICING = {
   HAIKU_4_5_CACHE_READ_PER_TOKEN: 0.1 / 1_000_000,
   HAIKU_4_5_CACHE_WRITE_PER_TOKEN: 1.25 / 1_000_000,
   BATCH_API_DISCOUNT: 0.5,
+  // ORCH-0713 Gemini comparison (2026-05-05).
+  // Gemini 2.5 Flash pricing per https://ai.google.dev/pricing (verify live).
+  // Input/output rates apply uniformly to text + image tokens.
+  // No prompt cache yet (paid prompt caching is documented but optional —
+  // we don't use it for the trial path; baseline rates apply).
+  GEMINI_2_5_FLASH_INPUT_PER_TOKEN: 0.30 / 1_000_000,
+  GEMINI_2_5_FLASH_OUTPUT_PER_TOKEN: 2.50 / 1_000_000,
 } as const;
 
 export function computeCostUsd(args: {
@@ -203,5 +210,19 @@ export function computeCostUsd(args: {
     outputTokens * PRICING.HAIKU_4_5_OUTPUT_PER_TOKEN * discount +
     cacheReadTokens * PRICING.HAIKU_4_5_CACHE_READ_PER_TOKEN * discount +
     cacheWriteTokens * PRICING.HAIKU_4_5_CACHE_WRITE_PER_TOKEN * discount;
+  return Math.round(cost * 1_000_000) / 1_000_000;
+}
+
+// ORCH-0713 Gemini comparison — Gemini 2.5 Flash cost calc.
+// Gemini's usageMetadata reports promptTokenCount + candidatesTokenCount;
+// no separate cache-read/cache-write split exposed for free tier.
+export function computeCostUsdGemini(args: {
+  promptTokens: number;
+  candidatesTokens: number;
+}): number {
+  const { promptTokens, candidatesTokens } = args;
+  const cost =
+    promptTokens * PRICING.GEMINI_2_5_FLASH_INPUT_PER_TOKEN +
+    candidatesTokens * PRICING.GEMINI_2_5_FLASH_OUTPUT_PER_TOKEN;
   return Math.round(cost * 1_000_000) / 1_000_000;
 }

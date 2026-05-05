@@ -16,6 +16,7 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 import {
   MINGLA_SIGNAL_IDS,
   computeCostUsd,
+  computeCostUsdGemini,
 } from "../_shared/photoAestheticEnums.ts";
 import {
   composeCollage,
@@ -34,6 +35,12 @@ const MODEL_ID = "claude-haiku-4-5-20251001";
 const MODEL_NAME_SHORT = "claude-haiku-4-5";
 const ANTHROPIC_VERSION = "2023-06-01";
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
+// ORCH-0713 Gemini A/B comparison (2026-05-05) — alternate provider path.
+// Anthropic stays the default; operator opts in per run via `provider` body param.
+const GEMINI_MODEL_ID = "gemini-2.5-flash";
+const GEMINI_MODEL_NAME_SHORT = "gemini-2.5-flash";
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
+type Provider = "anthropic" | "gemini";
 const SERPER_REVIEWS_URL = "https://google.serper.dev/reviews";
 const COLLAGE_BUCKET = "place-collages";
 // PROMPT_VERSION:
@@ -119,6 +126,71 @@ async function callAnthropicWithRetry(
   return { payload, usage };
 }
 
+// ─── Gemini call helper with retry (ORCH-0713 A/B comparison) ───────────────
+
+interface GeminiUsage {
+  promptTokenCount: number;
+  candidatesTokenCount: number;
+}
+
+async function callGeminiWithRetry(
+  apiKey: string,
+  reqBody: Record<string, unknown>,
+): Promise<{ payload: any; usage: GeminiUsage }> {
+  let lastErrText = "";
+  let res: Response;
+  // Gemini uses ?key=<API_KEY> query param auth (also supports x-goog-api-key header).
+  const url = `${GEMINI_API_URL}?key=${encodeURIComponent(apiKey)}`;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reqBody),
+    });
+
+    if (res.ok) break;
+
+    const status = res.status;
+    lastErrText = await res.text();
+    const isRetryable = status === 429 || (status >= 500 && status < 600);
+    if (!isRetryable || attempt === MAX_ATTEMPTS) {
+      throw new Error(`Gemini ${status}: ${lastErrText.slice(0, 500)}`);
+    }
+    const retryAfter = res.headers.get("retry-after");
+    const retryAfterMs = retryAfter ? Math.min(60_000, Math.max(1_000, Number(retryAfter) * 1000)) : 0;
+    const backoffMs = retryAfterMs || (BASE_BACKOFF_MS * Math.pow(2, attempt - 1));
+    console.log(`[place-intel-trial] Gemini ${status} attempt ${attempt}/${MAX_ATTEMPTS}, sleeping ${backoffMs}ms`);
+    await new Promise((r) => setTimeout(r, backoffMs));
+  }
+
+  if (!res!.ok) throw new Error(`Gemini exhausted retries: ${lastErrText.slice(0, 500)}`);
+
+  const payload = await res!.json();
+  const usage: GeminiUsage = payload?.usageMetadata
+    ? {
+        promptTokenCount: payload.usageMetadata.promptTokenCount || 0,
+        candidatesTokenCount: payload.usageMetadata.candidatesTokenCount || 0,
+      }
+    : { promptTokenCount: 0, candidatesTokenCount: 0 };
+  return { payload, usage };
+}
+
+// Fetch a public URL and return base64-encoded bytes for Gemini inline_data.
+async function fetchAsBase64(url: string): Promise<{ base64: string; mimeType: string }> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Collage fetch failed ${res.status}: ${url.slice(0, 80)}`);
+  const contentType = res.headers.get("content-type") || "image/png";
+  const buf = new Uint8Array(await res.arrayBuffer());
+  // Encode to base64 (Deno-native — chunk to avoid stack overflow on large arrays)
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < buf.length; i += chunkSize) {
+    binary += String.fromCharCode(...buf.subarray(i, i + chunkSize));
+  }
+  const base64 = btoa(binary);
+  return { base64, mimeType: contentType };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Tool schemas
 // ═══════════════════════════════════════════════════════════════════════════
@@ -183,8 +255,11 @@ serve(async (req: Request) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+    const geminiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
     const serperKey = Deno.env.get("SERPER_API_KEY") ?? "";
 
+    // ANTHROPIC_API_KEY required for default path; GEMINI_API_KEY required only when
+    // body.provider="gemini" (validated inside handleRunTrialForPlace).
     if (!anthropicKey) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
     if (!serperKey) return json({ error: "SERPER_API_KEY not configured" }, 500);
 
@@ -225,7 +300,7 @@ serve(async (req: Request) => {
       case "start_run":
         return await handleStartRun(supabaseAdmin, body, user.id);
       case "run_trial_for_place":
-        return await handleRunTrialForPlace(supabaseAdmin, body, anthropicKey);
+        return await handleRunTrialForPlace(supabaseAdmin, body, anthropicKey, geminiKey);
       case "run_status":
         return await handleRunStatus(supabaseAdmin, body);
       case "cancel_trial":
@@ -509,9 +584,16 @@ async function handleComposeCollage(
 
 async function handleStartRun(
   db: SupabaseClient,
-  _body: Record<string, unknown>,
+  body: Record<string, unknown>,
   userId: string,
 ): Promise<Response> {
+  // ORCH-0713 Gemini A/B — provider param. Default 'anthropic' for backward compat.
+  const rawProvider = (body.provider as string) || "anthropic";
+  if (rawProvider !== "anthropic" && rawProvider !== "gemini") {
+    return json({ error: `Invalid provider '${rawProvider}'. Must be 'anthropic' or 'gemini'.` }, 400);
+  }
+  const provider: Provider = rawProvider;
+
   const { data: anchors, error: anchErr } = await db
     .from("signal_anchors")
     .select("place_pool_id, signal_id, anchor_index")
@@ -522,8 +604,10 @@ async function handleStartRun(
     return json({ error: "no committed anchors — pick anchors first" }, 400);
   }
 
-  // Cost guard (estimate only; actual usage tracked per-place)
-  const estCost = anchors.length * 0.045;
+  // Per-place cost estimate by provider (rough; actual usage tracked per-place).
+  // Anthropic v3: ~$0.013/place. Gemini 2.5 Flash: ~$0.005/place. Cost guard $5.
+  const perPlaceEstimate = provider === "gemini" ? 0.005 : 0.013;
+  const estCost = anchors.length * perPlaceEstimate;
   if (estCost > COST_GUARD_USD) {
     return json({
       error: `cost guard tripped: estimated $${estCost.toFixed(2)} > $${COST_GUARD_USD}`,
@@ -531,8 +615,12 @@ async function handleStartRun(
   }
 
   const runId = crypto.randomUUID();
-  console.log(`[place-intel-trial:start_run] creating run ${runId} for ${anchors.length} places (userId=${userId})`);
+  console.log(`[place-intel-trial:start_run] creating run ${runId} for ${anchors.length} places (provider=${provider}, userId=${userId})`);
 
+  // Tag pending rows with the provider's model name so Trial Results UI can
+  // distinguish Anthropic vs Gemini runs at a glance (and so processOnePlace
+  // doesn't have to re-derive on completion).
+  const modelShort = provider === "gemini" ? GEMINI_MODEL_NAME_SHORT : MODEL_NAME_SHORT;
   const pendingRows = anchors.map((a) => ({
     run_id: runId,
     place_pool_id: a.place_pool_id,
@@ -541,7 +629,7 @@ async function handleStartRun(
     input_payload: {},
     status: "pending",
     prompt_version: PROMPT_VERSION,
-    model: MODEL_NAME_SHORT,
+    model: modelShort,
   }));
   const { error: insertErr } = await db
     .from("place_intelligence_trial_runs")
@@ -552,6 +640,8 @@ async function handleStartRun(
     runId,
     totalPlaces: anchors.length,
     estimatedCostUsd: +estCost.toFixed(4),
+    provider,
+    model: modelShort,
     anchors: anchors.map((a) => ({
       place_pool_id: a.place_pool_id,
       signal_id: a.signal_id,
@@ -569,11 +659,21 @@ async function handleRunTrialForPlace(
   db: SupabaseClient,
   body: Record<string, unknown>,
   anthropicKey: string,
+  geminiKey: string,
 ): Promise<Response> {
   const runId = body.run_id as string;
   const placePoolId = body.place_pool_id as string;
   const signalId = body.signal_id as string;
   const anchorIndex = body.anchor_index as number;
+  // ORCH-0713 Gemini A/B — provider param. Default 'anthropic' for backward compat.
+  const rawProvider = (body.provider as string) || "anthropic";
+  if (rawProvider !== "anthropic" && rawProvider !== "gemini") {
+    return json({ error: `Invalid provider '${rawProvider}'. Must be 'anthropic' or 'gemini'.` }, 400);
+  }
+  const provider: Provider = rawProvider;
+  if (provider === "gemini" && !geminiKey) {
+    return json({ error: "GEMINI_API_KEY not configured (operator: `supabase secrets set GEMINI_API_KEY=...`)" }, 500);
+  }
 
   if (!runId || !placePoolId || !signalId || anchorIndex == null) {
     return json({ error: "run_id, place_pool_id, signal_id, anchor_index all required" }, 400);
@@ -583,6 +683,8 @@ async function handleRunTrialForPlace(
     const cost = await processOnePlace({
       db,
       anthropicKey,
+      geminiKey,
+      provider,
       runId,
       anchor: { place_pool_id: placePoolId, signal_id: signalId, anchor_index: anchorIndex },
     });
@@ -616,10 +718,12 @@ interface AnchorRow {
 async function processOnePlace(args: {
   db: SupabaseClient;
   anthropicKey: string;
+  geminiKey: string;
+  provider: Provider;
   runId: string;
   anchor: AnchorRow;
 }): Promise<number> {
-  const { db, anthropicKey, runId, anchor } = args;
+  const { db, anthropicKey, geminiKey, provider, runId, anchor } = args;
 
   // Mark running
   await db
@@ -679,16 +783,27 @@ async function processOnePlace(args: {
   };
 
   // ORCH-0713 v3 — Q2 only. Q1 removed (research-only, harvested into signal-lab/PROPOSALS.md).
-  const { aggregate: q2, totalCostUsd: q2Cost } = await callQuestion({
-    apiKey: anthropicKey,
-    systemPrompt,
-    userTextBlock,
-    collageUrl: pp.photo_collage_url,
-    tool: Q2_TOOL,
-    cacheSystem: true,
-  });
+  // ORCH-0713 Gemini A/B — branch on provider. Same prompt + same anchor input;
+  // only the model + API call differ. Outputs share the q2_response shape.
+  const { aggregate: q2, totalCostUsd: q2Cost } = provider === "gemini"
+    ? await callGeminiQuestion({
+        apiKey: geminiKey,
+        systemPrompt,
+        userTextBlock,
+        collageUrl: pp.photo_collage_url,
+        tool: Q2_TOOL,
+      })
+    : await callQuestion({
+        apiKey: anthropicKey,
+        systemPrompt,
+        userTextBlock,
+        collageUrl: pp.photo_collage_url,
+        tool: Q2_TOOL,
+        cacheSystem: true,
+      });
 
   // Persist. q1_response is nullable (verified) → write null on v3 runs.
+  // model + model_version disambiguate Anthropic vs Gemini runs in the table.
   await db
     .from("place_intelligence_trial_runs")
     .update({
@@ -699,8 +814,8 @@ async function processOnePlace(args: {
       q2_response: q2,
       cost_usd: +q2Cost.toFixed(6),
       status: "completed",
-      model: MODEL_NAME_SHORT,
-      model_version: MODEL_ID,
+      model: provider === "gemini" ? GEMINI_MODEL_NAME_SHORT : MODEL_NAME_SHORT,
+      model_version: provider === "gemini" ? GEMINI_MODEL_ID : MODEL_ID,
       completed_at: new Date().toISOString(),
     })
     .eq("run_id", runId)
@@ -755,6 +870,85 @@ async function callQuestion(args: {
     cacheReadTokens: usage.cache_read_input_tokens || 0,
     cacheWriteTokens: usage.cache_creation_input_tokens || 0,
     useBatchApi: false,
+  });
+
+  return { aggregate, totalCostUsd: cost };
+}
+
+// ─── Gemini equivalent of callQuestion (ORCH-0713 A/B comparison) ───────────
+// Same inputs (system prompt, user text block, collage URL, Q2 tool schema).
+// Translates to Gemini's request format:
+//   - System prompt → systemInstruction
+//   - User text block → contents[0].parts[].text
+//   - Collage URL → fetched + base64-encoded → contents[0].parts[].inline_data
+//     (Gemini does NOT fetch URLs; we must encode bytes locally)
+//   - Q2 tool input_schema → tools[0].function_declarations[0].parameters
+//     (Gemini accepts standard JSON Schema verbatim)
+//   - tool_choice → toolConfig.functionCallingConfig with mode=ANY +
+//     allowedFunctionNames
+//
+// Response parsing: candidates[0].content.parts[i].functionCall.{name, args}
+// where args matches the tool's input_schema (same shape as Anthropic's
+// tool_use.input).
+
+async function callGeminiQuestion(args: {
+  apiKey: string;
+  systemPrompt: string;
+  userTextBlock: string;
+  collageUrl: string;
+  tool: typeof Q2_TOOL;
+}): Promise<{ aggregate: any; totalCostUsd: number }> {
+  const { apiKey, systemPrompt, userTextBlock, collageUrl, tool } = args;
+
+  // Fetch + base64-encode collage (Gemini inline_data requires bytes; URL fetch unsupported)
+  const { base64, mimeType } = await fetchAsBase64(collageUrl);
+
+  const reqBody = {
+    contents: [{
+      role: "user",
+      parts: [
+        { inline_data: { mime_type: mimeType, data: base64 } },
+        { text: userTextBlock },
+      ],
+    }],
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    tools: [{
+      function_declarations: [{
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.input_schema,
+      }],
+    }],
+    toolConfig: {
+      functionCallingConfig: {
+        mode: "ANY",
+        allowedFunctionNames: [tool.name],
+      },
+    },
+    generationConfig: {
+      maxOutputTokens: 2000,
+      temperature: 0.3,
+    },
+  };
+
+  const { payload, usage } = await callGeminiWithRetry(apiKey, reqBody);
+  const candidates = payload?.candidates || [];
+  if (candidates.length === 0) {
+    throw new Error("Gemini returned no candidates");
+  }
+  const parts = candidates[0]?.content?.parts || [];
+  const fnCallPart = parts.find(
+    (p: { functionCall?: { name?: string } }) => p.functionCall?.name === tool.name,
+  );
+  if (!fnCallPart?.functionCall?.args) {
+    const finishReason = candidates[0]?.finishReason || "unknown";
+    throw new Error(`Gemini returned no function_call for ${tool.name} (finishReason=${finishReason})`);
+  }
+  const aggregate = fnCallPart.functionCall.args;
+
+  const cost = computeCostUsdGemini({
+    promptTokens: usage.promptTokenCount,
+    candidatesTokens: usage.candidatesTokenCount,
   });
 
   return { aggregate, totalCostUsd: cost };

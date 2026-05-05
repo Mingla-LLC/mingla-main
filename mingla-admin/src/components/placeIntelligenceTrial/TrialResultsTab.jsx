@@ -57,6 +57,20 @@ function PlaceResultCard({ row }) {
         ].filter(Boolean).join(" ")}>
           {row.status}
         </span>
+        {/* ORCH-0713 Gemini A/B — model badge distinguishes Anthropic vs Gemini runs at a glance. */}
+        {row.model && (
+          <span
+            className={[
+              "text-[10px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded shrink-0",
+              row.model.startsWith("gemini")
+                ? "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]"
+                : "bg-[var(--color-info-50)] text-[var(--color-info-700)]",
+            ].join(" ")}
+            title={`Model: ${row.model}${row.model_version ? ` (${row.model_version})` : ""}`}
+          >
+            {row.model.startsWith("gemini") ? "Gemini" : "Haiku"}
+          </span>
+        )}
         <span className="text-xs text-[var(--color-text-tertiary)] font-mono shrink-0">
           {formatCost(row.cost_usd)}
         </span>
@@ -185,6 +199,18 @@ function PlaceResultCard({ row }) {
 // each place sends ~25K (collage + reviews). Two places per minute max.
 const PER_PLACE_BROWSER_THROTTLE_MS = 9_000;
 
+// ORCH-0713 Gemini A/B comparison — per-place cost estimate by provider for the
+// confirm-dialog message and the eyeballed bill. Anthropic v3 measured ~$0.013;
+// Gemini 2.5 Flash projected ~$0.005 (verify on first sweep).
+const PER_PLACE_COST_BY_PROVIDER = {
+  anthropic: 0.013,
+  gemini: 0.005,
+};
+const PROVIDER_LABEL = {
+  anthropic: "Anthropic Claude Haiku 4.5",
+  gemini: "Gemini 2.5 Flash",
+};
+
 export function TrialResultsTab() {
   const { addToast } = useToast();
   const [committedCount, setCommittedCount] = useState(0);
@@ -192,6 +218,9 @@ export function TrialResultsTab() {
   const [loading, setLoading] = useState(true);
   const [preparing, setPreparing] = useState(false);
   const [running, setRunning] = useState(false);
+  // ORCH-0713 Gemini A/B — provider selection for the next Run Trial click.
+  // Anthropic stays the default (preserves backward compat + matches DEC-099 architecture).
+  const [provider, setProvider] = useState("anthropic");
 
   // Live progress for the currently-running prepare or trial loop
   const [progress, setProgress] = useState(null); // { phase, current, total, succeeded, failed, costSoFar }
@@ -316,8 +345,12 @@ export function TrialResultsTab() {
     if (isRunningRef.current) return;
     isRunningRef.current = true;
 
+    const perPlace = PER_PLACE_COST_BY_PROVIDER[provider] ?? 0.013;
+    const estCost = (committedCount * perPlace).toFixed(2);
+    const providerLabel = PROVIDER_LABEL[provider] ?? provider;
+
     if (!window.confirm(
-      `About to run trial for ${committedCount} places. Estimated cost ~$${(committedCount * 0.045).toFixed(2)}, ~${Math.ceil(committedCount * 1.2)} minute wall time. Don't refresh the page during the run. Continue?`
+      `About to run trial for ${committedCount} places using ${providerLabel}. Estimated cost ~$${estCost}, ~${Math.ceil(committedCount * 1.2)} minute wall time. Don't refresh the page during the run. Continue?`
     )) {
       isRunningRef.current = false;
       return;
@@ -329,7 +362,7 @@ export function TrialResultsTab() {
     try {
       // Step 1: create run_id + pending rows
       const { data: created, error: startErr } = await invokeWithRefresh("run-place-intelligence-trial", {
-        body: { action: "start_run" },
+        body: { action: "start_run", provider },
       });
       if (startErr) throw new Error(await extractFunctionError(startErr, "start_run failed"));
       const runId = created?.runId;
@@ -365,6 +398,7 @@ export function TrialResultsTab() {
               place_pool_id: a.place_pool_id,
               signal_id: a.signal_id,
               anchor_index: a.anchor_index,
+              provider,
             },
           });
           if (e) throw new Error(await extractFunctionError(e, "run_trial_for_place failed"));
@@ -410,39 +444,78 @@ export function TrialResultsTab() {
     >
       <div className="space-y-4">
         {/* Run controls */}
-        <div className="flex flex-wrap items-center gap-2 p-4 border border-[var(--gray-200)] rounded-lg bg-[var(--gray-50)]">
-          <div className="flex-1">
-            <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">Trial run</h4>
-            <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
-              Step 1: Fetch reviews + build collages for all committed anchors.
-              Step 2: Run Claude Q1 + Q2 per place. Step 3: Read results below.
-            </p>
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={Sparkles}
-            onClick={handlePrepareAll}
-            loading={preparing}
-            disabled={preparing || running || committedCount === 0}
-          >
-            1. Prepare reviews + collages
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            icon={Play}
-            onClick={handleRunTrial}
-            loading={running}
-            disabled={!canRun}
-          >
-            2. Run trial ({committedCount} places)
-          </Button>
-          {(preparing || running) && (
-            <Button variant="danger" size="sm" icon={Square} onClick={handleCancel}>
-              Cancel
+        <div className="flex flex-col gap-3 p-4 border border-[var(--gray-200)] rounded-lg bg-[var(--gray-50)]">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex-1">
+              <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">Trial run</h4>
+              <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
+                Step 1: Fetch reviews + build collages for all committed anchors.
+                Step 2: Run Q2 per place via the selected provider. Step 3: Read results below.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Sparkles}
+              onClick={handlePrepareAll}
+              loading={preparing}
+              disabled={preparing || running || committedCount === 0}
+            >
+              1. Prepare reviews + collages
             </Button>
-          )}
+            <Button
+              variant="primary"
+              size="sm"
+              icon={Play}
+              onClick={handleRunTrial}
+              loading={running}
+              disabled={!canRun}
+            >
+              2. Run trial ({committedCount} places)
+            </Button>
+            {(preparing || running) && (
+              <Button variant="danger" size="sm" icon={Square} onClick={handleCancel}>
+                Cancel
+              </Button>
+            )}
+          </div>
+          {/* ORCH-0713 Gemini A/B comparison — provider toggle. Anthropic default. */}
+          <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-[var(--gray-200)]">
+            <span className="text-xs text-[var(--color-text-tertiary)] uppercase tracking-wide font-mono shrink-0">Provider</span>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="radio"
+                name="trial-provider"
+                value="anthropic"
+                checked={provider === "anthropic"}
+                onChange={() => setProvider("anthropic")}
+                disabled={running || preparing}
+                className="cursor-pointer"
+              />
+              <span>
+                <span className="font-medium text-[var(--color-text-primary)]">Claude Haiku 4.5</span>
+                <span className="text-[var(--color-text-tertiary)]">{` · est $${(committedCount * PER_PLACE_COST_BY_PROVIDER.anthropic).toFixed(2)}`}</span>
+              </span>
+            </label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="radio"
+                name="trial-provider"
+                value="gemini"
+                checked={provider === "gemini"}
+                onChange={() => setProvider("gemini")}
+                disabled={running || preparing}
+                className="cursor-pointer"
+              />
+              <span>
+                <span className="font-medium text-[var(--color-text-primary)]">Gemini 2.5 Flash</span>
+                <span className="text-[var(--color-text-tertiary)]">{` · est $${(committedCount * PER_PLACE_COST_BY_PROVIDER.gemini).toFixed(2)}`}</span>
+              </span>
+            </label>
+            <span className="text-[10px] text-[var(--color-text-tertiary)] italic ml-auto">
+              Same prompt + same anchors. Results stored separately for comparison.
+            </span>
+          </div>
         </div>
 
         {progress && (
