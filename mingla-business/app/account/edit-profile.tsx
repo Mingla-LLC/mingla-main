@@ -48,10 +48,12 @@ import {
 import { supabase } from "../../src/services/supabase";
 
 import { Button } from "../../src/components/ui/Button";
+import { ConfirmDialog } from "../../src/components/ui/ConfirmDialog";
 import { EmptyState } from "../../src/components/ui/EmptyState";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Pill } from "../../src/components/ui/Pill";
 import { Toast } from "../../src/components/ui/Toast";
+import { usePermissionWithFallback } from "../../src/hooks/usePermissionWithFallback";
 
 const NAME_MAX_LENGTH = 80;
 
@@ -111,11 +113,35 @@ export default function EditProfileRoute(): React.ReactElement {
     }
   }, [router]);
 
+  // Cycle 16a J-X6 (DEC-098): consolidated permission UX — denied with
+  // canAskAgain=false → ConfirmDialog with "Open Settings" CTA. Replaces
+  // Cycle 14 toast-only fallback ("Photo permission required.") with a
+  // settings-deeplink path so users can recover from earlier denial.
+  const photoGate = usePermissionWithFallback({
+    request: async () => {
+      const result = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      return {
+        granted: result.granted,
+        canAskAgain: result.canAskAgain ?? true,
+      };
+    },
+    permissionLabel: "Photo library",
+    permissionRationale:
+      "Mingla needs photo library access to upload your profile picture.",
+  });
+
   const handlePickPhoto = useCallback(async (): Promise<void> => {
     if (user === null) return;
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      showToast("Photo permission required.");
+    const granted = await photoGate.requestWithFallback();
+    if (!granted) {
+      // Two paths handled here:
+      //  - Denied with canAskAgain=true: hook returned false, no dialog;
+      //    show toast so user knows why nothing happened.
+      //  - Denied with canAskAgain=false: hook opened settings dialog;
+      //    user sees the dialog (no toast needed; dialog tells them what to do).
+      if (!photoGate.settingsDialogVisible) {
+        showToast("Photo permission required.");
+      }
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -344,6 +370,18 @@ export default function EditProfileRoute(): React.ReactElement {
           onDismiss={() => setToast({ visible: false, message: "" })}
         />
       </View>
+
+      {/* Cycle 16a J-X6 — permission settings dialog (DEC-098). Renders
+          INSIDE consumer tree per feedback_rn_sub_sheet_must_render_inside_parent. */}
+      <ConfirmDialog
+        visible={photoGate.settingsDialogVisible}
+        onClose={photoGate.dismissSettingsDialog}
+        onConfirm={photoGate.openSettings}
+        title={photoGate.dialogTitle}
+        description={photoGate.dialogDescription}
+        confirmLabel="Open Settings"
+        cancelLabel="Not now"
+      />
     </View>
   );
 }
