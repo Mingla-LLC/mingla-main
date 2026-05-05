@@ -1,3 +1,4 @@
+-- ORCH-0728 (2026-05-05): ALTER TABLE place_pool ADD COLUMN IF NOT EXISTS claimed_by UUID inserted near the top to neutralize SQLSTATE 42703 ("column pp.claimed_by does not exist") at the matview CREATE. Production has this column (added via Supabase dashboard direct ALTER); fresh-DB replay never had a backfilling migration. IF NOT EXISTS makes the ALTER a no-op on prod. Sibling fixes: ORCH-0721 commit 4e8f784d (CONCURRENTLY) + ORCH-0722 commit cd276c3b (OUT-param × 2) + ORCH-0727 commit 0b706dc3 (slug rename Option B). Forensics: ORCH-0728 schema-drift class — fix unbounded; squash-baseline (ORCH-0729) is the durable structural fix.
 -- ============================================================================
 -- ORCH-0481: Admin RPC Materialized View Layer (Systemic Fix)
 -- ============================================================================
@@ -55,6 +56,10 @@ SET LOCAL statement_timeout = '15min';
 -- ============================================================================
 -- WAVE 1: Materialized View + Indexes
 -- ============================================================================
+
+-- ORCH-0728 (2026-05-05): Backfill missing claimed_by column before matview CREATE.
+-- Production has this column; migration chain never added it. IF NOT EXISTS = no-op on prod.
+ALTER TABLE public.place_pool ADD COLUMN IF NOT EXISTS claimed_by UUID;
 
 -- Drop if exists (idempotent re-run safety). CASCADE removes any dependent RPCs
 -- that might be recreated later in this same migration — intentional.
