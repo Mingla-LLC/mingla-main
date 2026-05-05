@@ -123,28 +123,51 @@ function PlaceResultCard({ row }) {
                 Q2 — Per-Signal Evaluation
               </h5>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs font-mono">
-                {q2.evaluations.map((e, i) => (
-                  <div
-                    key={i}
-                    className={[
-                      "flex items-baseline gap-2 p-1.5 rounded",
-                      e.strong_match
-                        ? "bg-[var(--color-success-50)]"
-                        : e.inappropriate_for
-                        ? "bg-[var(--color-error-50)]"
-                        : "bg-[var(--gray-50)]",
-                    ].join(" ")}
-                  >
-                    {e.strong_match
-                      ? <CheckCircle className="w-3 h-3 text-[var(--color-success-700)] shrink-0" />
-                      : e.inappropriate_for
-                      ? <XCircle className="w-3 h-3 text-[var(--color-error-700)] shrink-0" />
-                      : <span className="w-3 h-3 shrink-0 inline-block rounded-full border border-[var(--gray-300)]" />}
-                    <span className="font-semibold w-24 shrink-0">{e.signal_id}</span>
-                    <span className="text-[var(--color-text-tertiary)]">conf {e.confidence_0_to_10}/10</span>
-                    <span className="text-[var(--color-text-secondary)] truncate flex-1" title={e.reasoning}>{e.reasoning}</span>
-                  </div>
-                ))}
+                {q2.evaluations.map((e, i) => {
+                  // ORCH-0713 Phase 0.5 — score_0_to_100 is the v2 shape; old v1 rows
+                  // surface confidence_0_to_10 (× 10 ≈ score). Strong_match dropped in v2;
+                  // tier color derived from score for both shapes.
+                  const score = e.score_0_to_100 != null
+                    ? Number(e.score_0_to_100)
+                    : (e.confidence_0_to_10 != null ? Number(e.confidence_0_to_10) * 10 : null);
+                  const tierClass = e.inappropriate_for
+                    ? "bg-[var(--color-error-50)]"
+                    : score == null
+                    ? "bg-[var(--gray-50)]"
+                    : score >= 70
+                    ? "bg-[var(--color-success-50)]"
+                    : score >= 30
+                    ? "bg-[var(--color-warning-50)]"
+                    : "bg-[var(--color-error-50)]";
+                  const scoreColor = e.inappropriate_for
+                    ? "text-[var(--color-error-700)]"
+                    : score == null
+                    ? "text-[var(--color-text-tertiary)]"
+                    : score >= 70
+                    ? "text-[var(--color-success-700)]"
+                    : score >= 30
+                    ? "text-[var(--color-warning-700)]"
+                    : "text-[var(--color-error-700)]";
+                  return (
+                    <div
+                      key={i}
+                      className={["flex items-baseline gap-2 p-1.5 rounded", tierClass].join(" ")}
+                    >
+                      {e.inappropriate_for ? (
+                        <XCircle className="w-3 h-3 text-[var(--color-error-700)] shrink-0" title="Structurally inappropriate (hard veto)" />
+                      ) : score != null && score >= 70 ? (
+                        <CheckCircle className="w-3 h-3 text-[var(--color-success-700)] shrink-0" title="Strong fit" />
+                      ) : (
+                        <span className="w-3 h-3 shrink-0 inline-block rounded-full border border-[var(--gray-300)]" />
+                      )}
+                      <span className="font-semibold w-24 shrink-0">{e.signal_id}</span>
+                      <span className={["w-12 shrink-0 font-bold tabular-nums", scoreColor].join(" ")}>
+                        {e.inappropriate_for ? "VETO" : score != null ? `${Math.round(score)}/100` : "—"}
+                      </span>
+                      <span className="text-[var(--color-text-secondary)] truncate flex-1" title={e.reasoning}>{e.reasoning}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

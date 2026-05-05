@@ -36,7 +36,12 @@ const ANTHROPIC_VERSION = "2023-06-01";
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 const SERPER_REVIEWS_URL = "https://google.serper.dev/reviews";
 const COLLAGE_BUCKET = "place-collages";
-const PROMPT_VERSION = "v1";
+// PROMPT_VERSION:
+//  v1 — initial Q2 shape (strong_match + confidence_0_to_10 + inappropriate_for)
+//  v2 — ORCH-0713 Phase 0.5: gap-filled inputs (price_range_cents + negative booleans),
+//       single score_0_to_100 (continuous quality), inappropriate_for (hard veto only),
+//       scoring rubric in system prompt.
+const PROMPT_VERSION = "v2";
 const COST_GUARD_USD = 5.0;
 
 // Anthropic rate-limit throttle (per Phase 1 pattern + bigger payloads)
@@ -150,9 +155,15 @@ const Q1_TOOL = {
   },
 } as const;
 
+// ORCH-0713 Phase 0.5 — Q2 schema v2.
+//   - score_0_to_100 (continuous quality, like a scorer would emit)
+//   - inappropriate_for (HARD VETO — used ONLY when 100% sure place is structurally
+//     wrong for this signal; sets score_0_to_100 to 0)
+//   - reasoning (≤500 chars, evidence-grounded)
+// Drop strong_match + confidence_0_to_10 — replaced by single continuous score.
 const Q2_TOOL = {
   name: "evaluate_against_existing_signals",
-  description: "Evaluate this place against each of Mingla's 16 existing signals.",
+  description: "Score this place against each of Mingla's 16 existing signals on a 0-100 quality scale, with inappropriate_for as a hard veto for structural wrongness.",
   input_schema: {
     type: "object",
     required: ["evaluations"],
@@ -161,13 +172,20 @@ const Q2_TOOL = {
         type: "array",
         items: {
           type: "object",
-          required: ["signal_id", "strong_match", "confidence_0_to_10", "reasoning", "inappropriate_for"],
+          required: ["signal_id", "score_0_to_100", "inappropriate_for", "reasoning"],
           properties: {
             signal_id: { type: "string", enum: MINGLA_SIGNAL_IDS },
-            strong_match: { type: "boolean" },
-            confidence_0_to_10: { type: "number", minimum: 0, maximum: 10 },
-            reasoning: { type: "string", description: "1-2 sentence rationale, max 500 chars" },
-            inappropriate_for: { type: "boolean", description: "True if this place would be a poor recommendation for this signal" },
+            score_0_to_100: {
+              type: "integer",
+              minimum: 0,
+              maximum: 100,
+              description: "Continuous quality of fit on 0-100 scale per the scoring rubric in the system prompt. Set to 0 when inappropriate_for=true.",
+            },
+            inappropriate_for: {
+              type: "boolean",
+              description: "TRUE only when 100% sure place is STRUCTURALLY wrong for this signal (e.g., event-only-by-appointment florist for `flowers`; gym for any food signal). Use sparingly. When TRUE, score_0_to_100 must be 0.",
+            },
+            reasoning: { type: "string", description: "1-2 sentence rationale grounded in evidence (reviews, photos, place_pool fields). Max 500 chars." },
           },
         },
         description: "EXACTLY 16 evaluations, one per Mingla signal in the order provided.",
@@ -803,11 +821,42 @@ function buildSystemPrompt(): string {
     "flowers: florists, flower markets",
     "",
     "# Critical rules",
-    "- Use ALL provided context: photos in the collage, place metadata booleans, full review text, reviewer photo captions",
-    "- Be HONEST. If photos are weak, say so. If reviews suggest something photos hide, surface it.",
+    "- Use ALL provided context: photos in the collage, place metadata booleans (BOTH true AND false lists), price range, full review text, reviewer photo captions, opening hours.",
+    "- Be HONEST. If photos are weak, say so. If reviews suggest something photos hide, surface it. Negative booleans (in google_booleans_false) are real signal — `serves_wine: false` on a fine_dining candidate is a real downsignal.",
     "- For Q1 (propose_signals_and_vibes): vibes are 1-5 most descriptive. Proposed signals: only if the data DEMANDS something the existing 16 don't cover. Empty array is fine if the 16 cover this place.",
-    "- For Q2 (evaluate_against_existing_signals): EXACTLY 16 evaluations, one per signal in the order listed. confidence_0_to_10 is your honest confidence in the strong_match verdict.",
+    "- For Q2 (evaluate_against_existing_signals): EXACTLY 16 evaluations, one per signal in the order listed.",
     "- Reasoning fields: 1-2 sentences max, ≤500 chars.",
+    "",
+    "# Q2 SCORING RUBRIC (for score_0_to_100)",
+    "Use the FULL 0-100 range. Do not bunch around the middle. Most places fall 20-70 for most signals; only the place's primary signal(s) hit 80-100.",
+    "  90-100 = anchor-quality / world-class destination for this signal (would be a top-3 result in the city for this signal)",
+    "  70-89  = strong fit; clearly serves the signal at a high quality bar",
+    "  50-69  = ok / acceptable fit; place serves the signal but isn't a destination for it",
+    "  30-49  = weak / borderline; place CAN serve the signal but rarely the right pick",
+    "   1-29  = very weak; place tangentially fits but you would rarely recommend it for this signal",
+    "      0  = reserved for inappropriate_for=true (see below)",
+    "",
+    "# Q2 INAPPROPRIATE_FOR RULES (hard veto — STRUCTURAL wrongness only)",
+    "Set inappropriate_for=TRUE ONLY when 100% sure the place is STRUCTURALLY wrong for this signal. When inappropriate_for=true, score_0_to_100 MUST be 0.",
+    "Examples of STRUCTURAL wrongness:",
+    "  - Event-only-by-appointment florist (e.g., wedding/event design studio) for `flowers` — Mingla's `flowers` signal expects grab-and-go ready bouquets you can buy in 5 minutes; an event florist requiring weeks-ahead consultation is structurally wrong.",
+    "  - Gym for any food signal (no food service)",
+    "  - Closed-permanent business for any signal",
+    "  - Hospital / medical clinic for `romantic`, `lively`, `play`, etc. (not a date venue)",
+    "  - Funeral home for any signal",
+    "DO NOT use inappropriate_for for 'low quality' or 'weak fit' — that's what low scores (1-49) are for.",
+    "DO NOT use inappropriate_for for 'place is mostly a different category' — e.g., Harris Teeter / grocery store flower aisle scores 50-70 for `flowers` (legitimate sub-feature; ranks below dedicated florists), it is NOT inappropriate_for.",
+    "DO NOT use inappropriate_for for 'place is not a destination for this signal' — that's a low score (1-29).",
+    "When in doubt, prefer a low score over inappropriate_for.",
+    "",
+    "Examples to calibrate:",
+    "  - Bayfront Floral & Event Design / `flowers` → inappropriate_for=true, score=0 (event-only; Mingla flowers signal is grab-and-go)",
+    "  - Harris Teeter / `flowers` → inappropriate_for=false, score 55-70 (real grocery flower aisle)",
+    "  - Mala Pata Molino + Cocina / `groceries` → inappropriate_for=false, score 1-15 (restaurant, not grocery — low fit but not structurally wrong)",
+    "  - National Gallery / `creative_arts` → inappropriate_for=false, score 95-100 (anchor-quality)",
+    "  - National Gallery / `casual_food` → inappropriate_for=false, score 1-15 (museum cafe might exist; not a food destination)",
+    "  - Lekki Conservation Centre / `nature` → inappropriate_for=false, score 90-100",
+    "  - Lekki Conservation Centre / `fine_dining` → inappropriate_for=false, score 1-10 (no fine_dining at the preserve)",
   ].join("\n");
 }
 
@@ -825,20 +874,45 @@ function buildUserTextBlock(
   if (pp.rating != null) lines.push(`rating: ${pp.rating}`);
   if (pp.review_count != null) lines.push(`review_count: ${pp.review_count}`);
   if (pp.price_level != null) lines.push(`price_level: ${pp.price_level}`);
+
+  // ORCH-0713 Phase 0.5 — numeric price range (in cents). SQL signal scorer uses these
+  // for `price_range_start_above_<X>` / `price_range_end_above_<X>` field-weight matchers
+  // (notably fine_dining tier detection). Render in dollars for legibility.
+  if (pp.price_range_start_cents != null && pp.price_range_end_cents != null) {
+    const startUsd = (pp.price_range_start_cents / 100).toFixed(0);
+    const endUsd = (pp.price_range_end_cents / 100).toFixed(0);
+    const currency = pp.price_range_currency || "USD";
+    lines.push(`price_range: $${startUsd}-$${endUsd} ${currency}`);
+  } else if (pp.price_range_start_cents != null) {
+    lines.push(`price_range_start: $${(pp.price_range_start_cents / 100).toFixed(0)}`);
+  } else if (pp.price_range_end_cents != null) {
+    lines.push(`price_range_end: $${(pp.price_range_end_cents / 100).toFixed(0)}`);
+  }
+
   if (pp.editorial_summary) lines.push(`editorial_summary: ${pp.editorial_summary}`);
   if (pp.generative_summary) lines.push(`generative_summary: ${pp.generative_summary}`);
 
-  // Booleans (compact)
-  const bools: string[] = [];
-  for (const k of [
+  // ORCH-0713 Phase 0.5 — Google booleans, BOTH true AND false lists.
+  // Why split: SQL signal scorer treats null = no contribution (correct), but only
+  // applies field weights when value === true. v1 trial pipeline showed Claude only
+  // the true list, so Claude couldn't distinguish "explicitly false" from "unknown".
+  // Negative booleans are real signal (e.g., `serves_wine: false` is a real downsignal
+  // for fine_dining candidates).
+  const allBooleanFields = [
     "serves_brunch","serves_lunch","serves_dinner","serves_breakfast","serves_beer",
     "serves_wine","serves_cocktails","serves_coffee","serves_dessert","serves_vegetarian_food",
     "outdoor_seating","live_music","good_for_groups","good_for_children","good_for_watching_sports",
     "allows_dogs","has_restroom","reservable","menu_for_children","dine_in","takeout","delivery","curbside_pickup",
-  ]) {
-    if (pp[k] === true) bools.push(k);
+  ];
+  const truthy: string[] = [];
+  const falsy: string[] = [];
+  for (const k of allBooleanFields) {
+    if (pp[k] === true) truthy.push(k);
+    else if (pp[k] === false) falsy.push(k);
+    // null = unknown, omitted from both lists
   }
-  if (bools.length > 0) lines.push(`google_booleans_true: ${bools.join(", ")}`);
+  if (truthy.length > 0) lines.push(`google_booleans_true: ${truthy.join(", ")}`);
+  if (falsy.length > 0) lines.push(`google_booleans_false: ${falsy.join(", ")}`);
 
   if (pp.opening_hours) {
     const oh = pp.opening_hours;
