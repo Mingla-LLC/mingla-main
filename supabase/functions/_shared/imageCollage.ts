@@ -1,14 +1,21 @@
 // ORCH-0712 — adaptive photo collage helper.
 //
-// Composes up to 16 photo URLs into a single 1024x1024 grid image (PNG).
+// Composes up to 16 photo URLs into a single TARGET_SIZE×TARGET_SIZE grid image (PNG).
 // Adaptive sizing: 1 = 1x1, 2-4 = 2x2, 5-9 = 3x3, 10-16 = 4x4.
 // Failed photo fetches leave that cell black; we proceed with what we can decode.
 //
 // Used by: supabase/functions/run-place-intelligence-trial/index.ts (compose_collage action)
+//
+// ORCH-0713 v3 cost reduction — TARGET_SIZE shrunk 1024→768. Anthropic image-token
+// billing scales roughly with image area; 768×768 ≈ 56% of 1024×1024 area, cutting
+// per-call image-token cost ~30-40%. Per-tile resolution stays acceptable on dense
+// 3x3 (256px tiles) and 4x4 (192px tiles) grids — Claude Haiku 4.5 vision parses
+// place context fine at this resolution. Reverse to 1024 if quality regression
+// observed at full-Triangle scale.
 
 import { Image, decode } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 
-export const TARGET_SIZE = 1024;
+export const TARGET_SIZE = 768;
 export const MAX_PHOTOS = 16;
 
 /**
@@ -65,7 +72,7 @@ async function fetchAndDecode(url: string, timeoutMs = 12_000): Promise<Image | 
 }
 
 /**
- * Compose photos into a single 1024x1024 PNG.
+ * Compose photos into a single TARGET_SIZE×TARGET_SIZE PNG.
  * Returns the encoded PNG bytes + the actual photo count successfully placed.
  */
 export async function composeCollage(photoUrls: string[]): Promise<{

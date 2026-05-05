@@ -41,12 +41,18 @@ const COLLAGE_BUCKET = "place-collages";
 //  v2 — ORCH-0713 Phase 0.5: gap-filled inputs (price_range_cents + negative booleans),
 //       single score_0_to_100 (continuous quality), inappropriate_for (hard veto only),
 //       scoring rubric in system prompt.
-const PROMPT_VERSION = "v2";
+//  v3 — ORCH-0713 cost reduction: Q1 removed (research-only, already harvested into
+//       Mingla_Artifacts/signal-lab/PROPOSALS.md); Q2-only path; ~55% cost reduction.
+//       Trial pipeline runs only structured evaluation. If Phase 2 needs open
+//       exploration, re-add Q1 as a separate one-shot fn rather than reintroducing
+//       the dual-call pattern here. Collage TARGET_SIZE shrunk 1024→768 in
+//       _shared/imageCollage.ts (companion change).
+const PROMPT_VERSION = "v3";
 const COST_GUARD_USD = 5.0;
 
 // Anthropic rate-limit throttle (per Phase 1 pattern + bigger payloads)
 const PER_PLACE_THROTTLE_MS = 9_000;
-const PER_QUESTION_THROTTLE_MS = 30_000; // Q1 -> Q2 inside same place
+// PER_QUESTION_THROTTLE_MS removed at v3 — Q1 dropped; only one Anthropic call per place now.
 const REVIEWS_FETCH_THROTTLE_MS = 200;   // gentle Serper throttle
 
 // Reviews fetch
@@ -117,43 +123,14 @@ async function callAnthropicWithRetry(
 // Tool schemas
 // ═══════════════════════════════════════════════════════════════════════════
 
-const Q1_TOOL = {
-  name: "propose_signals_and_vibes",
-  description: "Propose vibe tags + new/refined Mingla signals based on what the data shows about this place.",
-  input_schema: {
-    type: "object",
-    required: ["proposed_vibes", "proposed_signals", "notable_observations"],
-    properties: {
-      proposed_vibes: {
-        type: "array",
-        items: { type: "string" },
-        description: "Short tags describing this place's vibe (1-5 most descriptive). Free-form vocabulary.",
-      },
-      proposed_signals: {
-        type: "array",
-        items: {
-          type: "object",
-          required: ["name", "definition", "rationale", "overlaps_existing"],
-          properties: {
-            name: { type: "string", description: "snake_case proposed signal id" },
-            definition: { type: "string", description: "1-sentence what this signal captures" },
-            rationale: { type: "string", description: "Why this place's data demands this signal beyond Mingla's existing 16" },
-            overlaps_existing: {
-              type: "array",
-              items: { type: "string" },
-              description: "Existing signals this proposal overlaps (use 0-3 from the 16 listed)",
-            },
-          },
-        },
-        description: "Up to 10 NEW signals that the data demands beyond the existing 16. Empty array if existing 16 cover this place fully.",
-      },
-      notable_observations: {
-        type: "string",
-        description: "1-3 sentence narrative observations about what's notable here that operator should know.",
-      },
-    },
-  },
-} as const;
+// ORCH-0713 v3 — Q1_TOOL removed.
+// Q1 (`propose_signals_and_vibes`) was the open-exploration call that produced
+// proposed new signals + free-form vibe tags + narrative observations. Used
+// during v1/v2 to harvest taxonomy candidates. Output preserved in
+// Mingla_Artifacts/signal-lab/PROPOSALS.md (~50 proposals across 32 places ×
+// 2 runs). No need to re-run Q1 every trial. If Phase 2 signal expansion
+// needs fresh open exploration, re-introduce Q1 as a separate one-shot edge
+// function rather than back into this pipeline.
 
 // ORCH-0713 Phase 0.5 — Q2 schema v2.
 //   - score_0_to_100 (continuous quality, like a scorer would emit)
@@ -701,20 +678,7 @@ async function processOnePlace(args: {
     prompt_version: PROMPT_VERSION,
   };
 
-  // Q1 call
-  const { aggregate: q1, totalCostUsd: q1Cost } = await callQuestion({
-    apiKey: anthropicKey,
-    systemPrompt,
-    userTextBlock,
-    collageUrl: pp.photo_collage_url,
-    tool: Q1_TOOL,
-    cacheSystem: true,
-  });
-
-  // Throttle between Q1 and Q2
-  await new Promise((r) => setTimeout(r, PER_QUESTION_THROTTLE_MS));
-
-  // Q2 call (system prompt cached → cheap)
+  // ORCH-0713 v3 — Q2 only. Q1 removed (research-only, harvested into signal-lab/PROPOSALS.md).
   const { aggregate: q2, totalCostUsd: q2Cost } = await callQuestion({
     apiKey: anthropicKey,
     systemPrompt,
@@ -724,18 +688,16 @@ async function processOnePlace(args: {
     cacheSystem: true,
   });
 
-  const totalCost = q1Cost + q2Cost;
-
-  // Persist
+  // Persist. q1_response is nullable (verified) → write null on v3 runs.
   await db
     .from("place_intelligence_trial_runs")
     .update({
       input_payload: inputPayload,
       collage_url: pp.photo_collage_url,
       reviews_count: reviewsWithText.length,
-      q1_response: q1,
+      q1_response: null,
       q2_response: q2,
-      cost_usd: +totalCost.toFixed(6),
+      cost_usd: +q2Cost.toFixed(6),
       status: "completed",
       model: MODEL_NAME_SHORT,
       model_version: MODEL_ID,
@@ -744,7 +706,7 @@ async function processOnePlace(args: {
     .eq("run_id", runId)
     .eq("place_pool_id", anchor.place_pool_id);
 
-  return totalCost;
+  return q2Cost;
 }
 
 async function callQuestion(args: {
@@ -752,7 +714,7 @@ async function callQuestion(args: {
   systemPrompt: string;
   userTextBlock: string;
   collageUrl: string;
-  tool: typeof Q1_TOOL | typeof Q2_TOOL;
+  tool: typeof Q2_TOOL;
   cacheSystem: boolean;
 }): Promise<{ aggregate: any; totalCostUsd: number }> {
   const { apiKey, systemPrompt, userTextBlock, collageUrl, tool, cacheSystem } = args;
@@ -823,8 +785,7 @@ function buildSystemPrompt(): string {
     "# Critical rules",
     "- Use ALL provided context: photos in the collage, place metadata booleans (BOTH true AND false lists), price range, full review text, reviewer photo captions, opening hours.",
     "- Be HONEST. If photos are weak, say so. If reviews suggest something photos hide, surface it. Negative booleans (in google_booleans_false) are real signal — `serves_wine: false` on a fine_dining candidate is a real downsignal.",
-    "- For Q1 (propose_signals_and_vibes): vibes are 1-5 most descriptive. Proposed signals: only if the data DEMANDS something the existing 16 don't cover. Empty array is fine if the 16 cover this place.",
-    "- For Q2 (evaluate_against_existing_signals): EXACTLY 16 evaluations, one per signal in the order listed.",
+    "- Output EXACTLY 16 evaluations via the evaluate_against_existing_signals tool, one per signal in the order listed.",
     "- Reasoning fields: 1-2 sentences max, ≤500 chars.",
     "",
     "# Q2 SCORING RUBRIC (for score_0_to_100)",
