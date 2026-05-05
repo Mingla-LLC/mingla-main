@@ -1665,3 +1665,25 @@ Other shapes (allow-list / parameterized restrictions / `event_scope` arrays) ar
 
 **Test that catches a regression:** grep `\.update\({ deleted_at:` in mobile code returns ONLY `new Date().toISOString()` and `null` literals. If any future code writes a different value, the invariant is violated.
 
+---
+
+### I-36 ROOT-ERROR-BOUNDARY — `app/_layout.tsx` MUST wrap `<Stack>` with `<ErrorBoundary>` (mingla-business — Cycle 16a — ACTIVE post-Cycle-16a CLOSE 2026-05-04)
+
+**Statement:** `mingla-business/app/_layout.tsx` MUST wrap the Expo Router `<Stack>` with `<ErrorBoundary>` (the kit primitive at `src/components/ui/ErrorBoundary.tsx`). Component throws anywhere in the route tree MUST hit the kit's branded fallback (`DefaultFallback`: "Something broke. We're on it." + Try again + Get help) — NOT Expo Router's generic crash UI.
+
+**Rules:**
+- The wrap MUST live inside `RootLayoutInner` (or equivalent component that consumes `useAuth()`) so the splash + AuthContext loading state can synchronize with it.
+- The `onError` prop SHOULD pass `Sentry.captureException` (gated by `if (sentryDsn)` env-absent guard for TRANSITIONAL ship per DEC-098 D-16-2).
+- `Sentry.captureException` MUST receive React component-stack as a `contexts.react.componentStack` hint for stack-trace readability.
+- The "Get help" button MUST open `mailto:support@mingla.app` via `Linking.openURL` (or, post-Sentry-feedback-widget integration, `Sentry.captureUserFeedback`).
+
+**Why:** Cycle 0a Sub-phase C.3 shipped the ErrorBoundary primitive (`react-error-boundary v6` wrapper with Mingla DefaultFallback) but never wired it at root in `app/_layout.tsx`. For 7+ months, component crashes have hit Expo Router's generic crash UI instead of the branded fallback — silent monitoring failure. Cycle 16a J-X3 closes this gap permanently. The invariant prevents the regression where a future refactor removes the wrap.
+
+**Established by:** Cycle 16a SPEC §3.1.1 + DEC-098 (D-16-2 separate Sentry project locked 2026-05-04).
+
+**Enforcement:** CI grep gate. `grep -c "<ErrorBoundary" mingla-business/app/_layout.tsx` MUST return ≥1. Recommended addition to local pre-commit hook (or `.github/workflows/` lint check when CI ships).
+
+**EXIT CONDITION:** None — permanent invariant. The branded fallback IS the production crash UX; Sentry capture + Get help mailto are the load-bearing recovery paths.
+
+**Test that catches a regression:** Grep gate above. Additionally: any rendered component that throws synchronously inside a tab MUST surface the DefaultFallback render path (manual smoke or RTL test).
+
