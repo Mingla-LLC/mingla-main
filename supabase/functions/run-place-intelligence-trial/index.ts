@@ -926,7 +926,13 @@ async function callGeminiQuestion(args: {
       },
     },
     generationConfig: {
-      maxOutputTokens: 2000,
+      // ORCH-0732 — bumped 2000 → 8000. The Q2 tool emits 16 evaluations
+      // × ~150 tokens reasoning each ≈ 2400 tokens needed. The previous
+      // 2000 cap truncated the function call mid-response, surfaced as
+      // finishReason=MALFORMED_FUNCTION_CALL on every place. Live evidence:
+      // run 064c6133 (5/5 attempts failed identically). 8000 gives ~3x
+      // headroom; Gemini 2.5 Flash supports up to 64K output tokens.
+      maxOutputTokens: 8000,
       temperature: 0.3,
     },
   };

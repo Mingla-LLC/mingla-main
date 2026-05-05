@@ -193,11 +193,15 @@ function PlaceResultCard({ row }) {
 
 // ── Tab ─────────────────────────────────────────────────────────────────────
 
-// Browser-side throttle between Q1 and Q2 of a single place is enforced by
-// the edge function (30s sleep between calls). Browser throttle here is
-// between PLACES — Anthropic tier-1 rate limit is 50K input tokens/min and
-// each place sends ~25K (collage + reviews). Two places per minute max.
-const PER_PLACE_BROWSER_THROTTLE_MS = 9_000;
+// Browser-side per-place throttle. Provider-aware:
+//   - Anthropic Tier 1 = 50K input tokens/min ÷ ~7.5K per call = 9s floor
+//   - Gemini Flash 2.5 free tier = 15 RPM (~4s floor); paid tier 1 effectively
+//     unbounded. 1s pad keeps under both with headroom.
+// Default to 9s on unknown provider value (defensive).
+const PER_PLACE_BROWSER_THROTTLE_MS_BY_PROVIDER = {
+  anthropic: 9_000,
+  gemini: 1_000,
+};
 
 // ORCH-0713 Gemini A/B comparison — per-place cost estimate by provider for the
 // confirm-dialog message and the eyeballed bill. Anthropic v3 measured ~$0.013;
@@ -384,9 +388,11 @@ export function TrialResultsTab() {
         if (stopRef.stop) break;
         const a = anchors[i];
 
-        // Throttle BEFORE each call (skip first)
+        // Throttle BEFORE each call (skip first). Provider-aware: Gemini's
+        // tighter 1s gives ~5x speedup vs Anthropic's 9s on the same sweep.
         if (i > 0) {
-          await new Promise((r) => setTimeout(r, PER_PLACE_BROWSER_THROTTLE_MS));
+          const throttleMs = PER_PLACE_BROWSER_THROTTLE_MS_BY_PROVIDER[provider] ?? 9_000;
+          await new Promise((r) => setTimeout(r, throttleMs));
         }
         setProgress((p) => ({ ...p, current: i + 1, currentPlace: `${a.signal_id} #${a.anchor_index}` }));
 
