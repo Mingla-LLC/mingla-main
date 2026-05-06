@@ -213,9 +213,9 @@ When a question arises mid-build, resolve in this order:
 |---|----------|-------------------|
 | Q1 | ~~Web stack for organiser dashboard~~ **RESOLVED 2026-04-28 (DEC-075):** Expo Web for `mingla-business/` (the Business app at `business.mingla.com`); separate Next.js project at `mingla-web/` for `mingla.com` marketing + login + public share pages. | RESOLVED |
 | Q2 | ~~Public event/brand/organiser pages~~ **RESOLVED 2026-04-28 (DEC-075):** Next.js at `mingla-web/`. Same answer as Q1. | RESOLVED |
-| Q3 | Stripe Connect type: Standard vs Express vs Custom? Affects KYC and chargeback handling. | B2 (deferred to backend cycle) |
+| Q3 | ~~Stripe Connect type: Standard vs Express vs Custom?~~ **RESOLVED 2026-05-06 (DEC-112): EXPRESS.** Embedded onboarding inside `mingla-business`; Stripe owns KYC + disputes + 1099-K + chargebacks. Aligns with R2 (embedded, not redirect) and B2's 48hr estimate. Migration to Custom remains open future option. | RESOLVED |
 | Q4 | ~~Organiser account model~~ **RESOLVED 2026-04-28 (DEC-076):** Native ID-token flow on mobile + Supabase OAuth-redirect on web; same Supabase project = same `auth.users` row across both. Auth cookie domain `.mingla.com` for cross-subdomain session portability. | RESOLVED |
-| Q5 | Brand vs Account billing — is Stripe Connect at the brand level (PRD §2.3) or account level? Affects multi-brand routing of funds. | B2 (deferred to backend cycle) |
+| Q5 | ~~Brand vs Account billing~~ **RESOLVED 2026-05-06 (DEC-113): BRAND-LEVEL.** Each brand has its own Stripe Connect account via `stripe_connect_accounts.brand_id` FK. One Mingla account with N brands has N independent Connect accounts. Already encoded in PRD §2.3, §B.6 schema, and B2 cycle epic — DEC-113 formally closes the paperwork gap. | RESOLVED |
 | Q6 | ~~Recurring events~~ **RESOLVED 2026-04-28:** RFC 5545 RRULE-based; recurrence rule + per-date overrides table (preserved in Project Plan §B). UI lands in Cycle 4. | RESOLVED |
 | Q7 | ~~Ticket transferability mechanism~~ **RESOLVED 2026-04-28:** Re-issue QR (original voids; new QR sent to transferee). UI affordance lands in Cycle 5. | RESOLVED |
 | Q8 | Public-link slug strategy for events/brands — random, vanity, or both? Affects URL stability and SEO. | Cycle 6 (forensics audit recommended hybrid: random default + vanity override) |
@@ -223,6 +223,8 @@ When a question arises mid-build, resolve in this order:
 | Q10 | ~~Tax/VAT~~ **RESOLVED 2026-04-28:** Per-event organiser-configured tax rate (with brand-level default). Mingla central tax engine deferred to post-MVP when geographic concentration emerges. UI exposes the rate field in Cycle 5 (ticket types) and Cycle 8 (checkout shows tax line). | RESOLVED |
 
 **Resolution status (2026-04-28):** 7 of 10 questions resolved (Q1, Q2, Q4, Q6, Q7, Q9, Q10). 3 deferred to backend cycle B2 (Q3, Q5) or design cycle 6 (Q8). All resolutions logged in `DECISION_LOG.md` (DEC-070 through DEC-076).
+
+**Resolution status (2026-05-06):** Q3 + Q5 resolved at B2-kickoff per operator directive. **9 of 10 questions resolved** (Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q9, Q10). 1 still deferred (Q8 — slug strategy, design cycle 6). DEC-112 + DEC-113 logged in `DECISION_LOG.md`. **B2 unblocked for forensics dispatch.**
 
 ---
 

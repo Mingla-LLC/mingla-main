@@ -341,6 +341,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
                 onPress={() => setForce3DS((v) => !v)}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: force3DS }}
+                accessibilityLabel="Force 3DS challenge (Card, testing only)"
                 style={[
                   styles.devLiftedToggle,
                   force3DS && styles.devLiftedToggleOn,
@@ -354,6 +355,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
                 onPress={() => setForceDecline((v) => !v)}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: forceDecline }}
+                accessibilityLabel="Force payment decline (testing only)"
                 style={[
                   styles.devLiftedToggle,
                   forceDecline && styles.devLiftedToggleOn,

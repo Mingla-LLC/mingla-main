@@ -44,7 +44,7 @@ import {
   type DoorPaymentMethod,
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
-import { useCurrentBrandStore } from "../../../../src/store/currentBrandStore";
+import { useBrandList } from "../../../../src/store/currentBrandStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { exportGuestsCsv } from "../../../../src/utils/guestCsvExport";
 
@@ -213,9 +213,11 @@ export default function EventGuestsListRoute(): React.ReactElement {
       ? s.events.find((e) => e.id === eventId) ?? null
       : null,
   );
-  const brand = useCurrentBrandStore((s) =>
-    event !== null ? s.brands.find((b) => b.id === event.brandId) ?? null : null,
-  );
+  const brandList = useBrandList();
+  const brand =
+    event !== null
+      ? (brandList.find((b) => b.id === event.brandId) ?? null)
+      : null;
 
   // Raw subscriptions — merge in useMemo to maintain stable refs.
   const allOrderEntries = useOrderStore((s) => s.entries);

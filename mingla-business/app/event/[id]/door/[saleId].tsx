@@ -30,11 +30,11 @@ import {
 } from "../../../../src/constants/designSystem";
 import {
   useDoorSalesStore,
-  type DoorPaymentMethod,
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
 import { useLiveEventStore } from "../../../../src/store/liveEventStore";
 import { formatGbp } from "../../../../src/utils/currency";
+import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
 
 import { DoorRefundSheet } from "../../../../src/components/door/DoorRefundSheet";
@@ -77,13 +77,6 @@ const formatAbsoluteDate = (iso: string): string => {
     hour: "2-digit",
     minute: "2-digit",
   });
-};
-
-const PAYMENT_METHOD_LABELS: Record<DoorPaymentMethod, string> = {
-  cash: "Cash",
-  card_reader: "Card reader",
-  nfc: "NFC tap",
-  manual: "Manual",
 };
 
 interface PaymentPillSpec {

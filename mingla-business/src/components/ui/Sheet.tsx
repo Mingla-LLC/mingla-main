@@ -257,7 +257,12 @@ export const Sheet: React.FC<SheetProps> = ({
         <Animated.View
           style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimStyle]}
         >
-          <Pressable style={styles.scrimPress} onPress={handleScrimPress} />
+          <Pressable
+            style={styles.scrimPress}
+            onPress={handleScrimPress}
+            accessibilityLabel="Dismiss sheet"
+            accessibilityRole="button"
+          />
         </Animated.View>
         <View style={styles.bottomDock} pointerEvents="box-none">
           <GestureDetector gesture={panGesture}>

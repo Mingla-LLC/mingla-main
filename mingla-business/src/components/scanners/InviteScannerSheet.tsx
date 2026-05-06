@@ -14,6 +14,7 @@
  *
  * Per Cycle 11 SPEC §4.10/J-S7 sub-sheet.
  *
+ * // orch-strict-grep-allow canManualCheckIn — Cycle 13b migration removes this field; reference is part of the strip logic, not active usage.
  * Cycle 13b Q1 (SPEC §4.6): `canManualCheckIn` toggle DROPPED. The field was
  * decorative in Cycle 11/12 (gated 0 consumers in scan logic, only rendered
  * an informational pill on the team list). Per DEC-093 + I-34. The

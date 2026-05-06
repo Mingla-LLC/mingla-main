@@ -2,8 +2,25 @@
 
 **Phase:** Phase 4 — Event Management
 **Estimated effort:** ~28 hrs
-**Status:** ⬜ PLACEHOLDER
+**Status:** ✅ DONE
 **Codebase:** `mingla-business/`
+
+## What shipped
+
+- J-G1 guest list view (pending / accepted / cancelled sections) + J-G2 guest detail (`app/event/[id]/guests/`)
+- AddCompGuestSheet (manual comp ticket — no payment; persisted Zustand `guestStore`)
+- 6 chip categories on guest rows mirroring formatTicketBadges from Cycle 5 (extended in Cycle 12)
+- I-25 (comp guests in `useGuestStore.entries` only — NEVER as phantom OrderRecord rows) + I-26 (guest list filter rules)
+- DEC-082 (Icon set additive expansion for guest icons) + DEC-083 (Avatar primitive carve-out promoted post 4-uses)
+- Implementation report: `IMPLEMENTATION_BIZ_CYCLE_10_GUEST_LIST_REPORT.md`
+
+## Closing notes
+
+The guestStore separate-from-orderStore pattern + I-25/I-26 anchored the architectural separation between "money" (orders) + "people" (guests) that Cycle 12's I-29/I-30 (door sales NEVER as phantom orders) extended. The ID-prefix convention `cg_<base36>` for comp guests (vs `dt_<...>` for door sales tickets later) avoided parseTicketId collision per Cycle 12 HIDDEN-2.
+
+---
+
+(Original `Status: ⬜ PLACEHOLDER` flipped to `✅ DONE` 2026-05-04 during epic-status backfill audit.)
 
 ## Scope
 

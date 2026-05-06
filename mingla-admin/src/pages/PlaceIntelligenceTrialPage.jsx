@@ -1,15 +1,19 @@
 /**
- * PLACE INTELLIGENCE TRIAL PAGE — ORCH-0712
+ * PLACE INTELLIGENCE TRIAL PAGE — ORCH-0712 → ORCH-0734
  *
- * Research/exploratory tool. Operator picks 2 anchor places per Mingla signal
- * (32 total), bundles everything per place (place_pool data + 100 Serper reviews
- * + adaptive photo collage), sends to Claude with TWO questions:
- *   Q1 — propose new vibes/signals (open exploration)
- *   Q2 — evaluate against existing 16 Mingla signals (closed structured)
+ * Research/exploratory tool. Per ORCH-0734 (2026-05-05), the 32-anchor
+ * calibration scaffold is decommissioned; trial pipeline is now city-scoped
+ * sampled-sync. Operator picks a city + sample size (50-500) on Trial Results;
+ * edge fn loads stratified random sample of place_pool servable rows; Gemini
+ * 2.5 Flash scores all 16 signals per place in one call. Per DEC-102 Gemini is
+ * sole provider; per DEC-104 (logged at ORCH-0734 CLOSE) signal_anchors table
+ * + Signal Anchors admin tab are dropped.
  *
- * Output stored in place_intelligence_trial_runs. NEVER feeds card ranking.
+ * Output stored in place_intelligence_trial_runs (city_id non-null on
+ * city-runs rows; legacy 32-anchor rows preserve NULL for audit).
+ * NEVER feeds card ranking (I-TRIAL-OUTPUT-NEVER-FEEDS-RANKING).
  *
- * Spec: Mingla_Artifacts/specs/SPEC_ORCH-0712_TRIAL_INTELLIGENCE.md §5
+ * Spec: Mingla_Artifacts/specs/SPEC_ORCH-0734_CITY_RUNS.md
  */
 
 import { useState } from "react";
@@ -17,11 +21,11 @@ import { Microscope } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCard } from "../components/ui/Card";
 import { Tabs } from "../components/ui/Tabs";
-import { SignalAnchorsTab } from "../components/placeIntelligenceTrial/SignalAnchorsTab";
 import { TrialResultsTab } from "../components/placeIntelligenceTrial/TrialResultsTab";
 
+// ORCH-0734 — Signal Anchors tab retired. Tabs primitive preserved for
+// future surfaces (e.g., DEC-103 cutoff re-derivation reporting).
 const TABS = [
-  { id: "anchors", label: "Signal Anchors" },
   { id: "results", label: "Trial Results" },
 ];
 
@@ -33,7 +37,7 @@ const TAB_TRANSITION = {
 };
 
 export function PlaceIntelligenceTrialPage() {
-  const [activeTab, setActiveTab] = useState("anchors");
+  const [activeTab, setActiveTab] = useState("results");
 
   return (
     <div className="max-w-[var(--content-max-width)] mx-auto px-6 py-6 space-y-6">
@@ -46,17 +50,16 @@ export function PlaceIntelligenceTrialPage() {
             Place Intelligence Trial
           </h1>
           <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            Bundle everything per place — photos, Google metadata, Serper reviews — and ask
-            Claude to (1) propose new vibes/signals beyond our existing 16, (2) evaluate
-            against the existing 16. Research-only. Output never feeds card ranking.
+            Pick a city + sample size, score servable places with Gemini 2.5 Flash against
+            Mingla's 16 signals. Research-only — output never feeds card ranking.
           </p>
         </div>
       </div>
 
       <AlertCard variant="info" title="How this works">
-        Pick 2 anchor places per signal (32 total) → run "prepare_all" to fetch reviews + build
-        collages → click "Run trial" → ~30 minutes later, read Claude's per-place analysis.
-        Estimated cost ~$1.50 for the full 32-place trial.
+        Pick a city → choose Sample or Whole city mode → click Run trial.
+        Sample mode runs in your browser (~75 min for 200 places, ~$0.80 typical).
+        Whole city mode runs on Mingla's servers — close the tab, come back hours later, the run keeps going. Cancel anytime.
       </AlertCard>
 
       <div>
@@ -70,7 +73,6 @@ export function PlaceIntelligenceTrialPage() {
               exit={TAB_TRANSITION.exit}
               transition={TAB_TRANSITION.transition}
             >
-              {activeTab === "anchors" && <SignalAnchorsTab />}
               {activeTab === "results" && <TrialResultsTab />}
             </motion.div>
           </AnimatePresence>

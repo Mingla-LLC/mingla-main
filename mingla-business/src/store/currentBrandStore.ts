@@ -328,84 +328,41 @@ export type Brand = {
    * exists ONLY to populate J-A12 finance reports until Cycle 3 lands.
    */
   events?: BrandEventStub[];
+  /**
+   * Cover media URL (Supabase storage OR Giphy/Pexels). NEW in Cycle 17e-A
+   * schema (column pre-load). UI render: if present, shows media; falls back
+   * to coverHue gradient when null/undefined. Picker UI ships in 17e-B Tier 2.
+   */
+  coverMediaUrl?: string;
+  /**
+   * Cover media type. NEW in Cycle 17e-A schema (column pre-load).
+   * 17e-B Tier 2 picker writes this.
+   */
+  coverMediaType?: "image" | "video" | "gif";
+  /**
+   * Profile photo type — supports animated avatars per Q1=B amendment (DEC-109).
+   * NEW in Cycle 17e-A schema (column pre-load). Picker UI ships in 17e-B Tier 2.
+   * Existing profile_photo_url defaults to image semantics when this is undefined.
+   */
+  profilePhotoType?: "image" | "video" | "gif";
 };
 
 export type CurrentBrandState = {
   currentBrand: Brand | null;
-  brands: Brand[];
   setCurrentBrand: (brand: Brand | null) => void;
-  setBrands: (brands: Brand[]) => void;
   reset: () => void;
 };
 
-type PersistedState = Pick<CurrentBrandState, "currentBrand" | "brands">;
+type PersistedState = Pick<CurrentBrandState, "currentBrand">;
 
-/** v2 brand shape — used internally by the v2 → v3 migrator only. */
-type V2BrandStats = { events: number; followers: number; rev: number; attendees?: number };
-type V2Brand = {
-  id: string;
-  displayName: string;
-  slug: string;
-  photo?: string;
-  role: BrandRole;
-  stats: V2BrandStats;
-  currentLiveEvent: BrandLiveEvent | null;
-};
-
-/**
- * v2 → v3 upgrade returns a v9-shaped brand (the v3..v9 fields are all
- * optional/passthrough). The migrate function chains this output through
- * upgradeV9BrandToV10 to land at the current Brand shape.
- */
-const upgradeV2BrandToV3 = (b: V2Brand): V9Brand => ({
-  ...b,
-  stats: {
-    events: b.stats.events,
-    followers: b.stats.followers,
-    rev: b.stats.rev,
-    attendees: b.stats.attendees ?? 0,
-  },
-});
-
-/**
- * Pre-v12 J-A9 fields (DEC-092 dropped): used internally by the v11 → v12
- * migrator to silently strip leaked keys without referencing the dropped
- * BrandMember / BrandInvitation types.
- */
-type V11Extras = {
-  members?: unknown;
-  pendingInvitations?: unknown;
-};
-
-/** v9 brand shape — used internally by the v9 → v10 migrator only. */
-type V9Brand = Omit<Brand, "kind" | "address" | "coverHue"> & V11Extras;
-
-/** v10 brand shape — used internally by the v10 → v11 migrator only. */
-type V10Brand = Omit<Brand, "coverHue"> & V11Extras;
-
-/** v11 brand shape — used internally by the v11 → v12 migrator only. */
-type V11Brand = Brand & V11Extras;
-
-/**
- * v9 → v10 migration: add `kind` (default "popup") + `address` (default null).
- * Pop-up is the safer default — no fake address shown; founder upgrades to
- * "physical" + address via BrandEditView when applicable.
- */
-const upgradeV9BrandToV10 = (b: V9Brand): V10Brand => ({
-  ...b,
-  kind: "popup",
-  address: null,
-});
-
-/**
- * v10 → v11 migration: add `coverHue` (default 25 = warm orange).
- * Mirrors event-cover Cycle 3 hue-only pattern. Founder edits via
- * BrandEditView's BRAND COVER section.
- */
-const upgradeV10BrandToV11 = (b: V10Brand): V11Brand => ({
-  ...b,
-  coverHue: 25,
-});
+// Cycle 17e-A v13 — drops `brands: Brand[]` from persisted state per Const #5
+// (server state via React Query useBrands() — see src/hooks/useBrands.ts). Keeps
+// `currentBrand: Brand | null` for selection state (client UI state). The
+// `setBrands` action + `useBrandList` hook removed. I-PROPOSED-C codifies the
+// server-state-only contract; CI grep gate enforces zero `setBrands\(` callers.
+//
+// Cycle 17d §E — v1-v11 migrator helpers + V2/V9/V10/V11 type defs deleted.
+// Original chain (v1→v12) preserved at commit aae7784d for audit trail.
 
 /**
  * v11 → v12 migration (Cycle 13a / DEC-092): silently strip the dropped
@@ -418,100 +375,23 @@ const upgradeV11BrandToV12 = (b: V11Brand): Brand => {
 };
 
 const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
-  name: "mingla-business.currentBrand.v12",
+  name: "mingla-business.currentBrand.v13",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state) => ({
     currentBrand: state.currentBrand,
-    brands: state.brands,
   }),
-  version: 12,
+  version: 13,
   migrate: (persistedState, version) => {
-    // v1 → v5: schema changed from {id, displayName} to full Brand shape.
-    // Cycle 0a never seeded brands, so resetting is safe and avoids partial
-    // record bugs from a half-populated v1 entry.
-    if (version < 2) {
-      return { currentBrand: null, brands: [] };
+    // Cycle 17e-A v12 → v13 — drops `brands` array from persisted state per Const #5.
+    // Preserves `currentBrand` selection. v1-v11 already collapsed by Cycle 17d Stage 1 §E.
+    // After this migration runs, useBrands() React Query hook owns the brand list;
+    // first render fetches from Supabase brands table (post-migration 20260506000000).
+    if (version < 13) {
+      const old = persistedState as Partial<{
+        currentBrand: Brand | null;
+      }> | null;
+      return { currentBrand: old?.currentBrand ?? null };
     }
-    // v2 → v3+: add stats.attendees (default 0); bio, tagline, contact, links
-    // remain undefined and render with empty-state guards.
-    if (version === 2) {
-      const v2 = persistedState as { currentBrand: V2Brand | null; brands: V2Brand[] };
-      // v2 → v9-shaped → v10 → v11 → v12 in one chain.
-      const v9CurrentBrand =
-        v2.currentBrand !== null ? upgradeV2BrandToV3(v2.currentBrand) : null;
-      const v9Brands = v2.brands.map(upgradeV2BrandToV3);
-      const v10CurrentBrand =
-        v9CurrentBrand !== null ? upgradeV9BrandToV10(v9CurrentBrand) : null;
-      const v10Brands = v9Brands.map(upgradeV9BrandToV10);
-      const v11CurrentBrand =
-        v10CurrentBrand !== null ? upgradeV10BrandToV11(v10CurrentBrand) : null;
-      const v11Brands = v10Brands.map(upgradeV10BrandToV11);
-      return {
-        currentBrand:
-          v11CurrentBrand !== null ? upgradeV11BrandToV12(v11CurrentBrand) : null,
-        brands: v11Brands.map(upgradeV11BrandToV12),
-      };
-    }
-    // v3 → v4: passthrough. New optional `displayAttendeeCount` field starts
-    // undefined for all brands; read sites default to `true`.
-    // v4 → v5: passthrough. New optional `links.tiktok/x/facebook/youtube/
-    // linkedin/threads` fields start undefined for all brands; render-time
-    // guards on each social chip skip undefined fields.
-    // v5 → v6: passthrough. New optional `contact.phoneCountryIso` field
-    // starts undefined; phone Input defaults to "GB" at read sites.
-    // v6 → v7: passthrough. New optional `members` + `pendingInvitations`
-    // arrays start undefined; team list renders empty-state when both
-    // absent. Read sites default to `[]`.
-    // v7 → v8: passthrough. New optional `stripeStatus`, `availableBalanceGbp`,
-    // `pendingBalanceGbp`, `lastPayoutAt`, `payouts`, `refunds` fields start
-    // undefined; J-A7 banner + payments dashboard render not_connected/empty
-    // states when absent. Read sites default to "not_connected" / 0 / [].
-    // v8 → v9: passthrough. New optional `events` array starts undefined;
-    // finance reports render empty-state when absent. Read sites default
-    // to []. FINAL Cycle-2 schema bump — real per-event records ship Cycle 3.
-    if (version >= 3 && version < 10) {
-      // v3-v9 → v10 → v11 → v12: add kind/address, then coverHue, then drop J-A9 keys.
-      const v9 = persistedState as { currentBrand: V9Brand | null; brands: V9Brand[] };
-      const v10CurrentBrand =
-        v9.currentBrand !== null ? upgradeV9BrandToV10(v9.currentBrand) : null;
-      const v10Brands = v9.brands.map(upgradeV9BrandToV10);
-      const v11CurrentBrand =
-        v10CurrentBrand !== null ? upgradeV10BrandToV11(v10CurrentBrand) : null;
-      const v11Brands = v10Brands.map(upgradeV10BrandToV11);
-      return {
-        currentBrand:
-          v11CurrentBrand !== null ? upgradeV11BrandToV12(v11CurrentBrand) : null,
-        brands: v11Brands.map(upgradeV11BrandToV12),
-      };
-    }
-    if (version === 10) {
-      // v10 → v11 → v12: add coverHue, then drop J-A9 keys.
-      const v10 = persistedState as { currentBrand: V10Brand | null; brands: V10Brand[] };
-      const v11CurrentBrand =
-        v10.currentBrand !== null ? upgradeV10BrandToV11(v10.currentBrand) : null;
-      const v11Brands = v10.brands.map(upgradeV10BrandToV11);
-      return {
-        currentBrand:
-          v11CurrentBrand !== null ? upgradeV11BrandToV12(v11CurrentBrand) : null,
-        brands: v11Brands.map(upgradeV11BrandToV12),
-      };
-    }
-    if (version === 11) {
-      // v11 → v12 (Cycle 13a): drop J-A9 members + pendingInvitations.
-      const v11 = persistedState as { currentBrand: V11Brand | null; brands: V11Brand[] };
-      return {
-        currentBrand:
-          v11.currentBrand !== null ? upgradeV11BrandToV12(v11.currentBrand) : null,
-        brands: v11.brands.map(upgradeV11BrandToV12),
-      };
-    }
-    // v3 → v4: passthrough. New optional `displayAttendeeCount` field starts
-    // undefined for all brands; read sites default to `true`.
-    // v4 → v5: passthrough. New optional `links.tiktok/x/facebook/youtube/
-    // linkedin/threads` fields start undefined for all brands; render-time
-    // guards on each social chip skip undefined fields.
-    // v5 → v6: passthrough. New optional `contact.phoneCountryIso` field
-    // starts undefined; phone Input defaults to "GB" at read sites.
     return persistedState as PersistedState;
   },
 };
@@ -520,10 +400,8 @@ export const useCurrentBrandStore = create<CurrentBrandState>()(
   persist(
     (set) => ({
       currentBrand: null,
-      brands: [],
       setCurrentBrand: (brand) => set({ currentBrand: brand }),
-      setBrands: (brands) => set({ brands }),
-      reset: () => set({ currentBrand: null, brands: [] }),
+      reset: () => set({ currentBrand: null }),
     }),
     persistOptions,
   ),
@@ -532,5 +410,16 @@ export const useCurrentBrandStore = create<CurrentBrandState>()(
 export const useCurrentBrand = (): Brand | null =>
   useCurrentBrandStore((s) => s.currentBrand);
 
-export const useBrandList = (): Brand[] =>
-  useCurrentBrandStore((s) => s.brands);
+// [TRANSITIONAL] Cycle 17e-A — `useBrandList` kept as a re-export of a thin
+// wrapper that delegates to `useBrands(authUserId)`. The underlying state
+// moved to React Query per Const #5 + I-PROPOSED-C; only `setBrands` (the
+// write path) was removed. This re-export preserves call-site import stability
+// for ~20 consumers while keeping server state owned by React Query.
+//
+// EXIT condition: future cycle migrates each caller to `useBrands(accountId)`
+// directly with explicit accountId derivation — then this re-export + the
+// shim file (src/hooks/useBrandListShim.ts) both delete.
+//
+// I-PROPOSED-C strict-grep gate bans `setBrands\(` (write path), NOT
+// `useBrandList` (read-only sugar over the React Query cache).
+export { useBrandList } from "../hooks/useBrandListShim";

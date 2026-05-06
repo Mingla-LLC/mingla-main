@@ -226,6 +226,7 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
                 onPress={() => handleSelectCategory(cat)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
+                accessibilityLabel={cat}
                 style={[styles.categoryRow, active && styles.categoryRowActive]}
               >
                 <Text

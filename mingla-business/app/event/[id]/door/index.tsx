@@ -41,10 +41,11 @@ import {
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
 import { useLiveEventStore } from "../../../../src/store/liveEventStore";
-import { useCurrentBrandStore } from "../../../../src/store/currentBrandStore";
+import { useBrandList } from "../../../../src/store/currentBrandStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { formatGbp } from "../../../../src/utils/currency";
 import { exportDoorSalesCsv } from "../../../../src/utils/guestCsvExport";
+import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
 
 import { DoorSaleNewSheet } from "../../../../src/components/door/DoorSaleNewSheet";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
@@ -132,13 +133,6 @@ const doorPaymentPill = (
   }
 };
 
-const PAYMENT_METHOD_LABELS: Record<DoorPaymentMethod, string> = {
-  cash: "Cash",
-  card_reader: "Card reader",
-  nfc: "NFC tap",
-  manual: "Manual",
-};
-
 // ---- Screen ---------------------------------------------------------
 
 export default function EventDoorSalesListRoute(): React.ReactElement {
@@ -154,10 +148,19 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
       ? s.events.find((e) => e.id === eventId) ?? null
       : null,
   );
-  const brand = useCurrentBrandStore((s) =>
+  const brandList = useBrandList();
+  const brand =
     event !== null
-      ? s.brands.find((b) => b.id === event.brandId) ?? null
-      : null,
+      ? (brandList.find((b) => b.id === event.brandId) ?? null)
+      : null;
+
+  // Cycle 13 — permission gate for the "View full reconciliation" polish CTA
+  // (D-CYCLE13-RECON-FOR-4). Same VIEW_RECONCILIATION rank used by the
+  // dedicated reconciliation route + Event Detail action grid tile.
+  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
+  const canViewReconciliation = canPerformAction(
+    currentRank,
+    "VIEW_RECONCILIATION",
   );
 
   // Cycle 13 — permission gate for the "View full reconciliation" polish CTA

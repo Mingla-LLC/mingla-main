@@ -1,0 +1,419 @@
+/**
+ * useBrands — React Query hooks for brand CRUD (Cycle 17e-A).
+ *
+ * Per SPEC §3.5 verbatim. Wires:
+ *   - useBrands(accountId)        — list query (5min staleTime)
+ *   - useBrand(brandId)           — single query (5min staleTime)
+ *   - useCreateBrand              — OPTIMISTIC mutation per Decision 10
+ *   - useUpdateBrand              — OPTIMISTIC mutation per Decision 10
+ *   - useSoftDeleteBrand          — PESSIMISTIC mutation per Decision 10
+ *   - useBrandCascadePreview      — single query for delete-sheet step 2
+ *                                   (per IMPL dispatch §6 D-CYCLE17E-A-SPEC-4 Option a)
+ *
+ * Const #5 server state via React Query (NOT Zustand) — `setBrands` action
+ * removed from currentBrandStore in Step 6. I-PROPOSED-C codifies this rule.
+ *
+ * Error contract per Const #3: every mutation has `onError`. Hook layer maps
+ * SlugCollisionError to inline form error UX (caller pattern).
+ */
+
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from "@tanstack/react-query";
+
+import { supabase } from "../services/supabase";
+import {
+  createBrand,
+  getBrands,
+  getBrand,
+  updateBrand,
+  softDeleteBrand,
+  SlugCollisionError,
+  type CreateBrandInput,
+  type SoftDeleteResult,
+} from "../services/brandsService";
+import type { Brand } from "../store/currentBrandStore";
+
+const STALE_TIME_MS = 5 * 60 * 1000; // 5 min — brands change infrequently
+
+// ----- Query key factory -------------------------------------------------
+
+export const brandKeys = {
+  all: ["brands"] as const,
+  lists: (): readonly ["brands", "list"] => [...brandKeys.all, "list"] as const,
+  list: (
+    accountId: string,
+  ): readonly ["brands", "list", string] =>
+    [...brandKeys.lists(), accountId] as const,
+  details: (): readonly ["brands", "detail"] =>
+    [...brandKeys.all, "detail"] as const,
+  detail: (
+    brandId: string,
+  ): readonly ["brands", "detail", string] =>
+    [...brandKeys.details(), brandId] as const,
+  cascadePreview: (
+    brandId: string,
+  ): readonly ["brands", "cascade-preview", string] =>
+    [...brandKeys.all, "cascade-preview", brandId] as const,
+};
+
+const DISABLED_KEY = ["brands-disabled"] as const;
+
+// ----- useBrands (list) --------------------------------------------------
+
+export const useBrands = (
+  accountId: string | null,
+): UseQueryResult<Brand[]> => {
+  const enabled = accountId !== null;
+  return useQuery<Brand[]>({
+    queryKey: enabled ? brandKeys.list(accountId) : DISABLED_KEY,
+    enabled,
+    staleTime: STALE_TIME_MS,
+    queryFn: async (): Promise<Brand[]> => {
+      if (!enabled || accountId === null) return [];
+      return getBrands(accountId);
+    },
+  });
+};
+
+// ----- useBrand (single) -------------------------------------------------
+
+export const useBrand = (
+  brandId: string | null,
+): UseQueryResult<Brand | null> => {
+  const enabled = brandId !== null;
+  return useQuery<Brand | null>({
+    queryKey: enabled ? brandKeys.detail(brandId) : DISABLED_KEY,
+    enabled,
+    staleTime: STALE_TIME_MS,
+    queryFn: async (): Promise<Brand | null> => {
+      if (!enabled || brandId === null) return null;
+      return getBrand(brandId);
+    },
+  });
+};
+
+// ----- useCreateBrand (OPTIMISTIC) --------------------------------------
+
+export interface UseCreateBrandResult {
+  mutateAsync: (input: CreateBrandInput) => Promise<Brand>;
+  isPending: boolean;
+}
+
+interface CreateBrandContext {
+  snapshot: Brand[] | undefined;
+}
+
+export const useCreateBrand = (): UseCreateBrandResult => {
+  const queryClient = useQueryClient();
+  const mutation = useMutation<Brand, Error, CreateBrandInput, CreateBrandContext>({
+    mutationFn: async (input: CreateBrandInput): Promise<Brand> => {
+      // Service-layer call; SlugCollisionError surfaces here for hook to map
+      return createBrand(input, "owner");
+    },
+    onMutate: async (input): Promise<CreateBrandContext> => {
+      // Cancel in-flight list query so optimistic patch isn't overwritten
+      await queryClient.cancelQueries({
+        queryKey: brandKeys.list(input.accountId),
+      });
+      const snapshot = queryClient.getQueryData<Brand[]>(
+        brandKeys.list(input.accountId),
+      );
+      // Apply optimistic — temp ID prefix `_temp_` so onSuccess can identify
+      const tempBrand: Brand = {
+        id: `_temp_${Date.now().toString(36)}`,
+        displayName: input.name,
+        slug: input.slug,
+        kind: input.kind,
+        address: input.address,
+        coverHue: input.coverHue,
+        role: "owner",
+        stats: { events: 0, followers: 0, rev: 0, attendees: 0 },
+        currentLiveEvent: null,
+        bio: input.bio,
+        tagline: input.tagline,
+        contact: input.contact,
+        links: input.links,
+      };
+      queryClient.setQueryData<Brand[]>(
+        brandKeys.list(input.accountId),
+        (prev) => (prev !== undefined ? [tempBrand, ...prev] : [tempBrand]),
+      );
+      return { snapshot };
+    },
+    onError: (error, input, context) => {
+      // [DIAG ORCH-0728-PASS-3] — replaced by logError() on full IMPL
+      // eslint-disable-next-line no-console
+      console.error("[ORCH-0728-DIAG] useCreateBrand#onError FAILED", {
+        name: (error as { name?: string })?.name,
+        message: (error as { message?: string })?.message,
+        code: (error as { code?: string })?.code,
+        details: (error as { details?: string })?.details,
+        hint: (error as { hint?: string })?.hint,
+        accountId: input.accountId,
+        brandName: input.name,
+      });
+      // Rollback to snapshot — Const #3: don't swallow; UI surfaces error to user
+      if (context !== undefined && context.snapshot !== undefined) {
+        queryClient.setQueryData<Brand[]>(
+          brandKeys.list(input.accountId),
+          context.snapshot,
+        );
+      } else if (context !== undefined && context.snapshot === undefined) {
+        // No snapshot existed (first brand) — clear optimistic-only state
+        queryClient.setQueryData<Brand[]>(brandKeys.list(input.accountId), []);
+      }
+    },
+    onSuccess: (serverBrand, input) => {
+      // Replace temp with server-returned row (uses real UUID from DB)
+      queryClient.setQueryData<Brand[]>(
+        brandKeys.list(input.accountId),
+        (prev) => {
+          if (prev === undefined) return [serverBrand];
+          return prev.map((b) => (b.id.startsWith("_temp_") ? serverBrand : b));
+        },
+      );
+      // Cache the detail for fast subsequent reads
+      queryClient.setQueryData<Brand>(
+        brandKeys.detail(serverBrand.id),
+        serverBrand,
+      );
+    },
+  });
+  return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
+};
+
+// ----- useUpdateBrand (OPTIMISTIC) --------------------------------------
+
+export interface UpdateBrandInput {
+  brandId: string;
+  patch: Partial<Brand>;
+  existingDescription: string | null;
+  accountId: string;
+}
+
+export interface UseUpdateBrandResult {
+  mutateAsync: (input: UpdateBrandInput) => Promise<Brand>;
+  isPending: boolean;
+}
+
+interface UpdateBrandContext {
+  detailSnap?: Brand | null;
+  listSnap?: Brand[];
+}
+
+export const useUpdateBrand = (): UseUpdateBrandResult => {
+  const queryClient = useQueryClient();
+  const mutation = useMutation<Brand, Error, UpdateBrandInput, UpdateBrandContext>({
+    mutationFn: async ({ brandId, patch, existingDescription }) =>
+      updateBrand(brandId, patch, existingDescription),
+    onMutate: async ({ brandId, patch, accountId }): Promise<UpdateBrandContext> => {
+      await queryClient.cancelQueries({ queryKey: brandKeys.detail(brandId) });
+      await queryClient.cancelQueries({ queryKey: brandKeys.list(accountId) });
+      const detailSnap =
+        queryClient.getQueryData<Brand | null>(brandKeys.detail(brandId)) ?? null;
+      const listSnap = queryClient.getQueryData<Brand[]>(
+        brandKeys.list(accountId),
+      );
+      // Optimistic detail update
+      if (detailSnap !== null) {
+        const optimistic: Brand = { ...detailSnap, ...patch };
+        queryClient.setQueryData<Brand>(brandKeys.detail(brandId), optimistic);
+        // Mirror in list
+        if (listSnap !== undefined) {
+          queryClient.setQueryData<Brand[]>(
+            brandKeys.list(accountId),
+            listSnap.map((b) => (b.id === brandId ? optimistic : b)),
+          );
+        }
+      }
+      return { detailSnap, listSnap };
+    },
+    onError: (error, { brandId, accountId }, context) => {
+      // [DIAG ORCH-0728-PASS-3] — replaced by logError() on full IMPL
+      // eslint-disable-next-line no-console
+      console.error("[ORCH-0728-DIAG] useUpdateBrand#onError FAILED", {
+        name: (error as { name?: string })?.name,
+        message: (error as { message?: string })?.message,
+        code: (error as { code?: string })?.code,
+        details: (error as { details?: string })?.details,
+        hint: (error as { hint?: string })?.hint,
+        brandId,
+        accountId,
+      });
+      if (context?.detailSnap !== undefined) {
+        queryClient.setQueryData(brandKeys.detail(brandId), context.detailSnap);
+      }
+      if (context?.listSnap !== undefined) {
+        queryClient.setQueryData(brandKeys.list(accountId), context.listSnap);
+      }
+    },
+    onSuccess: (serverBrand, { brandId, accountId }) => {
+      queryClient.setQueryData<Brand>(brandKeys.detail(brandId), serverBrand);
+      queryClient.setQueryData<Brand[]>(
+        brandKeys.list(accountId),
+        (prev) => {
+          if (prev === undefined) return [serverBrand];
+          return prev.map((b) => (b.id === brandId ? serverBrand : b));
+        },
+      );
+    },
+  });
+  return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
+};
+
+// ----- useSoftDeleteBrand (PESSIMISTIC) ---------------------------------
+
+export interface SoftDeleteBrandInput {
+  brandId: string;
+  accountId: string;
+}
+
+export interface UseSoftDeleteBrandResult {
+  mutateAsync: (input: SoftDeleteBrandInput) => Promise<SoftDeleteResult>;
+  isPending: boolean;
+}
+
+export const useSoftDeleteBrand = (): UseSoftDeleteBrandResult => {
+  const queryClient = useQueryClient();
+  const mutation = useMutation<SoftDeleteResult, Error, SoftDeleteBrandInput>({
+    mutationFn: async ({ brandId }) => {
+      // [DIAG ORCH-0734-RW-DIAG] Removed at full IMPL CLOSE per cleanup dispatch
+      // eslint-disable-next-line no-console
+      console.error("[ORCH-0734-RW-DIAG] useSoftDeleteBrand mutationFn ENTER", { brandId });
+      const result = await softDeleteBrand(brandId);
+      // [DIAG ORCH-0734-RW-DIAG] Removed at full IMPL CLOSE per cleanup dispatch
+      // eslint-disable-next-line no-console
+      console.error("[ORCH-0734-RW-DIAG] useSoftDeleteBrand mutationFn RESULT", {
+        brandId,
+        rejected: result.rejected,
+      });
+      return result;
+    },
+    onSuccess: (result, { brandId, accountId }) => {
+      if (!result.rejected) {
+        // Invalidate list — re-fetch shows brand absent (deleted_at IS NULL filter)
+        queryClient.invalidateQueries({ queryKey: brandKeys.list(accountId) });
+        // Clear detail cache
+        queryClient.removeQueries({ queryKey: brandKeys.detail(brandId) });
+        // Clear role cache for this brand (useCurrentBrandRole sees no brand row → null role)
+        queryClient.removeQueries({ queryKey: ["brand-role", brandId] });
+        // Clear cascade-preview cache (defensive)
+        queryClient.removeQueries({
+          queryKey: brandKeys.cascadePreview(brandId),
+        });
+      }
+      // On rejection: caller (BrandDeleteSheet) handles via modal; no cache changes
+    },
+    onError: (error, { brandId, accountId }) => {
+      // [DIAG ORCH-0734-RW-DIAG] Removed at full IMPL CLOSE per cleanup dispatch
+      // eslint-disable-next-line no-console
+      console.error("[ORCH-0734-RW-DIAG] useSoftDeleteBrand FAILED", {
+        brandId,
+        accountId,
+        message: error.message,
+        name: error.name,
+      });
+      // Caller's mutateAsync still receives the throw (pessimistic pattern preserved)
+    },
+  });
+  return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
+};
+
+// ----- useBrandCascadePreview --------------------------------------------
+
+/**
+ * Cascade preview counts for the BrandDeleteSheet step 2 render.
+ * Per IMPL dispatch §6 D-CYCLE17E-A-SPEC-4 Option (a) — parent passes counts
+ * to sheet as props (sheet stays presentational + testable).
+ *
+ * 30s staleTime — counts change frequently in active operations; we want fresh
+ * data when operator opens the sheet but caching is fine within a single open.
+ */
+export interface BrandCascadePreviewCounts {
+  pastEventCount: number;
+  upcomingEventCount: number;
+  liveEventCount: number;
+  teamMemberCount: number;
+  hasStripeConnect: boolean;
+}
+
+const CASCADE_PREVIEW_STALE_TIME_MS = 30 * 1000; // 30s
+
+export const useBrandCascadePreview = (
+  brandId: string | null,
+): UseQueryResult<BrandCascadePreviewCounts | null> => {
+  const enabled = brandId !== null;
+  return useQuery<BrandCascadePreviewCounts | null>({
+    queryKey: enabled ? brandKeys.cascadePreview(brandId) : DISABLED_KEY,
+    enabled,
+    staleTime: CASCADE_PREVIEW_STALE_TIME_MS,
+    queryFn: async (): Promise<BrandCascadePreviewCounts | null> => {
+      if (!enabled || brandId === null) return null;
+
+      // 4 parallel queries — Const #3: throws on any error
+      const [pastResult, upcomingResult, liveResult, teamResult, stripeResult] =
+        await Promise.all([
+          supabase
+            .from("events")
+            .select("id", { count: "exact", head: true })
+            .eq("brand_id", brandId)
+            .eq("status", "past")
+            .is("deleted_at", null),
+          supabase
+            .from("events")
+            .select("id", { count: "exact", head: true })
+            .eq("brand_id", brandId)
+            .eq("status", "upcoming")
+            .is("deleted_at", null),
+          supabase
+            .from("events")
+            .select("id", { count: "exact", head: true })
+            .eq("brand_id", brandId)
+            .eq("status", "live")
+            .is("deleted_at", null),
+          supabase
+            .from("brand_team_members")
+            .select("user_id", { count: "exact", head: true })
+            .eq("brand_id", brandId)
+            .is("removed_at", null),
+          supabase
+            .from("brands")
+            .select("stripe_connect_id")
+            .eq("id", brandId)
+            .is("deleted_at", null)
+            .maybeSingle(),
+        ]);
+
+      if (pastResult.error) throw pastResult.error;
+      if (upcomingResult.error) throw upcomingResult.error;
+      if (liveResult.error) throw liveResult.error;
+      if (teamResult.error) throw teamResult.error;
+      if (stripeResult.error) throw stripeResult.error;
+
+      return {
+        pastEventCount: pastResult.count ?? 0,
+        upcomingEventCount: upcomingResult.count ?? 0,
+        liveEventCount: liveResult.count ?? 0,
+        teamMemberCount: teamResult.count ?? 0,
+        hasStripeConnect:
+          stripeResult.data !== null &&
+          stripeResult.data.stripe_connect_id !== null,
+      };
+    },
+  });
+};
+
+// ----- Re-exports for convenience ---------------------------------------
+
+export { SlugCollisionError } from "../services/brandsService";
+export type {
+  CreateBrandInput,
+  SoftDeleteResult,
+  SoftDeleteSuccess,
+  SoftDeleteRejection,
+} from "../services/brandsService";

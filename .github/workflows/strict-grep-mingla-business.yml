@@ -1,0 +1,122 @@
+name: Strict Grep Gates (Mingla Business)
+
+on:
+  pull_request:
+    branches: [main, Seth]
+    paths:
+      - "mingla-business/**"
+      - "supabase/migrations/**"
+      - ".github/scripts/strict-grep/**"
+      - ".github/workflows/strict-grep-mingla-business.yml"
+
+# Registry pattern (per DEC-101 D-17b-5):
+# Each invariant CI gate is its own modular Node.js script in
+# .github/scripts/strict-grep/. Adding a new gate = add one script + one
+# job below. Each job runs in parallel; any failure fails the PR.
+#
+# Currently registered gates:
+#   - I-37 (i37-topbar-cluster.mjs) — primary-tab default cluster (Cycle 17b)
+#   - I-38 (i38-icon-chrome-touch-target.mjs) — IconChrome touch-target ≥ 44 effective (Cycle 17c)
+#   - I-39 (i39-pressable-label.mjs) — Pressable accessibilityLabel coverage (Cycle 17c)
+#   - I-PROPOSED-A (i-proposed-a-brands-deleted-filter.mjs) — brands queries filter deleted_at IS NULL (Cycle 17e-A)
+#   - I-PROPOSED-C (i-proposed-c-brand-crud-via-react-query.mjs) — no setBrands() callers (Cycle 17e-A)
+#   - I-PROPOSED-H (i-proposed-h-rls-returning-owner-gap.mjs) — every owner-callable mutation policy paired with direct-predicate owner-SELECT (ORCH-0734)
+#   - I-PROPOSED-I (i-proposed-i-mutation-rowcount-verified.mjs) — every per-row .update/.delete must chain .select to verify rowcount (ORCH-0734-RW)
+#
+# Future gates to register (proposed but not yet implemented):
+#   - I-32 rank parity (Cycle 13a proposal)
+#   - I-34 canManualCheckIn decommission (Cycle 13b proposal)
+#   - I-36 ROOT-ERROR-BOUNDARY (Cycle 16a proposal)
+#
+# When adding a new gate, follow the 4 steps in
+# .github/scripts/strict-grep/README.md.
+
+jobs:
+  i37-topbar-default-cluster:
+    name: "I-37: TopBar primary-tab default cluster"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Babel parser
+        run: npm install --no-save @babel/parser @babel/traverse
+      - name: Run I-37 gate
+        run: node .github/scripts/strict-grep/i37-topbar-cluster.mjs
+
+  i38-icon-chrome-touch-target:
+    name: "I-38: IconChrome touch-target >= 44 effective"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Babel parser
+        run: npm install --no-save @babel/parser @babel/traverse
+      - name: Run I-38 gate
+        run: node .github/scripts/strict-grep/i38-icon-chrome-touch-target.mjs
+
+  i39-pressable-label:
+    name: "I-39: Pressable accessibilityLabel coverage"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Babel parser
+        run: npm install --no-save @babel/parser @babel/traverse
+      - name: Run I-39 gate
+        run: node .github/scripts/strict-grep/i39-pressable-label.mjs
+
+  i-proposed-a-brands-deleted-filter:
+    name: "I-PROPOSED-A: brands queries filter deleted_at IS NULL"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Babel parser
+        run: npm install --no-save @babel/parser @babel/traverse
+      - name: Run I-PROPOSED-A gate
+        run: node .github/scripts/strict-grep/i-proposed-a-brands-deleted-filter.mjs
+
+  i-proposed-c-brand-crud-via-react-query:
+    name: "I-PROPOSED-C: no setBrands() callers"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-C gate
+        run: node .github/scripts/strict-grep/i-proposed-c-brand-crud-via-react-query.mjs
+
+  i-proposed-h-rls-returning-owner-gap:
+    name: "I-PROPOSED-H: RLS-RETURNING-OWNER-GAP-PREVENTED"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-H self-test
+        run: node .github/scripts/strict-grep/i-proposed-h-rls-returning-owner-gap.mjs --self-test
+      - name: Run I-PROPOSED-H gate against migrations
+        run: node .github/scripts/strict-grep/i-proposed-h-rls-returning-owner-gap.mjs
+
+  i-proposed-i-mutation-rowcount-verified:
+    name: "I-PROPOSED-I: MUTATION-ROWCOUNT-VERIFIED"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-I self-test
+        run: node .github/scripts/strict-grep/i-proposed-i-mutation-rowcount-verified.mjs --self-test
+      - name: Run I-PROPOSED-I gate against mingla-business services
+        run: node .github/scripts/strict-grep/i-proposed-i-mutation-rowcount-verified.mjs

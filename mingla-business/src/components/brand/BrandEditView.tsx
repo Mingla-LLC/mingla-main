@@ -38,6 +38,7 @@ import {
   accent,
   glass,
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -208,10 +209,20 @@ export interface BrandEditViewProps {
   brand: Brand | null;
   /** Back-arrow / cancel handler. Parent decides where to navigate. */
   onCancel: () => void;
-  /** Commits the edited draft to the store. Parent owns persistence. */
-  onSave: (next: Brand) => void;
+  /**
+   * Commits the edited draft. Cycle 17e-A: parent's onSave wires
+   * `useUpdateBrand().mutateAsync()` so persistence happens through React
+   * Query (Const #5). Returns a Promise so this view can show submitting
+   * state + handle errors via toast.
+   */
+  onSave: (next: Brand) => Promise<void>;
   /** Called after a successful save. Parent typically calls router.back(). */
   onAfterSave: () => void;
+  /**
+   * Cycle 17e-A — called when operator taps "Delete brand" in the danger
+   * zone. Parent opens BrandDeleteSheet. Hidden when undefined.
+   */
+  onRequestDelete?: (brand: Brand) => void;
 }
 
 export const BrandEditView: React.FC<BrandEditViewProps> = ({
@@ -219,6 +230,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   onCancel,
   onSave,
   onAfterSave,
+  onRequestDelete,
 }) => {
   const insets = useSafeAreaInsets();
   // Initialize draft from `brand`. Note: when brand !== null, draft is the
@@ -248,18 +260,26 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
-  const handleSave = useCallback((): void => {
+  const handleSave = useCallback(async (): Promise<void> => {
     if (!isDirty || submitting || draft === null) return;
     setSubmitting(true);
-    // Capture draft at call-time; the setTimeout closure preserves it even
-    // if state changes during the simulated-async window.
-    const snapshot = draft;
-    setTimeout(() => {
-      onSave(snapshot);
-      setSubmitting(false);
+    // Cycle 17e-A: parent's onSave is now async and wires useUpdateBrand
+    // mutation. Removed simulated 300ms delay — real network round-trip
+    // provides the actual latency. Optimistic updates make UI feel instant
+    // anyway (per Decision 10 hybrid pattern).
+    try {
+      await onSave(draft);
       fireToast("Saved");
       setTimeout(() => onAfterSave(), POST_SAVE_NAV_DELAY_MS);
-    }, SIMULATED_SAVE_DELAY_MS);
+    } catch (error) {
+      fireToast(
+        error instanceof Error
+          ? `Couldn't save: ${error.message}`
+          : "Couldn't save. Tap Save to try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }, [draft, isDirty, submitting, onSave, onAfterSave, fireToast]);
 
   const handleBackPress = useCallback((): void => {
@@ -371,9 +391,16 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
                   <Icon name="edit" size={14} color="#ffffff" />
                 </Pressable>
               </View>
-              <Text style={styles.slugText}>
-                <Text style={styles.slugPrefix}>mingla.com/</Text>
-                <Text style={styles.slugValue}>{brand.slug}</Text>
+              <View style={styles.slugRow}>
+                <Text style={styles.slugText}>
+                  <Text style={styles.slugPrefix}>mingla.com/</Text>
+                  <Text style={styles.slugValue}>{brand.slug}</Text>
+                </Text>
+                <Icon name="shield" size={12} color={textTokens.tertiary} />
+              </View>
+              {/* Cycle 17e-A: slug locked per I-17 + trg_brands_immutable_slug */}
+              <Text style={styles.slugLockedHelper}>
+                URL is locked when the brand is created.
               </Text>
             </View>
           </GlassCard>
@@ -677,6 +704,27 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               />
             </View>
           </GlassCard>
+
+          {/* Cycle 17e-A — Danger zone */}
+          {onRequestDelete !== undefined ? (
+            <View style={styles.dangerZone}>
+              <Text style={styles.dangerLabel}>Danger zone</Text>
+              <Text style={styles.dangerHelper}>
+                Deleting hides this brand from your list. Recoverable for 30
+                days via support.
+              </Text>
+              <View style={styles.dangerCta}>
+                <Button
+                  label="Delete brand"
+                  variant="ghost"
+                  size="md"
+                  leadingIcon="trash"
+                  onPress={() => onRequestDelete(brand)}
+                  accessibilityLabel="Delete this brand"
+                />
+              </View>
+            </View>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -903,6 +951,46 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: spacing.xl,
     paddingHorizontal: spacing.md,
+  },
+
+  // Cycle 17e-A — slug-locked hint
+  slugRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: spacing.xs,
+  },
+  slugLockedHelper: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    marginTop: 2,
+  },
+
+  // Cycle 17e-A — danger zone for brand deletion (matches BrandProfileView pattern)
+  dangerZone: {
+    marginTop: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: glass.border.profileBase,
+    gap: spacing.sm,
+  },
+  dangerLabel: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: "700",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: semantic.error,
+  },
+  dangerHelper: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.tertiary,
+  },
+  dangerCta: {
+    marginTop: spacing.xs,
   },
 });
 

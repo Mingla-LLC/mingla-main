@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-05-19 — Drop ORCH-0734 archive table (signal_anchors backup)
+
+**Action:** drop `_archive_orch_0734_signal_anchors` if no rollback signal has surfaced for ORCH-0734 (place-intelligence trial pipeline rebuild).
+
+**Context:** Migration `20260505000001_orch_0734_city_runs.sql` (applied 2026-05-05) DROPPED `signal_anchors` table + admin tab + RLS + trigger function `tg_signal_anchors_set_updated_at`. Pre-drop, the migration snapshot-archived all rows into `_archive_orch_0734_signal_anchors`. 14-day retention window allows rollback-by-restore-from-archive if any unforeseen consumer surfaces. ORCH-0734 CLOSED PASS 2026-05-05 (DEC-110); replacement is `place_intelligence_city_runs` table + city-runs sampled-sync edge function. Cary 50 smoke + ORCH-0735 SC-16 9-city ratification both PASS — rollback unlikely but archive is cheap insurance through 2026-05-19.
+
+**Verify before dropping (optional sanity):**
+
+```sql
+-- Confirm no live code path still references signal_anchors
+SELECT proname FROM pg_proc
+WHERE pronamespace='public'::regnamespace
+  AND prosrc ILIKE '%signal_anchors%';
+-- Expected: zero rows (admin RPCs were dropped in same migration)
+```
+
+**Drop SQL (run in Supabase SQL editor):**
+
+```sql
+DROP TABLE IF EXISTS public._archive_orch_0734_signal_anchors;
+```
+
+**Decision authority:** DEC-110 (ORCH-0734 CLOSE) — D-CLOSE-3 disposition.
+
+---
+
 ## 2026-06-02 — Drop ORCH-0700 archive table
 
 **Action:** drop `_archive_orch_0700_doomed_columns` if no rollback signal has surfaced for ORCH-0700 Phase 2 + Phase 3B.

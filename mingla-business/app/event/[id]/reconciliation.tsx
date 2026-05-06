@@ -51,7 +51,7 @@ import {
 } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
-import { useCurrentBrandStore } from "../../../src/store/currentBrandStore";
+import { useBrandList } from "../../../src/store/currentBrandStore";
 import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
 import { useGuestStore } from "../../../src/store/guestStore";
 import { useLiveEventStore } from "../../../src/store/liveEventStore";
@@ -97,11 +97,11 @@ export default function ReconciliationRoute(): React.ReactElement {
       ? s.events.find((e) => e.id === eventId) ?? null
       : null,
   );
-  const brand = useCurrentBrandStore((s) =>
+  const brandList = useBrandList();
+  const brand =
     event !== null
-      ? s.brands.find((b) => b.id === event.brandId) ?? null
-      : null,
-  );
+      ? (brandList.find((b) => b.id === event.brandId) ?? null)
+      : null;
   const { rank } = useCurrentBrandRole(brand?.id ?? null);
 
   // Raw entries + useMemo per selector pattern rule (T-41 grep gate)

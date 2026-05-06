@@ -12,18 +12,25 @@
  * Per spec §3.3.
  */
 
-import React from "react";
+import React, { useCallback, useState } from "react";
 import { Linking, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet";
 import { BrandProfileView } from "../../../src/components/brand/BrandProfileView";
 import { canvas } from "../../../src/constants/designSystem";
-import { useBrandList } from "../../../src/store/currentBrandStore";
+import { useAuth } from "../../../src/context/AuthContext";
+import {
+  useBrandList,
+  useCurrentBrandStore,
+  type Brand,
+} from "../../../src/store/currentBrandStore";
 
 export default function BrandProfileRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { user } = useAuth();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brands = useBrandList();
@@ -31,6 +38,27 @@ export default function BrandProfileRoute(): React.ReactElement {
     typeof idParam === "string" && idParam.length > 0
       ? brands.find((b) => b.id === idParam) ?? null
       : null;
+
+  // Cycle 17e-A — BrandDeleteSheet state
+  const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
+  const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
+  const handleRequestDelete = useCallback((_brand: Brand): void => {
+    setDeleteSheetVisible(true);
+  }, []);
+  const handleCloseDeleteSheet = useCallback((): void => {
+    setDeleteSheetVisible(false);
+  }, []);
+  const handleBrandDeleted = useCallback(
+    (deletedBrandId: string): void => {
+      const current = useCurrentBrandStore.getState().currentBrand;
+      if (current !== null && current.id === deletedBrandId) {
+        setCurrentBrand(null);
+      }
+      setDeleteSheetVisible(false);
+      router.replace("/(tabs)/account" as never);
+    },
+    [router, setCurrentBrand],
+  );
 
   const handleBack = (): void => {
     if (router.canGoBack()) {
@@ -99,6 +127,14 @@ export default function BrandProfileRoute(): React.ReactElement {
         onViewPublic={handleViewPublic}
         onCreateEvent={handleCreateEvent}
         onOpenLink={handleOpenLink}
+        onRequestDelete={handleRequestDelete}
+      />
+      <BrandDeleteSheet
+        visible={deleteSheetVisible}
+        brand={brand}
+        accountId={user?.id ?? null}
+        onClose={handleCloseDeleteSheet}
+        onDeleted={handleBrandDeleted}
       />
     </View>
   );

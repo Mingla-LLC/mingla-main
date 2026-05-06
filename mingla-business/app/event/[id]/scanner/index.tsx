@@ -21,6 +21,7 @@ import React, {
   useState,
 } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Animated,
   Linking,
@@ -158,6 +159,25 @@ export default function ScannerCameraRoute(): React.ReactElement {
   const overlayVisibleRef = useRef<boolean>(false);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayAnim = useRef(new Animated.Value(0)).current;
+  // Cycle 17c §F.2 — respect OS reduce-motion preference per I-40 spirit.
+  // Old RN Animated API has no useReducedMotion; subscribe to AccessibilityInfo.
+  const reduceMotionRef = useRef<boolean>(false);
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (mounted) reduceMotionRef.current = enabled;
+    });
+    const sub = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      (enabled: boolean) => {
+        reduceMotionRef.current = enabled;
+      },
+    );
+    return (): void => {
+      mounted = false;
+      sub.remove();
+    };
+  }, []);
 
   const [logExpanded, setLogExpanded] = useState<boolean>(false);
   const sessionStartRef = useRef<string>(new Date().toISOString());
@@ -204,13 +224,20 @@ export default function ScannerCameraRoute(): React.ReactElement {
 
   const dismissOverlay = useCallback((): void => {
     overlayVisibleRef.current = false;
-    Animated.timing(overlayAnim, {
-      toValue: 0,
-      duration: 250,
-      useNativeDriver: true,
-    }).start(() => {
+    if (reduceMotionRef.current) {
+      // Cycle 17c §F.2 — instant set when reduce-motion ON; preserves the
+      // post-fade callback (setOverlay(null)) by invoking it synchronously.
+      overlayAnim.setValue(0);
       setOverlay(null);
-    });
+    } else {
+      Animated.timing(overlayAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => {
+        setOverlay(null);
+      });
+    }
     if (overlayTimerRef.current !== null) {
       clearTimeout(overlayTimerRef.current);
       overlayTimerRef.current = null;
@@ -225,11 +252,16 @@ export default function ScannerCameraRoute(): React.ReactElement {
       }
       overlayVisibleRef.current = true;
       setOverlay(next);
-      Animated.timing(overlayAnim, {
-        toValue: 1,
-        duration: 250,
-        useNativeDriver: true,
-      }).start();
+      if (reduceMotionRef.current) {
+        // Cycle 17c §F.2 — instant set when reduce-motion ON.
+        overlayAnim.setValue(1);
+      } else {
+        Animated.timing(overlayAnim, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }).start();
+      }
       overlayTimerRef.current = setTimeout(() => {
         dismissOverlay();
       }, RESULT_OVERLAY_DURATION_MS);

@@ -55,7 +55,6 @@ import { generateDraftId } from "../../utils/draftEventId";
 import {
   formatRecurrenceLabel,
   formatTermination,
-  formatDayOfMonth,
   weekdayOfIso,
 } from "../../utils/recurrenceRule";
 import { formatLongDate } from "../../utils/eventDateDisplay";
@@ -71,6 +70,7 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 
+import { CreatorStep2WhenRepeatPickerSheet } from "./CreatorStep2WhenRepeatPickerSheet";
 import {
   MultiDateOverrideSheet,
   type MultiDateOverrideSavePatch,
@@ -163,31 +163,8 @@ const HIDDEN_WEB_INPUT_STYLE = {
   pointerEvents: "none",
 } as const;
 
-const WEEKDAY_OPTS: ReadonlyArray<{ id: Weekday; label: string; short: string }> = [
-  { id: "MO", label: "Monday", short: "Mon" },
-  { id: "TU", label: "Tuesday", short: "Tue" },
-  { id: "WE", label: "Wednesday", short: "Wed" },
-  { id: "TH", label: "Thursday", short: "Thu" },
-  { id: "FR", label: "Friday", short: "Fri" },
-  { id: "SA", label: "Saturday", short: "Sat" },
-  { id: "SU", label: "Sunday", short: "Sun" },
-];
-
-const SETPOS_OPTS: ReadonlyArray<{ id: SetPos; label: string }> = [
-  { id: 1, label: "1st" },
-  { id: 2, label: "2nd" },
-  { id: 3, label: "3rd" },
-  { id: 4, label: "4th" },
-  { id: -1, label: "Last" },
-];
-
-const PRESET_OPTS: ReadonlyArray<{ id: RecurrencePreset; label: string; sub: string }> = [
-  { id: "daily", label: "Daily", sub: "Every day" },
-  { id: "weekly", label: "Weekly", sub: "Every week on the same day" },
-  { id: "biweekly", label: "Every 2 weeks", sub: "Every other week" },
-  { id: "monthly_dom", label: "Monthly (by day)", sub: "Same day-of-month every month" },
-  { id: "monthly_dow", label: "Monthly (by weekday)", sub: "e.g. 1st Monday of each month" },
-];
+// Cycle 17d Stage 2 §F.2 — PRESET_OPTS / WEEKDAY_OPTS / SETPOS_OPTS moved
+// to ./CreatorStep2WhenRepeatPickerSheet.tsx along with the picker sheet JSX.
 
 // ---- Main component -------------------------------------------------
 
@@ -1214,153 +1191,16 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
         </>
       ) : null}
 
-      {/* Recurrence preset sheet */}
-      <Sheet
+      {/* Recurrence preset sheet — Cycle 17d Stage 2 §F.2 extracted */}
+      <CreatorStep2WhenRepeatPickerSheet
         visible={presetSheetVisible}
         onClose={() => setPresetSheetVisible(false)}
-        snapPoint="full"
-      >
-        <ScrollView
-          contentContainerStyle={styles.sheetContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Text style={styles.sheetTitle}>Repeat pattern</Text>
-          {PRESET_OPTS.map((opt) => {
-            const active = draft.recurrenceRule?.preset === opt.id;
-            return (
-              <Pressable
-                key={opt.id}
-                onPress={() => handleSelectPreset(opt.id)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                style={[styles.sheetRow, active && styles.sheetRowActive]}
-              >
-                <View style={styles.sheetRowTextCol}>
-                  <Text
-                    style={[
-                      styles.sheetRowLabel,
-                      active && styles.sheetRowLabelActive,
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                  <Text style={styles.sheetRowSub}>{opt.sub}</Text>
-                </View>
-                {active ? (
-                  <Icon name="check" size={18} color={accent.warm} />
-                ) : null}
-              </Pressable>
-            );
-          })}
-
-          {/* Sub-pickers per preset */}
-          {draft.recurrenceRule !== null &&
-          (draft.recurrenceRule.preset === "weekly" ||
-            draft.recurrenceRule.preset === "biweekly" ||
-            draft.recurrenceRule.preset === "monthly_dow") ? (
-            <>
-              <Text style={styles.sheetSubsectionLabel}>Day of the week</Text>
-              <View style={styles.weekdayGrid}>
-                {WEEKDAY_OPTS.map((opt) => {
-                  const active = draft.recurrenceRule?.byDay === opt.id;
-                  return (
-                    <Pressable
-                      key={opt.id}
-                      onPress={() => handleSelectByDay(opt.id)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      accessibilityLabel={opt.label}
-                      style={[styles.weekdayPill, active && styles.weekdayPillActive]}
-                    >
-                      <Text
-                        style={[
-                          styles.weekdayPillLabel,
-                          active && styles.weekdayPillLabelActive,
-                        ]}
-                      >
-                        {opt.short}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </>
-          ) : null}
-
-          {draft.recurrenceRule?.preset === "monthly_dom" ? (
-            <>
-              <Text style={styles.sheetSubsectionLabel}>Day of the month</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.domRow}
-              >
-                {Array.from({ length: 28 }, (_, i) => i + 1).map((n) => {
-                  const active = draft.recurrenceRule?.byMonthDay === n;
-                  return (
-                    <Pressable
-                      key={n}
-                      onPress={() => handleSelectByMonthDay(n)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      accessibilityLabel={`Day ${n}`}
-                      style={[styles.domPill, active && styles.domPillActive]}
-                    >
-                      <Text
-                        style={[
-                          styles.domPillLabel,
-                          active && styles.domPillLabelActive,
-                        ]}
-                      >
-                        {formatDayOfMonth(n)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </>
-          ) : null}
-
-          {draft.recurrenceRule?.preset === "monthly_dow" ? (
-            <>
-              <Text style={styles.sheetSubsectionLabel}>Which week</Text>
-              <View style={styles.setPosRow}>
-                {SETPOS_OPTS.map((opt) => {
-                  const active = draft.recurrenceRule?.bySetPos === opt.id;
-                  return (
-                    <Pressable
-                      key={opt.id}
-                      onPress={() => handleSelectBySetPos(opt.id)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      accessibilityLabel={opt.label}
-                      style={[styles.setPosPill, active && styles.setPosPillActive]}
-                    >
-                      <Text
-                        style={[
-                          styles.setPosPillLabel,
-                          active && styles.setPosPillLabelActive,
-                        ]}
-                      >
-                        {opt.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </>
-          ) : null}
-
-          <Pressable
-            onPress={() => setPresetSheetVisible(false)}
-            accessibilityRole="button"
-            accessibilityLabel="Done picking pattern"
-            style={styles.sheetDoneBtn}
-          >
-            <Text style={styles.sheetDoneLabel}>Done</Text>
-          </Pressable>
-        </ScrollView>
-      </Sheet>
+        recurrenceRule={draft.recurrenceRule}
+        onSelectPreset={handleSelectPreset}
+        onSelectByDay={handleSelectByDay}
+        onSelectByMonthDay={handleSelectByMonthDay}
+        onSelectBySetPos={handleSelectBySetPos}
+      />
 
       {/* Termination sheet */}
       <Sheet
@@ -2024,43 +1864,6 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     marginBottom: spacing.md,
   },
-  sheetSubsectionLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: "500",
-    color: textTokens.secondary,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  sheetRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
-    marginBottom: spacing.xs,
-  },
-  sheetRowActive: {
-    backgroundColor: accent.tint,
-  },
-  sheetRowTextCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  sheetRowLabel: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
-  },
-  sheetRowLabelActive: {
-    fontWeight: "600",
-  },
-  sheetRowSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-    marginTop: 2,
-  },
   sheetDoneBtn: {
     paddingVertical: spacing.md,
     alignItems: "center",
@@ -2070,93 +1873,6 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     fontWeight: "600",
     color: accent.warm,
-  },
-
-  // Weekday grid ------------------------------------------------------
-  weekdayGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  weekdayPill: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    minWidth: 56,
-    alignItems: "center",
-  },
-  weekdayPillActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
-  },
-  weekdayPillLabel: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "500",
-    color: textTokens.primary,
-  },
-  weekdayPillLabelActive: {
-    fontWeight: "700",
-  },
-
-  // Day-of-month row --------------------------------------------------
-  domRow: {
-    flexDirection: "row",
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-  },
-  domPill: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    minWidth: 56,
-    alignItems: "center",
-  },
-  domPillActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
-  },
-  domPillLabel: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "500",
-    color: textTokens.primary,
-  },
-  domPillLabelActive: {
-    fontWeight: "700",
-  },
-
-  // SetPos row --------------------------------------------------------
-  setPosRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  setPosPill: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-  },
-  setPosPillActive: {
-    backgroundColor: accent.tint,
-    borderColor: accent.border,
-  },
-  setPosPillLabel: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "500",
-    color: textTokens.primary,
-  },
-  setPosPillLabelActive: {
-    fontWeight: "700",
   },
 
   // Count input -------------------------------------------------------

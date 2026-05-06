@@ -32,6 +32,7 @@
  * (`invite-scanner` / `invite-brand-member`). NO logic change to this file —
  * cross-reference only.
  *
+ * // orch-strict-grep-allow canManualCheckIn — Cycle 13b migration removes this field; reference is part of the strip logic, not active usage.
  * Cycle 13b Q1 (SPEC §4.5 / DEC-093): `canManualCheckIn` field DROPPED from
  * `ScannerPermissions`. The field was decorative in Cycle 11/12 (gated 0
  * consumers in scan logic, only rendered an informational pill on the team
@@ -122,6 +123,7 @@ const persistOptions: PersistOptions<
   partialize: (s): PersistedState => ({ entries: s.entries }),
   version: 2,
   migrate: (persistedState, version) => {
+    // orch-strict-grep-allow canManualCheckIn — Cycle 13b migration removes this field; reference is part of the strip logic, not active usage.
     // v1 → v2 (Cycle 13b Q1 / SPEC §4.5): drop `canManualCheckIn` from each
     // entry's permissions. The field was decorative-only in Cycle 11/12 —
     // never consumed in scan logic. Verbatim destructure ensures the key
@@ -131,6 +133,7 @@ const persistOptions: PersistOptions<
         entries: Array<{
           permissions: {
             canScan: boolean;
+            // orch-strict-grep-allow canManualCheckIn — Cycle 13b migration removes this field; reference is part of the strip logic, not active usage.
             canManualCheckIn?: boolean;
             canAcceptPayments: boolean;
           };
@@ -139,6 +142,7 @@ const persistOptions: PersistOptions<
       };
       return {
         entries: (v1.entries ?? []).map((e) => {
+          // orch-strict-grep-allow canManualCheckIn — Cycle 13b migration removes this field; reference is part of the strip logic, not active usage.
           const { canManualCheckIn: _drop, ...restPerms } = e.permissions;
           return { ...e, permissions: restPerms };
         }),

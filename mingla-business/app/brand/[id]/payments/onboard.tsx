@@ -19,21 +19,24 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandOnboardView } from "../../../../src/components/brand/BrandOnboardView";
 import { canvas } from "../../../../src/constants/designSystem";
+import { useAuth } from "../../../../src/context/AuthContext";
 import {
   useBrandList,
   useCurrentBrandStore,
-  type Brand,
 } from "../../../../src/store/currentBrandStore";
+import { useUpdateBrand } from "../../../../src/hooks/useBrands";
+import { joinBrandDescription } from "../../../../src/services/brandMapping";
 
 export default function BrandOnboardRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { user } = useAuth();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brands = useBrandList();
-  const setBrands = useCurrentBrandStore((s) => s.setBrands);
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const currentBrand = useCurrentBrandStore((s) => s.currentBrand);
+  const updateBrandMutation = useUpdateBrand();
   const brand =
     typeof idParam === "string" && idParam.length > 0
       ? brands.find((b) => b.id === idParam) ?? null
@@ -49,19 +52,30 @@ export default function BrandOnboardRoute(): React.ReactElement {
     }
   };
 
-  const handleAfterDone = (): void => {
-    if (brand === null) {
+  const handleAfterDone = async (): Promise<void> => {
+    if (brand === null || user === null || user.id === undefined) {
       handleBack();
       return;
     }
-    // Stub flow: any onboarding completion advances stripeStatus to
-    // "onboarding". Cycle 2 cannot reach "active" — only B2 webhooks
-    // advance via real Stripe verification. Smoke uses pre-seeded
-    // "active" brand (Sunday Languor) to exercise that state.
-    const next: Brand = { ...brand, stripeStatus: "onboarding" };
-    setBrands(brands.map((b) => (b.id === next.id ? next : b)));
-    if (currentBrand !== null && currentBrand.id === next.id) {
-      setCurrentBrand(next);
+    // Cycle 17e-A: useUpdateBrand mutation owns persistence + cache.
+    // Stripe-status patches via UPDATE — server is source of truth.
+    // Stub flow advances stripeStatus to "onboarding" until B2 webhooks
+    // wire real Stripe verification (then advance to "active").
+    try {
+      const updated = await updateBrandMutation.mutateAsync({
+        brandId: brand.id,
+        patch: { stripeStatus: "onboarding" },
+        existingDescription: joinBrandDescription(brand.tagline, brand.bio),
+        accountId: user.id,
+      });
+      if (currentBrand !== null && currentBrand.id === updated.id) {
+        setCurrentBrand(updated);
+      }
+    } catch (error) {
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.error("[BrandOnboardRoute] update failed:", error);
+      }
     }
     handleBack();
   };

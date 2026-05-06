@@ -14,6 +14,7 @@
 import React, { useCallback } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type {
+  PressableProps,
   PressableStateCallbackType,
   StyleProp,
   ViewStyle,
@@ -48,7 +49,19 @@ export interface IconChromeProps {
   onPress?: () => void | Promise<void>;
   size?: number;
   disabled?: boolean;
-  accessibilityLabel?: string;
+  /**
+   * Required per I-38 / I-39 (Cycle 17c). Removed `?? icon` silent fallback —
+   * every consumer must provide a human-readable label. CI gate `i39-pressable-label`
+   * enforces, TS strict-build enforces.
+   */
+  accessibilityLabel: string;
+  /**
+   * Optional override of the primitive's baked-in default `hitSlop`. The default
+   * `{top:4,bottom:4,left:4,right:4}` makes the effective touchable area `36 + 4×2 = 44`
+   * per side, satisfying WCAG AA + Apple HIG floor (per I-38, Cycle 17c §A.1).
+   * Consumer overrides honored verbatim — combined effective extent must remain ≥ 44.
+   */
+  hitSlop?: PressableProps["hitSlop"];
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
@@ -57,6 +70,8 @@ const DEFAULT_SIZE = 36;
 const ICON_SIZE_RATIO = 0.5; // 18 of 36
 const PRESS_TIMING = { duration: durations.fast } as const;
 const BADGE_SIZE = 18;
+// Cycle 17c §A.1 — effective touch area = 36 + 4×2 = 44 per side (WCAG AA + Apple HIG floor).
+const DEFAULT_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
 export const IconChrome: React.FC<IconChromeProps> = ({
   icon,
@@ -66,6 +81,7 @@ export const IconChrome: React.FC<IconChromeProps> = ({
   size = DEFAULT_SIZE,
   disabled = false,
   accessibilityLabel,
+  hitSlop = DEFAULT_HIT_SLOP,
   testID,
   style,
 }) => {
@@ -161,9 +177,10 @@ export const IconChrome: React.FC<IconChromeProps> = ({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       disabled={disabled}
+      hitSlop={hitSlop}
       accessibilityRole="button"
       accessibilityState={{ disabled }}
-      accessibilityLabel={accessibilityLabel ?? icon}
+      accessibilityLabel={accessibilityLabel}
       testID={testID}
       style={style}
     >

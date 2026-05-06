@@ -2,8 +2,24 @@
 
 **Phase:** Phase 3 — Public Surfaces
 **Estimated effort:** ~60 hrs
-**Status:** ⬜ PLACEHOLDER
+**Status:** ✅ DONE
 **Codebase:** `mingla-business/` (Expo Web variant)
+
+## What shipped
+
+- Cycle 8a (cart + buyer details): J-C1 cart with per-tier qty pickers + min/max enforcement, J-C2 buyer details (email/name/phone account-optional), J-C5 free-ticket path, anon-tolerant routes (`/checkout/{eventId}` + `/e/{brandSlug}/{eventSlug}` + `/o/{orderId}` — NO useAuth, NO sign-in redirect; codified as memory rule `feedback_anon_buyer_routes`)
+- Cycle 8b (payment + 3DS confirm): J-C6 Stripe Payment Element STUB + J-C7 order confirmation + J-C8 failed-payment retry + back-listener disarm pattern (memory rule `feedback_back_listener_disarm_pattern`)
+- Cycle 9c-2 / orderStore selector pattern v2 established (orderStoreHelpers — getById safe-subscribe / fresh-array .getState() only)
+- 2 IMPL reports: `IMPLEMENTATION_BIZ_CYCLE_8a_CART_AND_TICKETS_BUYER.md` + `IMPLEMENTATION_BIZ_CYCLE_8b_PAYMENT_3DS_CONFIRM.md`
+- 2 NEW invariants: I-21 (anon-tolerant buyer routes) + I-22 (orderStore selector discipline)
+
+## Closing notes
+
+Cycle 8 established the anon-buyer surface contract that every subsequent cycle (9 / 10 / 12) preserved. The Toast-needs-absolute-wrap memory rule (`feedback_toast_needs_absolute_wrap`) was codified during 8a's invisible-toast bug. Real Stripe payments wire in B3.
+
+---
+
+(Original `Status: ⬜ PLACEHOLDER` flipped to `✅ DONE` 2026-05-04 during epic-status backfill audit.)
 
 ## Scope
 

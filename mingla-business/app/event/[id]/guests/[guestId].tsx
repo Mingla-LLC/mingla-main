@@ -32,14 +32,14 @@ import {
 import { useScanStore } from "../../../../src/store/scanStore";
 import {
   useDoorSalesStore,
-  type DoorPaymentMethod,
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
-import { useCurrentBrandStore } from "../../../../src/store/currentBrandStore";
+import { useBrandList } from "../../../../src/store/currentBrandStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { formatGbp } from "../../../../src/utils/currency";
 import { expandTicketIds } from "../../../../src/utils/expandTicketIds";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
+import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
 
 import { DoorRefundSheet } from "../../../../src/components/door/DoorRefundSheet";
 import { Button } from "../../../../src/components/ui/Button";
@@ -104,14 +104,6 @@ const parseGuestId = (
   return null;
 };
 
-// Cycle 12 — door-sale helpers mirror the order/comp helpers above.
-const PAYMENT_METHOD_LABELS: Record<DoorPaymentMethod, string> = {
-  cash: "Cash",
-  card_reader: "Card reader",
-  nfc: "NFC tap",
-  manual: "Manual",
-};
-
 interface DoorStatusPillSpec {
   variant: "info" | "warn" | "draft" | "accent";
   label: string;
@@ -170,9 +162,11 @@ export default function GuestDetailRoute(): React.ReactElement {
       ? s.events.find((e) => e.id === eventId) ?? null
       : null,
   );
-  const brand = useCurrentBrandStore((s) =>
-    event !== null ? s.brands.find((b) => b.id === event.brandId) ?? null : null,
-  );
+  const brandList = useBrandList();
+  const brand =
+    event !== null
+      ? (brandList.find((b) => b.id === event.brandId) ?? null)
+      : null;
   const { user } = useAuth();
   const operatorAccountId = user?.id ?? "anonymous";
 

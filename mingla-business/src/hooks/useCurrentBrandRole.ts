@@ -41,7 +41,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
-import { useCurrentBrandStore } from "../store/currentBrandStore";
+import { useBrandList } from "./useBrandListShim";
 import {
   BRAND_ROLE_RANK,
   NO_MEMBERSHIP_RANK,
@@ -81,11 +81,14 @@ export const useCurrentBrandRole = (
 
   // [TRANSITIONAL] stub-mode synthesis input — read the local brand's
   // `Brand.role` so we can synthesize when the DB chain returns null for
-  // local-only stub brands. EXIT: B-cycle persists brand rows.
-  const stubBrandRole = useCurrentBrandStore((s) => {
-    if (brandId === null) return null;
-    return s.brands.find((b) => b.id === brandId)?.role ?? null;
-  });
+  // local-only stub brands. EXIT: B-cycle persists brand rows. Cycle 17e-A
+  // makes this dead code in practice (DB chain returns real values for every
+  // persisted brand) but kept as belt-and-suspenders.
+  const brandList = useBrandList();
+  const stubBrandRole =
+    brandId === null
+      ? null
+      : (brandList.find((b) => b.id === brandId)?.role ?? null);
 
   const { data, isLoading, isError } = useQuery<QueryResult>({
     queryKey: enabled
@@ -116,10 +119,13 @@ export const useCurrentBrandRole = (
       }
       // Step 2: account_owner synthesis fallback for solo operators.
       // Without this, every existing solo operator loses access on deploy.
+      // Cycle 17e-A: filter deleted_at IS NULL per I-PROPOSED-A — soft-deleted
+      // brands MUST NOT grant role synthesis to anyone (closed brand = no access).
       const { data: brandRow, error: brandErr } = await supabase
         .from("brands")
         .select("account_id")
         .eq("id", brandId)
+        .is("deleted_at", null)
         .maybeSingle();
       if (brandErr) throw brandErr;
       if (brandRow === null) {

@@ -15,7 +15,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   MINGLA_SIGNAL_IDS,
-  computeCostUsd,
+  // ORCH-0733 — computeCostUsd dropped from active import; only referenced
+  // in commented-historical Anthropic helper. Re-add if Anthropic is ever
+  // re-enabled (would also need DEC entry).
+  computeCostUsdGemini,
 } from "../_shared/photoAestheticEnums.ts";
 import {
   composeCollage,
@@ -30,10 +33,24 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ORCH-0733 — Anthropic Claude Haiku 4.5 dropped from active trial pipeline per
+// DEC-101. Constants preserved as commented historical reference for `git
+// revert`-cheap reversal if HYBRID architecture is ever revisited. DO NOT
+// re-enable without a DEC entry. Live evidence: comparison run fe15cb99
+// vs Anthropic baseline 942fbddf — Gemini 2.5 Flash matched quality at
+// −71% cost; HYBRID rejected, Gemini-only locked.
+/*
 const MODEL_ID = "claude-haiku-4-5-20251001";
 const MODEL_NAME_SHORT = "claude-haiku-4-5";
 const ANTHROPIC_VERSION = "2023-06-01";
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
+type Provider = "anthropic" | "gemini";
+*/
+
+// ORCH-0713 Gemini A/B (2026-05-05) — became sole provider per ORCH-0733.
+const GEMINI_MODEL_ID = "gemini-2.5-flash";
+const GEMINI_MODEL_NAME_SHORT = "gemini-2.5-flash";
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
 const SERPER_REVIEWS_URL = "https://google.serper.dev/reviews";
 const COLLAGE_BUCKET = "place-collages";
 // PROMPT_VERSION:
@@ -47,7 +64,17 @@ const COLLAGE_BUCKET = "place-collages";
 //       exploration, re-add Q1 as a separate one-shot fn rather than reintroducing
 //       the dual-call pattern here. Collage TARGET_SIZE shrunk 1024→768 in
 //       _shared/imageCollage.ts (companion change).
-const PROMPT_VERSION = "v3";
+//  v4 — ORCH-0733: tighter VETO discipline + contradictory-evidence weighting
+//       guidance to correct Gemini drifts surfaced in run fe15cb99 vs Anthropic
+//       v3 baseline 942fbddf. (1) Adds explicit anti-VETO examples (Mala Pata
+//       not-a-theatre is score=1-5, NOT VETO; rubric says "structural
+//       wrongness only"). (2) Adds contradictory-evidence section: places like
+//       Anthony's Runway 84 are romantic anchors despite "loud" reviews; score
+//       the place's POSITIONING + AMBIANCE, not review-mood swings. Operator-
+//       anchored fact: Anthony's IS a nice romantic dinner spot. Also: this
+//       version coincides with Anthropic provider being dropped from the trial
+//       pipeline; Gemini 2.5 Flash is now the sole provider per DEC-101.
+const PROMPT_VERSION = "v4";
 const COST_GUARD_USD = 5.0;
 
 // Anthropic rate-limit throttle (per Phase 1 pattern + bigger payloads)
@@ -71,8 +98,12 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-// ─── Anthropic call helper with retry ───────────────────────────────────────
-
+// ─── Anthropic call helper with retry — DEPRECATED (ORCH-0733) ──────────────
+// Preserved as commented historical reference for `git revert`-cheap reversal.
+// Anthropic dropped from trial pipeline per DEC-101 after Gemini A/B comparison.
+// DO NOT re-enable without a DEC entry. Constants (MODEL_ID, ANTHROPIC_VERSION,
+// ANTHROPIC_MESSAGES_URL) are also commented above.
+/*
 interface AnthropicUsage {
   input_tokens: number;
   output_tokens: number;
@@ -117,6 +148,72 @@ async function callAnthropicWithRetry(
   const payload = await res!.json();
   const usage: AnthropicUsage = payload?.usage || { input_tokens: 0, output_tokens: 0 };
   return { payload, usage };
+}
+*/
+
+// ─── Gemini call helper with retry (ORCH-0713 A/B comparison) ───────────────
+
+interface GeminiUsage {
+  promptTokenCount: number;
+  candidatesTokenCount: number;
+}
+
+async function callGeminiWithRetry(
+  apiKey: string,
+  reqBody: Record<string, unknown>,
+): Promise<{ payload: any; usage: GeminiUsage }> {
+  let lastErrText = "";
+  let res: Response;
+  // Gemini uses ?key=<API_KEY> query param auth (also supports x-goog-api-key header).
+  const url = `${GEMINI_API_URL}?key=${encodeURIComponent(apiKey)}`;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reqBody),
+    });
+
+    if (res.ok) break;
+
+    const status = res.status;
+    lastErrText = await res.text();
+    const isRetryable = status === 429 || (status >= 500 && status < 600);
+    if (!isRetryable || attempt === MAX_ATTEMPTS) {
+      throw new Error(`Gemini ${status}: ${lastErrText.slice(0, 500)}`);
+    }
+    const retryAfter = res.headers.get("retry-after");
+    const retryAfterMs = retryAfter ? Math.min(60_000, Math.max(1_000, Number(retryAfter) * 1000)) : 0;
+    const backoffMs = retryAfterMs || (BASE_BACKOFF_MS * Math.pow(2, attempt - 1));
+    console.log(`[place-intel-trial] Gemini ${status} attempt ${attempt}/${MAX_ATTEMPTS}, sleeping ${backoffMs}ms`);
+    await new Promise((r) => setTimeout(r, backoffMs));
+  }
+
+  if (!res!.ok) throw new Error(`Gemini exhausted retries: ${lastErrText.slice(0, 500)}`);
+
+  const payload = await res!.json();
+  const usage: GeminiUsage = payload?.usageMetadata
+    ? {
+        promptTokenCount: payload.usageMetadata.promptTokenCount || 0,
+        candidatesTokenCount: payload.usageMetadata.candidatesTokenCount || 0,
+      }
+    : { promptTokenCount: 0, candidatesTokenCount: 0 };
+  return { payload, usage };
+}
+
+// Fetch a public URL and return base64-encoded bytes for Gemini inline_data.
+async function fetchAsBase64(url: string): Promise<{ base64: string; mimeType: string }> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Collage fetch failed ${res.status}: ${url.slice(0, 80)}`);
+  const contentType = res.headers.get("content-type") || "image/png";
+  const buf = new Uint8Array(await res.arrayBuffer());
+  // Encode to base64 (Deno-native — chunk to avoid stack overflow on large arrays)
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < buf.length; i += chunkSize) {
+    binary += String.fromCharCode(...buf.subarray(i, i + chunkSize));
+  }
+  const base64 = btoa(binary);
+  return { base64, mimeType: contentType };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -182,10 +279,12 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+    // ORCH-0733 — Anthropic dropped from trial pipeline; Gemini 2.5 Flash is sole provider per DEC-101.
+    // ANTHROPIC_API_KEY env var no longer required (helpers preserved as commented historical reference).
+    const geminiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
     const serperKey = Deno.env.get("SERPER_API_KEY") ?? "";
 
-    if (!anthropicKey) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+    if (!geminiKey) return json({ error: "GEMINI_API_KEY not configured" }, 500);
     if (!serperKey) return json({ error: "SERPER_API_KEY not configured" }, 500);
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -195,11 +294,25 @@ serve(async (req: Request) => {
 
     if (!body.action) {
       return json({
-        error: "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial'",
+        error: "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial' | 'process_chunk' | 'list_active_runs'",
       }, 400);
     }
 
-    // Auth gate (admin only)
+    // ORCH-0737: process_chunk is service-role-only (called by pg_cron via pg_net).
+    // Skip user-auth gate; rely on service-role bearer match instead.
+    if (body.action === "process_chunk") {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return json({ error: "Missing authorization" }, 401);
+      }
+      const token = authHeader.replace("Bearer ", "");
+      if (token !== supabaseServiceKey) {
+        return json({ error: "process_chunk requires service-role auth" }, 403);
+      }
+      return await handleProcessChunk(supabaseAdmin, body, geminiKey, serperKey);
+    }
+
+    // Auth gate (admin only) for all other actions
     const authHeader = req.headers.get("Authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return json({ error: "Missing authorization" }, 401);
@@ -217,19 +330,21 @@ serve(async (req: Request) => {
 
     switch (body.action) {
       case "preview_run":
-        return await handlePreviewRun(supabaseAdmin);
+        return await handlePreviewRun(supabaseAdmin, body);
       case "fetch_reviews":
         return await handleFetchReviews(supabaseAdmin, body, serperKey);
       case "compose_collage":
         return await handleComposeCollage(supabaseAdmin, body);
       case "start_run":
-        return await handleStartRun(supabaseAdmin, body, user.id);
+        return await handleStartRun(supabaseAdmin, body, adminRow.id, supabaseServiceKey);
       case "run_trial_for_place":
-        return await handleRunTrialForPlace(supabaseAdmin, body, anthropicKey);
+        return await handleRunTrialForPlace(supabaseAdmin, body, geminiKey);
       case "run_status":
         return await handleRunStatus(supabaseAdmin, body);
       case "cancel_trial":
-        return await handleCancelTrial(supabaseAdmin, body);
+        return await handleCancelTrial(supabaseAdmin, body, adminRow.id);
+      case "list_active_runs":
+        return await handleListActiveRuns(supabaseAdmin);
       default:
         return json({ error: `Unknown action: ${body.action}` }, 400);
     }
@@ -240,43 +355,71 @@ serve(async (req: Request) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// preview_run
+// preview_run — ORCH-0734 city-scoped sampled-sync
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function handlePreviewRun(db: SupabaseClient): Promise<Response> {
-  const { data, error } = await db
-    .from("signal_anchors")
-    .select("id, signal_id, anchor_index, place_pool_id, committed_at")
-    .not("committed_at", "is", null);
-  if (error) return json({ error: error.message }, 500);
+const PER_PLACE_COST_USD = 0.0040; // ORCH-0734 — measured on run e15f5d8f (32 anchors → $0.1292)
+const SAMPLE_SIZE_DEFAULT = 200;
+const SAMPLE_SIZE_MIN = 50;
+const SAMPLE_SIZE_MAX = 500;
 
-  const committed = data || [];
-  const totalPlaces = committed.length;
-  const expectedPlaces = MINGLA_SIGNAL_IDS.length * 2;
-  // ~$0.045 per place (Q1 + Q2 combined); see spec §F10
-  const estimatedCostUsd = +(totalPlaces * 0.045).toFixed(4);
+async function handlePreviewRun(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const cityId = body.city_id;
+  if (!cityId || typeof cityId !== "string") {
+    return json({ error: "city_id required (uuid)" }, 400);
+  }
+
+  const sampleSizeRaw = body.sample_size ?? SAMPLE_SIZE_DEFAULT;
+  const sampleSize = typeof sampleSizeRaw === "number" && Number.isInteger(sampleSizeRaw)
+    ? sampleSizeRaw
+    : NaN;
+  if (!Number.isInteger(sampleSize) || sampleSize < SAMPLE_SIZE_MIN || sampleSize > SAMPLE_SIZE_MAX) {
+    return json({
+      error: `sample_size must be integer ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX} (default ${SAMPLE_SIZE_DEFAULT})`,
+    }, 400);
+  }
+
+  const { data: city, error: cityErr } = await db
+    .from("seeding_cities")
+    .select("id, name, country")
+    .eq("id", cityId)
+    .maybeSingle();
+  if (cityErr) return json({ error: cityErr.message }, 500);
+  if (!city) return json({ error: "city_id does not exist in seeding_cities" }, 400);
+
+  const { count, error: countErr } = await db
+    .from("place_pool")
+    .select("id", { count: "exact", head: true })
+    .eq("is_servable", true)
+    .eq("city_id", cityId);
+  if (countErr) return json({ error: countErr.message }, 500);
+  const totalServable = count ?? 0;
+
+  if (totalServable === 0) {
+    return json({ error: "No servable places in city" }, 400);
+  }
+
+  const effectiveSampleSize = Math.min(sampleSize, totalServable);
+  const estimatedCostUsd = +(effectiveSampleSize * PER_PLACE_COST_USD).toFixed(4);
+
+  if (estimatedCostUsd > COST_GUARD_USD) {
+    return json({
+      error: `cost guard tripped: estimated $${estimatedCostUsd.toFixed(2)} > $${COST_GUARD_USD}`,
+    }, 400);
+  }
 
   return json({
-    totalPlaces,
-    expectedPlaces,
-    fullyCommitted: totalPlaces === expectedPlaces,
+    cityId: city.id,
+    cityName: city.name,
+    cityCountry: city.country,
+    totalServable,
+    effectiveSampleSize,
     estimatedCostUsd,
     costGuardUsd: COST_GUARD_USD,
-    perSignal: aggregateBySignal(committed),
   });
-}
-
-function aggregateBySignal(rows: Array<{ signal_id: string; anchor_index: number }>) {
-  const out: Record<string, { committed: number; missing: number[] }> = {};
-  for (const sid of MINGLA_SIGNAL_IDS) {
-    out[sid] = { committed: 0, missing: [1, 2] };
-  }
-  for (const r of rows) {
-    if (!out[r.signal_id]) continue;
-    out[r.signal_id].committed++;
-    out[r.signal_id].missing = out[r.signal_id].missing.filter((i) => i !== r.anchor_index);
-  }
-  return out;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -509,54 +652,217 @@ async function handleComposeCollage(
 
 async function handleStartRun(
   db: SupabaseClient,
-  _body: Record<string, unknown>,
-  userId: string,
+  body: Record<string, unknown>,
+  adminId: string,
+  serviceKey: string,
 ): Promise<Response> {
-  const { data: anchors, error: anchErr } = await db
-    .from("signal_anchors")
-    .select("place_pool_id, signal_id, anchor_index")
-    .not("committed_at", "is", null)
-    .order("signal_id");
-  if (anchErr) return json({ error: anchErr.message }, 500);
-  if (!anchors || anchors.length === 0) {
-    return json({ error: "no committed anchors — pick anchors first" }, 400);
+  // ORCH-0734 — city-scoped sampled-sync. Operator picks city + sample size;
+  // edge fn loads servable places via stratified random sample (top half by
+  // review_count + random fill of bottom half), pre-inserts pending rows.
+  // Per DEC-102: Gemini 2.5 Flash sole provider. No provider param.
+  //
+  // ORCH-0737 — added mode='sample'|'full_city' field. full_city mode skips
+  // stratified sampling (takes all servable rows), inserts parent row in
+  // place_intelligence_runs, kicks first chunk via pg_net for immediate start
+  // (don't wait for next pg_cron tick), and runs durably server-side.
+
+  const cityId = body.city_id;
+  if (!cityId || typeof cityId !== "string") {
+    return json({ error: "city_id required (uuid)" }, 400);
   }
 
-  // Cost guard (estimate only; actual usage tracked per-place)
-  const estCost = anchors.length * 0.045;
+  // ORCH-0737: mode field; default to 'sample' for backward compat
+  const mode = (body.mode as string) ?? "sample";
+  if (mode !== "sample" && mode !== "full_city") {
+    return json({ error: "mode must be 'sample' or 'full_city'" }, 400);
+  }
+
+  // sample_size only required for sample mode; full_city ignores it
+  let sampleSize: number | null = null;
+  if (mode === "sample") {
+    const sampleSizeRaw = body.sample_size ?? SAMPLE_SIZE_DEFAULT;
+    sampleSize = typeof sampleSizeRaw === "number" && Number.isInteger(sampleSizeRaw)
+      ? sampleSizeRaw
+      : NaN;
+    if (!Number.isInteger(sampleSize) || sampleSize < SAMPLE_SIZE_MIN || sampleSize > SAMPLE_SIZE_MAX) {
+      return json({
+        error: `sample_size must be integer ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX} (default ${SAMPLE_SIZE_DEFAULT})`,
+      }, 400);
+    }
+  }
+
+  // Validate city exists
+  const { data: city, error: cityErr } = await db
+    .from("seeding_cities")
+    .select("id, name, country")
+    .eq("id", cityId)
+    .maybeSingle();
+  if (cityErr) return json({ error: cityErr.message }, 500);
+  if (!city) return json({ error: "city_id does not exist in seeding_cities" }, 400);
+
+  // Load all servable place IDs for the city, ranked by review_count desc
+  const { data: pool, error: poolErr } = await db
+    .from("place_pool")
+    .select("id, review_count")
+    .eq("is_servable", true)
+    .eq("city_id", cityId)
+    .order("review_count", { ascending: false, nullsFirst: false });
+  if (poolErr) return json({ error: poolErr.message }, 500);
+  if (!pool || pool.length === 0) {
+    return json({ error: "No servable places in city" }, 400);
+  }
+
+  const totalServable = pool.length;
+  const effectiveCount = mode === "full_city"
+    ? totalServable
+    : Math.min(sampleSize as number, totalServable);
+
+  // ORCH-0737: full_city mode takes ALL servable rows; sample mode uses stratified random.
+  let sampledIds: string[];
+  if (mode === "full_city") {
+    sampledIds = pool.map((p) => p.id);
+  } else {
+    // Stratified random: top half by review_count + random fill of bottom half.
+    const topHalfCount = Math.ceil(effectiveCount / 2);
+    const bottomFillCount = effectiveCount - topHalfCount;
+    const topHalfIds = pool.slice(0, topHalfCount).map((p) => p.id);
+    const remaining = pool.slice(topHalfCount).map((p) => p.id);
+    // Fisher-Yates shuffle for the random-fill portion
+    for (let i = remaining.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [remaining[i], remaining[j]] = [remaining[j], remaining[i]];
+    }
+    const bottomFillIds = remaining.slice(0, bottomFillCount);
+    sampledIds = [...topHalfIds, ...bottomFillIds];
+  }
+
+  const estCost = +(effectiveCount * PER_PLACE_COST_USD).toFixed(4);
+
+  // ORCH-0737: cost guard. Sample mode: hard reject above $5.
+  // full_city mode: requires confirm_high_cost=true body field for cost > $5
+  // (admin UI surfaces a double-confirm dialog before sending this).
   if (estCost > COST_GUARD_USD) {
-    return json({
-      error: `cost guard tripped: estimated $${estCost.toFixed(2)} > $${COST_GUARD_USD}`,
-    }, 400);
+    if (mode === "sample") {
+      return json({
+        error: `cost guard tripped: estimated $${estCost.toFixed(2)} > $${COST_GUARD_USD}`,
+      }, 400);
+    }
+    if (mode === "full_city" && body.confirm_high_cost !== true) {
+      return json({
+        error: "cost_above_guard",
+        estimated_cost_usd: estCost,
+        cost_guard_usd: COST_GUARD_USD,
+        message: `Full-city run exceeds $${COST_GUARD_USD} cost guard. Resubmit with confirm_high_cost=true to override.`,
+      }, 400);
+    }
   }
 
-  const runId = crypto.randomUUID();
-  console.log(`[place-intel-trial:start_run] creating run ${runId} for ${anchors.length} places (userId=${userId})`);
+  const estMinutes = Math.ceil(effectiveCount * 30 / 60);                   // 30s per place wallclock estimate
 
-  const pendingRows = anchors.map((a) => ({
+  // ORCH-0737: insert parent row FIRST so child FK can reference it.
+  // Unique partial index on (city_id) WHERE status IN ('pending','running','cancelling')
+  // returns 23505 if a run is already active for this city.
+  const runId = crypto.randomUUID();
+  const { error: parentInsertErr } = await db
+    .from("place_intelligence_runs")
+    .insert({
+      id: runId,
+      city_id: cityId,
+      city_name: city.name,
+      mode,
+      sample_size: mode === "sample" ? effectiveCount : null,
+      total_count: effectiveCount,
+      estimated_cost_usd: estCost,
+      estimated_minutes: estMinutes,
+      prompt_version: PROMPT_VERSION,
+      model: GEMINI_MODEL_NAME_SHORT,
+      started_by: adminId,
+      status: "running",
+      started_at: new Date().toISOString(),
+    });
+
+  if (parentInsertErr) {
+    // 23505 unique violation = one already running for this city
+    if (parentInsertErr.code === "23505") {
+      return json({
+        error: "concurrent_run",
+        message: `A run is already in progress for ${city.name}. Cancel it first or wait for it to complete.`,
+      }, 409);
+    }
+    return json({ error: `parent insert failed: ${parentInsertErr.message}` }, 500);
+  }
+
+  console.log(
+    `[place-intel-trial:start_run] mode=${mode} city=${city.name} (${cityId}) ` +
+    `count=${effectiveCount}/${totalServable} run=${runId} adminId=${adminId}`,
+  );
+
+  // Pre-insert pending child rows with parent_run_id set.
+  const pendingRows = sampledIds.map((ppId) => ({
     run_id: runId,
-    place_pool_id: a.place_pool_id,
-    signal_id: a.signal_id,
-    anchor_index: a.anchor_index,
+    parent_run_id: runId,                                                   // ORCH-0737 NEW
+    place_pool_id: ppId,
+    city_id: cityId,
+    signal_id: null,
+    anchor_index: null,
     input_payload: {},
     status: "pending",
     prompt_version: PROMPT_VERSION,
-    model: MODEL_NAME_SHORT,
+    model: GEMINI_MODEL_NAME_SHORT,
+    retry_count: 0,
   }));
   const { error: insertErr } = await db
     .from("place_intelligence_trial_runs")
-    .insert(pendingRows);
-  if (insertErr) return json({ error: insertErr.message }, 500);
+    .upsert(pendingRows, { onConflict: "run_id,place_pool_id" });
+  if (insertErr) {
+    // Roll back parent row to keep DB consistent
+    await db.from("place_intelligence_runs")
+      .update({ status: "failed", error_reason: `child insert failed: ${insertErr.message}`, completed_at: new Date().toISOString() })
+      .eq("id", runId);
+    return json({ error: insertErr.message }, 500);
+  }
+
+  // ORCH-0737: full_city mode kicks the first chunk immediately via pg_net
+  // (don't wait for next pg_cron tick which could be up to 60s away).
+  // Sample mode skips this; browser drives the loop.
+  if (mode === "full_city" && serviceKey) {
+    try {
+      const workerUrl = `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/run-place-intelligence-trial`;
+      // fire-and-forget; intentional. Worker writes status to DB.
+      fetch(workerUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ action: "process_chunk", run_id: runId }),
+      }).catch((err) => {
+        console.error(`[start_run] first-chunk kick failed (cron will retry): ${err.message}`);
+      });
+    } catch (err) {
+      // Non-fatal: pg_cron tick (within 60s) will pick up the run.
+      console.error(`[start_run] first-chunk kick threw: ${err}`);
+    }
+  }
 
   return json({
     runId,
-    totalPlaces: anchors.length,
-    estimatedCostUsd: +estCost.toFixed(4),
-    anchors: anchors.map((a) => ({
-      place_pool_id: a.place_pool_id,
-      signal_id: a.signal_id,
-      anchor_index: a.anchor_index,
-    })),
+    cityId: city.id,
+    cityName: city.name,
+    cityCountry: city.country,
+    mode,                                                                   // ORCH-0737 NEW
+    totalServable,
+    totalPlaces: effectiveCount,
+    estimatedCostUsd: estCost,
+    estimatedMinutes: estMinutes,                                           // ORCH-0737 NEW
+    provider: "gemini",
+    model: GEMINI_MODEL_NAME_SHORT,
+    // Browser-loop compat: only return anchors for sample mode (since browser
+    // still drives sample loop). Full-city mode returns empty array — browser
+    // becomes status viewer via polling.
+    anchors: mode === "sample"
+      ? sampledIds.map((ppId) => ({ place_pool_id: ppId, signal_id: null }))
+      : [],
   });
 }
 
@@ -568,21 +874,27 @@ async function handleStartRun(
 async function handleRunTrialForPlace(
   db: SupabaseClient,
   body: Record<string, unknown>,
-  anthropicKey: string,
+  geminiKey: string,
 ): Promise<Response> {
+  // ORCH-0733 — Anthropic dropped; provider param removed. Gemini 2.5 Flash always.
+  // ORCH-0734 — signal_id and anchor_index are now optional (null for city-runs;
+  // legacy 32-anchor callers may still send them but they're not required).
   const runId = body.run_id as string;
   const placePoolId = body.place_pool_id as string;
-  const signalId = body.signal_id as string;
-  const anchorIndex = body.anchor_index as number;
+  const signalId = (body.signal_id ?? null) as string | null;
+  const anchorIndex = (body.anchor_index ?? null) as number | null;
 
-  if (!runId || !placePoolId || !signalId || anchorIndex == null) {
-    return json({ error: "run_id, place_pool_id, signal_id, anchor_index all required" }, 400);
+  if (!geminiKey) {
+    return json({ error: "GEMINI_API_KEY not configured (operator: `supabase secrets set GEMINI_API_KEY=...`)" }, 500);
+  }
+  if (!runId || !placePoolId) {
+    return json({ error: "run_id, place_pool_id required" }, 400);
   }
 
   try {
     const cost = await processOnePlace({
       db,
-      anthropicKey,
+      geminiKey,
       runId,
       anchor: { place_pool_id: placePoolId, signal_id: signalId, anchor_index: anchorIndex },
     });
@@ -609,17 +921,19 @@ async function handleRunTrialForPlace(
 
 interface AnchorRow {
   place_pool_id: string;
-  signal_id: string;
-  anchor_index: number;
+  // ORCH-0734 — signal_id + anchor_index nullable (city-runs places have no anchor metadata).
+  signal_id: string | null;
+  anchor_index: number | null;
 }
 
 async function processOnePlace(args: {
   db: SupabaseClient;
-  anthropicKey: string;
+  geminiKey: string;
   runId: string;
   anchor: AnchorRow;
 }): Promise<number> {
-  const { db, anthropicKey, runId, anchor } = args;
+  // ORCH-0733 — Anthropic dropped; Gemini 2.5 Flash sole provider.
+  const { db, geminiKey, runId, anchor } = args;
 
   // Mark running
   await db
@@ -678,17 +992,20 @@ async function processOnePlace(args: {
     prompt_version: PROMPT_VERSION,
   };
 
-  // ORCH-0713 v3 — Q2 only. Q1 removed (research-only, harvested into signal-lab/PROPOSALS.md).
-  const { aggregate: q2, totalCostUsd: q2Cost } = await callQuestion({
-    apiKey: anthropicKey,
+  // ORCH-0733 — Q2 only via Gemini 2.5 Flash (sole provider).
+  // Q1 removed in v3 (harvested research into signal-lab/PROPOSALS.md).
+  // Anthropic dropped in v4 (commented-preserved helpers above for `git revert`).
+  // ORCH-0734 — `retried` field surfaces when MALFORMED_FUNCTION_CALL forced retry.
+  const { aggregate: q2, totalCostUsd: q2Cost, retried } = await callGeminiQuestion({
+    apiKey: geminiKey,
     systemPrompt,
     userTextBlock,
     collageUrl: pp.photo_collage_url,
     tool: Q2_TOOL,
-    cacheSystem: true,
   });
 
-  // Persist. q1_response is nullable (verified) → write null on v3 runs.
+  // Persist. q1_response is nullable (verified) → write null on v3+ runs.
+  // ORCH-0734 — retry_count tracks Gemini MALFORMED_FUNCTION_CALL retries (0 or 1).
   await db
     .from("place_intelligence_trial_runs")
     .update({
@@ -699,8 +1016,9 @@ async function processOnePlace(args: {
       q2_response: q2,
       cost_usd: +q2Cost.toFixed(6),
       status: "completed",
-      model: MODEL_NAME_SHORT,
-      model_version: MODEL_ID,
+      model: GEMINI_MODEL_NAME_SHORT,
+      model_version: GEMINI_MODEL_ID,
+      retry_count: retried ? 1 : 0,
       completed_at: new Date().toISOString(),
     })
     .eq("run_id", runId)
@@ -709,6 +1027,12 @@ async function processOnePlace(args: {
   return q2Cost;
 }
 
+// ─── Anthropic Q2 wrapper — DEPRECATED (ORCH-0733) ──────────────────────────
+// Preserved as commented historical reference for `git revert`-cheap reversal.
+// Anthropic dropped from trial pipeline per DEC-101 after Gemini A/B comparison.
+// DO NOT re-enable without a DEC entry. Helpers (callAnthropicWithRetry,
+// AnthropicUsage) are also commented above.
+/*
 async function callQuestion(args: {
   apiKey: string;
   systemPrompt: string;
@@ -758,6 +1082,127 @@ async function callQuestion(args: {
   });
 
   return { aggregate, totalCostUsd: cost };
+}
+*/
+
+// ─── Gemini equivalent of callQuestion (ORCH-0713 A/B comparison) ───────────
+// Same inputs (system prompt, user text block, collage URL, Q2 tool schema).
+// Translates to Gemini's request format:
+//   - System prompt → systemInstruction
+//   - User text block → contents[0].parts[].text
+//   - Collage URL → fetched + base64-encoded → contents[0].parts[].inline_data
+//     (Gemini does NOT fetch URLs; we must encode bytes locally)
+//   - Q2 tool input_schema → tools[0].function_declarations[0].parameters
+//     (Gemini accepts standard JSON Schema verbatim)
+//   - tool_choice → toolConfig.functionCallingConfig with mode=ANY +
+//     allowedFunctionNames
+//
+// Response parsing: candidates[0].content.parts[i].functionCall.{name, args}
+// where args matches the tool's input_schema (same shape as Anthropic's
+// tool_use.input).
+
+// ORCH-0734 — retry-once on MALFORMED_FUNCTION_CALL. Gemini returns HTTP 200
+// with a malformed payload ~3% of the time; bit-identical retry usually
+// succeeds (live evidence: Harris Teeter / flowers failed in run e15f5d8f
+// but same row succeeded in v3 run fe15cb99). HTTP-level retry is handled
+// upstream in callGeminiWithRetry; this layer handles the structured-output
+// flake specifically.
+const MAX_MALFORMED_RETRIES = 1;
+
+async function callGeminiQuestion(args: {
+  apiKey: string;
+  systemPrompt: string;
+  userTextBlock: string;
+  collageUrl: string;
+  tool: typeof Q2_TOOL;
+}): Promise<{ aggregate: any; totalCostUsd: number; retried: boolean }> {
+  const { apiKey, systemPrompt, userTextBlock, collageUrl, tool } = args;
+
+  // Fetch + base64-encode collage (Gemini inline_data requires bytes; URL fetch unsupported)
+  const { base64, mimeType } = await fetchAsBase64(collageUrl);
+
+  const reqBody = {
+    contents: [{
+      role: "user",
+      parts: [
+        { inline_data: { mime_type: mimeType, data: base64 } },
+        { text: userTextBlock },
+      ],
+    }],
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    tools: [{
+      function_declarations: [{
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.input_schema,
+      }],
+    }],
+    toolConfig: {
+      functionCallingConfig: {
+        mode: "ANY",
+        allowedFunctionNames: [tool.name],
+      },
+    },
+    generationConfig: {
+      // ORCH-0732 — bumped 2000 → 8000. The Q2 tool emits 16 evaluations
+      // × ~150 tokens reasoning each ≈ 2400 tokens needed. The previous
+      // 2000 cap truncated the function call mid-response, surfaced as
+      // finishReason=MALFORMED_FUNCTION_CALL on every place. Live evidence:
+      // run 064c6133 (5/5 attempts failed identically). 8000 gives ~3x
+      // headroom; Gemini 2.5 Flash supports up to 64K output tokens.
+      maxOutputTokens: 8000,
+      temperature: 0.3,
+    },
+  };
+
+  // ORCH-0734 — retry-once loop on MALFORMED_FUNCTION_CALL. Cost accumulates
+  // across both attempts (Gemini bills for failed completions). On retry
+  // success, the cost field reflects combined tokens for honest reporting.
+  let totalCost = 0;
+  let lastFinishReason: string | null = null;
+  let attempt = 0;
+
+  while (attempt <= MAX_MALFORMED_RETRIES) {
+    attempt++;
+    const { payload, usage } = await callGeminiWithRetry(apiKey, reqBody);
+    totalCost += computeCostUsdGemini({
+      promptTokens: usage.promptTokenCount,
+      candidatesTokens: usage.candidatesTokenCount,
+    });
+
+    const candidates = payload?.candidates || [];
+    if (candidates.length === 0) {
+      throw new Error("Gemini returned no candidates");
+    }
+    const finishReason = candidates[0]?.finishReason || "unknown";
+    const parts = candidates[0]?.content?.parts || [];
+    const fnCallPart = parts.find(
+      (p: { functionCall?: { name?: string } }) => p.functionCall?.name === tool.name,
+    );
+
+    if (fnCallPart?.functionCall?.args) {
+      // Success — return aggregate. retried=true if we needed >1 attempt.
+      return {
+        aggregate: fnCallPart.functionCall.args,
+        totalCostUsd: totalCost,
+        retried: attempt > 1,
+      };
+    }
+
+    lastFinishReason = finishReason;
+    // Only retry on MALFORMED_FUNCTION_CALL (the known intermittent flake).
+    // Other finish reasons (SAFETY, RECITATION, MAX_TOKENS, etc.) are
+    // not retry-friendly with the same prompt — fail fast.
+    if (finishReason !== "MALFORMED_FUNCTION_CALL" || attempt > MAX_MALFORMED_RETRIES) {
+      throw new Error(`Gemini returned no function_call for ${tool.name} (finishReason=${finishReason})`);
+    }
+    console.log(
+      `[place-intel-trial] MALFORMED_FUNCTION_CALL retry attempt ${attempt + 1}/${MAX_MALFORMED_RETRIES + 1}`,
+    );
+    // Loop continues for retry with same reqBody.
+  }
+
+  throw new Error(`Gemini retry exhausted (finishReason=${lastFinishReason})`);
 }
 
 function buildSystemPrompt(): string {
@@ -810,7 +1255,31 @@ function buildSystemPrompt(): string {
     "DO NOT use inappropriate_for for 'place is not a destination for this signal' — that's a low score (1-29).",
     "When in doubt, prefer a low score over inappropriate_for.",
     "",
-    "Examples to calibrate:",
+    "# CRITICAL — anti-VETO examples (ORCH-0733 — fixes Gemini over-VETO drift)",
+    "The following cases MUST be LOW SCORES (1-15), NOT VETO. Restaurants that aren't a particular cuisine, indoor venues that aren't outdoor, casual venues that aren't upscale — ALL are LOW SCORES, not VETOs. VETO is reserved for STRUCTURAL business-model wrongness only.",
+    "  - Mala Pata Molino + Cocina / `theatre` → score 1-5, NOT VETO (it's a restaurant, not a theatre — that's a fit gap, not structural wrongness)",
+    "  - Mala Pata / `play` → score 1-5, NOT VETO (restaurant, not arcade)",
+    "  - Mala Pata / `groceries` → score 1-15, NOT VETO (restaurant, not grocery store)",
+    "  - Mala Pata / `picnic_friendly` → score 1-10, NOT VETO (no picnic lawn)",
+    "  - Mala Pata / `nature` → score 1-5, NOT VETO (commercial complex location)",
+    "  - Mala Pata / `flowers` → score 1-5, NOT VETO (no floral retail; tangential decor doesn't matter)",
+    "  - Wang's Kitchen / `fine_dining` → score 1-15, NOT VETO (casual cheap restaurant; not fine dining is a fit gap, not structural wrongness)",
+    "  - Big Ed's City Market / `nature` → score 1-10, NOT VETO (indoor restaurant)",
+    "  - Taza Grill / `creative_arts` → score 1-10, NOT VETO (restaurant; tangential art doesn't matter)",
+    "  - National Gallery / `nature` → score 1-10, NOT VETO (indoor museum on a square)",
+    "",
+    "# WEIGHING CONTRADICTORY EVIDENCE (ORCH-0733 — fixes Gemini negative-review over-weighting)",
+    "When reviews contain BOTH positive ambiance markers AND negative caveats (noise, service inconsistency, crowding), DO NOT let one negative review theme collapse the score. The signal asks: 'is this place a destination for X?' Score the place's CORE IDENTITY + STRUCTURAL OFFERING + POSITIONING — not review-mood swings.",
+    "",
+    "Examples of correct contradictory-evidence weighting:",
+    "  - Anthony's Runway 84 / `romantic` → score 70-80. Reviews say 'loud, chaotic supper club' AND 'candle-lit, occasion-dining, anniversary destination, fine plating, wine program.' The romantic signal is about INTENT + AMBIANCE + occasion-positioning, NOT silence. Anthony's IS a nice romantic dinner spot — operator-anchored fact.",
+    "  - A 'lively' venue with 'sometimes inconsistent service' reviews still scores 80-95 for `lively` if the energy + crowd + music are present. Service caveats deduct ~5-10, NOT 30.",
+    "  - A 'fine dining' venue with 'expensive but uneven service' reviews still scores 75-90 for `fine_dining` if tasting menu / sommelier / formal plating exist. Bad-service reviews deduct ~5-10, NOT collapse to weak-fit.",
+    "  - Restaurants with mixed reviews about wait times still score 70-90 for `casual_food` if the food is well-reviewed.",
+    "",
+    "Negative caveats reduce the score by 5-15 points typically; they DO NOT drop a place from 'strong fit' (70-89) to 'weak' (30-49). Use the FULL rubric range and prioritize the place's core identity + structural offering over review-mood swings.",
+    "",
+    "Examples to calibrate (positive anchors + edge cases):",
     "  - Bayfront Floral & Event Design / `flowers` → inappropriate_for=true, score=0 (event-only; Mingla flowers signal is grab-and-go)",
     "  - Harris Teeter / `flowers` → inappropriate_for=false, score 55-70 (real grocery flower aisle)",
     "  - Mala Pata Molino + Cocina / `groceries` → inappropriate_for=false, score 1-15 (restaurant, not grocery — low fit but not structurally wrong)",
@@ -818,6 +1287,8 @@ function buildSystemPrompt(): string {
     "  - National Gallery / `casual_food` → inappropriate_for=false, score 1-15 (museum cafe might exist; not a food destination)",
     "  - Lekki Conservation Centre / `nature` → inappropriate_for=false, score 90-100",
     "  - Lekki Conservation Centre / `fine_dining` → inappropriate_for=false, score 1-10 (no fine_dining at the preserve)",
+    "  - Anthony's Runway 84 / `romantic` → inappropriate_for=false, score 70-80 (operator-anchored romantic destination; review noise is a deduction, NOT a verdict)",
+    "  - Calusso / `brunch` → inappropriate_for=true, score=0 (serves_brunch=false explicit + dinner-only hours = STRUCTURAL wrongness)",
   ].join("\n");
 }
 
@@ -911,6 +1382,15 @@ function buildUserTextBlock(
 async function handleRunStatus(db: SupabaseClient, body: Record<string, unknown>): Promise<Response> {
   const runId = body.run_id as string;
   if (!runId) return json({ error: "run_id required" }, 400);
+
+  // ORCH-0737: include parent run-level state alongside per-place rows.
+  // Pre-ORCH-0737 runs have no parent row → parent will be null; UI handles.
+  const { data: parent } = await db
+    .from("place_intelligence_runs")
+    .select("*")
+    .eq("id", runId)
+    .maybeSingle();
+
   const { data, error } = await db
     .from("place_intelligence_trial_runs")
     .select("place_pool_id, signal_id, anchor_index, status, cost_usd, error_message, started_at, completed_at, reviews_count")
@@ -920,6 +1400,7 @@ async function handleRunStatus(db: SupabaseClient, body: Record<string, unknown>
   const rows = data || [];
   return json({
     runId,
+    parent,                                                                 // ORCH-0737 NEW
     totalPlaces: rows.length,
     statusCounts: {
       pending: rows.filter((r) => r.status === "pending").length,
@@ -933,14 +1414,372 @@ async function handleRunStatus(db: SupabaseClient, body: Record<string, unknown>
   });
 }
 
-async function handleCancelTrial(db: SupabaseClient, body: Record<string, unknown>): Promise<Response> {
+async function handleCancelTrial(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+  adminId: string,
+): Promise<Response> {
   const runId = body.run_id as string;
   if (!runId) return json({ error: "run_id required" }, 400);
-  const { error } = await db
-    .from("place_intelligence_trial_runs")
-    .update({ status: "cancelled", completed_at: new Date().toISOString() })
-    .eq("run_id", runId)
-    .in("status", ["pending", "running"]);
+
+  // ORCH-0737: signal cancellation at run-level. Worker checks status at
+  // chunk start and finalizes 'cancelled' within next chunk boundary (~30-90s).
+  // Falls back to legacy direct-update if no parent row exists (pre-ORCH-0737 runs).
+  const { data: run, error: parentErr } = await db
+    .from("place_intelligence_runs")
+    .update({ status: "cancelling", cancelled_by: adminId })
+    .eq("id", runId)
+    .eq("status", "running")
+    .select()
+    .maybeSingle();
+
+  if (parentErr || !run) {
+    // Legacy path: parent row may not exist (pre-ORCH-0737 run) OR run already
+    // terminal. Cancel per-place rows directly (existing behavior).
+    const { error } = await db
+      .from("place_intelligence_trial_runs")
+      .update({ status: "cancelled", completed_at: new Date().toISOString() })
+      .eq("run_id", runId)
+      .in("status", ["pending", "running"]);
+    if (error) return json({ error: error.message }, 500);
+    return json({ ok: true, mode: "legacy" });
+  }
+
+  // Parent successfully marked cancelling. Worker will finalize at next chunk.
+  return json({ ok: true, mode: "async", run_status: "cancelling" });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORCH-0737: list_active_runs — admin UI cross-session resume on mount
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function handleListActiveRuns(db: SupabaseClient): Promise<Response> {
+  const { data, error } = await db
+    .from("place_intelligence_runs")
+    .select("*")
+    .in("status", ["pending", "running", "cancelling"])
+    .order("created_at", { ascending: false });
   if (error) return json({ error: error.message }, 500);
-  return json({ ok: true });
+  return json({ runs: data || [] });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORCH-0737: process_chunk — async worker driven by pg_cron + pg_net
+//
+// Service-role auth only. Reads next 12 pending rows for a run, processes them
+// in parallel via Promise.all, persists results, updates parent counters.
+// pg_cron picks up next tick if more rows pending; otherwise marks complete.
+//
+// v2 PATCH (Gap 1 — row-level stale recovery): pickup query reclaims rows
+// stuck in 'running' status with started_at < now() - 5 min. Self-healing
+// against worker-death mid-chunk.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ORCH-0737 v4 patch (post-WORKER_RESOURCE_LIMIT 2026-05-06): two-pass worker.
+//
+// v3 chunk-size-6 still hit WORKER_RESOURCE_LIMIT 546. Root cause: 6 parallel
+// compose_collage operations > ~150 MB edge fn memory cap (Sharp PNG composition
+// + photo downloads). Time wasn't the limit; memory was.
+//
+// Fix: split worker into two phases. Per-cron-tick decision:
+//   - Score phase (parallel-12, memory-light ~10 MB/row): Gemini call only.
+//     Pickup: rows with prep_status='ready' AND status='pending' (or stuck).
+//   - Prep phase (serial, memory-bounded ~50 MB peak): fetch_reviews +
+//     compose_collage. Pickup: rows with prep_status NULL AND status='pending'.
+//
+// Score is prioritized when any score-eligible rows exist (immediate visible
+// progress); else prep more. Steady state oscillates: prep 3 → score 12 → prep 3 → ...
+//
+// v3 cancel-cleanup (pending+running) PRESERVED. Stuck-recovery logic
+// applies in BOTH phases (5-min cutoff). v3 cron filter (status IN
+// running,cancelling) PRESERVED at trigger function level.
+async function handleProcessChunk(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+  geminiKey: string,
+  serperKey: string,
+): Promise<Response> {
+  const runId = body.run_id as string;
+  if (!runId) return json({ error: "run_id required" }, 400);
+
+  // Step 1: SELECT FOR UPDATE NOWAIT to get exclusive ownership of this chunk.
+  // Concurrent worker call hits 23P01/55P03 → returns 'concurrent_worker'.
+  const { data: run, error: lockErr } = await db.rpc("lock_run_for_chunk", { p_run_id: runId });
+  if (lockErr) {
+    if (lockErr.code === "55P03" || lockErr.code === "23P01") {
+      return json({ skipped: true, reason: "concurrent_worker" });
+    }
+    return json({ error: `lock failed: ${lockErr.message}` }, 500);
+  }
+  if (!run) return json({ error: "run not found" }, 404);
+
+  // Step 2: Check status; bail on cancellation (v2 patch — pending+running)
+  if (run.status === "cancelling") {
+    await db.from("place_intelligence_runs")
+      .update({ status: "cancelled", completed_at: new Date().toISOString() })
+      .eq("id", runId);
+    await db.from("place_intelligence_trial_runs")
+      .update({
+        status: "cancelled",
+        completed_at: new Date().toISOString(),
+        error_message: "cancelled by operator",
+      })
+      .eq("parent_run_id", runId)
+      .in("status", ["pending", "running"]);
+    return json({ ok: true, action: "cancelled" });
+  }
+  if (run.status !== "running") {
+    return json({ skipped: true, reason: `status=${run.status}` });
+  }
+  if (run.processed_count >= run.total_count) {
+    await db.from("place_intelligence_runs")
+      .update({ status: "complete", completed_at: new Date().toISOString() })
+      .eq("id", runId);
+    return json({ ok: true, action: "complete" });
+  }
+
+  // Step 3: Update heartbeat (so pg_cron doesn't re-kick during this tick)
+  await db.from("place_intelligence_runs")
+    .update({ last_heartbeat_at: new Date().toISOString() })
+    .eq("id", runId);
+
+  // ─── Step 4 (v4 NEW): decide phase ────────────────────────────────────
+  // Score-priority: if any rows are PREPPED + (pending OR stuck-running >5min),
+  // score them. Else: prep more rows. Else: nothing left → mark complete.
+  const stuckCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+  const { count: scoreEligibleCount, error: countErr } = await db
+    .from("place_intelligence_trial_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("parent_run_id", runId)
+    .eq("prep_status", "ready")
+    .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`);
+
+  if (countErr) return json({ error: `phase decide failed: ${countErr.message}` }, 500);
+
+  const phase = (scoreEligibleCount ?? 0) > 0 ? "score" : "prep";
+  console.log(
+    `[process_chunk] runId=${runId} phase=${phase} score-eligible=${scoreEligibleCount ?? 0}`,
+  );
+
+  if (phase === "score") {
+    return await processScorePhase({ db, geminiKey, runId, stuckCutoff });
+  }
+  return await processPrepPhase({ db, serperKey, runId, stuckCutoff });
+}
+
+// ─── Score phase (v4): parallel-12 Gemini-only, memory-light ─────────────
+// Pickup: rows with prep_status='ready' that are pending OR stuck-running >5min.
+// Stuck-recovery: rows that started Gemini scoring but never completed.
+async function processScorePhase(args: {
+  db: SupabaseClient;
+  geminiKey: string;
+  runId: string;
+  stuckCutoff: string;
+}): Promise<Response> {
+  const { db, geminiKey, runId, stuckCutoff } = args;
+
+  const { data: pickupRows, error: pickupErr } = await db
+    .from("place_intelligence_trial_runs")
+    .select("id, place_pool_id, signal_id, anchor_index, status, started_at")
+    .eq("parent_run_id", runId)
+    .eq("prep_status", "ready")
+    .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`)
+    .limit(12);                                                             // parallel-12 OK; Gemini-only is memory-light
+
+  if (pickupErr) return json({ error: `score pickup failed: ${pickupErr.message}` }, 500);
+  if (!pickupRows || pickupRows.length === 0) {
+    return json({ ok: true, action: "score_no_eligible" });
+  }
+
+  const reclaimed = pickupRows.filter((r) => r.status === "running").length;
+  if (reclaimed > 0) {
+    console.warn(`[process_chunk score] reclaimed ${reclaimed} stuck-running rows for run=${runId}`);
+  }
+
+  // Mark running (refreshes started_at for stuck rows)
+  const rowIds = pickupRows.map((r) => r.id);
+  await db.from("place_intelligence_trial_runs")
+    .update({ status: "running", started_at: new Date().toISOString() })
+    .in("id", rowIds);
+
+  // Score in parallel — memory-light because Gemini receives URL only.
+  // No photo bytes loaded in worker memory at this stage.
+  const results = await Promise.all(pickupRows.map(async (row) => {
+    try {
+      const cost = await processOnePlace({
+        db,
+        geminiKey,
+        runId,
+        anchor: {
+          place_pool_id: row.place_pool_id,
+          signal_id: row.signal_id,
+          anchor_index: row.anchor_index,
+        },
+      });
+      return { ok: true, place_pool_id: row.place_pool_id, cost };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[process_chunk score] row ${row.place_pool_id} failed: ${msg}`);
+      await db.from("place_intelligence_trial_runs")
+        .update({
+          status: "failed",
+          error_message: msg.slice(0, 500),
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+      return { ok: false, place_pool_id: row.place_pool_id, error: msg, cost: 0 };
+    }
+  }));
+
+  const succeeded = results.filter((r) => r.ok).length;
+  const failed = results.length - succeeded;
+  const chunkCost = results.reduce((s, r) => s + (r.cost || 0), 0);
+
+  await db.rpc("increment_run_counters", {
+    p_run_id: runId,
+    p_processed: results.length,
+    p_succeeded: succeeded,
+    p_failed: failed,
+    p_cost: chunkCost,
+  });
+
+  const { data: updatedRun } = await db
+    .from("place_intelligence_runs")
+    .select("processed_count, total_count")
+    .eq("id", runId)
+    .single();
+  const isComplete = (updatedRun?.processed_count ?? 0) >= (updatedRun?.total_count ?? 0);
+  if (isComplete) {
+    await db.from("place_intelligence_runs")
+      .update({ status: "complete", completed_at: new Date().toISOString() })
+      .eq("id", runId);
+  }
+
+  return json({
+    ok: true,
+    phase: "score",
+    chunk_size: results.length,
+    succeeded,
+    failed,
+    chunk_cost_usd: +chunkCost.toFixed(6),
+    reclaimed,
+    run_complete: isComplete,
+  });
+}
+
+// ─── Prep phase (v4): serial fetch_reviews + compose_collage, memory-bounded ─
+// Pickup: rows with prep_status NULL — pending OR stuck-running >5min (recovery).
+// Stuck-recovery: rows that started prep but never completed (worker died mid-collage).
+// SERIAL within chunk — only 1 collage in memory at any time → max ~50 MB peak.
+async function processPrepPhase(args: {
+  db: SupabaseClient;
+  serperKey: string;
+  runId: string;
+  stuckCutoff: string;
+}): Promise<Response> {
+  const { db, serperKey, runId, stuckCutoff } = args;
+
+  const { data: pickupRows, error: pickupErr } = await db
+    .from("place_intelligence_trial_runs")
+    .select("id, place_pool_id, status, started_at")
+    .eq("parent_run_id", runId)
+    .is("prep_status", null)
+    .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`)
+    .limit(3);                                                              // serial budget: 3 × ~30s = ~90s wallclock, fits 150s timeout
+
+  if (pickupErr) return json({ error: `prep pickup failed: ${pickupErr.message}` }, 500);
+  if (!pickupRows || pickupRows.length === 0) {
+    // No prep work AND no score work (caller already determined score-eligible=0)
+    // means run is functionally complete OR all remaining rows are terminal.
+    // Defensively re-check completion before declaring complete.
+    const { data: updatedRun } = await db
+      .from("place_intelligence_runs")
+      .select("processed_count, total_count")
+      .eq("id", runId)
+      .single();
+    if ((updatedRun?.processed_count ?? 0) >= (updatedRun?.total_count ?? 0)) {
+      await db.from("place_intelligence_runs")
+        .update({ status: "complete", completed_at: new Date().toISOString() })
+        .eq("id", runId);
+      return json({ ok: true, action: "complete" });
+    }
+    // Otherwise: no prep eligible right now — could be all stuck rows are
+    // <5min old. Worker exits; next cron tick re-evaluates.
+    return json({ ok: true, action: "prep_no_eligible_yet" });
+  }
+
+  const reclaimed = pickupRows.filter((r) => r.status === "running").length;
+  if (reclaimed > 0) {
+    console.warn(`[process_chunk prep] reclaimed ${reclaimed} stuck-prep rows for run=${runId}`);
+  }
+
+  // Mark running for prep window (so concurrent workers skip these via FOR UPDATE)
+  const rowIds = pickupRows.map((r) => r.id);
+  await db.from("place_intelligence_trial_runs")
+    .update({ status: "running", started_at: new Date().toISOString() })
+    .in("id", rowIds);
+
+  // SERIAL prep loop — only 1 collage in memory at a time. After each row
+  // completes, set prep_status='ready' AND reset status back to 'pending'
+  // so the score phase picks it up on a future tick.
+  let preppedCount = 0;
+  let prepFailedCount = 0;
+  for (const row of pickupRows) {
+    try {
+      // fetch_reviews (idempotent — skips if fresh-within-30-days)
+      await handleFetchReviews(db, {
+        place_pool_id: row.place_pool_id,
+        force_refresh: false,
+      }, serperKey);
+
+      // compose_collage (idempotent — skips if fingerprint-matched cache)
+      const collageRes = await handleComposeCollage(db, {
+        place_pool_id: row.place_pool_id,
+        force: false,
+      });
+      const collageBody = await collageRes.json();
+      if (collageBody.error) {
+        throw new Error(`compose_collage failed: ${collageBody.error}`);
+      }
+
+      // Mark prepared — status back to 'pending' so score phase picks it up
+      await db.from("place_intelligence_trial_runs")
+        .update({ prep_status: "ready", status: "pending", started_at: null })
+        .eq("id", row.id);
+      preppedCount++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[process_chunk prep] row ${row.place_pool_id} prep failed: ${msg}`);
+      await db.from("place_intelligence_trial_runs")
+        .update({
+          status: "failed",
+          error_message: `prep: ${msg.slice(0, 500)}`,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+      prepFailedCount++;
+    }
+  }
+
+  // Failed-prep rows count toward processed (terminal state). Successful preps
+  // do NOT count toward processed yet — they need to go through score phase.
+  if (prepFailedCount > 0) {
+    await db.rpc("increment_run_counters", {
+      p_run_id: runId,
+      p_processed: prepFailedCount,
+      p_succeeded: 0,
+      p_failed: prepFailedCount,
+      p_cost: 0,
+    });
+  }
+
+  return json({
+    ok: true,
+    phase: "prep",
+    chunk_size: pickupRows.length,
+    prepped: preppedCount,
+    prep_failed: prepFailedCount,
+    reclaimed,
+  });
 }

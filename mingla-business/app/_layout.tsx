@@ -73,6 +73,53 @@ function RootLayoutInner(): React.ReactElement {
     return () => clearTimeout(timer);
   }, [loading, splashHidden]);
 
+  // Cycle 17d §C — TTL evict ended-event entries from phone stores (30d post end_at).
+  // Runs once after auth bootstrap completes (signal that Zustand persist hydration is done).
+  const [evictionRan, setEvictionRan] = useState(false);
+  useEffect(() => {
+    if (loading || evictionRan) return;
+    void (async () => {
+      try {
+        const { evictEndedEvents } = await import(
+          "../src/utils/evictEndedEvents"
+        );
+        const result = evictEndedEvents();
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[Cycle17d §C] Evicted ${result.evictedEntryCount} entries from ${result.evictedEventCount} ended events.`,
+          );
+        }
+      } catch (error) {
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.error("[Cycle17d §C] evictEndedEvents threw:", error);
+        }
+      }
+      setEvictionRan(true);
+    })();
+  }, [loading, evictionRan]);
+
+  // Cycle 17d §D — orphan-key safety net (log-only; operator promotes to auto-clear in future cycle).
+  const [reapRan, setReapRan] = useState(false);
+  useEffect(() => {
+    if (loading || reapRan) return;
+    void (async () => {
+      try {
+        const { reapOrphanStorageKeys } = await import(
+          "../src/utils/reapOrphanStorageKeys"
+        );
+        await reapOrphanStorageKeys();
+      } catch (error) {
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.error("[Cycle17d §D] reapOrphanStorageKeys threw:", error);
+        }
+      }
+      setReapRan(true);
+    })();
+  }, [loading, reapRan]);
+
   return (
     <ErrorBoundary
       onError={(error, info) => {
