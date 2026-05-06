@@ -21,6 +21,7 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import {
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -159,11 +160,21 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
-  // [TRANSITIONAL] Resolve CTA fires Toast — exit when B2 wires real
-  // Stripe deep-link to the Stripe dashboard restriction-resolution flow.
+  // B2a: Resolve CTA on restricted state opens Stripe Express dashboard
+  // for the brand's Connect account. Stripe Express dashboard exposes the
+  // brand's own resolve-issue flow (Stripe-hosted; brand sees their KYC
+  // requirements + can update directly). Per SPEC §4.5.2.
+  // The brand's Stripe account_id comes from the cached brand.stripeStatus
+  // path — for the full state we'd need useBrandStripeStatus, but for this
+  // CTA we just deep-link to the generic Stripe Express login which routes
+  // the brand to their own account.
   const handleResolveBanner = useCallback((): void => {
-    fireToast("Stripe support lands in B2.");
-  }, [fireToast]);
+    // Stripe Express dashboard login URL — brand authenticates with their
+    // Stripe Express credentials and lands on their own resolve-requirements
+    // flow. This is the correct deep-link per Stripe docs for restricted
+    // accounts on Connect Express.
+    void Linking.openURL("https://connect.stripe.com/express_login");
+  }, []);
 
   const handleExport = useCallback((): void => {
     onOpenReports();
@@ -172,6 +183,11 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const stripeStatus = brand?.stripeStatus ?? "not_connected";
   const bannerConfig = BANNER_CONFIG[stripeStatus];
 
+  // [TRANSITIONAL] payouts + refunds still read from Zustand stub (brand.payouts,
+  // brand.refunds). B2a does NOT migrate these to real `payouts` + `refunds`
+  // table queries — that ships in B2b/B3 per SPEC §3.2 non-goals + DISC-2 +
+  // DISC-7 from forensics. Existing Zustand fields will be deprecated to
+  // orphan storage at that time; persist migration v12→v13 will drop them.
   const sortedPayouts = useMemo<BrandPayout[]>(() => {
     if (brand === null) return [];
     return (brand.payouts ?? [])

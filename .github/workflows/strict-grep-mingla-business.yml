@@ -22,6 +22,8 @@ on:
 #   - I-PROPOSED-C (i-proposed-c-brand-crud-via-react-query.mjs) — no setBrands() callers (Cycle 17e-A)
 #   - I-PROPOSED-H (i-proposed-h-rls-returning-owner-gap.mjs) — every owner-callable mutation policy paired with direct-predicate owner-SELECT (ORCH-0734)
 #   - I-PROPOSED-I (i-proposed-i-mutation-rowcount-verified.mjs) — every per-row .update/.delete must chain .select to verify rowcount (ORCH-0734-RW)
+#   - I-PROPOSED-J (i-proposed-j-stripe-no-webview-wrap.mjs) — Stripe Embedded Components via official SDK only — no DIY WebView wrap (B2a)
+#   - I-PROPOSED-K (i-proposed-k-stripe-state-canonical.mjs) — stripe_connect_accounts canonical; brands.stripe_* mirror via DB trigger only (B2a)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -120,3 +122,25 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-i-mutation-rowcount-verified.mjs --self-test
       - name: Run I-PROPOSED-I gate against mingla-business services
         run: node .github/scripts/strict-grep/i-proposed-i-mutation-rowcount-verified.mjs
+
+  i-proposed-j-stripe-no-webview-wrap:
+    name: "I-PROPOSED-J: STRIPE-EMBEDDED-COMPONENTS-VIA-OFFICIAL-SDK-ONLY"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-J gate
+        run: node .github/scripts/strict-grep/i-proposed-j-stripe-no-webview-wrap.mjs
+
+  i-proposed-k-stripe-state-canonical:
+    name: "I-PROPOSED-K: STRIPE-STATE-CANONICAL-IS-CONNECT-ACCOUNTS"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-K gate
+        run: node .github/scripts/strict-grep/i-proposed-k-stripe-state-canonical.mjs

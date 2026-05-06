@@ -360,8 +360,12 @@ export const useBrandCascadePreview = (
     queryFn: async (): Promise<BrandCascadePreviewCounts | null> => {
       if (!enabled || brandId === null) return null;
 
-      // 4 parallel queries — Const #3: throws on any error
-      const [pastResult, upcomingResult, liveResult, teamResult, stripeResult] =
+      // 5 parallel queries — Const #3: throws on any error.
+      // B2a HF-8 fix: hasStripeConnect now reads derived status via
+      // pg_derive_brand_stripe_status RPC instead of approximate
+      // `stripe_connect_id !== null` check (which returned true even
+      // for restricted-state brands per spike findings HF-8).
+      const [pastResult, upcomingResult, liveResult, teamResult, stripeStatusResult] =
         await Promise.all([
           supabase
             .from("events")
@@ -386,28 +390,28 @@ export const useBrandCascadePreview = (
             .select("user_id", { count: "exact", head: true })
             .eq("brand_id", brandId)
             .is("removed_at", null),
-          supabase
-            .from("brands")
-            .select("stripe_connect_id")
-            .eq("id", brandId)
-            .is("deleted_at", null)
-            .maybeSingle(),
+          supabase.rpc("pg_derive_brand_stripe_status", {
+            p_brand_id: brandId,
+          }),
         ]);
 
       if (pastResult.error) throw pastResult.error;
       if (upcomingResult.error) throw upcomingResult.error;
       if (liveResult.error) throw liveResult.error;
       if (teamResult.error) throw teamResult.error;
-      if (stripeResult.error) throw stripeResult.error;
+      if (stripeStatusResult.error) throw stripeStatusResult.error;
+
+      const derivedStatus = stripeStatusResult.data ?? "not_connected";
 
       return {
         pastEventCount: pastResult.count ?? 0,
         upcomingEventCount: upcomingResult.count ?? 0,
         liveEventCount: liveResult.count ?? 0,
         teamMemberCount: teamResult.count ?? 0,
+        // B2a HF-8 fix: only true for active or onboarding states (excludes
+        // not_connected, restricted, detached). Per spike findings.
         hasStripeConnect:
-          stripeResult.data !== null &&
-          stripeResult.data.stripe_connect_id !== null,
+          derivedStatus === "active" || derivedStatus === "onboarding",
       };
     },
   });

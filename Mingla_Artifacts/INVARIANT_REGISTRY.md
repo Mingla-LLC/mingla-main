@@ -1985,3 +1985,33 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **EXIT condition:** Permanent invariant. The PostgREST + supabase-js contract that produces silent 0-row success is unlikely to change.
 
+### I-PROPOSED-J — STRIPE-EMBEDDED-COMPONENTS-VIA-OFFICIAL-SDK-ONLY (DRAFT — flips ACTIVE on B2a CLOSE)
+
+**Status:** DRAFT (pre-written at B2a SPEC dispatch authoring; flips to ACTIVE on B2a CLOSE per orchestrator standard close protocol).
+
+**Statement:** Mingla MUST NOT DIY-wrap `@stripe/connect-js` in `react-native-webview` / `WKWebView` / Android WebView. Connect Embedded Components are exposed via either: (a) Stripe's prescribed native preview SDK component (`@stripe/stripe-react-native` `<ConnectAccountOnboarding>` once GA — Path A future upgrade), OR (b) Mingla-hosted web page rendering web SDK (`@stripe/connect-js` + `@stripe/react-connect-js`) opened via `expo-web-browser` (system browser, sandboxed, NOT host-app-controlled — Path B current).
+
+**Why:** Stripe explicitly prohibits embedded WebView wrapping per [docs.stripe.com/connect/get-started-connect-embedded-components](https://docs.stripe.com/connect/get-started-connect-embedded-components). Verbatim: *"You can't use Connect embedded components in embedded web views inside mobile or desktop applications."* Violations risk technical disable (Stripe iframes can detect WebView contexts and refuse to render) + Connect Platform Agreement breach.
+
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-j-stripe-no-webview-wrap` running `.github/scripts/strict-grep/i-proposed-j-stripe-no-webview-wrap.mjs`. Scans `mingla-business/src/` + `mingla-business/app/` for files importing BOTH `@stripe/connect-js` (or `@stripe/react-connect-js`) AND `react-native-webview`. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-connect-js-with-webview — <reason>`.
+
+**Source:** B2a SPEC §8.2 + spike report `Mingla_Artifacts/reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md` §6 G-1.
+
+**EXIT condition:** Permanent invariant. Stripe's prohibition is documented public policy; reversal would require Stripe to publicly endorse WebView wrapping (no precedent).
+
+### I-PROPOSED-K — STRIPE-STATE-CANONICAL-IS-CONNECT-ACCOUNTS (DRAFT — flips ACTIVE on B2a CLOSE)
+
+**Status:** DRAFT (pre-written at B2a SPEC dispatch authoring; flips to ACTIVE on B2a CLOSE).
+
+**Statement:** `stripe_connect_accounts` is the SINGLE canonical source of truth for Stripe Connect state. `brands.stripe_charges_enabled`, `brands.stripe_payouts_enabled`, `brands.stripe_connect_id` are denormalized cache columns mirrored ONLY by the DB trigger `tg_sync_brand_stripe_cache` (introduced in B2a migration `20260508000000`). Direct UPDATE/INSERT of `brands.stripe_*` by application code is FORBIDDEN — only the DB trigger writes them.
+
+**Why:** Constitutional #2 (one owner per truth). Without this gate, app code could update `brands.stripe_charges_enabled=true` without a corresponding `stripe_connect_accounts` update, producing drift between cache and canonical state. The fast-list-rendering optimization (mapBrandRowToUi reads cache to avoid joining stripe_connect_accounts on every brand list query) is fragile if cache drifts.
+
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-k-stripe-state-canonical` running `.github/scripts/strict-grep/i-proposed-k-stripe-state-canonical.mjs`. Scans `mingla-business/src/` + `mingla-business/app/` + `supabase/functions/` for `.update()` / `.upsert()` / `.insert()` calls on `from("brands")` that include any of `stripe_connect_id` / `stripe_charges_enabled` / `stripe_payouts_enabled` in the payload, AND for SQL `UPDATE brands SET ... stripe_*` patterns. Allowlist tag (line above the violating line): `// orch-strict-grep-allow brands-stripe-direct-write — <reason>`. The trigger function itself in the SQL migration is exempt (different file, not in scan dirs).
+
+**Allowed reads:** `mapBrandRowToUi` reads `brands.stripe_*` to derive `Brand.stripeStatus` for fast list rendering (R-3 fix in B2a). The gate detects WRITES only — reads are unaffected.
+
+**Source:** B2a SPEC §8.2 + forensics report `Mingla_Artifacts/reports/INVESTIGATION_CYCLE_B2_STRIPE_STUB.md` R-4 (Constitutional #2 candidate).
+
+**EXIT condition:** Permanent invariant. Reversal would require schema cleanup (drop `brands.stripe_*` cache columns; force every read to join `stripe_connect_accounts`) which is a separate ORCH cycle.
+

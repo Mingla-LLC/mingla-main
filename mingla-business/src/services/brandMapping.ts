@@ -21,6 +21,7 @@ import type {
   BrandRole,
   BrandStats,
 } from "../store/currentBrandStore";
+import { deriveBrandStripeStatus } from "../utils/deriveBrandStripeStatus";
 
 /** Snapshot of `public.brands` columns needed for mapping (B1 + Cycle 17e-A). */
 export interface BrandRow {
@@ -191,6 +192,20 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
   const links = socialJsonToLinks(row.social_links, row.custom_links);
   const hasContact = !!(row.contact_email?.trim() || row.contact_phone?.trim());
 
+  // B2a: derive stripeStatus from brands.stripe_* denormalized cache.
+  // Cache is mirrored from canonical stripe_connect_accounts via DB trigger
+  // tg_sync_brand_stripe_cache per D-B2-3. Cache does NOT carry requirements
+  // JSONB or detached_at — for full state, useBrandStripeStatus hook fetches
+  // stripe_connect_accounts directly (per D-B2-16).
+  // R-3 fix: previously this mapper IGNORED row.stripe_* and brand.stripeStatus
+  // was purely client-side fiction. Now derived from server cache.
+  const stripeStatus = deriveBrandStripeStatus({
+    has_account: row.stripe_connect_id != null,
+    charges_enabled: row.stripe_charges_enabled,
+    payouts_enabled: row.stripe_payouts_enabled,
+    // requirements + detached_at not on cache; left undefined per TS twin contract
+  });
+
   return {
     id: row.id,
     displayName: row.name,
@@ -218,6 +233,7 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
       : undefined,
     links,
     displayAttendeeCount: row.display_attendee_count,
+    stripeStatus,
   };
 }
 
