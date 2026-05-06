@@ -105,7 +105,7 @@ export default function ConnectOnboardingPage(): React.ReactElement {
           <h2 style={errorTitleStyle}>Invalid onboarding link</h2>
           <p style={errorBodyStyle}>
             This onboarding link is missing a required parameter. Return to
-            Mingla Business and tap "Set up payments" again to start fresh.
+            Mingla Business and tap &ldquo;Set up payments&rdquo; again to start fresh.
           </p>
         </div>
       </div>
@@ -116,7 +116,7 @@ export default function ConnectOnboardingPage(): React.ReactElement {
     return (
       <div style={pageWrapperStyle}>
         <div style={errorCardStyle}>
-          <h2 style={errorTitleStyle}>Couldn't start onboarding</h2>
+          <h2 style={errorTitleStyle}>Couldn&rsquo;t start onboarding</h2>
           <p style={errorBodyStyle}>{initError}</p>
         </div>
       </div>
