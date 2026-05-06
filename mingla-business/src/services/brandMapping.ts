@@ -21,6 +21,15 @@ import type {
   BrandRole,
   BrandStats,
 } from "../store/currentBrandStore";
+import { deriveBrandStripeStatus } from "../utils/stripeConnectStatus";
+
+/** Nested row from `stripe_connect_accounts` (PostgREST embed). */
+export interface StripeConnectAccountEmbed {
+  stripe_account_id: string;
+  charges_enabled: boolean;
+  payouts_enabled: boolean;
+  requirements: Record<string, unknown> | null;
+}
 
 /** Snapshot of `public.brands` columns needed for mapping (B1 + Cycle 17e-A). */
 export interface BrandRow {
@@ -50,6 +59,8 @@ export interface BrandRow {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  /** Optional embed from `.select('*, stripe_connect_accounts(...)')` (B2). */
+  stripe_connect_accounts?: StripeConnectAccountEmbed[] | null;
 }
 
 /** Insert shape for `.from('brands').insert()` (server fills id/timestamps). */
@@ -191,6 +202,17 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
   const links = socialJsonToLinks(row.social_links, row.custom_links);
   const hasContact = !!(row.contact_email?.trim() || row.contact_phone?.trim());
 
+  const embed = row.stripe_connect_accounts;
+  const connectRow =
+    Array.isArray(embed) && embed.length > 0 ? embed[0] ?? null : null;
+  const requirements = connectRow?.requirements ?? undefined;
+  const stripeStatus = deriveBrandStripeStatus(
+    row.stripe_connect_id,
+    row.stripe_charges_enabled,
+    row.stripe_payouts_enabled,
+    requirements,
+  );
+
   return {
     id: row.id,
     displayName: row.name,
@@ -218,6 +240,7 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
       : undefined,
     links,
     displayAttendeeCount: row.display_attendee_count,
+    stripeStatus,
   };
 }
 
