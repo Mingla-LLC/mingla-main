@@ -364,6 +364,16 @@ type PersistedState = Pick<CurrentBrandState, "currentBrand">;
 // Cycle 17d §E — v1-v11 migrator helpers + V2/V9/V10/V11 type defs deleted.
 // Original chain (v1→v12) preserved at commit aae7784d for audit trail.
 
+/**
+ * v11 → v12 migration (Cycle 13a / DEC-092): silently strip the dropped
+ * J-A9 fields `members` + `pendingInvitations` from the cached brand.
+ * Brand-team state moves to `brandTeamStore` per Cycle 13a SPEC §4.7.
+ */
+const upgradeV11BrandToV12 = (b: V11Brand): Brand => {
+  const { members: _m, pendingInvitations: _p, ...rest } = b;
+  return rest;
+};
+
 const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
   name: "mingla-business.currentBrand.v13",
   storage: createJSONStorage(() => AsyncStorage),
