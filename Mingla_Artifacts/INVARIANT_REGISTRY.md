@@ -7,6 +7,41 @@
 
 ---
 
+## ACTIVE (post ORCH-0734 CLOSE 2026-05-05)
+
+### I-TRIAL-CITY-RUNS-CANONICAL — Place-intelligence trial pipeline operates city-scoped, sampled-sync via place_intelligence_city_runs
+
+**Statement:** Every place-intelligence trial run MUST scope to a single `city_id` (one of the 9 servable cities) AND use a stratified random sample drawn from `place_pool` rows where `is_servable=true` AND `city_id=:cityId`. Results write to `place_intelligence_city_runs` rows (one per trial). Direct invocation paths bypassing this scoping are violations.
+
+**Authority:** `supabase/functions/run-place-intelligence-trial/index.ts` is the canonical source. Admin UI at `mingla-admin/src/pages/PlaceIntelligenceTrial.jsx` is the canonical caller. The dropped `signal_anchors` table + admin tab + RLS + trigger function ARE NOT authoritative anymore — see `feedback_signal_anchors_decommissioned.md`.
+
+**Rationale:** The 32-anchor calibration scaffold (ORCH-0707/0713) was a fixed-set evaluation harness for prompt-version regression testing. Real production traffic needs city-by-city sweeps over the actual servable pool, not a frozen 32-place subset. ORCH-0734 replaced the scaffold with `place_intelligence_city_runs` (one row per trial run) + stratified random sampling (top half by `review_count` + Fisher-Yates random fill) + Gemini auto-retry-once on `MALFORMED_FUNCTION_CALL`.
+
+**Enforcement (3 gates):**
+1. **Schema constraint** — `place_intelligence_city_runs.city_id NOT NULL` references `seeding_cities(id)`; pipeline writer cannot insert null city_id.
+2. **Edge function structure** — `run-place-intelligence-trial/index.ts` requires `{city_id, sample_size}` body; rejects without city_id with 400 status.
+3. **Admin UI structure** — city picker + sample-size picker required; "Run Trial" disabled until both selected.
+
+**Test that catches a regression:** any new code path calling `run-place-intelligence-trial` without a `city_id` body field fails edge function input validation and returns 400. Schema-level NOT NULL prevents direct DB inserts from bypassing the contract.
+
+**Established:** 2026-05-05 by ORCH-0734 (forensics → SPEC → IMPL → Cary 50 smoke PASS in 19 min for $0.21 with 3 Gemini retries fired+succeeded). DEC-110 logs the decision.
+
+**Related invariants:**
+- `I-TRIAL-OUTPUT-NEVER-FEEDS-RANKING` (preserved) — trial pipeline output is PM-evaluation only; never feeds production rerank
+- `I-TRIAL-RUN-SCOPED-TO-CITY` (pre-cursor — DEC-105; ORCH-0734 strengthens via schema + UI gates)
+- `I-BOUNCER-EXCLUDES-FAST-FOOD-AND-CHAINS` (ORCH-0735) — upstream pool-quality gate; trial output validity depends on this
+
+**Cross-references:**
+- DEC-110 (Decision Log) — ORCH-0734 CLOSE rationale + tradeoffs + signal_anchors decommission
+- ORCH-0734 SPEC (`Mingla_Artifacts/specs/SPEC_ORCH-0734_CITY_RUNS.md`)
+- ORCH-0734 INVESTIGATION (`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0734_CITY_RUNS.md`)
+- ORCH-0734 IMPL report (`Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0734_CITY_RUNS_REPORT.md`)
+- Memory `feedback_signal_anchors_decommissioned.md` (ACTIVE)
+- Backup snapshot `_archive_orch_0734_signal_anchors` retained 14 days from 2026-05-05 → DROP on 2026-05-19 if no rollback signal
+- ORCH-0737 (queued) — adds full-city-async trial mode toggle (preserves this invariant; extends pipeline with cursor/job-queue pattern alongside current sampled-sync mode)
+
+---
+
 ## ACTIVE (post ORCH-0735 CLOSE 2026-05-05)
 
 ### I-BOUNCER-EXCLUDES-FAST-FOOD-AND-CHAINS — Bouncer must reject fast-food + chain restaurants
@@ -1849,4 +1884,55 @@ Other shapes (allow-list / parameterized restrictions / `event_scope` arrays) ar
 **Cross-reference:** Cycle 17e-A SPEC §3.6 (v12→v13 migrate function); forensics §F + §8.3; Constitution Rule #5 (server state server-side).
 
 **Test that catches a regression:** CI grep gate above. Synthetic violation fixture: `setBrands([newBrand]);` line in any `.ts`/`.tsx` under `mingla-business/src/` → exit 1 with rich error. Allowlist pass: same line with `// orch-strict-grep-allow setBrands-call — <reason>` immediately above → exit 0.
+
+---
+
+### I-PROPOSED-D MB-ERROR-COVERAGE — Every catch in mingla-business MUST call `logError` (mingla-business — ORCH-0728 — status: DRAFT — flips ACTIVE on ORCH-0728 CLOSE)
+
+**Statement:** Every catch block in `mingla-business/src/` + `mingla-business/app/` MUST call `logError(error, { surface, extra? })` within the first 5 lines of the catch body. The `logError` primitive lives at `mingla-business/src/utils/logError.ts` and writes structured `[mb-error]`/`[mb-warn]`/`[mb-info]` lines to console with a stable surface tag (`ComponentName#methodName` / `hookName#phase` / `serviceName#functionName`). Allowlist comment for intentional swallows (e.g., `Linking.openURL().catch(() => {})`). CI gate enforces.
+
+**Migration discipline addendum (DOCUMENTED, NOT CI-enforced this cycle):** Every Supabase migration file that contains `ALTER TABLE ... ADD COLUMN` MUST end with `NOTIFY pgrst, 'reload schema';` so PostgREST's schema cache picks up new columns immediately. Without this, INSERTs with new columns return `PGRST204` "column not found in schema cache" until the cache organically reloads (minutes-to-hours).
+
+**Scope:** `mingla-business/src/` + `mingla-business/app/` only. `app-mobile/` and `mingla-admin/` are out of scope (separate products with their own logging strategies — `app-mobile` already has `edgeFunctionError.ts` duck-typing pattern).
+
+**Why this exists:** ORCH-0728 root cause investigation surfaced ~50 catch sites across mingla-business that swallow `error.message` without logging. The brand-create "glitch" symptom was undiagnosable because the actual PGRST204 / 42501 / 23505 error never reached terminal — it was swallowed by `catch (error) { setSlugError("Couldn't create brand…") }`. Const #3 (no silent failures) was violated repeatedly. The structural fix is a logging primitive + CI gate so future engineers cannot re-introduce silent catches. The migration discipline rule prevents the precipitating PostgREST cache lag from recurring on future ADD COLUMN migrations (closes ORCH-0728's F-1 root-cause class structurally).
+
+**CI enforcement:** NEW `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-d-mb-error-coverage` running `.github/scripts/strict-grep/i-proposed-d-mb-error-coverage.mjs` (regex-based per registry pattern — `setBrands\(`-style precedent). Fails CI on PR if any catch block in scope path lacks a `logError(...)` call within first 5 lines AND lacks allowlist comment. Allowlist via `// orch-strict-grep-allow mb-error-coverage — <reason>` immediately above the `catch` keyword.
+
+**Established by:** ORCH-0728 SPEC §3.3 + §7 + I-PROPOSED-D; forensics anchor F-4 (catch-swallows-error) + §6 logging-site survey (~50 sites); DEC-110 lock entry [DEC ID confirmed at CLOSE].
+
+**EXIT condition:** None — permanent invariant. If a future cycle introduces a remote sink (Sentry/DataDog), the primitive's signature is forward-compatible (§3.2.3 `LogErrorRemoteSink` interface reserved); the invariant + CI gate remain unchanged.
+
+**Cross-reference:** ORCH-0728 SPEC `SPEC_ORCH_0728_BRAND_CREATE_FIX_AND_MB_ERROR_LOGGING.md` §3.2 (primitive) + §3.3 (gate) + §3.6 (12-site first-cycle migration) + §3.7 (migration discipline rule); investigation report `INVESTIGATION_ORCH_0728_BRAND_CREATE_GLITCH_AND_LOGGING.md` F-4 + §6 + §10 regression prevention; `.github/scripts/strict-grep/README.md` registry pattern; Constitution Rule #3 (no silent failures); `app-mobile/src/utils/edgeFunctionError.ts` duck-typing precedent.
+
+**Test that catches a regression:** CI grep gate. Synthetic fixtures (verified at IMPL pre-flight per SPEC T-03 + T-04):
+- Violation: `try { x() } catch (e) { console.log(e); }` (no logError call) → exit 1 with rich error.
+- Pass: `try { x() } catch (e) { logError(e, { surface: "Test#fn" }); }` → exit 0.
+- Allowlist pass: violation block with `// orch-strict-grep-allow mb-error-coverage — <reason>` comment immediately above the `catch` keyword → exit 0.
+
+**Site migration phasing:** ORCH-0728 IMPL ships first 14 high-priority sites (per PASS-3 spec H-1 to H-14 catalog: BrandSwitcherSheet × 2, useBrands × 4, BrandEditView, BrandDeleteSheet, creatorAccount, AuthContext × 4, account.tsx, currentBrandStore migrate). Remaining ~40 sites migrate piecemeal via subsequent cycles tracked as `ORCH-0728-followup` until the gate is structurally clean across the full scope path. **PASS-3 update (2026-05-05):** site count revised from 12 to 14 after PASS-3 brutal forensic audit identified 2 additional sites (`useSoftDeleteBrand#onError` previously missing entirely; `useBrandCascadePreview#parallelQueries` throws without log).
+
+---
+
+### I-PROPOSED-E STUB-BRAND-PURGED — Stub brand IDs (`lm`/`tll`/`sl`/`hr`) MUST NOT survive in any persisted state post-17e-A (mingla-business — ORCH-0728 PASS-3 — status: DRAFT — flips ACTIVE on ORCH-0728 CLOSE)
+
+**Statement:** The stub brand IDs `lm`, `tll`, `sl`, `hr` (defined pre-17e-A in `mingla-business/src/store/brandList.ts` as `STUB_BRANDS`) MUST NOT survive in any persisted Zustand state post-17e-A. The `currentBrandStore` persist migrate function MUST nuke any `currentBrand` whose `id` matches a stub ID (set `currentBrand = null` on detection). The orphan `brandList.ts` file MUST be deleted (zero live importers per PASS-3 §3.1 file 4).
+
+**Scope:** `mingla-business/src/` only. App-mobile and mingla-admin do not have brand stubs.
+
+**Why this exists:** Pre-17e-A, the dev-seed button populated `currentBrand = STUB_BRANDS[i]` (e.g., Lonely Moth with `id="lm"`). Cycle 17e-A IMPL removed the seed button + dropped the `brands` array from store v12→v13 — but the persist migrate at `currentBrandStore.ts:379-385` PRESERVED the stub `currentBrand` selection as-is, regardless of whether that stub `id` corresponded to a real `brands` row. PASS-3 forensics F-6 confirmed this is the cause of the "Lonely Moth stays connected" regression: TopBar renders the persisted stub-brand currentBrand, but `useBrand("lm")` returns null (no DB row). Cascading effect at PASS-3 F-7: `useCurrentBrandRole` stub-mode synthesis fallback (lines 158-164) granted `account_owner` rank=60 to the non-existent brand. Without I-PROPOSED-E, future ORCH cycles that interact with `currentBrand.id` will hit this same ghost-brand failure mode.
+
+**CI enforcement:** No CI gate (logic-level constraint not grep-able as a single pattern). Tester verifies via SC-D-2 unit test in SPEC §4: cold-start with v13 cache containing `currentBrand={id:"lm",...}` → after migrate runs → `currentBrand=null`.
+
+**Established by:** ORCH-0728 PASS-3 brutal investigation §3.1 file 3 + F-6 + F-7; SPEC `SPEC_ORCH_0728_FULL_FIX.md` §3.8 (persist migrate v13→v14) + §3.9 (delete brandList.ts) + Scope D; DEC-110 lock entry [DEC ID confirmed at CLOSE].
+
+**EXIT condition:** None — permanent invariant. If stub brand IDs are ever re-introduced for a different testing purpose, supersede with new IDs that don't collide with `lm`/`tll`/`sl`/`hr` AND amend this invariant with the new set + supersede note.
+
+**Cross-reference:** ORCH-0728 PASS-3 SPEC `SPEC_ORCH_0728_FULL_FIX.md` §3.8 + §3.9 (delete `brandList.ts`); investigation report `INVESTIGATION_ORCH_0728_PASS_3_BRUTAL.md` F-6 + F-7; Constitution Rule #9 (no fabricated data — stub-brand currentBrand pointing at non-existent row IS fabricated UI state); `currentBrandStore.ts` v13→v14 migrate semantic.
+
+**Test that catches a regression:** SC-D-2 unit test (per SPEC §4):
+- Setup: AsyncStorage cache contains `mingla-business.currentBrand.v13 = { state: { currentBrand: { id: "lm", displayName: "Lonely Moth", ... } }, version: 13 }`
+- Action: app cold-start → store hydrates → migrate function runs (v13 → v14)
+- Assertion: post-hydrate `useCurrentBrandStore.getState().currentBrand === null`
+- Inverse test (preservation): same cache shape with `currentBrand.id = "<real-uuid>"` → post-hydrate currentBrand preserved verbatim
 
