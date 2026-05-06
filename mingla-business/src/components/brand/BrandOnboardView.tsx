@@ -1,27 +1,14 @@
 /**
- * BrandOnboardView — Stripe Connect onboarding shell (J-A10 §5.3.8).
+ * BrandOnboardView — Stripe Connect embedded onboarding (J-A10 §5.3.8, B2 / issue #47).
  *
- * Cycle 2 stub: WebView placeholder with simulated 3-state machine
- * (loading → complete → done navigates back; long-press header → failed).
+ * Live path: WebView + Stripe Connect.js (`embeddedSession` from
+ * `brand-stripe-connect-session`).
  *
- * State machine:
- *   loading (1.5s simulated) → complete  [auto-advance]
- *   complete → calls onAfterDone()        [Done button]
- *   failed  → loading                     [Try again button]
- *   failed  → onCancel()                  [Cancel button]
- *
- * Long-press the "Stripe onboarding" header to flip into the failed
- * state — TRANSITIONAL dev gesture for QA. Exits when B2 wires real
- * Stripe SDK that can fail naturally.
- *
- * Custom TopBar (Cancel left + long-pressable centered title) inlined
- * because the kit's TopBar primitive doesn't support long-press on
- * title — composing this row locally rather than fighting the primitive.
- *
- * Per J-A10 spec §3.6.
+ * Dev fallback: when no session is provided (e.g. stub brand ids), shows the
+ * Cycle 2 simulated state machine for layout QA.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -29,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
 import {
   accent,
@@ -44,53 +32,122 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Spinner } from "../ui/Spinner";
 
-// [TRANSITIONAL] simulated loading delay — replaced by real Stripe SDK
-// onboarding flow in B2 backend cycle. The 1.5s beat creates a perceptible
-// "Loading…" state so the UX feels real even though the in-memory state
-// machine resolves synchronously.
 const SIMULATED_LOADING_MS = 1500;
 
 type OnboardingState = "loading" | "complete" | "failed";
 
+export interface BrandOnboardSession {
+  publishableKey: string;
+  clientSecret: string;
+}
+
 export interface BrandOnboardViewProps {
   brand: Brand | null;
   onCancel: () => void;
-  onAfterDone: () => void;
+  onAfterDone: () => void | Promise<void>;
+  /** Stripe embedded session — when set, WebView onboarding is shown. */
+  embeddedSession?: BrandOnboardSession | null;
+  sessionLoading?: boolean;
+  sessionError?: string | null;
+  onRetrySession?: () => void;
+}
+
+function buildEmbeddedHtml(publishableKey: string, clientSecret: string): string {
+  const pk = JSON.stringify(publishableKey);
+  const cs = JSON.stringify(clientSecret);
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:system-ui,-apple-system,sans-serif;background:#0b0b0c;color:#fafafa}
+#host{min-height:100vh;padding:12px}
+</style>
+</head><body>
+<div id="host"></div>
+<script type="module">
+try {
+  const publishableKey = ${pk};
+  const clientSecret = ${cs};
+  const { loadConnectAndInitialize } = await import("https://esm.sh/@stripe/connect-js@3.9.6");
+  const instance = await loadConnectAndInitialize({
+    publishableKey,
+    fetchClientSecret: async () => clientSecret,
+  });
+  const onboarding = instance.create("account-onboarding");
+  onboarding.setOnExit(() => {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: "exit" }));
+    }
+  });
+  const host = document.getElementById("host");
+  host.appendChild(onboarding);
+} catch (e) {
+  const msg = e && e.message ? e.message : String(e);
+  if (window.ReactNativeWebView) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: "error", message: msg }));
+  }
+}
+</script>
+</body></html>`;
 }
 
 export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   brand,
   onCancel,
   onAfterDone,
+  embeddedSession = null,
+  sessionLoading = false,
+  sessionError = null,
+  onRetrySession,
 }) => {
   const insets = useSafeAreaInsets();
-  const [state, setState] = useState<OnboardingState>("loading");
+  const [stubState, setStubState] = useState<OnboardingState>("loading");
+  const useLiveStripe = embeddedSession !== null && embeddedSession.clientSecret.length > 0;
 
-  // Auto-advance from loading → complete after simulated delay.
+  const htmlSource = useMemo(() => {
+    if (embeddedSession === null) return null;
+    return buildEmbeddedHtml(
+      embeddedSession.publishableKey,
+      embeddedSession.clientSecret,
+    );
+  }, [embeddedSession]);
+
   useEffect(() => {
-    if (state !== "loading") return;
+    if (useLiveStripe || sessionLoading) return;
+    if (stubState !== "loading") return;
     const timer = setTimeout(() => {
-      setState("complete");
+      setStubState("complete");
     }, SIMULATED_LOADING_MS);
     return (): void => clearTimeout(timer);
-  }, [state]);
+  }, [stubState, useLiveStripe, sessionLoading]);
 
-  // [TRANSITIONAL] dev gesture for QA — long-press the header to flip
-  // into the failed state for visual review. Exits when B2 wires real
-  // Stripe SDK that can fail naturally during onboarding submission.
   const handleHeaderLongPress = useCallback((): void => {
-    setState((prev) => (prev === "failed" ? "loading" : "failed"));
+    setStubState((prev) => (prev === "failed" ? "loading" : "failed"));
   }, []);
 
-  const handleDone = useCallback((): void => {
-    onAfterDone();
+  const handleDone = useCallback(async (): Promise<void> => {
+    await onAfterDone();
   }, [onAfterDone]);
 
   const handleTryAgain = useCallback((): void => {
-    setState("loading");
+    setStubState("loading");
   }, []);
 
-  // ----- Not-found state -----
+  const onWebMessage = useCallback(
+    async (ev: WebViewMessageEvent): Promise<void> => {
+      try {
+        const raw = JSON.parse(ev.nativeEvent.data) as { type?: string };
+        if (raw.type === "exit") {
+          await onAfterDone();
+        }
+      } catch {
+        /* ignore */
+      }
+    },
+    [onAfterDone],
+  );
+
   if (brand === null) {
     return (
       <View style={styles.host}>
@@ -128,13 +185,92 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     );
   }
 
-  // ----- Populated states -----
+  if (sessionLoading) {
+    return (
+      <View style={styles.host}>
+        <View style={[styles.topBarRow, { paddingTop: spacing.sm }]}>
+          <View style={styles.topBarSlot}>
+            <Button label="Cancel" onPress={onCancel} variant="ghost" size="sm" />
+          </View>
+          <Text style={styles.topBarTitle}>Stripe onboarding</Text>
+          <View style={styles.topBarSlot} />
+        </View>
+        <View style={styles.stateBlock}>
+          <Spinner size={48} color={accent.warm} />
+          <Text style={styles.stateTitle}>Starting Stripe…</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (sessionError !== null && sessionError !== "") {
+    return (
+      <View style={styles.host}>
+        <View style={[styles.topBarRow, { paddingTop: spacing.sm }]}>
+          <View style={styles.topBarSlot}>
+            <Button label="Cancel" onPress={onCancel} variant="ghost" size="sm" />
+          </View>
+          <Text style={styles.topBarTitle}>Stripe onboarding</Text>
+          <View style={styles.topBarSlot} />
+        </View>
+        <View style={[styles.body, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+          <View style={styles.stateBlock}>
+            <View style={[styles.stateIconCircle, styles.stateIconCircleFailed]}>
+              <Icon name="flag" size={32} color={semantic.error} />
+            </View>
+            <Text style={styles.stateTitle}>Couldn{"’"}t start onboarding</Text>
+            <Text style={styles.stateSub}>{sessionError}</Text>
+          </View>
+          <View style={styles.actionsCol}>
+            {onRetrySession !== undefined ? (
+              <Button
+                label="Try again"
+                onPress={onRetrySession}
+                variant="primary"
+                size="lg"
+                fullWidth
+              />
+            ) : null}
+            <Button
+              label="Back"
+              onPress={onCancel}
+              variant="secondary"
+              size="md"
+              fullWidth
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (useLiveStripe && htmlSource !== null) {
+    return (
+      <View style={styles.host}>
+        <View style={[styles.topBarRow, { paddingTop: spacing.sm }]}>
+          <View style={styles.topBarSlot}>
+            <Button label="Cancel" onPress={onCancel} variant="ghost" size="sm" />
+          </View>
+          <Text style={styles.topBarTitle}>Stripe onboarding</Text>
+          <View style={styles.topBarSlot} />
+        </View>
+        <WebView
+          originWhitelist={["*"]}
+          source={{ html: htmlSource }}
+          onMessage={onWebMessage}
+          style={styles.webview}
+          javaScriptEnabled
+          domStorageEnabled
+          thirdPartyCookiesEnabled
+          mixedContentMode="always"
+          setSupportMultipleWindows={false}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.host}>
-      {/* Custom TopBar — Cancel left + long-pressable title + empty right.
-          Composed inline because kit TopBar primitive doesn't support
-          long-press on the title. */}
       <View style={[styles.topBarRow, { paddingTop: spacing.sm }]}>
         <View style={styles.topBarSlot}>
           <Button
@@ -147,7 +283,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         <Pressable
           onLongPress={handleHeaderLongPress}
           accessibilityRole="header"
-          accessibilityLabel="Stripe onboarding"
+          accessibilityLabel="Stripe onboarding (dev: long-press for failure state)"
           delayLongPress={500}
         >
           <Text style={styles.topBarTitle}>Stripe onboarding</Text>
@@ -156,17 +292,17 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       </View>
 
       <View style={[styles.body, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
-        {state === "loading" ? (
+        {stubState === "loading" ? (
           <View style={styles.stateBlock}>
             <Spinner size={48} color={accent.warm} />
             <Text style={styles.stateTitle}>Loading Stripe onboarding…</Text>
             <Text style={styles.stateSub}>
-              [TRANSITIONAL] This will be a real WebView in B2.
+              Stub preview — use a live brand (UUID) for real Connect.
             </Text>
           </View>
         ) : null}
 
-        {state === "complete" ? (
+        {stubState === "complete" ? (
           <>
             <View style={styles.stateBlock}>
               <View style={[styles.stateIconCircle, styles.stateIconCircleSuccess]}>
@@ -190,11 +326,10 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           </>
         ) : null}
 
-        {state === "failed" ? (
+        {stubState === "failed" ? (
           <>
             <View style={styles.stateBlock}>
               <View style={[styles.stateIconCircle, styles.stateIconCircleFailed]}>
-                {/* W-1: alert/info absent in kit; flag = action-needed */}
                 <Icon name="flag" size={32} color={semantic.error} />
               </View>
               <Text style={styles.stateTitle}>Onboarding couldn{"’"}t complete</Text>
@@ -229,8 +364,10 @@ const styles = StyleSheet.create({
   host: {
     flex: 1,
   },
-
-  // Custom TopBar --------------------------------------------------------
+  webview: {
+    flex: 1,
+    backgroundColor: "#0b0b0c",
+  },
   topBarRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -251,8 +388,6 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     textAlign: "center",
   },
-
-  // Body -----------------------------------------------------------------
   body: {
     flex: 1,
     paddingHorizontal: spacing.md,
@@ -297,8 +432,6 @@ const styles = StyleSheet.create({
   actionsCol: {
     gap: spacing.sm,
   },
-
-  // Not-found ------------------------------------------------------------
   notFoundWrap: {
     flex: 1,
     paddingHorizontal: spacing.md,
