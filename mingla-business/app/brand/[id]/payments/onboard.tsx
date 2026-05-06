@@ -18,6 +18,7 @@ import {
 import { canvas } from "../../../../src/constants/designSystem";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { brandKeys } from "../../../../src/hooks/useBrands";
+import { brandPaymentKeys } from "../../../../src/hooks/useBrandPayments";
 import { getBrand } from "../../../../src/services/brandsService";
 import { supabase } from "../../../../src/services/supabase";
 import {
@@ -133,6 +134,7 @@ export default function BrandOnboardRoute(): React.ReactElement {
 
       await queryClient.invalidateQueries({ queryKey: brandKeys.detail(brand.id) });
       await queryClient.invalidateQueries({ queryKey: brandKeys.list(user.id) });
+      await queryClient.invalidateQueries({ queryKey: brandPaymentKeys.all });
 
       const fresh = await getBrand(brand.id);
       if (

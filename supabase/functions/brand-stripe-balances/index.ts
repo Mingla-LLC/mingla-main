@@ -1,12 +1,12 @@
 /**
- * brand-stripe-refresh-status — Pull latest Account object from Stripe and sync DB.
+ * brand-stripe-balances — Connected account Balance (available + pending) for KPI tiles.
  *
  * POST JSON: { brandId: uuid }
+ * Returns: { availableMinor, pendingMinor, currency } (minor units = cents).
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "npm:stripe@17.4.0";
-import { projectStripeAccountToConnectRow } from "../_shared/stripeConnectProjection.ts";
 import { corsJson, requirePaymentsManager, requireUser, serviceRoleClient } from "../_shared/stripeEdgeAuth.ts";
 
 const UUID_RE =
@@ -69,81 +69,52 @@ serve(async (req) => {
   }
 
   const admin = serviceRoleClient();
-  const { data: link, error: linkErr } = await admin
-    .from("stripe_connect_accounts")
-    .select("stripe_account_id")
-    .eq("brand_id", brandId)
+  const { data: brand, error: bErr } = await admin
+    .from("brands")
+    .select("default_currency")
+    .eq("id", brandId)
+    .is("deleted_at", null)
     .maybeSingle();
 
-  if (linkErr !== null) {
-    console.error("[brand-stripe-refresh-status] link read:", linkErr.message);
-    return new Response(JSON.stringify({ error: "Lookup failed" }), {
-      status: 500,
-      headers: { ...corsJson, "Content-Type": "application/json" },
-    });
-  }
-
-  if (link === null || link.stripe_account_id === null || link.stripe_account_id === "") {
-    return new Response(JSON.stringify({ error: "No Connect account for brand" }), {
+  if (bErr !== null || brand === null) {
+    return new Response(JSON.stringify({ error: "Brand not found" }), {
       status: 404,
       headers: { ...corsJson, "Content-Type": "application/json" },
     });
   }
 
+  const { data: link } = await admin
+    .from("stripe_connect_accounts")
+    .select("stripe_account_id")
+    .eq("brand_id", brandId)
+    .maybeSingle();
+
+  const acct = link?.stripe_account_id as string | undefined;
+  if (acct === undefined || acct === "") {
+    return new Response(
+      JSON.stringify({ availableMinor: 0, pendingMinor: 0, currency: String(brand.default_currency).trim().toUpperCase() }),
+      { status: 200, headers: { ...corsJson, "Content-Type": "application/json" } },
+    );
+  }
+
+  const cur = String(brand.default_currency).trim().toLowerCase();
   const stripe = new Stripe(secretKey, { apiVersion: "2024-11-20.acacia", typescript: true });
 
   try {
-    const account = await stripe.accounts.retrieve(link.stripe_account_id as string);
-    const proj = projectStripeAccountToConnectRow(account);
-
-    const connectRow: Record<string, unknown> = {
-      brand_id: brandId,
-      stripe_account_id: proj.stripe_account_id,
-      account_type: proj.account_type,
-      charges_enabled: proj.charges_enabled,
-      payouts_enabled: proj.payouts_enabled,
-      requirements: proj.requirements,
-    };
-    if (proj.charges_enabled) {
-      connectRow.kyc_stall_reminder_sent_at = null;
-    }
-    const { error: upErr } = await admin.from("stripe_connect_accounts").upsert(connectRow, {
-      onConflict: "brand_id",
-    });
-
-    if (upErr !== null) {
-      console.error("[brand-stripe-refresh-status] upsert connect:", upErr.message);
-      return new Response(JSON.stringify({ error: "Persist failed" }), {
-        status: 500,
-        headers: { ...corsJson, "Content-Type": "application/json" },
-      });
-    }
-
-    const { error: brandErr } = await admin
-      .from("brands")
-      .update({
-        stripe_connect_id: account.id,
-        stripe_charges_enabled: proj.charges_enabled,
-        stripe_payouts_enabled: proj.payouts_enabled,
-      })
-      .eq("id", brandId);
-
-    if (brandErr !== null) {
-      console.error("[brand-stripe-refresh-status] update brands:", brandErr.message);
-    }
-
+    const balance = await stripe.balance.retrieve({ stripeAccount: acct });
+    const avail = balance.available.find((x) => x.currency === cur)?.amount ?? 0;
+    const pend = balance.pending.find((x) => x.currency === cur)?.amount ?? 0;
     return new Response(
       JSON.stringify({
-        stripeAccountId: account.id,
-        chargesEnabled: proj.charges_enabled,
-        payoutsEnabled: proj.payouts_enabled,
-        requirements: proj.requirements,
+        availableMinor: avail,
+        pendingMinor: pend,
+        currency: cur.toUpperCase(),
       }),
       { status: 200, headers: { ...corsJson, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    console.error("[brand-stripe-refresh-status] Stripe retrieve:", e);
-    return new Response(JSON.stringify({ error: "Stripe retrieve failed" }), {
+    console.error("[brand-stripe-balances]", e);
+    return new Response(JSON.stringify({ error: "Stripe balance failed" }), {
       status: 502,
       headers: { ...corsJson, "Content-Type": "application/json" },
     });

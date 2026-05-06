@@ -241,6 +241,10 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     links,
     displayAttendeeCount: row.display_attendee_count,
     stripeStatus,
+    defaultCurrency: String(row.default_currency ?? "GBP")
+      .trim()
+      .toUpperCase()
+      .slice(0, 3),
   };
 }
 

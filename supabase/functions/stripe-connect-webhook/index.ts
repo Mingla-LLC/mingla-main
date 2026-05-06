@@ -52,17 +52,20 @@ async function syncAccountById(
   }
 
   const proj = projectStripeAccountToConnectRow(account);
-  const { error: upErr } = await admin.from("stripe_connect_accounts").upsert(
-    {
-      brand_id: brandId,
-      stripe_account_id: proj.stripe_account_id,
-      account_type: proj.account_type,
-      charges_enabled: proj.charges_enabled,
-      payouts_enabled: proj.payouts_enabled,
-      requirements: proj.requirements,
-    },
-    { onConflict: "brand_id" },
-  );
+  const connectRow: Record<string, unknown> = {
+    brand_id: brandId,
+    stripe_account_id: proj.stripe_account_id,
+    account_type: proj.account_type,
+    charges_enabled: proj.charges_enabled,
+    payouts_enabled: proj.payouts_enabled,
+    requirements: proj.requirements,
+  };
+  if (proj.charges_enabled) {
+    connectRow.kyc_stall_reminder_sent_at = null;
+  }
+  const { error: upErr } = await admin.from("stripe_connect_accounts").upsert(connectRow, {
+    onConflict: "brand_id",
+  });
   if (upErr !== null) {
     throw new Error(`stripe_connect_accounts upsert: ${upErr.message}`);
   }

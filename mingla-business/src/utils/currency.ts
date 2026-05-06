@@ -32,6 +32,28 @@ export const formatGbp = (value: number): string =>
   }).format(value);
 
 /**
+ * Format a major-unit amount in any ISO 4217 currency (Constitution #10).
+ *
+ * @param value — major units (e.g. pounds, dollars), not cents
+ * @param currency — 3-letter ISO code (e.g. GBP, USD)
+ */
+export function formatMoneyMajor(value: number, currency: string): string {
+  const code = currency.trim().toUpperCase().slice(0, 3);
+  if (code.length !== 3) {
+    return formatGbp(value);
+  }
+  try {
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return formatGbp(value);
+  }
+}
+
+/**
  * Format a numeric GBP value rounded to whole pounds (no decimals).
  *
  * Use for KPI tiles and headline scan numbers — anywhere a glanceable

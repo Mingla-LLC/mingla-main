@@ -39,3 +39,9 @@ verify_jwt = true
 
 [functions.stripe-connect-webhook]
 verify_jwt = false
+
+[functions.brand-stripe-balances]
+verify_jwt = true
+
+[functions.stripe-kyc-stall-reminder]
+verify_jwt = false
