@@ -30,6 +30,16 @@ import {
 } from "./brandMapping";
 import type { Brand, BrandRole } from "../store/currentBrandStore";
 
+const BRAND_SELECT_WITH_CONNECT = `
+  *,
+  stripe_connect_accounts (
+    stripe_account_id,
+    charges_enabled,
+    payouts_enabled,
+    requirements
+  )
+`;
+
 /**
  * Thrown by `createBrand` when slug collides with an existing non-deleted brand
  * (Postgrest 23505 unique_violation on `idx_brands_slug_active`).
@@ -94,7 +104,7 @@ export async function createBrand(
   const { data, error } = await supabase
     .from("brands")
     .insert(insertPayload)
-    .select()
+    .select(BRAND_SELECT_WITH_CONNECT)
     .single();
 
   if (error) {
@@ -115,7 +125,7 @@ export async function createBrand(
 export async function getBrands(accountId: string): Promise<Brand[]> {
   const { data, error } = await supabase
     .from("brands")
-    .select("*")
+    .select(BRAND_SELECT_WITH_CONNECT)
     .eq("account_id", accountId)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
@@ -133,7 +143,7 @@ export async function getBrands(accountId: string): Promise<Brand[]> {
 export async function getBrand(brandId: string): Promise<Brand | null> {
   const { data, error } = await supabase
     .from("brands")
-    .select("*")
+    .select(BRAND_SELECT_WITH_CONNECT)
     .eq("id", brandId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -167,7 +177,7 @@ export async function updateBrand(
     .update(updatePayload)
     .eq("id", brandId)
     .is("deleted_at", null) // defensive — RLS already prevents update of soft-deleted
-    .select()
+    .select(BRAND_SELECT_WITH_CONNECT)
     .single();
 
   if (error) throw error;

@@ -111,9 +111,12 @@ export type BrandPayoutStatus = "paid" | "in_transit" | "failed";
 
 export interface BrandPayout {
   id: string;
-  /** Amount in GBP, positive number. Caller formats via Intl.NumberFormat. */
+  /**
+   * Amount in major units of `currency` (historically GBP-only stubs used `amountGbp`).
+   */
   amountGbp: number;
-  currency: "GBP";
+  /** ISO 4217 code; defaults to GBP in stubs. */
+  currency: string;
   status: BrandPayoutStatus;
   /** ISO 8601 timestamp when funds arrived (paid) or expected (in_transit). */
   arrivedAt: string;
@@ -122,11 +125,11 @@ export interface BrandPayout {
 export interface BrandRefund {
   id: string;
   /**
-   * Refund amount in GBP, positive number (the refund value, not negative).
+   * Refund amount in major units of `currency`, positive number.
    * The minus prefix on display is a render-time concern.
    */
   amountGbp: number;
-  currency: "GBP";
+  currency: string;
   /** Display title of the event the refund relates to. */
   eventTitle: string;
   /** ISO 8601 timestamp when the refund processed. */
@@ -289,6 +292,10 @@ export type Brand = {
    * always shows attendees regardless of this toggle.
    */
   displayAttendeeCount?: boolean;
+  /**
+   * Brand default currency (ISO 4217) from `brands.default_currency`. B2+.
+   */
+  defaultCurrency?: string;
   /**
    * Stripe Connect status. NEW in J-A10 schema v8. Undefined treated as
    * `"not_connected"` at read sites — drives the J-A7 banner + payments

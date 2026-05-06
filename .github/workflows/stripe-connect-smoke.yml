@@ -1,0 +1,51 @@
+# Optional staging/production checks. Configure repository secrets:
+#   STRIPE_CONNECT_SMOKE_URL
+#   STRIPE_CONNECT_SMOKE_ANON_KEY
+# Optional for full checks (workflow_dispatch recommended):
+#   STRIPE_CONNECT_SMOKE_JWT
+#   STRIPE_CONNECT_SMOKE_SERVICE_ROLE_KEY
+#   STRIPE_CONNECT_SMOKE_BRAND_ID
+#
+# Light mode: asserts Connect-related functions return 401 without a user JWT.
+# Full mode: calls refresh + balances + REST read on brands (set STRIPE_CONNECT_SMOKE_MODE=full).
+
+name: Stripe Connect smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Light smoke
+        env:
+          CI: "true"
+          STRIPE_CONNECT_SMOKE_URL: ${{ secrets.STRIPE_CONNECT_SMOKE_URL }}
+          STRIPE_CONNECT_SMOKE_ANON_KEY: ${{ secrets.STRIPE_CONNECT_SMOKE_ANON_KEY }}
+        run: node scripts/e2e/stripe-connect-smoke.mjs
+
+      - name: Full smoke (when JWT secret is set)
+        env:
+          CI: "true"
+          STRIPE_CONNECT_SMOKE_URL: ${{ secrets.STRIPE_CONNECT_SMOKE_URL }}
+          STRIPE_CONNECT_SMOKE_ANON_KEY: ${{ secrets.STRIPE_CONNECT_SMOKE_ANON_KEY }}
+          STRIPE_CONNECT_SMOKE_JWT: ${{ secrets.STRIPE_CONNECT_SMOKE_JWT }}
+          STRIPE_CONNECT_SMOKE_SERVICE_ROLE_KEY: ${{ secrets.STRIPE_CONNECT_SMOKE_SERVICE_ROLE_KEY }}
+          STRIPE_CONNECT_SMOKE_BRAND_ID: ${{ secrets.STRIPE_CONNECT_SMOKE_BRAND_ID }}
+        run: |
+          if [ -z "$STRIPE_CONNECT_SMOKE_JWT" ] || [ -z "$STRIPE_CONNECT_SMOKE_SERVICE_ROLE_KEY" ] || [ -z "$STRIPE_CONNECT_SMOKE_BRAND_ID" ]; then
+            echo "Full smoke skipped (set STRIPE_CONNECT_SMOKE_JWT, SERVICE_ROLE_KEY, BRAND_ID for workflow_dispatch runs)."
+            exit 0
+          fi
+          STRIPE_CONNECT_SMOKE_MODE=full node scripts/e2e/stripe-connect-smoke.mjs

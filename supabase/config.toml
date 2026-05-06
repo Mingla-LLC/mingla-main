@@ -26,3 +26,22 @@ verify_jwt = false
 # request headers. Default 150s applies in the interim.
 [functions.run-place-intelligence-trial]
 verify_jwt = true
+
+# Cycle B2 — Stripe Connect (issue #47)
+[functions.brand-stripe-connect-session]
+verify_jwt = true
+
+[functions.brand-stripe-refresh-status]
+verify_jwt = true
+
+[functions.brand-stripe-detach]
+verify_jwt = true
+
+[functions.stripe-connect-webhook]
+verify_jwt = false
+
+[functions.brand-stripe-balances]
+verify_jwt = true
+
+[functions.stripe-kyc-stall-reminder]
+verify_jwt = false

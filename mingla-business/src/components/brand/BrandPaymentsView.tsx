@@ -19,7 +19,7 @@
  * Per J-A10 spec §3.5.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   Pressable,
   ScrollView,
@@ -45,7 +45,7 @@ import type {
   BrandRefund,
   BrandStripeStatus,
 } from "../../store/currentBrandStore";
-import { formatGbp } from "../../utils/currency";
+import { formatMoneyMajor } from "../../utils/currency";
 import { formatRelativeTime } from "../../utils/relativeTime";
 
 import { Button } from "../ui/Button";
@@ -55,20 +55,12 @@ import type { IconName } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
 import { Pill } from "../ui/Pill";
 import type { PillVariant } from "../ui/Pill";
-import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
-
-interface ToastState {
-  visible: boolean;
-  message: string;
-}
 
 // Status-banner config table. `null` entry suppresses the banner entirely
 // (active state's affirmative signal is the populated KPIs).
 // W-1 watch-point: kit lacks `alert`/`info` icons; restricted state uses
 // `flag` (action-needed connotation) + semantic.error coloring.
-type BannerCtaAction = "open_onboard" | "resolve_toast";
-
 interface BannerConfig {
   icon: IconName;
   iconColor: string;
@@ -77,7 +69,6 @@ interface BannerConfig {
   ctaLabel: string;
   ctaVariant: "primary" | "destructive";
   destructive: boolean;
-  ctaAction: BannerCtaAction;
 }
 
 const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
@@ -89,7 +80,6 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     ctaLabel: "Connect Stripe",
     ctaVariant: "primary",
     destructive: false,
-    ctaAction: "open_onboard",
   },
   onboarding: {
     icon: "bank",
@@ -99,7 +89,6 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     ctaLabel: "Finish onboarding",
     ctaVariant: "primary",
     destructive: false,
-    ctaAction: "open_onboard",
   },
   active: null,
   restricted: {
@@ -107,10 +96,9 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     iconColor: semantic.error,
     title: "Action required — your account is limited",
     sub: "Stripe needs additional information before you can sell tickets.",
-    ctaLabel: "Resolve",
-    ctaVariant: "destructive",
+    ctaLabel: "Continue verification",
+    ctaVariant: "primary",
     destructive: true,
-    ctaAction: "resolve_toast",
   },
 };
 
@@ -131,7 +119,7 @@ export interface BrandPaymentsViewProps {
   onBack: () => void;
   /**
    * Called when user taps Connect/Finish banner CTA — routes to onboarding
-   * shell. NOT called when status is restricted (Resolve fires Toast).
+   * shell (including restricted → resume embedded onboarding).
    */
   onOpenOnboard: () => void;
   /**
@@ -140,6 +128,9 @@ export interface BrandPaymentsViewProps {
    * Toast).
    */
   onOpenReports: () => void;
+  /** B2 — optional disconnect Stripe (finance + brand admin). */
+  onDisconnectStripe?: () => void;
+  disconnectBusy?: boolean;
 }
 
 export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
@@ -147,23 +138,10 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   onBack,
   onOpenOnboard,
   onOpenReports,
+  onDisconnectStripe,
+  disconnectBusy = false,
 }) => {
   const insets = useSafeAreaInsets();
-  const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
-
-  const fireToast = useCallback((message: string): void => {
-    setToast({ visible: true, message });
-  }, []);
-
-  const handleDismissToast = useCallback((): void => {
-    setToast((prev) => ({ ...prev, visible: false }));
-  }, []);
-
-  // [TRANSITIONAL] Resolve CTA fires Toast — exit when B2 wires real
-  // Stripe deep-link to the Stripe dashboard restriction-resolution flow.
-  const handleResolveBanner = useCallback((): void => {
-    fireToast("Stripe support lands in B2.");
-  }, [fireToast]);
 
   const handleExport = useCallback((): void => {
     onOpenReports();
@@ -171,6 +149,11 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
 
   const stripeStatus = brand?.stripeStatus ?? "not_connected";
   const bannerConfig = BANNER_CONFIG[stripeStatus];
+  const currencyCode = brand?.defaultCurrency ?? "GBP";
+  const fmtMoney = useCallback(
+    (value: number): string => formatMoneyMajor(value, currencyCode),
+    [currencyCode],
+  );
 
   const sortedPayouts = useMemo<BrandPayout[]>(() => {
     if (brand === null) return [];
@@ -225,7 +208,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const lastPayoutAmount = sortedPayouts[0]?.amountGbp;
   const lastPayoutDisplay =
     brand.lastPayoutAt !== undefined && lastPayoutAmount !== undefined
-      ? formatGbp(lastPayoutAmount)
+      ? fmtMoney(lastPayoutAmount)
       : "—";
   const lastPayoutSub =
     brand.lastPayoutAt !== undefined
@@ -278,11 +261,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
             <View style={styles.bannerCtaRow}>
               <Button
                 label={bannerConfig.ctaLabel}
-                onPress={
-                  bannerConfig.ctaAction === "open_onboard"
-                    ? onOpenOnboard
-                    : handleResolveBanner
-                }
+                onPress={onOpenOnboard}
                 variant={bannerConfig.ctaVariant}
                 size="md"
                 fullWidth
@@ -296,13 +275,13 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         <View style={styles.kpisRow}>
           <KpiTile
             label="Available"
-            value={formatGbp(brand.availableBalanceGbp ?? 0)}
+            value={fmtMoney(brand.availableBalanceGbp ?? 0)}
             sub="Ready to pay out"
             style={styles.kpiCell}
           />
           <KpiTile
             label="Pending"
-            value={formatGbp(brand.pendingBalanceGbp ?? 0)}
+            value={fmtMoney(brand.pendingBalanceGbp ?? 0)}
             sub="In Stripe escrow"
             style={styles.kpiCell}
           />
@@ -337,7 +316,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                 >
                   <View style={styles.txnLeftCol}>
                     <Text style={styles.txnAmount}>
-                      {formatGbp(payout.amountGbp)}
+                      {formatMoneyMajor(payout.amountGbp, payout.currency ?? currencyCode)}
                     </Text>
                     <Text style={styles.txnSub}>
                       {payout.status === "in_transit"
@@ -371,7 +350,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                     <View style={styles.txnLeftCol}>
                       {/* Render-time minus prefix on positive amount per spec §6 + AC#27 */}
                       <Text style={styles.txnAmountRefund}>
-                        {`−${formatGbp(refund.amountGbp)}`}
+                        {`−${formatMoneyMajor(refund.amountGbp, refund.currency ?? currencyCode)}`}
                       </Text>
                       <Text style={styles.txnSub} numberOfLines={1}>
                         {refund.eventTitle}
@@ -388,7 +367,26 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           </>
         ) : null}
 
-        {/* SECTION E — Export CTA */}
+        {/* SECTION E — Disconnect (B2 J-B2.5) */}
+        {stripeStatus !== "not_connected" && onDisconnectStripe !== undefined ? (
+          <GlassCard variant="base" padding={spacing.md}>
+            <Text style={styles.disconnectTitle}>Stripe account</Text>
+            <Text style={styles.disconnectBody}>
+              Disconnect if you need to link a different Stripe account. Paid ticket
+              features require an active connection.
+            </Text>
+            <Button
+              label={disconnectBusy ? "Disconnecting…" : "Disconnect Stripe"}
+              onPress={onDisconnectStripe}
+              variant="secondary"
+              size="md"
+              fullWidth
+              disabled={disconnectBusy}
+            />
+          </GlassCard>
+        ) : null}
+
+        {/* SECTION F — Export CTA */}
         <View style={styles.exportRow}>
           <Button
             label="Export finance report"
@@ -401,14 +399,6 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         </View>
       </ScrollView>
 
-      <View style={styles.toastWrap} pointerEvents="box-none">
-        <Toast
-          visible={toast.visible}
-          kind="info"
-          message={toast.message}
-          onDismiss={handleDismissToast}
-        />
-      </View>
     </View>
   );
 };
@@ -569,19 +559,24 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
   },
 
+  disconnectTitle: {
+    fontSize: typography.body.fontSize,
+    fontWeight: "600",
+    color: textTokens.primary,
+    marginBottom: spacing.xs,
+  },
+  disconnectBody: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
+    marginBottom: spacing.md,
+  },
+
   // Export CTA -----------------------------------------------------------
   exportRow: {
     marginTop: spacing.sm,
   },
 
-  // Toast ----------------------------------------------------------------
-  toastWrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: spacing.xl,
-    paddingHorizontal: spacing.md,
-  },
 });
 
 export default BrandPaymentsView;
