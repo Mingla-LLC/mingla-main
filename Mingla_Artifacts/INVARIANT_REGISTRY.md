@@ -1936,3 +1936,52 @@ Other shapes (allow-list / parameterized restrictions / `event_scope` arrays) ar
 - Assertion: post-hydrate `useCurrentBrandStore.getState().currentBrand === null`
 - Inverse test (preservation): same cache shape with `currentBrand.id = "<real-uuid>"` → post-hydrate currentBrand preserved verbatim
 
+### I-PROPOSED-H — RLS-RETURNING-OWNER-GAP-PREVENTED (DRAFT)
+
+**Status:** DRAFT — flips to ACTIVE on ORCH-0734 tester PASS
+
+**Statement:** Every authenticated mutation policy (`CREATE POLICY ... FOR INSERT|UPDATE|DELETE`) on a `public.*` schema table MUST be paired with at least one SELECT policy whose USING clause uses `auth.uid()` directly (not via a SECURITY DEFINER helper function), AND every UPDATE policy whose WITH CHECK uses a helper function MUST also be paired with a direct-predicate fallback policy if the mutation can change a column referenced in the helper's predicate.
+
+**Why:** SECURITY DEFINER + STABLE helper functions called from RLS policies have two failure modes:
+(1) In INSERT...RETURNING context, the helper may not see the just-inserted row (snapshot quirk); SELECT-for-RETURNING fails; mutation rolls back with 42501 even though WITH CHECK passed.
+(2) When UPDATE sets a column the helper gates on (e.g., `deleted_at`), the helper's evaluation against the post-mutation row excludes it; WITH CHECK fails; mutation rolls back with 42501.
+
+Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure modes.
+
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-h-rls-returning-owner-gap` running `.github/scripts/strict-grep/i-proposed-h-rls-returning-owner-gap.mjs`. Going-forward enforcement only — migrations whose 14-digit timestamp prefix is `>= 20260507000000` are scanned. Earlier migrations (the squash baseline) are exempt because they encode pre-fix historical state where this bug class was discovered but not yet fixed across the entire schema. Future ORCH cycles audit and remediate the legacy violations (~35 found in the squash baseline at the time of ORCH-0734 — registered as discoveries D-IMPL-0734-1).
+
+**Waiver mechanism:** A migration can opt out for genuinely service-role-only tables (e.g., `audit_log`) by adding the magic comment `-- I-RLS-OWNER-GAP-WAIVER: <ORCH-ID> <reason>` immediately above the violating CREATE POLICY statement. The waiver tag must include an ORCH-ID and a human-readable reason.
+
+**Confirmed bug class:** RC-0728 (RLS-RETURNING-OWNER-GAP) — see ROOT_CAUSE_REGISTER.md.
+
+**Source:** ORCH-0734 (audit 2026-05-06) — investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH_0734_RLS_RETURNING_OWNER_GAP_AUDIT.md`; spec `Mingla_Artifacts/specs/SPEC_ORCH_0734_RLS_RETURNING_OWNER_GAP_FIX.md`.
+
+**Cross-reference:** Memory file `~/.claude/projects/c--Users-user-Desktop-mingla-main/memory/feedback_rls_returning_owner_gap.md` (DRAFT until ORCH-0734 CLOSE).
+
+**Test that catches a regression:** CI gate self-test (`node .github/scripts/strict-grep/i-proposed-h-rls-returning-owner-gap.mjs --self-test`) creates synthetic violating + passing + waivered fixture migrations, asserts the gate FAILS on violation and PASSES on compliance/waiver.
+
+**EXIT condition:** None — permanent invariant. If a future Postgres release fixes the SECURITY DEFINER + STABLE snapshot quirk in INSERT...RETURNING context AND a future Postgres release adds a way for soft-delete-flag UPDATE WITH CHECK to evaluate against pre-update row state, the underlying mechanism for both failure modes would be eliminated and this invariant could be reconsidered. Until then: permanent.
+
+### I-PROPOSED-I — MUTATION-ROWCOUNT-VERIFIED (DRAFT)
+
+**Status:** DRAFT — flips to ACTIVE on ORCH-0734-RW tester PASS
+
+**Statement:** Every supabase-js mutation in `mingla-business/src/services/*.ts` that targets a specific row(s) by ID (`.eq("id", X)` / `.eq("brand_id", X)` / similar) MUST verify rowcount via `.select(...)` chain (or equivalent) AND throw a structured error if rowcount is 0. Exempt: UPSERT on PK (idempotent by design — destructuring only `error` is acceptable), and explicitly-documented "fire-and-forget cleanup" mutations marked with `// I-MUTATION-ROWCOUNT-WAIVER: <ORCH-ID> <reason>` magic comment within 3 lines above the mutation.
+
+**Why:** When supabase-js executes UPDATE/DELETE without `.select()` chain, PostgREST returns `204 No Content` on success — including when 0 rows match the WHERE clause + RLS. supabase-js returns no error. If the service code only destructures `error`, it silently treats 0-row updates as success. The user sees a green Toast / sheet close / navigation, believes the mutation happened, but DB state is unchanged. This is a worse failure mode than 42501 because it provides false-positive confirmation.
+
+**Confirmed instances (closed by this fix):**
+- `softDeleteBrand` in `brandsService.ts` — was destructuring only `error`; now chains `.select("id")` + throws on 0 rows.
+
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-i-mutation-rowcount-verified` running `.github/scripts/strict-grep/i-proposed-i-mutation-rowcount-verified.mjs`. Scans `mingla-business/src/services/*.ts` for `.update(`/`.delete(` patterns and asserts they are followed (within reasonable proximity in the same statement chain) by either `.select(`, `.maybeSingle(`, or the magic waiver comment.
+
+**Source:** ORCH-0734 REWORK (audit + spec 2026-05-06) — investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH_0734_REWORK_DELETE_PATH_BRUTAL.md`; spec `Mingla_Artifacts/specs/SPEC_ORCH_0734_REWORK_DELETE_FIX.md`.
+
+**Cross-reference:** Memory file `~/.claude/projects/c--Users-user-Desktop-mingla-main/memory/feedback_rls_returning_owner_gap.md` extended (DRAFT) with rowcount-verification appendix at ORCH-0734-RW IMPL.
+
+**Active waivers (post-IMPL):**
+- `brandsService.ts` step 3 clear-default_brand_id — permanent waiver, fire-and-forget cleanup idempotent by design
+- `creatorAccount.ts` updateCreatorAccount — TEMPORARY waiver pending follow-up cycle (D-IMPL-0734-RW-1 side discovery)
+
+**EXIT condition:** Permanent invariant. The PostgREST + supabase-js contract that produces silent 0-row success is unlikely to change.
+

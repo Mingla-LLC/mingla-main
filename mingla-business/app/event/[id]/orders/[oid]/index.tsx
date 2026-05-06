@@ -215,10 +215,13 @@ export default function OrderDetailRoute(): React.ReactElement {
     if (order === null || event === null || resendSubmitting) return;
     setResendSubmitting(true);
     await sleep(RESEND_PROCESSING_MS);
-    const brand = useCurrentBrandStore
-      .getState()
-      .brands.find((b) => b.id === order.brandId);
-    const brandName = brand?.displayName ?? "";
+    // Cycle 17e-A: brand list moved to React Query. Outside-component context
+    // checks current brand selection only — falls back to empty for cross-brand.
+    const currentBrand = useCurrentBrandStore.getState().currentBrand;
+    const brandName =
+      currentBrand !== null && currentBrand.id === order.brandId
+        ? currentBrand.displayName
+        : "";
     const occurredAt = new Date().toISOString();
     const reason = "Resent ticket";
 

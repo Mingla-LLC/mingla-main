@@ -34,7 +34,7 @@ import {
   useScannerInvitationsStore,
   type ScannerInvitation,
 } from "../../../../src/store/scannerInvitationsStore";
-import { useCurrentBrandStore } from "../../../../src/store/currentBrandStore";
+import { useBrandList } from "../../../../src/store/currentBrandStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
@@ -124,9 +124,11 @@ export default function EventScannersListRoute(): React.ReactElement {
       ? s.events.find((e) => e.id === eventId) ?? null
       : null,
   );
-  const brand = useCurrentBrandStore((s) =>
-    event !== null ? s.brands.find((b) => b.id === event.brandId) ?? null : null,
-  );
+  const brandList = useBrandList();
+  const brand =
+    event !== null
+      ? (brandList.find((b) => b.id === event.brandId) ?? null)
+      : null;
 
   // Cycle 13a J-T6 G6: scanner invite + revoke gated on MANAGE_SCANNERS
   // (event_manager+). Hooks run on every render before any early-return shell.

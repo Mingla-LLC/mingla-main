@@ -49,7 +49,7 @@ import {
   useEventEditLogStore,
   type EventEditEntry,
 } from "../../src/store/eventEditLogStore";
-import { useCurrentBrandStore } from "../../src/store/currentBrandStore";
+import { useBrandList } from "../../src/store/currentBrandStore";
 import { formatGbp } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
 import { expandTicketIds } from "../../src/utils/expandTicketIds";
@@ -167,9 +167,11 @@ export default function BuyerOrderDetailRoute(): React.ReactElement {
   const event = useLiveEventStore((s) =>
     order !== null ? s.events.find((e) => e.id === order.eventId) ?? null : null,
   );
-  const brand = useCurrentBrandStore((s) =>
-    order !== null ? s.brands.find((b) => b.id === order.brandId) ?? null : null,
-  );
+  const brandList = useBrandList();
+  const brand =
+    order !== null
+      ? (brandList.find((b) => b.id === order.brandId) ?? null)
+      : null;
   // Material-change banner data — pre-filtered (severity !== "additive").
   // Cycle 9c rework v2 — select raw entries + filter in useMemo so the
   // selector returns a stable reference (was inline filter, infinite-looped).

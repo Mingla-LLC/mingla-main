@@ -1,9 +1,26 @@
 # Root Cause Register
 
-> Last updated: 2026-04-26
+> Last updated: 2026-05-06
 > Proven root causes with causal clusters.
 
 ## Root Causes
+
+### RC-0728: RLS-RETURNING-OWNER-GAP — supabase-js mutations fail because no SELECT policy admits the post-mutation row
+- **Discovery date:** 2026-05-06 (proven after 13 forensic passes ORCH-0728/0729/0731 + H39/H40/H41/H42)
+- **Proof:** [reports/INVESTIGATION_ORCH_0731_B1_HISTORICAL_FORENSICS.md](Mingla_Artifacts/reports/INVESTIGATION_ORCH_0731_B1_HISTORICAL_FORENSICS.md) (PASS-10) + H39 (DISABLE/ENABLE RLS toggle confirmed RLS as denier) + H40 (JWT decode showed `sub === user.id` exactly — JWT not the bug) + H41 (pg_policies enumeration showed 5 policies on brands; only INSERT and UPDATE/DELETE policies for owners, NO owner-SELECT policy) + H42 (operator dashboard SQL: pure INSERT *without* RETURNING succeeded under simulated auth, while INSERT *with* RETURNING returned 42501 — definitive disambiguator). Brands-table relpages = 0 confirmed bug latent since B1 phase 2 cycle.
+- **Symptoms caused:** Brand-create from `BrandSwitcherSheet` returns 42501 (operator-reported "create-brand glitch"). Brand-delete from `BrandDeleteSheet` exhibits identical 42501 (operator-confirmed 2026-05-06). Likely also blocks every other operator-facing mutation across mingla-business B1 tables (events, tickets, orders, brand_members, team_invitations) that hits an RLS-gated INSERT/UPDATE/DELETE — full audit pending under ORCH-0734.
+- **Causal chain:**
+  1. supabase-js `.insert(...).select()` / `.update(...).select()` / `.delete().select()` defaults to `Prefer: return=representation`.
+  2. Postgres performs the mutation. WITH CHECK / USING predicates pass for the actor.
+  3. Postgres processes the implicit RETURNING by evaluating SELECT policies on the post-mutation row state.
+  4. For brands INSERT: no SELECT policy admits an owner of a fresh brand (brand_members policy fails — no membership row, no AFTER INSERT trigger creates one — and public-events policy fails — fresh brand has zero events).
+  5. For brands UPDATE soft-delete: every SELECT policy gates on `deleted_at IS NULL`; the post-update row has `deleted_at IS NOT NULL`; no SELECT policy admits.
+  6. With no SELECT policy passing, Postgres rolls back the entire mutation and returns 42501 with the misleading message "new row violates row-level security policy" — although the INSERT/UPDATE WITH CHECK actually passed.
+- **Structural fix (in dispatch — ORCH-0734 forensics IA):** [prompts/INVESTIGATION_ORCH_0734_RLS_RETURNING_OWNER_GAP_AUDIT.md](Mingla_Artifacts/prompts/INVESTIGATION_ORCH_0734_RLS_RETURNING_OWNER_GAP_AUDIT.md) — comprehensive audit of every authenticated INSERT/UPDATE/DELETE policy on every mingla-business B1 table for matching post-mutation SELECT-policy coverage, followed by single fix migration. Canonical fix archetype: add permissive SELECT policy `(account_id = auth.uid()) AND (deleted_at IS NULL OR <admin/owner branch>)` for owners, and broaden any soft-delete-affected SELECT policies to admit `deleted_at IS NOT NULL` for admins/owners as appropriate.
+- **Status:** Root cause PROVEN (HIGH confidence). Audit + fix dispatched as ORCH-0734. Awaiting forensics return → spec → impl → tester PASS → CLOSE + lock-in.
+- **Invariants:** NEW (DRAFT until ORCH-0734 CLOSE) **I-PROPOSED-H RLS-RETURNING-OWNER-GAP-PREVENTED** — every authenticated mutation policy on `public.*` schema tables MUST be paired with at least one SELECT policy that admits the actor for the post-mutation row state. Enforced by a SQL-aware CI gate plugged into `.github/workflows/strict-grep-mingla-business.yml`.
+- **Causal cluster:** Cluster 4 (NEW): "RLS-RETURNING bug class" — distinct from RC-001 (state ownership), RC-002 (silent errors), RC-003 (fabricated data). Architectural pitfall: spec authors who design RLS by thinking about "who can write/edit/delete" forget that supabase-js's RETURNING means "who can write" implies "who can read it back." Brand-create + brand-delete are two confirmed instances; ORCH-0734 audit will surface every other latent instance in mingla-business.
+- **Lesson codified:** Every mutation policy needs a paired SELECT policy that admits the post-mutation row state. Soft-delete UPDATEs in particular need owner/admin-broadened SELECT policies because every "active row" SELECT policy excludes the freshly-tombstoned row. Future B-cycle backend work must use this as a checklist item before tester PASS. ORCH-0734 ships an invariant + CI gate + permanent memory file (`feedback_rls_returning_owner_gap.md`) so this pattern never re-emerges.
 
 ### RC-0686: TypeScript enum rename without SQL CHECK constraint update (`photo_backfill_runs.mode`)
 - **Discovery date:** 2026-04-26
@@ -92,3 +109,6 @@ Key factory fixed. Mutation errors partially addressed. Unknown extent in unaudi
 ### Cluster 3: "Security Layer" (UNAUDITED)
 Potential root cause: Missing or inconsistent RLS policies, unvalidated edge functions.
 No investigation started. ORCH-0223, 0224, 0225, 0226 all at F.
+
+### Cluster 4: "RLS-RETURNING bug class" (PROVEN, AUDIT IN FLIGHT)
+Root cause: RC-0728. supabase-js `.insert/.update/.delete(...).select()` triggers `Prefer: return=representation`, which makes Postgres evaluate SELECT policies for RETURNING. If no SELECT policy admits the post-mutation row, the entire mutation rolls back with 42501 even though WITH CHECK passed. Two confirmed instances in mingla-business: brand-create (owner has no SELECT policy for fresh brands) and brand-delete (every SELECT policy excludes soft-deleted rows). ORCH-0734 audits the remaining surface area to enumerate and patch all latent instances. Lesson: every mutation policy needs a matching SELECT policy that admits post-state.

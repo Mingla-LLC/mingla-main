@@ -1140,6 +1140,93 @@ taxonomy normalization (D-SUB-2).
 
 ---
 
+## 11.8 Sub-audit correction — 3 photo-pool RPC findings retracted (2026-05-01)
+
+Operator pushback on §11.7 sub-audit findings prompted re-verification via
+direct Supabase Management API SQL. Live `pg_proc.prosrc` query returned
+**only** `admin_rules_preview_impact` as referencing `ai_categories` — NOT
+the 3 admin photo-pool RPCs (`admin_photo_pool_categories`,
+`admin_photo_pool_locations`, `admin_pool_category_detail`) that the
+sub-audit listed as missed dependencies. **Sub-audit error:** I cited those
+3 RPCs from migration file `20260425000014_orch_0640_rewrite_place_admin_rpcs.sql`
+which DID write them with `ai_categories[1]` grouping at that time, but
+failed to re-verify against live `pg_proc.prosrc`. A later migration
+(unidentified at time of correction; spec writer to enumerate at SPEC time)
+superseded those 3 RPCs and removed their ai_categories dependency.
+
+**This is the SAME class of error as the original orchestrator audit miss**
+(file grep ≠ live DB state). Sub-audit was supposed to be the safety net
+against that pattern but reproduced a variant of it (migration file ≠ live
+function source after `CREATE OR REPLACE FUNCTION`). Honest disclosure +
+correction.
+
+### Corrected dependency count
+
+**5 missed deps → 3 real missed deps + 2 false alarms.**
+
+Real, confirmed via live SQL probes (`pg_matviews`, `pg_proc`, `cron.job`):
+
+1. `admin_place_pool_mv` materialized view — projects
+   `pp.ai_categories` + derived `primary_category = COALESCE(pp.ai_categories[1], 'uncategorized')`.
+   Verified live via `pg_matviews` query 2026-05-01.
+2. `admin_rules_preview_impact` RPC — reads `pp.ai_categories` for demotion
+   + strip rule kinds. Verified live via `pg_proc.prosrc` query 2026-05-01
+   (only function in `pg_proc` matching `prosrc ILIKE '%ai_categories%'`).
+3. Cron job 13 `refresh_admin_place_pool_mv` — refreshes the MV every 10
+   min. Verified live via `cron.job` query 2026-05-01 (`active=true`).
+
+False alarms (cited from migration file but live source no longer references):
+
+- `admin_photo_pool_categories` — already migrated
+- `admin_photo_pool_locations` — already migrated
+- `admin_pool_category_detail` — already migrated
+
+### Final TRUE list of consumers (orchestrator-found + sub-audit-found, post-correction)
+
+**Production-LIVE direct readers — must migrate before column drop:**
+
+1. `supabase/functions/generate-curated-experiences/index.ts:379, 432-436, 681` — passthrough (orchestrator-found)
+2. `supabase/functions/_shared/stopAlternatives.ts:84, 86, 134-135` — filter (orchestrator-found; effectively dead path due to validator)
+3. `mingla-admin/src/pages/PlacePoolManagementPage.jsx` — admin edit UI (orchestrator-found)
+4. `scripts/verify-places-pipeline.mjs` — WRITES (orchestrator-found, archived)
+5. `admin_place_pool_mv` materialized view + cron job 13 (sub-audit-found, **REAL**)
+6. `admin_rules_preview_impact` RPC (sub-audit-found, **REAL**)
+
+**Total: 6 consumers (4 code + 2 DB) + 1 dependent cron job.**
+
+### NEW system independence — RECONFIRMED at H+ confidence
+
+Live SQL Probe 4 (2026-05-01): `query_servable_places_by_signal`
+(the RPC discover-cards calls) reads `is_servable=true` and does NOT
+reference `ai_categories`. Operator's empirical claim "we already
+changed the place pool to read from is_servable" is **correct** for
+the serving path. The 3 real remaining deps are admin back-office +
+1 edge-function passthrough + 1 archived script — none are in the
+serving hot path.
+
+### D-SUB-1 sharpened
+
+Original D-SUB-1 (process improvement): "every column-drop audit MUST
+query DB schema not just code grep."
+
+**Sharpened to:** every column-drop audit MUST query LIVE
+`pg_proc.prosrc` for any RPC's current source, NEVER cite a migration
+file as current truth even if it appears to be the most recent. Use
+`SELECT prosrc FROM pg_proc WHERE proname = 'function_name'` as the
+authoritative source. Migration files are historical artifacts;
+`pg_proc` is live state. This applies recursively — sub-audits must
+re-verify orchestrator findings the same way.
+
+### SPEC v2 scope correction
+
+S-3d "Rewrite 3 admin photo-pool RPCs" → demoted to "Pre-flight
+verification only" (run probe, expect zero rows, document migration
+that superseded). No rewrite work needed. Implementor scope shrinks
+by ~3 RPC rewrites. Net effect on SPEC v2: ~3-5h implementor wall
+shaved off.
+
+---
+
 ## 11. Stop-Condition Compliance
 
 - [x] Operator's claim confirmed at H confidence with named pathway (A3) — §0

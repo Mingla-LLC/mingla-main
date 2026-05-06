@@ -17,3 +17,12 @@ verify_jwt = true
 
 [functions.ticketmaster-events]
 verify_jwt = false
+
+# ORCH-0737 v2 patch (post-smoke 2026-05-06): wall-clock limit bump to 200s
+# DEFERRED — `max_request_duration_seconds` is not recognised by the local
+# supabase CLI version; removed 2026-05-06 to unblock ORCH-0734 deploy.
+# Re-evaluate at ORCH-0737 CLOSE cycle: either upgrade CLI to a version that
+# supports this key, OR set the timeout via the Deno function code, OR via
+# request headers. Default 150s applies in the interim.
+[functions.run-place-intelligence-trial]
+verify_jwt = true

@@ -18,6 +18,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { Button } from "../../src/components/ui/Button";
 import { GlassCard } from "../../src/components/ui/GlassCard";
@@ -35,7 +36,6 @@ import {
   typography,
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
-import { STUB_BRANDS, STUB_DEFAULT_BRAND_ID } from "../../src/store/brandList";
 import {
   useBrandList,
   useCurrentBrandStore,
@@ -52,11 +52,15 @@ export default function AccountTab(): React.ReactElement {
   const router = useRouter();
   const { user, signOut, lastRecoveryEvent, clearLastRecoveryEvent } = useAuth();
   const brands = useBrandList();
-  const setBrands = useCurrentBrandStore((s) => s.setBrands);
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
-  const reset = useCurrentBrandStore((s) => s.reset);
 
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
+  // Cycle 17e-A: BrandDeleteSheet state — opens from BrandSwitcherSheet trash
+  // taps (operator selects which brand to delete from the switcher row UI).
+  const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
+  const [brandPendingDelete, setBrandPendingDelete] = useState<Brand | null>(
+    null,
+  );
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
 
   // Cycle 14 — D-CYCLE14-FOR-6 + I-35: consume recover-on-sign-in event
@@ -123,25 +127,45 @@ export default function AccountTab(): React.ReactElement {
     setToast({ visible: true, message: `${brand.displayName} is ready` });
   }, []);
 
+  // Cycle 17e-A: BrandSwitcherSheet trash tap → open BrandDeleteSheet
+  const handleRequestDeleteBrand = useCallback((brand: Brand): void => {
+    setBrandPendingDelete(brand);
+    setDeleteSheetVisible(true);
+  }, []);
+
+  const handleCloseDeleteSheet = useCallback((): void => {
+    setDeleteSheetVisible(false);
+    // Don't clear brandPendingDelete immediately — exit animation reads it
+  }, []);
+
+  const handleBrandDeleted = useCallback(
+    (deletedBrandId: string): void => {
+      // Clear currentBrand if it matches deleted brand (server already cleared
+      // default_brand_id per softDeleteBrand Step 3; this clears local UI state)
+      const current = useCurrentBrandStore.getState().currentBrand;
+      if (current !== null && current.id === deletedBrandId) {
+        setCurrentBrand(null);
+      }
+      const deleted = brandPendingDelete;
+      setBrandPendingDelete(null);
+      setToast({
+        visible: true,
+        message: `${deleted?.displayName ?? "Brand"} deleted`,
+      });
+    },
+    [setCurrentBrand, brandPendingDelete],
+  );
+
   const handleDismissToast = useCallback((): void => {
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
-  // [TRANSITIONAL] dev seed buttons — removed in B1 backend cycle when real
-  // brand CRUD endpoints land. Existence gated by __DEV__ so production
-  // builds never see these.
-  const handleSeedStubs = useCallback((): void => {
-    setBrands([...STUB_BRANDS]);
-    const defaultBrand =
-      STUB_BRANDS.find((b) => b.id === STUB_DEFAULT_BRAND_ID) ?? STUB_BRANDS[0] ?? null;
-    setCurrentBrand(defaultBrand);
-    setToast({ visible: true, message: "Seeded 4 stub brands" });
-  }, [setBrands, setCurrentBrand]);
-
-  const handleWipeBrands = useCallback((): void => {
-    reset();
-    setToast({ visible: true, message: "Brands wiped" });
-  }, [reset]);
+  // Cycle 17e-A: dev-seed buttons REMOVED per Decision 8 = C accept-as-loss.
+  // Brand list now flows from React Query (Const #5) — operators create real
+  // brands via the wired BrandSwitcherSheet create flow. Pre-17e-A phone-only
+  // STUB_BRANDS state is wiped on first 17e-A run; documented as intentional
+  // breaking change for DEV-only state. Production operators see no change
+  // (they never had stub brands; seed/wipe were `__DEV__`-gated).
 
   const emailLabel =
     user?.email ??
@@ -244,38 +268,23 @@ export default function AccountTab(): React.ReactElement {
           </GlassCard>
         ) : null}
 
-        {__DEV__ ? (
-          <GlassCard variant="elevated" padding={spacing.lg}>
-            <Text style={styles.title}>Dev tools</Text>
-            <Text style={styles.body}>
-              [TRANSITIONAL] Seed and wipe stub brands for testing Cycle 1
-              flows. {brands.length} brand(s) currently in the store.
-            </Text>
-            <View style={styles.devBtnRow}>
-              <Button
-                label="Seed 4 stub brands"
-                onPress={handleSeedStubs}
-                variant="secondary"
-                size="md"
-                leadingIcon="plus"
-              />
-            </View>
-            <View style={styles.devBtnRow}>
-              <Button
-                label="Wipe brands"
-                onPress={handleWipeBrands}
-                variant="ghost"
-                size="md"
-              />
-            </View>
-          </GlassCard>
-        ) : null}
+        {/* Cycle 17e-A: dev-seed/wipe buttons removed per Decision 8 = C.
+            Operators create real brands via BrandSwitcherSheet → useCreateBrand. */}
       </ScrollView>
 
       <BrandSwitcherSheet
         visible={sheetVisible}
         onClose={handleCloseSheet}
         onBrandCreated={handleBrandCreated}
+        onRequestDeleteBrand={handleRequestDeleteBrand}
+      />
+
+      <BrandDeleteSheet
+        visible={deleteSheetVisible}
+        brand={brandPendingDelete}
+        accountId={user?.id ?? null}
+        onClose={handleCloseDeleteSheet}
+        onDeleted={handleBrandDeleted}
       />
 
       <View style={styles.toastWrap} pointerEvents="box-none">

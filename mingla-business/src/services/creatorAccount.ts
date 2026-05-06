@@ -28,7 +28,16 @@ export async function ensureCreatorAccount(user: User): Promise<void> {
   );
 
   if (error) {
-    console.warn("[creator_accounts] upsert failed:", error.message);
+    // [DIAG ORCH-0728-PASS-3] — replaced by logError() on full IMPL
+    // eslint-disable-next-line no-console
+    console.error("[ORCH-0728-DIAG] creatorAccount#ensureCreatorAccount FAILED", {
+      name: (error as { name?: string })?.name,
+      message: error.message,
+      code: (error as { code?: string })?.code,
+      details: (error as { details?: string })?.details,
+      hint: (error as { hint?: string })?.hint,
+      userId: user.id,
+    });
   }
 }
 
@@ -50,8 +59,14 @@ export async function updateCreatorAccount(
     marketing_opt_in?: boolean;
   },
 ): Promise<void> {
+  // ORCH-0734-RW side discovery D-IMPL-0734-RW-1: this function needs rowcount
+  // verification (same RC-0734-RW-A bug class as softDeleteBrand pre-fix; a 0-row
+  // UPDATE here returns silent success). TEMPORARY waiver pending a follow-up
+  // ORCH-ID that dispatches the small fix: chain `.select("id")`, throw on
+  // data===null or data.length===0 — same pattern as softDeleteBrand step 2.
   const { error } = await supabase
     .from("creator_accounts")
+    // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0734-RW-FOLLOWUP — temporary; tracked as D-IMPL-0734-RW-1
     .update(patch)
     .eq("id", userId);
   if (error) throw error;

@@ -26,4 +26,10 @@ Replace the Stripe Connect onboarding STUB from Cycle 2 with the live integratio
 
 ## Notes
 
-Two open strategic questions resolve here. Don't start B2 until founder + engineer agree on Q3 + Q5.
+~~Two open strategic questions resolve here. Don't start B2 until founder + engineer agree on Q3 + Q5.~~
+
+**RESOLVED 2026-05-06:** Both strategic questions locked.
+- **Q3 → EXPRESS** (DEC-112) — embedded onboarding inside `mingla-business`; Stripe owns KYC, disputes, 1099-K, chargebacks
+- **Q5 → BRAND-LEVEL** (DEC-113) — `stripe_connect_accounts.brand_id` FK; one Connect account per brand
+
+**B2 is unblocked for forensics dispatch.** Schema column `stripe_connect_accounts.account_type` locks to `'express'` at migration time. All journeys J-B2.1–J-B2.5 may proceed against Stripe Express + brand-level routing.

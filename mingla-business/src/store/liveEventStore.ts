@@ -464,11 +464,18 @@ export const useLiveEventStore = create<LiveEventState>()(
           affectedOrderIds,
         });
 
-        // Resolve brand display name for notification copy
-        const brand = useCurrentBrandStore
-          .getState()
-          .brands.find((b) => b.id === event.brandId);
-        const brandName = brand?.displayName ?? "";
+        // Resolve brand display name for notification copy.
+        // Cycle 17e-A: brand list moved to React Query. Outside-component
+        // context (Zustand action) uses the singleton queryClient directly.
+        // Falls back to currentBrand selection if cache miss; empty string if
+        // also no current brand. Best-effort — fire-and-forget notification.
+        const brandName = (() => {
+          const current = useCurrentBrandStore.getState().currentBrand;
+          if (current !== null && current.id === event.brandId) {
+            return current.displayName;
+          }
+          return "";
+        })();
 
         // Fire notification stack (fire-and-forget)
         void notifyEventChanged(

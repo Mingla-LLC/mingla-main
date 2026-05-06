@@ -34,7 +34,7 @@ import {
   useDoorSalesStore,
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
-import { useCurrentBrandStore } from "../../../../src/store/currentBrandStore";
+import { useBrandList } from "../../../../src/store/currentBrandStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { formatGbp } from "../../../../src/utils/currency";
 import { expandTicketIds } from "../../../../src/utils/expandTicketIds";
@@ -162,9 +162,11 @@ export default function GuestDetailRoute(): React.ReactElement {
       ? s.events.find((e) => e.id === eventId) ?? null
       : null,
   );
-  const brand = useCurrentBrandStore((s) =>
-    event !== null ? s.brands.find((b) => b.id === event.brandId) ?? null : null,
-  );
+  const brandList = useBrandList();
+  const brand =
+    event !== null
+      ? (brandList.find((b) => b.id === event.brandId) ?? null)
+      : null;
   const { user } = useAuth();
   const operatorAccountId = user?.id ?? "anonymous";
 

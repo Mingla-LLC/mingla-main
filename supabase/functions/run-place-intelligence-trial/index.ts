@@ -1475,6 +1475,24 @@ async function handleListActiveRuns(db: SupabaseClient): Promise<Response> {
 // against worker-death mid-chunk.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ORCH-0737 v4 patch (post-WORKER_RESOURCE_LIMIT 2026-05-06): two-pass worker.
+//
+// v3 chunk-size-6 still hit WORKER_RESOURCE_LIMIT 546. Root cause: 6 parallel
+// compose_collage operations > ~150 MB edge fn memory cap (Sharp PNG composition
+// + photo downloads). Time wasn't the limit; memory was.
+//
+// Fix: split worker into two phases. Per-cron-tick decision:
+//   - Score phase (parallel-12, memory-light ~10 MB/row): Gemini call only.
+//     Pickup: rows with prep_status='ready' AND status='pending' (or stuck).
+//   - Prep phase (serial, memory-bounded ~50 MB peak): fetch_reviews +
+//     compose_collage. Pickup: rows with prep_status NULL AND status='pending'.
+//
+// Score is prioritized when any score-eligible rows exist (immediate visible
+// progress); else prep more. Steady state oscillates: prep 3 → score 12 → prep 3 → ...
+//
+// v3 cancel-cleanup (pending+running) PRESERVED. Stuck-recovery logic
+// applies in BOTH phases (5-min cutoff). v3 cron filter (status IN
+// running,cancelling) PRESERVED at trigger function level.
 async function handleProcessChunk(
   db: SupabaseClient,
   body: Record<string, unknown>,
@@ -1495,12 +1513,11 @@ async function handleProcessChunk(
   }
   if (!run) return json({ error: "run not found" }, 404);
 
-  // Step 2: Check status; bail on cancellation
+  // Step 2: Check status; bail on cancellation (v2 patch — pending+running)
   if (run.status === "cancelling") {
     await db.from("place_intelligence_runs")
       .update({ status: "cancelled", completed_at: new Date().toISOString() })
       .eq("id", runId);
-    // Mark any remaining pending rows cancelled too
     await db.from("place_intelligence_trial_runs")
       .update({
         status: "cancelled",
@@ -1508,7 +1525,7 @@ async function handleProcessChunk(
         error_message: "cancelled by operator",
       })
       .eq("parent_run_id", runId)
-      .in("status", ["pending"]);
+      .in("status", ["pending", "running"]);
     return json({ ok: true, action: "cancelled" });
   }
   if (run.status !== "running") {
@@ -1521,74 +1538,75 @@ async function handleProcessChunk(
     return json({ ok: true, action: "complete" });
   }
 
-  // Step 3: Update heartbeat
+  // Step 3: Update heartbeat (so pg_cron doesn't re-kick during this tick)
   await db.from("place_intelligence_runs")
     .update({ last_heartbeat_at: new Date().toISOString() })
     .eq("id", runId);
 
-  // ─── Step 4 (v2 PATCHED): pickup pending AND stuck-running ────────────
-  //
-  // v2 fix per orchestrator REVIEW 2026-05-06: a row stuck in 'running' for
-  // > 5 minutes means a previous worker died mid-chunk. The 5-min threshold
-  // is well above worst-case 12-row chunk wallclock (~30s steady-state, ~60s
-  // with Gemini retry-once on every row), so genuine in-flight rows are
-  // never falsely reclaimed mid-flight. Self-healing recovery.
+  // ─── Step 4 (v4 NEW): decide phase ────────────────────────────────────
+  // Score-priority: if any rows are PREPPED + (pending OR stuck-running >5min),
+  // score them. Else: prep more rows. Else: nothing left → mark complete.
   const stuckCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+  const { count: scoreEligibleCount, error: countErr } = await db
+    .from("place_intelligence_trial_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("parent_run_id", runId)
+    .eq("prep_status", "ready")
+    .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`);
+
+  if (countErr) return json({ error: `phase decide failed: ${countErr.message}` }, 500);
+
+  const phase = (scoreEligibleCount ?? 0) > 0 ? "score" : "prep";
+  console.log(
+    `[process_chunk] runId=${runId} phase=${phase} score-eligible=${scoreEligibleCount ?? 0}`,
+  );
+
+  if (phase === "score") {
+    return await processScorePhase({ db, geminiKey, runId, stuckCutoff });
+  }
+  return await processPrepPhase({ db, serperKey, runId, stuckCutoff });
+}
+
+// ─── Score phase (v4): parallel-12 Gemini-only, memory-light ─────────────
+// Pickup: rows with prep_status='ready' that are pending OR stuck-running >5min.
+// Stuck-recovery: rows that started Gemini scoring but never completed.
+async function processScorePhase(args: {
+  db: SupabaseClient;
+  geminiKey: string;
+  runId: string;
+  stuckCutoff: string;
+}): Promise<Response> {
+  const { db, geminiKey, runId, stuckCutoff } = args;
+
   const { data: pickupRows, error: pickupErr } = await db
     .from("place_intelligence_trial_runs")
     .select("id, place_pool_id, signal_id, anchor_index, status, started_at")
     .eq("parent_run_id", runId)
+    .eq("prep_status", "ready")
     .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`)
-    .limit(12);
+    .limit(12);                                                             // parallel-12 OK; Gemini-only is memory-light
 
-  if (pickupErr) return json({ error: `pickup failed: ${pickupErr.message}` }, 500);
-
+  if (pickupErr) return json({ error: `score pickup failed: ${pickupErr.message}` }, 500);
   if (!pickupRows || pickupRows.length === 0) {
-    await db.from("place_intelligence_runs")
-      .update({ status: "complete", completed_at: new Date().toISOString() })
-      .eq("id", runId);
-    return json({ ok: true, action: "complete_no_pending" });
+    return json({ ok: true, action: "score_no_eligible" });
   }
 
-  // v2: log when stuck-running rows are reclaimed (operational visibility)
   const reclaimed = pickupRows.filter((r) => r.status === "running").length;
   if (reclaimed > 0) {
-    console.warn(
-      `[process_chunk] reclaimed ${reclaimed} stuck-running rows for run=${runId}`,
-    );
+    console.warn(`[process_chunk score] reclaimed ${reclaimed} stuck-running rows for run=${runId}`);
   }
 
-  // Step 5: Mark these rows as 'running' (refreshes started_at for stuck rows)
+  // Mark running (refreshes started_at for stuck rows)
   const rowIds = pickupRows.map((r) => r.id);
   await db.from("place_intelligence_trial_runs")
     .update({ status: "running", started_at: new Date().toISOString() })
     .in("id", rowIds);
 
-  // Step 6: Process in parallel-12 via Promise.all.
-  // Each row goes through fetch_reviews + compose_collage + run_trial_for_place
-  // pipeline. fetch_reviews and compose_collage are idempotent (skip if
-  // fresh-within-30-days / fingerprint-cached) so re-running on stuck rows is safe.
+  // Score in parallel — memory-light because Gemini receives URL only.
+  // No photo bytes loaded in worker memory at this stage.
   const results = await Promise.all(pickupRows.map(async (row) => {
     try {
-      // fetch_reviews (idempotent)
-      const fetchRes = await handleFetchReviews(db, {
-        place_pool_id: row.place_pool_id,
-        force_refresh: false,
-      }, serperKey);
-      // Note: fetchRes.status is 200 even when "skipped: true" — that's success.
-      // Errors throw and get caught below.
-
-      // compose_collage (idempotent)
-      const collageRes = await handleComposeCollage(db, {
-        place_pool_id: row.place_pool_id,
-        force: false,
-      });
-      const collageBody = await collageRes.json();
-      if (collageBody.error) {
-        throw new Error(`compose_collage failed: ${collageBody.error}`);
-      }
-
-      // run_trial_for_place — actual Gemini call + result persist
       const cost = await processOnePlace({
         db,
         geminiKey,
@@ -1599,15 +1617,10 @@ async function handleProcessChunk(
           anchor_index: row.anchor_index,
         },
       });
-
-      // void unused fetchRes (call already wrote reviews to DB)
-      void fetchRes;
-
       return { ok: true, place_pool_id: row.place_pool_id, cost };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[process_chunk] row ${row.place_pool_id} failed: ${msg}`);
-      // Per-row failure: write status='failed' for this place row
+      console.error(`[process_chunk score] row ${row.place_pool_id} failed: ${msg}`);
       await db.from("place_intelligence_trial_runs")
         .update({
           status: "failed",
@@ -1619,7 +1632,6 @@ async function handleProcessChunk(
     }
   }));
 
-  // Step 7: Aggregate and update parent counters atomically
   const succeeded = results.filter((r) => r.ok).length;
   const failed = results.length - succeeded;
   const chunkCost = results.reduce((s, r) => s + (r.cost || 0), 0);
@@ -1632,13 +1644,11 @@ async function handleProcessChunk(
     p_cost: chunkCost,
   });
 
-  // Step 8: Check if run is complete now
   const { data: updatedRun } = await db
     .from("place_intelligence_runs")
     .select("processed_count, total_count")
     .eq("id", runId)
     .single();
-
   const isComplete = (updatedRun?.processed_count ?? 0) >= (updatedRun?.total_count ?? 0);
   if (isComplete) {
     await db.from("place_intelligence_runs")
@@ -1648,11 +1658,128 @@ async function handleProcessChunk(
 
   return json({
     ok: true,
+    phase: "score",
     chunk_size: results.length,
     succeeded,
     failed,
     chunk_cost_usd: +chunkCost.toFixed(6),
-    reclaimed,                                                              // v2 ADDITION
+    reclaimed,
     run_complete: isComplete,
+  });
+}
+
+// ─── Prep phase (v4): serial fetch_reviews + compose_collage, memory-bounded ─
+// Pickup: rows with prep_status NULL — pending OR stuck-running >5min (recovery).
+// Stuck-recovery: rows that started prep but never completed (worker died mid-collage).
+// SERIAL within chunk — only 1 collage in memory at any time → max ~50 MB peak.
+async function processPrepPhase(args: {
+  db: SupabaseClient;
+  serperKey: string;
+  runId: string;
+  stuckCutoff: string;
+}): Promise<Response> {
+  const { db, serperKey, runId, stuckCutoff } = args;
+
+  const { data: pickupRows, error: pickupErr } = await db
+    .from("place_intelligence_trial_runs")
+    .select("id, place_pool_id, status, started_at")
+    .eq("parent_run_id", runId)
+    .is("prep_status", null)
+    .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`)
+    .limit(3);                                                              // serial budget: 3 × ~30s = ~90s wallclock, fits 150s timeout
+
+  if (pickupErr) return json({ error: `prep pickup failed: ${pickupErr.message}` }, 500);
+  if (!pickupRows || pickupRows.length === 0) {
+    // No prep work AND no score work (caller already determined score-eligible=0)
+    // means run is functionally complete OR all remaining rows are terminal.
+    // Defensively re-check completion before declaring complete.
+    const { data: updatedRun } = await db
+      .from("place_intelligence_runs")
+      .select("processed_count, total_count")
+      .eq("id", runId)
+      .single();
+    if ((updatedRun?.processed_count ?? 0) >= (updatedRun?.total_count ?? 0)) {
+      await db.from("place_intelligence_runs")
+        .update({ status: "complete", completed_at: new Date().toISOString() })
+        .eq("id", runId);
+      return json({ ok: true, action: "complete" });
+    }
+    // Otherwise: no prep eligible right now — could be all stuck rows are
+    // <5min old. Worker exits; next cron tick re-evaluates.
+    return json({ ok: true, action: "prep_no_eligible_yet" });
+  }
+
+  const reclaimed = pickupRows.filter((r) => r.status === "running").length;
+  if (reclaimed > 0) {
+    console.warn(`[process_chunk prep] reclaimed ${reclaimed} stuck-prep rows for run=${runId}`);
+  }
+
+  // Mark running for prep window (so concurrent workers skip these via FOR UPDATE)
+  const rowIds = pickupRows.map((r) => r.id);
+  await db.from("place_intelligence_trial_runs")
+    .update({ status: "running", started_at: new Date().toISOString() })
+    .in("id", rowIds);
+
+  // SERIAL prep loop — only 1 collage in memory at a time. After each row
+  // completes, set prep_status='ready' AND reset status back to 'pending'
+  // so the score phase picks it up on a future tick.
+  let preppedCount = 0;
+  let prepFailedCount = 0;
+  for (const row of pickupRows) {
+    try {
+      // fetch_reviews (idempotent — skips if fresh-within-30-days)
+      await handleFetchReviews(db, {
+        place_pool_id: row.place_pool_id,
+        force_refresh: false,
+      }, serperKey);
+
+      // compose_collage (idempotent — skips if fingerprint-matched cache)
+      const collageRes = await handleComposeCollage(db, {
+        place_pool_id: row.place_pool_id,
+        force: false,
+      });
+      const collageBody = await collageRes.json();
+      if (collageBody.error) {
+        throw new Error(`compose_collage failed: ${collageBody.error}`);
+      }
+
+      // Mark prepared — status back to 'pending' so score phase picks it up
+      await db.from("place_intelligence_trial_runs")
+        .update({ prep_status: "ready", status: "pending", started_at: null })
+        .eq("id", row.id);
+      preppedCount++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[process_chunk prep] row ${row.place_pool_id} prep failed: ${msg}`);
+      await db.from("place_intelligence_trial_runs")
+        .update({
+          status: "failed",
+          error_message: `prep: ${msg.slice(0, 500)}`,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+      prepFailedCount++;
+    }
+  }
+
+  // Failed-prep rows count toward processed (terminal state). Successful preps
+  // do NOT count toward processed yet — they need to go through score phase.
+  if (prepFailedCount > 0) {
+    await db.rpc("increment_run_counters", {
+      p_run_id: runId,
+      p_processed: prepFailedCount,
+      p_succeeded: 0,
+      p_failed: prepFailedCount,
+      p_cost: 0,
+    });
+  }
+
+  return json({
+    ok: true,
+    phase: "prep",
+    chunk_size: pickupRows.length,
+    prepped: preppedCount,
+    prep_failed: prepFailedCount,
+    reclaimed,
   });
 }

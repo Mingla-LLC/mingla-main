@@ -2,7 +2,26 @@
 
 **Phase:** Phase 2 — Core Wedge
 **Estimated effort:** ~32 hrs
-**Status:** 🟡 ACTIVE (next up)
+**Status:** ✅ DONE
+
+## What shipped
+
+- All 13 ticket types from PRD §4.2 selectable via the standalone TicketStubSheet
+- Per-tier visibility (public / hidden / disabled) via VisibilitySheet sub-sheet
+- Sale-window scheduling (sale_start_at / sale_end_at) + validity windows
+- Approval-required + password-protected + waitlist UI states (backend lands B4)
+- Drag-and-drop reorder via display_order persistence
+- Min / max purchase qty per buyer + Allow-transfers toggle
+- DraftEvent schema v3 → v4 migration additive
+- Implementation report: `Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_5_TICKET_TYPES.md`
+
+## Closing notes
+
+The Cycle 5 ticket sheet is the canonical pattern for any future "field-rich" sub-sheet. The sub-sheet picker pattern (VisibilitySheet) became the template for AvailableAtSheet in Cycle 12 + RolePickerSheet in the Permissions UI work shipped under "Cycle 13a + 13b" labels.
+
+---
+
+(Original `Status: 🟡 ACTIVE (next up)` flipped to `✅ DONE` 2026-05-04 during epic-status backfill audit. The original PLACEHOLDER scope content below was the cycle plan; the "What shipped" section above is the actual outcome.)
 **Codebase:** `mingla-business/`
 
 ## Scope

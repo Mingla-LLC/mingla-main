@@ -16,6 +16,8 @@ scaffold rewrite needed.
 | I-37 | `i37-topbar-cluster.mjs` | 17b | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-37 |
 | I-38 | `i38-icon-chrome-touch-target.mjs` | 17c | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-38 |
 | I-39 | `i39-pressable-label.mjs` | 17c | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-39 |
+| I-PROPOSED-A | `i-proposed-a-brands-deleted-filter.mjs` | 17e-A | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-A |
+| I-PROPOSED-C | `i-proposed-c-brand-crud-via-react-query.mjs` | 17e-A | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-C |
 
 ## Future gates (proposed but not yet implemented)
 
@@ -84,6 +86,8 @@ comment, wrong tag, malformed) is still a violation.
 Other registered gate tags:
 - I-38: `// orch-strict-grep-allow icon-chrome-touch-target — <reason>`
 - I-39: `// orch-strict-grep-allow pressable-no-label — <reason>`
+- I-PROPOSED-A: `// orch-strict-grep-allow brands-deleted-filter — <reason>`
+- I-PROPOSED-C: `// orch-strict-grep-allow setBrands-call — <reason>`
 
 ## Conventions
 

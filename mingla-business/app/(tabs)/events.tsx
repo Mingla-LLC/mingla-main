@@ -26,6 +26,7 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { ConfirmDialog } from "../../src/components/ui/ConfirmDialog";
 import { GlassCard } from "../../src/components/ui/GlassCard";
@@ -42,8 +43,10 @@ import {
   text as textTokens,
   typography,
 } from "../../src/constants/designSystem";
+import { useAuth } from "../../src/context/AuthContext";
 import {
   useCurrentBrand,
+  useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
 import { useDraftsForBrand } from "../../src/store/draftEventStore";
@@ -104,7 +107,9 @@ interface PillSpec {
 export default function EventsTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { user } = useAuth();
   const currentBrand = useCurrentBrand();
+  const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const liveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
 
@@ -114,6 +119,12 @@ export default function EventsTab(): React.ReactElement {
   const canCreateEvent = canPerformAction(currentRank, "CREATE_EVENT");
 
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
+  // Cycle 17e-A REWORK: BrandDeleteSheet state — opens from BrandSwitcherSheet
+  // trash icon taps. Mirrors account.tsx pattern per ORCH-0734-RW SPEC §3.4.
+  const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
+  const [brandPendingDelete, setBrandPendingDelete] = useState<Brand | null>(
+    null,
+  );
   const [toast, setToast] = useState<ToastState>({
     visible: false,
     message: "",
@@ -251,6 +262,35 @@ export default function EventsTab(): React.ReactElement {
   const handleBrandCreated = useCallback((brand: Brand): void => {
     setToast({ visible: true, message: `${brand.displayName} is ready` });
   }, []);
+
+  // Cycle 17e-A REWORK: BrandSwitcherSheet trash tap → open BrandDeleteSheet
+  const handleRequestDeleteBrand = useCallback((brand: Brand): void => {
+    setBrandPendingDelete(brand);
+    setDeleteSheetVisible(true);
+  }, []);
+
+  const handleCloseDeleteSheet = useCallback((): void => {
+    setDeleteSheetVisible(false);
+    // Don't clear brandPendingDelete immediately — exit animation reads it
+  }, []);
+
+  const handleBrandDeleted = useCallback(
+    (deletedBrandId: string): void => {
+      // Clear currentBrand if it matches deleted brand (server already cleared
+      // default_brand_id per softDeleteBrand Step 3; this clears local UI state)
+      const current = useCurrentBrandStore.getState().currentBrand;
+      if (current !== null && current.id === deletedBrandId) {
+        setCurrentBrand(null);
+      }
+      const deleted = brandPendingDelete;
+      setBrandPendingDelete(null);
+      setToast({
+        visible: true,
+        message: `${deleted?.displayName ?? "Brand"} deleted`,
+      });
+    },
+    [setCurrentBrand, brandPendingDelete],
+  );
 
   const handleDismissToast = useCallback((): void => {
     setToast((prev) => ({ ...prev, visible: false }));
@@ -501,6 +541,15 @@ export default function EventsTab(): React.ReactElement {
         visible={sheetVisible}
         onClose={handleCloseSheet}
         onBrandCreated={handleBrandCreated}
+        onRequestDeleteBrand={handleRequestDeleteBrand}
+      />
+
+      <BrandDeleteSheet
+        visible={deleteSheetVisible}
+        brand={brandPendingDelete}
+        accountId={user?.id ?? null}
+        onClose={handleCloseDeleteSheet}
+        onDeleted={handleBrandDeleted}
       />
 
       {/* Manage menu — Sheet primitive */}

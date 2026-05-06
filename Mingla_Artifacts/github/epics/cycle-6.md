@@ -2,7 +2,22 @@
 
 **Phase:** Phase 3 — Public Surfaces
 **Estimated effort:** ~40 hrs
-**Status:** ⬜ PLACEHOLDER (decompose at active time)
+**Status:** ✅ DONE
+
+## What shipped
+
+- Public event page route + variant states (published / sold-out / past-event / pre-sale / password-required / approval-required / cancelled)
+- Web-platform parity (Expo Web datetime-local pickers + HIDDEN_WEB_INPUT_STYLE pattern for direct-tap)
+- 4 follow-up FX reworks: FX1 (head/web-only), FX2 (close chrome), FX3 (web pickers), FX3.5 (web direct-tap fix)
+- Implementation reports: `IMPLEMENTATION_BIZ_CYCLE_6_PUBLIC_EVENT_PAGE.md` + `_FX1_HEAD_WEB_ONLY.md` + `_FX2_PUBLIC_PAGE_CLOSE_CHROME.md` + `_FX3_WEB_PICKERS.md` + `_FX3_5_WEB_DIRECT_PICKER.md`
+
+## Closing notes
+
+The HIDDEN_WEB_INPUT_STYLE pattern (opacity:0 + 1×1px positioned-absolute hidden input that triggers showPicker on tap) is the canonical mobile-web direct-picker pattern; reused in Cycle 5 + Cycle 12 (sale-window picker on TicketStubSheet).
+
+---
+
+(Original `Status: ⬜ PLACEHOLDER` flipped to `✅ DONE` 2026-05-04 during epic-status backfill audit.)
 **Codebase:** `mingla-business/` (Expo Web variant)
 
 ## Scope

@@ -14,12 +14,17 @@
  * Per Cycle 6 spec §3.1.4.
  */
 
-import { useCurrentBrandStore } from "../store/currentBrandStore";
+import {
+  useCurrentBrandStore,
+  type Brand,
+} from "../store/currentBrandStore";
 import {
   useLiveEventStore,
   type LiveEvent,
 } from "../store/liveEventStore";
 import type { DraftEvent } from "../store/draftEventStore";
+import { queryClient } from "../config/queryClient";
+import { brandKeys } from "../hooks/useBrands";
 import { generateEventSlug, sanitizeSlugForUrl } from "./eventSlug";
 import { generateLiveEventId } from "./liveEventId";
 
@@ -32,10 +37,28 @@ import { generateLiveEventId } from "./liveEventId";
 export const convertDraftToLiveEvent = (
   draft: DraftEvent,
 ): LiveEvent | null => {
-  // Resolve current brand for slug freezing.
-  const brand = useCurrentBrandStore
-    .getState()
-    .brands.find((b) => b.id === draft.brandId);
+  // Resolve brand for slug freezing. Cycle 17e-A: brand list moved to React
+  // Query; outside-component context uses singleton queryClient cache.
+  // Falls back to currentBrand selection (most operators publish drafts for
+  // their currently-selected brand). If neither matches, returns null —
+  // publishDraft preserves the source draft.
+  const brand = (() => {
+    const current = useCurrentBrandStore.getState().currentBrand;
+    if (current !== null && current.id === draft.brandId) {
+      return current;
+    }
+    // Cache lookup via queryClient (without accountId we can't pinpoint the
+    // list key, so iterate over cached lists and merge).
+    const queries = queryClient.getQueriesData<Brand[]>({
+      queryKey: brandKeys.lists(),
+    });
+    for (const [, brands] of queries) {
+      if (brands === undefined) continue;
+      const found = brands.find((b) => b.id === draft.brandId);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  })();
   if (brand === undefined) {
     // Brand was deleted between draft creation and publish — fail loud
     // so publishDraft can preserve the draft instead of orphaning it.

@@ -17,28 +17,34 @@
  * Per spec §3.3.
  */
 
-import React from "react";
+import React, { useCallback, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet";
 import { BrandEditView } from "../../../src/components/brand/BrandEditView";
 import { canvas } from "../../../src/constants/designSystem";
+import { useAuth } from "../../../src/context/AuthContext";
 import {
   useBrandList,
   useCurrentBrandStore,
   type Brand,
 } from "../../../src/store/currentBrandStore";
+import { useUpdateBrand } from "../../../src/hooks/useBrands";
+import { joinBrandDescription } from "../../../src/services/brandMapping";
+import { computeDirtyFieldsPatch } from "../../../src/utils/brandPatch";
 
 export default function BrandEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { user } = useAuth();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brands = useBrandList();
-  const setBrands = useCurrentBrandStore((s) => s.setBrands);
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const currentBrand = useCurrentBrandStore((s) => s.currentBrand);
+  const updateBrandMutation = useUpdateBrand();
   const brand =
     typeof idParam === "string" && idParam.length > 0
       ? brands.find((b) => b.id === idParam) ?? null
@@ -52,15 +58,51 @@ export default function BrandEditRoute(): React.ReactElement {
     }
   };
 
-  const handleSave = (next: Brand): void => {
-    // Replace the brand by id in the brand list. Mirror to currentBrand
-    // when the edited brand is also the active one so the TopBar chip and
-    // Home reflect the new displayName/etc. immediately.
-    setBrands(brands.map((b) => (b.id === next.id ? next : b)));
-    if (currentBrand !== null && currentBrand.id === next.id) {
-      setCurrentBrand(next);
+  const handleSave = async (next: Brand): Promise<void> => {
+    // Cycle 17e-A: Server state via React Query — useUpdateBrand mutation
+    // owns persistence + cache invalidation. Replaces phone-only setBrands.
+    if (brand === null) return; // shouldn't happen — BrandEditView's not-found state guards
+    if (user === null || user.id === undefined) return;
+    const patch = computeDirtyFieldsPatch(next, brand);
+    if (Object.keys(patch).length === 0) return; // no-op
+    try {
+      const updated = await updateBrandMutation.mutateAsync({
+        brandId: next.id,
+        patch,
+        existingDescription: joinBrandDescription(brand.tagline, brand.bio),
+        accountId: user.id,
+      });
+      // Mirror to currentBrand selection when the edited brand is active so
+      // TopBar chip + Home reflect new displayName/etc. immediately.
+      if (currentBrand !== null && currentBrand.id === updated.id) {
+        setCurrentBrand(updated);
+      }
+    } catch (error) {
+      // Caller (BrandEditView) handles toast surfacing per error contract;
+      // re-throw so its handleSave catches.
+      throw error;
     }
   };
+
+  // Cycle 17e-A — BrandDeleteSheet wiring
+  const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
+  const handleRequestDelete = useCallback((_b: Brand): void => {
+    setDeleteSheetVisible(true);
+  }, []);
+  const handleCloseDeleteSheet = useCallback((): void => {
+    setDeleteSheetVisible(false);
+  }, []);
+  const handleBrandDeleted = useCallback(
+    (deletedBrandId: string): void => {
+      const current = useCurrentBrandStore.getState().currentBrand;
+      if (current !== null && current.id === deletedBrandId) {
+        setCurrentBrand(null);
+      }
+      setDeleteSheetVisible(false);
+      router.replace("/(tabs)/account" as never);
+    },
+    [router, setCurrentBrand],
+  );
 
   return (
     <View
@@ -75,6 +117,14 @@ export default function BrandEditRoute(): React.ReactElement {
         onCancel={handleBack}
         onSave={handleSave}
         onAfterSave={handleBack}
+        onRequestDelete={handleRequestDelete}
+      />
+      <BrandDeleteSheet
+        visible={deleteSheetVisible}
+        brand={brand}
+        accountId={user?.id ?? null}
+        onClose={handleCloseDeleteSheet}
+        onDeleted={handleBrandDeleted}
       />
     </View>
   );

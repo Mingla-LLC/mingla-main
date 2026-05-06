@@ -328,44 +328,59 @@ export type Brand = {
    * exists ONLY to populate J-A12 finance reports until Cycle 3 lands.
    */
   events?: BrandEventStub[];
+  /**
+   * Cover media URL (Supabase storage OR Giphy/Pexels). NEW in Cycle 17e-A
+   * schema (column pre-load). UI render: if present, shows media; falls back
+   * to coverHue gradient when null/undefined. Picker UI ships in 17e-B Tier 2.
+   */
+  coverMediaUrl?: string;
+  /**
+   * Cover media type. NEW in Cycle 17e-A schema (column pre-load).
+   * 17e-B Tier 2 picker writes this.
+   */
+  coverMediaType?: "image" | "video" | "gif";
+  /**
+   * Profile photo type — supports animated avatars per Q1=B amendment (DEC-109).
+   * NEW in Cycle 17e-A schema (column pre-load). Picker UI ships in 17e-B Tier 2.
+   * Existing profile_photo_url defaults to image semantics when this is undefined.
+   */
+  profilePhotoType?: "image" | "video" | "gif";
 };
 
 export type CurrentBrandState = {
   currentBrand: Brand | null;
-  brands: Brand[];
   setCurrentBrand: (brand: Brand | null) => void;
-  setBrands: (brands: Brand[]) => void;
   reset: () => void;
 };
 
-type PersistedState = Pick<CurrentBrandState, "currentBrand" | "brands">;
+type PersistedState = Pick<CurrentBrandState, "currentBrand">;
 
+// Cycle 17e-A v13 — drops `brands: Brand[]` from persisted state per Const #5
+// (server state via React Query useBrands() — see src/hooks/useBrands.ts). Keeps
+// `currentBrand: Brand | null` for selection state (client UI state). The
+// `setBrands` action + `useBrandList` hook removed. I-PROPOSED-C codifies the
+// server-state-only contract; CI grep gate enforces zero `setBrands\(` callers.
+//
 // Cycle 17d §E — v1-v11 migrator helpers + V2/V9/V10/V11 type defs deleted.
-// No live users on those versions; reset path in migrate() below is safe per
-// Cycle 0a "never seeded brands" precedent. Original chain (Cycle 0a-13a:
-// v1 → v2 → v3 → v9 → v10 → v11 → v12) preserved at commit aae7784d for audit
-// trail. Trimmed: ~75 LOC across 4 helper fns + 4 type defs + the v3-v11
-// migrate() branches in persistOptions below.
+// Original chain (v1→v12) preserved at commit aae7784d for audit trail.
 
 const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
-  name: "mingla-business.currentBrand.v12",
+  name: "mingla-business.currentBrand.v13",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state) => ({
     currentBrand: state.currentBrand,
-    brands: state.brands,
   }),
-  version: 12,
+  version: 13,
   migrate: (persistedState, version) => {
-    // Cycle 17d §E — v1-v11 dead branches removed. No live users on those versions.
-    // If a stale install lands here, reset to default state. Safe per Cycle 0a
-    // "never seeded brands" precedent — losing local brand cache forces re-fetch
-    // from server (or in 17e-A's wired DB layer, no-op since brands table is the
-    // source of truth and currentBrandStore is a read-through cache going forward).
-    //
-    // Original migrate() body (Cycle 0a-13a chain v1→v2→v3→v9→v10→v11→v12) at
-    // commit aae7784d for audit trail.
-    if (version < 12) {
-      return { currentBrand: null, brands: [] };
+    // Cycle 17e-A v12 → v13 — drops `brands` array from persisted state per Const #5.
+    // Preserves `currentBrand` selection. v1-v11 already collapsed by Cycle 17d Stage 1 §E.
+    // After this migration runs, useBrands() React Query hook owns the brand list;
+    // first render fetches from Supabase brands table (post-migration 20260506000000).
+    if (version < 13) {
+      const old = persistedState as Partial<{
+        currentBrand: Brand | null;
+      }> | null;
+      return { currentBrand: old?.currentBrand ?? null };
     }
     return persistedState as PersistedState;
   },
@@ -375,10 +390,8 @@ export const useCurrentBrandStore = create<CurrentBrandState>()(
   persist(
     (set) => ({
       currentBrand: null,
-      brands: [],
       setCurrentBrand: (brand) => set({ currentBrand: brand }),
-      setBrands: (brands) => set({ brands }),
-      reset: () => set({ currentBrand: null, brands: [] }),
+      reset: () => set({ currentBrand: null }),
     }),
     persistOptions,
   ),
@@ -387,5 +400,16 @@ export const useCurrentBrandStore = create<CurrentBrandState>()(
 export const useCurrentBrand = (): Brand | null =>
   useCurrentBrandStore((s) => s.currentBrand);
 
-export const useBrandList = (): Brand[] =>
-  useCurrentBrandStore((s) => s.brands);
+// [TRANSITIONAL] Cycle 17e-A — `useBrandList` kept as a re-export of a thin
+// wrapper that delegates to `useBrands(authUserId)`. The underlying state
+// moved to React Query per Const #5 + I-PROPOSED-C; only `setBrands` (the
+// write path) was removed. This re-export preserves call-site import stability
+// for ~20 consumers while keeping server state owned by React Query.
+//
+// EXIT condition: future cycle migrates each caller to `useBrands(accountId)`
+// directly with explicit accountId derivation — then this re-export + the
+// shim file (src/hooks/useBrandListShim.ts) both delete.
+//
+// I-PROPOSED-C strict-grep gate bans `setBrands\(` (write path), NOT
+// `useBrandList` (read-only sugar over the React Query cache).
+export { useBrandList } from "../hooks/useBrandListShim";

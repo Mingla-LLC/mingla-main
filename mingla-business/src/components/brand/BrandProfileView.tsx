@@ -180,6 +180,12 @@ export interface BrandProfileViewProps {
    * Mirrors the new ShareModal social-link pattern from Cycle 7.
    */
   onOpenLink: (url: string) => void;
+  /**
+   * Cycle 17e-A — called when operator taps "Delete brand" in the danger
+   * zone. Parent opens BrandDeleteSheet pre-populated with this brand.
+   * Hidden when undefined (e.g., for read-only public-page consumers).
+   */
+  onRequestDelete?: (brand: Brand) => void;
 }
 
 // Status-driven J-A7 banner copy. When entry is `null`, banner is
@@ -224,6 +230,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onViewPublic,
   onCreateEvent,
   onOpenLink,
+  onRequestDelete,
 }) => {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
@@ -592,6 +599,27 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             ))}
           </View>
         )}
+
+        {/* Cycle 17e-A — Danger zone (delete brand) */}
+        {onRequestDelete !== undefined && brand !== null ? (
+          <View style={styles.dangerZone}>
+            <Text style={styles.dangerLabel}>Danger zone</Text>
+            <Text style={styles.dangerHelper}>
+              Deleting hides this brand from your list. Recoverable for 30 days
+              via support.
+            </Text>
+            <View style={styles.dangerCta}>
+              <Button
+                label="Delete brand"
+                variant="ghost"
+                size="md"
+                leadingIcon="trash"
+                onPress={() => onRequestDelete(brand)}
+                accessibilityLabel="Delete this brand"
+              />
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* SECTION F — Sticky Bottom Shelf */}
@@ -937,6 +965,32 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 96,
     paddingHorizontal: spacing.md,
+  },
+  // Cycle 17e-A — danger zone for brand deletion
+  dangerZone: {
+    marginTop: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: glass.border.profileBase,
+    gap: spacing.sm,
+    marginBottom: 100,
+  },
+  dangerLabel: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: "700",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    color: semantic.error,
+  },
+  dangerHelper: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.tertiary,
+  },
+  dangerCta: {
+    marginTop: spacing.xs,
   },
 });
 

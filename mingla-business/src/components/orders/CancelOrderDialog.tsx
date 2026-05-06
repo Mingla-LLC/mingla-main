@@ -97,10 +97,13 @@ export const CancelOrderDialog: React.FC<CancelOrderDialogProps> = ({
         .getState()
         .getLiveEvent(result.eventId);
       if (event !== null) {
-        const brand = useCurrentBrandStore
-          .getState()
-          .brands.find((b) => b.id === result.brandId);
-        const brandName = brand?.displayName ?? "";
+        // Cycle 17e-A: brand list moved to React Query. Outside-component
+        // context uses current brand selection — falls back to empty.
+        const currentBrand = useCurrentBrandStore.getState().currentBrand;
+        const brandName =
+          currentBrand !== null && currentBrand.id === result.brandId
+            ? currentBrand.displayName
+            : "";
         const cancelledAt = result.cancelledAt ?? new Date().toISOString();
         useEventEditLogStore.getState().recordEdit({
           eventId: result.eventId,
