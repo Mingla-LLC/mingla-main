@@ -92,7 +92,7 @@ Deno.test("processConnectEvent — payout.paid upserts payouts row", async () =>
     currency: "gbp",
     status: "paid",
     arrival_date: "2026-05-01",
-  } as Stripe.Payout;
+  } as unknown as Stripe.Payout;
   const event = {
     id: "evt_payout_1",
     object: "event",
@@ -147,7 +147,7 @@ Deno.test("processConnectEvent — account.updated sets kyc_stall_reminder_sent_
           payouts_enabled: true,
           requirements: { currently_due: [] },
           metadata: {},
-        }) as Stripe.Account,
+        }) as unknown as Stripe.Account,
     },
   } as unknown as Stripe;
 
@@ -156,7 +156,7 @@ Deno.test("processConnectEvent — account.updated sets kyc_stall_reminder_sent_
     object: "event",
     type: "account.updated",
     data: {
-      object: { id: "acct_upd" } as Stripe.Account,
+      object: { id: "acct_upd" } as unknown as Stripe.Account,
     },
   } as ConnectEvent;
 
