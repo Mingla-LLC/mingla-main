@@ -36,7 +36,7 @@ serve(async (req) => {
 
   let event: ConnectEvent;
   try {
-    event = stripe.webhooks.constructEvent(body, sig, webhookSecret) as ConnectEvent;
+    event = (await stripe.webhooks.constructEventAsync(body, sig, webhookSecret)) as ConnectEvent;
   } catch (e) {
     console.error("[stripe-connect-webhook] signature:", e);
     return new Response("Bad signature", { status: 400 });
