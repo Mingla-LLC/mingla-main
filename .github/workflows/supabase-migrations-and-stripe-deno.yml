@@ -1,0 +1,62 @@
+# Applies all migrations locally (Docker) + runs Stripe Connect–related Deno tests.
+# Fails the PR if migrations are broken or webhook/payout logic regresses.
+
+name: Supabase migrations + Stripe Deno
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
+      - "supabase/functions/**"
+      - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
+      - "supabase/functions/**"
+      - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
+
+concurrency:
+  group: supabase-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply-migrations:
+    name: supabase db reset (local)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - name: Start stack and apply migrations
+        run: supabase start && supabase db reset --yes
+
+  stripe-deno-tests:
+    name: Deno (Stripe Connect + projection)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: deno test (Stripe / webhook contract)
+        run: |
+          deno test --allow-all \
+            supabase/functions/_shared/__tests__/stripeConnectProjection.test.ts \
+            supabase/functions/_shared/__tests__/stripeWebhookSignature.test.ts \
+            supabase/functions/_shared/__tests__/stripeConnectWebhookProcess.test.ts
