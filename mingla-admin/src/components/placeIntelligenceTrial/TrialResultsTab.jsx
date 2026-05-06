@@ -16,7 +16,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Play, RefreshCw, Square, ChevronDown, ChevronRight,
-  CheckCircle, XCircle,
+  CheckCircle, XCircle, Globe, Clock,
 } from "lucide-react";
 import { supabase, invokeWithRefresh } from "../../lib/supabase";
 import { extractFunctionError } from "../../lib/edgeFunctionError";
@@ -233,7 +233,7 @@ export function TrialResultsTab() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
 
-  // Live progress for the currently-running trial loop. Phase transitions
+  // Live progress for the currently-running SAMPLE-mode trial loop. Phase transitions
   // "preparing" → "trial" so operator sees both halves of the collapsed flow.
   const [progress, setProgress] = useState(null); // { phase, current, total, succeeded, failed, costSoFar }
   const stopRef = useState({ stop: false })[0];
@@ -242,6 +242,15 @@ export function TrialResultsTab() {
   // disabled={running} can let a fast double-click squeeze through before
   // React applies the disabled state).
   const isRunningRef = useRef(false);
+
+  // ORCH-0737 — mode toggle (sample default, full_city is async durable mode)
+  const [mode, setMode] = useState("sample");
+
+  // ORCH-0737 — active full-city run state. activeRunId set after start_run
+  // OR via list_active_runs hydration on mount (cross-session resume).
+  // activeRun is the polled parent row; updated every 5s while running.
+  const [activeRunId, setActiveRunId] = useState(null);
+  const [activeRun, setActiveRun] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -307,11 +316,173 @@ export function TrialResultsTab() {
     return bDate.localeCompare(aDate);
   });
 
-  // ORCH-0734 — collapsed prepare→run flow into single button. Internally:
-  // phase 1 (prepare): fetch_reviews + compose_collage per place.
-  // phase 2 (trial): run_trial_for_place per place.
-  // Operator sees progress through both phases; Stop covers both.
+  // ORCH-0737 — cross-session resume on mount. If any full-city run is currently
+  // active (status pending/running/cancelling), hydrate UI immediately so the
+  // operator sees in-progress state on tab reopen.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await invokeWithRefresh("run-place-intelligence-trial", {
+          body: { action: "list_active_runs" },
+        });
+        if (cancelled) return;
+        if (error) return; // silent: feature is non-critical for hydration
+        if (data?.runs?.length > 0) {
+          // Pick the most recent active run; if multiple, panel shows newest first
+          setActiveRunId(data.runs[0].id);
+          setActiveRun(data.runs[0]);
+        }
+      } catch (_err) {
+        // silent
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ORCH-0737 — poll active run status every 5s while activeRunId is set.
+  // When run reaches terminal state (complete/cancelled/failed), stop polling
+  // and refresh the run-history list.
+  useEffect(() => {
+    if (!activeRunId) return;
+    let cancelled = false;
+    (async () => {
+      while (!cancelled) {
+        try {
+          const { data } = await invokeWithRefresh("run-place-intelligence-trial", {
+            body: { action: "run_status", run_id: activeRunId },
+          });
+          if (cancelled) break;
+          if (data?.parent) {
+            setActiveRun(data.parent);
+            if (["complete", "cancelled", "failed"].includes(data.parent.status)) {
+              setActiveRunId(null);
+              await refresh();
+              break;
+            }
+          }
+        } catch (_err) {
+          // silent — next poll will retry
+        }
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeRunId, refresh]);
+
+  // ORCH-0737 — cancel active full-city run (calls cancel_trial action).
+  async function handleCancelActiveRun(runId) {
+    if (!window.confirm("Cancel this run? Partial results will be preserved.")) return;
+    try {
+      const { error } = await invokeWithRefresh("run-place-intelligence-trial", {
+        body: { action: "cancel_trial", run_id: runId },
+      });
+      if (error) {
+        addToast({
+          variant: "error",
+          title: "Couldn't cancel",
+          description: await extractFunctionError(error, "cancel_trial failed"),
+        });
+        return;
+      }
+      addToast({
+        variant: "info",
+        title: "Cancelling…",
+        description: "Run will stop after current chunk (~30-90s).",
+      });
+    } catch (err) {
+      addToast({ variant: "error", title: "Couldn't cancel", description: err.message });
+    }
+  }
+
+  // ORCH-0737 — top-level dispatcher. Branches on mode.
   async function handleRunTrial() {
+    if (mode === "sample") {
+      return handleRunSampleTrial();
+    }
+    return handleRunFullCityTrial();
+  }
+
+  // ORCH-0737 — full-city async mode. Submits start_run with mode=full_city,
+  // optional confirm_high_cost flag (after double-confirm dialog), then sets
+  // activeRunId so polling effect kicks in. Browser does NOT loop.
+  async function handleRunFullCityTrial() {
+    if (isRunningRef.current) return;
+    isRunningRef.current = true;
+
+    if (!cityId) {
+      addToast({ variant: "warning", title: "Pick a city first" });
+      isRunningRef.current = false;
+      return;
+    }
+    const selectedCity = cities.find((c) => c.id === cityId);
+    if (!selectedCity) {
+      addToast({ variant: "error", title: "Selected city not found" });
+      isRunningRef.current = false;
+      return;
+    }
+
+    const totalPlaces = selectedCity.servable_count;
+    const estCostNum = +(totalPlaces * PER_PLACE_COST_USD).toFixed(2);
+    const estMinutes = Math.ceil((totalPlaces * PER_PLACE_WALL_SECONDS) / 60);
+    const estTimeStr = estMinutes >= 60 ? `~${(estMinutes / 60).toFixed(1)} hrs` : `~${estMinutes} min`;
+
+    // First confirm — standard cost+time disclosure
+    if (!window.confirm(
+      `About to run a FULL-CITY trial for ${totalPlaces} places in ${selectedCity.name}, ${selectedCity.country}.\n\n` +
+      `Estimated cost: ~$${estCostNum.toFixed(2)} USD\n` +
+      `Estimated wall time: ${estTimeStr}\n\n` +
+      `The run will execute on Mingla's servers. You can close this tab and come back hours later — the run keeps going until you click Cancel.\n\n` +
+      `Continue?`
+    )) {
+      isRunningRef.current = false;
+      return;
+    }
+
+    // Second confirm if cost > $5 guard
+    const exceedsGuard = estCostNum > 5;
+    if (exceedsGuard && !window.confirm(
+      `⚠️ This run will charge approximately $${estCostNum.toFixed(2)} on the Gemini API.\n\n` +
+      `The default cost guard is $5. You're authorizing an override.\n\n` +
+      `I understand this will charge ~$${estCostNum.toFixed(2)}. Confirm again?`
+    )) {
+      isRunningRef.current = false;
+      return;
+    }
+
+    setRunning(true);
+    try {
+      const { data: created, error: startErr } = await invokeWithRefresh("run-place-intelligence-trial", {
+        body: {
+          action: "start_run",
+          city_id: cityId,
+          mode: "full_city",
+          confirm_high_cost: exceedsGuard,
+        },
+      });
+      if (startErr) throw new Error(await extractFunctionError(startErr, "start_run failed"));
+
+      addToast({
+        variant: "info",
+        title: "Full-city run started",
+        description:
+          `${created.cityName} · ${created.totalPlaces} places · est ${formatCost(created.estimatedCostUsd)} · ` +
+          `~${created.estimatedMinutes} min. You can close this tab.`,
+      });
+
+      // Trigger polling — fetches initial parent state on first tick
+      setActiveRunId(created.runId);
+    } catch (err) {
+      addToast({ variant: "error", title: "Couldn't start run", description: err.message });
+    } finally {
+      setRunning(false);
+      isRunningRef.current = false;
+    }
+  }
+
+  // ORCH-0734 — sample mode (browser-loop, prepare→trial phases).
+  // ORCH-0737: renamed from handleRunTrial; functionally unchanged.
+  async function handleRunSampleTrial() {
     // Synchronous guard against double-invocation race
     if (isRunningRef.current) return;
     isRunningRef.current = true;
@@ -461,10 +632,18 @@ export function TrialResultsTab() {
   }
 
   const selectedCity = cities.find((c) => c.id === cityId) || null;
-  const effectiveSample = selectedCity ? Math.min(sampleSize, selectedCity.servable_count) : 0;
-  const estCostUsd = (effectiveSample * PER_PLACE_COST_USD).toFixed(2);
-  const estMinutes = Math.ceil((effectiveSample * PER_PLACE_WALL_SECONDS) / 60);
-  const canRun = !!cityId && !running && !loading;
+  // ORCH-0737 — effectiveCount depends on mode. full_city = all servable; sample = min(picker, servable)
+  const effectiveCount = !selectedCity
+    ? 0
+    : mode === "full_city"
+      ? selectedCity.servable_count
+      : Math.min(sampleSize, selectedCity.servable_count);
+  const estCostNum = effectiveCount * PER_PLACE_COST_USD;
+  const estCostUsd = estCostNum.toFixed(2);
+  const estMinutes = Math.ceil((effectiveCount * PER_PLACE_WALL_SECONDS) / 60);
+  const estTimeStr = estMinutes >= 60 ? `~${(estMinutes / 60).toFixed(1)} hrs` : `~${estMinutes} min`;
+  const exceedsCostGuard = estCostNum > 5;
+  const canRun = !!cityId && !running && !loading && !activeRunId;          // ORCH-0737 block while active full-city run
 
   return (
     <SectionCard
@@ -475,11 +654,112 @@ export function TrialResultsTab() {
       }
     >
       <div className="space-y-4">
-        {/* ORCH-0734 — city + sample size + single Run button. Operator picks
-            a city from servable-non-zero list, sets sample size 50-500, clicks
-            Run. Internal flow runs prepare phase then trial phase per place
-            with progress observable through both. */}
+        {/* ORCH-0737 — active-run panel for full-city durable runs. Renders
+            above the form when a full-city run is in flight. Survives tab
+            close/refresh via list_active_runs hydration on mount. */}
+        {activeRun && (
+          <div className="border border-[var(--color-brand-200)] rounded-lg p-4 space-y-3 bg-[var(--color-brand-50)]">
+            <div className="flex items-baseline justify-between gap-2">
+              <h4 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
+                {activeRun.mode === "full_city"
+                  ? <><Globe className="w-4 h-4 inline" /> Full-city run</>
+                  : <><Clock className="w-4 h-4 inline" /> Sample run</>}
+                {" — "}{activeRun.city_name}
+              </h4>
+              <span className="text-xs font-mono text-[var(--color-text-secondary)]">
+                {activeRun.processed_count} / {activeRun.total_count}
+                {" "}({Math.round((activeRun.processed_count / Math.max(1, activeRun.total_count)) * 100)}%)
+              </span>
+            </div>
+            <div className="h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[var(--color-brand-500)] transition-all duration-200"
+                style={{ width: `${(activeRun.processed_count / Math.max(1, activeRun.total_count)) * 100}%` }}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <span className="text-[var(--color-success-700)] font-mono">✓ {activeRun.succeeded_count}</span>
+              <span className="text-[var(--color-error-700)] font-mono">✗ {activeRun.failed_count}</span>
+              <span className="text-[var(--color-text-secondary)] font-mono">
+                cost: ${Number(activeRun.cost_so_far_usd || 0).toFixed(4)} of ~${Number(activeRun.estimated_cost_usd || 0).toFixed(2)}
+              </span>
+              <span className="ml-auto">
+                <span className={[
+                  "text-[10px] uppercase tracking-wide font-mono px-1.5 py-0.5 rounded",
+                  activeRun.status === "running" && "bg-[var(--color-info-50)] text-[var(--color-info-700)]",
+                  activeRun.status === "cancelling" && "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]",
+                  activeRun.status === "pending" && "bg-[var(--gray-100)] text-[var(--color-text-tertiary)]",
+                ].filter(Boolean).join(" ")}>
+                  {activeRun.status}
+                </span>
+              </span>
+            </div>
+            {activeRun.status === "running" && (
+              <Button variant="danger" size="sm" icon={Square} onClick={() => handleCancelActiveRun(activeRun.id)}>
+                Cancel run
+              </Button>
+            )}
+            {activeRun.status === "cancelling" && (
+              <p className="text-xs text-[var(--color-warning-700)]">
+                Cancelling… will stop after current chunk (~30-90s).
+              </p>
+            )}
+            <p className="text-xs text-[var(--color-text-tertiary)] italic">
+              {activeRun.mode === "full_city"
+                ? "Running on the server — safe to close this tab. Status updates every 5s while page is open."
+                : "Sample run in progress."}
+            </p>
+          </div>
+        )}
+
+        {/* ORCH-0734 — city picker + sample size. ORCH-0737 — added mode toggle.
+            Sample mode: browser-loop, ~75 min/200 places.
+            Whole city mode: durable async, server-side, hours but tab-close-safe. */}
         <div className="flex flex-col gap-3 p-4 border border-[var(--gray-200)] rounded-lg bg-[var(--gray-50)]">
+          {/* ORCH-0737 — mode toggle (segmented control) */}
+          <div className="flex flex-col gap-1.5">
+            <label className="block text-sm font-medium text-[var(--color-text-primary)]">
+              Mode
+            </label>
+            <div className="flex gap-1 p-1 bg-[var(--gray-100)] rounded-lg">
+              <button
+                type="button"
+                onClick={() => setMode("sample")}
+                disabled={running || loading || !!activeRunId}
+                aria-pressed={mode === "sample"}
+                className={[
+                  "flex-1 h-9 text-sm font-medium rounded-md transition-colors duration-150",
+                  mode === "sample"
+                    ? "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm cursor-pointer"
+                    : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] cursor-pointer",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                ].join(" ")}
+              >
+                Sample
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("full_city")}
+                disabled={running || loading || !!activeRunId}
+                aria-pressed={mode === "full_city"}
+                className={[
+                  "flex-1 h-9 text-sm font-medium rounded-md transition-colors duration-150",
+                  mode === "full_city"
+                    ? "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm cursor-pointer"
+                    : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] cursor-pointer",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                ].join(" ")}
+              >
+                Whole city
+              </button>
+            </div>
+            <p className="text-xs text-[var(--color-text-tertiary)]">
+              {mode === "sample"
+                ? "Stratified random sample, runs in your browser (~75 min for 200 places). Don't refresh during the run."
+                : "Process every servable place in the city. Runs on the server — close the tab, come back later. Cancel anytime."}
+            </p>
+          </div>
+
           <div className="flex flex-col md:flex-row md:items-end gap-3">
             <div className="flex-1 min-w-0">
               <label
@@ -492,7 +772,7 @@ export function TrialResultsTab() {
                 id="trial-city-picker"
                 value={cityId || ""}
                 onChange={(e) => setCityId(e.target.value || null)}
-                disabled={running || loading}
+                disabled={running || loading || !!activeRunId}
                 className={[
                   "w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
                   "border border-[var(--gray-300)] rounded-lg outline-none transition-all duration-150",
@@ -509,36 +789,39 @@ export function TrialResultsTab() {
                 ))}
               </select>
             </div>
-            <div className="w-full md:w-40">
-              <label
-                htmlFor="trial-sample-size"
-                className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5"
-              >
-                Sample size
-              </label>
-              <input
-                id="trial-sample-size"
-                type="number"
-                min={SAMPLE_SIZE_MIN}
-                max={SAMPLE_SIZE_MAX}
-                step={50}
-                value={sampleSize}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (Number.isInteger(n)) {
-                    setSampleSize(Math.max(SAMPLE_SIZE_MIN, Math.min(SAMPLE_SIZE_MAX, n)));
-                  }
-                }}
-                disabled={running || loading}
-                className={[
-                  "w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
-                  "border border-[var(--gray-300)] rounded-lg outline-none transition-all duration-150",
-                  "px-3 tabular-nums",
-                  "focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
-                  "disabled:opacity-50 disabled:cursor-not-allowed",
-                ].join(" ")}
-              />
-            </div>
+            {/* ORCH-0737 — sample-size input only renders in sample mode */}
+            {mode === "sample" && (
+              <div className="w-full md:w-40">
+                <label
+                  htmlFor="trial-sample-size"
+                  className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5"
+                >
+                  Sample size
+                </label>
+                <input
+                  id="trial-sample-size"
+                  type="number"
+                  min={SAMPLE_SIZE_MIN}
+                  max={SAMPLE_SIZE_MAX}
+                  step={50}
+                  value={sampleSize}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (Number.isInteger(n)) {
+                      setSampleSize(Math.max(SAMPLE_SIZE_MIN, Math.min(SAMPLE_SIZE_MAX, n)));
+                    }
+                  }}
+                  disabled={running || loading || !!activeRunId}
+                  className={[
+                    "w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
+                    "border border-[var(--gray-300)] rounded-lg outline-none transition-all duration-150",
+                    "px-3 tabular-nums",
+                    "focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
+                    "disabled:opacity-50 disabled:cursor-not-allowed",
+                  ].join(" ")}
+                />
+              </div>
+            )}
             <div className="flex gap-2">
               <Button
                 variant="primary"
@@ -548,23 +831,42 @@ export function TrialResultsTab() {
                 loading={running}
                 disabled={!canRun}
               >
-                Run trial{selectedCity ? ` (${effectiveSample})` : ""}
+                Run trial{selectedCity ? ` (${effectiveCount})` : ""}
               </Button>
-              {running && (
+              {running && mode === "sample" && (
                 <Button variant="danger" size="sm" icon={Square} onClick={handleCancel}>
                   Cancel
                 </Button>
               )}
             </div>
           </div>
+          {/* ORCH-0737 — cost+time helper text adapts to mode */}
           <div className="text-xs text-[var(--color-text-tertiary)]">
-            Stratified random — top half by review_count + random fill of bottom half.
             {selectedCity ? (
               <>
-                {` ${effectiveSample} of ${selectedCity.servable_count} servable places · ~$${estCostUsd} · ~${estMinutes} min wall time`}
+                {mode === "full_city" ? (
+                  <>
+                    {`Whole city: ${effectiveCount} servable places · ~$${estCostUsd} · ${estTimeStr} wall time`}
+                    {exceedsCostGuard && (
+                      <strong className="text-[var(--color-warning-700)]"> · cost guard requires double-confirm</strong>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    Stratified random — top half by review_count + random fill of bottom half.
+                    {` ${effectiveCount} of ${selectedCity.servable_count} servable places · ~$${estCostUsd} · ${estTimeStr} wall time`}
+                  </>
+                )}
               </>
             ) : (
-              <>{` Range ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX}, default ${SAMPLE_SIZE_DEFAULT}.`}</>
+              mode === "sample"
+                ? <>{` Range ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX}, default ${SAMPLE_SIZE_DEFAULT}.`}</>
+                : <>Pick a city to see cost + time estimate for the full pool.</>
+            )}
+            {!!activeRunId && (
+              <span className="block mt-1 text-[var(--color-warning-700)]">
+                Already a run in progress — wait or cancel above before starting another.
+              </span>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-[var(--gray-200)]">

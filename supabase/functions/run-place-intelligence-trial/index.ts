@@ -294,11 +294,25 @@ serve(async (req: Request) => {
 
     if (!body.action) {
       return json({
-        error: "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial'",
+        error: "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial' | 'process_chunk' | 'list_active_runs'",
       }, 400);
     }
 
-    // Auth gate (admin only)
+    // ORCH-0737: process_chunk is service-role-only (called by pg_cron via pg_net).
+    // Skip user-auth gate; rely on service-role bearer match instead.
+    if (body.action === "process_chunk") {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return json({ error: "Missing authorization" }, 401);
+      }
+      const token = authHeader.replace("Bearer ", "");
+      if (token !== supabaseServiceKey) {
+        return json({ error: "process_chunk requires service-role auth" }, 403);
+      }
+      return await handleProcessChunk(supabaseAdmin, body, geminiKey, serperKey);
+    }
+
+    // Auth gate (admin only) for all other actions
     const authHeader = req.headers.get("Authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return json({ error: "Missing authorization" }, 401);
@@ -322,13 +336,15 @@ serve(async (req: Request) => {
       case "compose_collage":
         return await handleComposeCollage(supabaseAdmin, body);
       case "start_run":
-        return await handleStartRun(supabaseAdmin, body, user.id);
+        return await handleStartRun(supabaseAdmin, body, adminRow.id, supabaseServiceKey);
       case "run_trial_for_place":
         return await handleRunTrialForPlace(supabaseAdmin, body, geminiKey);
       case "run_status":
         return await handleRunStatus(supabaseAdmin, body);
       case "cancel_trial":
-        return await handleCancelTrial(supabaseAdmin, body);
+        return await handleCancelTrial(supabaseAdmin, body, adminRow.id);
+      case "list_active_runs":
+        return await handleListActiveRuns(supabaseAdmin);
       default:
         return json({ error: `Unknown action: ${body.action}` }, 400);
     }
@@ -637,29 +653,42 @@ async function handleComposeCollage(
 async function handleStartRun(
   db: SupabaseClient,
   body: Record<string, unknown>,
-  userId: string,
+  adminId: string,
+  serviceKey: string,
 ): Promise<Response> {
   // ORCH-0734 — city-scoped sampled-sync. Operator picks city + sample size;
   // edge fn loads servable places via stratified random sample (top half by
   // review_count + random fill of bottom half), pre-inserts pending rows.
-  // Per F-8 verified row cardinality: 1 row per (run_id, place_pool_id);
-  // signal_id and anchor_index are NULL for city-runs (legacy 32-anchor rows
-  // preserve their values as audit trail).
   // Per DEC-102: Gemini 2.5 Flash sole provider. No provider param.
+  //
+  // ORCH-0737 — added mode='sample'|'full_city' field. full_city mode skips
+  // stratified sampling (takes all servable rows), inserts parent row in
+  // place_intelligence_runs, kicks first chunk via pg_net for immediate start
+  // (don't wait for next pg_cron tick), and runs durably server-side.
 
   const cityId = body.city_id;
   if (!cityId || typeof cityId !== "string") {
     return json({ error: "city_id required (uuid)" }, 400);
   }
 
-  const sampleSizeRaw = body.sample_size ?? SAMPLE_SIZE_DEFAULT;
-  const sampleSize = typeof sampleSizeRaw === "number" && Number.isInteger(sampleSizeRaw)
-    ? sampleSizeRaw
-    : NaN;
-  if (!Number.isInteger(sampleSize) || sampleSize < SAMPLE_SIZE_MIN || sampleSize > SAMPLE_SIZE_MAX) {
-    return json({
-      error: `sample_size must be integer ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX} (default ${SAMPLE_SIZE_DEFAULT})`,
-    }, 400);
+  // ORCH-0737: mode field; default to 'sample' for backward compat
+  const mode = (body.mode as string) ?? "sample";
+  if (mode !== "sample" && mode !== "full_city") {
+    return json({ error: "mode must be 'sample' or 'full_city'" }, 400);
+  }
+
+  // sample_size only required for sample mode; full_city ignores it
+  let sampleSize: number | null = null;
+  if (mode === "sample") {
+    const sampleSizeRaw = body.sample_size ?? SAMPLE_SIZE_DEFAULT;
+    sampleSize = typeof sampleSizeRaw === "number" && Number.isInteger(sampleSizeRaw)
+      ? sampleSizeRaw
+      : NaN;
+    if (!Number.isInteger(sampleSize) || sampleSize < SAMPLE_SIZE_MIN || sampleSize > SAMPLE_SIZE_MAX) {
+      return json({
+        error: `sample_size must be integer ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX} (default ${SAMPLE_SIZE_DEFAULT})`,
+      }, 400);
+    }
   }
 
   // Validate city exists
@@ -672,9 +701,6 @@ async function handleStartRun(
   if (!city) return json({ error: "city_id does not exist in seeding_cities" }, 400);
 
   // Load all servable place IDs for the city, ranked by review_count desc
-  // (deterministic ordering for the top-half pick). We do client-side
-  // stratified sampling here because pure SQL random sampling on potentially
-  // 3K+ rows is fine for sample mode but we want explicit shuffle control.
   const { data: pool, error: poolErr } = await db
     .from("place_pool")
     .select("id, review_count")
@@ -687,40 +713,94 @@ async function handleStartRun(
   }
 
   const totalServable = pool.length;
-  const effectiveSampleSize = Math.min(sampleSize, totalServable);
+  const effectiveCount = mode === "full_city"
+    ? totalServable
+    : Math.min(sampleSize as number, totalServable);
 
-  // Stratified random: top half by review_count + random fill of bottom half.
-  // ceil() biases toward the deterministic top-N when sample_size is odd.
-  const topHalfCount = Math.ceil(effectiveSampleSize / 2);
-  const bottomFillCount = effectiveSampleSize - topHalfCount;
-  const topHalfIds = pool.slice(0, topHalfCount).map((p) => p.id);
-  const remaining = pool.slice(topHalfCount).map((p) => p.id);
-  // Fisher-Yates shuffle for the random-fill portion
-  for (let i = remaining.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [remaining[i], remaining[j]] = [remaining[j], remaining[i]];
+  // ORCH-0737: full_city mode takes ALL servable rows; sample mode uses stratified random.
+  let sampledIds: string[];
+  if (mode === "full_city") {
+    sampledIds = pool.map((p) => p.id);
+  } else {
+    // Stratified random: top half by review_count + random fill of bottom half.
+    const topHalfCount = Math.ceil(effectiveCount / 2);
+    const bottomFillCount = effectiveCount - topHalfCount;
+    const topHalfIds = pool.slice(0, topHalfCount).map((p) => p.id);
+    const remaining = pool.slice(topHalfCount).map((p) => p.id);
+    // Fisher-Yates shuffle for the random-fill portion
+    for (let i = remaining.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [remaining[i], remaining[j]] = [remaining[j], remaining[i]];
+    }
+    const bottomFillIds = remaining.slice(0, bottomFillCount);
+    sampledIds = [...topHalfIds, ...bottomFillIds];
   }
-  const bottomFillIds = remaining.slice(0, bottomFillCount);
-  const sampledIds = [...topHalfIds, ...bottomFillIds];
 
-  const estCost = +(effectiveSampleSize * PER_PLACE_COST_USD).toFixed(4);
+  const estCost = +(effectiveCount * PER_PLACE_COST_USD).toFixed(4);
+
+  // ORCH-0737: cost guard. Sample mode: hard reject above $5.
+  // full_city mode: requires confirm_high_cost=true body field for cost > $5
+  // (admin UI surfaces a double-confirm dialog before sending this).
   if (estCost > COST_GUARD_USD) {
-    return json({
-      error: `cost guard tripped: estimated $${estCost.toFixed(2)} > $${COST_GUARD_USD}`,
-    }, 400);
+    if (mode === "sample") {
+      return json({
+        error: `cost guard tripped: estimated $${estCost.toFixed(2)} > $${COST_GUARD_USD}`,
+      }, 400);
+    }
+    if (mode === "full_city" && body.confirm_high_cost !== true) {
+      return json({
+        error: "cost_above_guard",
+        estimated_cost_usd: estCost,
+        cost_guard_usd: COST_GUARD_USD,
+        message: `Full-city run exceeds $${COST_GUARD_USD} cost guard. Resubmit with confirm_high_cost=true to override.`,
+      }, 400);
+    }
   }
 
+  const estMinutes = Math.ceil(effectiveCount * 30 / 60);                   // 30s per place wallclock estimate
+
+  // ORCH-0737: insert parent row FIRST so child FK can reference it.
+  // Unique partial index on (city_id) WHERE status IN ('pending','running','cancelling')
+  // returns 23505 if a run is already active for this city.
   const runId = crypto.randomUUID();
+  const { error: parentInsertErr } = await db
+    .from("place_intelligence_runs")
+    .insert({
+      id: runId,
+      city_id: cityId,
+      city_name: city.name,
+      mode,
+      sample_size: mode === "sample" ? effectiveCount : null,
+      total_count: effectiveCount,
+      estimated_cost_usd: estCost,
+      estimated_minutes: estMinutes,
+      prompt_version: PROMPT_VERSION,
+      model: GEMINI_MODEL_NAME_SHORT,
+      started_by: adminId,
+      status: "running",
+      started_at: new Date().toISOString(),
+    });
+
+  if (parentInsertErr) {
+    // 23505 unique violation = one already running for this city
+    if (parentInsertErr.code === "23505") {
+      return json({
+        error: "concurrent_run",
+        message: `A run is already in progress for ${city.name}. Cancel it first or wait for it to complete.`,
+      }, 409);
+    }
+    return json({ error: `parent insert failed: ${parentInsertErr.message}` }, 500);
+  }
+
   console.log(
-    `[place-intel-trial:start_run] city=${city.name} (${cityId}) ` +
-    `sample=${effectiveSampleSize}/${totalServable} run=${runId} userId=${userId}`,
+    `[place-intel-trial:start_run] mode=${mode} city=${city.name} (${cityId}) ` +
+    `count=${effectiveCount}/${totalServable} run=${runId} adminId=${adminId}`,
   );
 
-  // Pre-insert pending rows. Per F-8: 1 row per place; signal_id + anchor_index
-  // are NULL for city-runs. UPSERT on (run_id, place_pool_id) UNIQUE is
-  // defensive; new run_id is freshly generated each call.
+  // Pre-insert pending child rows with parent_run_id set.
   const pendingRows = sampledIds.map((ppId) => ({
     run_id: runId,
+    parent_run_id: runId,                                                   // ORCH-0737 NEW
     place_pool_id: ppId,
     city_id: cityId,
     signal_id: null,
@@ -734,23 +814,55 @@ async function handleStartRun(
   const { error: insertErr } = await db
     .from("place_intelligence_trial_runs")
     .upsert(pendingRows, { onConflict: "run_id,place_pool_id" });
-  if (insertErr) return json({ error: insertErr.message }, 500);
+  if (insertErr) {
+    // Roll back parent row to keep DB consistent
+    await db.from("place_intelligence_runs")
+      .update({ status: "failed", error_reason: `child insert failed: ${insertErr.message}`, completed_at: new Date().toISOString() })
+      .eq("id", runId);
+    return json({ error: insertErr.message }, 500);
+  }
+
+  // ORCH-0737: full_city mode kicks the first chunk immediately via pg_net
+  // (don't wait for next pg_cron tick which could be up to 60s away).
+  // Sample mode skips this; browser drives the loop.
+  if (mode === "full_city" && serviceKey) {
+    try {
+      const workerUrl = `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/run-place-intelligence-trial`;
+      // fire-and-forget; intentional. Worker writes status to DB.
+      fetch(workerUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ action: "process_chunk", run_id: runId }),
+      }).catch((err) => {
+        console.error(`[start_run] first-chunk kick failed (cron will retry): ${err.message}`);
+      });
+    } catch (err) {
+      // Non-fatal: pg_cron tick (within 60s) will pick up the run.
+      console.error(`[start_run] first-chunk kick threw: ${err}`);
+    }
+  }
 
   return json({
     runId,
     cityId: city.id,
     cityName: city.name,
     cityCountry: city.country,
+    mode,                                                                   // ORCH-0737 NEW
     totalServable,
-    totalPlaces: effectiveSampleSize,
+    totalPlaces: effectiveCount,
     estimatedCostUsd: estCost,
+    estimatedMinutes: estMinutes,                                           // ORCH-0737 NEW
     provider: "gemini",
     model: GEMINI_MODEL_NAME_SHORT,
-    // Shape preserved for browser-loop compatibility. signal_id is null for city-runs.
-    anchors: sampledIds.map((ppId) => ({
-      place_pool_id: ppId,
-      signal_id: null,
-    })),
+    // Browser-loop compat: only return anchors for sample mode (since browser
+    // still drives sample loop). Full-city mode returns empty array — browser
+    // becomes status viewer via polling.
+    anchors: mode === "sample"
+      ? sampledIds.map((ppId) => ({ place_pool_id: ppId, signal_id: null }))
+      : [],
   });
 }
 
@@ -1270,6 +1382,15 @@ function buildUserTextBlock(
 async function handleRunStatus(db: SupabaseClient, body: Record<string, unknown>): Promise<Response> {
   const runId = body.run_id as string;
   if (!runId) return json({ error: "run_id required" }, 400);
+
+  // ORCH-0737: include parent run-level state alongside per-place rows.
+  // Pre-ORCH-0737 runs have no parent row → parent will be null; UI handles.
+  const { data: parent } = await db
+    .from("place_intelligence_runs")
+    .select("*")
+    .eq("id", runId)
+    .maybeSingle();
+
   const { data, error } = await db
     .from("place_intelligence_trial_runs")
     .select("place_pool_id, signal_id, anchor_index, status, cost_usd, error_message, started_at, completed_at, reviews_count")
@@ -1279,6 +1400,7 @@ async function handleRunStatus(db: SupabaseClient, body: Record<string, unknown>
   const rows = data || [];
   return json({
     runId,
+    parent,                                                                 // ORCH-0737 NEW
     totalPlaces: rows.length,
     statusCounts: {
       pending: rows.filter((r) => r.status === "pending").length,
@@ -1292,14 +1414,245 @@ async function handleRunStatus(db: SupabaseClient, body: Record<string, unknown>
   });
 }
 
-async function handleCancelTrial(db: SupabaseClient, body: Record<string, unknown>): Promise<Response> {
+async function handleCancelTrial(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+  adminId: string,
+): Promise<Response> {
   const runId = body.run_id as string;
   if (!runId) return json({ error: "run_id required" }, 400);
-  const { error } = await db
-    .from("place_intelligence_trial_runs")
-    .update({ status: "cancelled", completed_at: new Date().toISOString() })
-    .eq("run_id", runId)
-    .in("status", ["pending", "running"]);
+
+  // ORCH-0737: signal cancellation at run-level. Worker checks status at
+  // chunk start and finalizes 'cancelled' within next chunk boundary (~30-90s).
+  // Falls back to legacy direct-update if no parent row exists (pre-ORCH-0737 runs).
+  const { data: run, error: parentErr } = await db
+    .from("place_intelligence_runs")
+    .update({ status: "cancelling", cancelled_by: adminId })
+    .eq("id", runId)
+    .eq("status", "running")
+    .select()
+    .maybeSingle();
+
+  if (parentErr || !run) {
+    // Legacy path: parent row may not exist (pre-ORCH-0737 run) OR run already
+    // terminal. Cancel per-place rows directly (existing behavior).
+    const { error } = await db
+      .from("place_intelligence_trial_runs")
+      .update({ status: "cancelled", completed_at: new Date().toISOString() })
+      .eq("run_id", runId)
+      .in("status", ["pending", "running"]);
+    if (error) return json({ error: error.message }, 500);
+    return json({ ok: true, mode: "legacy" });
+  }
+
+  // Parent successfully marked cancelling. Worker will finalize at next chunk.
+  return json({ ok: true, mode: "async", run_status: "cancelling" });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORCH-0737: list_active_runs — admin UI cross-session resume on mount
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function handleListActiveRuns(db: SupabaseClient): Promise<Response> {
+  const { data, error } = await db
+    .from("place_intelligence_runs")
+    .select("*")
+    .in("status", ["pending", "running", "cancelling"])
+    .order("created_at", { ascending: false });
   if (error) return json({ error: error.message }, 500);
-  return json({ ok: true });
+  return json({ runs: data || [] });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORCH-0737: process_chunk — async worker driven by pg_cron + pg_net
+//
+// Service-role auth only. Reads next 12 pending rows for a run, processes them
+// in parallel via Promise.all, persists results, updates parent counters.
+// pg_cron picks up next tick if more rows pending; otherwise marks complete.
+//
+// v2 PATCH (Gap 1 — row-level stale recovery): pickup query reclaims rows
+// stuck in 'running' status with started_at < now() - 5 min. Self-healing
+// against worker-death mid-chunk.
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function handleProcessChunk(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+  geminiKey: string,
+  serperKey: string,
+): Promise<Response> {
+  const runId = body.run_id as string;
+  if (!runId) return json({ error: "run_id required" }, 400);
+
+  // Step 1: SELECT FOR UPDATE NOWAIT to get exclusive ownership of this chunk.
+  // Concurrent worker call hits 23P01/55P03 → returns 'concurrent_worker'.
+  const { data: run, error: lockErr } = await db.rpc("lock_run_for_chunk", { p_run_id: runId });
+  if (lockErr) {
+    if (lockErr.code === "55P03" || lockErr.code === "23P01") {
+      return json({ skipped: true, reason: "concurrent_worker" });
+    }
+    return json({ error: `lock failed: ${lockErr.message}` }, 500);
+  }
+  if (!run) return json({ error: "run not found" }, 404);
+
+  // Step 2: Check status; bail on cancellation
+  if (run.status === "cancelling") {
+    await db.from("place_intelligence_runs")
+      .update({ status: "cancelled", completed_at: new Date().toISOString() })
+      .eq("id", runId);
+    // Mark any remaining pending rows cancelled too
+    await db.from("place_intelligence_trial_runs")
+      .update({
+        status: "cancelled",
+        completed_at: new Date().toISOString(),
+        error_message: "cancelled by operator",
+      })
+      .eq("parent_run_id", runId)
+      .in("status", ["pending"]);
+    return json({ ok: true, action: "cancelled" });
+  }
+  if (run.status !== "running") {
+    return json({ skipped: true, reason: `status=${run.status}` });
+  }
+  if (run.processed_count >= run.total_count) {
+    await db.from("place_intelligence_runs")
+      .update({ status: "complete", completed_at: new Date().toISOString() })
+      .eq("id", runId);
+    return json({ ok: true, action: "complete" });
+  }
+
+  // Step 3: Update heartbeat
+  await db.from("place_intelligence_runs")
+    .update({ last_heartbeat_at: new Date().toISOString() })
+    .eq("id", runId);
+
+  // ─── Step 4 (v2 PATCHED): pickup pending AND stuck-running ────────────
+  //
+  // v2 fix per orchestrator REVIEW 2026-05-06: a row stuck in 'running' for
+  // > 5 minutes means a previous worker died mid-chunk. The 5-min threshold
+  // is well above worst-case 12-row chunk wallclock (~30s steady-state, ~60s
+  // with Gemini retry-once on every row), so genuine in-flight rows are
+  // never falsely reclaimed mid-flight. Self-healing recovery.
+  const stuckCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const { data: pickupRows, error: pickupErr } = await db
+    .from("place_intelligence_trial_runs")
+    .select("id, place_pool_id, signal_id, anchor_index, status, started_at")
+    .eq("parent_run_id", runId)
+    .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`)
+    .limit(12);
+
+  if (pickupErr) return json({ error: `pickup failed: ${pickupErr.message}` }, 500);
+
+  if (!pickupRows || pickupRows.length === 0) {
+    await db.from("place_intelligence_runs")
+      .update({ status: "complete", completed_at: new Date().toISOString() })
+      .eq("id", runId);
+    return json({ ok: true, action: "complete_no_pending" });
+  }
+
+  // v2: log when stuck-running rows are reclaimed (operational visibility)
+  const reclaimed = pickupRows.filter((r) => r.status === "running").length;
+  if (reclaimed > 0) {
+    console.warn(
+      `[process_chunk] reclaimed ${reclaimed} stuck-running rows for run=${runId}`,
+    );
+  }
+
+  // Step 5: Mark these rows as 'running' (refreshes started_at for stuck rows)
+  const rowIds = pickupRows.map((r) => r.id);
+  await db.from("place_intelligence_trial_runs")
+    .update({ status: "running", started_at: new Date().toISOString() })
+    .in("id", rowIds);
+
+  // Step 6: Process in parallel-12 via Promise.all.
+  // Each row goes through fetch_reviews + compose_collage + run_trial_for_place
+  // pipeline. fetch_reviews and compose_collage are idempotent (skip if
+  // fresh-within-30-days / fingerprint-cached) so re-running on stuck rows is safe.
+  const results = await Promise.all(pickupRows.map(async (row) => {
+    try {
+      // fetch_reviews (idempotent)
+      const fetchRes = await handleFetchReviews(db, {
+        place_pool_id: row.place_pool_id,
+        force_refresh: false,
+      }, serperKey);
+      // Note: fetchRes.status is 200 even when "skipped: true" — that's success.
+      // Errors throw and get caught below.
+
+      // compose_collage (idempotent)
+      const collageRes = await handleComposeCollage(db, {
+        place_pool_id: row.place_pool_id,
+        force: false,
+      });
+      const collageBody = await collageRes.json();
+      if (collageBody.error) {
+        throw new Error(`compose_collage failed: ${collageBody.error}`);
+      }
+
+      // run_trial_for_place — actual Gemini call + result persist
+      const cost = await processOnePlace({
+        db,
+        geminiKey,
+        runId,
+        anchor: {
+          place_pool_id: row.place_pool_id,
+          signal_id: row.signal_id,
+          anchor_index: row.anchor_index,
+        },
+      });
+
+      // void unused fetchRes (call already wrote reviews to DB)
+      void fetchRes;
+
+      return { ok: true, place_pool_id: row.place_pool_id, cost };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[process_chunk] row ${row.place_pool_id} failed: ${msg}`);
+      // Per-row failure: write status='failed' for this place row
+      await db.from("place_intelligence_trial_runs")
+        .update({
+          status: "failed",
+          error_message: msg.slice(0, 500),
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+      return { ok: false, place_pool_id: row.place_pool_id, error: msg, cost: 0 };
+    }
+  }));
+
+  // Step 7: Aggregate and update parent counters atomically
+  const succeeded = results.filter((r) => r.ok).length;
+  const failed = results.length - succeeded;
+  const chunkCost = results.reduce((s, r) => s + (r.cost || 0), 0);
+
+  await db.rpc("increment_run_counters", {
+    p_run_id: runId,
+    p_processed: results.length,
+    p_succeeded: succeeded,
+    p_failed: failed,
+    p_cost: chunkCost,
+  });
+
+  // Step 8: Check if run is complete now
+  const { data: updatedRun } = await db
+    .from("place_intelligence_runs")
+    .select("processed_count, total_count")
+    .eq("id", runId)
+    .single();
+
+  const isComplete = (updatedRun?.processed_count ?? 0) >= (updatedRun?.total_count ?? 0);
+  if (isComplete) {
+    await db.from("place_intelligence_runs")
+      .update({ status: "complete", completed_at: new Date().toISOString() })
+      .eq("id", runId);
+  }
+
+  return json({
+    ok: true,
+    chunk_size: results.length,
+    succeeded,
+    failed,
+    chunk_cost_usd: +chunkCost.toFixed(6),
+    reclaimed,                                                              // v2 ADDITION
+    run_complete: isComplete,
+  });
 }

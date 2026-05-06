@@ -57,10 +57,9 @@ export function PlaceIntelligenceTrialPage() {
       </div>
 
       <AlertCard variant="info" title="How this works">
-        Pick a city → set sample size (50-500, default 200) → click Run trial.
-        Internally: fetch reviews + build collages, then score 16 signals per place via
-        Gemini 2.5 Flash. Results stream below. Sample mode keeps a Durham/Cary run under
-        ~75 min and ~$0.80; full-city backfill is a separate future tool.
+        Pick a city → choose Sample or Whole city mode → click Run trial.
+        Sample mode runs in your browser (~75 min for 200 places, ~$0.80 typical).
+        Whole city mode runs on Mingla's servers — close the tab, come back hours later, the run keeps going. Cancel anytime.
       </AlertCard>
 
       <div>
