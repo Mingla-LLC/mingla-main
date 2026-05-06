@@ -30,6 +30,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: config.name ?? "mingla-business",
   slug: config.slug ?? "mingla-business",
+  // Cycle B2a — deep link scheme for Stripe Connect onboarding return.
+  // expo-web-browser.openAuthSessionAsync requires this scheme to redirect
+  // back into the native app after the embedded onboarding flow completes
+  // at business.mingla.com/connect-onboarding. Per
+  // SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md §3.3 A6.
+  scheme: "mingla-business",
   plugins: [
     ...(config.plugins ?? []),
     [
