@@ -77,9 +77,8 @@ const COLLAGE_BUCKET = "place-collages";
 const PROMPT_VERSION = "v4";
 const COST_GUARD_USD = 5.0;
 
-// Anthropic rate-limit throttle (per Phase 1 pattern + bigger payloads)
-const PER_PLACE_THROTTLE_MS = 9_000;
-// PER_QUESTION_THROTTLE_MS removed at v3 — Q1 dropped; only one Anthropic call per place now.
+// ORCH-0737 v6 — Anthropic-era per-place throttle constant removed (was dead code
+// post ORCH-0733 / DEC-101 dropping Anthropic from the trial pipeline).
 const REVIEWS_FETCH_THROTTLE_MS = 200;   // gentle Serper throttle
 
 // Reviews fetch
@@ -942,10 +941,21 @@ async function processOnePlace(args: {
     .eq("run_id", runId)
     .eq("place_pool_id", anchor.place_pool_id);
 
-  // Load place
+  // Load place — ORCH-0737 v6: explicit column list (was `select("*")`).
+  // Strict superset of fields read by buildUserTextBlock + processOnePlace
+  // body. If buildUserTextBlock gains a new pp.<field> reference, ADD it here.
   const { data: pp, error: ppErr } = await db
     .from("place_pool")
-    .select("*")
+    .select(
+      "id, name, primary_type, types, address, rating, review_count, " +
+      "price_level, price_range_start_cents, price_range_end_cents, price_range_currency, " +
+      "editorial_summary, generative_summary, opening_hours, photo_collage_url, " +
+      // 23 boolean fields read individually by buildUserTextBlock
+      "serves_brunch, serves_lunch, serves_dinner, serves_breakfast, serves_beer, " +
+      "serves_wine, serves_cocktails, serves_coffee, serves_dessert, serves_vegetarian_food, " +
+      "outdoor_seating, live_music, good_for_groups, good_for_children, good_for_watching_sports, " +
+      "allows_dogs, has_restroom, reservable, menu_for_children, dine_in, takeout, delivery, curbside_pickup",
+    )
     .eq("id", anchor.place_pool_id)
     .single();
   if (ppErr || !pp) throw new Error(`place_pool fetch failed: ${ppErr?.message ?? "not found"}`);
@@ -954,13 +964,17 @@ async function processOnePlace(args: {
     throw new Error("prerequisites_missing: photo_collage_url is null — fetch_reviews + compose_collage must run before run_trial_for_place");
   }
 
-  // Load reviews
+  // Load reviews — ORCH-0737 v6: limit to TOP_REVIEWS_FOR_PROMPT (was 100).
+  // The post-fetch filter `r.review_text && r.review_text.trim().length > 0`
+  // may drop some reviews; result is the top N reviews-with-text by recency.
+  // If empirical observation shows < TOP_REVIEWS_FOR_PROMPT reviews-with-text
+  // being passed to Gemini, bump this limit (suggest 1.5× = 45) and report.
   const { data: reviews } = await db
     .from("place_external_reviews")
     .select("review_text, rating, posted_at, posted_label, has_media, media")
     .eq("place_pool_id", anchor.place_pool_id)
     .order("posted_at", { ascending: false, nullsFirst: false })
-    .limit(100);
+    .limit(TOP_REVIEWS_FOR_PROMPT);
   const reviewsList = reviews || [];
 
   // Build text bundle
@@ -1464,35 +1478,35 @@ async function handleListActiveRuns(db: SupabaseClient): Promise<Response> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ORCH-0737: process_chunk — async worker driven by pg_cron + pg_net
+// ORCH-0737: process_chunk — async worker driven by pg_cron + pg_net + self-invoke
 //
-// Service-role auth only. Reads next 12 pending rows for a run, processes them
-// in parallel via Promise.all, persists results, updates parent counters.
-// pg_cron picks up next tick if more rows pending; otherwise marks complete.
+// Service-role auth only. Budget-loop architecture: lock parent ONCE, update
+// heartbeat ONCE at start, then iterate phase decisions until 110s budget
+// exhausted. End of budget: fire-and-forget self-invoke if work remains
+// (bypasses cron-wait dead air). cron stays as recovery-only safety net.
 //
-// v2 PATCH (Gap 1 — row-level stale recovery): pickup query reclaims rows
-// stuck in 'running' status with started_at < now() - 5 min. Self-healing
-// against worker-death mid-chunk.
+// PRESERVED PATCHES (do NOT regress):
+// - v2 stuck-recovery (5-min cutoff) — both phase iterations
+// - v2 cancel-cleanup `pending+running` — Step 1 + cancel-mid-budget branch
+// - v3 cron filter `status IN running,cancelling` — at trigger fn (DB)
+// - v4 prep_status column + score-priority decider
+//
+// v6 CHANGES (this file):
+// - Budget loop wraps phase decider (multi-phase per invocation)
+// - Score iteration: parallel-12 (was ~3 effective due to prep starvation)
+// - Prep iteration: parallel-12 OUTER × serial-internal compose
+//   (memory-safe due to URL transforms in imageCollage.ts:fetchAndDecode —
+//   per-call peak ~5 MB, 12 × ~5 MB = 60 MB << 150 MB cap)
+// - Self-invoke at end-of-budget via EdgeRuntime.waitUntil
+// - lock_run_for_chunk pattern unchanged (lock releases at RPC return; chunk
+//   serialization is heartbeat-staleness on cron side; safe-by-construction
+//   because self-invoke chain stays single-threaded per parent_run_id)
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ORCH-0737 v4 patch (post-WORKER_RESOURCE_LIMIT 2026-05-06): two-pass worker.
-//
-// v3 chunk-size-6 still hit WORKER_RESOURCE_LIMIT 546. Root cause: 6 parallel
-// compose_collage operations > ~150 MB edge fn memory cap (Sharp PNG composition
-// + photo downloads). Time wasn't the limit; memory was.
-//
-// Fix: split worker into two phases. Per-cron-tick decision:
-//   - Score phase (parallel-12, memory-light ~10 MB/row): Gemini call only.
-//     Pickup: rows with prep_status='ready' AND status='pending' (or stuck).
-//   - Prep phase (serial, memory-bounded ~50 MB peak): fetch_reviews +
-//     compose_collage. Pickup: rows with prep_status NULL AND status='pending'.
-//
-// Score is prioritized when any score-eligible rows exist (immediate visible
-// progress); else prep more. Steady state oscillates: prep 3 → score 12 → prep 3 → ...
-//
-// v3 cancel-cleanup (pending+running) PRESERVED. Stuck-recovery logic
-// applies in BOTH phases (5-min cutoff). v3 cron filter (status IN
-// running,cancelling) PRESERVED at trigger function level.
+const V6_BUDGET_MS = 110_000;            // 110s; leaves 40s headroom under 150s edge fn timeout
+const V6_SAFETY_MAX_ITERATIONS = 6;      // belt+suspenders against runaway loop on bug
+const V6_STUCK_CUTOFF_MIN = 5;           // rows stuck in 'running' >5min eligible for stuck-recovery
+
 async function handleProcessChunk(
   db: SupabaseClient,
   body: Record<string, unknown>,
@@ -1502,8 +1516,9 @@ async function handleProcessChunk(
   const runId = body.run_id as string;
   if (!runId) return json({ error: "run_id required" }, 400);
 
-  // Step 1: SELECT FOR UPDATE NOWAIT to get exclusive ownership of this chunk.
-  // Concurrent worker call hits 23P01/55P03 → returns 'concurrent_worker'.
+  const startedAtMs = Date.now();
+
+  // ─── Step 1: Lock + status check (ONCE per invocation) ────────────────
   const { data: run, error: lockErr } = await db.rpc("lock_run_for_chunk", { p_run_id: runId });
   if (lockErr) {
     if (lockErr.code === "55P03" || lockErr.code === "23P01") {
@@ -1513,8 +1528,8 @@ async function handleProcessChunk(
   }
   if (!run) return json({ error: "run not found" }, 404);
 
-  // Step 2: Check status; bail on cancellation (v2 patch — pending+running)
   if (run.status === "cancelling") {
+    // v3 + v2 cancel-cleanup branch — UNCHANGED VERBATIM from v4
     await db.from("place_intelligence_runs")
       .update({ status: "cancelled", completed_at: new Date().toISOString() })
       .eq("id", runId);
@@ -1538,45 +1553,190 @@ async function handleProcessChunk(
     return json({ ok: true, action: "complete" });
   }
 
-  // Step 3: Update heartbeat (so pg_cron doesn't re-kick during this tick)
+  // ─── Step 2: Heartbeat update (ONCE per invocation, at start) ─────────
+  // CRITICAL: heartbeat MUST be updated only at chunk start, not refreshed
+  // during the budget loop. Refreshing mid-budget would push the cron's
+  // staleness window forward and DELAY recovery if this worker dies.
   await db.from("place_intelligence_runs")
     .update({ last_heartbeat_at: new Date().toISOString() })
     .eq("id", runId);
 
-  // ─── Step 4 (v4 NEW): decide phase ────────────────────────────────────
-  // Score-priority: if any rows are PREPPED + (pending OR stuck-running >5min),
-  // score them. Else: prep more rows. Else: nothing left → mark complete.
-  const stuckCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  // ─── Step 3: Budget loop ──────────────────────────────────────────────
+  let iterations = 0;
+  let totalScored = 0;
+  let totalPrepped = 0;
+  let totalPrepFailed = 0;
+  let totalReclaimed = 0;
+  let runComplete = false;
+  let exitReason = "budget_exhausted";
 
-  const { count: scoreEligibleCount, error: countErr } = await db
-    .from("place_intelligence_trial_runs")
-    .select("id", { count: "exact", head: true })
-    .eq("parent_run_id", runId)
-    .eq("prep_status", "ready")
-    .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`);
+  while (Date.now() - startedAtMs < V6_BUDGET_MS && iterations < V6_SAFETY_MAX_ITERATIONS) {
+    iterations++;
 
-  if (countErr) return json({ error: `phase decide failed: ${countErr.message}` }, 500);
+    // Re-check cancel signal each iteration. If operator clicked Cancel
+    // mid-budget, parent.status flips to 'cancelling' — bail out fast.
+    const { data: liveRun, error: liveErr } = await db
+      .from("place_intelligence_runs")
+      .select("status, processed_count, total_count")
+      .eq("id", runId)
+      .maybeSingle();
+    if (liveErr || !liveRun) {
+      exitReason = "live_status_check_failed";
+      break;
+    }
+    if (liveRun.status === "cancelling") {
+      // Same v3 cancel-cleanup pattern as Step 1
+      await db.from("place_intelligence_runs")
+        .update({ status: "cancelled", completed_at: new Date().toISOString() })
+        .eq("id", runId);
+      await db.from("place_intelligence_trial_runs")
+        .update({
+          status: "cancelled",
+          completed_at: new Date().toISOString(),
+          error_message: "cancelled by operator",
+        })
+        .eq("parent_run_id", runId)
+        .in("status", ["pending", "running"]);
+      return json({
+        ok: true,
+        action: "cancelled_mid_budget",
+        iterations,
+        scored: totalScored,
+        prepped: totalPrepped,
+      });
+    }
+    if (liveRun.processed_count >= liveRun.total_count) {
+      await db.from("place_intelligence_runs")
+        .update({ status: "complete", completed_at: new Date().toISOString() })
+        .eq("id", runId);
+      runComplete = true;
+      exitReason = "complete";
+      break;
+    }
 
-  const phase = (scoreEligibleCount ?? 0) > 0 ? "score" : "prep";
-  console.log(
-    `[process_chunk] runId=${runId} phase=${phase} score-eligible=${scoreEligibleCount ?? 0}`,
-  );
+    // Decide phase. Score-priority preserved from v4.
+    const stuckCutoff = new Date(Date.now() - V6_STUCK_CUTOFF_MIN * 60 * 1000).toISOString();
+    const { count: scoreEligibleCount, error: countErr } = await db
+      .from("place_intelligence_trial_runs")
+      .select("id", { count: "exact", head: true })
+      .eq("parent_run_id", runId)
+      .eq("prep_status", "ready")
+      .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`);
+    if (countErr) {
+      exitReason = `phase_decide_failed: ${countErr.message}`;
+      break;
+    }
 
-  if (phase === "score") {
-    return await processScorePhase({ db, geminiKey, runId, stuckCutoff });
+    const phase = (scoreEligibleCount ?? 0) > 0 ? "score" : "prep";
+    console.log(
+      `[v6 budget-loop] iter=${iterations} runId=${runId} phase=${phase} elapsed=${Date.now() - startedAtMs}ms`,
+    );
+
+    if (phase === "score") {
+      const result = await runScoreIteration({ db, geminiKey, runId, stuckCutoff });
+      totalScored += result.scored;
+      totalReclaimed += result.reclaimed;
+      if (result.scored === 0) {
+        // Nothing to score — flip to prep next iteration.
+        continue;
+      }
+    } else {
+      const result = await runPrepIteration({ db, serperKey, runId, stuckCutoff });
+      totalPrepped += result.prepped;
+      totalPrepFailed += result.prep_failed;
+      totalReclaimed += result.reclaimed;
+      if (result.prepped === 0 && result.prep_failed === 0) {
+        // No prep AND no score work → run functionally complete or all
+        // remaining rows transient. Defensively re-check completion.
+        const { data: doneCheck } = await db
+          .from("place_intelligence_runs")
+          .select("processed_count, total_count")
+          .eq("id", runId)
+          .maybeSingle();
+        if (doneCheck && doneCheck.processed_count >= doneCheck.total_count) {
+          await db.from("place_intelligence_runs")
+            .update({ status: "complete", completed_at: new Date().toISOString() })
+            .eq("id", runId);
+          runComplete = true;
+          exitReason = "complete";
+        } else {
+          exitReason = "prep_no_eligible_yet";
+        }
+        break;
+      }
+    }
   }
-  return await processPrepPhase({ db, serperKey, runId, stuckCutoff });
+
+  if (iterations >= V6_SAFETY_MAX_ITERATIONS) {
+    exitReason = "safety_max_iterations";
+    console.warn(`[v6 budget-loop] hit SAFETY_MAX_ITERATIONS=${V6_SAFETY_MAX_ITERATIONS} for run=${runId}`);
+  }
+
+  // ─── Step 4: End-of-budget self-invoke (fire-and-forget) ──────────────
+  // If run not complete and we exited budget loop, fire pg_net to ourselves
+  // to chain to the next invocation. Skips the heartbeat-staleness wait
+  // (~30-60s) that cron-only scheduling would impose. cron remains as
+  // recovery if this self-invoke fails.
+  if (!runComplete) {
+    const { data: chainCheckRun } = await db
+      .from("place_intelligence_runs")
+      .select("status, processed_count, total_count")
+      .eq("id", runId)
+      .maybeSingle();
+    const shouldChain = chainCheckRun
+      && chainCheckRun.status === "running"
+      && chainCheckRun.processed_count < chainCheckRun.total_count;
+    if (shouldChain) {
+      const selfUrl = `${Deno.env.get("SUPABASE_URL") ?? "https://gqnoajqerqhnvulmnyvv.supabase.co"}/functions/v1/run-place-intelligence-trial`;
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      try {
+        // @ts-ignore — EdgeRuntime is Supabase-provided global, may not be in @types
+        if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+          // @ts-ignore
+          EdgeRuntime.waitUntil(
+            fetch(selfUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${serviceKey}`,
+              },
+              body: JSON.stringify({ action: "process_chunk", run_id: runId }),
+            }).catch((err) => {
+              console.warn(`[v6 self-invoke] dispatch failed (cron will recover): ${err}`);
+            }),
+          );
+        } else {
+          console.warn(`[v6 self-invoke] EdgeRuntime.waitUntil unavailable; cron will recover`);
+        }
+      } catch (err) {
+        console.warn(`[v6 self-invoke] error scheduling self-invoke (cron will recover): ${err}`);
+      }
+    }
+  }
+
+  return json({
+    ok: true,
+    iterations,
+    scored: totalScored,
+    prepped: totalPrepped,
+    prep_failed: totalPrepFailed,
+    reclaimed: totalReclaimed,
+    exit_reason: exitReason,
+    run_complete: runComplete,
+    elapsed_ms: Date.now() - startedAtMs,
+  });
 }
 
-// ─── Score phase (v4): parallel-12 Gemini-only, memory-light ─────────────
-// Pickup: rows with prep_status='ready' that are pending OR stuck-running >5min.
-// Stuck-recovery: rows that started Gemini scoring but never completed.
-async function processScorePhase(args: {
+// ─── Score iteration (v6): parallel-12 Gemini-only, memory-light ─────────
+// Returns a result shape (not a Response) — the budget loop wraps this.
+// Pickup: rows with prep_status='ready' that are pending OR stuck-running
+// >5min. Stuck-recovery: rows that started Gemini scoring but never completed.
+async function runScoreIteration(args: {
   db: SupabaseClient;
   geminiKey: string;
   runId: string;
   stuckCutoff: string;
-}): Promise<Response> {
+}): Promise<{ scored: number; failed: number; reclaimed: number }> {
   const { db, geminiKey, runId, stuckCutoff } = args;
 
   const { data: pickupRows, error: pickupErr } = await db
@@ -1585,26 +1745,24 @@ async function processScorePhase(args: {
     .eq("parent_run_id", runId)
     .eq("prep_status", "ready")
     .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`)
-    .limit(12);                                                             // parallel-12 OK; Gemini-only is memory-light
+    .limit(12);                                                             // v6: parallel-12 Gemini (memory-light)
 
-  if (pickupErr) return json({ error: `score pickup failed: ${pickupErr.message}` }, 500);
+  if (pickupErr) throw new Error(`score pickup failed: ${pickupErr.message}`);
   if (!pickupRows || pickupRows.length === 0) {
-    return json({ ok: true, action: "score_no_eligible" });
+    return { scored: 0, failed: 0, reclaimed: 0 };
   }
 
   const reclaimed = pickupRows.filter((r) => r.status === "running").length;
   if (reclaimed > 0) {
-    console.warn(`[process_chunk score] reclaimed ${reclaimed} stuck-running rows for run=${runId}`);
+    console.warn(`[v6 score] reclaimed ${reclaimed} stuck-running rows for run=${runId}`);
   }
 
-  // Mark running (refreshes started_at for stuck rows)
   const rowIds = pickupRows.map((r) => r.id);
   await db.from("place_intelligence_trial_runs")
     .update({ status: "running", started_at: new Date().toISOString() })
     .in("id", rowIds);
 
-  // Score in parallel — memory-light because Gemini receives URL only.
-  // No photo bytes loaded in worker memory at this stage.
+  // Promise.all parallel — score is memory-light (Gemini receives base64 collage).
   const results = await Promise.all(pickupRows.map(async (row) => {
     try {
       const cost = await processOnePlace({
@@ -1620,7 +1778,7 @@ async function processScorePhase(args: {
       return { ok: true, place_pool_id: row.place_pool_id, cost };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[process_chunk score] row ${row.place_pool_id} failed: ${msg}`);
+      console.error(`[v6 score] row ${row.place_pool_id} failed: ${msg}`);
       await db.from("place_intelligence_trial_runs")
         .update({
           status: "failed",
@@ -1644,40 +1802,26 @@ async function processScorePhase(args: {
     p_cost: chunkCost,
   });
 
-  const { data: updatedRun } = await db
-    .from("place_intelligence_runs")
-    .select("processed_count, total_count")
-    .eq("id", runId)
-    .single();
-  const isComplete = (updatedRun?.processed_count ?? 0) >= (updatedRun?.total_count ?? 0);
-  if (isComplete) {
-    await db.from("place_intelligence_runs")
-      .update({ status: "complete", completed_at: new Date().toISOString() })
-      .eq("id", runId);
-  }
-
-  return json({
-    ok: true,
-    phase: "score",
-    chunk_size: results.length,
-    succeeded,
-    failed,
-    chunk_cost_usd: +chunkCost.toFixed(6),
-    reclaimed,
-    run_complete: isComplete,
-  });
+  return { scored: results.length, failed, reclaimed };
 }
 
-// ─── Prep phase (v4): serial fetch_reviews + compose_collage, memory-bounded ─
-// Pickup: rows with prep_status NULL — pending OR stuck-running >5min (recovery).
-// Stuck-recovery: rows that started prep but never completed (worker died mid-collage).
-// SERIAL within chunk — only 1 collage in memory at any time → max ~50 MB peak.
-async function processPrepPhase(args: {
+// ─── Prep iteration (v6): PARALLEL-12 OUTER × serial-internal compose ────
+// Returns a result shape (not a Response) — the budget loop wraps this.
+//
+// Memory safety: each compose_collage call internally processes photos in
+// a SERIAL for-loop (per imageCollage.ts comment block). With URL-transformed
+// photos at tile resolution, per-call peak is ~5 MB. 12 parallel × ~5 MB =
+// 60 MB << 150 MB cap. Safe by construction.
+//
+// If WORKER_RESOURCE_LIMIT 546 errors appear post-deploy, REVERT to .limit(6)
+// or .limit(3) (single-line edit) and escalate. The internal compose loop
+// MUST stay serial — do NOT parallelize photos within a compose call.
+async function runPrepIteration(args: {
   db: SupabaseClient;
   serperKey: string;
   runId: string;
   stuckCutoff: string;
-}): Promise<Response> {
+}): Promise<{ prepped: number; prep_failed: number; reclaimed: number }> {
   const { db, serperKey, runId, stuckCutoff } = args;
 
   const { data: pickupRows, error: pickupErr } = await db
@@ -1686,46 +1830,32 @@ async function processPrepPhase(args: {
     .eq("parent_run_id", runId)
     .is("prep_status", null)
     .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`)
-    .limit(3);                                                              // serial budget: 3 × ~30s = ~90s wallclock, fits 150s timeout
+    .limit(12);                                                             // v6: parallel-12 outer (was 3 in v4, 6 in v5 spec)
 
-  if (pickupErr) return json({ error: `prep pickup failed: ${pickupErr.message}` }, 500);
+  if (pickupErr) throw new Error(`prep pickup failed: ${pickupErr.message}`);
   if (!pickupRows || pickupRows.length === 0) {
-    // No prep work AND no score work (caller already determined score-eligible=0)
-    // means run is functionally complete OR all remaining rows are terminal.
-    // Defensively re-check completion before declaring complete.
-    const { data: updatedRun } = await db
-      .from("place_intelligence_runs")
-      .select("processed_count, total_count")
-      .eq("id", runId)
-      .single();
-    if ((updatedRun?.processed_count ?? 0) >= (updatedRun?.total_count ?? 0)) {
-      await db.from("place_intelligence_runs")
-        .update({ status: "complete", completed_at: new Date().toISOString() })
-        .eq("id", runId);
-      return json({ ok: true, action: "complete" });
-    }
-    // Otherwise: no prep eligible right now — could be all stuck rows are
-    // <5min old. Worker exits; next cron tick re-evaluates.
-    return json({ ok: true, action: "prep_no_eligible_yet" });
+    return { prepped: 0, prep_failed: 0, reclaimed: 0 };
   }
 
   const reclaimed = pickupRows.filter((r) => r.status === "running").length;
   if (reclaimed > 0) {
-    console.warn(`[process_chunk prep] reclaimed ${reclaimed} stuck-prep rows for run=${runId}`);
+    console.warn(`[v6 prep] reclaimed ${reclaimed} stuck-prep rows for run=${runId}`);
   }
 
-  // Mark running for prep window (so concurrent workers skip these via FOR UPDATE)
   const rowIds = pickupRows.map((r) => r.id);
   await db.from("place_intelligence_trial_runs")
     .update({ status: "running", started_at: new Date().toISOString() })
     .in("id", rowIds);
 
-  // SERIAL prep loop — only 1 collage in memory at a time. After each row
-  // completes, set prep_status='ready' AND reset status back to 'pending'
-  // so the score phase picks it up on a future tick.
-  let preppedCount = 0;
-  let prepFailedCount = 0;
-  for (const row of pickupRows) {
+  // ─── PARALLEL-12 outer prep via Promise.all ─────────────────────────────
+  // Each row's compose_collage now peaks at ~5 MB (URL-transformed photos
+  // via imageCollage.ts:fetchAndDecode). 12 parallel × ~5 MB = 60 MB peak,
+  // well under 150 MB edge fn cap. URL-transform is the load-bearing
+  // memory-safety primitive — DO NOT bypass it.
+  //
+  // First v6 deploy will INVALIDATE existing fingerprint caches (URL pattern
+  // changes). Acceptable one-time hit; subsequent runs hit cache as before.
+  const results = await Promise.all(pickupRows.map(async (row) => {
     try {
       // fetch_reviews (idempotent — skips if fresh-within-30-days)
       await handleFetchReviews(db, {
@@ -1734,6 +1864,7 @@ async function processPrepPhase(args: {
       }, serperKey);
 
       // compose_collage (idempotent — skips if fingerprint-matched cache)
+      // Internally serial photo loop; per-call peak ~5 MB with URL transforms.
       const collageRes = await handleComposeCollage(db, {
         place_pool_id: row.place_pool_id,
         force: false,
@@ -1743,14 +1874,14 @@ async function processPrepPhase(args: {
         throw new Error(`compose_collage failed: ${collageBody.error}`);
       }
 
-      // Mark prepared — status back to 'pending' so score phase picks it up
+      // Mark prepared: prep_status='ready', status back to 'pending', started_at NULL
       await db.from("place_intelligence_trial_runs")
         .update({ prep_status: "ready", status: "pending", started_at: null })
         .eq("id", row.id);
-      preppedCount++;
+      return { ok: true } as const;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[process_chunk prep] row ${row.place_pool_id} prep failed: ${msg}`);
+      console.error(`[v6 prep] row ${row.place_pool_id} prep failed: ${msg}`);
       await db.from("place_intelligence_trial_runs")
         .update({
           status: "failed",
@@ -1758,12 +1889,19 @@ async function processPrepPhase(args: {
           completed_at: new Date().toISOString(),
         })
         .eq("id", row.id);
-      prepFailedCount++;
+      return { ok: false } as const;
     }
+  }));
+
+  let preppedCount = 0;
+  let prepFailedCount = 0;
+  for (const r of results) {
+    if (r.ok) preppedCount++;
+    else prepFailedCount++;
   }
 
-  // Failed-prep rows count toward processed (terminal state). Successful preps
-  // do NOT count toward processed yet — they need to go through score phase.
+  // Failed-prep rows count toward processed (terminal). Successful preps do NOT
+  // count yet — they need to flow through score iteration.
   if (prepFailedCount > 0) {
     await db.rpc("increment_run_counters", {
       p_run_id: runId,
@@ -1774,12 +1912,5 @@ async function processPrepPhase(args: {
     });
   }
 
-  return json({
-    ok: true,
-    phase: "prep",
-    chunk_size: pickupRows.length,
-    prepped: preppedCount,
-    prep_failed: prepFailedCount,
-    reclaimed,
-  });
+  return { prepped: preppedCount, prep_failed: prepFailedCount, reclaimed };
 }
