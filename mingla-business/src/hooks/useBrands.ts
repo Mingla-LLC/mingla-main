@@ -37,6 +37,10 @@ import {
   type SoftDeleteResult,
 } from "../services/brandsService";
 import type { Brand } from "../store/currentBrandStore";
+// ORCH-0740 Cycle 1: import the existing brandRoleKeys factory to replace
+// the hardcoded `["brand-role", brandId]` literal in useSoftDeleteBrand.onSuccess
+// (Constitutional #4 — one query key per entity).
+import { brandRoleKeys } from "./useCurrentBrandRole";
 
 const STALE_TIME_MS = 5 * 60 * 1000; // 5 min — brands change infrequently
 
@@ -300,8 +304,9 @@ export const useSoftDeleteBrand = (): UseSoftDeleteBrandResult => {
         queryClient.invalidateQueries({ queryKey: brandKeys.list(accountId) });
         // Clear detail cache
         queryClient.removeQueries({ queryKey: brandKeys.detail(brandId) });
-        // Clear role cache for this brand (useCurrentBrandRole sees no brand row → null role)
-        queryClient.removeQueries({ queryKey: ["brand-role", brandId] });
+        // Clear role cache for this brand (useCurrentBrandRole sees no brand row → null role).
+        // ORCH-0740 Cycle 1: use brandRoleKeys.allForBrand factory instead of hardcoded literal.
+        queryClient.removeQueries({ queryKey: brandRoleKeys.allForBrand(brandId) });
         // Clear cascade-preview cache (defensive)
         queryClient.removeQueries({
           queryKey: brandKeys.cascadePreview(brandId),

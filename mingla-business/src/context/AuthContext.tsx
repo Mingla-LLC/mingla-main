@@ -18,6 +18,13 @@ import { supabase } from "../services/supabase";
 import { ensureCreatorAccount } from "../services/creatorAccount";
 import { tryRecoverAccountIfDeleted } from "../hooks/useAccountDeletion";
 import { clearAllStores } from "../utils/clearAllStores";
+// ORCH-0740 Cycle 1: clear React Query cache on signOut (Constitutional #6).
+// Companion to clearAllStores() — Zustand was previously the only layer reset
+// on signOut, leaving React Query cache as a Constitutional #6 leak (HF-1
+// from ORCH-0738). queryClient.clear() removes all cached query data without
+// triggering refetches. Imports the singleton from the same location used by
+// QueryClientProvider in app/_layout.tsx.
+import { queryClient } from "../config/queryClient";
 
 const webClientId =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
@@ -156,6 +163,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // signout happens server-side (token revoked, session expired)
         // without going through our signOut() button.
         clearAllStores();
+        // ORCH-0740 Cycle 1: companion to clearAllStores() — also clear RQ
+        // cache when signOut happens server-side (closes HF-1 from ORCH-0738).
+        queryClient.clear();
       }
       setLoading(false);
     });
@@ -454,6 +464,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // NEW Cycle 3 wire-up; before this, currentBrandStore + draftEventStore
     // survived signout (a pre-existing gap closed by Cycle 3 spec §3.11).
     clearAllStores();
+    // ORCH-0740 Cycle 1: companion to clearAllStores() — also clear React
+    // Query cache so cached query data doesn't survive signout (closes HF-1
+    // from ORCH-0738).
+    queryClient.clear();
   }, []);
 
   const value = useMemo(

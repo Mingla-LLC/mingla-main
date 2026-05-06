@@ -17,10 +17,11 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 import { Stack } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { focusManager, QueryClientProvider } from "@tanstack/react-query";
 import * as Sentry from "@sentry/react-native";
 import * as SplashScreen from "expo-splash-screen";
 
@@ -72,6 +73,22 @@ function RootLayoutInner(): React.ReactElement {
     }, remaining);
     return () => clearTimeout(timer);
   }, [loading, splashHidden]);
+
+  // ORCH-0740 Cycle 1: AppState → React Query focusManager wiring.
+  // When the app comes back to foreground, tell React Query to refetch
+  // stale queries that have refetchOnWindowFocus enabled (the default).
+  // Cross-platform: react-native-web 0.21.0 shims AppState 'change' events
+  // to document.visibilitychange + window.focus/blur, so this single code
+  // path works identically on iOS, Android, and Expo Web.
+  useEffect(() => {
+    const handleAppStateChange = (status: AppStateStatus): void => {
+      focusManager.setFocused(status === "active");
+    };
+    const subscription = AppState.addEventListener("change", handleAppStateChange);
+    return (): void => {
+      subscription.remove();
+    };
+  }, []);
 
   // Cycle 17d §C — TTL evict ended-event entries from phone stores (30d post end_at).
   // Runs once after auth bootstrap completes (signal that Zustand persist hydration is done).

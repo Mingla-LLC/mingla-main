@@ -1936,9 +1936,9 @@ Other shapes (allow-list / parameterized restrictions / `event_scope` arrays) ar
 - Assertion: post-hydrate `useCurrentBrandStore.getState().currentBrand === null`
 - Inverse test (preservation): same cache shape with `currentBrand.id = "<real-uuid>"` → post-hydrate currentBrand preserved verbatim
 
-### I-PROPOSED-H — RLS-RETURNING-OWNER-GAP-PREVENTED (DRAFT)
+### I-PROPOSED-H — RLS-RETURNING-OWNER-GAP-PREVENTED (ACTIVE)
 
-**Status:** DRAFT — flips to ACTIVE on ORCH-0734 tester PASS
+**Status:** ACTIVE post-ORCH-0734 CLOSE 2026-05-06 (operator-attested CONDITIONAL PASS via successful brand-create UI smoke after migration applied)
 
 **Statement:** Every authenticated mutation policy (`CREATE POLICY ... FOR INSERT|UPDATE|DELETE`) on a `public.*` schema table MUST be paired with at least one SELECT policy whose USING clause uses `auth.uid()` directly (not via a SECURITY DEFINER helper function), AND every UPDATE policy whose WITH CHECK uses a helper function MUST also be paired with a direct-predicate fallback policy if the mutation can change a column referenced in the helper's predicate.
 
@@ -1962,9 +1962,9 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **EXIT condition:** None — permanent invariant. If a future Postgres release fixes the SECURITY DEFINER + STABLE snapshot quirk in INSERT...RETURNING context AND a future Postgres release adds a way for soft-delete-flag UPDATE WITH CHECK to evaluate against pre-update row state, the underlying mechanism for both failure modes would be eliminated and this invariant could be reconsidered. Until then: permanent.
 
-### I-PROPOSED-I — MUTATION-ROWCOUNT-VERIFIED (DRAFT)
+### I-PROPOSED-I — MUTATION-ROWCOUNT-VERIFIED (ACTIVE)
 
-**Status:** DRAFT — flips to ACTIVE on ORCH-0734-RW tester PASS
+**Status:** ACTIVE post-ORCH-0734-RW CLOSE 2026-05-06 (operator-attested CONDITIONAL PASS via successful brand-delete UI smoke; CI gate `i-proposed-i-mutation-rowcount-verified.mjs` enforcing going-forward)
 
 **Statement:** Every supabase-js mutation in `mingla-business/src/services/*.ts` that targets a specific row(s) by ID (`.eq("id", X)` / `.eq("brand_id", X)` / similar) MUST verify rowcount via `.select(...)` chain (or equivalent) AND throw a structured error if rowcount is 0. Exempt: UPSERT on PK (idempotent by design — destructuring only `error` is acceptable), and explicitly-documented "fire-and-forget cleanup" mutations marked with `// I-MUTATION-ROWCOUNT-WAIVER: <ORCH-ID> <reason>` magic comment within 3 lines above the mutation.
 
