@@ -73,8 +73,13 @@ const TINT_COLOUR: Record<GlassChromeTint, string> = {
   backdrop: glass.tint.backdrop,
 };
 
-const useBlurOnWeb = (): boolean => {
-  if (Platform.OS !== "web") return true;
+// iOS uses real UIVisualEffectView blur. Web uses CSS backdrop-filter when
+// supported. Android's expo-blur backdrop is too thin to read against busy
+// content (renders near-transparent), so we route Android to the same solid
+// fallback the web path uses when backdrop-filter is unavailable.
+const shouldUseRealBlur = (): boolean => {
+  if (Platform.OS === "ios") return true;
+  if (Platform.OS === "android") return false;
   return supportsBackdropFilter;
 };
 
@@ -93,7 +98,7 @@ export const GlassChrome: React.FC<GlassChromeProps> = ({
   const intensityValue = blurIntensityTokens[intensity];
   const borderRadius = radiusTokens[radius];
   const resolvedTint = tintColor ?? TINT_COLOUR[tint];
-  const blurOk = useBlurOnWeb();
+  const blurOk = shouldUseRealBlur();
 
   return (
     <View

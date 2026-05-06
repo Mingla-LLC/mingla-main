@@ -78,8 +78,13 @@ const supportsBackdropFilter: boolean =
   ((globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("backdrop-filter", "blur(10px)") ||
     (globalThis as { CSS?: { supports?: (prop: string, value: string) => boolean } }).CSS!.supports!("-webkit-backdrop-filter", "blur(10px)"));
 
-const useBlurOnWeb = (): boolean => {
-  if (Platform.OS !== "web") return true;
+// iOS uses real UIVisualEffectView blur. Web uses CSS backdrop-filter when
+// supported. Android's expo-blur backdrop is too thin to read against busy
+// content (renders near-transparent), so we route Android to the same solid
+// fallback the web path uses when backdrop-filter is unavailable.
+const shouldUseRealBlur = (): boolean => {
+  if (Platform.OS === "ios") return true;
+  if (Platform.OS === "android") return false;
   return supportsBackdropFilter;
 };
 
@@ -256,7 +261,7 @@ export const TopSheet: React.FC<TopSheetProps> = ({
 
   const handleAreaHeight = HANDLE_AREA_HEIGHT;
   const bodyHeight = panelHeight - handleAreaHeight;
-  const blurOk = useBlurOnWeb();
+  const blurOk = shouldUseRealBlur();
   const blurIntensity = blurIntensityTokens.cardElevated;
 
   return (
