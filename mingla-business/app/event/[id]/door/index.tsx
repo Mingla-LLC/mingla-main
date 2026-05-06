@@ -163,15 +163,6 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
     "VIEW_RECONCILIATION",
   );
 
-  // Cycle 13 — permission gate for the "View full reconciliation" polish CTA
-  // (D-CYCLE13-RECON-FOR-4). Same VIEW_RECONCILIATION rank used by the
-  // dedicated reconciliation route + Event Detail action grid tile.
-  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
-  const canViewReconciliation = canPerformAction(
-    currentRank,
-    "VIEW_RECONCILIATION",
-  );
-
   // Cycle 12 — raw entries + useMemo per selector pattern rule (SC-31 / T-38).
   const allEntries = useDoorSalesStore((s) => s.entries);
   const eventSales = useMemo<DoorSaleRecord[]>(() => {

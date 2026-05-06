@@ -135,11 +135,6 @@ export default function EventScannersListRoute(): React.ReactElement {
   const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
   const canManageScanners = canPerformAction(currentRank, "MANAGE_SCANNERS");
 
-  // Cycle 13a J-T6 G6: scanner invite + revoke gated on MANAGE_SCANNERS
-  // (event_manager+). Hooks run on every render before any early-return shell.
-  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
-  const canManageScanners = canPerformAction(currentRank, "MANAGE_SCANNERS");
-
   // Raw subscription + useMemo for fresh-array filter (selector pattern rule).
   const allInvitations = useScannerInvitationsStore((s) => s.entries);
   const invitations = useMemo<ScannerInvitation[]>(() => {
