@@ -46,7 +46,10 @@ const handleGetHelp = (): void => {
   // help path. EXIT condition: Sentry feedback widget integrated in a future
   // polish cycle (would replace mailto with Sentry.captureUserFeedback +
   // attached error context). Until then, mailto is the production support flow.
-  void Linking.openURL("mailto:support@mingla.app").catch(() => {
+  // B2a Path C V3 forensics C-3 / O-3: was support@mingla.app — domain drift
+  // (4 different conventions across the codebase). Standardize on canonical
+  // usemingla.com per ORCH-0350.
+  void Linking.openURL("mailto:support@usemingla.com").catch(() => {
     // No-op — operator's device may lack a mail client. Constitution #3
     // documented exemption: this is a fallback help action, not a primary
     // flow. The user can manually email if openURL doesn't resolve.

@@ -1,0 +1,27 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["782KVMY869.com.sethogieva.minglabusiness"],
+        "components": [
+          {
+            "/": "/connect-onboarding",
+            "comment": "Stripe Connect onboarding return"
+          },
+          {
+            "/": "/onboarding-complete",
+            "comment": "Stripe onboarding completion deep link target"
+          },
+          {
+            "/": "/b/*",
+            "comment": "Public brand pages"
+          },
+          {
+            "/": "/e/*",
+            "comment": "Public event pages"
+          }
+        ]
+      }
+    ]
+  }
+}

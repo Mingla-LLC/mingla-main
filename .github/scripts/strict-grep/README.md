@@ -26,6 +26,7 @@ scaffold rewrite needed.
 | I-PROPOSED-U | `i-proposed-u-mingla-tos-gate.mjs` | B2a Path C V3 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-U |
 | I-PROPOSED-V | `i-proposed-v-stripe-notification-via-shared.mjs` | B2a Path C V3 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-V |
 | I-PROPOSED-W | `i-proposed-w-notifications-app-type-prefix.mjs` | B2a Path C V3 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-W |
+| I-PROPOSED-Y | `i-proposed-y-platform-web-url-from-env.mjs` | B2a Path C V3 forensics fix | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-Y |
 | I-PROPOSED-X | `i-proposed-x-web-deprecation.mjs` | META-ORCH-0744 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-X |
 
 ## Future gates (proposed but not yet implemented)
@@ -102,6 +103,7 @@ Other registered gate tags:
 - I-PROPOSED-U: `// orch-strict-grep-allow stripe-no-tos-gate — <reason>`
 - I-PROPOSED-V: `// orch-strict-grep-allow stripe-notification-direct — <reason>`
 - I-PROPOSED-W: `// orch-strict-grep-allow notifications-cross-app-read — <reason>`
+- I-PROPOSED-Y: `// orch-strict-grep-allow platform-web-url-historical — <reason>`
 
 ## Conventions
 

@@ -81,7 +81,8 @@ import { useAuth } from "../../context/AuthContext";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
-const SUPPORT_EMAIL = "support@mingla.com" as const;
+// B2a Path C V3 forensics C-3: was support@mingla.com — domain not Mingla-owned.
+const SUPPORT_EMAIL = "support@usemingla.com" as const;
 const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}` as const;
 
 type ViewState =

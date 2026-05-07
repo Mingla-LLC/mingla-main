@@ -80,6 +80,7 @@ interface ManageContext {
   status: EventCardStatus;
 }
 
+// orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
 const canonicalEventUrl = (event: LiveEvent): string =>
   `https://business.mingla.com/e/${event.brandSlug}/${event.eventSlug}`;
 

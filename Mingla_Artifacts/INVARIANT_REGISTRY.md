@@ -2344,3 +2344,20 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 **Source:** B2a Path C V3 Sub-dispatch A hotfix 2026-05-06 (operator caught architectural collision: shared notifications table across consumer + business apps requires UI-side type-prefix filtering). Per `outputs/SPEC_B2_PATH_C_V3.md` §6 + V3 IMPL report hotfix.
 
 **EXIT condition:** Permanent within the current single-Supabase-backend architecture. Reversal would require splitting the notifications table per app (a separate ORCH cycle that also splits notify-dispatch + push-utils) — not foreseen.
+
+### I-PROPOSED-Y — PLATFORM-WEB-URL-FROM-ENV-ONLY (DRAFT — flips ACTIVE on B2a Path C V3 CLOSE)
+
+**Status:** DRAFT (added 2026-05-07 with B2a Path C V3 config-drift forensics fix; flips ACTIVE on V3 CLOSE).
+
+**Statement:** Every cross-domain web URL referenced in `mingla-business/`, `supabase/functions/`, or `app-mobile/` MUST be sourced from a single env-var-backed constant — never hardcoded. Specifically, hardcoded literals matching `business.mingla.com`, `https://mingla.com` (when used as a URL — slug-prefix UI placeholder strings like `mingla.com/{brandSlug}` in BrandEditView are exempt), or any other non-canonical Mingla domain in active code paths are FORBIDDEN.
+
+**Why:** The B2a Path C V3 forensics audit (2026-05-07) found `business.mingla.com` and `mingla.com` referenced 19+ times across edge fns, services, components, app config, and Universal Links. Both domains are not Mingla-owned (`business.mingla.com` is NXDOMAIN; `mingla.com` resolves to a non-Mingla third-party site). The drift caused the entire Phase 16 in-app onboarding flow to fail because `brand-stripe-onboard` returned an `onboarding_url` pointing to a non-resolvable host. Without a structural rule + CI enforcement, the drift returns the moment a future implementor adds another hardcoded domain string.
+
+**Enforcement:**
+1. **Frontend constant:** `mingla-business/src/constants/platformUrl.ts` reads `EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL` (set in `app.config.ts` extra block + Vercel env vars) and exports `MINGLA_BUSINESS_WEB_URL` + `MINGLA_BUSINESS_WEB_HOST`. All consumers read this constant.
+2. **Edge fn pattern:** `brand-stripe-onboard/index.ts` reads `Deno.env.get("MINGLA_BUSINESS_WEB_URL")` and throws at module load if unset (no silent fallback).
+3. **CI gate:** `.github/scripts/strict-grep/i-proposed-y-platform-web-url-from-env.mjs` scans `mingla-business/src/`, `mingla-business/app/`, `supabase/functions/` for hardcoded `business.mingla.com`, `https://mingla.com`, or non-canonical platform URL literals. Exempt: `mingla-business/src/constants/platformUrl.ts`, allowlist tag `// orch-strict-grep-allow platform-web-url-historical — <reason>`, test fixtures.
+
+**Source:** B2a Path C V3 forensics report `Mingla_Artifacts/reports/INVESTIGATION_B2A_PATH_C_V3_CONFIG_DRIFT.md` finding §3 + recommended fix §9.
+
+**EXIT condition:** Permanent invariant. Reversal would require Mingla owning multiple production web domains for the Business product (highly unlikely; even multi-region deploys would use a single canonical apex with regional CDN routing).

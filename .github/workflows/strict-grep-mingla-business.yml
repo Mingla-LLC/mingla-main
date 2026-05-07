@@ -31,6 +31,7 @@ on:
 #   - I-PROPOSED-U (i-proposed-u-mingla-tos-gate.mjs) — Mingla ToS accepted before any Stripe Connect call (B2a Path C V3)
 #   - I-PROPOSED-V (i-proposed-v-stripe-notification-via-shared.mjs) — Stripe edge fns dispatch via notify-dispatch only (B2a Path C V3)
 #   - I-PROPOSED-W (i-proposed-w-notifications-app-type-prefix.mjs) — notifications reads filtered by app-type prefix (B2a Path C V3)
+#   - I-PROPOSED-Y (i-proposed-y-platform-web-url-from-env.mjs) — platform web URL from env, never hardcoded (B2a Path C V3 forensics fix)
 #   - I-PROPOSED-K (i-proposed-k-require-cycles.mjs) — require-cycles baselined (META-ORCH-0744)
 #   - I-PROPOSED-L (process invariant) — DIAG markers reaped at CLOSE (META-ORCH-0744)
 #   - I-PROPOSED-M (i-proposed-m-persist-key-whitelist.mjs) — persist-key whitelist sync (META-ORCH-0744)
@@ -233,6 +234,17 @@ jobs:
           node-version: "20"
       - name: Run I-PROPOSED-W gate
         run: node .github/scripts/strict-grep/i-proposed-w-notifications-app-type-prefix.mjs
+
+  i-proposed-y-platform-web-url-from-env:
+    name: "I-PROPOSED-Y: PLATFORM-WEB-URL-FROM-ENV-ONLY"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-Y gate
+        run: node .github/scripts/strict-grep/i-proposed-y-platform-web-url-from-env.mjs
 
   i-proposed-k-require-cycles:
     name: "I-PROPOSED-K: require-cycles baselined"

@@ -36,8 +36,16 @@ import {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ONBOARDING_PAGE_URL =
-  Deno.env.get("MINGLA_BUSINESS_WEB_URL") ?? "https://business.mingla.com";
+// B2a Path C V3 forensics R-1: was `?? "https://business.mingla.com"` —
+// that domain isn't Mingla-owned (NXDOMAIN). Now strictly required from env
+// to prevent silent fallback to a broken URL. Operator sets via
+// `supabase secrets set MINGLA_BUSINESS_WEB_URL=https://business.usemingla.com`.
+const ONBOARDING_PAGE_URL = Deno.env.get("MINGLA_BUSINESS_WEB_URL");
+if (!ONBOARDING_PAGE_URL) {
+  throw new Error(
+    "MINGLA_BUSINESS_WEB_URL env var is not set. Configure in Supabase secrets.",
+  );
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,11 +74,13 @@ function isValidUuid(s: unknown): s is string {
 }
 
 function isValidReturnUrl(s: unknown): s is string {
-  return (
-    typeof s === "string" &&
-    (s.startsWith("mingla-business://") ||
-      s.startsWith("https://business.mingla.com/"))
-  );
+  // B2a Path C V3 forensics C-2: was hardcoded to business.mingla.com (NXDOMAIN).
+  // Now reads from env-backed ONBOARDING_PAGE_URL so the validation matches the
+  // canonical platform URL whatever the operator configures.
+  if (typeof s !== "string") return false;
+  if (s.startsWith("mingla-business://")) return true;
+  if (s.startsWith(`${ONBOARDING_PAGE_URL}/`)) return true;
+  return false;
 }
 
 interface JwtClaims {

@@ -82,11 +82,13 @@ type Tab = "upcoming" | "past" | "about";
 
 const PAST_EVENT_CAP = 10;
 
+// orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
 const canonicalUrl = (brand: Brand): string =>
   `https://business.mingla.com/b/${brand.slug}`;
 
 // [TRANSITIONAL] OG image placeholder — exits when B-cycle backend ships
 // brand cover image upload. Mirrors Cycle 6 PublicEventPage's pattern.
+// orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
 const ogImageUrl = (_brand: Brand): string =>
   "https://business.mingla.com/og-default.png";
 

@@ -86,6 +86,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY:
       process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ??
       "pk_test_51TTnt1PjlZyAYA40f3kjmxF6uXjfEJKfFR25LiJpVqd7qw6TYfDqqKLcNamL3JGlD2vxh94Bzn4ciaqsMNN1PJ0C00oZVosOxd",
+    // B2a Path C V3 forensics R-1: canonical Mingla Business public web URL.
+    // Single source of truth read by mingla-business/src/constants/platformUrl.ts.
+    // Production canonical: https://business.usemingla.com (Vercel-hosted Expo Web export).
+    // Vercel build also sets this in env so the web bundle reads consistently.
+    EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL:
+      process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL ??
+      "https://business.usemingla.com",
     googleWebClientId:
       process.env.GOOGLE_WEB_CLIENT_ID ??
       "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",

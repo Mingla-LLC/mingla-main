@@ -167,9 +167,11 @@ const formatCountdown = (toIso: string): string => {
 const ogImageUrl = (event: LiveEvent): string => {
   // [TRANSITIONAL] Placeholder — real OG image generation lands when
   // image upload exists. For now, use a static brand-color fallback.
+  // orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
   return `https://business.mingla.com/og/event/${event.id}.png`;
 };
 
+// orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
 const canonicalUrl = (event: LiveEvent): string =>
   `https://business.mingla.com/e/${event.brandSlug}/${event.eventSlug}`;
 

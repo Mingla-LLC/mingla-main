@@ -25,6 +25,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
+import Constants from "expo-constants";
 import {
   ConnectAccountOnboarding,
   ConnectComponentsProvider,
@@ -57,11 +58,18 @@ export default function ConnectOnboardingPage(): React.ReactElement {
 
   const stripeConnectInstance = useMemo(() => {
     if (typeof sessionClientSecret !== "string") return null;
-    const publishableKey =
-      process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY_TEST;
+    // B2a Path C V3 forensics R-2: was `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY_TEST` —
+    // mismatch with Sub-C wiring which exposes `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+    // (no _TEST suffix). Read from Constants.expoConfig.extra (native bundle path)
+    // first, then process.env (Vercel build path).
+    const fromExtra = (Constants.expoConfig?.extra as
+      | Record<string, string>
+      | undefined)?.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+    const fromProcessEnv = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+    const publishableKey = fromExtra ?? fromProcessEnv;
     if (publishableKey === undefined || publishableKey.length === 0) {
       setInitError(
-        "Stripe publishable key is not configured. Contact support@mingla.com.",
+        "Stripe publishable key is not configured. Contact support@usemingla.com.",
       );
       return null;
     }

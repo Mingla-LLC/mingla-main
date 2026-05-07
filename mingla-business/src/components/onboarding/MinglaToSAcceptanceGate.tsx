@@ -68,7 +68,10 @@ const PLACEHOLDER_TOS_BODY = [
   "",
   "7. Mingla may update these terms; material changes require re-acceptance before further onboarding actions.",
   "",
-  "Full Terms of Service will be available at mingla.com/business/terms before live launch.",
+  // B2a Path C V3 forensics C-3: was mingla.com/business/terms — domain not Mingla-owned.
+  // [TRANSITIONAL] placeholder URL pending legal sign-off — exit when operator/legal
+  // swap the live ToS URL (likely usemingla.com/business/terms or similar).
+  "Full Terms of Service will be available at usemingla.com/terms before live launch.",
 ].join("\n");
 
 export function MinglaToSAcceptanceGate({
