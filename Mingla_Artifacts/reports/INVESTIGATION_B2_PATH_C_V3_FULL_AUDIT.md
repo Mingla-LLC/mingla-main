@@ -3,10 +3,10 @@
 **Mode:** INVESTIGATE-then-SPEC (IA), this is the INVESTIGATE deliverable
 **Date:** 2026-05-06
 **Investigator:** Mingla Forensics (in-conversation execution per operator authorization)
-**Dispatch:** [`outputs/FORENSICS_AND_SPEC_DISPATCH_B2_FULL.md`](../../outputs/FORENSICS_AND_SPEC_DISPATCH_B2_FULL.md)
+**Dispatch:** [`outputs/FORENSICS_AND_SPEC_DISPATCH_B2_FULL.md`](../archive/outputs_legacy/FORENSICS_AND_SPEC_DISPATCH_B2_FULL.md)
 **Branch:** Seth (HEAD `cfb121e8` — post Phase 0 commits `cf3969bf` + `cfb121e8`)
 **Reference branch:** feat/b2-stripe-connect worktree at /tmp/mingla-b2-comparison/tao-b2/ (HEAD 1039a1c3)
-**Companion deliverable:** [`outputs/SPEC_B2_PATH_C_V3.md`](../../outputs/SPEC_B2_PATH_C_V3.md)
+**Companion deliverable:** [`outputs/SPEC_B2_PATH_C_V3.md`](../archive/outputs_legacy/SPEC_B2_PATH_C_V3.md)
 
 ---
 
@@ -405,7 +405,7 @@ V1 forensics audit + V2 SPEC + Stripe best-practices audit have these items now 
 
 1. Orchestrator REVIEWs this report
 2. Operator overrides any of 18 V3 decisions
-3. SPEC v3 published at [`outputs/SPEC_B2_PATH_C_V3.md`](../../outputs/SPEC_B2_PATH_C_V3.md) (companion deliverable)
+3. SPEC v3 published at [`outputs/SPEC_B2_PATH_C_V3.md`](../archive/outputs_legacy/SPEC_B2_PATH_C_V3.md) (companion deliverable)
 4. Operator dispatches `/mingla-implementor` against new IMPL dispatch v3
 5. Implementor executes Phase 0' through Phase 15 (estimated 25-40 hr split across multiple sessions)
 6. Tester dispatch validates all SCs + invariants
@@ -419,4 +419,4 @@ V1 forensics audit + V2 SPEC + Stripe best-practices audit have these items now 
 
 **Confidence: M-H.**
 
-**Next: SPEC v3 at [`outputs/SPEC_B2_PATH_C_V3.md`](../../outputs/SPEC_B2_PATH_C_V3.md).**
+**Next: SPEC v3 at [`outputs/SPEC_B2_PATH_C_V3.md`](../archive/outputs_legacy/SPEC_B2_PATH_C_V3.md).**

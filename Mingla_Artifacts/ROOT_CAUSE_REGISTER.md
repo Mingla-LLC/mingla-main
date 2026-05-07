@@ -1,9 +1,25 @@
 # Root Cause Register
 
-> Last updated: 2026-05-06
+> Last updated: 2026-05-07
 > Proven root causes with causal clusters.
 
 ## Root Causes
+
+### RC-0749: Mobile auth cleanup allowed stale private query/cache state to outlive its user
+- **Discovery date:** 2026-05-07
+- **Proof:** `reports/INVESTIGATION_ORCH-0749_MOBILE_AUTH_CACHE_RLS_LOG_STORM.md` proved the startup log storm was not one bug but an auth-boundary failure across query persistence, auth cleanup, private fetchers, and noisy SDK/error classification. Runtime proof closed in `reports/RUNTIME_QA_ORCH-0749_MOBILE_AUTH_CACHE_RLS_LOG_STORM.md`.
+- **Symptoms caused:** Fresh no-session startup could repeatedly log `A query that was dehydrated as pending ended up rejecting` for `userPreferences.<oldUserId>`; stale old-user query keys could continue after sign-out/reload; blocked-users fetch could log `Not authenticated` and still return/cached `[]`; Apple cancel and expected cancellation surfaced as app errors; AppsFlyer/engagement paths could fire after auth moved underneath them; Profile scroll/tabScroll updates produced repeated no-op store writes.
+- **Causal chain:**
+  1. React Query persistence allowed pending/non-idle private queries into hydration.
+  2. Query keys containing a previous user id were not consistently removed on no-session, sign-out, or user-switch transitions.
+  3. Some private service paths did not verify "the user I expected is still the user who owns this response" before returning fallback empty data.
+  4. Expected auth teardown/cancellation paths were logged as errors, making normal lifecycle churn look like production failures.
+  5. Profile tabScroll state updates lacked a no-op guard, amplifying noise after navigation.
+- **Structural fix:** ORCH-0749 implementation added `queryPersistence` and `authCleanup` utilities, blocked pending/non-idle dehydration, removed auth-mismatched private cache, wired cleanup through no-session/SIGNED_OUT/user-switch/AppState/onboarding paths, made cancellation non-noisy, guarded blocked-users/preferences/Appsflyer/engagement paths, changed profile interests to tolerate missing rows, narrowed Profile subscriptions, added tabScroll no-op behavior, and locked the contracts with `app-mobile/scripts/ci/orch-0749-regression-check.mjs`.
+- **Status:** **CLOSED PASS 2026-05-07** via static QA, runtime QA, operator smoke, and `cd app-mobile && npm run test:orch-0749` PASS at 2026-05-07 17:45 EDT.
+- **Invariant:** `I-AUTH-PRIVATE-CACHE-CANNOT-OUTLIVE-AUTH-OWNER`.
+- **Causal cluster:** Cluster 1/2 crossover: stale cache ownership + silent/noisy error classification. Future auth/query work must prove both data ownership and log behavior, not just "no crash."
+- **Follow-ups not part of RC:** ORCH-0751 RevenueCat anonymous logout noise; ORCH-0752 RevenueCat product/offering configuration.
 
 ### RC-0728: RLS-RETURNING-OWNER-GAP — supabase-js mutations fail because no SELECT policy admits the post-mutation row
 - **Discovery date:** 2026-05-06 (proven after 13 forensic passes ORCH-0728/0729/0731 + H39/H40/H41/H42)

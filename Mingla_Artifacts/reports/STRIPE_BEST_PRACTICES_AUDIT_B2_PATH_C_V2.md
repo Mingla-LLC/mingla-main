@@ -2,7 +2,7 @@
 
 **Auditor:** stripe-best-practices skill (Claude Code)
 **Date:** 2026-05-06
-**Subject:** [outputs/SPEC_B2_PATH_C_V2.md](../../outputs/SPEC_B2_PATH_C_V2.md) + Phase 0 commits `cf3969bf` + `cfb121e8`
+**Subject:** [outputs/SPEC_B2_PATH_C_V2.md](../archive/outputs_legacy/SPEC_B2_PATH_C_V2.md) + Phase 0 commits `cf3969bf` + `cfb121e8`
 **Reference:** Stripe-published documentation (cited inline; full URL list §5)
 **Scope:** Connect platform configuration, API selection, webhooks, idempotency, security, marketplace concerns, deprecation paths, blind-spot scan
 

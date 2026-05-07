@@ -3,7 +3,7 @@
 **Mode:** INVESTIGATE-only (no SPEC, no code, no implementation suggestions)
 **Date:** 2026-05-06
 **Investigator:** Mingla Forensics (in-conversation execution per operator authorization)
-**Dispatch:** [`outputs/FORENSICS_B2_PATH_C_AUDIT.md`](../../outputs/FORENSICS_B2_PATH_C_AUDIT.md)
+**Dispatch:** [`outputs/FORENSICS_B2_PATH_C_AUDIT.md`](../archive/outputs_legacy/FORENSICS_B2_PATH_C_AUDIT.md)
 **Branches under examination:**
 - Seth's B2a — current `Seth` branch, HEAD `cfb121e8` (post Phase 0 commits `cf3969bf` + `cfb121e8`)
 - Taofeek's B2 — `feat/b2-stripe-connect`, worktree at `/tmp/mingla-b2-comparison/tao-b2/`, HEAD `1039a1c3`

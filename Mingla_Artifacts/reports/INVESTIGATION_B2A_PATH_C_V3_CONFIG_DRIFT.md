@@ -53,7 +53,7 @@
 |---|---|
 | **File + line** | `mingla-business/app/connect-onboarding.tsx:60-66` (consumer of the env var) and `mingla-business/app.config.ts:86-87` (producer of the env var) |
 | **Exact code (consumer)** | `const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY_TEST;` (note `_TEST` suffix) |
-| **Exact code (producer)** | `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "pk_test_51TTnt1PjlZyAYA40..."` (no `_TEST` suffix) |
+| **Exact code (producer)** | `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "[REDACTED_STRIPE_PUBLISHABLE_KEY]"` (no `_TEST` suffix) |
 | **What it does** | At build time Expo bakes `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` into the bundle. At page render, the consumer reads `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY_TEST` (different name) → returns `undefined` → triggers the "Stripe publishable key is not configured. Contact support@mingla.com." error path (line 64). |
 | **What it should do** | One of (a) consumer reads `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` (canonical name; matches Sub-C app.config.ts wiring), OR (b) producer writes `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY_TEST` (matches consumer). Recommendation: consumer reads `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` (drop `_TEST`); the test/live distinction is provided by the value itself (`pk_test_...` vs `pk_live_...`), not the var name. |
 | **Causal chain** | Even when R-1 is fixed and `business.usemingla.com/connect-onboarding` (or wherever) loads, `connect-onboarding.tsx` evaluates `publishableKey === undefined` → `setInitError("Stripe publishable key is not configured.")` → page renders error card → user blocked from onboarding. |

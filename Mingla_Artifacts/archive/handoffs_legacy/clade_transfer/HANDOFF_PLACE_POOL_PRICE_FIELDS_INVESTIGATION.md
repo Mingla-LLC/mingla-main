@@ -91,7 +91,7 @@ ALTER TABLE preferences
   DROP COLUMN IF EXISTS price_tiers, ...
 ```
 
-That migration (2026-04-15) is the official end of price filtering on the user-budget side. Confirmed by [app-mobile/src/types/preferences.ts:8](app-mobile/src/types/preferences.ts#L8): *"ORCH-0434: Removed budget_min, budget_max, time_slot, price_tiers."*
+That migration (2026-04-15) is the official end of price filtering on the user-budget side. Confirmed by [app-mobile/src/types/preferences.ts:8](../../../../app-mobile/src/types/preferences.ts#L8): *"ORCH-0434: Removed budget_min, budget_max, time_slot, price_tiers."*
 
 ### 4.3 Where `price_level` is still consumed
 
@@ -106,7 +106,7 @@ This is the *only* surviving live read path from any of the six columns.
 
 ### 4.4 Where `price_range_*_cents` is written
 
-[supabase/functions/admin-seed-places/index.ts:272-307](supabase/functions/admin-seed-places/index.ts#L272-L307) — extracts `priceRange.startPrice.units * 100` etc. and writes the cents columns. Same logic mirrored in `admin-refresh-places` and `admin-place-search`.
+[supabase/functions/admin-seed-places/index.ts:272-307](../../../../supabase/functions/admin-seed-places/index.ts#L272-L307) — extracts `priceRange.startPrice.units * 100` etc. and writes the cents columns. Same logic mirrored in `admin-refresh-places` and `admin-place-search`.
 
 ### 4.5 Where `price_range_*_cents` is read
 
@@ -114,7 +114,7 @@ Grepped the entire repo for `price_range_start_cents|price_range_end_cents|price
 
 ### 4.6 Admin UI display (still shows the zombie columns)
 
-[mingla-admin/src/pages/PlacePoolManagementPage.jsx](mingla-admin/src/pages/PlacePoolManagementPage.jsx):
+[mingla-admin/src/pages/PlacePoolManagementPage.jsx](../../../../mingla-admin/src/pages/PlacePoolManagementPage.jsx):
 - Line 534-535: shows `Price Tiers:` and `Price Level:` in the place detail card
 - Line 1234-1237: filter dropdowns let admins filter places by `price_tiers` or `price_level`
 - Line 408-409: edit form passes `p_price_tier` and `p_price_tiers` to `admin_edit_place` RPC
@@ -125,7 +125,7 @@ So admins can still manually edit tiers, and the edit cascades into `card_pool` 
 
 ## 5. The PRICE_LEVEL_MAP (for completeness)
 
-Defined in [admin-seed-places/index.ts](supabase/functions/admin-seed-places/index.ts) (search for `PRICE_LEVEL_MAP`). Mirrors the backfill migration [20260401000007_price_tiers_array_migration.sql](supabase/migrations/20260401000007_price_tiers_array_migration.sql):
+Defined in [admin-seed-places/index.ts](../../../../supabase/functions/admin-seed-places/index.ts) (search for `PRICE_LEVEL_MAP`). Mirrors the backfill migration [20260401000007_price_tiers_array_migration.sql](supabase/migrations/20260401000007_price_tiers_array_migration.sql):
 
 | Google `price_level` | Mingla `price_tier` |
 |----------------------|---------------------|
@@ -178,7 +178,7 @@ Three reasonable directions. Pick one before any code change:
 
 ## 8. To resume on Mac
 
-1. Read this file + skim [HANDOFF_ORCH_0742_PHASE_2.md](clade%20transfer/HANDOFF_ORCH_0742_PHASE_2.md) so you have both threads loaded
+1. Read this file + skim [HANDOFF_ORCH_0742_PHASE_2.md](HANDOFF_ORCH_0742_PHASE_2.md) so you have both threads loaded
 2. Make the §6 decision (A / B / C)
 3. If B or C: dispatch `mingla-forensics` in SPEC mode with the chosen direction; the investigation evidence in §4 is sufficient input — no re-investigation needed
 4. If A: nothing to do; close the question

@@ -2,9 +2,9 @@
 
 **Status:** Sub-dispatch A complete. Sub-dispatches B + C pending.
 **Estimated effort:** ~4 hours (within 4-6 hr budget).
-**Spec:** [outputs/SPEC_B2_PATH_C_V3.md](../../outputs/SPEC_B2_PATH_C_V3.md)
+**Spec:** [outputs/SPEC_B2_PATH_C_V3.md](../archive/outputs_legacy/SPEC_B2_PATH_C_V3.md)
 **Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_B2_PATH_C_V3_FULL_AUDIT.md](INVESTIGATION_B2_PATH_C_V3_FULL_AUDIT.md)
-**Dispatch:** [outputs/IMPL_DISPATCH_B2_PATH_C_V3.md §3](../../outputs/IMPL_DISPATCH_B2_PATH_C_V3.md)
+**Dispatch:** [outputs/IMPL_DISPATCH_B2_PATH_C_V3.md §3](../archive/outputs_legacy/IMPL_DISPATCH_B2_PATH_C_V3.md)
 
 ---
 

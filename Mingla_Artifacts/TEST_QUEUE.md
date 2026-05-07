@@ -1,25 +1,9 @@
 # Test Queue
 
-> **DEPRECATED as of 2026-04-11.** This document is superseded by AGENT_HANDOFFS.md,
-> which tracks the full pipeline (investigate → spec → implement → test) in a single
-> dispatch-based model. Kept for structural reference only.
+> **DEPRECATED as of 2026-04-11.**
 >
-> Last updated: 2026-04-11
-
-## Awaiting Test
-
-| ID | Issue | Implementation Link | Priority | Assigned |
-|----|-------|-------------------|----------|----------|
-| — | — | — | — | — |
-
-## In Testing
-
-| ID | Issue | Tester | Started | Status |
-|----|-------|--------|---------|--------|
-| — | — | — | — | — |
-
-## Completed
-
-| ID | Issue | Test Report | Result | Date |
-|----|-------|------------|--------|------|
-| — | — | — | — | — |
+> Current lifecycle tracking lives in [`AGENT_HANDOFFS.md`](AGENT_HANDOFFS.md).
+> The full historical copy of this queue is archived at
+> [`archive/old_trackers/TEST_QUEUE.md`](archive/old_trackers/TEST_QUEUE.md).
+>
+> This file remains only as a breadcrumb for old links.

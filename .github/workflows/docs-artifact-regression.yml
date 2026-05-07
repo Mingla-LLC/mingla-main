@@ -1,0 +1,44 @@
+name: Docs Artifact Regression
+
+on:
+  pull_request:
+    paths:
+      - "README.md"
+      - "docs/**"
+      - "Mingla_Artifacts/**"
+      - "scripts/docs/**"
+      - ".github/workflows/docs-artifact-regression.yml"
+      - ".codex/skills/**"
+      - ".claude/skills/mingla-*/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "README.md"
+      - "docs/**"
+      - "Mingla_Artifacts/**"
+      - "scripts/docs/**"
+      - ".github/workflows/docs-artifact-regression.yml"
+      - ".codex/skills/**"
+      - ".claude/skills/mingla-*/**"
+
+jobs:
+  docs-artifact-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Check markdown link baseline
+        run: python3 scripts/docs/check_links.py --format markdown --baseline-file scripts/docs/link_baseline.json
+
+      - name: Check artifact placement
+        run: python3 scripts/docs/check_artifact_placement.py
+
+      - name: Check README snapshot
+        run: python3 scripts/docs/check_readme_snapshot.py

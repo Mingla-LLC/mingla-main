@@ -1,127 +1,10 @@
-# Mingla
+# Mingla Mobile
 
-A mobile-first experience discovery and planning app — swipe, save, and go. Built with React Native (Expo), TypeScript, Supabase, and 57 Deno edge functions.
+Consumer-facing React Native Expo app for discovery, saving, planning, collaboration, event browsing, onboarding, profile, and feedback flows.
 
-## Tech Stack
+This README is app-local. For the full ecosystem map, backend snapshot, and artifact truth system, start at [`../README.md`](../README.md) and [`../Mingla_Artifacts/ARTIFACT_MANIFEST.md`](../Mingla_Artifacts/ARTIFACT_MANIFEST.md).
 
-| Layer | Technology |
-|-------|-----------|
-| Mobile | React Native (Expo SDK 54), TypeScript strict |
-| Server state | React Query |
-| Client state | Zustand + AsyncStorage persistence |
-| Backend | Supabase (PostgreSQL + Auth + Realtime + Storage) |
-| Edge functions | 57 Deno edge functions (shared backend with admin) |
-| AI | OpenAI GPT-4o-mini (structured JSON output) |
-| Maps | Google Places API (New) |
-| Events | Ticketmaster Discovery API v2 |
-| Payments | Stripe Connect |
-| Styling | StyleSheet.create only (no inline styles) |
-| Navigation | Custom state-driven (no React Navigation) |
-| Blur effects | expo-blur (iOS frosted glass, Android solid fallback) |
-
-## Project Structure
-
-```
-app-mobile/
-  app/
-    index.tsx              # Entry point (AppContent)
-  src/
-    components/            # ~80+ UI components
-      onboarding/          # OnboardingShell, PhoneInput, OTPInput, AudioRecorder
-      signIn/              # WelcomeScreen (Google/Apple auth)
-      ui/                  # CategoryTile, PulseDotLoader, etc.
-      OnboardingFlow.tsx   # 5-step onboarding state machine
-      SwipeableCards.tsx    # Tinder-style swipe interface
-      ExpandedCardModal.tsx # Full card detail view
-      DiscoverScreen.tsx   # Explore + Night Out tabs
-      AppStateManager.tsx  # Root state orchestrator
-      BetaFeedbackButton.tsx   # Conditional feedback button (beta testers only)
-      BetaFeedbackModal.tsx    # Audio recording + category + submit flow
-      FeedbackHistorySheet.tsx # Past submissions list with playback
-    hooks/                 # ~29 React Query hooks
-      useBetaFeedback.ts   # Beta tester check, feedback history, submit mutation
-    services/              # ~56 service files (Supabase + API)
-      betaFeedbackService.ts  # FeedbackRecorder class, upload, submit, history
-      deviceInfoService.ts    # Device metadata collection (OS, model, app version)
-      sessionTracker.ts       # App session duration tracker
-    contexts/              # 3 React contexts (Recommendations, Navigation, etc.)
-    store/                 # Zustand store (appStore.ts)
-    types/                 # TypeScript types (database + domain)
-    constants/             # Design tokens, config, categories
-      designSystem.ts      # Spacing, colors, typography, glass tokens
-      categories.ts        # 12 experience categories
-    utils/                 # 18 utility files
-      throttledGeocode.ts  # Centralized throttled/cached reverse geocoding wrapper
-
-supabase/
-  functions/               # 57 Deno edge functions (shared with admin dashboard)
-    _shared/               # 13 shared modules (categoryPlaceTypes, cardPoolService, placesCache, push-utils, etc.)
-    submit-feedback/       # Beta feedback submission (validates beta tester, denormalizes user data)
-  migrations/              # 40+ SQL migration files
-```
-
-## Features
-
-- **AI-powered swipe discovery** — preference-driven cards served from a card pool pipeline (zero API cost on cache hit)
-- **12 experience categories** — Nature, First Meet, Picnic, Drink, Casual Eats, Fine Dining, Watch, Creative & Arts, Play, Wellness, Groceries & Flowers, Work & Business
-- **5 intent types** — Romantic, First Dates, Group Fun, Business, Solo Adventure (with curated multi-stop itineraries)
-- **Ticketmaster Night Out** — real event cards with genre/date/price filtering and in-app ticketing
-- **Collaboration sessions** — real-time boards with live participant updates
-- **5-step onboarding** — cinematic animated welcome, phone verification, intent/category/budget/transport preferences, person import
-- **Glassmorphism onboarding UI** — frosted glass bottom bar (expo-blur on iOS), full-width CTA with orange glow shadow, staggered text reveal animation
-- **Holiday experiences** — seasonal curated content with archive/delete
-- **Card pool pipeline** — place_pool + card_pool + user_card_impressions for efficient serving
-- **Beta tester feedback system** — audio recording (up to 5 min), category selection, device/context metadata collection, submission history with playback. Admin API for triage via separate admin repo.
-- **Centralized geocoding** — all reverse geocoding goes through a single throttled wrapper with rate limiting, LRU cache, and deduplication
-
-## Database Schema (Key Tables)
-
-| Table | Purpose |
-|-------|---------|
-| profiles | User profiles (auth-linked, includes `is_beta_tester` and `is_admin` flags) |
-| preferences | User preferences (categories, budget, transport, travel time) |
-| boards / board_members | Collaborative experience boards |
-| experiences / saved_experiences | Place data and user saves |
-| collaboration_sessions | Real-time collaboration |
-| place_pool / card_pool | Pre-enriched card serving pipeline |
-| user_card_impressions | Tracks seen cards for freshness |
-| ticketmaster_events_cache | 2-hour TTL event cache |
-| holidays | Seasonal experiences with archive |
-| beta_feedback | Beta tester audio feedback submissions with device/context metadata |
-
-## Edge Functions (Key)
-
-| Function | Purpose |
-|----------|---------|
-| new-generate-experience- | Main card generation (Google Places + OpenAI) |
-| generate-curated-experiences | Multi-stop itinerary cards |
-| generate-session-experiences | Collaboration session cards |
-| discover-cards | Discover tab card serving |
-| recommendations-enhanced | Recommendation scoring engine |
-| ticketmaster-events | Ticketmaster API proxy |
-| submit-feedback | Beta feedback submission (validates beta tester, denormalizes user snapshot) |
-
-## Storage Buckets
-
-| Bucket | Purpose |
-|--------|---------|
-| voice-reviews | Place review audio clips (1-year signed URLs) |
-| beta-feedback | Beta tester feedback audio (1-hour signed URLs, private, RLS-protected) |
-
-## Environment Variables
-
-### Mobile (app.json / .env)
-- `EXPO_PUBLIC_SUPABASE_URL` — Supabase project URL
-- `EXPO_PUBLIC_SUPABASE_ANON_KEY` — Supabase anon key
-
-### Supabase Secrets (edge functions)
-- `GOOGLE_PLACES_API_KEY` — Google Places API (New)
-- `OPENAI_API_KEY` — OpenAI GPT-4o-mini
-- `TICKETMASTER_API_KEY` — Ticketmaster Discovery API v2
-- `STRIPE_SECRET_KEY` — Stripe Connect
-- `RESEND_API_KEY` — Email service
-
-## Setup
+## Local Setup
 
 ```bash
 cd app-mobile
@@ -129,82 +12,105 @@ npm install
 npx expo start
 ```
 
-Scan QR code with Expo Go (Android) or Camera (iOS).
+The app uses Expo SDK 54 and Expo Router. Some native modules and production-like flows require a development build rather than Expo Go.
 
-For Supabase edge functions:
+## Common Commands
+
 ```bash
-cd supabase
-supabase functions serve
+# Start local dev server
+npx expo start
+
+# Run on native targets with dev client tooling
+npm run android
+npm run ios
+
+# Web target
+npm run web
+
+# EAS development builds
+npm run build-dev-android
+npm run build-dev-ios
+
+# EAS production builds
+npm run build-production-android
+npm run build-production-ios
+
+# ORCH-0749 regression gate
+npm run test:orch-0749
 ```
 
-Run pending migrations:
-```bash
-supabase db push
+## App Architecture Pointers
+
+```text
+app-mobile/
+  app/                  Expo Router entry and routes
+  src/
+    components/         Screens, cards, sheets, profile, onboarding, shared UI
+    hooks/              React Query hooks, auth/session hooks, feature hooks
+    services/           Supabase/API clients and domain services
+    contexts/           App-level React contexts
+    store/              Zustand client-state store
+    constants/          Design tokens, config, categories
+    utils/              Shared utilities and app helpers
+  scripts/              Mobile-local CI and maintenance scripts
 ```
 
-## EAS Builds
+## State And Data Rules
 
-All builds use [EAS Build](https://docs.expo.dev/build/introduction/). Requires `eas-cli` installed (`npm install -g eas-cli`) and an Expo account.
+- React Query owns server state.
+- Zustand owns client-only state and explicitly documented persisted startup state.
+- Mutations must surface errors and roll back optimistic state where applicable.
+- Query keys must follow the registry and factory rules.
+- Temporary fixes must be tagged and tracked before they become permanent.
 
-### Development Builds
+Core contracts:
 
-Development builds include the dev client for local debugging.
+| Document | Purpose |
+|---|---|
+| [`../docs/DOMAIN_ADRS.md`](../docs/DOMAIN_ADRS.md) | Domain ownership and source-of-truth rules. |
+| [`../docs/IMPLEMENTATION_GATES.md`](../docs/IMPLEMENTATION_GATES.md) | Pre-code checklist. |
+| [`../docs/MUTATION_CONTRACT.md`](../docs/MUTATION_CONTRACT.md) | Mutation behavior and failure contract. |
+| [`../docs/QUERY_KEY_REGISTRY.md`](../docs/QUERY_KEY_REGISTRY.md) | Query-key and invalidation contract. |
+| [`../docs/TRANSITIONAL_ITEMS_REGISTRY.md`](../docs/TRANSITIONAL_ITEMS_REGISTRY.md) | Temporary work and exit conditions. |
+
+## Environment Variables
+
+Mobile public env vars are read through Expo public config:
 
 ```bash
-# Android
+EXPO_PUBLIC_SUPABASE_URL=
+EXPO_PUBLIC_SUPABASE_ANON_KEY=
+EXPO_PUBLIC_MIXPANEL_TOKEN=
+```
+
+Backend secrets belong to Supabase and must not be copied into mobile env files.
+
+## Builds
+
+Development builds include the dev client:
+
+```bash
 eas build --platform android --profile development
-
-# iOS
 eas build --platform ios --profile development
-
-# Both platforms
-eas build --platform all --profile development
 ```
 
-### Production Builds (TestFlight / App Store)
-
-Build numbers are managed remotely by EAS (`appVersionSource: "remote"` in eas.json). They auto-increment on each build — no manual changes needed.
+Production builds use the production EAS profile:
 
 ```bash
-cd app-mobile
-
-# Build iOS and auto-submit to TestFlight when done
-eas build --platform ios --profile production --auto-submit
-
-# Build Android for Play Store
 eas build --platform android --profile production
-
-# Build both platforms
-eas build --platform all --profile production
+eas build --platform ios --profile production
 ```
 
-To manually set or check the build number:
+Follow the active ORCH/spec instructions for OTA updates, TestFlight, Play Store, or runtime QA gates. README does not declare release readiness.
 
-```bash
-# View current remote build number
-eas build:version:set --platform ios
+## Documentation Boundary
 
-# Example: set build number to 3
-# Enter the version (1.0.0) then the build number (3)
-```
+This file should not duplicate global backend counts, migration inventories, or program status. Those live in:
 
-After the build completes and auto-submits, it appears in TestFlight within 10-30 minutes. Apple sends an email when processing is done.
+- [`../README.md`](../README.md)
+- [`../Mingla_Artifacts/ARTIFACT_MANIFEST.md`](../Mingla_Artifacts/ARTIFACT_MANIFEST.md)
+- [`../Mingla_Artifacts/WORLD_MAP.md`](../Mingla_Artifacts/WORLD_MAP.md)
+- [`../Mingla_Artifacts/PRODUCT_SNAPSHOT.md`](../Mingla_Artifacts/PRODUCT_SNAPSHOT.md)
+- [`../Mingla_Artifacts/PRIORITY_BOARD.md`](../Mingla_Artifacts/PRIORITY_BOARD.md)
 
-To submit a completed build manually (without --auto-submit):
-
-```bash
-eas submit --platform ios --latest
-```
-
-### Build Profiles
-
-| Profile | Distribution | Channel | Notes |
-|---------|-------------|---------|-------|
-| `development` | internal | `development` | Dev client enabled, debug config |
-| `preview` | internal | `preview` | APK output (Android) |
-| `production` | store | `production` | Store-ready |
-
-## Recent Changes
-
-- **Beta tester feedback system** — full audio feedback pipeline: 4 SQL migrations (profile flags, beta_feedback table, RLS policies, storage bucket), edge function (submit-feedback), 3 new services (betaFeedbackService, deviceInfoService, sessionTracker), React Query hook, and 3 UI components (BetaFeedbackModal, FeedbackHistorySheet, BetaFeedbackButton) integrated into ProfilePage
-- **No new dependencies** — uses expo-device and expo-constants (already installed) for device metadata
+When app-local behavior changes, update this README only for mobile setup, app architecture, commands, and local contracts.

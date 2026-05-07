@@ -71,7 +71,7 @@ D-B2-6, D-B2-17, D-B2-18, D-B2-19, D-B2-20, D-B2-21 — stall recovery + detach.
 | `audit_log` schema | id, user_id, brand_id (nullable), event_id (nullable), action, target_type, target_id, before (JSONB), after (JSONB), ip, user_agent, created_at — append-only via `trg_audit_log_block_update` trigger | baseline-squash line 7422 |
 | Existing `expo-web-browser` version | `~15.0.10` | `mingla-business/package.json` |
 | Existing `@stripe/stripe-react-native` version | `0.50.3` (B3 inherits SDK upgrade; B2a does NOT use this SDK) | `mingla-business/package.json` |
-| Sandbox publishable key (for env reference; do NOT commit value) | `pk_test_51TTnt1...` | operator-provided 2026-05-06 |
+| Sandbox publishable key (for env reference; do NOT commit value) | `[REDACTED_STRIPE_PUBLISHABLE_KEY]` | operator-provided 2026-05-06 |
 | Stripe Marketplace platform model + Express dashboard + UK + GBP | configured per Phase 1-3 setup | Stripe Dashboard 2026-05-06 |
 
 ---
