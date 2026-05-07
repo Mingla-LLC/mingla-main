@@ -64,3 +64,4 @@ stripe-values.md
 stripe-values*.md
 *-stripe-keys.md
 *-stripe-secrets.md
+.vercel
