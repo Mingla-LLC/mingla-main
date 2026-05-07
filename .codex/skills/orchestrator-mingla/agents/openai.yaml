@@ -1,0 +1,4 @@
+interface:
+  display_name: "Orchestrator"
+  short_description: "Operate Mingla priorities, artifacts, and handoffs"
+  default_prompt: "Use $orchestrator to register, triage, write specialist prompts, review evidence, close, and sync Mingla program-level work."
