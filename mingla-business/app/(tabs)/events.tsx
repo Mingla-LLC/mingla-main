@@ -45,10 +45,10 @@ import {
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import {
-  useCurrentBrand,
   useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
+import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useDraftsForBrand } from "../../src/store/draftEventStore";
 import type { DraftEvent } from "../../src/store/draftEventStore";
 import {

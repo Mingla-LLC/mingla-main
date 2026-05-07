@@ -30,23 +30,27 @@ import {
   typography,
 } from "../../src/constants/designSystem";
 import { Spinner } from "../../src/components/ui/Spinner";
-import { useCurrentBrand } from "../../src/store/currentBrandStore";
+import { useCurrentBrandId } from "../../src/store/currentBrandStore";
 import { useDraftEventStore } from "../../src/store/draftEventStore";
 
 export default function EventCreateRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const currentBrand = useCurrentBrand();
+  // Cycle 2 / ORCH-0743 (C2 + C3): use synchronous useCurrentBrandId from
+  // Zustand instead of the async useCurrentBrand wrapper. Eliminates the
+  // cold-start + deep-link redirect-loop where the wrapper returned null
+  // during the React Query fetch window before this effect could resolve.
+  const currentBrandId = useCurrentBrandId();
   const createDraft = useDraftEventStore((s) => s.createDraft);
 
   useEffect(() => {
-    if (currentBrand === null) {
+    if (currentBrandId === null) {
       router.replace("/(tabs)/home" as never);
       return;
     }
-    const newDraft = createDraft(currentBrand.id);
+    const newDraft = createDraft(currentBrandId);
     router.replace(`/event/${newDraft.id}/edit?step=0` as never);
-  }, [currentBrand, createDraft, router]);
+  }, [currentBrandId, createDraft, router]);
 
   return (
     <View

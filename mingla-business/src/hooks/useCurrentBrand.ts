@@ -28,10 +28,8 @@
 import { useEffect } from "react";
 
 import { useBrand } from "./useBrands";
-import {
-  useCurrentBrandStore,
-  type Brand,
-} from "../store/currentBrandStore";
+import { useCurrentBrandStore } from "../store/currentBrandStore";
+import type { Brand } from "../types/brand";
 
 export const useCurrentBrand = (): Brand | null => {
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);

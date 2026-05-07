@@ -182,19 +182,9 @@ export const useCreateBrand = (): UseCreateBrandResult => {
       );
       return { snapshot };
     },
-    onError: (error, input, context) => {
-      // [DIAG ORCH-0728-PASS-3] — replaced by logError() on full IMPL
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0728-DIAG] useCreateBrand#onError FAILED", {
-        name: (error as { name?: string })?.name,
-        message: (error as { message?: string })?.message,
-        code: (error as { code?: string })?.code,
-        details: (error as { details?: string })?.details,
-        hint: (error as { hint?: string })?.hint,
-        accountId: input.accountId,
-        brandName: input.name,
-      });
-      // Rollback to snapshot — Const #3: don't swallow; UI surfaces error to user
+    onError: (_error, input, context) => {
+      // Rollback to snapshot — Const #3: don't swallow; UI surfaces error
+      // via mutation.error subscription on the calling component.
       if (context !== undefined && context.snapshot !== undefined) {
         queryClient.setQueryData<Brand[]>(
           brandKeys.list(input.accountId),
@@ -270,18 +260,9 @@ export const useUpdateBrand = (): UseUpdateBrandResult => {
       }
       return { detailSnap, listSnap };
     },
-    onError: (error, { brandId, accountId }, context) => {
-      // [DIAG ORCH-0728-PASS-3] — replaced by logError() on full IMPL
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0728-DIAG] useUpdateBrand#onError FAILED", {
-        name: (error as { name?: string })?.name,
-        message: (error as { message?: string })?.message,
-        code: (error as { code?: string })?.code,
-        details: (error as { details?: string })?.details,
-        hint: (error as { hint?: string })?.hint,
-        brandId,
-        accountId,
-      });
+    onError: (_error, { brandId, accountId }, context) => {
+      // Rollback detail + list snapshots — Const #3: don't swallow; UI
+      // surfaces error via mutation.error on the calling component.
       if (context?.detailSnap !== undefined) {
         queryClient.setQueryData(brandKeys.detail(brandId), context.detailSnap);
       }
@@ -319,16 +300,7 @@ export const useSoftDeleteBrand = (): UseSoftDeleteBrandResult => {
   const queryClient = useQueryClient();
   const mutation = useMutation<SoftDeleteResult, Error, SoftDeleteBrandInput>({
     mutationFn: async ({ brandId }) => {
-      // [DIAG ORCH-0734-RW-DIAG] Removed at full IMPL CLOSE per cleanup dispatch
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0734-RW-DIAG] useSoftDeleteBrand mutationFn ENTER", { brandId });
       const result = await softDeleteBrand(brandId);
-      // [DIAG ORCH-0734-RW-DIAG] Removed at full IMPL CLOSE per cleanup dispatch
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0734-RW-DIAG] useSoftDeleteBrand mutationFn RESULT", {
-        brandId,
-        rejected: result.rejected,
-      });
       return result;
     },
     onSuccess: (result, { brandId, accountId }) => {
@@ -347,16 +319,9 @@ export const useSoftDeleteBrand = (): UseSoftDeleteBrandResult => {
       }
       // On rejection: caller (BrandDeleteSheet) handles via modal; no cache changes
     },
-    onError: (error, { brandId, accountId }) => {
-      // [DIAG ORCH-0734-RW-DIAG] Removed at full IMPL CLOSE per cleanup dispatch
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0734-RW-DIAG] useSoftDeleteBrand FAILED", {
-        brandId,
-        accountId,
-        message: error.message,
-        name: error.name,
-      });
-      // Caller's mutateAsync still receives the throw (pessimistic pattern preserved)
+    onError: () => {
+      // Caller's mutateAsync still receives the throw — pessimistic pattern.
+      // Caller (BrandDeleteSheet) renders the error in the modal via setSubmitError.
     },
   });
   return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };

@@ -28,9 +28,6 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-// [DIAG ORCH-0729-RAW-FETCH] Constants import for env access in raw-fetch probe — removed at full IMPL
-import Constants from "expo-constants";
-
 import {
   accent,
   glass,
@@ -46,9 +43,6 @@ import {
 } from "../../store/currentBrandStore";
 import { useAuth } from "../../context/AuthContext";
 import { useCreateBrand, SlugCollisionError } from "../../hooks/useBrands";
-// [DIAG ORCH-0728-PASS-5] direct supabase import for PRE-MUTATE session probe — removed at full IMPL
-import { supabase } from "../../services/supabase";
-
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
@@ -121,187 +115,11 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   const handleSubmit = async (): Promise<void> => {
     if (!canSubmit || submitting) return;
     if (user === null || user.id === undefined) {
-      // [DIAG ORCH-0728-PASS-3] silent-return diagnostic — replaced by logError() on full IMPL
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0728-DIAG] BrandSwitcherSheet#handleSubmit AUTH-NOT-READY", {
-        userPresent: user !== null,
-        userIdPresent: user?.id !== undefined,
-      });
       return;
     }
     setSubmitting(true);
     setSlugError(null);
     try {
-      // [DIAG ORCH-0728-PASS-5] PRE-MUTATE session probe — disambiguates H22/H23/H24
-      // Removed at full IMPL of SPEC_ORCH_0728_FULL_FIX.md
-      const sessionProbe = await supabase.auth.getSession();
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0728-DIAG] PRE-MUTATE session probe", {
-        sessionPresent: sessionProbe.data.session !== null,
-        sessionUserId: sessionProbe.data.session?.user?.id,
-        sessionExpiresAt: sessionProbe.data.session?.expires_at,
-        reactUserId: user.id,
-        matches: sessionProbe.data.session?.user?.id === user.id,
-        tokenStart:
-          (sessionProbe.data.session?.access_token?.slice(0, 12) ?? "") + "...",
-        hasError: sessionProbe.error !== null,
-        errorMessage: sessionProbe.error?.message,
-      });
-      // [DIAG ORCH-0733-JWT-DECODE] H40 disambiguation — decode the actual JWT being sent.
-      // H39+H41 proved RLS is denying via the only INSERT policy `account_id = auth.uid() AND deleted_at IS NULL`,
-      // and Path A simulated dashboard test (with sub=user.id) made INSERT WORK. So either the runtime JWT
-      // sub differs from user.id, OR auth.uid() is broken in PostgREST. This probe answers definitively.
-      // Removed at full IMPL of root-cause fix.
-      try {
-        const accessToken = sessionProbe.data.session?.access_token;
-        if (accessToken === undefined) {
-          // eslint-disable-next-line no-console
-          console.error("[ORCH-0733-DIAG] JWT DECODE — NO ACCESS TOKEN");
-        } else {
-          const parts = accessToken.split(".");
-          if (parts.length !== 3) {
-            // eslint-disable-next-line no-console
-            console.error("[ORCH-0733-DIAG] JWT DECODE — MALFORMED (parts != 3)", {
-              partCount: parts.length,
-            });
-          } else {
-            const decode = (segment: string): Record<string, unknown> => {
-              const padded = segment.replace(/-/g, "+").replace(/_/g, "/");
-              const padding = "=".repeat((4 - (padded.length % 4)) % 4);
-              try {
-                return JSON.parse(atob(padded + padding)) as Record<string, unknown>;
-              } catch (e) {
-                return { __decode_error: String(e) };
-              }
-            };
-            const header = decode(parts[0]);
-            const payload = decode(parts[1]);
-            const userMetadata = payload.user_metadata;
-            // eslint-disable-next-line no-console
-            console.error("[ORCH-0733-DIAG] JWT DECODE", {
-              header,
-              payload_sub: payload.sub,
-              payload_aud: payload.aud,
-              payload_iss: payload.iss,
-              payload_role: payload.role,
-              payload_exp: payload.exp,
-              payload_iat: payload.iat,
-              payload_email: payload.email,
-              payload_session_id: payload.session_id,
-              payload_app_metadata: payload.app_metadata,
-              payload_user_metadata_keys:
-                userMetadata !== null && typeof userMetadata === "object"
-                  ? Object.keys(userMetadata as Record<string, unknown>)
-                  : null,
-              payload_all_keys: Object.keys(payload),
-              sub_matches_userId: payload.sub === user.id,
-              expected_userId: user.id,
-            });
-          }
-        }
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.error("[ORCH-0733-DIAG] JWT DECODE THREW", {
-          error: String(e),
-          name: (e as { name?: string })?.name,
-        });
-      }
-      // [DIAG ORCH-0729-RAW-FETCH] F-10c disambiguation — bypass supabase-js with explicit headers
-      // Removed at full IMPL of SPEC_ORCH_0729_PIPELINE_FIX.md
-      try {
-        const session = sessionProbe.data.session;
-        if (session?.access_token) {
-          const supabaseUrl =
-            (Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL as
-              | string
-              | undefined) ?? process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-          const supabaseAnonKey =
-            (Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY as
-              | string
-              | undefined) ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
-          const probeSuffix = Date.now().toString(36);
-          const rawResp = await fetch(`${supabaseUrl}/rest/v1/brands`, {
-            method: "POST",
-            headers: {
-              apikey: supabaseAnonKey,
-              Authorization: `Bearer ${session.access_token}`,
-              "Content-Type": "application/json",
-              Prefer: "return=representation",
-            },
-            body: JSON.stringify({
-              account_id: user.id,
-              name: `__QA_Probe_${probeSuffix}`,
-              slug: `__qa_${probeSuffix}`,
-              kind: "popup",
-              cover_hue: 25,
-            }),
-          });
-          const rawBody = await rawResp.text();
-          // eslint-disable-next-line no-console
-          console.error("[ORCH-0729-DIAG] RAW FETCH RESULT", {
-            status: rawResp.status,
-            statusText: rawResp.statusText,
-            bodyStart: rawBody.slice(0, 300),
-            urlUsed: supabaseUrl,
-            anonKeyStart: supabaseAnonKey.slice(0, 16) + "...",
-          });
-        } else {
-          // eslint-disable-next-line no-console
-          console.error(
-            "[ORCH-0729-DIAG] RAW FETCH SKIPPED — no session.access_token",
-          );
-        }
-      } catch (rawErr) {
-        // eslint-disable-next-line no-console
-        console.error("[ORCH-0729-DIAG] RAW FETCH THREW", {
-          message: (rawErr as { message?: string })?.message,
-          name: (rawErr as { name?: string })?.name,
-        });
-      }
-      // [DIAG ORCH-0730-CREATOR-PROBE] H25/H32 disambiguation — same JWT, different table (creator_accounts)
-      // Removed at full IMPL of SPEC_ORCH_0730 (or follow-up cycle if F-10c branch closed early)
-      try {
-        const session = sessionProbe.data.session;
-        if (session?.access_token) {
-          const supabaseUrl =
-            (Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL as
-              | string
-              | undefined) ?? process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-          const supabaseAnonKey =
-            (Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY as
-              | string
-              | undefined) ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
-          const probeUrl = `${supabaseUrl}/rest/v1/creator_accounts?id=eq.${user.id}&select=id,email`;
-          const caResp = await fetch(probeUrl, {
-            method: "GET",
-            headers: {
-              apikey: supabaseAnonKey,
-              Authorization: `Bearer ${session.access_token}`,
-            },
-          });
-          const caBody = await caResp.text();
-          let caRowCount: number | string = "parse-error";
-          try {
-            const parsed = JSON.parse(caBody);
-            caRowCount = Array.isArray(parsed) ? parsed.length : "non-array";
-          } catch {
-            caRowCount = "parse-error";
-          }
-          // eslint-disable-next-line no-console
-          console.error("[ORCH-0730-DIAG] CREATOR-ACCOUNTS PROBE", {
-            status: caResp.status,
-            statusText: caResp.statusText,
-            bodyStart: caBody.slice(0, 300),
-            rowCount: caRowCount,
-            urlUsed: probeUrl,
-          });
-        }
-      } catch (caErr) {
-        // eslint-disable-next-line no-console
-        console.error("[ORCH-0730-DIAG] CREATOR-ACCOUNTS PROBE THREW", {
-          message: (caErr as { message?: string })?.message,
-        });
-      }
       const newBrand = await createBrandMutation.mutateAsync({
         accountId: user.id,
         name: trimmedName,
@@ -314,16 +132,6 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
       onBrandCreated?.(newBrand);
       onClose();
     } catch (error) {
-      // [DIAG ORCH-0728-PASS-3] catch diagnostic — replaced by logError() on full IMPL
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0728-DIAG] BrandSwitcherSheet#handleSubmit FAILED", {
-        name: (error as { name?: string })?.name,
-        message: (error as { message?: string })?.message,
-        code: (error as { code?: string })?.code,
-        details: (error as { details?: string })?.details,
-        hint: (error as { hint?: string })?.hint,
-        stack: (error as { stack?: string })?.stack,
-      });
       if (error instanceof SlugCollisionError) {
         // Inline error per Decision 11
         setSlugError(

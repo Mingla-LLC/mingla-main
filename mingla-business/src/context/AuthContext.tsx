@@ -123,7 +123,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        await ensureCreatorAccount(s.user);
+        // ORCH-0743 / Note A: wrap ensureCreatorAccount so a creator_accounts
+        // upsert error is surfaced (Const #3) without aborting auth bootstrap.
+        // Mirrors the getSession error pattern above (line 119).
+        try {
+          await ensureCreatorAccount(s.user);
+        } catch (ensureError) {
+          console.warn(
+            "[auth] ensureCreatorAccount failed:",
+            ensureError instanceof Error ? ensureError.message : String(ensureError),
+          );
+        }
         // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
         // If creator_accounts.deleted_at is non-null, clear it and emit
         // recovery event so account.tsx shows "Welcome back" toast.
@@ -144,7 +154,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        await ensureCreatorAccount(s.user);
+        // ORCH-0743 / Note A: wrap ensureCreatorAccount so a creator_accounts
+        // upsert error is surfaced (Const #3) without aborting auth state-change handler.
+        try {
+          await ensureCreatorAccount(s.user);
+        } catch (ensureError) {
+          console.warn(
+            "[auth] ensureCreatorAccount failed:",
+            ensureError instanceof Error ? ensureError.message : String(ensureError),
+          );
+        }
         // Cycle 14 — recover-on-sign-in auto-clear (D-CYCLE14-FOR-6 + I-35).
         // GATE to SIGNED_IN only — TOKEN_REFRESHED + USER_UPDATED + INITIAL_SESSION
         // also fire with s.user, and would otherwise un-delete an account

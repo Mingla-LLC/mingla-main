@@ -43,7 +43,7 @@ export const convertDraftToLiveEvent = (
     // so publishDraft can preserve the draft instead of orphaning it.
     if (typeof console !== "undefined" && typeof console.error === "function") {
       console.error(
-        `[liveEventConverter] Cannot publish: brand ${draft.brandId} not found in store.`,
+        `[liveEventConverter] Cannot publish: brand ${draft.brandId} not found in cache.`,
       );
     }
     return null;

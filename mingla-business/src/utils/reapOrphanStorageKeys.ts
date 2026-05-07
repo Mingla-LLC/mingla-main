@@ -14,8 +14,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
+// Cycle 2 / ORCH-0743 (RC-2) — every store's persist `name:` literal MUST
+// appear here. Out-of-sync entries cause the LIVE blob to be reported as
+// orphan, which today is log-only but is catastrophic if the reaper is ever
+// promoted to delete-mode. The companion unit test
+// (reapOrphanStorageKeys.test.ts) pins this whitelist to the current persist
+// version. META-ORCH-0744-PROCESS will codify the workspace-wide CI gate as
+// I-PROPOSED-L (PERSIST-KEY-WHITELIST-SYNC).
 const KNOWN_MINGLA_KEYS = new Set<string>([
-  "mingla-business.currentBrand.v12",
+  "mingla-business.currentBrand.v14", // ORCH-0742 bumped from v13 → v14
   "mingla-business.draftEvent.v1",
   "mingla-business.liveEvent.v1",
   "mingla-business.orderStore.v1",

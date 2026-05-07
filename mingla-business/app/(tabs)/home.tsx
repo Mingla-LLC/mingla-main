@@ -43,10 +43,10 @@ import {
 import { useAuth } from "../../src/context/AuthContext";
 import {
   useBrandList,
-  useCurrentBrand,
   useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
+import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useDraftsForBrand } from "../../src/store/draftEventStore";
 import { formatGbpRound } from "../../src/utils/currency";
 import { formatRelativeTime } from "../../src/utils/relativeTime";

@@ -225,12 +225,6 @@ export async function softDeleteBrand(brandId: string): Promise<SoftDeleteResult
   // "Account owner can select own brands" policy admits the post-update
   // row regardless of deleted_at state.
   const nowIso = new Date().toISOString();
-  // [DIAG ORCH-0734-RW-DIAG] Removed at full IMPL CLOSE per cleanup dispatch
-  // eslint-disable-next-line no-console
-  console.error("[ORCH-0734-RW-DIAG] softDeleteBrand step 2 — UPDATE ATTEMPT", {
-    brandId,
-    nowIso,
-  });
   const { data, error: updateError } = await supabase
     .from("brands")
     .update({ deleted_at: nowIso })
@@ -239,13 +233,6 @@ export async function softDeleteBrand(brandId: string): Promise<SoftDeleteResult
     .select("id");
 
   if (updateError) throw updateError;
-  // [DIAG ORCH-0734-RW-DIAG] Removed at full IMPL CLOSE per cleanup dispatch
-  // eslint-disable-next-line no-console
-  console.error("[ORCH-0734-RW-DIAG] softDeleteBrand step 2 — UPDATE RESULT", {
-    brandId,
-    rowCount: data?.length ?? 0,
-    expected: 1,
-  });
   if (data === null || data.length === 0) {
     throw new Error(
       "softDeleteBrand: 0 rows updated — brand may not exist, may already be soft-deleted, or RLS denied. brandId=" +
