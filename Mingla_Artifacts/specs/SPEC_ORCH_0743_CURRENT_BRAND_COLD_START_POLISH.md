@@ -2,7 +2,7 @@
 
 **Mode:** SPEC (Forensics SPEC mode; INVESTIGATE phase done by predecessor evidence below)
 **Authored by:** mingla-forensics, 2026-05-06
-**Dispatch:** [`prompts/SPEC_ORCH_0743_CURRENT_BRAND_COLD_START_POLISH.md`](../prompts/SPEC_ORCH_0743_CURRENT_BRAND_COLD_START_POLISH.md)
+**Dispatch:** `prompts/SPEC_ORCH_0743_CURRENT_BRAND_COLD_START_POLISH.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_ORCH_0743_CURRENT_BRAND_COLD_START_POLISH.md`)
 **Predecessor evidence:**
 - [`reports/QA_ORCH_0742_PHASE_2_REPORT.md`](../reports/QA_ORCH_0742_PHASE_2_REPORT.md) — C1, C2, C3, C4 (cold-start polish conditions)
 - [`reports/INVESTIGATION_ORCH_0744_LATENT_DEFECTS_SWEEP.md`](../reports/INVESTIGATION_ORCH_0744_LATENT_DEFECTS_SWEEP.md) — RC-1, RC-2, CF-2, CF-3 (ORCH-0744 forensic findings folded in)

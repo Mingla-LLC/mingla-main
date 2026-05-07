@@ -1,10 +1,10 @@
 # Investigation — ORCH-0670 Concerts & Events RENDERED-SURFACE audit
 
 **Mode:** INVESTIGATE-ONLY (render-first, three-pass: Inventory → Subtract → Critique)
-**Dispatch:** [`prompts/FORENSICS_ORCH-0670_RENDERED_SURFACE_AUDIT.md`](../prompts/FORENSICS_ORCH-0670_RENDERED_SURFACE_AUDIT.md)
+**Dispatch:** `prompts/FORENSICS_ORCH-0670_RENDERED_SURFACE_AUDIT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_ORCH-0670_RENDERED_SURFACE_AUDIT.md`)
 **Date:** 2026-04-28
 **Investigator:** mingla-forensics
-**Predecessor:** [reports/INVESTIGATION_ORCH-0670_CONCERTS_EVENTS.md](INVESTIGATION_ORCH-0670_CONCERTS_EVENTS.md) — re-verified, partially superseded
+**Predecessor:** reports/INVESTIGATION_ORCH-0670_CONCERTS_EVENTS.md (historical source not versioned: `INVESTIGATION_ORCH-0670_CONCERTS_EVENTS.md`) — re-verified, partially superseded
 **Confidence ceiling:** HIGH for code-deterministic claims (rendered JSX, i18n key presence, state variables, switch branches). MEDIUM for runtime-dependent (e.g., title autoshrink behavior on narrow devices). NEEDS-LIVE-FIRE for any Ticketmaster API response shape claim.
 
 ---
@@ -26,7 +26,7 @@ The Concerts & Events surface is the Discover screen — full-screen experience 
 
 ## §3 Phase 1 — Rendered Surface Inventory
 
-Built from direct file reads of [DiscoverScreen.tsx](app-mobile/src/components/DiscoverScreen.tsx), [designSystem.ts](app-mobile/src/constants/designSystem.ts), [en/discover.json](app-mobile/src/i18n/locales/en/discover.json), [en/common.json](app-mobile/src/i18n/locales/en/common.json), [supabase/functions/ticketmaster-events/index.ts](supabase/functions/ticketmaster-events/index.ts).
+Built from direct file reads of [DiscoverScreen.tsx](../../app-mobile/src/components/DiscoverScreen.tsx), [designSystem.ts](../../app-mobile/src/constants/designSystem.ts), [en/discover.json](../../app-mobile/src/i18n/locales/en/discover.json), [en/common.json](../../app-mobile/src/i18n/locales/en/common.json), [supabase/functions/ticketmaster-events/index.ts](../../supabase/functions/ticketmaster-events/index.ts).
 
 ### §3.1 Surface entry point
 
@@ -36,57 +36,57 @@ The Concerts & Events section IS the entire DiscoverScreen body — not a sub-se
 
 | # | Element | File:line | Render condition | Source |
 |---|---|---|---|---|
-| **HDR-01** | Glass header panel (BlurView background + tinted overlay + hairline) | [DiscoverScreen.tsx:1180-1208](app-mobile/src/components/DiscoverScreen.tsx#L1180-L1208) | Always | Hardcoded styles + `glass.discover` tokens |
-| **HDR-02** | Title text "Concerts & Events" | [:1218-1227](app-mobile/src/components/DiscoverScreen.tsx#L1218-L1227) | Always | **HARDCODED LITERAL** — NOT i18n |
-| **HDR-03** | 5 date filter chips: All / Tonight / This Weekend / Next Week / This Month | [:1238-1272](app-mobile/src/components/DiscoverScreen.tsx#L1238-L1272) | Always | Hardcoded English literals (NOT i18n at top row, but i18n inside modal) |
-| **HDR-04** | Pinned "Filters" chip with badge count | [:1292-1299](app-mobile/src/components/DiscoverScreen.tsx#L1292-L1299) | Always | Hardcoded "Filters" literal + `moreChipBadgeCount` |
-| **GRID-01** | LoadingGridSkeleton (6 placeholder cards) | [:1324-1325](app-mobile/src/components/DiscoverScreen.tsx#L1324-L1325) | `nightOutLoading && nightOutCards.length === 0` | Component |
-| **GRID-02** | Error EmptyState | [:1326-1335](app-mobile/src/components/DiscoverScreen.tsx#L1326-L1335) | `!nightOutLoading && nightOutError !== null && !hasCache` | i18n keys: `error.title` / `error.subtitle` ❌MISSING / `error.retry` |
-| **GRID-03** | Empty EmptyState (no events) | [:1336-1344](app-mobile/src/components/DiscoverScreen.tsx#L1336-L1344) | `!nightOutLoading && !nightOutError && nightOutCards.length === 0` | i18n keys: `empty.no_events_title` ❌MISSING / `empty.no_events_subtitle` ❌MISSING / `empty.expand_radius` ❌MISSING |
-| **GRID-04** | Filter no-match EmptyState | [:1345-1353](app-mobile/src/components/DiscoverScreen.tsx#L1345-L1353) | `nightOutCards.length > 0 && filteredNightOutCards.length === 0` | i18n keys: `empty.no_match_title` ❌MISSING / `empty.no_match_subtitle` ❌MISSING / `empty.reset_filters` ❌MISSING |
-| **GRID-05** | Event card grid (2-column) | [:1354-1370](app-mobile/src/components/DiscoverScreen.tsx#L1354-L1370) | `!showLoadingSkeleton && !showError && !showEmpty && !showFilterNoMatch` | `filteredNightOutCards.map(...)` |
-| **MODAL-01** | ExpandedCardModal | [:1374-1407 area](app-mobile/src/components/DiscoverScreen.tsx#L1374) | `isExpandedModalVisible === true` | Card tap target |
-| **MODAL-02** | Filter Modal (slide-up) | [:1435-1559](app-mobile/src/components/DiscoverScreen.tsx#L1435-L1559) | `isFilterModalVisible === true` | "Filters" chip tap target |
+| **HDR-01** | Glass header panel (BlurView background + tinted overlay + hairline) | [DiscoverScreen.tsx:1180-1208](../../app-mobile/src/components/DiscoverScreen.tsx#L1180-L1208) | Always | Hardcoded styles + `glass.discover` tokens |
+| **HDR-02** | Title text "Concerts & Events" | [:1218-1227](../../app-mobile/src/components/DiscoverScreen.tsx#L1218-L1227) | Always | **HARDCODED LITERAL** — NOT i18n |
+| **HDR-03** | 5 date filter chips: All / Tonight / This Weekend / Next Week / This Month | [:1238-1272](../../app-mobile/src/components/DiscoverScreen.tsx#L1238-L1272) | Always | Hardcoded English literals (NOT i18n at top row, but i18n inside modal) |
+| **HDR-04** | Pinned "Filters" chip with badge count | [:1292-1299](../../app-mobile/src/components/DiscoverScreen.tsx#L1292-L1299) | Always | Hardcoded "Filters" literal + `moreChipBadgeCount` |
+| **GRID-01** | LoadingGridSkeleton (6 placeholder cards) | [:1324-1325](../../app-mobile/src/components/DiscoverScreen.tsx#L1324-L1325) | `nightOutLoading && nightOutCards.length === 0` | Component |
+| **GRID-02** | Error EmptyState | [:1326-1335](../../app-mobile/src/components/DiscoverScreen.tsx#L1326-L1335) | `!nightOutLoading && nightOutError !== null && !hasCache` | i18n keys: `error.title` / `error.subtitle` ❌MISSING / `error.retry` |
+| **GRID-03** | Empty EmptyState (no events) | [:1336-1344](../../app-mobile/src/components/DiscoverScreen.tsx#L1336-L1344) | `!nightOutLoading && !nightOutError && nightOutCards.length === 0` | i18n keys: `empty.no_events_title` ❌MISSING / `empty.no_events_subtitle` ❌MISSING / `empty.expand_radius` ❌MISSING |
+| **GRID-04** | Filter no-match EmptyState | [:1345-1353](../../app-mobile/src/components/DiscoverScreen.tsx#L1345-L1353) | `nightOutCards.length > 0 && filteredNightOutCards.length === 0` | i18n keys: `empty.no_match_title` ❌MISSING / `empty.no_match_subtitle` ❌MISSING / `empty.reset_filters` ❌MISSING |
+| **GRID-05** | Event card grid (2-column) | [:1354-1370](../../app-mobile/src/components/DiscoverScreen.tsx#L1354-L1370) | `!showLoadingSkeleton && !showError && !showEmpty && !showFilterNoMatch` | `filteredNightOutCards.map(...)` |
+| **MODAL-01** | ExpandedCardModal | [:1374-1407 area](../../app-mobile/src/components/DiscoverScreen.tsx#L1374) | `isExpandedModalVisible === true` | Card tap target |
+| **MODAL-02** | Filter Modal (slide-up) | [:1435-1559](../../app-mobile/src/components/DiscoverScreen.tsx#L1435-L1559) | `isFilterModalVisible === true` | "Filters" chip tap target |
 
 ### §3.3 Filter Modal contents (rendered when "Filters" tapped)
 
 | Sub-section | File:line | Options | Filter wired? |
 |---|---|---|---|
-| Header | [:1448-1453](app-mobile/src/components/DiscoverScreen.tsx#L1448-L1453) | Title `t("discover:filters.title")` ✅ + close button | N/A |
-| **Date** section | [:1455-1485](app-mobile/src/components/DiscoverScreen.tsx#L1455-L1485) | 6 options: Any Date / Today / Tomorrow / This Weekend / Next Week / This Month | ✅ wired (sets `selectedFilters.date`, used in `getDateRange` and edge fn `startDate`/`endDate` params) |
-| **Price Range** section | [:1487-1517](app-mobile/src/components/DiscoverScreen.tsx#L1487-L1517) | 5 options: Any Price / Chill · $50 max / Comfy · $50–$150 / Bougie · $150–$300 / Lavish · $300+ | ⚠️ **PARTIALLY broken** — see §3.4 |
-| **Music Genre** section | [:1519-1549](app-mobile/src/components/DiscoverScreen.tsx#L1519-L1549) | 11 options: All Genres / Afrobeats / Dancehall / Hip-Hop+R&B / House / Techno / Jazz+Blues / Latin+Salsa / Reggae / K-Pop / Acoustic+Indie | ⚠️ **PARTIALLY broken** — see §3.5 |
+| Header | [:1448-1453](../../app-mobile/src/components/DiscoverScreen.tsx#L1448-L1453) | Title `t("discover:filters.title")` ✅ + close button | N/A |
+| **Date** section | [:1455-1485](../../app-mobile/src/components/DiscoverScreen.tsx#L1455-L1485) | 6 options: Any Date / Today / Tomorrow / This Weekend / Next Week / This Month | ✅ wired (sets `selectedFilters.date`, used in `getDateRange` and edge fn `startDate`/`endDate` params) |
+| **Price Range** section | [:1487-1517](../../app-mobile/src/components/DiscoverScreen.tsx#L1487-L1517) | 5 options: Any Price / Chill · $50 max / Comfy · $50–$150 / Bougie · $150–$300 / Lavish · $300+ | ⚠️ **PARTIALLY broken** — see §3.4 |
+| **Music Genre** section | [:1519-1549](../../app-mobile/src/components/DiscoverScreen.tsx#L1519-L1549) | 11 options: All Genres / Afrobeats / Dancehall / Hip-Hop+R&B / House / Techno / Jazz+Blues / Latin+Salsa / Reggae / K-Pop / Acoustic+Indie | ⚠️ **PARTIALLY broken** — see §3.5 |
 
 ### §3.4 Price filter — actual behavior
 
-`priceFilterOptions` ([:1124-1130](app-mobile/src/components/DiscoverScreen.tsx#L1124-L1130)) generates 5 options:
+`priceFilterOptions` ([:1124-1130](../../app-mobile/src/components/DiscoverScreen.tsx#L1124-L1130)) generates 5 options:
 - `{id: "any", label: "Any Price"}` — works (early-out at line 1083)
 - `{id: "chill", label: "Chill · $50 max"}` — **DOESN'T FILTER** (slug hits `default: return true` at switch line 1100)
 - `{id: "comfy", label: "Comfy · $50 – $150"}` — same
 - `{id: "bougie", label: "Bougie · $150 – $300"}` — same
 - `{id: "lavish", label: "Lavish · $300+"}` — same
 
-**Filter switch at [:1088-1101](app-mobile/src/components/DiscoverScreen.tsx#L1088-L1101)** handles different IDs: `"free"` / `"under-25"` / `"25-50"` / `"50-100"` / `"over-100"`. **None of these are emitted by the UI.** Two filter taxonomies coexist; only the `default: return true` branch is reachable from the rendered chips. Net effect: tapping Chill/Comfy/Bougie/Lavish is a no-op; the chip labels lie about filter activity, AND the `moreChipBadgeCount` ([:1112-1113](app-mobile/src/components/DiscoverScreen.tsx#L1112-L1113)) increments to "1" on the top-bar Filters chip — falsely advertising that a filter is active.
+**Filter switch at [:1088-1101](../../app-mobile/src/components/DiscoverScreen.tsx#L1088-L1101)** handles different IDs: `"free"` / `"under-25"` / `"25-50"` / `"50-100"` / `"over-100"`. **None of these are emitted by the UI.** Two filter taxonomies coexist; only the `default: return true` branch is reachable from the rendered chips. Net effect: tapping Chill/Comfy/Bougie/Lavish is a no-op; the chip labels lie about filter activity, AND the `moreChipBadgeCount` ([:1112-1113](../../app-mobile/src/components/DiscoverScreen.tsx#L1112-L1113)) increments to "1" on the top-bar Filters chip — falsely advertising that a filter is active.
 
 ### §3.5 Genre filter — actual behavior
 
-`genreFilterOptions` ([:1131-1143](app-mobile/src/components/DiscoverScreen.tsx#L1131-L1143)) generates 11 options.
+`genreFilterOptions` ([:1131-1143](../../app-mobile/src/components/DiscoverScreen.tsx#L1131-L1143)) generates 11 options.
 
 The selected genre flows through `GENRE_TO_KEYWORDS[selectedFilters.genre]` (line 935) → `keywords` array → service → edge fn. At edge fn line 321: `params.set("keyword", searchKeywords.join(","))`. Per Ticketmaster Discovery v2 docs, the `keyword` param is freeform full-text search across event/attraction/venue names, NOT a genre classifier. So `keyword=afrobeats,amapiano` is a phrase-match against event names — returns near-zero for most genres. **Genre filter sends API call, but precision is so low most non-`all` selections come back near-empty. NEEDS-LIVE-FIRE to confirm exact return shape.**
 
 ### §3.6 EventGridCard rendered fields
 
-[EventGridCard.tsx:227-468](app-mobile/src/components/DiscoverScreen.tsx#L227-L468) (defined inline in DiscoverScreen.tsx).
+[EventGridCard.tsx:227-468](../../app-mobile/src/components/DiscoverScreen.tsx#L227-L468) (defined inline in DiscoverScreen.tsx).
 
 | Field | Renders? | File:line of `<Text>`/`<Image>` | Source |
 |---|---|---|---|
-| Background image | ✅ | [:314-320](app-mobile/src/components/DiscoverScreen.tsx#L314-L320) | `card.image` (string URL) |
-| Bottom gradient overlay | ✅ | [:323-329](app-mobile/src/components/DiscoverScreen.tsx#L323-L329) | LinearGradient hardcoded |
-| Top-left badge label | ✅ when `topBadgeLabel != null` | [:357-359](app-mobile/src/components/DiscoverScreen.tsx#L357-L359) | `topBadgeLabel = isSoldOut ? "SOLD OUT" : ticketStatus === "presale" ? "SOON" : card.genre.toUpperCase()` |
-| Save heart button | ✅ | [:411-422](app-mobile/src/components/DiscoverScreen.tsx#L411-L422) | `isSaved` prop |
-| Bottom info chip — title | ✅ | [:446-452](app-mobile/src/components/DiscoverScreen.tsx#L446-L452) | `card.eventName` (numberOfLines from token) |
-| Bottom info chip — meta row | ✅ | [:453-458](app-mobile/src/components/DiscoverScreen.tsx#L453-L458) | `dateTag` + " · " + `card.venueName` (single line) |
-| Bottom info chip — price | ✅ when `displayPrice` truthy | [:459-463](app-mobile/src/components/DiscoverScreen.tsx#L459-L463) | `formatPriceRange(card.price, currency) ‖ card.price ‖ ""` |
+| Background image | ✅ | [:314-320](../../app-mobile/src/components/DiscoverScreen.tsx#L314-L320) | `card.image` (string URL) |
+| Bottom gradient overlay | ✅ | [:323-329](../../app-mobile/src/components/DiscoverScreen.tsx#L323-L329) | LinearGradient hardcoded |
+| Top-left badge label | ✅ when `topBadgeLabel != null` | [:357-359](../../app-mobile/src/components/DiscoverScreen.tsx#L357-L359) | `topBadgeLabel = isSoldOut ? "SOLD OUT" : ticketStatus === "presale" ? "SOON" : card.genre.toUpperCase()` |
+| Save heart button | ✅ | [:411-422](../../app-mobile/src/components/DiscoverScreen.tsx#L411-L422) | `isSaved` prop |
+| Bottom info chip — title | ✅ | [:446-452](../../app-mobile/src/components/DiscoverScreen.tsx#L446-L452) | `card.eventName` (numberOfLines from token) |
+| Bottom info chip — meta row | ✅ | [:453-458](../../app-mobile/src/components/DiscoverScreen.tsx#L453-L458) | `dateTag` + " · " + `card.venueName` (single line) |
+| Bottom info chip — price | ✅ when `displayPrice` truthy | [:459-463](../../app-mobile/src/components/DiscoverScreen.tsx#L459-L463) | `formatPriceRange(card.price, currency) ‖ card.price ‖ ""` |
 | Distance | ❌ NOT rendered | (no JSX) | `card.distance` exists in card data type but no `<Text>` consumes it |
 | Address | ❌ NOT rendered | (no JSX) | `card.address` plumbed through to ExpandedCardModal but not the grid card |
 | Genre as separate label | ❌ (subsumed into topBadgeLabel ONLY when not soldOut/presale) | — | — |
@@ -95,20 +95,20 @@ The selected genre flows through `GENRE_TO_KEYWORDS[selectedFilters.genre]` (lin
 
 ### §3.7 Title / heading style
 
-- Hardcoded literal `"Concerts & Events"` at [:1226](app-mobile/src/components/DiscoverScreen.tsx#L1226). Not in any locale file.
-- Style `styles.titleText` at [:1612-1620](app-mobile/src/components/DiscoverScreen.tsx#L1612-L1620): `fontSize: d.title.fontSize` = **32pt** (per [designSystem.ts:564](app-mobile/src/constants/designSystem.ts#L564)), `fontWeight: '700'`, `lineHeight: 32`, color white.
-- `numberOfLines={1}` + `adjustsFontSizeToFit` + `minimumFontScale={0.7}` ([:1220-1222](app-mobile/src/components/DiscoverScreen.tsx#L1220-L1222)) — title can autoshrink to ~22.4pt to fit on one line on narrow phones.
-- Title band height = 36pt ([:1154](app-mobile/src/components/DiscoverScreen.tsx#L1154)), title sits at `insets.top + glass.chrome.row.topInset` (insets.top + 2).
+- Hardcoded literal `"Concerts & Events"` at [:1226](../../app-mobile/src/components/DiscoverScreen.tsx#L1226). Not in any locale file.
+- Style `styles.titleText` at [:1612-1620](../../app-mobile/src/components/DiscoverScreen.tsx#L1612-L1620): `fontSize: d.title.fontSize` = **32pt** (per [designSystem.ts:564](../../app-mobile/src/constants/designSystem.ts#L564)), `fontWeight: '700'`, `lineHeight: 32`, color white.
+- `numberOfLines={1}` + `adjustsFontSizeToFit` + `minimumFontScale={0.7}` ([:1220-1222](../../app-mobile/src/components/DiscoverScreen.tsx#L1220-L1222)) — title can autoshrink to ~22.4pt to fit on one line on narrow phones.
+- Title band height = 36pt ([:1154](../../app-mobile/src/components/DiscoverScreen.tsx#L1154)), title sits at `insets.top + glass.chrome.row.topInset` (insets.top + 2).
 - **Operator's "heading too small" complaint** likely refers to one of two things: (a) on narrower phones the autoshrink kicks in and the title reads ~22pt — visually crushed; (b) compared to other screens with section sub-headings + screen titles, this surface only has the screen title and no section sub-heading, which can read as "everything is the same size" or "the section header isn't where I expect it." Spec writer should clarify with operator.
 
 ### §3.8 Tap target
 
-Card tap → `handleNightOutCardPress(card)` at [:979-1020](app-mobile/src/components/DiscoverScreen.tsx#L979-L1020):
+Card tap → `handleNightOutCardPress(card)` at [:979-1020](../../app-mobile/src/components/DiscoverScreen.tsx#L979-L1020):
 
 - Builds `expandedCardData` with `category: "Night Out"`, `categoryIcon: "moon-outline"`, plumbed-through fields (price, distance, address, tags, location, eventName, venueName, artistName, date, time, genre, subGenre, ticketUrl, ticketStatus)
 - `setSelectedCardForExpansion(expandedCardData)` + `setIsExpandedModalVisible(true)`
 
-ExpandedCardModal at [:1374-1407 area](app-mobile/src/components/DiscoverScreen.tsx#L1374). The modal is the same component used for deck cards / saved cards / chat-shared cards (per ORCH-0685 chain) but receives a `nightOutData` extra field for ticketmaster-specific render branching.
+ExpandedCardModal at [:1374-1407 area](../../app-mobile/src/components/DiscoverScreen.tsx#L1374). The modal is the same component used for deck cards / saved cards / chat-shared cards (per ORCH-0685 chain) but receives a `nightOutData` extra field for ticketmaster-specific render branching.
 
 ---
 
@@ -122,15 +122,15 @@ These are NOT dead code — they're **MISSING JSON entries**. Code uses them; JS
 
 | Key referenced in code | File:line | Status in en/discover.json |
 |---|---|---|
-| `discover:error.title` | [DiscoverScreen.tsx:1329](app-mobile/src/components/DiscoverScreen.tsx#L1329) | ✅ exists |
-| `discover:error.subtitle` | [:1330](app-mobile/src/components/DiscoverScreen.tsx#L1330) | ❌ MISSING |
-| `discover:error.retry` | [:1331](app-mobile/src/components/DiscoverScreen.tsx#L1331) | ✅ exists |
-| `discover:empty.no_events_title` | [:1339](app-mobile/src/components/DiscoverScreen.tsx#L1339) | ❌ MISSING (JSON has `empty.no_events`) |
-| `discover:empty.no_events_subtitle` | [:1340](app-mobile/src/components/DiscoverScreen.tsx#L1340) | ❌ MISSING |
-| `discover:empty.expand_radius` | [:1341](app-mobile/src/components/DiscoverScreen.tsx#L1341) | ❌ MISSING |
-| `discover:empty.no_match_title` | [:1348](app-mobile/src/components/DiscoverScreen.tsx#L1348) | ❌ MISSING (JSON has `empty.no_matching`) |
-| `discover:empty.no_match_subtitle` | [:1349](app-mobile/src/components/DiscoverScreen.tsx#L1349) | ❌ MISSING |
-| `discover:empty.reset_filters` | [:1350](app-mobile/src/components/DiscoverScreen.tsx#L1350) | ❌ MISSING |
+| `discover:error.title` | [DiscoverScreen.tsx:1329](../../app-mobile/src/components/DiscoverScreen.tsx#L1329) | ✅ exists |
+| `discover:error.subtitle` | [:1330](../../app-mobile/src/components/DiscoverScreen.tsx#L1330) | ❌ MISSING |
+| `discover:error.retry` | [:1331](../../app-mobile/src/components/DiscoverScreen.tsx#L1331) | ✅ exists |
+| `discover:empty.no_events_title` | [:1339](../../app-mobile/src/components/DiscoverScreen.tsx#L1339) | ❌ MISSING (JSON has `empty.no_events`) |
+| `discover:empty.no_events_subtitle` | [:1340](../../app-mobile/src/components/DiscoverScreen.tsx#L1340) | ❌ MISSING |
+| `discover:empty.expand_radius` | [:1341](../../app-mobile/src/components/DiscoverScreen.tsx#L1341) | ❌ MISSING |
+| `discover:empty.no_match_title` | [:1348](../../app-mobile/src/components/DiscoverScreen.tsx#L1348) | ❌ MISSING (JSON has `empty.no_matching`) |
+| `discover:empty.no_match_subtitle` | [:1349](../../app-mobile/src/components/DiscoverScreen.tsx#L1349) | ❌ MISSING |
+| `discover:empty.reset_filters` | [:1350](../../app-mobile/src/components/DiscoverScreen.tsx#L1350) | ❌ MISSING |
 
 **7 keys missing in en/discover.json. All 28 other locales need same 7 keys added.**
 
@@ -153,7 +153,7 @@ These are NOT dead code — they're **MISSING JSON entries**. Code uses them; JS
 
 ### §4.3 Dead price filter switch branches
 
-[:1088-1101](app-mobile/src/components/DiscoverScreen.tsx#L1088-L1101): the switch handles `"free"` / `"under-25"` / `"25-50"` / `"50-100"` / `"over-100"` — **none of these IDs are emitted by the rendered UI**. The UI emits `chill` / `comfy` / `bougie` / `lavish` / `any`. All non-`any` UI values hit `default: return true` (no-op).
+[:1088-1101](../../app-mobile/src/components/DiscoverScreen.tsx#L1088-L1101): the switch handles `"free"` / `"under-25"` / `"25-50"` / `"50-100"` / `"over-100"` — **none of these IDs are emitted by the rendered UI**. The UI emits `chill` / `comfy` / `bougie` / `lavish` / `any`. All non-`any` UI values hit `default: return true` (no-op).
 
 **Two paths to fix:** (a) make the UI emit the legacy band IDs, OR (b) extend the switch to handle tier slugs with explicit USD ranges.
 
@@ -161,24 +161,24 @@ Either way, the existing 5 switch branches are unreachable from current JSX — 
 
 ### §4.4 Dead state machine branches
 
-[:1170](app-mobile/src/components/DiscoverScreen.tsx#L1170): `showFilterNoMatch` requires `filteredNightOutCards.length === 0 && nightOutCards.length > 0`. Given §4.3 — when the price filter is set to a tier slug, `filteredNightOutCards.length === nightOutCards.length` (filter is no-op). So the no-match state only fires when:
+[:1170](../../app-mobile/src/components/DiscoverScreen.tsx#L1170): `showFilterNoMatch` requires `filteredNightOutCards.length === 0 && nightOutCards.length > 0`. Given §4.3 — when the price filter is set to a tier slug, `filteredNightOutCards.length === nightOutCards.length` (filter is no-op). So the no-match state only fires when:
 - price filter is `"free"` OR `"under-25"` OR similar legacy IDs (UNREACHABLE per §4.3), OR
-- TBA-price events excluded ([:1085](app-mobile/src/components/DiscoverScreen.tsx#L1085)) — sometimes reaches state if all results are TBA, OR
+- TBA-price events excluded ([:1085](../../app-mobile/src/components/DiscoverScreen.tsx#L1085)) — sometimes reaches state if all results are TBA, OR
 - Future genre/date filter changes that filter post-fetch (currently date is sent to API; genre is sent to API as keywords)
 
 In practice, the no-match state is **rarely-to-never reached** under current UI. Not strictly dead, but very rare.
 
 ### §4.5 Dead handler — handleResetFilters
 
-[:1076-1078](app-mobile/src/components/DiscoverScreen.tsx#L1076-L1078): resets `selectedFilters` to defaults. Wired from:
-- [:1351](app-mobile/src/components/DiscoverScreen.tsx#L1351) — Filter no-match state action button (rare path per §4.4)
-- [:1555](app-mobile/src/components/DiscoverScreen.tsx#L1555) — Filter modal Reset button (always reachable when modal open)
+[:1076-1078](../../app-mobile/src/components/DiscoverScreen.tsx#L1076-L1078): resets `selectedFilters` to defaults. Wired from:
+- [:1351](../../app-mobile/src/components/DiscoverScreen.tsx#L1351) — Filter no-match state action button (rare path per §4.4)
+- [:1555](../../app-mobile/src/components/DiscoverScreen.tsx#L1555) — Filter modal Reset button (always reachable when modal open)
 
 Not dead, but the filter-no-match path is rare.
 
 ### §4.6 Dead service-layer fields
 
-Need to read [`nightOutExperiencesService.ts`](app-mobile/src/services/nightOutExperiencesService.ts) for full inventory. Spec writer should grep field-by-field. Strong candidates: `priceCurrency` (returned by edge fn at [:210](supabase/functions/ticketmaster-events/index.ts#L210), passed through service, but the mobile `formatPriceRange` ignores it and parses `card.price` as USD — leading to HF-04 currency double-conversion).
+Need to read [`nightOutExperiencesService.ts`](../../app-mobile/src/services/nightOutExperiencesService.ts) for full inventory. Spec writer should grep field-by-field. Strong candidates: `priceCurrency` (returned by edge fn at [:210](../../supabase/functions/ticketmaster-events/index.ts#L210), passed through service, but the mobile `formatPriceRange` ignores it and parses `card.price` as USD — leading to HF-04 currency double-conversion).
 
 ### §4.7 Dead style entries
 
@@ -194,7 +194,7 @@ Re-classified against the verified rendered surface only. Six-field anchors for 
 
 | Field | Value |
 |---|---|
-| **File:line** | [DiscoverScreen.tsx:1330, 1339, 1340, 1341, 1348, 1349, 1350](app-mobile/src/components/DiscoverScreen.tsx#L1330) + en/discover.json (no entries) |
+| **File:line** | [DiscoverScreen.tsx:1330, 1339, 1340, 1341, 1348, 1349, 1350](../../app-mobile/src/components/DiscoverScreen.tsx#L1330) + en/discover.json (no entries) |
 | **Exact code** | `t("discover:empty.no_events_title")` (and 6 others — see §4.1) |
 | **What it does** | i18n lookup for these 7 keys returns the literal key string (react-i18next default fallback). User sees `discover:empty.no_events_title` rendered as the title text on screen. |
 | **What it should do** | Each key should resolve to friendly copy like `"No events near you tonight"` / `"Try a wider date or different vibe"` / `"Expand radius"`. JSON entries must exist in en + 28 other locales. |
@@ -205,7 +205,7 @@ Re-classified against the verified rendered surface only. Six-field anchors for 
 
 | Field | Value |
 |---|---|
-| **File:line** | [DiscoverScreen.tsx:1088-1101](app-mobile/src/components/DiscoverScreen.tsx#L1088-L1101) (switch) + [:1124-1130](app-mobile/src/components/DiscoverScreen.tsx#L1124-L1130) (chip generator) |
+| **File:line** | [DiscoverScreen.tsx:1088-1101](../../app-mobile/src/components/DiscoverScreen.tsx#L1088-L1101) (switch) + [:1124-1130](../../app-mobile/src/components/DiscoverScreen.tsx#L1124-L1130) (chip generator) |
 | **Exact code** | switch `case "free":` / `"under-25":` / `"25-50":` / `"50-100":` / `"over-100":` / `default: return true` — chip generator emits `tier.slug` which is `"chill"`/`"comfy"`/`"bougie"`/`"lavish"` |
 | **What it does** | Tap Chill chip → `setSelectedFilters({...selectedFilters, price: "chill"})` → `filteredNightOutCards` recomputes → switch hits `default: return true` → grid unchanged → BUT `moreChipBadgeCount` increments to 1, so the top-bar "Filters" chip now displays a `1` badge falsely indicating a filter is active. |
 | **What it should do** | Either (a) chip emits a band ID matching the switch (`under-25` etc.), OR (b) switch handles tier slugs with explicit USD ranges. Spec choice. |
@@ -216,18 +216,18 @@ Re-classified against the verified rendered surface only. Six-field anchors for 
 
 | Field | Value |
 |---|---|
-| **File:line** | [DiscoverScreen.tsx:854](app-mobile/src/components/DiscoverScreen.tsx#L854) (cache key) + [:919-928](app-mobile/src/components/DiscoverScreen.tsx#L919-L928) (cache check) |
+| **File:line** | [DiscoverScreen.tsx:854](../../app-mobile/src/components/DiscoverScreen.tsx#L854) (cache key) + [:919-928](../../app-mobile/src/components/DiscoverScreen.tsx#L919-L928) (cache check) |
 | **Exact code** | Key: `${NIGHT_OUT_CACHE_KEY}_${user?.id}_${lat}_${lng}_${selectedFilters.genre}` (no date). Check: `if (cached && cached.date === getTodayDateString() && ... && cached.genre === selectedFilters.genre) { setNightOutCards(cached.venues); ...; return; }` |
 | **What it does** | Switching from "Any" → "Tonight" hits the same cache key (same userId, same lat/lng, same genre, same `getTodayDateString()` since it's the same day). Cache check passes, stale 30-day-window venues are served as if they were today's. |
 | **What it should do** | Cache should be keyed by `(userId, geo, genre, dateFilter)` quadruple; equality check should include date-filter equality. |
-| **Causal chain** | User opens Discover with `date=any` → cache fills with 30-day window → user taps `date=today` → `selectedFilters.date` change triggers fetch effect ([:958-964](app-mobile/src/components/DiscoverScreen.tsx#L958-L964)) → debounced 300ms → `fetchNightOutEvents()` runs → `loadNightOutCache()` returns the prior 30-day result → cache check passes → `setNightOutCards(cached.venues)` returns immediately → fresh fetch never fires. User sees 30-day events under "Tonight" chip. |
+| **Causal chain** | User opens Discover with `date=any` → cache fills with 30-day window → user taps `date=today` → `selectedFilters.date` change triggers fetch effect ([:958-964](../../app-mobile/src/components/DiscoverScreen.tsx#L958-L964)) → debounced 300ms → `fetchNightOutEvents()` runs → `loadNightOutCache()` returns the prior 30-day result → cache check passes → `setNightOutCards(cached.venues)` returns immediately → fresh fetch never fires. User sees 30-day events under "Tonight" chip. |
 | **Verification step** | Open Discover with `date=any`; observe events for next 30 days. Tap "Tonight" chip; observe SAME events (not filtered to today). Inspect AsyncStorage: only one cache key per user/lat/lng/genre, no date variant. |
 
 ### 🟠 CF-1 — "Concerts & Events" title is deceptive (HIGH)
 
 | Field | Value |
 |---|---|
-| **File:line** | [DiscoverScreen.tsx:1226](app-mobile/src/components/DiscoverScreen.tsx#L1226) (literal) + [edge fn:16, 314](supabase/functions/ticketmaster-events/index.ts#L16) (segmentId hardcoded music) |
+| **File:line** | [DiscoverScreen.tsx:1226](../../app-mobile/src/components/DiscoverScreen.tsx#L1226) (literal) + [edge fn:16, 314](../../supabase/functions/ticketmaster-events/index.ts#L16) (segmentId hardcoded music) |
 | **What it does** | UI title promises sports / theater / comedy / family / festivals / etc. Edge fn unconditionally filters to `MUSIC_SEGMENT_ID = "KZFzniwnSyZfZ7v7nJ"` only. Other segments structurally never appear. |
 | **What it should do** | Either (a) rename to "Concerts" (honest, smallest fix), OR (b) make segmentId configurable and add segment chip to UI (larger fix), OR (c) drop segmentId filter entirely and let TM return all event types in the geographic radius. |
 
@@ -235,7 +235,7 @@ Re-classified against the verified rendered surface only. Six-field anchors for 
 
 | Field | Value |
 |---|---|
-| **File:line** | [edge fn:148-159](supabase/functions/ticketmaster-events/index.ts#L148-L159) (hardcodes `$` symbol regardless of `range.currency`) + [formatters.ts:141-177](app-mobile/src/components/utils/formatters.ts#L141-L177) (parses USD numerals, multiplies by user-currency rate) |
+| **File:line** | [edge fn:148-159](../../supabase/functions/ticketmaster-events/index.ts#L148-L159) (hardcodes `$` symbol regardless of `range.currency`) + [formatters.ts:141-177](../../app-mobile/src/components/utils/formatters.ts#L141-L177) (parses USD numerals, multiplies by user-currency rate) |
 | **What it does** | London £50 event → edge fn returns `formatted: "$50 - $80"` with `priceCurrency: "GBP"` → mobile parses `$50` as USD → multiplies by user's USD-to-GBP rate → renders `£40 - £64`. Numbers double-discount. American user viewing Berlin €50 event sees `$50` (right symbol, wrong numerals). **Both directions broken.** |
 | **What it should do** | Edge fn should return either (a) currency-symbol-aware `formatted` string, OR (b) raw `min`/`max` + `priceCurrency` and let mobile format with proper symbol. Mobile `formatPriceRange` should respect `card.priceCurrency` if non-USD. |
 
@@ -243,15 +243,15 @@ Re-classified against the verified rendered surface only. Six-field anchors for 
 
 | Field | Value |
 |---|---|
-| **File:line** | [DiscoverScreen.tsx:1341](app-mobile/src/components/DiscoverScreen.tsx#L1341) (CTA label `expand_radius`) + [:972-977](app-mobile/src/components/DiscoverScreen.tsx#L972-L977) (handler does NOT change radius) |
-| **What it does** | Empty-state CTA reads "Expand radius" (when i18n key exists) but handler clears cache + re-fetches with same `radius: 50` ([:934](app-mobile/src/components/DiscoverScreen.tsx#L934)). User taps button, expects wider search, gets same results. |
+| **File:line** | [DiscoverScreen.tsx:1341](../../app-mobile/src/components/DiscoverScreen.tsx#L1341) (CTA label `expand_radius`) + [:972-977](../../app-mobile/src/components/DiscoverScreen.tsx#L972-L977) (handler does NOT change radius) |
+| **What it does** | Empty-state CTA reads "Expand radius" (when i18n key exists) but handler clears cache + re-fetches with same `radius: 50` ([:934](../../app-mobile/src/components/DiscoverScreen.tsx#L934)). User taps button, expects wider search, gets same results. |
 | **What it should do** | Either rename CTA to "Try again" (matches actual behavior) OR actually expand radius (50 → 100 → 200) on each tap. |
 
 ### 🟡 HF-1 — Genre filter precision via `keyword` param (MEDIUM, NEEDS-LIVE-FIRE)
 
 | Field | Value |
 |---|---|
-| **File:line** | [edge fn:320-322](supabase/functions/ticketmaster-events/index.ts#L320-L322) |
+| **File:line** | [edge fn:320-322](../../supabase/functions/ticketmaster-events/index.ts#L320-L322) |
 | **What it does** | `params.set("keyword", searchKeywords.join(","))` — sends comma-joined string as TM's `keyword` (full-text phrase search). For Afrobeats: `keyword=afrobeats,amapiano,afro` etc. matches event/attraction/venue NAMES literally. |
 | **What it should do** | Use `classificationName` with TM's documented OR semantics, OR call `/classifications` once to map slugs → genre IDs and use `genreId` directly. NEEDS-LIVE-FIRE to confirm magnitude of return-rate delta. |
 
@@ -259,7 +259,7 @@ Re-classified against the verified rendered surface only. Six-field anchors for 
 
 | Field | Value |
 |---|---|
-| **File:line** | [DiscoverScreen.tsx:1085](app-mobile/src/components/DiscoverScreen.tsx#L1085) |
+| **File:line** | [DiscoverScreen.tsx:1085](../../app-mobile/src/components/DiscoverScreen.tsx#L1085) |
 | **What it does** | `if (card.priceMin === null && card.priceMax === null) return false;` — TBA-price events drop off when ANY non-`any` price filter is set. (Currently non-issue per §4.3 because tier filter is no-op, but if/when RC-2 is fixed, TBA events vanish silently.) |
 | **What it should do** | Either show TBA events under `any` only (current implicit) AND make it explicit, OR include TBA events under all filters with a "Price TBA" badge, OR add a "Show TBA" toggle. |
 
@@ -269,27 +269,27 @@ Re-classified against the verified rendered surface only. Six-field anchors for 
 
 ### 🟡 HF-4 — Top filter row chip labels hardcoded English (MEDIUM)
 
-[DiscoverScreen.tsx:1238-1294](app-mobile/src/components/DiscoverScreen.tsx#L1238-L1294) — top-bar chip labels (`"All"` / `"Tonight"` / `"This Weekend"` / `"Next Week"` / `"This Month"` / `"Filters"`) are HARDCODED literals, not i18n. Filter modal options use i18n; top-bar chips don't. Inconsistent. Foreign-language users see English chip labels in the top bar but translated labels inside the modal.
+[DiscoverScreen.tsx:1238-1294](../../app-mobile/src/components/DiscoverScreen.tsx#L1238-L1294) — top-bar chip labels (`"All"` / `"Tonight"` / `"This Weekend"` / `"Next Week"` / `"This Month"` / `"Filters"`) are HARDCODED literals, not i18n. Filter modal options use i18n; top-bar chips don't. Inconsistent. Foreign-language users see English chip labels in the top bar but translated labels inside the modal.
 
 ### 🟡 HF-5 — Title hardcoded English (MEDIUM)
 
-[:1226](app-mobile/src/components/DiscoverScreen.tsx#L1226) — `"Concerts & Events"` is a hardcoded literal. Not in any locale file. Foreign-language users see the English title.
+[:1226](../../app-mobile/src/components/DiscoverScreen.tsx#L1226) — `"Concerts & Events"` is a hardcoded literal. Not in any locale file. Foreign-language users see the English title.
 
 ### 🟡 HF-6 — Sold-out events shown unfiltered (S3)
 
-[EventGridCard:291-298](app-mobile/src/components/DiscoverScreen.tsx#L291-L298) — sold-out events get a "SOLD OUT" badge but remain in the grid. Tapping them opens ExpandedCardModal with `ticketUrl` linking to TM's sold-out page. Inflates the 20-event grid with non-actionable items.
+[EventGridCard:291-298](../../app-mobile/src/components/DiscoverScreen.tsx#L291-L298) — sold-out events get a "SOLD OUT" badge but remain in the grid. Tapping them opens ExpandedCardModal with `ticketUrl` linking to TM's sold-out page. Inflates the 20-event grid with non-actionable items.
 
 ### 🟡 HF-7 — `nightOutData` flow on ExpandedCardModal (S3)
 
-The card tap handler ([:1003-1016](app-mobile/src/components/DiscoverScreen.tsx#L1003-L1016)) builds an `expandedCardData` with `category: "Night Out"` + a `nightOutData` field carrying ticketmaster-specific fields (eventName, venueName, artistName, date, time, price, genre, subGenre, tags, coordinates, ticketUrl, ticketStatus). ExpandedCardModal must have a render branch for this. Out of audit scope — but worth flagging that the modal's render branching for night-out events is a separate audit candidate.
+The card tap handler ([:1003-1016](../../app-mobile/src/components/DiscoverScreen.tsx#L1003-L1016)) builds an `expandedCardData` with `category: "Night Out"` + a `nightOutData` field carrying ticketmaster-specific fields (eventName, venueName, artistName, date, time, price, genre, subGenre, tags, coordinates, ticketUrl, ticketStatus). ExpandedCardModal must have a render branch for this. Out of audit scope — but worth flagging that the modal's render branching for night-out events is a separate audit candidate.
 
 ### 🟡 HF-8 — Logout doesn't clear `mingla_night_out_cache_<userId>_*` AsyncStorage entries (S3)
 
-Per prior investigation. Re-verified: [:854](app-mobile/src/components/DiscoverScreen.tsx#L854) keys cache by userId, so cross-user leakage is null, but storage grows unboundedly across user-switching.
+Per prior investigation. Re-verified: [:854](../../app-mobile/src/components/DiscoverScreen.tsx#L854) keys cache by userId, so cross-user leakage is null, but storage grows unboundedly across user-switching.
 
 ### 🟡 HF-9 — `getTodayDateString` uses America/New_York timezone (S3)
 
-Per prior investigation [:809-816](app-mobile/src/components/DiscoverScreen.tsx#L809) (need to re-grep — this line in the prior investigation; current file may have shifted). Cache rollover wrong for ~80% of the planet. Re-verify in spec phase.
+Per prior investigation [:809-816](../../app-mobile/src/components/DiscoverScreen.tsx#L809) (need to re-grep — this line in the prior investigation; current file may have shifted). Cache rollover wrong for ~80% of the planet. Re-verify in spec phase.
 
 ---
 
@@ -306,7 +306,7 @@ Distinct from wrongness. Things that work but could be better.
 | IMP-5 | "Any date" = next 30 days | UI says "Any" — actually means 30 days. Festivals 6 months out invisible. |
 | IMP-6 | No countryCode sent to TM | Geographic precision weak in non-US/UK metros. NEEDS-LIVE-FIRE to confirm magnitude. |
 | IMP-7 | Loading state shows generic skeleton | Could differentiate cache-warming vs full-fetch via cached-stale UI signal. |
-| IMP-8 | Save heart on card has no haptic feedback on Android | iOS gets `Haptics.notificationAsync(...)` ([:265](app-mobile/src/components/DiscoverScreen.tsx#L265)); Android branch is silent. |
+| IMP-8 | Save heart on card has no haptic feedback on Android | iOS gets `Haptics.notificationAsync(...)` ([:265](../../app-mobile/src/components/DiscoverScreen.tsx#L265)); Android branch is silent. |
 | IMP-9 | EventGridCard renders 1 photo only | TM can return multiple photos per event. Only `pickBestImage`'s top pick rendered. |
 | IMP-10 | No accessibility label on Filters chip badge counter | Visual `1`/`2` badge on Filters chip; no spoken label. |
 | IMP-11 | Header title autoshrinks ~32→22pt on narrow phones | Operator's "heading too small" complaint may map here. |

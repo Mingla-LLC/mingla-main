@@ -5,7 +5,7 @@
 **Surface:** Supabase backend (single new migration)
 **Estimated wall:** IMPL ~1–1.5h SQL · TESTER ~30min RLS+trigger live-fire
 **Source PR head:** `836ce108054800aba1573d8bc30684f5728a86ce` (`Mingla-LLC/mingla-main` PR #59 — verified line-by-line against the live migration source)
-**Dispatch:** [prompts/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md](../prompts/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md)
+**Dispatch:** prompts/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md`)
 
 ---
 
@@ -347,7 +347,7 @@ Option A is a midnight-emergency migration.
 - Reviewer report (forensics): [reports/INVESTIGATION_PR_59_CYCLE_B1_BACKEND_REVIEW.md](../reports/INVESTIGATION_PR_59_CYCLE_B1_BACKEND_REVIEW.md)
 - Reviewer paste-ready PR comment: [reports/PR_59_REVIEW_COMMENTS.md](../reports/PR_59_REVIEW_COMMENTS.md)
 - PR #59 author-question comment posted: https://github.com/Mingla-LLC/mingla-main/pull/59#issuecomment-4364474041
-- Dispatch prompt: [prompts/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md](../prompts/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md)
+- Dispatch prompt: prompts/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md`)
 - I-17 origin: `mingla-business/src/store/currentBrandStore.ts:271–283`
 - Cycle 7 share URL consumers: `mingla-business/app/e/[brandSlug]/[eventSlug].tsx` + `mingla-business/app/b/[brandSlug].tsx` + `mingla-business/src/components/ui/ShareModal.tsx`
 - Peer trigger pattern (verbatim mirror): PR #59 line 123–140 (`biz_prevent_brand_account_id_change`)

@@ -3,10 +3,10 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · grep oklch PASS · grep useOrderStore PASS (still 9c scope) · runtime UNVERIFIED (awaits user smoke web + iOS)
 **Scope:** 1 NEW + 3 MOD · ~+260 LOC delta · 0 schema bumps · 0 new deps · 4 stub TRANSITIONALs (email cascade / etc.)
-**Spec:** [Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md) §3.B (subset — see Cycle Split Note)
-**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md)
-**Cycle 9a delivered:** [Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_9a_EVENTS_TAB_DETAIL_MANAGE.md](Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_9a_EVENTS_TAB_DETAIL_MANAGE.md)
-**Dispatch:** [Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_9b_LIFECYCLE_ACTIONS.md](Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_9b_LIFECYCLE_ACTIONS.md)
+**Spec:** [Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](../specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md) §3.B (subset — see Cycle Split Note)
+**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md)
+**Cycle 9a delivered:** [Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_9a_EVENTS_TAB_DETAIL_MANAGE.md](IMPLEMENTATION_BIZ_CYCLE_9a_EVENTS_TAB_DETAIL_MANAGE.md)
+**Dispatch:** Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_9b_LIFECYCLE_ACTIONS.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_9b_LIFECYCLE_ACTIONS.md`)
 
 ---
 

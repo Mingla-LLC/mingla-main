@@ -2,7 +2,7 @@
 
 **Mode:** INVESTIGATE (forensics-only; SPEC dispatch follows after operator-locked decisions)
 **Confidence:** H overall · per-thread H/H/H/H/H (live-DB query for Thread 4 row count UNVERIFIED — see §thread 4 §note)
-**Dispatch:** [`prompts/FORENSICS_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md`](../prompts/FORENSICS_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md)
+**Dispatch:** `prompts/FORENSICS_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md`)
 **Date:** 2026-05-04
 
 ---

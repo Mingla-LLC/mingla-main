@@ -3,7 +3,7 @@
 **Date:** 2026-05-01
 **Author:** mingla-forensics
 **Mode:** INVESTIGATE-THEN-SPEC (this report; spec ships alongside as `SPEC_BIZ_CYCLE_8_CHECKOUT.md`)
-**Dispatch:** [Mingla_Artifacts/prompts/FORENSICS_BIZ_CYCLE_8_CHECKOUT.md](Mingla_Artifacts/prompts/FORENSICS_BIZ_CYCLE_8_CHECKOUT.md)
+**Dispatch:** Mingla_Artifacts/prompts/FORENSICS_BIZ_CYCLE_8_CHECKOUT.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/FORENSICS_BIZ_CYCLE_8_CHECKOUT.md`)
 **Confidence:** HIGH
 
 ---

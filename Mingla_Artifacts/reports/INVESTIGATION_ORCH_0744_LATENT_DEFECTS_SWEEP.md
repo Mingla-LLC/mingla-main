@@ -3,7 +3,7 @@
 **Date:** 2026-05-06
 **Investigator:** mingla-forensics (INVESTIGATE-only mode)
 **Branch / commit at ingestion:** `Seth` / `cfb121e8`
-**Dispatch:** [`Mingla_Artifacts/prompts/FORENSICS_ORCH_0744_MINGLA_BUSINESS_LATENT_DEFECTS_SWEEP.md`](../prompts/FORENSICS_ORCH_0744_MINGLA_BUSINESS_LATENT_DEFECTS_SWEEP.md)
+**Dispatch:** `Mingla_Artifacts/prompts/FORENSICS_ORCH_0744_MINGLA_BUSINESS_LATENT_DEFECTS_SWEEP.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_ORCH_0744_MINGLA_BUSINESS_LATENT_DEFECTS_SWEEP.md`)
 **Scope:** `mingla-business/` (Tier 1 of 3 — Tier 2 + Tier 3 deferred to a second session per dispatch §7)
 **Tone:** brutal, evidence-based. Nothing accepted without independent verification.
 

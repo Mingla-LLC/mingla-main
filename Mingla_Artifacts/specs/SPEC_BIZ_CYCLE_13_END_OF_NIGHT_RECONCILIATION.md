@@ -1,6 +1,6 @@
 # SPEC — BIZ Cycle 13 (End-of-Night Reconciliation Report)
 
-**Status:** BINDING contract — produced by `/mingla-forensics` SPEC mode 2026-05-04 against dispatch [`prompts/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../prompts/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md)
+**Status:** BINDING contract — produced by `/mingla-forensics` SPEC mode 2026-05-04 against dispatch `prompts/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`)
 **Cycle:** Cycle 13 — End-of-Night Reconciliation Report (canonical per [`github/epics/cycle-13.md`](../github/epics/cycle-13.md))
 **Confidence:** **H** — investigation H per thread + H overall; all 11 architectural decisions locked via DEC-095; SPEC formalizes investigation §4 (data shape) + §5 (discrepancy formula) into IMPL-ready contracts. Zero new investigations needed.
 **Estimated IMPL wall:** ~24h (epic budget)
@@ -20,7 +20,7 @@ After an event ends, organisers manually cross-reference 4 client ledgers (onlin
 | 1 | [`reports/INVESTIGATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../reports/INVESTIGATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md) | Source of cross-store data shape map (§4) + discrepancy formula (§5) + 5 forensics discoveries (§9) |
 | 2 | [`DECISION_LOG.md`](../DECISION_LOG.md) DEC-095 | Locks 11 architectural decisions D-13-1 through D-13-11; SPEC writer does NOT re-litigate |
 | 3 | [`github/epics/cycle-13.md`](../github/epics/cycle-13.md) | Canonical epic — 3 journeys (J-R1 + J-R2 + J-R3); ~24h budget |
-| 4 | [`prompts/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../prompts/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md) | Dispatch — scope/non-goals + layer specification + SC + tests + implementation order outlines |
+| 4 | `prompts/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`) | Dispatch — scope/non-goals + layer specification + SC + tests + implementation order outlines |
 | 5 | [`reports/IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_REPORT.md`](../reports/IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_REPORT.md) | Cycle 12 J-D5 reconciliation card — visual + selector + export pattern Cycle 13 mirrors; HIDDEN-1 contract definition |
 | 6 | [`reports/IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v3.md`](../reports/IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v3.md) | Selector pattern rule (raw entries + useMemo, never fresh-array subscriptions) |
 | 7 | [`reports/IMPLEMENTATION_BIZ_CYCLE_10_GUEST_LIST_REPORT.md`](../reports/IMPLEMENTATION_BIZ_CYCLE_10_GUEST_LIST_REPORT.md) | I-25 + native CSV degradation TRANSITIONAL D-CYCLE10-IMPL-1 baseline |
@@ -1518,7 +1518,7 @@ Run T-39..T-48 grep regression tests. Produce `Mingla_Artifacts/reports/IMPLEMEN
 
 - Canonical epic: [`Mingla_Artifacts/github/epics/cycle-13.md`](../github/epics/cycle-13.md)
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../reports/INVESTIGATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md)
-- SPEC dispatch: [`prompts/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../prompts/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md)
+- SPEC dispatch: `prompts/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`)
 - Decision lock-in: `DECISION_LOG.md` DEC-095
 - Cycle 12 close (J-D5 partial coverage): [`reports/IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_REPORT.md`](../reports/IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_REPORT.md)
 - Cycle 9c v3 (orderStore + activity feed): [`reports/IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v3.md`](../reports/IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v3.md)

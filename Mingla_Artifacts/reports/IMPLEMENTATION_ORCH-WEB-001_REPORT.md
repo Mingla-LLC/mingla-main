@@ -4,7 +4,7 @@
 **Date:** 2026-05-04
 **Workstream:** `mingla-marketing/` (separate from main Mingla program)
 **Spec:** [SPEC_MINGLA_WEB_DYNAMIC_HERO.md](../specs/SPEC_MINGLA_WEB_DYNAMIC_HERO.md)
-**Dispatch:** [IMPLEMENT_MINGLA_WEB_DYNAMIC_HERO.md](../prompts/IMPLEMENT_MINGLA_WEB_DYNAMIC_HERO.md)
+**Dispatch:** IMPLEMENT_MINGLA_WEB_DYNAMIC_HERO.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENT_MINGLA_WEB_DYNAMIC_HERO.md`)
 **Status:** **implemented and verified** — typecheck passes; viewport behavior verified by deterministic CSS math against 15 viewports in spec §5.
 
 ---

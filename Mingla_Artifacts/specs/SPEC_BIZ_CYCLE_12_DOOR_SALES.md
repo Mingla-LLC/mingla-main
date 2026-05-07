@@ -2,7 +2,7 @@
 
 **Mode:** SPEC (forensics complete; operator-locked)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md`](../reports/INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md)
-**Dispatch:** [`prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md`](../prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md)
+**Dispatch:** `prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md`)
 **Surface:** Mingla Business mobile app (`mingla-business/`) — operator/scanner-side door sales
 **Target:** production-ready. Not "good enough." Not "works on happy path." Production.
 **Date:** 2026-05-03
@@ -1312,7 +1312,7 @@ When scanner team functional flow ships (B-cycle), `useDoorSalesStore.recordSale
 ## 12 — Cross-references
 
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md`](../reports/INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md)
-- Dispatch: [`prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md`](../prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md)
+- Dispatch: `prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md`)
 - BUSINESS_PRD §7 In-Person Payments + §14 MVP Foundations Cut
 - Cycle 11 SPEC + IMPL v2 (architectural pattern reference): [`specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md`](./SPEC_BIZ_CYCLE_11_QR_SCANNER.md) + [`reports/IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT_v2.md`](../reports/IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT_v2.md)
 - Cycle 10 SPEC (J-G1/J-G2 extension target): [`specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md`](./SPEC_BIZ_CYCLE_10_GUEST_LIST.md)
@@ -1320,7 +1320,7 @@ When scanner team functional flow ships (B-cycle), `useDoorSalesStore.recordSale
 - Cycle 8 checkout (CartLine + CartContext source): commit `6d426755` + `mingla-business/src/components/checkout/CartContext.tsx`
 - ORCH-0706 close (door_sales_ledger CHECK constraint live): [`reports/IMPLEMENTATION_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING_REPORT.md`](../reports/IMPLEMENTATION_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING_REPORT.md)
 - INVARIANT_REGISTRY (I-19/21/25/26/27/28 + I-29/30 NEW): [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](../INVARIANT_REGISTRY.md)
-- `door_sales_ledger` schema: [`supabase/migrations/20260502100000_b1_business_schema_rls.sql:1730-1750`](../../supabase/migrations/20260502100000_b1_business_schema_rls.sql) + ORCH-0706 SF-5 CHECK constraint
+- `door_sales_ledger` schema: [`supabase/migrations/20260502100000_b1_business_schema_rls.sql:1730-1750`](../migrations_archive_orch_0729_2026-05-05/20260502100000_b1_business_schema_rls.sql) + ORCH-0706 SF-5 CHECK constraint
 - Memory rules referenced: `feedback_keyboard_never_blocks_input`, `feedback_rn_color_formats`, `feedback_implementor_uses_ui_ux_pro_max`, `feedback_anon_buyer_routes`, `feedback_orchestrator_never_executes`, `feedback_no_coauthored_by`, `feedback_post_pass_protocol`, `feedback_no_summary_paragraph`
 
 ---

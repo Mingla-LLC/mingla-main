@@ -1,7 +1,7 @@
 # IMPL REPORT — ORCH-0728 PASS-5 SESSION PROBE
 
 **Mode:** IMPLEMENT (DIAGNOSTIC ONLY — temporary, removed at full IMPL of `SPEC_ORCH_0728_FULL_FIX.md`)
-**Dispatch anchor:** [`prompts/IMPL_ORCH_0728_PASS_5_SESSION_PROBE.md`](../prompts/IMPL_ORCH_0728_PASS_5_SESSION_PROBE.md)
+**Dispatch anchor:** `prompts/IMPL_ORCH_0728_PASS_5_SESSION_PROBE.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPL_ORCH_0728_PASS_5_SESSION_PROBE.md`)
 **Authored:** 2026-05-06
 
 ---

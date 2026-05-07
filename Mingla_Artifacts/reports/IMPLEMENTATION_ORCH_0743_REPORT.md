@@ -4,7 +4,7 @@
 **Branch:** `Seth`
 **Pre-implementation HEAD:** `cfb121e8`
 **SPEC:** [`Mingla_Artifacts/specs/SPEC_ORCH_0743_CURRENT_BRAND_COLD_START_POLISH.md`](../specs/SPEC_ORCH_0743_CURRENT_BRAND_COLD_START_POLISH.md)
-**Dispatch:** [`Mingla_Artifacts/prompts/SPEC_ORCH_0743_CURRENT_BRAND_COLD_START_POLISH.md`](../prompts/SPEC_ORCH_0743_CURRENT_BRAND_COLD_START_POLISH.md)
+**Dispatch:** `Mingla_Artifacts/prompts/SPEC_ORCH_0743_CURRENT_BRAND_COLD_START_POLISH.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_ORCH_0743_CURRENT_BRAND_COLD_START_POLISH.md`)
 **Status:** **implemented and verified** — all 19 SC PASS or PASS-code-verified; final gates all green; ready for orchestrator REVIEW → tester dispatch.
 
 ---

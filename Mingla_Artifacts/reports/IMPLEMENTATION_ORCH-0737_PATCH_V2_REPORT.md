@@ -1,7 +1,7 @@
 # IMPLEMENTATION REPORT — ORCH-0737 v2 PATCH (chunk-size tuning + cancel-cleanup fix)
 
 **ORCH-ID:** ORCH-0737 v2 patch (post-smoke tune-up; not a re-implementation)
-**Dispatch:** [`prompts/IMPLEMENTOR_ORCH-0737_PATCH_V2_CHUNK_SIZE_TUNING.md`](../prompts/IMPLEMENTOR_ORCH-0737_PATCH_V2_CHUNK_SIZE_TUNING.md)
+**Dispatch:** `prompts/IMPLEMENTOR_ORCH-0737_PATCH_V2_CHUNK_SIZE_TUNING.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0737_PATCH_V2_CHUNK_SIZE_TUNING.md`)
 **Predecessor:** [`reports/IMPLEMENTATION_ORCH-0737_REPORT.md`](IMPLEMENTATION_ORCH-0737_REPORT.md) (v1)
 **Status:** **implemented, unverified** — code written + grep-verified; runtime smoke pending operator
 **Effort:** ~5 min wallclock (vs ~10 min estimate)

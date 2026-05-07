@@ -176,7 +176,7 @@ If anything looks off, push back before Sub-phase B starts. Sub-phase B is the i
 
 ## Sub-phase B — Native installs + app.config.ts + EAS build (Steps 1–4 complete)
 
-**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_B.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_B.md)
+**Authority:** `Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_B.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_B.md`)
 **Implementor stop point:** end of Step 4 (`expo prebuild --clean` validated). Steps 5–6 require founder hardware + EAS minutes — handed back per locked sequential rule + dispatch §7.
 
 ### B.1 Step 1 — Vestigial removal
@@ -418,7 +418,7 @@ If any step fails, STOP and hand back to orchestrator — Sub-phase C is gated o
 
 ## Sub-phase C.1 — Tier 1 Atoms + Form/Display Primitives
 
-**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C1.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C1.md)
+**Authority:** `Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C1.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C1.md`)
 **Outcome:** all 9 components built, tsc clean, 5 verification gates PASS, 6 success criteria PASS (SC-10 = report appended). 4 SC remain UNVERIFIED until visual smoke in Sub-phase E styleguide.
 
 ### C.1.1 Files created (9 new)
@@ -565,7 +565,7 @@ Tier 1 components are TypeScript-clean and ready for Tier 2 (C.2) consumption. V
 
 ## Sub-phase C.2 — Tier 2 Glass + Composition Primitives
 
-**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C2.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C2.md)
+**Authority:** `Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C2.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C2.md`)
 **Outcome:** all 7 components built, tsc clean, all 7 verification gates PASS, all 10 success criteria PASS (SC-10 = report appended). Visual smoke deferred to Sub-phase E.
 
 ### C.2.1 Files created (7 new)
@@ -695,7 +695,7 @@ Tier 2 components are TypeScript-clean and ready for Tier 3 (C.3) consumption. V
 
 ## Sub-phase C.3 — Tier 3 Overlays + Chrome
 
-**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C3.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C3.md)
+**Authority:** `Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C3.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_C3.md`)
 **Outcome:** all 8 components built, tsc clean, all 7 verification gates PASS, all 13 success criteria PASS (SC-13 = report appended). The kit is now COMPLETE.
 
 ### C.3.1 Files created (8 new)
@@ -856,7 +856,7 @@ Authorise Sub-phase D when ready.
 
 ## Sub-phase D — Tab Routes + First Visible Payoff
 
-**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D.md)
+**Authority:** `Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D.md`)
 **Outcome:** all 10 SC PASS. tsc clean. The kit is now wired through the tab nav. Founder visual smoke pending in Sub-phase F (or earlier — see §D.7).
 
 ### D.1 Files changed
@@ -1004,7 +1004,7 @@ Authorize Sub-phase E (styleguide route) when smoke passes.
 
 ## Sub-phase D.1 — Polish Fixes (founder-steered Path D)
 
-**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D1.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D1.md)
+**Authority:** `Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D1.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D1.md`)
 **Outcome:** all 4 surgical polish fixes landed. tsc clean. Two files modified, no new files, no deletions, no `designSystem.ts` edits. Founder visual smoke #2 pending.
 
 ### D.1.1 Files modified
@@ -1112,7 +1112,7 @@ If any of (1)–(4) look off, tell me which and I'll iterate. Authorize Sub-phas
 
 ## Sub-phase D.2 — Premium Glass (border brightness)
 
-**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D2.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D2.md)
+**Authority:** `Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D2.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_D2.md`)
 **Outcome:** single token-value edit landed. tsc clean. Zero component edits. Founder visual smoke #3 pending.
 
 **Sub-phase A revision flag:** this dispatch deliberately revised an existing token value (rather than adding a new one). Documented under `D.2.4` below per dispatch §2.
@@ -1206,7 +1206,7 @@ Authorize Sub-phase E (styleguide) when smoke passes.
 
 ## Sub-phase E — Hidden /__styleguide Route
 
-**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E.md)
+**Authority:** `Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E.md`)
 **Outcome:** all 10 SC PASS. tsc clean. Single new file at `app/__styleguide.tsx` (~770 lines) + 1 small Account-tab edit. The kit is now QA-able as a single scrollable surface.
 
 ### E.1 Files changed
@@ -1334,7 +1334,7 @@ Authorize Sub-phase F (close protocol + final cross-platform smoke + founder sig
 
 ## Sub-phase E.1 — Brand + Input polish (3 corrections after E smoke)
 
-**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E1.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E1.md)
+**Authority:** `Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E1.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E1.md`)
 **Outcome:** all 3 ORCH-BIZ-0a-E[1-3] corrections landed. tsc clean. 1 component deleted, 1 asset copied, 2 components extended.
 
 ### E.1.1 Files changed
@@ -1457,7 +1457,7 @@ If any of (1)-(4) look off, tell me which and I'll iterate. Authorize Sub-phase 
 
 ## Sub-phase E.2 — Android shadows + Wordmark deletion + Phone polish
 
-**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E2.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E2.md)
+**Authority:** `Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E2.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E2.md`)
 **Outcome:** all 4 ORCH-BIZ-0a-E[4-7] corrections landed. tsc clean. 3 files modified, no new files, no deletions.
 
 ### E.2.1 Files changed
@@ -1590,7 +1590,7 @@ If Android glass STILL feels under-premium after elevation removal, **D-IMPL-28*
 
 ## Sub-phase E.3 — Android shadow extension + TextInput cleanup + iOS phone padding
 
-**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E3.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E3.md)
+**Authority:** `Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E3.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E3.md`)
 **Outcome:** all 4 ORCH-BIZ-0a-E[8-11] corrections landed. tsc clean. 2 files modified.
 
 ### E.3.1 Files changed
@@ -1699,7 +1699,7 @@ If Android glass surfaces still feel under-premium after the elevation removal +
 
 ## Sub-phase E.4 — Sheet/Modal lazy-render fix
 
-**Authority:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E4.md`](../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E4.md)
+**Authority:** `Mingla_Artifacts/prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E4.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_CYCLE_0a_SUBPHASE_E4.md`)
 **Outcome:** ORCH-BIZ-0a-E12 corrected. tsc clean. 2 files modified.
 
 ### E.4.1 Files changed

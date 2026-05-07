@@ -3,9 +3,9 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · grep PASS · runtime UNVERIFIED (awaits user smoke web + iOS)
 **Scope:** 7 files NEW · 1 file MOD · ~+850 LOC delta · 0 schema bumps · 0 new deps · 1 TRANSITIONAL (Cycle 8a/8b boundary toast)
-**Spec:** [Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_8_CHECKOUT.md](Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_8_CHECKOUT.md) §4.1, 4.2, 4.3, 4.4, 4.5, 4.11
-**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_8_CHECKOUT.md](Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_8_CHECKOUT.md)
-**Dispatch:** [Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_8a_CART_AND_TICKETS_BUYER.md](Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_8a_CART_AND_TICKETS_BUYER.md)
+**Spec:** [Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_8_CHECKOUT.md](../specs/SPEC_BIZ_CYCLE_8_CHECKOUT.md) §4.1, 4.2, 4.3, 4.4, 4.5, 4.11
+**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_8_CHECKOUT.md](INVESTIGATION_BIZ_CYCLE_8_CHECKOUT.md)
+**Dispatch:** Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_8a_CART_AND_TICKETS_BUYER.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_8a_CART_AND_TICKETS_BUYER.md`)
 
 ---
 

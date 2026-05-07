@@ -1,7 +1,7 @@
 # SPEC — BIZ Cycle 10 (Guest list, 6-journey slice)
 
 **Mode:** SPEC (forensics complete; operator-locked)
-**Dispatch:** [`prompts/SPEC_BIZ_CYCLE_10_GUEST_LIST.md`](../prompts/SPEC_BIZ_CYCLE_10_GUEST_LIST.md)
+**Dispatch:** `prompts/SPEC_BIZ_CYCLE_10_GUEST_LIST.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_10_GUEST_LIST.md`)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_10_GUEST_LIST.md`](../reports/INVESTIGATION_BIZ_CYCLE_10_GUEST_LIST.md)
 **Surface:** Mingla Business mobile app (`mingla-business/`) — operator-only
 **Target:** production-ready. Not "good enough." Not "works on happy path." Production.
@@ -813,7 +813,7 @@ For the class of bugs this cycle could introduce:
 ## 11 — Cross-references
 
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_10_GUEST_LIST.md`](../reports/INVESTIGATION_BIZ_CYCLE_10_GUEST_LIST.md)
-- Dispatch: [`prompts/SPEC_BIZ_CYCLE_10_GUEST_LIST.md`](../prompts/SPEC_BIZ_CYCLE_10_GUEST_LIST.md)
+- Dispatch: `prompts/SPEC_BIZ_CYCLE_10_GUEST_LIST.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_10_GUEST_LIST.md`)
 - PRD source: `Mingla_Artifacts/BUSINESS_PRD.md` §5.3
 - Cycle 9c v2 (selector pattern lessons): [`reports/IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v2.md`](../reports/IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v2.md)
 - Cycle 9c v3 (activity feed wire J-G4 / J-G5 piggyback): [`reports/IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v3.md`](../reports/IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v3.md)

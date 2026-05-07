@@ -12,7 +12,7 @@
 
 ## 1. Plain-English root cause summary
 
-The PR #62 chain has **2 confirmed apply-time bombs**, both in the SAME migration file: [`supabase/migrations/20260411000001_price_tier_restructure.sql`](../../supabase/migrations/20260411000001_price_tier_restructure.sql).
+The PR #62 chain has **2 confirmed apply-time bombs**, both in the SAME migration file: [`supabase/migrations/20260411000001_price_tier_restructure.sql`](../migrations_archive_orch_0729_2026-05-05/20260411000001_price_tier_restructure.sql).
 
 1. **Bomb #1 (already known — ORCH-0723):** `check_pairing_allowed` at line 140. Prior definition (`20260315000008:41`) returns `TABLE(allowed BOOLEAN, tier TEXT)` (2 OUT cols); the rewrite returns `TABLE(allowed BOOLEAN, current_count INTEGER, max_allowed INTEGER, tier TEXT)` (4 OUT cols). Postgres rejects with **SQLSTATE 42P13** because `CREATE OR REPLACE FUNCTION` cannot change OUT-parameter row shape.
 2. **Bomb #2 (NEW — surfaced by Track I detection):** `admin_list_subscriptions` at line 259. Prior definition (`20260317100001:153`) returns `TABLE(...14 cols including referral_bonus_used_months)`; the rewrite returns `TABLE(...13 cols, referral_bonus_used_months removed)`. Same SQLSTATE 42P13 class. Will surface as the **next** failure on PR #62 once Bomb #1 is fixed.
@@ -95,7 +95,7 @@ If the operator wants 100% coverage post-this-CLOSE, recommend re-running the ex
 
 **Status:** SAMPLED — relies on prior ORCH-0700 work + Cycle 13b memory.
 
-Prior ORCH closes for ai_approved (ORCH-0640) and ai_categories (ORCH-0700) cleaned the admin and mobile code surfaces. Confirmed by memory entry [`feedback_ai_categories_decommissioned.md`](../../C:/Users/user/.claude/projects/c--Users-user-Desktop-mingla-main/memory/feedback_ai_categories_decommissioned.md) marking those as ACTIVE-DECOMMISSIONED. permissions_matrix decommission (Cycle 13b) per [`feedback_permissions_matrix_decommissioned.md`](../../C:/Users/user/.claude/projects/c--Users-user-Desktop-mingla-main/memory/feedback_permissions_matrix_decommissioned.md) was a recent close — frontend `MIN_RANK + biz_role_rank` pattern replaces the table.
+Prior ORCH closes for ai_approved (ORCH-0640) and ai_categories (ORCH-0700) cleaned the admin and mobile code surfaces. Confirmed by memory entry `feedback_ai_categories_decommissioned.md` (historical source not versioned: `../../C:/Users/user/.claude/projects/c--Users-user-Desktop-mingla-main/memory/feedback_ai_categories_decommissioned.md`) marking those as ACTIVE-DECOMMISSIONED. permissions_matrix decommission (Cycle 13b) per `feedback_permissions_matrix_decommissioned.md` (historical source not versioned: `../../C:/Users/user/.claude/projects/c--Users-user-Desktop-mingla-main/memory/feedback_permissions_matrix_decommissioned.md`) was a recent close — frontend `MIN_RANK + biz_role_rank` pattern replaces the table.
 
 NOT exhaustively re-audited in this dispatch. Marked CLEAN by inheritance with the noted caveat.
 

@@ -5,7 +5,7 @@
 **Date:** 2026-05-04
 **Decision lock-in:** `DECISION_LOG.md` DEC-098 (D-16-1 split + D-16-2 separate Sentry project + 3 orchestrator-default-accept locks)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_16_CROSS_CUTTING_POLISH.md`](../reports/INVESTIGATION_BIZ_CYCLE_16_CROSS_CUTTING_POLISH.md)
-**Dispatch:** [`prompts/SPEC_BIZ_CYCLE_16A_QUICK_WINS.md`](../prompts/SPEC_BIZ_CYCLE_16A_QUICK_WINS.md)
+**Dispatch:** `prompts/SPEC_BIZ_CYCLE_16A_QUICK_WINS.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_16A_QUICK_WINS.md`)
 **Estimated effort:** ~13-17 hrs
 **Codebase:** `mingla-business/` (mobile + web; OTA-able)
 

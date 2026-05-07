@@ -620,7 +620,7 @@ In-flight runs: cron will re-kick the v4 worker within ≤90s. Run resumes at v4
 ## §14 Cross-references
 
 - Investigation: [`reports/INVESTIGATION_ORCH-0737_V5_THROUGHPUT.md`](../reports/INVESTIGATION_ORCH-0737_V5_THROUGHPUT.md)
-- Forensics dispatch: [`prompts/FORENSICS_ORCH-0737_V5_THROUGHPUT.md`](../prompts/FORENSICS_ORCH-0737_V5_THROUGHPUT.md)
+- Forensics dispatch: `prompts/FORENSICS_ORCH-0737_V5_THROUGHPUT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_ORCH-0737_V5_THROUGHPUT.md`)
 - Parent spec: [`SPEC_ORCH-0737_FULL_CITY_ASYNC_TRIAL_v2.md`](./SPEC_ORCH-0737_FULL_CITY_ASYNC_TRIAL_v2.md) — all SC-01..SC-22 + 7 invariants stand
 - Predecessor patches: v1 IMPLEMENTATION report, v2 PATCH report, v3 PATCH report, v4 PATCH report
 - DEC-111 (parent architecture)

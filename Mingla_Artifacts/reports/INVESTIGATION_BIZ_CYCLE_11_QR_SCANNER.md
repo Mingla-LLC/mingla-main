@@ -2,7 +2,7 @@
 
 **Mode:** INVESTIGATE
 **Cycle:** 11 (Mingla Business mobile app — operator/scanner-facing)
-**Dispatch:** [`prompts/FORENSICS_BIZ_CYCLE_11_QR_SCANNER.md`](../prompts/FORENSICS_BIZ_CYCLE_11_QR_SCANNER.md)
+**Dispatch:** `prompts/FORENSICS_BIZ_CYCLE_11_QR_SCANNER.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_11_QR_SCANNER.md`)
 **Confidence:** HIGH (every layer verified against actual code + PR #59 schema + package.json)
 **Date:** 2026-05-02
 
@@ -504,7 +504,7 @@ The 10 operator-steering questions are scope choices, not unknowns. Operator con
 
 ## 23 — Cross-references
 
-- Dispatch: [`prompts/FORENSICS_BIZ_CYCLE_11_QR_SCANNER.md`](../prompts/FORENSICS_BIZ_CYCLE_11_QR_SCANNER.md)
+- Dispatch: `prompts/FORENSICS_BIZ_CYCLE_11_QR_SCANNER.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_11_QR_SCANNER.md`)
 - PRD source: `Mingla_Artifacts/BUSINESS_PRD.md` §6 + §6.1 + §6.2
 - Cycle 10 close (Cycle 11 fulfills check-in column placeholder): commit `dc75b5dd`
 - Cycle 9c v3 backlog (D-9c-V3-3 scan-in-feed): [`reports/IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v3.md`](IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v3.md) §8

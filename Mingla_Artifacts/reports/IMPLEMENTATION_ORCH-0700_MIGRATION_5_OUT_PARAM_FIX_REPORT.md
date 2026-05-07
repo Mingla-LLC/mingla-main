@@ -2,7 +2,7 @@
 
 **Skill:** mingla-implementor
 **ORCH-ID:** ORCH-0700 Phase 2.E follow-up (LANDMINE-A1 patch)
-**Dispatch:** [IMPLEMENTOR_ORCH-0700_MIGRATION_5_OUT_PARAM_FIX.md](../prompts/IMPLEMENTOR_ORCH-0700_MIGRATION_5_OUT_PARAM_FIX.md)
+**Dispatch:** IMPLEMENTOR_ORCH-0700_MIGRATION_5_OUT_PARAM_FIX.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0700_MIGRATION_5_OUT_PARAM_FIX.md`)
 **Status:** **implemented and verified**
 **Verification:** PASS (pre-flight live signature ✅ + grep clean ✅)
 

@@ -3,7 +3,7 @@
 **Mode:** INVESTIGATE (forensics-only; NO spec, NO code changes)
 **Date:** 2026-05-05
 **Investigator:** mingla-forensics
-**Parent dispatch:** [`prompts/INVESTIGATOR_ORCH-0734_CITY_RUNS.md`](../prompts/INVESTIGATOR_ORCH-0734_CITY_RUNS.md)
+**Parent dispatch:** `prompts/INVESTIGATOR_ORCH-0734_CITY_RUNS.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/INVESTIGATOR_ORCH-0734_CITY_RUNS.md`)
 **Confidence:** H (high) on findings A-G + critical blocker; M-H on H (hidden flaws — runtime not yet exercised at city scale)
 
 ---

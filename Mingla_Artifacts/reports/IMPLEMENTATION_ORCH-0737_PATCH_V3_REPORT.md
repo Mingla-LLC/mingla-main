@@ -1,7 +1,7 @@
 # IMPLEMENTATION REPORT — ORCH-0737 v3 PATCH (cron filter cancelling)
 
 **ORCH-ID:** ORCH-0737 v3 patch (post-deploy fix; not re-implementation)
-**Dispatch:** [`prompts/IMPLEMENTOR_ORCH-0737_PATCH_V3_CONFIG_AND_CRON_FILTER.md`](../prompts/IMPLEMENTOR_ORCH-0737_PATCH_V3_CONFIG_AND_CRON_FILTER.md) (scope-locked to Fix 2 only; Fix 1 done in parallel chat)
+**Dispatch:** `prompts/IMPLEMENTOR_ORCH-0737_PATCH_V3_CONFIG_AND_CRON_FILTER.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0737_PATCH_V3_CONFIG_AND_CRON_FILTER.md`) (scope-locked to Fix 2 only; Fix 1 done in parallel chat)
 **Predecessor:** [`reports/IMPLEMENTATION_ORCH-0737_PATCH_V2_REPORT.md`](IMPLEMENTATION_ORCH-0737_PATCH_V2_REPORT.md) (v2 patch report)
 **Status:** **implemented, unverified** — code written + grep-verified; runtime cancel test pending operator
 **Effort:** ~3 min wallclock (vs ~3 min estimate)

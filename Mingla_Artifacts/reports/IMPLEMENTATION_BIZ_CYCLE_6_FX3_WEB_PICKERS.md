@@ -3,8 +3,8 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · web smoke UNVERIFIED (awaits user) · iOS regression UNVERIFIED
 **Scope:** 3 files MOD · ~210 LOC delta · 0 new external deps · 0 new files
-**Spec:** [specs/SPEC_ORCH-BIZ-CYCLE-6-FX3_WEB_PARITY_AUDIT.md](Mingla_Artifacts/specs/SPEC_ORCH-BIZ-CYCLE-6-FX3_WEB_PARITY_AUDIT.md)
-**Investigation:** [reports/INVESTIGATION_ORCH-BIZ-CYCLE-6-FX3_WEB_PARITY_AUDIT.md](Mingla_Artifacts/reports/INVESTIGATION_ORCH-BIZ-CYCLE-6-FX3_WEB_PARITY_AUDIT.md)
+**Spec:** [specs/SPEC_ORCH-BIZ-CYCLE-6-FX3_WEB_PARITY_AUDIT.md](../specs/SPEC_ORCH-BIZ-CYCLE-6-FX3_WEB_PARITY_AUDIT.md)
+**Investigation:** [reports/INVESTIGATION_ORCH-BIZ-CYCLE-6-FX3_WEB_PARITY_AUDIT.md](INVESTIGATION_ORCH-BIZ-CYCLE-6-FX3_WEB_PARITY_AUDIT.md)
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Status:** implemented and partially verified — Vite build PASS · grep gates PASS · Deno typecheck deferred (verifies on `supabase functions deploy`) · operator runtime verification PENDING (run 32-anchor sweep with Gemini provider; expect ~$0.16 vs Anthropic v3 $0.41)
 **ORCH IDs in scope:** ORCH-0713 Gemini A/B test
-**Dispatch:** [Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0713_GEMINI_COMPARISON.md](../prompts/IMPLEMENTOR_ORCH-0713_GEMINI_COMPARISON.md)
+**Dispatch:** Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0713_GEMINI_COMPARISON.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0713_GEMINI_COMPARISON.md`)
 **Builds on:** v3 cost reduction (commit `01ffad54`) — Q2-only, 768px collage, gap-filled inputs
 
 ---

@@ -4,7 +4,7 @@
 **Date:** 2026-05-03
 **Surface:** Mingla Business mobile app (`mingla-business/`) — operator/scanner-facing
 **Cycle:** 11 (8 journeys: J-S1..J-S8)
-**Dispatch:** [`prompts/IMPLEMENTOR_BIZ_CYCLE_11_QR_SCANNER.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_11_QR_SCANNER.md)
+**Dispatch:** `prompts/IMPLEMENTOR_BIZ_CYCLE_11_QR_SCANNER.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_11_QR_SCANNER.md`)
 **SPEC:** [`specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md`](../specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md) (1342 lines, operator-locked)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_11_QR_SCANNER.md`](./INVESTIGATION_BIZ_CYCLE_11_QR_SCANNER.md)
 
@@ -442,7 +442,7 @@ Full test matrix (T-01..T-43) in SPEC §7.
 
 - SPEC: [`specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md`](../specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md)
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_11_QR_SCANNER.md`](./INVESTIGATION_BIZ_CYCLE_11_QR_SCANNER.md)
-- Dispatch: [`prompts/IMPLEMENTOR_BIZ_CYCLE_11_QR_SCANNER.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_11_QR_SCANNER.md)
+- Dispatch: `prompts/IMPLEMENTOR_BIZ_CYCLE_11_QR_SCANNER.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_11_QR_SCANNER.md`)
 - Cycle 10 sister patterns: [`specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md`](../specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md) + commit `dc75b5dd`
 - Cycle 9c-2 activity feed (extension target): commit `5e4b04d2`
 - Cycle 8 QR utility: `mingla-business/src/utils/stubOrderId.ts`

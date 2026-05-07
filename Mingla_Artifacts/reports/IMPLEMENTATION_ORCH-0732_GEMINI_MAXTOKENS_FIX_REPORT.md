@@ -1,7 +1,7 @@
 # IMPLEMENTATION REPORT — ORCH-0732 Gemini maxOutputTokens Fix + Throttle Patch Bundle
 
 **Status:** implemented and partially verified — Vite build PASS · grep gates PASS · operator runtime verification PENDING (Gemini sweep should now succeed 32/32 with ~$0.16 cost, ~2-3 min wall).
-**Dispatch:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0732_GEMINI_MAXTOKENS_FIX.md`](../prompts/IMPLEMENTOR_ORCH-0732_GEMINI_MAXTOKENS_FIX.md)
+**Dispatch:** `Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0732_GEMINI_MAXTOKENS_FIX.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0732_GEMINI_MAXTOKENS_FIX.md`)
 **Builds on:** Gemini A/B comparison commit `d6cf230a` (introduced bug); throttle patch already in working tree from prior dispatch (uncommitted).
 **Live evidence of bug:** Run `064c6133-a842-49e1-8efc-f209722283f5` — 5 attempted, 5 failed with identical `finishReason=MALFORMED_FUNCTION_CALL`.
 

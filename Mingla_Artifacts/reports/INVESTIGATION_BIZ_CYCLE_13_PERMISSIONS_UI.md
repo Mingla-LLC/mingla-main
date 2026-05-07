@@ -3,7 +3,7 @@
 **Mode:** INVESTIGATE (decompose-first variant per dispatch — output is investigation + decomposition recommendation, NOT a SPEC; SPEC happens after operator picks the 13a slice)
 **Date:** 2026-05-03 (very late evening)
 **Surface:** Mingla Business mobile app (`mingla-business/`) — operator-side team management + role-based access control
-**Dispatch:** [`prompts/FORENSICS_BIZ_CYCLE_13_PERMISSIONS_UI.md`](../prompts/FORENSICS_BIZ_CYCLE_13_PERMISSIONS_UI.md)
+**Dispatch:** `prompts/FORENSICS_BIZ_CYCLE_13_PERMISSIONS_UI.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_13_PERMISSIONS_UI.md`)
 **Confidence:** **H** on schema findings + decomposition strawman; **M** on cycle-13b scope (depends on operator decision on permissions_override jsonb editor). All schema findings verified via PR #59 file (canonical; no later migration touches these 6 tables).
 
 ---
@@ -433,4 +433,4 @@ The `biz_role_rank()` function in PR #59 is a SQL-side authority for role hierar
 - Cycle 12 IMPL final report (canAcceptPayments toggle FLIP — first per-permission control surface): [`reports/IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_REPORT.md`](./IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_REPORT.md)
 - INVARIANT_REGISTRY (I-17 / I-22 / I-23 / I-24 / I-28; NEW I-31 + I-32 proposed): [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](../INVARIANT_REGISTRY.md)
 - Memory rules referenced: `feedback_implementor_uses_ui_ux_pro_max` (DESIGN-PACKAGE-SILENT pre-flight mandatory), `feedback_supabase_mcp_workaround` (Management API direct SQL when MCP errors), `feedback_orchestrator_never_executes` (orchestrator writes prompts; SPEC happens after operator picks slice), `feedback_diagnose_first_workflow` (this investigation IS the diagnose-first step)
-- Dispatch: [`prompts/FORENSICS_BIZ_CYCLE_13_PERMISSIONS_UI.md`](../prompts/FORENSICS_BIZ_CYCLE_13_PERMISSIONS_UI.md)
+- Dispatch: `prompts/FORENSICS_BIZ_CYCLE_13_PERMISSIONS_UI.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_13_PERMISSIONS_UI.md`)

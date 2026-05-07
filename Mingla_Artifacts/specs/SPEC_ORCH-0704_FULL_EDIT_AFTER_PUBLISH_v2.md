@@ -1428,8 +1428,8 @@ If operator wants to flip either, orchestrator updates spec section before imple
 
 - v1 spec (now obsolete): [SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md](SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md)
 - Investigation (canonical): [INVESTIGATION_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md](../reports/INVESTIGATION_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md)
-- v1 dispatch: [FORENSICS_SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md](../prompts/FORENSICS_SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md)
-- v2 dispatch: [SPEC_v2_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md](../prompts/SPEC_v2_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md)
+- v1 dispatch: FORENSICS_SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md`)
+- v2 dispatch: SPEC_v2_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_v2_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md`)
 - Forward dependency: Cycle 9c (renders banner from useEventEditLogStore + builds Orders refund flow + replaces stub helper)
 - Forward dependency: ORCH-0705 (no-show + post-event ops; deferred until post-Stripe)
 - B-cycle dependency: real Resend (email) + real Twilio (SMS)

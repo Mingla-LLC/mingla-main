@@ -1,7 +1,7 @@
 # INVESTIGATION REPORT — ORCH-0739 — Cross-device sync extension audit (events + Expo Web)
 
 **Authored:** 2026-05-06 by mingla-forensics
-**Dispatch:** [`prompts/INVESTIGATION_ORCH_0739_CROSS_DEVICE_SYNC_EXTENSION_EVENTS_WEB_BRUTAL.md`](../prompts/INVESTIGATION_ORCH_0739_CROSS_DEVICE_SYNC_EXTENSION_EVENTS_WEB_BRUTAL.md)
+**Dispatch:** `prompts/INVESTIGATION_ORCH_0739_CROSS_DEVICE_SYNC_EXTENSION_EVENTS_WEB_BRUTAL.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/INVESTIGATION_ORCH_0739_CROSS_DEVICE_SYNC_EXTENSION_EVENTS_WEB_BRUTAL.md`)
 **Predecessor:** [`reports/INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT.md`](INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT.md)
 **Mode:** INVESTIGATE-only (extension; appends to ORCH-0738; NO spec)
 **Confidence:** HIGH for both phases — events confirmed entirely client-side via grep; web target confirmed via app.json + package.json + Platform.OS branch survey.
@@ -57,13 +57,13 @@ Confidence: HIGH
 **Live code grep results:**
 
 ```
-$ Grep "\.from\([\"'\`](events|event_dates)[\"'\`]\)" mingla-business/src
+$ Grep "\.from\(\"'\` (historical source not versioned: `events|event_dates`)[\"'\`]\)" mingla-business/src
 mingla-business\src\services\brandsService.ts:203 — .select count (cascade preview, brandsService.softDeleteBrand step 1)
 mingla-business\src\hooks\useBrands.ts:362 — .select count (past events, useBrandCascadePreview)
 mingla-business\src\hooks\useBrands.ts:368 — .select count (upcoming events)
 mingla-business\src\hooks\useBrands.ts:374 — .select count (live events)
 
-$ Grep "\.from\([\"'\`](events|event_dates)[\"'\`]\)" mingla-business/app
+$ Grep "\.from\(\"'\` (historical source not versioned: `events|event_dates`)[\"'\`]\)" mingla-business/app
 (no matches)
 ```
 

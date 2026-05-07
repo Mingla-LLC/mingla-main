@@ -4,7 +4,7 @@
 **Mode:** REWORK (single missed swap-point — operator-caught)
 **Backward dep:** [IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v2.md](./IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v2.md) — all v2 content carries forward unchanged
 **Spec:** [SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md](../specs/SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md) — unchanged
-**Dispatch:** [IMPLEMENTOR_BIZ_CYCLE_9c_REWORK_v3.md](../prompts/IMPLEMENTOR_BIZ_CYCLE_9c_REWORK_v3.md)
+**Dispatch:** IMPLEMENTOR_BIZ_CYCLE_9c_REWORK_v3.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_9c_REWORK_v3.md`)
 
 ---
 
@@ -162,6 +162,6 @@ Single file. No new dependencies. No spec changes. No store-shape changes. No pe
 
 - v2 report: [IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v2.md](./IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v2.md)
 - v1 report: [IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT.md](./IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT.md)
-- v3 dispatch: [IMPLEMENTOR_BIZ_CYCLE_9c_REWORK_v3.md](../prompts/IMPLEMENTOR_BIZ_CYCLE_9c_REWORK_v3.md)
+- v3 dispatch: IMPLEMENTOR_BIZ_CYCLE_9c_REWORK_v3.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_9c_REWORK_v3.md`)
 - Cycle 9 forensics Q-9-11 (activity feed contract): [INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](./INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md) §5 Q-9-11
 - Spec: [SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md](../specs/SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md)

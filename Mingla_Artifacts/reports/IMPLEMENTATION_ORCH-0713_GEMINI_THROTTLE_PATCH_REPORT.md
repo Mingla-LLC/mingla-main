@@ -1,7 +1,7 @@
 # IMPLEMENTATION REPORT — ORCH-0713 Gemini Browser Throttle Patch
 
 **Status:** implemented and partially verified — Vite build PASS · grep gates PASS · operator runtime verification PENDING (re-run Gemini sweep, expect ~2-3 min vs prior ~10 min).
-**Dispatch:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0713_GEMINI_THROTTLE_PATCH.md`](../prompts/IMPLEMENTOR_ORCH-0713_GEMINI_THROTTLE_PATCH.md)
+**Dispatch:** `Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0713_GEMINI_THROTTLE_PATCH.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0713_GEMINI_THROTTLE_PATCH.md`)
 **Builds on:** Gemini A/B comparison commit `d6cf230a`
 
 ---

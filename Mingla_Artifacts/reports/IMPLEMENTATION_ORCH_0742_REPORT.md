@@ -4,7 +4,7 @@
 **Branch:** `Seth`
 **Pre-implementation HEAD:** `8693b309`
 **Spec:** [`Mingla_Artifacts/specs/SPEC_ORCH_0742_CURRENT_BRAND_ID_ONLY.md`](../specs/SPEC_ORCH_0742_CURRENT_BRAND_ID_ONLY.md)
-**Dispatch:** [`Mingla_Artifacts/prompts/IMPL_ORCH_0742_CURRENT_BRAND_ID_ONLY.md`](../prompts/IMPL_ORCH_0742_CURRENT_BRAND_ID_ONLY.md)
+**Dispatch:** `Mingla_Artifacts/prompts/IMPL_ORCH_0742_CURRENT_BRAND_ID_ONLY.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPL_ORCH_0742_CURRENT_BRAND_ID_ONLY.md`)
 **Status:** **implemented and verified** — Phase 2 complete; ready for orchestrator REVIEW → tester dispatch.
 
 ---

@@ -12,7 +12,7 @@
 
 ## 1. Symptom Summary
 
-Greenfield spec preparation. No bug. The J-A7 BrandProfileView Operations section currently renders a "Team & permissions" row with `[TRANSITIONAL]` Toast `"Team UI lands in J-A9."` ([BrandProfileView.tsx:108](mingla-business/src/components/brand/BrandProfileView.tsx#L108)). J-A9 builds the team UI — a list screen, an invite sheet, and a member detail screen.
+Greenfield spec preparation. No bug. The J-A7 BrandProfileView Operations section currently renders a "Team & permissions" row with `[TRANSITIONAL]` Toast `"Team UI lands in J-A9."` ([BrandProfileView.tsx:108](../../mingla-business/src/components/brand/BrandProfileView.tsx#L108)). J-A9 builds the team UI — a list screen, an invite sheet, and a member detail screen.
 
 **Expected post-J-A9 state:**
 - Tap "Team & permissions" row on J-A7 → navigates to `/brand/[id]/team`
@@ -78,7 +78,7 @@ Greenfield spec preparation. No bug. The J-A7 BrandProfileView Operations sectio
 
 #### H-A9-1 — Brand schema v6 lacks `members` and `pendingInvitations` fields
 
-- File: [`mingla-business/src/store/currentBrandStore.ts:98-121`](mingla-business/src/store/currentBrandStore.ts#L98-L121)
+- File: [`mingla-business/src/store/currentBrandStore.ts:98-121`](../../mingla-business/src/store/currentBrandStore.ts#L98-L121)
 - Current Brand v6 fields cover: id, displayName, slug, photo, role, stats, currentLiveEvent, bio, tagline, contact (with phoneCountryIso), links (with 6 social platforms), displayAttendeeCount
 - **Missing for J-A9:** `members?: BrandMember[]` + `pendingInvitations?: BrandInvitation[]`
 - §5.3.9 requires per-member rendering of avatar + name + role pill + last-active timestamp + overflow ⋯
@@ -91,7 +91,7 @@ Greenfield spec preparation. No bug. The J-A7 BrandProfileView Operations sectio
 
 #### H-A9-2 — J-A7 BrandProfileView's Operations row #2 is closure-scoped to a Toast
 
-- File: [`mingla-business/src/components/brand/BrandProfileView.tsx:97-112`](mingla-business/src/components/brand/BrandProfileView.tsx#L97-L112)
+- File: [`mingla-business/src/components/brand/BrandProfileView.tsx:97-112`](../../mingla-business/src/components/brand/BrandProfileView.tsx#L97-L112)
 - Current `OPERATIONS_ROWS[1]` data: `{ icon: "users", label: "Team & permissions", sub: "1 member", toastMessage: "Team UI lands in J-A9." }`
 - The Pressable handler at line 354 does `() => fireToast(row.toastMessage)` — no navigation
 - **Spec mitigation:** add `onTeam: (brandId: string) => void` prop to `BrandProfileViewProps`. Replace the closure for the Team row only (other rows remain TRANSITIONAL Toast). Sub-text becomes dynamic: `${members.length} member${members.length === 1 ? '' : 's'}`.
@@ -99,7 +99,7 @@ Greenfield spec preparation. No bug. The J-A7 BrandProfileView Operations sectio
 
 #### H-A9-3 — ConfirmDialog NOT wrapped in RN Modal portal (HF-1 carry-over)
 
-- File: [`mingla-business/src/components/ui/ConfirmDialog.tsx:122`](mingla-business/src/components/ui/ConfirmDialog.tsx#L122)
+- File: [`mingla-business/src/components/ui/ConfirmDialog.tsx:122`](../../mingla-business/src/components/ui/ConfirmDialog.tsx#L122)
 - ConfirmDialog wraps `./Modal` (custom kit Modal), NOT React Native's native `Modal`. The kit's `./Modal` is mounted inline in the React tree — it does NOT portal to OS root.
 - For J-A8 the ConfirmDialog appeared correctly because it was used at the screen-root level (sibling of the BrandEditView ScrollView, not nested inside it). The discard dialog mounts directly under the View tree at line 545 of BrandEditView.tsx.
 - **For J-A9 the same root-level mount applies** — `BrandTeamView` will render the remove-member ConfirmDialog at the View tree's root level, not nested in the FlatList. So ConfirmDialog visibility will work. **BUT** if the dialog is mounted inside the BrandMemberDetailView ScrollView (or any positioned-ancestor parent), the same bug class as Sheet pre-portal-fix will surface.
@@ -284,7 +284,7 @@ J-A9 ships:
 | DEC-079 | Kit closure preserved (Avatar + relative-time formatter composed inline) | ✅ no new primitive added |
 | DEC-080 | TopSheet untouched | ✅ J-A9 uses Sheet, not TopSheet |
 | DEC-081 | No `mingla-web/` references | ✅ |
-| DEC-082 | Icon set additive — `users` already exists; no new icons needed | ✅ confirmed in [Icon.tsx](mingla-business/src/components/ui/Icon.tsx) |
+| DEC-082 | Icon set additive — `users` already exists; no new icons needed | ✅ confirmed in [Icon.tsx](../../mingla-business/src/components/ui/Icon.tsx) |
 
 **Carry-over hidden flaws (not blocking J-A9):**
 - **HF-1 (J-A8 polish)** — ConfirmDialog NOT wrapped in RN Modal portal. J-A9 mitigates structurally (mount at screen-root only) — same discipline as J-A8 worked. Separate ORCH dispatch eventually upgrades the primitive.

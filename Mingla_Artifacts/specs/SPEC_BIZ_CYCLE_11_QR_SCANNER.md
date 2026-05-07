@@ -1,7 +1,7 @@
 # SPEC — BIZ Cycle 11 (QR scanner + check-in + scanner-team UI + per-ticket QR)
 
 **Mode:** SPEC (forensics complete; operator-locked)
-**Dispatch:** [`prompts/SPEC_BIZ_CYCLE_11_QR_SCANNER.md`](../prompts/SPEC_BIZ_CYCLE_11_QR_SCANNER.md)
+**Dispatch:** `prompts/SPEC_BIZ_CYCLE_11_QR_SCANNER.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_11_QR_SCANNER.md`)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_11_QR_SCANNER.md`](../reports/INVESTIGATION_BIZ_CYCLE_11_QR_SCANNER.md)
 **Surface:** Mingla Business mobile app (`mingla-business/`) — operator/scanner-facing
 **Target:** production-ready. Not "good enough." Not "works on happy path." Production.
@@ -1295,7 +1295,7 @@ Cycle 11 ships UI-complete; B-cycle ships functional. The B-cycle dispatch must 
 ## 12 — Cross-references
 
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_11_QR_SCANNER.md`](../reports/INVESTIGATION_BIZ_CYCLE_11_QR_SCANNER.md)
-- Dispatch: [`prompts/SPEC_BIZ_CYCLE_11_QR_SCANNER.md`](../prompts/SPEC_BIZ_CYCLE_11_QR_SCANNER.md)
+- Dispatch: `prompts/SPEC_BIZ_CYCLE_11_QR_SCANNER.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_11_QR_SCANNER.md`)
 - PRD source: `Mingla_Artifacts/BUSINESS_PRD.md` §6
 - Cycle 10 spec (sister-pattern reference): [`specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md`](./SPEC_BIZ_CYCLE_10_GUEST_LIST.md)
 - Cycle 10 close commit: `dc75b5dd` (Sister patterns: AddCompGuestSheet, app/event/[id]/guests/, useGuestStore)

@@ -4,7 +4,7 @@
 **Date:** 2026-05-03
 **Surface:** Mingla Business mobile app (`mingla-business/`) — operator/scanner-side door sales
 **Confidence:** H (high) on all 8 threads
-**Dispatch:** [`prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md`](../prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md)
+**Dispatch:** `prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md`)
 
 ---
 
@@ -86,7 +86,7 @@ export type CheckoutPaymentMethod = "card" | "apple_pay" | "google_pay" | "free"
 
 ### 🔵 OBS-2 — `door_sales_ledger` schema READY; ORCH-0706 hardened
 
-**File + line:** [`supabase/migrations/20260502100000_b1_business_schema_rls.sql:1730-1750`](../../supabase/migrations/20260502100000_b1_business_schema_rls.sql) + [`supabase/migrations/20260503100000_b1_5_pr_59_hardening.sql`](../../supabase/migrations/20260503100000_b1_5_pr_59_hardening.sql) SF-5
+**File + line:** [`supabase/migrations/20260502100000_b1_business_schema_rls.sql:1730-1750`](../migrations_archive_orch_0729_2026-05-05/20260502100000_b1_business_schema_rls.sql) + [`supabase/migrations/20260503100000_b1_5_pr_59_hardening.sql`](../migrations_archive_orch_0729_2026-05-05/20260503100000_b1_5_pr_59_hardening.sql) SF-5
 
 **Exact schema (verbatim):**
 ```sql
@@ -464,7 +464,7 @@ Refund affects money only per OBS-1. Operators who want to undo a check-in (e.g.
 
 ## 12 — Cross-references
 
-- Dispatch: [`prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md`](../prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md)
+- Dispatch: `prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_12_DOOR_SALES.md`)
 - BUSINESS_PRD §7 In-Person Payments + §14 MVP Foundations Cut
 - Cycle 11 SPEC + IMPL v2 (architectural pattern reference): [`specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md`](../specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md) + [`reports/IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT_v2.md`](./IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT_v2.md)
 - Cycle 10 SPEC + IMPL (J-G1/J-G2 extension target): [`specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md`](../specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md) + commit `dc75b5dd`
@@ -472,4 +472,4 @@ Refund affects money only per OBS-1. Operators who want to undo a check-in (e.g.
 - Cycle 8 checkout cart (pattern reference): commit `6d426755` + `mingla-business/src/components/checkout/CartContext.tsx`
 - ORCH-0706 close (door_sales_ledger CHECK constraint live): [`reports/IMPLEMENTATION_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING_REPORT.md`](./IMPLEMENTATION_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING_REPORT.md)
 - INVARIANT_REGISTRY (I-19/21/25/26/27/28 + I-29/30 NEW): [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](../INVARIANT_REGISTRY.md)
-- `door_sales_ledger` schema: [`supabase/migrations/20260502100000_b1_business_schema_rls.sql:1730-1750`](../../supabase/migrations/20260502100000_b1_business_schema_rls.sql) + ORCH-0706 SF-5 CHECK constraint
+- `door_sales_ledger` schema: [`supabase/migrations/20260502100000_b1_business_schema_rls.sql:1730-1750`](../migrations_archive_orch_0729_2026-05-05/20260502100000_b1_business_schema_rls.sql) + ORCH-0706 SF-5 CHECK constraint

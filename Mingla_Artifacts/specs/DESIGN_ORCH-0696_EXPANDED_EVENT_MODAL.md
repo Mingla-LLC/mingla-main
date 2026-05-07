@@ -1,7 +1,7 @@
 # DESIGN spec — ORCH-0696 Expanded Event Modal: bottom-sheet conversion + TM information architecture
 
 **Mode:** DESIGN (mingla-designer skill)
-**Dispatch:** [`prompts/DESIGN_ORCH-0696_EXPANDED_EVENT_MODAL.md`](../prompts/DESIGN_ORCH-0696_EXPANDED_EVENT_MODAL.md)
+**Dispatch:** `prompts/DESIGN_ORCH-0696_EXPANDED_EVENT_MODAL.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/DESIGN_ORCH-0696_EXPANDED_EVENT_MODAL.md`)
 **Date:** 2026-04-28
 **Designer:** mingla-designer
 **Output target:** This document is the design contract. Forensics audit + implementor consume it as ground truth.
@@ -64,7 +64,7 @@ This is a side benefit of the bottom-sheet conversion: it eliminates a transitio
 
 ## E-4: Design token mapping table
 
-Every visual property → token reference. Tokens come from [designSystem.ts](app-mobile/src/constants/designSystem.ts) and [colors.ts](app-mobile/src/constants/colors.ts).
+Every visual property → token reference. Tokens come from [designSystem.ts](../../app-mobile/src/constants/designSystem.ts) and [colors.ts](../../app-mobile/src/constants/colors.ts).
 
 ### E-4.1 Sheet chrome tokens
 

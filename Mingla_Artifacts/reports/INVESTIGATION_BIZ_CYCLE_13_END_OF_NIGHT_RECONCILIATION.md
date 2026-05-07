@@ -3,7 +3,7 @@
 **Mode:** INVESTIGATE (no SPEC dispatched yet — operator decisions surface back via §6 first)
 **Date:** 2026-05-04
 **Surface:** Mingla Business mobile app (`mingla-business/`) — operator-side cross-source reconciliation
-**Dispatch:** [`prompts/FORENSICS_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../prompts/FORENSICS_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md)
+**Dispatch:** `prompts/FORENSICS_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`)
 **Canonical epic:** [`github/epics/cycle-13.md`](../github/epics/cycle-13.md) — 3 journeys (J-R1 + J-R2 + J-R3), ~24h estimated
 **Confidence:** **H** overall · H per thread (every data source read, every selector verified, blast radius mapped)
 
@@ -21,7 +21,7 @@ After an event ends, organisers manually cross-reference 4 stores (orders + door
 | # | File | Reason |
 |---|------|--------|
 | 1 | [`Mingla_Artifacts/github/epics/cycle-13.md`](../github/epics/cycle-13.md) | Canonical Cycle 13 scope per `reference_cycle_roadmap_authoritative_source` memory rule. |
-| 2 | [`Mingla_Artifacts/prompts/FORENSICS_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../prompts/FORENSICS_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md) | Dispatch — 3 thread structure + cross-cutting concerns + hard constraints. |
+| 2 | `Mingla_Artifacts/prompts/FORENSICS_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`) | Dispatch — 3 thread structure + cross-cutting concerns + hard constraints. |
 
 ### 2.2 Data sources (Cycle 9c + 10 + 11 + 12)
 | # | File | Reason |
@@ -561,7 +561,7 @@ Per `feedback_implementor_uses_ui_ux_pro_max` memory rule, the J-R1 reconciliati
 ## 10 — Cross-references
 
 - Canonical epic: [`Mingla_Artifacts/github/epics/cycle-13.md`](../github/epics/cycle-13.md)
-- Dispatch: [`prompts/FORENSICS_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../prompts/FORENSICS_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md)
+- Dispatch: `prompts/FORENSICS_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`)
 - Cycle 12 close (door-side reconciliation J-D5 partial coverage): [`reports/IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_REPORT.md`](IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_REPORT.md)
 - Cycle 9c v3 (orderStore + activity feed): [`reports/IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v3.md`](IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v3.md)
 - Cycle 10 (guestStore + CSV export TRANSITIONAL): [`reports/IMPLEMENTATION_BIZ_CYCLE_10_GUEST_LIST_REPORT.md`](IMPLEMENTATION_BIZ_CYCLE_10_GUEST_LIST_REPORT.md)

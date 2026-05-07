@@ -1,7 +1,7 @@
 # IMPL REPORT — ORCH-0740 — Cross-device sync Cycle 1 (Foundation)
 
 **Mode:** IMPLEMENT (binding spec — paste verbatim where indicated)
-**Dispatch:** [`prompts/IMPL_ORCH_0740_CROSS_DEVICE_SYNC_FOUNDATION.md`](../prompts/IMPL_ORCH_0740_CROSS_DEVICE_SYNC_FOUNDATION.md)
+**Dispatch:** `prompts/IMPL_ORCH_0740_CROSS_DEVICE_SYNC_FOUNDATION.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPL_ORCH_0740_CROSS_DEVICE_SYNC_FOUNDATION.md`)
 **SPEC (BINDING):** [`specs/SPEC_ORCH_0740_CROSS_DEVICE_SYNC_FOUNDATION.md`](../specs/SPEC_ORCH_0740_CROSS_DEVICE_SYNC_FOUNDATION.md)
 **Investigations:** [`reports/INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT.md`](INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT.md) + [`reports/INVESTIGATION_ORCH_0739_EVENTS_AND_WEB_EXTENSION.md`](INVESTIGATION_ORCH_0739_EVENTS_AND_WEB_EXTENSION.md)
 **Closes (after operator UI smoke + tester PASS):** RC-B (zero focusManager) + HF-1 (RQ cache not cleared on signOut) + CF-2 (hardcoded role-cache key) + partial CF-1 (5min role staleTime → 30s)

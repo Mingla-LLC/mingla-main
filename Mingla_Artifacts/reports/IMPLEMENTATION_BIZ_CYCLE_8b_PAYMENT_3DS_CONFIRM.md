@@ -3,10 +3,10 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · grep oklch PASS · grep `@stripe/stripe-react-native` PASS (no real imports) · runtime UNVERIFIED (awaits user smoke web + iOS)
 **Scope:** 5 files NEW · 1 file MOD · ~+1,150 LOC delta · 0 schema bumps · 0 new deps · 0 new TRANSITIONALs (only documented stubs: Stripe SDK / email / wallet)
-**Spec:** [Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_8_CHECKOUT.md](Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_8_CHECKOUT.md) §4.6, §4.7, §4.8, §4.9, §4.10, §4.12
-**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_8_CHECKOUT.md](Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_8_CHECKOUT.md)
-**Cycle 8a delivered:** [Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_8a_CART_AND_TICKETS_BUYER.md](Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_8a_CART_AND_TICKETS_BUYER.md)
-**Dispatch:** [Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_8b_PAYMENT_3DS_CONFIRM.md](Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_8b_PAYMENT_3DS_CONFIRM.md)
+**Spec:** [Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_8_CHECKOUT.md](../specs/SPEC_BIZ_CYCLE_8_CHECKOUT.md) §4.6, §4.7, §4.8, §4.9, §4.10, §4.12
+**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_8_CHECKOUT.md](INVESTIGATION_BIZ_CYCLE_8_CHECKOUT.md)
+**Cycle 8a delivered:** [Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_8a_CART_AND_TICKETS_BUYER.md](IMPLEMENTATION_BIZ_CYCLE_8a_CART_AND_TICKETS_BUYER.md)
+**Dispatch:** Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_8b_PAYMENT_3DS_CONFIRM.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_8b_PAYMENT_3DS_CONFIRM.md`)
 
 ---
 

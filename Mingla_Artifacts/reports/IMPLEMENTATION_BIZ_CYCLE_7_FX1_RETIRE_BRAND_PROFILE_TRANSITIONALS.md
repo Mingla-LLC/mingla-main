@@ -3,7 +3,7 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · runtime UNVERIFIED (awaits user smoke)
 **Scope:** 2 files MOD · ~+85/-25 LOC delta · 0 new external deps · 3 TRANSITIONALs retired
-**Spec:** [prompts/IMPL_BIZ_CYCLE_7_FX1_RETIRE_BRAND_PROFILE_TRANSITIONALS.md](Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_7_FX1_RETIRE_BRAND_PROFILE_TRANSITIONALS.md)
+**Spec:** prompts/IMPL_BIZ_CYCLE_7_FX1_RETIRE_BRAND_PROFILE_TRANSITIONALS.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_7_FX1_RETIRE_BRAND_PROFILE_TRANSITIONALS.md`)
 
 ---
 

@@ -5,9 +5,9 @@
 **Journey:** J-A9 — Brand team (list / invite / role / remove)
 **Codebase:** `mingla-business/`
 **Predecessor commit:** `2d0ec549` (J-A8 + polish CLOSE)
-**Spec:** [SPEC_ORCH-BIZ-CYCLE-2-J-A9_BRAND_TEAM.md](Mingla_Artifacts/specs/SPEC_ORCH-BIZ-CYCLE-2-J-A9_BRAND_TEAM.md)
-**Investigation:** [INVESTIGATION_ORCH-BIZ-CYCLE-2-J-A9.md](Mingla_Artifacts/reports/INVESTIGATION_ORCH-BIZ-CYCLE-2-J-A9.md)
-**Dispatch:** [IMPL_BIZ_CYCLE_2_J_A9_BRAND_TEAM.md](Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_2_J_A9_BRAND_TEAM.md)
+**Spec:** [SPEC_ORCH-BIZ-CYCLE-2-J-A9_BRAND_TEAM.md](../specs/SPEC_ORCH-BIZ-CYCLE-2-J-A9_BRAND_TEAM.md)
+**Investigation:** [INVESTIGATION_ORCH-BIZ-CYCLE-2-J-A9.md](INVESTIGATION_ORCH-BIZ-CYCLE-2-J-A9.md)
+**Dispatch:** IMPL_BIZ_CYCLE_2_J_A9_BRAND_TEAM.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_2_J_A9_BRAND_TEAM.md`)
 **Implementor turn:** 2026-04-29
 
 ---

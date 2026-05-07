@@ -1,7 +1,7 @@
 # INVESTIGATION REPORT — ORCH-0728 PASS-3 BRUTAL (full mingla-business audit)
 
 **Mode:** INVESTIGATE-THEN-SPEC (PASS-3 brutal — supersedes PASS-1 + PASS-2 conclusions)
-**Dispatch anchor:** [`prompts/INVESTIGATION_ORCH_0728_PASS_3_BRUTAL.md`](../prompts/INVESTIGATION_ORCH_0728_PASS_3_BRUTAL.md)
+**Dispatch anchor:** `prompts/INVESTIGATION_ORCH_0728_PASS_3_BRUTAL.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/INVESTIGATION_ORCH_0728_PASS_3_BRUTAL.md`)
 **Companion spec:** [`specs/SPEC_ORCH_0728_FULL_FIX.md`](../specs/SPEC_ORCH_0728_FULL_FIX.md) (SUPERSEDES `SPEC_ORCH_0728_BRAND_CREATE_FIX_AND_MB_ERROR_LOGGING.md`)
 **Authored:** 2026-05-05
 

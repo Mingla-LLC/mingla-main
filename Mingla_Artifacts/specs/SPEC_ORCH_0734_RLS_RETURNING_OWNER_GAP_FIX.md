@@ -351,7 +351,7 @@ Pair: one `CREATE POLICY ... FOR INSERT WITH CHECK (col = auth.uid() AND ...)` +
 Add under "Supabase / Backend Patterns" section heading (or create section if absent):
 
 ```markdown
-- [RLS-RETURNING-OWNER-GAP bug class](feedback_rls_returning_owner_gap.md) — pair every owner-callable mutation policy with direct-predicate owner-SELECT/UPDATE; SECURITY DEFINER helpers fail in RETURNING + soft-delete WITH CHECK contexts (status: DRAFT — flips to ACTIVE on ORCH-0734 CLOSE)
+- RLS-RETURNING-OWNER-GAP bug class (historical source not versioned: `feedback_rls_returning_owner_gap.md`) — pair every owner-callable mutation policy with direct-predicate owner-SELECT/UPDATE; SECURITY DEFINER helpers fail in RETURNING + soft-delete WITH CHECK contexts (status: DRAFT — flips to ACTIVE on ORCH-0734 CLOSE)
 ```
 
 ---

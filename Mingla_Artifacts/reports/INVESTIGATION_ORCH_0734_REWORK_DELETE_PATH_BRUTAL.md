@@ -2,7 +2,7 @@
 
 **Authored:** 2026-05-06 by mingla-forensics
 **Predecessors:** ORCH-0734 IMPL v1 (partial PASS — RC-0728-A fixed, RC-0728-B not closed)
-**Dispatch:** [`prompts/INVESTIGATION_ORCH_0734_REWORK_DELETE_PATH_BRUTAL.md`](../prompts/INVESTIGATION_ORCH_0734_REWORK_DELETE_PATH_BRUTAL.md)
+**Dispatch:** `prompts/INVESTIGATION_ORCH_0734_REWORK_DELETE_PATH_BRUTAL.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/INVESTIGATION_ORCH_0734_REWORK_DELETE_PATH_BRUTAL.md`)
 **Confidence:** HIGH for both root causes; HIGH for the audit completeness; MEDIUM for which of the two RCs the operator actually hit on each specific delete attempt (without Metro logs we can't pin every individual UI tap, but the bug class is proven by static-trace + DB ground truth).
 
 ---

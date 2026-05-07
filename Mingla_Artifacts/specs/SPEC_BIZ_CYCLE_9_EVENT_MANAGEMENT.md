@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-01
 **Author:** mingla-forensics
-**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md)
+**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](../reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md)
 **Estimated effort:** 3 sub-cycles. ~34–46 hrs implementor + ~6 hrs smoke. Total ~12 net-new files + 4 edits across all sub-cycles.
 
 ---

@@ -390,7 +390,7 @@ Lock releases at RPC return. Chunk serialization is done by the heartbeat-stalen
 ## 13. Cross-references
 
 - Spec (companion): [`SPEC_ORCH-0737_PATCH_V5_THROUGHPUT.md`](../specs/SPEC_ORCH-0737_PATCH_V5_THROUGHPUT.md)
-- Forensics dispatch: [`prompts/FORENSICS_ORCH-0737_V5_THROUGHPUT.md`](../prompts/FORENSICS_ORCH-0737_V5_THROUGHPUT.md)
+- Forensics dispatch: `prompts/FORENSICS_ORCH-0737_V5_THROUGHPUT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_ORCH-0737_V5_THROUGHPUT.md`)
 - Predecessor reports: v1, v2, v3, v4 implementation reports (above)
 - Binding spec: [`SPEC_ORCH-0737_FULL_CITY_ASYNC_TRIAL_v2.md`](../specs/SPEC_ORCH-0737_FULL_CITY_ASYNC_TRIAL_v2.md)
 - Live SQL probes: 8 probes against in-flight Cary run 6e26715f-fd50-49eb-80f8-5aa23027e428 (probe outputs documented in §3 and §7)

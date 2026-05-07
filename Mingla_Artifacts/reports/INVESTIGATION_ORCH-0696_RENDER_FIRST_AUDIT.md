@@ -1,7 +1,7 @@
 # INVESTIGATION_ORCH-0696_RENDER_FIRST_AUDIT
 
 **Investigator:** mingla-forensics (INVESTIGATE-only)
-**Dispatch:** [prompts/FORENSICS_ORCH-0696_RENDER_FIRST_AUDIT.md](../prompts/FORENSICS_ORCH-0696_RENDER_FIRST_AUDIT.md)
+**Dispatch:** prompts/FORENSICS_ORCH-0696_RENDER_FIRST_AUDIT.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_ORCH-0696_RENDER_FIRST_AUDIT.md`)
 **Design target:** [specs/DESIGN_ORCH-0696_EXPANDED_EVENT_MODAL.md](../specs/DESIGN_ORCH-0696_EXPANDED_EVENT_MODAL.md) — REVIEW APPROVED 10/10
 **Date:** 2026-04-28
 **Confidence:** HIGH (code-deterministic for all chrome / IA / token findings · MEDIUM for runtime predictions about `@gorhom/bottom-sheet` toast stacking — labelled NEEDS-LIVE-FIRE where applicable)
@@ -30,7 +30,7 @@ The Expanded Card Modal today is one centered floating white card mounted from 8
 | Source | Read | Outcome |
 |---|---|---|
 | Designer spec | [`specs/DESIGN_ORCH-0696_EXPANDED_EVENT_MODAL.md`](../specs/DESIGN_ORCH-0696_EXPANDED_EVENT_MODAL.md) lines 1-300+ | Bottom-sheet chrome E-3 / token tables E-4 / event IA wireframes E-5 / place IA preservation E-6 / render branching contract E-7 / motion E-8 / a11y E-9 — all read |
-| Forensics dispatch | [`prompts/FORENSICS_ORCH-0696_RENDER_FIRST_AUDIT.md`](../prompts/FORENSICS_ORCH-0696_RENDER_FIRST_AUDIT.md) | 8 mount surfaces enumerated; render-first rule, OQ-1..OQ-6 lock-ins read |
+| Forensics dispatch | `prompts/FORENSICS_ORCH-0696_RENDER_FIRST_AUDIT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_ORCH-0696_RENDER_FIRST_AUDIT.md`) | 8 mount surfaces enumerated; render-first rule, OQ-1..OQ-6 lock-ins read |
 | MEMORY.md | Project memory + ORCH-0685 cycle-3 lessons | RN Modal portal pattern context confirmed |
 | `package.json` | `app-mobile/package.json` lines 21 + 41 | `@gorhom/bottom-sheet@^5.2.8` ✅ present · `expo-calendar@~15.0.8` ✅ present |
 | Existing reference sheets | `MapBottomSheet.tsx` + `PersonBottomSheet.tsx` | Both use `@gorhom/bottom-sheet` with `snapPoints + handleIndicatorStyle + backgroundStyle + BottomSheetScrollView` — the canonical pattern |

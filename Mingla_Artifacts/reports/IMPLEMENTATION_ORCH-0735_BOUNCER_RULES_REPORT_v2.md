@@ -4,7 +4,7 @@
 **Date:** 2026-05-05
 **Implementor:** mingla-implementor (rework mode)
 **Parent v1 report:** [`IMPLEMENTATION_ORCH-0735_BOUNCER_RULES_REPORT.md`](IMPLEMENTATION_ORCH-0735_BOUNCER_RULES_REPORT.md) (historical record; remains unchanged)
-**Rework dispatch:** [`prompts/IMPLEMENTOR_ORCH-0735_REWORK_DROP_4_PATTERNS.md`](../prompts/IMPLEMENTOR_ORCH-0735_REWORK_DROP_4_PATTERNS.md)
+**Rework dispatch:** `prompts/IMPLEMENTOR_ORCH-0735_REWORK_DROP_4_PATTERNS.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0735_REWORK_DROP_4_PATTERNS.md`)
 **SPEC:** [`specs/SPEC_ORCH-0735_BOUNCER_CHAIN_FAST_FOOD_RULES.md`](../specs/SPEC_ORCH-0735_BOUNCER_CHAIN_FAST_FOOD_RULES.md) (BINDING; §6.B amended)
 
 ---

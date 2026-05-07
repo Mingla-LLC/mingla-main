@@ -46,14 +46,14 @@ that way by AI categorisation under the legacy bundled taxonomy.
 **Verdict:** No silent type-substitution at the routing/fan-out layer. Confidence M
 (static trace complete; live-fire reproduction blocked — see §10).
 
-**Trace:** Mobile [`PreferencesSheet.tsx:108`](app-mobile/src/components/PreferencesSheet.tsx#L108)
+**Trace:** Mobile [`PreferencesSheet.tsx:108`](../../app-mobile/src/components/PreferencesSheet.tsx#L108)
 defines the Movies chip with `id: 'movies'`. User selection flows through
-[`deckService.ts:255`](app-mobile/src/services/deckService.ts#L255) (`'movies' → pillId 'movies'`),
-then [`deckService.ts:148`](app-mobile/src/services/deckService.ts#L148)
+[`deckService.ts:255`](../../app-mobile/src/services/deckService.ts#L255) (`'movies' → pillId 'movies'`),
+then [`deckService.ts:148`](../../app-mobile/src/services/deckService.ts#L148)
 (`PILL_TO_CATEGORY_NAME['movies'] = 'Movies'`), and is sent on the wire as
-`categories: ['Movies']` at [`deckService.ts:403`](app-mobile/src/services/deckService.ts#L403).
+`categories: ['Movies']` at [`deckService.ts:403`](../../app-mobile/src/services/deckService.ts#L403).
 
-In [`discover-cards/index.ts:79`](supabase/functions/discover-cards/index.ts#L79),
+In [`discover-cards/index.ts:79`](../../supabase/functions/discover-cards/index.ts#L79),
 `CATEGORY_TO_SIGNAL['Movies'] = { signalIds: ['movies'], filterMin: 80, displayCategory: 'Movies' }`.
 A single `RpcTask` is built at lines 861-873 with `signalId: 'movies'`. The RPC
 `query_servable_places_by_signal` is invoked at lines 889-901 with
@@ -65,7 +65,7 @@ the function exits with `path:'pool-empty'` at lines 959-967 — **the deck goes
 honestly empty**, not silently padded.
 
 The displayCategory on the resulting cards is set at
-[`discover-cards/index.ts:920-921`](supabase/functions/discover-cards/index.ts#L920)
+[`discover-cards/index.ts:920-921`](../../supabase/functions/discover-cards/index.ts#L920)
 from `task.displayCategory` (= `'Movies'`), independent of the row's `primary_type`.
 So whatever the RPC returns will be labelled `category: 'Movies'`. This is not a
 problem when the RPC only returns cinemas — but if the SCORER lets a non-cinema
@@ -80,21 +80,21 @@ at the routing layer.** Mobile sees `total: 0`, deck terminates honestly.
 **Verdict:** `displayCategory` is fabricated at routing time, not derived from
 `primary_type`. Confidence H.
 
-**Evidence:** [`discover-cards/index.ts:53-97`](supabase/functions/discover-cards/index.ts#L53-L97)
+**Evidence:** [`discover-cards/index.ts:53-97`](../../supabase/functions/discover-cards/index.ts#L53-L97)
 defines `CATEGORY_TO_SIGNAL` as the sole source of `displayCategory`, attached to
 every row at line 921 via `__displayCategory: task.displayCategory`. The
 transformer at
-[`discover-cards/index.ts:589`](supabase/functions/discover-cards/index.ts#L589) sets
+[`discover-cards/index.ts:589`](../../supabase/functions/discover-cards/index.ts#L589) sets
 `category: categoryLabel` directly from this, never consulting `row.primary_type`.
 
 The legacy union mapping at
-[`discover-cards/index.ts:95-96`](supabase/functions/discover-cards/index.ts#L95-L96)
+[`discover-cards/index.ts:95-96`](../../supabase/functions/discover-cards/index.ts#L95-L96)
 sets `displayCategory: 'Movies'` for `signalIds: ['movies', 'theatre']` — meaning
 **every theatre row served via the union path arrives with a `category: 'Movies'`
 label.** This is the structural root of pathway A1.
 
 By contrast,
-[`get-person-hero-cards/index.ts:109`](supabase/functions/get-person-hero-cards/index.ts#L109)
+[`get-person-hero-cards/index.ts:109`](../../supabase/functions/get-person-hero-cards/index.ts#L109)
 correctly derives category from `primary_type` via
 `mapPrimaryTypeToMinglaCategory(raw.primary_type, raw.types ?? [])`. **Person-hero
 labels honestly. Discover-cards labels by routing intent.** This is a Constitution
@@ -108,7 +108,7 @@ should be.
 H on existence of the leak conduit.
 
 **Static evidence of pre-OTA exposure:** Migration
-[`20260423300001_orch_0598_signal_batch.sql:5-9`](supabase/migrations/20260423300001_orch_0598_signal_batch.sql#L5-L9)
+[`20260423300001_orch_0598_signal_batch.sql:5-9`](../migrations_archive_orch_0729_2026-05-05/20260423300001_orch_0598_signal_batch.sql#L5-L9)
 records the pre-split impact baseline: "2 users have `'movies_theatre'` in
 categories; 1 user has `'Movies & Theatre'` in display_categories; 0 users have
 pre-existing `'movies'` or `'theatre'`." The migration UPDATE at lines 312-332
@@ -122,7 +122,7 @@ pre-OTA app that still has a `'movies_theatre'` chip in its bundled UI will send
 the server's `CATEGORY_TO_SIGNAL['Movies & Theatre']` entry serves that union with
 `displayCategory: 'Movies'`. The leak conduit is alive until 2026-05-13 (the
 `[TRANSITIONAL]` exit date locked in the comment at
-[`discover-cards/index.ts:94`](supabase/functions/discover-cards/index.ts#L94)).
+[`discover-cards/index.ts:94`](../../supabase/functions/discover-cards/index.ts#L94)).
 
 **Confidence raise path:** query Mixpanel / edge-function logs for
 `categories=Movies & Theatre` events in the last 7 days. Not done — operator can
@@ -134,7 +134,7 @@ quantify post-report.
 It does NOT loosen type-matching, distance, or category boundaries. Confidence H.
 
 **Evidence:** the RPC at
-[`20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql:75-95`](supabase/migrations/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql#L75-L95)
+[`20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql:75-95`](../migrations_archive_orch_0729_2026-05-05/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql#L75-L95)
 applies `filter_min` exclusively at line 77: `AND ps.score >= p_filter_min`. The
 WHERE clause has no type-matching predicate, no category-borrowing branch, and no
 sibling-signal fallback. It's a single-signal query. So the only effect of 80 vs
@@ -151,14 +151,14 @@ window for the scorer's promiscuity to surface.
 **Verdict:** No cross-contamination. Theatre-lane cards stay typed Theatre.
 Confidence H.
 
-**Evidence:** [`discover-cards/index.ts:905-924`](supabase/functions/discover-cards/index.ts#L905-L924)
+**Evidence:** [`discover-cards/index.ts:905-924`](../../supabase/functions/discover-cards/index.ts#L905-L924)
 maintains a separate bucket per chip: `Map<chipName, Map<placeId, row>>`. Movies
 results are stored under `chip='Movies'` and tagged `__displayCategory: 'Movies'`;
 Theatre results under `chip='Theatre'` and tagged `__displayCategory: 'Theatre'`.
 Even when the same physical place is returned by both signals (e.g., Alamo
 Drafthouse hits both 'movies' +80 and 'theatre' soft-positive, per the THEATRE
 signal's `movie_theater: -20` field weight at
-[`20260423300001_orch_0598_signal_batch.sql:273`](supabase/migrations/20260423300001_orch_0598_signal_batch.sql#L273)),
+[`20260423300001_orch_0598_signal_batch.sql:273`](../migrations_archive_orch_0729_2026-05-05/20260423300001_orch_0598_signal_batch.sql#L273)),
 each chip-bucket gets its own copy with the correct displayCategory for that chip.
 The round-robin interleave at line 957 preserves chip identity through to the
 card output.
@@ -175,7 +175,7 @@ segment and never returns Film-classified events. It also never feeds into
 `discover-cards`. Confidence H.
 
 **Evidence:**
-[`ticketmaster-events/index.ts:16`](supabase/functions/ticketmaster-events/index.ts#L16)
+[`ticketmaster-events/index.ts:16`](../../supabase/functions/ticketmaster-events/index.ts#L16)
 defines `MUSIC_SEGMENT_ID = "KZFzniwnSyZfZ7v7nJ"` and the URL builder at line 314
 unconditionally sets `segmentId: MUSIC_SEGMENT_ID`. There is no `'Film'`,
 `'Theatre'`, `'Sports'`, or `'Comedy'` code path anywhere in the function. The
@@ -195,7 +195,7 @@ the Movies deck even at the Music segment level.
 Confidence H on both.
 
 **G7-A — generate-curated-experiences (composition):** at
-[`generate-curated-experiences/index.ts:469-471`](supabase/functions/generate-curated-experiences/index.ts#L469-L471),
+[`generate-curated-experiences/index.ts:469-471`](../../supabase/functions/generate-curated-experiences/index.ts#L469-L471),
 `COMBO_SLUG_TO_FILTER_SIGNAL` maps `'movies' → 'movies'` and `'theatre' → 'theatre'`
 as separate entries. The legacy `'movies_theatre' → 'movies'` entry is marked
 "// legacy TRANSITIONAL — movies union handled upstream". Combo definitions at
@@ -204,14 +204,14 @@ override at line 594 sets `'movies': 80` for cinema thinness. **Curated chain
 composition correctly serves Movies stops via the `'movies'` signal RPC alone.**
 
 **G7-B — replace-curated-stop:** **CONFIRMED LEAK PATHWAY.** At
-[`replace-curated-stop/index.ts:11-15`](supabase/functions/replace-curated-stop/index.ts#L11-L15),
+[`replace-curated-stop/index.ts:11-15`](../../supabase/functions/replace-curated-stop/index.ts#L11-L15),
 `VALID_CATEGORIES` includes `'movies_theatre'` (legacy bundled slug) but NOT
 `'movies'` or `'theatre'` separately. A request with `categoryId: 'movies'` is
 rejected with HTTP 400. So today, if any caller (mobile chain UI, future curated
 swap) tries to swap a Movies-typed stop, it must use `'movies_theatre'`.
 
 That request flows into
-[`stopAlternatives.ts:86`](supabase/functions/_shared/stopAlternatives.ts#L86):
+[`stopAlternatives.ts:86`](../../supabase/functions/_shared/stopAlternatives.ts#L86):
 `.contains('ai_categories', [categoryId])`. **Any place_pool row whose
 `ai_categories` array includes `'movies_theatre'` is returned as a Movies
 alternative**, regardless of whether the row's `primary_type` is `movie_theater`,
@@ -232,7 +232,7 @@ disagree.
 `CATEGORY_TO_SIGNAL` map. Confidence H.
 
 **Evidence:** the only solo/collab divergence in `discover-cards` is at
-[`discover-cards/index.ts:1000-1004`](supabase/functions/discover-cards/index.ts#L1000-L1004)
+[`discover-cards/index.ts:1000-1004`](../../supabase/functions/discover-cards/index.ts#L1000-L1004)
 — collab zeroes out `matchScore` for deterministic ordering. Both modes execute
 the identical chip→signal→bucket→displayCategory pipeline at lines 814-924. Any
 A1/A3 leak on solo applies identically on collab.
@@ -241,7 +241,7 @@ A1/A3 leak on solo applies identically on collab.
 
 | Layer | What it says about Movies | Authoritative? |
 |---|---|---|
-| **Docs** | ORCH-0598 spec splits Movies (cinemas) from Theatre (live performance). Comment at [`categoryPlaceTypes.ts:66-67`](supabase/functions/_shared/categoryPlaceTypes.ts#L66-L67) confirms separation, with legacy `'Movies & Theatre'` retained as `[TRANSITIONAL]`. | Yes for intent |
+| **Docs** | ORCH-0598 spec splits Movies (cinemas) from Theatre (live performance). Comment at [`categoryPlaceTypes.ts:66-67`](../../supabase/functions/_shared/categoryPlaceTypes.ts#L66-L67) confirms separation, with legacy `'Movies & Theatre'` retained as `[TRANSITIONAL]`. | Yes for intent |
 | **Schema** | `place_pool.ai_categories` is a `text[]` populated by the AI categoriser. No migration found that re-tags `'movies_theatre'`-tagged rows to `'movies'` or `'theatre'`. `signal_definitions` registers `movies` and `theatre` as separate signals (migration `20260423300001_orch_0598_signal_batch.sql:22-31`). `place_scores` rows exist per `(place_id, signal_id)` pair — verified writeable by the scorer. | Yes for what's stored |
 | **Code** | Discover-cards uses `__displayCategory` from routing, not from `primary_type`. Person-hero uses `mapPrimaryTypeToMinglaCategory` from the row itself. Curated swap uses `ai_categories CONTAINS`. **Three different code paths use three different rules to decide "what category is this place?"** | NO — Constitution #2 violation |
 | **Runtime** | Not directly observed (no live-fire). | UNVERIFIED |
@@ -260,7 +260,7 @@ Confidence H on the architecture, M on per-chip impact.
 
 **Evidence:** the same `[TRANSITIONAL]` pattern exists for
 `'Brunch, Lunch & Casual'` at
-[`discover-cards/index.ts:90-91`](supabase/functions/discover-cards/index.ts#L90-L91)
+[`discover-cards/index.ts:90-91`](../../supabase/functions/discover-cards/index.ts#L90-L91)
 (`signalIds: ['brunch', 'casual_food']`, `displayCategory: 'Brunch'` — exit
 2026-05-12). A pre-OTA client sending the bundled `'Brunch, Lunch & Casual'`
 chip gets casual-food venues (taquerias, ramen shops, sandwich shops) labelled
@@ -282,7 +282,7 @@ as **'Brunch'**. Same architecture, same leak shape, ~same expiry date.
 intuition was correct to single it out first.
 
 **`replace-curated-stop` exposure pattern:** every entry in `VALID_CATEGORIES` at
-[`replace-curated-stop/index.ts:11-15`](supabase/functions/replace-curated-stop/index.ts#L11-L15)
+[`replace-curated-stop/index.ts:11-15`](../../supabase/functions/replace-curated-stop/index.ts#L11-L15)
 is a LEGACY 10-category slug (`brunch_lunch_casual`, `upscale_fine_dining`,
 `movies_theatre`, `nature`, `creative_arts`, `play`, `icebreakers`,
 `drinks_and_music`, `flowers`, `groceries`). The new split slugs (`movies`,
@@ -304,11 +304,11 @@ slug.
 | 1 | Pre-OTA `PreferencesSheet.tsx` (older build) | User taps the old `'movies_theatre'` chip |
 | 2 | Pre-OTA `deckService.ts` `PILL_TO_CATEGORY_NAME['movies_theatre']` | Resolves to `'Movies & Theatre'` (legacy display name) |
 | 3 | Wire payload to `discover-cards` | `categories: ['Movies & Theatre']` |
-| 4 | [`discover-cards/index.ts:95-96`](supabase/functions/discover-cards/index.ts#L95-L96) | `CATEGORY_TO_SIGNAL['Movies & Theatre']` returns `{ signalIds: ['movies', 'theatre'], filterMin: 100, displayCategory: 'Movies' }` |
-| 5 | [`discover-cards/index.ts:861-873`](supabase/functions/discover-cards/index.ts#L861-L873) | TWO `RpcTask` entries built — one per signal, BOTH tagged `displayCategory: 'Movies'` |
-| 6 | [`discover-cards/index.ts:889-901`](supabase/functions/discover-cards/index.ts#L889-L901) | RPCs for both `movies` and `theatre` signals fire in parallel |
-| 7 | [`discover-cards/index.ts:920-921`](supabase/functions/discover-cards/index.ts#L920-L921) | Theatre rows merged into the same bucket with `__displayCategory: 'Movies'` |
-| 8 | [`discover-cards/index.ts:589`](supabase/functions/discover-cards/index.ts#L589) | Cards transformed: `category: 'Movies'` regardless of `primary_type` |
+| 4 | [`discover-cards/index.ts:95-96`](../../supabase/functions/discover-cards/index.ts#L95-L96) | `CATEGORY_TO_SIGNAL['Movies & Theatre']` returns `{ signalIds: ['movies', 'theatre'], filterMin: 100, displayCategory: 'Movies' }` |
+| 5 | [`discover-cards/index.ts:861-873`](../../supabase/functions/discover-cards/index.ts#L861-L873) | TWO `RpcTask` entries built — one per signal, BOTH tagged `displayCategory: 'Movies'` |
+| 6 | [`discover-cards/index.ts:889-901`](../../supabase/functions/discover-cards/index.ts#L889-L901) | RPCs for both `movies` and `theatre` signals fire in parallel |
+| 7 | [`discover-cards/index.ts:920-921`](../../supabase/functions/discover-cards/index.ts#L920-L921) | Theatre rows merged into the same bucket with `__displayCategory: 'Movies'` |
+| 8 | [`discover-cards/index.ts:589`](../../supabase/functions/discover-cards/index.ts#L589) | Cards transformed: `category: 'Movies'` regardless of `primary_type` |
 | 9 | Mobile renders | A `performing_arts_theater` row appears with category badge "Movies" |
 
 **Exit condition:** the [TRANSITIONAL] entry is comment-marked for removal on
@@ -320,11 +320,11 @@ slug.
 | Step | File:Line | What happens |
 |---|---|---|
 | 1 | Curated chain Movies stop, user taps "swap" | Mobile sends `categoryId: 'movies_theatre'` to `replace-curated-stop` (only legacy slug accepted per VALID_CATEGORIES) |
-| 2 | [`replace-curated-stop/index.ts:11-15`](supabase/functions/replace-curated-stop/index.ts#L11-L15) | Validates `categoryId` against legacy slug list — `'movies_theatre'` passes |
-| 3 | [`replace-curated-stop/index.ts:88-96`](supabase/functions/replace-curated-stop/index.ts#L88-L96) | Calls `fetchStopAlternatives({ categoryId: 'movies_theatre', ... })` |
-| 4 | [`stopAlternatives.ts:86`](supabase/functions/_shared/stopAlternatives.ts#L86) | `.contains('ai_categories', ['movies_theatre'])` |
+| 2 | [`replace-curated-stop/index.ts:11-15`](../../supabase/functions/replace-curated-stop/index.ts#L11-L15) | Validates `categoryId` against legacy slug list — `'movies_theatre'` passes |
+| 3 | [`replace-curated-stop/index.ts:88-96`](../../supabase/functions/replace-curated-stop/index.ts#L88-L96) | Calls `fetchStopAlternatives({ categoryId: 'movies_theatre', ... })` |
+| 4 | [`stopAlternatives.ts:86`](../../supabase/functions/_shared/stopAlternatives.ts#L86) | `.contains('ai_categories', ['movies_theatre'])` |
 | 5 | DB returns | Every row with `'movies_theatre'` in its `ai_categories[]` — including theatre venues AI-tagged under the legacy taxonomy |
-| 6 | [`stopAlternatives.ts:133-145`](supabase/functions/_shared/stopAlternatives.ts#L133-L145) | Card built: `placeType: ai_categories[0]` (which is `'movies_theatre'` for these rows) |
+| 6 | [`stopAlternatives.ts:133-145`](../../supabase/functions/_shared/stopAlternatives.ts#L133-L145) | Card built: `placeType: ai_categories[0]` (which is `'movies_theatre'` for these rows) |
 | 7 | Mobile renders | Theatre venue offered as a Movies replacement; description templated as "A great movies_theatre worth visiting." (line 140) — fabricated affinity |
 
 **No exit condition documented.** This pathway depends on `ai_categories` migration
@@ -337,7 +337,7 @@ Movies stop is swapped.
 
 The 'movies' signal scorer is a SOFT function, not a hard type filter. Soft
 penalties at
-[`20260423300001_orch_0598_signal_batch.sql:228-231`](supabase/migrations/20260423300001_orch_0598_signal_batch.sql#L228-L231):
+[`20260423300001_orch_0598_signal_batch.sql:228-231`](../migrations_archive_orch_0729_2026-05-05/20260423300001_orch_0598_signal_batch.sql#L228-L231):
 ```
 performing_arts_theater: -10
 concert_hall: -40
@@ -345,9 +345,9 @@ opera_house: -40
 ```
 
 The reviews regex includes the substring `"theater"`
-([line 239](supabase/migrations/20260423300001_orch_0598_signal_batch.sql#L239))
+([line 239](../migrations_archive_orch_0729_2026-05-05/20260423300001_orch_0598_signal_batch.sql#L239))
 which matches American-spelled performing arts venues. Scoring math
-(per [`signalScorer.ts:141-225`](supabase/functions/_shared/signalScorer.ts#L141-L225)):
+(per [`signalScorer.ts:141-225`](../../supabase/functions/_shared/signalScorer.ts#L141-L225)):
 
 For a hypothetical `performing_arts_theater` venue with rating 4.7, 187 reviews
 (NCMA West tier), reviews mentioning "theater" once:
@@ -429,7 +429,7 @@ by app version, not pref state. Two-week window remaining until 2026-05-13 clean
 **Pathway A2 (swap):** every Movies-stop swap in any curated experience touches
 this. Volume = number of Movies-typed curated stops served × swap rate per stop.
 Curated chain combos containing `'movies'` slug are at
-[`generate-curated-experiences/index.ts:184, 236`](supabase/functions/generate-curated-experiences/index.ts#L184-L236)
+[`generate-curated-experiences/index.ts:184, 236`](../../supabase/functions/generate-curated-experiences/index.ts#L184-L236)
 — Adventurous + Group-fun experience types. Both ship live.
 
 **Pathway A3 (scoring promiscuity):** unknown without DB sample. Conservative
@@ -455,7 +455,7 @@ type clear `filter_min`, and any time a downstream surface reads
 `displayCategory` rather than `primary_type` to decide what category badge to
 render. The structural fix is to **derive `category` from the row's
 `primary_type` at emission time** (the pattern person-hero already uses at
-[`get-person-hero-cards/index.ts:109`](supabase/functions/get-person-hero-cards/index.ts#L109)),
+[`get-person-hero-cards/index.ts:109`](../../supabase/functions/get-person-hero-cards/index.ts#L109)),
 making `CATEGORY_TO_SIGNAL.displayCategory` a routing-only concept that never
 reaches the rendered card. Without this, every future chip split, every union
 mapping, and every relaxed filter_min reopens the same leak class.

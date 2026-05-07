@@ -3,7 +3,7 @@
 **Mode:** INVESTIGATE (no SPEC, no code, no implementation suggestions)
 **Date:** 2026-05-06
 **Investigator:** Mingla Forensics
-**Dispatch:** [`Mingla_Artifacts/prompts/FORENSICS_CYCLE_B2_STRIPE_CONNECT_STUB.md`](../prompts/FORENSICS_CYCLE_B2_STRIPE_CONNECT_STUB.md)
+**Dispatch:** `Mingla_Artifacts/prompts/FORENSICS_CYCLE_B2_STRIPE_CONNECT_STUB.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_CYCLE_B2_STRIPE_CONNECT_STUB.md`)
 **Source-of-truth refs:** `BUSINESS_PROJECT_PLAN.md §B.6 + §C.1`, `BUSINESS_PRD.md §2.3`, `BUSINESS_STRATEGIC_PLAN.md §6 R2/R3 + Q3/Q5`, `Mingla_Artifacts/github/epics/cycle-b2.md`, DEC-112, DEC-113
 
 ---

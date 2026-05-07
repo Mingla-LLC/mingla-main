@@ -5,7 +5,7 @@
 **Date:** 2026-05-04
 **Surface:** Mingla Business mobile + web (`mingla-business/`) — Phase 5 closes alongside Cycle 14
 **Cycle:** 15 (BIZ Organiser Login + Email-OTP additive sign-in)
-**Dispatch:** [`prompts/IMPLEMENTOR_BIZ_CYCLE_15_ORGANISER_LOGIN.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_15_ORGANISER_LOGIN.md)
+**Dispatch:** `prompts/IMPLEMENTOR_BIZ_CYCLE_15_ORGANISER_LOGIN.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_15_ORGANISER_LOGIN.md`)
 **SPEC:** [`specs/SPEC_BIZ_CYCLE_15_ORGANISER_LOGIN.md`](../specs/SPEC_BIZ_CYCLE_15_ORGANISER_LOGIN.md) (BINDING post-DEC-097)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_15_ORGANISER_LOGIN.md`](./INVESTIGATION_BIZ_CYCLE_15_ORGANISER_LOGIN.md)
 **Decision lock-in:** `DECISION_LOG.md` DEC-097 (6 D-15-N decisions agreed batched)
@@ -426,7 +426,7 @@ If any step fails → reply with "failed at step N: [symptom]" + I'll write rewo
 
 ## 16 — Cross-references
 
-- Dispatch: [`prompts/IMPLEMENTOR_BIZ_CYCLE_15_ORGANISER_LOGIN.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_15_ORGANISER_LOGIN.md)
+- Dispatch: `prompts/IMPLEMENTOR_BIZ_CYCLE_15_ORGANISER_LOGIN.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_15_ORGANISER_LOGIN.md`)
 - SPEC (BINDING): [`specs/SPEC_BIZ_CYCLE_15_ORGANISER_LOGIN.md`](../specs/SPEC_BIZ_CYCLE_15_ORGANISER_LOGIN.md)
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_15_ORGANISER_LOGIN.md`](./INVESTIGATION_BIZ_CYCLE_15_ORGANISER_LOGIN.md)
 - Decision lock-in: `DECISION_LOG.md` DEC-097

@@ -11,7 +11,7 @@
 - Implementation report: [`reports/IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT.md`](./IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT.md)
 - SPEC: [`specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md`](../specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md)
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_11_QR_SCANNER.md`](./INVESTIGATION_BIZ_CYCLE_11_QR_SCANNER.md)
-- Tester dispatch: [`prompts/TESTER_BIZ_CYCLE_11_QR_SCANNER.md`](../prompts/TESTER_BIZ_CYCLE_11_QR_SCANNER.md)
+- Tester dispatch: `prompts/TESTER_BIZ_CYCLE_11_QR_SCANNER.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/TESTER_BIZ_CYCLE_11_QR_SCANNER.md`)
 
 ---
 
@@ -240,7 +240,7 @@ The implementor's report §1 acknowledges: *"all client-side; zero backend deplo
 
 ### F-3 — Weak email validation in InviteScannerSheet
 
-**Location:** [`mingla-business/src/components/scanners/InviteScannerSheet.tsx:51-54`](../mingla-business/src/components/scanners/InviteScannerSheet.tsx)
+**Location:** [`mingla-business/src/components/scanners/InviteScannerSheet.tsx:51-54`](../../mingla-business/src/components/scanners/InviteScannerSheet.tsx)
 
 ```ts
 const isValidEmail = (s: string): boolean => {
@@ -264,7 +264,7 @@ const isValidEmail = (s: string): boolean => {
 
 ### F-4 — `canAcceptPayments` type allows `true`
 
-**Location:** [`mingla-business/src/store/scannerInvitationsStore.ts:48`](../mingla-business/src/store/scannerInvitationsStore.ts)
+**Location:** [`mingla-business/src/store/scannerInvitationsStore.ts:48`](../../mingla-business/src/store/scannerInvitationsStore.ts)
 
 ```ts
 export interface ScannerPermissions {
@@ -312,7 +312,7 @@ useFocusEffect(useCallback(() => {
 
 ### F-6 — Carousel first-frame width mis-render
 
-**Location:** [`mingla-business/src/components/checkout/TicketQrCarousel.tsx:55-58`](../mingla-business/src/components/checkout/TicketQrCarousel.tsx)
+**Location:** [`mingla-business/src/components/checkout/TicketQrCarousel.tsx:55-58`](../../mingla-business/src/components/checkout/TicketQrCarousel.tsx)
 
 `pageWidth` initial = `Dimensions.get("window").width`. If the parent's GlassCard has padding, the carousel's actual width is narrower. First frame uses `Dimensions.get("window").width` causing momentary overflow until `onLayout` fires. **Fix:** Initialize to `0` and render-skip first paint, OR use `flex: 1` in the page style so width inherits from layout.
 
@@ -326,7 +326,7 @@ useFocusEffect(useCallback(() => {
 
 ### F-9 — InviteScannerSheet swallows recordInvitation errors silently
 
-**Location:** [`mingla-business/src/components/scanners/InviteScannerSheet.tsx:95-119`](../mingla-business/src/components/scanners/InviteScannerSheet.tsx)
+**Location:** [`mingla-business/src/components/scanners/InviteScannerSheet.tsx:95-119`](../../mingla-business/src/components/scanners/InviteScannerSheet.tsx)
 
 ```ts
 try {
@@ -346,7 +346,7 @@ No `catch`. If `recordInvitation` throws (it doesn't today, but if B-cycle adds 
 
 ### F-P1 — Comprehensive scan handler
 
-[`scanner/index.tsx:269-394`](../mingla-business/app/event/[id]/scanner/index.tsx). Every result kind has its own branch, with consistent shape: `showResult(...)` + `Haptics.notificationAsync(...)` + (where applicable) `recordScanWithResult(...)`. Per-seat partial-refund check at line 358-367 is a thoughtful edge case — not in the SPEC verbatim, but logical extension of I-19 (immutable financials per seat).
+[`scanner/index.tsx:269-394`](../../mingla-business/app/event/[id]/scanner/index.tsx). Every result kind has its own branch, with consistent shape: `showResult(...)` + `Haptics.notificationAsync(...)` + (where applicable) `recordScanWithResult(...)`. Per-seat partial-refund check at line 358-367 is a thoughtful edge case — not in the SPEC verbatim, but logical extension of I-19 (immutable financials per seat).
 
 ### F-P2 — Selector-pattern discipline
 
@@ -597,5 +597,5 @@ grep -n "useMemo\|useState\|useEffect\|useCallback" app/o/[orderId].tsx
 - Implementation report: [`reports/IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT.md`](./IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT.md)
 - SPEC: [`specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md`](../specs/SPEC_BIZ_CYCLE_11_QR_SCANNER.md)
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_11_QR_SCANNER.md`](./INVESTIGATION_BIZ_CYCLE_11_QR_SCANNER.md)
-- Tester dispatch: [`prompts/TESTER_BIZ_CYCLE_11_QR_SCANNER.md`](../prompts/TESTER_BIZ_CYCLE_11_QR_SCANNER.md)
+- Tester dispatch: `prompts/TESTER_BIZ_CYCLE_11_QR_SCANNER.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/TESTER_BIZ_CYCLE_11_QR_SCANNER.md`)
 - INVARIANT_REGISTRY (with I-25, I-26 backfill + I-27, I-28): [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](../INVARIANT_REGISTRY.md)

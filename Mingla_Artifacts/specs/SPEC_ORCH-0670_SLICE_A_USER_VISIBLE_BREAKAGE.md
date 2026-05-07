@@ -5,7 +5,7 @@
 **ORCH-ID:** ORCH-0670 (Slice A only — Slices B/C/D deferred)
 **Severity:** S1 (always-broken UX visible to every user worldwide)
 **Investigation:** [reports/INVESTIGATION_ORCH-0670_RENDERED_SURFACE_AUDIT.md](../reports/INVESTIGATION_ORCH-0670_RENDERED_SURFACE_AUDIT.md) — REVIEW APPROVED 10/10 (render-first, ground-truth)
-**Dispatch:** [prompts/SPEC_ORCH-0670_SLICE_A_USER_VISIBLE_BREAKAGE.md](../prompts/SPEC_ORCH-0670_SLICE_A_USER_VISIBLE_BREAKAGE.md)
+**Dispatch:** prompts/SPEC_ORCH-0670_SLICE_A_USER_VISIBLE_BREAKAGE.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_ORCH-0670_SLICE_A_USER_VISIBLE_BREAKAGE.md`)
 
 ---
 
@@ -26,7 +26,7 @@ This spec ships the fix in one bundled commit. ~4-5 hours wall time. OTA-eligibl
 | 3 | Tier-chip fix shape | **OPERATOR DECISION — OQ-1.** Default-yes recommendation: Option (a) extend switch using `PRICE_TIERS` constant. |
 | 4 | Title resolution | **OPERATOR DECISION — OQ-2.** Default-yes recommendation: Option (a) rename `"Concerts & Events"` → `"Concerts"` (smallest fix, preserves OTA-eligibility). |
 | 5 | Android header alignment | **OPERATOR DECISION — OQ-3.** Spec writer has read Friends-screen baseline; recommended resolution is align Discover to Friends pattern (lineHeight 32→36, REMOVE `adjustsFontSizeToFit + minimumFontScale={0.7}`, add `textAlignVertical: 'center'`). |
-| 6 | Filters badge counter | After S-2 lands, `moreChipBadgeCount` becomes truthful via behavior change (not code change). No code change needed at [DiscoverScreen.tsx:1112-1113](app-mobile/src/components/DiscoverScreen.tsx#L1112-L1113). |
+| 6 | Filters badge counter | After S-2 lands, `moreChipBadgeCount` becomes truthful via behavior change (not code change). No code change needed at [DiscoverScreen.tsx:1112-1113](../../app-mobile/src/components/DiscoverScreen.tsx#L1112-L1113). |
 | 7 | OTA-eligibility | Required (mobile + i18n only — NO DB / NO edge fn / NO native module). |
 
 ---
@@ -66,11 +66,11 @@ This spec ships the fix in one bundled commit. ~4-5 hours wall time. OTA-eligibl
 
 ## §5 Per-layer specification
 
-### §5.1 Component layer ([DiscoverScreen.tsx](app-mobile/src/components/DiscoverScreen.tsx))
+### §5.1 Component layer ([DiscoverScreen.tsx](../../app-mobile/src/components/DiscoverScreen.tsx))
 
 #### §5.1.1 Top-bar chip JSX (S-3)
 
-**File:** [DiscoverScreen.tsx:1238-1294](app-mobile/src/components/DiscoverScreen.tsx#L1238-L1294)
+**File:** [DiscoverScreen.tsx:1238-1294](../../app-mobile/src/components/DiscoverScreen.tsx#L1238-L1294)
 
 **Current:**
 - Line 1239: `label="All"` (hardcoded literal)
@@ -90,7 +90,7 @@ This spec ships the fix in one bundled commit. ~4-5 hours wall time. OTA-eligibl
 
 #### §5.1.2 Screen title JSX (S-4 + S-5)
 
-**File:** [DiscoverScreen.tsx:1218-1227](app-mobile/src/components/DiscoverScreen.tsx#L1218-L1227)
+**File:** [DiscoverScreen.tsx:1218-1227](../../app-mobile/src/components/DiscoverScreen.tsx#L1218-L1227)
 
 **Current:**
 ```tsx
@@ -128,7 +128,7 @@ Changes:
 
 #### §5.1.3 `styles.titleText` (S-6 — Android header alignment)
 
-**File:** [DiscoverScreen.tsx:1612-1620](app-mobile/src/components/DiscoverScreen.tsx#L1612-L1620)
+**File:** [DiscoverScreen.tsx:1612-1620](../../app-mobile/src/components/DiscoverScreen.tsx#L1612-L1620)
 
 **Current:**
 ```ts
@@ -143,7 +143,7 @@ titleText: {
 },
 ```
 
-**Required (matches Friends-screen baseline at [ConnectionsPage.tsx:3021-3028](app-mobile/src/components/ConnectionsPage.tsx#L3021-L3028)):**
+**Required (matches Friends-screen baseline at [ConnectionsPage.tsx:3021-3028](../../app-mobile/src/components/ConnectionsPage.tsx#L3021-L3028)):**
 ```ts
 titleText: {
   fontSize: d.title.fontSize,        // 32 (unchanged)
@@ -161,7 +161,7 @@ titleText: {
 
 Current code uses `adjustsFontSizeToFit + minimumFontScale={0.7}` on the title (lines 1221-1222). On Android, font rendering produces slightly different glyph widths than iOS for the same `fontSize: 32`. A title that fits at 32pt on iOS often does NOT fit at 32pt on Android within the same Modal width (375pt iPhone vs 360pt typical Android). On Android, `adjustsFontSizeToFit` then aggressively shrinks the title to ~22-26pt to make it fit on one line. iOS doesn't autoshrink because the title fits at full 32pt.
 
-The Friends-screen header at [ConnectionsPage.tsx:3021-3028](app-mobile/src/components/ConnectionsPage.tsx#L3021-L3028) does NOT use `adjustsFontSizeToFit` — it relies on `numberOfLines: 1` to ellipsize if overflow occurs (Friends title `t('connections:title')` is short enough to not overflow). Removing `adjustsFontSizeToFit` from Discover title means: title either fits at full 32pt (if short enough — which "Concerts" easily does, OR "Concerts & Events" might at full 32pt on most devices) OR ellipsizes via `numberOfLines: 1`.
+The Friends-screen header at [ConnectionsPage.tsx:3021-3028](../../app-mobile/src/components/ConnectionsPage.tsx#L3021-L3028) does NOT use `adjustsFontSizeToFit` — it relies on `numberOfLines: 1` to ellipsize if overflow occurs (Friends title `t('connections:title')` is short enough to not overflow). Removing `adjustsFontSizeToFit` from Discover title means: title either fits at full 32pt (if short enough — which "Concerts" easily does, OR "Concerts & Events" might at full 32pt on most devices) OR ellipsizes via `numberOfLines: 1`.
 
 The `lineHeight: 32` (vs Friends' 36) gives the title NO vertical breathing room — even when it renders at full 32pt, the glyphs sit cramped. Increasing to 36 matches Friends' visual rhythm.
 
@@ -171,7 +171,7 @@ The `lineHeight: 32` (vs Friends' 36) gives the title NO vertical breathing room
 
 #### §5.1.4 Price filter switch (S-2)
 
-**File:** [DiscoverScreen.tsx:1080-1110](app-mobile/src/components/DiscoverScreen.tsx#L1080-L1110)
+**File:** [DiscoverScreen.tsx:1080-1110](../../app-mobile/src/components/DiscoverScreen.tsx#L1080-L1110)
 
 **Operator decides via OQ-1 — default-yes Option (a) extend switch:**
 
@@ -255,7 +255,7 @@ const filteredNightOutCards = useMemo(() => {
 | `any` | (early-out at line 1083) | all cards pass |
 
 **The 5 legacy switch cases (`free`, `under-25`, `25-50`, `50-100`, `over-100`) are DELETED** because:
-- The chip generator at [line 1124-1130](app-mobile/src/components/DiscoverScreen.tsx#L1124-L1130) only emits `any`/`chill`/`comfy`/`bougie`/`lavish` slugs
+- The chip generator at [line 1124-1130](../../app-mobile/src/components/DiscoverScreen.tsx#L1124-L1130) only emits `any`/`chill`/`comfy`/`bougie`/`lavish` slugs
 - No production code path emits the legacy IDs
 - Constitution #8 (subtract before add) — delete dead code as part of the fix
 
@@ -263,7 +263,7 @@ const filteredNightOutCards = useMemo(() => {
 
 #### §5.1.5 Filter badge counter (S-2 transitive fix)
 
-**File:** [DiscoverScreen.tsx:1112-1113](app-mobile/src/components/DiscoverScreen.tsx#L1112-L1113)
+**File:** [DiscoverScreen.tsx:1112-1113](../../app-mobile/src/components/DiscoverScreen.tsx#L1112-L1113)
 
 **Current:**
 ```ts
@@ -282,7 +282,7 @@ const moreChipBadgeCount =
 const moreChipBadgeCount = ...
 ```
 
-### §5.2 i18n layer ([app-mobile/src/i18n/locales/en/discover.json](app-mobile/src/i18n/locales/en/discover.json))
+### §5.2 i18n layer ([app-mobile/src/i18n/locales/en/discover.json](../../app-mobile/src/i18n/locales/en/discover.json))
 
 #### §5.2.1 New keys to add (10 total)
 
@@ -324,7 +324,7 @@ Verified zero consumers across `app-mobile/src/`:
 | `error.try_again` | ✓ orphan (code uses `error.retry`) |
 | `loading.for_you` | ✓ orphan (verified by `grep "discover:loading.for_you"` returns 0 matches) |
 | `loading.nightlife` | ✓ orphan (same verification) |
-| `nightout.on_sale` | ✓ orphan (badge labels are hardcoded `"SOLD OUT"`/`"SOON"` at [DiscoverScreen.tsx:292-298](app-mobile/src/components/DiscoverScreen.tsx#L292-L298)) |
+| `nightout.on_sale` | ✓ orphan (badge labels are hardcoded `"SOLD OUT"`/`"SOON"` at [DiscoverScreen.tsx:292-298](../../app-mobile/src/components/DiscoverScreen.tsx#L292-L298)) |
 | `nightout.sold_out` | ✓ orphan |
 | `nightout.soon` | ✓ orphan |
 | `nightout.tba` | ✓ orphan |
