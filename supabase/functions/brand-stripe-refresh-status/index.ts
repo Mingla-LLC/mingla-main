@@ -10,7 +10,9 @@
  *   { status, charges_enabled, payouts_enabled, requirements, detached_at }
  *
  * Auth: Bearer JWT. Caller must satisfy
- * biz_can_manage_payments_for_brand_for_caller(brand_id) per D-B2-1.
+ * biz_can_manage_payments_for_brand(brand_id, user_id) per D-B2-1 + D-V3-5.
+ * (Service-role context resolves user_id from verified JWT; cannot rely on
+ * auth.uid() the way the *_for_caller variant does.)
  *
  * Used as the 30s poll-fallback safety net per D-B2-11. Webhooks are
  * the primary status-update mechanism; this fn is for recovery when

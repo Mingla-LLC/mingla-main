@@ -2143,3 +2143,83 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 **Source:** B2a Path C SPEC `outputs/SPEC_B2_PATH_C_AMENDMENT.md` §5 + reconciliation report `outputs/B2_RECONCILIATION_REPORT.md` §3 + B2a SPEC §4.2.1 (Const #3) + BUSINESS_PROJECT_PLAN §B.7.
 
 **EXIT condition:** Permanent invariant. Audit logging is a Constitutional principle (#3 — no silent failures); reversal would require revising the constitution.
+
+### I-PROPOSED-T — STRIPE-COUNTRY-FROM-CANONICAL-ALLOWLIST-ONLY (DRAFT — flips ACTIVE on B2a Path C V3 CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C V3 SPEC per DEC-121; flips ACTIVE on V3 CLOSE).
+
+**Statement:** Every `country` value passed to `stripe.accounts.create()` MUST be from the canonical 34-country allowlist defined in `mingla-business/src/constants/stripeSupportedCountries.ts` (US/UK/CA/CH + 30 EEA member states). The edge function `brand-stripe-onboard` MUST validate the request body's `country` param against this allowlist before any Stripe API call. The DB CHECK constraint on `stripe_connect_accounts.country` (added in migration `20260511000001`) enforces at storage layer.
+
+**Why:** Stripe Connect's documented self-serve cross-border payouts are limited to US, UK, EEA, Canada, and Switzerland per [https://docs.stripe.com/connect/cross-border-payouts](https://docs.stripe.com/connect/cross-border-payouts). Verbatim: *"Stripe doesn't support self-serve cross-border payouts to countries outside the listed regions."* Accepting an out-of-list country produces a Stripe account that cannot actually pay out; the brand admin completes onboarding only to find their account permanently restricted at first payout attempt. Australia + Latin America + Asia require separate Stripe platform entities (B2c/B2d/B2e future cycles); they are out of V3 scope.
+
+**Enforcement:** Three layers:
+1. **Frontend:** `BrandStripeCountryPicker` component (Sub-dispatch C) renders ONLY the 34 allowed countries from `stripeSupportedCountries.ts`.
+2. **Edge function:** `brand-stripe-onboard/index.ts` (Sub-dispatch B) imports the allowlist constant + validates the request body's country param; returns 400 `validation_error` if country is not in the allowlist.
+3. **Database:** CHECK constraint on `stripe_connect_accounts.country` (migration `20260511000001`) — rejects any INSERT/UPDATE with a country code outside the 34-country list.
+4. **CI gate:** `i-proposed-t-stripe-country-allowlist.mjs` (Sub-dispatch C Phase 14) — strict-grep scans `mingla-business/` + `supabase/functions/` for hardcoded 2-letter country code literals; flags any not in the allowlist (with allowlist tag exemption pattern).
+
+**Source:** B2a Path C V3 SPEC `outputs/SPEC_B2_PATH_C_V3.md` §3 + investigation Thread 17 + Stripe cross-border-payouts doc.
+
+**EXIT condition:** Conditional. List expands when Mingla adds separate Stripe platform entities for AU + LatAm + Asia (B2c/B2d/B2e cycles). Each expansion is a separate ORCH cycle that updates the allowlist constant, the DB CHECK constraint, the strict-grep gate, and the country picker UI together.
+
+### I-PROPOSED-U — MINGLA-TOS-ACCEPTED-BEFORE-STRIPE-CONNECT (DRAFT — flips ACTIVE on B2a Path C V3 CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C V3 SPEC per DEC-121; flips ACTIVE on V3 CLOSE).
+
+**Statement:** Every brand admin MUST have `brand_team_members.mingla_tos_accepted_at IS NOT NULL` for the brand they are managing before any Stripe Connect operation can proceed. The edge function `brand-stripe-onboard` (and any future Stripe Connect edge fn that creates platform-side state) MUST verify this gate before calling Stripe APIs. Violations return HTTP 403 with `error: "tos_not_accepted"`.
+
+**Why:** Stripe's Connect Platform Agreement requires platforms to surface specific T&Cs disclosures to connected accounts (brand admins). Stripe's own ToS is captured automatically by Embedded Components onboarding, but Mingla's separate platform-level ToS (covering Mingla-specific terms, fee disclosures, dispute responsibility, data handling under marketplace charge model per DEC-114) must be acknowledged separately. This invariant codifies the gate so the ToS acknowledgment is structurally enforced, not merely a UI convention.
+
+**Enforcement:**
+1. **Frontend:** `MinglaToSAcceptanceGate` component (Sub-dispatch C Phase 12) renders before the country picker; "Continue" is disabled until checkbox + version are recorded; on accept, calls a new RPC or edge fn to set `brand_team_members.mingla_tos_accepted_at = now()` + `mingla_tos_version_accepted = <current_version>`.
+2. **Edge function:** `brand-stripe-onboard/index.ts` (Sub-dispatch B Phase 7) `SELECT mingla_tos_accepted_at FROM brand_team_members WHERE user_id = $1 AND brand_id = $2`; if NULL, return 403.
+3. **CI gate:** `i-proposed-u-mingla-tos-gate.mjs` (Sub-dispatch C Phase 14) — scans `supabase/functions/{brand-stripe-*,stripe-*}/index.ts` for direct Stripe API calls (`accounts.create`, `accountSessions.create`); verifies the function reads `mingla_tos_accepted_at` before the call.
+
+**Grandfather clause:** Existing brand_team_members rows pre-V3 are backfilled with `mingla_tos_accepted_at = now()` + `mingla_tos_version_accepted = 'pre-v3-grandfathered'` in migration `20260511000005`. Operator-side flow at first post-V3 login prompts re-acceptance for current ToS version.
+
+**Source:** B2a Path C V3 SPEC `outputs/SPEC_B2_PATH_C_V3.md` §3 + investigation Thread 29 + Stripe Connect Platform Agreement.
+
+**EXIT condition:** Permanent invariant. Marketplace platforms must always have an acknowledged ToS gate; Stripe's compliance posture requires it.
+
+### I-PROPOSED-V — STRIPE-NOTIFICATIONS-VIA-SHARED-DISPATCHER (DRAFT — flips ACTIVE on B2a Path C V3 CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C V3 SPEC per DEC-121; flips ACTIVE on V3 CLOSE).
+
+**Statement:** Every Stripe-triggered user notification (deadline warnings, bank verification failures, payout failures, account deauthorization, KYC stall reminders, account restriction, reactivation completion — 9 types total per V3) MUST go through `supabase/functions/notify-dispatch/index.ts` using a `type` value from the `STRIPE_NOTIFICATION_TYPES` constants. Direct calls to `sendPush` (push-utils.ts) or Resend email API from Stripe edge functions are FORBIDDEN.
+
+**Why:** Centralized notification dispatch ensures: (a) consistent multi-channel delivery (email + push + in-app), (b) respects user preferences (`notification_preferences` table), (c) provides a single surface for analytics + quiet-hours + unsubscribe flows, (d) all notifications get an `audit_log` row + a persisted `notifications` table row for in-app inbox surfacing, (e) future channels (e.g., SMS) can be added in one place. Direct sendPush/Resend bypasses all of this and creates fragmentation.
+
+**Enforcement:**
+1. **Frontend:** Stripe edge functions invoke notify-dispatch via `supabase.functions.invoke('notify-dispatch', { body: { type: 'stripe.X', user_id, brand_id, title, body, ... } })`.
+2. **Backend:** `notify-dispatch/index.ts` (extended in Sub-dispatch B Phase 6) routes to email (Resend) + push (push-utils.ts sendPush) + in-app (INSERT into `notifications` table). Respects `notification_preferences`.
+3. **CI gate:** `i-proposed-v-stripe-notification-via-shared.mjs` (Sub-dispatch C Phase 14) — scans `supabase/functions/{brand-stripe-*,stripe-*}/index.ts` for direct calls to `sendPush`, Resend API URLs (e.g., `https://api.resend.com`), or imports from `_shared/push-utils.ts` outside notify-dispatch. Flags as violation unless wrapped via notify-dispatch.
+
+**Source:** B2a Path C V3 SPEC `outputs/SPEC_B2_PATH_C_V3.md` §3 + investigation Thread 28 (notification subsystem reuse).
+
+**EXIT condition:** Permanent invariant within the current Mingla notification architecture. Reversal would require re-architecting the notification subsystem (separate ORCH cycle).
+
+### I-PROPOSED-W — NOTIFICATIONS-FILTERED-BY-APP-TYPE-PREFIX (DRAFT — flips ACTIVE on B2a Path C V3 CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C V3 Sub-dispatch A hotfix per DEC-121; flips ACTIVE on V3 CLOSE).
+
+**Statement:** The `public.notifications` table is shared across all Mingla frontends (consumer mobile app, Mingla Business mobile, admin). Each app's UI MUST filter `notifications.type` by app-specific prefix when reading the inbox. Consumer app reads MUST exclude rows where `type` matches `stripe.%` or `business.%`. Mingla Business app reads MUST include only rows where `type` matches `stripe.%` or `business.%`. Cross-app reads (e.g., admin viewing all) require explicit allowlist exception.
+
+**Why:** Mingla's architecture uses one Supabase backend across all frontends, with one `notifications` table keyed by `auth.users.id`. A user who is both a consumer and a brand admin = same auth.users.id row = one notification inbox at the data layer. UI scoping is achieved by type prefix filtering, not separate tables. Without this filter, a consumer scrolling their inbox would see "Your KYC deadline is in 3 days" (a Stripe-business notification) alongside "Sarah liked your event" (a consumer notification) — confusing UX. Mixing concerns at the table layer is the right architectural choice (single source of truth, single notify-dispatch fn) PROVIDED apps consistently filter at the read layer.
+
+**Naming convention:**
+- `stripe.*` — Mingla Business app only (B2 cycle types: deadline warnings, bank verification, payout failed, deauthorize, etc.)
+- `business.*` — Mingla Business app only (future B2/B3/B5 types)
+- Everything else (no prefix or other prefix) — Mingla consumer app only (e.g., `session_match`, `friend_request_received`, `match_invite_received`, etc.)
+- Admin app (mingla-admin) reads cross-app for support/observability — exempt via allowlist comment
+
+**Enforcement:**
+1. **Frontend:** consumer app's `useNotifications` hook (and equivalent) appends `.not('type', 'like', 'stripe.%').not('type', 'like', 'business.%')` to its query. Mingla Business app's `useNotifications` hook appends `.or('type.like.stripe.%,type.like.business.%')`.
+2. **CI gate:** `i-proposed-w-notifications-app-type-prefix.mjs` (Sub-dispatch C Phase 14) — strict-grep scans:
+   - `app-mobile/src/` for `.from("notifications")` SELECT calls without exclusion of `stripe.%` and `business.%` patterns
+   - `mingla-business/src/` for `.from("notifications")` SELECT calls without inclusion of `stripe.%` or `business.%` patterns
+   - Allowlist tag (line above): `// orch-strict-grep-allow notifications-cross-app-read — <reason>` (rare; only for admin/observability surfaces)
+3. **Index support:** migration `20260511000003_b2a_v3_notifications.sql` adds `idx_notifications_type_btree` with `text_pattern_ops` for efficient LIKE prefix queries.
+
+**Source:** B2a Path C V3 Sub-dispatch A hotfix 2026-05-06 (operator caught architectural collision: shared notifications table across consumer + business apps requires UI-side type-prefix filtering). Per `outputs/SPEC_B2_PATH_C_V3.md` §6 + V3 IMPL report hotfix.
+
+**EXIT condition:** Permanent within the current single-Supabase-backend architecture. Reversal would require splitting the notifications table per app (a separate ORCH cycle that also splits notify-dispatch + push-utils) — not foreseen.
