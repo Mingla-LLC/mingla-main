@@ -39,9 +39,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Skip if STRIPE_SECRET_KEY_TEST not configured
+        id: precheck
+        env:
+          KEY: ${{ secrets.STRIPE_SECRET_KEY_TEST }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::warning::STRIPE_SECRET_KEY_TEST repo secret not set — skipping smoke. Operator: add a sk_test_... key in repo Settings → Secrets and variables → Actions."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Install Stripe SDK
+        if: steps.precheck.outputs.skip != 'true'
         run: npm install --no-save stripe@18.0.0
       - name: Run multi-country happy-path smoke
+        if: steps.precheck.outputs.skip != 'true'
         env:
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY_TEST }}
           STRIPE_API_VERSION: "2026-04-30.preview"

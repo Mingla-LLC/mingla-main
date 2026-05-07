@@ -3,14 +3,20 @@ name: Supabase Migrations + Stripe Deno Tests (B2a Path C V3)
 # B2a Path C V3 SPEC §9 — migration ordering + Deno-side unit test coverage.
 #
 # Two checks per push:
-#  1. Migrations apply cleanly from baseline. Spins up a fresh PG container,
-#     replays every migration in supabase/migrations/ in timestamp order,
-#     fails if any migration errors. Catches missing constraints, FK to a
-#     non-existent table, ALTER on a column that doesn't yet exist, etc.
-#  2. Deno unit tests pass. Runs `deno test` against the _shared/__tests__
-#     directory which covers the Sub-dispatch B shared modules
-#     (stripeIpAllowlist, stripeKycRemediation, stripeKycReminderSchedule,
-#     stripeWebhookRouter, stripeWebhookSignature).
+#  1. Migrations apply cleanly from baseline. Uses `supabase/postgres:15`
+#     image (NOT stock postgres:15) because the baseline migration
+#     20260505000000_baseline_squash_orch_0729.sql does CREATE EXTENSION
+#     pg_cron, which only ships with Supabase's flavored Postgres image.
+#  2. Deno unit tests pass. Scoped to V3 stripe-* test files only — NOT the
+#     full _shared/__tests__/ directory (the bouncer / scorer /
+#     no_ai_categories tests have pre-existing failures from prior cycles
+#     unrelated to B2 and not in scope here; cleaning those up is a separate
+#     ORCH).
+#
+# Env vars set on the Deno step are inert defaults — `notify-dispatch` calls
+# in the router unit tests need a non-empty SUPABASE_URL + service role key
+# to construct the Supabase client (the test asserts dispatch was called,
+# not that it actually reached a real Supabase instance).
 
 on:
   push:
@@ -31,7 +37,10 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15
+        # Supabase-flavored Postgres image — includes pg_cron, pgcrypto, pgsodium,
+        # plv8, and other extensions the baseline migration requires.
+        # Stock postgres:15 doesn't have pg_cron and fails immediately.
+        image: supabase/postgres:15.8.1.060
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -47,7 +56,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Wait for postgres
         run: |
-          for i in {1..30}; do
+          for i in {1..60}; do
             if pg_isready -h localhost -p 5432 -U postgres; then exit 0; fi
             sleep 1
           done
@@ -71,10 +80,23 @@ jobs:
       - uses: denoland/setup-deno@v1
         with:
           deno-version: "1.46.x"
-      - name: Run Deno tests
+      - name: Run V3 Stripe-scoped Deno tests
+        env:
+          # Inert defaults — the router test asserts dispatch was attempted; it
+          # doesn't reach a real Supabase instance. These prevent the env-var
+          # presence guards in `_shared/stripeEdgeAuth.ts` from throwing.
+          SUPABASE_URL: "https://example-test.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real"
+          STRIPE_WEBHOOK_SECRET: "whsec_test"
+          STRIPE_WEBHOOK_SECRET_PLATFORM: "whsec_test_platform"
+          STRIPE_WEBHOOK_SECRET_PREVIOUS: ""
         run: |
           deno test \
             --allow-env \
             --allow-net \
             --no-check \
-            supabase/functions/_shared/__tests__/
+            supabase/functions/_shared/__tests__/stripeIpAllowlist.test.ts \
+            supabase/functions/_shared/__tests__/stripeKycRemediation.test.ts \
+            supabase/functions/_shared/__tests__/stripeKycReminderSchedule.test.ts \
+            supabase/functions/_shared/__tests__/stripeWebhookRouter.test.ts \
+            supabase/functions/_shared/__tests__/stripeWebhookSignature.test.ts

@@ -59,8 +59,12 @@ export function useBusinessNotifications(
   // SELECT layer (below) so the cache only contains business types.
   useEffect(() => {
     if (!enabled || userId === null) return;
+    // Unique channel name per mount — prevents Supabase Realtime "after subscribe"
+    // rejection on StrictMode double-mount. Same pattern as useBrandStripeStatus
+    // per ORCH-V3-runtime-1.
+    const channelName = `business-notifications-${userId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel(`business-notifications-${userId}`)
+      .channel(channelName)
       .on(
         "postgres_changes",
         {

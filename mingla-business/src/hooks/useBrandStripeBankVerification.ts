@@ -94,8 +94,12 @@ export function useBrandStripeBankVerification(
 
   useEffect(() => {
     if (!enabled || brandId === null) return;
+    // Unique channel name per mount — prevents Supabase Realtime "after subscribe"
+    // rejection on StrictMode double-mount or multi-consumer scenarios.
+    // Same pattern as useBrandStripeStatus per ORCH-V3-runtime-1.
+    const channelName = `stripe-external-${brandId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel(`stripe-external-${brandId}`)
+      .channel(channelName)
       .on(
         "postgres_changes",
         {

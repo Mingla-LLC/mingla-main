@@ -43,7 +43,13 @@ export function useBrandStripeStatus(
   // Realtime subscription per D-B2-11
   useEffect(() => {
     if (!enabled || brandId === null) return;
-    const channelName = `stripe-status-${brandId}`;
+    // Unique channel name per mount — prevents Supabase Realtime from rejecting
+    // re-subscription with the same name when (a) React 18 StrictMode double-mounts
+    // an effect, or (b) two components consume this hook for the same brandId
+    // (BrandOnboardView + BrandPaymentsView both consume it post-V3-Sub-C).
+    // `removeChannel` cleanup is async; without uniqueness, the second mount
+    // races against the first's still-pending detach. Fix per ORCH-V3-runtime-1.
+    const channelName = `stripe-status-${brandId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
       .channel(channelName)
       .on(
