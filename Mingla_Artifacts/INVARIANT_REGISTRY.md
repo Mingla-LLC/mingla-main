@@ -38,7 +38,47 @@
 - ORCH-0734 IMPL report (`Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0734_CITY_RUNS_REPORT.md`)
 - Memory `feedback_signal_anchors_decommissioned.md` (ACTIVE)
 - Backup snapshot `_archive_orch_0734_signal_anchors` retained 14 days from 2026-05-05 → DROP on 2026-05-19 if no rollback signal
-- ORCH-0737 (queued) — adds full-city-async trial mode toggle (preserves this invariant; extends pipeline with cursor/job-queue pattern alongside current sampled-sync mode)
+- ORCH-0737 v6 + v6.1 (CLOSED 2026-05-06 PASS via DEC-118) — added full-city-async trial mode + URL-transform photo pipeline + budget-loop worker; preserves this invariant; spawned new I-COLLAGE-PHOTO-URL-AT-TILE-RESOLUTION (below)
+- ORCH-0737 v7 (queued) — London-scale follow-up; Gemini File API + cache hit-rate + parallel-tuning; intake-only
+
+---
+
+## ACTIVE (post ORCH-0737 v6 + v6.1 CLOSE 2026-05-06)
+
+### I-COLLAGE-PHOTO-URL-AT-TILE-RESOLUTION — Photo URLs into compose path MUST be transformed to tile-target resolution before download
+
+**Statement:** Every photo URL passed into `composeCollage()` (and therefore through `fetchAndDecode()`) MUST be transformed to its tile-target resolution before the HTTP fetch fires. Two transforms are canonical:
+1. **Supabase Storage own-domain** (`*.supabase.co/storage/v1/object/...`) → rewritten to `*.supabase.co/storage/v1/render/image/...?width=N&height=N&resize=cover` where N is the tile size (default 192 px for 6-up collages). Existing query params on the input URL are stripped (otherwise they'd duplicate or collide with the resize params).
+2. **Google CDN reviewer photos** (`https://lh3.googleusercontent.com/...`, plus `lh4`/`lh5`/`lh6` variants) → rewritten to append the `=wN-hN` size suffix; existing `=k-no` / `=sN` / similar suffixes are replaced; no suffix at all → suffix appended.
+
+Unknown URLs (non-Supabase, non-Google CDN) pass through unchanged — graceful fallback so the pipeline never breaks on a new photo source, but tile-resolution discipline is best-effort for those. Empty / null / non-string inputs pass through unchanged (defensive).
+
+**Authority:** `supabase/functions/_shared/imageCollage.ts` exports `transformPhotoUrlForTile(url, tileSize)` as the single canonical helper. `fetchAndDecode(url, tileSize, timeoutMs?)` calls it before every HTTP fetch. `composeCollage()` for-loop intentionally stays SERIAL inside compose — outer parallelism (parallel-12 places) lives in `runPrepIteration`; inner serial bounds memory at ~5 MB/place × 12 = ~60 MB, well below the 150 MB Edge Runtime cap.
+
+**Rationale:** Pre-v6 (pre-2026-05-06), `fetchAndDecode` downloaded photos at native resolution. Live experiment E1 (per `INVESTIGATION_ORCH-0737_V6_PIPELINE_TRACE.md`) measured Supabase Storage marketing photos at 173 KB native JPEG and Google CDN reviewer photos at 59 KB native. Decoded to RGBA + held in memory across 6-up parallel compose, peaks hit ~50 MB per call which stacked dangerously close to the 150 MB Deno Edge Runtime cap on parallel workers — `WORKER_RESOURCE_LIMIT 546` errors fired regularly during Cary, FortLauderdale, Washington runs. Live experiment E2 proved both transform paths viable: Supabase `/render/image/?width=192&height=192&resize=cover` returns ~10.7 KB (94% byte reduction); Google CDN `=w192-h192` returns ~11.8 KB (80% reduction). v6 wired both transforms in. Post-deploy verification: zero `WORKER_RESOURCE_LIMIT 546` errors during Cary 761 full-city run + 78 min sustained (PROBE 2 count=0). The invariant codifies the pattern so future maintenance can't accidentally regress.
+
+**Enforcement (3 gates):**
+1. **Type-level** — `fetchAndDecode(url, tileSize, timeoutMs?)` requires `tileSize: number` parameter (no default). TypeScript compile error if a caller forgets to pass it. This forces the upstream caller to know the tile size, which means they either pass it through `transformPhotoUrlForTile` themselves or rely on `fetchAndDecode` to do so internally.
+2. **Unit tests** — `supabase/functions/_shared/imageCollage.test.ts` pins behavior across 8 deterministic cases (Supabase Storage with/without query params; Google `lh3`/`lh4`/`lh5`/`lh6` with `=k-no` suffix / no suffix / different tile sizes; unknown CDN passthrough; empty/null/non-string input passthrough). Test run on Mac post-deploy: 8/8 PASS.
+3. **Kill-switch** — `DISABLE_PHOTO_URL_TRANSFORM=true` env var disables both transforms (passthrough mode), enabling hot revert if a Supabase or Google API change ever breaks transform URLs without code change. Operators document the variable in the deploy runbook; default unset = transforms ON.
+
+**Test that catches a regression:** any code path that calls `fetchAndDecode` without `tileSize` parameter fails TypeScript compile. Any code path that builds a Supabase Storage URL via string concat without going through `transformPhotoUrlForTile` will download native-resolution bytes; first symptom is `WORKER_RESOURCE_LIMIT 546` returning during full-city runs (>200 places). The 8 unit tests catch silent transform-logic regressions independent of live infrastructure.
+
+**Established:** 2026-05-06 by ORCH-0737 v6 (forensics → SPEC → IMPL → Cary 761 full-city PASS in 78 min post-deploy + 0 mem errors). DEC-118 logs the decision. Memory file: NONE created (the implementation file + this invariant + the unit tests are sufficient documentation; future skill sessions can grep `transformPhotoUrlForTile` to find the canonical helper).
+
+**Caveats / fragility:**
+- **Existing fingerprint cache survives this change** (favorable D-1 deviation observed in v6 IMPL). The collage cache key is `sha256(stored_photo_urls.slice(0,5))` — URLs themselves aren't part of the key, so transformed downloads produce the same cache hits as native downloads. BUT if URL transforms ever change structurally (e.g., Supabase Storage migrates to a new render-image endpoint, or Google CDN deprecates `=wN-hN`), ALL existing fingerprints invalidate. Document at the kill-switch site.
+- **Parallel-12 is the prep tier (memory-light); score tier is parallel-6** (per v6.1, DEC-118). Don't conflate the two limits — the score `.limit()` is rate-limit-bound by Gemini (parallel-12 → 429 storms); the prep `.limit()` is memory-bound by collage compose (parallel-12 inside the URL-transform regime is safe; without URL transforms, parallel-12 OOMs).
+- **Unknown-CDN passthrough is intentional graceful fallback**, not a feature. If a future signal-source produces photos from a fourth domain (e.g., a Yelp-style content-delivery network), a new transform branch should be added, not relied on the passthrough.
+
+**Cross-references:**
+- DEC-118 (Decision Log) — ORCH-0737 v6 + v6.1 CLOSE rationale
+- ORCH-0737 v6 SPEC: `Mingla_Artifacts/specs/SPEC_ORCH-0737_PATCH_V6_PIPELINE_REDESIGN.md` (binding contract; URL transform pattern at §3.1, §4.4)
+- ORCH-0737 v6 INVESTIGATION: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0737_V6_PIPELINE_TRACE.md` (E1 + E2 photo-size + transform-viability evidence)
+- ORCH-0737 v6 IMPLEMENTATION REPORT: `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0737_V6_REPORT.md` (3-file change manifest; 5 IMPL discoveries)
+- I-TRIAL-CITY-RUNS-CANONICAL (preserved) — upstream pool-quality + city-scoping invariant; trial pipeline depends on
+- I-BOUNCER-EXCLUDES-FAST-FOOD-AND-CHAINS (preserved) — upstream pool-quality gate
+- ORCH-0737 v7 (queued) — London-scale forensics; will revisit transform pattern if Gemini File API replaces inline_data + introduces new caching pattern
 
 ---
 

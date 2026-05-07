@@ -1745,7 +1745,7 @@ async function runScoreIteration(args: {
     .eq("parent_run_id", runId)
     .eq("prep_status", "ready")
     .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`)
-    .limit(12);                                                             // v6: parallel-12 Gemini (memory-light)
+    .limit(6);                                                              // v6.1: parallel-6 Gemini (rate-limit safe; v6 parallel-12 hit 429 storms)
 
   if (pickupErr) throw new Error(`score pickup failed: ${pickupErr.message}`);
   if (!pickupRows || pickupRows.length === 0) {

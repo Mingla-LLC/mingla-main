@@ -323,5 +323,44 @@ Per dispatch §7 — none of the STOP-and-handback conditions tripped:
 - Predecessor patch reports (preserve): v1, v2, v3, v4 IMPLEMENTATION reports
 - DEC-115, DEC-116, DEC-117 in [`DECISION_LOG.md`](../DECISION_LOG.md)
 - Dispatch: [`prompts/IMPLEMENTOR_ORCH-0737_V6_PIPELINE_REDESIGN.md`](../prompts/IMPLEMENTOR_ORCH-0737_V6_PIPELINE_REDESIGN.md)
-- New invariant proposal: I-COLLAGE-PHOTO-URL-AT-TILE-RESOLUTION (orchestrator to register in INVARIANT_REGISTRY post-CLOSE)
-- Followups not bundled: ORCH-0737-followup-3 (pg_net score-response capture; cosmetic), Gemini File API skip-base64 (D-2 from v5 investigation; ~5 min/run savings)
+- New invariant proposal: I-COLLAGE-PHOTO-URL-AT-TILE-RESOLUTION (orchestrator to register in INVARIANT_REGISTRY post-CLOSE) — ✅ RATIFIED ACTIVE 2026-05-06 by DEC-118
+- Followups not bundled: ORCH-0737-followup-3 (pg_net score-response capture; cosmetic), Gemini File API skip-base64 (D-2 from v5 investigation; ~5 min/run savings) — bundled into ORCH-0737 v7 forensics (queued non-blocking)
+
+---
+
+## 16. v6.1 Hotfix — parallel-6 score (shipped 2026-05-06)
+
+**Trigger:** v6 deploy went clean (zero `WORKER_RESOURCE_LIMIT 546` errors) but Gemini parallel-12 score iterations hit rate-limit storms; some calls 429 → exponential backoff (12s × 2^N up to ~180s); Promise.all blocks on slowest call; workers exceed 110s budget, hit 150s edge fn timeout, rows stay `status='running'`. v6 stuck-recovery (5-min cutoff) reclaims them on next pass — they EVENTUALLY complete, just slowly. Cary 761 throughput post-v6: 5.75 rows/min sustained (peaks 10.40, dips 1.80) — below 13/min projection.
+
+**Change:** one-line edit at [`run-place-intelligence-trial/index.ts:1748`](../../supabase/functions/run-place-intelligence-trial/index.ts) — in `runScoreIteration`, the pickup query `.limit(12)` → `.limit(6)` (drops Gemini parallel-12 → parallel-6 to mitigate rate-limit storms). Comment updated: `// v6.1: parallel-6 Gemini (rate-limit safe; v6 parallel-12 hit 429 storms)`.
+
+**LEFT UNCHANGED:** `runPrepIteration` `.limit(12)` at line 1833 — prep is memory-bound not rate-bound; URL transforms (per `I-COLLAGE-PHOTO-URL-AT-TILE-RESOLUTION`) keep compose-call memory at ~5 MB/place × 12 = ~60 MB << 150 MB cap. The hot-revert comment at index.ts:1816 (`If WORKER_RESOURCE_LIMIT 546 errors appear post-deploy, REVERT to .limit(6)`) is preserved as documented escape hatch.
+
+**Deploy:** `supabase functions deploy run-place-intelligence-trial --project-ref gqnoajqerqhnvulmnyvv` 2026-05-06 23:54 UTC. Edge function bumped 17 → 18 ACTIVE on Mingla-dev. No DB migration. No admin redeploy. No mobile OTA.
+
+**Verification (v6.1):**
+- ✅ Edge function v18 ACTIVE (queried via Supabase Management API `/v1/projects/{ref}/functions/run-place-intelligence-trial`)
+- ✅ Zero `WORKER_RESOURCE_LIMIT 546` errors in last hour post-deploy (PROBE 2 count=0)
+- ✅ 8/8 [`imageCollage.test.ts`](../../supabase/functions/_shared/imageCollage.test.ts) Deno unit tests still PASS (URL-transform behavior pinned; v6.1 didn't touch imageCollage)
+- 🟡 Live-fire throughput verification PENDING — no operator-triggered city run currently active; v6.1 throughput projection (10-15 rows/min) verifies organically on next run
+- 🟡 Cary completion at v6 levels (5.75 rows/min sustained 78 min) is the LAST live-fire data point; v6.1 should beat that
+
+**Throughput projections (post-v6.1):**
+
+| City | Places | v6 (5.75/min observed) | v6.1 (12/min projected) | ≤60-min target? |
+|---|---|---|---|---|
+| Cary | 761 | ~132 min cold start | ~63 min | v6.1 just barely hits |
+| Charlotte / Raleigh | ~1500 | ~261 min | ~125 min | Neither hits |
+| London | 3495 | ~608 min (10 hr) | ~291 min (4.85 hr) | Neither hits — bundled into ORCH-0737 v7 |
+
+**v6.1 invariants preserved:** all v2/v3/v4/v6 invariants verbatim. SC-08 ≤90s observability preserved (cancel-mid-budget check inside loop; v6.1 didn't touch the budget loop). Cancel-cleanup parity at 3 sites preserved. 5-min stuck-recovery cutoff preserved.
+
+**v6.1 discoveries:**
+- **D-6 (informational):** v6.1 alone does not get London under operator's ≤60-min target. Even at projected 12 rows/min, London 3,495 places ~291 min (4.85 hr). v7 forensics will scope Gemini File API replacement for `inline_data` (saves ~400ms/row × 3495 = ~23 min/London) + cache hit-rate improvements (cache survived v6 deploy per D-1; could be intentionally raised by warming pre-run) + parallel-tuning beyond v6.1.
+- **D-7 (favorable):** the operator authorized v6.1 ship + CLOSE in single sequential block ("Ship v6.1 AND start v7 forensics") — proving the Sequential Pace rule allows compound atomic shipping when the change is one-line + hot-deployable + reversible. Future single-line hotfixes follow same pattern.
+
+**v6.1 cross-references:**
+- DEC-118 (Decision Log) — ORCH-0737 v6 + v6.1 CLOSE rationale
+- I-COLLAGE-PHOTO-URL-AT-TILE-RESOLUTION (INVARIANT_REGISTRY) — RATIFIED ACTIVE 2026-05-06
+- ORCH-0737 v7 forensics prompt: `Mingla_Artifacts/prompts/FORENSICS_ORCH-0737_V7_LONDON_SCALE.md` (queued non-blocking)
+- v6.1 source change: [`run-place-intelligence-trial/index.ts:1748`](../../supabase/functions/run-place-intelligence-trial/index.ts) (uncommitted at this addendum write — bundles into next operator commit)
