@@ -3,7 +3,7 @@
 **Skill:** mingla-implementor
 **ORCH-ID:** ORCH-0700 Phase 3B
 **Spec:** [SPEC_ORCH-0700_PHASE_3B_HELPER_TAXONOMY_FIX.md](../specs/SPEC_ORCH-0700_PHASE_3B_HELPER_TAXONOMY_FIX.md)
-**Dispatch:** [IMPLEMENTOR_ORCH-0700_PHASE_3B_HELPER_TAXONOMY_FIX.md](../prompts/IMPLEMENTOR_ORCH-0700_PHASE_3B_HELPER_TAXONOMY_FIX.md)
+**Dispatch:** IMPLEMENTOR_ORCH-0700_PHASE_3B_HELPER_TAXONOMY_FIX.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0700_PHASE_3B_HELPER_TAXONOMY_FIX.md`)
 **Status:** **implemented, partially verified**
 **Verification:** SC-09 PASS (atomicity inspectable) · SC-04 + SC-05 PARTIAL (sandbox lacks Deno; operator runs `deno test`) · SC-01, SC-02, SC-03, SC-06, SC-07, SC-08, SC-10 PENDING operator-run apply + deploy + smoke
 

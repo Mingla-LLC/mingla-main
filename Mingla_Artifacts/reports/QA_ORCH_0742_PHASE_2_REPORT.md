@@ -6,7 +6,7 @@
 **Commit under test:** `80c15297e1e4d707e8914af50439b7b5ba9acab6` (HEAD on `Seth`, pushed to `origin/Seth`)
 **Spec:** [`Mingla_Artifacts/specs/SPEC_ORCH_0742_CURRENT_BRAND_ID_ONLY.md`](../specs/SPEC_ORCH_0742_CURRENT_BRAND_ID_ONLY.md)
 **Implementor report:** [`reports/IMPLEMENTATION_ORCH_0742_REPORT.md`](IMPLEMENTATION_ORCH_0742_REPORT.md)
-**Dispatch:** [`prompts/TEST_ORCH_0742_PHASE_2.md`](../prompts/TEST_ORCH_0742_PHASE_2.md)
+**Dispatch:** `prompts/TEST_ORCH_0742_PHASE_2.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/TEST_ORCH_0742_PHASE_2.md`)
 
 ---
 

@@ -3,9 +3,9 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · grep oklch PASS · grep useOrderStore PASS (comments only) · runtime UNVERIFIED (awaits user smoke web + iOS)
 **Scope:** 4 NEW + 1 MOD · ~+1,400 LOC delta · 0 schema bumps · 0 new deps · 7 TRANSITIONAL toasts (all pointing at 9b/9c/Cycle 11/future polish)
-**Spec:** [Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md) §3.A
-**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md)
-**Dispatch:** [Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_9a_EVENTS_TAB_DETAIL_MANAGE.md](Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_9a_EVENTS_TAB_DETAIL_MANAGE.md)
+**Spec:** [Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](../specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md) §3.A
+**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md)
+**Dispatch:** Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_9a_EVENTS_TAB_DETAIL_MANAGE.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_9a_EVENTS_TAB_DETAIL_MANAGE.md`)
 
 ---
 

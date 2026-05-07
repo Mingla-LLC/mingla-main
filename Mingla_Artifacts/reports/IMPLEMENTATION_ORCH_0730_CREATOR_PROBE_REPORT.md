@@ -1,7 +1,7 @@
 # IMPL REPORT — ORCH-0730 CREATOR-ACCOUNTS PROBE
 
 **Mode:** IMPLEMENT (DIAGNOSTIC ONLY — temporary)
-**Dispatch anchor:** [`prompts/IMPL_ORCH_0730_CREATOR_ACCOUNTS_PROBE.md`](../prompts/IMPL_ORCH_0730_CREATOR_ACCOUNTS_PROBE.md)
+**Dispatch anchor:** `prompts/IMPL_ORCH_0730_CREATOR_ACCOUNTS_PROBE.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPL_ORCH_0730_CREATOR_ACCOUNTS_PROBE.md`)
 **Predecessor:** ORCH-0729 raw-fetch probe REJECTED F-10c (raw fetch with explicit Authorization also returned 403+42501)
 **Authored:** 2026-05-06
 

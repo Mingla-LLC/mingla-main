@@ -2,7 +2,7 @@
 
 **Mode:** SPEC (forensics — Arm 2 of 2)
 **Companion investigation:** [INVESTIGATION_ORCH-0708_SCORING_SYSTEM_AUDIT.md](INVESTIGATION_ORCH-0708_SCORING_SYSTEM_AUDIT.md)
-**Dispatch:** [prompts/FORENSICS_ORCH-0708_PHOTO_AESTHETIC_SCORING_AUDIT_AND_SPEC.md](Mingla_Artifacts/prompts/FORENSICS_ORCH-0708_PHOTO_AESTHETIC_SCORING_AUDIT_AND_SPEC.md)
+**Dispatch:** prompts/FORENSICS_ORCH-0708_PHOTO_AESTHETIC_SCORING_AUDIT_AND_SPEC.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/FORENSICS_ORCH-0708_PHOTO_AESTHETIC_SCORING_AUDIT_AND_SPEC.md`)
 **Date:** 2026-05-01
 **Confidence:** HIGH on architecture; MEDIUM on weight magnitudes (refine after first re-score in Raleigh/Cary/Durham)
 
@@ -157,11 +157,11 @@ CREATE POLICY "service_role_all_photo_aesthetic_batches" ON public.photo_aesthet
 ### 3.4 Carve-outs (CRITICAL — preserves invariants)
 
 **`admin-seed-places` MUST NOT touch `photo_aesthetic_data`:**
-- Implementor verifies via grep that `photo_aesthetic_data` does NOT appear in [admin-seed-places/index.ts](supabase/functions/admin-seed-places/index.ts) FIELD_MASK string (line 45-119) AND does NOT appear in the per-row UPDATE block ([admin-seed-places/index.ts:1023-1099](supabase/functions/admin-seed-places/index.ts#L1023-L1099)). This preserves `I-FIELD-MASK-SINGLE-OWNER` + `I-REFRESH-NEVER-DEGRADES`.
+- Implementor verifies via grep that `photo_aesthetic_data` does NOT appear in [admin-seed-places/index.ts](../../supabase/functions/admin-seed-places/index.ts) FIELD_MASK string (line 45-119) AND does NOT appear in the per-row UPDATE block ([admin-seed-places/index.ts:1023-1099](../../supabase/functions/admin-seed-places/index.ts#L1023-L1099)). This preserves `I-FIELD-MASK-SINGLE-OWNER` + `I-REFRESH-NEVER-DEGRADES`.
 - Add a **protective comment** at the top of the per-row UPDATE block: `// I-PHOTO-AESTHETIC-DATA-SOLE-OWNER (ORCH-0708): photo_aesthetic_data is INTENTIONALLY EXCLUDED from this UPDATE. It is owned exclusively by score-place-photo-aesthetics. A re-seed must NOT clobber it.`
 
 **Bouncer MUST NOT read or write `photo_aesthetic_data`:**
-- [_shared/bouncer.ts](supabase/functions/_shared/bouncer.ts) and [run-bouncer/index.ts](supabase/functions/run-bouncer/index.ts) + [run-pre-photo-bouncer/index.ts](supabase/functions/run-pre-photo-bouncer/index.ts) — none touched.
+- [_shared/bouncer.ts](../../supabase/functions/_shared/bouncer.ts) and [run-bouncer/index.ts](../../supabase/functions/run-bouncer/index.ts) + [run-pre-photo-bouncer/index.ts](../../supabase/functions/run-pre-photo-bouncer/index.ts) — none touched.
 - The dispatch's deterministic-by-design philosophy is preserved.
 
 ---
@@ -398,7 +398,7 @@ Place: "{place_name}" (Google primary_type: {primary_type}). {N} photos above. S
 
 ### 6.1 Update `signalScorer.ts` — add 7 new prefix matchers
 
-Insert after the existing `price_range_end_above_*` block ([signalScorer.ts:117-128](supabase/functions/_shared/signalScorer.ts#L117-L128)):
+Insert after the existing `price_range_end_above_*` block ([signalScorer.ts:117-128](../../supabase/functions/_shared/signalScorer.ts#L117-L128)):
 
 ```typescript
 // ORCH-0708 (Wave 2 Phase 1) — JSONB-aware photo aesthetic matchers.
@@ -483,7 +483,7 @@ Total LOC delta: ~70 lines. Backward compatible — places without `photo_aesthe
 
 ### 6.2 Update `PlaceForScoring` interface
 
-Add at the end of [signalScorer.ts:34-63](supabase/functions/_shared/signalScorer.ts#L34-L63):
+Add at the end of [signalScorer.ts:34-63](../../supabase/functions/_shared/signalScorer.ts#L34-L63):
 
 ```typescript
 photo_aesthetic_data?: {
@@ -503,7 +503,7 @@ photo_aesthetic_data?: {
 
 ### 6.3 Update `run-signal-scorer` SELECT_FIELDS
 
-[run-signal-scorer/index.ts:21-27](supabase/functions/run-signal-scorer/index.ts#L21-L27) — append `photo_aesthetic_data` to the SELECT_FIELDS string:
+[run-signal-scorer/index.ts:21-27](../../supabase/functions/run-signal-scorer/index.ts#L21-L27) — append `photo_aesthetic_data` to the SELECT_FIELDS string:
 
 ```typescript
 const SELECT_FIELDS =
@@ -922,8 +922,8 @@ Operator pulls the Discover deck for `fine_dining` in Raleigh (mobile or admin p
 1. **Migration 1** (`20260501000006`): add `place_pool.photo_aesthetic_data` column.
 2. **Migration 2** (`20260501000007`): create `photo_aesthetic_runs` + `photo_aesthetic_batches` tables.
 3. **Edge function:** new `supabase/functions/score-place-photo-aesthetics/index.ts` + shared helper. Deploy.
-4. **Scorer extension:** modify [signalScorer.ts](supabase/functions/_shared/signalScorer.ts) (+~70 LOC). Update Deno tests.
-5. **run-signal-scorer SELECT_FIELDS** extension: modify [run-signal-scorer/index.ts](supabase/functions/run-signal-scorer/index.ts). Redeploy.
+4. **Scorer extension:** modify [signalScorer.ts](../../supabase/functions/_shared/signalScorer.ts) (+~70 LOC). Update Deno tests.
+5. **run-signal-scorer SELECT_FIELDS** extension: modify [run-signal-scorer/index.ts](../../supabase/functions/run-signal-scorer/index.ts). Redeploy.
 6. **Migrations 3-7** (`20260501000008` through `20260501000012`): 5 signal v_next configs.
 7. **Operator deploys all migrations** via `supabase db push`.
 8. **Operator runs photo-aesthetic backfill** for Raleigh / Cary / Durham (preview + create_run + batch loop).

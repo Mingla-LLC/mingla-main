@@ -4,7 +4,7 @@
 **Verification:** tsc PASS · require cycle BROKEN · selector audit clean · runtime UNVERIFIED (awaits user re-smoke)
 **Scope:** 6 MOD · ~+95 / -130 LOC (~-35 net) · 0 schema migrations · 0 new files
 **Spec:** [SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md](../specs/SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md) — unchanged
-**Rework dispatch:** [IMPLEMENTOR_BIZ_CYCLE_9c_REWORK_v2.md](../prompts/IMPLEMENTOR_BIZ_CYCLE_9c_REWORK_v2.md)
+**Rework dispatch:** IMPLEMENTOR_BIZ_CYCLE_9c_REWORK_v2.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_9c_REWORK_v2.md`)
 **v1 report:** [IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT.md](IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT.md) — all v1 sections except the 3 reworked items carry forward
 
 ---

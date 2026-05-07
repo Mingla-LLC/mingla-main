@@ -5,7 +5,7 @@
 **Implementor:** mingla-implementor
 **SPEC:** [`Mingla_Artifacts/specs/SPEC_ORCH-0735_BOUNCER_CHAIN_FAST_FOOD_RULES.md`](../specs/SPEC_ORCH-0735_BOUNCER_CHAIN_FAST_FOOD_RULES.md) (BINDING; §6.B amended 2026-05-05 — see §3 below)
 **Investigation:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0735_BOUNCER_CHAIN_GAP.md`](INVESTIGATION_ORCH-0735_BOUNCER_CHAIN_GAP.md)
-**Dispatch:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0735_BOUNCER_RULES.md`](../prompts/IMPLEMENTOR_ORCH-0735_BOUNCER_RULES.md)
+**Dispatch:** `Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0735_BOUNCER_RULES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0735_BOUNCER_RULES.md`)
 
 ---
 

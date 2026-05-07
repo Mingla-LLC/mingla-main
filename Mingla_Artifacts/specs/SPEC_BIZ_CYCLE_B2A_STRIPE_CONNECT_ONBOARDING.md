@@ -8,7 +8,7 @@
 **Estimated IMPL effort:** ~28 hrs
 **Author:** Mingla Forensics (SPEC mode)
 **Date:** 2026-05-06
-**Dispatch:** [`Mingla_Artifacts/prompts/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`](../prompts/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md)
+**Dispatch:** `Mingla_Artifacts/prompts/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`)
 
 ---
 
@@ -32,7 +32,7 @@ B2a wires the real flow. The brand admin (rank ≥ `finance_manager`) clicks "Se
 
 - [`Mingla_Artifacts/reports/INVESTIGATION_CYCLE_B2_STRIPE_STUB.md`](../reports/INVESTIGATION_CYCLE_B2_STRIPE_STUB.md)
 - [`Mingla_Artifacts/reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md`](../reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md)
-- [`Mingla_Artifacts/prompts/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`](../prompts/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md) (this SPEC's dispatch)
+- `Mingla_Artifacts/prompts/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`) (this SPEC's dispatch)
 
 ### 2.2 Locked decisions (binding — do NOT re-litigate)
 

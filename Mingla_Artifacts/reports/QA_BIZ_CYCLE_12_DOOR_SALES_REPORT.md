@@ -4,7 +4,7 @@
 **Date:** 2026-05-03
 **Tester:** mingla-tester (independent code-forensic audit)
 **Cycle scope:** Phase 1 (commit `668bf968`) + Phase 2 (commit `3420a3d0`) on branch `Seth`
-**Dispatch:** [`prompts/TESTER_BIZ_CYCLE_12_DOOR_SALES.md`](../prompts/TESTER_BIZ_CYCLE_12_DOOR_SALES.md)
+**Dispatch:** `prompts/TESTER_BIZ_CYCLE_12_DOOR_SALES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/TESTER_BIZ_CYCLE_12_DOOR_SALES.md`)
 
 ---
 
@@ -451,7 +451,7 @@ If any of the above fail at runtime, dispatch back to implementor with a TARGETE
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md`](./INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md)
 - Phase 1 IMPL (commit `668bf968`): [`IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_PHASE_1_REPORT.md`](./IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_PHASE_1_REPORT.md)
 - Phase 2 IMPL (commit `3420a3d0`): [`IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_REPORT.md`](./IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_REPORT.md)
-- Implementor dispatch: [`prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md)
-- Tester dispatch (this audit): [`prompts/TESTER_BIZ_CYCLE_12_DOOR_SALES.md`](../prompts/TESTER_BIZ_CYCLE_12_DOOR_SALES.md)
+- Implementor dispatch: `prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md`)
+- Tester dispatch (this audit): `prompts/TESTER_BIZ_CYCLE_12_DOOR_SALES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/TESTER_BIZ_CYCLE_12_DOOR_SALES.md`)
 - INVARIANT_REGISTRY (I-29 + I-30 ratified at lines 219, 238): [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](../INVARIANT_REGISTRY.md)
 - Cycle 11 ORCH-0710 lesson: [`reports/IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT_v2.md`](./IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT_v2.md)

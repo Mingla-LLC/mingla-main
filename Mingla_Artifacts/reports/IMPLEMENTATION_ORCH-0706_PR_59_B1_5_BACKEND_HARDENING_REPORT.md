@@ -3,7 +3,7 @@
 **Status:** implemented, unverified (DB-side migration awaits operator `supabase db push` — only verifiable post-deploy by tester)
 **ORCH-ID:** ORCH-0706
 **SPEC:** [`specs/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md`](../specs/SPEC_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md)
-**Dispatch:** [`prompts/IMPLEMENTOR_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md`](../prompts/IMPLEMENTOR_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md)
+**Dispatch:** `prompts/IMPLEMENTOR_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md`)
 **Investigation:** [`reports/INVESTIGATION_PR_59_CYCLE_B1_BACKEND_REVIEW.md`](INVESTIGATION_PR_59_CYCLE_B1_BACKEND_REVIEW.md)
 **Author green-light:** PR #59 issuecomment-4364474041 (Fehintola — general OK, SPEC defaults locked)
 **Date:** 2026-05-03
@@ -297,7 +297,7 @@ If post-deploy live-fire reveals any unexpected behavior — e.g., a refund-rela
 - Reviewer report: [`reports/INVESTIGATION_PR_59_CYCLE_B1_BACKEND_REVIEW.md`](INVESTIGATION_PR_59_CYCLE_B1_BACKEND_REVIEW.md)
 - Reviewer paste-ready PR comment: [`reports/PR_59_REVIEW_COMMENTS.md`](PR_59_REVIEW_COMMENTS.md)
 - Author green-light: https://github.com/Mingla-LLC/mingla-main/pull/59#issuecomment-4364474041
-- Dispatch: [`prompts/IMPLEMENTOR_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md`](../prompts/IMPLEMENTOR_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md)
+- Dispatch: `prompts/IMPLEMENTOR_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0706_PR_59_B1_5_BACKEND_HARDENING.md`)
 - PR #59 head ref (verify if rebased): `836ce108054800aba1573d8bc30684f5728a86ce`
 - I-17 origin: `mingla-business/src/store/currentBrandStore.ts:271–283`
 - Memory rules referenced: `feedback_supabase_mcp_workaround`, `feedback_orchestrator_never_executes`, `feedback_diagnose_first_workflow`, `feedback_no_summary_paragraph`, `feedback_no_coauthored_by`, `feedback_headless_qa_rpc_gap`

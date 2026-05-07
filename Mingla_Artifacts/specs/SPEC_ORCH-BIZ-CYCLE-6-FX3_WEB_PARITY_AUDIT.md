@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-01
 **Author:** mingla-forensics
-**Investigation:** [reports/INVESTIGATION_ORCH-BIZ-CYCLE-6-FX3_WEB_PARITY_AUDIT.md](Mingla_Artifacts/reports/INVESTIGATION_ORCH-BIZ-CYCLE-6-FX3_WEB_PARITY_AUDIT.md)
+**Investigation:** [reports/INVESTIGATION_ORCH-BIZ-CYCLE-6-FX3_WEB_PARITY_AUDIT.md](../reports/INVESTIGATION_ORCH-BIZ-CYCLE-6-FX3_WEB_PARITY_AUDIT.md)
 **Severity:** S1-high (blocks Cycle 6 web smoke entirely)
 **Estimated effort:** 1.5–2 hrs implementor wall time
 

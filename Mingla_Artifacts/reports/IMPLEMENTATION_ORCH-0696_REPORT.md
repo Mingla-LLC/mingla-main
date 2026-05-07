@@ -1,7 +1,7 @@
 # IMPLEMENTATION_ORCH-0696_REPORT — ExpandedCardModal bottom-sheet redesign + EventDetailLayout
 
 **Implementor:** mingla-implementor
-**Dispatch:** [prompts/IMPL_ORCH-0696_BOTTOM_SHEET_REDESIGN.md](../prompts/IMPL_ORCH-0696_BOTTOM_SHEET_REDESIGN.md)
+**Dispatch:** prompts/IMPL_ORCH-0696_BOTTOM_SHEET_REDESIGN.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPL_ORCH-0696_BOTTOM_SHEET_REDESIGN.md`)
 **Spec:** [specs/SPEC_ORCH-0696_BOTTOM_SHEET_REDESIGN.md](../specs/SPEC_ORCH-0696_BOTTOM_SHEET_REDESIGN.md) (REVIEW APPROVED 10/10)
 **Date:** 2026-04-29
 **Status:** IMPLEMENTED · Verification: PARTIAL (tsc + 9/9 static smoke checks PASS; SC-9..SC-20 operator-driven device smoke pending; SC-21 GATED on SC-20)

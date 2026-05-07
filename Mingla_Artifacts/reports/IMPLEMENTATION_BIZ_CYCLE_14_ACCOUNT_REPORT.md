@@ -5,7 +5,7 @@
 **Date:** 2026-05-04
 **Surface:** Mingla Business mobile app (`mingla-business/`) — Phase 5 opens
 **Cycle:** Cycle 14 (BIZ Account: edit profile, settings, delete-flow, sign out)
-**Dispatch:** [`prompts/IMPLEMENTOR_BIZ_CYCLE_14_ACCOUNT.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_14_ACCOUNT.md)
+**Dispatch:** `prompts/IMPLEMENTOR_BIZ_CYCLE_14_ACCOUNT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_14_ACCOUNT.md`)
 **SPEC:** [`specs/SPEC_BIZ_CYCLE_14_ACCOUNT.md`](../specs/SPEC_BIZ_CYCLE_14_ACCOUNT.md)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_14_ACCOUNT.md`](./INVESTIGATION_BIZ_CYCLE_14_ACCOUNT.md)
 **Decision lock-in:** `DECISION_LOG.md` DEC-096 (14 architectural decisions D-14-1..D-14-17)
@@ -585,7 +585,7 @@ If any step fails → reply with "failed at step N: [symptom]" + I'll write rewo
 
 ## 16 — Cross-references
 
-- Dispatch: [`prompts/IMPLEMENTOR_BIZ_CYCLE_14_ACCOUNT.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_14_ACCOUNT.md)
+- Dispatch: `prompts/IMPLEMENTOR_BIZ_CYCLE_14_ACCOUNT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_14_ACCOUNT.md`)
 - SPEC: [`specs/SPEC_BIZ_CYCLE_14_ACCOUNT.md`](../specs/SPEC_BIZ_CYCLE_14_ACCOUNT.md)
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_14_ACCOUNT.md`](./INVESTIGATION_BIZ_CYCLE_14_ACCOUNT.md)
 - Decision lock-in: `DECISION_LOG.md` DEC-096

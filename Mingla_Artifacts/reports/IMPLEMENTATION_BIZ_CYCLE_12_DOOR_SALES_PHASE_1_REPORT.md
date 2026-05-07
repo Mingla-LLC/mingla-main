@@ -5,7 +5,7 @@
 **Date:** 2026-05-03
 **Surface:** Mingla Business mobile app (`mingla-business/`)
 **Cycle:** Cycle 12 (BIZ Door Sales / In-Person Payments)
-**Dispatch:** [`prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md)
+**Dispatch:** `prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md`)
 **SPEC:** [`specs/SPEC_BIZ_CYCLE_12_DOOR_SALES.md`](../specs/SPEC_BIZ_CYCLE_12_DOOR_SALES.md)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md`](./INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md)
 
@@ -248,7 +248,7 @@ Steps 7-15 remaining. ~1,500-1,800 LOC of substantive new component + route + ex
 
 ## 11 — Cross-references
 
-- Dispatch: [`prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md)
+- Dispatch: `prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md`)
 - SPEC: [`specs/SPEC_BIZ_CYCLE_12_DOOR_SALES.md`](../specs/SPEC_BIZ_CYCLE_12_DOOR_SALES.md)
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md`](./INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md)
 - Cycle 11 IMPL v2 (architectural pattern): [`reports/IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT_v2.md`](./IMPLEMENTATION_BIZ_CYCLE_11_QR_SCANNER_REPORT_v2.md)

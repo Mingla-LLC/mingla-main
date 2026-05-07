@@ -992,7 +992,7 @@ migration. Two things to verify at H confidence:
    transitively? If yes, the decommission breaks the new system.
 
 **Sub-audit dispatch:**
-[prompts/FORENSICS_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md](Mingla_Artifacts/prompts/FORENSICS_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md)
+prompts/FORENSICS_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/FORENSICS_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md`)
 
 9 mandatory threads: V1 exhaustive reader sweep across mingla-business / app-
 mobile/app / mingla-admin / supabase/functions / migrations / scripts / cron
@@ -1031,7 +1031,7 @@ to `prompts/SPEC_ORCH-0700_DISPATCH.md` (overwrites v1 draft).
 ## 11.7 Sub-audit RETURNED + REVIEW APPROVED 10/10 (2026-05-01)
 
 Sub-audit dispatch
-[`prompts/FORENSICS_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md`](../prompts/FORENSICS_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md)
+`prompts/FORENSICS_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md`)
 returned [`reports/INVESTIGATION_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md`](INVESTIGATION_ORCH-0700_AI_CATEGORIES_DECOMMISSION_AUDIT.md).
 
 **Verdict: SAFE WITH CAVEATS at H confidence.** The orchestrator audit (§11.6

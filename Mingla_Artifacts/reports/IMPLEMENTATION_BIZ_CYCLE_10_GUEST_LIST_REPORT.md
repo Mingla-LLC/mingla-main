@@ -3,7 +3,7 @@
 **Status:** implemented, partially verified
 **Cycle:** 10 (Mingla Business — Guest list, 6-journey slice)
 **SPEC:** [`specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md`](../specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md)
-**Dispatch:** [`prompts/IMPLEMENTOR_BIZ_CYCLE_10_GUEST_LIST.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_10_GUEST_LIST.md)
+**Dispatch:** `prompts/IMPLEMENTOR_BIZ_CYCLE_10_GUEST_LIST.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_10_GUEST_LIST.md`)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_10_GUEST_LIST.md`](./INVESTIGATION_BIZ_CYCLE_10_GUEST_LIST.md)
 **Date:** 2026-05-02
 
@@ -321,7 +321,7 @@ If operator wants different resolution on either discovery, surface for follow-u
 
 - SPEC: [`specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md`](../specs/SPEC_BIZ_CYCLE_10_GUEST_LIST.md)
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_10_GUEST_LIST.md`](./INVESTIGATION_BIZ_CYCLE_10_GUEST_LIST.md)
-- IMPL dispatch: [`prompts/IMPLEMENTOR_BIZ_CYCLE_10_GUEST_LIST.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_10_GUEST_LIST.md)
+- IMPL dispatch: `prompts/IMPLEMENTOR_BIZ_CYCLE_10_GUEST_LIST.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_10_GUEST_LIST.md`)
 - Cycle 9c v2 (selector pattern lessons): [`reports/IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v2.md`](./IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v2.md)
 - Cycle 9c-2 activity feed wire: commit `5e4b04d2`
 - ORCH-0704 edit-log infrastructure: [`reports/IMPLEMENTATION_ORCH-0704_FULL_EDIT_AFTER_PUBLISH_REPORT.md`](./IMPLEMENTATION_ORCH-0704_FULL_EDIT_AFTER_PUBLISH_REPORT.md)

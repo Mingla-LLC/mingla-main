@@ -5,7 +5,7 @@
 **Date:** 2026-05-03
 **Surface:** Mingla Business mobile app (`mingla-business/`)
 **Cycle:** Cycle 12 (BIZ Door Sales / In-Person Payments)
-**Dispatch:** [`prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md)
+**Dispatch:** `prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md`)
 **SPEC:** [`specs/SPEC_BIZ_CYCLE_12_DOOR_SALES.md`](../specs/SPEC_BIZ_CYCLE_12_DOOR_SALES.md)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md`](./INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md)
 **Phase 1 report (foundation, banked in commit `668bf968`):** [`IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_PHASE_1_REPORT.md`](./IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_PHASE_1_REPORT.md)
@@ -467,7 +467,7 @@ grep -nE "useMemo|useState|useEffect|useCallback|^  if \(" "app/event/[id]/guest
 
 ## 16 — Cross-references
 
-- Dispatch: [`prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md)
+- Dispatch: `prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_12_DOOR_SALES.md`)
 - SPEC: [`specs/SPEC_BIZ_CYCLE_12_DOOR_SALES.md`](../specs/SPEC_BIZ_CYCLE_12_DOOR_SALES.md)
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md`](./INVESTIGATION_BIZ_CYCLE_12_DOOR_SALES.md)
 - Phase 1 report: [`IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_PHASE_1_REPORT.md`](./IMPLEMENTATION_BIZ_CYCLE_12_DOOR_SALES_PHASE_1_REPORT.md)

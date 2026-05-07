@@ -70,7 +70,7 @@ Greenfield spec preparation. No bug. The J-A7 BrandProfileView Operations row #4
 
 #### H-A12-1 — Brand schema v8 lacks `events` array
 
-- File: [`mingla-business/src/store/currentBrandStore.ts`](mingla-business/src/store/currentBrandStore.ts)
+- File: [`mingla-business/src/store/currentBrandStore.ts`](../../mingla-business/src/store/currentBrandStore.ts)
 - Current Brand v8 has stripeStatus + payouts + refunds + balances + lastPayoutAt (J-A10 schema). No per-event revenue / soldCount / heldAt records.
 - Designer FinanceReportsScreen (line 411-417) shows 4 ranked top events with title + sub ("284 sold · in person") + revenue formatted GBP. This data CAN'T be derived from existing payouts/refunds (payouts are aggregate transfers, not per-event).
 - Roadmap line 239 lists J-A12 source as "finance KPIs + breakdown + top events" — top events list is required.
@@ -101,8 +101,8 @@ Greenfield spec preparation. No bug. The J-A7 BrandProfileView Operations row #4
 #### H-A12-2 — J-A7 Operations row #4 + J-A11 Export Button closure-scoped to Toast
 
 - Files:
-  - [`mingla-business/src/components/brand/BrandProfileView.tsx`](mingla-business/src/components/brand/BrandProfileView.tsx) — operationsRows[3].onPress fires `fireToast("Finance reports land in J-A12.")`
-  - [`mingla-business/src/components/brand/BrandPaymentsView.tsx`](mingla-business/src/components/brand/BrandPaymentsView.tsx) — handleExport closure fires `fireToast("Finance reports land in J-A12.")`
+  - [`mingla-business/src/components/brand/BrandProfileView.tsx`](../../mingla-business/src/components/brand/BrandProfileView.tsx) — operationsRows[3].onPress fires `fireToast("Finance reports land in J-A12.")`
+  - [`mingla-business/src/components/brand/BrandPaymentsView.tsx`](../../mingla-business/src/components/brand/BrandPaymentsView.tsx) — handleExport closure fires `fireToast("Finance reports land in J-A12.")`
 - Both Toast handlers retire when J-A12 lands.
 - **Spec mitigation:**
   - BrandProfileView: add `onReports: (brandId: string) => void` prop. Modify operationsRows[3].onPress to call `onReports(brand.id)`. Continues the J-A8 onEdit / J-A9 onTeam / J-A10 onStripe+onPayments / J-A12 onReports navigation prop chain.

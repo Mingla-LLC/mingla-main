@@ -2,7 +2,7 @@
 
 **Status:** implemented and partially verified — Vite build PASS · grep gates PASS · Deno typecheck deferred (not available locally; verifies on `supabase functions deploy`) · operator runtime verification PENDING (32-anchor re-run via existing UI)
 **ORCH IDs in scope:** ORCH-0713 Phase 0.5
-**Dispatch:** [Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0713_TRIAL_PIPELINE_GAP_FILL_AND_SCORING.md](../prompts/IMPLEMENTOR_ORCH-0713_TRIAL_PIPELINE_GAP_FILL_AND_SCORING.md)
+**Dispatch:** Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0713_TRIAL_PIPELINE_GAP_FILL_AND_SCORING.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0713_TRIAL_PIPELINE_GAP_FILL_AND_SCORING.md`)
 **DEC reference:** DEC-099 (architecture pivot — drop photo_aesthetic + signal_anchors; single JSONB column; calibration-by-rerun)
 
 ---

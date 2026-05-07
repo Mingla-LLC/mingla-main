@@ -3,7 +3,7 @@
 **ORCH-ID:** ORCH-0737 v6
 **Spec authority:** [`specs/SPEC_ORCH-0737_PATCH_V6_PIPELINE_REDESIGN.md`](../specs/SPEC_ORCH-0737_PATCH_V6_PIPELINE_REDESIGN.md) (BINDING)
 **Investigation:** [`reports/INVESTIGATION_ORCH-0737_V6_PIPELINE_TRACE.md`](INVESTIGATION_ORCH-0737_V6_PIPELINE_TRACE.md)
-**Dispatch:** [`prompts/IMPLEMENTOR_ORCH-0737_V6_PIPELINE_REDESIGN.md`](../prompts/IMPLEMENTOR_ORCH-0737_V6_PIPELINE_REDESIGN.md)
+**Dispatch:** `prompts/IMPLEMENTOR_ORCH-0737_V6_PIPELINE_REDESIGN.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0737_V6_PIPELINE_REDESIGN.md`)
 **Status:** **implemented, unverified** — code complete + grep-verified all 13 static-trace checks; runtime smoke pending operator deploy
 **Effort:** ~70 minutes wallclock (vs 45-90 min estimate)
 
@@ -322,7 +322,7 @@ Per dispatch §7 — none of the STOP-and-handback conditions tripped:
 - Parent spec: [`specs/SPEC_ORCH-0737_FULL_CITY_ASYNC_TRIAL_v2.md`](../specs/SPEC_ORCH-0737_FULL_CITY_ASYNC_TRIAL_v2.md)
 - Predecessor patch reports (preserve): v1, v2, v3, v4 IMPLEMENTATION reports
 - DEC-115, DEC-116, DEC-117 in [`DECISION_LOG.md`](../DECISION_LOG.md)
-- Dispatch: [`prompts/IMPLEMENTOR_ORCH-0737_V6_PIPELINE_REDESIGN.md`](../prompts/IMPLEMENTOR_ORCH-0737_V6_PIPELINE_REDESIGN.md)
+- Dispatch: `prompts/IMPLEMENTOR_ORCH-0737_V6_PIPELINE_REDESIGN.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0737_V6_PIPELINE_REDESIGN.md`)
 - New invariant proposal: I-COLLAGE-PHOTO-URL-AT-TILE-RESOLUTION (orchestrator to register in INVARIANT_REGISTRY post-CLOSE) — ✅ RATIFIED ACTIVE 2026-05-06 by DEC-118
 - Followups not bundled: ORCH-0737-followup-3 (pg_net score-response capture; cosmetic), Gemini File API skip-base64 (D-2 from v5 investigation; ~5 min/run savings) — bundled into ORCH-0737 v7 forensics (queued non-blocking)
 

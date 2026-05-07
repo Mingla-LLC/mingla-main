@@ -3,7 +3,7 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · runtime UNVERIFIED (awaits user smoke)
 **Scope:** 5 files MOD · ~+250/-40 LOC delta · 1 schema bump v10→v11 · 0 new external deps
-**Spec:** [prompts/IMPL_BIZ_CYCLE_7_FX2_BRAND_PAGE_REDESIGN.md](Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_7_FX2_BRAND_PAGE_REDESIGN.md)
+**Spec:** prompts/IMPL_BIZ_CYCLE_7_FX2_BRAND_PAGE_REDESIGN.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_7_FX2_BRAND_PAGE_REDESIGN.md`)
 
 ---
 

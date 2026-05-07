@@ -3,8 +3,8 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · grep PASS · runtime UNVERIFIED (awaits user smoke iOS+Web)
 **Scope:** 1 file MOD · ~+18/-9 LOC delta · 0 schema bumps · 0 new deps · 0 new TRANSITIONALs
-**Spec:** [Mingla_Artifacts/specs/SPEC_ORCH-BIZ-CYCLE-7-FX3.md](Mingla_Artifacts/specs/SPEC_ORCH-BIZ-CYCLE-7-FX3.md)
-**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_ORCH-BIZ-CYCLE-7-FX3.md](Mingla_Artifacts/reports/INVESTIGATION_ORCH-BIZ-CYCLE-7-FX3.md)
+**Spec:** [Mingla_Artifacts/specs/SPEC_ORCH-BIZ-CYCLE-7-FX3.md](../specs/SPEC_ORCH-BIZ-CYCLE-7-FX3.md)
+**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_ORCH-BIZ-CYCLE-7-FX3.md](INVESTIGATION_ORCH-BIZ-CYCLE-7-FX3.md)
 
 ---
 

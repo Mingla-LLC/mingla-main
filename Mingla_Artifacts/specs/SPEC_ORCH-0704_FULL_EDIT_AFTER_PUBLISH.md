@@ -1335,7 +1335,7 @@ Pre-implementation checklist:
 ## 15 — Cross-references
 
 - Investigation: [INVESTIGATION_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md](../reports/INVESTIGATION_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md)
-- Dispatch: [FORENSICS_SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md](../prompts/FORENSICS_SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md)
+- Dispatch: FORENSICS_SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH.md`)
 - Supersedes: Cycle 9 spec §3.B (J-E11 narrow scope)
 - Forward dependency: Cycle 9c (useOrderStore + buyer order detail page)
 - Forward dependency: ORCH-0705 (no-show + post-event ops; deferred until post-Stripe)

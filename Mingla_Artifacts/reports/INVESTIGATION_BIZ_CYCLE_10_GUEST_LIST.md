@@ -2,7 +2,7 @@
 
 **Mode:** INVESTIGATE
 **Cycle:** 10 (Mingla Business mobile app — operator-facing)
-**Dispatch:** [`prompts/FORENSICS_BIZ_CYCLE_10_GUEST_LIST.md`](../prompts/FORENSICS_BIZ_CYCLE_10_GUEST_LIST.md)
+**Dispatch:** `prompts/FORENSICS_BIZ_CYCLE_10_GUEST_LIST.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_10_GUEST_LIST.md`)
 **Confidence:** HIGH (every classification cross-checked against actual code + PR #59 schema)
 **Date:** 2026-05-02
 
@@ -352,7 +352,7 @@ The only remaining ambiguity is the 7 operator-steering questions in §16, all o
 
 ## 20 — Cross-references
 
-- Dispatch: [`prompts/FORENSICS_BIZ_CYCLE_10_GUEST_LIST.md`](../prompts/FORENSICS_BIZ_CYCLE_10_GUEST_LIST.md)
+- Dispatch: `prompts/FORENSICS_BIZ_CYCLE_10_GUEST_LIST.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_10_GUEST_LIST.md`)
 - PRD source: `Mingla_Artifacts/BUSINESS_PRD.md` §5.3
 - Cycle 9c v3 (closes order-side, opens Cycle 10 backlog): [`reports/IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v3.md`](IMPLEMENTATION_BIZ_CYCLE_9c_ORDERS_OPS_REPORT_v3.md) §8
 - Cycle 9c-2 (activity feed extensions — relevant for J-G4 / J-G5 logging): commit `5e4b04d2`

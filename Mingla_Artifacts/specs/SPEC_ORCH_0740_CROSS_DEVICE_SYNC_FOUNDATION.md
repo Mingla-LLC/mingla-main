@@ -1,7 +1,7 @@
 # SPEC — ORCH-0740 — Cross-device sync Cycle 1 (Foundation)
 
 **Authored:** 2026-05-06 by mingla-forensics
-**Dispatch:** [`prompts/SPEC_ORCH_0740_CROSS_DEVICE_SYNC_FOUNDATION.md`](../prompts/SPEC_ORCH_0740_CROSS_DEVICE_SYNC_FOUNDATION.md)
+**Dispatch:** `prompts/SPEC_ORCH_0740_CROSS_DEVICE_SYNC_FOUNDATION.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_ORCH_0740_CROSS_DEVICE_SYNC_FOUNDATION.md`)
 **Investigations:** [`reports/INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT.md`](../reports/INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT.md) + [`reports/INVESTIGATION_ORCH_0739_EVENTS_AND_WEB_EXTENSION.md`](../reports/INVESTIGATION_ORCH_0739_EVENTS_AND_WEB_EXTENSION.md)
 **Closes (after IMPL + tester PASS):**
 - ORCH-0738 RC-B (zero AppState→focusManager wiring)

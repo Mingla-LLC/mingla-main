@@ -5,9 +5,9 @@
 **Journeys:** J-A10 — Stripe Connect onboarding (UI shell) + J-A11 — View brand payments
 **Codebase:** `mingla-business/`
 **Predecessor commit:** `f39b5220` (J-A10 forensics handoff merge) → `c947c292` (Avatar carve-out CLOSE)
-**Spec:** [SPEC_ORCH-BIZ-CYCLE-2-J-A10_PAYMENTS_SHELL.md](Mingla_Artifacts/specs/SPEC_ORCH-BIZ-CYCLE-2-J-A10_PAYMENTS_SHELL.md)
-**Investigation:** [INVESTIGATION_ORCH-BIZ-CYCLE-2-J-A10.md](Mingla_Artifacts/reports/INVESTIGATION_ORCH-BIZ-CYCLE-2-J-A10.md)
-**Dispatch:** [IMPL_BIZ_CYCLE_2_J_A10_PAYMENTS_SHELL.md](Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_2_J_A10_PAYMENTS_SHELL.md)
+**Spec:** [SPEC_ORCH-BIZ-CYCLE-2-J-A10_PAYMENTS_SHELL.md](../specs/SPEC_ORCH-BIZ-CYCLE-2-J-A10_PAYMENTS_SHELL.md)
+**Investigation:** [INVESTIGATION_ORCH-BIZ-CYCLE-2-J-A10.md](INVESTIGATION_ORCH-BIZ-CYCLE-2-J-A10.md)
+**Dispatch:** IMPL_BIZ_CYCLE_2_J_A10_PAYMENTS_SHELL.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_2_J_A10_PAYMENTS_SHELL.md`)
 **Implementor turn:** 2026-04-30
 
 ---
@@ -47,7 +47,7 @@ All files in dispatch G-3 list confirmed in session context: spec + investigatio
 
 #### W-3: `Spinner` primitive
 **Spec asked:** verify exists or fall back to ActivityIndicator.
-**Resolution:** Spinner primitive EXISTS at [src/components/ui/Spinner.tsx](mingla-business/src/components/ui/Spinner.tsx) with sizes 24 | 36 | 48 + accent.warm default color. Used `<Spinner size={48} color={accent.warm} />` in onboarding loading state.
+**Resolution:** Spinner primitive EXISTS at [src/components/ui/Spinner.tsx](../../mingla-business/src/components/ui/Spinner.tsx) with sizes 24 | 36 | 48 + accent.warm default color. Used `<Spinner size={48} color={accent.warm} />` in onboarding loading state.
 
 #### W-4: `check` icon
 **Confirmed present** (used by RolePickerSheet on J-A9; Icon.tsx:128). Used in BrandOnboardView "complete" state success circle.

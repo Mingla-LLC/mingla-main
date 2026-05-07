@@ -1,7 +1,7 @@
 # IMPL REPORT — ORCH-0733 / H40 JWT DECODE PROBE
 
 **Mode:** IMPLEMENT (DIAGNOSTIC ONLY — temporary)
-**Dispatch anchor:** [`prompts/IMPL_ORCH_0733_H40_JWT_DECODE_PROBE.md`](../prompts/IMPL_ORCH_0733_H40_JWT_DECODE_PROBE.md)
+**Dispatch anchor:** `prompts/IMPL_ORCH_0733_H40_JWT_DECODE_PROBE.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPL_ORCH_0733_H40_JWT_DECODE_PROBE.md`)
 **Predecessor:** ORCH-0731 B1 historical forensics → H39 (RLS confirmed denier via DISABLE/ENABLE) → H41 (only one PERMISSIVE INSERT policy with clean predicate `account_id = auth.uid() AND deleted_at IS NULL`)
 **Authored:** 2026-05-06
 

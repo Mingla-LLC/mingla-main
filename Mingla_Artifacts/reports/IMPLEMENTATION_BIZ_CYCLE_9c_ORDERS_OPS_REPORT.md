@@ -5,7 +5,7 @@
 **Scope:** 6 NEW + 9 MOD + 1 REWRITE-body · ~+1900 LOC net · 0 schema migrations · 0 new deps
 **Spec:** [SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md](../specs/SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md)
 **Investigation:** [INVESTIGATION_BIZ_CYCLE_9c_ORDERS_OPS.md](INVESTIGATION_BIZ_CYCLE_9c_ORDERS_OPS.md)
-**Dispatch:** [IMPLEMENTOR_BIZ_CYCLE_9c_ORDERS_OPS.md](../prompts/IMPLEMENTOR_BIZ_CYCLE_9c_ORDERS_OPS.md)
+**Dispatch:** IMPLEMENTOR_BIZ_CYCLE_9c_ORDERS_OPS.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_9c_ORDERS_OPS.md`)
 **Backward dependency preserved:** ORCH-0704 v2 (49 ACs continue to hold; guard rails activated post-9c)
 
 ---

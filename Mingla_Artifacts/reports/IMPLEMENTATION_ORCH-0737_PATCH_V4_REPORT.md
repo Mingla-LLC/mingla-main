@@ -1,7 +1,7 @@
 # IMPLEMENTATION REPORT — ORCH-0737 v4 PATCH (two-pass worker)
 
 **ORCH-ID:** ORCH-0737 v4 patch (architectural refactor under SPEC v2)
-**Dispatch:** [`prompts/IMPLEMENTOR_ORCH-0737_PATCH_V4_TWO_PASS_WORKER.md`](../prompts/IMPLEMENTOR_ORCH-0737_PATCH_V4_TWO_PASS_WORKER.md)
+**Dispatch:** `prompts/IMPLEMENTOR_ORCH-0737_PATCH_V4_TWO_PASS_WORKER.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0737_PATCH_V4_TWO_PASS_WORKER.md`)
 **Predecessor:** [`reports/IMPLEMENTATION_ORCH-0737_PATCH_V3_REPORT.md`](IMPLEMENTATION_ORCH-0737_PATCH_V3_REPORT.md) (v3 cron filter patch)
 **Status:** **implemented, unverified** — code written + grep-verified; runtime smoke pending operator
 **Effort:** ~25 min wallclock (vs ~30-45 min estimate)

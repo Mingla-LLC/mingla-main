@@ -1,7 +1,7 @@
 # SPEC — ORCH-0700 Phase 3B Helper Taxonomy Fix
 
 **Author:** mingla-forensics (SPEC mode)
-**Dispatch:** [SPEC_ORCH-0700_PHASE_3B_HELPER_TAXONOMY_FIX.md](../prompts/SPEC_ORCH-0700_PHASE_3B_HELPER_TAXONOMY_FIX.md)
+**Dispatch:** SPEC_ORCH-0700_PHASE_3B_HELPER_TAXONOMY_FIX.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_ORCH-0700_PHASE_3B_HELPER_TAXONOMY_FIX.md`)
 **ORCH-ID:** ORCH-0700 Phase 3B
 **Operator decision:** Path A (display label) confirmed 2026-05-03
 **Status:** spec complete · ready for implementor dispatch

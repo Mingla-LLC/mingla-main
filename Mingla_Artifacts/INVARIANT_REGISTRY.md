@@ -7,6 +7,26 @@
 
 ---
 
+## ACTIVE (post ORCH-0750E CLOSE 2026-05-07)
+
+### I-DOC-LINK-BASELINE-RATCHETS-DOWN - Durable documentation links must stay zero-missing
+
+**Statement:** Mingla's durable local markdown documentation links must resolve with zero missing targets. `scripts/docs/link_baseline.json` must not increase above `max_missing: 0` unless an explicit orchestrator decision records a temporary exception, owner, and burn-down path.
+
+**Authority:** `scripts/docs/check_links.py` is the canonical local markdown-link checker. `scripts/docs/link_baseline.json` is the enforced ceiling. ORCH-0750E's tester report is the close evidence for the zero-clean state.
+
+**Rationale:** ORCH-0750 forensics proved the documentation system had 1,195 missing local links. ORCH-0750A made the debt measurable; ORCH-0750C/D organized and protected the system; ORCH-0750E burned the measured debt to zero. Leaving the ceiling above zero after cleanup would silently allow the old failure class to return.
+
+**Enforcement:** GitHub runs `.github/workflows/docs-artifact-regression.yml` on docs/artifact changes. Local close and tester gates must run the strict zero link check before claiming documentation cleanup is complete.
+
+**Test that catches a regression:** `python3 scripts/docs/check_links.py --format markdown --baseline-file scripts/docs/link_baseline.json` fails if missing links exceed zero. `python3 scripts/docs/check_links.py --format markdown --max-missing 0` is the explicit strict check.
+
+**Established:** 2026-05-07 by ORCH-0750E CLOSE. DEC-129 logged.
+
+**Cross-references:** `reports/INVESTIGATION_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md`, `reports/SPEC_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md`, `reports/IMPLEMENTATION_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md`, `reports/TEST_REPORT_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md`.
+
+---
+
 ## ACTIVE (post ORCH-0749 CLOSE 2026-05-07)
 
 ### I-AUTH-PRIVATE-CACHE-CANNOT-OUTLIVE-AUTH-OWNER - Private mobile query state must be auth-scoped and removable
@@ -1024,7 +1044,7 @@ picnic_friendly anchor (e.g., Spring Forest Road Park) had zero qualifying groce
 within 3 km, the assembly loop deterministically re-picked the same anchor 8 times
 and returned 0 cards. ORCH-0677 RC-1.
 
-**Enforcement:** [supabase/functions/generate-curated-experiences/index.ts:815](supabase/functions/generate-curated-experiences/index.ts#L815)
+**Enforcement:** [supabase/functions/generate-curated-experiences/index.ts:815](../supabase/functions/generate-curated-experiences/index.ts#L815)
 declares `failedAnchorIds`; filter clause + 5 add-sites at the gate-fail branches.
 
 **Test:** spec T-04 (unit) — with 5 anchor candidates and only the 5th viable,
@@ -1048,11 +1068,11 @@ was indistinguishable from "still loading" on the mobile side because `hasMoreFr
 defaulted to `true`. ORCH-0677 RC-2.
 
 **Enforcement:**
-- Edge fn: [supabase/functions/generate-curated-experiences/index.ts](supabase/functions/generate-curated-experiences/index.ts)
+- Edge fn: [supabase/functions/generate-curated-experiences/index.ts](../supabase/functions/generate-curated-experiences/index.ts)
   function-end summary computation + HTTP response shape conditional spread.
-- Mobile: [app-mobile/src/services/deckService.ts](app-mobile/src/services/deckService.ts)
+- Mobile: [app-mobile/src/services/deckService.ts](../app-mobile/src/services/deckService.ts)
   aggregates per-pill `pillEmptyReasons` → emits `curatedEmptyReason` on `DeckResponse`;
-  [app-mobile/src/contexts/RecommendationsContext.tsx:1666](app-mobile/src/contexts/RecommendationsContext.tsx#L1666)
+  [app-mobile/src/contexts/RecommendationsContext.tsx:1666](../app-mobile/src/contexts/RecommendationsContext.tsx#L1666)
   EMPTY branch reads `soloCuratedEmptyReason !== undefined`.
 
 **Test:** spec T-05 (mocked stuck-EMPTY routing) + T-11 (device live-fire — picnic
@@ -1067,9 +1087,9 @@ where `stops.some(s => s.reverseAnchor)` MUST have `combos.length >= 2`.
 Single-combo + reverseAnchor produces no fallback variety when an anchor fails the
 near-anchor companion fetch — this exact shape was the cause of ORCH-0677.
 
-**Enforcement:** Deno lint script [supabase/functions/generate-curated-experiences/_lint_invariants.ts](supabase/functions/generate-curated-experiences/_lint_invariants.ts)
+**Enforcement:** Deno lint script [supabase/functions/generate-curated-experiences/_lint_invariants.ts](../supabase/functions/generate-curated-experiences/_lint_invariants.ts)
 imports `EXPERIENCE_TYPES` and asserts the rule. Wired into
-[scripts/ci-check-invariants.sh](scripts/ci-check-invariants.sh) with graceful skip
+[scripts/ci-check-invariants.sh](../scripts/ci-check-invariants.sh) with graceful skip
 when `deno` is not on PATH.
 
 **Test:** spec T-08 (CI inject + revert negative-control) — adding a synthetic typedef
@@ -1663,7 +1683,7 @@ bash scripts/ci-check-invariants.sh
 
 **Established by:** ORCH-0684.
 
-**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`](Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md), `supabase/migrations/20260501000001_orch_0684_person_hero_personalized.sql`.
+**Related artifacts:** `Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md` (missing reference: `Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`), `supabase/migrations/20260501000001_orch_0684_person_hero_personalized.sql`.
 
 ---
 
@@ -1686,7 +1706,7 @@ bash scripts/ci-check-invariants.sh
 
 **Established by:** ORCH-0684.
 
-**Related artifacts:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0684_PAIRED_VIEW_CARDS_NOT_REAL.md`](Mingla_Artifacts/reports/INVESTIGATION_ORCH-0684_PAIRED_VIEW_CARDS_NOT_REAL.md), [`Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`](Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md).
+**Related artifacts:** `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0684_PAIRED_VIEW_CARDS_NOT_REAL.md` (missing reference: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0684_PAIRED_VIEW_CARDS_NOT_REAL.md`), `Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md` (missing reference: `Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`).
 
 ---
 
@@ -1720,17 +1740,17 @@ curl -X POST https://<project>.supabase.co/functions/v1/get-person-hero-cards \
 
 **Established by:** ORCH-0684.
 
-**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`](Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md) §3.8.
+**Related artifacts:** `Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md` (missing reference: `Mingla_Artifacts/specs/SPEC_ORCH-0684_PAIRED_VIEW_REWIRE.md`) §3.8.
 
 ---
 
 ## I-CHAT-CARDPAYLOAD-NO-RECIPIENT-RELATIVE-FIELDS
 
-**Statement:** `trimCardPayload` (in [`app-mobile/src/services/messagingService.ts`](app-mobile/src/services/messagingService.ts)) MUST NEVER extract or persist any of the following fields into the trimmed `CardPayload`: `travelTime`, `travelTimeMin`, `distance`, `distanceKm`, `distance_km`. These are recipient-relative — sender's value would fabricate for the recipient.
+**Statement:** `trimCardPayload` (in [`app-mobile/src/services/messagingService.ts`](../app-mobile/src/services/messagingService.ts)) MUST NEVER extract or persist any of the following fields into the trimmed `CardPayload`: `travelTime`, `travelTimeMin`, `distance`, `distanceKm`, `distance_km`. These are recipient-relative — sender's value would fabricate for the recipient.
 
 **Why it exists:** Constitution #9 (no fabricated data). Codifies the ORCH-0659/0660 distance/travel-time lesson at the chat-share trim boundary. A shared card opens for the recipient on a device with their own location and travel mode; the sender's distance/travel-time value would not reflect the recipient's reality and would surface as silent fabrication.
 
-**Enforcement:** CI gate in [`scripts/ci-check-invariants.sh`](scripts/ci-check-invariants.sh) extracts the body of `trimCardPayload` via `awk` and greps for the forbidden field names. FAILS the build with file:line + invariant ID + cross-ref ORCH-0659/0660 if any match. Negative-control tested.
+**Enforcement:** CI gate in [`scripts/ci-check-invariants.sh`](../scripts/ci-check-invariants.sh) extracts the body of `trimCardPayload` via `awk` and greps for the forbidden field names. FAILS the build with file:line + invariant ID + cross-ref ORCH-0659/0660 if any match. Negative-control tested.
 
 **Test that catches a regression:**
 
@@ -1742,7 +1762,7 @@ awk '/export function trimCardPayload/,/^\}/' app-mobile/src/services/messagingS
 
 **Established by:** ORCH-0685.
 
-**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md) §6.3 + §12.1, [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0685_v2_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/reports/INVESTIGATION_ORCH-0685_v2_EXPANDED_CARD_MODAL.md) §RC-2.
+**Related artifacts:** `Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md` (missing reference: `Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`) §6.3 + §12.1, `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0685_v2_EXPANDED_CARD_MODAL.md` (missing reference: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0685_v2_EXPANDED_CARD_MODAL.md`) §RC-2.
 
 ---
 
@@ -1750,9 +1770,9 @@ awk '/export function trimCardPayload/,/^\}/' app-mobile/src/services/messagingS
 
 **Statement:** Every locale's `common.json` (under `app-mobile/src/i18n/locales/<locale>/common.json`) MUST contain ALL 12 required `category_*` keys: `category_nature`, `category_icebreakers`, `category_drinks_and_music`, `category_brunch`, `category_casual_food`, `category_upscale_fine_dining`, `category_movies`, `category_theatre`, `category_creative_arts`, `category_play`, `category_brunch_lunch_casual` (legacy), `category_movies_theatre` (legacy).
 
-**Why it exists:** `getReadableCategoryName` ([`app-mobile/src/utils/categoryUtils.ts:50`](app-mobile/src/utils/categoryUtils.ts#L50)) calls `i18n.t('common:category_${slug}')`. When the key is missing, it falls back to title-cased English. This produces mixed-language UI for non-English locales (e.g., a French user sees "Casual Food" instead of "Décontracté"). Constitution #3 — silent translation failure.
+**Why it exists:** `getReadableCategoryName` ([`app-mobile/src/utils/categoryUtils.ts:50`](../app-mobile/src/utils/categoryUtils.ts#L50)) calls `i18n.t('common:category_${slug}')`. When the key is missing, it falls back to title-cased English. This produces mixed-language UI for non-English locales (e.g., a French user sees "Casual Food" instead of "Décontracté"). Constitution #3 — silent translation failure.
 
-**Enforcement:** CI gate in [`scripts/ci-check-invariants.sh`](scripts/ci-check-invariants.sh) iterates 29 locales × 12 keys, FAILS with named missing key + locale.
+**Enforcement:** CI gate in [`scripts/ci-check-invariants.sh`](../scripts/ci-check-invariants.sh) iterates 29 locales × 12 keys, FAILS with named missing key + locale.
 
 **Test that catches a regression:**
 
@@ -1769,7 +1789,7 @@ done
 
 **Established by:** ORCH-0685.
 
-**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md) §11.1.
+**Related artifacts:** `Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md` (missing reference: `Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`) §11.1.
 
 ---
 
@@ -1790,7 +1810,7 @@ sed -n '1860,2020p' app-mobile/src/components/ExpandedCardModal.tsx | grep -cE '
 
 **Established by:** ORCH-0685.
 
-**Related artifacts:** [`Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`](Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md) §10.2.
+**Related artifacts:** `Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md` (missing reference: `Mingla_Artifacts/specs/SPEC_ORCH-0685_EXPANDED_CARD_MODAL.md`) §10.2.
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-01
 **Author:** mingla-forensics
-**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_8_CHECKOUT.md](Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_8_CHECKOUT.md)
+**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_8_CHECKOUT.md](../reports/INVESTIGATION_BIZ_CYCLE_8_CHECKOUT.md)
 **Estimated effort:** ~24–30 hours implementor + ~3 hours smoke. 5 screens net-new, 1 entry-point edit, 1 cart context. NO new dependencies. NO schema. NO API. STUB ALL THE WAY.
 
 ---

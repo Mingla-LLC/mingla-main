@@ -2,7 +2,7 @@
 
 **Mode:** INVESTIGATE-THEN-SPEC (IA) — single SPEC file covers Part A (mechanical hotfix) + Part B (Cycle 2 architectural).
 **Authored by:** mingla-forensics, 2026-05-06
-**Dispatch:** [`prompts/SPEC_ORCH_0742_CURRENT_BRAND_ID_ONLY.md`](../prompts/SPEC_ORCH_0742_CURRENT_BRAND_ID_ONLY.md)
+**Dispatch:** `prompts/SPEC_ORCH_0742_CURRENT_BRAND_ID_ONLY.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_ORCH_0742_CURRENT_BRAND_ID_ONLY.md`)
 **Predecessor evidence:**
 - [`reports/INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT.md`](../reports/INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT.md) — RC-C
 - [`reports/INVESTIGATION_ORCH_0739_EVENTS_AND_WEB_EXTENSION.md`](../reports/INVESTIGATION_ORCH_0739_EVENTS_AND_WEB_EXTENSION.md)

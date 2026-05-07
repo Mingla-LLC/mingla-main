@@ -707,7 +707,7 @@ No critical residual risks.
 - Investigation: [`reports/INVESTIGATION_ORCH-0737_V6_PIPELINE_TRACE.md`](../reports/INVESTIGATION_ORCH-0737_V6_PIPELINE_TRACE.md)
 - v5 spec (referenced for budget-loop pattern, otherwise shelved): [`SPEC_ORCH-0737_PATCH_V5_THROUGHPUT.md`](./SPEC_ORCH-0737_PATCH_V5_THROUGHPUT.md)
 - Parent spec: [`SPEC_ORCH-0737_FULL_CITY_ASYNC_TRIAL_v2.md`](./SPEC_ORCH-0737_FULL_CITY_ASYNC_TRIAL_v2.md)
-- Forensics dispatch: [`prompts/FORENSICS_ORCH-0737_V6_PIPELINE_TRACE.md`](../prompts/FORENSICS_ORCH-0737_V6_PIPELINE_TRACE.md)
+- Forensics dispatch: `prompts/FORENSICS_ORCH-0737_V6_PIPELINE_TRACE.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_ORCH-0737_V6_PIPELINE_TRACE.md`)
 - DEC-115, DEC-116, DEC-117 in [`DECISION_LOG.md`](../DECISION_LOG.md)
 - Followups queued separately:
   - ORCH-0737-followup-3: pg_net score-response capture (cosmetic)

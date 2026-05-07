@@ -3,7 +3,7 @@
 **Cycle:** 17e-A (BIZ — founder-feedback feature absorption; Refinement Pass post-closure)
 **Mode:** BINDING SPEC (forensics SPEC mode output)
 **Forensics anchor:** [`reports/INVESTIGATION_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md`](../reports/INVESTIGATION_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md) (verbatim binding)
-**SPEC dispatch anchor:** [`prompts/SPEC_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md`](../prompts/SPEC_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md)
+**SPEC dispatch anchor:** `prompts/SPEC_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md`)
 **Authored:** 2026-05-05
 **Status:** BINDING — implementor follows verbatim; deviations escalate to orchestrator
 
@@ -1481,7 +1481,7 @@ If any visual or behavioral regression: revert via git, flag for retest dispatch
 ## §11. Cross-references
 
 - **Forensics report:** [`reports/INVESTIGATION_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md`](../reports/INVESTIGATION_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md) (verbatim binding for Findings F-A through F-N)
-- **SPEC dispatch:** [`prompts/SPEC_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md`](../prompts/SPEC_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md)
+- **SPEC dispatch:** `prompts/SPEC_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md`)
 - **Stage 1 forensics §I + §J:** [`reports/INVESTIGATION_BIZ_CYCLE_17D_PERF_PASS.md`](../reports/INVESTIGATION_BIZ_CYCLE_17D_PERF_PASS.md) (schema readiness baseline)
 - **Cycle 14 J-A14 reference (account-delete):** `Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_14_ACCOUNT.md` (mirror for 4-step delete state machine)
 - **Memory rules:** `feedback_implementor_uses_ui_ux_pro_max` · `feedback_supabase_neq_null` · `feedback_keyboard_never_blocks_input` · `feedback_rn_sub_sheet_must_render_inside_parent` · `feedback_orchestrator_never_executes` · `feedback_eas_update_no_web` · `feedback_strict_grep_registry_pattern`

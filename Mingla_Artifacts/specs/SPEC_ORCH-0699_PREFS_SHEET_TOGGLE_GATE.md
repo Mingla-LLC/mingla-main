@@ -3,7 +3,7 @@
 **Date:** 2026-05-01
 **Author:** mingla-forensics (SPEC mode)
 **Investigation:** [reports/INVESTIGATION_ORCH-0699_PREFS_SHEET_TOGGLE_LEAK.md](../reports/INVESTIGATION_ORCH-0699_PREFS_SHEET_TOGGLE_LEAK.md)
-**Dispatch:** [prompts/SPEC_ORCH-0699_PREFS_SHEET_TOGGLE_GATE.md](../prompts/SPEC_ORCH-0699_PREFS_SHEET_TOGGLE_GATE.md)
+**Dispatch:** prompts/SPEC_ORCH-0699_PREFS_SHEET_TOGGLE_GATE.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_ORCH-0699_PREFS_SHEET_TOGGLE_GATE.md`)
 **Severity:** S1-high (`bug` + `ux` + `data-integrity`)
 **Estimated effort:** 30–45 min implementor wall time + ~30 min device smoke
 **OTA-eligible:** YES (no DB migration, no edge function change, no native module change)
@@ -53,7 +53,7 @@ The "See curated experiences?" + "See popular options?" toggles on the consumer 
 
 | ID | Assumption | Verification |
 |---|---|---|
-| A-1 | `userPrefs.intent_toggle` and `category_toggle` are always defined when `userPrefs` is defined | Schema enforces `boolean NOT NULL DEFAULT true` on both `preferences` + `board_session_preferences` ([migration:50-58](../../supabase/migrations/20260415100000_orch0434_phase1_slug_migration.sql#L50-L58)) |
+| A-1 | `userPrefs.intent_toggle` and `category_toggle` are always defined when `userPrefs` is defined | Schema enforces `boolean NOT NULL DEFAULT true` on both `preferences` + `board_session_preferences` ([migration:50-58](../migrations_archive_orch_0729_2026-05-05/20260415100000_orch0434_phase1_slug_migration.sql#L50-L58)) |
 | A-2 | Even with A-1, defensive default to `true` is required everywhere we read | Mirrors existing pattern at [AppHandlers.tsx:459-460](../../app-mobile/src/components/AppHandlers.tsx#L459-L460), [PreferencesSheet.tsx:355-356](../../app-mobile/src/components/PreferencesSheet.tsx#L355-L356) and [432-433](../../app-mobile/src/components/PreferencesSheet.tsx#L432-L433) |
 | A-3 | `BoardSessionPreferences` already exposes `intent_toggle?: boolean` and `category_toggle?: boolean` | Confirmed at [useBoardSession.ts:32-33](../../app-mobile/src/hooks/useBoardSession.ts#L32-L33) — no type change needed |
 | A-4 | Empty effective arrays through `useDeckCards` produce a different query-key value, triggering React Query refetch with `placeholderData` retention | Confirmed via [useDeckCards.ts:66-78](../../app-mobile/src/hooks/useDeckCards.ts#L66-L78) (`buildDeckQueryKey` hashes raw arrays) + [line 234](../../app-mobile/src/hooks/useDeckCards.ts#L234) (`placeholderData: (previousData) => previousData`) |

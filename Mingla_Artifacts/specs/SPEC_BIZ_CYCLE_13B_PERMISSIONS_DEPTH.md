@@ -2,7 +2,7 @@
 
 **Mode:** SPEC (forensics complete; 5 decisions operator-locked; binding contract for implementor)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md`](../reports/INVESTIGATION_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md)
-**Dispatch:** [`prompts/SPEC_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md`](../prompts/SPEC_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md)
+**Dispatch:** `prompts/SPEC_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md`)
 **Surface:** Mingla Business mobile app (`mingla-business/`) + supabase backend (1 RLS migration + 1 DROP TABLE migration)
 **Target:** production-ready. No "good enough." Every contract testable.
 **Date:** 2026-05-04
@@ -555,7 +555,7 @@ Numbered sequence. Implementor follows exactly; tsc verification between major m
 ## 10 — Cross-references
 
 - Forensics: [`reports/INVESTIGATION_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md`](../reports/INVESTIGATION_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md)
-- SPEC dispatch: [`prompts/SPEC_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md`](../prompts/SPEC_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md)
+- SPEC dispatch: `prompts/SPEC_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_13B_PERMISSIONS_DEPTH.md`)
 - Cycle 13a SPEC: [`specs/SPEC_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS.md`](SPEC_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS.md)
 - Cycle 13a IMPL report: [`reports/IMPLEMENTATION_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS_REPORT.md`](../reports/IMPLEMENTATION_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS_REPORT.md)
 - DEC-092 (Path A J-A9 subtract precedent): [`Mingla_Artifacts/DECISION_LOG.md`](../DECISION_LOG.md)

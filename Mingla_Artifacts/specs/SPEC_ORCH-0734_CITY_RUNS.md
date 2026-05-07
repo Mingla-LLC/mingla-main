@@ -3,7 +3,7 @@
 **Status:** BINDING
 **Date:** 2026-05-05
 **Author:** mingla-forensics (SPEC mode)
-**Parent dispatch:** [`prompts/SPEC_ORCH-0734_CITY_RUNS.md`](../prompts/SPEC_ORCH-0734_CITY_RUNS.md)
+**Parent dispatch:** `prompts/SPEC_ORCH-0734_CITY_RUNS.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_ORCH-0734_CITY_RUNS.md`)
 **Parent investigation:** [`reports/INVESTIGATION_ORCH-0734_CITY_RUNS.md`](../reports/INVESTIGATION_ORCH-0734_CITY_RUNS.md)
 **Confidence:** H (high) on all sections; F-8 verified by SPEC author code-read
 
