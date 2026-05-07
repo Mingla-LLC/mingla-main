@@ -50,7 +50,9 @@ interface MinglaToSAcceptanceGateProps {
   onPassed: () => void;
 }
 
-// [TRANSITIONAL] Placeholder ToS body. Operator/legal swaps before launch.
+// [TRANSITIONAL] Placeholder ToS body. EXIT condition: legal sign-off + operator
+// bumps CURRENT_MINGLA_TOS_VERSION to a real version (e.g. "v1.0.0") before
+// the B2 cycle ships to public TestFlight (Cycle B2 close).
 const PLACEHOLDER_TOS_BODY = [
   "Mingla Business is a marketplace platform that helps you accept payments for events. By using Mingla Business, you agree to the terms below.",
   "",

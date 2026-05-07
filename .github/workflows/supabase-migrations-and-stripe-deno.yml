@@ -46,12 +46,14 @@ jobs:
         # POSTGRES_PASSWORD as supabase_admin's password. We do NOT override
         # POSTGRES_USER (doing so causes `migrate.sh` to fail with
         # `role "supabase_admin" does not exist` per the historical CI runs).
-        # We connect as `postgres` (also created by migrate.sh as a superuser)
-        # using the same POSTGRES_PASSWORD.
+        # We do NOT override POSTGRES_DB either — the supabase image restricts
+        # extension creation to the default `postgres` database. The baseline
+        # migration's `CREATE EXTENSION` calls fail with "can only create
+        # extension in database postgres" otherwise. Run migrations in the
+        # default `postgres` DB.
         image: supabase/postgres:15.8.1.060
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: mingla_test
         ports:
           - 5432:5432
         options: >-
@@ -67,7 +69,7 @@ jobs:
           PGPASSWORD: postgres
         run: |
           for i in {1..90}; do
-            if psql -h localhost -U postgres -d mingla_test -c "SELECT 1" >/dev/null 2>&1; then
+            if psql -h localhost -U postgres -d postgres -c "SELECT 1" >/dev/null 2>&1; then
               echo "postgres ready"
               exit 0
             fi
@@ -82,7 +84,7 @@ jobs:
           set -e
           for f in $(ls supabase/migrations/*.sql | sort); do
             echo "::group::Applying $f"
-            psql -h localhost -U postgres -d mingla_test -v ON_ERROR_STOP=1 -f "$f"
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f"
             echo "::endgroup::"
           done
 
