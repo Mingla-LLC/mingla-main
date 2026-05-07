@@ -1,0 +1,6 @@
+{
+  "max_missing": 1195,
+  "updated": "2026-05-07",
+  "source": "GitHub PR #66 merge checkout after ORCH-0750D documentation system lock",
+  "policy": "Ratchet this number down as broken links are repaired. Do not raise it without an artifacted decision."
+}

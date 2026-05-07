@@ -41,15 +41,15 @@ B2a is the unblock for everything downstream.
 2. **Brainstorm: Marketing Hub strategy** with 4 operator modifications (M1 max-reachability consent, M2 verified email/phone, M3 AppsFlyer cross-platform, M4 ads research) → registered at `Mingla_Artifacts/MINGLA_BUSINESS_MARKETING_HUB_STRATEGY.md` (= Cycle B5)
 3. **B-cycle dependency mapping** → Marketing Hub mapped to Cycle B5; gated on B2→B3→B4
 4. **Q3 + Q5 strategic-question resolution** → DEC-112 (Stripe Connect = Express UX intent) + DEC-113 (brand-level routing)
-5. **B2 forensics dispatch** → produced [`reports/INVESTIGATION_CYCLE_B2_STRIPE_STUB.md`](../Mingla_Artifacts/reports/INVESTIGATION_CYCLE_B2_STRIPE_STUB.md) (4 root causes + 7 contributing + 9 hidden + 6 obs; 23 D-B2-N decisions surfaced)
-6. **D-B2-23 SDK tech spike** → produced [`reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md`](../Mingla_Artifacts/reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md) — caught Stripe's WebView prohibition; recommended Path B (in-app browser → Mingla web page → web SDK)
+5. **B2 forensics dispatch** → produced [`reports/INVESTIGATION_CYCLE_B2_STRIPE_STUB.md`](../../../reports/INVESTIGATION_CYCLE_B2_STRIPE_STUB.md) (4 root causes + 7 contributing + 9 hidden + 6 obs; 23 D-B2-N decisions surfaced)
+6. **D-B2-23 SDK tech spike** → produced [`reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md`](../../../reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md) — caught Stripe's WebView prohibition; recommended Path B (in-app browser → Mingla web page → web SDK)
 7. **3 cluster decisions locked:** split B2 into B2a + B2b; D-B2-3 trigger-synced cache; D-B2-23 Path B
 8. **DEC-114 logged** — Marketplace charge model (Mingla = merchant of record)
 9. **Stripe operator-side setup** (you, on Windows) — Mingla LLC sandbox account + Connect activated + platform branding + T&Cs acknowledged + RN private preview access requested (calendar gate started)
 10. **Stripe-best-practices skill installed** via `npx skills add https://docs.stripe.com --skill stripe-best-practices` (lives at `~/.agents/skills/stripe-best-practices/`)
-11. **B2a SPEC dispatch** → produced binding contract at [`specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`](../Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md) (~870 lines; 22 SCs; 22 test cases; 12-phase IMPL order; I-PROPOSED-O + I-PROPOSED-P pre-written DRAFT)
+11. **B2a SPEC dispatch** → produced binding contract at [`specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`](../../../specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md) (~870 lines; 22 SCs; 22 test cases; 12-phase IMPL order; I-PROPOSED-O + I-PROPOSED-P pre-written DRAFT)
 12. **B2a IMPL execution** — Phases 0 through 12 (skipping Phase 10 which is operator-side smoke). 2 git commits pushed to remote.
-13. **IMPL report** → [`reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md`](../Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md) (~870 lines; per-SC verification table; smoke test guide §6)
+13. **IMPL report** → [`reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md`](../../../reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md) (~870 lines; per-SC verification table; smoke test guide §6)
 
 ### Current pipeline state
 
@@ -149,7 +149,7 @@ Supabase Dashboard → Project Settings → Edge Functions → Secrets:
 Edit `mingla-business/.env` (or create if missing):
 
 ```
-EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY_TEST=pk_test_51TTnt1PjlZyAYA40f3kjmxF6uXjfEJKfFR25LiJpVqd7qw6TYfDqqKLcNamL3JGlD2vxh94Bzn4ciaqsMNN1PJ0C00oZVosOxd
+EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY_TEST=[REDACTED_STRIPE_PUBLISHABLE_KEY]
 ```
 
 (That's the publishable key you shared during the Windows session. Safe to commit to `.env`; do NOT commit to `.env` if you have a `.gitignore` rule for it — check `mingla-business/.gitignore`.)
@@ -191,7 +191,7 @@ If both return as expected → edge functions are deployed correctly + auth + si
 
 ## 4. Smoke test guide — what to do, what to observe at each stage
 
-Full version with all observations is in [`reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md`](../Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md) §6. Compact version below.
+Full version with all observations is in [`reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md`](../../../reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md) §6. Compact version below.
 
 ### Stage 1 — Open the form (SC-01, SC-02)
 
@@ -337,7 +337,7 @@ These will be committed by whoever owns those workstreams.
 
 ### From SPEC (D-CYCLE-B2A-FOR-1..10)
 
-10 discoveries documented in [`specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`](../Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md) §10. Most are deferred to B2b / B3 / B5; some are operator actions (FOR-1 RAK migration before live; FOR-5 deep link scheme — RESOLVED in IMPL-1).
+10 discoveries documented in [`specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`](../../../specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md) §10. Most are deferred to B2b / B3 / B5; some are operator actions (FOR-1 RAK migration before live; FOR-5 deep link scheme — RESOLVED in IMPL-1).
 
 ---
 
@@ -414,15 +414,15 @@ cd mingla-business && npx expo start --android
 
 | Doc | Path |
 |---|---|
-| **B2a SPEC** (binding contract — read first) | [`Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`](../Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md) |
-| **B2a IMPL report** (full file manifest, per-SC verification, smoke guide) | [`Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md`](../Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md) |
-| **B2 forensics** (root causes + spike) | [`Mingla_Artifacts/reports/INVESTIGATION_CYCLE_B2_STRIPE_STUB.md`](../Mingla_Artifacts/reports/INVESTIGATION_CYCLE_B2_STRIPE_STUB.md) + [`reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md`](../Mingla_Artifacts/reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md) |
+| **B2a SPEC** (binding contract — read first) | [`Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`](../../../specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md) |
+| **B2a IMPL report** (full file manifest, per-SC verification, smoke guide) | [`Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md`](../../../reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md) |
+| **B2 forensics** (root causes + spike) | [`Mingla_Artifacts/reports/INVESTIGATION_CYCLE_B2_STRIPE_STUB.md`](../../../reports/INVESTIGATION_CYCLE_B2_STRIPE_STUB.md) + [`reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md`](../../../reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md) |
 | **B2a IMPL dispatch** (binding constraints, forbidden actions, suggested commit msg) | [`Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`](../Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md) (gitignored — not on remote; if needed, write me a one-liner and I'll regenerate) |
-| **Marketing Hub strategy** (= Cycle B5) | [`Mingla_Artifacts/MINGLA_BUSINESS_MARKETING_HUB_STRATEGY.md`](../Mingla_Artifacts/MINGLA_BUSINESS_MARKETING_HUB_STRATEGY.md) |
-| **Mingla Brain strategy** | [`Mingla_Artifacts/MINGLA_BRAIN_AGENT_STRATEGY.md`](../Mingla_Artifacts/MINGLA_BRAIN_AGENT_STRATEGY.md) |
-| **Decision log** | [`Mingla_Artifacts/DECISION_LOG.md`](../Mingla_Artifacts/DECISION_LOG.md) (DEC-112 + DEC-113 + DEC-114) |
-| **Invariant registry** | [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](../Mingla_Artifacts/INVARIANT_REGISTRY.md) (I-PROPOSED-O + I-PROPOSED-P DRAFT) |
-| **Priority board running headers** | [`Mingla_Artifacts/PRIORITY_BOARD.md`](../Mingla_Artifacts/PRIORITY_BOARD.md) (top entries trace this session's progression) |
+| **Marketing Hub strategy** (= Cycle B5) | [`Mingla_Artifacts/MINGLA_BUSINESS_MARKETING_HUB_STRATEGY.md`](../../../MINGLA_BUSINESS_MARKETING_HUB_STRATEGY.md) |
+| **Mingla Brain strategy** | [`Mingla_Artifacts/MINGLA_BRAIN_AGENT_STRATEGY.md`](../../../MINGLA_BRAIN_AGENT_STRATEGY.md) |
+| **Decision log** | [`Mingla_Artifacts/DECISION_LOG.md`](../../../DECISION_LOG.md) (DEC-112 + DEC-113 + DEC-114) |
+| **Invariant registry** | [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](../../../INVARIANT_REGISTRY.md) (I-PROPOSED-O + I-PROPOSED-P DRAFT) |
+| **Priority board running headers** | [`Mingla_Artifacts/PRIORITY_BOARD.md`](../../../PRIORITY_BOARD.md) (top entries trace this session's progression) |
 
 ---
 

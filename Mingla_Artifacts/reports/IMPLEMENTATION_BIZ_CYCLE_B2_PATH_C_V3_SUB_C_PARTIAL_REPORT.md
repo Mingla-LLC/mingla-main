@@ -142,7 +142,7 @@ Mapped to `outputs/SPEC_B2_PATH_C_V3.md` §13 amendments + IMPL_DISPATCH §5 + d
 #### `mingla-business/app.config.ts` (modified, +9 lines)
 
 - **What it did before:** Exposed Supabase, Google client IDs in `extra`. No Stripe publishable key.
-- **What it does now:** Same plus `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` reading env-first with the test-mode `pk_test_51TTnt1PjlZyAYA40...` fallback (per amendment A2 — MINGLA LLC sandbox account).
+- **What it does now:** Same plus `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` reading env-first with the test-mode `[REDACTED_STRIPE_PUBLISHABLE_KEY]` fallback (per amendment A2 — MINGLA LLC sandbox account).
 - **Why:** Dispatch N1 — `@stripe/connect-js` on the Mingla-hosted onboarding page needs the publishable key. Public-by-design, ships in client bundle.
 
 #### `mingla-business/src/hooks/useStartBrandStripeOnboarding.ts` (modified, +6 lines)

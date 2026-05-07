@@ -44,7 +44,7 @@ $ curl -s ... entry-4ac6648f69eb06e336616cac8f847a9e.js | grep -oE 'pk_test_[^"]
    4 usemingla.com                                                ← C-3 shipped
    3 EXPO_PUBLIC_SUPABASE_URL
    3 EXPO_PUBLIC_SUPABASE_ANON_KEY
-   2 pk_test_51TTnt1PjlZyAYA40f3kjmxF6uXjfEJKfFR25LiJpVqd7qw…    ← key embedded
+   2 [REDACTED_STRIPE_PUBLISHABLE_KEY]                           ← key embedded
    2 loadConnectAndInitialize                                    ← happy path present
    2 EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY                          ← R-2 rename shipped
    1 publishableKey:n,fetchClientSecret:async()=>u,appearance…    ← actual init call
@@ -89,7 +89,7 @@ The Supabase secret `MINGLA_BUSINESS_WEB_URL` was set at 08:08 UTC. Edge functio
 | **What it did** | Always set `initError` regardless of env state; never invoked `loadConnectAndInitialize`; rendered `Couldn't start onboarding` error page in browser sheet |
 | **What it should do** | Read publishable key from `Constants.expoConfig.extra` (baked from app.config.ts) or `process.env` (Metro inline at build), and call `loadConnectAndInitialize` |
 | **Causal chain** | Implementor edited source AT 03:41; local `dist/` last built at 01:11; Vercel deployed from a `vercel --prod` of an older tree → built bundle missing R-2 (env var rename) → constant-folder removed happy path → all clicks of "Set up payments" hit the error path |
-| **Verification** | Post-redeploy bundle `entry-4ac6648f69eb06e336616cac8f847a9e.js` contains `loadConnectAndInitialize` (×2), `pk_test_51TTnt1…` (×2), `support@usemingla.com` (×4); minified `useMemo` body now contains `loadConnectAndInitialize({publishableKey:n,fetchClientSecret:async()=>u,appearance:{variables:{…}}})` |
+| **Verification** | Post-redeploy bundle `entry-4ac6648f69eb06e336616cac8f847a9e.js` contains `loadConnectAndInitialize` (×2), `[REDACTED_STRIPE_PUBLISHABLE_KEY]` (×2), `support@usemingla.com` (×4); minified `useMemo` body now contains `loadConnectAndInitialize({publishableKey:n,fetchClientSecret:async()=>u,appearance:{variables:{…}}})` |
 | **Status** | RESOLVED post `vercel --prod` 08:08 UTC |
 
 **Ref:** [Stripe Connect Embedded Components — `loadConnectAndInitialize`](https://docs.stripe.com/connect/embedded-quickstart#integrate-frontend) confirms the publishable key is the required first arg.

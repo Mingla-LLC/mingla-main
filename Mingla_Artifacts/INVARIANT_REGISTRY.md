@@ -7,6 +7,94 @@
 
 ---
 
+## ACTIVE (post ORCH-0749 CLOSE 2026-05-07)
+
+### I-AUTH-PRIVATE-CACHE-CANNOT-OUTLIVE-AUTH-OWNER - Private mobile query state must be auth-scoped and removable
+
+**Statement:** Any persisted or in-memory mobile query/cache state that contains user-private data must either belong to the current authenticated user or be removed before it can hydrate/render. Pending or actively-fetching queries must not be dehydrated. Auth cancellation and expected auth-state teardown must not be reported as app errors.
+
+**Authority:** `app-mobile/src/utils/queryPersistence.ts`, `app-mobile/src/utils/authCleanup.ts`, `app-mobile/src/config/queryClient.ts`, and the auth listener/cleanup call sites in `app-mobile/src/hooks/useAuthSimple.ts` are the canonical implementation. The repo-running guard is `cd app-mobile && npm run test:orch-0749`.
+
+**Rationale:** ORCH-0749 proved that stale old-user query state could survive a no-session startup and produce repeated `userPreferences.<oldUserId>` pending-dehydration errors, stale private cache replay, false successful blocked-users empty results after `Not authenticated`, and noisy expected auth cancellation. This invariant turns the fix into a permanent contract: private cache is owned by the current auth user only, and auth teardown must be quiet when it is expected.
+
+**Enforcement:**
+1. `queryPersistence` rejects pending/non-idle query dehydration and exposes auth-key matching/removal helpers.
+2. `authCleanup` clears React Query memory and persisted private cache on no-session, SIGNED_OUT, user switch, AppStateManager sign-out, and onboarding back-to-welcome paths.
+3. `queryClient` classifies cancellation/auth-state errors as non-noisy.
+4. Feature services/hooks that fetch private data must check expected/current user before treating unauthenticated responses as successful empty data.
+
+**Test that catches a regression:** `cd app-mobile && npm run test:orch-0749` must pass. The gate checks pending-query dehydration, auth-scoped query matching, cancellation classification, private-cache cleanup, auth listener routing, Apple cancel handling, blocked-users expected-user checks, missing preferences tolerance, AppsFlyer stale callback no-op, recordEngagement auth/session guards, AppStateManager subscription discipline, tabScroll no-op guard, and icon mappings.
+
+**Established:** 2026-05-07 by ORCH-0749 CLOSE. DEC-127 logged.
+
+**Cross-references:** `reports/INVESTIGATION_ORCH-0749_MOBILE_AUTH_CACHE_RLS_LOG_STORM.md`, `reports/SPEC_ORCH-0749_MOBILE_AUTH_CACHE_RLS_LOG_STORM.md`, `reports/IMPLEMENTATION_ORCH-0749_MOBILE_AUTH_CACHE_RLS_LOG_STORM.md`, `reports/QA_ORCH-0749_MOBILE_AUTH_CACHE_RLS_LOG_STORM.md`, `reports/RUNTIME_QA_ORCH-0749_MOBILE_AUTH_CACHE_RLS_LOG_STORM.md`.
+
+---
+
+## ACTIVE (post ORCH-0750D CLOSE 2026-05-07)
+
+### I-DOC-ARTIFACT-PLACEMENT-LOCKED - Current documentation must not drift back to legacy roots
+
+**Statement:** Durable Mingla reports, specs, QA evidence, implementation reports, design lifecycle specs, handoffs, archive material, and close records must use the current documentation system: `Mingla_Artifacts/reports/`, `Mingla_Artifacts/specs/`, `Mingla_Artifacts/AGENT_HANDOFFS.md`, `Mingla_Artifacts/DECISION_LOG.md`, `Mingla_Artifacts/INVARIANT_REGISTRY.md`, and `Mingla_Artifacts/archive/`. Root `outputs/` and root `clade transfer/` are legacy locations, not current destinations.
+
+**Authority:** `Mingla_Artifacts/ARTIFACT_MANIFEST.md` classifies artifacts and archive status. `Mingla_Artifacts/archive/README.md` is the archive front door. README is only the snapshot.
+
+**Rationale:** ORCH-0750 forensics proved that Mingla had stale documentation roots and stale agent instructions. ORCH-0750C archived the approved historical material; ORCH-0750D prevents agents or PRs from silently recreating the old system.
+
+**Enforcement:** Mingla Codex and approved Mingla Claude skills now direct current lifecycle outputs to `Mingla_Artifacts/`. GitHub runs `.github/workflows/docs-artifact-regression.yml` on documentation/artifact changes. Accepted DEC-128 boundary: GitHub enforces skill rules only for skill roots present/versioned in checkout because `.codex/` and `.claude/` remain ignored/private; local checks enforce the ignored skill roots in this workspace.
+
+**Test that catches a regression:** `python3 scripts/docs/check_artifact_placement.py` fails when tracked files appear under root `outputs/` or root `clade transfer/`, when tracked generated build output exists, or when Mingla skills reintroduce stale `outputs/*` current destinations.
+
+**Established:** 2026-05-07 by ORCH-0750D CLOSE. DEC-128 logged.
+
+### I-README-SNAPSHOT-NOT-MANIFEST - README stays the front door, not the artifact database
+
+**Statement:** README must remain a concise ecosystem snapshot that links to current artifact authorities. It must not become a second artifact manifest or directly curate random historical archive files.
+
+**Authority:** `README.md` owns the repo front door. `Mingla_Artifacts/ARTIFACT_MANIFEST.md` owns artifact classification, archive status, and source-of-truth mapping.
+
+**Rationale:** ORCH-0750B intentionally rebuilt README as a snapshot so the repo has one approachable entrance without duplicating the artifact operating system. Duplicating manifest detail in README would create two places that can drift.
+
+**Enforcement:** README links archive material through `Mingla_Artifacts/ARTIFACT_MANIFEST.md` or `Mingla_Artifacts/archive/README.md`; detailed artifact classification stays in the manifest.
+
+**Test that catches a regression:** `python3 scripts/docs/check_readme_snapshot.py` fails when README loses the snapshot declaration, source-of-truth links, docs lock-in commands, or when the Repo Map lists legacy `outputs/` / `clade transfer/` roots as active.
+
+**Established:** 2026-05-07 by ORCH-0750D CLOSE. DEC-128 logged.
+
+---
+
+## ACTIVE (post ORCH-0750A CLOSE 2026-05-07)
+
+### I-ARTIFACT-MANIFEST-CANONICAL - Artifact inventory changes must update ARTIFACT_MANIFEST
+
+**Statement:** Any future creation, archival move, supersession, or deletion of a durable file under `Mingla_Artifacts/` must be reflected in `Mingla_Artifacts/ARTIFACT_MANIFEST.md`, or the artifact system becomes untrustworthy again.
+
+**Authority:** `Mingla_Artifacts/ARTIFACT_MANIFEST.md` is the canonical artifact inventory. `scripts/docs/check_links.py` and `Mingla_Artifacts/reports/ORCH-0750A_LINK_AUDIT.md` are the measurement baseline for link debt.
+
+**Rationale:** ORCH-0750 forensics proved the repo had no durable map of which artifacts were current, historical, superseded, archive candidates, or stale. ORCH-0750A did not clean content; it installed the inventory and measurement layer needed before cleanup can be safe.
+
+**Enforcement:** reviewer/orchestrator close gate for documentation work; tester gate verifies top-level `Mingla_Artifacts/` files are represented. Future archive/delete cycles must update manifest rows in the same change.
+
+**Test that catches a regression:** run the manifest coverage check from `reports/TEST_REPORT_ORCH-0750A_ARTIFACT_MANIFEST_LINK_INTEGRITY.md`; any top-level artifact path missing from the manifest is a failure for doc cleanup work.
+
+**Established:** 2026-05-07 by ORCH-0750A CLOSE. DEC-124 logged.
+
+### I-PROMPT-LINKS-ARE-NOT-DURABLE-EVIDENCE - Gitignored prompts are dispatch artifacts, not canonical proof
+
+**Statement:** Gitignored prompt files under `Mingla_Artifacts/prompts/` can be referenced as dispatch handoffs, but durable program truth must live in committed reports, specs, manifests, decision logs, and close artifacts.
+
+**Authority:** `Mingla_Artifacts/ARTIFACT_MANIFEST.md` classifies prompts separately from reports/specs. ORCH-0750A tester accepted prompt/report file-count drift as a P4 note, not a blocker.
+
+**Rationale:** The ORCH-0750A link checker correctly sees prompt churn change markdown file counts. Prompts are useful routing packets; they are not the final evidence record. Treating them as durable truth would recreate the stale-doc problem under a different name.
+
+**Enforcement:** future README and artifact specs must cite reports/specs/manifests as source of truth, not prompt prose, unless explicitly describing dispatch history.
+
+**Test that catches a regression:** README snapshot rebuild tester should verify each canonical claim links to committed artifacts or live source commands, not only a prompt.
+
+**Established:** 2026-05-07 by ORCH-0750A CLOSE. DEC-124 logged.
+
+---
+
 ## ACTIVE (post ORCH-0742 CLOSE 2026-05-06)
 
 ### I-PROPOSED-J — ZUSTAND-PERSIST-NO-SERVER-SNAPSHOTS

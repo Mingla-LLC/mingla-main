@@ -2,15 +2,15 @@
 
 **Status:** Phase 0 complete. Phases 1-9 pending subsequent dispatch.
 **Commit:** `cf3969bf feat(business): B2a Path C Phase 0 — foundation + invariant renumber + B2a audit gap fix`
-**Spec:** [outputs/SPEC_B2_PATH_C_AMENDMENT.md](../../outputs/SPEC_B2_PATH_C_AMENDMENT.md)
-**Pre-flight investigation:** [outputs/B2_PATH_C_PRE_FLIGHT_INVESTIGATION.md](../../outputs/B2_PATH_C_PRE_FLIGHT_INVESTIGATION.md)
-**Reconciliation:** [outputs/B2_RECONCILIATION_REPORT.md](../../outputs/B2_RECONCILIATION_REPORT.md)
+**Spec:** [outputs/SPEC_B2_PATH_C_AMENDMENT.md](../archive/outputs_legacy/SPEC_B2_PATH_C_AMENDMENT.md)
+**Pre-flight investigation:** [outputs/B2_PATH_C_PRE_FLIGHT_INVESTIGATION.md](../archive/outputs_legacy/B2_PATH_C_PRE_FLIGHT_INVESTIGATION.md)
+**Reconciliation:** [outputs/B2_RECONCILIATION_REPORT.md](../archive/outputs_legacy/B2_RECONCILIATION_REPORT.md)
 
 ---
 
 ## §1 — Phase 0 deliverables
 
-Per [outputs/SPEC_B2_PATH_C_AMENDMENT.md](../../outputs/SPEC_B2_PATH_C_AMENDMENT.md) §7 Phase 0 row.
+Per [outputs/SPEC_B2_PATH_C_AMENDMENT.md](../archive/outputs_legacy/SPEC_B2_PATH_C_AMENDMENT.md) §7 Phase 0 row.
 
 | Deliverable | Status | Files |
 |---|---|---|
@@ -184,7 +184,7 @@ Per [outputs/SPEC_B2_PATH_C_AMENDMENT.md](../../outputs/SPEC_B2_PATH_C_AMENDMENT
 
 ### Phase 1+ ahead
 
-Per [outputs/SPEC_B2_PATH_C_AMENDMENT.md](../../outputs/SPEC_B2_PATH_C_AMENDMENT.md) §7:
+Per [outputs/SPEC_B2_PATH_C_AMENDMENT.md](../archive/outputs_legacy/SPEC_B2_PATH_C_AMENDMENT.md) §7:
 
 - **Phase 1:** Webhook router refactor (`_shared/stripeWebhookRouter.ts` + Deno tests + slim `stripe-webhook/index.ts`)
 - **Phase 2:** `brand-stripe-detach/` edge fn (refactored from Taofeek's reference) + Deno test
