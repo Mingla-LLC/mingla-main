@@ -40,26 +40,40 @@ jobs:
         # Supabase-flavored Postgres image — includes pg_cron, pgcrypto, pgsodium,
         # plv8, and other extensions the baseline migration requires.
         # Stock postgres:15 doesn't have pg_cron and fails immediately.
+        #
+        # Image-specific env contract: the supabase/postgres image's internal
+        # migrate.sh creates `supabase_admin` (and aux roles) and uses
+        # POSTGRES_PASSWORD as supabase_admin's password. We do NOT override
+        # POSTGRES_USER (doing so causes `migrate.sh` to fail with
+        # `role "supabase_admin" does not exist` per the historical CI runs).
+        # We connect as `postgres` (also created by migrate.sh as a superuser)
+        # using the same POSTGRES_PASSWORD.
         image: supabase/postgres:15.8.1.060
         env:
-          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: mingla_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
+          --health-start-period 30s
     steps:
       - uses: actions/checkout@v4
       - name: Wait for postgres
+        env:
+          PGPASSWORD: postgres
         run: |
-          for i in {1..60}; do
-            if pg_isready -h localhost -p 5432 -U postgres; then exit 0; fi
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d mingla_test -c "SELECT 1" >/dev/null 2>&1; then
+              echo "postgres ready"
+              exit 0
+            fi
             sleep 1
           done
+          echo "postgres did not become ready in 90s"
           exit 1
       - name: Apply migrations in timestamp order
         env:
