@@ -321,12 +321,15 @@ serve(async (req) => {
     let session: { client_secret: string };
     try {
       const stripe = stripeOnboard();
-      const acceptLanguage = req.headers.get("accept-language")?.split(",")[0]?.trim();
+      // 2026-05-07 hotfix: previously passed `locale: acceptLanguage` —
+      // Stripe's accountSessions.create rejects locale ("Received unknown
+      // parameter: locale"). The Embedded Components onboarding renders in
+      // the user's browser-detected language directly via the connect-js
+      // initializer, NOT a server-side locale param. Removed.
       // @ts-ignore — Stripe SDK accountSessions namespace
       session = await stripe.accountSessions.create(
         {
           account: stripeAccountId,
-          ...(acceptLanguage ? { locale: acceptLanguage } : {}),
           components: {
             account_onboarding: {
               enabled: true,
