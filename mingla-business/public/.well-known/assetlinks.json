@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.sethogieva.minglabusiness",
+      "sha256_cert_fingerprints": [
+        "25:4F:86:64:00:44:5B:7F:EA:88:32:22:72:D1:39:B2:AB:DD:84:A9:58:E2:15:AC:51:F2:4F:F9:CD:F1:67:25"
+      ]
+    }
+  }
+]

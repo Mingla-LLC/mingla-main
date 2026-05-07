@@ -56,12 +56,21 @@ export interface CurrentBrandRoleState {
   isError: boolean;
 }
 
-const STALE_TIME_MS = 5 * 60 * 1000; // 5 min — role changes are rare
+// ORCH-0740 Cycle 1: tightened from 5min to 30s.
+// Role-bearing cache is security-adjacent (permission drift = S0/S1 risk
+// per ORCH-0738 CF-1). 30s defense-in-depth until Cycle 3 wires Realtime
+// push for brand_team_members changes (then this can relax back to 5min).
+const STALE_TIME_MS = 30 * 1000; // 30s — security-adjacent (CF-1)
 
 export const brandRoleKeys = {
   all: ["brand-role"] as const,
   byBrand: (brandId: string, userId: string): readonly [string, string, string] =>
     ["brand-role", brandId, userId] as const,
+  // ORCH-0740 Cycle 1: prefix-match all role-cache variants for a brand.
+  // Used by useSoftDeleteBrand.onSuccess to invalidate the role cache for
+  // any user (single-user app today; multi-user team membership tomorrow).
+  allForBrand: (brandId: string): readonly [string, string] =>
+    ["brand-role", brandId] as const,
 };
 
 interface QueryResult {

@@ -32,7 +32,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { useCurrentBrand } from "../../store/currentBrandStore";
+import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 
 import { GlassChrome } from "./GlassChrome";
 import { Icon } from "./Icon";

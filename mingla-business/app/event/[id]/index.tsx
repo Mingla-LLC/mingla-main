@@ -17,6 +17,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -94,6 +95,7 @@ const deriveScreenStatus = (event: LiveEvent): EventStatus => {
   return lifecycle === "cancelled" ? "past" : lifecycle;
 };
 
+// orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
 const canonicalUrl = (event: LiveEvent): string =>
   `https://business.mingla.com/e/${event.brandSlug}/${event.eventSlug}`;
 
@@ -821,9 +823,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.2,
     color: "#ffffff",
-    textShadowColor: "rgba(0, 0, 0, 0.4)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 12,
+    // ORCH-0743 / CF-2 — RN-only textShadow* triple → Platform.select. Web
+    // gets the CSS textShadow shorthand (react-native-web 0.21+ supports it);
+    // iOS/Android keep the RN-native triple for fidelity. Eliminates the
+    // `"shadow*" style props are deprecated` Metro warning on web export
+    // and restores the visible hero shadow on web target.
+    ...(Platform.OS === "web"
+      ? { textShadow: "0 2px 12px rgba(0, 0, 0, 0.4)" }
+      : {
+          textShadowColor: "rgba(0, 0, 0, 0.4)",
+          textShadowOffset: { width: 0, height: 2 },
+          textShadowRadius: 12,
+        }),
     marginBottom: 4,
   },
   heroSubline: {

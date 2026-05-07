@@ -43,10 +43,10 @@ import {
 import { useAuth } from "../../src/context/AuthContext";
 import {
   useBrandList,
-  useCurrentBrand,
   useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
+import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useDraftsForBrand } from "../../src/store/draftEventStore";
 import { formatGbpRound } from "../../src/utils/currency";
 import { formatRelativeTime } from "../../src/utils/relativeTime";
@@ -139,8 +139,8 @@ export default function HomeTab(): React.ReactElement {
     (deletedBrandId: string): void => {
       // Clear currentBrand if it matches deleted brand (server already cleared
       // default_brand_id per softDeleteBrand Step 3; this clears local UI state)
-      const current = useCurrentBrandStore.getState().currentBrand;
-      if (current !== null && current.id === deletedBrandId) {
+      const currentBrandId = useCurrentBrandStore.getState().currentBrandId;
+      if (currentBrandId === deletedBrandId) {
         setCurrentBrand(null);
       }
       const deleted = brandPendingDelete;

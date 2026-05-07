@@ -43,7 +43,6 @@ export default function BrandEditRoute(): React.ReactElement {
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brands = useBrandList();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
-  const currentBrand = useCurrentBrandStore((s) => s.currentBrand);
   const updateBrandMutation = useUpdateBrand();
   const brand =
     typeof idParam === "string" && idParam.length > 0
@@ -66,17 +65,16 @@ export default function BrandEditRoute(): React.ReactElement {
     const patch = computeDirtyFieldsPatch(next, brand);
     if (Object.keys(patch).length === 0) return; // no-op
     try {
-      const updated = await updateBrandMutation.mutateAsync({
+      // Cycle 2 / ORCH-0742: useUpdateBrand.onSuccess writes the fresh Brand
+      // back into the React Query detail + list caches. useCurrentBrand()
+      // (the wrapper hook) re-renders with the new fields automatically —
+      // no Zustand mirror-write needed.
+      await updateBrandMutation.mutateAsync({
         brandId: next.id,
         patch,
         existingDescription: joinBrandDescription(brand.tagline, brand.bio),
         accountId: user.id,
       });
-      // Mirror to currentBrand selection when the edited brand is active so
-      // TopBar chip + Home reflect new displayName/etc. immediately.
-      if (currentBrand !== null && currentBrand.id === updated.id) {
-        setCurrentBrand(updated);
-      }
     } catch (error) {
       // Caller (BrandEditView) handles toast surfacing per error contract;
       // re-throw so its handleSave catches.
@@ -94,8 +92,8 @@ export default function BrandEditRoute(): React.ReactElement {
   }, []);
   const handleBrandDeleted = useCallback(
     (deletedBrandId: string): void => {
-      const current = useCurrentBrandStore.getState().currentBrand;
-      if (current !== null && current.id === deletedBrandId) {
+      const currentBrandId = useCurrentBrandStore.getState().currentBrandId;
+      if (currentBrandId === deletedBrandId) {
         setCurrentBrand(null);
       }
       setDeleteSheetVisible(false);

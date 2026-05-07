@@ -21,6 +21,7 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import {
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -45,7 +46,7 @@ import type {
   BrandRefund,
   BrandStripeStatus,
 } from "../../store/currentBrandStore";
-import { formatGbp } from "../../utils/currency";
+import { formatGbp, formatCurrency } from "../../utils/currency";
 import { formatRelativeTime } from "../../utils/relativeTime";
 
 import { Button } from "../ui/Button";
@@ -57,6 +58,12 @@ import { Pill } from "../ui/Pill";
 import type { PillVariant } from "../ui/Pill";
 import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
+// V3 multi-country surfaces — Sub-C Session A + B
+import { BrandStripeBankSection } from "./BrandStripeBankSection";
+import { BrandStripeKycRemediationCard } from "./BrandStripeKycRemediationCard";
+import { BrandStripeOrphanedRefundsSection } from "./BrandStripeOrphanedRefundsSection";
+import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
+import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 
 interface ToastState {
   visible: boolean;
@@ -159,11 +166,21 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
-  // [TRANSITIONAL] Resolve CTA fires Toast — exit when B2 wires real
-  // Stripe deep-link to the Stripe dashboard restriction-resolution flow.
+  // B2a: Resolve CTA on restricted state opens Stripe Express dashboard
+  // for the brand's Connect account. Stripe Express dashboard exposes the
+  // brand's own resolve-issue flow (Stripe-hosted; brand sees their KYC
+  // requirements + can update directly). Per SPEC §4.5.2.
+  // The brand's Stripe account_id comes from the cached brand.stripeStatus
+  // path — for the full state we'd need useBrandStripeStatus, but for this
+  // CTA we just deep-link to the generic Stripe Express login which routes
+  // the brand to their own account.
   const handleResolveBanner = useCallback((): void => {
-    fireToast("Stripe support lands in B2.");
-  }, [fireToast]);
+    // Stripe Express dashboard login URL — brand authenticates with their
+    // Stripe Express credentials and lands on their own resolve-requirements
+    // flow. This is the correct deep-link per Stripe docs for restricted
+    // accounts on Connect Express.
+    void Linking.openURL("https://connect.stripe.com/express_login");
+  }, []);
 
   const handleExport = useCallback((): void => {
     onOpenReports();
@@ -172,6 +189,15 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const stripeStatus = brand?.stripeStatus ?? "not_connected";
   const bannerConfig = BANNER_CONFIG[stripeStatus];
 
+  // V3 (Sub-C Session A): live status query gives access to requirements
+  // shape for the KycRemediationCard. Sibling-pattern: cached + Realtime-fed.
+  const stripeStatusQuery = useBrandStripeStatus(brand?.id ?? null);
+
+  // [TRANSITIONAL] payouts + refunds still read from Zustand stub (brand.payouts,
+  // brand.refunds). B2a does NOT migrate these to real `payouts` + `refunds`
+  // table queries — that ships in B2b/B3 per SPEC §3.2 non-goals + DISC-2 +
+  // DISC-7 from forensics. Existing Zustand fields will be deprecated to
+  // orphan storage at that time; persist migration v12→v13 will drop them.
   const sortedPayouts = useMemo<BrandPayout[]>(() => {
     if (brand === null) return [];
     return (brand.payouts ?? [])
@@ -225,7 +251,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const lastPayoutAmount = sortedPayouts[0]?.amountGbp;
   const lastPayoutDisplay =
     brand.lastPayoutAt !== undefined && lastPayoutAmount !== undefined
-      ? formatGbp(lastPayoutAmount)
+      ? formatCurrency(lastPayoutAmount, brand.defaultCurrency ?? "GBP")
       : "—";
   const lastPayoutSub =
     brand.lastPayoutAt !== undefined
@@ -292,17 +318,63 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           </GlassCard>
         ) : null}
 
+        {/* SECTION A2 — V3 multi-country surfaces (Sub-C Session A + B).
+            Deadline banner on top (within 7 days, urgent). KYC remediation
+            card next (when status non-active and there's a requirement code).
+            Bank verification status (when connected). Orphaned refunds at
+            the bottom (only for detached brands). */}
+        {brand && stripeStatusQuery.data?.requirements
+          ? (() => {
+              const reqs = stripeStatusQuery.data.requirements as
+                | { current_deadline?: number | null }
+                | undefined;
+              const deadline = reqs?.current_deadline ?? null;
+              return (
+                <BrandStripeDeadlineBanner
+                  deadline={deadline}
+                  onResolve={handleResolveBanner}
+                />
+              );
+            })()
+          : null}
+
+        {brand && stripeStatus !== "active" && stripeStatus !== "not_connected"
+          ? (() => {
+              const requirements =
+                (stripeStatusQuery.data?.requirements as
+                  | { disabled_reason?: string | null; currently_due?: readonly string[] | null; past_due?: readonly string[] | null }
+                  | undefined) ?? null;
+              return (
+                <BrandStripeKycRemediationCard
+                  requirements={requirements}
+                  onResolve={handleResolveBanner}
+                />
+              );
+            })()
+          : null}
+
+        {brand && (stripeStatus === "active" || stripeStatus === "restricted") ? (
+          <BrandStripeBankSection
+            brandId={brand.id}
+            onResolve={handleResolveBanner}
+          />
+        ) : null}
+
+        {brand && stripeStatusQuery.data?.detached_at != null ? (
+          <BrandStripeOrphanedRefundsSection brandId={brand.id} />
+        ) : null}
+
         {/* SECTION B — KPI Tiles (always rendered) */}
         <View style={styles.kpisRow}>
           <KpiTile
             label="Available"
-            value={formatGbp(brand.availableBalanceGbp ?? 0)}
+            value={formatCurrency(brand.availableBalanceGbp ?? 0, brand.defaultCurrency ?? "GBP")}
             sub="Ready to pay out"
             style={styles.kpiCell}
           />
           <KpiTile
             label="Pending"
-            value={formatGbp(brand.pendingBalanceGbp ?? 0)}
+            value={formatCurrency(brand.pendingBalanceGbp ?? 0, brand.defaultCurrency ?? "GBP")}
             sub="In Stripe escrow"
             style={styles.kpiCell}
           />
@@ -337,7 +409,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                 >
                   <View style={styles.txnLeftCol}>
                     <Text style={styles.txnAmount}>
-                      {formatGbp(payout.amountGbp)}
+                      {formatCurrency(payout.amountGbp, brand.defaultCurrency ?? "GBP")}
                     </Text>
                     <Text style={styles.txnSub}>
                       {payout.status === "in_transit"
@@ -371,7 +443,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                     <View style={styles.txnLeftCol}>
                       {/* Render-time minus prefix on positive amount per spec §6 + AC#27 */}
                       <Text style={styles.txnAmountRefund}>
-                        {`−${formatGbp(refund.amountGbp)}`}
+                        {`−${formatCurrency(refund.amountGbp, brand.defaultCurrency ?? "GBP")}`}
                       </Text>
                       <Text style={styles.txnSub} numberOfLines={1}>
                         {refund.eventTitle}

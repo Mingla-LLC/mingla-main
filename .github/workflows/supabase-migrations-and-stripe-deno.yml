@@ -1,0 +1,124 @@
+name: Supabase Migrations + Stripe Deno Tests (B2a Path C V3)
+
+# B2a Path C V3 SPEC §9 — migration ordering + Deno-side unit test coverage.
+#
+# Two checks per push:
+#  1. Migrations apply cleanly from baseline. Uses `supabase/postgres:15`
+#     image (NOT stock postgres:15) because the baseline migration
+#     20260505000000_baseline_squash_orch_0729.sql does CREATE EXTENSION
+#     pg_cron, which only ships with Supabase's flavored Postgres image.
+#  2. Deno unit tests pass. Scoped to V3 stripe-* test files only — NOT the
+#     full _shared/__tests__/ directory (the bouncer / scorer /
+#     no_ai_categories tests have pre-existing failures from prior cycles
+#     unrelated to B2 and not in scope here; cleaning those up is a separate
+#     ORCH).
+#
+# Env vars set on the Deno step are inert defaults — `notify-dispatch` calls
+# in the router unit tests need a non-empty SUPABASE_URL + service role key
+# to construct the Supabase client (the test asserts dispatch was called,
+# not that it actually reached a real Supabase instance).
+
+on:
+  push:
+    branches: [Seth, main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/_shared/**"
+      - "supabase/functions/_shared/__tests__/**"
+      - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/_shared/**"
+
+jobs:
+  migrations:
+    name: "Migrations apply cleanly from baseline"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Supabase-flavored Postgres image — includes pg_cron, pgcrypto, pgsodium,
+        # plv8, and other extensions the baseline migration requires.
+        # Stock postgres:15 doesn't have pg_cron and fails immediately.
+        #
+        # Image-specific env contract: the supabase/postgres image's internal
+        # migrate.sh creates `supabase_admin` (and aux roles) and uses
+        # POSTGRES_PASSWORD as supabase_admin's password. We do NOT override
+        # POSTGRES_USER (doing so causes `migrate.sh` to fail with
+        # `role "supabase_admin" does not exist` per the historical CI runs).
+        # We do NOT override POSTGRES_DB either — the supabase image restricts
+        # extension creation to the default `postgres` database. The baseline
+        # migration's `CREATE EXTENSION` calls fail with "can only create
+        # extension in database postgres" otherwise. Run migrations in the
+        # default `postgres` DB.
+        #
+        # Postgres MAJOR version pinning: production is on Postgres 17 (Supabase
+        # default since mid-2026). Baseline `20260505000000_baseline_squash_orch_0729.sql`
+        # uses PG 16+ syntax (`GRANT MAINTAIN ON …`). Earlier image tag
+        # `supabase/postgres:15.8.1.060` rejected MAINTAIN with "unrecognized
+        # privilege type". Pin to a 17.x image to match production.
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for postgres
+        env:
+          PGPASSWORD: postgres
+        run: |
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -c "SELECT 1" >/dev/null 2>&1; then
+              echo "postgres ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not become ready in 90s"
+          exit 1
+      - name: Apply migrations in timestamp order
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -e
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            echo "::group::Applying $f"
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f"
+            echo "::endgroup::"
+          done
+
+  deno-tests:
+    name: "Deno unit tests for Stripe shared modules"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run V3 Stripe-scoped Deno tests
+        env:
+          # Inert defaults — the router test asserts dispatch was attempted; it
+          # doesn't reach a real Supabase instance. These prevent the env-var
+          # presence guards in `_shared/stripeEdgeAuth.ts` from throwing.
+          SUPABASE_URL: "https://example-test.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real"
+          STRIPE_WEBHOOK_SECRET: "whsec_test"
+          STRIPE_WEBHOOK_SECRET_PLATFORM: "whsec_test_platform"
+          STRIPE_WEBHOOK_SECRET_PREVIOUS: ""
+        run: |
+          deno test \
+            --allow-env \
+            --allow-net \
+            --no-check \
+            supabase/functions/_shared/__tests__/stripeIpAllowlist.test.ts \
+            supabase/functions/_shared/__tests__/stripeKycRemediation.test.ts \
+            supabase/functions/_shared/__tests__/stripeKycReminderSchedule.test.ts \
+            supabase/functions/_shared/__tests__/stripeWebhookRouter.test.ts \
+            supabase/functions/_shared/__tests__/stripeWebhookSignature.test.ts

@@ -26,6 +26,7 @@ import {
 } from "@tanstack/react-query";
 
 import { supabase } from "../services/supabase";
+import { queryClient } from "../config/queryClient";
 import {
   createBrand,
   getBrands,
@@ -37,6 +38,10 @@ import {
   type SoftDeleteResult,
 } from "../services/brandsService";
 import type { Brand } from "../store/currentBrandStore";
+// ORCH-0740 Cycle 1: import the existing brandRoleKeys factory to replace
+// the hardcoded `["brand-role", brandId]` literal in useSoftDeleteBrand.onSuccess
+// (Constitutional #4 — one query key per entity).
+import { brandRoleKeys } from "./useCurrentBrandRole";
 
 const STALE_TIME_MS = 5 * 60 * 1000; // 5 min — brands change infrequently
 
@@ -62,6 +67,38 @@ export const brandKeys = {
 };
 
 const DISABLED_KEY = ["brands-disabled"] as const;
+
+// ----- getBrandFromCache (synchronous, hook-free) ------------------------
+
+/**
+ * Synchronous, hook-free lookup for outside-component contexts (Zustand
+ * actions, store converters, fire-and-forget submit handlers). Reads the
+ * React Query cache by ID. Tries the detail cache first; falls back to
+ * iterating the list caches. Returns null on miss.
+ *
+ * Replaces the Cycle-17e-A `useCurrentBrandStore.getState().currentBrand`
+ * imperative pattern in 5 call sites (RefundSheet, CancelOrderDialog,
+ * order detail resend, liveEventConverter, liveEventStore.recordEdit
+ * notification).
+ *
+ * Cycle 2 / ORCH-0742.
+ */
+export const getBrandFromCache = (brandId: string | null): Brand | null => {
+  if (brandId === null) return null;
+  const detail = queryClient.getQueryData<Brand | null>(
+    brandKeys.detail(brandId),
+  );
+  if (detail !== undefined && detail !== null) return detail;
+  const lists = queryClient.getQueriesData<Brand[]>({
+    queryKey: brandKeys.lists(),
+  });
+  for (const [, brands] of lists) {
+    if (brands === undefined) continue;
+    const found = brands.find((b) => b.id === brandId);
+    if (found !== undefined) return found;
+  }
+  return null;
+};
 
 // ----- useBrands (list) --------------------------------------------------
 
@@ -145,19 +182,9 @@ export const useCreateBrand = (): UseCreateBrandResult => {
       );
       return { snapshot };
     },
-    onError: (error, input, context) => {
-      // [DIAG ORCH-0728-PASS-3] — replaced by logError() on full IMPL
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0728-DIAG] useCreateBrand#onError FAILED", {
-        name: (error as { name?: string })?.name,
-        message: (error as { message?: string })?.message,
-        code: (error as { code?: string })?.code,
-        details: (error as { details?: string })?.details,
-        hint: (error as { hint?: string })?.hint,
-        accountId: input.accountId,
-        brandName: input.name,
-      });
-      // Rollback to snapshot — Const #3: don't swallow; UI surfaces error to user
+    onError: (_error, input, context) => {
+      // Rollback to snapshot — Const #3: don't swallow; UI surfaces error
+      // via mutation.error subscription on the calling component.
       if (context !== undefined && context.snapshot !== undefined) {
         queryClient.setQueryData<Brand[]>(
           brandKeys.list(input.accountId),
@@ -233,18 +260,9 @@ export const useUpdateBrand = (): UseUpdateBrandResult => {
       }
       return { detailSnap, listSnap };
     },
-    onError: (error, { brandId, accountId }, context) => {
-      // [DIAG ORCH-0728-PASS-3] — replaced by logError() on full IMPL
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0728-DIAG] useUpdateBrand#onError FAILED", {
-        name: (error as { name?: string })?.name,
-        message: (error as { message?: string })?.message,
-        code: (error as { code?: string })?.code,
-        details: (error as { details?: string })?.details,
-        hint: (error as { hint?: string })?.hint,
-        brandId,
-        accountId,
-      });
+    onError: (_error, { brandId, accountId }, context) => {
+      // Rollback detail + list snapshots — Const #3: don't swallow; UI
+      // surfaces error via mutation.error on the calling component.
       if (context?.detailSnap !== undefined) {
         queryClient.setQueryData(brandKeys.detail(brandId), context.detailSnap);
       }
@@ -282,16 +300,7 @@ export const useSoftDeleteBrand = (): UseSoftDeleteBrandResult => {
   const queryClient = useQueryClient();
   const mutation = useMutation<SoftDeleteResult, Error, SoftDeleteBrandInput>({
     mutationFn: async ({ brandId }) => {
-      // [DIAG ORCH-0734-RW-DIAG] Removed at full IMPL CLOSE per cleanup dispatch
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0734-RW-DIAG] useSoftDeleteBrand mutationFn ENTER", { brandId });
       const result = await softDeleteBrand(brandId);
-      // [DIAG ORCH-0734-RW-DIAG] Removed at full IMPL CLOSE per cleanup dispatch
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0734-RW-DIAG] useSoftDeleteBrand mutationFn RESULT", {
-        brandId,
-        rejected: result.rejected,
-      });
       return result;
     },
     onSuccess: (result, { brandId, accountId }) => {
@@ -300,8 +309,9 @@ export const useSoftDeleteBrand = (): UseSoftDeleteBrandResult => {
         queryClient.invalidateQueries({ queryKey: brandKeys.list(accountId) });
         // Clear detail cache
         queryClient.removeQueries({ queryKey: brandKeys.detail(brandId) });
-        // Clear role cache for this brand (useCurrentBrandRole sees no brand row → null role)
-        queryClient.removeQueries({ queryKey: ["brand-role", brandId] });
+        // Clear role cache for this brand (useCurrentBrandRole sees no brand row → null role).
+        // ORCH-0740 Cycle 1: use brandRoleKeys.allForBrand factory instead of hardcoded literal.
+        queryClient.removeQueries({ queryKey: brandRoleKeys.allForBrand(brandId) });
         // Clear cascade-preview cache (defensive)
         queryClient.removeQueries({
           queryKey: brandKeys.cascadePreview(brandId),
@@ -309,16 +319,9 @@ export const useSoftDeleteBrand = (): UseSoftDeleteBrandResult => {
       }
       // On rejection: caller (BrandDeleteSheet) handles via modal; no cache changes
     },
-    onError: (error, { brandId, accountId }) => {
-      // [DIAG ORCH-0734-RW-DIAG] Removed at full IMPL CLOSE per cleanup dispatch
-      // eslint-disable-next-line no-console
-      console.error("[ORCH-0734-RW-DIAG] useSoftDeleteBrand FAILED", {
-        brandId,
-        accountId,
-        message: error.message,
-        name: error.name,
-      });
-      // Caller's mutateAsync still receives the throw (pessimistic pattern preserved)
+    onError: () => {
+      // Caller's mutateAsync still receives the throw — pessimistic pattern.
+      // Caller (BrandDeleteSheet) renders the error in the modal via setSubmitError.
     },
   });
   return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
@@ -355,8 +358,12 @@ export const useBrandCascadePreview = (
     queryFn: async (): Promise<BrandCascadePreviewCounts | null> => {
       if (!enabled || brandId === null) return null;
 
-      // 4 parallel queries — Const #3: throws on any error
-      const [pastResult, upcomingResult, liveResult, teamResult, stripeResult] =
+      // 5 parallel queries — Const #3: throws on any error.
+      // B2a HF-8 fix: hasStripeConnect now reads derived status via
+      // pg_derive_brand_stripe_status RPC instead of approximate
+      // `stripe_connect_id !== null` check (which returned true even
+      // for restricted-state brands per spike findings HF-8).
+      const [pastResult, upcomingResult, liveResult, teamResult, stripeStatusResult] =
         await Promise.all([
           supabase
             .from("events")
@@ -381,28 +388,28 @@ export const useBrandCascadePreview = (
             .select("user_id", { count: "exact", head: true })
             .eq("brand_id", brandId)
             .is("removed_at", null),
-          supabase
-            .from("brands")
-            .select("stripe_connect_id")
-            .eq("id", brandId)
-            .is("deleted_at", null)
-            .maybeSingle(),
+          supabase.rpc("pg_derive_brand_stripe_status", {
+            p_brand_id: brandId,
+          }),
         ]);
 
       if (pastResult.error) throw pastResult.error;
       if (upcomingResult.error) throw upcomingResult.error;
       if (liveResult.error) throw liveResult.error;
       if (teamResult.error) throw teamResult.error;
-      if (stripeResult.error) throw stripeResult.error;
+      if (stripeStatusResult.error) throw stripeStatusResult.error;
+
+      const derivedStatus = stripeStatusResult.data ?? "not_connected";
 
       return {
         pastEventCount: pastResult.count ?? 0,
         upcomingEventCount: upcomingResult.count ?? 0,
         liveEventCount: liveResult.count ?? 0,
         teamMemberCount: teamResult.count ?? 0,
+        // B2a HF-8 fix: only true for active or onboarding states (excludes
+        // not_connected, restricted, detached). Per spike findings.
         hasStripeConnect:
-          stripeResult.data !== null &&
-          stripeResult.data.stripe_connect_id !== null,
+          derivedStatus === "active" || derivedStatus === "onboarding",
       };
     },
   });

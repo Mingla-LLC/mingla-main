@@ -1,0 +1,28 @@
+# Mingla-business require-cycle baseline — META-ORCH-0744-PROCESS / I-PROPOSED-K
+# Generated 2026-05-07 from `npx --yes madge --circular --extensions ts,tsx src/ app/`
+# at IMPL time on branch `Seth`.
+#
+# Format: one cycle per line, file paths alphabetically sorted, joined by " | ".
+# New cycles (in live output but NOT here) fail CI. Update this file when:
+#   (1) ORCH-0746 fixes a cycle — REMOVE the line + cite the closing ORCH in the PR
+#   (2) A NEW cycle is intentionally introduced — ADD the line + justify in PR review
+#
+# Cross-reference:
+#   - INVARIANT_REGISTRY.md I-PROPOSED-K
+#   - .github/scripts/strict-grep/i-proposed-k-require-cycles.mjs
+#   - SPEC_META_ORCH_0744_PROCESS_HARDENING.md §3.1.3
+
+src/context/AuthContext.tsx | src/hooks/useAccountDeletion.ts
+src/context/AuthContext.tsx | src/hooks/useAccountDeletion.ts | src/hooks/useCreatorAccount.ts
+src/context/AuthContext.tsx | src/hooks/useBrandListShim.ts | src/store/currentBrandStore.ts | src/utils/clearAllStores.ts
+src/context/AuthContext.tsx | src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/useCurrentBrandRole.ts | src/store/currentBrandStore.ts | src/utils/clearAllStores.ts
+src/context/AuthContext.tsx | src/hooks/useBrands.ts | src/hooks/useCurrentBrandRole.ts | src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/clearAllStores.ts
+src/context/AuthContext.tsx | src/hooks/useBrands.ts | src/hooks/useCurrentBrandRole.ts | src/store/draftEventStore.ts | src/utils/clearAllStores.ts | src/utils/liveEventConverter.ts
+src/hooks/useBrandListShim.ts | src/store/currentBrandStore.ts
+src/store/draftEventStore.ts | src/utils/liveEventConverter.ts
+src/store/draftEventStore.ts | src/store/liveEventStore.ts
+src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/liveEventAdapter.ts
+src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/recurrenceRule.ts | src/utils/scheduleDateExpansion.ts
+src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/scheduleDateExpansion.ts
+src/store/liveEventStore.ts | src/store/orderStoreHelpers.ts
+src/store/liveEventStore.ts | src/utils/liveEventAdapter.ts

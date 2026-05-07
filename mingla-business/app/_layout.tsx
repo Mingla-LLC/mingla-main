@@ -17,16 +17,19 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 import { Stack } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { focusManager, QueryClientProvider } from "@tanstack/react-query";
 import * as Sentry from "@sentry/react-native";
 import * as SplashScreen from "expo-splash-screen";
 
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
 import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
+import { useBrand } from "../src/hooks/useBrands";
+import { useCurrentBrandId } from "../src/store/currentBrandStore";
 
 // J-X3 — Sentry init (DEC-098 D-16-2). Guarded by env-absent so dev/build
 // without DSN is a no-op, not a runtime error. EXIT condition: operator
@@ -52,15 +55,54 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 const SPLASH_MIN_VISIBLE_MS = 500;
+// ORCH-0743 / C1: 2s hard timeout for the brand-fetch gate. If the network
+// hasn't responded by then, release the splash anyway — flash falls back
+// to ORCH-0742 baseline behavior. Prevents indefinite splash on bad networks.
+const BRAND_FETCH_TIMEOUT_MS = 2000;
 
 function RootLayoutInner(): React.ReactElement {
-  // J-X5 — splash hide synchronized with AuthContext bootstrap.
+  // J-X5 — splash hide synchronized with TWO gates:
+  //   1. AuthContext bootstrap completes (loading: false)
+  //   2. useBrand(currentBrandId) has fetched OR currentBrandId is null
+  //      OR the 2s hard-timeout fired
+  //
+  // ORCH-0743 / Cycle 2 polish: gate 2 is NEW post-ORCH-0742. It closes the
+  // Const #14 gap where the wrapper hook returned null during the fetch
+  // window, causing TopBar/home/events to render empty-state during cold-start
+  // with persisted brand. The 2s hard-timeout prevents indefinite splash on
+  // bad networks (graceful fallback to ORCH-0742 baseline — flash, not hang).
+  //
+  // Note on `fetchStatus === "idle"`: when `enabled: false` (currentBrandId
+  // === null), React Query reports `fetchStatus: "idle"` and `isFetched: false`
+  // indefinitely. We accept "idle" as ready because there's no fetch to wait
+  // for. The `currentBrandId === null` short-circuit also handles this case;
+  // both paths converge on `brandReady=true` (defensive belt-and-suspenders).
   const { loading } = useAuth();
+  const currentBrandId = useCurrentBrandId();
+  const { isFetched: brandFetched, fetchStatus: brandFetchStatus } = useBrand(currentBrandId);
   const mountedAt = useRef(Date.now());
   const [splashHidden, setSplashHidden] = useState(false);
+  const [brandFetchTimedOut, setBrandFetchTimedOut] = useState(false);
+
+  // 2s hard-timeout: if useBrand hasn't resolved within 2s of auth bootstrap
+  // completing, release the splash anyway.
+  useEffect(() => {
+    if (loading) return; // auth still bootstrapping; no timeout yet
+    if (brandFetchTimedOut) return;
+    const timer = setTimeout(() => {
+      setBrandFetchTimedOut(true);
+    }, BRAND_FETCH_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [loading, brandFetchTimedOut]);
+
+  const brandReady =
+    currentBrandId === null ||
+    brandFetched ||
+    brandFetchStatus === "idle" ||
+    brandFetchTimedOut;
 
   useEffect(() => {
-    if (loading || splashHidden) return;
+    if (loading || !brandReady || splashHidden) return;
     const elapsed = Date.now() - mountedAt.current;
     const remaining = Math.max(0, SPLASH_MIN_VISIBLE_MS - elapsed);
     const timer = setTimeout(() => {
@@ -71,7 +113,23 @@ function RootLayoutInner(): React.ReactElement {
       setSplashHidden(true);
     }, remaining);
     return () => clearTimeout(timer);
-  }, [loading, splashHidden]);
+  }, [loading, brandReady, splashHidden]);
+
+  // ORCH-0740 Cycle 1: AppState → React Query focusManager wiring.
+  // When the app comes back to foreground, tell React Query to refetch
+  // stale queries that have refetchOnWindowFocus enabled (the default).
+  // Cross-platform: react-native-web 0.21.0 shims AppState 'change' events
+  // to document.visibilitychange + window.focus/blur, so this single code
+  // path works identically on iOS, Android, and Expo Web.
+  useEffect(() => {
+    const handleAppStateChange = (status: AppStateStatus): void => {
+      focusManager.setFocused(status === "active");
+    };
+    const subscription = AppState.addEventListener("change", handleAppStateChange);
+    return (): void => {
+      subscription.remove();
+    };
+  }, []);
 
   // Cycle 17d §C — TTL evict ended-event entries from phone stores (30d post end_at).
   // Runs once after auth bootstrap completes (signal that Zustand persist hydration is done).

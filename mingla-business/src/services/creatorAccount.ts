@@ -27,17 +27,13 @@ export async function ensureCreatorAccount(user: User): Promise<void> {
     { onConflict: "id", ignoreDuplicates: false }
   );
 
+  // Const #3 (no silent failures): throw on error. Callers in AuthContext
+  // bootstrap + onAuthStateChange wrap the call in try/catch and surface
+  // via console.warn (matches the existing getSession error pattern).
+  // ORCH-0743 / Note A: replaces the prior silent-swallow `if (error) {}`
+  // that fired only on the diagnostic probe path.
   if (error) {
-    // [DIAG ORCH-0728-PASS-3] — replaced by logError() on full IMPL
-    // eslint-disable-next-line no-console
-    console.error("[ORCH-0728-DIAG] creatorAccount#ensureCreatorAccount FAILED", {
-      name: (error as { name?: string })?.name,
-      message: error.message,
-      code: (error as { code?: string })?.code,
-      details: (error as { details?: string })?.details,
-      hint: (error as { hint?: string })?.hint,
-      userId: user.id,
-    });
+    throw error;
   }
 }
 

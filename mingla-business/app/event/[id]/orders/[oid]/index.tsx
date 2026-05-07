@@ -48,7 +48,7 @@ import {
   notifyEventChanged,
 } from "../../../../../src/services/eventChangeNotifier";
 import { useEventEditLogStore } from "../../../../../src/store/eventEditLogStore";
-import { useCurrentBrandStore } from "../../../../../src/store/currentBrandStore";
+import { getBrandFromCache } from "../../../../../src/hooks/useBrands";
 
 import { Button } from "../../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../../src/components/ui/EmptyState";
@@ -215,13 +215,10 @@ export default function OrderDetailRoute(): React.ReactElement {
     if (order === null || event === null || resendSubmitting) return;
     setResendSubmitting(true);
     await sleep(RESEND_PROCESSING_MS);
-    // Cycle 17e-A: brand list moved to React Query. Outside-component context
-    // checks current brand selection only — falls back to empty for cross-brand.
-    const currentBrand = useCurrentBrandStore.getState().currentBrand;
-    const brandName =
-      currentBrand !== null && currentBrand.id === order.brandId
-        ? currentBrand.displayName
-        : "";
+    // Cycle 2 / ORCH-0742: read the live Brand record from the React Query
+    // cache by ID. Falls back to empty when cache miss — best-effort copy.
+    const cachedBrand = getBrandFromCache(order.brandId);
+    const brandName = cachedBrand?.displayName ?? "";
     const occurredAt = new Date().toISOString();
     const reason = "Resent ticket";
 

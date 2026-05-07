@@ -1,0 +1,39 @@
+# GitGuardian configuration
+# Documents intentional false-positive paths and patterns so future pushes
+# don't re-trigger scans on known-public values.
+#
+# Existing flagged incidents must be marked "Resolved — false positive" in
+# the GitGuardian Dashboard (operator-side action); this file prevents
+# future re-flagging on the same paths/patterns.
+#
+# https://docs.gitguardian.com/internal-repositories-monitoring/integrations/git_hooks/api#configuration
+
+version: 2
+
+# Patterns explicitly known-public-by-design or test-only:
+secret:
+  ignored-matches:
+    # Supabase anon key — public-by-design. Per Supabase docs
+    # (https://supabase.com/docs/guides/api/api-keys#the-anon-key) the anon key
+    # is meant to be embedded in client bundles. Used as a fallback in
+    # mingla-business/app.config.ts when EXPO_PUBLIC_SUPABASE_ANON_KEY isn't
+    # set in the build environment.
+    - name: "Supabase anon key public fallback (mingla-business build config)"
+      match: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxbm9hanFlcnFobnZ1bG1ueXZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1MDUyNzIsImV4cCI6MjA3MzA4MTI3Mn0.p4yi9yD2RWfJ2HN4DD-dgrvXnyzhJi3g2YCouSK-hbo"
+
+  ignored-paths:
+    # GitHub Actions service-container Postgres credentials. These are
+    # ephemeral CI-runner-only credentials for a localhost service container
+    # (the `services.postgres` block uses POSTGRES_PASSWORD: postgres as the
+    # well-known default for ephemeral test databases). They never reach a
+    # production system. Standard pattern across the GitHub Actions ecosystem.
+    - .github/workflows/supabase-migrations-and-stripe-deno.yml
+
+  # Path-based ignores for fixture / test / build-config files that
+  # legitimately contain non-secret values matching common secret regexes.
+  ignored-detectors:
+    # Stripe test-mode publishable keys (pk_test_*) are public-by-design
+    # per Stripe docs (https://docs.stripe.com/keys#obtain-api-keys) — they
+    # are embedded in client bundles and authenticate WITHOUT granting
+    # account access. App config + tests legitimately reference them.
+    - StripePublishableKey

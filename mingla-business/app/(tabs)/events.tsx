@@ -45,10 +45,10 @@ import {
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import {
-  useCurrentBrand,
   useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
+import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useDraftsForBrand } from "../../src/store/draftEventStore";
 import type { DraftEvent } from "../../src/store/draftEventStore";
 import {
@@ -80,6 +80,7 @@ interface ManageContext {
   status: EventCardStatus;
 }
 
+// orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
 const canonicalEventUrl = (event: LiveEvent): string =>
   `https://business.mingla.com/e/${event.brandSlug}/${event.eventSlug}`;
 
@@ -278,8 +279,8 @@ export default function EventsTab(): React.ReactElement {
     (deletedBrandId: string): void => {
       // Clear currentBrand if it matches deleted brand (server already cleared
       // default_brand_id per softDeleteBrand Step 3; this clears local UI state)
-      const current = useCurrentBrandStore.getState().currentBrand;
-      if (current !== null && current.id === deletedBrandId) {
+      const currentBrandId = useCurrentBrandStore.getState().currentBrandId;
+      if (currentBrandId === deletedBrandId) {
         setCurrentBrand(null);
       }
       const deleted = brandPendingDelete;

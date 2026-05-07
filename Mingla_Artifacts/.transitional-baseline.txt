@@ -1,0 +1,20 @@
+# TRANSITIONAL exit-condition baseline — META-ORCH-0744-PROCESS / I-PROPOSED-N
+# Captured 2026-05-07 at IMPL time using the I-PROPOSED-N 5-line keyword rule.
+#
+# Format: file:line (relative to repo root). One violator per line.
+# Comments allowed via leading #.
+#
+# These 4 current violators are deferred to ORCH-0748 (TRANSITIONAL audit cycle).
+# Once ORCH-0748 fixes them, REMOVE the matching lines here in the same PR.
+# Once this baseline is empty, gate promotes to fail-mode (M-4 Phase 2).
+#
+# Cross-reference:
+#   - INVARIANT_REGISTRY.md I-PROPOSED-N
+#   - .github/scripts/strict-grep/i-proposed-n-transitional-exit-condition.mjs
+#   - SPEC_META_ORCH_0744_PROCESS_HARDENING.md §3.4.2
+#   - ORCH-0744 INVESTIGATION_ORCH_0744_LATENT_DEFECTS_SWEEP.md §HF-4
+
+mingla-business/src/components/event/PublicEventPage.tsx:168
+mingla-business/src/hooks/useCurrentBrandRole.ts:158
+mingla-business/src/services/eventChangeNotifier.ts:152
+mingla-business/src/utils/guestCsvExport.ts:300

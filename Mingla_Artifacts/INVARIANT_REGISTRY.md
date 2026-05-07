@@ -7,6 +7,47 @@
 
 ---
 
+## ACTIVE (post ORCH-0742 CLOSE 2026-05-06)
+
+### I-PROPOSED-J — ZUSTAND-PERSIST-NO-SERVER-SNAPSHOTS
+
+**Statement:** Persisted Zustand stores in `mingla-business/src/store/*Store.ts` (and any future `app-mobile/src/store/*Store.ts`) MUST NOT hold full server-derived objects (rows returned from Supabase, edge functions, or external APIs). They MAY hold:
+- (a) IDs / pointers to server records (canonical pattern: persist the ID, fetch the live record via React Query)
+- (b) Pure client UI state (modal open flags, drawer width, current page, ephemeral inputs)
+- (c) User preferences (locale, theme, notification settings)
+
+Forbidden: persisting `currentBrand: Brand`, `currentEvent: LiveEvent`, `currentOrder: Order`, `currentAccount: Account`, etc. — anything whose canonical authority is server-side.
+
+**Authority:** `mingla-business/src/store/currentBrandStore.ts` (v14 persist) is the reference implementation post-ORCH-0742. `partialize: (state) => ({ currentBrandId: state.currentBrandId })` returns ID-only. `useCurrentBrand()` is re-exported from `currentBrandStore.ts` but defined in `mingla-business/src/hooks/useCurrentBrand.ts` as a wrapper around `useBrand(currentBrandId)`. The auto-clear `useEffect` at `useCurrentBrand.ts:41-45` clears `currentBrandId` when the server confirms the brand is gone, preventing cold-start replay of phantom selections. Outside-component contexts (Zustand actions, store converters, fire-and-forget submit handlers) use `getBrandFromCache(brandId)` exported from `mingla-business/src/hooks/useBrands.ts:86-101`.
+
+**Rationale:** Pre-ORCH-0742, `currentBrandStore` persisted the full Brand record (`{ id, displayName, slug, kind, address, coverHue, role, stats, currentLiveEvent, ... }`). This produced three observed bug classes: (1) brand renamed on Device A keeps showing old name on Device B until force-quit, (2) brand deleted on Device A keeps appearing as selected on Device B with stale data, (3) cold-starting the app with a since-deleted brand replays the stale snapshot before any network call validates it. ORCH-0738's RC-C established the structural cause. ORCH-0742 Cycle 2 fixed it by removing the snapshot entirely — there is no Brand object left in persisted state to go stale. This invariant codifies the pattern so future maintenance can't accidentally regress.
+
+**Enforcement (current 2 gates + 1 deferred):**
+1. **Type-level** — `mingla-business/src/store/currentBrandStore.ts:357` declares `type PersistedState = Pick<CurrentBrandState, "currentBrandId">;`. The persist `PersistOptions<CurrentBrandState, PersistedState>` generic forces the partialize return type. Adding a server-derived field to `PersistedState` requires explicit type widening — visible in code review.
+2. **Constitutional gates** — Constitution #5 (server state stays server-side) is the parent rule; this invariant is its concrete codification for persisted Zustand. Constitution #2 (one owner per truth) reinforces: server data has exactly one owner (React Query), client pointer has exactly one owner (Zustand).
+3. **Strict-grep CI gate (DEFERRED)** — candidate gate over `partialize:` blocks in any file matching `**/store/*Store.ts` to flag persisted Brand/Event/Order/Account types. Tracked as deferred work — the invariant text codifies the rule; the gate ships in a future cycle when broad enough surface area exists to make it worthwhile (Cycle 4 per-store Zustand classification audit will inform whether the gate is needed or whether the existing TRANSITIONAL stores require carve-outs).
+
+**Test that catches a regression:** any code path that adds a `Brand`, `LiveEvent`, `Order`, or `Account` field (or similar server-row type) to a `partialize` return shape will fail the type check at the persist generic boundary. First runtime symptom of an unguarded regression: cross-device staleness reappears (rename/delete on Device A doesn't reflect on Device B until force-quit). The 5 existing `getBrandFromCache(` callers are pinned by the QA report's grep gate to exactly 5 — adding a 6th caller without going through the helper would trip the gate.
+
+**Established:** 2026-05-06 by ORCH-0742 Phase 2 CLOSE (commit `80c15297`). Memory file `feedback_zustand_persist_no_server_snapshots.md` ACTIVE; MEMORY.md index updated. Predecessor evidence: `Mingla_Artifacts/reports/INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT.md` (RC-C). DEC-119 + DEC-120 logged.
+
+**Caveats / fragility:**
+- **TRANSITIONAL stores currently exempted:** `events`, `draftEvent`, `liveEvent`, `doorSales`, `scannerInvitations` stores in `mingla-business/src/store/` currently hold full event/order records by design (per ORCH-0739 — these are pre-backend cycles). They are TRANSITIONAL with documented exit conditions. Cycle 4 (queued) audits each against this invariant; until Cycle 4, they are exempted but tracked.
+- **Wrapper hook loading window:** the post-ORCH-0742 `useCurrentBrand()` wrapper returns `null` during the React Query fetch window on cold-start (~100ms-1s, network-dependent). This is a UX trade-off, not an invariant violation — the persisted state is correct (just an ID), the network roundtrip just hasn't returned yet. ORCH-0743 (queued) addresses via splash-gate extension OR React Query persistence wiring.
+- **Cache miss returns null, not undefined:** `getBrandFromCache` always returns `Brand | null`. Callers use `?? ""` fallback safely. Future helpers added under this invariant should follow the same null-returning pattern.
+
+**Cross-references:**
+- DEC-119 (Decision Log) — currentBrandStore architectural rebuild rationale
+- DEC-120 (Decision Log) — I-PROPOSED-J activation
+- ORCH-0742 SPEC: `Mingla_Artifacts/specs/SPEC_ORCH_0742_CURRENT_BRAND_ID_ONLY.md` (binding contract; I-PROPOSED-J specced as DRAFT in §6.2)
+- ORCH-0742 IMPLEMENTATION REPORT: `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH_0742_REPORT.md`
+- ORCH-0742 QA REPORT: `Mingla_Artifacts/reports/QA_ORCH_0742_PHASE_2_REPORT.md`
+- Memory file: `~/.claude/projects/-Users-sethogieva-Desktop-mingla-main/memory/feedback_zustand_persist_no_server_snapshots.md` (status: ACTIVE)
+- ORCH-0743 (queued) — addresses cold-start UX trade-off (loading-window flash); does NOT relax the invariant
+- Cycle 4 (queued) — per-store Zustand audit against I-PROPOSED-J for the 5 TRANSITIONAL stores
+
+---
+
 ## ACTIVE (post ORCH-0734 CLOSE 2026-05-05)
 
 ### I-TRIAL-CITY-RUNS-CANONICAL — Place-intelligence trial pipeline operates city-scoped, sampled-sync via place_intelligence_city_runs
@@ -38,7 +79,47 @@
 - ORCH-0734 IMPL report (`Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0734_CITY_RUNS_REPORT.md`)
 - Memory `feedback_signal_anchors_decommissioned.md` (ACTIVE)
 - Backup snapshot `_archive_orch_0734_signal_anchors` retained 14 days from 2026-05-05 → DROP on 2026-05-19 if no rollback signal
-- ORCH-0737 (queued) — adds full-city-async trial mode toggle (preserves this invariant; extends pipeline with cursor/job-queue pattern alongside current sampled-sync mode)
+- ORCH-0737 v6 + v6.1 (CLOSED 2026-05-06 PASS via DEC-118) — added full-city-async trial mode + URL-transform photo pipeline + budget-loop worker; preserves this invariant; spawned new I-COLLAGE-PHOTO-URL-AT-TILE-RESOLUTION (below)
+- ORCH-0737 v7 (queued) — London-scale follow-up; Gemini File API + cache hit-rate + parallel-tuning; intake-only
+
+---
+
+## ACTIVE (post ORCH-0737 v6 + v6.1 CLOSE 2026-05-06)
+
+### I-COLLAGE-PHOTO-URL-AT-TILE-RESOLUTION — Photo URLs into compose path MUST be transformed to tile-target resolution before download
+
+**Statement:** Every photo URL passed into `composeCollage()` (and therefore through `fetchAndDecode()`) MUST be transformed to its tile-target resolution before the HTTP fetch fires. Two transforms are canonical:
+1. **Supabase Storage own-domain** (`*.supabase.co/storage/v1/object/...`) → rewritten to `*.supabase.co/storage/v1/render/image/...?width=N&height=N&resize=cover` where N is the tile size (default 192 px for 6-up collages). Existing query params on the input URL are stripped (otherwise they'd duplicate or collide with the resize params).
+2. **Google CDN reviewer photos** (`https://lh3.googleusercontent.com/...`, plus `lh4`/`lh5`/`lh6` variants) → rewritten to append the `=wN-hN` size suffix; existing `=k-no` / `=sN` / similar suffixes are replaced; no suffix at all → suffix appended.
+
+Unknown URLs (non-Supabase, non-Google CDN) pass through unchanged — graceful fallback so the pipeline never breaks on a new photo source, but tile-resolution discipline is best-effort for those. Empty / null / non-string inputs pass through unchanged (defensive).
+
+**Authority:** `supabase/functions/_shared/imageCollage.ts` exports `transformPhotoUrlForTile(url, tileSize)` as the single canonical helper. `fetchAndDecode(url, tileSize, timeoutMs?)` calls it before every HTTP fetch. `composeCollage()` for-loop intentionally stays SERIAL inside compose — outer parallelism (parallel-12 places) lives in `runPrepIteration`; inner serial bounds memory at ~5 MB/place × 12 = ~60 MB, well below the 150 MB Edge Runtime cap.
+
+**Rationale:** Pre-v6 (pre-2026-05-06), `fetchAndDecode` downloaded photos at native resolution. Live experiment E1 (per `INVESTIGATION_ORCH-0737_V6_PIPELINE_TRACE.md`) measured Supabase Storage marketing photos at 173 KB native JPEG and Google CDN reviewer photos at 59 KB native. Decoded to RGBA + held in memory across 6-up parallel compose, peaks hit ~50 MB per call which stacked dangerously close to the 150 MB Deno Edge Runtime cap on parallel workers — `WORKER_RESOURCE_LIMIT 546` errors fired regularly during Cary, FortLauderdale, Washington runs. Live experiment E2 proved both transform paths viable: Supabase `/render/image/?width=192&height=192&resize=cover` returns ~10.7 KB (94% byte reduction); Google CDN `=w192-h192` returns ~11.8 KB (80% reduction). v6 wired both transforms in. Post-deploy verification: zero `WORKER_RESOURCE_LIMIT 546` errors during Cary 761 full-city run + 78 min sustained (PROBE 2 count=0). The invariant codifies the pattern so future maintenance can't accidentally regress.
+
+**Enforcement (3 gates):**
+1. **Type-level** — `fetchAndDecode(url, tileSize, timeoutMs?)` requires `tileSize: number` parameter (no default). TypeScript compile error if a caller forgets to pass it. This forces the upstream caller to know the tile size, which means they either pass it through `transformPhotoUrlForTile` themselves or rely on `fetchAndDecode` to do so internally.
+2. **Unit tests** — `supabase/functions/_shared/imageCollage.test.ts` pins behavior across 8 deterministic cases (Supabase Storage with/without query params; Google `lh3`/`lh4`/`lh5`/`lh6` with `=k-no` suffix / no suffix / different tile sizes; unknown CDN passthrough; empty/null/non-string input passthrough). Test run on Mac post-deploy: 8/8 PASS.
+3. **Kill-switch** — `DISABLE_PHOTO_URL_TRANSFORM=true` env var disables both transforms (passthrough mode), enabling hot revert if a Supabase or Google API change ever breaks transform URLs without code change. Operators document the variable in the deploy runbook; default unset = transforms ON.
+
+**Test that catches a regression:** any code path that calls `fetchAndDecode` without `tileSize` parameter fails TypeScript compile. Any code path that builds a Supabase Storage URL via string concat without going through `transformPhotoUrlForTile` will download native-resolution bytes; first symptom is `WORKER_RESOURCE_LIMIT 546` returning during full-city runs (>200 places). The 8 unit tests catch silent transform-logic regressions independent of live infrastructure.
+
+**Established:** 2026-05-06 by ORCH-0737 v6 (forensics → SPEC → IMPL → Cary 761 full-city PASS in 78 min post-deploy + 0 mem errors). DEC-118 logs the decision. Memory file: NONE created (the implementation file + this invariant + the unit tests are sufficient documentation; future skill sessions can grep `transformPhotoUrlForTile` to find the canonical helper).
+
+**Caveats / fragility:**
+- **Existing fingerprint cache survives this change** (favorable D-1 deviation observed in v6 IMPL). The collage cache key is `sha256(stored_photo_urls.slice(0,5))` — URLs themselves aren't part of the key, so transformed downloads produce the same cache hits as native downloads. BUT if URL transforms ever change structurally (e.g., Supabase Storage migrates to a new render-image endpoint, or Google CDN deprecates `=wN-hN`), ALL existing fingerprints invalidate. Document at the kill-switch site.
+- **Parallel-12 is the prep tier (memory-light); score tier is parallel-6** (per v6.1, DEC-118). Don't conflate the two limits — the score `.limit()` is rate-limit-bound by Gemini (parallel-12 → 429 storms); the prep `.limit()` is memory-bound by collage compose (parallel-12 inside the URL-transform regime is safe; without URL transforms, parallel-12 OOMs).
+- **Unknown-CDN passthrough is intentional graceful fallback**, not a feature. If a future signal-source produces photos from a fourth domain (e.g., a Yelp-style content-delivery network), a new transform branch should be added, not relied on the passthrough.
+
+**Cross-references:**
+- DEC-118 (Decision Log) — ORCH-0737 v6 + v6.1 CLOSE rationale
+- ORCH-0737 v6 SPEC: `Mingla_Artifacts/specs/SPEC_ORCH-0737_PATCH_V6_PIPELINE_REDESIGN.md` (binding contract; URL transform pattern at §3.1, §4.4)
+- ORCH-0737 v6 INVESTIGATION: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0737_V6_PIPELINE_TRACE.md` (E1 + E2 photo-size + transform-viability evidence)
+- ORCH-0737 v6 IMPLEMENTATION REPORT: `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0737_V6_REPORT.md` (3-file change manifest; 5 IMPL discoveries)
+- I-TRIAL-CITY-RUNS-CANONICAL (preserved) — upstream pool-quality + city-scoping invariant; trial pipeline depends on
+- I-BOUNCER-EXCLUDES-FAST-FOOD-AND-CHAINS (preserved) — upstream pool-quality gate
+- ORCH-0737 v7 (queued) — London-scale forensics; will revisit transform pattern if Gemini File API replaces inline_data + introduces new caching pattern
 
 ---
 
@@ -1936,9 +2017,9 @@ Other shapes (allow-list / parameterized restrictions / `event_scope` arrays) ar
 - Assertion: post-hydrate `useCurrentBrandStore.getState().currentBrand === null`
 - Inverse test (preservation): same cache shape with `currentBrand.id = "<real-uuid>"` → post-hydrate currentBrand preserved verbatim
 
-### I-PROPOSED-H — RLS-RETURNING-OWNER-GAP-PREVENTED (DRAFT)
+### I-PROPOSED-H — RLS-RETURNING-OWNER-GAP-PREVENTED (ACTIVE)
 
-**Status:** DRAFT — flips to ACTIVE on ORCH-0734 tester PASS
+**Status:** ACTIVE post-ORCH-0734 CLOSE 2026-05-06 (operator-attested CONDITIONAL PASS via successful brand-create UI smoke after migration applied)
 
 **Statement:** Every authenticated mutation policy (`CREATE POLICY ... FOR INSERT|UPDATE|DELETE`) on a `public.*` schema table MUST be paired with at least one SELECT policy whose USING clause uses `auth.uid()` directly (not via a SECURITY DEFINER helper function), AND every UPDATE policy whose WITH CHECK uses a helper function MUST also be paired with a direct-predicate fallback policy if the mutation can change a column referenced in the helper's predicate.
 
@@ -1962,9 +2043,9 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **EXIT condition:** None — permanent invariant. If a future Postgres release fixes the SECURITY DEFINER + STABLE snapshot quirk in INSERT...RETURNING context AND a future Postgres release adds a way for soft-delete-flag UPDATE WITH CHECK to evaluate against pre-update row state, the underlying mechanism for both failure modes would be eliminated and this invariant could be reconsidered. Until then: permanent.
 
-### I-PROPOSED-I — MUTATION-ROWCOUNT-VERIFIED (DRAFT)
+### I-PROPOSED-I — MUTATION-ROWCOUNT-VERIFIED (ACTIVE)
 
-**Status:** DRAFT — flips to ACTIVE on ORCH-0734-RW tester PASS
+**Status:** ACTIVE post-ORCH-0734-RW CLOSE 2026-05-06 (operator-attested CONDITIONAL PASS via successful brand-delete UI smoke; CI gate `i-proposed-i-mutation-rowcount-verified.mjs` enforcing going-forward)
 
 **Statement:** Every supabase-js mutation in `mingla-business/src/services/*.ts` that targets a specific row(s) by ID (`.eq("id", X)` / `.eq("brand_id", X)` / similar) MUST verify rowcount via `.select(...)` chain (or equivalent) AND throw a structured error if rowcount is 0. Exempt: UPSERT on PK (idempotent by design — destructuring only `error` is acceptable), and explicitly-documented "fire-and-forget cleanup" mutations marked with `// I-MUTATION-ROWCOUNT-WAIVER: <ORCH-ID> <reason>` magic comment within 3 lines above the mutation.
 
@@ -1985,3 +2066,298 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **EXIT condition:** Permanent invariant. The PostgREST + supabase-js contract that produces silent 0-row success is unlikely to change.
 
+### I-PROPOSED-O — STRIPE-EMBEDDED-COMPONENTS-VIA-OFFICIAL-SDK-ONLY (DRAFT — flips ACTIVE on B2a CLOSE)
+
+**Status:** DRAFT (pre-written at B2a SPEC dispatch authoring; flips to ACTIVE on B2a CLOSE per orchestrator standard close protocol).
+
+**Statement:** Mingla MUST NOT DIY-wrap `@stripe/connect-js` in `react-native-webview` / `WKWebView` / Android WebView. Connect Embedded Components are exposed via either: (a) Stripe's prescribed native preview SDK component (`@stripe/stripe-react-native` `<ConnectAccountOnboarding>` once GA — Path A future upgrade), OR (b) Mingla-hosted web page rendering web SDK (`@stripe/connect-js` + `@stripe/react-connect-js`) opened via `expo-web-browser` (system browser, sandboxed, NOT host-app-controlled — Path B current).
+
+**Why:** Stripe explicitly prohibits embedded WebView wrapping per [docs.stripe.com/connect/get-started-connect-embedded-components](https://docs.stripe.com/connect/get-started-connect-embedded-components). Verbatim: *"You can't use Connect embedded components in embedded web views inside mobile or desktop applications."* Violations risk technical disable (Stripe iframes can detect WebView contexts and refuse to render) + Connect Platform Agreement breach.
+
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-o-stripe-no-webview-wrap` running `.github/scripts/strict-grep/i-proposed-o-stripe-no-webview-wrap.mjs`. Scans `mingla-business/src/` + `mingla-business/app/` for files importing BOTH `@stripe/connect-js` (or `@stripe/react-connect-js`) AND `react-native-webview`. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-connect-js-with-webview — <reason>`.
+
+**Source:** B2a SPEC §8.2 + spike report `Mingla_Artifacts/reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md` §6 G-1.
+
+**EXIT condition:** Permanent invariant. Stripe's prohibition is documented public policy; reversal would require Stripe to publicly endorse WebView wrapping (no precedent).
+
+### I-PROPOSED-P — STRIPE-STATE-CANONICAL-IS-CONNECT-ACCOUNTS (DRAFT — flips ACTIVE on B2a CLOSE)
+
+**Status:** DRAFT (pre-written at B2a SPEC dispatch authoring; flips to ACTIVE on B2a CLOSE).
+
+**Statement:** `stripe_connect_accounts` is the SINGLE canonical source of truth for Stripe Connect state. `brands.stripe_charges_enabled`, `brands.stripe_payouts_enabled`, `brands.stripe_connect_id` are denormalized cache columns mirrored ONLY by the DB trigger `tg_sync_brand_stripe_cache` (introduced in B2a migration `20260508000000`). Direct UPDATE/INSERT of `brands.stripe_*` by application code is FORBIDDEN — only the DB trigger writes them.
+
+**Why:** Constitutional #2 (one owner per truth). Without this gate, app code could update `brands.stripe_charges_enabled=true` without a corresponding `stripe_connect_accounts` update, producing drift between cache and canonical state. The fast-list-rendering optimization (mapBrandRowToUi reads cache to avoid joining stripe_connect_accounts on every brand list query) is fragile if cache drifts.
+
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-p-stripe-state-canonical` running `.github/scripts/strict-grep/i-proposed-p-stripe-state-canonical.mjs`. Scans `mingla-business/src/` + `mingla-business/app/` + `supabase/functions/` for `.update()` / `.upsert()` / `.insert()` calls on `from("brands")` that include any of `stripe_connect_id` / `stripe_charges_enabled` / `stripe_payouts_enabled` in the payload, AND for SQL `UPDATE brands SET ... stripe_*` patterns. Allowlist tag (line above the violating line): `// orch-strict-grep-allow brands-stripe-direct-write — <reason>`. The trigger function itself in the SQL migration is exempt (different file, not in scan dirs).
+
+**Allowed reads:** `mapBrandRowToUi` reads `brands.stripe_*` to derive `Brand.stripeStatus` for fast list rendering (R-3 fix in B2a). The gate detects WRITES only — reads are unaffected.
+
+**Source:** B2a SPEC §8.2 + forensics report `Mingla_Artifacts/reports/INVESTIGATION_CYCLE_B2_STRIPE_STUB.md` R-4 (Constitutional #2 candidate).
+
+**EXIT condition:** Permanent invariant. Reversal would require schema cleanup (drop `brands.stripe_*` cache columns; force every read to join `stripe_connect_accounts`) which is a separate ORCH cycle.
+
+### I-PROPOSED-Q — STRIPE-API-VERSION-PINNED-VIA-SHARED-CLIENT-ONLY (DRAFT — flips ACTIVE on B2a Path C CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-121; flips ACTIVE on B2a CLOSE).
+
+**Statement:** Every Stripe SDK instantiation in `supabase/functions/` MUST source the API version from `_shared/stripe.ts`'s `STRIPE_API_VERSION` constant. Inline overrides (e.g., `new Stripe(key, { apiVersion: "..." })` with a literal date string in any file other than `_shared/stripe.ts`) are FORBIDDEN. The single source of truth for the API version pin is `_shared/stripe.ts` line 23: `STRIPE_API_VERSION = "2026-04-30.preview"` (per D-B2-5 — Accounts v2 public preview).
+
+**Why:** Two API versions in the same Mingla edge fn surface produce unpredictable behavior. The Stripe Accounts v2 endpoint (`/v2/core/accounts`) — which carries the marketplace controller properties (DEC-114) — only exists in `.preview` API versions. A function pinned to `2024-11-20.acacia` (production v1) cannot create accounts with controller properties; payouts won't split, charges won't transfer, the marketplace charge model is silently misconfigured. The B2a Path C reconciliation (`outputs/B2_RECONCILIATION_REPORT.md`) caught Taofeek's branch using `2024-11-20.acacia` inline across all 6 of his Stripe edge functions — a clean illustration of the failure mode this gate prevents.
+
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-q-stripe-api-version` running `.github/scripts/strict-grep/i-proposed-q-stripe-api-version.mjs`. Scans `supabase/functions/` for any `apiVersion: "20YY-MM-DD..."` literal outside `_shared/stripe.ts`. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-inline-api-version — <reason>`.
+
+**Source:** B2a Path C SPEC `outputs/SPEC_B2_PATH_C_AMENDMENT.md` §5 + reconciliation report `outputs/B2_RECONCILIATION_REPORT.md` §1.
+
+**EXIT condition:** Permanent invariant within the current Stripe SDK paradigm. Would only retire if Stripe's SDK API contract removes the `apiVersion:` constructor option, OR if a future Mingla architecture splits Connect work across multiple isolated runtimes (separate microservice repos). Neither is foreseen.
+
+### I-PROPOSED-R — STRIPE-IDEMPOTENCY-KEY-ON-EVERY-CALL (DRAFT — flips ACTIVE on B2a Path C CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-121; flips ACTIVE on B2a CLOSE).
+
+**Statement:** Every `stripe.<resource>.<method>(...)` call in `supabase/functions/` MUST pass `{ idempotencyKey: generateIdempotencyKey(brand_id, op) }` (from `_shared/idempotency.ts`) in the call's options argument. The `stripe.webhooks.*` namespace is exempt — those are local signature-verification helpers, not Stripe API calls. Test files (`*.test.ts`, `__tests__/`) are exempt by convention.
+
+**Why:** Stripe's Idempotency-Key is the only safe-retry token. A dropped HTTPS connection mid-create leaves the caller unsure whether the resource was created. Without idempotency, the retry creates a duplicate Connect account / payout / transfer — and Stripe doesn't expose an API to delete a Connect account, so cleanup is operationally painful (manual support contact). With idempotency, retrying the same call returns the cached response, and the caller treats the second attempt as a no-op. The B2a Path C reconciliation caught Taofeek's branch with ZERO idempotency keys across 6 Stripe edge functions — concurrent calls (mobile + cron + webhook all triggering at once) would have produced duplicate-account incidents.
+
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-r-stripe-idempotency-key` running `.github/scripts/strict-grep/i-proposed-r-stripe-idempotency-key.mjs`. Scans `supabase/functions/` for every `stripe.X.Y(` call site (excluding `stripe.webhooks.*`); requires `idempotencyKey:` within 40 lines after the call open-paren. Allowlist tag (5-line above): `// orch-strict-grep-allow stripe-no-idempotency-key — <reason>`.
+
+**Format:** `_shared/idempotency.ts` exports `generateIdempotencyKey(brandId, operation)` returning `{brand_id}:{operation}:{epoch_ms}`. Operation type is restricted to a TS union — extend the union when adding new operations.
+
+**Source:** B2a Path C SPEC `outputs/SPEC_B2_PATH_C_AMENDMENT.md` §5 + reconciliation report `outputs/B2_RECONCILIATION_REPORT.md` §3 + B2a SPEC §4.2.1 + D-B2-22.
+
+**EXIT condition:** Permanent invariant. Stripe's idempotency model is well-established and unlikely to change.
+
+### I-PROPOSED-S — STRIPE-AUDIT-LOG-ON-EVERY-EDGE-FN (DRAFT — flips ACTIVE on B2a Path C CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-121; flips ACTIVE on B2a CLOSE).
+
+**Statement:** Every edge function under `supabase/functions/{brand-stripe-*,stripe-*}/` MUST import `writeAudit` from `../_shared/audit.ts` AND call `writeAudit(...)` at least once per invocation. The `audit_log` table is the tamper-evident record of Stripe state transitions (account create, status update, balance read, detach, KYC reminder send) for Constitutional #3 compliance, dispute investigation, and operator forensics.
+
+**Why:** Stripe Connect actions move real money and create real legal records. Every state transition needs to be traceable. Without this gate, an engineer could ship a new `brand-stripe-foo/index.ts` that mutates Stripe state without a single audit row — silent action invisible to operators. The B2a Path C reconciliation caught Taofeek's branch with ZERO `writeAudit` calls across 6 Stripe edge functions. The same gap was found in Seth's existing `brand-stripe-refresh-status/index.ts` during Phase 0 of Path C and fixed inline (added writeAudit on the success path with before/after diff of charges_enabled / payouts_enabled / derived_status).
+
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-s-stripe-audit-log` running `.github/scripts/strict-grep/i-proposed-s-stripe-audit-log.mjs`. Walks `supabase/functions/` for directory names matching `^(brand-stripe-|stripe-)`. For each, the canonical entry `index.ts` is checked for: (1) an import statement bringing in `writeAudit` from `../_shared/audit.ts`, AND (2) at least one `writeAudit(` call. Both must be present. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-fn-no-audit — <reason>`.
+
+**Audit row contract:** `writeAudit({ user_id, brand_id, action: "stripe_connect.X", target_type: "stripe_connect_account", target_id: stripe_account_id, before, after })`. Action namespacing convention: `stripe_connect.{operation}` (e.g., `stripe_connect.onboard_initiated`, `stripe_connect.account_updated`, `stripe_connect.detach`, `stripe_connect.kyc_reminder_sent`, `stripe_connect.status_refreshed`).
+
+**Sampling note for high-frequency callers:** `brand-stripe-refresh-status` is a 30s poll fallback — every refresh writing an audit row would be costly. Phase 0 implementation logs only the success path with state-change diff. If the row count proves too noisy in production, an explicit sampling rule (e.g., 1-in-N or "only when state changed") may be added with an allowlist comment + memo, but the import + at-least-one-call requirement remains.
+
+**Source:** B2a Path C SPEC `outputs/SPEC_B2_PATH_C_AMENDMENT.md` §5 + reconciliation report `outputs/B2_RECONCILIATION_REPORT.md` §3 + B2a SPEC §4.2.1 (Const #3) + BUSINESS_PROJECT_PLAN §B.7.
+
+**EXIT condition:** Permanent invariant. Audit logging is a Constitutional principle (#3 — no silent failures); reversal would require revising the constitution.
+
+### I-PROPOSED-K — REQUIRE-CYCLES-BASELINED (DRAFT — flips ACTIVE on META-ORCH-0744-PROCESS CLOSE)
+
+**Status:** DRAFT (added during META-ORCH-0744-PROCESS IMPL; flips ACTIVE on META-ORCH-0744-PROCESS CLOSE).
+
+**Statement:** every require-cycle in `mingla-business/src/ + app/` is either (a) listed in `mingla-business/.metro-cycle-baseline.txt` (legacy cycle, awaiting structural refactor in a future ORCH) OR (b) a NEW cycle that fails CI before merge.
+
+**Authority:** `.github/scripts/strict-grep/i-proposed-k-require-cycles.mjs` runs `madge --circular` against `mingla-business/src/ + app/` and compares to baseline. Workflow job in `.github/workflows/strict-grep-mingla-business.yml`.
+
+**Why:** ORCH-0742 introduced a require-cycle that the SPEC §4.2 explicitly tried to prevent; nobody caught it. ORCH-0744 forensics surfaced 14 pre-existing cycles. New cycles MUST be justified or eliminated before merge, not allowed to pile up silently.
+
+**Enforcement (3 gates):**
+1. **CI script** — `i-proposed-k-require-cycles.mjs`. Fails on any new cycle vs baseline.
+2. **Baseline file** — `mingla-business/.metro-cycle-baseline.txt`. Operator-owned. Lines added (new cycle accepted) or removed (cycle fixed) ALWAYS in the same PR as the import-graph change.
+3. **PR review discipline** — when baseline is modified, reviewer MUST inspect why (cycle added or fixed) and verify rationale.
+
+**Test catches a regression:** any code change introducing a NEW cycle (not in baseline) fails CI. Operator must either fix the cycle OR add it to baseline with PR-comment justification.
+
+**Established:** META-ORCH-0744-PROCESS / 2026-05-06 (DRAFT — flips ACTIVE on CLOSE).
+
+**Caveats:**
+- Baseline format change requires bumping the script's normalization function. Tracked in script header.
+- madge could miss dynamic `require()` cycles (script catches static `import` cycles only). Mingla-business uses ESM imports exclusively post-ORCH-0743 RC-1, so this is acceptable.
+- The 14-cycle baseline is operationally large. ORCH-0746 (queued) will start shrinking it.
+
+**Cross-references:** SPEC §3.1, ORCH-0744 forensics §3 RC-1 + CF-1, ORCH-0746 (queued).
+
+### I-PROPOSED-L — DIAG-MARKERS-REAPED-AT-CLOSE (DRAFT — flips ACTIVE on META-ORCH-0744-PROCESS CLOSE)
+
+**Status:** DRAFT (added during META-ORCH-0744-PROCESS IMPL; flips ACTIVE on META-ORCH-0744-PROCESS CLOSE).
+
+**Statement:** `[ORCH-XXXX-DIAG]` markers introduced by an ORCH MUST be removed in the same CLOSE that closes that ORCH. Markers from PRIOR closed ORCHs (residue) require a separate dedicated cleanup cycle.
+
+**Authority:** `.claude/skills/mingla-orchestrator/SKILL.md` Mode: CLOSE Step 1.5 (NEW per SPEC §3.2).
+
+**Why:** ORCH-0728/0729/0730/0733/0734-RW all closed PASS while leaving 15 `[ORCH-XXXX-DIAG]` console.error blocks in production code. Each had a comment saying "removed at full IMPL CLOSE" but no CLOSE step enforced this. ORCH-0743 had to mass-delete them after the fact.
+
+**Enforcement:** PROCESS-time (orchestrator at CLOSE), NOT CI-time. CI can't know which ORCH is closing — only the orchestrator (mid-CLOSE) has that context. Step 1.5 grep must return zero matches before CLOSE proceeds to Step 2.
+
+**Test catches a regression:** any future CLOSE where the orchestrator skips Step 1.5 results in DIAG markers persisting. The check is in the skill prompt itself; future orchestrator sessions that follow the skill will execute Step 1.5 unconditionally.
+
+**Established:** META-ORCH-0744-PROCESS / 2026-05-06 (DRAFT — flips ACTIVE on CLOSE).
+
+**Caveats:**
+- This is a process invariant, not a CI invariant. No automated enforcement at PR-time. Requires orchestrator skill discipline.
+- Pre-cycle DIAG residue (markers from prior CLOSED ORCHs) is OUT OF SCOPE for this invariant — those need a one-time cleanup cycle (already happened in ORCH-0743 for the 15 markers from 5 ORCHs).
+
+**Cross-references:** SPEC §3.2, ORCH-0744 forensics §M-2, ORCH-0743 CF-3 mass-delete.
+
+### I-PROPOSED-M — PERSIST-KEY-WHITELIST-SYNC (DRAFT — flips ACTIVE on META-ORCH-0744-PROCESS CLOSE)
+
+**Status:** DRAFT (added during META-ORCH-0744-PROCESS IMPL; flips ACTIVE on META-ORCH-0744-PROCESS CLOSE).
+
+**Statement:** every Zustand persist `name: "mingla-business.<store>.v<N>"` literal in `mingla-business/src/store/*.ts` MUST appear as a string literal in `KNOWN_MINGLA_KEYS` set inside `mingla-business/src/utils/reapOrphanStorageKeys.ts`. No drift permitted in either direction (missing-from-whitelist OR stale-in-whitelist).
+
+**Authority:** `.github/scripts/strict-grep/i-proposed-m-persist-key-whitelist.mjs`. Workflow job in strict-grep-mingla-business.yml.
+
+**Why:** ORCH-0742 bumped `currentBrand.v13 → v14` but didn't update the reaper whitelist. Result: ORCH-0742's live `v14` blob reported as ORPHAN every cold-start. If anyone ever promoted the reaper from log-only to delete-mode (Cycle 17d §D explicitly plans this), it would silently wipe the live blob on every cold-start, undoing ORCH-0742 entirely. **Latent destruction risk.**
+
+**Enforcement (2 gates):**
+1. **CI script** — `i-proposed-m-persist-key-whitelist.mjs`. Fails on any persist-name not in whitelist OR any whitelist entry not matching a live persist.
+2. **Per-store unit test (already shipped in ORCH-0743)** — `src/utils/__tests__/reapOrphanStorageKeys.test.ts` pins the v14 entry specifically; broader test would be added per-store as new persists are introduced.
+
+**Test catches a regression:** any persist-key bump (e.g., `currentBrand.v14 → v15` in a future cycle) that forgets to update the whitelist fails CI on the same PR.
+
+**Established:** META-ORCH-0744-PROCESS / 2026-05-06 (DRAFT — flips ACTIVE on CLOSE).
+
+**Caveats:**
+- Pure literal `name:` matching only. Template strings or dynamic composition not supported (none currently used; future SPEC required if pattern emerges).
+- Comment-stripping pre-pass required to prevent docblock false-positives.
+- Cross-domain: this gate only checks mingla-business stores. App-mobile + other domains require their own gates (future cycle).
+
+**Cross-references:** SPEC §3.3, ORCH-0744 forensics RC-2 (the latent destruction surface), ORCH-0743 RC-2 fix + unit test.
+
+### I-PROPOSED-N — TRANSITIONAL-EXIT-CONDITIONED (DRAFT — flips ACTIVE on META-ORCH-0744-PROCESS CLOSE)
+
+**Status:** DRAFT (added during META-ORCH-0744-PROCESS IMPL; flips ACTIVE on META-ORCH-0744-PROCESS CLOSE).
+
+**Statement:** every `[TRANSITIONAL]` marker in `mingla-business/src/ + app/` MUST have an exit-condition keyword (`EXIT`, `exits when`, `exit condition`, `Cycle X`, `B-cycle`, `B<N>`, `ORCH-NNNN`) within 5 lines of the marker. Const #7 enforcement (label temporary fixes — tracked, owned, exit-conditioned).
+
+**Authority:** `.github/scripts/strict-grep/i-proposed-n-transitional-exit-condition.mjs`. Workflow job in strict-grep-mingla-business.yml.
+
+**Why:** ORCH-0744 forensics §HF-4 found 9 of 29 `[TRANSITIONAL]` markers without exit conditions. Const #7 is honor-system without enforcement; markers become permanent quietly.
+
+**Enforcement (2 phases):**
+1. **Phase 1 (THIS CYCLE) — WARN-MODE:** `Mingla_Artifacts/.transitional-baseline.txt` lists the known violators; gate WARNS on each existing violator + FAILS on any NEW violator added vs baseline. Existing violators don't break CI.
+2. **Phase 2 (post-ORCH-0748):** ORCH-0748 fixes the violators; baseline file becomes empty; gate promotes to FAIL-MODE on any TRANSITIONAL without exit condition.
+
+**Test catches a regression:** new `[TRANSITIONAL]` marker added without an exit keyword fails CI immediately. Existing violators logged but don't block (until Phase 2 promotion).
+
+**Established:** META-ORCH-0744-PROCESS / 2026-05-06 (DRAFT WARN-MODE — flips ACTIVE on CLOSE; flips FAIL-MODE on ORCH-0748 CLOSE).
+
+**Caveats:**
+- 5-line window is a heuristic. A marker followed by an exit-condition 6 lines later spuriously triggers; operator works around with re-formatting OR an explicit allowlist comment.
+- Baseline format `file:line` requires line-number stability. Heavy refactors (cycle 17d-class) shift line numbers; baseline needs simultaneous update in those PRs.
+
+**Cross-references:** SPEC §3.4, ORCH-0744 forensics §HF-4, ORCH-0748 (queued — TRANSITIONAL audit cycle).
+
+### I-PROPOSED-X — WEB-EXPORT-CLEAN (DRAFT — flips ACTIVE on META-ORCH-0744-PROCESS CLOSE)
+
+**Status:** DRAFT (added during META-ORCH-0744-PROCESS IMPL; flips ACTIVE on META-ORCH-0744-PROCESS CLOSE).
+
+**Statement:** `expo export -p web` stderr from `mingla-business/` MUST contain ZERO `"shadow*" / "textShadow*" / "elevation"` deprecation warnings AND ZERO `Property '<X>' doesn't exist` errors traceable to mingla-business sources (admin, supabase, app-mobile out of scope; dependency-source warnings allowed).
+
+**Authority:** `.github/scripts/strict-grep/i-proposed-x-web-deprecation.mjs`. Workflow job runs `expo export -p web` AND the parser.
+
+**Why:** ORCH-0744 forensics §CF-2 found `textShadow*` props on `event/[id]/index.tsx` hero — RN-only props that react-native-web silently strips, making the shadow invisible on web. The Metro deprecation warning had been printed for who-knows-how-long without anyone reading it. ORCH-0743 fixed the one site; this gate prevents new instances.
+
+**Enforcement (1 gate):**
+1. **CI script + parser** — `i-proposed-x-web-deprecation.mjs`. Pipes captured stderr from `expo export -p web` through pattern matchers. Fails on any of the 4 violation classes.
+
+**Test catches a regression:** any new RN-only style prop added to mingla-business code fails CI on the same PR. The parser also catches `Property doesn't exist` errors specifically when traced to mingla-business sources (filters out Stripe SDK / Sentry SSR / other dependency-source noise).
+
+**Established:** META-ORCH-0744-PROCESS / 2026-05-06 (DRAFT — flips ACTIVE on CLOSE).
+
+**Caveats:**
+- `expo export -p web` is the slowest gate (~2 min on CI). Acceptable trade-off; can be moved to a slower-cadence workflow if PR cycle time becomes an issue.
+- ESLint rule banning inline `elevation:` outside designSystem is deferred to a future cycle (would catch BEFORE export). For now: parser-on-stderr is the catch.
+- Stub Supabase env vars required for export to complete; these are CI-only and never leak production credentials.
+
+**Cross-references:** SPEC §3.5, ORCH-0744 forensics §CF-2, ORCH-0743 CF-2 fix.
+
+### I-PROPOSED-T — STRIPE-COUNTRY-FROM-CANONICAL-ALLOWLIST-ONLY (DRAFT — flips ACTIVE on B2a Path C V3 CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C V3 SPEC per DEC-121; flips ACTIVE on V3 CLOSE).
+
+**Statement:** Every `country` value passed to `stripe.accounts.create()` MUST be from the canonical 34-country allowlist defined in `mingla-business/src/constants/stripeSupportedCountries.ts` (US/UK/CA/CH + 30 EEA member states). The edge function `brand-stripe-onboard` MUST validate the request body's `country` param against this allowlist before any Stripe API call. The DB CHECK constraint on `stripe_connect_accounts.country` (added in migration `20260511000001`) enforces at storage layer.
+
+**Why:** Stripe Connect's documented self-serve cross-border payouts are limited to US, UK, EEA, Canada, and Switzerland per [https://docs.stripe.com/connect/cross-border-payouts](https://docs.stripe.com/connect/cross-border-payouts). Verbatim: *"Stripe doesn't support self-serve cross-border payouts to countries outside the listed regions."* Accepting an out-of-list country produces a Stripe account that cannot actually pay out; the brand admin completes onboarding only to find their account permanently restricted at first payout attempt. Australia + Latin America + Asia require separate Stripe platform entities (B2c/B2d/B2e future cycles); they are out of V3 scope.
+
+**Enforcement:** Three layers:
+1. **Frontend:** `BrandStripeCountryPicker` component (Sub-dispatch C) renders ONLY the 34 allowed countries from `stripeSupportedCountries.ts`.
+2. **Edge function:** `brand-stripe-onboard/index.ts` (Sub-dispatch B) imports the allowlist constant + validates the request body's country param; returns 400 `validation_error` if country is not in the allowlist.
+3. **Database:** CHECK constraint on `stripe_connect_accounts.country` (migration `20260511000001`) — rejects any INSERT/UPDATE with a country code outside the 34-country list.
+4. **CI gate:** `i-proposed-t-stripe-country-allowlist.mjs` (Sub-dispatch C Phase 14) — strict-grep scans `mingla-business/` + `supabase/functions/` for hardcoded 2-letter country code literals; flags any not in the allowlist (with allowlist tag exemption pattern).
+
+**Source:** B2a Path C V3 SPEC `outputs/SPEC_B2_PATH_C_V3.md` §3 + investigation Thread 17 + Stripe cross-border-payouts doc.
+
+**EXIT condition:** Conditional. List expands when Mingla adds separate Stripe platform entities for AU + LatAm + Asia (B2c/B2d/B2e cycles). Each expansion is a separate ORCH cycle that updates the allowlist constant, the DB CHECK constraint, the strict-grep gate, and the country picker UI together.
+
+### I-PROPOSED-U — MINGLA-TOS-ACCEPTED-BEFORE-STRIPE-CONNECT (DRAFT — flips ACTIVE on B2a Path C V3 CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C V3 SPEC per DEC-121; flips ACTIVE on V3 CLOSE).
+
+**Statement:** Every brand admin MUST have `brand_team_members.mingla_tos_accepted_at IS NOT NULL` for the brand they are managing before any Stripe Connect operation can proceed. The edge function `brand-stripe-onboard` (and any future Stripe Connect edge fn that creates platform-side state) MUST verify this gate before calling Stripe APIs. Violations return HTTP 403 with `error: "tos_not_accepted"`.
+
+**Why:** Stripe's Connect Platform Agreement requires platforms to surface specific T&Cs disclosures to connected accounts (brand admins). Stripe's own ToS is captured automatically by Embedded Components onboarding, but Mingla's separate platform-level ToS (covering Mingla-specific terms, fee disclosures, dispute responsibility, data handling under marketplace charge model per DEC-114) must be acknowledged separately. This invariant codifies the gate so the ToS acknowledgment is structurally enforced, not merely a UI convention.
+
+**Enforcement:**
+1. **Frontend:** `MinglaToSAcceptanceGate` component (Sub-dispatch C Phase 12) renders before the country picker; "Continue" is disabled until checkbox + version are recorded; on accept, calls a new RPC or edge fn to set `brand_team_members.mingla_tos_accepted_at = now()` + `mingla_tos_version_accepted = <current_version>`.
+2. **Edge function:** `brand-stripe-onboard/index.ts` (Sub-dispatch B Phase 7) `SELECT mingla_tos_accepted_at FROM brand_team_members WHERE user_id = $1 AND brand_id = $2`; if NULL, return 403.
+3. **CI gate:** `i-proposed-u-mingla-tos-gate.mjs` (Sub-dispatch C Phase 14) — scans `supabase/functions/{brand-stripe-*,stripe-*}/index.ts` for direct Stripe API calls (`accounts.create`, `accountSessions.create`); verifies the function reads `mingla_tos_accepted_at` before the call.
+
+**Grandfather clause:** Existing brand_team_members rows pre-V3 are backfilled with `mingla_tos_accepted_at = now()` + `mingla_tos_version_accepted = 'pre-v3-grandfathered'` in migration `20260511000005`. Operator-side flow at first post-V3 login prompts re-acceptance for current ToS version.
+
+**Source:** B2a Path C V3 SPEC `outputs/SPEC_B2_PATH_C_V3.md` §3 + investigation Thread 29 + Stripe Connect Platform Agreement.
+
+**EXIT condition:** Permanent invariant. Marketplace platforms must always have an acknowledged ToS gate; Stripe's compliance posture requires it.
+
+### I-PROPOSED-V — STRIPE-NOTIFICATIONS-VIA-SHARED-DISPATCHER (DRAFT — flips ACTIVE on B2a Path C V3 CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C V3 SPEC per DEC-121; flips ACTIVE on V3 CLOSE).
+
+**Statement:** Every Stripe-triggered user notification (deadline warnings, bank verification failures, payout failures, account deauthorization, KYC stall reminders, account restriction, reactivation completion — 9 types total per V3) MUST go through `supabase/functions/notify-dispatch/index.ts` using a `type` value from the `STRIPE_NOTIFICATION_TYPES` constants. Direct calls to `sendPush` (push-utils.ts) or Resend email API from Stripe edge functions are FORBIDDEN.
+
+**Why:** Centralized notification dispatch ensures: (a) consistent multi-channel delivery (email + push + in-app), (b) respects user preferences (`notification_preferences` table), (c) provides a single surface for analytics + quiet-hours + unsubscribe flows, (d) all notifications get an `audit_log` row + a persisted `notifications` table row for in-app inbox surfacing, (e) future channels (e.g., SMS) can be added in one place. Direct sendPush/Resend bypasses all of this and creates fragmentation.
+
+**Enforcement:**
+1. **Frontend:** Stripe edge functions invoke notify-dispatch via `supabase.functions.invoke('notify-dispatch', { body: { type: 'stripe.X', user_id, brand_id, title, body, ... } })`.
+2. **Backend:** `notify-dispatch/index.ts` (extended in Sub-dispatch B Phase 6) routes to email (Resend) + push (push-utils.ts sendPush) + in-app (INSERT into `notifications` table). Respects `notification_preferences`.
+3. **CI gate:** `i-proposed-v-stripe-notification-via-shared.mjs` (Sub-dispatch C Phase 14) — scans `supabase/functions/{brand-stripe-*,stripe-*}/index.ts` for direct calls to `sendPush`, Resend API URLs (e.g., `https://api.resend.com`), or imports from `_shared/push-utils.ts` outside notify-dispatch. Flags as violation unless wrapped via notify-dispatch.
+
+**Source:** B2a Path C V3 SPEC `outputs/SPEC_B2_PATH_C_V3.md` §3 + investigation Thread 28 (notification subsystem reuse).
+
+**EXIT condition:** Permanent invariant within the current Mingla notification architecture. Reversal would require re-architecting the notification subsystem (separate ORCH cycle).
+
+### I-PROPOSED-W — NOTIFICATIONS-FILTERED-BY-APP-TYPE-PREFIX (DRAFT — flips ACTIVE on B2a Path C V3 CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C V3 Sub-dispatch A hotfix per DEC-121; flips ACTIVE on V3 CLOSE).
+
+**Statement:** The `public.notifications` table is shared across all Mingla frontends (consumer mobile app, Mingla Business mobile, admin). Each app's UI MUST filter `notifications.type` by app-specific prefix when reading the inbox. Consumer app reads MUST exclude rows where `type` matches `stripe.%` or `business.%`. Mingla Business app reads MUST include only rows where `type` matches `stripe.%` or `business.%`. Cross-app reads (e.g., admin viewing all) require explicit allowlist exception.
+
+**Why:** Mingla's architecture uses one Supabase backend across all frontends, with one `notifications` table keyed by `auth.users.id`. A user who is both a consumer and a brand admin = same auth.users.id row = one notification inbox at the data layer. UI scoping is achieved by type prefix filtering, not separate tables. Without this filter, a consumer scrolling their inbox would see "Your KYC deadline is in 3 days" (a Stripe-business notification) alongside "Sarah liked your event" (a consumer notification) — confusing UX. Mixing concerns at the table layer is the right architectural choice (single source of truth, single notify-dispatch fn) PROVIDED apps consistently filter at the read layer.
+
+**Naming convention:**
+- `stripe.*` — Mingla Business app only (B2 cycle types: deadline warnings, bank verification, payout failed, deauthorize, etc.)
+- `business.*` — Mingla Business app only (future B2/B3/B5 types)
+- Everything else (no prefix or other prefix) — Mingla consumer app only (e.g., `session_match`, `friend_request_received`, `match_invite_received`, etc.)
+- Admin app (mingla-admin) reads cross-app for support/observability — exempt via allowlist comment
+
+**Enforcement:**
+1. **Frontend:** consumer app's `useNotifications` hook (and equivalent) appends `.not('type', 'like', 'stripe.%').not('type', 'like', 'business.%')` to its query. Mingla Business app's `useNotifications` hook appends `.or('type.like.stripe.%,type.like.business.%')`.
+2. **CI gate:** `i-proposed-w-notifications-app-type-prefix.mjs` (Sub-dispatch C Phase 14) — strict-grep scans:
+   - `app-mobile/src/` for `.from("notifications")` SELECT calls without exclusion of `stripe.%` and `business.%` patterns
+   - `mingla-business/src/` for `.from("notifications")` SELECT calls without inclusion of `stripe.%` or `business.%` patterns
+   - Allowlist tag (line above): `// orch-strict-grep-allow notifications-cross-app-read — <reason>` (rare; only for admin/observability surfaces)
+3. **Index support:** migration `20260511000003_b2a_v3_notifications.sql` adds `idx_notifications_type_btree` with `text_pattern_ops` for efficient LIKE prefix queries.
+
+**Source:** B2a Path C V3 Sub-dispatch A hotfix 2026-05-06 (operator caught architectural collision: shared notifications table across consumer + business apps requires UI-side type-prefix filtering). Per `outputs/SPEC_B2_PATH_C_V3.md` §6 + V3 IMPL report hotfix.
+
+**EXIT condition:** Permanent within the current single-Supabase-backend architecture. Reversal would require splitting the notifications table per app (a separate ORCH cycle that also splits notify-dispatch + push-utils) — not foreseen.
+
+### I-PROPOSED-Y — PLATFORM-WEB-URL-FROM-ENV-ONLY (DRAFT — flips ACTIVE on B2a Path C V3 CLOSE)
+
+**Status:** DRAFT (added 2026-05-07 with B2a Path C V3 config-drift forensics fix; flips ACTIVE on V3 CLOSE).
+
+**Statement:** Every cross-domain web URL referenced in `mingla-business/`, `supabase/functions/`, or `app-mobile/` MUST be sourced from a single env-var-backed constant — never hardcoded. Specifically, hardcoded literals matching `business.mingla.com`, `https://mingla.com` (when used as a URL — slug-prefix UI placeholder strings like `mingla.com/{brandSlug}` in BrandEditView are exempt), or any other non-canonical Mingla domain in active code paths are FORBIDDEN.
+
+**Why:** The B2a Path C V3 forensics audit (2026-05-07) found `business.mingla.com` and `mingla.com` referenced 19+ times across edge fns, services, components, app config, and Universal Links. Both domains are not Mingla-owned (`business.mingla.com` is NXDOMAIN; `mingla.com` resolves to a non-Mingla third-party site). The drift caused the entire Phase 16 in-app onboarding flow to fail because `brand-stripe-onboard` returned an `onboarding_url` pointing to a non-resolvable host. Without a structural rule + CI enforcement, the drift returns the moment a future implementor adds another hardcoded domain string.
+
+**Enforcement:**
+1. **Frontend constant:** `mingla-business/src/constants/platformUrl.ts` reads `EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL` (set in `app.config.ts` extra block + Vercel env vars) and exports `MINGLA_BUSINESS_WEB_URL` + `MINGLA_BUSINESS_WEB_HOST`. All consumers read this constant.
+2. **Edge fn pattern:** `brand-stripe-onboard/index.ts` reads `Deno.env.get("MINGLA_BUSINESS_WEB_URL")` and throws at module load if unset (no silent fallback).
+3. **CI gate:** `.github/scripts/strict-grep/i-proposed-y-platform-web-url-from-env.mjs` scans `mingla-business/src/`, `mingla-business/app/`, `supabase/functions/` for hardcoded `business.mingla.com`, `https://mingla.com`, or non-canonical platform URL literals. Exempt: `mingla-business/src/constants/platformUrl.ts`, allowlist tag `// orch-strict-grep-allow platform-web-url-historical — <reason>`, test fixtures.
+
+**Source:** B2a Path C V3 forensics report `Mingla_Artifacts/reports/INVESTIGATION_B2A_PATH_C_V3_CONFIG_DRIFT.md` finding §3 + recommended fix §9.
+
+**EXIT condition:** Permanent invariant. Reversal would require Mingla owning multiple production web domains for the Business product (highly unlikely; even multi-region deploys would use a single canonical apex with regional CDN routing).
