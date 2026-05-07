@@ -187,7 +187,7 @@ BEGIN
   -- On INSERT or UPDATE of stripe_connect_accounts, mirror to brands.stripe_*
   -- This is the ONLY code path that should write brands.stripe_connect_id /
   -- stripe_charges_enabled / stripe_payouts_enabled — direct app writes are
-  -- forbidden by I-PROPOSED-K (B2a CLOSE).
+  -- forbidden by I-PROPOSED-P (B2a CLOSE).
   UPDATE public.brands
   SET
     stripe_connect_id = NEW.stripe_account_id,
@@ -207,7 +207,7 @@ CREATE OR REPLACE TRIGGER "trg_sync_brand_stripe_cache"
   EXECUTE FUNCTION "public"."tg_sync_brand_stripe_cache"();
 
 COMMENT ON TRIGGER "trg_sync_brand_stripe_cache" ON "public"."stripe_connect_accounts" IS
-  'Mirrors charges_enabled/payouts_enabled/stripe_account_id to brands.stripe_* denormalized cache per D-B2-3. App code MUST NOT write brands.stripe_* directly (I-PROPOSED-K).';
+  'Mirrors charges_enabled/payouts_enabled/stripe_account_id to brands.stripe_* denormalized cache per D-B2-3. App code MUST NOT write brands.stripe_* directly (I-PROPOSED-P).';
 ```
 
 #### 4.1.2 Existing RLS policies preserved
@@ -1054,7 +1054,7 @@ export default function ConnectOnboardingPage(): React.ReactElement {
 }
 ```
 
-Pin EXACT versions (no `^` or `~`) per D-B2-5 / G-5 and I-PROPOSED-J discipline. Document chosen versions in IMPL report.
+Pin EXACT versions (no `^` or `~`) per D-B2-5 / G-5 and I-PROPOSED-O discipline. Document chosen versions in IMPL report.
 
 ### 4.7 Realtime layer
 
@@ -1098,7 +1098,7 @@ Already specified in §4.4.1's `useBrandStripeStatus` hook. Channel name `stripe
 | **SC-19** | Android native smoke (DISC-S4) — full onboarding flow on Android emulator | E2E Android |
 | **SC-20** | Expo Web smoke (DISC-S4) — full onboarding flow in browser at `business.mingla.com` | E2E Web |
 | **SC-21** | Stripe API version is pinned to `2026-04-30.preview` (or current `.preview` per IMPL Phase 0 verification) in `_shared/stripe.ts` (D-B2-5 / G-5) | Code grep |
-| **SC-22** | New invariants I-PROPOSED-J + I-PROPOSED-K ratified post-CLOSE with CI grep gates (per `feedback_strict_grep_registry_pattern.md`) | Invariant + CI |
+| **SC-22** | New invariants I-PROPOSED-O + I-PROPOSED-P ratified post-CLOSE with CI grep gates (per `feedback_strict_grep_registry_pattern.md`) | Invariant + CI |
 
 ---
 
@@ -1121,7 +1121,7 @@ Already specified in §4.4.1's `useBrandStripeStatus` hook. Channel name `stripe
 9. **Component layer** (≤4 hrs) — replace `BrandOnboardView.tsx` per §4.5.1 (DELETE long-press gesture; DELETE simulated delay) + update `BrandPaymentsView.tsx` + update `app/brand/[id]/payments/onboard.tsx`. **MANDATORY `/ui-ux-pro-max` pre-flight before final commit** per `feedback_implementor_uses_ui_ux_pro_max.md`.
 10. **Web bundle page** (≤2 hrs) — `app/connect-onboarding.tsx` per §4.5.4 + install `@stripe/connect-js` + `@stripe/react-connect-js` + verify Expo Web bundle compiles
 11. **End-to-end smoke** (≤2 hrs) — all 22 SCs verified across iOS + Android + Expo Web sandbox (DISC-S4)
-12. **CI grep gates** (≤2 hrs) — register I-PROPOSED-J + I-PROPOSED-K in strict-grep registry per Cycle 17b pattern + update `INVARIANT_REGISTRY.md` with DRAFT entries
+12. **CI grep gates** (≤2 hrs) — register I-PROPOSED-O + I-PROPOSED-P in strict-grep registry per Cycle 17b pattern + update `INVARIANT_REGISTRY.md` with DRAFT entries
 
 **Total IMPL effort:** ~30 hrs (matches dispatch's ~28 hrs estimate; small overage for unit testing + Phase 0 verification).
 
@@ -1175,7 +1175,7 @@ Already specified in §4.4.1's `useBrandStripeStatus` hook. Channel name `stripe
 
 ### 8.2 New invariants ratified post-B2a CLOSE
 
-#### I-PROPOSED-J — STRIPE-EMBEDDED-COMPONENTS-VIA-OFFICIAL-SDK-ONLY
+#### I-PROPOSED-O — STRIPE-EMBEDDED-COMPONENTS-VIA-OFFICIAL-SDK-ONLY
 
 **Text:** Mingla MUST NOT DIY-wrap `@stripe/connect-js` in `react-native-webview` / `WKWebView` / Android WebView. Connect Embedded Components are exposed via either: (a) Stripe's prescribed native preview SDK component (`@stripe/stripe-react-native` `<ConnectAccountOnboarding>` once GA), OR (b) Mingla-hosted web page rendering web SDK opened via `expo-web-browser` (system browser, sandboxed).
 
@@ -1189,7 +1189,7 @@ Already specified in §4.4.1's `useBrandStripeStatus` hook. Channel name `stripe
 
 **Status:** DRAFT (pre-written) → ACTIVE on B2a CLOSE.
 
-#### I-PROPOSED-K — STRIPE-STATE-CANONICAL-IS-CONNECT-ACCOUNTS
+#### I-PROPOSED-P — STRIPE-STATE-CANONICAL-IS-CONNECT-ACCOUNTS
 
 **Text:** `stripe_connect_accounts` is the SINGLE canonical source of truth for Connect state. `brands.stripe_charges_enabled`, `brands.stripe_payouts_enabled`, `brands.stripe_connect_id` are denormalized cache columns mirrored via DB trigger from `stripe_connect_accounts`. Direct UPDATE of `brands.stripe_*` by application code is FORBIDDEN — only the DB trigger writes them.
 
@@ -1207,14 +1207,14 @@ Already specified in §4.4.1's `useBrandStripeStatus` hook. Channel name `stripe
 ### 9.1 For the class of bugs B2a fixes
 
 - **Class:** "stub UI hides missing backend" — Stripe state purely client-side fiction
-- **Structural safeguard:** I-PROPOSED-K codifies single-source-of-truth via CI gate; eliminates accidental direct-write to denormalized cache. The DB trigger is the only writer.
+- **Structural safeguard:** I-PROPOSED-P codifies single-source-of-truth via CI gate; eliminates accidental direct-write to denormalized cache. The DB trigger is the only writer.
 - **Test catches recurrence:** SC-12 + T-13 verify `mapBrandRowToUi` populates from server; T-21 verifies long-press dev gesture removed (both code grep gates blocking PRs).
 
 ### 9.2 For the class of bugs B2a structurally prevents
 
 - **Class:** "WebView wrap of @stripe/connect-js" — DIY embedding violation
-- **Structural safeguard:** I-PROPOSED-J codifies official-SDK-only via CI gate; future cycle attempts blocked at PR.
-- **Protective comment:** B2a SPEC + new invariant + DEC-114 all reference Stripe's published prohibition; comment in `app/connect-onboarding.tsx` cites I-PROPOSED-J.
+- **Structural safeguard:** I-PROPOSED-O codifies official-SDK-only via CI gate; future cycle attempts blocked at PR.
+- **Protective comment:** B2a SPEC + new invariant + DEC-114 all reference Stripe's published prohibition; comment in `app/connect-onboarding.tsx` cites I-PROPOSED-O.
 
 ### 9.3 For the class of bugs B2a structurally prevents (cont.)
 

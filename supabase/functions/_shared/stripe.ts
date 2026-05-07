@@ -10,7 +10,7 @@
  * version (check docs.stripe.com/changelog). To upgrade: register a separate
  * ORCH cycle with regression test of B2a + B3 + B4 surfaces.
  *
- * I-PROPOSED-J (DRAFT post-B2a CLOSE): Stripe Embedded Components are exposed
+ * I-PROPOSED-O (DRAFT post-B2a CLOSE): Stripe Embedded Components are exposed
  * via either Stripe's prescribed native preview SDK (Path A future) or a
  * Mingla-hosted web page rendering the web SDK opened via expo-web-browser
  * (Path B current). DIY-wrapping @stripe/connect-js in react-native-webview

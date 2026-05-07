@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * I-PROPOSED-J strict-grep gate — Stripe Connect Embedded Components via official SDK only.
+ * I-PROPOSED-O strict-grep gate — Stripe Connect Embedded Components via official SDK only.
  *
  * Gate logic:
  *   For every .ts / .tsx file in mingla-business/src/ + mingla-business/app/:
@@ -9,7 +9,7 @@
  *     Unless an allowlist comment exists in the file:
  *       // orch-strict-grep-allow stripe-connect-js-with-webview — <reason>
  *
- * Per B2a SPEC §8.2 + INVARIANT_REGISTRY I-PROPOSED-J — registry pattern.
+ * Per B2a SPEC §8.2 + INVARIANT_REGISTRY I-PROPOSED-O — registry pattern.
  *
  * RATIONALE:
  *   Stripe explicitly prohibits Connect Embedded Components inside embedded
@@ -88,7 +88,7 @@ function* walkTsTsx(dir) {
 
 function reportViolation(filePath) {
   const rel = relative(REPO_ROOT, filePath).split(sep).join("/");
-  console.error(`ERROR: I-PROPOSED-J violation in ${rel}`);
+  console.error(`ERROR: I-PROPOSED-O violation in ${rel}`);
   console.error(
     `  File imports BOTH @stripe/connect-js AND react-native-webview.`,
   );
@@ -109,7 +109,7 @@ function reportViolation(filePath) {
   );
   console.error(`             at the top of the file.`);
   console.error(
-    `  See: Mingla_Artifacts/INVARIANT_REGISTRY.md I-PROPOSED-J`,
+    `  See: Mingla_Artifacts/INVARIANT_REGISTRY.md I-PROPOSED-O`,
   );
   console.error("");
   violations += 1;
@@ -147,7 +147,7 @@ try {
 
 console.error("");
 console.error(
-  `I-PROPOSED-J gate: scanned ${filesScanned} .ts/.tsx files · ${violations} violations · ${readFailures} read failures`,
+  `I-PROPOSED-O gate: scanned ${filesScanned} .ts/.tsx files · ${violations} violations · ${readFailures} read failures`,
 );
 
 if (readFailures > 0 && filesScanned === readFailures) {

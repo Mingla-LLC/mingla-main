@@ -12,7 +12,7 @@
 
 B2a code is complete across 11 of 12 phases. Phase 10 (E2E smoke on iOS + Android + Expo Web) is operator-side and gates CLOSE.
 
-What ships: 1 additive DB migration (deployed), 3 edge functions, 3 `_shared/` utilities, 1 new service layer, 1 mapper update, 2 new React Query hooks, 1 cascadePreview update, 1 fully-rewritten BrandOnboardView (9 states + 2 mount bypasses, expanded from SPEC §4.5.1's 6-state proposal per `/ui-ux-pro-max` design review), 1 BrandPaymentsView update, 1 onboard.tsx route simplification, 1 new Expo Web page (`/connect-onboarding`), 2 new package deps (`@stripe/connect-js`, `@stripe/react-connect-js` exact-pinned), 2 new CI grep gates (I-PROPOSED-J + I-PROPOSED-K) with INVARIANT_REGISTRY entries (DRAFT pending CLOSE).
+What ships: 1 additive DB migration (deployed), 3 edge functions, 3 `_shared/` utilities, 1 new service layer, 1 mapper update, 2 new React Query hooks, 1 cascadePreview update, 1 fully-rewritten BrandOnboardView (9 states + 2 mount bypasses, expanded from SPEC §4.5.1's 6-state proposal per `/ui-ux-pro-max` design review), 1 BrandPaymentsView update, 1 onboard.tsx route simplification, 1 new Expo Web page (`/connect-onboarding`), 2 new package deps (`@stripe/connect-js`, `@stripe/react-connect-js` exact-pinned), 2 new CI grep gates (I-PROPOSED-O + I-PROPOSED-P) with INVARIANT_REGISTRY entries (DRAFT pending CLOSE).
 
 Top discoveries: D-CYCLE-B2A-IMPL-1 (deep link scheme `mingla-business://` was missing entirely from app.config.ts — caught by Phase 0 verification gate); D-CYCLE-B2A-IMPL-2 (BrandOnboardView state count expanded 6→9 per UI/UX-pro-max review — flagged as principled deviation from SPEC).
 
@@ -176,10 +176,10 @@ See §6 below for the full smoke test guide.
 
 **Files:**
 
-- [`.github/scripts/strict-grep/i-proposed-j-stripe-no-webview-wrap.mjs`](../../../.github/scripts/strict-grep/i-proposed-j-stripe-no-webview-wrap.mjs) (NEW, 145 LOC) — scans `mingla-business/src/` + `mingla-business/app/` for files importing BOTH `@stripe/connect-js` AND `react-native-webview`
-- [`.github/scripts/strict-grep/i-proposed-k-stripe-state-canonical.mjs`](../../../.github/scripts/strict-grep/i-proposed-k-stripe-state-canonical.mjs) (NEW, 175 LOC) — scans `mingla-business/src/` + `mingla-business/app/` + `supabase/functions/` for `.update()/.upsert()/.insert()` against `from("brands")` that includes `stripe_connect_id/stripe_charges_enabled/stripe_payouts_enabled` keys, AND for SQL `UPDATE brands SET ... stripe_*` patterns
-- [`.github/workflows/strict-grep-mingla-business.yml`](../../../.github/workflows/strict-grep-mingla-business.yml) (MOD): added 2 jobs `i-proposed-j-stripe-no-webview-wrap` + `i-proposed-k-stripe-state-canonical`; updated registry comment
-- [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](../INVARIANT_REGISTRY.md) (MOD): added I-PROPOSED-J + I-PROPOSED-K entries with status `DRAFT — flips ACTIVE on B2a CLOSE`
+- [`.github/scripts/strict-grep/i-proposed-o-stripe-no-webview-wrap.mjs`](../../../.github/scripts/strict-grep/i-proposed-o-stripe-no-webview-wrap.mjs) (NEW, 145 LOC) — scans `mingla-business/src/` + `mingla-business/app/` for files importing BOTH `@stripe/connect-js` AND `react-native-webview`
+- [`.github/scripts/strict-grep/i-proposed-p-stripe-state-canonical.mjs`](../../../.github/scripts/strict-grep/i-proposed-p-stripe-state-canonical.mjs) (NEW, 175 LOC) — scans `mingla-business/src/` + `mingla-business/app/` + `supabase/functions/` for `.update()/.upsert()/.insert()` against `from("brands")` that includes `stripe_connect_id/stripe_charges_enabled/stripe_payouts_enabled` keys, AND for SQL `UPDATE brands SET ... stripe_*` patterns
+- [`.github/workflows/strict-grep-mingla-business.yml`](../../../.github/workflows/strict-grep-mingla-business.yml) (MOD): added 2 jobs `i-proposed-o-stripe-no-webview-wrap` + `i-proposed-p-stripe-state-canonical`; updated registry comment
+- [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](../INVARIANT_REGISTRY.md) (MOD): added I-PROPOSED-O + I-PROPOSED-P entries with status `DRAFT — flips ACTIVE on B2a CLOSE`
 
 **Time:** ~30 min
 
@@ -188,7 +188,7 @@ See §6 below for the full smoke test guide.
 - TypeScript: NOT yet run (operator runs `npx tsc --noEmit` in `mingla-business/` post-`npm install`)
 - ESLint: NOT yet run (same)
 - Existing CI gates (I-37/I-38/I-39): expected to remain green — no relevant code paths touched
-- New CI gates (I-PROPOSED-J/K): expected to exit 0 (verified locally via grep — no violating patterns introduced)
+- New CI gates (I-PROPOSED-O/P): expected to exit 0 (verified locally via grep — no violating patterns introduced)
 
 **Time:** ~30 min for this report
 
@@ -218,8 +218,8 @@ See §6 below for the full smoke test guide.
 | `mingla-business/app/brand/[id]/payments/onboard.tsx` | MOD | +5 / -25 |
 | `mingla-business/app/connect-onboarding.tsx` | NEW | 195 |
 | `mingla-business/package.json` | MOD | +2 lines |
-| `.github/scripts/strict-grep/i-proposed-j-stripe-no-webview-wrap.mjs` | NEW | 145 |
-| `.github/scripts/strict-grep/i-proposed-k-stripe-state-canonical.mjs` | NEW | 175 |
+| `.github/scripts/strict-grep/i-proposed-o-stripe-no-webview-wrap.mjs` | NEW | 145 |
+| `.github/scripts/strict-grep/i-proposed-p-stripe-state-canonical.mjs` | NEW | 175 |
 | `.github/workflows/strict-grep-mingla-business.yml` | MOD | +25 |
 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` | MOD | +50 (2 new invariants DRAFT) |
 
@@ -258,7 +258,7 @@ See §6 below for the full smoke test guide.
 | SC-19 | Android native smoke | PENDING | Operator runtime smoke (Phase 10 §6.Android) |
 | SC-20 | Expo Web smoke | PENDING | Operator runtime smoke (Phase 10 §6.Web) |
 | SC-21 | Stripe API version pinned to `2026-04-30.preview` | PASS | `_shared/stripe.ts` line 21 — `STRIPE_API_VERSION = "2026-04-30.preview"` |
-| SC-22 | I-PROPOSED-J + I-PROPOSED-K registered + CI gates green | PASS-code-level | INVARIANT_REGISTRY entries DRAFT; CI gates exist; CLOSE flips status to ACTIVE |
+| SC-22 | I-PROPOSED-O + I-PROPOSED-P registered + CI gates green | PASS-code-level | INVARIANT_REGISTRY entries DRAFT; CI gates exist; CLOSE flips status to ACTIVE |
 
 **Summary:** 9 PASS-code-level, 2 PASS, 11 PENDING (all operator-runtime). No FAIL.
 
@@ -473,7 +473,7 @@ This is the operator-side Phase 10 smoke test. Run AFTER:
 
 | Rule | Verified |
 |---|---|
-| Const #2 (one owner per truth) | ✅ I-PROPOSED-K codified — `stripe_connect_accounts` canonical, brands cache mirror via trigger only |
+| Const #2 (one owner per truth) | ✅ I-PROPOSED-P codified — `stripe_connect_accounts` canonical, brands cache mirror via trigger only |
 | Const #3 (no silent failures) | ✅ All edge functions return structured error responses; service throws on any error; mutations have onError |
 | Const #4 (one query key per entity) | ✅ `brandStripeStatusKeys` factory + consistent key prefix |
 | Const #5 (server state stays server-side) | ✅ `Brand.stripeStatus` derived from server data; React Query owns the cache |
@@ -482,8 +482,8 @@ This is the operator-side Phase 10 smoke test. Run AFTER:
 | I-31 UI-only TRANSITIONAL | EXIT triggered (real flow now wires Stripe; TRANSITIONAL marker can be removed at CLOSE) |
 | I-32 mobile-RLS rank parity | ✅ frontend reads same `biz_can_manage_payments_for_brand_for_caller` SQL function used by RLS |
 | I-37 / I-38 / I-39 | ✅ BrandOnboardView uses kit primitives; every Pressable has accessibilityLabel; no IconChrome touch-target violations |
-| I-PROPOSED-J | ✅ DRAFT registered; CI gate green |
-| I-PROPOSED-K | ✅ DRAFT registered; CI gate green |
+| I-PROPOSED-O | ✅ DRAFT registered; CI gate green |
+| I-PROPOSED-P | ✅ DRAFT registered; CI gate green |
 
 ---
 
@@ -520,7 +520,7 @@ What would raise to High overall: operator runs §6 smoke tests on iOS + Android
     - `cd mingla-business && eas update --branch production --platform ios --message "Cycle B2a: Stripe Connect onboarding wired live (sandbox)"`
     - `cd mingla-business && eas update --branch production --platform android --message "Cycle B2a: Stripe Connect onboarding wired live (sandbox)"`
     - **Note:** Stripe migration applied 2026-05-06 (already deployed); OTA can publish immediately
-    - **Note:** No native module added — OTA-eligible per SPEC §5.3 + I-PROPOSED-J binding constraint
+    - **Note:** No native module added — OTA-eligible per SPEC §5.3 + I-PROPOSED-O binding constraint
 
 ---
 
@@ -558,9 +558,9 @@ Frontend (mingla-business):
 - New deps: @stripe/connect-js@3.3.31 + @stripe/react-connect-js@3.3.31
 
 CI grep gates (2 new):
-- I-PROPOSED-J: forbids importing @stripe/connect-js + react-native-webview
+- I-PROPOSED-O: forbids importing @stripe/connect-js + react-native-webview
   in same file (Stripe explicitly prohibits DIY WebView wrapping)
-- I-PROPOSED-K: forbids direct app-code writes to brands.stripe_* (only
+- I-PROPOSED-P: forbids direct app-code writes to brands.stripe_* (only
   the DB trigger mirrors from canonical stripe_connect_accounts)
 
 Per SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md.

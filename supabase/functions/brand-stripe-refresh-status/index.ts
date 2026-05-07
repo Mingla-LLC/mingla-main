@@ -22,6 +22,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { stripe, STRIPE_API_VERSION } from "../_shared/stripe.ts";
 import { generateIdempotencyKey } from "../_shared/idempotency.ts";
+import { writeAudit } from "../_shared/audit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -200,6 +201,27 @@ serve(async (req) => {
       );
       return jsonResponse({ error: "internal_error" }, 500);
     }
+
+    // Per I-PROPOSED-N (B2a Path C SPEC §5) — every Stripe edge fn audit-logs.
+    // Lightweight: refresh-status is a high-frequency 30s poll, so we record only
+    // status transitions that matter operationally (state change captured in
+    // before/after diff) — no row spam for unchanged refreshes.
+    await writeAudit(supabase, {
+      user_id: userId,
+      brand_id,
+      action: "stripe_connect.status_refreshed",
+      target_type: "stripe_connect_account",
+      target_id: scaRow.stripe_account_id,
+      before: {
+        charges_enabled: scaRow.charges_enabled ?? null,
+        payouts_enabled: scaRow.payouts_enabled ?? null,
+      },
+      after: {
+        charges_enabled: account.charges_enabled ?? false,
+        payouts_enabled: account.payouts_enabled ?? false,
+        derived_status: derivedStatus ?? "onboarding",
+      },
+    });
 
     return jsonResponse({
       status: derivedStatus ?? "onboarding",

@@ -2066,7 +2066,7 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **EXIT condition:** Permanent invariant. The PostgREST + supabase-js contract that produces silent 0-row success is unlikely to change.
 
-### I-PROPOSED-J — STRIPE-EMBEDDED-COMPONENTS-VIA-OFFICIAL-SDK-ONLY (DRAFT — flips ACTIVE on B2a CLOSE)
+### I-PROPOSED-O — STRIPE-EMBEDDED-COMPONENTS-VIA-OFFICIAL-SDK-ONLY (DRAFT — flips ACTIVE on B2a CLOSE)
 
 **Status:** DRAFT (pre-written at B2a SPEC dispatch authoring; flips to ACTIVE on B2a CLOSE per orchestrator standard close protocol).
 
@@ -2074,13 +2074,13 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **Why:** Stripe explicitly prohibits embedded WebView wrapping per [docs.stripe.com/connect/get-started-connect-embedded-components](https://docs.stripe.com/connect/get-started-connect-embedded-components). Verbatim: *"You can't use Connect embedded components in embedded web views inside mobile or desktop applications."* Violations risk technical disable (Stripe iframes can detect WebView contexts and refuse to render) + Connect Platform Agreement breach.
 
-**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-j-stripe-no-webview-wrap` running `.github/scripts/strict-grep/i-proposed-j-stripe-no-webview-wrap.mjs`. Scans `mingla-business/src/` + `mingla-business/app/` for files importing BOTH `@stripe/connect-js` (or `@stripe/react-connect-js`) AND `react-native-webview`. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-connect-js-with-webview — <reason>`.
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-o-stripe-no-webview-wrap` running `.github/scripts/strict-grep/i-proposed-o-stripe-no-webview-wrap.mjs`. Scans `mingla-business/src/` + `mingla-business/app/` for files importing BOTH `@stripe/connect-js` (or `@stripe/react-connect-js`) AND `react-native-webview`. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-connect-js-with-webview — <reason>`.
 
 **Source:** B2a SPEC §8.2 + spike report `Mingla_Artifacts/reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md` §6 G-1.
 
 **EXIT condition:** Permanent invariant. Stripe's prohibition is documented public policy; reversal would require Stripe to publicly endorse WebView wrapping (no precedent).
 
-### I-PROPOSED-K — STRIPE-STATE-CANONICAL-IS-CONNECT-ACCOUNTS (DRAFT — flips ACTIVE on B2a CLOSE)
+### I-PROPOSED-P — STRIPE-STATE-CANONICAL-IS-CONNECT-ACCOUNTS (DRAFT — flips ACTIVE on B2a CLOSE)
 
 **Status:** DRAFT (pre-written at B2a SPEC dispatch authoring; flips to ACTIVE on B2a CLOSE).
 
@@ -2088,7 +2088,7 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **Why:** Constitutional #2 (one owner per truth). Without this gate, app code could update `brands.stripe_charges_enabled=true` without a corresponding `stripe_connect_accounts` update, producing drift between cache and canonical state. The fast-list-rendering optimization (mapBrandRowToUi reads cache to avoid joining stripe_connect_accounts on every brand list query) is fragile if cache drifts.
 
-**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-k-stripe-state-canonical` running `.github/scripts/strict-grep/i-proposed-k-stripe-state-canonical.mjs`. Scans `mingla-business/src/` + `mingla-business/app/` + `supabase/functions/` for `.update()` / `.upsert()` / `.insert()` calls on `from("brands")` that include any of `stripe_connect_id` / `stripe_charges_enabled` / `stripe_payouts_enabled` in the payload, AND for SQL `UPDATE brands SET ... stripe_*` patterns. Allowlist tag (line above the violating line): `// orch-strict-grep-allow brands-stripe-direct-write — <reason>`. The trigger function itself in the SQL migration is exempt (different file, not in scan dirs).
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-p-stripe-state-canonical` running `.github/scripts/strict-grep/i-proposed-p-stripe-state-canonical.mjs`. Scans `mingla-business/src/` + `mingla-business/app/` + `supabase/functions/` for `.update()` / `.upsert()` / `.insert()` calls on `from("brands")` that include any of `stripe_connect_id` / `stripe_charges_enabled` / `stripe_payouts_enabled` in the payload, AND for SQL `UPDATE brands SET ... stripe_*` patterns. Allowlist tag (line above the violating line): `// orch-strict-grep-allow brands-stripe-direct-write — <reason>`. The trigger function itself in the SQL migration is exempt (different file, not in scan dirs).
 
 **Allowed reads:** `mapBrandRowToUi` reads `brands.stripe_*` to derive `Brand.stripeStatus` for fast list rendering (R-3 fix in B2a). The gate detects WRITES only — reads are unaffected.
 
@@ -2096,29 +2096,29 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **EXIT condition:** Permanent invariant. Reversal would require schema cleanup (drop `brands.stripe_*` cache columns; force every read to join `stripe_connect_accounts`) which is a separate ORCH cycle.
 
-### I-PROPOSED-L — STRIPE-API-VERSION-PINNED-VIA-SHARED-CLIENT-ONLY (DRAFT — flips ACTIVE on B2a Path C CLOSE)
+### I-PROPOSED-Q — STRIPE-API-VERSION-PINNED-VIA-SHARED-CLIENT-ONLY (DRAFT — flips ACTIVE on B2a Path C CLOSE)
 
-**Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-119; flips ACTIVE on B2a CLOSE).
+**Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-121; flips ACTIVE on B2a CLOSE).
 
 **Statement:** Every Stripe SDK instantiation in `supabase/functions/` MUST source the API version from `_shared/stripe.ts`'s `STRIPE_API_VERSION` constant. Inline overrides (e.g., `new Stripe(key, { apiVersion: "..." })` with a literal date string in any file other than `_shared/stripe.ts`) are FORBIDDEN. The single source of truth for the API version pin is `_shared/stripe.ts` line 23: `STRIPE_API_VERSION = "2026-04-30.preview"` (per D-B2-5 — Accounts v2 public preview).
 
 **Why:** Two API versions in the same Mingla edge fn surface produce unpredictable behavior. The Stripe Accounts v2 endpoint (`/v2/core/accounts`) — which carries the marketplace controller properties (DEC-114) — only exists in `.preview` API versions. A function pinned to `2024-11-20.acacia` (production v1) cannot create accounts with controller properties; payouts won't split, charges won't transfer, the marketplace charge model is silently misconfigured. The B2a Path C reconciliation (`outputs/B2_RECONCILIATION_REPORT.md`) caught Taofeek's branch using `2024-11-20.acacia` inline across all 6 of his Stripe edge functions — a clean illustration of the failure mode this gate prevents.
 
-**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-l-stripe-api-version` running `.github/scripts/strict-grep/i-proposed-l-stripe-api-version.mjs`. Scans `supabase/functions/` for any `apiVersion: "20YY-MM-DD..."` literal outside `_shared/stripe.ts`. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-inline-api-version — <reason>`.
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-q-stripe-api-version` running `.github/scripts/strict-grep/i-proposed-q-stripe-api-version.mjs`. Scans `supabase/functions/` for any `apiVersion: "20YY-MM-DD..."` literal outside `_shared/stripe.ts`. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-inline-api-version — <reason>`.
 
 **Source:** B2a Path C SPEC `outputs/SPEC_B2_PATH_C_AMENDMENT.md` §5 + reconciliation report `outputs/B2_RECONCILIATION_REPORT.md` §1.
 
 **EXIT condition:** Permanent invariant within the current Stripe SDK paradigm. Would only retire if Stripe's SDK API contract removes the `apiVersion:` constructor option, OR if a future Mingla architecture splits Connect work across multiple isolated runtimes (separate microservice repos). Neither is foreseen.
 
-### I-PROPOSED-M — STRIPE-IDEMPOTENCY-KEY-ON-EVERY-CALL (DRAFT — flips ACTIVE on B2a Path C CLOSE)
+### I-PROPOSED-R — STRIPE-IDEMPOTENCY-KEY-ON-EVERY-CALL (DRAFT — flips ACTIVE on B2a Path C CLOSE)
 
-**Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-119; flips ACTIVE on B2a CLOSE).
+**Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-121; flips ACTIVE on B2a CLOSE).
 
 **Statement:** Every `stripe.<resource>.<method>(...)` call in `supabase/functions/` MUST pass `{ idempotencyKey: generateIdempotencyKey(brand_id, op) }` (from `_shared/idempotency.ts`) in the call's options argument. The `stripe.webhooks.*` namespace is exempt — those are local signature-verification helpers, not Stripe API calls. Test files (`*.test.ts`, `__tests__/`) are exempt by convention.
 
 **Why:** Stripe's Idempotency-Key is the only safe-retry token. A dropped HTTPS connection mid-create leaves the caller unsure whether the resource was created. Without idempotency, the retry creates a duplicate Connect account / payout / transfer — and Stripe doesn't expose an API to delete a Connect account, so cleanup is operationally painful (manual support contact). With idempotency, retrying the same call returns the cached response, and the caller treats the second attempt as a no-op. The B2a Path C reconciliation caught Taofeek's branch with ZERO idempotency keys across 6 Stripe edge functions — concurrent calls (mobile + cron + webhook all triggering at once) would have produced duplicate-account incidents.
 
-**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-m-stripe-idempotency-key` running `.github/scripts/strict-grep/i-proposed-m-stripe-idempotency-key.mjs`. Scans `supabase/functions/` for every `stripe.X.Y(` call site (excluding `stripe.webhooks.*`); requires `idempotencyKey:` within 40 lines after the call open-paren. Allowlist tag (5-line above): `// orch-strict-grep-allow stripe-no-idempotency-key — <reason>`.
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-r-stripe-idempotency-key` running `.github/scripts/strict-grep/i-proposed-r-stripe-idempotency-key.mjs`. Scans `supabase/functions/` for every `stripe.X.Y(` call site (excluding `stripe.webhooks.*`); requires `idempotencyKey:` within 40 lines after the call open-paren. Allowlist tag (5-line above): `// orch-strict-grep-allow stripe-no-idempotency-key — <reason>`.
 
 **Format:** `_shared/idempotency.ts` exports `generateIdempotencyKey(brandId, operation)` returning `{brand_id}:{operation}:{epoch_ms}`. Operation type is restricted to a TS union — extend the union when adding new operations.
 
@@ -2126,15 +2126,15 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **EXIT condition:** Permanent invariant. Stripe's idempotency model is well-established and unlikely to change.
 
-### I-PROPOSED-N — STRIPE-AUDIT-LOG-ON-EVERY-EDGE-FN (DRAFT — flips ACTIVE on B2a Path C CLOSE)
+### I-PROPOSED-S — STRIPE-AUDIT-LOG-ON-EVERY-EDGE-FN (DRAFT — flips ACTIVE on B2a Path C CLOSE)
 
-**Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-119; flips ACTIVE on B2a CLOSE).
+**Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-121; flips ACTIVE on B2a CLOSE).
 
 **Statement:** Every edge function under `supabase/functions/{brand-stripe-*,stripe-*}/` MUST import `writeAudit` from `../_shared/audit.ts` AND call `writeAudit(...)` at least once per invocation. The `audit_log` table is the tamper-evident record of Stripe state transitions (account create, status update, balance read, detach, KYC reminder send) for Constitutional #3 compliance, dispute investigation, and operator forensics.
 
 **Why:** Stripe Connect actions move real money and create real legal records. Every state transition needs to be traceable. Without this gate, an engineer could ship a new `brand-stripe-foo/index.ts` that mutates Stripe state without a single audit row — silent action invisible to operators. The B2a Path C reconciliation caught Taofeek's branch with ZERO `writeAudit` calls across 6 Stripe edge functions. The same gap was found in Seth's existing `brand-stripe-refresh-status/index.ts` during Phase 0 of Path C and fixed inline (added writeAudit on the success path with before/after diff of charges_enabled / payouts_enabled / derived_status).
 
-**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-n-stripe-audit-log` running `.github/scripts/strict-grep/i-proposed-n-stripe-audit-log.mjs`. Walks `supabase/functions/` for directory names matching `^(brand-stripe-|stripe-)`. For each, the canonical entry `index.ts` is checked for: (1) an import statement bringing in `writeAudit` from `../_shared/audit.ts`, AND (2) at least one `writeAudit(` call. Both must be present. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-fn-no-audit — <reason>`.
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-s-stripe-audit-log` running `.github/scripts/strict-grep/i-proposed-s-stripe-audit-log.mjs`. Walks `supabase/functions/` for directory names matching `^(brand-stripe-|stripe-)`. For each, the canonical entry `index.ts` is checked for: (1) an import statement bringing in `writeAudit` from `../_shared/audit.ts`, AND (2) at least one `writeAudit(` call. Both must be present. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-fn-no-audit — <reason>`.
 
 **Audit row contract:** `writeAudit({ user_id, brand_id, action: "stripe_connect.X", target_type: "stripe_connect_account", target_id: stripe_account_id, before, after })`. Action namespacing convention: `stripe_connect.{operation}` (e.g., `stripe_connect.onboard_initiated`, `stripe_connect.account_updated`, `stripe_connect.detach`, `stripe_connect.kyc_reminder_sent`, `stripe_connect.status_refreshed`).
 

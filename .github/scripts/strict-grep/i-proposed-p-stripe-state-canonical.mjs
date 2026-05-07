@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * I-PROPOSED-K strict-grep gate — Stripe state canonical is stripe_connect_accounts.
+ * I-PROPOSED-P strict-grep gate — Stripe state canonical is stripe_connect_accounts.
  *
  * Gate logic:
  *   For every .ts / .tsx file in mingla-business/src/ + mingla-business/app/ +
@@ -11,7 +11,7 @@
  *     Unless allowlist comment one line above:
  *       // orch-strict-grep-allow brands-stripe-direct-write — <reason>
  *
- * Per B2a SPEC §8.2 + INVARIANT_REGISTRY I-PROPOSED-K.
+ * Per B2a SPEC §8.2 + INVARIANT_REGISTRY I-PROPOSED-P.
  *
  * RATIONALE:
  *   stripe_connect_accounts is the SINGLE canonical source of truth for Connect
@@ -93,7 +93,7 @@ function* walkTsTsx(dir) {
 
 function reportViolation(filePath, lineNumber, lineText) {
   const rel = relative(REPO_ROOT, filePath).split(sep).join("/");
-  console.error(`ERROR: I-PROPOSED-K violation in ${rel}:${lineNumber}`);
+  console.error(`ERROR: I-PROPOSED-P violation in ${rel}:${lineNumber}`);
   console.error(`  ${lineText.trim()}`);
   console.error(
     `  brands.stripe_* are denormalized cache mirrored ONLY by DB trigger.`,
@@ -109,7 +109,7 @@ function reportViolation(filePath, lineNumber, lineText) {
   );
   console.error(`             immediately above the line.`);
   console.error(
-    `  See: Mingla_Artifacts/INVARIANT_REGISTRY.md I-PROPOSED-K`,
+    `  See: Mingla_Artifacts/INVARIANT_REGISTRY.md I-PROPOSED-P`,
   );
   console.error("");
   violations += 1;
@@ -190,7 +190,7 @@ try {
 
 console.error("");
 console.error(
-  `I-PROPOSED-K gate: scanned ${filesScanned} files · ${violations} violations · ${readFailures} read failures`,
+  `I-PROPOSED-P gate: scanned ${filesScanned} files · ${violations} violations · ${readFailures} read failures`,
 );
 
 if (readFailures > 0 && filesScanned === readFailures) {

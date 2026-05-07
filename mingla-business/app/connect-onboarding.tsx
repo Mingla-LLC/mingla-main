@@ -11,7 +11,7 @@
  * branding. On completion (onExit), redirects to the deep link or the brand's
  * payments page.
  *
- * I-PROPOSED-J (DRAFT post-B2a CLOSE): Stripe Connect Embedded Components must
+ * I-PROPOSED-O (DRAFT post-B2a CLOSE): Stripe Connect Embedded Components must
  * be exposed via either Stripe's prescribed native preview SDK (Path A future
  * upgrade) OR Mingla-hosted web page rendering web SDK + opened via
  * expo-web-browser (THIS FILE — Path B current). DIY-wrapping connect-js in

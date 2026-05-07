@@ -47,7 +47,7 @@ B2a is the unblock for everything downstream.
 8. **DEC-114 logged** — Marketplace charge model (Mingla = merchant of record)
 9. **Stripe operator-side setup** (you, on Windows) — Mingla LLC sandbox account + Connect activated + platform branding + T&Cs acknowledged + RN private preview access requested (calendar gate started)
 10. **Stripe-best-practices skill installed** via `npx skills add https://docs.stripe.com --skill stripe-best-practices` (lives at `~/.agents/skills/stripe-best-practices/`)
-11. **B2a SPEC dispatch** → produced binding contract at [`specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`](../Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md) (~870 lines; 22 SCs; 22 test cases; 12-phase IMPL order; I-PROPOSED-J + I-PROPOSED-K pre-written DRAFT)
+11. **B2a SPEC dispatch** → produced binding contract at [`specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md`](../Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md) (~870 lines; 22 SCs; 22 test cases; 12-phase IMPL order; I-PROPOSED-O + I-PROPOSED-P pre-written DRAFT)
 12. **B2a IMPL execution** — Phases 0 through 12 (skipping Phase 10 which is operator-side smoke). 2 git commits pushed to remote.
 13. **IMPL report** → [`reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md`](../Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING_REPORT.md) (~870 lines; per-SC verification table; smoke test guide §6)
 
@@ -257,8 +257,8 @@ When all 22 SCs are PASS or operator-acknowledged:
 1. Tell orchestrator "smoke passed" (continue this conversation OR start a fresh session and say "B2a smoke passed; run CLOSE protocol")
 2. Orchestrator runs the standard CLOSE protocol:
    - **DEC-115** logged — B2a CLOSED PASS
-   - **I-PROPOSED-J** flips DRAFT → ACTIVE
-   - **I-PROPOSED-K** flips DRAFT → ACTIVE
+   - **I-PROPOSED-O** flips DRAFT → ACTIVE
+   - **I-PROPOSED-P** flips DRAFT → ACTIVE
    - 7 artifacts SYNCed (WORLD_MAP, MASTER_BUG_LIST, COVERAGE_MAP, PRODUCT_SNAPSHOT, PRIORITY_BOARD, AGENT_HANDOFFS, OPEN_INVESTIGATIONS)
    - 7 D-CYCLE-B2A-IMPL discoveries dispositioned (close some; defer others to B2b/B3/B5)
    - 10 D-CYCLE-B2A-FOR discoveries from SPEC §17 dispositioned
@@ -395,8 +395,8 @@ supabase db remote commit  # OR via Dashboard → Database → Migrations
 cd mingla-business && npx jest src/utils/__tests__/deriveBrandStripeStatus.test.ts
 
 # Trigger CI gates locally (after npm install)
-node .github/scripts/strict-grep/i-proposed-j-stripe-no-webview-wrap.mjs
-node .github/scripts/strict-grep/i-proposed-k-stripe-state-canonical.mjs
+node .github/scripts/strict-grep/i-proposed-o-stripe-no-webview-wrap.mjs
+node .github/scripts/strict-grep/i-proposed-p-stripe-state-canonical.mjs
 
 # Start mingla-business dev (web)
 cd mingla-business && npx expo start --web
@@ -421,7 +421,7 @@ cd mingla-business && npx expo start --android
 | **Marketing Hub strategy** (= Cycle B5) | [`Mingla_Artifacts/MINGLA_BUSINESS_MARKETING_HUB_STRATEGY.md`](../Mingla_Artifacts/MINGLA_BUSINESS_MARKETING_HUB_STRATEGY.md) |
 | **Mingla Brain strategy** | [`Mingla_Artifacts/MINGLA_BRAIN_AGENT_STRATEGY.md`](../Mingla_Artifacts/MINGLA_BRAIN_AGENT_STRATEGY.md) |
 | **Decision log** | [`Mingla_Artifacts/DECISION_LOG.md`](../Mingla_Artifacts/DECISION_LOG.md) (DEC-112 + DEC-113 + DEC-114) |
-| **Invariant registry** | [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](../Mingla_Artifacts/INVARIANT_REGISTRY.md) (I-PROPOSED-J + I-PROPOSED-K DRAFT) |
+| **Invariant registry** | [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](../Mingla_Artifacts/INVARIANT_REGISTRY.md) (I-PROPOSED-O + I-PROPOSED-P DRAFT) |
 | **Priority board running headers** | [`Mingla_Artifacts/PRIORITY_BOARD.md`](../Mingla_Artifacts/PRIORITY_BOARD.md) (top entries trace this session's progression) |
 
 ---
