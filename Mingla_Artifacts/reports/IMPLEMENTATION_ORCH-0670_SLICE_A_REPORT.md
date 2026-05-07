@@ -1,7 +1,7 @@
 # IMPLEMENTATION_ORCH-0670_SLICE_A_REPORT
 
 **Implementor:** mingla-implementor
-**Dispatch:** [prompts/IMPL_ORCH-0670_SLICE_A_USER_VISIBLE_BREAKAGE.md](../prompts/IMPL_ORCH-0670_SLICE_A_USER_VISIBLE_BREAKAGE.md)
+**Dispatch:** prompts/IMPL_ORCH-0670_SLICE_A_USER_VISIBLE_BREAKAGE.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPL_ORCH-0670_SLICE_A_USER_VISIBLE_BREAKAGE.md`)
 **Spec:** [specs/SPEC_ORCH-0670_SLICE_A_USER_VISIBLE_BREAKAGE.md](../specs/SPEC_ORCH-0670_SLICE_A_USER_VISIBLE_BREAKAGE.md) (REVIEW APPROVED 10/10)
 **Investigation:** [reports/INVESTIGATION_ORCH-0670_RENDERED_SURFACE_AUDIT.md](../reports/INVESTIGATION_ORCH-0670_RENDERED_SURFACE_AUDIT.md)
 **Date:** 2026-04-28
@@ -364,7 +364,7 @@ Priority order:
 
 ## §16 Amendment — title rename "Concerts" → "Events" (2026-04-28)
 
-**Dispatch:** [prompts/IMPL_ORCH-0670_SLICE_A_TITLE_RENAME.md](../prompts/IMPL_ORCH-0670_SLICE_A_TITLE_RENAME.md)
+**Dispatch:** prompts/IMPL_ORCH-0670_SLICE_A_TITLE_RENAME.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPL_ORCH-0670_SLICE_A_TITLE_RENAME.md`)
 
 **Trigger:** Operator manual-smoked the original IMPL on device, confirmed all functional behavior PASSES, but requested the screen title be renamed from `"Concerts"` to `"Events"` as a brand-language preference.
 

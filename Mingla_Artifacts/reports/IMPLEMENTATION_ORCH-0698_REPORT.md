@@ -1,7 +1,7 @@
 # IMPLEMENTATION_ORCH-0698_REPORT — Map view dead-code cleanup
 
 **Implementor:** mingla-implementor
-**Dispatch:** [prompts/IMPL_ORCH-0698_MAP_VIEW_DEAD_CODE_CLEANUP.md](../prompts/IMPL_ORCH-0698_MAP_VIEW_DEAD_CODE_CLEANUP.md)
+**Dispatch:** prompts/IMPL_ORCH-0698_MAP_VIEW_DEAD_CODE_CLEANUP.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPL_ORCH-0698_MAP_VIEW_DEAD_CODE_CLEANUP.md`)
 **Date:** 2026-04-29
 **Status:** IMPLEMENTED · Verification: PASSED (tsc clean at 3 baseline; 4/4 grep checks return 0 matches)
 

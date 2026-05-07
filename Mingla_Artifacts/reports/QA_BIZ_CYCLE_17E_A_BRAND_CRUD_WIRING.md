@@ -2,7 +2,7 @@
 
 **Cycle:** 17e-A (BIZ — founder-feedback feature absorption)
 **Mode:** TARGETED + SPEC-COMPLIANCE (combined per dispatch §2)
-**Dispatch anchor:** [`prompts/QA_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md`](../prompts/QA_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md)
+**Dispatch anchor:** `prompts/QA_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/QA_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md`)
 **SPEC anchor:** [`specs/SPEC_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md`](../specs/SPEC_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING.md)
 **IMPL anchor:** [`reports/IMPLEMENTATION_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING_REPORT.md`](IMPLEMENTATION_BIZ_CYCLE_17E_A_BRAND_CRUD_WIRING_REPORT.md)
 **Tested:** 2026-05-05

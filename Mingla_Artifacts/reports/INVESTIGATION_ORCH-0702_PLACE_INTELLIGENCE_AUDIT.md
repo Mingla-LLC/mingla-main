@@ -29,20 +29,20 @@ The deeper problem the user named — **"we keep getting surprised when we seed 
 
 | File | Why |
 |------|-----|
-| [supabase/functions/admin-seed-places/index.ts](supabase/functions/admin-seed-places/index.ts) (1957 lines, read 1-650) | Seeding entry point + post-fetch filter logic |
-| [supabase/functions/run-bouncer/index.ts](supabase/functions/run-bouncer/index.ts) | Final-pass bouncer driver |
-| [supabase/functions/run-pre-photo-bouncer/index.ts](supabase/functions/run-pre-photo-bouncer/index.ts) | Two-pass bouncer (ORCH-0678) |
-| [supabase/functions/run-signal-scorer/index.ts](supabase/functions/run-signal-scorer/index.ts) | Per-signal scoring driver |
-| [supabase/functions/_shared/bouncer.ts](supabase/functions/_shared/bouncer.ts) | Pure bouncer rules (B1-B9) |
-| [supabase/functions/_shared/signalScorer.ts](supabase/functions/_shared/signalScorer.ts) | Pure scoring logic |
-| [supabase/functions/_shared/seedingCategories.ts](supabase/functions/_shared/seedingCategories.ts) (read 1-200, lines 296+ for fine_dining config) | Seed includedTypes / excludedPrimaryTypes per category |
-| [supabase/functions/_shared/categoryPlaceTypes.ts](supabase/functions/_shared/categoryPlaceTypes.ts) (read 1-150, plus isExcludedVenueName ref at 806) | On-demand type lists + name-based child-venue check |
-| [supabase/migrations/20260407000000_city_seeding_bounding_box.sql](supabase/migrations/20260407000000_city_seeding_bounding_box.sql) | Current bbox model (deprecates `coverage_radius_km`) |
-| [supabase/migrations/20260421200004_orch_0588_seed_fine_dining_signal.sql](supabase/migrations/20260421200004_orch_0588_seed_fine_dining_signal.sql) | fine_dining v1.0.0 weights |
-| [supabase/migrations/20260423000001_orch_0595_seed_brunch_signal.sql](supabase/migrations/20260423000001_orch_0595_seed_brunch_signal.sql) | brunch v1.0.0 weights |
-| [supabase/migrations/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql](supabase/migrations/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql) | New signal-based serving RPC |
-| [supabase/migrations/20260424200002_orch_0598_11_launch_city_pipeline.sql](supabase/migrations/20260424200002_orch_0598_11_launch_city_pipeline.sql) | Launch-city pipeline + legacy `query_pool_cards` two-gate predicate |
-| [supabase/migrations/20260424210001_orch_0633_admin_city_pipeline_status_rpc.sql](supabase/migrations/20260424210001_orch_0633_admin_city_pipeline_status_rpc.sql) | Per-city pipeline status RPC |
+| [supabase/functions/admin-seed-places/index.ts](../../supabase/functions/admin-seed-places/index.ts) (1957 lines, read 1-650) | Seeding entry point + post-fetch filter logic |
+| [supabase/functions/run-bouncer/index.ts](../../supabase/functions/run-bouncer/index.ts) | Final-pass bouncer driver |
+| [supabase/functions/run-pre-photo-bouncer/index.ts](../../supabase/functions/run-pre-photo-bouncer/index.ts) | Two-pass bouncer (ORCH-0678) |
+| [supabase/functions/run-signal-scorer/index.ts](../../supabase/functions/run-signal-scorer/index.ts) | Per-signal scoring driver |
+| [supabase/functions/_shared/bouncer.ts](../../supabase/functions/_shared/bouncer.ts) | Pure bouncer rules (B1-B9) |
+| [supabase/functions/_shared/signalScorer.ts](../../supabase/functions/_shared/signalScorer.ts) | Pure scoring logic |
+| [supabase/functions/_shared/seedingCategories.ts](../../supabase/functions/_shared/seedingCategories.ts) (read 1-200, lines 296+ for fine_dining config) | Seed includedTypes / excludedPrimaryTypes per category |
+| [supabase/functions/_shared/categoryPlaceTypes.ts](../../supabase/functions/_shared/categoryPlaceTypes.ts) (read 1-150, plus isExcludedVenueName ref at 806) | On-demand type lists + name-based child-venue check |
+| [supabase/migrations/20260407000000_city_seeding_bounding_box.sql](../migrations_archive_orch_0729_2026-05-05/20260407000000_city_seeding_bounding_box.sql) | Current bbox model (deprecates `coverage_radius_km`) |
+| [supabase/migrations/20260421200004_orch_0588_seed_fine_dining_signal.sql](../migrations_archive_orch_0729_2026-05-05/20260421200004_orch_0588_seed_fine_dining_signal.sql) | fine_dining v1.0.0 weights |
+| [supabase/migrations/20260423000001_orch_0595_seed_brunch_signal.sql](../migrations_archive_orch_0729_2026-05-05/20260423000001_orch_0595_seed_brunch_signal.sql) | brunch v1.0.0 weights |
+| [supabase/migrations/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql](../migrations_archive_orch_0729_2026-05-05/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql) | New signal-based serving RPC |
+| [supabase/migrations/20260424200002_orch_0598_11_launch_city_pipeline.sql](../migrations_archive_orch_0729_2026-05-05/20260424200002_orch_0598_11_launch_city_pipeline.sql) | Launch-city pipeline + legacy `query_pool_cards` two-gate predicate |
+| [supabase/migrations/20260424210001_orch_0633_admin_city_pipeline_status_rpc.sql](../migrations_archive_orch_0729_2026-05-05/20260424210001_orch_0633_admin_city_pipeline_status_rpc.sql) | Per-city pipeline status RPC |
 | Repo-wide grep for `sex|strip|adult|escort|gentlemen.club|adult_entertainment` | Confirm no name-based or type-based safety blocklist exists |
 
 **Migration chain rule:** I confirmed no later migration overrides the current `query_servable_places_by_signal` (latest definition is the ORCH-0634 G3-photo-gate version) or the bouncer's `EXCLUDED_TYPES` list (defined in `bouncer.ts`, no DB-level overlay).
@@ -52,15 +52,15 @@ The deeper problem the user named — **"we keep getting surprised when we seed 
 ## 2. Q1 — Baltimore reseeding status
 
 ### What the code shows (HIGH confidence)
-The seeding boundary is **not** a 10 km radius in current code. [supabase/migrations/20260407000000_city_seeding_bounding_box.sql:1-35](supabase/migrations/20260407000000_city_seeding_bounding_box.sql#L1-L35) added `bbox_sw_lat / bbox_sw_lng / bbox_ne_lat / bbox_ne_lng` columns to `seeding_cities` (NOT NULL) and deprecated `coverage_radius_km` (`COMMENT: 'DEPRECATED: replaced by bbox_sw/ne columns. Retained for rollback.'`).
+The seeding boundary is **not** a 10 km radius in current code. [supabase/migrations/20260407000000_city_seeding_bounding_box.sql:1-35](../migrations_archive_orch_0729_2026-05-05/20260407000000_city_seeding_bounding_box.sql#L1-L35) added `bbox_sw_lat / bbox_sw_lng / bbox_ne_lat / bbox_ne_lng` columns to `seeding_cities` (NOT NULL) and deprecated `coverage_radius_km` (`COMMENT: 'DEPRECATED: replaced by bbox_sw/ne columns. Retained for rollback.'`).
 
-[admin-seed-places/index.ts:165-208](supabase/functions/admin-seed-places/index.ts#L165-L208) generates the tile grid from `bbox_sw_*` / `bbox_ne_*`. [admin-seed-places/index.ts:438-501 (handleGenerateTiles)](supabase/functions/admin-seed-places/index.ts#L438-L501) explicitly throws `"City has no bounding box. Re-register with geocoding."` if the bbox columns are null. The 10 km radius mental model is therefore **stale**; the user's question needs to be reframed.
+[admin-seed-places/index.ts:165-208](../../supabase/functions/admin-seed-places/index.ts#L165-L208) generates the tile grid from `bbox_sw_*` / `bbox_ne_*`. [admin-seed-places/index.ts:438-501 (handleGenerateTiles)](../../supabase/functions/admin-seed-places/index.ts#L438-L501) explicitly throws `"City has no bounding box. Re-register with geocoding."` if the bbox columns are null. The 10 km radius mental model is therefore **stale**; the user's question needs to be reframed.
 
 ### What the code does NOT determine
 **Whether Baltimore's stored bbox = Baltimore-CITY limits or Baltimore-METRO viewport** depends entirely on what Google's geocoder returned for the registration query. The geocoder returns a `viewport` field whose extents vary based on the input string ("Baltimore" vs "Baltimore, MD" vs "Baltimore City, Maryland"). Baltimore is an *independent city* (not part of Baltimore County), so a tight geocoder query SHOULD bound to city limits — but there is no defensive normalization in the code path I read.
 
 ### Pipeline coverage (depends on runtime data)
-[admin_city_pipeline_status RPC](supabase/migrations/20260424210001_orch_0633_admin_city_pipeline_status_rpc.sql) provides per-stage counts: `total_active`, `seeded_count`, `bouncer_judged_count`, `is_servable_count`, `has_real_photos_count`, `scored_count`. This is the canonical source of truth for "is Baltimore on the new system end-to-end." Cannot answer without running it.
+[admin_city_pipeline_status RPC](../migrations_archive_orch_0729_2026-05-05/20260424210001_orch_0633_admin_city_pipeline_status_rpc.sql) provides per-stage counts: `total_active`, `seeded_count`, `bouncer_judged_count`, `is_servable_count`, `has_real_photos_count`, `scored_count`. This is the canonical source of truth for "is Baltimore on the new system end-to-end." Cannot answer without running it.
 
 ### Verdict
 **`yes-on-new-system`** (HIGH confidence as of 2026-05-01 runtime probe). See §2.5 below for the runtime evidence. The bbox-extent question (city-only vs metro) is **still pending** — second runtime probe required.
@@ -174,28 +174,28 @@ Trapeze (`place_id 89e190a8-0ab4-485e-b839-9d1d657d5b2d`) scored on every active
 
 ### The full causal chain (HIGH confidence — fully traceable in code AND now proven against the real row)
 
-**Stage 1 — Seeding admits the place.** The `drink` seeding config at [seedingCategories.ts:189-218 (id: 'drink')](supabase/functions/_shared/seedingCategories.ts#L189-L218) lists `night_club` in `includedTypes`. Google often classifies upscale strip/sex clubs as `night_club`. Google's `excludedPrimaryTypes` filter on the seed call doesn't help here — `night_club` is INCLUDED for the drink config. Place enters `place_pool`.
+**Stage 1 — Seeding admits the place.** The `drink` seeding config at [seedingCategories.ts:189-218 (id: 'drink')](../../supabase/functions/_shared/seedingCategories.ts#L189-L218) lists `night_club` in `includedTypes`. Google often classifies upscale strip/sex clubs as `night_club`. Google's `excludedPrimaryTypes` filter on the seed call doesn't help here — `night_club` is INCLUDED for the drink config. Place enters `place_pool`.
 
-**Stage 2 — Post-fetch type filter is a no-op.** [admin-seed-places/index.ts:387-410 (`applyPostFetchFilters`)](supabase/functions/admin-seed-places/index.ts#L387-L410) **explicitly removed type exclusions**:
+**Stage 2 — Post-fetch type filter is a no-op.** [admin-seed-places/index.ts:387-410 (`applyPostFetchFilters`)](../../supabase/functions/admin-seed-places/index.ts#L387-L410) **explicitly removed type exclusions**:
 ```
 // Phase 2: Type exclusions removed — AI is the sole quality gate.
 // All place types now enter the pool. AI validates quality post-seeding.
 ```
 Only filters: `CLOSED_PERMANENTLY` and no-photos. So even if the seed config had said "exclude this," nothing client-side would catch it.
 
-**Stage 3 — Bouncer admits the place.** [_shared/bouncer.ts:45-55 (`EXCLUDED_TYPES`)](supabase/functions/_shared/bouncer.ts#L45-L55) lists `gym`, `school`, `hospital`, `gas_station`, `bank`, `car_*`, `dog_park`, `funeral_home`, etc. — **NO entry for any adult/sexual venue type**. Google's Places v1 type catalog does include entries that can apply to adult venues (e.g., `adult_entertainment_store` exists for retail; strip clubs are typically `night_club` + `bar`). None of these are in `EXCLUDED_TYPES`.
+**Stage 3 — Bouncer admits the place.** [_shared/bouncer.ts:45-55 (`EXCLUDED_TYPES`)](../../supabase/functions/_shared/bouncer.ts#L45-L55) lists `gym`, `school`, `hospital`, `gas_station`, `bank`, `car_*`, `dog_park`, `funeral_home`, etc. — **NO entry for any adult/sexual venue type**. Google's Places v1 type catalog does include entries that can apply to adult venues (e.g., `adult_entertainment_store` exists for retail; strip clubs are typically `night_club` + `bar`). None of these are in `EXCLUDED_TYPES`.
 
-The `deriveCluster` function at [bouncer.ts:169-175](supabase/functions/_shared/bouncer.ts#L169-L175) returns `A_COMMERCIAL` for `night_club` (since it's not in EXCLUDED, NATURAL, or CULTURAL). Cluster A's requirements: name + lat/lng (B3), business not closed (B2), Google photos (B7), stored photos (B8), website on own domain (B4/B5), opening hours (B6). Upscale FL adult venues clear all of these. The B9 child-venue regex only matches retailer sub-counters ("Walmart Bakery", "Sam's Club Cafe") — it does not match "* Sex Club" or "* Gentleman's Club".
+The `deriveCluster` function at [bouncer.ts:169-175](../../supabase/functions/_shared/bouncer.ts#L169-L175) returns `A_COMMERCIAL` for `night_club` (since it's not in EXCLUDED, NATURAL, or CULTURAL). Cluster A's requirements: name + lat/lng (B3), business not closed (B2), Google photos (B7), stored photos (B8), website on own domain (B4/B5), opening hours (B6). Upscale FL adult venues clear all of these. The B9 child-venue regex only matches retailer sub-counters ("Walmart Bakery", "Sam's Club Cafe") — it does not match "* Sex Club" or "* Gentleman's Club".
 
 Bouncer writes `is_servable = true`. **Repo-wide grep for `sex|strip|adult|escort|gentlemen.?club|adult_entertainment` against `supabase/` returned zero hits in any rules file.** Confirmed: no name-based safety guard anywhere in the codebase.
 
-**Stage 4 — Signal scorer scores it on `fine_dining`.** [run-signal-scorer/index.ts:138-178](supabase/functions/run-signal-scorer/index.ts#L138-L178) iterates all `is_servable=true` places (no category filter — it scores every servable place against the requested signal regardless of which seed config introduced it).
+**Stage 4 — Signal scorer scores it on `fine_dining`.** [run-signal-scorer/index.ts:138-178](../../supabase/functions/run-signal-scorer/index.ts#L138-L178) iterates all `is_servable=true` places (no category filter — it scores every servable place against the requested signal regardless of which seed config introduced it).
 
-[signalScorer.ts:141-159 (`computeScore`)](supabase/functions/_shared/signalScorer.ts#L141-L159): only hard gates are `min_rating` (4.0 for fine_dining) and `min_reviews` (50, with bypass at rating ≥ 4.6). FL adult venues with even modest popularity clear these.
+[signalScorer.ts:141-159 (`computeScore`)](../../supabase/functions/_shared/signalScorer.ts#L141-L159): only hard gates are `min_rating` (4.0 for fine_dining) and `min_reviews` (50, with bypass at rating ≥ 4.6). FL adult venues with even modest popularity clear these.
 
-[fine_dining v1.0.0 config](supabase/migrations/20260421200004_orch_0588_seed_fine_dining_signal.sql) field weights — **no penalty for `types_includes_night_club` or `types_includes_bar`**. Brunch's config DOES penalize (`types_includes_night_club: -50`, `types_includes_bar: -15`), but fine_dining missed this. With `serves_dinner=true (+30)`, `reservable=true (+30)`, `dine_in=true (+15)`, `serves_wine=true (+10)`, `serves_cocktails=true (+5)`, `price_level_expensive (+25)`, `rating × 10` (~45), `reviews log scale` (~15), the score easily exceeds the 120 threshold typically used for `filter_min`.
+[fine_dining v1.0.0 config](../migrations_archive_orch_0729_2026-05-05/20260421200004_orch_0588_seed_fine_dining_signal.sql) field weights — **no penalty for `types_includes_night_club` or `types_includes_bar`**. Brunch's config DOES penalize (`types_includes_night_club: -50`, `types_includes_bar: -15`), but fine_dining missed this. With `serves_dinner=true (+30)`, `reservable=true (+30)`, `dine_in=true (+15)`, `serves_wine=true (+10)`, `serves_cocktails=true (+5)`, `price_level_expensive (+25)`, `rating × 10` (~45), `reviews log scale` (~15), the score easily exceeds the 120 threshold typically used for `filter_min`.
 
-**Stage 5 — Serving RPC has no category gate.** [query_servable_places_by_signal](supabase/migrations/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql#L51-L96) filters on:
+**Stage 5 — Serving RPC has no category gate.** [query_servable_places_by_signal](../migrations_archive_orch_0729_2026-05-05/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql#L51-L96) filters on:
 - `is_servable = true` ✓
 - `is_active = true` ✓
 - `score >= filter_min` ✓
@@ -210,7 +210,7 @@ It does **not** filter on `seeding_category`, on `place_pool.types`, on a name p
 🔴 **Root cause R-Q2-1: Bouncer EXCLUDED_TYPES has no adult/sexually-oriented venue rules.**
 | Field | Evidence |
 |---|---|
-| File + line | [_shared/bouncer.ts:45-55](supabase/functions/_shared/bouncer.ts#L45-L55) |
+| File + line | [_shared/bouncer.ts:45-55](../../supabase/functions/_shared/bouncer.ts#L45-L55) |
 | Exact code | `EXCLUDED_TYPES = ['gym', 'fitness_center', 'school', ..., 'real_estate_agency']` (no adult venues) |
 | What it does | Treats `night_club`/`bar`-typed adult venues as legitimate Cluster A_COMMERCIAL; admits them if other rules pass |
 | What it should do | Explicitly exclude `adult_entertainment_store` and apply a name-pattern blocklist for adult/sexually-oriented businesses |
@@ -220,7 +220,7 @@ It does **not** filter on `seeding_category`, on `place_pool.types`, on a name p
 🔴 **Root cause R-Q2-2: `query_servable_places_by_signal` has no category-membership gate.**
 | Field | Evidence |
 |---|---|
-| File + line | [migration 20260424220003](supabase/migrations/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql#L51-L96) |
+| File + line | [migration 20260424220003](../migrations_archive_orch_0729_2026-05-05/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql#L51-L96) |
 | Exact code | `WHERE pp.is_servable AND pp.is_active AND ps.score >= p_filter_min AND <photo gate> AND <haversine>` |
 | What it does | Returns any servable place with a high enough score for the signal, regardless of whether the place's primary category matches the user-facing category that signal represents |
 | What it should do | Reject places whose `place_pool.seeding_category` (or computed category set) does not include the dining category for `fine_dining`/`brunch` signals; or apply category-type-exclusion table |
@@ -230,7 +230,7 @@ It does **not** filter on `seeding_category`, on `place_pool.types`, on a name p
 🟠 **Contributing factor C-Q2-1: `fine_dining` signal config has no penalty for `night_club` / `bar` / `adult_entertainment_store` types.**
 | Field | Evidence |
 |---|---|
-| File + line | [migration 20260421200004:14-67](supabase/migrations/20260421200004_orch_0588_seed_fine_dining_signal.sql#L14-L67) `field_weights` |
+| File + line | [migration 20260421200004:14-67](../migrations_archive_orch_0729_2026-05-05/20260421200004_orch_0588_seed_fine_dining_signal.sql#L14-L67) `field_weights` |
 | Exact code | No `types_includes_night_club`, `types_includes_bar`, `types_includes_adult_entertainment_store` keys in `field_weights` |
 | What it does | Allows non-restaurant nightlife venues to accumulate score from positive features (serves_dinner, reservable, etc.) without offsetting penalty |
 | What it should do | Add hard-negative weights: `types_includes_night_club: -80`, `types_includes_bar: -50`, `types_includes_adult_entertainment_store: -200` (effectively excluding) |
@@ -240,7 +240,7 @@ It does **not** filter on `seeding_category`, on `place_pool.types`, on a name p
 🟠 **Contributing factor C-Q2-2: post-fetch type filter at seed time is a no-op.**
 | Field | Evidence |
 |---|---|
-| File + line | [admin-seed-places/index.ts:387-410](supabase/functions/admin-seed-places/index.ts#L387-L410) |
+| File + line | [admin-seed-places/index.ts:387-410](../../supabase/functions/admin-seed-places/index.ts#L387-L410) |
 | Exact code | Comment "Phase 2: Type exclusions removed — AI is the sole quality gate." Only filters CLOSED_PERMANENTLY and no-photos |
 | What it does | Lets Google return whatever Google chooses, regardless of seed config's `excludedPrimaryTypes` (which is only used in the API request body — Google may still return rows whose secondary types include excluded values) |
 | What it should do | Either restore client-side type post-filter, OR ensure the bouncer + scorer downstream are sufficient (they are not — see R-Q2-1, R-Q2-2) |
@@ -266,21 +266,21 @@ The legacy path includes `category_type_exclusions` and a hardcoded gym/school/d
 ### Two distinct root causes — must be separated
 
 🔴 **Root cause R-Q3-1: Seed coverage is whatever Google decides per city.**
-[admin-seed-places/index.ts:387-410](supabase/functions/admin-seed-places/index.ts#L387-L410) removed all client-side type filtering. The pool composition for any given category is: (Google's response to the `searchNearby` call with `includedTypes` × tile grid) − `CLOSED_PERMANENTLY` − no-photos − bouncer rejections. There is no positive coverage assertion (e.g., "this city must have ≥ 30 places matching `fine_dining_restaurant`"). The `coverage_check` action in admin-seed-places does count per-category, but the `hasGap` flag is a single threshold (count < 10) — too coarse to detect "Baltimore has fine-dining sparsity relative to its population."
+[admin-seed-places/index.ts:387-410](../../supabase/functions/admin-seed-places/index.ts#L387-L410) removed all client-side type filtering. The pool composition for any given category is: (Google's response to the `searchNearby` call with `includedTypes` × tile grid) − `CLOSED_PERMANENTLY` − no-photos − bouncer rejections. There is no positive coverage assertion (e.g., "this city must have ≥ 30 places matching `fine_dining_restaurant`"). The `coverage_check` action in admin-seed-places does count per-category, but the `hasGap` flag is a single threshold (count < 10) — too coarse to detect "Baltimore has fine-dining sparsity relative to its population."
 
 🔴 **Root cause R-Q3-2: Signal scoring depends heavily on Google's inconsistently-populated booleans + text fields.**
-[signalScorer.ts:130-138](supabase/functions/_shared/signalScorer.ts#L130-L138): boolean field weights apply only when `value === true`. NULL = no contribution. Google's API populates `serves_dinner`, `reservable`, `dine_in`, `serves_wine`, `serves_cocktails` etc. inconsistently — better-known venues get full metadata, lesser-known venues get null. The ordering depends on Google's metadata coverage, not actual venue quality.
+[signalScorer.ts:130-138](../../supabase/functions/_shared/signalScorer.ts#L130-L138): boolean field weights apply only when `value === true`. NULL = no contribution. Google's API populates `serves_dinner`, `reservable`, `dine_in`, `serves_wine`, `serves_cocktails` etc. inconsistently — better-known venues get full metadata, lesser-known venues get null. The ordering depends on Google's metadata coverage, not actual venue quality.
 
-[signalScorer.ts:184-221](supabase/functions/_shared/signalScorer.ts#L184-L221): text-pattern matching against `editorial_summary` + `generative_summary` + first 5 reviews. Google fills `editorialSummary` for a small fraction of places (typically <10%) and `generativeSummary` is also sparse. ORCH-0598.12 fix at line 186-204 confirms reviews-text extraction was previously broken (returning "[object Object]") — review text was completely silent across all signals before that fix. Today text-pattern matching works, but the *coverage* of editorial/generative summary is what limits ceiling-tier scoring.
+[signalScorer.ts:184-221](../../supabase/functions/_shared/signalScorer.ts#L184-L221): text-pattern matching against `editorial_summary` + `generative_summary` + first 5 reviews. Google fills `editorialSummary` for a small fraction of places (typically <10%) and `generativeSummary` is also sparse. ORCH-0598.12 fix at line 186-204 confirms reviews-text extraction was previously broken (returning "[object Object]") — review text was completely silent across all signals before that fix. Today text-pattern matching works, but the *coverage* of editorial/generative summary is what limits ceiling-tier scoring.
 
 🟠 **Contributing factor C-Q3-1: No per-city distribution calibration.**
-[admin_city_pipeline_status RPC](supabase/migrations/20260424210001_orch_0633_admin_city_pipeline_status_rpc.sql) gives raw counts. There is no comparison to a reference distribution (e.g., "Cities of population ≥ 600k typically have ≥ N fine_dining-eligible places; Baltimore has X% of expected"). Sparsity surfaces only as user complaints.
+[admin_city_pipeline_status RPC](../migrations_archive_orch_0729_2026-05-05/20260424210001_orch_0633_admin_city_pipeline_status_rpc.sql) gives raw counts. There is no comparison to a reference distribution (e.g., "Cities of population ≥ 600k typically have ≥ N fine_dining-eligible places; Baltimore has X% of expected"). Sparsity surfaces only as user complaints.
 
 🟠 **Contributing factor C-Q3-2: No continuous canary self-audit.**
 No agent simulates "I'm a user in Baltimore looking for fine dining" and checks whether the top 10 results pass an LLM-based "is this actually fine dining?" verification. The system has no automated way to detect quality regressions before users hit them.
 
 🟡 **Hidden flaw H-Q3-1: `min_rating` and `min_reviews` are global constants, not per-city.**
-[fine_dining config](supabase/migrations/20260421200004_orch_0588_seed_fine_dining_signal.sql#L17-L18): `min_rating: 4.0`, `min_reviews: 50`. In a sparse market, this excludes the only viable fine-dining options that happen to have 35 reviews. In a dense market, it admits too many.
+[fine_dining config](../migrations_archive_orch_0729_2026-05-05/20260421200004_orch_0588_seed_fine_dining_signal.sql#L17-L18): `min_rating: 4.0`, `min_reviews: 50`. In a sparse market, this excludes the only viable fine-dining options that happen to have 35 reviews. In a dense market, it admits too many.
 
 🟡 **Hidden flaw H-Q3-2: No editorial/curatorial layer.**
 Mature platforms (Resy, Eater, Time Out, Tock) layer editorial designations on top of algorithmic ranking. Mingla has none. The signal score IS the ranking, with no human-curated tier flag.

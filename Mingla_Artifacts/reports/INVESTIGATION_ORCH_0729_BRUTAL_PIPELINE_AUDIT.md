@@ -1,7 +1,7 @@
 # INVESTIGATION REPORT — ORCH-0729 BRUTAL PIPELINE AUDIT
 
 **Mode:** INVESTIGATE (brutal pipeline-wide)
-**Dispatch anchor:** [`prompts/INVESTIGATION_ORCH_0729_BRUTAL_PIPELINE_AUDIT.md`](../prompts/INVESTIGATION_ORCH_0729_BRUTAL_PIPELINE_AUDIT.md)
+**Dispatch anchor:** `prompts/INVESTIGATION_ORCH_0729_BRUTAL_PIPELINE_AUDIT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/INVESTIGATION_ORCH_0729_BRUTAL_PIPELINE_AUDIT.md`)
 **Predecessor:** ORCH-0728 PASS-1..6 (full investigation chain — root cause F-10 PROVEN at parent level; sub-cause disambiguation IS this report's primary deliverable)
 **Authored:** 2026-05-06
 

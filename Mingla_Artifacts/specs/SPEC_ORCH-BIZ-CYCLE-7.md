@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-01
 **Author:** mingla-forensics
-**Investigation:** [reports/INVESTIGATION_ORCH-BIZ-CYCLE-7.md](Mingla_Artifacts/reports/INVESTIGATION_ORCH-BIZ-CYCLE-7.md)
+**Investigation:** [reports/INVESTIGATION_ORCH-BIZ-CYCLE-7.md](../reports/INVESTIGATION_ORCH-BIZ-CYCLE-7.md)
 **Estimated effort:** ~7-9 hrs implementor + 30 min web smoke + 30 min iOS smoke
 
 ---

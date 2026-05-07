@@ -1,7 +1,7 @@
 # INVESTIGATION REPORT — ORCH-0738 — Cross-device sync audit (mingla-business, BRUTAL)
 
 **Authored:** 2026-05-06 by mingla-forensics
-**Dispatch:** [`prompts/INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT_BRUTAL.md`](../prompts/INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT_BRUTAL.md)
+**Dispatch:** `prompts/INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT_BRUTAL.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT_BRUTAL.md`)
 **Mode:** INVESTIGATE only (audit + recommendation matrix; NO spec — orchestrator REVIEWs and dispatches tiered fix cycles separately)
 **Confidence:** HIGH for the architectural findings (zero Realtime, zero AppState/focusManager wiring); MEDIUM-HIGH for individual surface tier classifications (some stores need byte-level type inspection to confirm server-vs-client classification — flagged where unclear).
 

@@ -410,7 +410,7 @@ No critical residual risks.
 - v5 investigation: [`INVESTIGATION_ORCH-0737_V5_THROUGHPUT.md`](INVESTIGATION_ORCH-0737_V5_THROUGHPUT.md)
 - v5 spec (shelved): [`SPEC_ORCH-0737_PATCH_V5_THROUGHPUT.md`](../specs/SPEC_ORCH-0737_PATCH_V5_THROUGHPUT.md)
 - Parent spec: [`SPEC_ORCH-0737_FULL_CITY_ASYNC_TRIAL_v2.md`](../specs/SPEC_ORCH-0737_FULL_CITY_ASYNC_TRIAL_v2.md)
-- Forensics dispatch: [`FORENSICS_ORCH-0737_V6_PIPELINE_TRACE.md`](../prompts/FORENSICS_ORCH-0737_V6_PIPELINE_TRACE.md)
+- Forensics dispatch: `FORENSICS_ORCH-0737_V6_PIPELINE_TRACE.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_ORCH-0737_V6_PIPELINE_TRACE.md`)
 - DEC-115, DEC-116, DEC-117 in [`DECISION_LOG.md`](../DECISION_LOG.md)
 - Live curl experiments E1+E2 (transcripts in §2 manifest table)
 - Live SQL probes E3, E5a-E5f (transcripts in §2)

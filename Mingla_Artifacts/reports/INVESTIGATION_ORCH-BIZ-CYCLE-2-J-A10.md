@@ -65,7 +65,7 @@ Greenfield spec preparation. No bug. The J-A7 Stripe banner currently fires `[TR
 
 #### H-A10-1 — Brand schema v7 lacks `stripeStatus`, `payouts`, `refunds` fields
 
-- File: [`mingla-business/src/store/currentBrandStore.ts`](mingla-business/src/store/currentBrandStore.ts) (current v7 at persistOptions.name)
+- File: [`mingla-business/src/store/currentBrandStore.ts`](../../mingla-business/src/store/currentBrandStore.ts) (current v7 at persistOptions.name)
 - Current Brand v7 fields cover everything through J-A9 (members, pendingInvitations).
 - **Missing for J-A10/A11:**
   - `stripeStatus?: BrandStripeStatus` where `BrandStripeStatus = "not_connected" | "onboarding" | "active" | "restricted"`
@@ -79,7 +79,7 @@ Greenfield spec preparation. No bug. The J-A7 Stripe banner currently fires `[TR
 
 #### H-A10-2 — J-A7 BrandProfileView's Stripe banner + Operations row #1 are closure-scoped to Toast
 
-- File: [`mingla-business/src/components/brand/BrandProfileView.tsx:163-165`](mingla-business/src/components/brand/BrandProfileView.tsx#L163-L165)
+- File: [`mingla-business/src/components/brand/BrandProfileView.tsx:163-165`](../../mingla-business/src/components/brand/BrandProfileView.tsx#L163-L165)
 - Current code:
   ```typescript
   // Stripe banner handler:
@@ -101,7 +101,7 @@ Greenfield spec preparation. No bug. The J-A7 Stripe banner currently fires `[TR
 
 #### H-A10-3 — No status-banner primitive; J-A7 has one inline pattern that needs lifting OR parameterizing
 
-- File: [`mingla-business/src/components/brand/BrandProfileView.tsx`](mingla-business/src/components/brand/BrandProfileView.tsx) lines ~327-345 (current Stripe banner: GlassCard wrapping a Pressable with icon + title + sub + chevR)
+- File: [`mingla-business/src/components/brand/BrandProfileView.tsx`](../../mingla-business/src/components/brand/BrandProfileView.tsx) lines ~327-345 (current Stripe banner: GlassCard wrapping a Pressable with icon + title + sub + chevR)
 - §5.3.7 requires 4 banner variants by Stripe status (not_connected / onboarding / active / restricted). The "active" state SUPPRESSES the banner (no banner at all when active). The other 3 render different copy + icon + color emphasis.
 - **Spec mitigation:**
   - Compose the per-status banner inline in `BrandPaymentsView.tsx` (NEW component) — uses GlassCard variant + icon + 1-2 line copy + optional CTA Button. Status-driven copy table embedded in the component.

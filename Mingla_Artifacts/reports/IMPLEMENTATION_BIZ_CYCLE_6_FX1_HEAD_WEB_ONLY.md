@@ -3,7 +3,7 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · runtime UNVERIFIED (awaits user smoke)
 **Scope:** 1 file, ~12 LOC delta
-**Spec:** [prompts/IMPL_BIZ_CYCLE_6_FX1_HEAD_WEB_ONLY.md](Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_6_FX1_HEAD_WEB_ONLY.md)
+**Spec:** prompts/IMPL_BIZ_CYCLE_6_FX1_HEAD_WEB_ONLY.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_6_FX1_HEAD_WEB_ONLY.md`)
 
 ---
 

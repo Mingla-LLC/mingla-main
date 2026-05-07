@@ -64,7 +64,7 @@ The two branches are independent at write time. The `priceRange` (cents) branch 
 
 ### 4.1 Latest authoritative `query_pool_cards` definition
 
-[supabase/migrations/20260416100000_orch0443_fix_category_slug_mismatch.sql](supabase/migrations/20260416100000_orch0443_fix_category_slug_mismatch.sql) — the LATEST `CREATE OR REPLACE FUNCTION public.query_pool_cards`, signature is:
+[supabase/migrations/20260416100000_orch0443_fix_category_slug_mismatch.sql](../../../migrations_archive_orch_0729_2026-05-05/20260416100000_orch0443_fix_category_slug_mismatch.sql) — the LATEST `CREATE OR REPLACE FUNCTION public.query_pool_cards`, signature is:
 
 ```sql
 query_pool_cards(
@@ -78,7 +78,7 @@ Note: **no `p_price_tiers`, no `p_budget_max`**. The function body has zero refe
 
 ### 4.2 Where filtering was removed
 
-[supabase/migrations/20260415200000_orch0434_phase9_cleanup.sql](supabase/migrations/20260415200000_orch0434_phase9_cleanup.sql) lines 153-157:
+[supabase/migrations/20260415200000_orch0434_phase9_cleanup.sql](../../../migrations_archive_orch_0729_2026-05-05/20260415200000_orch0434_phase9_cleanup.sql) lines 153-157:
 
 > `Removed p_budget_max and p_price_tiers deprecated params`
 
@@ -95,7 +95,7 @@ That migration (2026-04-15) is the official end of price filtering on the user-b
 
 ### 4.3 Where `price_level` is still consumed
 
-[supabase/migrations/20260420000002_seed_rules_engine_v1.sql:777](supabase/migrations/20260420000002_seed_rules_engine_v1.sql#L777) — rules-engine threshold rules use `price_levels` as proposed thresholds; the executor in [supabase/migrations/20260420000003_create_rules_engine_rpcs.sql:403-412](supabase/migrations/20260420000003_create_rules_engine_rpcs.sql#L403-L412) reads:
+[supabase/migrations/20260420000002_seed_rules_engine_v1.sql:777](../../../migrations_archive_orch_0729_2026-05-05/20260420000002_seed_rules_engine_v1.sql#L777) — rules-engine threshold rules use `price_levels` as proposed thresholds; the executor in [supabase/migrations/20260420000003_create_rules_engine_rpcs.sql:403-412](../../../migrations_archive_orch_0729_2026-05-05/20260420000003_create_rules_engine_rpcs.sql#L403-L412) reads:
 
 ```sql
 v_price_levels := ARRAY(SELECT jsonb_array_elements_text(...->'price_levels'));
@@ -119,13 +119,13 @@ Grepped the entire repo for `price_range_start_cents|price_range_end_cents|price
 - Line 1234-1237: filter dropdowns let admins filter places by `price_tiers` or `price_level`
 - Line 408-409: edit form passes `p_price_tier` and `p_price_tiers` to `admin_edit_place` RPC
 
-So admins can still manually edit tiers, and the edit cascades into `card_pool` via the [admin_edit_place RPC](supabase/migrations/20260401000009_fix_price_tier_overlap.sql#L382-L388) — but the result of that edit doesn't change what cards users see, because the user-facing query no longer filters on tier.
+So admins can still manually edit tiers, and the edit cascades into `card_pool` via the [admin_edit_place RPC](../../../migrations_archive_orch_0729_2026-05-05/20260401000009_fix_price_tier_overlap.sql#L382-L388) — but the result of that edit doesn't change what cards users see, because the user-facing query no longer filters on tier.
 
 ---
 
 ## 5. The PRICE_LEVEL_MAP (for completeness)
 
-Defined in [admin-seed-places/index.ts](../../../../supabase/functions/admin-seed-places/index.ts) (search for `PRICE_LEVEL_MAP`). Mirrors the backfill migration [20260401000007_price_tiers_array_migration.sql](supabase/migrations/20260401000007_price_tiers_array_migration.sql):
+Defined in [admin-seed-places/index.ts](../../../../supabase/functions/admin-seed-places/index.ts) (search for `PRICE_LEVEL_MAP`). Mirrors the backfill migration [20260401000007_price_tiers_array_migration.sql](../../../migrations_archive_orch_0729_2026-05-05/20260401000007_price_tiers_array_migration.sql):
 
 | Google `price_level` | Mingla `price_tier` |
 |----------------------|---------------------|
@@ -161,7 +161,7 @@ Three reasonable directions. Pick one before any code change:
 
 ### Option C — Rewire spec (bring tier filtering back)
 
-- Re-add `p_price_tiers` to `query_pool_cards` (the OLD ORCH-0421 logic in [20260414100001_price_exempt_categories.sql](supabase/migrations/20260414100001_price_exempt_categories.sql) is a working reference — has price-exempt category bypass + NULL tolerance)
+- Re-add `p_price_tiers` to `query_pool_cards` (the OLD ORCH-0421 logic in [20260414100001_price_exempt_categories.sql](../../../migrations_archive_orch_0729_2026-05-05/20260414100001_price_exempt_categories.sql) is a working reference — has price-exempt category bypass + NULL tolerance)
 - Re-add a budget preference column to `preferences` (was dropped in Phase 9 — would need new migration)
 - Wire the mobile preferences UI back to it
 - Recommended only if you actually want users to filter by price band again

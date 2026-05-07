@@ -3,7 +3,7 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · runtime UNVERIFIED (awaits user smoke)
 **Scope:** 1 file, ~50 LOC delta (lift + add)
-**Spec:** [prompts/IMPL_BIZ_CYCLE_6_FX2_PUBLIC_PAGE_CLOSE_CHROME.md](Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_6_FX2_PUBLIC_PAGE_CLOSE_CHROME.md)
+**Spec:** prompts/IMPL_BIZ_CYCLE_6_FX2_PUBLIC_PAGE_CLOSE_CHROME.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_6_FX2_PUBLIC_PAGE_CLOSE_CHROME.md`)
 
 ---
 

@@ -3,10 +3,10 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · grep oklch PASS · runtime UNVERIFIED (awaits user smoke web + iOS)
 **Scope:** 4 NEW + 4 MOD · ~+750 LOC delta · 0 schema bumps · 0 new deps · 0 new TRANSITIONALs (single explicit `// [TRANSITIONAL]` removed from EventManageMenu's Edit-details non-draft branch)
-**Spec:** [Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md) §3.B (J-E11 portion) — **APPROVED DEVIATION**
-**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md)
-**Cycle 9b-1 delivered:** [Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_9b1_LIFECYCLE_ACTIONS_PARTIAL.md](Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_9b1_LIFECYCLE_ACTIONS_PARTIAL.md)
-**Dispatch:** [Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_9b2_EDIT_AFTER_PUBLISH.md](Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_9b2_EDIT_AFTER_PUBLISH.md)
+**Spec:** [Mingla_Artifacts/specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](../specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md) §3.B (J-E11 portion) — **APPROVED DEVIATION**
+**Investigation:** [Mingla_Artifacts/reports/INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md)
+**Cycle 9b-1 delivered:** [Mingla_Artifacts/reports/IMPLEMENTATION_BIZ_CYCLE_9b1_LIFECYCLE_ACTIONS_PARTIAL.md](IMPLEMENTATION_BIZ_CYCLE_9b1_LIFECYCLE_ACTIONS_PARTIAL.md)
+**Dispatch:** Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_9b2_EDIT_AFTER_PUBLISH.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPLEMENTOR_BIZ_CYCLE_9b2_EDIT_AFTER_PUBLISH.md`)
 
 ---
 

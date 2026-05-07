@@ -169,7 +169,7 @@ No additional cleanup needed. The one-time backfill at lines 130-149 catches any
 
 ## D-RC3-4 — `requireUserId` uses service-role key for token validation
 
-[`supabase/functions/_shared/stripeEdgeAuth.ts:43-54`](../supabase/functions/_shared/stripeEdgeAuth.ts) creates a `userClient` using `SUPABASE_SERVICE_ROLE_KEY` and then sets the user's bearer token in the `Authorization` header. This is a known anti-pattern — using the service role key + a user JWT means the validation does not actually use anon-key + JWT-aware decoding the way Supabase docs recommend ([https://supabase.com/docs/guides/auth/server-side-auth](https://supabase.com/docs/guides/auth/server-side-auth)). It works (because the service role key gives full DB access and the user JWT lookup via `auth.getUser` validates the token independently), but is a hidden flaw worth flagging.
+[`supabase/functions/_shared/stripeEdgeAuth.ts:43-54`](../../supabase/functions/_shared/stripeEdgeAuth.ts) creates a `userClient` using `SUPABASE_SERVICE_ROLE_KEY` and then sets the user's bearer token in the `Authorization` header. This is a known anti-pattern — using the service role key + a user JWT means the validation does not actually use anon-key + JWT-aware decoding the way Supabase docs recommend ([https://supabase.com/docs/guides/auth/server-side-auth](https://supabase.com/docs/guides/auth/server-side-auth)). It works (because the service role key gives full DB access and the user JWT lookup via `auth.getUser` validates the token independently), but is a hidden flaw worth flagging.
 
 Out of scope for this dispatch. Register as observation if not already on backlog.
 

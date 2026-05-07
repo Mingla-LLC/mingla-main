@@ -1069,7 +1069,7 @@ Single focused session feasible; could split across 2 sessions (DB+edge fn first
 ## §14 Cross-references
 
 - Investigation: [`reports/INVESTIGATION_ORCH-0737_FULL_CITY_ASYNC_TRIAL.md`](../reports/INVESTIGATION_ORCH-0737_FULL_CITY_ASYNC_TRIAL.md)
-- Forensics dispatch: [`prompts/INVESTIGATOR_ORCH-0737_FULL_CITY_ASYNC_TRIAL.md`](../prompts/INVESTIGATOR_ORCH-0737_FULL_CITY_ASYNC_TRIAL.md)
+- Forensics dispatch: `prompts/INVESTIGATOR_ORCH-0737_FULL_CITY_ASYNC_TRIAL.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/INVESTIGATOR_ORCH-0737_FULL_CITY_ASYNC_TRIAL.md`)
 - Predecessor SPEC: [`specs/SPEC_ORCH-0734_CITY_RUNS.md`](./SPEC_ORCH-0734_CITY_RUNS.md)
 - DEC-110 (ORCH-0734 CLOSE), DEC-107 (ORCH-0735 CLOSE)
 - INVARIANT_REGISTRY.md — I-TRIAL-CITY-RUNS-CANONICAL section

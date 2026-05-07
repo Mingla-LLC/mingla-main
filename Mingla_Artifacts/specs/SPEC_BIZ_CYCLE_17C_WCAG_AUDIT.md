@@ -679,8 +679,8 @@ Cycle 17c established kit-wide WCAG AA on three pillars (touch-target + screen-r
 
 ## Related memories
 
-- [Strict-grep registry pattern](feedback_strict_grep_registry_pattern.md) — registry CI scaffold I-38/I-39 plug into (Cycle 17b)
-- [Implementor uses /ui-ux-pro-max](feedback_implementor_uses_ui_ux_pro_max.md) — touch-target + label work qualifies even with no visual change
+- Strict-grep registry pattern (historical source not versioned: `feedback_strict_grep_registry_pattern.md`) — registry CI scaffold I-38/I-39 plug into (Cycle 17b)
+- Implementor uses /ui-ux-pro-max (historical source not versioned: `feedback_implementor_uses_ui_ux_pro_max.md`) — touch-target + label work qualifies even with no visual change
 
 ## Established
 
@@ -695,7 +695,7 @@ Cycle 17c established kit-wide WCAG AA on three pillars (touch-target + screen-r
 Add under existing **"Strict-Grep CI Gate Registry Pattern (post-Cycle-17b)"** subheading OR create a new **"Accessibility Discipline (post-Cycle-17c)"** subheading under "User Preferences (Non-Negotiable)":
 
 ```
-- [WCAG AA kit invariants](feedback_wcag_aa_kit_invariants.md) — I-38 IconChrome touch ≥ 44pt + I-39 explicit accessibilityLabel on interactive Pressable. (status: ACTIVE post-Cycle-17c CLOSE [DATE])
+- WCAG AA kit invariants (historical source not versioned: `feedback_wcag_aa_kit_invariants.md`) — I-38 IconChrome touch ≥ 44pt + I-39 explicit accessibilityLabel on interactive Pressable. (status: ACTIVE post-Cycle-17c CLOSE [DATE])
 ```
 
 (Operator flips DRAFT → ACTIVE in CLOSE protocol; orchestrator updates the index.)

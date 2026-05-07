@@ -2,7 +2,7 @@
 
 **Mode:** INVESTIGATE (forensics — Arm 1 of 2)
 **Companion spec:** [SPEC_ORCH-0708_PHOTO_AESTHETIC_SCORING_INTEGRATION.md](SPEC_ORCH-0708_PHOTO_AESTHETIC_SCORING_INTEGRATION.md)
-**Dispatch:** [prompts/FORENSICS_ORCH-0708_PHOTO_AESTHETIC_SCORING_AUDIT_AND_SPEC.md](Mingla_Artifacts/prompts/FORENSICS_ORCH-0708_PHOTO_AESTHETIC_SCORING_AUDIT_AND_SPEC.md)
+**Dispatch:** prompts/FORENSICS_ORCH-0708_PHOTO_AESTHETIC_SCORING_AUDIT_AND_SPEC.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/FORENSICS_ORCH-0708_PHOTO_AESTHETIC_SCORING_AUDIT_AND_SPEC.md`)
 **Date:** 2026-05-01
 **Confidence:** HIGH on all quantified findings (live DB evidence, project ref `gqnoajqerqhnvulmnyvv`)
 
@@ -40,11 +40,11 @@ The new photo-aesthetic data slots into the existing scoring system as a JSONB c
 | Live DB query: Raleigh/Cary/Durham photo-data state | Data | Thread E — backfill scope sizing |
 | Live DB query: place_pool full column list (81 columns) | Schema | Thread C — confirm no collision with new photo aesthetic column |
 | Live DB query: sample stored_photo_url shape | Schema | Confirm photos are public URLs (no signed URL needed) |
-| [signalScorer.ts](supabase/functions/_shared/signalScorer.ts) (read prior session, full) | Code | Confirm field-weight prefix matchers + extension surface |
-| [run-signal-scorer/index.ts](supabase/functions/run-signal-scorer/index.ts) (read prior session) | Code | Confirm scorer invocation pattern |
-| [backfill-place-photos/index.ts](supabase/functions/backfill-place-photos/index.ts) lines 1-100 + DDL | Code | Existing backfill pattern (action-based dispatch + runs/batches tables) — new photo-aesthetic backfill should mirror this exact shape |
-| [migration 20260402000002](supabase/migrations/20260402000002_photo_backfill_job_system.sql) | Schema | Source of `photo_backfill_runs` + `photo_backfill_batches` schema — prototype for `photo_aesthetic_runs` + `photo_aesthetic_batches` |
-| [migration 20260424220003](supabase/migrations/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql) | Schema | Latest serving RPC — unchanged by this dispatch |
+| [signalScorer.ts](../../supabase/functions/_shared/signalScorer.ts) (read prior session, full) | Code | Confirm field-weight prefix matchers + extension surface |
+| [run-signal-scorer/index.ts](../../supabase/functions/run-signal-scorer/index.ts) (read prior session) | Code | Confirm scorer invocation pattern |
+| [backfill-place-photos/index.ts](../../supabase/functions/backfill-place-photos/index.ts) lines 1-100 + DDL | Code | Existing backfill pattern (action-based dispatch + runs/batches tables) — new photo-aesthetic backfill should mirror this exact shape |
+| [migration 20260402000002](../migrations_archive_orch_0729_2026-05-05/20260402000002_photo_backfill_job_system.sql) | Schema | Source of `photo_backfill_runs` + `photo_backfill_batches` schema — prototype for `photo_aesthetic_runs` + `photo_aesthetic_batches` |
+| [migration 20260424220003](../migrations_archive_orch_0729_2026-05-05/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql) | Schema | Latest serving RPC — unchanged by this dispatch |
 | Grep: place_scores consumers across edge functions | Code | Thread C — identify blast radius for any change to score storage |
 | WebFetch: Anthropic pricing page | External | Thread H — verify May 2026 pricing live |
 | `memory/project_place_intelligence_architecture.md` | Memory | Reaffirm Wave 2 architectural constraint (lives INSIDE current scoring system) |
@@ -81,7 +81,7 @@ For the 4 dining signals, raising cap to 1000 preserves all current discriminati
 
 | Field | Evidence |
 |---|---|
-| **File + line** | [signalScorer.ts:166-182](supabase/functions/_shared/signalScorer.ts#L166-L182) — rating_scale + reviews_scale combined cap at `rating_cap + reviews_cap` (60 in most signals: 35 + 25) |
+| **File + line** | [signalScorer.ts:166-182](../../supabase/functions/_shared/signalScorer.ts#L166-L182) — rating_scale + reviews_scale combined cap at `rating_cap + reviews_cap` (60 in most signals: 35 + 25) |
 | **Exact data** | Top-decile popularity share per signal: movies 74.4%, flowers 61.0%, play 54.1%, scenic 47.8%, theatre 46.7%, creative_arts 42.4%, **fine_dining 38.2%**, picnic_friendly 36.1%, lively 35.6%, romantic 35.3%, nature 33.9%, icebreakers 26.4%, drinks 25.8%, brunch 25.1%, casual_food 24.8% |
 | **What it does** | For top-decile fine_dining venues (mean score 129.2), popularity contributes 49.4 (38%); the remaining 79.8 is split across 36 field-weight patterns — most contributing zero per Thread B-3/B-6 |
 | **What it should do** | Quality differentiation should dominate at the top. Popularity should be a baseline qualifier (already enforced via `min_rating` + `min_reviews` hard gates), not the dominant ranking input |
@@ -92,7 +92,7 @@ For the 4 dining signals, raising cap to 1000 preserves all current discriminati
 
 | Field | Evidence |
 |---|---|
-| **File + line** | [signalScorer.ts:184-221](supabase/functions/_shared/signalScorer.ts#L184-L221) — text patterns budget up to 50 points (summary_weight 25 + reviews_weight 15 + atmosphere_weight 10) |
+| **File + line** | [signalScorer.ts:184-221](../../supabase/functions/_shared/signalScorer.ts#L184-L221) — text patterns budget up to 50 points (summary_weight 25 + reviews_weight 15 + atmosphere_weight 10) |
 | **Exact data** | % of scored places with ANY text match: fine_dining **3.6%**, movies 1.9%, flowers 1.8%, groceries 3.4%, picnic_friendly 5.8%, scenic 4.7%, lively 12.7%, romantic 14.7%, brunch 18.5%, drinks 19.5%, play 29.4%, theatre 30.3%, creative_arts 35.9%, casual_food 39.7%, icebreakers 39.5%, nature 43.6% |
 | **What it does** | For fine_dining, only 383 of 10,676 places get any text-pattern points. The 50-point text budget is unused on 96.4% of places |
 | **What it should do** | Quality signals should be densely populated — if 96% of places get no text contribution, the budget is being wasted. Needs a denser quality input |
@@ -105,7 +105,7 @@ For the 4 dining signals, raising cap to 1000 preserves all current discriminati
 
 | Field | Evidence |
 |---|---|
-| **File + line** | [signalScorer.ts:130-138](supabase/functions/_shared/signalScorer.ts#L130-L138) — `if (value === true) { contribs[field] = weight; score += weight; }` — NULL is treated as no contribution (correct semantics, but starves cities with thin Google data) |
+| **File + line** | [signalScorer.ts:130-138](../../supabase/functions/_shared/signalScorer.ts#L130-L138) — `if (value === true) { contribs[field] = weight; score += weight; }` — NULL is treated as no contribution (correct semantics, but starves cities with thin Google data) |
 | **Exact data per city (servable + NULL counts):** | London: 3,627/3,627 (100%) NULL on serves_dinner, reservable, dine_in, wine, generative_summary; Brussels: 1,884/1,884 (100%); Baltimore: 1,253/1,253 (100%); Lagos 75-100% NULL; DC 73% NULL; Raleigh 56% NULL; Cary 54%; Durham 54%; FL 53% |
 | **What it does** | Places in stale-data cities get zero contribution from booleans like `serves_dinner: 30, reservable: 30, dine_in: 15` — losing 75 points before any other consideration |
 | **What it should do** | The signal must have an alternative quality input that doesn't depend on Google booleans being populated |
@@ -130,7 +130,7 @@ For the 4 dining signals, raising cap to 1000 preserves all current discriminati
 
 | Field | Evidence |
 |---|---|
-| **File + line** | [migration 20260424220003 query_servable_places_by_signal](supabase/migrations/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql) `WHERE ps.score >= p_filter_min` — global threshold |
+| **File + line** | [migration 20260424220003 query_servable_places_by_signal](../migrations_archive_orch_0729_2026-05-05/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql) `WHERE ps.score >= p_filter_min` — global threshold |
 | **Exact data** | fine_dining mean/median/p90 per city: FL 42.2/32.2/109.7, DC 39.1/34.7/89.4, Durham 39.5/32.7/91.7, Raleigh 39.0/33.8/88.9, Cary 37.6/33.5/81.8, **Baltimore 35.1/41.7/61.4** (max 179.7). Baltimore p90 cannot reach 120 |
 | **What it does** | A global filter_min: 120 means Baltimore returns only 15 fine_dining cards out of 1,253 servable places (1.2%); FL returns 73 out of 1,006 (7.3%) |
 | **What it should do** | Per-city percentile-based serving thresholds (top 10% within each city) so each city's actual best surfaces regardless of absolute score floor |
@@ -151,7 +151,7 @@ Cohort: rating 4.3-4.6, review_count 100-500, fine_dining-eligible, is_servable,
 
 ### 🟠 C-2: Combined popularity ceiling (rating_cap + reviews_cap) consumes 30% of score budget
 
-[Per signal config snapshot:](memory/...) every signal except groceries has `rating_cap=35, reviews_cap=25`, totaling 60 of 200 (30%) before any field-weight or text-pattern contribution. This is hardcoded per signal version and is the structural reason R-2 fires.
+Per signal config snapshot: (historical source not versioned: `memory/...`) every signal except groceries has `rating_cap=35, reviews_cap=25`, totaling 60 of 200 (30%) before any field-weight or text-pattern contribution. This is hardcoded per signal version and is the structural reason R-2 fires.
 
 ### 🟡 H-1: AI columns still in `place_pool` schema despite decommission status
 
@@ -167,7 +167,7 @@ Multiple signals are at versions far past their seed migration: drinks v1.4.0, b
 
 ### 🔵 O-1: existing photo backfill table pattern is reusable as exact prototype
 
-[migration 20260402000002](supabase/migrations/20260402000002_photo_backfill_job_system.sql): `photo_backfill_runs (id, city, country, total_places, total_batches, batch_size, completed_batches, failed_batches, status, started_at, completed_at, ...)` + `photo_backfill_batches (run_id, batch_index, place_pool_ids[], status, succeeded, failed, ...)`. Plus action-based edge function dispatch (`preview_run`, `create_run`, `run_next_batch`, `cancel_run`, etc.). The new photo-aesthetic system can mirror this shape verbatim with: `photo_aesthetic_runs` + `photo_aesthetic_batches` + `score-place-photo-aesthetics` edge function.
+[migration 20260402000002](../migrations_archive_orch_0729_2026-05-05/20260402000002_photo_backfill_job_system.sql): `photo_backfill_runs (id, city, country, total_places, total_batches, batch_size, completed_batches, failed_batches, status, started_at, completed_at, ...)` + `photo_backfill_batches (run_id, batch_index, place_pool_ids[], status, succeeded, failed, ...)`. Plus action-based edge function dispatch (`preview_run`, `create_run`, `run_next_batch`, `cancel_run`, etc.). The new photo-aesthetic system can mirror this shape verbatim with: `photo_aesthetic_runs` + `photo_aesthetic_batches` + `score-place-photo-aesthetics` edge function.
 
 ### 🔵 O-2: 5 consumers of place_scores across edge functions (no mobile/admin direct reads)
 

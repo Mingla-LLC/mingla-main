@@ -2,7 +2,7 @@
 
 **Mode:** SPEC (forensics complete; 5 decisions locked; binding contract for implementor)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_13_PERMISSIONS_UI.md`](../reports/INVESTIGATION_BIZ_CYCLE_13_PERMISSIONS_UI.md)
-**Dispatch:** [`prompts/SPEC_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS.md`](../prompts/SPEC_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS.md)
+**Dispatch:** `prompts/SPEC_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS.md`)
 **Surface:** Mingla Business mobile app (`mingla-business/`) — operator-side team management + role-based access control foundations
 **Target:** production-ready. Not "good enough." Not "works on happy path." Production.
 **Date:** 2026-05-04
@@ -1080,7 +1080,7 @@ Defer to 13b. Currently only scanners have per-event scoping (`event_scanners` t
 ## 12 — Cross-references
 
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_13_PERMISSIONS_UI.md`](../reports/INVESTIGATION_BIZ_CYCLE_13_PERMISSIONS_UI.md)
-- SPEC dispatch: [`prompts/SPEC_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS.md`](../prompts/SPEC_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS.md)
+- SPEC dispatch: `prompts/SPEC_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS.md`)
 - BUSINESS_PRD §11 (Permissions and Access Control): [`Mingla_Artifacts/BUSINESS_PRD.md`](../BUSINESS_PRD.md) lines 652-686
 - BUSINESS_PRD §14 (MVP v1 — Foundations Cut): lines 1097-1115
 - PR #59 schema (canonical for all 6 tables): `supabase/migrations/20260502100000_b1_business_schema_rls.sql` — biz_role_rank lines 11-30; brand_team_members lines 146-180; brand_invitations 182-214; RLS 416-487; event_scanners + scanner_invitations 1130-1170; permissions_matrix + audit_log 1560-1652

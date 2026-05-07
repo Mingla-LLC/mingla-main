@@ -4,7 +4,7 @@
 **Date:** 2026-05-05
 **Author:** mingla-forensics (SPEC mode)
 **Severity:** S1-high (production rerank blocker; ORCH-0734 CLOSE gates on this)
-**Parent dispatch:** [`prompts/SPEC_ORCH-0735_BOUNCER_CHAIN_FAST_FOOD_RULES.md`](../prompts/SPEC_ORCH-0735_BOUNCER_CHAIN_FAST_FOOD_RULES.md)
+**Parent dispatch:** `prompts/SPEC_ORCH-0735_BOUNCER_CHAIN_FAST_FOOD_RULES.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_ORCH-0735_BOUNCER_CHAIN_FAST_FOOD_RULES.md`)
 **Parent investigation:** [`reports/INVESTIGATION_ORCH-0735_BOUNCER_CHAIN_GAP.md`](../reports/INVESTIGATION_ORCH-0735_BOUNCER_CHAIN_GAP.md) (REVIEW APPROVED)
 **Operator-review interim deliverable:** [`specs/SPEC_ORCH-0735_INTERIM_OPERATOR_REVIEW_CHAIN_LIST.md`](SPEC_ORCH-0735_INTERIM_OPERATOR_REVIEW_CHAIN_LIST.md) (operator markup 2026-05-05 — locked)
 

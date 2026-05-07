@@ -3,8 +3,8 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · runtime UNVERIFIED (awaits user smoke)
 **Scope:** 5 NEW files + 4 MOD files · 1 new external dep · 1 schema bump v9→v10 · 0 new TRANSITIONALs
-**Spec:** [specs/SPEC_ORCH-BIZ-CYCLE-7.md](Mingla_Artifacts/specs/SPEC_ORCH-BIZ-CYCLE-7.md) (forensics §1-§11 + addendum §12)
-**Investigation:** [reports/INVESTIGATION_ORCH-BIZ-CYCLE-7.md](Mingla_Artifacts/reports/INVESTIGATION_ORCH-BIZ-CYCLE-7.md)
+**Spec:** [specs/SPEC_ORCH-BIZ-CYCLE-7.md](../specs/SPEC_ORCH-BIZ-CYCLE-7.md) (forensics §1-§11 + addendum §12)
+**Investigation:** [reports/INVESTIGATION_ORCH-BIZ-CYCLE-7.md](INVESTIGATION_ORCH-BIZ-CYCLE-7.md)
 
 ---
 

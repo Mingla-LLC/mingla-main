@@ -2,7 +2,7 @@
 
 **Status:** implemented and partially verified — Vite build PASS · grep gates PASS · Deno typecheck deferred (not available locally; verifies on `supabase functions deploy`) · operator runtime verification PENDING (re-run 32 anchors → expect ~$0.30 cost vs $0.66 v2)
 **ORCH IDs in scope:** ORCH-0713 cost reduction (Phase 0.5 follow-on)
-**Dispatch:** [Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0713_TRIAL_COST_REDUCTION.md](../prompts/IMPLEMENTOR_ORCH-0713_TRIAL_COST_REDUCTION.md)
+**Dispatch:** Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0713_TRIAL_COST_REDUCTION.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0713_TRIAL_COST_REDUCTION.md`)
 **Builds on:** v2 calibration (commit `d76630fe`) which proved Q2-only path is sufficient for production rerank
 
 ---

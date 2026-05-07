@@ -3,7 +3,7 @@
 **Date:** 2026-05-01
 **Author:** mingla-forensics
 **Mode:** INVESTIGATE-THEN-SPEC
-**Dispatch:** [Mingla_Artifacts/prompts/FORENSICS_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](Mingla_Artifacts/prompts/FORENSICS_BIZ_CYCLE_9_EVENT_MANAGEMENT.md)
+**Dispatch:** Mingla_Artifacts/prompts/FORENSICS_BIZ_CYCLE_9_EVENT_MANAGEMENT.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/FORENSICS_BIZ_CYCLE_9_EVENT_MANAGEMENT.md`)
 **Confidence:** HIGH
 
 ---

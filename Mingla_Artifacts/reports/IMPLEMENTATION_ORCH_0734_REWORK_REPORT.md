@@ -1,7 +1,7 @@
 # IMPL REPORT — ORCH-0734 REWORK — Brand-delete silent no-op + trash-icon parent-prop fix
 
 **Mode:** IMPLEMENT (binding spec — paste verbatim per dispatch §2)
-**Dispatch:** [`prompts/IMPL_ORCH_0734_REWORK_DELETE_FIX.md`](../prompts/IMPL_ORCH_0734_REWORK_DELETE_FIX.md)
+**Dispatch:** `prompts/IMPL_ORCH_0734_REWORK_DELETE_FIX.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPL_ORCH_0734_REWORK_DELETE_FIX.md`)
 **SPEC (BINDING):** [`specs/SPEC_ORCH_0734_REWORK_DELETE_FIX.md`](../specs/SPEC_ORCH_0734_REWORK_DELETE_FIX.md)
 **Investigation:** [`reports/INVESTIGATION_ORCH_0734_REWORK_DELETE_PATH_BRUTAL.md`](INVESTIGATION_ORCH_0734_REWORK_DELETE_PATH_BRUTAL.md)
 **Closes (after operator UI smoke + tester PASS):** RC-0734-RW-A (silent no-op) + RC-0734-RW-B (trash icon hidden) + CF-0734-RW-1 (no success Toast) + HF-0734-RW-2 (no diagnostic logging on delete path)

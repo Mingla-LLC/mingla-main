@@ -1,7 +1,7 @@
 # IMPL REPORT — ORCH-0729 RAW-FETCH PROBE
 
 **Mode:** IMPLEMENT (DIAGNOSTIC ONLY — temporary, removed at full IMPL of `SPEC_ORCH_0729_PIPELINE_FIX.md`)
-**Dispatch anchor:** [`prompts/IMPL_ORCH_0729_RAW_FETCH_PROBE.md`](../prompts/IMPL_ORCH_0729_RAW_FETCH_PROBE.md)
+**Dispatch anchor:** `prompts/IMPL_ORCH_0729_RAW_FETCH_PROBE.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPL_ORCH_0729_RAW_FETCH_PROBE.md`)
 **Authored:** 2026-05-06
 
 ---

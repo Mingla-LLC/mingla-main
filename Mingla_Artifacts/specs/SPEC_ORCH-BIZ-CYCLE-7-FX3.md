@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-01
 **Author:** mingla-forensics
-**Investigation:** [reports/INVESTIGATION_ORCH-BIZ-CYCLE-7-FX3.md](Mingla_Artifacts/reports/INVESTIGATION_ORCH-BIZ-CYCLE-7-FX3.md)
+**Investigation:** [reports/INVESTIGATION_ORCH-BIZ-CYCLE-7-FX3.md](../reports/INVESTIGATION_ORCH-BIZ-CYCLE-7-FX3.md)
 **Estimated effort:** 15 min implementor + 10 min smoke
 
 ---

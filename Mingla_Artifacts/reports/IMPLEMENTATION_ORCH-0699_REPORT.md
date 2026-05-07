@@ -4,7 +4,7 @@
 **Implementor:** /mingla-implementor
 **Spec:** [specs/SPEC_ORCH-0699_PREFS_SHEET_TOGGLE_GATE.md](../specs/SPEC_ORCH-0699_PREFS_SHEET_TOGGLE_GATE.md)
 **Investigation:** [reports/INVESTIGATION_ORCH-0699_PREFS_SHEET_TOGGLE_LEAK.md](INVESTIGATION_ORCH-0699_PREFS_SHEET_TOGGLE_LEAK.md)
-**Dispatch:** [prompts/IMPL_ORCH-0699_PREFS_SHEET_TOGGLE_GATE.md](../prompts/IMPL_ORCH-0699_PREFS_SHEET_TOGGLE_GATE.md)
+**Dispatch:** prompts/IMPL_ORCH-0699_PREFS_SHEET_TOGGLE_GATE.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPL_ORCH-0699_PREFS_SHEET_TOGGLE_GATE.md`)
 **Status:** `implemented, partially verified` (code-trace PASS for 14/21 SCs; 7 SCs require operator runtime smoke)
 
 ---

@@ -5,7 +5,7 @@
 **Implementor:** mingla-implementor
 **SPEC:** [`Mingla_Artifacts/specs/SPEC_ORCH-0734_CITY_RUNS.md`](../specs/SPEC_ORCH-0734_CITY_RUNS.md) (BINDING)
 **Investigation:** [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0734_CITY_RUNS.md`](INVESTIGATION_ORCH-0734_CITY_RUNS.md)
-**Dispatch:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0734_CITY_RUNS.md`](../prompts/IMPLEMENTOR_ORCH-0734_CITY_RUNS.md)
+**Dispatch:** `Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0734_CITY_RUNS.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0734_CITY_RUNS.md`)
 
 ---
 

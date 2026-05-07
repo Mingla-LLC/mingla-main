@@ -3,7 +3,7 @@
 **Status:** Operator-side runbook — NO code changes needed in this phase
 **Phase:** 0'' (between Sub-dispatch A code+migration commits and Sub-dispatch B backend work)
 **Estimated effort:** 1-2 hours operator time
-**Per:** [outputs/SPEC_B2_PATH_C_V3.md §2 D-V3-15](../../outputs/SPEC_B2_PATH_C_V3.md) + [Stripe best-practices audit A5](../../Mingla_Artifacts/reports/STRIPE_BEST_PRACTICES_AUDIT_B2_PATH_C_V2.md)
+**Per:** [outputs/SPEC_B2_PATH_C_V3.md §2 D-V3-15](../../Mingla_Artifacts/archive/outputs_legacy/SPEC_B2_PATH_C_V3.md) + [Stripe best-practices audit A5](../../Mingla_Artifacts/reports/STRIPE_BEST_PRACTICES_AUDIT_B2_PATH_C_V2.md)
 
 ---
 
@@ -256,7 +256,7 @@ After 24-hour soak test:
 
 ## Cross-references
 
-- SPEC v3 D-V3-15: [outputs/SPEC_B2_PATH_C_V3.md §2](../../outputs/SPEC_B2_PATH_C_V3.md)
+- SPEC v3 D-V3-15: [outputs/SPEC_B2_PATH_C_V3.md §2](../../Mingla_Artifacts/archive/outputs_legacy/SPEC_B2_PATH_C_V3.md)
 - Stripe best-practices audit A5 (RAK migration recommendation): [Mingla_Artifacts/reports/STRIPE_BEST_PRACTICES_AUDIT_B2_PATH_C_V2.md](../../Mingla_Artifacts/reports/STRIPE_BEST_PRACTICES_AUDIT_B2_PATH_C_V2.md)
 - Investigation Thread 26 (RAK scope research): [Mingla_Artifacts/reports/INVESTIGATION_B2_PATH_C_V3_FULL_AUDIT.md](../../Mingla_Artifacts/reports/INVESTIGATION_B2_PATH_C_V3_FULL_AUDIT.md)
 - Stripe RAK docs: https://docs.stripe.com/keys/restricted-api-keys

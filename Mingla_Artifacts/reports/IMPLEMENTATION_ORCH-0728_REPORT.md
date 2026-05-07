@@ -9,7 +9,7 @@
 
 **Backward deps:**
 - Forensics: ORCH-0725 §10 noted Track H deferral of "schema additions added via dashboard but not in migrations" — explicitly out of scope. ORCH-0728 is the post-discovery fix.
-- Dispatch: [`Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0728_ADD_CLAIMED_BY_COLUMN.md`](../prompts/IMPLEMENTOR_ORCH-0728_ADD_CLAIMED_BY_COLUMN.md).
+- Dispatch: `Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0728_ADD_CLAIMED_BY_COLUMN.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0728_ADD_CLAIMED_BY_COLUMN.md`).
 - Sibling commits: `4e8f784d` (ORCH-0721) + `cd276c3b` (ORCH-0722) + `27d8c0c1` (ORCH-0724/0725 Option A — superseded) + `0b706dc3` (ORCH-0727 Option B).
 
 ---

@@ -2,7 +2,7 @@
 
 **Spec author:** mingla-forensics (SPEC mode following INVESTIGATE)
 **Investigation:** [`reports/INVESTIGATION_ORCH-BIZ-CYCLE-3-EVENT-CREATOR.md`](../reports/INVESTIGATION_ORCH-BIZ-CYCLE-3-EVENT-CREATOR.md)
-**Dispatch:** [`prompts/FORENSICS_BIZ_CYCLE_3_EVENT_CREATOR.md`](../prompts/FORENSICS_BIZ_CYCLE_3_EVENT_CREATOR.md)
+**Dispatch:** `prompts/FORENSICS_BIZ_CYCLE_3_EVENT_CREATOR.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_3_EVENT_CREATOR.md`)
 **Cycle:** 3 — wedge cycle (5 journeys, 1 wizard surface)
 **Codebase:** `mingla-business/`
 **Date:** 2026-04-30

@@ -3,7 +3,7 @@
 **Cycle:** 2 polish micro-slice (between J-A9 close and J-A10 forensics)
 **Codebase:** `mingla-business/`
 **Predecessor commit:** `573cc55a` (J-A9 + smoke fixes CLOSE merge)
-**Dispatch:** [IMPL_BIZ_CYCLE_2_AVATAR_PRIMITIVE.md](Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_2_AVATAR_PRIMITIVE.md)
+**Dispatch:** IMPL_BIZ_CYCLE_2_AVATAR_PRIMITIVE.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_2_AVATAR_PRIMITIVE.md`)
 **Implementor turn:** 2026-04-30
 **Status:** completed · Verification: passed (mechanical) · awaits operator visual smoke
 

@@ -9,7 +9,7 @@
 
 **Backward deps:**
 - Forensics: [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0722_SIBLING_TIME_BOMB_AUDIT.md`](INVESTIGATION_ORCH-0722_SIBLING_TIME_BOMB_AUDIT.md)
-- Dispatch: [`Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0722_FIX_OUT_PARAM_BOMBS.md`](../prompts/IMPLEMENTOR_ORCH-0722_FIX_OUT_PARAM_BOMBS.md)
+- Dispatch: `Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0722_FIX_OUT_PARAM_BOMBS.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0722_FIX_OUT_PARAM_BOMBS.md`)
 - Sibling commit: ORCH-0721 Step 1 commit `4e8f784d` (CONCURRENTLY removed from `20260409200001`).
 - Pattern reference: [`Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0700_MIGRATION_5_OUT_PARAM_FIX_REPORT.md`](IMPLEMENTATION_ORCH-0700_MIGRATION_5_OUT_PARAM_FIX_REPORT.md) — same bug class, same fix pattern, 12 days ago.
 

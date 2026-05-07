@@ -5,7 +5,7 @@
 **Date:** 2026-05-04
 **Surface:** Mingla Business mobile + web (`mingla-business/`) — closes Phase 5 alongside Cycles 14 + 15
 **Cycle:** 16a (BIZ Cross-Cutting Polish quick wins; OTA-able)
-**Dispatch:** [`prompts/IMPLEMENTOR_BIZ_CYCLE_16A_QUICK_WINS.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_16A_QUICK_WINS.md)
+**Dispatch:** `prompts/IMPLEMENTOR_BIZ_CYCLE_16A_QUICK_WINS.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_16A_QUICK_WINS.md`)
 **SPEC (BINDING):** [`specs/SPEC_BIZ_CYCLE_16A_QUICK_WINS.md`](../specs/SPEC_BIZ_CYCLE_16A_QUICK_WINS.md)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_16_CROSS_CUTTING_POLISH.md`](./INVESTIGATION_BIZ_CYCLE_16_CROSS_CUTTING_POLISH.md)
 **Decision lock-in:** `DECISION_LOG.md` DEC-098
@@ -439,7 +439,7 @@ If any step fails → reply with "failed at step N: [symptom]" + I'll write rewo
 
 ## 16 — Cross-references
 
-- Dispatch: [`prompts/IMPLEMENTOR_BIZ_CYCLE_16A_QUICK_WINS.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_16A_QUICK_WINS.md)
+- Dispatch: `prompts/IMPLEMENTOR_BIZ_CYCLE_16A_QUICK_WINS.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_16A_QUICK_WINS.md`)
 - SPEC (BINDING): [`specs/SPEC_BIZ_CYCLE_16A_QUICK_WINS.md`](../specs/SPEC_BIZ_CYCLE_16A_QUICK_WINS.md)
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_16_CROSS_CUTTING_POLISH.md`](./INVESTIGATION_BIZ_CYCLE_16_CROSS_CUTTING_POLISH.md)
 - Decision lock-in: `DECISION_LOG.md` DEC-098

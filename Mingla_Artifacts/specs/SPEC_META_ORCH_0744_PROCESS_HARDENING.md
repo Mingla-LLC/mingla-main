@@ -2,14 +2,14 @@
 
 **Mode:** SPEC (Forensics SPEC mode; INVESTIGATE phase done by ORCH-0744 forensics §7 meta-findings)
 **Authored by:** mingla-forensics, 2026-05-06
-**Dispatch:** [`prompts/SPEC_META_ORCH_0744_PROCESS_HARDENING.md`](../prompts/SPEC_META_ORCH_0744_PROCESS_HARDENING.md)
+**Dispatch:** `prompts/SPEC_META_ORCH_0744_PROCESS_HARDENING.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_META_ORCH_0744_PROCESS_HARDENING.md`)
 **Predecessor evidence:**
 - [`reports/INVESTIGATION_ORCH_0744_LATENT_DEFECTS_SWEEP.md`](../reports/INVESTIGATION_ORCH_0744_LATENT_DEFECTS_SWEEP.md) §7 — meta-findings M-1..M-5 (the source of this SPEC)
 - [`reports/QA_ORCH_0743_REPORT.md`](../reports/QA_ORCH_0743_REPORT.md) — confirms ORCH-0743 closed cleanly; this cycle now lands on a clean baseline
 - [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](../INVARIANT_REGISTRY.md) — letter-reservation context for the 5 new invariants
 - [`.github/workflows/strict-grep-mingla-business.yml`](../../.github/workflows/strict-grep-mingla-business.yml) — existing workflow registry pattern (DEC-101 D-17b-5)
 - [`.github/scripts/strict-grep/README.md`](../../.github/scripts/strict-grep/README.md) — strict-grep scaffold conventions (4-step add-a-gate procedure)
-- [`.claude/skills/mingla-orchestrator/SKILL.md`](../../.claude/skills/mingla-orchestrator/SKILL.md) §"Mode: CLOSE" — M-2 insertion site
+- `.claude/skills/mingla-orchestrator/SKILL.md` (historical source not versioned: `../../.claude/skills/mingla-orchestrator/SKILL.md`) §"Mode: CLOSE" — M-2 insertion site
 
 **Branch / commit at SPEC time:** `Seth` / `22fe5507` (post-ORCH-0743 CLOSE)
 

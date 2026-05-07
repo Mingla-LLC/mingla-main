@@ -1,7 +1,7 @@
 # INVESTIGATION — ORCH-BIZ-CYCLE-3 Event Creator (7-step wizard)
 
 **Investigator:** mingla-forensics (INVESTIGATE-THEN-SPEC)
-**Dispatch:** [`prompts/FORENSICS_BIZ_CYCLE_3_EVENT_CREATOR.md`](../prompts/FORENSICS_BIZ_CYCLE_3_EVENT_CREATOR.md)
+**Dispatch:** `prompts/FORENSICS_BIZ_CYCLE_3_EVENT_CREATOR.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_3_EVENT_CREATOR.md`)
 **Spec output:** [`specs/SPEC_ORCH-BIZ-CYCLE-3-EVENT-CREATOR.md`](../specs/SPEC_ORCH-BIZ-CYCLE-3-EVENT-CREATOR.md)
 **Cycle:** 3 — the wedge cycle
 **Codebase:** `mingla-business/`

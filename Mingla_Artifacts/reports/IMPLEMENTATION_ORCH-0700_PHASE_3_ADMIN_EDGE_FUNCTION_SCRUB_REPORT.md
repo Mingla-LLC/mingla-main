@@ -1,7 +1,7 @@
 # IMPLEMENTATION REPORT — ORCH-0700 Phase 3 Admin Edge Function Scrub
 
 **Skill:** mingla-implementor
-**Dispatch:** [IMPLEMENTOR_ORCH-0700_PHASE_3_ADMIN_EDGE_FUNCTION_SCRUB.md](../prompts/IMPLEMENTOR_ORCH-0700_PHASE_3_ADMIN_EDGE_FUNCTION_SCRUB.md)
+**Dispatch:** IMPLEMENTOR_ORCH-0700_PHASE_3_ADMIN_EDGE_FUNCTION_SCRUB.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0700_PHASE_3_ADMIN_EDGE_FUNCTION_SCRUB.md`)
 **Investigation:** [INVESTIGATION_ORCH-0700_PHASE_2_LANDMINE_AUDIT.md](INVESTIGATION_ORCH-0700_PHASE_2_LANDMINE_AUDIT.md)
 **Status:** **implemented, partially verified**
 **Verification:** SC-01 + SC-03 + SC-05 + SC-06 + SC-07 PASS · SC-02 PASS-via-bundler-substitute · SC-04 partial (operator manual smoke required)

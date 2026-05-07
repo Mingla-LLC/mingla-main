@@ -9,7 +9,7 @@
 
 **Backward deps:**
 - Forensics: [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0725_TRACK_H_APPLY_TIME_AUDIT.md`](INVESTIGATION_ORCH-0725_TRACK_H_APPLY_TIME_AUDIT.md) §6 Option B.
-- Dispatch: [`Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0727_REWORK_SLUG_RENAME_OPTION_B.md`](../prompts/IMPLEMENTOR_ORCH-0727_REWORK_SLUG_RENAME_OPTION_B.md).
+- Dispatch: `Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0727_REWORK_SLUG_RENAME_OPTION_B.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0727_REWORK_SLUG_RENAME_OPTION_B.md`).
 - Prior commits in chain:
   - `4e8f784d` — ORCH-0721 (CONCURRENTLY removed)
   - `cd276c3b` — ORCH-0722 (OUT-param shape × 2)

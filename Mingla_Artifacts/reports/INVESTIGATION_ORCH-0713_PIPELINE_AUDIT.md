@@ -1,7 +1,7 @@
 # INVESTIGATION — ORCH-0713 Phase 0: Pre-Bouncer → Scoring Pipeline Audit
 
 **Mode:** INVESTIGATE (forensics)
-**Dispatch:** [Mingla_Artifacts/prompts/FORENSICS_ORCH-0713_PIPELINE_AUDIT.md](../prompts/FORENSICS_ORCH-0713_PIPELINE_AUDIT.md)
+**Dispatch:** Mingla_Artifacts/prompts/FORENSICS_ORCH-0713_PIPELINE_AUDIT.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_ORCH-0713_PIPELINE_AUDIT.md`)
 **Date:** 2026-05-04
 **Confidence:** HIGH on pipeline structure + slot map; HIGH on photo-aesthetic integration gap; MEDIUM on per-signal scorer rules (referenced ORCH-0708 audit, did not re-derive).
 
@@ -135,7 +135,7 @@ Then user requests trigger `discover-cards` → `query_servable_places_by_signal
 
 | # | Stage | File / function | Inputs | Outputs (column triple) | Verdict |
 |---|---|---|---|---|---|
-| 1 | Place admission | `admin-seed-places/index.ts` ([1041](supabase/functions/admin-seed-places/index.ts#L1041), [1484](supabase/functions/admin-seed-places/index.ts#L1484)) | Google Places API | 80 columns; carve-outs for I-COLLAGE-SOLE-OWNER + I-PHOTO-AESTHETIC-DATA-SOLE-OWNER | 🔵 Healthy |
+| 1 | Place admission | `admin-seed-places/index.ts` ([1041](../../supabase/functions/admin-seed-places/index.ts#L1041), [1484](../../supabase/functions/admin-seed-places/index.ts#L1484)) | Google Places API | 80 columns; carve-outs for I-COLLAGE-SOLE-OWNER + I-PHOTO-AESTHETIC-DATA-SOLE-OWNER | 🔵 Healthy |
 | 2 | Pre-photo Bouncer | `run-pre-photo-bouncer/index.ts` (202 lines) | place_pool rows, bouncer.ts | `passes_pre_photo_check, pre_photo_bouncer_reason, pre_photo_bouncer_validated_at` | 🟡 No admin UI |
 | 3 | Photo backfill | `backfill-place-photos/index.ts` (1047 lines, action dispatch) | photos JSONB, Google Photos API | `stored_photo_urls[]` (or `__backfill_failed__` sentinel) | 🟠 Coverage gap (see §6) |
 | 4 | Final Bouncer | `run-bouncer/index.ts` (189 lines) | place_pool rows + stored_photo_urls | `is_servable, bouncer_reason, bouncer_validated_at` | 🟡 No admin UI |
@@ -144,7 +144,7 @@ Then user requests trigger `discover-cards` → `query_servable_places_by_signal
 | 6b | Trial pipeline | `run-place-intelligence-trial/index.ts` | anchors + Serper + collage + Claude | `place_intelligence_trial_runs` (research) | 🔵 Healthy; research-only by invariant |
 | 7 | Matview refresh | pg_cron `cron_refresh_admin_place_pool_mv` (every 10 min) | place_pool + helper | `admin_place_pool_mv.primary_category` (helper-derived) | 🟡 Known taxonomy mismatch (per CATEGORY_PIPELINE_E2E) |
 | 8 | Rec edge function | `discover-cards/index.ts` (~1037 lines) | RPC + chip mapping | Card response | 🔵 Healthy |
-| 9 | Serving RPC | `query_servable_places_by_signal` ([20260424220003](supabase/migrations/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql)) | place_pool + place_scores | Ranked rows | 🔵 Healthy; G3 photo gate intact |
+| 9 | Serving RPC | `query_servable_places_by_signal` ([20260424220003](../migrations_archive_orch_0729_2026-05-05/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql)) | place_pool + place_scores | Ranked rows | 🔵 Healthy; G3 photo gate intact |
 
 Legend: 🔴 broken / 🟠 fragile / 🟡 unverified or non-blocking gap / 🔵 healthy.
 
@@ -234,7 +234,7 @@ For the `flowers` rule specifically (operator's question from forensics dispatch
 
 | Field | Evidence |
 |---|---|
-| File + line | [`_shared/signalScorer.ts:34-63`](supabase/functions/_shared/signalScorer.ts#L34-L63) `PlaceForScoring` interface |
+| File + line | [`_shared/signalScorer.ts:34-63`](../../supabase/functions/_shared/signalScorer.ts#L34-L63) `PlaceForScoring` interface |
 | Exact code | Interface lists 17 boolean fields + rating/reviews/types/price; **does NOT include `photo_aesthetic_data`** |
 | What it does | Scorer reads only the boolean + price + text fields from place_pool. The 30 places with aesthetic data have it sitting unused. |
 | What it should do | Per ORCH-0708 §7 (Field-Weight Pattern Decision): add 7 prefix matchers `photo_aesthetic_above_<thr>`, `photo_lighting_<value>`, `photo_vibe_includes_<tag>`, `photo_appropriate_for_includes_<signal>`, `photo_inappropriate_for_includes_<signal>`, `photo_safety_includes_<flag>`, `photo_subject_<value>`. Plus signal config v_next migrations to USE those weights. Plus extend `run-signal-scorer/index.ts:21-27` SELECT_FIELDS. |
@@ -252,14 +252,14 @@ For the unified per-city function, the following building blocks exist and are p
 | Component | File | Reusable for |
 |---|---|---|
 | Action-based dispatch shape | `backfill-place-photos`, `score-place-photo-aesthetics`, `run-place-intelligence-trial` | Per-stage runs/batches lifecycle |
-| `photo_backfill_runs` + `photo_backfill_batches` schema pattern | [migration 20260402000002](supabase/migrations/20260402000002_photo_backfill_job_system.sql) | Template for `unified_pipeline_runs` + `unified_pipeline_batches` |
+| `photo_backfill_runs` + `photo_backfill_batches` schema pattern | [migration 20260402000002](../migrations_archive_orch_0729_2026-05-05/20260402000002_photo_backfill_job_system.sql) | Template for `unified_pipeline_runs` + `unified_pipeline_batches` |
 | `_shared/imageCollage.ts` | New ORCH-0712 | Adaptive grid composition + photo fingerprint |
 | Serper reviews fetch (paginated to 100) | `run-place-intelligence-trial` | Per-place review pull for evidence bundle |
 | Per-place edge function pattern | `run_trial_for_place` action in trial fn | Model for per-place worker in unified pipeline |
 | Browser orchestration loop | `PhotoScorerPage.jsx`, `TrialResultsTab.jsx` | Per-batch progress UI + `useRef` synchronous guard against double-click |
 | Bouncer pure logic | `_shared/bouncer.ts` | Reused unchanged by Stage 2 + Stage 4 |
 | Signal scorer pure logic | `_shared/signalScorer.ts` | Reused unchanged by Stage 5 |
-| `query_servable_places_by_signal` RPC | [migration 20260424220003](supabase/migrations/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql) | Read path; needs LEFT JOIN to `place_claude_evaluations` for rerank |
+| `query_servable_places_by_signal` RPC | [migration 20260424220003](../migrations_archive_orch_0729_2026-05-05/20260424220003_orch_0634_query_servable_places_by_signal_photo_gate.sql) | Read path; needs LEFT JOIN to `place_claude_evaluations` for rerank |
 
 **Critically: nothing needs to be rebuilt.** The unified pipeline is an orchestrator on top of existing single-stage edge functions.
 
@@ -294,10 +294,10 @@ For the unified per-city function, the following building blocks exist and are p
 | Operator phrase | Existing edge function(s) | What's missing |
 |---|---|---|
 | "per city" | `city_id` param accepted by every edge function (run-bouncer, run-pre-photo-bouncer, run-signal-scorer, score-place-photo-aesthetics, backfill-place-photos all accept it) | Single orchestrator that loops the city through all phases |
-| "pre-bouncer" | `run-pre-photo-bouncer` ([202 lines](supabase/functions/run-pre-photo-bouncer/index.ts)) | NO admin UI today |
-| "downloads photos for places without photos" | `backfill-place-photos` (action: `create_run` then loop `run_next_batch`) ([1047 lines](supabase/functions/backfill-place-photos/index.ts)) | Already gated by `passes_pre_photo_check=true`; just needs orchestrator to invoke after Stage 2 |
-| "bouncer" | `run-bouncer` ([189 lines](supabase/functions/run-bouncer/index.ts)) | NO admin UI today |
-| "scores" | `run-signal-scorer` ([234 lines](supabase/functions/run-signal-scorer/index.ts)) | Per-signal invocation — orchestrator must loop over the 16 active signals |
+| "pre-bouncer" | `run-pre-photo-bouncer` ([202 lines](../../supabase/functions/run-pre-photo-bouncer/index.ts)) | NO admin UI today |
+| "downloads photos for places without photos" | `backfill-place-photos` (action: `create_run` then loop `run_next_batch`) ([1047 lines](../../supabase/functions/backfill-place-photos/index.ts)) | Already gated by `passes_pre_photo_check=true`; just needs orchestrator to invoke after Stage 2 |
+| "bouncer" | `run-bouncer` ([189 lines](../../supabase/functions/run-bouncer/index.ts)) | NO admin UI today |
+| "scores" | `run-signal-scorer` ([234 lines](../../supabase/functions/run-signal-scorer/index.ts)) | Per-signal invocation — orchestrator must loop over the 16 active signals |
 | "incorporate Claude trial-run evaluation" | NEW `evaluate-place-for-signal` per-place worker (mirror ORCH-0712 trial fn) | Doesn't exist; needs schema (`place_claude_evaluations`) + background pre-compute job + RPC join |
 
 **Net new code for ORCH-0713:**
@@ -362,7 +362,7 @@ The spec writer should scope ORCH-0713 as **three phases**:
 
 ## 14. Discoveries for Orchestrator (side issues to register)
 
-1. 🟠 **D1 — ORCH-0708 Phase 2 was deferred and never explicitly registered.** The spec exists ([SPEC_ORCH-0708_PHOTO_AESTHETIC_SCORING_INTEGRATION.md](Mingla_Artifacts/reports/SPEC_ORCH-0708_PHOTO_AESTHETIC_SCORING_INTEGRATION.md) §7) but no implementor dispatch ever shipped the scorer extension. ORCH-0713 Phase 1 absorbs it.
+1. 🟠 **D1 — ORCH-0708 Phase 2 was deferred and never explicitly registered.** The spec exists ([SPEC_ORCH-0708_PHOTO_AESTHETIC_SCORING_INTEGRATION.md](SPEC_ORCH-0708_PHOTO_AESTHETIC_SCORING_INTEGRATION.md) §7) but no implementor dispatch ever shipped the scorer extension. ORCH-0713 Phase 1 absorbs it.
 2. 🟡 **D2 — No admin UI for `run-bouncer` or `run-pre-photo-bouncer` today.** Operator invokes via console (PowerShell + curl). The unified `CityPipelinePage` from Phase 1 fixes this.
 3. 🟡 **D3 — Trial `test-serper-reviews` edge function still deployed.** Throwaway from ORCH-0712 development. Delete post-CLOSE.
 4. 🟡 **D4 — `admin_place_pool_mv.primary_category` taxonomy mismatch is OPEN** (per CATEGORY_PIPELINE_E2E §G). Not blocking for ORCH-0713 but should remain on the orchestrator's open list.

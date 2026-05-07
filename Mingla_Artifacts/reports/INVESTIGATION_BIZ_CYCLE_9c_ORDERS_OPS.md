@@ -394,7 +394,7 @@ The only uncertainty is real-runtime behavior of the buyer order detail page (an
 ## 12 — Cross-references
 
 - Spec: [SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md](../specs/SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md)
-- Dispatch: [FORENSICS_SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md](../prompts/FORENSICS_SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md)
+- Dispatch: FORENSICS_SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md`)
 - Backward dependency: ORCH-0704 v2 [SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH_v2.md](../specs/SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH_v2.md) §3.1.5 (canonical OrderRecord)
 - Cycle 9 master forensics: [INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](INVESTIGATION_BIZ_CYCLE_9_EVENT_MANAGEMENT.md)
 - Cycle 9 master spec: [SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](../specs/SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md) (J-M sections obsolete-on-close per D-9c-3)

@@ -9,7 +9,7 @@
 
 **Backward deps:**
 - Forensics: [`Mingla_Artifacts/reports/INVESTIGATION_ORCH-0725_TRACK_H_APPLY_TIME_AUDIT.md`](INVESTIGATION_ORCH-0725_TRACK_H_APPLY_TIME_AUDIT.md) §6 Option A — verbatim recommended fix.
-- Dispatch: [`Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0724_FIX_SLUG_RENAME_PK_COLLISION.md`](../prompts/IMPLEMENTOR_ORCH-0724_FIX_SLUG_RENAME_PK_COLLISION.md).
+- Dispatch: `Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0724_FIX_SLUG_RENAME_PK_COLLISION.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0724_FIX_SLUG_RENAME_PK_COLLISION.md`).
 - Sibling commits: ORCH-0721 commit `4e8f784d` (CONCURRENTLY) + ORCH-0722 commit `cd276c3b` (OUT-param shape × 2).
 
 ---

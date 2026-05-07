@@ -3,7 +3,7 @@
 **Status:** implemented, partially verified
 **Verification:** tsc PASS · web smoke UNVERIFIED (awaits user) · iOS regression UNVERIFIED
 **Scope:** 3 files MOD · ~+170/-160 LOC delta · 0 new external deps · 0 new files · 0 new TRANSITIONALs
-**Spec:** [prompts/IMPL_BIZ_CYCLE_6_FX3_5_WEB_DIRECT_PICKER.md](Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_6_FX3_5_WEB_DIRECT_PICKER.md)
+**Spec:** prompts/IMPL_BIZ_CYCLE_6_FX3_5_WEB_DIRECT_PICKER.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_6_FX3_5_WEB_DIRECT_PICKER.md`)
 
 ---
 

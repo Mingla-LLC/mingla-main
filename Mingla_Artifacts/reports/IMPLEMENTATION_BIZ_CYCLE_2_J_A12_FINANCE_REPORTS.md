@@ -4,9 +4,9 @@
 **Cycle:** 2 (Brands) — **FINAL** journey
 **Codebase:** `mingla-business/`
 **Predecessor commit:** `b117c39e` (J-A10/A11 CLOSE) → `0f309f89` (orchestrator handoff)
-**Spec:** [SPEC_ORCH-BIZ-CYCLE-2-J-A12_FINANCE_REPORTS.md](Mingla_Artifacts/specs/SPEC_ORCH-BIZ-CYCLE-2-J-A12_FINANCE_REPORTS.md)
-**Investigation:** [INVESTIGATION_ORCH-BIZ-CYCLE-2-J-A12.md](Mingla_Artifacts/reports/INVESTIGATION_ORCH-BIZ-CYCLE-2-J-A12.md)
-**Dispatch:** [IMPL_BIZ_CYCLE_2_J_A12_FINANCE_REPORTS.md](Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_2_J_A12_FINANCE_REPORTS.md)
+**Spec:** [SPEC_ORCH-BIZ-CYCLE-2-J-A12_FINANCE_REPORTS.md](../specs/SPEC_ORCH-BIZ-CYCLE-2-J-A12_FINANCE_REPORTS.md)
+**Investigation:** [INVESTIGATION_ORCH-BIZ-CYCLE-2-J-A12.md](INVESTIGATION_ORCH-BIZ-CYCLE-2-J-A12.md)
+**Dispatch:** IMPL_BIZ_CYCLE_2_J_A12_FINANCE_REPORTS.md (PRIVATE_PROMPT_NOT_VERSIONED: `Mingla_Artifacts/prompts/IMPL_BIZ_CYCLE_2_J_A12_FINANCE_REPORTS.md`)
 **Implementor turn:** 2026-04-30
 
 ---

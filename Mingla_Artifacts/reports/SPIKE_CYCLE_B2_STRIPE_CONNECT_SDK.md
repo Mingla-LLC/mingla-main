@@ -3,7 +3,7 @@
 **Mode:** INVESTIGATE-only tech spike
 **Date:** 2026-05-06
 **Investigator:** Mingla Forensics
-**Dispatch:** [`Mingla_Artifacts/prompts/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md`](../prompts/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md)
+**Dispatch:** `Mingla_Artifacts/prompts/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md`)
 **Source-of-truth refs:** Stripe official docs (cited inline + bibliography §10), `mingla-business/package.json`, `mingla-business/node_modules/@stripe/stripe-react-native/lib/typescript/src/index.d.ts`, prior B2 forensics
 **Effort:** ~2 hours research + 0 hours POC (research conclusive enough that POC was not built)
 

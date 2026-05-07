@@ -3,7 +3,7 @@
 **Mode:** INVESTIGATE (no SPEC mode yet — surface architecture decisions for operator lock first)
 **Date:** 2026-05-04
 **Surface:** Mingla Business mobile app (`mingla-business/`) — Phase 5 opens
-**Dispatch:** [`prompts/FORENSICS_BIZ_CYCLE_14_ACCOUNT.md`](../prompts/FORENSICS_BIZ_CYCLE_14_ACCOUNT.md)
+**Dispatch:** `prompts/FORENSICS_BIZ_CYCLE_14_ACCOUNT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_14_ACCOUNT.md`)
 **Canonical epic:** [`github/epics/cycle-14.md`](../github/epics/cycle-14.md) — 5 journeys (J-A1..J-A5), ~48h estimated
 **Confidence:** **H** overall · H per thread except Thread 2 (M-H — TRANSITIONAL-heavy due to missing notification infrastructure)
 
@@ -21,7 +21,7 @@ PR #59 already shipped 80% of Cycle 14's schema: `creator_accounts.deleted_at` (
 | # | File | Reason |
 |---|------|--------|
 | 1 | [`Mingla_Artifacts/github/epics/cycle-14.md`](../github/epics/cycle-14.md) | Canonical scope — 5 journeys + Phase 5 + ~48h estimate + GDPR R4 reference |
-| 2 | [`Mingla_Artifacts/prompts/FORENSICS_BIZ_CYCLE_14_ACCOUNT.md`](../prompts/FORENSICS_BIZ_CYCLE_14_ACCOUNT.md) | Dispatch — 5-thread structure + 17 operator decisions queued |
+| 2 | `Mingla_Artifacts/prompts/FORENSICS_BIZ_CYCLE_14_ACCOUNT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_14_ACCOUNT.md`) | Dispatch — 5-thread structure + 17 operator decisions queued |
 
 ### 2.2 Mobile baseline
 | # | File | Reason |
@@ -380,7 +380,7 @@ Per `feedback_implementor_uses_ui_ux_pro_max` memory rule, the J-A1 edit-profile
 ## 10 — Cross-references
 
 - Canonical epic: [`Mingla_Artifacts/github/epics/cycle-14.md`](../github/epics/cycle-14.md)
-- Dispatch: [`prompts/FORENSICS_BIZ_CYCLE_14_ACCOUNT.md`](../prompts/FORENSICS_BIZ_CYCLE_14_ACCOUNT.md)
+- Dispatch: `prompts/FORENSICS_BIZ_CYCLE_14_ACCOUNT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_BIZ_CYCLE_14_ACCOUNT.md`)
 - Cycle 13 close (Phase 4 feature-complete; Phase 5 opens): [`reports/IMPLEMENTATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION_REPORT.md`](IMPLEMENTATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION_REPORT.md)
 - Cycle 13a (rank-gating + permission plumbing reusable): [`reports/IMPLEMENTATION_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS_REPORT.md`](IMPLEMENTATION_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS_REPORT.md)
 - Cycle 13b (audit_log RLS — informs delete-event audit semantics): [`reports/IMPLEMENTATION_BIZ_CYCLE_13B_PERMISSIONS_DEPTH_REPORT.md`](IMPLEMENTATION_BIZ_CYCLE_13B_PERMISSIONS_DEPTH_REPORT.md)

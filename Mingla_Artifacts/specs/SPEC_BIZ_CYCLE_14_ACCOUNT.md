@@ -1,6 +1,6 @@
 # SPEC — BIZ Cycle 14 (Account: edit profile, settings, delete-flow, sign out)
 
-**Status:** BINDING contract — produced by `/mingla-forensics` SPEC mode 2026-05-04 against dispatch [`prompts/SPEC_BIZ_CYCLE_14_ACCOUNT.md`](../prompts/SPEC_BIZ_CYCLE_14_ACCOUNT.md)
+**Status:** BINDING contract — produced by `/mingla-forensics` SPEC mode 2026-05-04 against dispatch `prompts/SPEC_BIZ_CYCLE_14_ACCOUNT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_14_ACCOUNT.md`)
 **Cycle:** Cycle 14 — Account: edit profile, settings, delete-flow, sign out (canonical per [`github/epics/cycle-14.md`](../github/epics/cycle-14.md))
 **Confidence:** **H** — investigation H per thread + H overall; all 14 architectural decisions locked via DEC-096; SPEC executes the dispatch §3.3 anticipated D-14-2 fallback pivot (NEW `creator_avatars` bucket) since `brand_covers` bucket verified absent; remaining 13 decisions ship verbatim.
 **Estimated IMPL wall:** ~48h (epic budget exact match)
@@ -32,7 +32,7 @@ The other 13 decisions (D-14-1, D-14-3..D-14-17 minus D-14-2) ship verbatim per 
 | 1 | [`reports/INVESTIGATION_BIZ_CYCLE_14_ACCOUNT.md`](../reports/INVESTIGATION_BIZ_CYCLE_14_ACCOUNT.md) | Source of schema findings (PR #59 80%-complete) + auth provider variant matrix + 6 D-CYCLE14-FOR discoveries |
 | 2 | [`DECISION_LOG.md`](../DECISION_LOG.md) DEC-096 | Locks 14 architectural decisions D-14-1..D-14-17 (D-14-12/15/16 schema-resolved; D-14-2 SPEC-pivoted per §1.5) |
 | 3 | [`github/epics/cycle-14.md`](../github/epics/cycle-14.md) | Canonical epic — 5 journeys (J-A1..J-A5); ~48h budget; Phase 5 — Account + Polish |
-| 4 | [`prompts/SPEC_BIZ_CYCLE_14_ACCOUNT.md`](../prompts/SPEC_BIZ_CYCLE_14_ACCOUNT.md) | Dispatch — 12 sections + 36 SC + 40 T + 15-step impl order outlines |
+| 4 | `prompts/SPEC_BIZ_CYCLE_14_ACCOUNT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_14_ACCOUNT.md`) | Dispatch — 12 sections + 36 SC + 40 T + 15-step impl order outlines |
 | 5 | `mingla-business/app/(tabs)/account.tsx` (Cycle 0a + 1) | Baseline preserved per D-14-17 |
 | 6 | `mingla-business/src/context/AuthContext.tsx` (Cycle 6 + 0b) | Recovery-on-sign-in MOD point |
 | 7 | `mingla-business/src/services/creatorAccount.ts` | `ensureCreatorAccount` + new `updateCreatorAccount` helper |
@@ -1633,7 +1633,7 @@ If a SPEC ambiguity surfaces during IMPL, register as `D-CYCLE14-IMPL-N` and HAL
 
 - Canonical epic: [`Mingla_Artifacts/github/epics/cycle-14.md`](../github/epics/cycle-14.md)
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_14_ACCOUNT.md`](../reports/INVESTIGATION_BIZ_CYCLE_14_ACCOUNT.md)
-- SPEC dispatch: [`prompts/SPEC_BIZ_CYCLE_14_ACCOUNT.md`](../prompts/SPEC_BIZ_CYCLE_14_ACCOUNT.md)
+- SPEC dispatch: `prompts/SPEC_BIZ_CYCLE_14_ACCOUNT.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_BIZ_CYCLE_14_ACCOUNT.md`)
 - Decision lock-in: `DECISION_LOG.md` DEC-096
 - Cycle 13 close (Phase 4 feature-complete; Cycle 13 IMPL pattern reused for cascade preview aggregator): [`reports/IMPLEMENTATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION_REPORT.md`](../reports/IMPLEMENTATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION_REPORT.md)
 - Cycle 13a (rank-gating + permission plumbing — Cycle 14 doesn't need permission gates; reuses React Query + useCurrentBrandRole pattern): [`reports/IMPLEMENTATION_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS_REPORT.md`](../reports/IMPLEMENTATION_BIZ_CYCLE_13A_PERMISSIONS_FOUNDATIONS_REPORT.md)

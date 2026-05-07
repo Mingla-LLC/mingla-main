@@ -1108,7 +1108,7 @@ Pre-implementation checklist:
 ## 14 — Cross-references
 
 - Investigation: [INVESTIGATION_BIZ_CYCLE_9c_ORDERS_OPS.md](../reports/INVESTIGATION_BIZ_CYCLE_9c_ORDERS_OPS.md)
-- Dispatch: [FORENSICS_SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md](../prompts/FORENSICS_SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md)
+- Dispatch: FORENSICS_SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/FORENSICS_SPEC_BIZ_CYCLE_9c_ORDERS_OPS.md`)
 - Backward dependency: [SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH_v2.md](SPEC_ORCH-0704_FULL_EDIT_AFTER_PUBLISH_v2.md) §3.1.5 (canonical OrderRecord)
 - Cycle 9 master spec (J-M sections obsolete-on-close per D-9c-3): [SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md](SPEC_BIZ_CYCLE_9_EVENT_MANAGEMENT.md)
 - Forward dependency: B-cycle (real Stripe + Resend + Twilio); ORCH-0705 (no-show + post-event ops; deferred until post-Stripe)

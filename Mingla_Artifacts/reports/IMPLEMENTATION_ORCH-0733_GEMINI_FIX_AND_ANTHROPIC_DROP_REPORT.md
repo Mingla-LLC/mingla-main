@@ -1,7 +1,7 @@
 # IMPLEMENTATION REPORT — ORCH-0733 Gemini Fixes + Anthropic Drop from Trial
 
 **Status:** implemented and partially verified — Vite build PASS · grep gates PASS · operator runtime verification PENDING (run Gemini v4 sweep, expect tighter VETO discipline + Anthony's/romantic 70-80).
-**Dispatch:** [`Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0733_GEMINI_FIX_AND_ANTHROPIC_DROP.md`](../prompts/IMPLEMENTOR_ORCH-0733_GEMINI_FIX_AND_ANTHROPIC_DROP.md)
+**Dispatch:** `Mingla_Artifacts/prompts/IMPLEMENTOR_ORCH-0733_GEMINI_FIX_AND_ANTHROPIC_DROP.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_ORCH-0733_GEMINI_FIX_AND_ANTHROPIC_DROP.md`)
 **Builds on:** Anthropic baseline `942fbddf` (v3) + Gemini A/B `fe15cb99` (v3 Gemini, comparison run).
 
 ---

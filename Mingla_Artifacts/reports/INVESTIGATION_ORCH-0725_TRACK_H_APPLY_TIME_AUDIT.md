@@ -301,7 +301,7 @@ Specific protections needed (per bug class):
 |-------|-----------|--------|
 | Track I OUT-param shape | I-MIGRATION-NO-CREATE-OR-REPLACE-WITH-SIG-CHANGE invariant — require DROP FUNCTION before sig-changing CREATE OR REPLACE. CI grep gate. | DRAFT (proposed in ORCH-0722 §16, ratifies ACTIVE on close). |
 | Track H1 DML PK collision | I-MIGRATION-DML-COLLISION-PROOF (NEW invariant proposal) — every UPDATE on a PK/UNIQUE column must be followed by a same-migration validation step OR have a pre-DELETE that removes collision-causing rows. Hard to grep for; primary defense is the CI replay gate itself. | NEW DRAFT — proposed here. |
-| Track I + H1 + all others | Fresh-DB replay gate (the load-bearing fix). | ORCH-0721 Step 2 spec already authored at [`prompts/SPEC_ORCH-0721_MIGRATION_REPLAY_CI_GATE.md`](../prompts/SPEC_ORCH-0721_MIGRATION_REPLAY_CI_GATE.md); ready for SPEC dispatch + implementation. |
+| Track I + H1 + all others | Fresh-DB replay gate (the load-bearing fix). | ORCH-0721 Step 2 spec already authored at `prompts/SPEC_ORCH-0721_MIGRATION_REPLAY_CI_GATE.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/SPEC_ORCH-0721_MIGRATION_REPLAY_CI_GATE.md`); ready for SPEC dispatch + implementation. |
 
 The CI replay gate is the convergence point. Once it ships, every future PR auto-detects every variant of every Track H/I bomb class before merge. Stop the recurrence at the structural level.
 

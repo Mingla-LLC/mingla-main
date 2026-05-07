@@ -5,7 +5,7 @@
 **Date:** 2026-05-04
 **Surface:** Mingla Business mobile app (`mingla-business/`)
 **Cycle:** Cycle 13 (BIZ End-of-Night Reconciliation Report)
-**Dispatch:** [`prompts/IMPLEMENTOR_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md)
+**Dispatch:** `prompts/IMPLEMENTOR_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`)
 **SPEC:** [`specs/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../specs/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md)
 **Investigation:** [`reports/INVESTIGATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](./INVESTIGATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md)
 **Decision lock-in:** `DECISION_LOG.md` DEC-095 (11 architectural decisions D-13-1..D-13-11)
@@ -591,7 +591,7 @@ Hand back to `/mingla-orchestrator` for REVIEW + (if APPROVED) optional `/mingla
 
 **Status:** `implemented and verified` (static + tsc + grep). Manual smoke required for SC-v2-6 (silent dismiss path).
 **Mode:** REWORK
-**Dispatch:** [`prompts/IMPLEMENTOR_BIZ_CYCLE_13_REWORK_v2_HONEST_EXPORT_TOAST.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_13_REWORK_v2_HONEST_EXPORT_TOAST.md)
+**Dispatch:** `prompts/IMPLEMENTOR_BIZ_CYCLE_13_REWORK_v2_HONEST_EXPORT_TOAST.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_13_REWORK_v2_HONEST_EXPORT_TOAST.md`)
 **Date:** 2026-05-04 (post Cycle 13 commit `0ab7e63d`)
 
 ### 17.1 Symptom
@@ -776,7 +776,7 @@ Closes D-CYCLE13-IMPL-6.
 
 ## 16 — Cross-references
 
-- Dispatch: [`prompts/IMPLEMENTOR_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../prompts/IMPLEMENTOR_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md)
+- Dispatch: `prompts/IMPLEMENTOR_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md` (PRIVATE_PROMPT_NOT_VERSIONED: `../prompts/IMPLEMENTOR_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`)
 - SPEC: [`specs/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](../specs/SPEC_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md)
 - Investigation: [`reports/INVESTIGATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md`](./INVESTIGATION_BIZ_CYCLE_13_END_OF_NIGHT_RECONCILIATION.md)
 - Decision lock-in: `DECISION_LOG.md` DEC-095
