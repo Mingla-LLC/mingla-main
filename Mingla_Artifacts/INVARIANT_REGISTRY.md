@@ -7,6 +7,47 @@
 
 ---
 
+## ACTIVE (post ORCH-0742 CLOSE 2026-05-06)
+
+### I-PROPOSED-J — ZUSTAND-PERSIST-NO-SERVER-SNAPSHOTS
+
+**Statement:** Persisted Zustand stores in `mingla-business/src/store/*Store.ts` (and any future `app-mobile/src/store/*Store.ts`) MUST NOT hold full server-derived objects (rows returned from Supabase, edge functions, or external APIs). They MAY hold:
+- (a) IDs / pointers to server records (canonical pattern: persist the ID, fetch the live record via React Query)
+- (b) Pure client UI state (modal open flags, drawer width, current page, ephemeral inputs)
+- (c) User preferences (locale, theme, notification settings)
+
+Forbidden: persisting `currentBrand: Brand`, `currentEvent: LiveEvent`, `currentOrder: Order`, `currentAccount: Account`, etc. — anything whose canonical authority is server-side.
+
+**Authority:** `mingla-business/src/store/currentBrandStore.ts` (v14 persist) is the reference implementation post-ORCH-0742. `partialize: (state) => ({ currentBrandId: state.currentBrandId })` returns ID-only. `useCurrentBrand()` is re-exported from `currentBrandStore.ts` but defined in `mingla-business/src/hooks/useCurrentBrand.ts` as a wrapper around `useBrand(currentBrandId)`. The auto-clear `useEffect` at `useCurrentBrand.ts:41-45` clears `currentBrandId` when the server confirms the brand is gone, preventing cold-start replay of phantom selections. Outside-component contexts (Zustand actions, store converters, fire-and-forget submit handlers) use `getBrandFromCache(brandId)` exported from `mingla-business/src/hooks/useBrands.ts:86-101`.
+
+**Rationale:** Pre-ORCH-0742, `currentBrandStore` persisted the full Brand record (`{ id, displayName, slug, kind, address, coverHue, role, stats, currentLiveEvent, ... }`). This produced three observed bug classes: (1) brand renamed on Device A keeps showing old name on Device B until force-quit, (2) brand deleted on Device A keeps appearing as selected on Device B with stale data, (3) cold-starting the app with a since-deleted brand replays the stale snapshot before any network call validates it. ORCH-0738's RC-C established the structural cause. ORCH-0742 Cycle 2 fixed it by removing the snapshot entirely — there is no Brand object left in persisted state to go stale. This invariant codifies the pattern so future maintenance can't accidentally regress.
+
+**Enforcement (current 2 gates + 1 deferred):**
+1. **Type-level** — `mingla-business/src/store/currentBrandStore.ts:357` declares `type PersistedState = Pick<CurrentBrandState, "currentBrandId">;`. The persist `PersistOptions<CurrentBrandState, PersistedState>` generic forces the partialize return type. Adding a server-derived field to `PersistedState` requires explicit type widening — visible in code review.
+2. **Constitutional gates** — Constitution #5 (server state stays server-side) is the parent rule; this invariant is its concrete codification for persisted Zustand. Constitution #2 (one owner per truth) reinforces: server data has exactly one owner (React Query), client pointer has exactly one owner (Zustand).
+3. **Strict-grep CI gate (DEFERRED)** — candidate gate over `partialize:` blocks in any file matching `**/store/*Store.ts` to flag persisted Brand/Event/Order/Account types. Tracked as deferred work — the invariant text codifies the rule; the gate ships in a future cycle when broad enough surface area exists to make it worthwhile (Cycle 4 per-store Zustand classification audit will inform whether the gate is needed or whether the existing TRANSITIONAL stores require carve-outs).
+
+**Test that catches a regression:** any code path that adds a `Brand`, `LiveEvent`, `Order`, or `Account` field (or similar server-row type) to a `partialize` return shape will fail the type check at the persist generic boundary. First runtime symptom of an unguarded regression: cross-device staleness reappears (rename/delete on Device A doesn't reflect on Device B until force-quit). The 5 existing `getBrandFromCache(` callers are pinned by the QA report's grep gate to exactly 5 — adding a 6th caller without going through the helper would trip the gate.
+
+**Established:** 2026-05-06 by ORCH-0742 Phase 2 CLOSE (commit `80c15297`). Memory file `feedback_zustand_persist_no_server_snapshots.md` ACTIVE; MEMORY.md index updated. Predecessor evidence: `Mingla_Artifacts/reports/INVESTIGATION_ORCH_0738_CROSS_DEVICE_SYNC_AUDIT.md` (RC-C). DEC-119 + DEC-120 logged.
+
+**Caveats / fragility:**
+- **TRANSITIONAL stores currently exempted:** `events`, `draftEvent`, `liveEvent`, `doorSales`, `scannerInvitations` stores in `mingla-business/src/store/` currently hold full event/order records by design (per ORCH-0739 — these are pre-backend cycles). They are TRANSITIONAL with documented exit conditions. Cycle 4 (queued) audits each against this invariant; until Cycle 4, they are exempted but tracked.
+- **Wrapper hook loading window:** the post-ORCH-0742 `useCurrentBrand()` wrapper returns `null` during the React Query fetch window on cold-start (~100ms-1s, network-dependent). This is a UX trade-off, not an invariant violation — the persisted state is correct (just an ID), the network roundtrip just hasn't returned yet. ORCH-0743 (queued) addresses via splash-gate extension OR React Query persistence wiring.
+- **Cache miss returns null, not undefined:** `getBrandFromCache` always returns `Brand | null`. Callers use `?? ""` fallback safely. Future helpers added under this invariant should follow the same null-returning pattern.
+
+**Cross-references:**
+- DEC-119 (Decision Log) — currentBrandStore architectural rebuild rationale
+- DEC-120 (Decision Log) — I-PROPOSED-J activation
+- ORCH-0742 SPEC: `Mingla_Artifacts/specs/SPEC_ORCH_0742_CURRENT_BRAND_ID_ONLY.md` (binding contract; I-PROPOSED-J specced as DRAFT in §6.2)
+- ORCH-0742 IMPLEMENTATION REPORT: `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH_0742_REPORT.md`
+- ORCH-0742 QA REPORT: `Mingla_Artifacts/reports/QA_ORCH_0742_PHASE_2_REPORT.md`
+- Memory file: `~/.claude/projects/-Users-sethogieva-Desktop-mingla-main/memory/feedback_zustand_persist_no_server_snapshots.md` (status: ACTIVE)
+- ORCH-0743 (queued) — addresses cold-start UX trade-off (loading-window flash); does NOT relax the invariant
+- Cycle 4 (queued) — per-store Zustand audit against I-PROPOSED-J for the 5 TRANSITIONAL stores
+
+---
+
 ## ACTIVE (post ORCH-0734 CLOSE 2026-05-05)
 
 ### I-TRIAL-CITY-RUNS-CANONICAL — Place-intelligence trial pipeline operates city-scoped, sampled-sync via place_intelligence_city_runs
@@ -2055,3 +2096,50 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **EXIT condition:** Permanent invariant. Reversal would require schema cleanup (drop `brands.stripe_*` cache columns; force every read to join `stripe_connect_accounts`) which is a separate ORCH cycle.
 
+### I-PROPOSED-L — STRIPE-API-VERSION-PINNED-VIA-SHARED-CLIENT-ONLY (DRAFT — flips ACTIVE on B2a Path C CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-119; flips ACTIVE on B2a CLOSE).
+
+**Statement:** Every Stripe SDK instantiation in `supabase/functions/` MUST source the API version from `_shared/stripe.ts`'s `STRIPE_API_VERSION` constant. Inline overrides (e.g., `new Stripe(key, { apiVersion: "..." })` with a literal date string in any file other than `_shared/stripe.ts`) are FORBIDDEN. The single source of truth for the API version pin is `_shared/stripe.ts` line 23: `STRIPE_API_VERSION = "2026-04-30.preview"` (per D-B2-5 — Accounts v2 public preview).
+
+**Why:** Two API versions in the same Mingla edge fn surface produce unpredictable behavior. The Stripe Accounts v2 endpoint (`/v2/core/accounts`) — which carries the marketplace controller properties (DEC-114) — only exists in `.preview` API versions. A function pinned to `2024-11-20.acacia` (production v1) cannot create accounts with controller properties; payouts won't split, charges won't transfer, the marketplace charge model is silently misconfigured. The B2a Path C reconciliation (`outputs/B2_RECONCILIATION_REPORT.md`) caught Taofeek's branch using `2024-11-20.acacia` inline across all 6 of his Stripe edge functions — a clean illustration of the failure mode this gate prevents.
+
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-l-stripe-api-version` running `.github/scripts/strict-grep/i-proposed-l-stripe-api-version.mjs`. Scans `supabase/functions/` for any `apiVersion: "20YY-MM-DD..."` literal outside `_shared/stripe.ts`. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-inline-api-version — <reason>`.
+
+**Source:** B2a Path C SPEC `outputs/SPEC_B2_PATH_C_AMENDMENT.md` §5 + reconciliation report `outputs/B2_RECONCILIATION_REPORT.md` §1.
+
+**EXIT condition:** Permanent invariant within the current Stripe SDK paradigm. Would only retire if Stripe's SDK API contract removes the `apiVersion:` constructor option, OR if a future Mingla architecture splits Connect work across multiple isolated runtimes (separate microservice repos). Neither is foreseen.
+
+### I-PROPOSED-M — STRIPE-IDEMPOTENCY-KEY-ON-EVERY-CALL (DRAFT — flips ACTIVE on B2a Path C CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-119; flips ACTIVE on B2a CLOSE).
+
+**Statement:** Every `stripe.<resource>.<method>(...)` call in `supabase/functions/` MUST pass `{ idempotencyKey: generateIdempotencyKey(brand_id, op) }` (from `_shared/idempotency.ts`) in the call's options argument. The `stripe.webhooks.*` namespace is exempt — those are local signature-verification helpers, not Stripe API calls. Test files (`*.test.ts`, `__tests__/`) are exempt by convention.
+
+**Why:** Stripe's Idempotency-Key is the only safe-retry token. A dropped HTTPS connection mid-create leaves the caller unsure whether the resource was created. Without idempotency, the retry creates a duplicate Connect account / payout / transfer — and Stripe doesn't expose an API to delete a Connect account, so cleanup is operationally painful (manual support contact). With idempotency, retrying the same call returns the cached response, and the caller treats the second attempt as a no-op. The B2a Path C reconciliation caught Taofeek's branch with ZERO idempotency keys across 6 Stripe edge functions — concurrent calls (mobile + cron + webhook all triggering at once) would have produced duplicate-account incidents.
+
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-m-stripe-idempotency-key` running `.github/scripts/strict-grep/i-proposed-m-stripe-idempotency-key.mjs`. Scans `supabase/functions/` for every `stripe.X.Y(` call site (excluding `stripe.webhooks.*`); requires `idempotencyKey:` within 40 lines after the call open-paren. Allowlist tag (5-line above): `// orch-strict-grep-allow stripe-no-idempotency-key — <reason>`.
+
+**Format:** `_shared/idempotency.ts` exports `generateIdempotencyKey(brandId, operation)` returning `{brand_id}:{operation}:{epoch_ms}`. Operation type is restricted to a TS union — extend the union when adding new operations.
+
+**Source:** B2a Path C SPEC `outputs/SPEC_B2_PATH_C_AMENDMENT.md` §5 + reconciliation report `outputs/B2_RECONCILIATION_REPORT.md` §3 + B2a SPEC §4.2.1 + D-B2-22.
+
+**EXIT condition:** Permanent invariant. Stripe's idempotency model is well-established and unlikely to change.
+
+### I-PROPOSED-N — STRIPE-AUDIT-LOG-ON-EVERY-EDGE-FN (DRAFT — flips ACTIVE on B2a Path C CLOSE)
+
+**Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-119; flips ACTIVE on B2a CLOSE).
+
+**Statement:** Every edge function under `supabase/functions/{brand-stripe-*,stripe-*}/` MUST import `writeAudit` from `../_shared/audit.ts` AND call `writeAudit(...)` at least once per invocation. The `audit_log` table is the tamper-evident record of Stripe state transitions (account create, status update, balance read, detach, KYC reminder send) for Constitutional #3 compliance, dispute investigation, and operator forensics.
+
+**Why:** Stripe Connect actions move real money and create real legal records. Every state transition needs to be traceable. Without this gate, an engineer could ship a new `brand-stripe-foo/index.ts` that mutates Stripe state without a single audit row — silent action invisible to operators. The B2a Path C reconciliation caught Taofeek's branch with ZERO `writeAudit` calls across 6 Stripe edge functions. The same gap was found in Seth's existing `brand-stripe-refresh-status/index.ts` during Phase 0 of Path C and fixed inline (added writeAudit on the success path with before/after diff of charges_enabled / payouts_enabled / derived_status).
+
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-n-stripe-audit-log` running `.github/scripts/strict-grep/i-proposed-n-stripe-audit-log.mjs`. Walks `supabase/functions/` for directory names matching `^(brand-stripe-|stripe-)`. For each, the canonical entry `index.ts` is checked for: (1) an import statement bringing in `writeAudit` from `../_shared/audit.ts`, AND (2) at least one `writeAudit(` call. Both must be present. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-fn-no-audit — <reason>`.
+
+**Audit row contract:** `writeAudit({ user_id, brand_id, action: "stripe_connect.X", target_type: "stripe_connect_account", target_id: stripe_account_id, before, after })`. Action namespacing convention: `stripe_connect.{operation}` (e.g., `stripe_connect.onboard_initiated`, `stripe_connect.account_updated`, `stripe_connect.detach`, `stripe_connect.kyc_reminder_sent`, `stripe_connect.status_refreshed`).
+
+**Sampling note for high-frequency callers:** `brand-stripe-refresh-status` is a 30s poll fallback — every refresh writing an audit row would be costly. Phase 0 implementation logs only the success path with state-change diff. If the row count proves too noisy in production, an explicit sampling rule (e.g., 1-in-N or "only when state changed") may be added with an allowlist comment + memo, but the import + at-least-one-call requirement remains.
+
+**Source:** B2a Path C SPEC `outputs/SPEC_B2_PATH_C_AMENDMENT.md` §5 + reconciliation report `outputs/B2_RECONCILIATION_REPORT.md` §3 + B2a SPEC §4.2.1 (Const #3) + BUSINESS_PROJECT_PLAN §B.7.
+
+**EXIT condition:** Permanent invariant. Audit logging is a Constitutional principle (#3 — no silent failures); reversal would require revising the constitution.
