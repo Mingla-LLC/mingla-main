@@ -19,10 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandOnboardView } from "../../../../src/components/brand/BrandOnboardView";
 import { canvas } from "../../../../src/constants/designSystem";
-import {
-  useBrandList,
-  useCurrentBrandStore,
-} from "../../../../src/store/currentBrandStore";
+import { useBrandList } from "../../../../src/store/currentBrandStore";
 
 export default function BrandOnboardRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -30,7 +27,6 @@ export default function BrandOnboardRoute(): React.ReactElement {
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brands = useBrandList();
-  const currentBrand = useCurrentBrandStore((s) => s.currentBrand);
   const brand =
     typeof idParam === "string" && idParam.length > 0
       ? brands.find((b) => b.id === idParam) ?? null

@@ -84,7 +84,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
 }) => {
   const brands = useBrandList();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
-  const currentBrand = useCurrentBrandStore((s) => s.currentBrand);
+  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const { user } = useAuth();
   const createBrandMutation = useCreateBrand();
 
@@ -368,8 +368,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
               showsVerticalScrollIndicator={false}
             >
               {brands.map((brand) => {
-                const isActive =
-                  currentBrand !== null && currentBrand.id === brand.id;
+                const isActive = currentBrandId === brand.id;
                 return (
                   <View key={brand.id} style={styles.brandRowOuter}>
                     <Pressable

@@ -15,16 +15,11 @@
  */
 
 import {
-  useCurrentBrandStore,
-  type Brand,
-} from "../store/currentBrandStore";
-import {
   useLiveEventStore,
   type LiveEvent,
 } from "../store/liveEventStore";
 import type { DraftEvent } from "../store/draftEventStore";
-import { queryClient } from "../config/queryClient";
-import { brandKeys } from "../hooks/useBrands";
+import { getBrandFromCache } from "../hooks/useBrands";
 import { generateEventSlug, sanitizeSlugForUrl } from "./eventSlug";
 import { generateLiveEventId } from "./liveEventId";
 
@@ -37,29 +32,13 @@ import { generateLiveEventId } from "./liveEventId";
 export const convertDraftToLiveEvent = (
   draft: DraftEvent,
 ): LiveEvent | null => {
-  // Resolve brand for slug freezing. Cycle 17e-A: brand list moved to React
-  // Query; outside-component context uses singleton queryClient cache.
-  // Falls back to currentBrand selection (most operators publish drafts for
-  // their currently-selected brand). If neither matches, returns null —
-  // publishDraft preserves the source draft.
-  const brand = (() => {
-    const current = useCurrentBrandStore.getState().currentBrand;
-    if (current !== null && current.id === draft.brandId) {
-      return current;
-    }
-    // Cache lookup via queryClient (without accountId we can't pinpoint the
-    // list key, so iterate over cached lists and merge).
-    const queries = queryClient.getQueriesData<Brand[]>({
-      queryKey: brandKeys.lists(),
-    });
-    for (const [, brands] of queries) {
-      if (brands === undefined) continue;
-      const found = brands.find((b) => b.id === draft.brandId);
-      if (found !== undefined) return found;
-    }
-    return undefined;
-  })();
-  if (brand === undefined) {
+  // Resolve brand for slug freezing. Cycle 2 / ORCH-0742: outside-component
+  // context reads the live Brand record from the React Query cache by ID.
+  // Returns null if the cache hasn't seen this brand (deleted between draft
+  // creation and publish, or fresh app + cold-start before list fetch) —
+  // publishDraft preserves the source draft on null return.
+  const brand = getBrandFromCache(draft.brandId);
+  if (brand === null) {
     // Brand was deleted between draft creation and publish — fail loud
     // so publishDraft can preserve the draft instead of orphaning it.
     if (typeof console !== "undefined" && typeof console.error === "function") {

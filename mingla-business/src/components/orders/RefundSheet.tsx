@@ -41,7 +41,7 @@ import {
 } from "../../constants/designSystem";
 import type { OrderRecord } from "../../store/orderStore";
 import { useOrderStore } from "../../store/orderStore";
-import { useCurrentBrandStore } from "../../store/currentBrandStore";
+import { getBrandFromCache } from "../../hooks/useBrands";
 import { useEventEditLogStore } from "../../store/eventEditLogStore";
 import { useLiveEventStore } from "../../store/liveEventStore";
 import {
@@ -211,13 +211,11 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
         .getState()
         .getLiveEvent(result.eventId);
       if (event !== null) {
-        // Cycle 17e-A: brand list moved to React Query. Outside-component
-        // context uses current brand selection — falls back to empty.
-        const currentBrand = useCurrentBrandStore.getState().currentBrand;
-        const brandName =
-          currentBrand !== null && currentBrand.id === result.brandId
-            ? currentBrand.displayName
-            : "";
+        // Cycle 2 / ORCH-0742: read the live Brand record from the React
+        // Query cache by ID (any cached list/detail). Falls back to empty
+        // when the cache hasn't seen this brand yet — best-effort copy.
+        const cachedBrand = getBrandFromCache(result.brandId);
+        const brandName = cachedBrand?.displayName ?? "";
         const allLinesFullyRefunded = result.status === "refunded_full";
         const occurredAt =
           result.refunds[result.refunds.length - 1]?.refundedAt ??

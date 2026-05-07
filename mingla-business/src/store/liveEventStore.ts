@@ -49,7 +49,7 @@ import {
   deriveChannelFlags,
   notifyEventChanged,
 } from "../services/eventChangeNotifier";
-import { useCurrentBrandStore } from "./currentBrandStore";
+import { getBrandFromCache } from "../hooks/useBrands";
 
 export type LiveEventStatus = "live" | "cancelled" | "ended";
 
@@ -465,17 +465,11 @@ export const useLiveEventStore = create<LiveEventState>()(
         });
 
         // Resolve brand display name for notification copy.
-        // Cycle 17e-A: brand list moved to React Query. Outside-component
-        // context (Zustand action) uses the singleton queryClient directly.
-        // Falls back to currentBrand selection if cache miss; empty string if
-        // also no current brand. Best-effort — fire-and-forget notification.
-        const brandName = (() => {
-          const current = useCurrentBrandStore.getState().currentBrand;
-          if (current !== null && current.id === event.brandId) {
-            return current.displayName;
-          }
-          return "";
-        })();
+        // Cycle 2 / ORCH-0742: outside-component context reads the live Brand
+        // record from the React Query cache by ID. Empty string on cache miss
+        // — best-effort, fire-and-forget notification.
+        const cachedBrand = getBrandFromCache(event.brandId);
+        const brandName = cachedBrand?.displayName ?? "";
 
         // Fire notification stack (fire-and-forget)
         void notifyEventChanged(

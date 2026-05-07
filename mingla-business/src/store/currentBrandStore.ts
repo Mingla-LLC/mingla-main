@@ -348,12 +348,13 @@ export type Brand = {
 };
 
 export type CurrentBrandState = {
-  currentBrand: Brand | null;
+  currentBrandId: string | null;
   setCurrentBrand: (brand: Brand | null) => void;
+  setCurrentBrandId: (id: string | null) => void;
   reset: () => void;
 };
 
-type PersistedState = Pick<CurrentBrandState, "currentBrand">;
+type PersistedState = Pick<CurrentBrandState, "currentBrandId">;
 
 // Cycle 17e-A v13 — drops `brands: Brand[]` from persisted state per Const #5
 // (server state via React Query useBrands() — see src/hooks/useBrands.ts). Keeps
@@ -363,24 +364,34 @@ type PersistedState = Pick<CurrentBrandState, "currentBrand">;
 //
 // Cycle 17d §E — v1-v11 migrator helpers + V2/V9/V10/V11 type defs deleted.
 // Original chain (v1→v12) preserved at commit aae7784d for audit trail.
+//
+// Cycle 2 / ORCH-0742 v14 — drops the persisted full Brand snapshot. Only
+// `currentBrandId: string | null` survives in storage; the live Brand record
+// is read at render time via React Query (`useBrand(currentBrandId)`) so a
+// brand renamed/deleted on another device can never appear stale on cold-start
+// or replay phantom selection. I-PROPOSED-J codifies the rule.
 
 const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
-  name: "mingla-business.currentBrand.v13",
+  name: "mingla-business.currentBrand.v14",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state) => ({
-    currentBrand: state.currentBrand,
+    currentBrandId: state.currentBrandId,
   }),
-  version: 13,
+  version: 14,
   migrate: (persistedState, version) => {
-    // Cycle 17e-A v12 → v13 — drops `brands` array from persisted state per Const #5.
-    // Preserves `currentBrand` selection. v1-v11 already collapsed by Cycle 17d Stage 1 §E.
-    // After this migration runs, useBrands() React Query hook owns the brand list;
-    // first render fetches from Supabase brands table (post-migration 20260506000000).
-    if (version < 13) {
+    // Cycle 2 / ORCH-0742 v13 → v14 — drops `currentBrand: Brand | null`
+    // server snapshot. Extracts only the ID. Server data refreshes on next
+    // mount via React Query useBrand(currentBrandId).
+    if (version < 14) {
       const old = persistedState as Partial<{
-        currentBrand: Brand | null;
+        currentBrand: { id?: string } | null;
+        currentBrandId: string | null;
       }> | null;
-      return { currentBrand: old?.currentBrand ?? null };
+      const id =
+        old?.currentBrandId !== undefined
+          ? old.currentBrandId
+          : (old?.currentBrand?.id ?? null);
+      return { currentBrandId: id ?? null };
     }
     return persistedState as PersistedState;
   },
@@ -389,16 +400,29 @@ const persistOptions: PersistOptions<CurrentBrandState, PersistedState> = {
 export const useCurrentBrandStore = create<CurrentBrandState>()(
   persist(
     (set) => ({
-      currentBrand: null,
-      setCurrentBrand: (brand) => set({ currentBrand: brand }),
-      reset: () => set({ currentBrand: null }),
+      currentBrandId: null,
+      // Option A — preserved API. Internally extracts the ID; full Brand
+      // objects no longer live in persisted state.
+      setCurrentBrand: (brand) => set({ currentBrandId: brand?.id ?? null }),
+      setCurrentBrandId: (id) => set({ currentBrandId: id }),
+      reset: () => set({ currentBrandId: null }),
     }),
     persistOptions,
   ),
 );
 
-export const useCurrentBrand = (): Brand | null =>
-  useCurrentBrandStore((s) => s.currentBrand);
+/**
+ * useCurrentBrandId — direct ID selector (no React Query roundtrip). Use when
+ * the consumer only needs the active brand's identifier (permission gating,
+ * conditional rendering by ID, equality checks against another brand).
+ *
+ * For the live Brand record, use `useCurrentBrand()` (re-exported below from
+ * src/hooks/useCurrentBrand.ts — wraps useBrand(currentBrandId)).
+ *
+ * Cycle 2 / ORCH-0742.
+ */
+export const useCurrentBrandId = (): string | null =>
+  useCurrentBrandStore((s) => s.currentBrandId);
 
 // [TRANSITIONAL] Cycle 17e-A — `useBrandList` kept as a re-export of a thin
 // wrapper that delegates to `useBrands(authUserId)`. The underlying state
@@ -413,3 +437,10 @@ export const useCurrentBrand = (): Brand | null =>
 // I-PROPOSED-C strict-grep gate bans `setBrands\(` (write path), NOT
 // `useBrandList` (read-only sugar over the React Query cache).
 export { useBrandList } from "../hooks/useBrandListShim";
+
+// Cycle 2 / ORCH-0742 — `useCurrentBrand` is a server-fresh wrapper around
+// useBrand(currentBrandId). Lives in src/hooks/ (not src/store/) to avoid
+// circular imports between currentBrandStore.ts and useBrands.ts. Re-exported
+// here so existing import sites do not change (mirrors useBrandList shim
+// pattern). I-PROPOSED-J satisfied: persisted state holds only the ID.
+export { useCurrentBrand } from "../hooks/useCurrentBrand";

@@ -50,8 +50,8 @@ export default function BrandProfileRoute(): React.ReactElement {
   }, []);
   const handleBrandDeleted = useCallback(
     (deletedBrandId: string): void => {
-      const current = useCurrentBrandStore.getState().currentBrand;
-      if (current !== null && current.id === deletedBrandId) {
+      const currentBrandId = useCurrentBrandStore.getState().currentBrandId;
+      if (currentBrandId === deletedBrandId) {
         setCurrentBrand(null);
       }
       setDeleteSheetVisible(false);

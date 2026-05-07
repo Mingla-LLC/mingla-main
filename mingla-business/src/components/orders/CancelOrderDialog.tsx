@@ -34,7 +34,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useOrderStore } from "../../store/orderStore";
-import { useCurrentBrandStore } from "../../store/currentBrandStore";
+import { getBrandFromCache } from "../../hooks/useBrands";
 import { useEventEditLogStore } from "../../store/eventEditLogStore";
 import { useLiveEventStore } from "../../store/liveEventStore";
 import {
@@ -97,13 +97,11 @@ export const CancelOrderDialog: React.FC<CancelOrderDialogProps> = ({
         .getState()
         .getLiveEvent(result.eventId);
       if (event !== null) {
-        // Cycle 17e-A: brand list moved to React Query. Outside-component
-        // context uses current brand selection — falls back to empty.
-        const currentBrand = useCurrentBrandStore.getState().currentBrand;
-        const brandName =
-          currentBrand !== null && currentBrand.id === result.brandId
-            ? currentBrand.displayName
-            : "";
+        // Cycle 2 / ORCH-0742: read the live Brand record from the React
+        // Query cache by ID. Falls back to empty when cache miss — best-
+        // effort copy.
+        const cachedBrand = getBrandFromCache(result.brandId);
+        const brandName = cachedBrand?.displayName ?? "";
         const cancelledAt = result.cancelledAt ?? new Date().toISOString();
         useEventEditLogStore.getState().recordEdit({
           eventId: result.eventId,
