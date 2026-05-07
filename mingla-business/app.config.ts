@@ -71,8 +71,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ],
   extra: {
     ...config.extra,
-    EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
-    EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
+    EXPO_PUBLIC_SUPABASE_URL:
+      process.env.EXPO_PUBLIC_SUPABASE_URL ??
+      "https://gqnoajqerqhnvulmnyvv.supabase.co",
+    EXPO_PUBLIC_SUPABASE_ANON_KEY:
+      process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxbm9hanFlcnFobnZ1bG1ueXZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1MDUyNzIsImV4cCI6MjA3MzA4MTI3Mn0.p4yi9yD2RWfJ2HN4DD-dgrvXnyzhJi3g2YCouSK-hbo",
     googleWebClientId:
       process.env.GOOGLE_WEB_CLIENT_ID ??
       "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",
