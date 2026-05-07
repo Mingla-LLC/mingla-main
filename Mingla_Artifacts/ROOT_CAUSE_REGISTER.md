@@ -5,6 +5,21 @@
 
 ## Root Causes
 
+### RC-0751: Duplicate auth cleanup callers raced RevenueCat logout after the first logout made the SDK anonymous
+- **Discovery date:** 2026-05-07
+- **Proof:** `reports/INVESTIGATION_ORCH-0751_REVENUECAT_ANONYMOUS_LOGOUT.md` proved the red Metro line was not a purchase failure but duplicate cleanup against RevenueCat's strict `logOut()` semantics. Runtime failure evidence in `reports/RUNTIME_QA_ORCH-0751_REVENUECAT_ANONYMOUS_LOGOUT.md` showed explicit sign-out logging `Logged out successfully` followed by native `Called logOut but the current user is anonymous`. Final proof in `reports/RETEST_ORCH-0751_REVENUECAT_LOGOUT_SERIALIZATION.md` showed the same Android sign-in -> sign-out -> sign-in path without the anonymous logout line.
+- **Symptoms caused:** Healthy auth cleanup could emit a scary RevenueCat error during no-session/sign-out paths, making normal teardown look broken and making it harder to spot real purchase/auth failures.
+- **Causal chain:**
+  1. Auth cleanup had more than one caller capable of reaching RevenueCat logout during the same transition.
+  2. RevenueCat `Purchases.logOut()` succeeds once and leaves the SDK anonymous.
+  3. A second concurrent cleanup call can then hit native `logOut()` while anonymous.
+  4. RevenueCat treats anonymous logout as an error, so Metro prints a red error even though user sign-out is otherwise healthy.
+- **Structural fix:** `logoutRevenueCatIfIdentified()` now checks configuration and anonymity before native logout, treats only the exact anonymous-logout condition as a quiet no-op, keeps unknown errors visible, and serializes concurrent cleanup through one shared `guardedLogoutInFlight` promise. `loginRevenueCat(user.id)` remains untouched so anonymous-to-identified purchase identity merge still works.
+- **Status:** **CLOSED PASS 2026-05-07** via Android runtime retest, `cd app-mobile && npm run test:orch-0751` PASS 11/11 including the T11 serialization guard, `cd app-mobile && npm run test:orch-0749` PASS, and `git diff --check` PASS.
+- **Invariant / regression guard:** RevenueCat cleanup logout must be idempotent and serialized; duplicate cleanup callers cannot issue duplicate native `Purchases.logOut()` calls during one auth transition.
+- **Causal cluster:** Cluster 2: noisy expected teardown versus real failures, with a concurrency/idempotency edge.
+- **Follow-ups not part of RC:** ORCH-0752 RevenueCat product/offering/store approval configuration remains separate.
+
 ### RC-0749: Mobile auth cleanup allowed stale private query/cache state to outlive its user
 - **Discovery date:** 2026-05-07
 - **Proof:** `reports/INVESTIGATION_ORCH-0749_MOBILE_AUTH_CACHE_RLS_LOG_STORM.md` proved the startup log storm was not one bug but an auth-boundary failure across query persistence, auth cleanup, private fetchers, and noisy SDK/error classification. Runtime proof closed in `reports/RUNTIME_QA_ORCH-0749_MOBILE_AUTH_CACHE_RLS_LOG_STORM.md`.
@@ -19,7 +34,7 @@
 - **Status:** **CLOSED PASS 2026-05-07** via static QA, runtime QA, operator smoke, and `cd app-mobile && npm run test:orch-0749` PASS at 2026-05-07 17:45 EDT.
 - **Invariant:** `I-AUTH-PRIVATE-CACHE-CANNOT-OUTLIVE-AUTH-OWNER`.
 - **Causal cluster:** Cluster 1/2 crossover: stale cache ownership + silent/noisy error classification. Future auth/query work must prove both data ownership and log behavior, not just "no crash."
-- **Follow-ups not part of RC:** ORCH-0751 RevenueCat anonymous logout noise; ORCH-0752 RevenueCat product/offering configuration.
+- **Follow-ups not part of RC:** ORCH-0751 was closed separately under RC-0751/DEC-129; ORCH-0752 RevenueCat product/offering configuration remains open.
 
 ### RC-0728: RLS-RETURNING-OWNER-GAP — supabase-js mutations fail because no SELECT policy admits the post-mutation row
 - **Discovery date:** 2026-05-06 (proven after 13 forensic passes ORCH-0728/0729/0731 + H39/H40/H41/H42)
