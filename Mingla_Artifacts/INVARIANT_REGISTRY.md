@@ -7,6 +7,26 @@
 
 ---
 
+## ACTIVE (post ORCH-0750E CLOSE 2026-05-07)
+
+### I-DOC-LINK-BASELINE-RATCHETS-DOWN - Durable documentation links must stay zero-missing
+
+**Statement:** Mingla's durable local markdown documentation links must resolve with zero missing targets. `scripts/docs/link_baseline.json` must not increase above `max_missing: 0` unless an explicit orchestrator decision records a temporary exception, owner, and burn-down path.
+
+**Authority:** `scripts/docs/check_links.py` is the canonical local markdown-link checker. `scripts/docs/link_baseline.json` is the enforced ceiling. ORCH-0750E's tester report is the close evidence for the zero-clean state.
+
+**Rationale:** ORCH-0750 forensics proved the documentation system had 1,195 missing local links. ORCH-0750A made the debt measurable; ORCH-0750C/D organized and protected the system; ORCH-0750E burned the measured debt to zero. Leaving the ceiling above zero after cleanup would silently allow the old failure class to return.
+
+**Enforcement:** GitHub runs `.github/workflows/docs-artifact-regression.yml` on docs/artifact changes. Local close and tester gates must run the strict zero link check before claiming documentation cleanup is complete.
+
+**Test that catches a regression:** `python3 scripts/docs/check_links.py --format markdown --baseline-file scripts/docs/link_baseline.json` fails if missing links exceed zero. `python3 scripts/docs/check_links.py --format markdown --max-missing 0` is the explicit strict check.
+
+**Established:** 2026-05-07 by ORCH-0750E CLOSE. DEC-129 logged.
+
+**Cross-references:** `reports/INVESTIGATION_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md`, `reports/SPEC_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md`, `reports/IMPLEMENTATION_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md`, `reports/TEST_REPORT_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md`.
+
+---
+
 ## ACTIVE (post ORCH-0749 CLOSE 2026-05-07)
 
 ### I-AUTH-PRIVATE-CACHE-CANNOT-OUTLIVE-AUTH-OWNER - Private mobile query state must be auth-scoped and removable
