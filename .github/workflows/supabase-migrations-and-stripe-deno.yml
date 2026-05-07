@@ -51,7 +51,13 @@ jobs:
         # migration's `CREATE EXTENSION` calls fail with "can only create
         # extension in database postgres" otherwise. Run migrations in the
         # default `postgres` DB.
-        image: supabase/postgres:15.8.1.060
+        #
+        # Postgres MAJOR version pinning: production is on Postgres 17 (Supabase
+        # default since mid-2026). Baseline `20260505000000_baseline_squash_orch_0729.sql`
+        # uses PG 16+ syntax (`GRANT MAINTAIN ON …`). Earlier image tag
+        # `supabase/postgres:15.8.1.060` rejected MAINTAIN with "unrecognized
+        # privilege type". Pin to a 17.x image to match production.
+        image: supabase/postgres:17.4.1.075
         env:
           POSTGRES_PASSWORD: postgres
         ports:
