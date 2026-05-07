@@ -1,0 +1,80 @@
+name: Supabase Migrations + Stripe Deno Tests (B2a Path C V3)
+
+# B2a Path C V3 SPEC §9 — migration ordering + Deno-side unit test coverage.
+#
+# Two checks per push:
+#  1. Migrations apply cleanly from baseline. Spins up a fresh PG container,
+#     replays every migration in supabase/migrations/ in timestamp order,
+#     fails if any migration errors. Catches missing constraints, FK to a
+#     non-existent table, ALTER on a column that doesn't yet exist, etc.
+#  2. Deno unit tests pass. Runs `deno test` against the _shared/__tests__
+#     directory which covers the Sub-dispatch B shared modules
+#     (stripeIpAllowlist, stripeKycRemediation, stripeKycReminderSchedule,
+#     stripeWebhookRouter, stripeWebhookSignature).
+
+on:
+  push:
+    branches: [Seth, main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/_shared/**"
+      - "supabase/functions/_shared/__tests__/**"
+      - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/_shared/**"
+
+jobs:
+  migrations:
+    name: "Migrations apply cleanly from baseline"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mingla_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for postgres
+        run: |
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U postgres; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Apply migrations in timestamp order
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -e
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            echo "::group::Applying $f"
+            psql -h localhost -U postgres -d mingla_test -v ON_ERROR_STOP=1 -f "$f"
+            echo "::endgroup::"
+          done
+
+  deno-tests:
+    name: "Deno unit tests for Stripe shared modules"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run Deno tests
+        run: |
+          deno test \
+            --allow-env \
+            --allow-net \
+            --no-check \
+            supabase/functions/_shared/__tests__/

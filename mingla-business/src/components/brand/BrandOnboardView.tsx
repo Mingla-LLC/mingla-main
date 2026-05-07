@@ -75,8 +75,12 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Spinner } from "../ui/Spinner";
+import { BrandStripeCountryPicker } from "./BrandStripeCountryPicker";
+import { MinglaToSAcceptanceGate } from "../onboarding/MinglaToSAcceptanceGate";
+import { useAuth } from "../../context/AuthContext";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
+const DEFAULT_COUNTRY = "GB" as const;
 const SUPPORT_EMAIL = "support@mingla.com" as const;
 const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}` as const;
 
@@ -145,6 +149,17 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
 
   const [viewState, setViewState] = useState<ViewState>(initialState);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // V3 multi-country: brand admin picks country before onboarding starts.
+  // Defaults to GB to preserve Phase 0 behaviour for unmodified callers.
+  // Per SPEC §13 amendment A4 + I-PROPOSED-T (canonical 34-country allowlist).
+  const [selectedCountry, setSelectedCountry] = useState<string>(DEFAULT_COUNTRY);
+  // V3 ToS gate: must pass before Stripe onboarding can start (per I-PROPOSED-U).
+  // Gate component checks brand_team_members.mingla_tos_accepted_at and either
+  // (a) auto-fires onPassed if already accepted, or (b) renders a sheet that
+  // forces the user to accept before any other interaction is possible.
+  const { user } = useAuth();
+  const [tosPassed, setTosPassed] = useState(false);
+  const handleTosPassed = useCallback((): void => setTosPassed(true), []);
 
   // Watch status query for in-flight → completion transitions while in browser
   useEffect(() => {
@@ -175,6 +190,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       const result = await onboardMutation.mutateAsync({
         brandId: brand.id,
         returnUrl: RETURN_DEEP_LINK,
+        country: selectedCountry,
       });
 
       setViewState("in-flight");
@@ -385,6 +401,18 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           </>
         ) : null}
 
+        {/* V3 ToS gate — renders an over-everything sheet when not accepted.
+            When accepted (or on mount if previously accepted), fires
+            handleTosPassed and the sheet stays hidden. The "Set up payments"
+            CTA below is gated on `tosPassed`. */}
+        {viewState === "idle" && brand !== null && user !== null ? (
+          <MinglaToSAcceptanceGate
+            brandId={brand.id}
+            userId={user.id}
+            onPassed={handleTosPassed}
+          />
+        ) : null}
+
         {viewState === "idle" ? (
           <>
             <View style={styles.stateBlock}>
@@ -401,11 +429,18 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                 {"\n\n"}Takes about 5 minutes.
               </Text>
 
+              <View style={styles.prereqCard}>
+                <BrandStripeCountryPicker
+                  value={selectedCountry}
+                  onChange={setSelectedCountry}
+                />
+              </View>
+
               <GlassCard variant="base" padding={spacing.md} style={styles.prereqCard}>
                 <Text style={styles.prereqHeader}>BEFORE YOU START, HAVE READY</Text>
                 <Text style={styles.prereqItem}>{"•"} Business name and tax ID</Text>
                 <Text style={styles.prereqItem}>
-                  {"•"} Bank account (sort code + account number for UK)
+                  {"•"} Bank account for your country
                 </Text>
                 <Text style={styles.prereqItem}>
                   {"•"} Photo of government ID
@@ -420,7 +455,12 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                 variant="primary"
                 size="lg"
                 fullWidth
-                accessibilityLabel="Start Stripe Connect onboarding"
+                disabled={!tosPassed}
+                accessibilityLabel={
+                  tosPassed
+                    ? "Start Stripe Connect onboarding"
+                    : "Accept Mingla terms first to start Stripe onboarding"
+                }
               />
             </View>
 

@@ -43,10 +43,11 @@ export interface RefreshStatusResult {
 export async function startBrandStripeOnboarding(
   brandId: string,
   returnUrl: string,
+  country = "GB",
 ): Promise<StartOnboardingResult> {
   const { data, error } = await supabase.functions.invoke<StartOnboardingResult>(
     "brand-stripe-onboard",
-    { body: { brand_id: brandId, return_url: returnUrl } },
+    { body: { brand_id: brandId, return_url: returnUrl, country } },
   );
   if (error) throw error;
   if (data === null) {

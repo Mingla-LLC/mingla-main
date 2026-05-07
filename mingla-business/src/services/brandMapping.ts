@@ -234,6 +234,10 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     links,
     displayAttendeeCount: row.display_attendee_count,
     stripeStatus,
+    // B2a Path C V3 (Sub-C Session B): expose brands.default_currency to UI
+    // so multi-currency formatters (formatCurrency) can render localized
+    // amounts. Defaults to GBP for legacy rows that pre-date the V3 widening.
+    defaultCurrency: row.default_currency || "GBP",
   };
 }
 

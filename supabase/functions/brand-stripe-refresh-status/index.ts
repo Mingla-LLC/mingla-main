@@ -22,7 +22,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 // @ts-ignore — Deno ESM import
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { stripe, STRIPE_API_VERSION } from "../_shared/stripe.ts";
+import { stripeRefreshStatus, STRIPE_API_VERSION } from "../_shared/stripe.ts";
 import { generateIdempotencyKey } from "../_shared/idempotency.ts";
 import { writeAudit } from "../_shared/audit.ts";
 
@@ -152,6 +152,7 @@ serve(async (req) => {
     // Fetch fresh state from Stripe API
     let account: AccountResponse;
     try {
+      const stripe = stripeRefreshStatus();
       // @ts-ignore — Stripe SDK accounts namespace
       account = await stripe.accounts.retrieve(
         scaRow.stripe_account_id,

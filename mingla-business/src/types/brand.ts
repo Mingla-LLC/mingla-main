@@ -234,6 +234,13 @@ export type Brand = {
    */
   stripeStatus?: BrandStripeStatus;
   /**
+   * ISO 4217 default currency for this brand's payouts + ticket pricing.
+   * NEW in B2a Path C V3 (Sub-C Session B). Drives multi-currency formatting
+   * across the dashboard per Constitution #10 + I-PROPOSED-T. Mapped from
+   * `brands.default_currency`. Undefined treated as `"GBP"` at read sites.
+   */
+  defaultCurrency?: string;
+  /**
    * Available balance (clears for next payout) in GBP whole-units.
    * NEW in J-A10 schema v8. Undefined treated as 0 at read sites.
    */

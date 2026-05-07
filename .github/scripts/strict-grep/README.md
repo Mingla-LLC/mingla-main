@@ -18,6 +18,15 @@ scaffold rewrite needed.
 | I-39 | `i39-pressable-label.mjs` | 17c | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-39 |
 | I-PROPOSED-A | `i-proposed-a-brands-deleted-filter.mjs` | 17e-A | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-A |
 | I-PROPOSED-C | `i-proposed-c-brand-crud-via-react-query.mjs` | 17e-A | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-C |
+| I-PROPOSED-K | `i-proposed-k-require-cycles.mjs` | META-ORCH-0744 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-K |
+| I-PROPOSED-L | (process invariant — orchestrator skill SKILL.md Step 1.5; no script) | META-ORCH-0744 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-L |
+| I-PROPOSED-M | `i-proposed-m-persist-key-whitelist.mjs` | META-ORCH-0744 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-M |
+| I-PROPOSED-N | `i-proposed-n-transitional-exit-condition.mjs` | META-ORCH-0744 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-N |
+| I-PROPOSED-T | `i-proposed-t-stripe-country-allowlist.mjs` | B2a Path C V3 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-T |
+| I-PROPOSED-U | `i-proposed-u-mingla-tos-gate.mjs` | B2a Path C V3 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-U |
+| I-PROPOSED-V | `i-proposed-v-stripe-notification-via-shared.mjs` | B2a Path C V3 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-V |
+| I-PROPOSED-W | `i-proposed-w-notifications-app-type-prefix.mjs` | B2a Path C V3 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-W |
+| I-PROPOSED-X | `i-proposed-x-web-deprecation.mjs` | META-ORCH-0744 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-X |
 
 ## Future gates (proposed but not yet implemented)
 
@@ -88,6 +97,11 @@ Other registered gate tags:
 - I-39: `// orch-strict-grep-allow pressable-no-label — <reason>`
 - I-PROPOSED-A: `// orch-strict-grep-allow brands-deleted-filter — <reason>`
 - I-PROPOSED-C: `// orch-strict-grep-allow setBrands-call — <reason>`
+- I-PROPOSED-K/M/N/X: no allowlist tag; update the baseline/script with SPEC-backed rationale.
+- I-PROPOSED-T: `// orch-strict-grep-allow stripe-country-out-of-scope — <reason>`
+- I-PROPOSED-U: `// orch-strict-grep-allow stripe-no-tos-gate — <reason>`
+- I-PROPOSED-V: `// orch-strict-grep-allow stripe-notification-direct — <reason>`
+- I-PROPOSED-W: `// orch-strict-grep-allow notifications-cross-app-read — <reason>`
 
 ## Conventions
 

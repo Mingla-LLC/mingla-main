@@ -16,6 +16,33 @@ function jsonResponse(body: object, status = 200) {
   });
 }
 
+async function sendEmailViaResend(
+  to: string,
+  subject: string,
+  text: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const key = Deno.env.get("RESEND_API_KEY");
+  if (!key) return { ok: false, error: "RESEND_API_KEY missing" };
+  const from = Deno.env.get("RESEND_FROM_EMAIL") ??
+    "Mingla Business <onboarding@resend.dev>";
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from, to: [to], subject, text }),
+    });
+    if (!res.ok) {
+      return { ok: false, error: `Resend ${res.status}: ${await res.text()}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ── Session-scoped types (ORCH-0520) ────────────────────────────────────────
 // Push types that fire INSIDE an active session to an existing participant.
 // These pass through the session mute check below. Adding a new push type that
@@ -113,6 +140,9 @@ serve(async (req) => {
       title,
       body,
       data = {},
+      brandId,
+      deepLink,
+      emailTo,
       actorId,
       relatedId,
       relatedType,
@@ -122,15 +152,15 @@ serve(async (req) => {
       skipPush = false,
     } = payload;
 
-    if (!userId || !type || !title || !body) {
+    if ((!userId && !emailTo) || !type || !title || !body) {
       return jsonResponse(
-        { success: false, reason: "Missing required fields: userId, type, title, body" },
+        { success: false, reason: "Missing required fields: userId/emailTo, type, title, body" },
         400
       );
     }
 
     // ── Idempotency check ───────────────────────────────────────────────────
-    if (idempotencyKey) {
+    if (idempotencyKey && userId) {
       const { data: existing } = await adminClient
         .from("notifications")
         .select("id")
@@ -149,7 +179,7 @@ serve(async (req) => {
 
     // ── Rate limiting BEFORE insert (prevents in-app spam too) ──────────────
     // Uses the notification `type` field (not idempotency key prefix) for accurate matching
-    if (idempotencyKey) {
+    if (idempotencyKey && userId) {
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
       const { count } = await adminClient
@@ -170,79 +200,102 @@ serve(async (req) => {
       }
     }
 
-    // ── Insert notification record ──────────────────────────────────────────
-    const insertPayload: Record<string, unknown> = {
-      user_id: userId,
-      type,
-      title,
-      body,
-      data,
-      actor_id: actorId || null,
-      related_id: relatedId || null,
-      related_type: relatedType || null,
-      idempotency_key: idempotencyKey || null,
-      expires_at: expiresAt || null,
-    };
+    // ── Insert notification record (in-app) ────────────────────────────────
+    let notificationId: string | null = null;
+    if (userId) {
+      const insertPayload: Record<string, unknown> = {
+        user_id: userId,
+        type,
+        title,
+        body,
+        data: { ...data, deepLink: deepLink || null },
+        brand_id: brandId || null,
+        deep_link: deepLink || null,
+        actor_id: actorId || null,
+        related_id: relatedId || null,
+        related_type: relatedType || null,
+        idempotency_key: idempotencyKey || null,
+        expires_at: expiresAt || null,
+      };
 
-    const { data: notification, error: insertError } = await adminClient
-      .from("notifications")
-      .insert(insertPayload)
-      .select("id")
-      .single();
+      const { data: notification, error: insertError } = await adminClient
+        .from("notifications")
+        .insert(insertPayload)
+        .select("id")
+        .single();
 
-    if (insertError) {
-      // Handle unique constraint violation (TOCTOU race on idempotency key) gracefully
-      if (insertError.code === "23505") {
-        return jsonResponse({
-          success: true,
-          notificationId: null,
-          pushSent: false,
-          reason: "duplicate",
-        });
+      if (insertError) {
+        if (insertError.code === "23505") {
+          return jsonResponse({
+            success: true,
+            notificationId: null,
+            pushSent: false,
+            emailSent: false,
+            reason: "duplicate",
+          });
+        }
+        console.error("[notify-dispatch] Insert error:", insertError);
+        return jsonResponse(
+          { success: false, reason: "Failed to insert notification" },
+          500
+        );
       }
-      console.error("[notify-dispatch] Insert error:", insertError);
-      return jsonResponse(
-        { success: false, reason: "Failed to insert notification" },
-        500
-      );
+
+      notificationId = notification.id;
     }
 
-    const notificationId = notification.id;
+    let emailSent = false;
+    if (emailTo) {
+      const emailResult = await sendEmailViaResend(emailTo, title, body);
+      emailSent = emailResult.ok;
+      if (!emailResult.ok) {
+        console.warn("[notify-dispatch] Email send failed:", emailResult.error);
+      }
+    }
 
     // ── Skip push early return ──────────────────────────────────────────────
-    if (skipPush) {
+    if (skipPush || !userId || !notificationId) {
       return jsonResponse({
         success: true,
         notificationId,
         pushSent: false,
+        emailSent,
         reason: "skip_push",
       });
     }
 
     // ── Check notification preferences ──────────────────────────────────────
-    const { data: prefs } = await adminClient
+    const { data: prefsRows } = await adminClient
       .from("notification_preferences")
       .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+      .eq("user_id", userId);
+    const prefs = Array.isArray(prefsRows) ? prefsRows : [];
 
     // Global push toggle
-    if (prefs && prefs.push_enabled === false) {
+    if (prefs.some((row) => row.channel === "push" && row.type === "*" && row.opt_in === false)) {
       return jsonResponse({
         success: true,
         notificationId,
         pushSent: false,
+        emailSent,
         reason: "user_disabled",
       });
     }
 
     // Type-specific preference check
     const prefKey = typeToPreference[type];
-    if (prefKey && prefs && prefs[prefKey] === false) {
+    if (
+      prefs.some((row) =>
+        row.channel === "push" &&
+        (row.type === type || (prefKey && row.type === prefKey)) &&
+        row.opt_in === false
+      )
+    ) {
       return jsonResponse({
         success: true,
         notificationId,
         pushSent: false,
+        emailSent,
         reason: "user_disabled",
       });
     }
@@ -274,6 +327,7 @@ serve(async (req) => {
             success: true,
             notificationId,
             pushSent: false,
+            emailSent,
             reason: "session_muted",
           });
         }
@@ -298,6 +352,7 @@ serve(async (req) => {
         success: true,
         notificationId,
         pushSent: false,
+        emailSent,
         reason: "quiet_hours",
       });
     }
@@ -367,6 +422,7 @@ serve(async (req) => {
       success: true,
       notificationId,
       pushSent,
+      emailSent,
     });
   } catch (err: unknown) {
     console.error("[notify-dispatch] Unhandled error:", err);

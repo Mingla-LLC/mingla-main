@@ -26,13 +26,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 // @ts-ignore — Deno ESM import
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { stripe, STRIPE_API_VERSION } from "../_shared/stripe.ts";
+import { stripeOnboard, STRIPE_API_VERSION } from "../_shared/stripe.ts";
 import { generateIdempotencyKey } from "../_shared/idempotency.ts";
 import { writeAudit } from "../_shared/audit.ts";
+import {
+  defaultCurrencyForCountry,
+  normalizeStripeCountry,
+} from "../_shared/stripeSupportedCountries.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const SUPABASE_JWT_SECRET = Deno.env.get("SUPABASE_JWT_SECRET");
 const ONBOARDING_PAGE_URL =
   Deno.env.get("MINGLA_BUSINESS_WEB_URL") ?? "https://business.mingla.com";
 
@@ -52,6 +55,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 interface OnboardRequestBody {
   brand_id: string;
   return_url: string;
+  country: string;
 }
 
 const UUID_REGEX =
@@ -119,6 +123,13 @@ serve(async (req) => {
         400,
       );
     }
+    const country = normalizeStripeCountry(body?.country);
+    if (!country) {
+      return jsonResponse(
+        { error: "validation_error", detail: "country_unsupported" },
+        400,
+      );
+    }
     const { brand_id, return_url } = body;
 
     // Step 3 — Auth: extract + verify JWT
@@ -152,10 +163,29 @@ serve(async (req) => {
       );
     }
 
+    const { data: tosRow, error: tosError } = await supabase
+      .from("brand_team_members")
+      .select("mingla_tos_accepted_at")
+      .eq("brand_id", brand_id)
+      .eq("user_id", userId)
+      .is("removed_at", null)
+      .not("accepted_at", "is", null)
+      .maybeSingle();
+    if (tosError) {
+      console.error("[brand-stripe-onboard] ToS lookup failed:", tosError);
+      return jsonResponse({ error: "internal_error" }, 500);
+    }
+    if (!tosRow?.mingla_tos_accepted_at) {
+      return jsonResponse(
+        { error: "forbidden", detail: "mingla_tos_not_accepted" },
+        403,
+      );
+    }
+
     // Step 6 — Read existing stripe_connect_accounts row for brand_id
     const { data: existingSca, error: scaReadError } = await supabase
       .from("stripe_connect_accounts")
-      .select("id, stripe_account_id, detached_at")
+      .select("id, stripe_account_id, detached_at, country, default_currency")
       .eq("brand_id", brand_id)
       .maybeSingle();
     if (scaReadError) {
@@ -166,18 +196,32 @@ serve(async (req) => {
     let stripeAccountId: string;
     let scaRowId: string | null = null;
 
-    if (existingSca?.detached_at !== null && existingSca?.detached_at !== undefined) {
-      // Per SPEC §4.2.2 step 6: B2b will handle re-onboarding detached accounts
-      return jsonResponse(
-        { error: "conflict", detail: "account_detached_b2b_only" },
-        409,
-      );
-    }
-
     if (existingSca?.stripe_account_id) {
-      // Reuse existing account
+      // V2 reactivation: reuse Stripe account and clear the local soft detach.
       stripeAccountId = existingSca.stripe_account_id;
       scaRowId = existingSca.id;
+      if (existingSca.detached_at !== null && existingSca.detached_at !== undefined) {
+        const { error: reactivateError } = await supabase
+          .from("stripe_connect_accounts")
+          .update({
+            detached_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingSca.id);
+        if (reactivateError) {
+          console.error("[brand-stripe-onboard] reactivation update failed:", reactivateError);
+          return jsonResponse({ error: "internal_error" }, 500);
+        }
+        await writeAudit(supabase, {
+          user_id: userId,
+          brand_id,
+          action: "stripe_connect.reactivated",
+          target_type: "stripe_connect_account",
+          target_id: stripeAccountId,
+          before: { detached_at: existingSca.detached_at },
+          after: { detached_at: null },
+        });
+      }
     } else {
       // Step 7 — Read brand for currency + country
       const { data: brandRow, error: brandReadError } = await supabase
@@ -199,15 +243,12 @@ serve(async (req) => {
           400,
         );
       }
-      const defaultCurrency = (brandRow.default_currency ?? "GBP")
-        .toString()
-        .toUpperCase();
-      // D-B2-13 — UK-only at MVP per Q9 RESOLVED 2026-04-28
-      const country = "GB";
+      const defaultCurrency = defaultCurrencyForCountry(country);
 
       // Step 8 — Create Stripe v2 Connect account
       let stripeAccount: { id: string };
       try {
+        const stripe = stripeOnboard();
         // @ts-ignore — Stripe SDK Accounts v2 namespace varies by version
         stripeAccount = await stripe.accounts.create(
           {
@@ -249,10 +290,12 @@ serve(async (req) => {
           {
             brand_id,
             stripe_account_id: stripeAccountId,
-            account_type: "express",
+            controller_dashboard_type: "express",
             charges_enabled: false,
             payouts_enabled: false,
             requirements: {},
+            country,
+            default_currency: defaultCurrency,
           },
           { onConflict: "brand_id" },
         )
@@ -277,10 +320,13 @@ serve(async (req) => {
     // Step 10 — Create AccountSession
     let session: { client_secret: string };
     try {
+      const stripe = stripeOnboard();
+      const acceptLanguage = req.headers.get("accept-language")?.split(",")[0]?.trim();
       // @ts-ignore — Stripe SDK accountSessions namespace
       session = await stripe.accountSessions.create(
         {
           account: stripeAccountId,
+          ...(acceptLanguage ? { locale: acceptLanguage } : {}),
           components: {
             account_onboarding: {
               enabled: true,
@@ -292,7 +338,10 @@ serve(async (req) => {
         },
         {
           apiVersion: STRIPE_API_VERSION,
-          idempotencyKey: generateIdempotencyKey(brand_id, "onboard_session"),
+          idempotencyKey: generateIdempotencyKey(
+            brand_id,
+            existingSca?.detached_at ? "onboard_reactivate_session" : "onboard_session",
+          ),
         },
       );
     } catch (err) {
@@ -324,7 +373,8 @@ serve(async (req) => {
         target_id: scaRowId ?? stripeAccountId,
         after: {
           stripe_account_id: stripeAccountId,
-          account_type: "express",
+          controller_dashboard_type: "express",
+          country,
         },
       });
     } catch (auditErr) {

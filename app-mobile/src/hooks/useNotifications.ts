@@ -220,6 +220,8 @@ async function fetchNotifications(
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
+    .not('type', 'like', 'stripe.%')
+    .not('type', 'like', 'business.%')
     .order('created_at', { ascending: false })
     .limit(limit);
 

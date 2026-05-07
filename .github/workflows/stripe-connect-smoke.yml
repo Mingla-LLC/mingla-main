@@ -1,0 +1,50 @@
+name: Stripe Connect Smoke (B2a Path C V3)
+
+# B2a Path C V3 SPEC §6 — multi-country happy-path smoke against Stripe sandbox.
+#
+# Runs against Stripe TEST mode using the operator's STRIPE_SECRET_KEY (read from
+# GitHub Actions secrets). Verifies:
+#  1. accounts.create succeeds with controller properties for each country tier
+#  2. accountSessions.create returns a client_secret
+#  3. accounts.retrieve reflects the created account
+#  4. accounts.del best-effort succeeds
+#
+# Tier 1 countries (covered): US, GB, DE
+# Tier 2 countries (sample, covered): CA, CH, FR
+# Tier 3 EEA countries (probed individually): NL, IE, SE
+#
+# Triggered: workflow_dispatch (operator-initiated) + on push to Seth/main
+# affecting Stripe-related code paths.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [Seth, main]
+    paths:
+      - "supabase/functions/_shared/stripe.ts"
+      - "supabase/functions/_shared/stripeSupportedCountries.ts"
+      - "supabase/functions/_shared/stripeWebhookRouter.ts"
+      - "supabase/functions/brand-stripe-onboard/**"
+      - "supabase/functions/stripe-webhook/**"
+      - "scripts/e2e/stripe-connect-smoke.mjs"
+      - ".github/workflows/stripe-connect-smoke.yml"
+
+jobs:
+  smoke:
+    name: "Stripe Connect multi-country smoke"
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.actor == 'sethogieva' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Stripe SDK
+        run: npm install --no-save stripe@18.0.0
+      - name: Run multi-country happy-path smoke
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY_TEST }}
+          STRIPE_API_VERSION: "2026-04-30.preview"
+          # Smoke-mode flag — script knows to clean up created test accounts.
+          MINGLA_SMOKE_MODE: "true"
+        run: node scripts/e2e/stripe-connect-smoke.mjs

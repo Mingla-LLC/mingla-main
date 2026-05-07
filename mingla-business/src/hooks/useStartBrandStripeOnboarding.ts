@@ -24,6 +24,13 @@ import { brandStripeStatusKeys } from "./useBrandStripeStatus";
 export interface UseStartBrandStripeOnboardingInput {
   brandId: string;
   returnUrl: string;
+  /**
+   * V3 multi-country: 2-letter ISO country code from the canonical 34-country
+   * allowlist (per `constants/stripeSupportedCountries.ts` + I-PROPOSED-T).
+   * Optional for back-compat; falls back to "GB" at the service layer.
+   * Phase 9 BrandStripeCountryPicker passes this from user selection.
+   */
+  country?: string;
 }
 
 export function useStartBrandStripeOnboarding(): UseMutationResult<
@@ -37,8 +44,8 @@ export function useStartBrandStripeOnboarding(): UseMutationResult<
     Error,
     UseStartBrandStripeOnboardingInput
   >({
-    mutationFn: async ({ brandId, returnUrl }) =>
-      startBrandStripeOnboarding(brandId, returnUrl),
+    mutationFn: async ({ brandId, returnUrl, country }) =>
+      startBrandStripeOnboarding(brandId, returnUrl, country),
     onSuccess: (_data, { brandId }) => {
       // Defensive invalidation; webhook will also fire Realtime invalidate
       queryClient.invalidateQueries({

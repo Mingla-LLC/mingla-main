@@ -2144,6 +2144,127 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **EXIT condition:** Permanent invariant. Audit logging is a Constitutional principle (#3 — no silent failures); reversal would require revising the constitution.
 
+### I-PROPOSED-K — REQUIRE-CYCLES-BASELINED (DRAFT — flips ACTIVE on META-ORCH-0744-PROCESS CLOSE)
+
+**Status:** DRAFT (added during META-ORCH-0744-PROCESS IMPL; flips ACTIVE on META-ORCH-0744-PROCESS CLOSE).
+
+**Statement:** every require-cycle in `mingla-business/src/ + app/` is either (a) listed in `mingla-business/.metro-cycle-baseline.txt` (legacy cycle, awaiting structural refactor in a future ORCH) OR (b) a NEW cycle that fails CI before merge.
+
+**Authority:** `.github/scripts/strict-grep/i-proposed-k-require-cycles.mjs` runs `madge --circular` against `mingla-business/src/ + app/` and compares to baseline. Workflow job in `.github/workflows/strict-grep-mingla-business.yml`.
+
+**Why:** ORCH-0742 introduced a require-cycle that the SPEC §4.2 explicitly tried to prevent; nobody caught it. ORCH-0744 forensics surfaced 14 pre-existing cycles. New cycles MUST be justified or eliminated before merge, not allowed to pile up silently.
+
+**Enforcement (3 gates):**
+1. **CI script** — `i-proposed-k-require-cycles.mjs`. Fails on any new cycle vs baseline.
+2. **Baseline file** — `mingla-business/.metro-cycle-baseline.txt`. Operator-owned. Lines added (new cycle accepted) or removed (cycle fixed) ALWAYS in the same PR as the import-graph change.
+3. **PR review discipline** — when baseline is modified, reviewer MUST inspect why (cycle added or fixed) and verify rationale.
+
+**Test catches a regression:** any code change introducing a NEW cycle (not in baseline) fails CI. Operator must either fix the cycle OR add it to baseline with PR-comment justification.
+
+**Established:** META-ORCH-0744-PROCESS / 2026-05-06 (DRAFT — flips ACTIVE on CLOSE).
+
+**Caveats:**
+- Baseline format change requires bumping the script's normalization function. Tracked in script header.
+- madge could miss dynamic `require()` cycles (script catches static `import` cycles only). Mingla-business uses ESM imports exclusively post-ORCH-0743 RC-1, so this is acceptable.
+- The 14-cycle baseline is operationally large. ORCH-0746 (queued) will start shrinking it.
+
+**Cross-references:** SPEC §3.1, ORCH-0744 forensics §3 RC-1 + CF-1, ORCH-0746 (queued).
+
+### I-PROPOSED-L — DIAG-MARKERS-REAPED-AT-CLOSE (DRAFT — flips ACTIVE on META-ORCH-0744-PROCESS CLOSE)
+
+**Status:** DRAFT (added during META-ORCH-0744-PROCESS IMPL; flips ACTIVE on META-ORCH-0744-PROCESS CLOSE).
+
+**Statement:** `[ORCH-XXXX-DIAG]` markers introduced by an ORCH MUST be removed in the same CLOSE that closes that ORCH. Markers from PRIOR closed ORCHs (residue) require a separate dedicated cleanup cycle.
+
+**Authority:** `.claude/skills/mingla-orchestrator/SKILL.md` Mode: CLOSE Step 1.5 (NEW per SPEC §3.2).
+
+**Why:** ORCH-0728/0729/0730/0733/0734-RW all closed PASS while leaving 15 `[ORCH-XXXX-DIAG]` console.error blocks in production code. Each had a comment saying "removed at full IMPL CLOSE" but no CLOSE step enforced this. ORCH-0743 had to mass-delete them after the fact.
+
+**Enforcement:** PROCESS-time (orchestrator at CLOSE), NOT CI-time. CI can't know which ORCH is closing — only the orchestrator (mid-CLOSE) has that context. Step 1.5 grep must return zero matches before CLOSE proceeds to Step 2.
+
+**Test catches a regression:** any future CLOSE where the orchestrator skips Step 1.5 results in DIAG markers persisting. The check is in the skill prompt itself; future orchestrator sessions that follow the skill will execute Step 1.5 unconditionally.
+
+**Established:** META-ORCH-0744-PROCESS / 2026-05-06 (DRAFT — flips ACTIVE on CLOSE).
+
+**Caveats:**
+- This is a process invariant, not a CI invariant. No automated enforcement at PR-time. Requires orchestrator skill discipline.
+- Pre-cycle DIAG residue (markers from prior CLOSED ORCHs) is OUT OF SCOPE for this invariant — those need a one-time cleanup cycle (already happened in ORCH-0743 for the 15 markers from 5 ORCHs).
+
+**Cross-references:** SPEC §3.2, ORCH-0744 forensics §M-2, ORCH-0743 CF-3 mass-delete.
+
+### I-PROPOSED-M — PERSIST-KEY-WHITELIST-SYNC (DRAFT — flips ACTIVE on META-ORCH-0744-PROCESS CLOSE)
+
+**Status:** DRAFT (added during META-ORCH-0744-PROCESS IMPL; flips ACTIVE on META-ORCH-0744-PROCESS CLOSE).
+
+**Statement:** every Zustand persist `name: "mingla-business.<store>.v<N>"` literal in `mingla-business/src/store/*.ts` MUST appear as a string literal in `KNOWN_MINGLA_KEYS` set inside `mingla-business/src/utils/reapOrphanStorageKeys.ts`. No drift permitted in either direction (missing-from-whitelist OR stale-in-whitelist).
+
+**Authority:** `.github/scripts/strict-grep/i-proposed-m-persist-key-whitelist.mjs`. Workflow job in strict-grep-mingla-business.yml.
+
+**Why:** ORCH-0742 bumped `currentBrand.v13 → v14` but didn't update the reaper whitelist. Result: ORCH-0742's live `v14` blob reported as ORPHAN every cold-start. If anyone ever promoted the reaper from log-only to delete-mode (Cycle 17d §D explicitly plans this), it would silently wipe the live blob on every cold-start, undoing ORCH-0742 entirely. **Latent destruction risk.**
+
+**Enforcement (2 gates):**
+1. **CI script** — `i-proposed-m-persist-key-whitelist.mjs`. Fails on any persist-name not in whitelist OR any whitelist entry not matching a live persist.
+2. **Per-store unit test (already shipped in ORCH-0743)** — `src/utils/__tests__/reapOrphanStorageKeys.test.ts` pins the v14 entry specifically; broader test would be added per-store as new persists are introduced.
+
+**Test catches a regression:** any persist-key bump (e.g., `currentBrand.v14 → v15` in a future cycle) that forgets to update the whitelist fails CI on the same PR.
+
+**Established:** META-ORCH-0744-PROCESS / 2026-05-06 (DRAFT — flips ACTIVE on CLOSE).
+
+**Caveats:**
+- Pure literal `name:` matching only. Template strings or dynamic composition not supported (none currently used; future SPEC required if pattern emerges).
+- Comment-stripping pre-pass required to prevent docblock false-positives.
+- Cross-domain: this gate only checks mingla-business stores. App-mobile + other domains require their own gates (future cycle).
+
+**Cross-references:** SPEC §3.3, ORCH-0744 forensics RC-2 (the latent destruction surface), ORCH-0743 RC-2 fix + unit test.
+
+### I-PROPOSED-N — TRANSITIONAL-EXIT-CONDITIONED (DRAFT — flips ACTIVE on META-ORCH-0744-PROCESS CLOSE)
+
+**Status:** DRAFT (added during META-ORCH-0744-PROCESS IMPL; flips ACTIVE on META-ORCH-0744-PROCESS CLOSE).
+
+**Statement:** every `[TRANSITIONAL]` marker in `mingla-business/src/ + app/` MUST have an exit-condition keyword (`EXIT`, `exits when`, `exit condition`, `Cycle X`, `B-cycle`, `B<N>`, `ORCH-NNNN`) within 5 lines of the marker. Const #7 enforcement (label temporary fixes — tracked, owned, exit-conditioned).
+
+**Authority:** `.github/scripts/strict-grep/i-proposed-n-transitional-exit-condition.mjs`. Workflow job in strict-grep-mingla-business.yml.
+
+**Why:** ORCH-0744 forensics §HF-4 found 9 of 29 `[TRANSITIONAL]` markers without exit conditions. Const #7 is honor-system without enforcement; markers become permanent quietly.
+
+**Enforcement (2 phases):**
+1. **Phase 1 (THIS CYCLE) — WARN-MODE:** `Mingla_Artifacts/.transitional-baseline.txt` lists the known violators; gate WARNS on each existing violator + FAILS on any NEW violator added vs baseline. Existing violators don't break CI.
+2. **Phase 2 (post-ORCH-0748):** ORCH-0748 fixes the violators; baseline file becomes empty; gate promotes to FAIL-MODE on any TRANSITIONAL without exit condition.
+
+**Test catches a regression:** new `[TRANSITIONAL]` marker added without an exit keyword fails CI immediately. Existing violators logged but don't block (until Phase 2 promotion).
+
+**Established:** META-ORCH-0744-PROCESS / 2026-05-06 (DRAFT WARN-MODE — flips ACTIVE on CLOSE; flips FAIL-MODE on ORCH-0748 CLOSE).
+
+**Caveats:**
+- 5-line window is a heuristic. A marker followed by an exit-condition 6 lines later spuriously triggers; operator works around with re-formatting OR an explicit allowlist comment.
+- Baseline format `file:line` requires line-number stability. Heavy refactors (cycle 17d-class) shift line numbers; baseline needs simultaneous update in those PRs.
+
+**Cross-references:** SPEC §3.4, ORCH-0744 forensics §HF-4, ORCH-0748 (queued — TRANSITIONAL audit cycle).
+
+### I-PROPOSED-X — WEB-EXPORT-CLEAN (DRAFT — flips ACTIVE on META-ORCH-0744-PROCESS CLOSE)
+
+**Status:** DRAFT (added during META-ORCH-0744-PROCESS IMPL; flips ACTIVE on META-ORCH-0744-PROCESS CLOSE).
+
+**Statement:** `expo export -p web` stderr from `mingla-business/` MUST contain ZERO `"shadow*" / "textShadow*" / "elevation"` deprecation warnings AND ZERO `Property '<X>' doesn't exist` errors traceable to mingla-business sources (admin, supabase, app-mobile out of scope; dependency-source warnings allowed).
+
+**Authority:** `.github/scripts/strict-grep/i-proposed-x-web-deprecation.mjs`. Workflow job runs `expo export -p web` AND the parser.
+
+**Why:** ORCH-0744 forensics §CF-2 found `textShadow*` props on `event/[id]/index.tsx` hero — RN-only props that react-native-web silently strips, making the shadow invisible on web. The Metro deprecation warning had been printed for who-knows-how-long without anyone reading it. ORCH-0743 fixed the one site; this gate prevents new instances.
+
+**Enforcement (1 gate):**
+1. **CI script + parser** — `i-proposed-x-web-deprecation.mjs`. Pipes captured stderr from `expo export -p web` through pattern matchers. Fails on any of the 4 violation classes.
+
+**Test catches a regression:** any new RN-only style prop added to mingla-business code fails CI on the same PR. The parser also catches `Property doesn't exist` errors specifically when traced to mingla-business sources (filters out Stripe SDK / Sentry SSR / other dependency-source noise).
+
+**Established:** META-ORCH-0744-PROCESS / 2026-05-06 (DRAFT — flips ACTIVE on CLOSE).
+
+**Caveats:**
+- `expo export -p web` is the slowest gate (~2 min on CI). Acceptable trade-off; can be moved to a slower-cadence workflow if PR cycle time becomes an issue.
+- ESLint rule banning inline `elevation:` outside designSystem is deferred to a future cycle (would catch BEFORE export). For now: parser-on-stderr is the catch.
+- Stub Supabase env vars required for export to complete; these are CI-only and never leak production credentials.
+
+**Cross-references:** SPEC §3.5, ORCH-0744 forensics §CF-2, ORCH-0743 CF-2 fix.
+
 ### I-PROPOSED-T — STRIPE-COUNTRY-FROM-CANONICAL-ALLOWLIST-ONLY (DRAFT — flips ACTIVE on B2a Path C V3 CLOSE)
 
 **Status:** DRAFT (added 2026-05-06 with B2a Path C V3 SPEC per DEC-121; flips ACTIVE on V3 CLOSE).

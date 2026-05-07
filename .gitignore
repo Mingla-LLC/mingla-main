@@ -58,3 +58,9 @@ supabase/.temp/
 
 # === Ad-hoc local scratch (one-off test harnesses, debug scripts) ===
 tmp/
+
+# === Stripe credentials scratch (RAK + secret key copy-paste files; never commit) ===
+stripe-values.md
+stripe-values*.md
+*-stripe-keys.md
+*-stripe-secrets.md

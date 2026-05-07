@@ -348,3 +348,91 @@ Per V3 SPEC §7 phasing:
 **Confidence post-hotfix: H** (corrected migration is straightforward ALTER + CREATE; no schema collisions remain; matches existing Mingla architectural pattern).
 
 **Lesson for future implementor dispatches:** Phase 0a (pre-flight reads) MUST grep the baseline-squash migration for any table name the new migration references, even if "we don't expect it to exist." Cost of the grep is 5 seconds; cost of a `db push` rollback + hotfix is 30 minutes.
+
+---
+
+## §11 — Sub-dispatch B implementation (backend)
+
+**Status:** implemented, partially verified.
+
+**Scope executed:** webhook router/signature/IP allowlist/retry; function-specific Stripe RAK factory; KYC remediation helper; `brand-stripe-detach`; `brand-stripe-balances`; `stripe-kyc-stall-reminder`; `stripe-webhook-health-check`; payout/KYC router integrations; V3 multi-country/reactivation/ToS onboard backend; notify-dispatch Stripe/ops extension.
+
+### Files changed by Sub-dispatch B
+
+Modified:
+- `mingla-business/src/services/brandStripeService.ts`
+- `supabase/functions/_shared/idempotency.ts`
+- `supabase/functions/_shared/stripe.ts`
+- `supabase/functions/brand-stripe-onboard/index.ts`
+- `supabase/functions/brand-stripe-refresh-status/index.ts`
+- `supabase/functions/notify-dispatch/index.ts`
+- `supabase/functions/stripe-webhook/index.ts`
+
+Added:
+- `mingla-business/src/utils/__tests__/onboardReactivation.test.ts`
+- `supabase/functions/_shared/stripeEdgeAuth.ts`
+- `supabase/functions/_shared/stripeIpAllowlist.ts`
+- `supabase/functions/_shared/stripeKycRemediation.ts`
+- `supabase/functions/_shared/stripeKycReminderSchedule.ts`
+- `supabase/functions/_shared/stripeSupportedCountries.ts`
+- `supabase/functions/_shared/stripeWebhookRouter.ts`
+- `supabase/functions/_shared/stripeWebhookSignature.ts`
+- `supabase/functions/_shared/__tests__/stripeIpAllowlist.test.ts`
+- `supabase/functions/_shared/__tests__/stripeKycRemediation.test.ts`
+- `supabase/functions/_shared/__tests__/stripeKycReminderSchedule.test.ts`
+- `supabase/functions/_shared/__tests__/stripeWebhookRouter.test.ts`
+- `supabase/functions/_shared/__tests__/stripeWebhookSignature.test.ts`
+- `supabase/functions/brand-stripe-balances/index.ts`
+- `supabase/functions/brand-stripe-balances/index.test.ts`
+- `supabase/functions/brand-stripe-detach/index.ts`
+- `supabase/functions/brand-stripe-detach/index.test.ts`
+- `supabase/functions/stripe-kyc-stall-reminder/index.ts`
+- `supabase/functions/stripe-kyc-stall-reminder/index.test.ts`
+- `supabase/functions/stripe-webhook-health-check/index.ts`
+- `supabase/functions/stripe-webhook-health-check/index.test.ts`
+- `supabase/migrations/20260512000001_b2a_v3_mingla_revenue_log.sql`
+
+### Behavioral summary by phase
+
+**Phase 1:** `_shared/stripe.ts` now exposes function-specific RAK clients (`STRIPE_RAK_ONBOARD`, `STRIPE_RAK_WEBHOOK`, `STRIPE_RAK_REFRESH_STATUS`, `STRIPE_RAK_DETACH`, `STRIPE_RAK_BALANCES`, `STRIPE_RAK_KYC_REMINDER`) and no longer exports a single full-secret client. Idempotency keys now use epoch-nanosecond shape and cover the new Stripe operations. `stripe-webhook` verifies signatures against Connect, Platform, and Previous secrets; soft-fails IP allowlist misses through audit; retries `processed=false` rows up to 5 attempts; delegates event work to `_shared/stripeWebhookRouter.ts`.
+
+**Phase 1 amendments applied:** `STRIPE_WEBHOOK_SECRET_PLATFORM` is supported; platform sandbox account amendment is documented via dispatch only; `account.requirements.updated` is not routed; requirements/deadline state is read from `account.updated`; the routed event list is 16 total (14 Connect-context + 2 platform-context application_fee events).
+
+**Phase 2:** `brand-stripe-detach` performs payments-manager auth, best-effort `stripe.accounts.del` with Idempotency-Key, local soft-delete via `detached_at`, audit for success or Stripe-rejected/local-success, and brand-manager notification through `notify-dispatch`.
+
+**Phase 3:** `brand-stripe-balances` performs payments-manager auth, retrieves connected-account balance with `Stripe-Account`, filters KPI fields to `stripe_connect_accounts.default_currency`, preserves raw multi-currency arrays, and audits reads.
+
+**Phase 4:** `stripe-kyc-stall-reminder` preserves 24-hour stalled-KYC reminders, adds 7d/3d/1d deadline-warning tiers, idempotency keys by brand/date/tier/user, cron jitter up to 60 minutes, and a dispatch circuit breaker after 5 consecutive notification failures.
+
+**Phase 5:** `stripe-webhook-health-check` checks latest `payment_webhook_events.created_at`; if silent for more than 6 hours, it calls `notify-dispatch` with `ops.webhook_silence_alert` to `ops@mingla.app` and writes `ops.webhook_silence_check_fired`.
+
+**Phase 6:** Router integration covers `payout.failed` notification with failure-code remediation, and `account.updated` clears `kyc_stall_reminder_sent_at` whenever `charges_enabled=true`.
+
+**Phase 7:** `brand-stripe-onboard` now requires a 34-country allowlisted `country`, checks `brand_team_members.mingla_tos_accepted_at`, reactivates detached local rows by clearing `detached_at` and creating a fresh AccountSession, passes country/default currency into `accounts.create`, forwards `Accept-Language` into AccountSession params, and audits `stripe_connect.onboard_initiated` vs `stripe_connect.reactivated`.
+
+### Verification commands and results
+
+| Command | Result |
+|---|---|
+| `npx tsc --noEmit` from `mingla-business/` | PASS, exit 0 |
+| `npx jest src/utils/__tests__/onboardReactivation.test.ts --runInBand` from `mingla-business/` | PASS, 2 tests |
+| `/opt/homebrew/bin/node .github/scripts/strict-grep/i-proposed-o-stripe-no-webview-wrap.mjs` | PASS, 0 violations |
+| `/opt/homebrew/bin/node .github/scripts/strict-grep/i-proposed-p-stripe-state-canonical.mjs` | PASS, 0 violations |
+| `/opt/homebrew/bin/node .github/scripts/strict-grep/i-proposed-q-stripe-api-version.mjs` | PASS, 0 violations |
+| `/opt/homebrew/bin/node .github/scripts/strict-grep/i-proposed-r-stripe-idempotency-key.mjs` | PASS, 0 violations |
+| `/opt/homebrew/bin/node .github/scripts/strict-grep/i-proposed-s-stripe-audit-log.mjs` | PASS, 0 violations across 7 Stripe function indexes |
+| `deno test --allow-env --allow-net ...` for Sub-dispatch B Deno tests | BLOCKED: `deno` binary not installed in PATH or `/opt/homebrew/bin`/`/usr/local/bin`; 9 Deno test files authored but unexecuted |
+| `/Users/sethogieva/bin/supabase db reset` | BLOCKED: local Supabase stack is not running (`supabase start is not running`) |
+| `/Users/sethogieva/bin/supabase functions list` | PASS command; remote list does not yet include new Sub-dispatch B functions because they have not been deployed |
+
+### Residual risks / tester handoff
+
+- Deno tests were authored but not executed in this workspace because Deno is unavailable. Tester should run the five shared Deno tests plus four function-level Deno tests after installing/using the project Deno runtime.
+- Local migration reset was not executed because Supabase local stack was stopped. Tester/operator should run `supabase start` then `supabase db reset`, including new migration `20260512000001_b2a_v3_mingla_revenue_log.sql`.
+- `supabase functions list` confirms the remote project is currently missing the new Sub-dispatch B functions (`brand-stripe-detach`, `brand-stripe-balances`, `stripe-kyc-stall-reminder`, `stripe-webhook-health-check`). This is expected until deployment, but it remains a release gate.
+- `notify-dispatch` now supports email-only ops alerts and brand/deep-link fields, but full email preference semantics are still minimal. Sub-dispatch C/tester should verify Stripe notification UX/inbox filtering per I-PROPOSED-W.
+- `stripe_country_specs` seeding remains operator-owned per Sub-dispatch A; onboard currently uses the canonical backend allowlist/default-currency map and does not require seeded specs to create accounts.
+
+### Suggested commit message
+
+`feat(business): B2a Path C V3 Sub-dispatch B - webhook router + 16 events + multi-country onboard + 4 edge fns`

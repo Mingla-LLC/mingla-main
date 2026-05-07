@@ -22,21 +22,31 @@ import Stripe from "https://esm.sh/stripe@18.0.0?target=denonext";
 
 export const STRIPE_API_VERSION = "2026-04-30.preview" as const;
 
-const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY");
+export function createStripeClient(envVarName: string): Stripe {
+  const key = Deno.env.get(envVarName);
+  if (!key) {
+    throw new Error(
+      `${envVarName} environment variable is not set. Configure the function-specific Stripe Restricted API Key in Supabase Edge Function secrets.`,
+    );
+  }
 
-if (!STRIPE_SECRET_KEY) {
-  throw new Error(
-    "STRIPE_SECRET_KEY environment variable is not set. Configure in Supabase Dashboard → Project Settings → Edge Functions → Secrets.",
-  );
+  return new Stripe(key, {
+    apiVersion: STRIPE_API_VERSION,
+    appInfo: {
+      name: "Mingla",
+      version: "1.0.0",
+      url: "https://mingla.com",
+    },
+  });
 }
 
-export const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: STRIPE_API_VERSION,
-  appInfo: {
-    name: "Mingla",
-    version: "1.0.0",
-    url: "https://mingla.com",
-  },
-});
+export const stripeOnboard = () => createStripeClient("STRIPE_RAK_ONBOARD");
+export const stripeWebhook = () => createStripeClient("STRIPE_RAK_WEBHOOK");
+export const stripeRefreshStatus = () =>
+  createStripeClient("STRIPE_RAK_REFRESH_STATUS");
+export const stripeDetach = () => createStripeClient("STRIPE_RAK_DETACH");
+export const stripeBalances = () => createStripeClient("STRIPE_RAK_BALANCES");
+export const stripeKycReminder = () =>
+  createStripeClient("STRIPE_RAK_KYC_REMINDER");
 
-export type StripeClient = typeof stripe;
+export type StripeClient = ReturnType<typeof createStripeClient>;

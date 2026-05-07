@@ -56,3 +56,109 @@ export const formatGbpRound = (value: number): string =>
  */
 export const formatCount = (value: number): string =>
   value.toLocaleString("en-GB");
+
+/**
+ * Format a numeric value in any ISO 4217 currency. Multi-currency aware
+ * per Constitution #10 — used by V3 multi-country balance UIs that operate
+ * in 12+ currencies (USD, GBP, EUR, CHF, CAD, BGN, CZK, DKK, HUF, ISK,
+ * NOK, PLN, RON, SEK).
+ *
+ * Locale picks a sensible default for each currency (en-GB for GBP, en-US
+ * for USD, etc.) so glyph + separator conventions match user expectations
+ * without requiring the caller to pass a locale.
+ *
+ * Pass `minor=true` if `value` is already in minor units (pence/cents/öre);
+ * the function divides by the currency's minor-unit factor before formatting.
+ *
+ * @example formatCurrency(156.20, "GBP")      → "£156.20"
+ * @example formatCurrency(15620, "GBP", true) → "£156.20"
+ * @example formatCurrency(99, "USD")          → "$99.00"
+ * @example formatCurrency(8420, "EUR")        → "€8,420.00"
+ */
+export const formatCurrency = (
+  value: number,
+  currency: string,
+  minor = false,
+): string => {
+  const code = currency.toUpperCase();
+  const locale = LOCALE_BY_CURRENCY[code] ?? "en-GB";
+  const major = minor ? value / minorUnitFactor(code) : value;
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: code,
+    maximumFractionDigits: 2,
+  }).format(major);
+};
+
+/**
+ * Round-headline variant of formatCurrency — no decimals, glanceable.
+ *
+ * @example formatCurrencyRound(24180, "GBP")  → "£24,180"
+ * @example formatCurrencyRound(2418000, "GBP", true) → "£24,180"
+ */
+export const formatCurrencyRound = (
+  value: number,
+  currency: string,
+  minor = false,
+): string => {
+  const code = currency.toUpperCase();
+  const locale = LOCALE_BY_CURRENCY[code] ?? "en-GB";
+  const major = minor ? value / minorUnitFactor(code) : value;
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: code,
+    maximumFractionDigits: 0,
+  }).format(major);
+};
+
+/**
+ * Sensible-default locale per currency. Avoids requiring callers to know
+ * which locale to pair. Defaults to en-GB for unknown codes.
+ */
+const LOCALE_BY_CURRENCY: Record<string, string> = {
+  GBP: "en-GB",
+  USD: "en-US",
+  CAD: "en-CA",
+  EUR: "en-IE",
+  CHF: "de-CH",
+  BGN: "bg-BG",
+  CZK: "cs-CZ",
+  DKK: "da-DK",
+  HUF: "hu-HU",
+  ISK: "is-IS",
+  NOK: "nb-NO",
+  PLN: "pl-PL",
+  RON: "ro-RO",
+  SEK: "sv-SE",
+};
+
+/**
+ * Minor-unit factor per ISO 4217. Most currencies use 100 (2 decimals);
+ * notable exceptions include ISK and HUF (no minor unit in practice — Stripe
+ * still uses 100 for HUF, but ISK is 1).
+ *
+ * Per Stripe docs:
+ *   https://docs.stripe.com/currencies#zero-decimal
+ */
+function minorUnitFactor(currency: string): number {
+  return ZERO_DECIMAL_CURRENCIES.has(currency) ? 1 : 100;
+}
+
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  "BIF",
+  "CLP",
+  "DJF",
+  "GNF",
+  "JPY",
+  "KMF",
+  "KRW",
+  "MGA",
+  "PYG",
+  "RWF",
+  "UGX",
+  "VND",
+  "VUV",
+  "XAF",
+  "XOF",
+  "XPF",
+]);

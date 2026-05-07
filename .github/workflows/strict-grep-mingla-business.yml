@@ -27,6 +27,15 @@ on:
 #   - I-PROPOSED-Q (i-proposed-q-stripe-api-version.mjs) — Stripe API version pinned via _shared/stripe.ts only; no inline overrides (B2a Path C)
 #   - I-PROPOSED-R (i-proposed-r-stripe-idempotency-key.mjs) — Idempotency-Key on every Stripe API call (B2a Path C)
 #   - I-PROPOSED-S (i-proposed-s-stripe-audit-log.mjs) — Audit log import + call on every Stripe edge function (B2a Path C)
+#   - I-PROPOSED-T (i-proposed-t-stripe-country-allowlist.mjs) — Stripe country from canonical 34-country allowlist only (B2a Path C V3)
+#   - I-PROPOSED-U (i-proposed-u-mingla-tos-gate.mjs) — Mingla ToS accepted before any Stripe Connect call (B2a Path C V3)
+#   - I-PROPOSED-V (i-proposed-v-stripe-notification-via-shared.mjs) — Stripe edge fns dispatch via notify-dispatch only (B2a Path C V3)
+#   - I-PROPOSED-W (i-proposed-w-notifications-app-type-prefix.mjs) — notifications reads filtered by app-type prefix (B2a Path C V3)
+#   - I-PROPOSED-K (i-proposed-k-require-cycles.mjs) — require-cycles baselined (META-ORCH-0744)
+#   - I-PROPOSED-L (process invariant) — DIAG markers reaped at CLOSE (META-ORCH-0744)
+#   - I-PROPOSED-M (i-proposed-m-persist-key-whitelist.mjs) — persist-key whitelist sync (META-ORCH-0744)
+#   - I-PROPOSED-N (i-proposed-n-transitional-exit-condition.mjs) — TRANSITIONAL exit-condition lint (META-ORCH-0744)
+#   - I-PROPOSED-X (i-proposed-x-web-deprecation.mjs) — web-export deprecation parser (META-ORCH-0744)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -180,3 +189,102 @@ jobs:
           node-version: "20"
       - name: Run I-PROPOSED-S gate
         run: node .github/scripts/strict-grep/i-proposed-s-stripe-audit-log.mjs
+
+  i-proposed-t-stripe-country-allowlist:
+    name: "I-PROPOSED-T: STRIPE-COUNTRY-FROM-CANONICAL-ALLOWLIST-ONLY"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-T gate
+        run: node .github/scripts/strict-grep/i-proposed-t-stripe-country-allowlist.mjs
+
+  i-proposed-u-mingla-tos-gate:
+    name: "I-PROPOSED-U: MINGLA-TOS-ACCEPTED-BEFORE-STRIPE-CONNECT"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-U gate
+        run: node .github/scripts/strict-grep/i-proposed-u-mingla-tos-gate.mjs
+
+  i-proposed-v-stripe-notification-via-shared:
+    name: "I-PROPOSED-V: STRIPE-NOTIFICATIONS-VIA-SHARED-DISPATCHER"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-V gate
+        run: node .github/scripts/strict-grep/i-proposed-v-stripe-notification-via-shared.mjs
+
+  i-proposed-w-notifications-app-type-prefix:
+    name: "I-PROPOSED-W: NOTIFICATIONS-FILTERED-BY-APP-TYPE-PREFIX"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-W gate
+        run: node .github/scripts/strict-grep/i-proposed-w-notifications-app-type-prefix.mjs
+
+  i-proposed-k-require-cycles:
+    name: "I-PROPOSED-K: require-cycles baselined"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install madge
+        run: npm install --no-save madge
+      - name: Run I-PROPOSED-K gate
+        run: node .github/scripts/strict-grep/i-proposed-k-require-cycles.mjs
+
+  i-proposed-m-persist-key-whitelist:
+    name: "I-PROPOSED-M: persist-key whitelist sync"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-M gate
+        run: node .github/scripts/strict-grep/i-proposed-m-persist-key-whitelist.mjs
+
+  i-proposed-n-transitional-exit-condition:
+    name: "I-PROPOSED-N: TRANSITIONAL exit-condition lint"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-PROPOSED-N gate
+        run: node .github/scripts/strict-grep/i-proposed-n-transitional-exit-condition.mjs
+
+  i-proposed-x-web-deprecation:
+    name: "I-PROPOSED-X: web-export deprecation parser"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install mingla-business deps
+        working-directory: mingla-business
+        run: npm install --no-save
+      - name: Run expo export -p web (capture stderr)
+        working-directory: mingla-business
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://stub.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: stub_key_for_ci_export
+        run: npx expo export -p web 2>/tmp/expo-export-web.stderr || true
+      - name: Run I-PROPOSED-X parser
+        run: node .github/scripts/strict-grep/i-proposed-x-web-deprecation.mjs /tmp/expo-export-web.stderr

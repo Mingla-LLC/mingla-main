@@ -20,7 +20,7 @@ import * as Sentry from "@sentry/react-native";
 // promoted to delete-mode. The companion unit test
 // (reapOrphanStorageKeys.test.ts) pins this whitelist to the current persist
 // version. META-ORCH-0744-PROCESS will codify the workspace-wide CI gate as
-// I-PROPOSED-L (PERSIST-KEY-WHITELIST-SYNC).
+// I-PROPOSED-M (PERSIST-KEY-WHITELIST-SYNC).
 const KNOWN_MINGLA_KEYS = new Set<string>([
   "mingla-business.currentBrand.v14", // ORCH-0742 bumped from v13 → v14
   "mingla-business.draftEvent.v1",
