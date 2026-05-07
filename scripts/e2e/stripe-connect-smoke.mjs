@@ -24,7 +24,7 @@
 
 import Stripe from "stripe";
 
-const STRIPE_API_VERSION = process.env.STRIPE_API_VERSION ?? "2026-04-30.preview";
+const STRIPE_API_VERSION = process.env.STRIPE_API_VERSION ?? "2026-04-22.dahlia";
 const SMOKE_COUNTRIES = ["US", "GB", "DE", "CA", "CH", "FR", "NL", "IE", "SE"];
 
 const key = process.env.STRIPE_SECRET_KEY;

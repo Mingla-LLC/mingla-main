@@ -20,7 +20,13 @@
 // @ts-ignore — Deno ESM import; types resolved at runtime
 import Stripe from "https://esm.sh/stripe@18.0.0?target=denonext";
 
-export const STRIPE_API_VERSION = "2026-04-30.preview" as const;
+// 2026-05-07 hotfix: was "2026-04-30.preview" — that version does NOT exist in
+// Stripe's API catalog and is rejected by the SDK with "Invalid Stripe API version".
+// Switched to latest stable. V1 `accounts.create` with `controller` properties
+// (the marketplace controller-mode shape we use) IS supported in dahlia stable —
+// Accounts v2 was the original motivator for preview-channel pinning, but our
+// integration uses V1 controller properties, not the v2 endpoint.
+export const STRIPE_API_VERSION = "2026-04-22.dahlia" as const;
 
 export function createStripeClient(envVarName: string): Stripe {
   const key = Deno.env.get(envVarName);

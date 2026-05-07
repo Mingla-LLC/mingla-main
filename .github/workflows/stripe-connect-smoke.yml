@@ -57,7 +57,7 @@ jobs:
         if: steps.precheck.outputs.skip != 'true'
         env:
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY_TEST }}
-          STRIPE_API_VERSION: "2026-04-30.preview"
+          STRIPE_API_VERSION: "2026-04-22.dahlia"
           # Smoke-mode flag — script knows to clean up created test accounts.
           MINGLA_SMOKE_MODE: "true"
         run: node scripts/e2e/stripe-connect-smoke.mjs
