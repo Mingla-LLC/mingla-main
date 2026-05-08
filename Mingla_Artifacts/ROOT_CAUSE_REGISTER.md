@@ -5,6 +5,21 @@
 
 ## Root Causes
 
+### RC-0753: Remote-applied Supabase migration was not versioned in Git
+- **Discovery date:** 2026-05-07
+- **Proof:** `reports/INVESTIGATION_ORCH-0753_MAIN_SUPABASE_MIGRATION_DRIFT.md` proved the linked remote had applied migration version `20260507000003` while `origin/main` lacked `supabase/migrations/20260507000003_orch_0737_v8_timing_diagnostics.sql`. `reports/SPEC_ORCH-0753_MAIN_SUPABASE_MIGRATION_DRIFT.md` locked the safe repair to versioning the exact already-applied file. Tester PASS in `reports/TEST_REPORT_ORCH-0753_MAIN_SUPABASE_MIGRATION_DRIFT.md` proved commit `54553cb8` contains the migration, exact SQL matches the spec, and GitHub `Migrations apply cleanly from baseline` is green.
+- **Symptoms caused:** Supabase Preview/main database-release checks reported `Remote migration versions not found in local migrations directory`, so the repository could not reproduce the linked remote migration ledger from Git.
+- **Causal chain:**
+  1. ORCH-0737 v8 timing diagnostics migration `20260507000003` was applied to the linked remote.
+  2. The matching migration file stayed outside tracked Git history.
+  3. GitHub's Supabase migration check compared remote-applied versions against local migrations on main.
+  4. The remote version had no local tracked file, so the check failed even though app/docs checks were otherwise healthy.
+- **Structural fix:** Versioned `supabase/migrations/20260507000003_orch_0737_v8_timing_diagnostics.sql` with the exact already-applied SQL. No live DB mutation, migration repair, `supabase db push`, edge deploy, or product runtime change was part of the repair.
+- **Status:** **CLOSED PASS 2026-05-07** via DEC-130, tester PASS, Git tree proof on `54553cb8`, GitHub migration baseline check success, and final Vercel commit statuses success.
+- **Invariant / regression guard:** Every remote-applied Supabase migration version must be present in tracked Git history; intentional historical/backfill versioning must be documented as provenance repair and must not be paired with live DB mutation unless separately authorized.
+- **Causal cluster:** Cluster 5: release provenance drift between live Supabase ledger and repository migration history.
+- **Follow-ups not part of RC:** ORCH-0737 remains open for timing diagnostics/full-city baseline analysis.
+
 ### RC-0751: Duplicate auth cleanup callers raced RevenueCat logout after the first logout made the SDK anonymous
 - **Discovery date:** 2026-05-07
 - **Proof:** `reports/INVESTIGATION_ORCH-0751_REVENUECAT_ANONYMOUS_LOGOUT.md` proved the red Metro line was not a purchase failure but duplicate cleanup against RevenueCat's strict `logOut()` semantics. Runtime failure evidence in `reports/RUNTIME_QA_ORCH-0751_REVENUECAT_ANONYMOUS_LOGOUT.md` showed explicit sign-out logging `Logged out successfully` followed by native `Called logOut but the current user is anonymous`. Final proof in `reports/RETEST_ORCH-0751_REVENUECAT_LOGOUT_SERIALIZATION.md` showed the same Android sign-in -> sign-out -> sign-in path without the anonymous logout line.
