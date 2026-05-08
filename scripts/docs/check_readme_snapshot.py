@@ -29,6 +29,7 @@ def main() -> int:
     required = (
         "README is a snapshot",
         "Mingla_Artifacts/ARTIFACT_MANIFEST.md",
+        "Mingla_Roadmap/README.md",
         "Mingla_Artifacts/archive/README.md",
         "Mingla_Artifacts/reports/ORCH-0750A_LINK_AUDIT.md",
         "python3 scripts/docs/check_links.py --baseline-file scripts/docs/link_baseline.json",
@@ -56,11 +57,17 @@ def main() -> int:
             "Source Of Truth must point to the archive index",
             failures,
         )
+        require(
+            "Mingla_Roadmap/README.md" in source_body,
+            "Source Of Truth must point to the roadmap front door",
+            failures,
+        )
 
     repo_map = repo_map_block(text)
     require(repo_map, "README must contain a fenced Repo Map block", failures)
     if repo_map:
         require("Mingla_Artifacts/" in repo_map, "Repo Map must include Mingla_Artifacts/", failures)
+        require("Mingla_Roadmap/" in repo_map, "Repo Map must include Mingla_Roadmap/", failures)
         require("archive/" in repo_map, "Repo Map must include the archive under Mingla_Artifacts/", failures)
         for stale_root in ("outputs/", "clade transfer/"):
             require(stale_root not in repo_map, f"Repo Map must not list `{stale_root}` as active", failures)

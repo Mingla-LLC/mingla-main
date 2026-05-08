@@ -24,6 +24,7 @@ README is a snapshot. It is not the whole truth system.
 | What is the current program map? | [`Mingla_Artifacts/WORLD_MAP.md`](Mingla_Artifacts/WORLD_MAP.md) |
 | What changed recently? | [`Mingla_Artifacts/PRODUCT_SNAPSHOT.md`](Mingla_Artifacts/PRODUCT_SNAPSHOT.md) |
 | What should happen next? | [`Mingla_Artifacts/PRIORITY_BOARD.md`](Mingla_Artifacts/PRIORITY_BOARD.md) |
+| What is the current product roadmap and PMM plan? | [`Mingla_Roadmap/README.md`](Mingla_Roadmap/README.md) |
 | What decisions are binding? | [`Mingla_Artifacts/DECISION_LOG.md`](Mingla_Artifacts/DECISION_LOG.md) |
 | What invariants must hold? | [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](Mingla_Artifacts/INVARIANT_REGISTRY.md) |
 | What documentation link debt exists? | [`Mingla_Artifacts/reports/ORCH-0750A_LINK_AUDIT.md`](Mingla_Artifacts/reports/ORCH-0750A_LINK_AUDIT.md) |
@@ -92,6 +93,8 @@ Mingla/
   docs/                Architecture and implementation contracts
   Mingla_Artifacts/    Program operating system and evidence trail
     archive/           Historical/superseded material, indexed by manifest
+  Mingla_Roadmap/      Product, marketing, GTM, launch, research, and enablement planning system
+    archive/           Superseded roadmap material, indexed by roadmap manifest
   tests/               Repo-level tests and harnesses
 ```
 

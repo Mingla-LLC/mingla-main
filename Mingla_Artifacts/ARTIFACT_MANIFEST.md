@@ -1,12 +1,13 @@
 # Mingla Artifact Manifest
 
-> Updated: 2026-05-07  
-> Verification commit: `8168cf16`  
-> Source investigation: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0750_DOCUMENTATION_ARTIFACTS_TOTAL_SWEEP.md`  
-> Source spec: `Mingla_Artifacts/specs/SPEC_ORCH-0750A_ARTIFACT_MANIFEST_LINK_INTEGRITY.md`  
-> Archive implementation spec: `Mingla_Artifacts/specs/SPEC_ORCH-0750C_ARCHIVE_DELETE_PASS.md`  
-> Documentation lock-in spec: `Mingla_Artifacts/specs/SPEC_ORCH-0750D_DOCUMENTATION_SYSTEM_LOCK_IN.md`  
-> Scope note: this manifest classifies artifacts, records ORCH-0750C archive moves/copies, and records ORCH-0750D documentation regression gates.  
+> Updated: 2026-05-08
+> Verification commit: `8168cf16`
+> Source investigation: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0750_DOCUMENTATION_ARTIFACTS_TOTAL_SWEEP.md`
+> Source spec: `Mingla_Artifacts/specs/SPEC_ORCH-0750A_ARTIFACT_MANIFEST_LINK_INTEGRITY.md`
+> Archive implementation spec: `Mingla_Artifacts/specs/SPEC_ORCH-0750C_ARCHIVE_DELETE_PASS.md`
+> Documentation lock-in spec: `Mingla_Artifacts/specs/SPEC_ORCH-0750D_DOCUMENTATION_SYSTEM_LOCK_IN.md`
+> Roadmap system investigation: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0760_MINGLA_ROADMAP_PRODUCT_MARKETING_SYSTEM.md`
+> Scope note: this manifest classifies artifacts, records ORCH-0750C archive moves/copies, and records ORCH-0750D documentation regression gates.
 > Maintenance note: this version is manually curated with script-assisted link evidence. Later passes may automate population.
 
 ## How To Read This Manifest
@@ -46,6 +47,7 @@ This file is the first-pass map of Mingla's documentation and artifact truth sys
 | Product snapshot | `Mingla_Artifacts/PRODUCT_SNAPSHOT.md` | Partial; old operational alerts remain |
 | Historical migration truth | `Mingla_Artifacts/migrations_archive_orch_0729_2026-05-05/` | Preserve; do not delete |
 | README truth | `README.md` | Snapshot front door; rebuilt in ORCH-0750B and archive-aware in ORCH-0750C |
+| Product roadmap and PMM planning truth | `Mingla_Roadmap/` | Product/market intent only; lifecycle status remains in `Mingla_Artifacts/` |
 
 ## Top-Level Mingla_Artifacts
 
@@ -88,6 +90,10 @@ This file is the first-pass map of Mingla's documentation and artifact truth sys
 | ART-REPORT-ORCH-0750A-LINK-AUDIT | `Mingla_Artifacts/reports/ORCH-0750A_LINK_AUDIT.md` | report | docs | authority | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `8168cf16` | artifact_map | Current reproducible link audit for ORCH-0750A. |
 | ART-SPEC-ORCH-0750D | `Mingla_Artifacts/specs/SPEC_ORCH-0750D_DOCUMENTATION_SYSTEM_LOCK_IN.md` | spec | docs | authority | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `8168cf16` | artifact_map | Contract for documentation placement, skill alignment, README snapshot, and CI lock-in. |
 | ART-REPORT-ORCH-0750D-IMPLEMENTATION | `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0750D_DOCUMENTATION_SYSTEM_LOCK_IN.md` | report | docs | implementation_evidence | `CURRENT_LEDGER` | None | None | partial | keep_current | `8168cf16` | artifact_map | Implementation evidence for the documentation-system lock-in. |
+| ART-REPORT-ORCH-0760-ROADMAP-INVESTIGATION | `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0760_MINGLA_ROADMAP_PRODUCT_MARKETING_SYSTEM.md` | report | product | authority | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `a1db1e27` | artifact_map | Source investigation for the Mingla Roadmap product/marketing planning system. |
+| ART-REPORT-ORCH-0760-ROADMAP-SCAFFOLD | `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0760_MINGLA_ROADMAP_SYSTEM_SCAFFOLD.md` | report | product | implementation_evidence | `CURRENT_LEDGER` | None | None | partial | keep_current | `a1db1e27` | artifact_map | Evidence for the Mingla Roadmap scaffold and PMM placement contract. |
+| ART-REPORT-ORCH-0760-ROADMAP-POPULATION | `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0760_MINGLA_ROADMAP_POPULATION.md` | report | product | implementation_evidence | `CURRENT_LEDGER` | None | None | partial | keep_current | `a1db1e27` | artifact_map | PMM population evidence for the first feature taxonomy, roadmap views, living docs, and source summaries. |
+| ART-REPORT-ORCH-0760-ROADMAP-REVIEW | `Mingla_Artifacts/reports/REVIEW_ORCH-0760_MINGLA_ROADMAP_POPULATION.md` | report | product | review_evidence | `CURRENT_LEDGER` | None | None | partial | keep_current | `a1db1e27` | artifact_map | Orchestrator review accepting the populated Mingla Roadmap system and syncing moved lifecycle states. |
 
 ## External Artifact Roots
 
@@ -101,6 +107,22 @@ This file is the first-pass map of Mingla's documentation and artifact truth sys
 | ART-SCRIPT-CHECK-ARTIFACT-PLACEMENT | `scripts/docs/check_artifact_placement.py` | script | docs | regression_gate | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `8168cf16` | root_snapshot | Enforces current artifact placement, legacy root, generated-output, breadcrumb, archive-index, and skill-output rules. |
 | ART-SCRIPT-CHECK-README-SNAPSHOT | `scripts/docs/check_readme_snapshot.py` | script | docs | regression_gate | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `8168cf16` | root_snapshot | Enforces README snapshot/front-door rules and required docs gate references. |
 | ART-WORKFLOW-DOCS-ARTIFACT-REGRESSION | `.github/workflows/docs-artifact-regression.yml` | workflow | docs | regression_gate | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `8168cf16` | root_snapshot | Runs link baseline, artifact placement, and README snapshot checks on docs/artifact changes. |
+| ART-ROADMAP-ROOT | `Mingla_Roadmap/` | roadmap | product | planning_authority | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `a1db1e27` | root_snapshot | Product, marketing, GTM, launch, research, and enablement planning system. |
+| ART-ROADMAP-README | `Mingla_Roadmap/README.md` | index | product | front_door | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `a1db1e27` | root_snapshot | Roadmap front door and update rules. |
+| ART-ROADMAP-MANIFEST | `Mingla_Roadmap/ROADMAP_MANIFEST.md` | manifest | product | authority | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `a1db1e27` | root_snapshot | Roadmap document classification and archive policy. |
+| ART-ROADMAP-FEATURE-REGISTRY | `Mingla_Roadmap/FEATURE_REGISTRY.md` | registry | product | authority | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `a1db1e27` | root_snapshot | Canonical feature registry; lifecycle fields mirror Mingla_Artifacts. |
+| ART-ROADMAP-HIGH-LEVEL | `Mingla_Roadmap/HIGH_LEVEL_ROADMAP.md` | roadmap | product | authority | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `a1db1e27` | root_snapshot | Outcome-driven roadmap view. |
+| ART-ROADMAP-CURRENT-BUILD | `Mingla_Roadmap/CURRENT_BUILD.md` | dashboard | product | planning_mirror | `CURRENT_LEDGER` | None | None | partial | keep_current | `a1db1e27` | root_snapshot | Active build planning mirror; artifacts remain lifecycle authority. |
+| ART-ROADMAP-NEXT-UP | `Mingla_Roadmap/NEXT_UP.md` | dashboard | product | planning_queue | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `a1db1e27` | root_snapshot | Sequenced upcoming work. |
+| ART-ROADMAP-LIVING | `Mingla_Roadmap/living/` | directory | product | living_docs | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `a1db1e27` | roadmap_map | Current product, GTM, ICP, and portfolio docs. |
+| ART-ROADMAP-FEATURES | `Mingla_Roadmap/features/` | directory | product | feature_briefs | `CURRENT_LEDGER` | None | None | partial | archive_later | `a1db1e27` | roadmap_map | Feature briefs keyed to FEAT IDs. |
+| ART-ROADMAP-LAUNCH | `Mingla_Roadmap/launch/` | directory | marketing | launch_docs | `CURRENT_LEDGER` | None | None | partial | archive_later | `a1db1e27` | roadmap_map | Launch plans, release notes, announcements, and retrospectives. |
+| ART-ROADMAP-RESEARCH | `Mingla_Roadmap/research/` | directory | research | research_docs | `CURRENT_LEDGER` | None | None | partial | archive_later | `a1db1e27` | roadmap_map | Research plans, synthesis, JTBD, and competitive research. |
+| ART-ROADMAP-ENABLEMENT | `Mingla_Roadmap/enablement/` | directory | sales | enablement_docs | `CURRENT_LEDGER` | None | None | partial | archive_later | `a1db1e27` | roadmap_map | Sales enablement assets and objection handling. |
+| ART-ROADMAP-SOURCE-SUMMARIES | `Mingla_Roadmap/source-summaries/` | directory | product | source_summaries | `CURRENT_LEDGER` | None | None | partial | keep_current | `a1db1e27` | roadmap_map | Curated summaries of source artifacts with staleness labels. |
+| ART-ROADMAP-TEMPLATES | `Mingla_Roadmap/templates/` | directory | product | templates | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `a1db1e27` | roadmap_map | Reusable PMM templates. |
+| ART-ROADMAP-DRAFTS | `Mingla_Roadmap/drafts/` | directory | product | working_drafts | `DRAFT_ONLY` | None | None | no | working_draft | `a1db1e27` | not_yet | Working drafts; not current authority. |
+| ART-ROADMAP-ARCHIVE | `Mingla_Roadmap/archive/` | archive | product | historical_evidence | `HISTORICAL_AUTHORITY` | None | None | no | keep_current | `a1db1e27` | archive_index | Superseded roadmap material indexed by `Mingla_Roadmap/ROADMAP_MANIFEST.md`. |
 | ART-ARCHIVE-ROOT | `Mingla_Artifacts/archive/README.md` | archive | docs | index | `HISTORICAL_AUTHORITY` | None | None | no | keep_current | `8168cf16` | archive_index | ORCH-0750C archive front door. |
 | ART-ARCHIVE-OUTPUTS-LEGACY | `Mingla_Artifacts/archive/outputs_legacy/` | archive | business | historical_evidence | `HISTORICAL_AUTHORITY` | `outputs/` | None | no | archived | `8168cf16` | archive_index | Durable copy of ignored historical `outputs/` material. |
 | ART-ARCHIVE-HANDOFFS-LEGACY | `Mingla_Artifacts/archive/handoffs_legacy/` | archive | program | historical_evidence | `HISTORICAL_AUTHORITY` | `clade transfer/` | None | no | archived | `8168cf16` | archive_index | Historical transfer handoff archive. |
@@ -160,6 +182,7 @@ Rules:
 | `artifact_map` | Current authority/ledger artifacts through this manifest | ignored/private prompts |
 | `app_specific` | app README setup and local commands | global function/migration counts duplicated in each app README |
 | `archive_index` | archive sections via this manifest | random direct links to old transfer files |
+| `roadmap_map` | Roadmap subdocuments through `Mingla_Roadmap/ROADMAP_MANIFEST.md` | lifecycle claims that bypass `Mingla_Artifacts/` |
 | `do_not_link` | None | generated, ignored, private, or transient artifacts |
 | `not_yet` | None until revalidated | historical strategy or stale data claims |
 
