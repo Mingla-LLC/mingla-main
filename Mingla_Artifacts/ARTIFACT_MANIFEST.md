@@ -1,13 +1,12 @@
 # Mingla Artifact Manifest
 
-> Updated: 2026-05-07
-> Verification commit: `48e7bc03`
-> Source investigation: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0750_DOCUMENTATION_ARTIFACTS_TOTAL_SWEEP.md`
-> Source spec: `Mingla_Artifacts/specs/SPEC_ORCH-0750A_ARTIFACT_MANIFEST_LINK_INTEGRITY.md`
-> Archive implementation spec: `Mingla_Artifacts/specs/SPEC_ORCH-0750C_ARCHIVE_DELETE_PASS.md`
-> Documentation lock-in spec: `Mingla_Artifacts/specs/SPEC_ORCH-0750D_DOCUMENTATION_SYSTEM_LOCK_IN.md`
-> Documentation link burn-down: ORCH-0750E reduced missing durable local markdown links to zero and ratcheted `scripts/docs/link_baseline.json` to `max_missing: 0`.
-> Scope note: this manifest classifies artifacts, records ORCH-0750C archive moves/copies, records ORCH-0750D documentation regression gates, and records ORCH-0750E zero-link close evidence.
+> Updated: 2026-05-07  
+> Verification commit: `8168cf16`  
+> Source investigation: `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0750_DOCUMENTATION_ARTIFACTS_TOTAL_SWEEP.md`  
+> Source spec: `Mingla_Artifacts/specs/SPEC_ORCH-0750A_ARTIFACT_MANIFEST_LINK_INTEGRITY.md`  
+> Archive implementation spec: `Mingla_Artifacts/specs/SPEC_ORCH-0750C_ARCHIVE_DELETE_PASS.md`  
+> Documentation lock-in spec: `Mingla_Artifacts/specs/SPEC_ORCH-0750D_DOCUMENTATION_SYSTEM_LOCK_IN.md`  
+> Scope note: this manifest classifies artifacts, records ORCH-0750C archive moves/copies, and records ORCH-0750D documentation regression gates.  
 > Maintenance note: this version is manually curated with script-assisted link evidence. Later passes may automate population.
 
 ## How To Read This Manifest
@@ -39,7 +38,7 @@ This file is the first-pass map of Mingla's documentation and artifact truth sys
 | Authority area | Current source | Caveat |
 |---|---|---|
 | Program operating state | `Mingla_Artifacts/OPEN_INVESTIGATIONS.md` | Ledger, not clean dashboard |
-| Work handoffs | `Mingla_Artifacts/AGENT_HANDOFFS.md` | Links zero-clean post-ORCH-0750E; prompt paths are private text when not versioned |
+| Work handoffs | `Mingla_Artifacts/AGENT_HANDOFFS.md` | Link-broken; prompt paths need classification |
 | Product/invariant truth | `Mingla_Artifacts/INVARIANT_REGISTRY.md` | Current authority |
 | Decisions | `Mingla_Artifacts/DECISION_LOG.md` | Current authority |
 | Root causes | `Mingla_Artifacts/ROOT_CAUSE_REGISTER.md` | Current authority |
@@ -52,7 +51,7 @@ This file is the first-pass map of Mingla's documentation and artifact truth sys
 
 | artifact_id | path | kind | domain | role | status | supersedes | superseded_by | current_authority | archive_policy | last_verified_commit | README_surface | notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| ART-TOP-AGENT-HANDOFFS | `Mingla_Artifacts/AGENT_HANDOFFS.md` | ledger | program | ledger | `CURRENT_LEDGER` | None | None | partial | keep_current | `48e7bc03` | artifact_map | Pipeline chronology; local markdown links zero-clean post-ORCH-0750E. |
+| ART-TOP-AGENT-HANDOFFS | `Mingla_Artifacts/AGENT_HANDOFFS.md` | ledger | program | ledger | `CURRENT_LEDGER` | None | None | partial | keep_current | `8168cf16` | artifact_map | Pipeline chronology; 225 missing links in current audit. |
 | ART-TOP-ARTIFACT-MANIFEST | `Mingla_Artifacts/ARTIFACT_MANIFEST.md` | ledger | docs | authority | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `8168cf16` | artifact_map | Canonical ORCH-0750A artifact authority map. |
 | ART-TOP-BUSINESS-PRD | `Mingla_Artifacts/BUSINESS_PRD.md` | strategy | business | authority | `CURRENT_AUTHORITY` | None | None | partial | keep_current | `8168cf16` | artifact_map | Business product requirements; date/version should be reverified before README summary. |
 | ART-TOP-BUSINESS-PROJECT-PLAN | `Mingla_Artifacts/BUSINESS_PROJECT_PLAN.md` | strategy | business | historical_evidence | `ARCHIVE_ONLY` | None | None | no | archive_later | `8168cf16` | not_yet | Planning artifact; not current operating dashboard. |
@@ -62,11 +61,11 @@ This file is the first-pass map of Mingla's documentation and artifact truth sys
 | ART-TOP-FOUNDER-FEEDBACK | `Mingla_Artifacts/FOUNDER_FEEDBACK.md` | ledger | program | historical_evidence | `ARCHIVE_ONLY` | None | None | no | archive_later | `8168cf16` | not_yet | Founder notes; not current source of truth without revalidation. |
 | ART-TOP-HANDOFF-META-ORCH-0744 | `Mingla_Artifacts/HANDOFF_META_ORCH_0744_PROCESS_BLOCKED_ON_LETTER_W.md` | handoff | program | historical_evidence | `ARCHIVE_ONLY` | None | None | no | archive_later | `8168cf16` | not_yet | Specific historical handoff. |
 | ART-TOP-INVARIANT-REGISTRY | `Mingla_Artifacts/INVARIANT_REGISTRY.md` | ledger | program | authority | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `8168cf16` | artifact_map | Invariant authority. |
-| ART-TOP-MASTER-BUG-LIST | `Mingla_Artifacts/MASTER_BUG_LIST.md` | ledger | program | ledger | `CURRENT_LEDGER` | None | None | partial | keep_current | `48e7bc03` | artifact_map | Large historical/current issue ledger; local markdown links zero-clean post-ORCH-0750E. |
+| ART-TOP-MASTER-BUG-LIST | `Mingla_Artifacts/MASTER_BUG_LIST.md` | ledger | program | ledger | `CURRENT_LEDGER` | None | None | partial | keep_current | `8168cf16` | artifact_map | Large historical/current issue ledger; 199 missing links in current audit. |
 | ART-TOP-MINGLA-BRAIN-AGENT-STRATEGY | `Mingla_Artifacts/MINGLA_BRAIN_AGENT_STRATEGY.md` | strategy | cross-cutting | historical_evidence | `ARCHIVE_ONLY` | None | None | no | archive_later | `8168cf16` | not_yet | Strategy artifact, not current implementation truth. |
 | ART-TOP-BUSINESS-MARKETING-HUB | `Mingla_Artifacts/MINGLA_BUSINESS_MARKETING_HUB_STRATEGY.md` | strategy | marketing | historical_evidence | `ARCHIVE_ONLY` | None | None | no | archive_later | `8168cf16` | not_yet | Marketing hub strategy; preserve. |
 | ART-TOP-PRODUCT-COMPETITIVE | `Mingla_Artifacts/MINGLA_PRODUCT_COMPETITIVE_ANALYSIS.md` | strategy | marketing | historical_evidence | `ARCHIVE_ONLY` | None | None | no | archive_later | `8168cf16` | not_yet | Competitive analysis; not current product contract. |
-| ART-TOP-OPEN-INVESTIGATIONS | `Mingla_Artifacts/OPEN_INVESTIGATIONS.md` | ledger | program | ledger | `CURRENT_LEDGER` | None | None | partial | keep_current | `48e7bc03` | artifact_map | Active intake/dispatch ledger; local markdown links zero-clean post-ORCH-0750E. |
+| ART-TOP-OPEN-INVESTIGATIONS | `Mingla_Artifacts/OPEN_INVESTIGATIONS.md` | ledger | program | ledger | `CURRENT_LEDGER` | None | None | partial | keep_current | `8168cf16` | artifact_map | Active intake/dispatch ledger; 57 missing links in current audit. |
 | ART-TOP-POSITIONING-GTM | `Mingla_Artifacts/POSITIONING_AND_GTM_STRATEGY.md` | strategy | marketing | historical_evidence | `ARCHIVE_ONLY` | None | None | no | archive_later | `8168cf16` | not_yet | GTM strategy; data claims require revalidation before current README use. |
 | ART-TOP-PRIORITY-BOARD | `Mingla_Artifacts/PRIORITY_BOARD.md` | dashboard | program | dashboard | `CURRENT_AUTHORITY` | None | None | partial | keep_current | `8168cf16` | artifact_map | Current banners plus old Top 20; ORCH-0750B/0750C must split. |
 | ART-TOP-PRODUCT-SNAPSHOT | `Mingla_Artifacts/PRODUCT_SNAPSHOT.md` | dashboard | program | dashboard | `CURRENT_AUTHORITY` | None | None | partial | keep_current | `8168cf16` | artifact_map | Current banners plus old alerts/readiness; not clean snapshot yet. |
@@ -76,7 +75,7 @@ This file is the first-pass map of Mingla's documentation and artifact truth sys
 | ART-TOP-SPEC-QUEUE | `Mingla_Artifacts/SPEC_QUEUE.md` | ledger | program | breadcrumb | `ARCHIVE_ONLY` | None | `Mingla_Artifacts/AGENT_HANDOFFS.md` | no | keep_breadcrumb | `8168cf16` | archive_index | Deprecated 2026-04-11; full copy archived at `Mingla_Artifacts/archive/old_trackers/SPEC_QUEUE.md`. |
 | ART-TOP-TEST-QUEUE | `Mingla_Artifacts/TEST_QUEUE.md` | ledger | program | breadcrumb | `ARCHIVE_ONLY` | None | `Mingla_Artifacts/AGENT_HANDOFFS.md` | no | keep_breadcrumb | `8168cf16` | archive_index | Deprecated 2026-04-11; full copy archived at `Mingla_Artifacts/archive/old_trackers/TEST_QUEUE.md`. |
 | ART-TOP-OTP-TEST-REPORT | `Mingla_Artifacts/TEST_REPORT_OTP_MULTI_CHANNEL.md` | report | mobile | historical_evidence | `ARCHIVE_ONLY` | None | None | no | archive_later | `8168cf16` | archive_index | Historical test report. |
-| ART-TOP-WORLD-MAP | `Mingla_Artifacts/WORLD_MAP.md` | dashboard | program | dashboard | `CURRENT_LEDGER` | None | None | partial | keep_current | `48e7bc03` | artifact_map | Program index; local markdown links zero-clean post-ORCH-0750E. |
+| ART-TOP-WORLD-MAP | `Mingla_Artifacts/WORLD_MAP.md` | dashboard | program | dashboard | `CURRENT_LEDGER` | None | None | partial | keep_current | `8168cf16` | artifact_map | Program index but link-broken; 172 missing links in current audit. |
 
 ## Reports And Specs
 
@@ -89,10 +88,6 @@ This file is the first-pass map of Mingla's documentation and artifact truth sys
 | ART-REPORT-ORCH-0750A-LINK-AUDIT | `Mingla_Artifacts/reports/ORCH-0750A_LINK_AUDIT.md` | report | docs | authority | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `8168cf16` | artifact_map | Current reproducible link audit for ORCH-0750A. |
 | ART-SPEC-ORCH-0750D | `Mingla_Artifacts/specs/SPEC_ORCH-0750D_DOCUMENTATION_SYSTEM_LOCK_IN.md` | spec | docs | authority | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `8168cf16` | artifact_map | Contract for documentation placement, skill alignment, README snapshot, and CI lock-in. |
 | ART-REPORT-ORCH-0750D-IMPLEMENTATION | `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0750D_DOCUMENTATION_SYSTEM_LOCK_IN.md` | report | docs | implementation_evidence | `CURRENT_LEDGER` | None | None | partial | keep_current | `8168cf16` | artifact_map | Implementation evidence for the documentation-system lock-in. |
-| ART-REPORT-ORCH-0750E-INVESTIGATION | `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md` | report | docs | investigation_evidence | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `48e7bc03` | artifact_map | Investigation evidence for the zero-link burn-down. |
-| ART-SPEC-ORCH-0750E | `Mingla_Artifacts/reports/SPEC_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md` | spec | docs | authority | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `48e7bc03` | artifact_map | Implementation contract for documentation link debt burn-down. |
-| ART-REPORT-ORCH-0750E-IMPLEMENTATION | `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md` | report | docs | implementation_evidence | `CURRENT_LEDGER` | None | None | partial | keep_current | `48e7bc03` | artifact_map | Implementation evidence for reducing missing links to zero. |
-| ART-REPORT-ORCH-0750E-TEST | `Mingla_Artifacts/reports/TEST_REPORT_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md` | report | docs | qa_evidence | `CURRENT_AUTHORITY` | None | None | yes | keep_current | `48e7bc03` | artifact_map | Tester PASS evidence for zero missing links and baseline ratchet. |
 
 ## External Artifact Roots
 
@@ -174,11 +169,11 @@ Source: `Mingla_Artifacts/reports/ORCH-0750A_LINK_AUDIT.md`.
 
 | Class | Current count | Meaning |
 |---|---:|---|
-| `MOVED_OR_ARCHIVED_CANDIDATE` | 0 | Burned down in ORCH-0750E. |
-| `PROMPT_PRIVATE_OR_IGNORED` | 0 | Burned down in ORCH-0750E; private prompts are now plain text when not versioned. |
-| `TRUE_MISSING_REFERENCE` | 0 | Burned down in ORCH-0750E; absent targets are textual missing-reference citations. |
-| `HISTORICAL_SOURCE_MISSING` | 0 | Burned down in ORCH-0750E; historical source gaps are textual citations or archive-safe links. |
-| `GENERATED_OR_IGNORED_TARGET` | 0 | Burned down in ORCH-0750E; generated paths are not durable evidence links. |
+| `MOVED_OR_ARCHIVED_CANDIDATE` | 600 | A same-basename target exists elsewhere or should be redirected through manifest before moves. |
+| `PROMPT_PRIVATE_OR_IGNORED` | 452 | Prompt target is under ignored/private prompt storage. |
+| `TRUE_MISSING_REFERENCE` | 126 | No plausible target found; needs rewrite or replacement. |
+| `HISTORICAL_SOURCE_MISSING` | 13 | Historical report/spec points at missing source path. |
+| `GENERATED_OR_IGNORED_TARGET` | 4 | Target is generated/ignored material and should not be durable evidence. |
 
 ## ORCH-0750B/0750C Deferrals
 
@@ -222,17 +217,3 @@ Closed CONDITIONAL PASS under DEC-128:
 - tester report: `Mingla_Artifacts/reports/TEST_REPORT_ORCH-0750D_DOCUMENTATION_SYSTEM_LOCK_IN.md`;
 - decision: `DEC-128`;
 - accepted condition: GitHub can enforce skill rules only for skill roots present/versioned in checkout because `.codex/` and `.claude/` remain ignored/private tool roots; local placement checks enforce the ignored skill roots in this workspace.
-
-### ORCH-0750E - Documentation Link Debt Burn-Down
-
-Closed PASS under DEC-129:
-
-- reduced durable local markdown missing links from 1,195 to 0;
-- ratcheted `scripts/docs/link_baseline.json` to `max_missing: 0`;
-- preserved private prompt provenance as plain text with `PRIVATE_PROMPT_NOT_VERSIONED` where no durable artifact exists;
-- preserved historical missing provenance with plain-text missing-reference or historical-source markers instead of fabricated files;
-- added invariant `I-DOC-LINK-BASELINE-RATCHETS-DOWN`;
-- implementation report: `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md`;
-- tester report: `Mingla_Artifacts/reports/TEST_REPORT_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md`;
-- decision: `DEC-129`;
-- final tester link audit: 395 files, 1,778 links, 0 missing links.

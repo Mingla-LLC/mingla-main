@@ -5,6 +5,36 @@
 
 ## Root Causes
 
+### RC-0753: Remote-applied Supabase migration was not versioned in Git
+- **Discovery date:** 2026-05-07
+- **Proof:** `reports/INVESTIGATION_ORCH-0753_MAIN_SUPABASE_MIGRATION_DRIFT.md` proved the linked remote had applied migration version `20260507000003` while `origin/main` lacked `supabase/migrations/20260507000003_orch_0737_v8_timing_diagnostics.sql`. `reports/SPEC_ORCH-0753_MAIN_SUPABASE_MIGRATION_DRIFT.md` locked the safe repair to versioning the exact already-applied file. Tester PASS in `reports/TEST_REPORT_ORCH-0753_MAIN_SUPABASE_MIGRATION_DRIFT.md` proved commit `54553cb8` contains the migration, exact SQL matches the spec, and GitHub `Migrations apply cleanly from baseline` is green.
+- **Symptoms caused:** Supabase Preview/main database-release checks reported `Remote migration versions not found in local migrations directory`, so the repository could not reproduce the linked remote migration ledger from Git.
+- **Causal chain:**
+  1. ORCH-0737 v8 timing diagnostics migration `20260507000003` was applied to the linked remote.
+  2. The matching migration file stayed outside tracked Git history.
+  3. GitHub's Supabase migration check compared remote-applied versions against local migrations on main.
+  4. The remote version had no local tracked file, so the check failed even though app/docs checks were otherwise healthy.
+- **Structural fix:** Versioned `supabase/migrations/20260507000003_orch_0737_v8_timing_diagnostics.sql` with the exact already-applied SQL. No live DB mutation, migration repair, `supabase db push`, edge deploy, or product runtime change was part of the repair.
+- **Status:** **CLOSED PASS 2026-05-07** via DEC-130, tester PASS, Git tree proof on `54553cb8`, GitHub migration baseline check success, and final Vercel commit statuses success.
+- **Invariant / regression guard:** Every remote-applied Supabase migration version must be present in tracked Git history; intentional historical/backfill versioning must be documented as provenance repair and must not be paired with live DB mutation unless separately authorized.
+- **Causal cluster:** Cluster 5: release provenance drift between live Supabase ledger and repository migration history.
+- **Follow-ups not part of RC:** ORCH-0737 remains open for timing diagnostics/full-city baseline analysis.
+
+### RC-0751: Duplicate auth cleanup callers raced RevenueCat logout after the first logout made the SDK anonymous
+- **Discovery date:** 2026-05-07
+- **Proof:** `reports/INVESTIGATION_ORCH-0751_REVENUECAT_ANONYMOUS_LOGOUT.md` proved the red Metro line was not a purchase failure but duplicate cleanup against RevenueCat's strict `logOut()` semantics. Runtime failure evidence in `reports/RUNTIME_QA_ORCH-0751_REVENUECAT_ANONYMOUS_LOGOUT.md` showed explicit sign-out logging `Logged out successfully` followed by native `Called logOut but the current user is anonymous`. Final proof in `reports/RETEST_ORCH-0751_REVENUECAT_LOGOUT_SERIALIZATION.md` showed the same Android sign-in -> sign-out -> sign-in path without the anonymous logout line.
+- **Symptoms caused:** Healthy auth cleanup could emit a scary RevenueCat error during no-session/sign-out paths, making normal teardown look broken and making it harder to spot real purchase/auth failures.
+- **Causal chain:**
+  1. Auth cleanup had more than one caller capable of reaching RevenueCat logout during the same transition.
+  2. RevenueCat `Purchases.logOut()` succeeds once and leaves the SDK anonymous.
+  3. A second concurrent cleanup call can then hit native `logOut()` while anonymous.
+  4. RevenueCat treats anonymous logout as an error, so Metro prints a red error even though user sign-out is otherwise healthy.
+- **Structural fix:** `logoutRevenueCatIfIdentified()` now checks configuration and anonymity before native logout, treats only the exact anonymous-logout condition as a quiet no-op, keeps unknown errors visible, and serializes concurrent cleanup through one shared `guardedLogoutInFlight` promise. `loginRevenueCat(user.id)` remains untouched so anonymous-to-identified purchase identity merge still works.
+- **Status:** **CLOSED PASS 2026-05-07** via Android runtime retest, `cd app-mobile && npm run test:orch-0751` PASS 11/11 including the T11 serialization guard, `cd app-mobile && npm run test:orch-0749` PASS, and `git diff --check` PASS.
+- **Invariant / regression guard:** RevenueCat cleanup logout must be idempotent and serialized; duplicate cleanup callers cannot issue duplicate native `Purchases.logOut()` calls during one auth transition.
+- **Causal cluster:** Cluster 2: noisy expected teardown versus real failures, with a concurrency/idempotency edge.
+- **Follow-ups not part of RC:** ORCH-0752 RevenueCat product/offering/store approval configuration remains separate.
+
 ### RC-0749: Mobile auth cleanup allowed stale private query/cache state to outlive its user
 - **Discovery date:** 2026-05-07
 - **Proof:** `reports/INVESTIGATION_ORCH-0749_MOBILE_AUTH_CACHE_RLS_LOG_STORM.md` proved the startup log storm was not one bug but an auth-boundary failure across query persistence, auth cleanup, private fetchers, and noisy SDK/error classification. Runtime proof closed in `reports/RUNTIME_QA_ORCH-0749_MOBILE_AUTH_CACHE_RLS_LOG_STORM.md`.
@@ -19,7 +49,7 @@
 - **Status:** **CLOSED PASS 2026-05-07** via static QA, runtime QA, operator smoke, and `cd app-mobile && npm run test:orch-0749` PASS at 2026-05-07 17:45 EDT.
 - **Invariant:** `I-AUTH-PRIVATE-CACHE-CANNOT-OUTLIVE-AUTH-OWNER`.
 - **Causal cluster:** Cluster 1/2 crossover: stale cache ownership + silent/noisy error classification. Future auth/query work must prove both data ownership and log behavior, not just "no crash."
-- **Follow-ups not part of RC:** ORCH-0751 RevenueCat anonymous logout noise; ORCH-0752 RevenueCat product/offering configuration.
+- **Follow-ups not part of RC:** ORCH-0751 was closed separately under RC-0751/DEC-129; ORCH-0752 RevenueCat product/offering configuration remains open.
 
 ### RC-0728: RLS-RETURNING-OWNER-GAP — supabase-js mutations fail because no SELECT policy admits the post-mutation row
 - **Discovery date:** 2026-05-06 (proven after 13 forensic passes ORCH-0728/0729/0731 + H39/H40/H41/H42)
