@@ -3,8 +3,8 @@
  *
  * States:
  *   - Empty (brands.length === 0)              → "No brands yet" prompt + topbar chip CTA
- *   - Populated, no live event (currentBrand)  → 7-day aggregate hero + KPI grid + Build CTA
- *   - Populated with live event                → Live KPI hero + KPI grid + Upcoming list + Build CTA
+ *   - Populated, no live event (currentBrand)  → 7-day aggregate hero + KPI grid + Upcoming list
+ *   - Populated with live event                → Live KPI hero + KPI grid + Upcoming list
  *
  * Brand-chip on TopBar opens BrandSwitcherSheet (mode auto-derives from list state).
  * Sheet's onBrandCreated → Toast "{displayName} is ready" (per dispatch AC#2).
@@ -271,11 +271,6 @@ export default function HomeTab(): React.ReactElement {
           </View>
         ) : (
           <>
-            <View style={styles.greetingCol}>
-              <Text style={styles.greetingTier}>{greetingLabel()}</Text>
-              <Text style={styles.greetingHey}>Hey, {currentBrand.displayName}</Text>
-            </View>
-
             {primaryLiveEvent !== null ? (
               <GlassCard variant="elevated" padding={spacing.lg}>
                 <View style={styles.heroLiveTagRow}>
@@ -370,6 +365,15 @@ export default function HomeTab(): React.ReactElement {
                   <Text style={styles.emptyBody}>
                     Build an event to see it here.
                   </Text>
+                  <Pressable
+                    onPress={handleBuildEvent}
+                    accessibilityRole="button"
+                    accessibilityLabel="Build an event"
+                    style={styles.emptyBuildAction}
+                  >
+                    <Icon name="plus" size={16} color={accent.warm} />
+                    <Text style={styles.emptyBuildActionText}>Build event</Text>
+                  </Pressable>
                 </GlassCard>
               ) : (
                 eventSummary.activeItems.map((item) => {
@@ -466,20 +470,6 @@ export default function HomeTab(): React.ReactElement {
               )}
             </View>
 
-            <Pressable
-              onPress={handleBuildEvent}
-              accessibilityRole="button"
-              accessibilityLabel="Build a new event"
-              style={styles.buildCta}
-            >
-              <View style={styles.buildCtaIconWrap}>
-                <Icon name="plus" size={20} color={accent.warm} />
-              </View>
-              <View style={styles.buildCtaTextCol}>
-                <Text style={styles.buildCtaTitle}>Build a new event</Text>
-                <Text style={styles.buildCtaSub}>About 4 minutes</Text>
-              </View>
-            </Pressable>
           </>
         )}
       </ScrollView>
@@ -558,10 +548,6 @@ const styles = StyleSheet.create({
   },
 
   // Greeting ------------------------------------------------------------
-  greetingCol: {
-    paddingHorizontal: spacing.xs,
-    paddingBottom: spacing.xs,
-  },
   greetingTier: {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
@@ -569,14 +555,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     color: textTokens.tertiary,
     textTransform: "uppercase",
-  },
-  greetingHey: {
-    fontSize: typography.h1.fontSize,
-    lineHeight: typography.h1.lineHeight,
-    fontWeight: typography.h1.fontWeight,
-    letterSpacing: typography.h1.letterSpacing,
-    color: textTokens.primary,
-    marginTop: 4,
   },
 
   // Hero — live event ---------------------------------------------------
@@ -729,40 +707,25 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
   },
 
-  // Build CTA -----------------------------------------------------------
-  buildCta: {
+  // Empty action --------------------------------------------------------
+  emptyBuildAction: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radiusTokens.lg,
+    alignSelf: "flex-start",
+    gap: spacing.xs,
+    minHeight: 40,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radiusTokens.md,
     borderWidth: 1,
     borderColor: accent.border,
     backgroundColor: accent.tint,
-    borderStyle: "dashed",
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
   },
-  buildCtaIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buildCtaTextCol: {
-    flex: 1,
-  },
-  buildCtaTitle: {
-    fontSize: typography.body.fontSize,
+  emptyBuildActionText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
-  },
-  buildCtaSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
-    marginTop: 2,
+    color: accent.warm,
   },
 });

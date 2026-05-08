@@ -17,6 +17,7 @@ import { buildDeckQueryKey } from "./useDeckCards";
 import { normalizeCategoryArray } from "../utils/categoryUtils";
 // ORCH-0640 ch09: experiencesService DELETED. getUserPreferences retained on preferencesService.
 import { PreferencesService } from "../services/preferencesService";
+import { performPrivateAuthCleanup, signOutWithPrivateCleanup, signOutWithoutPrivateCleanup } from "../utils/authCleanup";
 
 
 // Module-level flag — shared across ALL instances of useAuthSimple.
@@ -49,7 +50,7 @@ if (webClientId) {
 
 export const useAuthSimple = () => {
   const [loading, setLoading] = useState(true);
-  const { user, setAuth, setProfile, clearUserData } = useAppStore();
+  const { user, setAuth, setProfile } = useAppStore();
 
   // Add timeout to prevent infinite loading
   useEffect(() => {
@@ -211,10 +212,9 @@ export const useAuthSimple = () => {
                 if (userError || !authUser || authUser.id !== session.user.id) {
                   logger.auth('User deleted or session invalid — signing out');
                   // User was deleted or session is invalid - sign out and clear
-                  await supabase.auth.signOut();
+                  await signOutWithPrivateCleanup('profile-missing-invalid-session', session.user.id);
                   if (mounted) {
                     setAuth(null);
-                    clearUserData();
                     setLoading(false);
                   }
                   return;
@@ -260,6 +260,7 @@ export const useAuthSimple = () => {
           }
         } else {
           logger.auth('No session — user not authenticated');
+          void performPrivateAuthCleanup({ reason: 'initial-no-session', currentUserId: null });
           if (mounted) setAuth(null);
         }
 
@@ -304,6 +305,15 @@ export const useAuthSimple = () => {
       }
 
       if (session?.user) {
+        const previousUser = useAppStore.getState().user;
+        if (previousUser?.id && previousUser.id !== session.user.id) {
+          void performPrivateAuthCleanup({
+            reason: 'auth-user-switch',
+            previousUserId: previousUser.id,
+            currentUserId: session.user.id,
+            includeIntegrations: false,
+          });
+        }
         if (mounted) {
           setAuth(session.user as User);
           setLoading(false);
@@ -333,9 +343,9 @@ export const useAuthSimple = () => {
           // Guard against multiple instances firing simultaneously
           if (_isHandlingSignOut) return;
           _isHandlingSignOut = true;
+          void performPrivateAuthCleanup({ reason: 'auth-state-signed-out', currentUserId: null });
           if (mounted) {
             setAuth(null);
-            clearUserData();
           }
           // Reset after a tick so re-login within the same session works correctly
           setTimeout(() => { _isHandlingSignOut = false; }, 1000);
@@ -353,10 +363,12 @@ export const useAuthSimple = () => {
     };
   }, []);
 
-  const signOut = async () => {
+  const signOut = async (options?: { skipPrivateCleanup?: boolean }) => {
     try {
       logger.auth('Sign out requested');
-      const { error } = await supabase.auth.signOut();
+      const { error } = options?.skipPrivateCleanup
+        ? await signOutWithoutPrivateCleanup()
+        : await signOutWithPrivateCleanup('useAuthSimple.signOut', user?.id);
       if (error) {
         Alert.alert(
           "Sign Out Error",
@@ -695,14 +707,16 @@ export const useAuthSimple = () => {
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error(String(err));
       const code = (err as { code?: unknown })?.code;
-      logger.error('Apple sign-in failed', { code, message: error.message });
-      console.error("Apple sign-in error:", err);
-      mixpanelService.trackLoginFailed('apple', error.message);
 
       // Handle specific error cases
       if (code === "ERR_REQUEST_CANCELED") {
+        if (__DEV__) logger.auth('Apple sign-in cancelled by user');
         return { data: null, error: { message: "Sign-in cancelled" } };
       }
+
+      logger.error('Apple sign-in failed', { code, message: error.message });
+      console.error("Apple sign-in error:", err);
+      mixpanelService.trackLoginFailed('apple', error.message);
 
       Alert.alert(
         "Apple Sign-In Failed",

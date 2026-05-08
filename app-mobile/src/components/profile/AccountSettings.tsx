@@ -359,7 +359,6 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
       }
       if (data?.error) throw new Error(data.error);
 
-      await supabase.auth.signOut().catch(() => {});
       setDeleteStep("success");
 
       setTimeout(() => {
@@ -373,7 +372,6 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
-            await supabase.auth.signOut().catch(() => {});
             setDeleteStep("success");
             setTimeout(() => {
               setShowDeleteConfirmModal(false);
@@ -407,7 +405,6 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
-            await supabase.auth.signOut().catch(() => {});
             setDeleteStep("success");
             setIsDeleting(false);
             deleteInProgressRef.current = false;

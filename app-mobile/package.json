@@ -14,7 +14,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test:orch-0749": "node ./scripts/ci/orch-0749-regression-check.mjs",
+    "test:orch-0751": "node ./scripts/ci/orch-0751-revenuecat-logout-check.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

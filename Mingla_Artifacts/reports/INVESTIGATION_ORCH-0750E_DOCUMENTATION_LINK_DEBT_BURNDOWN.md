@@ -1,9 +1,9 @@
 # INVESTIGATION ORCH-0750E - Documentation Link Debt Burn-Down
 
-**Date:** 2026-05-07
-**Mode:** forensics
-**Scope:** deterministic plan to reduce the Mingla documentation link baseline from known debt to zero.
-**Evidence tree:** clean worktree at `origin/Seth` commit `733a9cf4`.
+**Date:** 2026-05-07  
+**Mode:** forensics  
+**Scope:** deterministic plan to reduce the Mingla documentation link baseline from known debt to zero.  
+**Evidence tree:** clean worktree at `origin/Seth` commit `733a9cf4`.  
 **Non-goal:** no link rewrites, deletes, archive moves, README prose rewrites, or skill edits in this investigation.
 
 ## Executive Verdict
@@ -46,7 +46,7 @@ Plain-English root cause: old artifacts often link as if they live at repo root.
 
 ### F1 - Path Semantics Are The Largest Mechanical Source
 
-**Classification:** confirmed documentation defect
+**Classification:** confirmed documentation defect  
 **Evidence:** `MOVED_OR_ARCHIVED_CANDIDATE` = 596 links.
 
 Within that class:
@@ -67,7 +67,7 @@ Most of these are not "lost files." They are stale Markdown paths. Example: a li
 
 ### F2 - Private Prompts Are Not Durable Evidence
 
-**Classification:** confirmed source-of-truth gap
+**Classification:** confirmed source-of-truth gap  
 **Evidence:** `PROMPT_PRIVATE_OR_IGNORED` = 458 links across 145 source files.
 
 Most prompt links point to `prompts/` or `Mingla_Artifacts/prompts/`. Those paths are private/ignored and cannot be used as durable README or artifact evidence.
@@ -76,7 +76,7 @@ Most prompt links point to `prompts/` or `Mingla_Artifacts/prompts/`. Those path
 
 ### F3 - True Missing References Are Concentrated
 
-**Classification:** confirmed documentation defect
+**Classification:** confirmed documentation defect  
 **Evidence:** `TRUE_MISSING_REFERENCE` = 123 links, but only 6 source files.
 
 Primary sources:
@@ -94,7 +94,7 @@ Primary sources:
 
 ### F4 - Generated/Ignored Links Are Tiny And Should Be Removed First
 
-**Classification:** confirmed documentation hygiene defect
+**Classification:** confirmed documentation hygiene defect  
 **Evidence:** 4 links point to `app-mobile/node_modules/expo-router/build/ExpoRoot.js#L77-L83`.
 
 **Fix direction:** replace these with a source-level explanation or remove the link. Docs should not cite `node_modules` as durable evidence.
@@ -134,7 +134,7 @@ After each phase, lower `scripts/docs/link_baseline.json` to the new observed mi
 
 ## Confidence
 
-**High** for counts, root causes, and phase order.
+**High** for counts, root causes, and phase order.  
 **Medium** for exact per-phase final counts because some links may change classification after earlier fixes. The baseline must therefore be ratcheted from actual checker output after every phase, not from predicted math alone.
 
 ## Next Required Output

@@ -157,20 +157,167 @@ interface GeminiUsage {
   candidatesTokenCount: number;
 }
 
+const V8_TIMING_VERSION = "orch-0737-v8";
+const V8_TIMING_LOG_MARKER = "[ORCH-0737-V8-TIMING]";
+
+type TimingDiagnostics = Record<string, unknown>;
+
+interface GeminiHttpDiagnostics extends TimingDiagnostics {
+  gemini_total_ms: number;
+  gemini_attempt_count: number;
+  gemini_http_statuses: number[];
+  gemini_retry_after_ms_total: number;
+  gemini_backoff_ms_total: number;
+  gemini_error_kinds: string[];
+  gemini_final_outcome: string;
+}
+
+interface BatchContext {
+  batch_id: string;
+  batch_kind: "score" | "prep";
+  batch_iteration: number;
+  batch_parallel_n: number;
+  batch_row_count: number;
+  batch_started_at: string;
+  worker_elapsed_ms_at_batch_start: number;
+}
+
+interface PlacePoolTrialPromptRow {
+  id: string;
+  name: string | null;
+  primary_type: string | null;
+  types: string[] | null;
+  address: string | null;
+  rating: number | null;
+  review_count: number | null;
+  price_level: number | null;
+  price_range_start_cents: number | null;
+  price_range_end_cents: number | null;
+  price_range_currency: string | null;
+  editorial_summary: string | null;
+  generative_summary: string | null;
+  opening_hours: Record<string, unknown> | null;
+  photo_collage_url: string | null;
+  [key: string]: unknown;
+}
+
+type DiagnosticError = Error & {
+  geminiDiagnostics?: GeminiHttpDiagnostics;
+  timingDiagnostics?: TimingDiagnostics;
+};
+
+function elapsedMs(start: number): number {
+  return Math.max(0, Math.round(performance.now() - start));
+}
+
+function classifyError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("Collage fetch failed")) return "collage_fetch";
+  if (msg.includes("Gemini")) return "gemini";
+  if (msg.includes("MALFORMED_FUNCTION_CALL")) return "malformed_function_call";
+  if (msg.includes("place_pool fetch failed") || msg.includes("reviews")) return "db_read";
+  if (msg.includes("prerequisites_missing")) return "prerequisites_missing";
+  return "unknown";
+}
+
+function safeMergeDiagnostics(...records: Array<TimingDiagnostics | null | undefined>): TimingDiagnostics {
+  const out: TimingDiagnostics = {};
+  for (const record of records) {
+    if (!record) continue;
+    for (const [key, value] of Object.entries(record)) {
+      if (value !== undefined) out[key] = value;
+    }
+  }
+  return out;
+}
+
+function emitTiming(event: string, data: TimingDiagnostics): void {
+  try {
+    console.log(`${V8_TIMING_LOG_MARKER} ${JSON.stringify({ event, ...data })}`);
+  } catch (err) {
+    console.warn(`${V8_TIMING_LOG_MARKER} {"event":"emit_failed","error":${JSON.stringify(String(err))}}`);
+  }
+}
+
+function attachTimingDiagnostics(err: unknown, diagnostics: TimingDiagnostics): never {
+  if (err instanceof Error) {
+    (err as DiagnosticError).timingDiagnostics = safeMergeDiagnostics(
+      (err as DiagnosticError).timingDiagnostics,
+      diagnostics,
+    );
+    throw err;
+  }
+  const wrapped = new Error(String(err)) as DiagnosticError;
+  wrapped.timingDiagnostics = diagnostics;
+  throw wrapped;
+}
+
+function getErrorDiagnostics(err: unknown): TimingDiagnostics {
+  if (!(err instanceof Error)) return {};
+  const diagnosticErr = err as DiagnosticError;
+  return safeMergeDiagnostics(diagnosticErr.geminiDiagnostics, diagnosticErr.timingDiagnostics);
+}
+
+function emptyGeminiDiagnostics(): GeminiHttpDiagnostics {
+  return {
+    gemini_total_ms: 0,
+    gemini_attempt_count: 0,
+    gemini_http_statuses: [],
+    gemini_retry_after_ms_total: 0,
+    gemini_backoff_ms_total: 0,
+    gemini_error_kinds: [],
+    gemini_final_outcome: "not_started",
+  };
+}
+
+function combineGeminiDiagnostics(items: GeminiHttpDiagnostics[]): GeminiHttpDiagnostics {
+  const combined = emptyGeminiDiagnostics();
+  for (const item of items) {
+    combined.gemini_total_ms += item.gemini_total_ms || 0;
+    combined.gemini_attempt_count += item.gemini_attempt_count || 0;
+    combined.gemini_http_statuses.push(...(item.gemini_http_statuses || []));
+    combined.gemini_retry_after_ms_total += item.gemini_retry_after_ms_total || 0;
+    combined.gemini_backoff_ms_total += item.gemini_backoff_ms_total || 0;
+    combined.gemini_error_kinds.push(...(item.gemini_error_kinds || []));
+    combined.gemini_final_outcome = item.gemini_final_outcome || combined.gemini_final_outcome;
+  }
+  combined.gemini_total_ms = Math.round(combined.gemini_total_ms);
+  combined.gemini_retry_after_ms_total = Math.round(combined.gemini_retry_after_ms_total);
+  combined.gemini_backoff_ms_total = Math.round(combined.gemini_backoff_ms_total);
+  return combined;
+}
+
 async function callGeminiWithRetry(
   apiKey: string,
   reqBody: Record<string, unknown>,
-): Promise<{ payload: any; usage: GeminiUsage }> {
+): Promise<{ payload: any; usage: GeminiUsage; diagnostics: GeminiHttpDiagnostics }> {
   let lastErrText = "";
-  let res: Response;
+  let res: Response | null = null;
+  const started = performance.now();
+  const diagnostics = emptyGeminiDiagnostics();
   // Gemini uses ?key=<API_KEY> query param auth (also supports x-goog-api-key header).
   const url = `${GEMINI_API_URL}?key=${encodeURIComponent(apiKey)}`;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(reqBody),
-    });
+    diagnostics.gemini_attempt_count = attempt;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reqBody),
+      });
+    } catch (err) {
+      diagnostics.gemini_total_ms = elapsedMs(started);
+      diagnostics.gemini_error_kinds.push("network_or_fetch_error");
+      diagnostics.gemini_final_outcome = "network_or_fetch_error";
+      if (err instanceof Error) {
+        (err as DiagnosticError).geminiDiagnostics = diagnostics;
+        throw err;
+      }
+      const wrapped = new Error(String(err)) as DiagnosticError;
+      wrapped.geminiDiagnostics = diagnostics;
+      throw wrapped;
+    }
+    diagnostics.gemini_http_statuses.push(res.status);
 
     if (res.ok) break;
 
@@ -178,16 +325,30 @@ async function callGeminiWithRetry(
     lastErrText = await res.text();
     const isRetryable = status === 429 || (status >= 500 && status < 600);
     if (!isRetryable || attempt === MAX_ATTEMPTS) {
-      throw new Error(`Gemini ${status}: ${lastErrText.slice(0, 500)}`);
+      diagnostics.gemini_total_ms = elapsedMs(started);
+      diagnostics.gemini_error_kinds.push(`http_${status}`);
+      diagnostics.gemini_final_outcome = `http_${status}`;
+      const err = new Error(`Gemini ${status}: ${lastErrText.slice(0, 500)}`) as DiagnosticError;
+      err.geminiDiagnostics = diagnostics;
+      throw err;
     }
     const retryAfter = res.headers.get("retry-after");
     const retryAfterMs = retryAfter ? Math.min(60_000, Math.max(1_000, Number(retryAfter) * 1000)) : 0;
     const backoffMs = retryAfterMs || (BASE_BACKOFF_MS * Math.pow(2, attempt - 1));
+    if (Number.isFinite(retryAfterMs)) diagnostics.gemini_retry_after_ms_total += retryAfterMs;
+    diagnostics.gemini_backoff_ms_total += backoffMs;
     console.log(`[place-intel-trial] Gemini ${status} attempt ${attempt}/${MAX_ATTEMPTS}, sleeping ${backoffMs}ms`);
     await new Promise((r) => setTimeout(r, backoffMs));
   }
 
-  if (!res!.ok) throw new Error(`Gemini exhausted retries: ${lastErrText.slice(0, 500)}`);
+  if (!res!.ok) {
+    diagnostics.gemini_total_ms = elapsedMs(started);
+    diagnostics.gemini_error_kinds.push("retries_exhausted");
+    diagnostics.gemini_final_outcome = "retries_exhausted";
+    const err = new Error(`Gemini exhausted retries: ${lastErrText.slice(0, 500)}`) as DiagnosticError;
+    err.geminiDiagnostics = diagnostics;
+    throw err;
+  }
 
   const payload = await res!.json();
   const usage: GeminiUsage = payload?.usageMetadata
@@ -196,11 +357,20 @@ async function callGeminiWithRetry(
         candidatesTokenCount: payload.usageMetadata.candidatesTokenCount || 0,
       }
     : { promptTokenCount: 0, candidatesTokenCount: 0 };
-  return { payload, usage };
+  diagnostics.gemini_total_ms = elapsedMs(started);
+  diagnostics.gemini_final_outcome = "ok";
+  return { payload, usage, diagnostics };
 }
 
 // Fetch a public URL and return base64-encoded bytes for Gemini inline_data.
-async function fetchAsBase64(url: string): Promise<{ base64: string; mimeType: string }> {
+async function fetchAsBase64(url: string): Promise<{
+  base64: string;
+  mimeType: string;
+  rawBytes: number;
+  base64Bytes: number;
+  elapsedMs: number;
+}> {
+  const started = performance.now();
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Collage fetch failed ${res.status}: ${url.slice(0, 80)}`);
   const contentType = res.headers.get("content-type") || "image/png";
@@ -212,7 +382,13 @@ async function fetchAsBase64(url: string): Promise<{ base64: string; mimeType: s
     binary += String.fromCharCode(...buf.subarray(i, i + chunkSize));
   }
   const base64 = btoa(binary);
-  return { base64, mimeType: contentType };
+  return {
+    base64,
+    mimeType: contentType,
+    rawBytes: buf.length,
+    base64Bytes: base64.length,
+    elapsedMs: elapsedMs(started),
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -891,7 +1067,7 @@ async function handleRunTrialForPlace(
   }
 
   try {
-    const cost = await processOnePlace({
+    const { cost } = await processOnePlace({
       db,
       geminiKey,
       runId,
@@ -905,15 +1081,22 @@ async function handleRunTrialForPlace(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[place-intel-trial:run_trial_for_place] ${placePoolId} failed:`, msg);
+    const diagnostics = safeMergeDiagnostics(getErrorDiagnostics(err), {
+      status: "failed",
+      error_kind: classifyError(err),
+      error_message: msg.slice(0, 500),
+    });
     await db
       .from("place_intelligence_trial_runs")
       .update({
         status: "failed",
         error_message: msg.slice(0, 500),
         completed_at: new Date().toISOString(),
+        timing_diagnostics: diagnostics,
       })
       .eq("run_id", runId)
       .eq("place_pool_id", placePoolId);
+    emitTiming("row_failed", diagnostics);
     return json({ error: msg, place_pool_id: placePoolId }, 500);
   }
 }
@@ -930,115 +1113,183 @@ async function processOnePlace(args: {
   geminiKey: string;
   runId: string;
   anchor: AnchorRow;
-}): Promise<number> {
+  batchContext?: BatchContext;
+}): Promise<{ cost: number; diagnostics: TimingDiagnostics }> {
   // ORCH-0733 — Anthropic dropped; Gemini 2.5 Flash sole provider.
   const { db, geminiKey, runId, anchor } = args;
-
-  // Mark running
-  await db
-    .from("place_intelligence_trial_runs")
-    .update({ status: "running", started_at: new Date().toISOString() })
-    .eq("run_id", runId)
-    .eq("place_pool_id", anchor.place_pool_id);
-
-  // Load place — ORCH-0737 v6: explicit column list (was `select("*")`).
-  // Strict superset of fields read by buildUserTextBlock + processOnePlace
-  // body. If buildUserTextBlock gains a new pp.<field> reference, ADD it here.
-  const { data: pp, error: ppErr } = await db
-    .from("place_pool")
-    .select(
-      "id, name, primary_type, types, address, rating, review_count, " +
-      "price_level, price_range_start_cents, price_range_end_cents, price_range_currency, " +
-      "editorial_summary, generative_summary, opening_hours, photo_collage_url, " +
-      // 23 boolean fields read individually by buildUserTextBlock
-      "serves_brunch, serves_lunch, serves_dinner, serves_breakfast, serves_beer, " +
-      "serves_wine, serves_cocktails, serves_coffee, serves_dessert, serves_vegetarian_food, " +
-      "outdoor_seating, live_music, good_for_groups, good_for_children, good_for_watching_sports, " +
-      "allows_dogs, has_restroom, reservable, menu_for_children, dine_in, takeout, delivery, curbside_pickup",
-    )
-    .eq("id", anchor.place_pool_id)
-    .single();
-  if (ppErr || !pp) throw new Error(`place_pool fetch failed: ${ppErr?.message ?? "not found"}`);
-
-  if (!pp.photo_collage_url) {
-    throw new Error("prerequisites_missing: photo_collage_url is null — fetch_reviews + compose_collage must run before run_trial_for_place");
-  }
-
-  // Load reviews — ORCH-0737 v6: limit to TOP_REVIEWS_FOR_PROMPT (was 100).
-  // The post-fetch filter `r.review_text && r.review_text.trim().length > 0`
-  // may drop some reviews; result is the top N reviews-with-text by recency.
-  // If empirical observation shows < TOP_REVIEWS_FOR_PROMPT reviews-with-text
-  // being passed to Gemini, bump this limit (suggest 1.5× = 45) and report.
-  const { data: reviews } = await db
-    .from("place_external_reviews")
-    .select("review_text, rating, posted_at, posted_label, has_media, media")
-    .eq("place_pool_id", anchor.place_pool_id)
-    .order("posted_at", { ascending: false, nullsFirst: false })
-    .limit(TOP_REVIEWS_FOR_PROMPT);
-  const reviewsList = reviews || [];
-
-  // Build text bundle
-  const reviewsWithText = reviewsList
-    .filter((r) => r.review_text && r.review_text.trim().length > 0)
-    .slice(0, TOP_REVIEWS_FOR_PROMPT);
-
-  const captions: string[] = [];
-  for (const r of reviewsList) {
-    const media = (r as { media?: any[] }).media || [];
-    for (const m of media) {
-      if (m?.caption && typeof m.caption === "string") captions.push(m.caption.trim());
-    }
-  }
-
-  // Build prompts
-  const systemPrompt = buildSystemPrompt();
-  const userTextBlock = buildUserTextBlock(pp, reviewsWithText, captions);
-
-  const inputPayload = {
-    place_id: pp.id,
-    place_name: pp.name,
-    primary_type: pp.primary_type,
-    rating: pp.rating,
-    review_count: pp.review_count,
-    reviews_in_prompt_count: reviewsWithText.length,
-    captions_in_prompt_count: captions.length,
-    collage_url: pp.photo_collage_url,
-    prompt_version: PROMPT_VERSION,
+  const rowStartedAt = new Date().toISOString();
+  const rowTimer = performance.now();
+  const batchContext = args.batchContext ?? {
+    batch_id: `${runId}-sample-${anchor.place_pool_id}-${Date.now()}`,
+    batch_kind: "score" as const,
+    batch_iteration: 0,
+    batch_parallel_n: 1,
+    batch_row_count: 1,
+    batch_started_at: rowStartedAt,
+    worker_elapsed_ms_at_batch_start: 0,
   };
+  const baseDiagnostics = {
+    version: V8_TIMING_VERSION,
+    run_id: runId,
+    parent_run_id: runId,
+    place_pool_id: anchor.place_pool_id,
+    phase: "score",
+    batch_id: batchContext.batch_id,
+    batch_kind: batchContext.batch_kind,
+    batch_iteration: batchContext.batch_iteration,
+    batch_parallel_n: batchContext.batch_parallel_n,
+    batch_row_count: batchContext.batch_row_count,
+    batch_started_at: batchContext.batch_started_at,
+    worker_elapsed_ms_at_batch_start: batchContext.worker_elapsed_ms_at_batch_start,
+    row_started_at: rowStartedAt,
+  };
+  let dbReadMs = 0;
 
-  // ORCH-0733 — Q2 only via Gemini 2.5 Flash (sole provider).
-  // Q1 removed in v3 (harvested research into signal-lab/PROPOSALS.md).
-  // Anthropic dropped in v4 (commented-preserved helpers above for `git revert`).
-  // ORCH-0734 — `retried` field surfaces when MALFORMED_FUNCTION_CALL forced retry.
-  const { aggregate: q2, totalCostUsd: q2Cost, retried } = await callGeminiQuestion({
-    apiKey: geminiKey,
-    systemPrompt,
-    userTextBlock,
-    collageUrl: pp.photo_collage_url,
-    tool: Q2_TOOL,
-  });
+  try {
+    // Mark running
+    await db
+      .from("place_intelligence_trial_runs")
+      .update({ status: "running", started_at: new Date().toISOString() })
+      .eq("run_id", runId)
+      .eq("place_pool_id", anchor.place_pool_id);
 
-  // Persist. q1_response is nullable (verified) → write null on v3+ runs.
-  // ORCH-0734 — retry_count tracks Gemini MALFORMED_FUNCTION_CALL retries (0 or 1).
-  await db
-    .from("place_intelligence_trial_runs")
-    .update({
-      input_payload: inputPayload,
+    const dbReadStart = performance.now();
+    // Load place — ORCH-0737 v6: explicit column list (was `select("*")`).
+    // Strict superset of fields read by buildUserTextBlock + processOnePlace
+    // body. If buildUserTextBlock gains a new pp.<field> reference, ADD it here.
+    const { data: ppRaw, error: ppErr } = await db
+      .from("place_pool")
+      .select(
+        "id, name, primary_type, types, address, rating, review_count, " +
+        "price_level, price_range_start_cents, price_range_end_cents, price_range_currency, " +
+        "editorial_summary, generative_summary, opening_hours, photo_collage_url, " +
+        // 23 boolean fields read individually by buildUserTextBlock
+        "serves_brunch, serves_lunch, serves_dinner, serves_breakfast, serves_beer, " +
+        "serves_wine, serves_cocktails, serves_coffee, serves_dessert, serves_vegetarian_food, " +
+        "outdoor_seating, live_music, good_for_groups, good_for_children, good_for_watching_sports, " +
+        "allows_dogs, has_restroom, reservable, menu_for_children, dine_in, takeout, delivery, curbside_pickup",
+      )
+      .eq("id", anchor.place_pool_id)
+      .single();
+    if (ppErr || !ppRaw) throw new Error(`place_pool fetch failed: ${ppErr?.message ?? "not found"}`);
+    const pp = ppRaw as unknown as PlacePoolTrialPromptRow;
+
+    if (!pp.photo_collage_url) {
+      throw new Error("prerequisites_missing: photo_collage_url is null — fetch_reviews + compose_collage must run before run_trial_for_place");
+    }
+
+    // Load reviews — ORCH-0737 v6: limit to TOP_REVIEWS_FOR_PROMPT (was 100).
+    // The post-fetch filter `r.review_text && r.review_text.trim().length > 0`
+    // may drop some reviews; result is the top N reviews-with-text by recency.
+    // If empirical observation shows < TOP_REVIEWS_FOR_PROMPT reviews-with-text
+    // being passed to Gemini, bump this limit (suggest 1.5× = 45) and report.
+    const { data: reviews } = await db
+      .from("place_external_reviews")
+      .select("review_text, rating, posted_at, posted_label, has_media, media")
+      .eq("place_pool_id", anchor.place_pool_id)
+      .order("posted_at", { ascending: false, nullsFirst: false })
+      .limit(TOP_REVIEWS_FOR_PROMPT);
+    dbReadMs = elapsedMs(dbReadStart);
+    const reviewsList = reviews || [];
+
+    // Build text bundle
+    const reviewsWithText = reviewsList
+      .filter((r) => r.review_text && r.review_text.trim().length > 0)
+      .slice(0, TOP_REVIEWS_FOR_PROMPT);
+
+    const captions: string[] = [];
+    for (const r of reviewsList) {
+      const media = (r as { media?: any[] }).media || [];
+      for (const m of media) {
+        if (m?.caption && typeof m.caption === "string") captions.push(m.caption.trim());
+      }
+    }
+
+    // Build prompts
+    const systemPrompt = buildSystemPrompt();
+    const userTextBlock = buildUserTextBlock(pp, reviewsWithText, captions);
+
+    const inputPayload = {
+      place_id: pp.id,
+      place_name: pp.name,
+      primary_type: pp.primary_type,
+      rating: pp.rating,
+      review_count: pp.review_count,
+      reviews_in_prompt_count: reviewsWithText.length,
+      captions_in_prompt_count: captions.length,
       collage_url: pp.photo_collage_url,
-      reviews_count: reviewsWithText.length,
-      q1_response: null,
-      q2_response: q2,
-      cost_usd: +q2Cost.toFixed(6),
-      status: "completed",
-      model: GEMINI_MODEL_NAME_SHORT,
-      model_version: GEMINI_MODEL_ID,
-      retry_count: retried ? 1 : 0,
-      completed_at: new Date().toISOString(),
-    })
-    .eq("run_id", runId)
-    .eq("place_pool_id", anchor.place_pool_id);
+      prompt_version: PROMPT_VERSION,
+    };
 
-  return q2Cost;
+    // ORCH-0733 — Q2 only via Gemini 2.5 Flash (sole provider).
+    // Q1 removed in v3 (harvested research into signal-lab/PROPOSALS.md).
+    // Anthropic dropped in v4 (commented-preserved helpers above for `git revert`).
+    // ORCH-0734 — `retried` field surfaces when MALFORMED_FUNCTION_CALL forced retry.
+    const { aggregate: q2, totalCostUsd: q2Cost, retried, diagnostics: questionDiagnostics } = await callGeminiQuestion({
+      apiKey: geminiKey,
+      systemPrompt,
+      userTextBlock,
+      collageUrl: pp.photo_collage_url,
+      tool: Q2_TOOL,
+    });
+
+    const completedAt = new Date().toISOString();
+    const preWriteDiagnostics = safeMergeDiagnostics(baseDiagnostics, questionDiagnostics, {
+      status: "completed",
+      row_completed_at: completedAt,
+      row_total_ms: elapsedMs(rowTimer),
+      db_read_ms: dbReadMs,
+      db_write_ms: null,
+      error_kind: null,
+      error_message: null,
+    });
+
+    // Persist. q1_response is nullable (verified) → write null on v3+ runs.
+    // ORCH-0734 — retry_count tracks Gemini MALFORMED_FUNCTION_CALL retries (0 or 1).
+    const dbWriteStart = performance.now();
+    const { error: updateErr } = await db
+      .from("place_intelligence_trial_runs")
+      .update({
+        input_payload: inputPayload,
+        collage_url: pp.photo_collage_url,
+        reviews_count: reviewsWithText.length,
+        q1_response: null,
+        q2_response: q2,
+        cost_usd: +q2Cost.toFixed(6),
+        status: "completed",
+        model: GEMINI_MODEL_NAME_SHORT,
+        model_version: GEMINI_MODEL_ID,
+        retry_count: retried ? 1 : 0,
+        completed_at: completedAt,
+        timing_diagnostics: preWriteDiagnostics,
+      })
+      .eq("run_id", runId)
+      .eq("place_pool_id", anchor.place_pool_id);
+    if (updateErr) throw new Error(`trial row update failed: ${updateErr.message}`);
+
+    const finalDiagnostics = safeMergeDiagnostics(preWriteDiagnostics, {
+      db_write_ms: elapsedMs(dbWriteStart),
+    });
+    await db
+      .from("place_intelligence_trial_runs")
+      .update({ timing_diagnostics: finalDiagnostics })
+      .eq("run_id", runId)
+      .eq("place_pool_id", anchor.place_pool_id);
+    emitTiming("row_complete", finalDiagnostics);
+
+    return { cost: q2Cost, diagnostics: finalDiagnostics };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const diagnostics = safeMergeDiagnostics(baseDiagnostics, getErrorDiagnostics(err), {
+      status: "failed",
+      row_completed_at: new Date().toISOString(),
+      row_total_ms: elapsedMs(rowTimer),
+      db_read_ms: dbReadMs,
+      error_kind: classifyError(err),
+      error_message: msg.slice(0, 500),
+    });
+    attachTimingDiagnostics(err, diagnostics);
+  }
 }
 
 // ─── Anthropic Q2 wrapper — DEPRECATED (ORCH-0733) ──────────────────────────
@@ -1129,11 +1380,17 @@ async function callGeminiQuestion(args: {
   userTextBlock: string;
   collageUrl: string;
   tool: typeof Q2_TOOL;
-}): Promise<{ aggregate: any; totalCostUsd: number; retried: boolean }> {
+}): Promise<{
+  aggregate: any;
+  totalCostUsd: number;
+  retried: boolean;
+  diagnostics: TimingDiagnostics;
+}> {
   const { apiKey, systemPrompt, userTextBlock, collageUrl, tool } = args;
 
   // Fetch + base64-encode collage (Gemini inline_data requires bytes; URL fetch unsupported)
-  const { base64, mimeType } = await fetchAsBase64(collageUrl);
+  const base64Result = await fetchAsBase64(collageUrl);
+  const { base64, mimeType } = base64Result;
 
   const reqBody = {
     contents: [{
@@ -1175,10 +1432,30 @@ async function callGeminiQuestion(args: {
   let totalCost = 0;
   let lastFinishReason: string | null = null;
   let attempt = 0;
+  const geminiAttempts: GeminiHttpDiagnostics[] = [];
 
   while (attempt <= MAX_MALFORMED_RETRIES) {
     attempt++;
-    const { payload, usage } = await callGeminiWithRetry(apiKey, reqBody);
+    let geminiResult: { payload: any; usage: GeminiUsage; diagnostics: GeminiHttpDiagnostics };
+    try {
+      geminiResult = await callGeminiWithRetry(apiKey, reqBody);
+      geminiAttempts.push(geminiResult.diagnostics);
+    } catch (err) {
+      const partial = (err instanceof Error && (err as DiagnosticError).geminiDiagnostics)
+        ? [(err as DiagnosticError).geminiDiagnostics!]
+        : [];
+      const diagnostics = safeMergeDiagnostics(
+        {
+          collage_fetch_base64_ms: base64Result.elapsedMs,
+          collage_raw_bytes: base64Result.rawBytes,
+          collage_base64_bytes: base64Result.base64Bytes,
+          malformed_function_retry_count: Math.max(0, attempt - 1),
+        },
+        combineGeminiDiagnostics([...geminiAttempts, ...partial]),
+      );
+      attachTimingDiagnostics(err, diagnostics);
+    }
+    const { payload, usage, diagnostics: geminiDiagnostics } = geminiResult;
     totalCost += computeCostUsdGemini({
       promptTokens: usage.promptTokenCount,
       candidatesTokens: usage.candidatesTokenCount,
@@ -1186,7 +1463,16 @@ async function callGeminiQuestion(args: {
 
     const candidates = payload?.candidates || [];
     if (candidates.length === 0) {
-      throw new Error("Gemini returned no candidates");
+      const err = new Error("Gemini returned no candidates");
+      attachTimingDiagnostics(err, safeMergeDiagnostics(
+        {
+          collage_fetch_base64_ms: base64Result.elapsedMs,
+          collage_raw_bytes: base64Result.rawBytes,
+          collage_base64_bytes: base64Result.base64Bytes,
+          malformed_function_retry_count: Math.max(0, attempt - 1),
+        },
+        combineGeminiDiagnostics(geminiAttempts),
+      ));
     }
     const finishReason = candidates[0]?.finishReason || "unknown";
     const parts = candidates[0]?.content?.parts || [];
@@ -1200,6 +1486,15 @@ async function callGeminiQuestion(args: {
         aggregate: fnCallPart.functionCall.args,
         totalCostUsd: totalCost,
         retried: attempt > 1,
+        diagnostics: safeMergeDiagnostics(
+          {
+            collage_fetch_base64_ms: base64Result.elapsedMs,
+            collage_raw_bytes: base64Result.rawBytes,
+            collage_base64_bytes: base64Result.base64Bytes,
+            malformed_function_retry_count: Math.max(0, attempt - 1),
+          },
+          combineGeminiDiagnostics(geminiAttempts),
+        ),
       };
     }
 
@@ -1208,7 +1503,21 @@ async function callGeminiQuestion(args: {
     // Other finish reasons (SAFETY, RECITATION, MAX_TOKENS, etc.) are
     // not retry-friendly with the same prompt — fail fast.
     if (finishReason !== "MALFORMED_FUNCTION_CALL" || attempt > MAX_MALFORMED_RETRIES) {
-      throw new Error(`Gemini returned no function_call for ${tool.name} (finishReason=${finishReason})`);
+      const err = new Error(`Gemini returned no function_call for ${tool.name} (finishReason=${finishReason})`);
+      attachTimingDiagnostics(err, safeMergeDiagnostics(
+        combineGeminiDiagnostics(geminiAttempts),
+        {
+          collage_fetch_base64_ms: base64Result.elapsedMs,
+          collage_raw_bytes: base64Result.rawBytes,
+          collage_base64_bytes: base64Result.base64Bytes,
+          malformed_function_retry_count: Math.max(0, attempt - 1),
+          gemini_error_kinds: [
+            ...((geminiDiagnostics.gemini_error_kinds || []) as string[]),
+            `finish_${finishReason}`,
+          ],
+          gemini_final_outcome: `finish_${finishReason}`,
+        },
+      ));
     }
     console.log(
       `[place-intel-trial] MALFORMED_FUNCTION_CALL retry attempt ${attempt + 1}/${MAX_MALFORMED_RETRIES + 1}`,
@@ -1216,7 +1525,17 @@ async function callGeminiQuestion(args: {
     // Loop continues for retry with same reqBody.
   }
 
-  throw new Error(`Gemini retry exhausted (finishReason=${lastFinishReason})`);
+  const err = new Error(`Gemini retry exhausted (finishReason=${lastFinishReason})`);
+  attachTimingDiagnostics(err, safeMergeDiagnostics(
+    combineGeminiDiagnostics(geminiAttempts),
+    {
+      collage_fetch_base64_ms: base64Result.elapsedMs,
+      collage_raw_bytes: base64Result.rawBytes,
+      collage_base64_bytes: base64Result.base64Bytes,
+      malformed_function_retry_count: Math.max(0, attempt - 1),
+      gemini_final_outcome: `finish_${lastFinishReason ?? "unknown"}`,
+    },
+  ));
 }
 
 function buildSystemPrompt(): string {
@@ -1633,7 +1952,7 @@ async function handleProcessChunk(
     );
 
     if (phase === "score") {
-      const result = await runScoreIteration({ db, geminiKey, runId, stuckCutoff });
+      const result = await runScoreIteration({ db, geminiKey, runId, stuckCutoff, workerStartedAtMs: startedAtMs, iteration: iterations });
       totalScored += result.scored;
       totalReclaimed += result.reclaimed;
       if (result.scored === 0) {
@@ -1641,7 +1960,7 @@ async function handleProcessChunk(
         continue;
       }
     } else {
-      const result = await runPrepIteration({ db, serperKey, runId, stuckCutoff });
+      const result = await runPrepIteration({ db, serperKey, runId, stuckCutoff, workerStartedAtMs: startedAtMs, iteration: iterations });
       totalPrepped += result.prepped;
       totalPrepFailed += result.prep_failed;
       totalReclaimed += result.reclaimed;
@@ -1736,8 +2055,10 @@ async function runScoreIteration(args: {
   geminiKey: string;
   runId: string;
   stuckCutoff: string;
+  workerStartedAtMs: number;
+  iteration: number;
 }): Promise<{ scored: number; failed: number; reclaimed: number }> {
-  const { db, geminiKey, runId, stuckCutoff } = args;
+  const { db, geminiKey, runId, stuckCutoff, workerStartedAtMs, iteration } = args;
 
   const { data: pickupRows, error: pickupErr } = await db
     .from("place_intelligence_trial_runs")
@@ -1762,10 +2083,22 @@ async function runScoreIteration(args: {
     .update({ status: "running", started_at: new Date().toISOString() })
     .in("id", rowIds);
 
+  const batchStartedAtPerf = performance.now();
+  const batchStartedAtIso = new Date().toISOString();
+  const batchContext: BatchContext = {
+    batch_id: `${runId}-score-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+    batch_kind: "score",
+    batch_iteration: iteration,
+    batch_parallel_n: 6,
+    batch_row_count: pickupRows.length,
+    batch_started_at: batchStartedAtIso,
+    worker_elapsed_ms_at_batch_start: Date.now() - workerStartedAtMs,
+  };
+
   // Promise.all parallel — score is memory-light (Gemini receives base64 collage).
   const results = await Promise.all(pickupRows.map(async (row) => {
     try {
-      const cost = await processOnePlace({
+      const { cost, diagnostics } = await processOnePlace({
         db,
         geminiKey,
         runId,
@@ -1774,25 +2107,94 @@ async function runScoreIteration(args: {
           signal_id: row.signal_id,
           anchor_index: row.anchor_index,
         },
+        batchContext,
       });
-      return { ok: true, place_pool_id: row.place_pool_id, cost };
+      return { ok: true, id: row.id, place_pool_id: row.place_pool_id, cost, diagnostics };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[v6 score] row ${row.place_pool_id} failed: ${msg}`);
+      const diagnostics = safeMergeDiagnostics(
+        {
+          version: V8_TIMING_VERSION,
+          run_id: runId,
+          parent_run_id: runId,
+          place_pool_id: row.place_pool_id,
+          phase: "score",
+          batch_id: batchContext.batch_id,
+          batch_kind: batchContext.batch_kind,
+          batch_iteration: batchContext.batch_iteration,
+          batch_parallel_n: batchContext.batch_parallel_n,
+          batch_row_count: batchContext.batch_row_count,
+          batch_started_at: batchContext.batch_started_at,
+          worker_elapsed_ms_at_batch_start: batchContext.worker_elapsed_ms_at_batch_start,
+        },
+        getErrorDiagnostics(err),
+        {
+          status: "failed",
+          row_completed_at: new Date().toISOString(),
+          error_kind: classifyError(err),
+          error_message: msg.slice(0, 500),
+        },
+      );
       await db.from("place_intelligence_trial_runs")
         .update({
           status: "failed",
           error_message: msg.slice(0, 500),
           completed_at: new Date().toISOString(),
+          timing_diagnostics: diagnostics,
         })
         .eq("id", row.id);
-      return { ok: false, place_pool_id: row.place_pool_id, error: msg, cost: 0 };
+      emitTiming("row_failed", diagnostics);
+      return { ok: false, id: row.id, place_pool_id: row.place_pool_id, error: msg, cost: 0, diagnostics };
     }
+  }));
+
+  const batchTotalMs = elapsedMs(batchStartedAtPerf);
+  const workerElapsedEnd = Date.now() - workerStartedAtMs;
+  await Promise.all(results.map(async (r) => {
+    const finalDiagnostics = safeMergeDiagnostics(r.diagnostics, {
+      worker_elapsed_ms_at_batch_end: workerElapsedEnd,
+      batch_total_ms: batchTotalMs,
+    });
+    await db.from("place_intelligence_trial_runs")
+      .update({ timing_diagnostics: finalDiagnostics })
+      .eq("id", r.id);
+    r.diagnostics = finalDiagnostics;
   }));
 
   const succeeded = results.filter((r) => r.ok).length;
   const failed = results.length - succeeded;
   const chunkCost = results.reduce((s, r) => s + (r.cost || 0), 0);
+  const slowest = results.reduce((best, r) => {
+    const value = Number(r.diagnostics?.row_total_ms ?? 0);
+    const bestValue = Number(best?.diagnostics?.row_total_ms ?? -1);
+    return value > bestValue ? r : best;
+  }, results[0]);
+  const maxGeminiMs = Math.max(...results.map((r) => Number(r.diagnostics?.gemini_total_ms ?? 0)));
+  const maxBase64Ms = Math.max(...results.map((r) => Number(r.diagnostics?.collage_fetch_base64_ms ?? 0)));
+  const totalBackoffMs = results.reduce((sum, r) => sum + Number(r.diagnostics?.gemini_backoff_ms_total ?? 0), 0);
+  const totalRetryAfterMs = results.reduce((sum, r) => sum + Number(r.diagnostics?.gemini_retry_after_ms_total ?? 0), 0);
+  emitTiming("batch_complete", {
+    version: V8_TIMING_VERSION,
+    run_id: runId,
+    phase: "score",
+    batch_id: batchContext.batch_id,
+    batch_kind: batchContext.batch_kind,
+    batch_iteration: batchContext.batch_iteration,
+    batch_parallel_n: batchContext.batch_parallel_n,
+    batch_row_count: batchContext.batch_row_count,
+    batch_total_ms: batchTotalMs,
+    succeeded,
+    failed,
+    slowest_place_pool_id: slowest?.place_pool_id,
+    slowest_row_total_ms: slowest?.diagnostics?.row_total_ms ?? null,
+    max_gemini_ms: maxGeminiMs,
+    max_base64_ms: maxBase64Ms,
+    total_backoff_ms: totalBackoffMs,
+    total_retry_after_ms: totalRetryAfterMs,
+    worker_elapsed_ms_at_batch_start: batchContext.worker_elapsed_ms_at_batch_start,
+    worker_elapsed_ms_at_batch_end: workerElapsedEnd,
+  });
 
   await db.rpc("increment_run_counters", {
     p_run_id: runId,
@@ -1821,8 +2223,10 @@ async function runPrepIteration(args: {
   serperKey: string;
   runId: string;
   stuckCutoff: string;
+  workerStartedAtMs: number;
+  iteration: number;
 }): Promise<{ prepped: number; prep_failed: number; reclaimed: number }> {
-  const { db, serperKey, runId, stuckCutoff } = args;
+  const { db, serperKey, runId, stuckCutoff, workerStartedAtMs, iteration } = args;
 
   const { data: pickupRows, error: pickupErr } = await db
     .from("place_intelligence_trial_runs")
@@ -1847,6 +2251,18 @@ async function runPrepIteration(args: {
     .update({ status: "running", started_at: new Date().toISOString() })
     .in("id", rowIds);
 
+  const batchStartedAtPerf = performance.now();
+  const batchStartedAtIso = new Date().toISOString();
+  const batchContext: BatchContext = {
+    batch_id: `${runId}-prep-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+    batch_kind: "prep",
+    batch_iteration: iteration,
+    batch_parallel_n: 12,
+    batch_row_count: pickupRows.length,
+    batch_started_at: batchStartedAtIso,
+    worker_elapsed_ms_at_batch_start: Date.now() - workerStartedAtMs,
+  };
+
   // ─── PARALLEL-12 outer prep via Promise.all ─────────────────────────────
   // Each row's compose_collage now peaks at ~5 MB (URL-transformed photos
   // via imageCollage.ts:fetchAndDecode). 12 parallel × ~5 MB = 60 MB peak,
@@ -1856,41 +2272,117 @@ async function runPrepIteration(args: {
   // First v6 deploy will INVALIDATE existing fingerprint caches (URL pattern
   // changes). Acceptable one-time hit; subsequent runs hit cache as before.
   const results = await Promise.all(pickupRows.map(async (row) => {
+    const rowStartedAt = new Date().toISOString();
+    const rowTimer = performance.now();
+    const baseDiagnostics = {
+      version: V8_TIMING_VERSION,
+      run_id: runId,
+      parent_run_id: runId,
+      place_pool_id: row.place_pool_id,
+      phase: "prep",
+      batch_id: batchContext.batch_id,
+      batch_kind: batchContext.batch_kind,
+      batch_iteration: batchContext.batch_iteration,
+      batch_parallel_n: batchContext.batch_parallel_n,
+      batch_row_count: batchContext.batch_row_count,
+      batch_started_at: batchContext.batch_started_at,
+      worker_elapsed_ms_at_batch_start: batchContext.worker_elapsed_ms_at_batch_start,
+      row_started_at: rowStartedAt,
+    };
+    let reviewsFetchMs: number | null = null;
+    let composeCollageMs: number | null = null;
     try {
       // fetch_reviews (idempotent — skips if fresh-within-30-days)
+      const reviewsStarted = performance.now();
       await handleFetchReviews(db, {
         place_pool_id: row.place_pool_id,
         force_refresh: false,
       }, serperKey);
+      reviewsFetchMs = elapsedMs(reviewsStarted);
 
       // compose_collage (idempotent — skips if fingerprint-matched cache)
       // Internally serial photo loop; per-call peak ~5 MB with URL transforms.
+      const composeStarted = performance.now();
       const collageRes = await handleComposeCollage(db, {
         place_pool_id: row.place_pool_id,
         force: false,
       });
       const collageBody = await collageRes.json();
+      composeCollageMs = elapsedMs(composeStarted);
       if (collageBody.error) {
         throw new Error(`compose_collage failed: ${collageBody.error}`);
       }
 
       // Mark prepared: prep_status='ready', status back to 'pending', started_at NULL
-      await db.from("place_intelligence_trial_runs")
-        .update({ prep_status: "ready", status: "pending", started_at: null })
+      const rowCompletedAt = new Date().toISOString();
+      const preWriteDiagnostics = safeMergeDiagnostics(baseDiagnostics, {
+        status: "pending",
+        row_completed_at: rowCompletedAt,
+        row_total_ms: elapsedMs(rowTimer),
+        reviews_fetch_ms: reviewsFetchMs,
+        compose_collage_ms: composeCollageMs,
+        compose_cached: !!collageBody.cached,
+        compose_photo_count: collageBody.photoCount ?? null,
+        compose_placed_count: collageBody.placedCount ?? null,
+        compose_failed_count: collageBody.failedCount ?? null,
+        db_write_ms: null,
+        error_kind: null,
+        error_message: null,
+      });
+      const dbWriteStarted = performance.now();
+      const { error: prepUpdateErr } = await db.from("place_intelligence_trial_runs")
+        .update({
+          prep_status: "ready",
+          status: "pending",
+          started_at: null,
+          timing_diagnostics: preWriteDiagnostics,
+        })
         .eq("id", row.id);
-      return { ok: true } as const;
+      if (prepUpdateErr) throw new Error(`prep row update failed: ${prepUpdateErr.message}`);
+      const finalDiagnostics = safeMergeDiagnostics(preWriteDiagnostics, {
+        db_write_ms: elapsedMs(dbWriteStarted),
+      });
+      await db.from("place_intelligence_trial_runs")
+        .update({ timing_diagnostics: finalDiagnostics })
+        .eq("id", row.id);
+      emitTiming("row_complete", finalDiagnostics);
+      return { ok: true, id: row.id, place_pool_id: row.place_pool_id, diagnostics: finalDiagnostics };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[v6 prep] row ${row.place_pool_id} prep failed: ${msg}`);
+      const diagnostics = safeMergeDiagnostics(baseDiagnostics, getErrorDiagnostics(err), {
+        status: "failed",
+        row_completed_at: new Date().toISOString(),
+        row_total_ms: elapsedMs(rowTimer),
+        reviews_fetch_ms: reviewsFetchMs,
+        compose_collage_ms: composeCollageMs,
+        error_kind: classifyError(err),
+        error_message: msg.slice(0, 500),
+      });
       await db.from("place_intelligence_trial_runs")
         .update({
           status: "failed",
           error_message: `prep: ${msg.slice(0, 500)}`,
           completed_at: new Date().toISOString(),
+          timing_diagnostics: diagnostics,
         })
         .eq("id", row.id);
-      return { ok: false } as const;
+      emitTiming("row_failed", diagnostics);
+      return { ok: false, id: row.id, place_pool_id: row.place_pool_id, diagnostics };
     }
+  }));
+
+  const batchTotalMs = elapsedMs(batchStartedAtPerf);
+  const workerElapsedEnd = Date.now() - workerStartedAtMs;
+  await Promise.all(results.map(async (r) => {
+    const finalDiagnostics = safeMergeDiagnostics(r.diagnostics, {
+      worker_elapsed_ms_at_batch_end: workerElapsedEnd,
+      batch_total_ms: batchTotalMs,
+    });
+    await db.from("place_intelligence_trial_runs")
+      .update({ timing_diagnostics: finalDiagnostics })
+      .eq("id", r.id);
+    r.diagnostics = finalDiagnostics;
   }));
 
   let preppedCount = 0;
@@ -1899,6 +2391,28 @@ async function runPrepIteration(args: {
     if (r.ok) preppedCount++;
     else prepFailedCount++;
   }
+  const slowest = results.reduce((best, r) => {
+    const value = Number(r.diagnostics?.row_total_ms ?? 0);
+    const bestValue = Number(best?.diagnostics?.row_total_ms ?? -1);
+    return value > bestValue ? r : best;
+  }, results[0]);
+  emitTiming("batch_complete", {
+    version: V8_TIMING_VERSION,
+    run_id: runId,
+    phase: "prep",
+    batch_id: batchContext.batch_id,
+    batch_kind: batchContext.batch_kind,
+    batch_iteration: batchContext.batch_iteration,
+    batch_parallel_n: batchContext.batch_parallel_n,
+    batch_row_count: batchContext.batch_row_count,
+    batch_total_ms: batchTotalMs,
+    prepped: preppedCount,
+    prep_failed: prepFailedCount,
+    slowest_place_pool_id: slowest?.place_pool_id,
+    slowest_row_total_ms: slowest?.diagnostics?.row_total_ms ?? null,
+    worker_elapsed_ms_at_batch_start: batchContext.worker_elapsed_ms_at_batch_start,
+    worker_elapsed_ms_at_batch_end: workerElapsedEnd,
+  });
 
   // Failed-prep rows count toward processed (terminal). Successful preps do NOT
   // count yet — they need to flow through score iteration.

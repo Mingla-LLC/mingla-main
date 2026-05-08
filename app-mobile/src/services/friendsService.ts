@@ -201,11 +201,20 @@ export async function fetchFriendRequests(userId: string): Promise<FriendRequest
 /**
  * Fetch blocked users for current user.
  */
-export async function fetchBlockedUsers(): Promise<BlockedUser[]> {
-  const result = await blockService.getBlockedUsers();
+export class AuthStateCancelledError extends Error {
+  constructor(message = "Auth state changed before blocked users could load") {
+    super(message);
+    this.name = "AuthStateCancelledError";
+  }
+}
+
+export async function fetchBlockedUsers(expectedUserId: string): Promise<BlockedUser[]> {
+  const result = await blockService.getBlockedUsers(expectedUserId);
   if (result.error) {
-    console.error("Error fetching blocked users:", result.error);
-    return [];
+    if (result.error === "Not authenticated" || result.error === "Auth state changed") {
+      throw new AuthStateCancelledError(result.error);
+    }
+    throw new Error(result.error);
   }
   return result.data.map((b: any) => ({
     id: b.blocked_id,

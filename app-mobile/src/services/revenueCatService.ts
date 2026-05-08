@@ -1,5 +1,6 @@
 import Purchases, {
   LOG_LEVEL,
+  PURCHASES_ERROR_CODE,
   type CustomerInfo,
   type PurchasesOffering,
   type PurchasesPackage,
@@ -29,6 +30,7 @@ export const RC_ELITE_ENTITLEMENT_ID = 'Mingla Elite'
 // ─────────────────────────────────────────────────────────────────────────────
 
 let _configured = false
+let guardedLogoutInFlight: Promise<CustomerInfo | null> | null = null
 
 /**
  * Configure the RevenueCat SDK. Call once at app startup (before any purchases
@@ -74,6 +76,64 @@ export async function loginRevenueCat(userId: string): Promise<CustomerInfo> {
 export async function logoutRevenueCat(): Promise<CustomerInfo> {
   if (!_configured) throw new Error('[RevenueCat] Not configured')
   return Purchases.logOut()
+}
+
+type RevenueCatErrorLike = {
+  code?: unknown
+  readableErrorCode?: unknown
+  userInfo?: {
+    readableErrorCode?: unknown
+  }
+}
+
+export function isRevenueCatAnonymousLogoutError(error: unknown): boolean {
+  if (error == null || typeof error !== 'object') return false
+
+  const rcError = error as RevenueCatErrorLike
+  const code = rcError.code == null ? undefined : String(rcError.code)
+  const readableErrorCode =
+    typeof rcError.readableErrorCode === 'string'
+      ? rcError.readableErrorCode
+      : typeof rcError.userInfo?.readableErrorCode === 'string'
+        ? rcError.userInfo.readableErrorCode
+        : undefined
+
+  return (
+    code === PURCHASES_ERROR_CODE.LOG_OUT_ANONYMOUS_USER_ERROR ||
+    readableErrorCode === 'LOG_OUT_ANONYMOUS_USER_ERROR'
+  )
+}
+
+/**
+ * Auth cleanup can run more than once while RevenueCat is already anonymous.
+ * RevenueCat rejects that strict logout with code 22, which is expected here.
+ * Concurrent cleanup callers share one native logout so the first successful
+ * logout cannot make a second in-flight caller hit RevenueCat as anonymous.
+ */
+export async function logoutRevenueCatIfIdentified(): Promise<CustomerInfo | null> {
+  if (!_configured) throw new Error('[RevenueCat] Not configured')
+  if (guardedLogoutInFlight) return guardedLogoutInFlight
+
+  const logoutPromise = (async () => {
+    const isAnonymous = await Purchases.isAnonymous()
+    if (isAnonymous) return null
+
+    try {
+      return await Purchases.logOut()
+    } catch (error) {
+      if (isRevenueCatAnonymousLogoutError(error)) return null
+      throw error
+    }
+  })()
+
+  guardedLogoutInFlight = logoutPromise
+  try {
+    return await logoutPromise
+  } finally {
+    if (guardedLogoutInFlight === logoutPromise) {
+      guardedLogoutInFlight = null
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

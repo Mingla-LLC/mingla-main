@@ -91,6 +91,7 @@ import {
   Key,
   Layers,
   Leaf,
+  List,
   Link,
   Lock,
   LockOpen,
@@ -327,6 +328,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'layers-outline':             Layers,
   'leaf':                        Leaf,
   'leaf-outline':               Leaf,
+  'list-outline':               List,
   'link':                       Link,
   'link-outline':               Link,
   'location':                   MapPin,
@@ -421,6 +423,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'sandwich':                   Sandwich,
   'storefront':                 Store,
   'sunny-outline':              Sun,
+  'sunny':                      Sun,
+  'partly-sunny':               Cloud,
 
   // ─── T ───
   'tag':                        Tag,

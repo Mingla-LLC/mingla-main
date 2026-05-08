@@ -325,9 +325,15 @@ export const useAppStore = create<AppState>()(
 
       // ─── ORCH-0679 Wave 2.8 Path B — Tab registry setters ────────────────
       setTabScroll: (key, y) =>
-        set((state: AppState) => ({
-          tabScroll: { ...state.tabScroll, [key]: y },
-        })),
+        set((state: AppState) => {
+          const nextY = Math.round(y);
+          if (Math.abs((state.tabScroll[key] ?? 0) - nextY) < 2) {
+            return state;
+          }
+          return {
+            tabScroll: { ...state.tabScroll, [key]: nextY },
+          };
+        }),
       setDiscoverFilters: (discoverFilters) => set({ discoverFilters }),
       setSavedFilters: (savedFilters) => set({ savedFilters }),
       setConnectionsActivePanel: (connectionsActivePanel) => set({ connectionsActivePanel }),

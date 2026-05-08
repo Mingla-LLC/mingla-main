@@ -13,6 +13,7 @@ import { Icon } from './ui/Icon';
 import InAppBrowserModal from './InAppBrowserModal';
 import { LEGAL_URLS } from '../constants/urls';
 import { useQueryClient } from '@tanstack/react-query';
+import type { PurchasesPackage } from 'react-native-purchases';
 import { useOfferings, usePurchasePackage, useRestorePurchases, revenueCatKeys } from '../hooks/useRevenueCat';
 import { syncSubscriptionFromRC } from '../services/subscriptionService';
 import { subscriptionKeys } from '../hooks/useSubscription';
@@ -73,6 +74,26 @@ function getPeriodLabelKey(identifier: string): string {
   return 'billing:paywall.period_subscribe';
 }
 
+type PackagePlan = 'annual' | 'monthly' | 'weekly' | 'lifetime' | 'subscribe';
+
+function getPackagePlan(pkg: PurchasesPackage): PackagePlan {
+  const id = `${pkg.identifier} ${pkg.product.identifier} ${pkg.product.subscriptionPeriod ?? ''}`.toLowerCase();
+  if (id.includes('p1y') || id.includes('annual') || id.includes('yearly')) return 'annual';
+  if (id.includes('p1m') || id.includes('monthly')) return 'monthly';
+  if (id.includes('p1w') || id.includes('weekly')) return 'weekly';
+  if (id.includes('lifetime')) return 'lifetime';
+  return 'subscribe';
+}
+
+function getPackageSortWeight(pkg: PurchasesPackage): number {
+  const plan = getPackagePlan(pkg);
+  if (plan === 'annual') return 0;
+  if (plan === 'monthly') return 1;
+  if (plan === 'weekly') return 2;
+  if (plan === 'lifetime') return 3;
+  return 4;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,11 +143,46 @@ export function CustomPaywallScreen({
   const headerText = feature ? t(FEATURE_HEADER_KEYS[feature]) : t('billing:paywall.header_default');
 
   const packages = offering?.availablePackages ?? [];
-  const activePackages = packages;
+  const activePackages = [...packages].sort((a, b) => getPackageSortWeight(a) - getPackageSortWeight(b));
+  const selectedPackage =
+    activePackages.find((p) => p.identifier === selectedPkgId) ?? activePackages[0] ?? null;
+
+  const getBillingDetail = (pkg: PurchasesPackage, plan: PackagePlan): string => {
+    if (plan === 'annual' && pkg.product.pricePerMonthString) {
+      return t('billing:paywall.plan_equivalent_monthly', {
+        price: pkg.product.pricePerMonthString,
+        defaultValue: `${pkg.product.pricePerMonthString}/mo equivalent`,
+      });
+    }
+
+    if (plan === 'monthly') {
+      return t('billing:paywall.plan_billed_monthly', { defaultValue: 'Billed monthly' });
+    }
+
+    if (plan === 'weekly') {
+      return t('billing:paywall.plan_billed_weekly', { defaultValue: 'Billed weekly' });
+    }
+
+    if (plan === 'lifetime') {
+      return t('billing:paywall.plan_one_time', { defaultValue: 'One-time purchase' });
+    }
+
+    return t('billing:paywall.plan_billed_at_checkout', { defaultValue: 'Billed at checkout' });
+  };
+
+  const getPlanBadge = (plan: PackagePlan): string | null => {
+    if (plan === 'annual') {
+      return t('billing:paywall.plan_best_value', { defaultValue: 'Best value' });
+    }
+    if (plan === 'monthly') {
+      return t('billing:paywall.plan_most_flexible', { defaultValue: 'Flexible' });
+    }
+    return null;
+  };
 
   // ── Purchase handler ────────────────────────────────────────────────────
   const handlePurchase = async () => {
-    const pkg = activePackages.find((p) => p.identifier === selectedPkgId) ?? activePackages[0];
+    const pkg = selectedPackage;
     if (!pkg) {
       Alert.alert(t('billing:paywall.no_package_title'), t('billing:paywall.no_package_body'));
       return;
@@ -275,24 +331,51 @@ export function CustomPaywallScreen({
           {activePackages.length > 0 ? (
             <View style={styles.packageList}>
               {activePackages.map((pkg) => {
-                const isSelected = selectedPkgId === pkg.identifier ||
-                  (selectedPkgId === null && pkg === activePackages[0]);
+                const plan = getPackagePlan(pkg);
+                const planLabel = t(getPeriodLabelKey(pkg.identifier));
+                const billingDetail = getBillingDetail(pkg, plan);
+                const badge = getPlanBadge(plan);
+                const isSelected = selectedPackage?.identifier === pkg.identifier;
                 const accentColor = colors.primary[500];
                 return (
                   <TouchableOpacity
                     key={pkg.identifier}
                     style={[
-                      styles.packagePill,
-                      isSelected && { borderColor: accentColor, borderWidth: 2 },
+                      styles.packageCard,
+                      isSelected && {
+                        borderColor: accentColor,
+                        backgroundColor: 'rgba(249,115,22,0.12)',
+                      },
                     ]}
                     onPress={() => setSelectedPkgId(pkg.identifier)}
+                    activeOpacity={0.86}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={`${planLabel}, ${pkg.product.priceString}, ${billingDetail}`}
                   >
-                    <Text style={styles.packagePeriod}>
-                      {t(getPeriodLabelKey(pkg.identifier))}
-                    </Text>
-                    <Text style={styles.packagePrice}>
-                      {pkg.product.priceString}
-                    </Text>
+                    <View style={styles.packageMainRow}>
+                      <View style={styles.packageTitleBlock}>
+                        <View style={styles.packageTitleRow}>
+                          <Text style={[styles.packagePeriod, isSelected && styles.packagePeriodSelected]}>
+                            {planLabel}
+                          </Text>
+                          {badge ? (
+                            <View style={[styles.packageBadge, isSelected && styles.packageBadgeSelected]}>
+                              <Text style={[styles.packageBadgeText, isSelected && styles.packageBadgeTextSelected]}>
+                                {badge}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <Text style={styles.packageDetail}>{billingDetail}</Text>
+                      </View>
+                      <View style={styles.packagePriceBlock}>
+                        <Text style={styles.packagePrice}>{pkg.product.priceString}</Text>
+                        {isSelected ? (
+                          <Icon name="checkmark-circle" size={22} color={accentColor} />
+                        ) : null}
+                      </View>
+                    </View>
                   </TouchableOpacity>
                 );
               })}
@@ -314,7 +397,15 @@ export function CustomPaywallScreen({
             {isBusy ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.ctaText}>{t('billing:paywall.subscribe')}</Text>
+              <Text style={styles.ctaText}>
+                {selectedPackage
+                  ? t('billing:paywall.subscribe_with_plan', {
+                      plan: t(getPeriodLabelKey(selectedPackage.identifier)),
+                      price: selectedPackage.product.priceString,
+                      defaultValue: `Start ${t(getPeriodLabelKey(selectedPackage.identifier))} - ${selectedPackage.product.priceString}`,
+                    })
+                  : t('billing:paywall.subscribe')}
+              </Text>
             )}
           </TouchableOpacity>
 
@@ -458,28 +549,79 @@ const styles = StyleSheet.create({
 
   // Packages
   packageList: {
-    flexDirection: 'row',
     gap: spacing.sm,
     marginBottom: spacing.lg,
   },
-  packagePill: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.md,
+  packageCard: {
+    minHeight: 76,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.gray[700],
     backgroundColor: 'rgba(255,255,255,0.05)',
   },
+  packageMainRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  packageTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  packageTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
   packagePeriod: {
+    color: '#fff',
+    fontSize: typography.md.fontSize,
+    lineHeight: typography.md.lineHeight,
+    fontWeight: fontWeights.bold,
+  },
+  packagePeriodSelected: {
+    color: colors.primary[100],
+  },
+  packageBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  packageBadgeSelected: {
+    backgroundColor: colors.primary[500],
+  },
+  packageBadgeText: {
+    color: '#D1D5DB',
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: fontWeights.bold,
+    textTransform: 'uppercase',
+  },
+  packageBadgeTextSelected: {
+    color: '#fff',
+  },
+  packageDetail: {
     color: '#9CA3AF',
     fontSize: typography.xs.fontSize,
+    lineHeight: typography.xs.lineHeight,
     fontWeight: fontWeights.medium,
-    marginBottom: spacing.xxs,
+    marginTop: spacing.xxs,
+  },
+  packagePriceBlock: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: spacing.xs,
   },
   packagePrice: {
     color: '#fff',
-    fontSize: typography.md.fontSize,
+    fontSize: typography.lg.fontSize,
+    lineHeight: typography.lg.lineHeight,
     fontWeight: fontWeights.bold,
   },
   noPackagesText: {

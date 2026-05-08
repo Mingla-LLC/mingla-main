@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
 import { useAppStore } from '../store/appStore';
+import { PreferencesService } from '../services/preferencesService';
 
 export const profileInterestsKeys = {
   all: ['profile-interests'] as const,
@@ -23,7 +24,7 @@ export function useProfileInterests(userId?: string) {
         .from('preferences')
         .select('display_intents, display_categories')
         .eq('profile_id', targetId)
-        .single();
+        .maybeSingle();
       if (error) throw new Error(error.message);
       return {
         intents: data?.display_intents ?? [],
@@ -41,14 +42,10 @@ export function useUpdateProfileInterests() {
 
   return useMutation({
     mutationFn: async (interests: ProfileInterests) => {
-      const { error } = await supabase
-        .from('preferences')
-        .update({
-          display_intents: interests.intents,
-          display_categories: interests.categories,
-        })
-        .eq('profile_id', user!.id);
-      if (error) throw new Error(error.message);
+      await PreferencesService.updateUserPreferences(user!.id, {
+        display_intents: interests.intents,
+        display_categories: interests.categories,
+      } as any);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: profileInterestsKeys.user(user!.id) });

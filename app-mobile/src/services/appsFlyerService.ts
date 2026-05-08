@@ -15,6 +15,7 @@ const AF_ANDROID_APP_ID = 'com.mingla.app.v2'
 // ─────────────────────────────────────────────────────────────────────────────
 
 let _initialized = false
+const registeredDeviceKeys = new Set<string>()
 
 /**
  * Initialize the AppsFlyer SDK. Call once at app startup.
@@ -28,8 +29,8 @@ export function initializeAppsFlyer(): void {
         devKey: AF_DEV_KEY,
         isDebug: __DEV__,
         appId: Platform.OS === 'ios' ? AF_IOS_APP_ID : undefined,
-        onInstallConversionDataListener: true,
-        onDeepLinkListener: true,
+        onInstallConversionDataListener: false,
+        onDeepLinkListener: false,
         timeToWaitForATTUserAuthorization: 0, // deferred — ATT requested after coach mark tour (ORCH-0349)
       },
       (result: unknown) => {
@@ -79,14 +80,29 @@ export function setAppsFlyerUserId(userId: string): void {
 export function registerAppsFlyerDevice(userId: string): void {
   if (!_initialized) return
   try {
-    appsFlyer.getAppsFlyerUID((err: any, uid: string) => {
+    appsFlyer.getAppsFlyerUID(async (err: any, uid: string) => {
       if (err || !uid) {
         console.warn('[AppsFlyer] getAppsFlyerUID failed:', err)
         return
       }
 
+      let currentUserId: string | undefined
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        currentUserId = user?.id
+      } catch {
+        currentUserId = undefined
+      }
+
+      if (currentUserId !== userId) {
+        if (__DEV__) console.log('[AppsFlyer] Device registration skipped - auth user changed')
+        return
+      }
+
       const platform = Platform.OS as 'ios' | 'android'
       const appId = platform === 'ios' ? AF_IOS_APP_ID : AF_ANDROID_APP_ID
+      const deviceKey = `${userId}:${uid}`
+      if (registeredDeviceKeys.has(deviceKey)) return
 
       supabase
         .from('appsflyer_devices')
@@ -103,8 +119,9 @@ export function registerAppsFlyerDevice(userId: string): void {
         .then(({ error }) => {
           if (error) {
             console.warn('[AppsFlyer] Device registration failed:', error.message)
-          } else if (__DEV__) {
-            console.log(`[AppsFlyer] Device registered: ${platform}/${uid}`)
+          } else {
+            registeredDeviceKeys.add(deviceKey)
+            if (__DEV__) console.log(`[AppsFlyer] Device registered: ${platform}/${uid}`)
           }
         })
     })

@@ -57,7 +57,7 @@ export function useFriendRequests(userId: string | undefined) {
 export function useBlockedUsers(userId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: friendsKeys.blocked(userId ?? ""),
-    queryFn: () => friendsService.fetchBlockedUsers(),
+    queryFn: () => friendsService.fetchBlockedUsers(userId!),
     enabled: !!userId && enabled,
     staleTime: FRIENDS_STALE_TIME,
     refetchInterval: FALLBACK_REFETCH_INTERVAL,

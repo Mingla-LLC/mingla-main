@@ -6,6 +6,7 @@ import { AppState } from 'react-native';
 import type { AppStateStatus } from 'react-native';
 import { breadcrumbs } from '../utils/breadcrumbs';
 import { logger } from '../utils/logger';
+import { isQueryCancellationError } from '../utils/queryPersistence';
 
 // Wire React Query's focusManager to React Native's AppState so that
 // refetchOnWindowFocus works on app resume. Queries whose data is older
@@ -141,6 +142,10 @@ export const queryClient = new QueryClient({
     },
     onError: (error, query) => {
       const key = Array.isArray(query.queryKey) ? query.queryKey.join('.') : String(query.queryKey);
+      if (isQueryCancellationError(error)) {
+        if (__DEV__) logger.query(`cancelled ${key}`, { error: error.message });
+        return;
+      }
       // console.error for production log aggregators; logger.query for dev Metro output
       console.error(`[QUERY] ERROR ${key} | ${error.name}: ${error.message}`);
       if (__DEV__) logger.query(`ERROR ${key}`, { error: error.message });
@@ -194,6 +199,7 @@ export const queryClient = new QueryClient({
       // the token, then invalidateQueries gives the query a fresh start. Retrying
       // with the same expired JWT is a guaranteed waste. ORCH-0338.
       retry: (failureCount: number, error: Error): boolean => {
+        if (isQueryCancellationError(error)) return false;
         const msg = error?.message ?? '';
         const isAuthError =
           msg.includes('401') ||
