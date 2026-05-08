@@ -9,13 +9,9 @@
  * Brand-chip on TopBar opens BrandSwitcherSheet (mode auto-derives from list state).
  * Sheet's onBrandCreated → Toast "{displayName} is ready" (per dispatch AC#2).
  *
- * Stub event-list rows are [TRANSITIONAL] hardcoded — replaced by real event
- * fetch in B1+ when event endpoints land.
- *
- * Cycle 3 wires draft rows from draftEventStore — those rows ARE real (not
- * stub). Stub rows below remain until Cycle 9 ships the live events list.
- * Cycle 3 also retires 2 TRANSITIONAL Toasts ("Event creation lands Cycle 3"
- * + "Events list lands Cycle 3") — both now navigate.
+ * Cycle 3 wires draft rows from draftEventStore.
+ * ORCH-0754 wires live rows from liveEventStore + orderStore metrics, so the
+ * first-screen event story is derived from current-brand local event truth.
  */
 
 import React, { useCallback, useMemo, useState } from "react";
@@ -47,45 +43,28 @@ import {
   type Brand,
 } from "../../src/store/currentBrandStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
-import { useDraftsForBrand } from "../../src/store/draftEventStore";
+import {
+  useDraftsForBrand,
+  type DraftEvent,
+} from "../../src/store/draftEventStore";
+import {
+  useLiveEventsForBrand,
+  type LiveEvent,
+} from "../../src/store/liveEventStore";
+import { useOrderStore } from "../../src/store/orderStore";
+import {
+  buildBrandEventSummary,
+  type BrandEventSummaryCounts,
+  type BrandEventSummaryItem,
+} from "../../src/utils/brandEventSummary";
 import { formatGbpRound } from "../../src/utils/currency";
+import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
 import { formatRelativeTime } from "../../src/utils/relativeTime";
 
 interface ToastState {
   visible: boolean;
   message: string;
 }
-
-interface StubUpcomingRow {
-  id: string;
-  title: string;
-  when: string;
-  status: "live" | "draft";
-  hue: number;
-  sold: string;
-}
-
-// [TRANSITIONAL] stub upcoming-events list — removed in B1 backend cycle
-// when event endpoints land. Always 2 rows in addition to the brand's
-// currentLiveEvent so the "Upcoming" section reads non-trivially.
-const STUB_UPCOMING_ROWS: StubUpcomingRow[] = [
-  {
-    id: "u1",
-    title: "Sunday Languor Brunch",
-    when: "Sun · 12:00",
-    status: "live",
-    hue: 290,
-    sold: "62 / 80",
-  },
-  {
-    id: "u2",
-    title: "The Long Lunch (Series)",
-    when: "Recurring · weekly",
-    status: "draft",
-    hue: 150,
-    sold: "—",
-  },
-];
 
 const greetingLabel = (): string => {
   const hour = new Date().getHours();
@@ -95,6 +74,48 @@ const greetingLabel = (): string => {
   return "Good evening";
 };
 
+const getEventName = (name: string, fallback: string): string =>
+  name.trim().length > 0 ? name : fallback;
+
+const hasUnlimitedTickets = (event: LiveEvent): boolean =>
+  event.tickets.some((ticket) => ticket.isUnlimited);
+
+const finiteTicketCapacity = (event: LiveEvent): number | null => {
+  const finiteTickets = event.tickets.filter((ticket) => !ticket.isUnlimited);
+  if (finiteTickets.length === 0) return null;
+  return finiteTickets.reduce((sum, ticket) => sum + (ticket.capacity ?? 0), 0);
+};
+
+const formatCapacityLabel = (event: LiveEvent): string => {
+  const capacity = finiteTicketCapacity(event);
+  if ((capacity === null || capacity === 0) && hasUnlimitedTickets(event)) {
+    return "Unlimited";
+  }
+  return capacity === null ? "—" : capacity.toLocaleString("en-GB");
+};
+
+const formatSoldOutOfCapacity = (event: LiveEvent, sold: number): string => {
+  const capacity = finiteTicketCapacity(event);
+  const soldLabel = sold.toLocaleString("en-GB");
+  if (capacity === null) return soldLabel;
+  return `${soldLabel} / ${capacity.toLocaleString("en-GB")}`;
+};
+
+const formatActiveEventsSub = (counts: BrandEventSummaryCounts): string => {
+  if (counts.active === 0) return "No active events";
+
+  return [
+    `${counts.live} live`,
+    `${counts.upcoming} upcoming`,
+    `${counts.draft} ${counts.draft === 1 ? "draft" : "drafts"}`,
+  ].join(" · ");
+};
+
+const getLiveEventFromItem = (
+  item: BrandEventSummaryItem | null,
+): LiveEvent | null =>
+  item?.kind === "live" ? (item.event as LiveEvent) : null;
+
 export default function HomeTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -103,6 +124,10 @@ export default function HomeTab(): React.ReactElement {
   const currentBrand = useCurrentBrand();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
+  const liveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
+  const orderEntries = useOrderStore((s) => s.entries);
+  const getSoldCountForEvent = useOrderStore((s) => s.getSoldCountForEvent);
+  const getRevenueForEvent = useOrderStore((s) => s.getRevenueForEvent);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // Cycle 17e-A REWORK: BrandDeleteSheet state — opens from BrandSwitcherSheet
   // trash icon taps. Mirrors account.tsx pattern per ORCH-0734-RW SPEC §3.3.
@@ -177,14 +202,49 @@ export default function HomeTab(): React.ReactElement {
     [router],
   );
 
-  const isEmpty = brands.length === 0 || currentBrand === null;
-  const liveEvent = currentBrand?.currentLiveEvent ?? null;
+  const handleOpenLiveEvent = useCallback(
+    (eventId: string): void => {
+      router.push(`/event/${eventId}` as never);
+    },
+    [router],
+  );
 
-  const liveProgress = useMemo<number>(() => {
-    if (liveEvent === null) return 0;
-    if (liveEvent.goalGbp <= 0) return 0;
-    return Math.min(1, liveEvent.soldGbp / liveEvent.goalGbp);
-  }, [liveEvent]);
+  const isEmpty = brands.length === 0 || currentBrand === null;
+  const eventSummary = useMemo(
+    () => buildBrandEventSummary(liveEvents, drafts),
+    [liveEvents, drafts],
+  );
+  const primaryLiveEvent = getLiveEventFromItem(eventSummary.primaryLiveItem);
+
+  const liveHeroMetrics = useMemo(() => {
+    void orderEntries;
+
+    if (primaryLiveEvent === null) {
+      return {
+        revenueGbp: 0,
+        soldCount: 0,
+        capacity: null as number | null,
+        progress: 0,
+      };
+    }
+
+    const capacity = finiteTicketCapacity(primaryLiveEvent);
+    const soldCount = getSoldCountForEvent(primaryLiveEvent.id);
+    return {
+      revenueGbp: getRevenueForEvent(primaryLiveEvent.id),
+      soldCount,
+      capacity,
+      progress:
+        capacity !== null && capacity > 0
+          ? Math.min(1, soldCount / capacity)
+          : 0,
+    };
+  }, [
+    primaryLiveEvent,
+    orderEntries,
+    getSoldCountForEvent,
+    getRevenueForEvent,
+  ]);
 
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
@@ -216,43 +276,54 @@ export default function HomeTab(): React.ReactElement {
               <Text style={styles.greetingHey}>Hey, {currentBrand.displayName}</Text>
             </View>
 
-            {liveEvent !== null ? (
+            {primaryLiveEvent !== null ? (
               <GlassCard variant="elevated" padding={spacing.lg}>
                 <View style={styles.heroLiveTagRow}>
                   <Pill variant="live" livePulse>
-                    Live tonight
+                    Live now
                   </Pill>
                 </View>
-                <Text style={styles.heroEventName}>{liveEvent.name}</Text>
+                <Text style={styles.heroEventName}>
+                  {getEventName(primaryLiveEvent.name, "Untitled event")}
+                </Text>
+                <Text style={styles.heroEventDate}>
+                  {formatDraftDateLine(primaryLiveEvent)}
+                </Text>
                 <View style={styles.heroAmountRow}>
                   <Text style={styles.heroAmountSold}>
-                    {formatGbpRound(liveEvent.soldGbp)}
+                    {formatGbpRound(liveHeroMetrics.revenueGbp)}
                   </Text>
-                  <Text style={styles.heroAmountGoal}>
-                    {" "}/ {formatGbpRound(liveEvent.goalGbp)}
-                  </Text>
+                  <Text style={styles.heroAmountGoal}> revenue</Text>
                 </View>
-                <View style={styles.progressBarTrack}>
-                  <View
-                    style={[
-                      styles.progressBarFill,
-                      { width: `${Math.round(liveProgress * 100)}%` },
-                    ]}
-                  />
-                </View>
+                {liveHeroMetrics.capacity !== null ? (
+                  <View style={styles.progressBarTrack}>
+                    <View
+                      style={[
+                        styles.progressBarFill,
+                        {
+                          width: `${Math.round(
+                            liveHeroMetrics.progress * 100,
+                          )}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                ) : null}
                 <View style={styles.heroStatRow}>
                   <View style={styles.heroStatCell}>
                     <Text style={styles.heroStatValue}>
-                      {Math.round(liveEvent.soldGbp / 30)}
+                      {liveHeroMetrics.soldCount.toLocaleString("en-GB")}
                     </Text>
                     <Text style={styles.heroStatLabel}>Tickets sold</Text>
                   </View>
                   <View style={styles.heroStatCell}>
-                    <Text style={styles.heroStatValue}>400</Text>
+                    <Text style={styles.heroStatValue}>
+                      {formatCapacityLabel(primaryLiveEvent)}
+                    </Text>
                     <Text style={styles.heroStatLabel}>Capacity</Text>
                   </View>
                   <View style={styles.heroStatCell}>
-                    <Text style={styles.heroStatValue}>0</Text>
+                    <Text style={styles.heroStatValue}>—</Text>
                     <Text style={styles.heroStatLabel}>Scanned</Text>
                   </View>
                 </View>
@@ -269,8 +340,8 @@ export default function HomeTab(): React.ReactElement {
             <View style={styles.kpiGrid}>
               <KpiTile
                 label="Active events"
-                value={currentBrand.stats.events}
-                sub={liveEvent !== null ? "1 live · 2 upcoming" : "Nothing live tonight"}
+                value={eventSummary.counts.active}
+                sub={formatActiveEventsSub(eventSummary.counts)}
                 style={styles.kpiCell}
               />
               <KpiTile
@@ -293,91 +364,106 @@ export default function HomeTab(): React.ReactElement {
             </View>
 
             <View style={styles.eventsCol}>
-              {/* Cycle 3 — real draft rows from draftEventStore (NOT stub). */}
-              {drafts.map((draft) => (
-                <Pressable
-                  key={draft.id}
-                  onPress={() => handleOpenDraft(draft.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Resume draft: ${draft.name || "Untitled"}`}
-                  style={styles.eventRow}
-                >
-                  <View style={styles.eventCoverWrap}>
-                    <EventCover
-                      hue={draft.coverHue}
-                      radius={12}
-                      label=""
-                      height={56}
-                      width={56}
-                    />
-                  </View>
-                  <View style={styles.eventTextCol}>
-                    <View style={styles.eventPillRow}>
-                      <Pill variant="draft">Draft</Pill>
-                    </View>
-                    <Text style={styles.eventTitle} numberOfLines={1}>
-                      {draft.name.length > 0 ? draft.name : "Untitled draft"}
-                    </Text>
-                    <Text style={styles.eventWhen} numberOfLines={1}>
-                      {`Step ${draft.lastStepReached + 1} of 7 · ${formatRelativeTime(draft.updatedAt)}`}
-                    </Text>
-                  </View>
-                  <View style={styles.eventSoldCol}>
-                    <Text style={styles.eventSoldValue}>—</Text>
-                    <Text style={styles.eventSoldLabel}>resume</Text>
-                  </View>
-                </Pressable>
-              ))}
-              {liveEvent !== null ? (
-                <View style={styles.eventRow}>
-                  <View style={styles.eventCoverWrap}>
-                    <EventCover hue={25} radius={12} label="" height={56} width={56} />
-                  </View>
-                  <View style={styles.eventTextCol}>
-                    <View style={styles.eventPillRow}>
-                      <Pill variant="live" livePulse>
-                        Live
-                      </Pill>
-                    </View>
-                    <Text style={styles.eventTitle} numberOfLines={1}>
-                      {liveEvent.name}
-                    </Text>
-                    <Text style={styles.eventWhen} numberOfLines={1}>
-                      Tonight · 21:00
-                    </Text>
-                  </View>
-                  <View style={styles.eventSoldCol}>
-                    <Text style={styles.eventSoldValue}>
-                      {Math.round(liveEvent.soldGbp / 30)} / 400
-                    </Text>
-                    <Text style={styles.eventSoldLabel}>sold</Text>
-                  </View>
-                </View>
-              ) : null}
-              {STUB_UPCOMING_ROWS.map((row) => (
-                <View key={row.id} style={styles.eventRow}>
-                  <View style={styles.eventCoverWrap}>
-                    <EventCover hue={row.hue} radius={12} label="" height={56} width={56} />
-                  </View>
-                  <View style={styles.eventTextCol}>
-                    <View style={styles.eventPillRow}>
-                      <Pill variant={row.status === "live" ? "live" : "draft"}>
-                        {row.status === "live" ? "Live" : "Draft"}
-                      </Pill>
-                    </View>
-                    <Text style={styles.eventTitle} numberOfLines={1}>
-                      {row.title}
-                    </Text>
-                    <Text style={styles.eventWhen} numberOfLines={1}>
-                      {row.when}
-                    </Text>
-                  </View>
-                  <View style={styles.eventSoldCol}>
-                    <Text style={styles.eventSoldValue}>{row.sold}</Text>
-                    <Text style={styles.eventSoldLabel}>sold</Text>
-                  </View>
-                </View>
-              ))}
+              {eventSummary.activeItems.length === 0 ? (
+                <GlassCard variant="base" padding={spacing.lg}>
+                  <Text style={styles.emptyTitle}>No upcoming events</Text>
+                  <Text style={styles.emptyBody}>
+                    Build an event to see it here.
+                  </Text>
+                </GlassCard>
+              ) : (
+                eventSummary.activeItems.map((item) => {
+                  if (item.kind === "draft") {
+                    const draft = item.event as DraftEvent;
+                    return (
+                      <Pressable
+                        key={item.key}
+                        onPress={() => handleOpenDraft(draft.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Resume draft: ${
+                          draft.name || "Untitled"
+                        }`}
+                        style={styles.eventRow}
+                      >
+                        <View style={styles.eventCoverWrap}>
+                          <EventCover
+                            hue={draft.coverHue}
+                            radius={12}
+                            label=""
+                            height={56}
+                            width={56}
+                          />
+                        </View>
+                        <View style={styles.eventTextCol}>
+                          <View style={styles.eventPillRow}>
+                            <Pill variant="draft">Draft</Pill>
+                          </View>
+                          <Text style={styles.eventTitle} numberOfLines={1}>
+                            {getEventName(draft.name, "Untitled draft")}
+                          </Text>
+                          <Text style={styles.eventWhen} numberOfLines={1}>
+                            {`Step ${draft.lastStepReached + 1} of 7 · ${formatRelativeTime(
+                              draft.updatedAt,
+                            )}`}
+                          </Text>
+                        </View>
+                        <View style={styles.eventSoldCol}>
+                          <Text style={styles.eventSoldValue}>—</Text>
+                          <Text style={styles.eventSoldLabel}>resume</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  }
+
+                  const event = item.event as LiveEvent;
+                  const soldCount = getSoldCountForEvent(event.id);
+                  const isLive = item.status === "live";
+
+                  return (
+                    <Pressable
+                      key={item.key}
+                      onPress={() => handleOpenLiveEvent(event.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open event: ${
+                        event.name || "Untitled"
+                      }`}
+                      style={styles.eventRow}
+                    >
+                      <View style={styles.eventCoverWrap}>
+                        <EventCover
+                          hue={event.coverHue}
+                          radius={12}
+                          label=""
+                          height={56}
+                          width={56}
+                        />
+                      </View>
+                      <View style={styles.eventTextCol}>
+                        <View style={styles.eventPillRow}>
+                          <Pill
+                            variant={isLive ? "live" : "accent"}
+                            livePulse={isLive}
+                          >
+                            {isLive ? "Live" : "Upcoming"}
+                          </Pill>
+                        </View>
+                        <Text style={styles.eventTitle} numberOfLines={1}>
+                          {getEventName(event.name, "Untitled event")}
+                        </Text>
+                        <Text style={styles.eventWhen} numberOfLines={1}>
+                          {formatDraftDateLine(event)}
+                        </Text>
+                      </View>
+                      <View style={styles.eventSoldCol}>
+                        <Text style={styles.eventSoldValue}>
+                          {formatSoldOutOfCapacity(event, soldCount)}
+                        </Text>
+                        <Text style={styles.eventSoldLabel}>sold</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })
+              )}
             </View>
 
             <Pressable
@@ -502,6 +588,12 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
+    marginBottom: 2,
+  },
+  heroEventDate: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
     marginBottom: 4,
   },
   heroAmountRow: {

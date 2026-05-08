@@ -2449,3 +2449,20 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 **Source:** B2a Path C V3 forensics report `Mingla_Artifacts/reports/INVESTIGATION_B2A_PATH_C_V3_CONFIG_DRIFT.md` finding §3 + recommended fix §9.
 
 **EXIT condition:** Permanent invariant. Reversal would require Mingla owning multiple production web domains for the Business product (highly unlikely; even multi-region deploys would use a single canonical apex with regional CDN routing).
+
+### I-PROPOSED-Z — HOME-NO-FABRICATED-EVENTS (ACTIVE — ratified by ORCH-0754 CLOSE / DEC-132)
+
+**Status:** ACTIVE (ratified 2026-05-08 at ORCH-0754 close).
+
+**Statement:** `mingla-business/app/(tabs)/home.tsx` MUST NOT contain fabricated upcoming event rows, fake event names, hardcoded live/upcoming summary copy, hardcoded event times, or hardcoded sold/capacity math. Business Home event truth must derive from the current brand's draft/live/order sources: `useDraftsForBrand`, `useLiveEventsForBrand`, `buildBrandEventSummary`, and `useOrderStore` metrics where displayed.
+
+**Why:** ORCH-0754 proved that Cycle 3 transitional Home rows survived after Cycle 9 shipped the real Events tab pipeline but explicitly excluded Home. That left organisers seeing fake Upcoming rows and hardcoded live-event details on the first-screen business dashboard, violating the no-fabricated-data rule and undermining trust in operational metrics.
+
+**Enforcement:**
+1. **Strict-grep gate:** `.github/scripts/strict-grep/i-proposed-z-home-no-fabricated-events.mjs` scans `mingla-business/app/(tabs)/home.tsx` for the forbidden signatures: `STUB_UPCOMING_ROWS`, `StubUpcomingRow`, `Sunday Languor Brunch`, `The Long Lunch (Series)`, `1 live · 2 upcoming`, `Tonight · 21:00`, `Math.round(liveEvent.soldGbp / 30)`, `/ 400`, and `currentBrand.currentLiveEvent` variants.
+2. **Workflow:** `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-z-home-no-fabricated-events`.
+3. **Local package gate:** `mingla-business/package.json` script `test:orch-0754` runs the strict-grep gate plus `brandEventSummary.test`.
+
+**Source:** ORCH-0754 investigation, spec, implementation/rework, and tester report: `reports/INVESTIGATION_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md`, `specs/SPEC_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md`, and `reports/TEST_REPORT_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md`.
+
+**EXIT condition:** Permanent invariant for Business Home. If backend event truth later replaces the transitional local stores, the invariant remains: Home must use the new canonical source and this gate must be updated to forbid the same fake-data class, not removed.

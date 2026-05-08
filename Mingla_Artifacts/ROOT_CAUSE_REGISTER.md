@@ -1,9 +1,24 @@
 # Root Cause Register
 
-> Last updated: 2026-05-07
+> Last updated: 2026-05-08
 > Proven root causes with causal clusters.
 
 ## Root Causes
+
+### RC-0754: Transitional Home event stubs survived after their retirement cycle excluded Home
+- **Discovery date:** 2026-05-08
+- **Proof:** `reports/INVESTIGATION_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md` proves `mingla-business/app/(tabs)/home.tsx` still defines and renders `STUB_UPCOMING_ROWS` (`Sunday Languor Brunch`, `The Long Lunch (Series)`), hardcodes `"1 live · 2 upcoming"`, and uses fictional live-event values, while `mingla-business/app/(tabs)/events.tsx` already derives brand-scoped event rows from `useDraftsForBrand`, `useLiveEventsForBrand`, and lifecycle helpers.
+- **Symptoms caused:** The business app Home tab's Upcoming section and adjacent event summary can show fabricated upcoming/live operational data instead of the organiser's actual event pipeline.
+- **Causal chain:**
+  1. Cycle 1 introduced Home's live row plus two stub upcoming rows.
+  2. Cycle 3 intentionally preserved `STUB_UPCOMING_ROWS` while adding real draft rows and documented that Cycle 9 would retire the stubs when the real event list existed.
+  3. Cycle 9 shipped the full Events tab pipeline but explicitly declared "Live tonight on Home tab: NO TOUCH in Cycle 9."
+  4. No later cycle moved Home to the Events tab event derivation path, so the transitional rows and hardcoded summary copy remained.
+- **Structural fix:** Home fake-data signatures were removed, Home now derives event truth from brand-scoped draft/live/order stores, `I-PROPOSED-Z` strict fake-signature guard was added, and implementation rework aligned empty-state copy, live hero date line, all-unlimited capacity label, and KPI zero-bucket subcopy with the approved spec.
+- **Status:** **CLOSED CONDITIONAL PASS 2026-05-08** via DEC-132. Evidence: `reports/IMPLEMENTATION_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md`, `reports/IMPLEMENTATION_REWORK_ORCH-0754_BUSINESS_HOME_UPCOMING_SPEC_ALIGNMENT.md`, and tester conditional PASS `reports/TEST_REPORT_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md`. Accepted condition: full business-app lint remains red due unrelated repo-wide lint debt; no ORCH-0754 file appears in lint output.
+- **Invariant / regression guard:** `I-PROPOSED-Z HOME-NO-FABRICATED-EVENTS` ratified ACTIVE at close. Business Home must not contain fabricated event rows or hardcoded event metrics; Home event truth derives from brand-scoped draft/live/order sources.
+- **Causal cluster:** Cluster 3: transitional/demo data retirement drift after scope split.
+- **Follow-ups not part of RC:** Brand Profile fake `STUB_PAST_EVENTS`, Finance Reports Brand-level `events` stub dependency, and Supabase/client event status vocabulary drift are separate discoveries from ORCH-0754.
 
 ### RC-0752: Android billing failure came from test-install eligibility plus stale cached app state, not app product-ID drift
 - **Discovery date:** 2026-05-07
