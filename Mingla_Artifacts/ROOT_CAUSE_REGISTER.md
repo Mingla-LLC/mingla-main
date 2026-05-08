@@ -5,6 +5,21 @@
 
 ## Root Causes
 
+### RC-0752: Android billing failure came from test-install eligibility plus stale cached app state, not app product-ID drift
+- **Discovery date:** 2026-05-07
+- **Proof:** `reports/INVESTIGATION_ORCH-0752_REVENUECAT_PRODUCT_OFFERING_CONFIGURATION.md` proved app code fetches RevenueCat `offerings.current` and buys returned packages rather than hardcoding store product IDs. `reports/INVESTIGATION_ORCH-0752B_ANDROID_PLAY_BILLING_PURCHASE_VERSION_GATE.md` captured the screenshot-era failure against a local/debug/sideload install. Close evidence in `reports/CLOSE_ORCH-0752_REVENUECAT_ANDROID_BILLING_CONFIG.md` shows the later tested app was the Play/internal build (`versionCode=12`, installer `com.android.vending`, no debug flag), app data was cleared successfully, and the user confirmed Billing works.
+- **Symptoms caused:** Android purchase/package QA showed Google Play "This version of the application is not configured for billing through Google Play" during the screenshot-era install, then later the Billing/paywall sheet appeared stuck loading packages.
+- **Causal chain:**
+  1. The screenshot-era app instance was not the Play/internal eligible install, so Google Play Billing rejected purchase launch.
+  2. The operator then installed the proper Play/internal build.
+  3. Stale local app data/cache preserved a bad offering/session state, so packages still appeared stuck.
+  4. Clearing app data forced a clean RevenueCat/offering/session path, and Billing worked after restart/sign-in.
+- **Structural fix:** External/test-state correction only: use the Play/internal build for billing QA and clear stale app data when switching from debug/sideload or broken offering states. No product-code product-ID fix was required.
+- **Status:** **CLOSED PASS 2026-05-07** via DEC-131 and user runtime confirmation after ADB install proof + `pm clear`.
+- **Invariant / regression guard:** Android purchase QA must record the installed package source/version/debug state before interpreting Play Billing errors. If packages are empty after known dashboard changes, clear app data or invalidate RevenueCat/query cached null state before escalating to code.
+- **Causal cluster:** Cluster 6: external billing/config/tester state can masquerade as app paywall failure.
+- **Follow-ups not part of RC:** ORCH-0752A Billing sheet plan-pricing UX redesign remains open; iOS App Store product approval remains external release readiness if production iOS purchases are launch scope.
+
 ### RC-0753: Remote-applied Supabase migration was not versioned in Git
 - **Discovery date:** 2026-05-07
 - **Proof:** `reports/INVESTIGATION_ORCH-0753_MAIN_SUPABASE_MIGRATION_DRIFT.md` proved the linked remote had applied migration version `20260507000003` while `origin/main` lacked `supabase/migrations/20260507000003_orch_0737_v8_timing_diagnostics.sql`. `reports/SPEC_ORCH-0753_MAIN_SUPABASE_MIGRATION_DRIFT.md` locked the safe repair to versioning the exact already-applied file. Tester PASS in `reports/TEST_REPORT_ORCH-0753_MAIN_SUPABASE_MIGRATION_DRIFT.md` proved commit `54553cb8` contains the migration, exact SQL matches the spec, and GitHub `Migrations apply cleanly from baseline` is green.
