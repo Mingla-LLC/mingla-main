@@ -56,7 +56,6 @@ import {
   useLiveEventsForBrand,
 } from "../../src/store/liveEventStore";
 import type { LiveEvent } from "../../src/store/liveEventStore";
-import { useDraftEventStore } from "../../src/store/draftEventStore";
 
 import {
   EventListCard,
@@ -65,6 +64,11 @@ import {
 import { EndSalesSheet } from "../../src/components/event/EndSalesSheet";
 import { EventManageMenu } from "../../src/components/event/EventManageMenu";
 import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
+import {
+  useDiscardServerDraft,
+  useServerDraftsForBrand,
+} from "../../src/hooks/useServerDraftEvents";
+import { eventPublicUrl } from "../../src/constants/publicUrls";
 import { canPerformAction } from "../../src/utils/permissionGates";
 
 type EventFilter = "all" | "live" | "upcoming" | "draft" | "past";
@@ -79,10 +83,6 @@ interface ManageContext {
   kind: "live" | "draft";
   status: EventCardStatus;
 }
-
-// orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
-const canonicalEventUrl = (event: LiveEvent): string =>
-  `https://business.mingla.com/e/${event.brandSlug}/${event.eventSlug}`;
 
 const deriveLiveStatus = (event: LiveEvent): EventCardStatus => {
   if (event.status === "cancelled") return "past";
@@ -111,6 +111,7 @@ export default function EventsTab(): React.ReactElement {
   const { user } = useAuth();
   const currentBrand = useCurrentBrand();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
+  useServerDraftsForBrand(currentBrand?.id ?? null);
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const liveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
 
@@ -143,11 +144,11 @@ export default function EventsTab(): React.ReactElement {
 
   // Mutations for lifecycle actions (9b-1)
   const updateLifecycle = useLiveEventStore((s) => s.updateLifecycle);
-  const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
+  const discardServerDraft = useDiscardServerDraft();
 
   // ----- Categorize events into status buckets -------------------
   const liveEventEntries = useMemo<
-    Array<{ event: LiveEvent; status: EventCardStatus }>
+    { event: LiveEvent; status: EventCardStatus }[]
   >(() => {
     return liveEvents.map((e) => ({ event: e, status: deriveLiveStatus(e) }));
   }, [liveEvents]);
@@ -176,12 +177,12 @@ export default function EventsTab(): React.ReactElement {
 
   // ----- Filtered list (in display order: live → upcoming → past, then drafts) -----
   const filteredItems = useMemo<
-    Array<{
+    {
       key: string;
       event: LiveEvent | DraftEvent;
       kind: "live" | "draft";
       status: EventCardStatus;
-    }>
+    }[]
   >(() => {
     const liveItems = liveEventEntries.map((e) => ({
       key: `live-${e.event.id}`,
@@ -419,10 +420,21 @@ export default function EventsTab(): React.ReactElement {
 
   const handleDeleteDraftConfirm = useCallback((): void => {
     if (deleteDraftCtx === null) return;
-    deleteDraft(deleteDraftCtx.id);
-    setDeleteDraftCtx(null);
-    setToast({ visible: true, message: "Draft deleted." });
-  }, [deleteDraftCtx, deleteDraft]);
+    const draft = drafts.find((d) => d.id === deleteDraftCtx.id);
+    if (draft === undefined) return;
+    void discardServerDraft
+      .discardDraft(draft)
+      .then(() => {
+        setDeleteDraftCtx(null);
+        setToast({ visible: true, message: "Draft deleted." });
+      })
+      .catch(() => {
+        setToast({
+          visible: true,
+          message: "Could not delete draft. Try again.",
+        });
+      });
+  }, [deleteDraftCtx, discardServerDraft, drafts]);
 
   // ----- Render ---------------------------------------------------
   return (
@@ -637,7 +649,10 @@ export default function EventsTab(): React.ReactElement {
         <ShareModal
           visible
           onClose={() => setShareEvent(null)}
-          url={canonicalEventUrl(shareEvent)}
+          url={eventPublicUrl({
+            brandSlug: shareEvent.brandSlug,
+            eventSlug: shareEvent.eventSlug,
+          })}
           title={`${shareEvent.name} on Mingla`}
           description={shareEvent.description.slice(0, 200) || shareEvent.name}
         />

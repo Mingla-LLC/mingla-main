@@ -43,6 +43,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { brandPublicUrl } from "../../constants/publicUrls";
 import type { Brand } from "../../store/currentBrandStore";
 
 import { Avatar } from "../ui/Avatar";
@@ -393,8 +394,9 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
               </View>
               <View style={styles.slugRow}>
                 <Text style={styles.slugText}>
-                  <Text style={styles.slugPrefix}>mingla.com/</Text>
-                  <Text style={styles.slugValue}>{brand.slug}</Text>
+                  <Text style={styles.slugValue}>
+                    {brandPublicUrl(brand.slug).replace(/^https?:\/\//, "")}
+                  </Text>
                 </Text>
                 <Icon name="shield" size={12} color={textTokens.tertiary} />
               </View>

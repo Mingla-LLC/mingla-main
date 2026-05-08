@@ -62,9 +62,14 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import {
+  brandOgImageUrl,
+  brandPublicUrl,
+  eventPublicPath,
+} from "../../constants/publicUrls";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
-import { useLiveEventsForBrand, type LiveEvent } from "../../store/liveEventStore";
+import type { LiveEvent } from "../../store/liveEventStore";
 import { formatGbpRound } from "../../utils/currency";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 
@@ -72,29 +77,27 @@ import { Avatar } from "../ui/Avatar";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon, type IconName } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { ShareModal } from "../ui/ShareModal";
 
 interface PublicBrandPageProps {
   brand: Brand;
+  events: LiveEvent[];
 }
 
 type Tab = "upcoming" | "past" | "about";
 
 const PAST_EVENT_CAP = 10;
 
-// orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
 const canonicalUrl = (brand: Brand): string =>
-  `https://business.mingla.com/b/${brand.slug}`;
-
-// [TRANSITIONAL] OG image placeholder — exits when B-cycle backend ships
-// brand cover image upload. Mirrors Cycle 6 PublicEventPage's pattern.
-// orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
-const ogImageUrl = (_brand: Brand): string =>
-  "https://business.mingla.com/og-default.png";
+  brandPublicUrl(brand.slug);
 
 // ---- Main component -------------------------------------------------
 
-export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({ brand }) => {
+export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
+  brand,
+  events,
+}) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
@@ -111,23 +114,21 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({ brand }) => {
     return userBrands.some((b) => b.id === brand.id);
   }, [user, userBrands, brand.id]);
 
-  const allEvents = useLiveEventsForBrand(brand.id);
-
   const upcomingEvents = useMemo<LiveEvent[]>(() => {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000; // include today
-    return allEvents
+    return events
       .filter((e) => {
         if (e.status === "cancelled") return false;
-        if (e.date === null) return false;
+        if (e.date === null) return true;
         const eventTime = new Date(e.date).getTime();
         return eventTime >= cutoff;
       })
       .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
-  }, [allEvents]);
+  }, [events]);
 
   const pastEvents = useMemo<LiveEvent[]>(() => {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    return allEvents
+    return events
       .filter((e) => {
         if (e.status === "cancelled") return false;
         if (e.date === null) return false;
@@ -136,7 +137,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({ brand }) => {
       })
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
       .slice(0, PAST_EVENT_CAP);
-  }, [allEvents]);
+  }, [events]);
 
   // Cycle 13a (DEC-092): brand.members dropped. The "Verified host since YYYY"
   // pill on the public page is suppressed in 13a; restoring it is a B-cycle
@@ -163,7 +164,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({ brand }) => {
       // brand was renamed after publish (Cycle 6 freezes brandSlug at
       // publish for exactly this URL stability).
       router.push(
-        `/e/${event.brandSlug}/${event.eventSlug}` as never,
+        eventPublicPath({
+          brandSlug: event.brandSlug,
+          eventSlug: event.eventSlug,
+        }) as never,
       );
     },
     [router],
@@ -221,7 +225,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({ brand }) => {
             }
           />
           <meta property="og:url" content={canonicalUrl(brand)} />
-          <meta property="og:image" content={ogImageUrl(brand)} />
+          <meta
+            property="og:image"
+            content={brandOgImageUrl({
+              brandSlug: brand.slug,
+              profilePhotoUrl: brand.photo,
+            })}
+          />
           <meta property="og:type" content="profile" />
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content={brand.displayName} />
@@ -678,11 +688,13 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
         pressed && styles.eventCardPressed,
       ]}
     >
-      <View
-        style={[
-          styles.eventCover,
-          { backgroundColor: `hsl(${event.coverHue}, 60%, 45%)` },
-        ]}
+      <EventCoverMedia
+        hue={event.coverHue}
+        mediaUrl={event.coverMediaUrl}
+        mediaType={event.coverMediaType}
+        radius={12}
+        label=""
+        style={styles.eventCover}
       />
       <View style={styles.eventBody}>
         <Text style={styles.eventDate}>{dateLine}</Text>

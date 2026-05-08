@@ -49,6 +49,12 @@ export interface StepBodyProps {
    * for the create-flow + non-rank-aware callers.
    */
   canEditTicketPrice?: boolean;
+  /**
+   * Supabase events.id used for cover uploads. Create/edit draft flows use
+   * draft.id; edit-after-publish passes LiveEvent.serverEventId because the
+   * local live id is le_* and is not the storage/database event id.
+   */
+  coverMediaEventId?: string | null;
 }
 
 export const errorForKey = (

@@ -6,6 +6,12 @@
   "framework": null,
   "cleanUrls": true,
   "trailingSlash": false,
+  "rewrites": [
+    { "source": "/e/:brandSlug/:eventSlug", "destination": "/e/[brandSlug]/[eventSlug]" },
+    { "source": "/b/:brandSlug", "destination": "/b/[brandSlug]" },
+    { "source": "/checkout/:eventId", "destination": "/checkout/[eventId]" },
+    { "source": "/checkout/:eventId/:step", "destination": "/checkout/[eventId]/:step" }
+  ],
   "headers": [
     {
       "source": "/.well-known/apple-app-site-association",

@@ -41,7 +41,7 @@ import {
   accent,
   canvas,
   glass,
-  radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -60,6 +60,8 @@ import {
   validateStep,
   type ValidationError,
 } from "../../utils/draftEventValidation";
+import { isDraftEventPristine } from "../../utils/draftEventPristine";
+import { canConvertDraftToLiveEvent } from "../../utils/liveEventConverter";
 import { expandRecurrenceToDates } from "../../utils/recurrenceRule";
 
 import { Button } from "../ui/Button";
@@ -79,7 +81,7 @@ import { CreatorStep6Settings } from "./CreatorStep6Settings";
 import { CreatorStep7Preview } from "./CreatorStep7Preview";
 import { PublishErrorsSheet } from "./PublishErrorsSheet";
 
-const STEP_DEFS: ReadonlyArray<{ title: string; subtitle: string }> = [
+const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
   { title: "Basics", subtitle: "Name, format, and category" },
   { title: "When", subtitle: "Date, time, and recurrence" },
   { title: "Where", subtitle: "Venue or online link" },
@@ -122,6 +124,14 @@ export interface EventCreatorWizardProps {
   onOpenPreview: () => void;
   /** Push to /brand/[brandId]/payments/onboard when J-E3 path hit. */
   onOpenStripeOnboard: () => void;
+  onAutosaveDraft?: (draft: DraftEvent) => void;
+  onDiscardServerDraft?: (draft: DraftEvent) => Promise<void>;
+  onBeforeLocalPublish?: (draft: DraftEvent) => Promise<void>;
+  serverSaveState?: {
+    isSaving: boolean;
+    hasError: boolean;
+    lastSavedAt: string | null;
+  };
 }
 
 interface ToastState {
@@ -137,6 +147,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   onExit,
   onOpenPreview,
   onOpenStripeOnboard,
+  onAutosaveDraft,
+  onDiscardServerDraft,
+  onBeforeLocalPublish,
+  serverSaveState,
 }) => {
   const insets = useSafeAreaInsets();
 
@@ -170,6 +184,12 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // can position bottom-most inputs above the keyboard.
   const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
   const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  const latestDraftRef = useRef<DraftEvent>(liveDraft);
+  const lastStepSyncKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    latestDraftRef.current = liveDraft;
+  }, [liveDraft]);
 
   // ScrollView ref — exposed to step bodies via `scrollToBottom`
   // callback. Bottom-most multiline inputs (Step 1 Description) call
@@ -246,8 +266,24 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
 
   // Track that the user has reached this step (for resume semantics).
   useEffect(() => {
+    const cached = useDraftEventStore.getState().getDraft(liveDraft.id);
+    const base = cached ?? latestDraftRef.current;
+    const nextLastStep = Math.max(base.lastStepReached, currentStep);
+    const syncKey = `${liveDraft.id}:${nextLastStep}`;
+    if (lastStepSyncKeyRef.current === syncKey) {
+      return;
+    }
+    lastStepSyncKeyRef.current = syncKey;
     setLastStep(liveDraft.id, currentStep);
-  }, [currentStep, liveDraft.id, setLastStep]);
+    if (base.lastStepReached >= currentStep) {
+      return;
+    }
+    onAutosaveDraft?.({
+      ...base,
+      lastStepReached: nextLastStep,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [currentStep, liveDraft.id, onAutosaveDraft, setLastStep]);
 
   // One-shot timezone auto-detect for legacy drafts (those created before
   // Cycle 3 rework v2 Fix #4 was shipped — they hold the hardcoded
@@ -257,7 +293,6 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // non-London device will get overridden — acceptable edge case
   // (negligible likelihood + the sheet picker still allows re-override).
   // Runs once per draft.id mount.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (liveDraft.timezone !== "Europe/London") return;
     let detected: string | null = null;
@@ -270,13 +305,18 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     if (detected !== null && detected !== "Europe/London") {
       updateDraft(liveDraft.id, { timezone: detected });
     }
-  }, [liveDraft.id]);
+  }, [liveDraft.id, liveDraft.timezone, updateDraft]);
 
   const handleUpdate = useCallback(
     (patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>): void => {
       updateDraft(liveDraft.id, patch);
+      onAutosaveDraft?.({
+        ...liveDraft,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      });
     },
-    [liveDraft.id, updateDraft],
+    [liveDraft, onAutosaveDraft, updateDraft],
   );
 
   const handleShowToast = useCallback((message: string): void => {
@@ -293,26 +333,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const isLastStep = currentStep === TOTAL_STEPS - 1;
 
   const isDraftPristine = useCallback((): boolean => {
-    // "Pristine" = matches DEFAULT_DRAFT_FIELDS apart from id/brand/timestamps.
-    return (
-      liveDraft.name.length === 0 &&
-      liveDraft.description.length === 0 &&
-      liveDraft.category === null &&
-      liveDraft.date === null &&
-      liveDraft.doorsOpen === null &&
-      liveDraft.endsAt === null &&
-      liveDraft.venueName === null &&
-      liveDraft.address === null &&
-      liveDraft.onlineUrl === null &&
-      liveDraft.tickets.length === 0 &&
-      liveDraft.coverHue === 25 &&
-      liveDraft.format === "in_person" &&
-      liveDraft.visibility === "public" &&
-      liveDraft.requireApproval === false &&
-      liveDraft.allowTransfers === true &&
-      liveDraft.hideRemainingCount === false &&
-      liveDraft.passwordProtected === false
-    );
+    return isDraftEventPristine(liveDraft);
   }, [liveDraft]);
 
   // Chrome "X" — always exits the wizard to the Events tab. Independent
@@ -322,8 +343,18 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const handleClose = useCallback((): void => {
     if (isCreateMode) {
       if (isDraftPristine()) {
-        deleteDraft(liveDraft.id);
-        onExit("abandoned");
+        void (async (): Promise<void> => {
+          try {
+            if (onDiscardServerDraft !== undefined) {
+              await onDiscardServerDraft(liveDraft);
+            } else {
+              deleteDraft(liveDraft.id);
+            }
+            onExit("abandoned");
+          } catch {
+            handleShowToast("Could not discard draft. Try again.");
+          }
+        })();
       } else {
         setDiscardDialogVisible(true);
       }
@@ -331,7 +362,15 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       // Edit mode: auto-save semantics — simple exit, no dialog.
       onExit("abandoned");
     }
-  }, [isCreateMode, isDraftPristine, deleteDraft, liveDraft.id, onExit]);
+  }, [
+    isCreateMode,
+    isDraftPristine,
+    onDiscardServerDraft,
+    liveDraft,
+    deleteDraft,
+    onExit,
+    handleShowToast,
+  ]);
 
   // Dock "Back" button — decrement step. Step 1's dock has no Back
   // (chrome X handles wizard exit instead).
@@ -341,10 +380,26 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   }, []);
 
   const handleConfirmDiscard = useCallback((): void => {
-    deleteDraft(liveDraft.id);
-    setDiscardDialogVisible(false);
-    onExit("discarded");
-  }, [deleteDraft, liveDraft.id, onExit]);
+    void (async (): Promise<void> => {
+      try {
+        if (onDiscardServerDraft !== undefined) {
+          await onDiscardServerDraft(liveDraft);
+        } else {
+          deleteDraft(liveDraft.id);
+        }
+        setDiscardDialogVisible(false);
+        onExit("discarded");
+      } catch {
+        handleShowToast("Could not delete draft. Try again.");
+      }
+    })();
+  }, [
+    onDiscardServerDraft,
+    liveDraft,
+    deleteDraft,
+    onExit,
+    handleShowToast,
+  ]);
 
   const handleContinue = useCallback((): void => {
     const errs = validateStep(currentStep, liveDraft);
@@ -390,6 +445,20 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     const draftName = liveDraft.name;
     // Simulated 1.2s submit per spec AC#28.
     await new Promise<void>((resolve) => setTimeout(resolve, 1200));
+    if (!canConvertDraftToLiveEvent(liveDraft)) {
+      setIsPublishing(false);
+      setPublishConfirmVisible(false);
+      handleShowToast("Could not publish this draft yet. Try again.");
+      return;
+    }
+    try {
+      await onBeforeLocalPublish?.(liveDraft);
+    } catch {
+      setIsPublishing(false);
+      setPublishConfirmVisible(false);
+      handleShowToast("Could not save this publish. Try again.");
+      return;
+    }
     // Cycle 6 — publishDraft now returns the new LiveEvent so we can
     // navigate to its public URL. Falls back to old behavior if the
     // publish failed (brand missing) — caller stays on Step 7.
@@ -409,7 +478,13 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       // so the route handler shows a friendly toast.
       onExit("abandoned", { name: draftName });
     }
-  }, [liveDraft.id, liveDraft.name, publishDraft, onExit]);
+  }, [
+    liveDraft,
+    publishDraft,
+    onExit,
+    onBeforeLocalPublish,
+    handleShowToast,
+  ]);
 
   const handleFixJump = useCallback((step: number): void => {
     setErrorsSheetVisible(false);
@@ -460,6 +535,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       showErrors: showStepErrors,
       onShowToast: handleShowToast,
       scrollToBottom,
+      coverMediaEventId: liveDraft.id,
     };
     switch (currentStep) {
       case 0:
@@ -515,6 +591,22 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         <Text style={styles.subtitle}>
           {brand?.displayName ?? "Brand"} · Step {currentStep + 1} of {TOTAL_STEPS}
         </Text>
+        {serverSaveState !== undefined ? (
+          <Text
+            style={[
+              styles.saveState,
+              serverSaveState.hasError ? styles.saveStateError : null,
+            ]}
+          >
+            {serverSaveState.hasError
+              ? "Unsaved changes - retrying"
+              : serverSaveState.isSaving
+                ? "Saving..."
+                : serverSaveState.lastSavedAt !== null
+                  ? "Saved"
+                  : "Server draft"}
+          </Text>
+        ) : null}
       </View>
 
       {/* Body — keyboard handling:
@@ -704,6 +796,14 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
+  },
+  saveState: {
+    marginTop: 2,
+    fontSize: typography.caption.fontSize,
+    color: textTokens.quaternary,
+  },
+  saveStateError: {
+    color: semantic.error,
   },
   body: {
     paddingHorizontal: spacing.md + 8,

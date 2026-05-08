@@ -5,6 +5,23 @@
 
 ## Root Causes
 
+### RC-0763: Business event truth split between server drafts/public reads and local organiser published events
+- **Discovery date:** 2026-05-08
+- **Proof:** `reports/INVESTIGATION_ORCH-0763_BUSINESS_EVENT_SYSTEM_REGRESSION_AUDIT.md` proves organiser Home/Events/Event Detail/Edit Published still resolve published events from local `liveEventStore`, while drafts and buyer public reads have moved toward server-backed paths. It also proves publish is client-side multi-table work without atomic event-promotion proof, and wizard autosave can overwrite dirty editor state with stale server/list responses.
+- **Symptoms caused:** A free event can appear published locally, then disappear after a new build/local storage loss; published-event edit/detail routes cannot recover from server; wizard typing glitches under autosave; current durable server evidence does not contain the user's reported published free event.
+- **Causal chain:**
+  1. ORCH-0756B introduced server-backed drafts but left organiser published events as persisted local `LiveEvent` rows.
+  2. ORCH-0759 made buyer public routes more server-backed, but organiser management routes still rely on local state.
+  3. Publish promotes tickets/event through client-side sequential writes and then creates a local `LiveEvent` from the draft.
+  4. The final event update does not prove one row was promoted, so false-local publication remains possible.
+  5. A new build, sign-out cleanup, app deletion, or local storage reset removes the local published event, leaving no organiser server hydration path.
+  6. Immediate full-object autosave and server/list upserts can also race active typing and destabilize the wizard.
+- **Structural fix:** Pending spec under `prompts/SPEC_ORCH-0763_BUSINESS_EVENT_SYSTEM_REGRESSION_REPAIR.md`. Required direction: atomic server-side publish RPC/transaction, server-backed organiser management event reads, local published-event store as cache only, edit-published server hydration, autosave debounce/revisioning/stale-response protection, and free-event regression coverage.
+- **Status:** **OPEN - SPEC DISPATCH READY 2026-05-08**. Orchestrator review: `reports/REVIEW_ORCH-0763_BUSINESS_EVENT_SYSTEM_REGRESSION_AUDIT.md`.
+- **Invariant / regression guard:** Proposed: organiser published-event source of truth must be server-backed; local stores may cache but cannot be the only authority for published/scheduled events. Publish must be atomic and must fail loudly if one durable server event is not promoted.
+- **Causal cluster:** Cluster 1/4 crossover: duplicate state authority plus non-atomic mutation/RETURNING-proof gap.
+- **Follow-ups not part of RC:** Giphy/Pexels provider integration, brand/profile media expansion, full paid checkout, and native cover-media runtime proof remain separate; they are blocked behind this event-integrity repair.
+
 ### RC-0754: Transitional Home event stubs survived after their retirement cycle excluded Home
 - **Discovery date:** 2026-05-08
 - **Proof:** `reports/INVESTIGATION_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md` proves `mingla-business/app/(tabs)/home.tsx` still defines and renders `STUB_UPCOMING_ROWS` (`Sunday Languor Brunch`, `The Long Lunch (Series)`), hardcodes `"1 live · 2 upcoming"`, and uses fictional live-event values, while `mingla-business/app/(tabs)/events.tsx` already derives brand-scoped event rows from `useDraftsForBrand`, `useLiveEventsForBrand`, and lifecycle helpers.

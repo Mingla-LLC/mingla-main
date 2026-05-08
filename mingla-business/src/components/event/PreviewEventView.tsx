@@ -39,7 +39,7 @@ import {
   sortTicketsByDisplayOrder,
 } from "../../utils/ticketDisplay";
 
-import { EventCover } from "../ui/EventCover";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
@@ -193,7 +193,14 @@ export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
     <View style={styles.host}>
       {/* Hero cover — taps route to Step 4 (Cover) */}
       <View style={styles.heroWrap}>
-        <EventCover hue={draft.coverHue} radius={0} label="" height={380} />
+        <EventCoverMedia
+          hue={draft.coverHue}
+          mediaUrl={draft.coverMediaUrl}
+          mediaType={draft.coverMediaType}
+          radius={0}
+          label=""
+          height={380}
+        />
         <View style={styles.heroOverlay} pointerEvents="none" />
       </View>
       <View

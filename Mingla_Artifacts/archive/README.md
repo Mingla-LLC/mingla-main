@@ -10,7 +10,10 @@ Use `Mingla_Artifacts/ARTIFACT_MANIFEST.md` as the canonical map. README stays a
 |---|---|
 | `outputs_legacy/` | Historical B2/B2a Path C transfer material preserved from the former ignored `outputs/` root. |
 | `handoffs_legacy/` | Historical transfer handoffs moved out of the root-level `clade transfer/` folder. |
+| `superseded_reports/` | Historical reports moved out of active-looking roots after their current authority was superseded or narrowed. |
 | `old_trackers/` | Deprecated queue files preserved as evidence after top-level breadcrumbs replaced the old active-looking docs. |
+
+Executable SQL evidence and production-adjacent runbooks belong under `Mingla_Artifacts/backups/`, not this archive root. Treat backup material as preservation/runbook evidence, not active instructions unless a current ORCH explicitly authorizes use.
 
 ## Rules
 

@@ -33,8 +33,18 @@ import {
 } from "../../../src/components/event/EventCreatorWizard";
 import { EditPublishedScreen } from "../../../src/components/event/EditPublishedScreen";
 import { useBrandList } from "../../../src/store/currentBrandStore";
-import { useDraftById } from "../../../src/store/draftEventStore";
+import {
+  useDraftById,
+  useDraftEventStore,
+} from "../../../src/store/draftEventStore";
 import { useLiveEventStore } from "../../../src/store/liveEventStore";
+import {
+  useDiscardServerDraft,
+  useMarkServerDraftPublished,
+  useServerDraftAutosave,
+  useServerDraftById,
+} from "../../../src/hooks/useServerDraftEvents";
+import { createServerDraft } from "../../../src/services/eventDrafts";
 
 export default function EventEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -51,6 +61,8 @@ export default function EventEditRoute(): React.ReactElement {
   // EditPublishedScreen instead of the create wizard. The id refers to
   // a LIVE event, not a draft.
   const isEditPublished = modeParam === "edit-published";
+  const isLegacyLocalDraftId =
+    typeof idParam === "string" && idParam.startsWith("d_");
 
   const initialStep = useMemo<number | undefined>(() => {
     if (stepParam === undefined || stepParam.length === 0) return undefined;
@@ -69,6 +81,16 @@ export default function EventEditRoute(): React.ReactElement {
   const draft = useDraftById(
     !isEditPublished && typeof idParam === "string" ? idParam : null,
   );
+  const serverDraftQuery = useServerDraftById(
+    !isEditPublished && typeof idParam === "string" && !isLegacyLocalDraftId
+      ? idParam
+      : null,
+  );
+  const autosave = useServerDraftAutosave();
+  const discardServerDraft = useDiscardServerDraft();
+  const publishServerDraft = useMarkServerDraftPublished();
+  const replaceDraft = useDraftEventStore((s) => s.replaceDraft);
+  const migratingLegacyIdRef = React.useRef<string | null>(null);
   const brands = useBrandList();
   const brand = useMemo(() => {
     if (isEditPublished) {
@@ -84,6 +106,27 @@ export default function EventEditRoute(): React.ReactElement {
   );
 
   useEffect(() => {
+    if (
+      !isEditPublished &&
+      draft !== null &&
+      draft.id.startsWith("d_") &&
+      migratingLegacyIdRef.current !== draft.id
+    ) {
+      migratingLegacyIdRef.current = draft.id;
+      void createServerDraft(draft.brandId, draft)
+        .then((serverDraft) => {
+          replaceDraft(draft.id, serverDraft);
+          router.replace(`/event/${serverDraft.id}/edit?step=${initialStep ?? 0}` as never);
+        })
+        .catch(() => {
+          migratingLegacyIdRef.current = null;
+          setToast({
+            visible: true,
+            message: "Could not sync this local draft yet.",
+          });
+        });
+      return undefined;
+    }
     if (typeof idParam !== "string" || idParam.length === 0) {
       router.replace("/(tabs)/events" as never);
       return;
@@ -98,7 +141,11 @@ export default function EventEditRoute(): React.ReactElement {
       }
       return undefined;
     }
-    if (draft === null) {
+    if (
+      draft === null &&
+      !serverDraftQuery.isLoading &&
+      !serverDraftQuery.isFetching
+    ) {
       // Draft not found — bounce home (existing behaviour).
       const t = setTimeout(() => {
         router.replace("/(tabs)/home" as never);
@@ -106,7 +153,17 @@ export default function EventEditRoute(): React.ReactElement {
       return (): void => clearTimeout(t);
     }
     return undefined;
-  }, [idParam, isEditPublished, draft, liveEvent, router]);
+  }, [
+    idParam,
+    isEditPublished,
+    draft,
+    liveEvent,
+    router,
+    replaceDraft,
+    initialStep,
+    serverDraftQuery.isFetching,
+    serverDraftQuery.isLoading,
+  ]);
 
   const isCreateMode = useMemo<boolean>(() => {
     if (draft === null) return false;
@@ -210,6 +267,17 @@ export default function EventEditRoute(): React.ReactElement {
       onExit={handleExit}
       onOpenPreview={handleOpenPreview}
       onOpenStripeOnboard={handleOpenStripe}
+      onAutosaveDraft={draft.id.startsWith("d_") ? undefined : autosave.saveDraft}
+      onDiscardServerDraft={discardServerDraft.discardDraft}
+      onBeforeLocalPublish={publishServerDraft.markPublished}
+      serverSaveState={{
+        isSaving:
+          autosave.isSaving ||
+          discardServerDraft.isPending ||
+          publishServerDraft.isPending,
+        hasError: autosave.hasError || serverDraftQuery.isError,
+        lastSavedAt: autosave.lastSavedAt,
+      }}
     />
   );
 }

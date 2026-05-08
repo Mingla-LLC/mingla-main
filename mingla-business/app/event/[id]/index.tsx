@@ -47,6 +47,7 @@ import { useEventEditLogStore } from "../../../src/store/eventEditLogStore";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { deriveLiveStatus } from "../../../src/utils/eventLifecycle";
 import { formatGbp } from "../../../src/utils/currency";
+import { eventPublicUrl } from "../../../src/constants/publicUrls";
 
 // Cycle 17d Stage 2 §F.4 — ActivityEvent type + activityRowKey + helpers
 // extracted to ../../../src/components/event/EventDetailActivityRow.tsx.
@@ -54,7 +55,7 @@ import { formatGbp } from "../../../src/utils/currency";
 import { Button } from "../../../src/components/ui/Button";
 import { ConfirmDialog } from "../../../src/components/ui/ConfirmDialog";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
-import { EventCover } from "../../../src/components/ui/EventCover";
+import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
@@ -94,10 +95,6 @@ const deriveScreenStatus = (event: LiveEvent): EventStatus => {
   const lifecycle = deriveLiveStatus(event);
   return lifecycle === "cancelled" ? "past" : lifecycle;
 };
-
-// orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
-const canonicalUrl = (event: LiveEvent): string =>
-  `https://business.mingla.com/e/${event.brandSlug}/${event.eventSlug}`;
 
 export default function EventDetailScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -546,7 +543,14 @@ export default function EventDetailScreen(): React.ReactElement {
         {/* Hero — cover band + status pill + name + date+venue */}
         <View style={styles.hero}>
           <View style={styles.heroCoverWrap}>
-            <EventCover hue={event.coverHue} radius={24} label="" height={200} />
+            <EventCoverMedia
+              hue={event.coverHue}
+              mediaUrl={event.coverMediaUrl}
+              mediaType={event.coverMediaType}
+              radius={24}
+              label=""
+              height={200}
+            />
           </View>
           <View style={styles.heroOverlay} pointerEvents="none">
             <View style={styles.heroPillRow}>
@@ -679,7 +683,10 @@ export default function EventDetailScreen(): React.ReactElement {
       <ShareModal
         visible={shareModalVisible}
         onClose={() => setShareModalVisible(false)}
-        url={canonicalUrl(event)}
+        url={eventPublicUrl({
+          brandSlug: event.brandSlug,
+          eventSlug: event.eventSlug,
+        })}
         title={`${event.name} on Mingla`}
         description={event.description.slice(0, 200) || event.name}
       />

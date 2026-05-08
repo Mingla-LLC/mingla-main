@@ -38,7 +38,7 @@ import {
   spacing,
   text as textTokens,
 } from "../../../src/constants/designSystem";
-import { useLiveEventStore } from "../../../src/store/liveEventStore";
+import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import { formatGbp } from "../../../src/utils/currency";
 import {
   generateOrderId,
@@ -114,9 +114,8 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   const params = useLocalSearchParams<{ eventId: string }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : null;
 
-  const event = useLiveEventStore((s) =>
-    eventId === null ? null : s.events.find((e) => e.id === eventId) ?? null,
-  );
+  const publicEventQuery = usePublicEventById(eventId);
+  const event = publicEventQuery.data?.event ?? null;
   const { lines, buyer, recordResult } = useCart();
   const totals = useCartTotals();
 

@@ -62,7 +62,7 @@ Do not lock exact business pricing yet. Current hypotheses:
 |---|---|---|---|---|---|---|
 | `FEAT-0003` | Tier 2 | Organisers | Positioning needed | "Your drafts are safe" release note, support blurb | ORCH-0756B retest | Runtime proof pending |
 | `FEAT-0005` | Tier 1 | Organisers/buyers | Positioning needed | Public link launch note, support FAQ, QA checklist | ORCH-0759 investigation | Spec/implementation not done |
-| `FEAT-0006` | Tier 2 | Organisers/buyers | Launch plan needed | Visual examples, release note, support caveats | ORCH-0758A retest conditional PASS | Runtime/native proof required |
+| `FEAT-0006` | Tier 2 | Organisers/buyers | Launch plan needed | Visual examples, release note, support caveats | ORCH-0758A runtime blocked/unverified | Authenticated fixture + runtime proof required |
 | `FEAT-0007` | Tier 1 | Buyers/organisers | None | Checkout launch plan, support readiness, refund/payment FAQ | B3 plan | Not implemented |
 | `FEAT-0014` | Tier 1 | Brands | Strategy only | Consent copy, sales one-pager, compliance FAQ | Marketing Hub Strategy | Post-MVP gated |
 

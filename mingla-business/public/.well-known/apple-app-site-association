@@ -19,6 +19,10 @@
           {
             "/": "/e/*",
             "comment": "Public event pages"
+          },
+          {
+            "/": "/checkout/*",
+            "comment": "Public checkout pages"
           }
         ]
       }

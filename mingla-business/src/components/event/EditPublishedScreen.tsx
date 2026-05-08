@@ -76,6 +76,7 @@ import {
   type FieldDiff,
   type TicketDiff,
 } from "../../utils/liveEventAdapter";
+import { validateLiveEventFieldUpdate } from "../../utils/publishedEventEditGuards";
 import type { EditSeverity } from "../../store/eventEditLogStore";
 import {
   validateStep,
@@ -100,6 +101,10 @@ import { EditAfterPublishBanner } from "./EditAfterPublishBanner";
 
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../utils/permissionGates";
+import {
+  EventCoverMediaError,
+  updatePublishedEventCoverMedia,
+} from "../../services/eventCoverMediaService";
 
 // ---- Section configuration -----------------------------------------
 
@@ -112,7 +117,7 @@ interface SectionConfig {
   stepIndex: number;
 }
 
-const SECTIONS: ReadonlyArray<SectionConfig> = [
+const SECTIONS: readonly SectionConfig[] = [
   { key: "basics", label: "Basics", stepIndex: 0 },
   { key: "when", label: "When", stepIndex: 1 },
   { key: "where", label: "Where", stepIndex: 2 },
@@ -455,7 +460,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         }
       }
     },
-    [router, showToast],
+    [liveEvent.id, router],
   );
 
   const handleConfirmSave = useCallback(
@@ -464,11 +469,53 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       setSubmitting(true);
       await sleep(SAVE_PROCESSING_MS);
       const patch = editableDraftToPatch(liveEvent, editState);
+      const validation = validateLiveEventFieldUpdate(
+        liveEvent,
+        patch,
+        soldCountCtx,
+        reason,
+      );
+      if (!validation.ok) {
+        setSubmitting(false);
+        setModal((prev) => ({ ...prev, visible: false }));
+        setRejectDialog(buildRejectDialog(validation));
+        return;
+      }
+      const mediaPatchPresent =
+        patch.coverMediaUrl !== undefined || patch.coverMediaType !== undefined;
+      if (mediaPatchPresent) {
+        if (liveEvent.serverEventId === null) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast("Save failed because this event is missing its server id.");
+          return;
+        }
+        try {
+          await updatePublishedEventCoverMedia(
+            liveEvent.serverEventId,
+            patch.coverMediaUrl !== undefined
+              ? patch.coverMediaUrl
+              : liveEvent.coverMediaUrl,
+            patch.coverMediaType !== undefined
+              ? patch.coverMediaType
+              : liveEvent.coverMediaType,
+          );
+        } catch (error) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast(
+            error instanceof EventCoverMediaError
+              ? "Cover upload failed. Try again."
+              : "Could not save cover media. Try again.",
+          );
+          return;
+        }
+      }
       const result = updateLiveEventFields(
         liveEvent.id,
         patch,
         soldCountCtx,
-        reason,
+        validation.trimmedReason,
       );
       setSubmitting(false);
       setModal((prev) => ({ ...prev, visible: false }));
@@ -524,6 +571,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         scrollToBottom,
         editMode: { soldCountByTier: soldCountCtx.soldCountByTier },
         canEditTicketPrice,
+        coverMediaEventId: liveEvent.serverEventId,
       };
       switch (key) {
         case "basics":
@@ -552,6 +600,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       showToast,
       scrollToBottom,
       soldCountCtx.soldCountByTier,
+      canEditTicketPrice,
+      liveEvent.serverEventId,
     ],
   );
 
@@ -580,7 +630,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             changedKeys.has("address") ||
             changedKeys.has("onlineUrl") ||
             changedKeys.has("hideAddressUntilTicket"))) ||
-        (sec.key === "cover" && changedKeys.has("coverHue")) ||
+        (sec.key === "cover" &&
+          (changedKeys.has("coverHue") ||
+            changedKeys.has("coverMediaUrl") ||
+            changedKeys.has("coverMediaType"))) ||
         (sec.key === "tickets" && changedKeys.has("tickets")) ||
         (sec.key === "settings" &&
           (changedKeys.has("visibility") ||

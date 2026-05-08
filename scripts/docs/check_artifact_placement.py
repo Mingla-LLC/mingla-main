@@ -98,9 +98,22 @@ def check_archive_index(failures: list[str]) -> None:
         "Mingla_Artifacts/ARTIFACT_MANIFEST.md",
         "outputs_legacy/",
         "handoffs_legacy/",
+        "superseded_reports/",
         "old_trackers/",
+        "Mingla_Artifacts/backups/",
     ):
         require(required in text, f"archive README must mention `{required}`", failures)
+
+    require(
+        (ROOT / "Mingla_Artifacts/archive/superseded_reports/README.md").exists(),
+        "archive superseded_reports README is missing",
+        failures,
+    )
+    require(
+        (ROOT / "Mingla_Artifacts/backups/README.md").exists(),
+        "backups README is missing",
+        failures,
+    )
 
 
 def check_roadmap_system(failures: list[str]) -> None:

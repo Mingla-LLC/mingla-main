@@ -9,8 +9,7 @@
  *     Flag hardcoded literals matching `business.mingla.com`, `https://mingla.com`
  *     (URL form, NOT slug-prefix UI like `mingla.com/{slug}`), or other
  *     non-canonical platform URLs.
- *     Allowlist tag exemption: `// orch-strict-grep-allow platform-web-url-historical — <reason>`
- *     within 5 lines above the literal.
+ *     Active app/source URL emitters cannot be allowlisted as historical.
  *
  * Per B2a Path C V3 forensics report + INVARIANT_REGISTRY I-PROPOSED-Y.
  *
@@ -25,20 +24,19 @@
  *
  *   This gate prevents regression: future implementors cannot accidentally
  *   re-introduce hardcoded `business.mingla.com` or `https://mingla.com` without
- *   either (a) updating the canonical constant + env, OR (b) adding the
- *   allowlist tag with a justified reason (e.g., historical SPEC quote).
+ *   updating the canonical constant + env.
  *
  * DETECTION:
  *   - Hardcoded `business.mingla.com` strings (any context)
- *   - Hardcoded `https://mingla.com` URLs (NOT plain `mingla.com/{slug}` slug
- *     placeholder text in UI which is intentional copy-text)
+ *   - Hardcoded `https://mingla.com` URLs and visible `mingla.com/` public-route
+ *     copy in active app code
  *
  * EXEMPTIONS:
  *   - `mingla-business/src/constants/platformUrl.ts` (canonical constant file)
  *   - `_shared/stripe.ts` line with `appInfo.url` (one allowed Stripe SDK call;
  *     also tagged with explanatory comment)
  *   - Test files (`*.test.ts`, `*.test.tsx`, `__tests__/`)
- *   - Files using the allowlist tag
+ *   - Files using the allowlist tag outside active runtime scan roots only
  *   - `mingla-business/dist/` (compiled build output)
  *   - `Mingla_Artifacts/`, `docs/`, `outputs/` (documentation, not active code)
  *
@@ -50,20 +48,32 @@
  * Established by: B2a Path C V3 config-drift forensics fix [confirmed at V3 CLOSE].
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join, relative, sep } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const REPO_ROOT = join(__dirname, "..", "..", "..");
+let REPO_ROOT =
+  process.env.I_PROPOSED_Y_SCAN_ROOT || join(__dirname, "..", "..", "..");
 
-const SCAN_DIRS = [
+const buildScanDirs = () => [
   join(REPO_ROOT, "mingla-business", "app"),
   join(REPO_ROOT, "mingla-business", "src"),
   join(REPO_ROOT, "supabase", "functions"),
 ];
+
+let SCAN_DIRS = buildScanDirs();
 
 const ALLOWLIST_TAG = "orch-strict-grep-allow platform-web-url-historical";
 
@@ -83,6 +93,11 @@ const FORBIDDEN_PATTERNS = [
     re: /[`"']https:\/\/mingla\.com\b/,
     label: "https://mingla.com URL literal (likely platform-web-URL drift; mingla.com is not Mingla-owned)",
     fix: "If this is a platform/web URL, use platformUrl constant; if it's intentional copy text (e.g., slug placeholder), add allowlist tag.",
+  },
+  {
+    re: /[`"'][^`"']*\bmingla\.com\//,
+    label: "visible mingla.com public-route copy (mingla.com is not Mingla-owned)",
+    fix: "Use the canonical public URL builder from mingla-business/src/constants/publicUrls.ts.",
   },
 ];
 
@@ -139,7 +154,7 @@ function reportViolation(filePath, lineNumber, lineText, label, fix) {
   console.error(`  Forbidden: ${label}`);
   console.error(`  ${fix}`);
   console.error(
-    `  Allowlist (with justification): // orch-strict-grep-allow platform-web-url-historical — <reason>`,
+    "  Active app/source URL emitters cannot be allowlisted as historical.",
   );
   console.error(
     `  See: Mingla_Artifacts/INVARIANT_REGISTRY.md I-PROPOSED-Y`,
@@ -168,40 +183,121 @@ function scanFile(filePath) {
     const trimmed = line.trim();
     if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
 
-    // Allowlist within 5 lines above the violating line
+    // The historical allowlist is intentionally ignored for active scan roots.
+    // ORCH-0759 tester proved that allowing it here creates false-green
+    // runtime URL emitters.
     const allowStart = Math.max(0, i - 5);
     const allowContext = lines.slice(allowStart, i + 1).join("\n");
-    if (allowContext.includes(ALLOWLIST_TAG)) continue;
+    const hasHistoricalAllowlist = allowContext.includes(ALLOWLIST_TAG);
 
     for (const pat of FORBIDDEN_PATTERNS) {
       if (pat.re.test(line)) {
-        reportViolation(filePath, i + 1, line, pat.label, pat.fix);
+        reportViolation(
+          filePath,
+          i + 1,
+          line,
+          hasHistoricalAllowlist
+            ? `${pat.label} hidden by active-code historical allowlist`
+            : pat.label,
+          pat.fix,
+        );
         break;
       }
     }
   }
 }
 
-try {
+function resetCounters() {
+  violations = 0;
+  filesScanned = 0;
+  readFailures = 0;
+}
+
+function runScan() {
+  resetCounters();
   for (const dir of SCAN_DIRS) {
     for (const file of walkTsTsx(dir)) {
       scanFile(file);
     }
   }
+
+  console.error("");
+  console.error(
+    `I-PROPOSED-Y gate: scanned ${filesScanned} .ts/.tsx files · ${violations} violations · ${readFailures} read failures`,
+  );
+
+  if (readFailures > 0 && filesScanned === readFailures) {
+    return 2;
+  }
+  if (violations > 0) {
+    return 1;
+  }
+  return 0;
+}
+
+function withTempRepo(callback) {
+  const originalRoot = REPO_ROOT;
+  const originalScanDirs = SCAN_DIRS;
+  const tmpRoot = mkdtempSync(join(tmpdir(), "i-proposed-y-"));
+  try {
+    REPO_ROOT = tmpRoot;
+    SCAN_DIRS = buildScanDirs();
+    callback(tmpRoot);
+  } finally {
+    REPO_ROOT = originalRoot;
+    SCAN_DIRS = originalScanDirs;
+    rmSync(tmpRoot, { recursive: true, force: true });
+  }
+}
+
+function runSelfTest() {
+  let failed = false;
+
+  withTempRepo((tmpRoot) => {
+    const appDir = join(tmpRoot, "mingla-business", "app");
+    mkdirSync(appDir, { recursive: true });
+    writeFileSync(
+      join(appDir, "active-bad.tsx"),
+      [
+        "// orch-strict-grep-allow platform-web-url-historical — historical quote",
+        'export const url = "https://business.mingla.com/e/demo/show";',
+        "",
+      ].join("\n"),
+    );
+    const exitCode = runScan();
+    if (exitCode !== 1 || violations !== 1) {
+      failed = true;
+      console.error(
+        "SELF-TEST FAIL: active bad-domain emitter with historical allowlist must fail.",
+      );
+    }
+  });
+
+  withTempRepo((tmpRoot) => {
+    const testDir = join(tmpRoot, "mingla-business", "src", "__tests__");
+    mkdirSync(testDir, { recursive: true });
+    writeFileSync(
+      join(testDir, "historicalFixture.test.ts"),
+      'export const url = "https://business.mingla.com/e/demo/show";\n',
+    );
+    const exitCode = runScan();
+    if (exitCode !== 0 || violations !== 0) {
+      failed = true;
+      console.error("SELF-TEST FAIL: test fixtures should remain exempt.");
+    }
+  });
+
+  if (failed) return 1;
+  console.error("I-PROPOSED-Y self-test: PASS");
+  return 0;
+}
+
+try {
+  if (process.argv.includes("--self-test")) {
+    process.exit(runSelfTest());
+  }
+  process.exit(runScan());
 } catch (err) {
   console.error(`SCRIPT ERROR: ${err.message}`);
   process.exit(2);
 }
-
-console.error("");
-console.error(
-  `I-PROPOSED-Y gate: scanned ${filesScanned} .ts/.tsx files · ${violations} violations · ${readFailures} read failures`,
-);
-
-if (readFailures > 0 && filesScanned === readFailures) {
-  process.exit(2);
-}
-if (violations > 0) {
-  process.exit(1);
-}
-process.exit(0);

@@ -413,6 +413,7 @@ const validateTickets = (d: DraftEvent): ValidationError[] => {
     // Cycle 5 (v4) rules — modifier validation
     if (
       t.passwordProtected &&
+      t.passwordConfigured !== true &&
       (t.password === null || t.password.length < 4)
     ) {
       errs.push({

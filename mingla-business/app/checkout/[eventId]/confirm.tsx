@@ -40,7 +40,8 @@ import {
   spacing,
   text as textTokens,
 } from "../../../src/constants/designSystem";
-import { useLiveEventStore } from "../../../src/store/liveEventStore";
+import { eventPublicPath } from "../../../src/constants/publicUrls";
+import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import {
   useOrderStore,
   type OrderRecord,
@@ -75,9 +76,8 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
   const params = useLocalSearchParams<{ eventId: string }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : null;
 
-  const event = useLiveEventStore((s) =>
-    eventId === null ? null : s.events.find((e) => e.id === eventId) ?? null,
-  );
+  const publicEventQuery = usePublicEventById(eventId);
+  const event = publicEventQuery.data?.event ?? null;
   const { lines, buyer, result } = useCart();
   const [walletToast, setWalletToast] = useState<boolean>(false);
   // Ref flag — flipped to true when buyer taps "Back to event." The
@@ -192,7 +192,10 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     exitingViaCtaRef.current = true;
     if (event !== null) {
       router.replace(
-        `/e/${event.brandSlug}/${event.eventSlug}` as never,
+        eventPublicPath({
+          brandSlug: event.brandSlug,
+          eventSlug: event.eventSlug,
+        }) as never,
       );
       return;
     }

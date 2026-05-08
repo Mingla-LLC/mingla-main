@@ -38,6 +38,7 @@ const ticket = {
 const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
   id: "draft-1",
   brandId: "brand-1",
+  serverSlug: null,
   name: "Draft event",
   description: "Draft description",
   format: "in_person",
@@ -54,6 +55,8 @@ const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
   onlineUrl: null,
   hideAddressUntilTicket: true,
   coverHue: 25,
+  coverMediaUrl: null,
+  coverMediaType: null,
   tickets: [ticket],
   visibility: "public",
   requireApproval: false,
@@ -71,6 +74,7 @@ const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
 
 const liveEvent = (patch: Partial<LiveEvent> = {}): LiveEvent => ({
   id: "live-1",
+  serverEventId: null,
   brandId: "brand-1",
   brandSlug: "brand-one",
   eventSlug: "live-one",
@@ -94,6 +98,8 @@ const liveEvent = (patch: Partial<LiveEvent> = {}): LiveEvent => ({
   onlineUrl: null,
   hideAddressUntilTicket: true,
   coverHue: 25,
+  coverMediaUrl: null,
+  coverMediaType: null,
   tickets: [ticket],
   visibility: "public",
   requireApproval: false,

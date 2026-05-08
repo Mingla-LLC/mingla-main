@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
-import { EventCover } from "../../src/components/ui/EventCover";
+import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import { KpiTile } from "../../src/components/ui/KpiTile";
@@ -44,6 +44,7 @@ import {
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 import { useBrands } from "../../src/hooks/useBrands";
+import { useServerDraftsForBrand } from "../../src/hooks/useServerDraftEvents";
 import {
   useDraftsForBrand,
   type DraftEvent,
@@ -127,6 +128,7 @@ export default function HomeTab(): React.ReactElement {
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const brandRecovery = useCurrentBrandRecovery();
+  useServerDraftsForBrand(currentBrand?.id ?? null);
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const liveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
   const orderEntries = useOrderStore((s) => s.entries);
@@ -447,8 +449,10 @@ export default function HomeTab(): React.ReactElement {
                         style={styles.eventRow}
                       >
                         <View style={styles.eventCoverWrap}>
-                          <EventCover
+                          <EventCoverMedia
                             hue={draft.coverHue}
+                            mediaUrl={draft.coverMediaUrl}
+                            mediaType={draft.coverMediaType}
                             radius={12}
                             label=""
                             height={56}
@@ -491,8 +495,10 @@ export default function HomeTab(): React.ReactElement {
                       style={styles.eventRow}
                     >
                       <View style={styles.eventCoverWrap}>
-                        <EventCover
+                        <EventCoverMedia
                           hue={event.coverHue}
+                          mediaUrl={event.coverMediaUrl}
+                          mediaType={event.coverMediaType}
                           radius={12}
                           label=""
                           height={56}

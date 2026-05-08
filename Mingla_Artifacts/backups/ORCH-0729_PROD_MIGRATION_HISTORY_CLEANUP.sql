@@ -22,7 +22,7 @@
 --     3. Click Run
 --
 --   Option 2 (psql / Supabase CLI):
---     supabase db execute -f Mingla_Artifacts/ORCH-0729_PROD_MIGRATION_HISTORY_CLEANUP.sql
+--     supabase db execute -f Mingla_Artifacts/backups/ORCH-0729_PROD_MIGRATION_HISTORY_CLEANUP.sql
 --     (or your preferred psql connection)
 --
 -- AFTER RUNNING:

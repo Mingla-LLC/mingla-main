@@ -16,7 +16,10 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test:orch-0754": "node ../.github/scripts/strict-grep/i-proposed-z-home-no-fabricated-events.mjs && npx jest brandEventSummary.test",
-    "test:orch-0756a": "node ../.github/scripts/strict-grep/orch-0756a-active-brand-recovery.mjs && npx jest currentBrandResolver.test"
+    "test:orch-0756a": "node ../.github/scripts/strict-grep/orch-0756a-active-brand-recovery.mjs && npx jest currentBrandResolver.test",
+    "test:orch-0756b": "npx jest serverDraftEventMapper.test serverDraftLifecycleGuards.test",
+    "test:orch-0758a": "npx jest serverDraftEventMapper.test serverDraftLifecycleGuards.test eventCoverMediaService.test eventCoverMedia.test publishedEventEditGuards.test draftEventPristine.test",
+    "test:orch-0759": "node ../.github/scripts/strict-grep/i-proposed-y-platform-web-url-from-env.mjs --self-test && node ../.github/scripts/strict-grep/i-proposed-y-platform-web-url-from-env.mjs && npx jest publicUrls.test eventDraftsPublishTickets.test serverDraftEventMapper.test serverDraftLifecycleGuards.test"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -45,6 +48,7 @@
     "expo-status-bar": "~3.0.9",
     "expo-symbols": "~1.0.8",
     "expo-system-ui": "~6.0.9",
+    "expo-video": "~3.0.16",
     "expo-web-browser": "~15.0.10",
     "react": "19.1.0",
     "react-dom": "19.1.0",

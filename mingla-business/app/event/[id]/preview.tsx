@@ -37,20 +37,33 @@ import {
   useDraftById,
   useDraftEventStore,
 } from "../../../src/store/draftEventStore";
+import {
+  useServerDraftAutosave,
+  useServerDraftById,
+} from "../../../src/hooks/useServerDraftEvents";
+import { createServerDraft } from "../../../src/services/eventDrafts";
 
 export default function EventPreviewRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
+  const isLegacyLocalDraftId =
+    typeof idParam === "string" && idParam.startsWith("d_");
 
   const draft = useDraftById(typeof idParam === "string" ? idParam : null);
+  const serverDraftQuery = useServerDraftById(
+    typeof idParam === "string" && !isLegacyLocalDraftId ? idParam : null,
+  );
+  const autosave = useServerDraftAutosave();
   const brands = useBrandList();
   const brand = useMemo(() => {
     if (draft === null) return null;
     return brands.find((b) => b.id === draft.brandId) ?? null;
   }, [draft, brands]);
   const updateDraft = useDraftEventStore((s) => s.updateDraft);
+  const replaceDraft = useDraftEventStore((s) => s.replaceDraft);
+  const migratingLegacyIdRef = React.useRef<string | null>(null);
 
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
@@ -95,20 +108,58 @@ export default function EventPreviewRoute(): React.ReactElement {
         )
         .sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`));
       updateDraft(draft.id, { multiDates: next });
+      if (!draft.id.startsWith("d_")) {
+        autosave.saveDraft({
+          ...draft,
+          multiDates: next,
+          updatedAt: new Date().toISOString(),
+        });
+      }
       setOverrideEntryId(null);
     },
-    [draft, overrideEntryId, updateDraft],
+    [autosave, draft, overrideEntryId, updateDraft],
   );
 
   useEffect(() => {
-    if (typeof idParam !== "string" || idParam.length === 0 || draft === null) {
+    if (
+      draft !== null &&
+      draft.id.startsWith("d_") &&
+      migratingLegacyIdRef.current !== draft.id
+    ) {
+      migratingLegacyIdRef.current = draft.id;
+      void createServerDraft(draft.brandId, draft)
+        .then((serverDraft) => {
+          replaceDraft(draft.id, serverDraft);
+          router.replace(`/event/${serverDraft.id}/preview` as never);
+        })
+        .catch(() => {
+          migratingLegacyIdRef.current = null;
+          setToast({
+            visible: true,
+            message: "Could not sync this local draft yet.",
+          });
+        });
+      return undefined;
+    }
+    if (
+      typeof idParam !== "string" ||
+      idParam.length === 0 ||
+      (draft === null && !serverDraftQuery.isLoading && !serverDraftQuery.isFetching)
+    ) {
       const t = setTimeout(() => {
         router.replace("/(tabs)/home" as never);
       }, 0);
       return (): void => clearTimeout(t);
     }
     return undefined;
-  }, [idParam, draft, router]);
+  }, [
+    idParam,
+    draft,
+    router,
+    replaceDraft,
+    serverDraftQuery.isFetching,
+    serverDraftQuery.isLoading,
+  ]);
 
   const handleBack = (): void => {
     if (router.canGoBack()) {

@@ -11,9 +11,9 @@
  * Wired via `clearAllStores()` utility called from `AuthContext.signOut()`
  * + `onAuthStateChange` SIGNED_OUT branch.
  *
- * Constitutional note (#2 one owner per truth): Drafts live ONLY here.
- * Components consume via `useDraftsForBrand(brandId)` or `useDraftById(id)`
- * selectors — never copy draft state into local state.
+ * Constitutional note (#2 one owner per truth): Supabase `events.status='draft'`
+ * is the durable source for server-backed drafts. This store is now the
+ * immediate UI cache + legacy local-draft migration source.
  *
  * [TRANSITIONAL] Zustand persist holds all drafts client-side. B-cycle
  * migrates drafts to server-side storage; this store contracts to a
@@ -100,10 +100,12 @@ export interface TicketStub {
   /** When true, buyer must enter `password` on the public page to unlock checkout. */
   passwordProtected: boolean;
   /**
-   * Local-only in Cycle 5; backend hashes at B4. Required when
-   * passwordProtected=true; min 4 chars enforced by validation.
+   * Local-only cleartext. Never persist to server draft JSON. Server-recovered
+   * password-protected tickets use passwordConfigured=true + password=null.
    */
   password: string | null;
+  /** True when the server has a password hash/configuration we cannot reveal. */
+  passwordConfigured?: boolean;
   /**
    * When true, buyer can join a waitlist when capacity is reached.
    * Real waitlist UX/emails land Cycle 10 + B5.
@@ -147,6 +149,7 @@ export interface TicketStub {
 export type DraftEventFormat = "in_person" | "online" | "hybrid";
 export type DraftEventVisibility = "public" | "unlisted" | "private";
 export type DraftEventStatus = "draft" | "publishing" | "live";
+export type EventCoverMediaType = "image" | "video" | "gif";
 
 // ---- Cycle 4 — recurring + multi-date types (NEW) -------------------
 
@@ -203,6 +206,8 @@ export interface MultiDateEntry {
 export interface DraftEvent {
   id: string;
   brandId: string;
+  /** Supabase events.slug for server-backed drafts. Null only for legacy local drafts. */
+  serverSlug: string | null;
   // Step 1 — Basics
   name: string;
   description: string;
@@ -244,6 +249,10 @@ export interface DraftEvent {
   // Step 4 — Cover
   /** Hue 0-360 for EventCover. Default 25 (warm orange). */
   coverHue: number;
+  /** Canonical uploaded cover media URL. Null falls back to coverHue. */
+  coverMediaUrl: string | null;
+  /** Type for coverMediaUrl. Null when no uploaded media is present. */
+  coverMediaType: EventCoverMediaType | null;
   // Step 5 — Tickets
   tickets: TicketStub[];
   // Step 6 — Settings
@@ -271,6 +280,9 @@ export interface DraftEventState {
   drafts: DraftEvent[];
   createDraft: (brandId: string) => DraftEvent;
   getDraft: (id: string) => DraftEvent | null;
+  upsertDraft: (draft: DraftEvent) => void;
+  upsertDrafts: (drafts: DraftEvent[]) => void;
+  replaceDraft: (oldId: string, draft: DraftEvent) => void;
   updateDraft: (
     id: string,
     patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>,
@@ -296,6 +308,7 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   DraftEvent,
   "id" | "brandId" | "createdAt" | "updatedAt"
 > = {
+  serverSlug: null,
   name: "",
   description: "",
   format: "in_person",
@@ -312,6 +325,8 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   onlineUrl: null,
   hideAddressUntilTicket: true,
   coverHue: 25,
+  coverMediaUrl: null,
+  coverMediaType: null,
   tickets: [],
   visibility: "public",
   requireApproval: false,
@@ -324,6 +339,19 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   status: "draft",
 };
 
+export const buildDraftEvent = (
+  brandId: string,
+  id: string = generateDraftId(),
+  now: string = new Date().toISOString(),
+): DraftEvent => ({
+  ...DEFAULT_DRAFT_FIELDS,
+  timezone: detectDeviceTimezone(),
+  id,
+  brandId,
+  createdAt: now,
+  updatedAt: now,
+});
+
 // ---- Migration types (private) --------------------------------------
 
 // v1 — pre-J-A8 polish. Tickets had 5 fields, no isUnlimited.
@@ -333,11 +361,14 @@ type V1TicketStub = Pick<
 >;
 type V1DraftEvent = Omit<
   DraftEvent,
+  | "serverSlug"
   | "hideAddressUntilTicket"
   | "tickets"
   | "whenMode"
   | "recurrenceRule"
   | "multiDates"
+  | "coverMediaUrl"
+  | "coverMediaType"
 > & {
   tickets: V1TicketStub[];
   hideAddressUntilTicket?: boolean;
@@ -355,10 +386,13 @@ type V3TicketStub = Pick<
 // v2 draft (still has `repeats`)
 type V2DraftEvent = Omit<
   DraftEvent,
+  | "serverSlug"
   | "whenMode"
   | "recurrenceRule"
   | "multiDates"
   | "tickets"
+  | "coverMediaUrl"
+  | "coverMediaType"
 > & {
   tickets: V3TicketStub[];
   /** Locked literal in v2; removed in v3 (replaced by whenMode). */
@@ -368,7 +402,14 @@ type V2DraftEvent = Omit<
 // still v3 shape — Cycle 4 didn't change ticket fields).
 // Cycle 12: explicitly excludes inPersonPaymentsEnabled (added v6) so this
 // historical shape stays correct after the DraftEvent type grew.
-type V3DraftEvent = Omit<DraftEvent, "tickets" | "inPersonPaymentsEnabled"> & {
+type V3DraftEvent = Omit<
+  DraftEvent,
+  | "serverSlug"
+  | "tickets"
+  | "inPersonPaymentsEnabled"
+  | "coverMediaUrl"
+  | "coverMediaType"
+> & {
   tickets: V3TicketStub[];
 };
 
@@ -386,7 +427,6 @@ const upgradeV1DraftToV2 = (d: V1DraftEvent): V2DraftEvent => ({
 
 const upgradeV2DraftToV3 = (d: V2DraftEvent): V3DraftEvent => {
   // Strip `repeats`; default whenMode to "single"; null both arrays.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { repeats: _drop, ...rest } = d;
   return {
     ...rest,
@@ -403,7 +443,14 @@ type V4TicketStub = Omit<
   TicketStub,
   "description" | "saleStartAt" | "saleEndAt" | "availableAt"
 >;
-type V4DraftEvent = Omit<DraftEvent, "tickets" | "inPersonPaymentsEnabled"> & {
+type V4DraftEvent = Omit<
+  DraftEvent,
+  | "serverSlug"
+  | "tickets"
+  | "inPersonPaymentsEnabled"
+  | "coverMediaUrl"
+  | "coverMediaType"
+> & {
   tickets: V4TicketStub[];
 };
 
@@ -445,7 +492,14 @@ const upgradeV4DraftToV5 = (d: V4DraftEvent): V5DraftEvent => ({
 
 // v5 ticket — Cycle 6 shape. Cycle 12 v6 ADDS: availableAt.
 type V5TicketStub = Omit<TicketStub, "availableAt">;
-type V5DraftEvent = Omit<DraftEvent, "tickets" | "inPersonPaymentsEnabled"> & {
+type V5DraftEvent = Omit<
+  DraftEvent,
+  | "serverSlug"
+  | "tickets"
+  | "inPersonPaymentsEnabled"
+  | "coverMediaUrl"
+  | "coverMediaType"
+> & {
   tickets: V5TicketStub[];
 };
 
@@ -457,10 +511,22 @@ const upgradeV5TicketToV6 = (t: V5TicketStub): TicketStub => ({
   availableAt: "both",
 });
 
-const upgradeV5DraftToV6 = (d: V5DraftEvent): DraftEvent => ({
+type V6DraftEvent = Omit<
+  DraftEvent,
+  "serverSlug" | "coverMediaUrl" | "coverMediaType"
+>;
+
+const upgradeV5DraftToV6 = (d: V5DraftEvent): V6DraftEvent => ({
   ...d,
   tickets: d.tickets.map(upgradeV5TicketToV6),
   inPersonPaymentsEnabled: false,
+});
+
+const upgradeV6DraftToV7 = (d: V6DraftEvent): DraftEvent => ({
+  ...d,
+  serverSlug: null,
+  coverMediaUrl: null,
+  coverMediaType: null,
 });
 
 const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
@@ -469,41 +535,56 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   name: "mingla-business.draftEvent.v1",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state): PersistedState => ({ drafts: state.drafts }),
-  version: 6,
+  version: 8,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { drafts: [] };
     }
     if (version === 1) {
-      // v1 → v6: chain v1→v2 → v3 → v4 → v5 → v6
+      // v1 → v7: chain v1→v2 → v3 → v4 → v5 → v6 → v7
       const v1 = persistedState as { drafts: V1DraftEvent[] };
       const v2Drafts = v1.drafts.map(upgradeV1DraftToV2);
       const v3Drafts = v2Drafts.map(upgradeV2DraftToV3);
       const v4Drafts = v3Drafts.map(upgradeV3DraftToV4);
       const v5Drafts = v4Drafts.map(upgradeV4DraftToV5);
-      return { drafts: v5Drafts.map(upgradeV5DraftToV6) };
+      const v6Drafts = v5Drafts.map(upgradeV5DraftToV6);
+      return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
     }
     if (version === 2) {
       const v2 = persistedState as { drafts: V2DraftEvent[] };
       const v3Drafts = v2.drafts.map(upgradeV2DraftToV3);
       const v4Drafts = v3Drafts.map(upgradeV3DraftToV4);
       const v5Drafts = v4Drafts.map(upgradeV4DraftToV5);
-      return { drafts: v5Drafts.map(upgradeV5DraftToV6) };
+      const v6Drafts = v5Drafts.map(upgradeV5DraftToV6);
+      return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
     }
     if (version === 3) {
       const v3 = persistedState as { drafts: V3DraftEvent[] };
       const v4Drafts = v3.drafts.map(upgradeV3DraftToV4);
       const v5Drafts = v4Drafts.map(upgradeV4DraftToV5);
-      return { drafts: v5Drafts.map(upgradeV5DraftToV6) };
+      const v6Drafts = v5Drafts.map(upgradeV5DraftToV6);
+      return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
     }
     if (version === 4) {
       const v4 = persistedState as { drafts: V4DraftEvent[] };
       const v5Drafts = v4.drafts.map(upgradeV4DraftToV5);
-      return { drafts: v5Drafts.map(upgradeV5DraftToV6) };
+      const v6Drafts = v5Drafts.map(upgradeV5DraftToV6);
+      return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
     }
     if (version === 5) {
       const v5 = persistedState as { drafts: V5DraftEvent[] };
-      return { drafts: v5.drafts.map(upgradeV5DraftToV6) };
+      const v6Drafts = v5.drafts.map(upgradeV5DraftToV6);
+      return { drafts: v6Drafts.map(upgradeV6DraftToV7) };
+    }
+    if (version === 6) {
+      const v6 = persistedState as { drafts: V6DraftEvent[] };
+      return { drafts: v6.drafts.map(upgradeV6DraftToV7) };
+    }
+    if (version === 7) {
+      const v7 = persistedState as { drafts: Array<Omit<DraftEvent, "serverSlug">> };
+      return {
+        drafts: v7.drafts.map((draft) => ({ ...draft, serverSlug: null })),
+      };
     }
     return persistedState as PersistedState;
   },
@@ -516,22 +597,38 @@ export const useDraftEventStore = create<DraftEventState>()(
 
       createDraft: (brandId): DraftEvent => {
         const now = new Date().toISOString();
-        const draft: DraftEvent = {
-          ...DEFAULT_DRAFT_FIELDS,
-          // Override hardcoded "Europe/London" default with device-detected
-          // zone (Cycle 3 rework v2 Fix #4).
-          timezone: detectDeviceTimezone(),
-          id: generateDraftId(),
-          brandId,
-          createdAt: now,
-          updatedAt: now,
-        };
+        const draft = buildDraftEvent(brandId, generateDraftId(), now);
         set((s) => ({ drafts: [...s.drafts, draft] }));
         return draft;
       },
 
       getDraft: (id): DraftEvent | null =>
         get().drafts.find((d) => d.id === id) ?? null,
+
+      upsertDraft: (draft): void => {
+        set((s) => {
+          const idx = s.drafts.findIndex((d) => d.id === draft.id);
+          if (idx === -1) return { drafts: [...s.drafts, draft] };
+          const next = [...s.drafts];
+          next[idx] = draft;
+          return { drafts: next };
+        });
+      },
+
+      upsertDrafts: (drafts): void => {
+        set((s) => {
+          const byId = new Map(s.drafts.map((d) => [d.id, d]));
+          drafts.forEach((draft) => byId.set(draft.id, draft));
+          return { drafts: Array.from(byId.values()) };
+        });
+      },
+
+      replaceDraft: (oldId, draft): void => {
+        set((s) => {
+          const filtered = s.drafts.filter((d) => d.id !== oldId && d.id !== draft.id);
+          return { drafts: [...filtered, draft] };
+        });
+      },
 
       updateDraft: (id, patch): void => {
         const now = new Date().toISOString();
@@ -543,13 +640,17 @@ export const useDraftEventStore = create<DraftEventState>()(
       },
 
       setLastStep: (id, step): void => {
-        set((s) => ({
-          drafts: s.drafts.map((d) =>
-            d.id === id
-              ? { ...d, lastStepReached: Math.max(d.lastStepReached, step) }
-              : d,
-          ),
-        }));
+        set((s) => {
+          let changed = false;
+          const drafts = s.drafts.map((d) => {
+            if (d.id !== id || d.lastStepReached >= step) {
+              return d;
+            }
+            changed = true;
+            return { ...d, lastStepReached: step };
+          });
+          return changed ? { drafts } : s;
+        });
       },
 
       deleteDraft: (id): void => {

@@ -2,8 +2,8 @@
  * /event/create — wizard entry from Home "Build a new event" CTA (J-E1).
  *
  * Reads currentBrand at mount. If null → bounces to /(tabs)/home.
- * Otherwise creates a new draft via draftEventStore.createDraft, then
- * router.replace to /event/{newId}/edit?step=0. The replace (not push)
+ * Otherwise creates a server-backed draft, then router.replace to
+ * /event/{newId}/edit?step=0. The replace (not push)
  * means back from Step 1 returns to /(tabs)/home directly — no /create
  * stack frame to land on.
  *
@@ -31,7 +31,7 @@ import {
 } from "../../src/constants/designSystem";
 import { Spinner } from "../../src/components/ui/Spinner";
 import { useCurrentBrandId } from "../../src/store/currentBrandStore";
-import { useDraftEventStore } from "../../src/store/draftEventStore";
+import { useCreateServerDraft } from "../../src/hooks/useServerDraftEvents";
 
 export default function EventCreateRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -41,16 +41,24 @@ export default function EventCreateRoute(): React.ReactElement {
   // cold-start + deep-link redirect-loop where the wrapper returned null
   // during the React Query fetch window before this effect could resolve.
   const currentBrandId = useCurrentBrandId();
-  const createDraft = useDraftEventStore((s) => s.createDraft);
+  const { createDraft, error } = useCreateServerDraft();
+  const [hasStarted, setHasStarted] = React.useState<boolean>(false);
 
   useEffect(() => {
+    if (hasStarted) return;
     if (currentBrandId === null) {
       router.replace("/(tabs)/home" as never);
       return;
     }
-    const newDraft = createDraft(currentBrandId);
-    router.replace(`/event/${newDraft.id}/edit?step=0` as never);
-  }, [currentBrandId, createDraft, router]);
+    setHasStarted(true);
+    void createDraft(currentBrandId)
+      .then((newDraft) => {
+        router.replace(`/event/${newDraft.id}/edit?step=0` as never);
+      })
+      .catch(() => {
+        setHasStarted(false);
+      });
+  }, [currentBrandId, createDraft, hasStarted, router]);
 
   return (
     <View
@@ -61,7 +69,9 @@ export default function EventCreateRoute(): React.ReactElement {
     >
       <View style={styles.center}>
         <Spinner size={36} />
-        <Text style={styles.label}>Starting a new event…</Text>
+        <Text style={styles.label}>
+          {error === null ? "Starting a new event…" : "Couldn't start this draft. Retrying…"}
+        </Text>
       </View>
     </View>
   );
