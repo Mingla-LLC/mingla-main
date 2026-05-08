@@ -35,6 +35,9 @@ interface ProfileInterestsSectionProps {
 const STAGGER_DELAY = 30;
 const PILL_DURATION = 200;
 
+const selectedCategoryMatches = (selected: string[], slug: string, name: string): boolean =>
+  selected.includes(slug) || selected.includes(name);
+
 const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
   intents,
   categories,
@@ -48,7 +51,9 @@ const ProfileInterestsSection: React.FC<ProfileInterestsSectionProps> = ({
     ? t('profile:interests.your_interests')
     : t('profile:interests.interests'));
   const intentData = ONBOARDING_INTENTS.filter((i) => intents.includes(i.id));
-  const categoryData = allCategories.filter((c) => categories.includes(c.name));
+  const categoryData = allCategories.filter((c) =>
+    selectedCategoryMatches(categories, c.slug, c.name),
+  );
   const totalPills = intentData.length + categoryData.length;
 
   const intentsKey = useMemo(() => intents.join(','), [intents]);

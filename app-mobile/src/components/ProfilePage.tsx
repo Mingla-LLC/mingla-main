@@ -434,7 +434,6 @@ function ProfilePage({
                 isOwnProfile
                 firstName={userIdentity?.firstName || null}
                 lastName={userIdentity?.lastName || null}
-                username={userIdentity?.username || null}
                 avatarUrl={userIdentity?.profileImage || null}
                 bio={profile?.bio || null}
                 location={currentLocation}

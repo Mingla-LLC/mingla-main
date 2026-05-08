@@ -20,7 +20,6 @@ interface ProfileHeroSectionProps {
   isOwnProfile: boolean;
   firstName: string | null;
   lastName: string | null;
-  username: string | null;
   avatarUrl: string | null;
   bio: string | null;
   location?: string;
@@ -46,7 +45,6 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
   isOwnProfile,
   firstName,
   lastName,
-  username,
   avatarUrl,
   bio,
   location,
@@ -132,7 +130,6 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
   };
 
   const inputRowMaxWidth = Math.min(SCREEN_WIDTH - 48, 340);
-  const handleUsername = username ? (username.startsWith('@') ? username : `@${username}`) : null;
 
   return (
     <View style={styles.container}>
@@ -258,11 +255,6 @@ const ProfileHeroSection: React.FC<ProfileHeroSectionProps> = ({
         </View>
       )}
 
-      {/* Username */}
-      {handleUsername && (
-        <Text style={styles.username}>{handleUsername}</Text>
-      )}
-
       {/* Location row */}
       {(location || isOwnProfile) && (
         <View style={styles.locationRow}>
@@ -376,11 +368,6 @@ const styles = StyleSheet.create({
   },
   pencilIcon: {
     marginTop: 2,
-  },
-  // Username
-  username: {
-    ...glass.profile.text.username,
-    marginTop: 4,
   },
   // Name editing
   nameEditContainer: {
