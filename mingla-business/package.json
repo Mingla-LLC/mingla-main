@@ -15,7 +15,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test:orch-0754": "node ../.github/scripts/strict-grep/i-proposed-z-home-no-fabricated-events.mjs && npx jest brandEventSummary.test"
+    "test:orch-0754": "node ../.github/scripts/strict-grep/i-proposed-z-home-no-fabricated-events.mjs && npx jest brandEventSummary.test",
+    "test:orch-0756a": "node ../.github/scripts/strict-grep/orch-0756a-active-brand-recovery.mjs && npx jest currentBrandResolver.test"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

@@ -7,6 +7,31 @@
 
 ---
 
+## ACTIVE (post ORCH-0756A IMPLEMENTATION 2026-05-08)
+
+### I-PROPOSED-AA ACTIVE_BRAND_RECOVERS_FROM_SERVER_DEFAULT
+
+**Statement:** In `mingla-business`, the active brand may be cached locally only as an ID, but after auth/bootstrap the selected ID must resolve from the signed-in user's accessible brand list in this order: valid local `currentBrandId`, valid `creator_accounts.default_brand_id`, newest fetched brand, or `null` only when no brands exist.
+
+**Authority:** `mingla-business/src/utils/currentBrandResolver.ts` is the pure selection contract. `mingla-business/src/hooks/useCurrentBrandRecovery.ts` is the app-wide recovery owner. `mingla-business/app/_layout.tsx` wires recovery into bootstrap. `mingla-business/app/(tabs)/home.tsx` owns the honest loading/no-brands/choose-brand Home states.
+
+**Rationale:** ORCH-0756 proved the real brand can remain in Supabase while logout clears the local selected-brand pointer. Without server-backed recovery, Home can falsely say "No brands yet" after sign-in. This invariant prevents the app from confusing "no selected brand yet" with "no brands exist."
+
+**Enforcement:**
+1. `resolveCurrentBrandId()` implements the deterministic fallback order.
+2. `useCurrentBrandRecovery()` waits for brand list and creator account queries, applies the resolver, and persists newest-brand fallback as `default_brand_id`.
+3. Brand pick/create flows update local UI immediately and attempt to save `creator_accounts.default_brand_id`.
+4. Home's empty states are split between loading/recovering, true no-brands, brands-exist/no-selection, and populated dashboard.
+5. `currentBrandStore` remains ID-only; no full Brand snapshot returns to persisted Zustand.
+
+**Test that catches a regression:** `cd mingla-business && npm run test:orch-0756a` runs the active-brand strict guard plus `currentBrandResolver.test`. The guard checks for the old false-empty Home condition, default-brand account wiring, app-wide recovery, default persistence on pick/create, failure-to-toast wiring, and ID-only persisted current-brand state.
+
+**Established:** 2026-05-08 by ORCH-0756A implementation. Tester/orchestrator close pending.
+
+**Cross-references:** `Mingla_Artifacts/specs/SPEC_ORCH-0756A_BUSINESS_ACTIVE_BRAND_RECOVERY.md`, `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0756_BUSINESS_DRAFT_AND_BRAND_PERSISTENCE.md`, `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0756A_BUSINESS_ACTIVE_BRAND_RECOVERY.md`.
+
+---
+
 ## ACTIVE (post ORCH-0749 CLOSE 2026-05-07)
 
 ### I-AUTH-PRIVATE-CACHE-CANNOT-OUTLIVE-AUTH-OWNER - Private mobile query state must be auth-scoped and removable

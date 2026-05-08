@@ -28,6 +28,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
 import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
+import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
 
@@ -80,6 +81,7 @@ function RootLayoutInner(): React.ReactElement {
   const { loading } = useAuth();
   const currentBrandId = useCurrentBrandId();
   const { isFetched: brandFetched, fetchStatus: brandFetchStatus } = useBrand(currentBrandId);
+  const { isResolving: brandRecoveryResolving } = useCurrentBrandRecovery();
   const mountedAt = useRef(Date.now());
   const [splashHidden, setSplashHidden] = useState(false);
   const [brandFetchTimedOut, setBrandFetchTimedOut] = useState(false);
@@ -96,9 +98,9 @@ function RootLayoutInner(): React.ReactElement {
   }, [loading, brandFetchTimedOut]);
 
   const brandReady =
-    currentBrandId === null ||
+    (currentBrandId === null && !brandRecoveryResolving) ||
     brandFetched ||
-    brandFetchStatus === "idle" ||
+    (brandFetchStatus === "idle" && !brandRecoveryResolving) ||
     brandFetchTimedOut;
 
   useEffect(() => {

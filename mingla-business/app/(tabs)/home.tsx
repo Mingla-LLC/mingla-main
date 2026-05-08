@@ -14,7 +14,7 @@
  * first-screen event story is derived from current-brand local event truth.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -38,11 +38,12 @@ import {
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import {
-  useBrandList,
   useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
+import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
+import { useBrands } from "../../src/hooks/useBrands";
 import {
   useDraftsForBrand,
   type DraftEvent,
@@ -120,9 +121,12 @@ export default function HomeTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
-  const brands = useBrandList();
+  const brandsQuery = useBrands(user?.id ?? null);
+  const brands = brandsQuery.data ?? [];
   const currentBrand = useCurrentBrand();
+  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
+  const brandRecovery = useCurrentBrandRecovery();
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const liveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
   const orderEntries = useOrderStore((s) => s.entries);
@@ -147,6 +151,10 @@ export default function HomeTab(): React.ReactElement {
 
   const handleBrandCreated = useCallback((brand: Brand): void => {
     setToast({ visible: true, message: `${brand.displayName} is ready` });
+  }, []);
+
+  const handleDefaultBrandSaveError = useCallback((message: string): void => {
+    setToast({ visible: true, message });
   }, []);
 
   // Cycle 17e-A REWORK: BrandSwitcherSheet trash tap → open BrandDeleteSheet
@@ -184,12 +192,16 @@ export default function HomeTab(): React.ReactElement {
 
   const handleBuildEvent = useCallback((): void => {
     if (currentBrand === null) {
-      setToast({ visible: true, message: "Create a brand first." });
+      setToast({
+        visible: true,
+        message:
+          brands.length > 0 ? "Select a brand first." : "Create a brand first.",
+      });
       setSheetVisible(true);
       return;
     }
     router.push("/event/create" as never);
-  }, [currentBrand, router]);
+  }, [brands.length, currentBrand, router]);
 
   const handleSeeAllEvents = useCallback((): void => {
     router.push("/(tabs)/events" as never);
@@ -209,7 +221,23 @@ export default function HomeTab(): React.ReactElement {
     [router],
   );
 
-  const isEmpty = brands.length === 0 || currentBrand === null;
+  useEffect(() => {
+    if (brandRecovery.errorMessage !== null) {
+      setToast({ visible: true, message: brandRecovery.errorMessage });
+    }
+  }, [brandRecovery.errorMessage]);
+
+  const hasNoBrands = brandsQuery.isFetched && brands.length === 0;
+  const isBrandResolving =
+    !brandsQuery.isFetched ||
+    brandRecovery.isResolving ||
+    (brands.length > 0 && currentBrandId !== null && currentBrand === null);
+  const hasBrandsButNoSelection =
+    brandsQuery.isFetched &&
+    brands.length > 0 &&
+    currentBrandId === null &&
+    currentBrand === null &&
+    !isBrandResolving;
   const eventSummary = useMemo(
     () => buildBrandEventSummary(liveEvents, drafts),
     [liveEvents, drafts],
@@ -256,17 +284,46 @@ export default function HomeTab(): React.ReactElement {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        {isEmpty ? (
+        {currentBrand === null ? (
           <View style={styles.emptyCol}>
             <GlassCard variant="elevated" padding={spacing.lg}>
               <Text style={styles.greetingTier}>{greetingLabel()}</Text>
-              <Text style={styles.emptyTitle}>No brands yet</Text>
-              <Text style={styles.emptyBody}>
-                Tap{" "}
-                <Text style={styles.emptyChipName}>Create brand</Text>
-                {" "}in the top bar to set up your first brand. You can edit it
-                any time.
-              </Text>
+              {hasNoBrands ? (
+                <>
+                  <Text style={styles.emptyTitle}>No brands yet</Text>
+                  <Text style={styles.emptyBody}>
+                    Tap{" "}
+                    <Text style={styles.emptyChipName}>Create brand</Text>
+                    {" "}in the top bar to set up your first brand. You can
+                    edit it any time.
+                  </Text>
+                </>
+              ) : hasBrandsButNoSelection ? (
+                <>
+                  <Text style={styles.emptyTitle}>Choose a brand</Text>
+                  <Text style={styles.emptyBody}>
+                    We found your brands. Pick one from the top bar to continue.
+                  </Text>
+                  <Pressable
+                    onPress={handleOpenSwitcher}
+                    accessibilityRole="button"
+                    accessibilityLabel="Choose a brand"
+                    style={styles.emptyBuildAction}
+                  >
+                    <Icon name="chevD" size={16} color={accent.warm} />
+                    <Text style={styles.emptyBuildActionText}>
+                      Choose brand
+                    </Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.emptyTitle}>Loading brands</Text>
+                  <Text style={styles.emptyBody}>
+                    Getting your brand workspace ready.
+                  </Text>
+                </>
+              )}
             </GlassCard>
           </View>
         ) : (
@@ -478,6 +535,7 @@ export default function HomeTab(): React.ReactElement {
         visible={sheetVisible}
         onClose={handleCloseSheet}
         onBrandCreated={handleBrandCreated}
+        onDefaultBrandSaveError={handleDefaultBrandSaveError}
         onRequestDeleteBrand={handleRequestDeleteBrand}
       />
 

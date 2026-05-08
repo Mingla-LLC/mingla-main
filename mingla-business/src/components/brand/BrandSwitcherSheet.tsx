@@ -42,6 +42,7 @@ import {
   type Brand,
 } from "../../store/currentBrandStore";
 import { useAuth } from "../../context/AuthContext";
+import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
 import { useCreateBrand, SlugCollisionError } from "../../hooks/useBrands";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -53,6 +54,7 @@ export interface BrandSwitcherSheetProps {
   onClose: () => void;
   /** Fires after a successful create — parent surfaces a confirmation Toast. */
   onBrandCreated?: (brand: Brand) => void;
+  onDefaultBrandSaveError?: (message: string) => void;
   /**
    * Cycle 17e-A: Fires when operator taps trash icon on a brand row.
    * Parent opens BrandDeleteSheet pre-populated with the brand to delete.
@@ -73,6 +75,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   visible,
   onClose,
   onBrandCreated,
+  onDefaultBrandSaveError,
   onRequestDeleteBrand,
   testID,
 }) => {
@@ -81,6 +84,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const { user } = useAuth();
   const createBrandMutation = useCreateBrand();
+  const updateCreatorAccountMutation = useUpdateCreatorAccount();
 
   const initialMode: Mode = brands.length === 0 ? "create" : "switch";
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -110,6 +114,14 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   const handlePick = (brand: Brand): void => {
     setCurrentBrand(brand);
     onClose();
+    if (user === null) return;
+    void updateCreatorAccountMutation
+      .mutateAsync({ default_brand_id: brand.id })
+      .catch(() => {
+        onDefaultBrandSaveError?.(
+          "Brand selected for now. Couldn't save it as your default.",
+        );
+      });
   };
 
   const handleSubmit = async (): Promise<void> => {
@@ -131,6 +143,13 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
       setCurrentBrand(newBrand);
       onBrandCreated?.(newBrand);
       onClose();
+      void updateCreatorAccountMutation
+        .mutateAsync({ default_brand_id: newBrand.id })
+        .catch(() => {
+          onDefaultBrandSaveError?.(
+            "Brand selected for now. Couldn't save it as your default.",
+          );
+        });
     } catch (error) {
       if (error instanceof SlugCollisionError) {
         // Inline error per Decision 11
