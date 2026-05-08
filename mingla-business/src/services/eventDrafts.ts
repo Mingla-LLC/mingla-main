@@ -8,7 +8,6 @@ import { generateEventSlug } from "../utils/eventSlug";
 import {
   draftToServerInsert,
   draftToServerUpdate,
-  publishedVisibilityForDraft,
   serverRowToDraft,
   type ServerDraftEventRow,
 } from "../utils/serverDraftEventMapper";
@@ -131,7 +130,11 @@ export const autosaveServerDraft = async (
   draft: DraftEvent,
 ): Promise<DraftEvent> => {
   const existingTheme = await fetchExistingTheme(draft.id);
-  const updatePayload = draftToServerUpdate(draft, existingTheme);
+  const updatePayload = draftToServerUpdate(
+    draft,
+    existingTheme,
+    draft.clientRevision ?? 0,
+  );
 
   const { data, error } = await supabase
     .from("events")
@@ -160,32 +163,8 @@ export const discardServerDraft = async (draftId: string): Promise<void> => {
 export const markServerDraftPublished = async (
   draft: DraftEvent,
 ): Promise<void> => {
-  const existingTheme = await fetchExistingTheme(draft.id);
-  const updatePayload = draftToServerUpdate(draft, existingTheme);
-  const publishTheme =
-    updatePayload.theme !== null && typeof updatePayload.theme === "object"
-      ? { ...updatePayload.theme }
-      : {};
-  delete publishTheme.business_draft;
-
-  await syncDraftTicketsToServerEvent(draft);
-
-  const { error } = await supabase
-    .from("events")
-    .update({
-      ...updatePayload,
-      slug:
-        draft.serverSlug !== null && draft.serverSlug.trim().length > 0
-          ? draft.serverSlug
-          : updatePayload.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "event",
-      theme: publishTheme,
-      status: "scheduled",
-      visibility: publishedVisibilityForDraft(draft.visibility),
-      published_at: new Date().toISOString(),
-    })
-    .eq("id", draft.id)
-    .eq("status", "draft")
-    .is("deleted_at", null);
-
-  if (error !== null) throw error;
+  void draft;
+  throw new Error(
+    "Client-side draft promotion is disabled. Use business_publish_event_draft RPC.",
+  );
 };

@@ -33,7 +33,6 @@ import {
   accent,
   glass,
   radius as radiusTokens,
-  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -65,7 +64,7 @@ interface PlatformButton {
   buildUrl: (url: string, title: string, description?: string) => string;
 }
 
-const PLATFORM_BUTTONS: ReadonlyArray<PlatformButton> = [
+const PLATFORM_BUTTONS: readonly PlatformButton[] = [
   {
     id: "twitter",
     label: "Twitter",
@@ -174,6 +173,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     }
   }, [url, title, description, showToast]);
 
+  const handleOpenLink = useCallback(async (): Promise<void> => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      showToast("Couldn't open link.");
+    }
+  }, [url, showToast]);
+
   const handlePlatformPress = useCallback(
     async (btn: PlatformButton): Promise<void> => {
       const intent = btn.buildUrl(url, title, description);
@@ -237,6 +244,20 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             leadingIcon="share"
           />
         </View>
+
+        <Pressable
+          onPress={handleOpenLink}
+          accessibilityRole="link"
+          accessibilityLabel="Open share link"
+          style={({ pressed }) => [
+            styles.urlBox,
+            pressed && styles.urlBoxPressed,
+          ]}
+        >
+          <Text style={styles.urlText} numberOfLines={2}>
+            {url}
+          </Text>
+        </Pressable>
 
         {/* QR code */}
         <View style={styles.qrWrap}>
@@ -311,6 +332,22 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     marginBottom: spacing.sm,
+  },
+  urlBox: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  urlBoxPressed: {
+    opacity: 0.7,
+  },
+  urlText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight * 1.35,
+    color: accent.warm,
   },
   qrWrap: {
     alignItems: "center",

@@ -12,7 +12,6 @@ import {
   discardServerDraft,
   fetchDraftById,
   fetchDraftsForBrand,
-  markServerDraftPublished,
 } from "../services/eventDrafts";
 import {
   useDraftEventStore,
@@ -38,7 +37,7 @@ export const useServerDraftsForBrand = (
   brandId: string | null,
 ): UseQueryResult<DraftEvent[]> => {
   const enabled = brandId !== null;
-  const upsertDrafts = useDraftEventStore((s) => s.upsertDrafts);
+  const upsertServerDrafts = useDraftEventStore((s) => s.upsertServerDrafts);
   const replaceDraft = useDraftEventStore((s) => s.replaceDraft);
   const localDrafts = useDraftEventStore((s) => s.drafts);
   const queryClient = useQueryClient();
@@ -56,9 +55,9 @@ export const useServerDraftsForBrand = (
 
   useEffect(() => {
     if (query.data !== undefined) {
-      upsertDrafts(query.data);
+      upsertServerDrafts(query.data);
     }
-  }, [query.data, upsertDrafts]);
+  }, [query.data, upsertServerDrafts]);
 
   useEffect(() => {
     if (!enabled || brandId === null || query.data === undefined) return;
@@ -124,7 +123,7 @@ export const useServerDraftById = (
   draftId: string | null,
 ): UseQueryResult<DraftEvent | null> => {
   const enabled = draftId !== null;
-  const upsertDraft = useDraftEventStore((s) => s.upsertDraft);
+  const upsertServerDraft = useDraftEventStore((s) => s.upsertServerDraft);
   const query = useQuery<DraftEvent | null>({
     queryKey:
       enabled && draftId !== null ? eventDraftKeys.detail(draftId) : DISABLED_KEY,
@@ -138,9 +137,9 @@ export const useServerDraftById = (
 
   useEffect(() => {
     if (query.data !== undefined && query.data !== null) {
-      upsertDraft(query.data);
+      upsertServerDraft(query.data);
     }
-  }, [query.data, upsertDraft]);
+  }, [query.data, upsertServerDraft]);
 
   return query;
 };
@@ -156,13 +155,23 @@ export interface ServerDraftAutosaveState {
 export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const queryClient = useQueryClient();
-  const upsertDraft = useDraftEventStore((s) => s.upsertDraft);
+  const upsertServerDraft = useDraftEventStore((s) => s.upsertServerDraft);
+  const markDraftSaved = useDraftEventStore((s) => s.markDraftSaved);
   const mutation = useMutation<DraftEvent, Error, DraftEvent>({
     mutationFn: autosaveServerDraft,
     onSuccess: (draft) => {
-      upsertDraft(draft);
+      const accepted = upsertServerDraft(draft);
+      if (!accepted) return;
+      const revision = draft.clientRevision ?? 0;
+      markDraftSaved(draft.id, revision);
       queryClient.setQueryData(eventDraftKeys.detail(draft.id), draft);
-      queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
+      queryClient.setQueryData<DraftEvent[]>(
+        eventDraftKeys.list(draft.brandId),
+        (prev) => {
+          const next = (prev ?? []).filter((d) => d.id !== draft.id);
+          return [draft, ...next];
+        },
+      );
       setLastSavedAt(new Date().toISOString());
     },
   });
@@ -232,25 +241,6 @@ export const useDiscardServerDraft = (): {
 
   return {
     discardDraft: mutation.mutateAsync,
-    isPending: mutation.isPending,
-  };
-};
-
-export const useMarkServerDraftPublished = (): {
-  markPublished: (draft: DraftEvent) => Promise<void>;
-  isPending: boolean;
-} => {
-  const queryClient = useQueryClient();
-  const mutation = useMutation<void, Error, DraftEvent>({
-    mutationFn: markServerDraftPublished,
-    onSuccess: (_void, draft) => {
-      queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
-      queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
-    },
-  });
-
-  return {
-    markPublished: mutation.mutateAsync,
     isPending: mutation.isPending,
   };
 };

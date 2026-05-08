@@ -52,7 +52,7 @@ import {
 } from "../services/eventChangeNotifier";
 import { getBrandFromCache } from "../hooks/useBrands";
 
-export type LiveEventStatus = "live" | "cancelled" | "ended";
+export type LiveEventStatus = "scheduled" | "live" | "cancelled" | "ended";
 
 /**
  * Editable subset of LiveEvent post-publish (ORCH-0704 v2).

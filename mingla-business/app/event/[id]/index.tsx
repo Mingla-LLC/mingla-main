@@ -18,7 +18,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -28,18 +27,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
-  accent,
-  glass,
   radius as radiusTokens,
-  semantic,
   spacing,
   text as textTokens,
 } from "../../../src/constants/designSystem";
-import { useLiveEventStore } from "../../../src/store/liveEventStore";
-import type { LiveEvent } from "../../../src/store/liveEventStore";
+import {
+  useLiveEventStore,
+  type LiveEvent,
+} from "../../../src/store/liveEventStore";
 import { useDraftById } from "../../../src/store/draftEventStore";
-import type { TicketStub } from "../../../src/store/draftEventStore";
-import { useBrandList } from "../../../src/store/currentBrandStore";
 import { useOrderStore } from "../../../src/store/orderStore";
 import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
 import { useScanStore } from "../../../src/store/scanStore";
@@ -75,6 +71,7 @@ import { EventDetailTicketTypeRow } from "../../../src/components/event/EventDet
 import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
 import { ReconciliationCtaTile } from "../../../src/components/event/ReconciliationCtaTile";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
 import { canPerformAction } from "../../../src/utils/permissionGates";
 
 const CANCEL_PROCESSING_MS = 1200;
@@ -103,20 +100,11 @@ export default function EventDetailScreen(): React.ReactElement {
   const id = typeof params.id === "string" ? params.id : null;
 
   // ----- Resolve event -------------------------------------------
-  const liveEvent = useLiveEventStore((s) =>
-    id === null ? null : s.events.find((e) => e.id === id) ?? null,
-  );
+  const routeEvent = useManagedEventRoute(id);
+  const resolvedLiveEvent = routeEvent.event;
   const draftEvent = useDraftById(id);
-  const brands = useBrandList();
-  const brand = useMemo(() => {
-    if (liveEvent !== null) {
-      return brands.find((b) => b.id === liveEvent.brandId) ?? null;
-    }
-    if (draftEvent !== null) {
-      return brands.find((b) => b.id === draftEvent.brandId) ?? null;
-    }
-    return null;
-  }, [liveEvent, draftEvent, brands]);
+  const brand = routeEvent.brand;
+  const isServerBackedEvent = routeEvent.isServerBacked;
 
   // Cycle 13a J-T6 G1: gate Edit / End sales / Cancel / Delete on EDIT_EVENT.
   // Hook ordering: ALL hooks run on every render before any early-return shell.
@@ -126,10 +114,14 @@ export default function EventDetailScreen(): React.ReactElement {
   // ----- Defensive: draft → redirect to edit ---------------------
   useEffect(() => {
     if (id === null) return;
-    if (liveEvent === null && draftEvent !== null) {
+    if (routeEvent.replacementEventId !== null) {
+      router.replace(`/event/${routeEvent.replacementEventId}` as never);
+      return;
+    }
+    if (resolvedLiveEvent === null && draftEvent !== null) {
       router.replace(`/event/${id}/edit` as never);
     }
-  }, [id, liveEvent, draftEvent, router]);
+  }, [id, routeEvent.replacementEventId, resolvedLiveEvent, draftEvent, router]);
 
   // ----- State ---------------------------------------------------
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
@@ -176,12 +168,12 @@ export default function EventDetailScreen(): React.ReactElement {
   }, [id, router]);
 
   const handleViewPublic = useCallback((): void => {
-    if (liveEvent !== null) {
+    if (resolvedLiveEvent !== null) {
       router.push(
-        `/e/${liveEvent.brandSlug}/${liveEvent.eventSlug}` as never,
+        `/e/${resolvedLiveEvent.brandSlug}/${resolvedLiveEvent.eventSlug}` as never,
       );
     }
-  }, [liveEvent, router]);
+  }, [resolvedLiveEvent, router]);
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -239,12 +231,17 @@ export default function EventDetailScreen(): React.ReactElement {
   }, []);
 
   const handleEndSalesConfirm = useCallback((): void => {
+    if (isServerBackedEvent) {
+      setEndSalesVisible(false);
+      showToast("Server event lifecycle changes are not available yet.");
+      return;
+    }
     if (id !== null) {
       updateLifecycle(id, { endedAt: new Date().toISOString() });
     }
     setEndSalesVisible(false);
     showToast("Ticket sales ended.");
-  }, [id, updateLifecycle, showToast]);
+  }, [id, isServerBackedEvent, updateLifecycle, showToast]);
 
   const handleCancelDialogOpen = useCallback((): void => {
     setCancelDialogVisible(true);
@@ -252,6 +249,11 @@ export default function EventDetailScreen(): React.ReactElement {
 
   const handleCancelConfirm = useCallback(async (): Promise<void> => {
     if (id === null) return;
+    if (isServerBackedEvent) {
+      setCancelDialogVisible(false);
+      showToast("Server event cancellation is not available yet.");
+      return;
+    }
     // 1.2s simulated processing per spec §3.0.1 Q-9-3.
     await cancelSleep(CANCEL_PROCESSING_MS);
     updateLifecycle(id, {
@@ -265,7 +267,7 @@ export default function EventDetailScreen(): React.ReactElement {
       "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
     );
     router.replace("/(tabs)/events" as never);
-  }, [id, updateLifecycle, router, showToast]);
+  }, [id, isServerBackedEvent, updateLifecycle, router, showToast]);
 
   const handleDeleteDraftStub = useCallback((): void => {
     // Cycle 9b-1 EventDetail is for LIVE events only — draft delete is
@@ -277,33 +279,7 @@ export default function EventDetailScreen(): React.ReactElement {
     );
   }, [showToast]);
 
-  // ----- Render not-found shell -----------------------------------
-  if (id === null || (liveEvent === null && draftEvent === null)) {
-    return (
-      <View style={styles.host}>
-        <View style={[styles.headerWrap, { paddingTop: insets.top }]}>
-          <TopBar leftKind="back" onBack={handleBack} title="Event" />
-        </View>
-        <View style={styles.emptyWrap}>
-          <EmptyState
-            illustration="ticket"
-            title="Event not found"
-            description="This event may have been deleted or moved."
-            cta={{ label: "Back to events", onPress: handleBack }}
-          />
-        </View>
-      </View>
-    );
-  }
-
-  // Drafts → redirected via useEffect; render empty shell briefly
-  if (liveEvent === null) {
-    return <View style={styles.host} />;
-  }
-
-  const event = liveEvent;
-  const status = deriveScreenStatus(event);
-  const dateLine = formatDraftDateLine(event);
+  const event = resolvedLiveEvent;
 
   // Cycle 9c — populated from useOrderStore (subscribes to live updates).
   const revenueGbp = useOrderStore((s) =>
@@ -505,6 +481,36 @@ export default function EventDetailScreen(): React.ReactElement {
     return events.slice(0, 5);
   }, [allOrderEntries, allEditEntries, allScanEntries, allDoorEntries, event]);
 
+  // ----- Render not-found shell -----------------------------------
+  if (
+    id === null ||
+    (event === null && draftEvent === null && !routeEvent.isLoading)
+  ) {
+    return (
+      <View style={styles.host}>
+        <View style={[styles.headerWrap, { paddingTop: insets.top }]}>
+          <TopBar leftKind="back" onBack={handleBack} title="Event" />
+        </View>
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            illustration="ticket"
+            title="Event not found"
+            description="This event may have been deleted or moved."
+            cta={{ label: "Back to events", onPress: handleBack }}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  // Drafts → redirected via useEffect; render empty shell briefly
+  if (event === null) {
+    return <View style={styles.host} />;
+  }
+
+  const status = deriveScreenStatus(event);
+  const dateLine = formatDraftDateLine(event);
+
   return (
     <View style={styles.host}>
       {/* Header */}
@@ -665,7 +671,9 @@ export default function EventDetailScreen(): React.ReactElement {
 
         {/* Cancel event CTA — opens ConfirmDialog with typeToConfirm.
             Cycle 13a J-T6 G1: gated on EDIT_EVENT; hidden for sub-rank users. */}
-        {(status === "live" || status === "upcoming") && canEditEvent ? (
+        {(status === "live" || status === "upcoming") &&
+        canEditEvent &&
+        !isServerBackedEvent ? (
           <View style={styles.cancelCtaWrap}>
             <Button
               label="Cancel event"
@@ -729,6 +737,7 @@ export default function EventDetailScreen(): React.ReactElement {
           }}
           onTransitionalToast={showToast}
           canEditEvent={canEditEvent}
+          canUseLifecycleActions={!isServerBackedEvent}
         />
       ) : null}
 

@@ -84,6 +84,7 @@ export interface EventManageMenuProps {
    * existing call sites remain backward compatible.
    */
   canEditEvent?: boolean;
+  canUseLifecycleActions?: boolean;
 }
 
 type ActionTone = "default" | "accent" | "warn" | "danger";
@@ -111,6 +112,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
   onOpenOrders,
   onTransitionalToast,
   canEditEvent = true,
+  canUseLifecycleActions = true,
 }) => {
   const actions = useMemo<MenuAction[]>((): MenuAction[] => {
     const list: MenuAction[] = [];
@@ -206,7 +208,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
 
     // Cycle 13a J-T6 G1: end sales + cancel + delete are part of EDIT_EVENT
     // gate. Hidden for sub-rank users.
-    if (status === "live" && canEditEvent) {
+    if (status === "live" && canEditEvent && canUseLifecycleActions) {
       list.push({
         key: "end-sales",
         icon: "close",
@@ -223,7 +225,11 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
     // than End sales (cancel notifies buyers + refunds). For upcoming,
     // it replaces "Delete event" since live/upcoming events have public
     // footprints and shouldn't be hard-deleted.
-    if ((status === "live" || status === "upcoming") && canEditEvent) {
+    if (
+      (status === "live" || status === "upcoming") &&
+      canEditEvent &&
+      canUseLifecycleActions
+    ) {
       list.push({
         key: "cancel-event",
         icon: "trash",
@@ -292,7 +298,20 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
     }
 
     return list;
-  }, [status, onClose, onEdit, onViewPublic, onShare, onEndSales, onCancelEvent, onDeleteDraft, onOpenOrders, onTransitionalToast, canEditEvent]);
+  }, [
+    status,
+    onClose,
+    onEdit,
+    onViewPublic,
+    onShare,
+    onEndSales,
+    onCancelEvent,
+    onDeleteDraft,
+    onOpenOrders,
+    onTransitionalToast,
+    canEditEvent,
+    canUseLifecycleActions,
+  ]);
 
   // Snap calculation — content fit per DEC-084 numeric snap support.
   // Each row ~52px + header padding ~32 + safe spacing ~28 = ~112 + N×52.

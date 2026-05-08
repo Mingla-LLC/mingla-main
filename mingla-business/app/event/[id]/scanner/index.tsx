@@ -48,13 +48,13 @@ import {
   spacing,
   text as textTokens,
 } from "../../../../src/constants/designSystem";
-import { useLiveEventStore } from "../../../../src/store/liveEventStore";
 import { useOrderStore } from "../../../../src/store/orderStore";
 import {
   useScanStore,
   type ScanResult,
 } from "../../../../src/store/scanStore";
 import { useAuth } from "../../../../src/context/AuthContext";
+import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 
 import {
   expandTicketIds,
@@ -147,11 +147,16 @@ export default function ScannerCameraRoute(): React.ReactElement {
   const { user } = useAuth();
   const operatorAccountId = user?.id ?? "anonymous";
 
-  const event = useLiveEventStore((s) =>
-    typeof eventId === "string"
-      ? s.events.find((e) => e.id === eventId) ?? null
-      : null,
+  const routeEvent = useManagedEventRoute(
+    typeof eventId === "string" ? eventId : null,
   );
+  const event = routeEvent.event;
+
+  useEffect(() => {
+    if (routeEvent.replacementEventId !== null) {
+      router.replace(`/event/${routeEvent.replacementEventId}/scanner` as never);
+    }
+  }, [routeEvent.replacementEventId, router]);
 
   const [permission, requestPermission] = useCameraPermissions();
 
@@ -426,6 +431,28 @@ export default function ScannerCameraRoute(): React.ReactElement {
   );
 
   // ---- Not-found shell ---------------------------------------------
+  if (event === null && routeEvent.isLoading && typeof eventId === "string") {
+    return (
+      <View
+        style={[styles.host, { paddingTop: insets.top }]}
+      >
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleBack}
+            accessibilityLabel="Back"
+          />
+          <Text style={styles.chromeTitle}>Scan tickets</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <Text style={styles.loadingText}>Loading event...</Text>
+        </View>
+      </View>
+    );
+  }
+
   if (event === null || typeof eventId !== "string") {
     return (
       <View
@@ -776,6 +803,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     justifyContent: "center",
     alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 14,
+    color: textTokens.secondary,
+    textAlign: "center",
   },
   permWrap: {
     flex: 1,

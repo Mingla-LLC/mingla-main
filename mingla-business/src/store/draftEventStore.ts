@@ -35,6 +35,11 @@ import {
 
 import { generateDraftId } from "../utils/draftEventId";
 import { convertDraftToLiveEvent } from "../utils/liveEventConverter";
+import {
+  draftClientRevision,
+  shouldApplyServerDraft,
+  type DraftEditMeta,
+} from "../utils/serverDraftAutosaveGuards";
 import type { LiveEvent } from "./liveEventStore";
 
 /**
@@ -272,16 +277,22 @@ export interface DraftEvent {
   /** Highest step index user has reached (0..6). Resume jumps here. */
   lastStepReached: number;
   status: DraftEventStatus;
+  /** Local autosave conflict guard. Monotonic per draft editor session. */
+  clientRevision?: number;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface DraftEventState {
   drafts: DraftEvent[];
+  activeDraftId: string | null;
+  draftEditMeta: Record<string, DraftEditMeta>;
   createDraft: (brandId: string) => DraftEvent;
   getDraft: (id: string) => DraftEvent | null;
   upsertDraft: (draft: DraftEvent) => void;
   upsertDrafts: (drafts: DraftEvent[]) => void;
+  upsertServerDraft: (draft: DraftEvent) => boolean;
+  upsertServerDrafts: (drafts: DraftEvent[]) => void;
   replaceDraft: (oldId: string, draft: DraftEvent) => void;
   updateDraft: (
     id: string,
@@ -289,6 +300,10 @@ export interface DraftEventState {
   ) => void;
   setLastStep: (id: string, step: number) => void;
   deleteDraft: (id: string) => void;
+  beginDraftEdit: (id: string) => void;
+  endDraftEdit: (id: string) => void;
+  markDraftDirty: (id: string, clientRevision: number) => void;
+  markDraftSaved: (id: string, clientRevision: number) => void;
   /**
    * Convert a draft into a LiveEvent (in liveEventStore) and remove the
    * draft. Atomic ownership transfer (I-16 — live-event ownership
@@ -337,6 +352,7 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   inPersonPaymentsEnabled: false,
   lastStepReached: 0,
   status: "draft",
+  clientRevision: 0,
 };
 
 export const buildDraftEvent = (
@@ -594,6 +610,8 @@ export const useDraftEventStore = create<DraftEventState>()(
   persist(
     (set, get) => ({
       drafts: [],
+      activeDraftId: null,
+      draftEditMeta: {},
 
       createDraft: (brandId): DraftEvent => {
         const now = new Date().toISOString();
@@ -620,6 +638,48 @@ export const useDraftEventStore = create<DraftEventState>()(
           const byId = new Map(s.drafts.map((d) => [d.id, d]));
           drafts.forEach((draft) => byId.set(draft.id, draft));
           return { drafts: Array.from(byId.values()) };
+        });
+      },
+
+      upsertServerDraft: (draft): boolean => {
+        let accepted = false;
+        set((s) => {
+          const existing = s.drafts.find((d) => d.id === draft.id) ?? null;
+          const editMeta = s.draftEditMeta[draft.id] ?? null;
+          if (!shouldApplyServerDraft({ serverDraft: draft, localDraft: existing, editMeta })) {
+            return s;
+          }
+          accepted = true;
+          const idx = s.drafts.findIndex((d) => d.id === draft.id);
+          const nextDrafts =
+            idx === -1
+              ? [...s.drafts, draft]
+              : s.drafts.map((d) => (d.id === draft.id ? draft : d));
+          const serverRevision = draftClientRevision(draft);
+          const nextMeta = {
+            ...s.draftEditMeta,
+            [draft.id]: {
+              clientRevision: Math.max(
+                editMeta?.clientRevision ?? 0,
+                serverRevision,
+              ),
+              lastAcceptedServerRevision: Math.max(
+                editMeta?.lastAcceptedServerRevision ?? 0,
+                serverRevision,
+              ),
+              dirty:
+                editMeta?.dirty === true &&
+                serverRevision < (editMeta?.clientRevision ?? 0),
+            },
+          };
+          return { drafts: nextDrafts, draftEditMeta: nextMeta };
+        });
+        return accepted;
+      },
+
+      upsertServerDrafts: (drafts): void => {
+        drafts.forEach((draft) => {
+          get().upsertServerDraft(draft);
         });
       },
 
@@ -654,7 +714,89 @@ export const useDraftEventStore = create<DraftEventState>()(
       },
 
       deleteDraft: (id): void => {
-        set((s) => ({ drafts: s.drafts.filter((d) => d.id !== id) }));
+        set((s) => {
+          const { [id]: _drop, ...meta } = s.draftEditMeta;
+          return {
+            drafts: s.drafts.filter((d) => d.id !== id),
+            activeDraftId: s.activeDraftId === id ? null : s.activeDraftId,
+            draftEditMeta: meta,
+          };
+        });
+      },
+
+      beginDraftEdit: (id): void => {
+        set((s) => {
+          const draft = s.drafts.find((d) => d.id === id) ?? null;
+          const existing = s.draftEditMeta[id];
+          const revision = Math.max(
+            existing?.clientRevision ?? 0,
+            draftClientRevision(draft),
+          );
+          return {
+            activeDraftId: id,
+            draftEditMeta: {
+              ...s.draftEditMeta,
+              [id]: {
+                clientRevision: revision,
+                lastAcceptedServerRevision:
+                  existing?.lastAcceptedServerRevision ?? revision,
+                dirty: existing?.dirty ?? false,
+              },
+            },
+          };
+        });
+      },
+
+      endDraftEdit: (id): void => {
+        set((s) => ({
+          activeDraftId: s.activeDraftId === id ? null : s.activeDraftId,
+        }));
+      },
+
+      markDraftDirty: (id, clientRevision): void => {
+        set((s) => {
+          const existing = s.draftEditMeta[id];
+          return {
+            activeDraftId: id,
+            draftEditMeta: {
+              ...s.draftEditMeta,
+              [id]: {
+                clientRevision: Math.max(
+                  existing?.clientRevision ?? 0,
+                  clientRevision,
+                ),
+                lastAcceptedServerRevision:
+                  existing?.lastAcceptedServerRevision ?? 0,
+                dirty: true,
+              },
+            },
+          };
+        });
+      },
+
+      markDraftSaved: (id, clientRevision): void => {
+        set((s) => {
+          const existing = s.draftEditMeta[id];
+          if (existing !== undefined && clientRevision < existing.clientRevision) {
+            return s;
+          }
+          return {
+            draftEditMeta: {
+              ...s.draftEditMeta,
+              [id]: {
+                clientRevision: Math.max(
+                  existing?.clientRevision ?? 0,
+                  clientRevision,
+                ),
+                lastAcceptedServerRevision: Math.max(
+                  existing?.lastAcceptedServerRevision ?? 0,
+                  clientRevision,
+                ),
+                dirty: false,
+              },
+            },
+          };
+        });
       },
 
       publishDraft: (id): LiveEvent | null => {
@@ -670,12 +812,19 @@ export const useDraftEventStore = create<DraftEventState>()(
         // 3. Delete the draft only AFTER successful conversion. This
         //    ordering is intentional: if step 2 throws or returns null,
         //    the draft survives so the user can retry publish.
-        set((s) => ({ drafts: s.drafts.filter((d) => d.id !== id) }));
+        set((s) => {
+          const { [id]: _drop, ...meta } = s.draftEditMeta;
+          return {
+            drafts: s.drafts.filter((d) => d.id !== id),
+            activeDraftId: s.activeDraftId === id ? null : s.activeDraftId,
+            draftEditMeta: meta,
+          };
+        });
         return liveEvent;
       },
 
       reset: (): void => {
-        set({ drafts: [] });
+        set({ drafts: [], activeDraftId: null, draftEditMeta: {} });
       },
     }),
     persistOptions,

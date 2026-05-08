@@ -106,6 +106,7 @@ export interface BusinessDraftPayload {
     inPersonPaymentsEnabled: boolean;
   };
   lastStepReached: number;
+  clientRevision: number;
 }
 
 const asRecord = (value: unknown): JsonRecord =>
@@ -205,6 +206,7 @@ const ticketsFromPayload = (value: unknown): TicketStub[] =>
 const buildBusinessDraftPayload = (
   draft: DraftEvent,
   legacyLocalDraftId: string | null,
+  clientRevision: number = draft.clientRevision ?? 0,
 ): BusinessDraftPayload => ({
   schemaVersion: BUSINESS_DRAFT_SCHEMA_VERSION,
   legacyLocalDraftId,
@@ -236,6 +238,7 @@ const buildBusinessDraftPayload = (
     inPersonPaymentsEnabled: draft.inPersonPaymentsEnabled,
   },
   lastStepReached: draft.lastStepReached,
+  clientRevision,
 });
 
 export const mergeBusinessDraftTheme = (
@@ -251,6 +254,7 @@ export const mergeBusinessDraftTheme = (
       draft,
       legacyLocalDraftId ??
         asStringOrNull(asRecord(theme.business_draft).legacyLocalDraftId),
+      draft.clientRevision ?? asNumber(asRecord(theme.business_draft).clientRevision, 0),
     ),
   };
 };
@@ -295,6 +299,7 @@ export const draftToServerInsert = (
 export const draftToServerUpdate = (
   draft: DraftEvent,
   existingTheme: unknown,
+  clientRevision: number = draft.clientRevision ?? 0,
 ): ServerDraftEventUpdate => ({
   title: draft.name.trim().length > 0 ? draft.name.trim() : "Untitled draft",
   description: draft.description.trim().length > 0 ? draft.description : null,
@@ -307,7 +312,10 @@ export const draftToServerUpdate = (
   is_recurring: draft.whenMode === "recurring",
   is_multi_date: draft.whenMode === "multi_date",
   recurrence_rules: recurrenceRulesForDraft(draft),
-  theme: mergeBusinessDraftTheme(existingTheme, draft),
+  theme: mergeBusinessDraftTheme(existingTheme, {
+    ...draft,
+    clientRevision,
+  }),
   visibility: "draft",
   status: "draft",
   timezone: draft.timezone,
@@ -373,6 +381,7 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     inPersonPaymentsEnabled: asBoolean(settings.inPersonPaymentsEnabled, false),
     lastStepReached: asNumber(businessDraft.lastStepReached, 0),
     status: "draft",
+    clientRevision: asNumber(businessDraft.clientRevision, 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...(legacyLocalDraftId !== null ? { legacyLocalDraftId } : {}),

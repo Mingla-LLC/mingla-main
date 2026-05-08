@@ -68,6 +68,10 @@ import {
   useDiscardServerDraft,
   useServerDraftsForBrand,
 } from "../../src/hooks/useServerDraftEvents";
+import {
+  mergeServerAndLegacyLiveEvents,
+  useBusinessEventsForBrand,
+} from "../../src/hooks/useBusinessEvents";
 import { eventPublicUrl } from "../../src/constants/publicUrls";
 import { canPerformAction } from "../../src/utils/permissionGates";
 
@@ -112,8 +116,21 @@ export default function EventsTab(): React.ReactElement {
   const currentBrand = useCurrentBrand();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   useServerDraftsForBrand(currentBrand?.id ?? null);
+  const businessEventsQuery = useBusinessEventsForBrand(currentBrand?.id ?? null);
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
-  const liveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
+  const legacyLiveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
+  const liveEvents = useMemo(
+    () =>
+      mergeServerAndLegacyLiveEvents(
+        businessEventsQuery.data ?? [],
+        legacyLiveEvents,
+      ),
+    [businessEventsQuery.data, legacyLiveEvents],
+  );
+  const serverBackedEventIds = useMemo(
+    () => new Set((businessEventsQuery.data ?? []).map((event) => event.id)),
+    [businessEventsQuery.data],
+  );
 
   // Cycle 13a J-T6 G7: "Create event" CTA gated on CREATE_EVENT
   // (event_manager+). Hooks run on every render before any early-return shell.
@@ -376,12 +393,20 @@ export default function EventsTab(): React.ReactElement {
 
   const handleEndSalesConfirm = useCallback((): void => {
     if (endSalesEvent === null) return;
+    if (serverBackedEventIds.has(endSalesEvent.id)) {
+      setEndSalesEvent(null);
+      setToast({
+        visible: true,
+        message: "Server event lifecycle changes are not available yet.",
+      });
+      return;
+    }
     updateLifecycle(endSalesEvent.id, {
       endedAt: new Date().toISOString(),
     });
     setEndSalesEvent(null);
     setToast({ visible: true, message: "Ticket sales ended." });
-  }, [endSalesEvent, updateLifecycle]);
+  }, [endSalesEvent, serverBackedEventIds, updateLifecycle]);
 
   const handleManageCancelEvent = useCallback((): void => {
     if (manageCtx === null || manageCtx.kind !== "live") return;
@@ -391,6 +416,14 @@ export default function EventsTab(): React.ReactElement {
 
   const handleCancelEventConfirm = useCallback(async (): Promise<void> => {
     if (cancelEvent === null) return;
+    if (serverBackedEventIds.has(cancelEvent.id)) {
+      setCancelEvent(null);
+      setToast({
+        visible: true,
+        message: "Server event cancellation is not available yet.",
+      });
+      return;
+    }
     setCancelSubmitting(true);
     // 1.2s simulated processing per Q-9-3.
     await new Promise<void>((resolve) => setTimeout(resolve, 1200));
@@ -406,7 +439,7 @@ export default function EventsTab(): React.ReactElement {
       message:
         "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
     });
-  }, [cancelEvent, updateLifecycle]);
+  }, [cancelEvent, serverBackedEventIds, updateLifecycle]);
 
   const handleManageDeleteDraft = useCallback((): void => {
     if (manageCtx === null || manageCtx.kind !== "draft") return;
@@ -586,6 +619,11 @@ export default function EventsTab(): React.ReactElement {
             );
           }}
           onTransitionalToast={showTransitionalToast}
+          canEditEvent={canPerformAction(currentRank, "EDIT_EVENT")}
+          canUseLifecycleActions={
+            manageCtx.kind !== "live" ||
+            !serverBackedEventIds.has(manageCtx.event.id)
+          }
         />
       ) : null}
 

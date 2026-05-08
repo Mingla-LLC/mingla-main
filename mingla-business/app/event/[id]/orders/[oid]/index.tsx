@@ -15,7 +15,7 @@
  * Per Cycle 9c spec §3.4.2 + §3.4.4 + §3.4.5.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -41,7 +41,7 @@ import {
   type RefundRecord,
 } from "../../../../../src/store/orderStore";
 import type { CheckoutPaymentMethod } from "../../../../../src/components/checkout/CartContext";
-import { useLiveEventStore } from "../../../../../src/store/liveEventStore";
+import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRoute";
 import { formatGbp } from "../../../../../src/utils/currency";
 import {
   deriveChannelFlags,
@@ -171,11 +171,10 @@ export default function OrderDetailRoute(): React.ReactElement {
   const order = useOrderStore((s) =>
     typeof orderId === "string" ? s.getOrderById(orderId) : null,
   );
-  const event = useLiveEventStore((s) =>
-    order !== null
-      ? s.events.find((e) => e.id === order.eventId) ?? null
-      : null,
+  const routeEvent = useManagedEventRoute(
+    typeof eventId === "string" ? eventId : null,
   );
+  const event = routeEvent.event;
 
   const [refundSheet, setRefundSheet] = useState<{
     visible: boolean;
@@ -256,6 +255,39 @@ export default function OrderDetailRoute(): React.ReactElement {
     setResendSubmitting(false);
     showToast(`Sent to ${order.buyer.email}`);
   }, [order, event, resendSubmitting, showToast]);
+
+  useEffect(() => {
+    if (routeEvent.replacementEventId !== null && typeof orderId === "string") {
+      router.replace(
+        `/event/${routeEvent.replacementEventId}/orders/${orderId}` as never,
+      );
+    }
+  }, [routeEvent.replacementEventId, router, orderId]);
+
+  if (event === null && routeEvent.isLoading && typeof eventId === "string") {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleBack}
+            accessibilityLabel="Back"
+          />
+          <Text style={styles.chromeTitle}>Order</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <Text style={styles.emptyLoadingText}>Loading event...</Text>
+        </View>
+      </View>
+    );
+  }
 
   // ---- Empty / not-found states ----
   if (typeof orderId !== "string" || order === null) {
@@ -773,5 +805,10 @@ const styles = StyleSheet.create({
   },
   emptyHost: {
     paddingTop: spacing.xl,
+  },
+  emptyLoadingText: {
+    fontSize: 14,
+    color: textTokens.secondary,
+    textAlign: "center",
   },
 });

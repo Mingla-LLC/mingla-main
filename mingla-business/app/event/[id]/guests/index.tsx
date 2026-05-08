@@ -12,7 +12,7 @@
  * Per Cycle 10 SPEC §5/J-G1.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -33,7 +33,6 @@ import {
 } from "../../../../src/constants/designSystem";
 import { useGuestStore } from "../../../../src/store/guestStore";
 import type { CompGuestEntry } from "../../../../src/store/guestStore";
-import { useLiveEventStore } from "../../../../src/store/liveEventStore";
 import {
   useOrderStore,
   type OrderRecord,
@@ -44,7 +43,7 @@ import {
   type DoorPaymentMethod,
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
-import { useBrandList } from "../../../../src/store/currentBrandStore";
+import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { exportGuestsCsv } from "../../../../src/utils/guestCsvExport";
 
@@ -208,16 +207,11 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const { user } = useAuth();
   const operatorAccountId = user?.id ?? "anonymous";
 
-  const event = useLiveEventStore((s) =>
-    typeof eventId === "string"
-      ? s.events.find((e) => e.id === eventId) ?? null
-      : null,
+  const routeEvent = useManagedEventRoute(
+    typeof eventId === "string" ? eventId : null,
   );
-  const brandList = useBrandList();
-  const brand =
-    event !== null
-      ? (brandList.find((b) => b.id === event.brandId) ?? null)
-      : null;
+  const event = routeEvent.event;
+  const brand = routeEvent.brand;
 
   // Raw subscriptions — merge in useMemo to maintain stable refs.
   const allOrderEntries = useOrderStore((s) => s.entries);
@@ -347,6 +341,37 @@ export default function EventGuestsListRoute(): React.ReactElement {
     },
     [showToast],
   );
+
+  useEffect(() => {
+    if (routeEvent.replacementEventId !== null) {
+      router.replace(`/event/${routeEvent.replacementEventId}/guests` as never);
+    }
+  }, [routeEvent.replacementEventId, router]);
+
+  if (event === null && routeEvent.isLoading && typeof eventId === "string") {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleBack}
+            accessibilityLabel="Back"
+          />
+          <Text style={styles.chromeTitle}>Guests</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <Text style={styles.emptyLoadingText}>Loading event...</Text>
+        </View>
+      </View>
+    );
+  }
 
   if (event === null || typeof eventId !== "string") {
     return (
@@ -680,6 +705,11 @@ const styles = StyleSheet.create({
   },
   emptyHost: {
     paddingTop: spacing.xl,
+  },
+  emptyLoadingText: {
+    fontSize: 14,
+    color: textTokens.secondary,
+    textAlign: "center",
   },
   row: {
     flexDirection: "row",

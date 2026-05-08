@@ -16,7 +16,7 @@
  * Per Cycle 12 SPEC §4.12 / §5/J-D2 + J-D5.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -40,9 +40,8 @@ import {
   type DoorPaymentMethod,
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
-import { useLiveEventStore } from "../../../../src/store/liveEventStore";
-import { useBrandList } from "../../../../src/store/currentBrandStore";
 import { useAuth } from "../../../../src/context/AuthContext";
+import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import { formatGbp } from "../../../../src/utils/currency";
 import { exportDoorSalesCsv } from "../../../../src/utils/guestCsvExport";
 import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
@@ -143,16 +142,11 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   const { user } = useAuth();
   const operatorAccountId = user?.id ?? "anonymous";
 
-  const event = useLiveEventStore((s) =>
-    typeof eventId === "string"
-      ? s.events.find((e) => e.id === eventId) ?? null
-      : null,
+  const routeEvent = useManagedEventRoute(
+    typeof eventId === "string" ? eventId : null,
   );
-  const brandList = useBrandList();
-  const brand =
-    event !== null
-      ? (brandList.find((b) => b.id === event.brandId) ?? null)
-      : null;
+  const event = routeEvent.event;
+  const brand = routeEvent.brand;
 
   // Cycle 13 — permission gate for the "View full reconciliation" polish CTA
   // (D-CYCLE13-RECON-FOR-4). Same VIEW_RECONCILIATION rank used by the
@@ -290,6 +284,37 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
       showToast("Couldn't export. Tap to try again.");
     }
   }, [event, eventSales, showToast]);
+
+  useEffect(() => {
+    if (routeEvent.replacementEventId !== null) {
+      router.replace(`/event/${routeEvent.replacementEventId}/door` as never);
+    }
+  }, [routeEvent.replacementEventId, router]);
+
+  if (event === null && routeEvent.isLoading && typeof eventId === "string") {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleBack}
+            accessibilityLabel="Back"
+          />
+          <Text style={styles.chromeTitle}>Door Sales</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <Text style={styles.emptyLoadingText}>Loading event...</Text>
+        </View>
+      </View>
+    );
+  }
 
   // ---- Not-found shell ----
   if (event === null || typeof eventId !== "string") {
@@ -772,6 +797,11 @@ const styles = StyleSheet.create({
   },
   emptyHost: {
     paddingTop: spacing.xl,
+  },
+  emptyLoadingText: {
+    fontSize: 14,
+    color: textTokens.secondary,
+    textAlign: "center",
   },
   row: {
     flexDirection: "row",

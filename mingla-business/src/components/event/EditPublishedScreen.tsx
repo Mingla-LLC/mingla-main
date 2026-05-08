@@ -136,6 +136,7 @@ const sleep = (ms: number): Promise<void> =>
 
 export interface EditPublishedScreenProps {
   liveEvent: LiveEvent;
+  disableLocalSaveReason?: string;
 }
 
 interface ToastState {
@@ -159,6 +160,7 @@ interface RejectDialogContent {
 
 export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   liveEvent,
+  disableLocalSaveReason,
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -302,6 +304,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
 
   // ---- Save flow ----
   const handleSavePress = useCallback((): void => {
+    if (disableLocalSaveReason !== undefined) {
+      showToast(disableLocalSaveReason);
+      return;
+    }
     // 1. Validate sections
     const hasErrors = SECTIONS.some(
       (sec) => sectionErrors[sec.key].length > 0,
@@ -340,7 +346,14 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       ticketDiffs,
       severity,
     });
-  }, [editState, fieldDiffs, liveEvent, sectionErrors, showToast]);
+  }, [
+    disableLocalSaveReason,
+    editState,
+    fieldDiffs,
+    liveEvent,
+    sectionErrors,
+    showToast,
+  ]);
 
   // ---- Map rejection result to dialog content ----
   const buildRejectDialog = useCallback(
@@ -760,7 +773,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             variant="primary"
             size="lg"
             fullWidth
-            disabled={submitting}
+            disabled={submitting || disableLocalSaveReason !== undefined}
             accessibilityLabel="Save changes"
           />
         </View>

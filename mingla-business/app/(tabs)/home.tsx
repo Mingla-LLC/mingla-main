@@ -46,6 +46,10 @@ import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery
 import { useBrands } from "../../src/hooks/useBrands";
 import { useServerDraftsForBrand } from "../../src/hooks/useServerDraftEvents";
 import {
+  mergeServerAndLegacyLiveEvents,
+  useBusinessEventsForBrand,
+} from "../../src/hooks/useBusinessEvents";
+import {
   useDraftsForBrand,
   type DraftEvent,
 } from "../../src/store/draftEventStore";
@@ -129,8 +133,17 @@ export default function HomeTab(): React.ReactElement {
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const brandRecovery = useCurrentBrandRecovery();
   useServerDraftsForBrand(currentBrand?.id ?? null);
+  const businessEventsQuery = useBusinessEventsForBrand(currentBrand?.id ?? null);
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
-  const liveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
+  const legacyLiveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
+  const liveEvents = useMemo(
+    () =>
+      mergeServerAndLegacyLiveEvents(
+        businessEventsQuery.data ?? [],
+        legacyLiveEvents,
+      ),
+    [businessEventsQuery.data, legacyLiveEvents],
+  );
   const orderEntries = useOrderStore((s) => s.entries);
   const getSoldCountForEvent = useOrderStore((s) => s.getSoldCountForEvent);
   const getRevenueForEvent = useOrderStore((s) => s.getRevenueForEvent);

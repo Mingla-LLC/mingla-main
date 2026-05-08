@@ -145,7 +145,7 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
           <ReadyCard
             isFreeOnly={!publishability.hasPaidTickets}
             brandSlug={brand?.slug ?? null}
-            eventSlug={draft.serverSlug}
+            eventSlug={null}
           />
         ) : publishability.status === "blocked-stripe" ? (
           <StripeBlockedCard onConnectStripe={onConnectStripe} />
@@ -184,8 +184,10 @@ const ReadyCard: React.FC<ReadyCardProps> = ({
   eventSlug,
 }) => {
   const publicUrl =
-    brandSlug !== null && eventSlug !== null
-      ? eventPublicUrl({ brandSlug, eventSlug }).replace(/^https?:\/\//, "")
+    brandSlug !== null &&
+    eventSlug !== null &&
+    !eventSlug.startsWith("draft-")
+      ? eventPublicUrl({ brandSlug, eventSlug })
       : null;
 
   return (
@@ -199,7 +201,7 @@ const ReadyCard: React.FC<ReadyCardProps> = ({
           <Text style={styles.statusSub}>
             {publicUrl !== null
               ? `Tickets will go live at ${publicUrl}.`
-              : "Tickets will go live on your public Mingla event page after publish."}
+              : "Your public link will be created after publish."}
           </Text>
         </View>
       </View>

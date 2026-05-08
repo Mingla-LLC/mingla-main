@@ -15,7 +15,7 @@
  * Per Cycle 12 SPEC §4.10 + §4.13 / §5/J-D4.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,7 +32,7 @@ import {
   useDoorSalesStore,
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
-import { useLiveEventStore } from "../../../../src/store/liveEventStore";
+import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import { formatGbp } from "../../../../src/utils/currency";
 import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
@@ -110,11 +110,10 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
     ? params.saleId[0]
     : params.saleId;
 
-  const event = useLiveEventStore((s) =>
-    typeof eventId === "string"
-      ? s.events.find((e) => e.id === eventId) ?? null
-      : null,
+  const routeEvent = useManagedEventRoute(
+    typeof eventId === "string" ? eventId : null,
   );
+  const event = routeEvent.event;
 
   // Single-existing-reference selector — safe to subscribe (per SPEC §4.5).
   const sale = useDoorSalesStore((s) =>
@@ -160,6 +159,39 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
     },
     [showToast],
   );
+
+  useEffect(() => {
+    if (routeEvent.replacementEventId !== null && typeof rawSaleId === "string") {
+      router.replace(
+        `/event/${routeEvent.replacementEventId}/door/${rawSaleId}` as never,
+      );
+    }
+  }, [routeEvent.replacementEventId, router, rawSaleId]);
+
+  if (event === null && routeEvent.isLoading && typeof eventId === "string") {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleBack}
+            accessibilityLabel="Back"
+          />
+          <Text style={styles.chromeTitle}>Door sale</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <Text style={styles.emptyLoadingText}>Loading event...</Text>
+        </View>
+      </View>
+    );
+  }
 
   // ---- Not-found shell ----
   if (
@@ -450,6 +482,11 @@ const styles = StyleSheet.create({
   },
   emptyHost: {
     paddingTop: spacing.xl,
+  },
+  emptyLoadingText: {
+    fontSize: 14,
+    color: textTokens.secondary,
+    textAlign: "center",
   },
 
   // Hero -------------------------------------------------------------

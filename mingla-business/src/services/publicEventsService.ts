@@ -128,10 +128,15 @@ const viewRowToBrand = (row: BusinessPublicEventViewRow): PublicBrandRecord => {
 };
 
 const viewStatusToLiveStatus = (status: string): LiveEventStatus => {
-  if (status === "cancelled" || status === "ended" || status === "live") {
+  if (
+    status === "scheduled" ||
+    status === "cancelled" ||
+    status === "ended" ||
+    status === "live"
+  ) {
     return status;
   }
-  return "live";
+  return "scheduled";
 };
 
 const ticketRowToTicketStub = (row: TicketTypeRow): PublicTicketTypeRecord => ({

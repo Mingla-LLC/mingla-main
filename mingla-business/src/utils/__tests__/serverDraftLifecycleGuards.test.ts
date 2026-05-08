@@ -7,16 +7,14 @@ const repoFile = (relativePath: string): string =>
   readFileSync(path.join(process.cwd(), relativePath), "utf8");
 
 describe("server-backed draft lifecycle guards", () => {
-  test("publish preflights local conversion before server draft promotion", () => {
+  test("publish uses the server RPC result instead of local LiveEvent promotion", () => {
     const source = repoFile("src/components/event/EventCreatorWizard.tsx");
 
-    const preflightIndex = source.indexOf("canConvertDraftToLiveEvent(liveDraft)");
-    const serverPromotionIndex = source.indexOf("onBeforeLocalPublish?.(liveDraft)");
-    const localPublishIndex = source.indexOf("publishDraft(liveDraft.id)");
-
-    expect(preflightIndex).toBeGreaterThan(-1);
-    expect(serverPromotionIndex).toBeGreaterThan(preflightIndex);
-    expect(localPublishIndex).toBeGreaterThan(serverPromotionIndex);
+    expect(source).toContain("onPublishDraft");
+    expect(source).toContain("const slug = await onPublishDraft(draftToPublish)");
+    expect(source).toContain("deleteDraft(draftToPublish.id)");
+    expect(source).not.toContain("publishDraft(liveDraft.id)");
+    expect(source).not.toContain("canConvertDraftToLiveEvent(liveDraft)");
   });
 
   test("create route waits for a server draft id before navigation", () => {
@@ -49,13 +47,15 @@ describe("server-backed draft lifecycle guards", () => {
     expect(source).toContain("replaceDraft(draft.id, serverDraft)");
   });
 
-  test("server autosave, discard, and publish still target draft rows", () => {
+  test("server autosave and discard still target draft rows while publish RPC owns promotion", () => {
     const source = repoFile("src/services/eventDrafts.ts");
+    const businessEvents = repoFile("src/services/businessEvents.ts");
 
     expect(source).toContain(".eq(\"status\", \"draft\")");
     expect(source).toContain("autosaveServerDraft");
     expect(source).toContain("discardServerDraft");
-    expect(source).toContain("markServerDraftPublished");
+    expect(source).toContain("Client-side draft promotion is disabled");
+    expect(businessEvents).toContain("business_publish_event_draft");
   });
 
   test("brand delete blocking statuses use DB lifecycle values, not UI buckets", () => {
@@ -67,13 +67,75 @@ describe("server-backed draft lifecycle guards", () => {
     expect(source).not.toContain('["upcoming", "live"]');
   });
 
-  test("local publish preserves server event id and event cover media", () => {
-    const source = repoFile("src/utils/liveEventConverter.ts");
+  test("new organiser surfaces read published events from server-backed hooks", () => {
+    const homeSource = repoFile("app/(tabs)/home.tsx");
+    const eventsSource = repoFile("app/(tabs)/events.tsx");
+    const detailSource = repoFile("app/event/[id]/index.tsx");
+    const editSource = repoFile("app/event/[id]/edit.tsx");
 
-    expect(source).toContain("serverEventId: draft.id");
-    expect(source).toContain("eventSlug: serverEventSlug");
-    expect(source).toContain("coverMediaUrl: draft.coverMediaUrl");
-    expect(source).toContain("coverMediaType: draft.coverMediaType");
+    expect(homeSource).toContain("useBusinessEventsForBrand");
+    expect(eventsSource).toContain("useBusinessEventsForBrand");
+    expect(detailSource).toContain("useManagedEventRoute");
+    expect(editSource).toContain("useBusinessEventById");
+    expect(editSource).toContain("disableLocalSaveReason");
+  });
+
+  test("Step 7 never advertises draft placeholder slugs as public links", () => {
+    const source = repoFile("src/components/event/CreatorStep7Preview.tsx");
+
+    expect(source).toContain("Your public link will be created after publish.");
+    expect(source).toContain("!eventSlug.startsWith(\"draft-\")");
+    expect(source).not.toContain("eventSlug={draft.serverSlug}");
+  });
+
+  test("server autosave hydration uses revision-aware draft upserts", () => {
+    const storeSource = repoFile("src/store/draftEventStore.ts");
+    const hookSource = repoFile("src/hooks/useServerDraftEvents.ts");
+    const wizardSource = repoFile("src/components/event/EventCreatorWizard.tsx");
+
+    expect(storeSource).toContain("upsertServerDraft");
+    expect(storeSource).toContain("shouldApplyServerDraft");
+    expect(storeSource).toContain("markDraftDirty");
+    expect(storeSource).toContain("markDraftSaved");
+    expect(hookSource).toContain("upsertServerDrafts");
+    expect(hookSource).toContain("const accepted = upsertServerDraft(draft)");
+    expect(wizardSource).toContain("clientRevisionRef.current + 1");
+    expect(wizardSource).toContain("markDraftDirty(liveDraft.id, nextRevision)");
+  });
+
+  test("server-backed event detail lifecycle actions are honest unavailable states", () => {
+    const detailSource = repoFile("app/event/[id]/index.tsx");
+    const eventsSource = repoFile("app/(tabs)/events.tsx");
+    const menuSource = repoFile("src/components/event/EventManageMenu.tsx");
+
+    expect(menuSource).toContain("canUseLifecycleActions");
+    expect(detailSource).toContain("Server event lifecycle changes are not available yet.");
+    expect(detailSource).toContain("Server event cancellation is not available yet.");
+    expect(detailSource).toContain("canUseLifecycleActions={!isServerBackedEvent}");
+    expect(eventsSource).toContain("serverBackedEventIds");
+    expect(eventsSource).toContain("Server event lifecycle changes are not available yet.");
+  });
+
+  test("server-backed management subroutes use shared event route recovery", () => {
+    const files = [
+      "app/event/[id]/orders/index.tsx",
+      "app/event/[id]/orders/[oid]/index.tsx",
+      "app/event/[id]/guests/index.tsx",
+      "app/event/[id]/guests/[guestId].tsx",
+      "app/event/[id]/scanner/index.tsx",
+      "app/event/[id]/scanners/index.tsx",
+      "app/event/[id]/door/index.tsx",
+      "app/event/[id]/door/[saleId].tsx",
+      "app/event/[id]/reconciliation.tsx",
+    ];
+
+    for (const file of files) {
+      const source = repoFile(file);
+      expect(source).toContain("useManagedEventRoute");
+      expect(source).toContain("replacementEventId");
+      expect(source).toContain("Loading event...");
+      expect(source).not.toContain("useLiveEventStore");
+    }
   });
 
   test("buyer-facing public routes use server-backed public hooks", () => {

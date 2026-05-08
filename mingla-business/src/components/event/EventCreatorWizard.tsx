@@ -61,7 +61,6 @@ import {
   type ValidationError,
 } from "../../utils/draftEventValidation";
 import { isDraftEventPristine } from "../../utils/draftEventPristine";
-import { canConvertDraftToLiveEvent } from "../../utils/liveEventConverter";
 import { expandRecurrenceToDates } from "../../utils/recurrenceRule";
 
 import { Button } from "../ui/Button";
@@ -126,7 +125,7 @@ export interface EventCreatorWizardProps {
   onOpenStripeOnboard: () => void;
   onAutosaveDraft?: (draft: DraftEvent) => void;
   onDiscardServerDraft?: (draft: DraftEvent) => Promise<void>;
-  onBeforeLocalPublish?: (draft: DraftEvent) => Promise<void>;
+  onPublishDraft?: (draft: DraftEvent) => Promise<PublishedEventSlug>;
   serverSaveState?: {
     isSaving: boolean;
     hasError: boolean;
@@ -149,7 +148,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   onOpenStripeOnboard,
   onAutosaveDraft,
   onDiscardServerDraft,
-  onBeforeLocalPublish,
+  onPublishDraft,
   serverSaveState,
 }) => {
   const insets = useSafeAreaInsets();
@@ -163,7 +162,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const updateDraft = useDraftEventStore((s) => s.updateDraft);
   const setLastStep = useDraftEventStore((s) => s.setLastStep);
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
-  const publishDraft = useDraftEventStore((s) => s.publishDraft);
+  const beginDraftEdit = useDraftEventStore((s) => s.beginDraftEdit);
+  const endDraftEdit = useDraftEventStore((s) => s.endDraftEdit);
+  const markDraftDirty = useDraftEventStore((s) => s.markDraftDirty);
 
   const [currentStep, setCurrentStep] = useState<number>(() => {
     const fallback = liveDraft.lastStepReached;
@@ -185,11 +186,46 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
   const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
   const latestDraftRef = useRef<DraftEvent>(liveDraft);
+  const clientRevisionRef = useRef<number>(liveDraft.clientRevision ?? 0);
   const lastStepSyncKeyRef = useRef<string | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     latestDraftRef.current = liveDraft;
+    clientRevisionRef.current = Math.max(
+      clientRevisionRef.current,
+      liveDraft.clientRevision ?? 0,
+    );
   }, [liveDraft]);
+
+  useEffect(() => {
+    beginDraftEdit(initialDraft.id);
+    return (): void => {
+      endDraftEdit(initialDraft.id);
+    };
+  }, [beginDraftEdit, endDraftEdit, initialDraft.id]);
+
+  useEffect(() => {
+    return (): void => {
+      if (autosaveTimerRef.current !== null) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  const queueAutosave = useCallback(
+    (draft: DraftEvent): void => {
+      if (onAutosaveDraft === undefined) return;
+      if (autosaveTimerRef.current !== null) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+      autosaveTimerRef.current = setTimeout(() => {
+        autosaveTimerRef.current = null;
+        onAutosaveDraft(draft);
+      }, 700);
+    },
+    [onAutosaveDraft],
+  );
 
   // ScrollView ref — exposed to step bodies via `scrollToBottom`
   // callback. Bottom-most multiline inputs (Step 1 Description) call
@@ -278,12 +314,24 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     if (base.lastStepReached >= currentStep) {
       return;
     }
-    onAutosaveDraft?.({
+    const nextRevision = clientRevisionRef.current + 1;
+    clientRevisionRef.current = nextRevision;
+    markDraftDirty(liveDraft.id, nextRevision);
+    updateDraft(liveDraft.id, { clientRevision: nextRevision });
+    queueAutosave({
       ...base,
       lastStepReached: nextLastStep,
+      clientRevision: nextRevision,
       updatedAt: new Date().toISOString(),
     });
-  }, [currentStep, liveDraft.id, onAutosaveDraft, setLastStep]);
+  }, [
+    currentStep,
+    liveDraft.id,
+    markDraftDirty,
+    queueAutosave,
+    setLastStep,
+    updateDraft,
+  ]);
 
   // One-shot timezone auto-detect for legacy drafts (those created before
   // Cycle 3 rework v2 Fix #4 was shipped — they hold the hardcoded
@@ -309,14 +357,23 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
 
   const handleUpdate = useCallback(
     (patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>): void => {
-      updateDraft(liveDraft.id, patch);
-      onAutosaveDraft?.({
-        ...liveDraft,
+      const nextRevision = clientRevisionRef.current + 1;
+      clientRevisionRef.current = nextRevision;
+      const revisionedPatch = {
         ...patch,
+        clientRevision: nextRevision,
+      };
+      markDraftDirty(liveDraft.id, nextRevision);
+      updateDraft(liveDraft.id, revisionedPatch);
+      const nextDraft = {
+        ...liveDraft,
+        ...revisionedPatch,
         updatedAt: new Date().toISOString(),
-      });
+      };
+      latestDraftRef.current = nextDraft;
+      queueAutosave(nextDraft);
     },
-    [liveDraft, onAutosaveDraft, updateDraft],
+    [liveDraft, markDraftDirty, queueAutosave, updateDraft],
   );
 
   const handleShowToast = useCallback((message: string): void => {
@@ -445,44 +502,36 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     const draftName = liveDraft.name;
     // Simulated 1.2s submit per spec AC#28.
     await new Promise<void>((resolve) => setTimeout(resolve, 1200));
-    if (!canConvertDraftToLiveEvent(liveDraft)) {
+    if (onPublishDraft === undefined) {
       setIsPublishing(false);
       setPublishConfirmVisible(false);
       handleShowToast("Could not publish this draft yet. Try again.");
       return;
     }
+    const draftToPublish = latestDraftRef.current;
     try {
-      await onBeforeLocalPublish?.(liveDraft);
+      if (autosaveTimerRef.current !== null) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+      const slug = await onPublishDraft(draftToPublish);
+      deleteDraft(draftToPublish.id);
+      setIsPublishing(false);
+      setPublishConfirmVisible(false);
+      onExit("published", {
+        name: draftName,
+        slug,
+      });
     } catch {
       setIsPublishing(false);
       setPublishConfirmVisible(false);
       handleShowToast("Could not save this publish. Try again.");
-      return;
-    }
-    // Cycle 6 — publishDraft now returns the new LiveEvent so we can
-    // navigate to its public URL. Falls back to old behavior if the
-    // publish failed (brand missing) — caller stays on Step 7.
-    const liveEvent = publishDraft(liveDraft.id);
-    setIsPublishing(false);
-    setPublishConfirmVisible(false);
-    if (liveEvent !== null) {
-      onExit("published", {
-        name: draftName,
-        slug: {
-          brandSlug: liveEvent.brandSlug,
-          eventSlug: liveEvent.eventSlug,
-        },
-      });
-    } else {
-      // Publish failed — preserve draft, signal abandoned with current name
-      // so the route handler shows a friendly toast.
-      onExit("abandoned", { name: draftName });
     }
   }, [
     liveDraft,
-    publishDraft,
     onExit,
-    onBeforeLocalPublish,
+    onPublishDraft,
+    deleteDraft,
     handleShowToast,
   ]);
 
