@@ -55,9 +55,12 @@ function isValidUuid(s: unknown): s is string {
 
 interface AccountResponse {
   id: string;
+  details_submitted?: boolean;
   charges_enabled?: boolean;
   payouts_enabled?: boolean;
   requirements?: Record<string, unknown>;
+  country?: string;
+  default_currency?: string;
 }
 
 serve(async (req) => {
@@ -128,7 +131,7 @@ serve(async (req) => {
     // Read existing stripe_connect_accounts row
     const { data: scaRow, error: scaReadError } = await supabase
       .from("stripe_connect_accounts")
-      .select("stripe_account_id, charges_enabled, payouts_enabled, requirements, detached_at")
+      .select("stripe_account_id, charges_enabled, payouts_enabled, requirements, detached_at, country, default_currency")
       .eq("brand_id", brand_id)
       .maybeSingle();
     if (scaReadError) {
@@ -146,6 +149,10 @@ serve(async (req) => {
         payouts_enabled: false,
         requirements: {},
         detached_at: null,
+        stripe_account_id: null,
+        country: null,
+        default_currency: null,
+        details_submitted: false,
       });
     }
 
@@ -232,6 +239,11 @@ serve(async (req) => {
       payouts_enabled: account.payouts_enabled ?? false,
       requirements: account.requirements ?? {},
       detached_at: scaRow.detached_at,
+      stripe_account_id: scaRow.stripe_account_id,
+      country: account.country ?? scaRow.country ?? null,
+      default_currency: account.default_currency ?? scaRow.default_currency ??
+        null,
+      details_submitted: account.details_submitted ?? false,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

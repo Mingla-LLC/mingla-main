@@ -32,6 +32,31 @@ export interface RefreshStatusResult {
   payouts_enabled: boolean;
   requirements: Record<string, unknown>;
   detached_at: string | null;
+  stripe_account_id?: string | null;
+  country?: string | null;
+  default_currency?: string | null;
+  details_submitted?: boolean;
+}
+
+export class BrandStripeCountryLockedError extends Error {
+  readonly code = "country_locked";
+  readonly existingCountry: string | null;
+  readonly requestedCountry: string | null;
+  readonly reason: string | null;
+
+  constructor(input: {
+    existingCountry?: string | null;
+    requestedCountry?: string | null;
+    reason?: string | null;
+  }) {
+    super(
+      `Stripe is connected for ${input.existingCountry ?? "this country"}. To use a different country or currency, create a new brand.`,
+    );
+    this.name = "BrandStripeCountryLockedError";
+    this.existingCountry = input.existingCountry ?? null;
+    this.requestedCountry = input.requestedCountry ?? null;
+    this.reason = input.reason ?? null;
+  }
 }
 
 type SupabaseFunctionError = Error & {
@@ -56,6 +81,25 @@ function formatFunctionErrorPayload(payload: unknown): string | null {
   return detail ?? error;
 }
 
+function mapFunctionErrorPayload(payload: unknown): Error | null {
+  if (!isRecord(payload)) return null;
+  if (payload.error === "country_locked") {
+    return new BrandStripeCountryLockedError({
+      existingCountry:
+        typeof payload.existing_country === "string"
+          ? payload.existing_country
+          : null,
+      requestedCountry:
+        typeof payload.requested_country === "string"
+          ? payload.requested_country
+          : null,
+      reason: typeof payload.reason === "string" ? payload.reason : null,
+    });
+  }
+  const formatted = formatFunctionErrorPayload(payload);
+  return formatted ? new Error(formatted) : null;
+}
+
 function shouldLogDiagnostics(): boolean {
   return typeof __DEV__ !== "undefined" && __DEV__ === true;
 }
@@ -70,20 +114,18 @@ async function unwrapFunctionError(
 
   try {
     const payload = response.json ? await response.json() : null;
-    const formatted = formatFunctionErrorPayload(payload);
     if (shouldLogDiagnostics()) {
-      // eslint-disable-next-line no-console
       console.error(`[${functionName}] edge function failed`, {
         status: functionError.context?.status,
         payload,
       });
     }
-    if (formatted) return new Error(formatted);
+    const mapped = mapFunctionErrorPayload(payload);
+    if (mapped) return mapped;
   } catch {
     try {
       const text = response.text ? await response.text() : "";
       if (shouldLogDiagnostics()) {
-        // eslint-disable-next-line no-console
         console.error(`[${functionName}] edge function failed`, {
           status: functionError.context?.status,
           body: text,

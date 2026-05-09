@@ -4,12 +4,11 @@
  * Renders four states based on `brand.stripeStatus`:
  *   - not_connected → orange Connect banner + £0 KPIs + empty payouts + Export
  *   - onboarding → orange Verifying banner + £0 KPIs + empty + Export
- *   - active → NO banner + populated KPIs + payouts + refunds + Export
+ *   - active → green connected banner + populated KPIs + payouts + refunds + Export
  *   - restricted → red Action Required banner + £0/historical KPIs + payouts + Export
  *
  * Status-driven banner via `Record<BrandStripeStatus, BannerConfig | null>`
- * table — `null` = suppressed (the active state's affirmative signal IS
- * the populated KPIs, not a green "all good" banner).
+ * table. ORCH-0764C changed active from suppressed to explicit success banner.
  *
  * Inline composition (DEC-079 closure):
  *   - formatGbp (D-INV-A10-2 watch-point — THRESHOLD HIT, defer lift to J-A12)
@@ -56,9 +55,10 @@ import { BrandStripeOrphanedRefundsSection } from "./BrandStripeOrphanedRefundsS
 import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { getEffectiveBrandStripeStatus } from "../../utils/stripeOnboardingOutcome";
+import { ACTIVE_STRIPE_BANNER_TITLE } from "../../utils/brandStripeUiState";
 
-// Status-banner config table. `null` entry suppresses the banner entirely
-// (active state's affirmative signal is the populated KPIs).
+// Status-banner config table. ORCH-0764C requires active to render a visible
+// success confirmation; only truly unsupported statuses would be suppressed.
 // W-1 watch-point: kit lacks `alert`/`info` icons; restricted state uses
 // `flag` (action-needed connotation) + semantic.error coloring.
 
@@ -67,9 +67,10 @@ interface BannerConfig {
   iconColor: string;
   title: string;
   sub: string;
-  ctaLabel: string;
-  ctaVariant: "primary" | "destructive";
+  ctaLabel: string | null;
+  ctaVariant: "primary" | "destructive" | null;
   destructive: boolean;
+  success?: boolean;
 }
 
 const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
@@ -91,7 +92,16 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     ctaVariant: "primary",
     destructive: false,
   },
-  active: null,
+  active: {
+    icon: "check",
+    iconColor: semantic.success,
+    title: ACTIVE_STRIPE_BANNER_TITLE,
+    sub: "Payments are ready for this brand.",
+    ctaLabel: null,
+    ctaVariant: null,
+    destructive: false,
+    success: true,
+  },
   restricted: {
     icon: "flag", // W-1: alert/info absent in kit; flag = action-needed
     iconColor: semantic.error,
@@ -235,18 +245,22 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* SECTION A — Status Banner (suppressed when active) */}
+        {/* SECTION A — Status Banner */}
         {bannerConfig !== null ? (
           <GlassCard
             variant="base"
             padding={spacing.md}
-            style={bannerConfig.destructive ? styles.bannerDestructive : undefined}
+            style={[
+              bannerConfig.destructive ? styles.bannerDestructive : null,
+              bannerConfig.success ? styles.bannerSuccess : null,
+            ]}
           >
             <View style={styles.bannerRow}>
               <View
                 style={[
                   styles.bannerIconWrap,
                   bannerConfig.destructive && styles.bannerIconWrapDestructive,
+                  bannerConfig.success && styles.bannerIconWrapSuccess,
                 ]}
               >
                 <Icon
@@ -260,16 +274,18 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                 <Text style={styles.bannerSub}>{bannerConfig.sub}</Text>
               </View>
             </View>
-            <View style={styles.bannerCtaRow}>
-              <Button
-                label={bannerConfig.ctaLabel}
-                onPress={onOpenOnboard}
-                variant={bannerConfig.ctaVariant}
-                size="md"
-                fullWidth
-                accessibilityLabel={bannerConfig.ctaLabel}
-              />
-            </View>
+            {bannerConfig.ctaLabel !== null && bannerConfig.ctaVariant !== null ? (
+              <View style={styles.bannerCtaRow}>
+                <Button
+                  label={bannerConfig.ctaLabel}
+                  onPress={onOpenOnboard}
+                  variant={bannerConfig.ctaVariant}
+                  size="md"
+                  fullWidth
+                  accessibilityLabel={bannerConfig.ctaLabel}
+                />
+              </View>
+            ) : null}
           </GlassCard>
         ) : null}
 
@@ -482,6 +498,10 @@ const styles = StyleSheet.create({
     borderColor: "rgba(239, 68, 68, 0.45)", // Pill error border style
     borderWidth: 1,
   },
+  bannerSuccess: {
+    borderColor: "rgba(34, 197, 94, 0.45)",
+    borderWidth: 1,
+  },
   bannerRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -500,6 +520,10 @@ const styles = StyleSheet.create({
   bannerIconWrapDestructive: {
     backgroundColor: semantic.errorTint,
     borderColor: "rgba(239, 68, 68, 0.45)",
+  },
+  bannerIconWrapSuccess: {
+    backgroundColor: semantic.successTint,
+    borderColor: "rgba(34, 197, 94, 0.45)",
   },
   bannerTextCol: {
     flex: 1,

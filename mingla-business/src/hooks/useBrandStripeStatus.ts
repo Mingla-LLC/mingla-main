@@ -23,6 +23,7 @@ import {
   refreshBrandStripeStatus,
   type RefreshStatusResult,
 } from "../services/brandStripeService";
+import { brandKeys } from "./useBrands";
 
 const STALE_TIME_MS = 30 * 1000; // 30s — matches webhook + poll fallback per D-B2-11
 
@@ -67,7 +68,10 @@ export function useBrandStripeStatus(
           // Also invalidate brand detail to refresh derived stripeStatus
           // populated by mapBrandRowToUi from the cache columns
           queryClient.invalidateQueries({
-            queryKey: ["brands", "detail", brandId],
+            queryKey: brandKeys.detail(brandId),
+          });
+          queryClient.invalidateQueries({
+            queryKey: brandKeys.lists(),
           });
         },
       )

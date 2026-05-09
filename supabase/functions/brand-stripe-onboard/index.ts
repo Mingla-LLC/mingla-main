@@ -27,6 +27,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { generateIdempotencyKey } from "../_shared/idempotency.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import {
+  stripeDetach,
+  stripeRefreshStatus,
+} from "../_shared/stripe.ts";
+import {
+  buildStripeOnboardCreateOperation,
+  buildStripeOnboardLinkOperation,
+  decideStripeCountryReplacement,
+} from "../_shared/stripeCountryReplacement.ts";
+import {
   defaultCurrencyForCountry,
   normalizeStripeCountry,
 } from "../_shared/stripeSupportedCountries.ts";
@@ -90,6 +99,31 @@ interface JwtClaims {
   exp?: number;
 }
 
+interface ExistingScaRow {
+  id: string;
+  stripe_account_id: string | null;
+  detached_at: string | null;
+  country: string | null;
+  default_currency: string | null;
+  charges_enabled: boolean | null;
+  payouts_enabled: boolean | null;
+  requirements: Record<string, unknown> | null;
+}
+
+interface BrandRow {
+  name: unknown;
+  contact_email: unknown;
+  default_currency?: unknown;
+}
+
+interface StripeAccountState {
+  id: string;
+  details_submitted?: boolean | null;
+  charges_enabled?: boolean | null;
+  payouts_enabled?: boolean | null;
+  requirements?: Record<string, unknown> | null;
+}
+
 async function decodeAndVerifyJwt(
   token: string,
 ): Promise<JwtClaims | null> {
@@ -134,6 +168,76 @@ function safeContactEmail(
     return userEmail.trim();
   }
   return "support@usemingla.com";
+}
+
+function isNonEmptyRows(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0;
+}
+
+async function hasLocalMoneyMovement(
+  supabase: any,
+  brandId: string,
+  stripeAccountId: string,
+): Promise<boolean> {
+  const { data: payoutsRows, error: payoutsError } = await supabase
+    .from("payouts")
+    .select("id")
+    .eq("brand_id", brandId)
+    .limit(1);
+  if (payoutsError) throw payoutsError;
+  if (isNonEmptyRows(payoutsRows)) return true;
+
+  const { data: revenueRows, error: revenueError } = await supabase
+    .from("mingla_revenue_log")
+    .select("id")
+    .eq("stripe_account_id", stripeAccountId)
+    .limit(1);
+  if (revenueError) throw revenueError;
+  if (isNonEmptyRows(revenueRows)) return true;
+
+  const { data: eventRows, error: eventsError } = await supabase
+    .from("events")
+    .select("id")
+    .eq("brand_id", brandId)
+    .limit(1000);
+  if (eventsError) throw eventsError;
+  const eventIds = Array.isArray(eventRows)
+    ? eventRows.map((row: { id?: unknown }) => row.id).filter((
+      id: unknown,
+    ): id is string => typeof id === "string")
+    : [];
+  if (eventIds.length === 0) return false;
+
+  const { data: orderRows, error: ordersError } = await supabase
+    .from("orders")
+    .select("id")
+    .in("event_id", eventIds)
+    .or("stripe_payment_intent_id.not.is.null,stripe_charge_id.not.is.null")
+    .limit(1);
+  if (ordersError) throw ordersError;
+  return isNonEmptyRows(orderRows);
+}
+
+async function retrieveStripeAccountState(
+  stripeAccountId: string,
+): Promise<StripeAccountState> {
+  const stripe = stripeRefreshStatus();
+  // @ts-ignore — Stripe SDK accounts namespace.
+  return await stripe.accounts.retrieve(stripeAccountId) as StripeAccountState;
+}
+
+async function deleteReplaceableStripeAccount(
+  brandId: string,
+  stripeAccountId: string,
+): Promise<unknown> {
+  const stripe = stripeDetach();
+  // @ts-ignore — Stripe SDK accounts namespace + request options overload.
+  return await stripe.accounts.del(stripeAccountId, undefined, {
+    idempotencyKey: generateIdempotencyKey(
+      brandId,
+      `detach_account:${stripeAccountId}`,
+    ),
+  });
 }
 
 serve(async (req) => {
@@ -229,80 +333,64 @@ serve(async (req) => {
     // Read existing stripe_connect_accounts row for brand_id.
     const { data: existingSca, error: scaReadError } = await supabase
       .from("stripe_connect_accounts")
-      .select("id, stripe_account_id, detached_at, country, default_currency")
+      .select(
+        "id, stripe_account_id, detached_at, country, default_currency, charges_enabled, payouts_enabled, requirements",
+      )
       .eq("brand_id", brand_id)
-      .maybeSingle();
+      .maybeSingle<ExistingScaRow>();
     if (scaReadError) {
       console.error("[brand-stripe-onboard] sca read failed:", scaReadError);
       return jsonResponse({ error: "internal_error" }, 500);
     }
 
+    // Read brand details for replacement/fresh creation.
+    const { data: brandRow, error: brandReadError } = await supabase
+      .from("brands")
+      .select("name, contact_email, default_currency")
+      .eq("id", brand_id)
+      .is("deleted_at", null)
+      .maybeSingle<BrandRow>();
+    if (brandReadError) {
+      console.error(
+        "[brand-stripe-onboard] brand read failed:",
+        brandReadError,
+      );
+      return jsonResponse({ error: "internal_error" }, 500);
+    }
+    if (!brandRow) {
+      return jsonResponse(
+        { error: "validation_error", detail: "brand_not_found" },
+        400,
+      );
+    }
+
     let stripeAccountId: string;
     let scaRowId: string | null = null;
+    let replacementAudit:
+      | {
+        oldStripeAccountId: string;
+        oldCountry: string | null;
+        oldChargesEnabled: boolean | null;
+        oldPayoutsEnabled: boolean | null;
+        oldRequirementsDisabledReason: unknown;
+        stripeDeleteResult: unknown;
+      }
+      | null = null;
 
-    if (existingSca?.stripe_account_id) {
-      // V2 reactivation: reuse Stripe account and clear the local soft detach.
-      stripeAccountId = existingSca.stripe_account_id;
-      scaRowId = existingSca.id;
-      if (
-        existingSca.detached_at !== null &&
-        existingSca.detached_at !== undefined
-      ) {
-        const { error: reactivateError } = await supabase
-          .from("stripe_connect_accounts")
-          .update({
-            detached_at: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existingSca.id);
-        if (reactivateError) {
-          console.error(
-            "[brand-stripe-onboard] reactivation update failed:",
-            reactivateError,
-          );
-          return jsonResponse({ error: "internal_error" }, 500);
-        }
-        await writeAudit(supabase, {
-          user_id: userId,
-          brand_id,
-          action: "stripe_connect.reactivated",
-          target_type: "stripe_connect_account",
-          target_id: stripeAccountId,
-          before: { detached_at: existingSca.detached_at },
-          after: { detached_at: null },
-        });
-      }
-    } else {
-      // Read brand details for currency, display name, and contact email.
-      const { data: brandRow, error: brandReadError } = await supabase
-        .from("brands")
-        .select("name, contact_email, default_currency")
-        .eq("id", brand_id)
-        .is("deleted_at", null)
-        .maybeSingle();
-      if (brandReadError) {
-        console.error(
-          "[brand-stripe-onboard] brand read failed:",
-          brandReadError,
-        );
-        return jsonResponse({ error: "internal_error" }, 500);
-      }
-      if (!brandRow) {
-        return jsonResponse(
-          { error: "validation_error", detail: "brand_not_found" },
-          400,
-        );
-      }
+    const createAndPersistStripeAccount = async (
+      oldStripeAccountId: string | null,
+    ): Promise<{ id: string; scaRowId: string }> => {
       const defaultCurrency = defaultCurrencyForCountry(country);
-
-      // Create Stripe Accounts v2 recipient account.
       let stripeAccount: { id: string };
       try {
         stripeAccount = await createRecipientAccount({
           displayName: safeDisplayName(brandRow.name),
           contactEmail: safeContactEmail(brandRow.contact_email, claims.email),
           country,
-          idempotencyKey: generateIdempotencyKey(brand_id, "onboard_create"),
+          idempotencyKey: generateIdempotencyKey(
+            brand_id,
+            buildStripeOnboardCreateOperation(country, oldStripeAccountId),
+          ),
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -310,45 +398,301 @@ serve(async (req) => {
           "[brand-stripe-onboard] v2 account create failed:",
           message,
         );
-        return jsonResponse(
-          { error: "stripe_api_error", detail: message },
-          502,
-        );
+        throw new Error(`stripe_api_error:${message}`);
       }
-      stripeAccountId = stripeAccount.id;
 
-      // Insert stripe_connect_accounts row (ON CONFLICT handles race).
-      const { data: scaInsert, error: scaInsertError } = await supabase
+      const { data: scaUpsert, error: scaUpsertError } = await supabase
         .from("stripe_connect_accounts")
         .upsert(
           {
             brand_id,
-            stripe_account_id: stripeAccountId,
+            stripe_account_id: stripeAccount.id,
             controller_dashboard_type: "express",
             charges_enabled: false,
             payouts_enabled: false,
             requirements: {},
             country,
             default_currency: defaultCurrency,
+            detached_at: null,
+            updated_at: new Date().toISOString(),
           },
           { onConflict: "brand_id" },
         )
         .select("id, stripe_account_id")
         .single();
-      if (scaInsertError || !scaInsert) {
+      if (scaUpsertError || !scaUpsert) {
         console.error(
-          "[brand-stripe-onboard] sca insert failed:",
-          scaInsertError,
+          "[brand-stripe-onboard] sca upsert failed:",
+          scaUpsertError,
         );
+        throw new Error("internal_error:sca_upsert_failed");
+      }
+
+      return {
+        id: scaUpsert.stripe_account_id,
+        scaRowId: scaUpsert.id,
+      };
+    };
+
+    if (existingSca?.stripe_account_id) {
+      const existingCountry = normalizeStripeCountry(existingSca.country);
+      const countryMatches = existingCountry === country;
+
+      if (countryMatches) {
+        // Same-country reactivation: reuse Stripe account and clear local soft detach.
+        stripeAccountId = existingSca.stripe_account_id;
+        scaRowId = existingSca.id;
+        if (
+          existingSca.detached_at !== null &&
+          existingSca.detached_at !== undefined
+        ) {
+          const { error: reactivateError } = await supabase
+            .from("stripe_connect_accounts")
+            .update({
+              detached_at: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existingSca.id);
+          if (reactivateError) {
+            console.error(
+              "[brand-stripe-onboard] reactivation update failed:",
+              reactivateError,
+            );
+            return jsonResponse({ error: "internal_error" }, 500);
+          }
+          await writeAudit(supabase, {
+            user_id: userId,
+            brand_id,
+            action: "stripe_connect.reactivated",
+            target_type: "stripe_connect_account",
+            target_id: stripeAccountId,
+            before: { detached_at: existingSca.detached_at },
+            after: { detached_at: null },
+          });
+        }
+      } else if (existingSca.detached_at !== null) {
+        try {
+          const created = await createAndPersistStripeAccount(
+            existingSca.stripe_account_id,
+          );
+          stripeAccountId = created.id;
+          scaRowId = created.scaRowId;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (message.startsWith("stripe_api_error:")) {
+            return jsonResponse(
+              {
+                error: "stripe_api_error",
+                detail: message.replace("stripe_api_error:", ""),
+              },
+              502,
+            );
+          }
+          return jsonResponse(
+            { error: "internal_error", detail: "sca_upsert_failed" },
+            500,
+          );
+        }
+      } else {
+        let accountState: StripeAccountState;
+        let localMoneyMovement = false;
+        try {
+          accountState = await retrieveStripeAccountState(
+            existingSca.stripe_account_id,
+          );
+          localMoneyMovement = await hasLocalMoneyMovement(
+            supabase,
+            brand_id,
+            existingSca.stripe_account_id,
+          );
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(
+            "[brand-stripe-onboard] replacement preflight failed:",
+            message,
+          );
+          await writeAudit(supabase, {
+            user_id: userId,
+            brand_id,
+            action: "stripe_connect.country_change_locked",
+            target_type: "stripe_connect_account",
+            target_id: existingSca.stripe_account_id,
+            before: {
+              country: existingSca.country,
+              requested_country: country,
+            },
+            after: { reason: "stripe_state_unknown" },
+          });
+          return jsonResponse(
+            {
+              error: "country_locked",
+              detail: "stripe_account_country_locked_after_onboarding",
+              existing_country: existingSca.country,
+              requested_country: country,
+              reason: "stripe_state_unknown",
+            },
+            409,
+          );
+        }
+
+        const replacementDecision = decideStripeCountryReplacement({
+          details_submitted: accountState.details_submitted,
+          charges_enabled: accountState.charges_enabled ??
+            existingSca.charges_enabled,
+          payouts_enabled: accountState.payouts_enabled ??
+            existingSca.payouts_enabled,
+          hasLocalMoneyMovement: localMoneyMovement,
+          stripeStateKnown: true,
+        });
+
+        if (!replacementDecision.replaceable) {
+          await writeAudit(supabase, {
+            user_id: userId,
+            brand_id,
+            action: "stripe_connect.country_change_locked",
+            target_type: "stripe_connect_account",
+            target_id: existingSca.stripe_account_id,
+            before: {
+              country: existingSca.country,
+              charges_enabled: existingSca.charges_enabled,
+              payouts_enabled: existingSca.payouts_enabled,
+              requirements_disabled_reason:
+                existingSca.requirements?.disabled_reason ?? null,
+            },
+            after: {
+              requested_country: country,
+              reason: replacementDecision.reason,
+            },
+          });
+          return jsonResponse(
+            {
+              error: "country_locked",
+              detail: "stripe_account_country_locked_after_onboarding",
+              existing_country: existingSca.country,
+              requested_country: country,
+              reason: replacementDecision.reason,
+            },
+            409,
+          );
+        }
+
+        let deleteResult: unknown;
+        try {
+          deleteResult = await deleteReplaceableStripeAccount(
+            brand_id,
+            existingSca.stripe_account_id,
+          );
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(
+            "[brand-stripe-onboard] replacement delete failed:",
+            message,
+          );
+          await writeAudit(supabase, {
+            user_id: userId,
+            brand_id,
+            action: "stripe_connect.country_change_locked",
+            target_type: "stripe_connect_account",
+            target_id: existingSca.stripe_account_id,
+            before: {
+              country: existingSca.country,
+              charges_enabled: existingSca.charges_enabled,
+              payouts_enabled: existingSca.payouts_enabled,
+            },
+            after: {
+              requested_country: country,
+              reason: "stripe_delete_rejected",
+            },
+          });
+          return jsonResponse(
+            {
+              error: "country_locked",
+              detail: "stripe_account_country_locked_after_onboarding",
+              existing_country: existingSca.country,
+              requested_country: country,
+              reason: "stripe_delete_rejected",
+            },
+            409,
+          );
+        }
+
+        try {
+          const created = await createAndPersistStripeAccount(
+            existingSca.stripe_account_id,
+          );
+          stripeAccountId = created.id;
+          scaRowId = created.scaRowId;
+          replacementAudit = {
+            oldStripeAccountId: existingSca.stripe_account_id,
+            oldCountry: existingSca.country,
+            oldChargesEnabled: existingSca.charges_enabled,
+            oldPayoutsEnabled: existingSca.payouts_enabled,
+            oldRequirementsDisabledReason:
+              existingSca.requirements?.disabled_reason ?? null,
+            stripeDeleteResult: deleteResult,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (message.startsWith("stripe_api_error:")) {
+            return jsonResponse(
+              {
+                error: "stripe_api_error",
+                detail: message.replace("stripe_api_error:", ""),
+              },
+              502,
+            );
+          }
+          return jsonResponse(
+            { error: "internal_error", detail: "sca_upsert_failed" },
+            500,
+          );
+        }
+      }
+    } else {
+      try {
+        const created = await createAndPersistStripeAccount(null);
+        stripeAccountId = created.id;
+        scaRowId = created.scaRowId;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.startsWith("stripe_api_error:")) {
+          return jsonResponse(
+            {
+              error: "stripe_api_error",
+              detail: message.replace("stripe_api_error:", ""),
+            },
+            502,
+          );
+        }
         return jsonResponse(
-          { error: "internal_error", detail: "sca_insert_failed" },
+          { error: "internal_error", detail: "sca_upsert_failed" },
           500,
         );
       }
-      // If a race occurred, the upsert returns the existing row's account_id
-      // which Stripe's idempotency-key ensured is the SAME account we just created.
-      stripeAccountId = scaInsert.stripe_account_id;
-      scaRowId = scaInsert.id;
+    }
+
+    if (replacementAudit !== null) {
+      await writeAudit(supabase, {
+        user_id: userId,
+        brand_id,
+        action: "stripe_connect.country_change_replaced_before_completion",
+        target_type: "stripe_connect_account",
+        target_id: stripeAccountId,
+        before: {
+          stripe_account_id: replacementAudit.oldStripeAccountId,
+          country: replacementAudit.oldCountry,
+          charges_enabled: replacementAudit.oldChargesEnabled,
+          payouts_enabled: replacementAudit.oldPayoutsEnabled,
+          requirements_disabled_reason:
+            replacementAudit.oldRequirementsDisabledReason,
+        },
+        after: {
+          stripe_account_id: stripeAccountId,
+          country,
+          default_currency: defaultCurrencyForCountry(country),
+          stripe_delete_result: replacementAudit.stripeDeleteResult,
+        },
+      });
     }
 
     // Create hosted Account Link.
@@ -360,9 +704,7 @@ serve(async (req) => {
         returnUrl: buildStripeAccountLinkRedirectUrl(return_url, "return"),
         idempotencyKey: generateIdempotencyKey(
           brand_id,
-          existingSca?.detached_at
-            ? "onboard_reactivate_link"
-            : "onboard_account_link",
+          buildStripeOnboardLinkOperation(country, stripeAccountId),
         ),
       });
     } catch (err) {

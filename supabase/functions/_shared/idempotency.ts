@@ -29,7 +29,7 @@ export type StripeOperation =
 
 export function generateIdempotencyKey(
   brandId: string,
-  operation: StripeOperation,
+  operation: StripeOperation | string,
 ): string {
   if (!brandId || brandId.trim().length === 0) {
     throw new Error("generateIdempotencyKey: brandId required");

@@ -1,4 +1,8 @@
 import type { BrandStripeStatus } from "../store/currentBrandStore";
+import {
+  isStripePendingVerification,
+  type StripeRequirementsShape,
+} from "./stripeOnboardingOutcome";
 
 export interface StripeStatusSettlementResult {
   status?: BrandStripeStatus | null;
@@ -32,7 +36,16 @@ export async function settleStripeStatus<T extends StripeStatusSettlementResult>
     const result = await refetch();
     latest = result.data ?? null;
     const status = latest?.status;
-    if (status === "active" || status === "restricted" || attempt === maxAttempts - 1) {
+    const shouldKeepPolling =
+      status === "restricted" &&
+      isStripePendingVerification(
+        latest?.requirements as StripeRequirementsShape | null | undefined,
+      );
+    if (
+      status === "active" ||
+      (status === "restricted" && !shouldKeepPolling) ||
+      attempt === maxAttempts - 1
+    ) {
       return latest;
     }
     await sleep(intervalMs);

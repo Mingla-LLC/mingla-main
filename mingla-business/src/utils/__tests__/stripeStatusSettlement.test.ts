@@ -44,4 +44,29 @@ describe("settleStripeStatus", () => {
     expect(result?.status).toBe("onboarding");
     expect(calls).toBe(2);
   });
+
+  test("polls through pending verification instead of stopping on it", async () => {
+    const responses = [
+      {
+        status: "restricted" as const,
+        requirements: { disabled_reason: "requirements.pending_verification" },
+      },
+      { status: "active" as const },
+    ];
+    const sleeps: number[] = [];
+
+    const result = await settleStripeStatus(
+      async () => ({ data: responses.shift() }),
+      {
+        maxAttempts: 3,
+        intervalMs: 2000,
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+      },
+    );
+
+    expect(result?.status).toBe("active");
+    expect(sleeps).toEqual([2000]);
+  });
 });

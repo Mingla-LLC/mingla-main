@@ -45,7 +45,7 @@
  * Per J-A10 spec §3.6 + B2a SPEC §4.5.1.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Linking,
@@ -87,6 +87,12 @@ import {
   type StripeRequirementsShape,
 } from "../../utils/stripeOnboardingOutcome";
 import { settleStripeStatus } from "../../utils/stripeStatusSettlement";
+import {
+  getStripeCountryLockedCopy,
+  getStripeCountryReplaceableCopy,
+  isStripeCountryPickerLocked,
+} from "../../utils/brandStripeUiState";
+import { BrandStripeCountryLockedError } from "../../services/brandStripeService";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
@@ -97,6 +103,7 @@ const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}` as const;
 type ViewState =
   | "permission-denied"
   | "checking-status"
+  | "settling-status"
   | "already-active"
   | "idle"
   | "starting"
@@ -156,6 +163,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const queryClient = useQueryClient();
   const onboardMutation = useStartBrandStripeOnboarding();
   const statusQuery = useBrandStripeStatus(brand?.id ?? null);
+  const startInProgressRef = useRef(false);
 
   // Mount-time bypass derivation
   const initialState: ViewState = (() => {
@@ -173,6 +181,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // Defaults to GB to preserve Phase 0 behaviour for unmodified callers.
   // Per SPEC §13 amendment A4 + I-PROPOSED-T (canonical 34-country allowlist).
   const [selectedCountry, setSelectedCountry] = useState<string>(DEFAULT_COUNTRY);
+  const [countryTouched, setCountryTouched] = useState(false);
   // V3 ToS gate: must pass before Stripe onboarding can start (per I-PROPOSED-U).
   // Gate component checks brand_team_members.mingla_tos_accepted_at and either
   // (a) auto-fires onPassed if already accepted, or (b) renders a sheet that
@@ -180,6 +189,35 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const { user } = useAuth();
   const [tosPassed, setTosPassed] = useState(false);
   const handleTosPassed = useCallback((): void => setTosPassed(true), []);
+  const handleCountryChange = useCallback((countryCode: string): void => {
+    setCountryTouched(true);
+    setSelectedCountry(countryCode);
+  }, []);
+
+  const savedStripeCountry = statusQuery.data?.country ?? null;
+  const countryPickerLocked = isStripeCountryPickerLocked({
+    stripeAccountId: statusQuery.data?.stripe_account_id ?? null,
+    status: statusQuery.data?.status ?? brand?.stripeStatus ?? null,
+    detailsSubmitted: statusQuery.data?.details_submitted ?? null,
+    chargesEnabled: statusQuery.data?.charges_enabled ?? null,
+    payoutsEnabled: statusQuery.data?.payouts_enabled ?? null,
+  });
+  const countryPickerHelper =
+    savedStripeCountry !== null &&
+      savedStripeCountry !== selectedCountry &&
+      !countryPickerLocked
+      ? getStripeCountryReplaceableCopy(selectedCountry)
+      : null;
+  const countryPickerWarning = countryPickerLocked
+    ? getStripeCountryLockedCopy(savedStripeCountry ?? selectedCountry)
+    : null;
+  const isCountryLockedError =
+    errorMessage?.includes("create a new brand") === true;
+
+  useEffect(() => {
+    if (countryTouched || savedStripeCountry === null) return;
+    setSelectedCountry(savedStripeCountry);
+  }, [countryTouched, savedStripeCountry]);
 
   const applyOnboardingOutcome = useCallback(
     (outcome: StripeOnboardingOutcome): void => {
@@ -303,7 +341,8 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // ----- Action handlers ------------------------------------------------
 
   const handleStart = useCallback(async (): Promise<void> => {
-    if (brand === null) return;
+    if (brand === null || startInProgressRef.current) return;
+    startInProgressRef.current = true;
     setViewState("starting");
     setErrorMessage(null);
     announceForAccessibility("Creating your Stripe account.");
@@ -324,6 +363,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         result.onboarding_url,
         RETURN_DEEP_LINK,
       );
+
+      setViewState("settling-status");
+      announceForAccessibility("Confirming your Stripe status.");
 
       // Refresh status to determine outcome. Stripe can lag the browser
       // return, so settle briefly before deciding what the user sees.
@@ -358,6 +400,13 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof BrandStripeCountryLockedError) {
+        setViewState("failed-stripe");
+        setErrorMessage(err.message);
+        fireHaptic("warning");
+        announceForAccessibility(err.message);
+        return;
+      }
       // Discriminate network vs Stripe errors
       if (
         message.toLowerCase().includes("stripe_api_error") ||
@@ -371,6 +420,8 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       }
       fireHaptic("error");
       announceForAccessibility("Onboarding failed. Tap try again.");
+    } finally {
+      startInProgressRef.current = false;
     }
   }, [
     applyOnboardingOutcome,
@@ -386,6 +437,12 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     setErrorMessage(null);
     announceForAccessibility("Ready to retry onboarding.");
   }, []);
+
+  useEffect(() => {
+    if (viewState !== "complete-verifying") return;
+    if (statusQuery.data?.status !== "active") return;
+    applyOnboardingOutcome("complete-active");
+  }, [applyOnboardingOutcome, statusQuery.data?.status, viewState]);
 
   const handleDone = useCallback((): void => {
     onAfterDone();
@@ -506,7 +563,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           </>
         ) : null}
 
-        {viewState === "checking-status" ? (
+        {viewState === "checking-status" || viewState === "settling-status" ? (
           <View style={styles.stateBlock}>
             <Spinner size={48} color={accent.warm} />
             <Text style={styles.stateTitle}>Checking Stripe status...</Text>
@@ -548,7 +605,10 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <View style={styles.prereqCard}>
                 <BrandStripeCountryPicker
                   value={selectedCountry}
-                  onChange={setSelectedCountry}
+                  onChange={handleCountryChange}
+                  disabled={countryPickerLocked}
+                  helperText={countryPickerHelper}
+                  warningText={countryPickerWarning}
                 />
               </View>
 
@@ -703,6 +763,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                 variant="primary"
                 size="lg"
                 fullWidth
+                disabled={onboardMutation.isPending}
                 accessibilityLabel="Continue Stripe verification"
               />
               <Button
@@ -823,21 +884,38 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <View style={[styles.stateIconCircle, styles.stateIconCircleFailed]}>
                 <Icon name="flag" size={32} color={semantic.error} />
               </View>
-              <Text style={styles.stateTitle}>Stripe couldn{"’"}t verify</Text>
+              <Text style={styles.stateTitle}>
+                {isCountryLockedError
+                  ? "Stripe is already connected"
+                  : "Stripe couldn't verify"}
+              </Text>
               <Text style={styles.stateSub}>
-                {errorMessage ?? "Stripe needs additional information."} Try
-                again or contact support.
+                {isCountryLockedError
+                  ? errorMessage
+                  : `${errorMessage ?? "Stripe needs additional information."} Try again or contact support.`}
               </Text>
             </View>
             <View style={styles.actionsCol}>
-              <Button
-                label="Try again"
-                onPress={handleTryAgain}
-                variant="primary"
-                size="lg"
-                fullWidth
-                accessibilityLabel="Retry onboarding"
-              />
+              {isCountryLockedError ? null : (
+                <Button
+                  label="Try again"
+                  onPress={handleTryAgain}
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  accessibilityLabel="Retry onboarding"
+                />
+              )}
+              {isCountryLockedError ? (
+                <Button
+                  label="Back to payments"
+                  onPress={handleDone}
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  accessibilityLabel="Back to payments"
+                />
+              ) : null}
               <Pressable
                 onPress={handleSupport}
                 accessibilityLabel="Email Mingla support"

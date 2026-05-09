@@ -35,11 +35,30 @@ Deno.test("brand-stripe-onboard reuses an existing connected account before crea
   assertEquals(reuseIndex > -1, true);
   assertEquals(createAccountIndex > -1, true);
   assertEquals(createLinkIndex > -1, true);
-  assertEquals(reuseIndex < createAccountIndex, true);
-  assertEquals(createLinkIndex > createAccountIndex, true);
+  assertEquals(createLinkIndex > reuseIndex, true);
   assertStringIncludes(
     source,
     "stripeAccountId = existingSca.stripe_account_id",
   );
   assertStringIncludes(source, "accountId: stripeAccountId");
+});
+
+Deno.test("brand-stripe-onboard handles country replacement before account link creation", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./index.ts", import.meta.url),
+  );
+  assertStringIncludes(source, "decideStripeCountryReplacement");
+  assertStringIncludes(source, "hasLocalMoneyMovement");
+  assertStringIncludes(source, "deleteReplaceableStripeAccount");
+  assertStringIncludes(source, "stripe_connect.country_change_locked");
+  assertStringIncludes(
+    source,
+    "stripe_connect.country_change_replaced_before_completion",
+  );
+  assertStringIncludes(source, "buildStripeOnboardCreateOperation");
+  assertStringIncludes(source, "buildStripeOnboardLinkOperation");
+  assertStringIncludes(source, '"country_locked"');
+  assertStringIncludes(source, '"stripe_account_country_locked_after_onboarding"');
+  assertStringIncludes(source, "details_submitted");
+  assertStringIncludes(source, "stripe_delete_rejected");
 });

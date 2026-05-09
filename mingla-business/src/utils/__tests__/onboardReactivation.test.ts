@@ -1,4 +1,7 @@
-import { startBrandStripeOnboarding } from "../../services/brandStripeService";
+import {
+  BrandStripeCountryLockedError,
+  startBrandStripeOnboarding,
+} from "../../services/brandStripeService";
 import { supabase } from "../../services/supabase";
 
 jest.mock("../../services/supabase", () => ({
@@ -81,4 +84,36 @@ it("surfaces edge function error details from the response body", async () => {
       "US",
     ),
   ).rejects.toThrow("forbidden: mingla_tos_not_accepted");
+});
+
+it("maps country_locked to create-a-new-brand guidance", async () => {
+  const error = new Error(
+    "Edge Function returned a non-2xx status code",
+  ) as Error & {
+    context: {
+      status: number;
+      clone: () => { json: () => Promise<unknown> };
+    };
+  };
+  error.context = {
+    status: 409,
+    clone: () => ({
+      json: async () => ({
+        error: "country_locked",
+        detail: "stripe_account_country_locked_after_onboarding",
+        existing_country: "GB",
+        requested_country: "US",
+        reason: "details_submitted",
+      }),
+    }),
+  };
+  invokeMock.mockResolvedValue({ data: null, error });
+
+  await expect(
+    startBrandStripeOnboarding(
+      "44444444-4444-4444-8444-444444444444",
+      "mingla-business://return",
+      "US",
+    ),
+  ).rejects.toThrow(BrandStripeCountryLockedError);
 });

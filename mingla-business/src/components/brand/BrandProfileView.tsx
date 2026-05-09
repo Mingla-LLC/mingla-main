@@ -34,6 +34,10 @@ import type { Brand, BrandStripeStatus } from "../../store/currentBrandStore";
 import { formatGbpRound, formatCount } from "../../utils/currency";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../utils/permissionGates";
+import {
+  getBrandProfileStripeBannerCopy,
+  getBrandProfileStripeOperationsSub,
+} from "../../utils/brandStripeUiState";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -124,6 +128,12 @@ const normalizeSocialUrl = (raw: string, base: string): string => {
  */
 export interface BrandProfileViewProps {
   brand: Brand | null;
+  /**
+   * Live Stripe status wins over cached brand.stripeStatus when provided.
+   * This prevents the profile banner/operations row from showing stale
+   * "verifying" after Stripe has already marked the account active.
+   */
+  effectiveStripeStatus?: BrandStripeStatus;
   onBack: () => void;
   /**
    * Called when user taps the sticky-shelf "Edit brand" button.
@@ -188,38 +198,9 @@ export interface BrandProfileViewProps {
   onRequestDelete?: (brand: Brand) => void;
 }
 
-// Status-driven J-A7 banner copy. When entry is `null`, banner is
-// SUPPRESSED (active state — populated KPIs on the dashboard are the
-// affirmative signal, not a "you're good" green banner).
-const J_A7_BANNER_COPY: Record<
-  BrandStripeStatus,
-  { title: string; sub: string } | null
-> = {
-  not_connected: {
-    title: "Connect Stripe to sell tickets",
-    sub: "Get paid for your events. Setup takes 5 minutes.",
-  },
-  onboarding: {
-    title: "Onboarding submitted — verifying",
-    sub: "We'll email you when Stripe finishes verifying your details.",
-  },
-  active: null,
-  restricted: {
-    title: "Action required",
-    sub: "Stripe has limited your account. Tap to resolve.",
-  },
-};
-
-// Operations row #1 dynamic sub-text per stripe status.
-const OPERATIONS_SUB_TEXT: Record<BrandStripeStatus, string> = {
-  not_connected: "Not connected",
-  onboarding: "Onboarding…",
-  active: "Active",
-  restricted: "Action required",
-};
-
 export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   brand,
+  effectiveStripeStatus,
   onBack,
   onEdit,
   onTeam,
@@ -298,14 +279,15 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // before this hook (preserves ORCH-0710 hook ordering).
   const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
   const canViewAuditLog = canPerformAction(currentRank, "VIEW_AUDIT_LOG");
+  const stripeStatus =
+    effectiveStripeStatus ?? brand?.stripeStatus ?? "not_connected";
 
   const operationsRows = useMemo<OperationsRow[]>(() => {
-    const stripeStatus = brand?.stripeStatus ?? "not_connected";
     const rows: OperationsRow[] = [
       {
         icon: "bank",
         label: "Payments & Stripe",
-        sub: OPERATIONS_SUB_TEXT[stripeStatus],
+        sub: getBrandProfileStripeOperationsSub(stripeStatus),
         onPress: () => {
           if (brand !== null) onPayments(brand.id);
         },
@@ -347,7 +329,16 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       });
     }
     return rows;
-  }, [brand, fireToast, onTeam, onPayments, onReports, onAuditLog, canViewAuditLog]);
+  }, [
+    brand,
+    fireToast,
+    onTeam,
+    onPayments,
+    onReports,
+    onAuditLog,
+    canViewAuditLog,
+    stripeStatus,
+  ]);
 
   // ----- Not Found state -----
   if (brand === null) {
@@ -430,7 +421,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
             // Each chip carries its `url` (already-normalized full URL or
             // `mailto:`/`tel:` scheme). Tap → onOpenLink(url) → parent calls
             // Linking.openURL. Cycle 7 FX1 retired the Cycle-2 dead-Toast.
-            const chips: Array<{ key: string; icon: IconName; aria: string; url: string }> = [];
+            const chips: { key: string; icon: IconName; aria: string; url: string }[] = [];
             if (typeof brand.contact?.email === "string" && brand.contact.email.length > 0) {
               chips.push({ key: "email", icon: "mail", aria: `Email ${brand.contact.email}`, url: `mailto:${brand.contact.email}` });
             }
@@ -488,12 +479,11 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         </View>
 
         {/* SECTION C — Status-driven Stripe banner. Suppressed entirely
-            when stripeStatus === "active" (J_A7_BANNER_COPY entry is null
+            when effective stripeStatus === "active" (banner copy is null
             — populated KPIs + payments dashboard are the affirmative
             signal, not a green "you're good" banner). */}
         {(() => {
-          const stripeStatus = brand.stripeStatus ?? "not_connected";
-          const bannerCopy = J_A7_BANNER_COPY[stripeStatus];
+          const bannerCopy = getBrandProfileStripeBannerCopy(stripeStatus);
           if (bannerCopy === null) return null;
           const isRestricted = stripeStatus === "restricted";
           return (

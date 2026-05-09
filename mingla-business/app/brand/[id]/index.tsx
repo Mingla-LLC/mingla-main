@@ -21,11 +21,13 @@ import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet
 import { BrandProfileView } from "../../../src/components/brand/BrandProfileView";
 import { canvas } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
+import { useBrandStripeStatus } from "../../../src/hooks/useBrandStripeStatus";
+import { useBrand } from "../../../src/hooks/useBrands";
 import {
-  useBrandList,
   useCurrentBrandStore,
   type Brand,
 } from "../../../src/store/currentBrandStore";
+import { getEffectiveBrandStripeStatus } from "../../../src/utils/stripeOnboardingOutcome";
 
 export default function BrandProfileRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -33,11 +35,15 @@ export default function BrandProfileRoute(): React.ReactElement {
   const { user } = useAuth();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
-  const brands = useBrandList();
-  const brand =
-    typeof idParam === "string" && idParam.length > 0
-      ? brands.find((b) => b.id === idParam) ?? null
-      : null;
+  const brandId =
+    typeof idParam === "string" && idParam.length > 0 ? idParam : null;
+  const brandQuery = useBrand(brandId);
+  const brand = brandQuery.data ?? null;
+  const stripeStatusQuery = useBrandStripeStatus(brandId);
+  const effectiveStripeStatus = getEffectiveBrandStripeStatus({
+    liveStatus: stripeStatusQuery.data?.status,
+    cachedStatus: brand?.stripeStatus,
+  });
 
   // Cycle 17e-A — BrandDeleteSheet state
   const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
@@ -117,6 +123,7 @@ export default function BrandProfileRoute(): React.ReactElement {
     <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}>
       <BrandProfileView
         brand={brand}
+        effectiveStripeStatus={effectiveStripeStatus}
         onBack={handleBack}
         onEdit={handleOpenEdit}
         onTeam={handleOpenTeam}

@@ -5,6 +5,7 @@ import {
   deriveStripeOnboardingEntryState,
   getEffectiveBrandStripeStatus,
   isActionableStripeRestriction,
+  isStripePendingVerification,
   isTerminalStripeRestriction,
 } from "../stripeOnboardingOutcome";
 
@@ -77,6 +78,37 @@ describe("stripeOnboardingOutcome", () => {
         disabled_reason: "action_required.requested_capabilities",
       }),
     ).toBe(true);
+  });
+
+  test("classifies pending verification as verifying, not user action required", () => {
+    const requirements = {
+      disabled_reason: "requirements.pending_verification",
+    };
+
+    expect(isStripePendingVerification(requirements)).toBe(true);
+    expect(isActionableStripeRestriction(requirements)).toBe(false);
+    expect(
+      classifyStripeOnboardingOutcome({
+        status: "restricted",
+        requirements,
+      }),
+    ).toBe("complete-verifying");
+  });
+
+  test("keeps pending verification actionable when Stripe also has due fields", () => {
+    const requirements = {
+      disabled_reason: "requirements.pending_verification",
+      currently_due: ["business_profile.url"],
+    };
+
+    expect(isStripePendingVerification(requirements)).toBe(false);
+    expect(isActionableStripeRestriction(requirements)).toBe(true);
+    expect(
+      classifyStripeOnboardingOutcome({
+        status: "restricted",
+        requirements,
+      }),
+    ).toBe("needs-information");
   });
 
   test("classifies terminal Stripe rejections as failed-stripe", () => {

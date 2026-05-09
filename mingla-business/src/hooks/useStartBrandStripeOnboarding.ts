@@ -20,6 +20,7 @@ import {
   type StartOnboardingResult,
 } from "../services/brandStripeService";
 import { brandStripeStatusKeys } from "./useBrandStripeStatus";
+import { brandKeys } from "./useBrands";
 
 export interface UseStartBrandStripeOnboardingInput {
   brandId: string;
@@ -51,10 +52,15 @@ export function useStartBrandStripeOnboarding(): UseMutationResult<
       queryClient.invalidateQueries({
         queryKey: brandStripeStatusKeys.detail(brandId),
       });
+      queryClient.invalidateQueries({
+        queryKey: brandKeys.detail(brandId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: brandKeys.lists(),
+      });
     },
     onError: (error, { brandId }) => {
       // Const #3: surface to UI; caller subscribes via mutation.error
-      // eslint-disable-next-line no-console
       console.error("[useStartBrandStripeOnboarding] failed", {
         message: error.message,
         brandId,

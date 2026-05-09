@@ -1,7 +1,7 @@
 /**
  * /brand/[id]/payments — payments dashboard (J-A11 §5.3.7).
  *
- * Reads the dynamic `id` segment, resolves the brand from useBrandList(),
+ * Reads the dynamic `id` segment, resolves the brand from React Query detail,
  * and renders BrandPaymentsView. When `id` doesn't match any brand, the
  * view's not-found state takes over.
  *
@@ -21,18 +21,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandPaymentsView } from "../../../../src/components/brand/BrandPaymentsView";
 import { canvas } from "../../../../src/constants/designSystem";
-import { useBrandList } from "../../../../src/store/currentBrandStore";
+import { useBrand } from "../../../../src/hooks/useBrands";
 
 export default function BrandPaymentsRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
-  const brands = useBrandList();
-  const brand =
-    typeof idParam === "string" && idParam.length > 0
-      ? brands.find((b) => b.id === idParam) ?? null
-      : null;
+  const brandId = typeof idParam === "string" && idParam.length > 0
+    ? idParam
+    : null;
+  const brandQuery = useBrand(brandId);
+  const brand = brandQuery.data ?? null;
 
   const handleBack = (): void => {
     if (router.canGoBack()) {

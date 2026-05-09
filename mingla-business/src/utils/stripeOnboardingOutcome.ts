@@ -31,8 +31,11 @@ const TERMINAL_RESTRICTION_REASONS = new Set([
 
 const ACTIONABLE_RESTRICTION_REASONS = new Set([
   "requirements.past_due",
-  "requirements.pending_verification",
   "action_required.requested_capabilities",
+]);
+
+const PENDING_REVIEW_REASONS = new Set([
+  "requirements.pending_verification",
 ]);
 
 export function getEffectiveBrandStripeStatus(args: {
@@ -80,9 +83,21 @@ export function isActionableStripeRestriction(
   requirements: StripeRequirementsShape | null | undefined,
 ): boolean {
   const disabledReason = requirements?.disabled_reason;
+  if (isStripePendingVerification(requirements)) return false;
   return (
     hasDueRequirements(requirements) ||
     (disabledReason != null && ACTIONABLE_RESTRICTION_REASONS.has(disabledReason))
+  );
+}
+
+export function isStripePendingVerification(
+  requirements: StripeRequirementsShape | null | undefined,
+): boolean {
+  const disabledReason = requirements?.disabled_reason;
+  return (
+    disabledReason != null &&
+    PENDING_REVIEW_REASONS.has(disabledReason) &&
+    !hasDueRequirements(requirements)
   );
 }
 
@@ -94,6 +109,7 @@ export function classifyStripeOnboardingOutcome(args: {
   if (args.status === "onboarding") return "complete-verifying";
   if (args.status === "restricted") {
     if (isTerminalStripeRestriction(args.requirements)) return "failed-stripe";
+    if (isStripePendingVerification(args.requirements)) return "complete-verifying";
     if (isActionableStripeRestriction(args.requirements)) return "needs-information";
     return "needs-information";
   }
