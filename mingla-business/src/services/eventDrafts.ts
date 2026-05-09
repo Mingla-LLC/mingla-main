@@ -63,6 +63,7 @@ export const syncDraftTicketsToServerEvent = async (
   }
 
   const now = new Date().toISOString();
+  // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0763 first sync may have zero existing ticket rows
   const { error: softDeleteError } = await supabase
     .from("ticket_types")
     .update({ deleted_at: now })

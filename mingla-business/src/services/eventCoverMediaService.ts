@@ -119,7 +119,7 @@ export const updatePublishedEventCoverMedia = async (
       "Save failed because this event is missing its server id.",
     );
   }
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("events")
     .update({
       cover_media_url: mediaUrl,
@@ -127,9 +127,17 @@ export const updatePublishedEventCoverMedia = async (
       updated_at: new Date().toISOString(),
     })
     .eq("id", serverEventId)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
 
   if (error !== null) {
     throw new EventCoverMediaError("upload_failed", error.message);
+  }
+  if (data === null) {
+    throw new EventCoverMediaError(
+      "missing_server_event_id",
+      "Save failed because this event could not be found.",
+    );
   }
 };
