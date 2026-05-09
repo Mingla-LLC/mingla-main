@@ -7,6 +7,31 @@
 
 ---
 
+## ACTIVE (post ORCH-0756A IMPLEMENTATION 2026-05-08)
+
+### I-PROPOSED-AA ACTIVE_BRAND_RECOVERS_FROM_SERVER_DEFAULT
+
+**Statement:** In `mingla-business`, the active brand may be cached locally only as an ID, but after auth/bootstrap the selected ID must resolve from the signed-in user's accessible brand list in this order: valid local `currentBrandId`, valid `creator_accounts.default_brand_id`, newest fetched brand, or `null` only when no brands exist.
+
+**Authority:** `mingla-business/src/utils/currentBrandResolver.ts` is the pure selection contract. `mingla-business/src/hooks/useCurrentBrandRecovery.ts` is the app-wide recovery owner. `mingla-business/app/_layout.tsx` wires recovery into bootstrap. `mingla-business/app/(tabs)/home.tsx` owns the honest loading/no-brands/choose-brand Home states.
+
+**Rationale:** ORCH-0756 proved the real brand can remain in Supabase while logout clears the local selected-brand pointer. Without server-backed recovery, Home can falsely say "No brands yet" after sign-in. This invariant prevents the app from confusing "no selected brand yet" with "no brands exist."
+
+**Enforcement:**
+1. `resolveCurrentBrandId()` implements the deterministic fallback order.
+2. `useCurrentBrandRecovery()` waits for brand list and creator account queries, applies the resolver, and persists newest-brand fallback as `default_brand_id`.
+3. Brand pick/create flows update local UI immediately and attempt to save `creator_accounts.default_brand_id`.
+4. Home's empty states are split between loading/recovering, true no-brands, brands-exist/no-selection, and populated dashboard.
+5. `currentBrandStore` remains ID-only; no full Brand snapshot returns to persisted Zustand.
+
+**Test that catches a regression:** `cd mingla-business && npm run test:orch-0756a` runs the active-brand strict guard plus `currentBrandResolver.test`. The guard checks for the old false-empty Home condition, default-brand account wiring, app-wide recovery, default persistence on pick/create, failure-to-toast wiring, and ID-only persisted current-brand state.
+
+**Established:** 2026-05-08 by ORCH-0756A implementation. Tester/orchestrator close pending.
+
+**Cross-references:** `Mingla_Artifacts/specs/SPEC_ORCH-0756A_BUSINESS_ACTIVE_BRAND_RECOVERY.md`, `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0756_BUSINESS_DRAFT_AND_BRAND_PERSISTENCE.md`, `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0756A_BUSINESS_ACTIVE_BRAND_RECOVERY.md`.
+
+---
+
 ## ACTIVE (post ORCH-0749 CLOSE 2026-05-07)
 
 ### I-AUTH-PRIVATE-CACHE-CANNOT-OUTLIVE-AUTH-OWNER - Private mobile query state must be auth-scoped and removable
@@ -2188,11 +2213,11 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **Status:** DRAFT (added 2026-05-06 with B2a Path C SPEC amendment per DEC-121; flips ACTIVE on B2a CLOSE).
 
-**Statement:** Every Stripe SDK instantiation in `supabase/functions/` MUST source the API version from `_shared/stripe.ts`'s `STRIPE_API_VERSION` constant. Inline overrides (e.g., `new Stripe(key, { apiVersion: "..." })` with a literal date string in any file other than `_shared/stripe.ts`) are FORBIDDEN. The single source of truth for the API version pin is `_shared/stripe.ts` line 23: `STRIPE_API_VERSION = "2026-04-30.preview"` (per D-B2-5 — Accounts v2 public preview).
+**Statement:** Every Stripe SDK instantiation in `supabase/functions/` MUST source the SDK API version from `_shared/stripe.ts`'s `STRIPE_API_VERSION` constant. Inline SDK overrides (e.g., `new Stripe(key, { apiVersion: "..." })` with a literal date string in any file other than `_shared/stripe.ts`) are FORBIDDEN. Direct raw Accounts v2 HTTP calls for ORCH-0764A are a separate contract: `_shared/stripeBlueprintClient.ts` owns `STRIPE_BLUEPRINT_API_VERSION` and sends it as the required `Stripe-Version` header for `/v2` endpoints.
 
-**Why:** Two API versions in the same Mingla edge fn surface produce unpredictable behavior. The Stripe Accounts v2 endpoint (`/v2/core/accounts`) — which carries the marketplace controller properties (DEC-114) — only exists in `.preview` API versions. A function pinned to `2024-11-20.acacia` (production v1) cannot create accounts with controller properties; payouts won't split, charges won't transfer, the marketplace charge model is silently misconfigured. The B2a Path C reconciliation (`outputs/B2_RECONCILIATION_REPORT.md`) caught Taofeek's branch using `2024-11-20.acacia` inline across all 6 of his Stripe edge functions — a clean illustration of the failure mode this gate prevents.
+**Why:** Stripe SDK-backed surfaces and raw API v2 HTTP calls have different versioning mechanics. SDK clients must avoid inline `apiVersion:` drift. Raw `/v2` calls must include `Stripe-Version`; ORCH-0764A runtime proved that omitting it blocks connected-account creation before any local row is written. The B2a Path C reconciliation (`outputs/B2_RECONCILIATION_REPORT.md`) caught Taofeek's branch using `2024-11-20.acacia` inline across all 6 of his Stripe edge functions — a clean illustration of SDK drift this gate prevents.
 
-**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-q-stripe-api-version` running `.github/scripts/strict-grep/i-proposed-q-stripe-api-version.mjs`. Scans `supabase/functions/` for any `apiVersion: "20YY-MM-DD..."` literal outside `_shared/stripe.ts`. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-inline-api-version — <reason>`.
+**Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-q-stripe-api-version` running `.github/scripts/strict-grep/i-proposed-q-stripe-api-version.mjs`. Scans `supabase/functions/` for any SDK `apiVersion: "20YY-MM-DD..."` literal outside `_shared/stripe.ts`. Raw `/v2` helper tests assert `STRIPE_BLUEPRINT_API_VERSION` is sent as `Stripe-Version`. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-inline-api-version — <reason>`.
 
 **Source:** B2a Path C SPEC `outputs/SPEC_B2_PATH_C_AMENDMENT.md` §5 + reconciliation report `outputs/B2_RECONCILIATION_REPORT.md` §1.
 
@@ -2449,3 +2474,20 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 **Source:** B2a Path C V3 forensics report `Mingla_Artifacts/reports/INVESTIGATION_B2A_PATH_C_V3_CONFIG_DRIFT.md` finding §3 + recommended fix §9.
 
 **EXIT condition:** Permanent invariant. Reversal would require Mingla owning multiple production web domains for the Business product (highly unlikely; even multi-region deploys would use a single canonical apex with regional CDN routing).
+
+### I-PROPOSED-Z — HOME-NO-FABRICATED-EVENTS (ACTIVE — ratified by ORCH-0754 CLOSE / DEC-132)
+
+**Status:** ACTIVE (ratified 2026-05-08 at ORCH-0754 close).
+
+**Statement:** `mingla-business/app/(tabs)/home.tsx` MUST NOT contain fabricated upcoming event rows, fake event names, hardcoded live/upcoming summary copy, hardcoded event times, or hardcoded sold/capacity math. Business Home event truth must derive from the current brand's draft/live/order sources: `useDraftsForBrand`, `useLiveEventsForBrand`, `buildBrandEventSummary`, and `useOrderStore` metrics where displayed.
+
+**Why:** ORCH-0754 proved that Cycle 3 transitional Home rows survived after Cycle 9 shipped the real Events tab pipeline but explicitly excluded Home. That left organisers seeing fake Upcoming rows and hardcoded live-event details on the first-screen business dashboard, violating the no-fabricated-data rule and undermining trust in operational metrics.
+
+**Enforcement:**
+1. **Strict-grep gate:** `.github/scripts/strict-grep/i-proposed-z-home-no-fabricated-events.mjs` scans `mingla-business/app/(tabs)/home.tsx` for the forbidden signatures: `STUB_UPCOMING_ROWS`, `StubUpcomingRow`, `Sunday Languor Brunch`, `The Long Lunch (Series)`, `1 live · 2 upcoming`, `Tonight · 21:00`, `Math.round(liveEvent.soldGbp / 30)`, `/ 400`, and `currentBrand.currentLiveEvent` variants.
+2. **Workflow:** `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-z-home-no-fabricated-events`.
+3. **Local package gate:** `mingla-business/package.json` script `test:orch-0754` runs the strict-grep gate plus `brandEventSummary.test`.
+
+**Source:** ORCH-0754 investigation, spec, implementation/rework, and tester report: `reports/INVESTIGATION_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md`, `specs/SPEC_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md`, and `reports/TEST_REPORT_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md`.
+
+**EXIT condition:** Permanent invariant for Business Home. If backend event truth later replaces the transitional local stores, the invariant remains: Home must use the new canonical source and this gate must be updated to forbid the same fake-data class, not removed.

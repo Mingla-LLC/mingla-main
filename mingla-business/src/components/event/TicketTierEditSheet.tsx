@@ -69,11 +69,11 @@ const HIDDEN_WEB_INPUT_STYLE = {
 
 // ---- Visibility options ---------------------------------------------
 
-const VISIBILITY_OPTIONS: ReadonlyArray<{
+const VISIBILITY_OPTIONS: readonly {
   id: TicketVisibility;
   label: string;
   sub: string;
-}> = [
+}[] = [
   {
     id: "public",
     label: "Public",
@@ -143,11 +143,11 @@ const VisibilitySheet: React.FC<VisibilitySheetProps> = ({
 
 // ---- Available-at options (Cycle 12) --------------------------------
 
-const AVAILABLE_AT_OPTIONS: ReadonlyArray<{
+const AVAILABLE_AT_OPTIONS: readonly {
   id: TicketAvailableAt;
   label: string;
   sub: string;
-}> = [
+}[] = [
   {
     id: "both",
     label: "Online and at the door",
@@ -310,6 +310,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   const [approvalRequired, setApprovalRequired] = useState<boolean>(false);
   const [passwordProtected, setPasswordProtected] = useState<boolean>(false);
   const [password, setPassword] = useState<string>("");
+  const [passwordConfigured, setPasswordConfigured] = useState<boolean>(false);
   const [waitlistEnabled, setWaitlistEnabled] = useState<boolean>(false);
   const [minQtyText, setMinQtyText] = useState<string>("1");
   const [maxQtyText, setMaxQtyText] = useState<string>("");
@@ -377,6 +378,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       setApprovalRequired(initial.approvalRequired);
       setPasswordProtected(initial.passwordProtected);
       setPassword(initial.password ?? "");
+      setPasswordConfigured(initial.passwordConfigured === true);
       setWaitlistEnabled(initial.waitlistEnabled);
       setMinQtyText(String(initial.minPurchaseQty));
       setMaxQtyText(
@@ -397,6 +399,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       setApprovalRequired(false);
       setPasswordProtected(false);
       setPassword("");
+      setPasswordConfigured(false);
       setWaitlistEnabled(false);
       setMinQtyText("1");
       setMaxQtyText("");
@@ -413,6 +416,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   // Inline validation hints (live — not from validateTickets, just for UX feedback)
   const passwordTooShort =
     passwordProtected &&
+    !passwordConfigured &&
     (password.length === 0 || password.length < 4);
   const waitlistConflict = waitlistEnabled && isUnlimited;
   const parsedMinQty = parseInt(minQtyText, 10);
@@ -575,7 +579,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       displayOrder: initial?.displayOrder ?? nextOrder,
       approvalRequired,
       passwordProtected,
-      password: passwordProtected ? password : null,
+      password: passwordProtected && password.length > 0 ? password : null,
+      passwordConfigured:
+        passwordProtected && (passwordConfigured || password.length >= 4),
       waitlistEnabled,
       minPurchaseQty: safeMinQty,
       maxPurchaseQty: safeMaxQty,
@@ -599,6 +605,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     approvalRequired,
     passwordProtected,
     password,
+    passwordConfigured,
     waitlistEnabled,
     parsedMinQty,
     parsedMaxQty,
@@ -801,7 +808,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               </View>
               {capacityBelowSold ? (
                 <Text style={styles.helperError}>
-                  Can't go below {soldCount} tickets sold. Increase capacity
+                  Cannot go below {soldCount} tickets sold. Increase capacity
                   or refund existing buyers first.
                 </Text>
               ) : isPriceLocked ? (
@@ -870,8 +877,13 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               >
                 <TextInput
                   value={password}
-                  onChangeText={setPassword}
-                  placeholder="Min 4 characters"
+                  onChangeText={(value) => {
+                    setPassword(value);
+                    if (value.length > 0) setPasswordConfigured(false);
+                  }}
+                  placeholder={
+                    passwordConfigured ? "Password already set" : "Min 4 characters"
+                  }
                   placeholderTextColor={textTokens.quaternary}
                   secureTextEntry={!passwordRevealed}
                   autoCapitalize="none"
@@ -899,7 +911,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 </Text>
               ) : (
                 <Text style={styles.helperHint}>
-                  Stored locally; backend hashes when payments go live.
+                  {passwordConfigured
+                    ? "Password is set. Enter a new password to replace it."
+                    : "Password is saved securely for this draft."}
                 </Text>
               )}
             </View>
@@ -915,7 +929,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
 
           {waitlistConflict ? (
             <Text style={styles.helperError}>
-              Unlimited tickets don't need a waitlist — turn one off.
+              Unlimited tickets do not need a waitlist — turn one off.
             </Text>
           ) : null}
 
@@ -966,7 +980,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           ) : null}
           {maxLessThanMin ? (
             <Text style={styles.helperError}>
-              Maximum can't be less than minimum.
+              Maximum cannot be less than minimum.
             </Text>
           ) : null}
           {!minTooLow && !maxLessThanMin ? (

@@ -36,13 +36,11 @@ For each edge function, the required scopes are listed below. Create each RAK in
 
 **Used by:** `supabase/functions/brand-stripe-onboard/index.ts`
 
-**Stripe API calls:** `POST /v1/accounts` (create), `POST /v1/account_links` (onboard URL), `POST /v1/account_sessions` (Embedded Components session). May call `POST /v1/accounts/{id}/persons` for representative info.
+**Stripe API calls:** `POST /v2/core/accounts` (create recipient account), `POST /v2/core/account_links` (Stripe-hosted onboarding URL).
 
 **Scopes (least privilege):**
 - Connect → Accounts: **Write**
 - Connect → Account links: **Write** (no Read endpoint exists; Write is the operative scope)
-- Connect → Account sessions: **Write**
-- Connect → Persons: **Write**
 - Connect → Accounts: **Read** (for re-checking existing account state during reactivation flow per D-V3-2)
 
 ### RAK #2 — `rak_mingla_webhook`
@@ -150,27 +148,14 @@ The `_shared/stripe.ts` helper currently exports a single `stripe` client constr
 
 This step is implementor work; the runbook captures it for completeness:
 
-```ts
-// _shared/stripe.ts (V3 refactored shape — to be implemented in Sub-dispatch B Phase 1)
-import Stripe from "https://esm.sh/stripe@18.0.0?target=denonext";
+`brand-stripe-onboard` now uses `_shared/stripeBlueprintClient.ts` for the
+ORCH-0764 Accounts v2 hosted-onboarding path. That helper calls the exact v2
+HTTP endpoints, sends the helper-owned `STRIPE_BLUEPRINT_API_VERSION` as the
+required `Stripe-Version` header for raw `/v2` calls, and does not initialize an
+SDK client.
 
-export const STRIPE_API_VERSION = "2026-04-30.preview" as const;
-
-export function createStripeClient(rakEnvVar: string): Stripe {
-  const key = Deno.env.get(rakEnvVar);
-  if (!key) {
-    throw new Error(`${rakEnvVar} environment variable is not set.`);
-  }
-  return new Stripe(key, {
-    apiVersion: STRIPE_API_VERSION,
-    appInfo: { name: "Mingla", version: "1.0.0", url: "https://mingla.com" },
-  });
-}
-
-// Per-fn convenience exports (each fn imports its own):
-// export const stripeOnboard = createStripeClient("STRIPE_RAK_ONBOARD");
-// (See per-fn import pattern in each function's index.ts)
-```
+Legacy Stripe SDK clients in `_shared/stripe.ts` still serve non-ORCH-0764
+functions until those surfaces are migrated in separate reviewed work.
 
 ### Step 4 — Test each fn with new RAK in sandbox
 
@@ -220,8 +205,8 @@ Once 6 RAKs are confirmed working in production:
 
 1. Stripe Dashboard → Developers → API keys → next to the full secret key, click "Roll key" → confirm.
 2. The old `sk_live_*` is now invalid.
-3. In Supabase production env vars, **delete** `STRIPE_SECRET_KEY` (no longer needed).
-4. Confirm no edge fn references `STRIPE_SECRET_KEY` anymore (Sub-dispatch B's `_shared/stripe.ts` refactor removed all references). The CI gate I-PROPOSED-Q (Q gate) catches any inline literal `apiVersion:` outside `_shared/stripe.ts`; this also catches any orphan `STRIPE_SECRET_KEY` reference if the gate is extended (optional V3 follow-up).
+3. In Supabase production env vars, **delete** `STRIPE_SECRET_KEY` only after every deployed Stripe path is confirmed to have a function-specific `STRIPE_RAK_*` value.
+4. Confirm no deployed edge fn depends on the fallback `STRIPE_SECRET_KEY` path. ORCH-0764's `_shared/stripeBlueprintClient.ts` can read `STRIPE_SECRET_KEY` as a deliberate local/staging fallback, but production should use `STRIPE_RAK_ONBOARD`. The CI gate I-PROPOSED-Q (Q gate) catches any inline literal `apiVersion:` outside `_shared/stripe.ts`.
 
 ---
 

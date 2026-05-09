@@ -3,29 +3,25 @@
  *
  * States:
  *   - Empty (brands.length === 0)              → "No brands yet" prompt + topbar chip CTA
- *   - Populated, no live event (currentBrand)  → 7-day aggregate hero + KPI grid + Build CTA
- *   - Populated with live event                → Live KPI hero + KPI grid + Upcoming list + Build CTA
+ *   - Populated, no live event (currentBrand)  → 7-day aggregate hero + KPI grid + Upcoming list
+ *   - Populated with live event                → Live KPI hero + KPI grid + Upcoming list
  *
  * Brand-chip on TopBar opens BrandSwitcherSheet (mode auto-derives from list state).
  * Sheet's onBrandCreated → Toast "{displayName} is ready" (per dispatch AC#2).
  *
- * Stub event-list rows are [TRANSITIONAL] hardcoded — replaced by real event
- * fetch in B1+ when event endpoints land.
- *
- * Cycle 3 wires draft rows from draftEventStore — those rows ARE real (not
- * stub). Stub rows below remain until Cycle 9 ships the live events list.
- * Cycle 3 also retires 2 TRANSITIONAL Toasts ("Event creation lands Cycle 3"
- * + "Events list lands Cycle 3") — both now navigate.
+ * Cycle 3 wires draft rows from draftEventStore.
+ * ORCH-0754 wires live rows from liveEventStore + orderStore metrics, so the
+ * first-screen event story is derived from current-brand local event truth.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
-import { EventCover } from "../../src/components/ui/EventCover";
+import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import { KpiTile } from "../../src/components/ui/KpiTile";
@@ -42,50 +38,39 @@ import {
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import {
-  useBrandList,
   useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
-import { useDraftsForBrand } from "../../src/store/draftEventStore";
+import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
+import { useBrands } from "../../src/hooks/useBrands";
+import { useServerDraftsForBrand } from "../../src/hooks/useServerDraftEvents";
+import {
+  mergeServerAndLegacyLiveEvents,
+  useBusinessEventsForBrand,
+} from "../../src/hooks/useBusinessEvents";
+import {
+  useDraftsForBrand,
+  type DraftEvent,
+} from "../../src/store/draftEventStore";
+import {
+  useLiveEventsForBrand,
+  type LiveEvent,
+} from "../../src/store/liveEventStore";
+import { useOrderStore } from "../../src/store/orderStore";
+import {
+  buildBrandEventSummary,
+  type BrandEventSummaryCounts,
+  type BrandEventSummaryItem,
+} from "../../src/utils/brandEventSummary";
 import { formatGbpRound } from "../../src/utils/currency";
+import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
 import { formatRelativeTime } from "../../src/utils/relativeTime";
 
 interface ToastState {
   visible: boolean;
   message: string;
 }
-
-interface StubUpcomingRow {
-  id: string;
-  title: string;
-  when: string;
-  status: "live" | "draft";
-  hue: number;
-  sold: string;
-}
-
-// [TRANSITIONAL] stub upcoming-events list — removed in B1 backend cycle
-// when event endpoints land. Always 2 rows in addition to the brand's
-// currentLiveEvent so the "Upcoming" section reads non-trivially.
-const STUB_UPCOMING_ROWS: StubUpcomingRow[] = [
-  {
-    id: "u1",
-    title: "Sunday Languor Brunch",
-    when: "Sun · 12:00",
-    status: "live",
-    hue: 290,
-    sold: "62 / 80",
-  },
-  {
-    id: "u2",
-    title: "The Long Lunch (Series)",
-    when: "Recurring · weekly",
-    status: "draft",
-    hue: 150,
-    sold: "—",
-  },
-];
 
 const greetingLabel = (): string => {
   const hour = new Date().getHours();
@@ -95,14 +80,73 @@ const greetingLabel = (): string => {
   return "Good evening";
 };
 
+const getEventName = (name: string, fallback: string): string =>
+  name.trim().length > 0 ? name : fallback;
+
+const hasUnlimitedTickets = (event: LiveEvent): boolean =>
+  event.tickets.some((ticket) => ticket.isUnlimited);
+
+const finiteTicketCapacity = (event: LiveEvent): number | null => {
+  const finiteTickets = event.tickets.filter((ticket) => !ticket.isUnlimited);
+  if (finiteTickets.length === 0) return null;
+  return finiteTickets.reduce((sum, ticket) => sum + (ticket.capacity ?? 0), 0);
+};
+
+const formatCapacityLabel = (event: LiveEvent): string => {
+  const capacity = finiteTicketCapacity(event);
+  if ((capacity === null || capacity === 0) && hasUnlimitedTickets(event)) {
+    return "Unlimited";
+  }
+  return capacity === null ? "—" : capacity.toLocaleString("en-GB");
+};
+
+const formatSoldOutOfCapacity = (event: LiveEvent, sold: number): string => {
+  const capacity = finiteTicketCapacity(event);
+  const soldLabel = sold.toLocaleString("en-GB");
+  if (capacity === null) return soldLabel;
+  return `${soldLabel} / ${capacity.toLocaleString("en-GB")}`;
+};
+
+const formatActiveEventsSub = (counts: BrandEventSummaryCounts): string => {
+  if (counts.active === 0) return "No active events";
+
+  return [
+    `${counts.live} live`,
+    `${counts.upcoming} upcoming`,
+    `${counts.draft} ${counts.draft === 1 ? "draft" : "drafts"}`,
+  ].join(" · ");
+};
+
+const getLiveEventFromItem = (
+  item: BrandEventSummaryItem | null,
+): LiveEvent | null =>
+  item?.kind === "live" ? (item.event as LiveEvent) : null;
+
 export default function HomeTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
-  const brands = useBrandList();
+  const brandsQuery = useBrands(user?.id ?? null);
+  const brands = brandsQuery.data ?? [];
   const currentBrand = useCurrentBrand();
+  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
+  const brandRecovery = useCurrentBrandRecovery();
+  useServerDraftsForBrand(currentBrand?.id ?? null);
+  const businessEventsQuery = useBusinessEventsForBrand(currentBrand?.id ?? null);
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
+  const legacyLiveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
+  const liveEvents = useMemo(
+    () =>
+      mergeServerAndLegacyLiveEvents(
+        businessEventsQuery.data ?? [],
+        legacyLiveEvents,
+      ),
+    [businessEventsQuery.data, legacyLiveEvents],
+  );
+  const orderEntries = useOrderStore((s) => s.entries);
+  const getSoldCountForEvent = useOrderStore((s) => s.getSoldCountForEvent);
+  const getRevenueForEvent = useOrderStore((s) => s.getRevenueForEvent);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // Cycle 17e-A REWORK: BrandDeleteSheet state — opens from BrandSwitcherSheet
   // trash icon taps. Mirrors account.tsx pattern per ORCH-0734-RW SPEC §3.3.
@@ -122,6 +166,10 @@ export default function HomeTab(): React.ReactElement {
 
   const handleBrandCreated = useCallback((brand: Brand): void => {
     setToast({ visible: true, message: `${brand.displayName} is ready` });
+  }, []);
+
+  const handleDefaultBrandSaveError = useCallback((message: string): void => {
+    setToast({ visible: true, message });
   }, []);
 
   // Cycle 17e-A REWORK: BrandSwitcherSheet trash tap → open BrandDeleteSheet
@@ -159,12 +207,16 @@ export default function HomeTab(): React.ReactElement {
 
   const handleBuildEvent = useCallback((): void => {
     if (currentBrand === null) {
-      setToast({ visible: true, message: "Create a brand first." });
+      setToast({
+        visible: true,
+        message:
+          brands.length > 0 ? "Select a brand first." : "Create a brand first.",
+      });
       setSheetVisible(true);
       return;
     }
     router.push("/event/create" as never);
-  }, [currentBrand, router]);
+  }, [brands.length, currentBrand, router]);
 
   const handleSeeAllEvents = useCallback((): void => {
     router.push("/(tabs)/events" as never);
@@ -177,14 +229,65 @@ export default function HomeTab(): React.ReactElement {
     [router],
   );
 
-  const isEmpty = brands.length === 0 || currentBrand === null;
-  const liveEvent = currentBrand?.currentLiveEvent ?? null;
+  const handleOpenLiveEvent = useCallback(
+    (eventId: string): void => {
+      router.push(`/event/${eventId}` as never);
+    },
+    [router],
+  );
 
-  const liveProgress = useMemo<number>(() => {
-    if (liveEvent === null) return 0;
-    if (liveEvent.goalGbp <= 0) return 0;
-    return Math.min(1, liveEvent.soldGbp / liveEvent.goalGbp);
-  }, [liveEvent]);
+  useEffect(() => {
+    if (brandRecovery.errorMessage !== null) {
+      setToast({ visible: true, message: brandRecovery.errorMessage });
+    }
+  }, [brandRecovery.errorMessage]);
+
+  const hasNoBrands = brandsQuery.isFetched && brands.length === 0;
+  const isBrandResolving =
+    !brandsQuery.isFetched ||
+    brandRecovery.isResolving ||
+    (brands.length > 0 && currentBrandId !== null && currentBrand === null);
+  const hasBrandsButNoSelection =
+    brandsQuery.isFetched &&
+    brands.length > 0 &&
+    currentBrandId === null &&
+    currentBrand === null &&
+    !isBrandResolving;
+  const eventSummary = useMemo(
+    () => buildBrandEventSummary(liveEvents, drafts),
+    [liveEvents, drafts],
+  );
+  const primaryLiveEvent = getLiveEventFromItem(eventSummary.primaryLiveItem);
+
+  const liveHeroMetrics = useMemo(() => {
+    void orderEntries;
+
+    if (primaryLiveEvent === null) {
+      return {
+        revenueGbp: 0,
+        soldCount: 0,
+        capacity: null as number | null,
+        progress: 0,
+      };
+    }
+
+    const capacity = finiteTicketCapacity(primaryLiveEvent);
+    const soldCount = getSoldCountForEvent(primaryLiveEvent.id);
+    return {
+      revenueGbp: getRevenueForEvent(primaryLiveEvent.id),
+      soldCount,
+      capacity,
+      progress:
+        capacity !== null && capacity > 0
+          ? Math.min(1, soldCount / capacity)
+          : 0,
+    };
+  }, [
+    primaryLiveEvent,
+    orderEntries,
+    getSoldCountForEvent,
+    getRevenueForEvent,
+  ]);
 
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
@@ -196,63 +299,98 @@ export default function HomeTab(): React.ReactElement {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        {isEmpty ? (
+        {currentBrand === null ? (
           <View style={styles.emptyCol}>
             <GlassCard variant="elevated" padding={spacing.lg}>
               <Text style={styles.greetingTier}>{greetingLabel()}</Text>
-              <Text style={styles.emptyTitle}>No brands yet</Text>
-              <Text style={styles.emptyBody}>
-                Tap{" "}
-                <Text style={styles.emptyChipName}>Create brand</Text>
-                {" "}in the top bar to set up your first brand. You can edit it
-                any time.
-              </Text>
+              {hasNoBrands ? (
+                <>
+                  <Text style={styles.emptyTitle}>No brands yet</Text>
+                  <Text style={styles.emptyBody}>
+                    Tap{" "}
+                    <Text style={styles.emptyChipName}>Create brand</Text>
+                    {" "}in the top bar to set up your first brand. You can
+                    edit it any time.
+                  </Text>
+                </>
+              ) : hasBrandsButNoSelection ? (
+                <>
+                  <Text style={styles.emptyTitle}>Choose a brand</Text>
+                  <Text style={styles.emptyBody}>
+                    We found your brands. Pick one from the top bar to continue.
+                  </Text>
+                  <Pressable
+                    onPress={handleOpenSwitcher}
+                    accessibilityRole="button"
+                    accessibilityLabel="Choose a brand"
+                    style={styles.emptyBuildAction}
+                  >
+                    <Icon name="chevD" size={16} color={accent.warm} />
+                    <Text style={styles.emptyBuildActionText}>
+                      Choose brand
+                    </Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.emptyTitle}>Loading brands</Text>
+                  <Text style={styles.emptyBody}>
+                    Getting your brand workspace ready.
+                  </Text>
+                </>
+              )}
             </GlassCard>
           </View>
         ) : (
           <>
-            <View style={styles.greetingCol}>
-              <Text style={styles.greetingTier}>{greetingLabel()}</Text>
-              <Text style={styles.greetingHey}>Hey, {currentBrand.displayName}</Text>
-            </View>
-
-            {liveEvent !== null ? (
+            {primaryLiveEvent !== null ? (
               <GlassCard variant="elevated" padding={spacing.lg}>
                 <View style={styles.heroLiveTagRow}>
                   <Pill variant="live" livePulse>
-                    Live tonight
+                    Live now
                   </Pill>
                 </View>
-                <Text style={styles.heroEventName}>{liveEvent.name}</Text>
+                <Text style={styles.heroEventName}>
+                  {getEventName(primaryLiveEvent.name, "Untitled event")}
+                </Text>
+                <Text style={styles.heroEventDate}>
+                  {formatDraftDateLine(primaryLiveEvent)}
+                </Text>
                 <View style={styles.heroAmountRow}>
                   <Text style={styles.heroAmountSold}>
-                    {formatGbpRound(liveEvent.soldGbp)}
+                    {formatGbpRound(liveHeroMetrics.revenueGbp)}
                   </Text>
-                  <Text style={styles.heroAmountGoal}>
-                    {" "}/ {formatGbpRound(liveEvent.goalGbp)}
-                  </Text>
+                  <Text style={styles.heroAmountGoal}> revenue</Text>
                 </View>
-                <View style={styles.progressBarTrack}>
-                  <View
-                    style={[
-                      styles.progressBarFill,
-                      { width: `${Math.round(liveProgress * 100)}%` },
-                    ]}
-                  />
-                </View>
+                {liveHeroMetrics.capacity !== null ? (
+                  <View style={styles.progressBarTrack}>
+                    <View
+                      style={[
+                        styles.progressBarFill,
+                        {
+                          width: `${Math.round(
+                            liveHeroMetrics.progress * 100,
+                          )}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                ) : null}
                 <View style={styles.heroStatRow}>
                   <View style={styles.heroStatCell}>
                     <Text style={styles.heroStatValue}>
-                      {Math.round(liveEvent.soldGbp / 30)}
+                      {liveHeroMetrics.soldCount.toLocaleString("en-GB")}
                     </Text>
                     <Text style={styles.heroStatLabel}>Tickets sold</Text>
                   </View>
                   <View style={styles.heroStatCell}>
-                    <Text style={styles.heroStatValue}>400</Text>
+                    <Text style={styles.heroStatValue}>
+                      {formatCapacityLabel(primaryLiveEvent)}
+                    </Text>
                     <Text style={styles.heroStatLabel}>Capacity</Text>
                   </View>
                   <View style={styles.heroStatCell}>
-                    <Text style={styles.heroStatValue}>0</Text>
+                    <Text style={styles.heroStatValue}>—</Text>
                     <Text style={styles.heroStatLabel}>Scanned</Text>
                   </View>
                 </View>
@@ -269,8 +407,8 @@ export default function HomeTab(): React.ReactElement {
             <View style={styles.kpiGrid}>
               <KpiTile
                 label="Active events"
-                value={currentBrand.stats.events}
-                sub={liveEvent !== null ? "1 live · 2 upcoming" : "Nothing live tonight"}
+                value={eventSummary.counts.active}
+                sub={formatActiveEventsSub(eventSummary.counts)}
                 style={styles.kpiCell}
               />
               <KpiTile
@@ -293,107 +431,121 @@ export default function HomeTab(): React.ReactElement {
             </View>
 
             <View style={styles.eventsCol}>
-              {/* Cycle 3 — real draft rows from draftEventStore (NOT stub). */}
-              {drafts.map((draft) => (
-                <Pressable
-                  key={draft.id}
-                  onPress={() => handleOpenDraft(draft.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Resume draft: ${draft.name || "Untitled"}`}
-                  style={styles.eventRow}
-                >
-                  <View style={styles.eventCoverWrap}>
-                    <EventCover
-                      hue={draft.coverHue}
-                      radius={12}
-                      label=""
-                      height={56}
-                      width={56}
-                    />
-                  </View>
-                  <View style={styles.eventTextCol}>
-                    <View style={styles.eventPillRow}>
-                      <Pill variant="draft">Draft</Pill>
-                    </View>
-                    <Text style={styles.eventTitle} numberOfLines={1}>
-                      {draft.name.length > 0 ? draft.name : "Untitled draft"}
-                    </Text>
-                    <Text style={styles.eventWhen} numberOfLines={1}>
-                      {`Step ${draft.lastStepReached + 1} of 7 · ${formatRelativeTime(draft.updatedAt)}`}
-                    </Text>
-                  </View>
-                  <View style={styles.eventSoldCol}>
-                    <Text style={styles.eventSoldValue}>—</Text>
-                    <Text style={styles.eventSoldLabel}>resume</Text>
-                  </View>
-                </Pressable>
-              ))}
-              {liveEvent !== null ? (
-                <View style={styles.eventRow}>
-                  <View style={styles.eventCoverWrap}>
-                    <EventCover hue={25} radius={12} label="" height={56} width={56} />
-                  </View>
-                  <View style={styles.eventTextCol}>
-                    <View style={styles.eventPillRow}>
-                      <Pill variant="live" livePulse>
-                        Live
-                      </Pill>
-                    </View>
-                    <Text style={styles.eventTitle} numberOfLines={1}>
-                      {liveEvent.name}
-                    </Text>
-                    <Text style={styles.eventWhen} numberOfLines={1}>
-                      Tonight · 21:00
-                    </Text>
-                  </View>
-                  <View style={styles.eventSoldCol}>
-                    <Text style={styles.eventSoldValue}>
-                      {Math.round(liveEvent.soldGbp / 30)} / 400
-                    </Text>
-                    <Text style={styles.eventSoldLabel}>sold</Text>
-                  </View>
-                </View>
-              ) : null}
-              {STUB_UPCOMING_ROWS.map((row) => (
-                <View key={row.id} style={styles.eventRow}>
-                  <View style={styles.eventCoverWrap}>
-                    <EventCover hue={row.hue} radius={12} label="" height={56} width={56} />
-                  </View>
-                  <View style={styles.eventTextCol}>
-                    <View style={styles.eventPillRow}>
-                      <Pill variant={row.status === "live" ? "live" : "draft"}>
-                        {row.status === "live" ? "Live" : "Draft"}
-                      </Pill>
-                    </View>
-                    <Text style={styles.eventTitle} numberOfLines={1}>
-                      {row.title}
-                    </Text>
-                    <Text style={styles.eventWhen} numberOfLines={1}>
-                      {row.when}
-                    </Text>
-                  </View>
-                  <View style={styles.eventSoldCol}>
-                    <Text style={styles.eventSoldValue}>{row.sold}</Text>
-                    <Text style={styles.eventSoldLabel}>sold</Text>
-                  </View>
-                </View>
-              ))}
+              {eventSummary.activeItems.length === 0 ? (
+                <GlassCard variant="base" padding={spacing.lg}>
+                  <Text style={styles.emptyTitle}>No upcoming events</Text>
+                  <Text style={styles.emptyBody}>
+                    Build an event to see it here.
+                  </Text>
+                  <Pressable
+                    onPress={handleBuildEvent}
+                    accessibilityRole="button"
+                    accessibilityLabel="Build an event"
+                    style={styles.emptyBuildAction}
+                  >
+                    <Icon name="plus" size={16} color={accent.warm} />
+                    <Text style={styles.emptyBuildActionText}>Build event</Text>
+                  </Pressable>
+                </GlassCard>
+              ) : (
+                eventSummary.activeItems.map((item) => {
+                  if (item.kind === "draft") {
+                    const draft = item.event as DraftEvent;
+                    return (
+                      <Pressable
+                        key={item.key}
+                        onPress={() => handleOpenDraft(draft.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Resume draft: ${
+                          draft.name || "Untitled"
+                        }`}
+                        style={styles.eventRow}
+                      >
+                        <View style={styles.eventCoverWrap}>
+                          <EventCoverMedia
+                            hue={draft.coverHue}
+                            mediaUrl={draft.coverMediaUrl}
+                            mediaType={draft.coverMediaType}
+                            radius={12}
+                            label=""
+                            height={56}
+                            width={56}
+                          />
+                        </View>
+                        <View style={styles.eventTextCol}>
+                          <View style={styles.eventPillRow}>
+                            <Pill variant="draft">Draft</Pill>
+                          </View>
+                          <Text style={styles.eventTitle} numberOfLines={1}>
+                            {getEventName(draft.name, "Untitled draft")}
+                          </Text>
+                          <Text style={styles.eventWhen} numberOfLines={1}>
+                            {`Step ${draft.lastStepReached + 1} of 7 · ${formatRelativeTime(
+                              draft.updatedAt,
+                            )}`}
+                          </Text>
+                        </View>
+                        <View style={styles.eventSoldCol}>
+                          <Text style={styles.eventSoldValue}>—</Text>
+                          <Text style={styles.eventSoldLabel}>resume</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  }
+
+                  const event = item.event as LiveEvent;
+                  const soldCount = getSoldCountForEvent(event.id);
+                  const isLive = item.status === "live";
+
+                  return (
+                    <Pressable
+                      key={item.key}
+                      onPress={() => handleOpenLiveEvent(event.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open event: ${
+                        event.name || "Untitled"
+                      }`}
+                      style={styles.eventRow}
+                    >
+                      <View style={styles.eventCoverWrap}>
+                        <EventCoverMedia
+                          hue={event.coverHue}
+                          mediaUrl={event.coverMediaUrl}
+                          mediaType={event.coverMediaType}
+                          radius={12}
+                          label=""
+                          height={56}
+                          width={56}
+                        />
+                      </View>
+                      <View style={styles.eventTextCol}>
+                        <View style={styles.eventPillRow}>
+                          <Pill
+                            variant={isLive ? "live" : "accent"}
+                            livePulse={isLive}
+                          >
+                            {isLive ? "Live" : "Upcoming"}
+                          </Pill>
+                        </View>
+                        <Text style={styles.eventTitle} numberOfLines={1}>
+                          {getEventName(event.name, "Untitled event")}
+                        </Text>
+                        <Text style={styles.eventWhen} numberOfLines={1}>
+                          {formatDraftDateLine(event)}
+                        </Text>
+                      </View>
+                      <View style={styles.eventSoldCol}>
+                        <Text style={styles.eventSoldValue}>
+                          {formatSoldOutOfCapacity(event, soldCount)}
+                        </Text>
+                        <Text style={styles.eventSoldLabel}>sold</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })
+              )}
             </View>
 
-            <Pressable
-              onPress={handleBuildEvent}
-              accessibilityRole="button"
-              accessibilityLabel="Build a new event"
-              style={styles.buildCta}
-            >
-              <View style={styles.buildCtaIconWrap}>
-                <Icon name="plus" size={20} color={accent.warm} />
-              </View>
-              <View style={styles.buildCtaTextCol}>
-                <Text style={styles.buildCtaTitle}>Build a new event</Text>
-                <Text style={styles.buildCtaSub}>About 4 minutes</Text>
-              </View>
-            </Pressable>
           </>
         )}
       </ScrollView>
@@ -402,6 +554,7 @@ export default function HomeTab(): React.ReactElement {
         visible={sheetVisible}
         onClose={handleCloseSheet}
         onBrandCreated={handleBrandCreated}
+        onDefaultBrandSaveError={handleDefaultBrandSaveError}
         onRequestDeleteBrand={handleRequestDeleteBrand}
       />
 
@@ -472,10 +625,6 @@ const styles = StyleSheet.create({
   },
 
   // Greeting ------------------------------------------------------------
-  greetingCol: {
-    paddingHorizontal: spacing.xs,
-    paddingBottom: spacing.xs,
-  },
   greetingTier: {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
@@ -483,14 +632,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     color: textTokens.tertiary,
     textTransform: "uppercase",
-  },
-  greetingHey: {
-    fontSize: typography.h1.fontSize,
-    lineHeight: typography.h1.lineHeight,
-    fontWeight: typography.h1.fontWeight,
-    letterSpacing: typography.h1.letterSpacing,
-    color: textTokens.primary,
-    marginTop: 4,
   },
 
   // Hero — live event ---------------------------------------------------
@@ -502,6 +643,12 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
+    marginBottom: 2,
+  },
+  heroEventDate: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
     marginBottom: 4,
   },
   heroAmountRow: {
@@ -637,40 +784,25 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
   },
 
-  // Build CTA -----------------------------------------------------------
-  buildCta: {
+  // Empty action --------------------------------------------------------
+  emptyBuildAction: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radiusTokens.lg,
+    alignSelf: "flex-start",
+    gap: spacing.xs,
+    minHeight: 40,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radiusTokens.md,
     borderWidth: 1,
     borderColor: accent.border,
     backgroundColor: accent.tint,
-    borderStyle: "dashed",
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
   },
-  buildCtaIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buildCtaTextCol: {
-    flex: 1,
-  },
-  buildCtaTitle: {
-    fontSize: typography.body.fontSize,
+  emptyBuildActionText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
     fontWeight: "600",
-    color: textTokens.primary,
-  },
-  buildCtaSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
-    marginTop: 2,
+    color: accent.warm,
   },
 });

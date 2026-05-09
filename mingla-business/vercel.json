@@ -6,6 +6,37 @@
   "framework": null,
   "cleanUrls": true,
   "trailingSlash": false,
+  "rewrites": [
+    { "source": "/og/event/:eventId.png", "destination": "/api/og-event?eventId=:eventId" },
+    { "source": "/og/brand/:brandSlug.png", "destination": "/api/og-brand?brandSlug=:brandSlug" },
+    {
+      "source": "/e/:brandSlug/:eventSlug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
+        }
+      ],
+      "destination": "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug"
+    },
+    {
+      "source": "/b/:brandSlug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
+        }
+      ],
+      "destination": "/api/public-brand?brandSlug=:brandSlug"
+    },
+    { "source": "/stripe-onboarding-return", "destination": "/stripe-onboarding-return.html" },
+    { "source": "/e/:brandSlug/:eventSlug", "destination": "/e/[brandSlug]/[eventSlug]" },
+    { "source": "/b/:brandSlug", "destination": "/b/[brandSlug]" },
+    { "source": "/checkout/:eventId", "destination": "/checkout/[eventId]" },
+    { "source": "/checkout/:eventId/:step", "destination": "/checkout/[eventId]/:step" }
+  ],
   "headers": [
     {
       "source": "/.well-known/apple-app-site-association",

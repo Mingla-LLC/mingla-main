@@ -10,9 +10,7 @@
  * primitive without changes.
  *
  * Web: uses `navigator.share` (when available) and `navigator.clipboard.writeText`.
- * Native: uses RN `Share.share` and (when available in mingla-business)
- *   `expo-clipboard`. Falls back to a Toast if clipboard is unavailable on
- *   either platform.
+ * Native: uses RN `Share.share` and `expo-clipboard`.
  *
  * Per Cycle 7 spec §2.6 + DEC-079 additive carve-out style.
  */
@@ -22,7 +20,6 @@ import {
   Linking,
   Platform,
   Pressable,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -33,7 +30,6 @@ import {
   accent,
   glass,
   radius as radiusTokens,
-  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -44,6 +40,7 @@ import {
   twitterIntent,
   whatsappIntent,
 } from "../../utils/shareIntents";
+import { copyPublicUrl, sharePublicUrl } from "../../utils/sharePublicUrl";
 
 import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
@@ -65,7 +62,7 @@ interface PlatformButton {
   buildUrl: (url: string, title: string, description?: string) => string;
 }
 
-const PLATFORM_BUTTONS: ReadonlyArray<PlatformButton> = [
+const PLATFORM_BUTTONS: readonly PlatformButton[] = [
   {
     id: "twitter",
     label: "Twitter",
@@ -104,6 +101,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     visible: boolean;
     message: string;
   }>({ visible: false, message: "" });
+  const [isCopying, setIsCopying] = React.useState<boolean>(false);
+  const [isSharing, setIsSharing] = React.useState<boolean>(false);
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -114,65 +113,43 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   }, []);
 
   const handleCopyLink = useCallback(async (): Promise<void> => {
-    if (Platform.OS === "web") {
-      const navAny = (
-        globalThis as unknown as {
-          navigator?: {
-            clipboard?: { writeText?: (s: string) => Promise<void> };
-          };
-        }
-      ).navigator;
-      if (navAny?.clipboard?.writeText !== undefined) {
-        try {
-          await navAny.clipboard.writeText(url);
-          showToast("Link copied");
-        } catch {
-          showToast("Couldn't copy link.");
-        }
-      } else {
-        showToast("Copy not supported on this browser.");
-      }
-      return;
+    if (isCopying) return;
+    setIsCopying(true);
+    try {
+      await copyPublicUrl(url);
+      showToast("Link copied");
+    } catch {
+      showToast("Copy failed. Try Share via instead.");
+    } finally {
+      setIsCopying(false);
     }
-    // Native: use expo-clipboard if available; else a Toast directing the
-    // user to the native share sheet (which always supports Copy).
-    showToast("Tap Share via to copy on iOS / Android.");
-  }, [url, showToast]);
+  }, [isCopying, url, showToast]);
 
   const handleNativeShare = useCallback(async (): Promise<void> => {
-    if (Platform.OS === "web") {
-      const navAny = (
-        globalThis as unknown as {
-          navigator?: {
-            share?: (data: {
-              title: string;
-              url: string;
-              text?: string;
-            }) => Promise<void>;
-          };
-        }
-      ).navigator;
-      if (navAny?.share !== undefined) {
-        try {
-          await navAny.share({ title, url, text: description });
-        } catch {
-          // user cancelled — surface no error
-        }
-      } else {
-        showToast("Native share not supported on this browser.");
-      }
-      return;
-    }
-    // Native: RN Share.share
+    if (isSharing) return;
+    setIsSharing(true);
     try {
-      await Share.share({
-        message: `${title}\n${url}`,
+      await sharePublicUrl({
+        title,
         url,
+        description,
       });
     } catch {
-      // user cancelled
+      if (Platform.OS === "web") {
+        showToast("Native share not supported on this browser.");
+      }
+    } finally {
+      setIsSharing(false);
     }
-  }, [url, title, description, showToast]);
+  }, [isSharing, url, title, description, showToast]);
+
+  const handleOpenLink = useCallback(async (): Promise<void> => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      showToast("Couldn't open link.");
+    }
+  }, [url, showToast]);
 
   const handlePlatformPress = useCallback(
     async (btn: PlatformButton): Promise<void> => {
@@ -225,6 +202,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             onPress={handleCopyLink}
             fullWidth
             leadingIcon="link"
+            loading={isCopying}
+            disabled={isSharing}
           />
         </View>
         <View style={styles.actionsRow}>
@@ -235,8 +214,24 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             onPress={handleNativeShare}
             fullWidth
             leadingIcon="share"
+            loading={isSharing}
+            disabled={isCopying}
           />
         </View>
+
+        <Pressable
+          onPress={handleOpenLink}
+          accessibilityRole="link"
+          accessibilityLabel="Open share link"
+          style={({ pressed }) => [
+            styles.urlBox,
+            pressed && styles.urlBoxPressed,
+          ]}
+        >
+          <Text style={styles.urlText} numberOfLines={2}>
+            {url}
+          </Text>
+        </Pressable>
 
         {/* QR code */}
         <View style={styles.qrWrap}>
@@ -311,6 +306,22 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     marginBottom: spacing.sm,
+  },
+  urlBox: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  urlBoxPressed: {
+    opacity: 0.7,
+  },
+  urlText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight * 1.35,
+    color: accent.warm,
   },
   qrWrap: {
     alignItems: "center",

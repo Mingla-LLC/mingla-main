@@ -16,8 +16,10 @@
 
 export type StripeOperation =
   | "onboard_create" // First-time stripe_connect_accounts.create
-  | "onboard_session" // AccountSession.create for embedded onboarding
-  | "onboard_reactivate_session" // AccountSession.create after local reactivation
+  | "onboard_account_link" // Account Link create for hosted onboarding
+  | "onboard_reactivate_link" // Account Link create after local reactivation
+  | "onboard_session" // Legacy AccountSession.create for embedded onboarding
+  | "onboard_reactivate_session" // Legacy AccountSession.create after local reactivation
   | "refresh_status" // accounts.retrieve refetch
   | "webhook_account_retrieve" // webhook remediation refresh
   | "detach_account" // accounts.del best-effort detach
@@ -27,7 +29,7 @@ export type StripeOperation =
 
 export function generateIdempotencyKey(
   brandId: string,
-  operation: StripeOperation,
+  operation: StripeOperation | string,
 ): string {
   if (!brandId || brandId.trim().length === 0) {
     throw new Error("generateIdempotencyKey: brandId required");

@@ -204,6 +204,10 @@ export default function EditProfileRoute(): React.ReactElement {
     }
   }, [name, photoUri, updateAccount, router, showToast]);
 
+  const handleDeleteAccount = useCallback((): void => {
+    router.push("/account/delete" as never);
+  }, [router]);
+
   // ---- Early returns (after all hooks per ORCH-0710) ----
 
   if (isLoading) {
@@ -358,6 +362,17 @@ export default function EditProfileRoute(): React.ReactElement {
             size="md"
             fullWidth
             disabled={updating || uploadingPhoto}
+          />
+        </View>
+
+        <View style={styles.deleteAccountRow}>
+          <Button
+            label="Delete account"
+            onPress={handleDeleteAccount}
+            variant="destructive"
+            size="md"
+            fullWidth
+            leadingIcon="trash"
           />
         </View>
       </ScrollView>
@@ -565,6 +580,12 @@ const styles = StyleSheet.create({
   // Save -------------------------------------------------------------
   saveRow: {
     marginTop: spacing.lg,
+  },
+  deleteAccountRow: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: glass.border.profileBase,
   },
 
   // Toast ------------------------------------------------------------

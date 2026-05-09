@@ -13,6 +13,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
+import {
+  updateCreatorAccount,
+  type CreatorAccountUpdatePatch,
+} from "../services/creatorAccount";
 
 export interface CreatorAccountRow {
   id: string;
@@ -20,18 +24,14 @@ export interface CreatorAccountRow {
   display_name: string | null;
   avatar_url: string | null;
   marketing_opt_in: boolean;
+  default_brand_id: string | null;
   deleted_at: string | null;
-}
-
-export interface CreatorAccountUpdatePatch {
-  display_name?: string;
-  avatar_url?: string | null;
-  marketing_opt_in?: boolean;
 }
 
 export interface CreatorAccountState {
   data: CreatorAccountRow | null;
   isLoading: boolean;
+  isFetched: boolean;
   isError: boolean;
   refetch: () => Promise<unknown>;
 }
@@ -51,25 +51,26 @@ export const useCreatorAccount = (): CreatorAccountState => {
   const userId = user?.id ?? null;
   const enabled = userId !== null;
 
-  const { data, isLoading, isError, refetch } = useQuery<CreatorAccountRow | null>({
-    queryKey: enabled ? creatorAccountKeys.byId(userId) : DISABLED_KEY,
-    enabled,
-    staleTime: STALE_TIME_MS,
-    queryFn: async (): Promise<CreatorAccountRow | null> => {
-      if (!enabled || userId === null) return null;
-      const { data: row, error } = await supabase
-        .from("creator_accounts")
-        .select(
-          "id, email, display_name, avatar_url, marketing_opt_in, deleted_at",
-        )
-        .eq("id", userId)
-        .maybeSingle();
-      if (error) throw error;
-      return row ?? null;
-    },
-  });
+  const { data, isLoading, isFetched, isError, refetch } =
+    useQuery<CreatorAccountRow | null>({
+      queryKey: enabled ? creatorAccountKeys.byId(userId) : DISABLED_KEY,
+      enabled,
+      staleTime: STALE_TIME_MS,
+      queryFn: async (): Promise<CreatorAccountRow | null> => {
+        if (!enabled || userId === null) return null;
+        const { data: row, error } = await supabase
+          .from("creator_accounts")
+          .select(
+            "id, email, display_name, avatar_url, marketing_opt_in, default_brand_id, deleted_at",
+          )
+          .eq("id", userId)
+          .maybeSingle();
+        if (error) throw error;
+        return row ?? null;
+      },
+    });
 
-  return { data: data ?? null, isLoading, isError, refetch };
+  return { data: data ?? null, isLoading, isFetched, isError, refetch };
 };
 
 export interface UseUpdateCreatorAccountResult {
@@ -83,14 +84,17 @@ export const useUpdateCreatorAccount = (): UseUpdateCreatorAccountResult => {
   const mutation = useMutation({
     mutationFn: async (patch: CreatorAccountUpdatePatch): Promise<void> => {
       if (user === null) throw new Error("Not signed in");
-      const { error } = await supabase
-        .from("creator_accounts")
-        .update(patch)
-        .eq("id", user.id);
-      if (error) throw error;
+      await updateCreatorAccount(user.id, patch);
     },
-    onSuccess: (): void => {
+    onSuccess: (_data, patch): void => {
       if (user !== null) {
+        queryClient.setQueryData<CreatorAccountRow | null>(
+          creatorAccountKeys.byId(user.id),
+          (prev) =>
+            prev === undefined || prev === null
+              ? (prev ?? null)
+              : { ...prev, ...patch },
+        );
         queryClient.invalidateQueries({
           queryKey: creatorAccountKeys.byId(user.id),
         });

@@ -1,6 +1,6 @@
 # B2a Path C V3 — `business.usemingla.com` Vercel Deploy Runbook
 
-**Status:** Operator-side runbook — required to unblock Phase 16 in-app onboarding.
+**Status:** Legacy operator-side runbook for the pre-ORCH-0764 embedded onboarding host. ORCH-0764A hosted Accounts v2 onboarding no longer expects this page in the primary setup path.
 **Authoritative source:** `Mingla_Artifacts/reports/INVESTIGATION_B2A_PATH_C_V3_CONFIG_DRIFT.md` R-1 fix
 **Owner:** Sethogieva
 **Estimated time:** 1.5–2 hours including DNS propagation wait
@@ -9,14 +9,14 @@
 
 ## Why this runbook exists
 
-The B2a Path C V3 SPEC committed to **Path B** (Mingla-hosted web page rendering Stripe's `@stripe/connect-js`, opened via `expo-web-browser`). Path B structurally requires Mingla to host that page on a domain Mingla owns. Forensics confirmed:
+The B2a Path C V3 SPEC committed to **Path B** (Mingla-hosted web page rendering Stripe's `@stripe/connect-js`, opened via `expo-web-browser`). Path B structurally required Mingla to host that page on a domain Mingla owns. Forensics confirmed:
 
 - `business.mingla.com` is NXDOMAIN (not Mingla's)
 - `mingla.com` is not Mingla's domain
 - `usemingla.com` IS Mingla's (verified Namecheap + Google MX records)
 - `mingla-business/dist/connect-onboarding.html` builds locally but is **not deployed anywhere**
 
-The fix is to deploy the existing `mingla-business/dist/` Expo Web export to `business.usemingla.com` via Vercel.
+The original fix was to deploy the existing `mingla-business/dist/` Expo Web export to `business.usemingla.com` via Vercel. ORCH-0764A supersedes the primary onboarding expectation: `brand-stripe-onboard` should return a Stripe-hosted Account Link from `/v2/core/account_links`, with `client_secret: null`, and the in-app browser should open the Stripe-hosted URL directly. If runtime returns `business.usemingla.com/connect-onboarding`, the deployed edge function is stale or serving the old embedded path.
 
 ---
 
@@ -106,7 +106,7 @@ For Phase 16 onboarding flow, **skip this step**.
   MINGLA_BUSINESS_WEB_URL=https://business.usemingla.com
 ```
 
-Then re-deploy `brand-stripe-onboard` to pick up the new env var:
+Then re-deploy `brand-stripe-onboard` if you are maintaining the legacy embedded fallback. ORCH-0764A hosted onboarding still uses `MINGLA_BUSINESS_WEB_URL` only to validate Mingla return URLs; it must not return `/connect-onboarding` as the onboarding surface:
 
 ```bash
 /opt/homebrew/bin/supabase functions deploy brand-stripe-onboard
@@ -129,12 +129,14 @@ eas build --platform ios --profile preview
 
 ## Step 8 — Verify end-to-end (~15 min)
 
+**ORCH-0764A hosted onboarding expectation:** the current primary flow should open a Stripe-hosted Account Link URL, not `business.usemingla.com/connect-onboarding`.
+
 1. Install the new EAS build on your iOS device
 2. Open the Mingla Business app → tap a brand → tap "Set up payments"
 3. ToS gate auto-passes (you're grandfathered)
 4. Country picker → choose UK → "Set up payments"
-5. **Expected:** in-app browser opens to `https://business.usemingla.com/connect-onboarding?session=...`
-6. Stripe Connect Embedded Components render in the page (orange Mingla brand color, "Mingla — Set up payments" header)
+5. **Expected:** in-app browser opens to a Stripe-hosted Account Link URL returned by `/v2/core/account_links`
+6. `brand-stripe-onboard` response has `client_secret: null`, an `account_id`, and an `onboarding_url` whose host is not `business.usemingla.com`
 7. Click through Stripe's test-mode onboarding (use synthetic data — Stripe pre-fills test fields)
 8. Onboarding completes → page redirects via `mingla-business://onboarding-complete` → app receives the redirect → state changes to `complete-active` or `complete-verifying`
 9. Verify in Stripe Dashboard → Connect → Connected accounts → the test account shows the brand's data

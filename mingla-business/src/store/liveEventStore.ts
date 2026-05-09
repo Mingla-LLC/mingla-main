@@ -36,6 +36,7 @@ import type {
   RecurrenceRule,
   TicketStub,
   WhenMode,
+  EventCoverMediaType,
 } from "./draftEventStore";
 import { useEventEditLogStore } from "./eventEditLogStore";
 import { useOrderStore } from "./orderStore";
@@ -44,14 +45,14 @@ import {
   classifySeverity,
   computeDiffSummary,
 } from "../utils/liveEventAdapter";
-import { computeDroppedDates } from "../utils/scheduleDateExpansion";
+import { validateLiveEventFieldUpdate } from "../utils/publishedEventEditGuards";
 import {
   deriveChannelFlags,
   notifyEventChanged,
 } from "../services/eventChangeNotifier";
 import { getBrandFromCache } from "../hooks/useBrands";
 
-export type LiveEventStatus = "live" | "cancelled" | "ended";
+export type LiveEventStatus = "scheduled" | "live" | "cancelled" | "ended";
 
 /**
  * Editable subset of LiveEvent post-publish (ORCH-0704 v2).
@@ -85,6 +86,8 @@ export type EditableLiveEventFields = Pick<
   | "onlineUrl"
   | "hideAddressUntilTicket"
   | "coverHue"
+  | "coverMediaUrl"
+  | "coverMediaType"
   | "tickets"
   | "visibility"
   | "requireApproval"
@@ -127,6 +130,7 @@ export type UpdateLiveEventResult =
 export interface LiveEvent {
   // Identity
   id: string;                          // le_<ts36>
+  serverEventId: string | null;         // Supabase events.id retained from the draft row after publish
   brandId: string;
   brandSlug: string;                   // FROZEN at publish — preserves URL stability if brand renamed later
   eventSlug: string;                   // generated; brand-scoped unique
@@ -152,6 +156,8 @@ export interface LiveEvent {
   onlineUrl: string | null;
   hideAddressUntilTicket: boolean;
   coverHue: number;
+  coverMediaUrl: string | null;
+  coverMediaType: EventCoverMediaType | null;
   tickets: TicketStub[];
   visibility: DraftEventVisibility;
   requireApproval: boolean;
@@ -237,7 +243,12 @@ type PersistedState = Pick<LiveEventState, "events">;
 type V1LiveTicketStub = Omit<TicketStub, "availableAt">;
 type V1LiveEvent = Omit<
   LiveEvent,
-  "tickets" | "inPersonPaymentsEnabled" | "privateGuestList"
+  | "tickets"
+  | "inPersonPaymentsEnabled"
+  | "privateGuestList"
+  | "serverEventId"
+  | "coverMediaUrl"
+  | "coverMediaType"
 > & {
   tickets: V1LiveTicketStub[];
   /** Pre-Cycle-10 events may not have this field. */
@@ -249,7 +260,9 @@ const upgradeV1LiveTicketToV2 = (t: V1LiveTicketStub): TicketStub => ({
   availableAt: "both",
 });
 
-const upgradeV1LiveEventToV2 = (e: V1LiveEvent): LiveEvent => ({
+type V2LiveEvent = Omit<LiveEvent, "serverEventId" | "coverMediaUrl" | "coverMediaType">;
+
+const upgradeV1LiveEventToV2 = (e: V1LiveEvent): V2LiveEvent => ({
   ...e,
   tickets: e.tickets.map(upgradeV1LiveTicketToV2),
   inPersonPaymentsEnabled: false,
@@ -257,20 +270,32 @@ const upgradeV1LiveEventToV2 = (e: V1LiveEvent): LiveEvent => ({
   privateGuestList: e.privateGuestList ?? false,
 });
 
+const upgradeLiveEventToV3 = (e: V2LiveEvent): LiveEvent => ({
+  ...e,
+  serverEventId: null,
+  coverMediaUrl: null,
+  coverMediaType: null,
+});
+
 const persistOptions: PersistOptions<LiveEventState, PersistedState> = {
   name: "mingla-business.liveEvent.v1",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state): PersistedState => ({ events: state.events }),
-  version: 2,
+  version: 3,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { events: [] };
     }
     if (version === 1) {
-      // v1 → v2: tickets gain availableAt:"both"; event gains
-      // inPersonPaymentsEnabled:false. Cycle 12 additive migrate.
+      // v1 → v3: tickets gain availableAt:"both"; event gains
+      // inPersonPaymentsEnabled:false, then server/media cover identity.
       const v1 = persistedState as { events: V1LiveEvent[] };
-      return { events: v1.events.map(upgradeV1LiveEventToV2) };
+      const v2Events = v1.events.map(upgradeV1LiveEventToV2);
+      return { events: v2Events.map(upgradeLiveEventToV3) };
+    }
+    if (version === 2) {
+      const v2 = persistedState as { events: V2LiveEvent[] };
+      return { events: v2.events.map(upgradeLiveEventToV3) };
     }
     return persistedState as PersistedState;
   },
@@ -302,128 +327,13 @@ export const useLiveEventStore = create<LiveEventState>()(
         }));
       },
       updateLiveEventFields: (id, patch, context, reason): UpdateLiveEventResult => {
-        // ---- 1. Reason validation (I-20 — reason mandatory + length range) ----
-        const trimmedReason = reason.trim();
-        if (trimmedReason.length === 0) {
-          return { ok: false, reason: "missing_edit_reason" };
-        }
-        if (trimmedReason.length < 10 || trimmedReason.length > 200) {
-          return { ok: false, reason: "invalid_edit_reason" };
-        }
+        const event = get().events.find((e) => e.id === id) ?? null;
+        const validation = validateLiveEventFieldUpdate(event, patch, context, reason);
+        if (!validation.ok) return validation;
+        if (event === null) return { ok: false, reason: "event_not_found" };
+        const trimmedReason = validation.trimmedReason;
 
-        // ---- 2. Event lookup ----
-        const event = get().events.find((e) => e.id === id);
-        if (event === undefined) {
-          return { ok: false, reason: "event_not_found" };
-        }
-
-        const { soldCountByTier, soldCountForEvent } = context;
-
-        // ---- 3. Schedule diff (whenMode / recurrence / multiDates dropped dates) ----
-        const beforeSchedule = {
-          whenMode: event.whenMode,
-          date: event.date,
-          recurrenceRule: event.recurrenceRule,
-          multiDates: event.multiDates,
-        };
-        const afterSchedule = {
-          whenMode: patch.whenMode ?? event.whenMode,
-          date: patch.date !== undefined ? patch.date : event.date,
-          recurrenceRule:
-            patch.recurrenceRule !== undefined
-              ? patch.recurrenceRule
-              : event.recurrenceRule,
-          multiDates:
-            patch.multiDates !== undefined ? patch.multiDates : event.multiDates,
-        };
-        const droppedDates = computeDroppedDates(beforeSchedule, afterSchedule);
-
-        if (droppedDates.length > 0 && soldCountForEvent > 0) {
-          // Classify rejection by what changed.
-          if (afterSchedule.whenMode !== beforeSchedule.whenMode) {
-            return {
-              ok: false,
-              reason: "when_mode_drops_active_date",
-              droppedDates,
-              affectedOrderCount: soldCountForEvent,
-            };
-          }
-          if (
-            JSON.stringify(afterSchedule.recurrenceRule) !==
-            JSON.stringify(beforeSchedule.recurrenceRule)
-          ) {
-            return {
-              ok: false,
-              reason: "recurrence_drops_occurrence",
-              droppedDates,
-              affectedOrderCount: soldCountForEvent,
-            };
-          }
-          // Otherwise — multi-date entry removal
-          return {
-            ok: false,
-            reason: "multi_date_remove_with_sales",
-            droppedDates,
-            affectedOrderCount: soldCountForEvent,
-          };
-        }
-
-        // ---- 4. Per-tier guard rails ----
-        if (patch.tickets !== undefined) {
-          const oldById = new Map(event.tickets.map((t) => [t.id, t]));
-          const newIds = new Set(patch.tickets.map((t) => t.id));
-
-          // Tier delete with sales
-          for (const oldT of event.tickets) {
-            const sold = soldCountByTier[oldT.id] ?? 0;
-            if (!newIds.has(oldT.id) && sold > 0) {
-              return {
-                ok: false,
-                reason: "tier_delete_with_sales",
-                tierIds: [oldT.id],
-                affectedOrderCount: sold,
-              };
-            }
-          }
-
-          // Per-tier mutations
-          for (const newT of patch.tickets) {
-            const oldT = oldById.get(newT.id);
-            if (oldT === undefined) continue; // new tier
-            const sold = soldCountByTier[newT.id] ?? 0;
-            if (sold === 0) continue; // unsold tier
-
-            // Capacity floor (only when tier has fixed capacity)
-            if (newT.capacity !== null && newT.capacity < sold) {
-              return {
-                ok: false,
-                reason: "capacity_below_sold",
-                tierIds: [newT.id],
-                affectedOrderCount: sold,
-              };
-            }
-            // Price change with sales
-            if (newT.priceGbp !== oldT.priceGbp) {
-              return {
-                ok: false,
-                reason: "tier_price_change_with_sales",
-                tierIds: [newT.id],
-                affectedOrderCount: sold,
-              };
-            }
-            // Free toggle with sales
-            if (newT.isFree !== oldT.isFree) {
-              return {
-                ok: false,
-                reason: "tier_free_toggle_with_sales",
-                tierIds: [newT.id],
-                affectedOrderCount: sold,
-              };
-            }
-          }
-        }
-
-        // ---- 5. Apply patch ----
+        // ---- 2. Apply patch ----
         const now = new Date().toISOString();
         set((s) => ({
           events: s.events.map((e) =>
@@ -433,7 +343,7 @@ export const useLiveEventStore = create<LiveEventState>()(
 
         // ---- 6. Severity classification + edit log + notification stack ----
         const changedFieldKeys = (
-          Object.keys(patch) as Array<keyof EditableLiveEventFields>
+          Object.keys(patch) as (keyof EditableLiveEventFields)[]
         ).filter((k) => {
           const a = event[k];
           const b = (patch as Record<string, unknown>)[k];

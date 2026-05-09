@@ -23,7 +23,7 @@ import {
 } from "../../constants/designSystem";
 import { s, vs } from "../../utils/responsive";
 
-const logo = require("../../../assets/mingla_official_logo.png");
+const logo = require("../../../assets/brand/mingla-business-logo.png");
 
 interface BusinessLandingScreenProps {
   onGetStarted: () => void;

@@ -24,6 +24,16 @@ import { generateEventSlug, sanitizeSlugForUrl } from "./eventSlug";
 import { generateLiveEventId } from "./liveEventId";
 
 /**
+ * Side-effect-free preflight for the local publish conversion.
+ *
+ * Server-backed drafts must not be promoted out of `events.status='draft'`
+ * until the local conversion can succeed. Today the only expected local
+ * conversion blocker is a missing brand snapshot in the React Query cache.
+ */
+export const canConvertDraftToLiveEvent = (draft: DraftEvent): boolean =>
+  getBrandFromCache(draft.brandId) !== null;
+
+/**
  * Convert a DraftEvent into a LiveEvent + push it to liveEventStore.
  * Returns the new LiveEvent on success, or null if the brand is missing
  * (the caller should treat null as a publish failure and preserve the
@@ -58,14 +68,19 @@ export const convertDraftToLiveEvent = (
       .map((e) => e.eventSlug),
   );
   const eventSlug = generateEventSlug(draft.name, existingSlugs);
+  const serverEventSlug =
+    draft.serverSlug !== null && draft.serverSlug.trim().length > 0
+      ? sanitizeSlugForUrl(draft.serverSlug)
+      : eventSlug;
   const now = new Date().toISOString();
 
   const liveEvent: LiveEvent = {
     // Identity
     id: generateLiveEventId(),
+    serverEventId: draft.id,
     brandId: draft.brandId,
     brandSlug,
-    eventSlug,
+    eventSlug: serverEventSlug,
     // Lifecycle
     status: "live",
     publishedAt: now,
@@ -88,6 +103,8 @@ export const convertDraftToLiveEvent = (
     onlineUrl: draft.onlineUrl,
     hideAddressUntilTicket: draft.hideAddressUntilTicket,
     coverHue: draft.coverHue,
+    coverMediaUrl: draft.coverMediaUrl,
+    coverMediaType: draft.coverMediaType,
     tickets: draft.tickets,
     visibility: draft.visibility,
     requireApproval: draft.requireApproval,

@@ -56,7 +56,7 @@ import { expandTicketIds } from "../../src/utils/expandTicketIds";
 import type { CheckoutPaymentMethod } from "../../src/components/checkout/CartContext";
 
 import { EmptyState } from "../../src/components/ui/EmptyState";
-import { EventCover } from "../../src/components/ui/EventCover";
+import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import { Toast } from "../../src/components/ui/Toast";
@@ -313,8 +313,10 @@ export default function BuyerOrderDetailRoute(): React.ReactElement {
         {/* Event hero — LIVE values from LiveEvent */}
         {event !== null ? (
           <View style={styles.eventHero}>
-            <EventCover
+            <EventCoverMedia
               hue={event.coverHue}
+              mediaUrl={event.coverMediaUrl}
+              mediaType={event.coverMediaType}
               radius={radiusTokens.lg}
               label="cover · 16:9"
               height={140}

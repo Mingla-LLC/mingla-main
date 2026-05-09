@@ -45,19 +45,28 @@ function fire(eventKind: EventKind, placePoolId: string | null, context?: Engage
     ? context.stops.map(s => ({ place_pool_id: s.placePoolId, stop_index: s.stopIndex }))
     : null;
 
-  supabase.rpc('record_engagement', {
-    p_event_kind:      eventKind,
-    p_place_pool_id:   placePoolId,
-    p_container_key:   context?.containerKey ?? null,
-    p_experience_type: context?.experienceType ?? null,
-    p_category:        context?.category ?? null,
-    p_stops:           p_stops,
-  }).then(
-    ({ error }) => {
-      if (error) console.warn('[recordEngagement] RPC error:', error.message);
-    },
-    (err) => console.warn('[recordEngagement] RPC threw:', err)
-  );
+  supabase.auth.getSession().then(({ data }) => {
+    if (!data.session?.user) {
+      if (__DEV__) console.log('[recordEngagement] skipped - not authenticated');
+      return;
+    }
+
+    supabase.rpc('record_engagement', {
+      p_event_kind:      eventKind,
+      p_place_pool_id:   placePoolId,
+      p_container_key:   context?.containerKey ?? null,
+      p_experience_type: context?.experienceType ?? null,
+      p_category:        context?.category ?? null,
+      p_stops:           p_stops,
+    }).then(
+      ({ error }) => {
+        if (error) console.warn('[recordEngagement] RPC error:', error.message);
+      },
+      (err) => console.warn('[recordEngagement] RPC threw:', err)
+    );
+  }, (err) => {
+    if (__DEV__) console.log('[recordEngagement] skipped — session unavailable', err);
+  });
 }
 
 // Public API — callers ignore 4-way fan-out; it happens server-side.

@@ -98,9 +98,47 @@ def check_archive_index(failures: list[str]) -> None:
         "Mingla_Artifacts/ARTIFACT_MANIFEST.md",
         "outputs_legacy/",
         "handoffs_legacy/",
+        "superseded_reports/",
         "old_trackers/",
+        "Mingla_Artifacts/backups/",
     ):
         require(required in text, f"archive README must mention `{required}`", failures)
+
+    require(
+        (ROOT / "Mingla_Artifacts/archive/superseded_reports/README.md").exists(),
+        "archive superseded_reports README is missing",
+        failures,
+    )
+    require(
+        (ROOT / "Mingla_Artifacts/backups/README.md").exists(),
+        "backups README is missing",
+        failures,
+    )
+
+
+def check_roadmap_system(failures: list[str]) -> None:
+    required_paths = (
+        "Mingla_Roadmap/README.md",
+        "Mingla_Roadmap/ROADMAP_MANIFEST.md",
+        "Mingla_Roadmap/FEATURE_REGISTRY.md",
+        "Mingla_Roadmap/HIGH_LEVEL_ROADMAP.md",
+        "Mingla_Roadmap/CURRENT_BUILD.md",
+        "Mingla_Roadmap/NEXT_UP.md",
+        "Mingla_Roadmap/living/PRODUCT_STRATEGY.md",
+        "Mingla_Roadmap/living/GTM_AND_POSITIONING.md",
+        "Mingla_Roadmap/living/CUSTOMER_AND_ICP.md",
+        "Mingla_Roadmap/living/FEATURE_PORTFOLIO.md",
+        "Mingla_Roadmap/archive/README.md",
+        "Mingla_Roadmap/drafts/README.md",
+    )
+    for path in required_paths:
+        require((ROOT / path).exists(), f"roadmap system path is missing: {path}", failures)
+
+    manifest = ROOT / "Mingla_Roadmap/ROADMAP_MANIFEST.md"
+    if manifest.exists():
+        text = manifest.read_text(encoding="utf-8")
+        for required in ("living/", "source-summaries/", "drafts/", "archive/", "Mingla_Artifacts/ARTIFACT_MANIFEST.md"):
+            require(required in text, f"roadmap manifest must mention `{required}`", failures)
 
 
 def main() -> int:
@@ -116,6 +154,7 @@ def main() -> int:
     check_gitignore(failures)
     check_breadcrumbs(failures)
     check_archive_index(failures)
+    check_roadmap_system(failures)
     check_skill_output_destinations(failures)
 
     if failures:
@@ -130,6 +169,7 @@ def main() -> int:
     print("- private prompt/tool roots remain ignored")
     print("- deprecated queues remain breadcrumbs")
     print("- Mingla skills avoid stale outputs/* current destinations")
+    print("- Mingla roadmap system paths remain present")
     return 0
 
 

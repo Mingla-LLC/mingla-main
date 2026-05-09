@@ -2,7 +2,7 @@
  * Account tab — Cycle 1 wiring on top of Cycle 0a placeholder.
  *
  * Cycle 0a: TopBar (brand chip → toast), GlassCard placeholder, sign-out
- * button, dev styleguide link.
+ * button.
  * Cycle 1: brand chip now opens BrandSwitcherSheet (per DEC-079 carve-out).
  * Two dev-only buttons added under __DEV__:
  *   - "Seed 4 stub brands" — populates store from STUB_BRANDS, sets current
@@ -20,7 +20,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
-import { Button } from "../../src/components/ui/Button";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import type { IconName } from "../../src/components/ui/Icon";
@@ -85,15 +84,10 @@ export default function AccountTab(): React.ReactElement {
       router.replace("/");
     } catch (error) {
       if (__DEV__) {
-        // eslint-disable-next-line no-console
         console.error("[AccountTab] signOut threw:", error);
       }
     }
   }, [signOut, router]);
-
-  const handleOpenStyleguide = useCallback((): void => {
-    router.push("/__styleguide" as never);
-  }, [router]);
 
   // Cycle 14 — Settings hub navigation handlers per SPEC §4.7.1.
   const handleEditProfile = useCallback((): void => {
@@ -102,10 +96,6 @@ export default function AccountTab(): React.ReactElement {
 
   const handleNotifications = useCallback((): void => {
     router.push("/account/notifications" as never);
-  }, [router]);
-
-  const handleDeleteAccount = useCallback((): void => {
-    router.push("/account/delete" as never);
   }, [router]);
 
   const handleOpenSwitcher = useCallback((): void => {
@@ -167,73 +157,12 @@ export default function AccountTab(): React.ReactElement {
   // breaking change for DEV-only state. Production operators see no change
   // (they never had stub brands; seed/wipe were `__DEV__`-gated).
 
-  const emailLabel =
-    user?.email ??
-    (typeof user?.user_metadata?.email === "string"
-      ? user.user_metadata.email
-      : "creator");
-
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
       <View style={styles.barWrap}>
         <TopBar leftKind="brand" onBrandTap={handleOpenSwitcher} />
       </View>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.title}>Account</Text>
-          <Text style={styles.email} numberOfLines={1}>
-            Signed in as {emailLabel}
-          </Text>
-          <View style={styles.signOutRow}>
-            <Button
-              label="Sign out everywhere"
-              onPress={handleSignOut}
-              variant="secondary"
-              size="md"
-            />
-          </View>
-          <Text style={styles.signOutCaption}>
-            Signs you out on every device.
-          </Text>
-          {__DEV__ ? (
-            <View style={styles.styleguideRow}>
-              <Button
-                label="Open dev styleguide"
-                onPress={handleOpenStyleguide}
-                variant="ghost"
-                size="md"
-                leadingIcon="grid"
-              />
-            </View>
-          ) : null}
-        </GlassCard>
-
-        {/* Cycle 14 — Settings hub: 3 sub-route nav rows per SPEC §4.7.1 + DEC-096 D-14-17. */}
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.title}>Settings</Text>
-          <Text style={styles.body}>
-            Manage your profile, notifications, and account.
-          </Text>
-          <View style={styles.navRowsCol}>
-            <SettingsNavRow
-              icon="user"
-              label="Edit profile"
-              onPress={handleEditProfile}
-            />
-            <SettingsNavRow
-              icon="bell"
-              label="Notifications"
-              onPress={handleNotifications}
-            />
-            <SettingsNavRow
-              icon="trash"
-              label="Delete account"
-              destructive
-              onPress={handleDeleteAccount}
-            />
-          </View>
-        </GlassCard>
-
         {brands.length > 0 ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
             <Text style={styles.title}>Your brands</Text>
@@ -267,6 +196,31 @@ export default function AccountTab(): React.ReactElement {
             </View>
           </GlassCard>
         ) : null}
+
+        {/* Cycle 14 — Settings hub: 3 sub-route nav rows per SPEC §4.7.1 + DEC-096 D-14-17. */}
+        <GlassCard variant="elevated" padding={spacing.lg}>
+          <Text style={styles.title}>Settings</Text>
+          <Text style={styles.body}>
+            Manage your profile, notifications, and session.
+          </Text>
+          <View style={styles.navRowsCol}>
+            <SettingsNavRow
+              icon="user"
+              label="Edit profile"
+              onPress={handleEditProfile}
+            />
+            <SettingsNavRow
+              icon="bell"
+              label="Notifications"
+              onPress={handleNotifications}
+            />
+            <SettingsNavRow
+              icon="shield"
+              label="Sign out everywhere"
+              onPress={handleSignOut}
+            />
+          </View>
+        </GlassCard>
 
         {/* Cycle 17e-A: dev-seed/wipe buttons removed per Decision 8 = C.
             Operators create real brands via BrandSwitcherSheet → useCreateBrand. */}
@@ -377,29 +331,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.bodySm.fontWeight,
     color: textTokens.secondary,
   },
-  email: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    letterSpacing: typography.caption.letterSpacing,
-    color: textTokens.tertiary,
-    marginTop: spacing.md,
-  },
-  signOutRow: {
-    flexDirection: "row",
-    marginTop: spacing.lg,
-  },
-  signOutCaption: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: typography.caption.fontWeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
-  },
-  styleguideRow: {
-    flexDirection: "row",
-    marginTop: spacing.sm,
-  },
   // Cycle 14 — Settings nav rows
   navRowsCol: {
     gap: spacing.sm,
@@ -439,10 +370,6 @@ const styles = StyleSheet.create({
   },
   navLabelDestructive: {
     color: semantic.error,
-  },
-  devBtnRow: {
-    flexDirection: "row",
-    marginTop: spacing.sm,
   },
   toastWrap: {
     position: "absolute",

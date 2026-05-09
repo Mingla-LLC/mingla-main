@@ -21,7 +21,6 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-  type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
 
@@ -33,7 +32,6 @@ import {
   getBrand,
   updateBrand,
   softDeleteBrand,
-  SlugCollisionError,
   type CreateBrandInput,
   type SoftDeleteResult,
 } from "../services/brandsService";
@@ -369,13 +367,13 @@ export const useBrandCascadePreview = (
             .from("events")
             .select("id", { count: "exact", head: true })
             .eq("brand_id", brandId)
-            .eq("status", "past")
+            .in("status", ["ended", "cancelled"])
             .is("deleted_at", null),
           supabase
             .from("events")
             .select("id", { count: "exact", head: true })
             .eq("brand_id", brandId)
-            .eq("status", "upcoming")
+            .eq("status", "scheduled")
             .is("deleted_at", null),
           supabase
             .from("events")

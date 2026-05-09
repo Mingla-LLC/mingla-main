@@ -29,6 +29,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { eventPublicUrl } from "../../constants/publicUrls";
 import {
   type Brand,
   type BrandStripeStatus,
@@ -41,7 +42,7 @@ import {
 } from "../../utils/eventDateDisplay";
 import { formatEventLevelTicketBadges } from "../../utils/ticketDisplay";
 
-import { EventCover } from "../ui/EventCover";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Pill } from "../ui/Pill";
@@ -102,7 +103,14 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
         style={styles.miniCard}
       >
         <View style={styles.miniCover}>
-          <EventCover hue={draft.coverHue} radius={0} label="" height={140} />
+          <EventCoverMedia
+            hue={draft.coverHue}
+            mediaUrl={draft.coverMediaUrl}
+            mediaType={draft.coverMediaType}
+            radius={0}
+            label=""
+            height={140}
+          />
         </View>
         <View style={styles.miniBody}>
           <Text style={styles.miniDate}>{dateLine}</Text>
@@ -136,8 +144,8 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
         {publishability.status === "ready" ? (
           <ReadyCard
             isFreeOnly={!publishability.hasPaidTickets}
-            brandSlug={brand?.slug ?? "your-brand"}
-            draftName={titleLine}
+            brandSlug={brand?.slug ?? null}
+            eventSlug={null}
           />
         ) : publishability.status === "blocked-stripe" ? (
           <StripeBlockedCard onConnectStripe={onConnectStripe} />
@@ -166,26 +174,40 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
 
 interface ReadyCardProps {
   isFreeOnly: boolean;
-  brandSlug: string;
-  draftName: string;
+  brandSlug: string | null;
+  eventSlug: string | null;
 }
 
-const ReadyCard: React.FC<ReadyCardProps> = ({ isFreeOnly, brandSlug, draftName }) => (
-  <GlassCard variant="base" padding={spacing.md}>
-    <View style={styles.statusRow}>
-      <Icon name="check" size={20} color={semantic.success} />
-      <View style={styles.statusTextCol}>
-        <Text style={styles.statusTitle}>
-          {isFreeOnly ? "Ready to publish (free event)" : "Ready to publish"}
-        </Text>
-        <Text style={styles.statusSub}>
-          Tickets will go live at mingla.com/e/{brandSlug}/
-          {draftName.toLowerCase().replace(/\s+/g, "-").slice(0, 24) || "event"}.
-        </Text>
+const ReadyCard: React.FC<ReadyCardProps> = ({
+  isFreeOnly,
+  brandSlug,
+  eventSlug,
+}) => {
+  const publicUrl =
+    brandSlug !== null &&
+    eventSlug !== null &&
+    !eventSlug.startsWith("draft-")
+      ? eventPublicUrl({ brandSlug, eventSlug })
+      : null;
+
+  return (
+    <GlassCard variant="base" padding={spacing.md}>
+      <View style={styles.statusRow}>
+        <Icon name="check" size={20} color={semantic.success} />
+        <View style={styles.statusTextCol}>
+          <Text style={styles.statusTitle}>
+            {isFreeOnly ? "Ready to publish (free event)" : "Ready to publish"}
+          </Text>
+          <Text style={styles.statusSub}>
+            {publicUrl !== null
+              ? `Tickets will go live at ${publicUrl}.`
+              : "Your public link will be created after publish."}
+          </Text>
+        </View>
       </View>
-    </View>
-  </GlassCard>
-);
+    </GlassCard>
+  );
+};
 
 interface StripeBlockedCardProps {
   onConnectStripe: () => void;
@@ -229,7 +251,7 @@ const ErrorsBlockedCard: React.FC<ErrorsBlockedCardProps> = ({ count }) => (
           {count === 1 ? "1 thing to fix" : `${count} things to fix`}
         </Text>
         <Text style={styles.statusSub}>
-          Tap Publish to see what's missing.
+          Tap Publish to see what is missing.
         </Text>
       </View>
     </View>

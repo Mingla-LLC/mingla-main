@@ -1,8 +1,8 @@
-import { assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
+import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   routeStripeEvent,
   STRIPE_ROUTED_EVENT_TYPES,
-} from '../stripeWebhookRouter.ts';
+} from "../stripeWebhookRouter.ts";
 
 class FakeBuilder {
   table: string;
@@ -58,10 +58,10 @@ class FakeBuilder {
   }
 
   maybeSingle() {
-    if (this.table === 'stripe_connect_accounts') {
+    if (this.table === "stripe_connect_accounts") {
       return Promise.resolve({
         data: {
-          brand_id: 'brand_123',
+          brand_id: "brand_123",
           charges_enabled: false,
           payouts_enabled: false,
           requirements: {},
@@ -74,8 +74,11 @@ class FakeBuilder {
   }
 
   then(resolve: (value: { data: unknown[]; error: null }) => void) {
-    if (this.table === 'brand_team_members') {
-      resolve({ data: [{ user_id: 'user_123', role: 'finance_manager' }], error: null });
+    if (this.table === "brand_team_members") {
+      resolve({
+        data: [{ user_id: "user_123", role: "finance_manager" }],
+        error: null,
+      });
       return;
     }
     resolve({ data: [], error: null });
@@ -93,58 +96,81 @@ class FakeDb {
   }
 }
 
-Deno.test('router exposes 16 subscribed events and excludes fake requirements event', () => {
+Deno.test("router exposes 16 subscribed events and excludes fake requirements event", () => {
   assertEquals(STRIPE_ROUTED_EVENT_TYPES.length, 16);
-  assertEquals(STRIPE_ROUTED_EVENT_TYPES.includes('account.updated'), true);
-  assertEquals(STRIPE_ROUTED_EVENT_TYPES.includes('application_fee.refunded'), true);
-  assertEquals(STRIPE_ROUTED_EVENT_TYPES.includes('account.requirements.updated' as never), false);
+  assertEquals(STRIPE_ROUTED_EVENT_TYPES.includes("account.updated"), true);
+  assertEquals(
+    STRIPE_ROUTED_EVENT_TYPES.includes("application_fee.refunded"),
+    true,
+  );
+  assertEquals(
+    STRIPE_ROUTED_EVENT_TYPES.includes("account.requirements.updated" as never),
+    false,
+  );
 });
 
-Deno.test('account.updated updates connect row and clears KYC stall marker when enabled', async () => {
+Deno.test("account.updated updates connect row and clears KYC stall marker when enabled", async () => {
   const db = new FakeDb();
   const result = await routeStripeEvent(db as never, {} as never, {
-    id: 'evt_account',
-    type: 'account.updated',
+    id: "evt_account",
+    type: "account.updated",
     data: {
       object: {
-        id: 'acct_123',
+        id: "acct_123",
         charges_enabled: true,
         payouts_enabled: true,
         requirements: { currently_due: [] },
-        metadata: { mingla_brand_id: 'brand_123' },
+        metadata: { mingla_brand_id: "brand_123" },
       },
     },
   });
-  assertEquals(result.brandId, 'brand_123');
+  assertEquals(result.brandId, "brand_123");
   assertEquals(db.upserts[0].payload.kyc_stall_reminder_sent_at, null);
 });
 
-Deno.test('payout.failed upserts payout and dispatches remediation notification', async () => {
+Deno.test("payout.failed upserts payout and dispatches remediation notification", async () => {
   const calls: unknown[] = [];
   const originalFetch = globalThis.fetch;
+  const originalSupabaseUrl = Deno.env.get("SUPABASE_URL");
+  const originalServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  Deno.env.set("SUPABASE_URL", "https://example.supabase.co");
+  Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "service-role-test");
   globalThis.fetch = ((_, init) => {
-    calls.push(JSON.parse(String(init?.body)));
-    return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+    const requestInit = init as { body?: unknown };
+    calls.push(JSON.parse(String(requestInit?.body)));
+    return Promise.resolve(
+      new Response(JSON.stringify({ success: true }), { status: 200 }),
+    );
   }) as typeof fetch;
   try {
     const db = new FakeDb();
     await routeStripeEvent(db as never, {} as never, {
-      id: 'evt_payout',
-      type: 'payout.failed',
-      account: 'acct_123',
+      id: "evt_payout",
+      type: "payout.failed",
+      account: "acct_123",
       data: {
         object: {
-          id: 'po_123',
+          id: "po_123",
           amount: 1200,
-          currency: 'gbp',
-          status: 'failed',
-          failure_code: 'invalid_account_number',
+          currency: "gbp",
+          status: "failed",
+          failure_code: "invalid_account_number",
         },
       },
     });
-    assertEquals(db.upserts.some((row) => row.table === 'payouts'), true);
-    assertEquals((calls[0] as { type: string }).type, 'stripe.payout_failed');
+    assertEquals(db.upserts.some((row) => row.table === "payouts"), true);
+    assertEquals((calls[0] as { type: string }).type, "stripe.payout_failed");
   } finally {
     globalThis.fetch = originalFetch;
+    if (originalSupabaseUrl === undefined) {
+      Deno.env.delete("SUPABASE_URL");
+    } else {
+      Deno.env.set("SUPABASE_URL", originalSupabaseUrl);
+    }
+    if (originalServiceKey === undefined) {
+      Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+    } else {
+      Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", originalServiceKey);
+    }
   }
 });

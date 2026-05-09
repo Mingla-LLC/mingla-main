@@ -19,7 +19,7 @@ import {
   restorePurchases,
   addCustomerInfoListener,
   loginRevenueCat,
-  logoutRevenueCat,
+  logoutRevenueCatIfIdentified,
 } from '../services/revenueCatService'
 import { logAppsFlyerEvent } from '../services/appsFlyerService'
 import { mixpanelService } from '../services/mixpanelService'
@@ -233,11 +233,11 @@ export function useRevenueCatLogin(): UseMutationResult<CustomerInfo, Error, str
  *   const { mutateAsync: rcLogout } = useRevenueCatLogout()
  *   await rcLogout()
  */
-export function useRevenueCatLogout(): UseMutationResult<CustomerInfo, Error, void> {
+export function useRevenueCatLogout(): UseMutationResult<CustomerInfo | null, Error, void> {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: () => logoutRevenueCat(),
+    mutationFn: () => logoutRevenueCatIfIdentified(),
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: revenueCatKeys.customerInfo() })
     },

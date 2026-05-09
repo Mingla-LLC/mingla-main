@@ -14,7 +14,7 @@
  * Per Cycle 8 spec §4.4.
  */
 
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -25,20 +25,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
-  accent,
   radius as radiusTokens,
   spacing,
   text as textTokens,
 } from "../../../src/constants/designSystem";
-import { useLiveEventStore } from "../../../src/store/liveEventStore";
+import { eventPublicPath } from "../../../src/constants/publicUrls";
 import type { LiveEvent } from "../../../src/store/liveEventStore";
 import type { TicketStub } from "../../../src/store/draftEventStore";
-import { useBrandList } from "../../../src/store/currentBrandStore";
+import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import { formatGbp } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
+import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 
 import {
   useCart,
@@ -57,7 +57,7 @@ const isVisibleForBuyer = (t: TicketStub): boolean =>
   t.visibility !== "hidden" && t.availableAt !== "door";
 
 const computeIsPast = (event: LiveEvent): boolean => {
-  if (event.status === "cancelled") return true;
+  if (event.status === "cancelled" || event.status === "ended") return true;
   if (event.endedAt !== null) return true;
   if (event.date === null) return false;
   const dateMs = new Date(event.date).getTime();
@@ -66,23 +66,21 @@ const computeIsPast = (event: LiveEvent): boolean => {
   return dateMs + 24 * 60 * 60 * 1000 < Date.now();
 };
 
+const ticketSalesEnded = (ticket: TicketStub): boolean => {
+  if (ticket.saleEndAt === null) return false;
+  const end = new Date(ticket.saleEndAt).getTime();
+  return Number.isFinite(end) && end <= Date.now();
+};
+
 export default function CheckoutTicketsScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ eventId: string }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : null;
 
-  const event = useLiveEventStore((s) =>
-    eventId === null ? null : s.events.find((e) => e.id === eventId) ?? null,
-  );
-  const userBrands = useBrandList();
-  const brand = useMemo(
-    () =>
-      event === null
-        ? null
-        : userBrands.find((b) => b.id === event.brandId) ?? null,
-    [event, userBrands],
-  );
+  const publicEventQuery = usePublicEventById(eventId);
+  const event = publicEventQuery.data?.event ?? null;
+  const brand = publicEventQuery.data?.brand ?? null;
 
   const { lines, setLineQuantity } = useCart();
   const totals = useCartTotals();
@@ -94,7 +92,10 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     }
     if (event !== null) {
       router.replace(
-        `/e/${event.brandSlug}/${event.eventSlug}` as never,
+        eventPublicPath({
+          brandSlug: event.brandSlug,
+          eventSlug: event.eventSlug,
+        }) as never,
       );
       return;
     }
@@ -107,6 +108,43 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   }, [router, eventId, totals.isEmpty]);
 
   // ----- Event-not-found / past / cancelled empty state -----
+  if (publicEventQuery.isLoading || publicEventQuery.isFetching) {
+    return (
+      <View style={styles.host}>
+        <CheckoutHeader
+          stepIndex={0}
+          totalSteps={3}
+          title="Get tickets"
+          onBack={handleBack}
+        />
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyTitle}>Loading tickets...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (publicEventQuery.isError) {
+    return (
+      <View style={styles.host}>
+        <CheckoutHeader
+          stepIndex={0}
+          totalSteps={3}
+          title="Get tickets"
+          onBack={handleBack}
+        />
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            illustration="ticket"
+            title="Tickets could not load"
+            description="Refresh this page or try the event link again."
+            cta={{ label: "Back", onPress: handleBack }}
+          />
+        </View>
+      </View>
+    );
+  }
+
   if (event === null) {
     return (
       <View style={styles.host}>
@@ -139,8 +177,16 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     visibleTickets.every(
       (t) => !t.isUnlimited && (t.capacity ?? 0) <= 0,
     );
+  const allUnavailable =
+    visibleTickets.length > 0 &&
+    visibleTickets.every(
+      (t) =>
+        t.visibility === "disabled" ||
+        ticketSalesEnded(t) ||
+        (!t.isUnlimited && (t.capacity ?? 0) <= 0),
+    );
 
-  if (isPast || visibleTickets.length === 0 || allSoldOut) {
+  if (isPast || visibleTickets.length === 0 || allSoldOut || allUnavailable) {
     return (
       <View style={styles.host}>
         <CheckoutHeader
@@ -152,9 +198,13 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         <View style={styles.emptyWrap}>
           <EmptyState
             illustration="ticket"
-            title={isPast ? "This event isn't taking new tickets" : "Sold out"}
+            title={
+              isPast || allUnavailable
+                ? "This event isn't taking new tickets"
+                : "Sold out"
+            }
             description={
-              isPast
+              isPast || allUnavailable
                 ? "Sales are closed for this event."
                 : "All tickets for this event are gone."
             }
@@ -187,11 +237,13 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
       >
         {/* Event mini-card: cover hue band + name + date line */}
         <View style={styles.miniCard}>
-          <View
-            style={[
-              styles.miniCover,
-              { backgroundColor: `hsl(${event.coverHue}, 60%, 45%)` },
-            ]}
+          <EventCoverMedia
+            hue={event.coverHue}
+            mediaUrl={event.coverMediaUrl}
+            mediaType={event.coverMediaType}
+            radius={0}
+            label=""
+            style={styles.miniCover}
           />
           <Text style={styles.miniTitle} numberOfLines={2}>
             {event.name.trim().length > 0 ? event.name : "Untitled event"}
@@ -306,6 +358,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     paddingHorizontal: spacing.lg,
+  },
+  emptyTitle: {
+    color: textTokens.secondary,
+    fontSize: 14,
+    textAlign: "center",
   },
   bottomBar: {
     position: "absolute",

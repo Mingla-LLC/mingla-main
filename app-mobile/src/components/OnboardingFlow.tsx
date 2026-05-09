@@ -43,6 +43,7 @@ import { buildDeckQueryKey } from '../hooks/useDeckCards'
 import { normalizeCategoryArray } from '../utils/categoryUtils'
 import { normalizeDateTime } from '../utils/cardConverters'
 import { withTimeout } from '../utils/withTimeout'
+import { signOutWithPrivateCleanup } from '../utils/authCleanup'
 import { logAppsFlyerEvent } from '../services/appsFlyerService'
 import { mixpanelService } from '../services/mixpanelService'
 
@@ -1885,12 +1886,8 @@ const OnboardingFlow = ({
   const handleBackToWelcome = useCallback(async () => {
     logger.action('Back to welcome — signing out')
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    // Clear persisted onboarding data BEFORE signing out.
-    // AppStateManager.handleSignOut does this via a prefix sweep, but
-    // handleBackToWelcome bypasses handleSignOut — so we do it explicitly here
-    // to prevent the next user from inheriting this session's onboarding data.
     await clearOnboardingData()
-    await supabase.auth.signOut()
+    await signOutWithPrivateCleanup('onboarding-back-to-welcome', useAppStore.getState().user?.id)
   }, [])
 
   // ─── CTA Config ───

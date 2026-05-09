@@ -24,7 +24,7 @@ import {
 } from "../../../../src/constants/designSystem";
 import { useGuestStore } from "../../../../src/store/guestStore";
 import { useEventEditLogStore } from "../../../../src/store/eventEditLogStore";
-import { useLiveEventStore } from "../../../../src/store/liveEventStore";
+import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import {
   useOrderStore,
   type OrderRecord,
@@ -34,7 +34,6 @@ import {
   useDoorSalesStore,
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
-import { useBrandList } from "../../../../src/store/currentBrandStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { formatGbp } from "../../../../src/utils/currency";
 import { expandTicketIds } from "../../../../src/utils/expandTicketIds";
@@ -157,16 +156,11 @@ export default function GuestDetailRoute(): React.ReactElement {
 
   const parsed = typeof rawGuestId === "string" ? parseGuestId(rawGuestId) : null;
 
-  const event = useLiveEventStore((s) =>
-    typeof eventId === "string"
-      ? s.events.find((e) => e.id === eventId) ?? null
-      : null,
+  const routeEvent = useManagedEventRoute(
+    typeof eventId === "string" ? eventId : null,
   );
-  const brandList = useBrandList();
-  const brand =
-    event !== null
-      ? (brandList.find((b) => b.id === event.brandId) ?? null)
-      : null;
+  const event = routeEvent.event;
+  const brand = routeEvent.brand;
   const { user } = useAuth();
   const operatorAccountId = user?.id ?? "anonymous";
 
@@ -368,6 +362,39 @@ export default function GuestDetailRoute(): React.ReactElement {
     showToast("Comp guest removed.");
     handleBack();
   }, [comp, event, removeReason, removeReasonValid, showToast, handleBack]);
+
+  useEffect(() => {
+    if (routeEvent.replacementEventId !== null && typeof rawGuestId === "string") {
+      router.replace(
+        `/event/${routeEvent.replacementEventId}/guests/${rawGuestId}` as never,
+      );
+    }
+  }, [routeEvent.replacementEventId, router, rawGuestId]);
+
+  if (event === null && routeEvent.isLoading && typeof eventId === "string") {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleBack}
+            accessibilityLabel="Back"
+          />
+          <Text style={styles.chromeTitle}>Guest</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <Text style={styles.emptyLoadingText}>Loading event...</Text>
+        </View>
+      </View>
+    );
+  }
 
   // ---- Not-found shell ---------------------------------------------
   if (
@@ -872,7 +899,7 @@ export default function GuestDetailRoute(): React.ReactElement {
           <View style={styles.removeSheet}>
             <Text style={styles.removeTitle}>Remove this comp guest?</Text>
             <Text style={styles.removeSubhead}>
-              They'll be deleted from your guest list. This action records to the audit log.
+              They will be deleted from your guest list. This action records to the audit log.
             </Text>
             <Text style={styles.removeReasonLabel}>
               Why are you removing them? <Text style={styles.removeReasonRequired}>*</Text>
@@ -999,6 +1026,11 @@ const styles = StyleSheet.create({
   },
   emptyHost: {
     paddingTop: spacing.xl,
+  },
+  emptyLoadingText: {
+    fontSize: 14,
+    color: textTokens.secondary,
+    textAlign: "center",
   },
   hero: {
     alignItems: "center",

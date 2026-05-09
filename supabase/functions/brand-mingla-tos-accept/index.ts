@@ -12,7 +12,7 @@
  *
  * Audit log entry on success per I-PROPOSED-S.
  *
- * Returns: { accepted_at: string, version: string }
+ * Returns: { accepted_at: string, version: string, already_accepted?: boolean }
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -34,13 +34,17 @@ interface AcceptRequestBody {
 }
 
 interface AcceptedRow {
-  mingla_tos_accepted_at: string;
-  mingla_tos_version_accepted: string;
+  mingla_tos_accepted_at: string | null;
+  mingla_tos_version_accepted: string | null;
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "method_not_allowed" }, 405);
+  }
 
   const userIdOrResponse = await requireUserId(req);
   if (userIdOrResponse instanceof Response) return userIdOrResponse;
@@ -50,12 +54,18 @@ serve(async (req) => {
   try {
     body = (await req.json()) as AcceptRequestBody;
   } catch {
-    return jsonResponse({ error: "validation_error", detail: "invalid_json" }, 400);
+    return jsonResponse(
+      { error: "validation_error", detail: "invalid_json" },
+      400,
+    );
   }
 
   const brandId = body.brand_id ?? body.brandId;
   if (!isValidUuid(brandId)) {
-    return jsonResponse({ error: "validation_error", detail: "brand_id_invalid_uuid" }, 400);
+    return jsonResponse({
+      error: "validation_error",
+      detail: "brand_id_invalid_uuid",
+    }, 400);
   }
 
   // Version is operator-controlled; UI passes the current ToS version. Reject empty.
@@ -79,6 +89,45 @@ serve(async (req) => {
   const forbidden = await requirePaymentsManager(supabase, brandId, userId);
   if (forbidden) return forbidden;
 
+  const { data: existingRow, error: existingErr } = await supabase
+    .from("brand_team_members")
+    .select("mingla_tos_accepted_at, mingla_tos_version_accepted")
+    .eq("brand_id", brandId)
+    .eq("user_id", userId)
+    .maybeSingle<AcceptedRow>();
+
+  if (existingErr) {
+    console.error(
+      "[brand-mingla-tos-accept] existing lookup failed:",
+      existingErr,
+    );
+    return jsonResponse(
+      { error: "lookup_failed", detail: existingErr.message },
+      500,
+    );
+  }
+
+  if (!existingRow) {
+    return jsonResponse(
+      {
+        error: "membership_not_found",
+        detail: "no brand_team_members row for this user_id + brand_id",
+      },
+      404,
+    );
+  }
+
+  if (
+    existingRow.mingla_tos_accepted_at &&
+    existingRow.mingla_tos_version_accepted === version
+  ) {
+    return jsonResponse({
+      accepted_at: existingRow.mingla_tos_accepted_at,
+      version: existingRow.mingla_tos_version_accepted,
+      already_accepted: true,
+    });
+  }
+
   const acceptedAt = new Date().toISOString();
 
   const { data: updateRow, error: updateErr } = await supabase
@@ -94,27 +143,37 @@ serve(async (req) => {
 
   if (updateErr) {
     console.error("[brand-mingla-tos-accept] update failed:", updateErr);
-    return jsonResponse({ error: "update_failed", detail: updateErr.message }, 500);
+    return jsonResponse(
+      { error: "update_failed", detail: updateErr.message },
+      500,
+    );
   }
 
   if (!updateRow) {
     return jsonResponse(
-      { error: "membership_not_found", detail: "no brand_team_members row for this user_id + brand_id" },
+      {
+        error: "membership_not_found",
+        detail: "no brand_team_members row for this user_id + brand_id",
+      },
       404,
     );
   }
 
-  await writeAudit(supabase, {
-    actor_user_id: userId,
-    action: "mingla_tos_accept",
-    target_table: "brand_team_members",
-    target_id: brandId,
-    metadata: {
+  try {
+    await writeAudit(supabase, {
+      user_id: userId,
       brand_id: brandId,
-      version_accepted: version,
-      accepted_at: updateRow.mingla_tos_accepted_at,
-    },
-  });
+      action: "mingla_tos_accept",
+      target_type: "brand_team_members",
+      target_id: brandId,
+      after: {
+        version_accepted: version,
+        accepted_at: updateRow.mingla_tos_accepted_at,
+      },
+    });
+  } catch (auditErr) {
+    console.error("[brand-mingla-tos-accept] audit write failed:", auditErr);
+  }
 
   return jsonResponse({
     accepted_at: updateRow.mingla_tos_accepted_at,

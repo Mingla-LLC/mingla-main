@@ -53,12 +53,18 @@ interface BrandStripeCountryPickerProps {
   onChange: (countryCode: string) => void;
   /** Disable interaction (e.g., during a submit). */
   disabled?: boolean;
+  /** Optional helper copy below the picker. */
+  helperText?: string | null;
+  /** Optional warning/locked copy below the picker. */
+  warningText?: string | null;
 }
 
 export function BrandStripeCountryPicker({
   value,
   onChange,
   disabled = false,
+  helperText = null,
+  warningText = null,
 }: BrandStripeCountryPickerProps): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -104,7 +110,7 @@ export function BrandStripeCountryPicker({
     : `Country: ${selectedCode}`;
 
   return (
-    <>
+    <View style={styles.wrap}>
       <Pressable
         onPress={handleOpen}
         disabled={disabled}
@@ -124,12 +130,20 @@ export function BrandStripeCountryPicker({
         <Text style={styles.triggerChevron}>›</Text>
       </Pressable>
 
+      {helperText !== null ? (
+        <Text style={styles.helperText}>{helperText}</Text>
+      ) : null}
+
+      {warningText !== null ? (
+        <Text style={styles.warningText}>{warningText}</Text>
+      ) : null}
+
       <Sheet visible={open} onClose={handleClose} snapPoint="full">
         <View style={styles.sheetWrap}>
           <Text style={styles.sheetTitle}>Pick your country</Text>
           <Text style={styles.sheetBody}>
             Choose where your business is registered. Stripe payouts route to
-            this country's banking system.
+            this country{"'"}s banking system.
           </Text>
 
           <TextInput
@@ -153,7 +167,7 @@ export function BrandStripeCountryPicker({
           {countriesQuery.isError ? (
             <View style={styles.statusRow}>
               <Text style={styles.statusError}>
-                Couldn't load countries. Tap below to retry.
+                Couldn{"'"}t load countries. Tap below to retry.
               </Text>
               <Pressable
                 onPress={(): void => {
@@ -170,7 +184,9 @@ export function BrandStripeCountryPicker({
 
           {countriesQuery.data && filtered.length === 0 ? (
             <View style={styles.statusRow}>
-              <Text style={styles.statusText}>No matches for "{search}".</Text>
+              <Text style={styles.statusText}>
+                No matches for {"\""}{search}{"\""}.
+              </Text>
             </View>
           ) : null}
 
@@ -208,11 +224,14 @@ export function BrandStripeCountryPicker({
           </ScrollView>
         </View>
       </Sheet>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrap: {
+    gap: spacing.xs,
+  },
   trigger: {
     flexDirection: "row",
     alignItems: "center",
@@ -253,6 +272,16 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: textTokens.tertiary,
     paddingLeft: spacing.sm,
+  },
+  helperText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
+  },
+  warningText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
   },
   sheetWrap: {
     flex: 1,

@@ -10,7 +10,7 @@
  * Per Cycle 11 SPEC §4.10/J-S7.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -29,13 +29,12 @@ import {
   spacing,
   text as textTokens,
 } from "../../../../src/constants/designSystem";
-import { useLiveEventStore } from "../../../../src/store/liveEventStore";
 import {
   useScannerInvitationsStore,
   type ScannerInvitation,
 } from "../../../../src/store/scannerInvitationsStore";
-import { useBrandList } from "../../../../src/store/currentBrandStore";
 import { useAuth } from "../../../../src/context/AuthContext";
+import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
@@ -119,16 +118,11 @@ export default function EventScannersListRoute(): React.ReactElement {
   const { user } = useAuth();
   const operatorAccountId = user?.id ?? "anonymous";
 
-  const event = useLiveEventStore((s) =>
-    typeof eventId === "string"
-      ? s.events.find((e) => e.id === eventId) ?? null
-      : null,
+  const routeEvent = useManagedEventRoute(
+    typeof eventId === "string" ? eventId : null,
   );
-  const brandList = useBrandList();
-  const brand =
-    event !== null
-      ? (brandList.find((b) => b.id === event.brandId) ?? null)
-      : null;
+  const event = routeEvent.event;
+  const brand = routeEvent.brand;
 
   // Cycle 13a J-T6 G6: scanner invite + revoke gated on MANAGE_SCANNERS
   // (event_manager+). Hooks run on every render before any early-return shell.
@@ -192,6 +186,37 @@ export default function EventScannersListRoute(): React.ReactElement {
     if (actionSheetForId === null) return null;
     return invitations.find((i) => i.id === actionSheetForId) ?? null;
   }, [actionSheetForId, invitations]);
+
+  useEffect(() => {
+    if (routeEvent.replacementEventId !== null) {
+      router.replace(`/event/${routeEvent.replacementEventId}/scanners` as never);
+    }
+  }, [routeEvent.replacementEventId, router]);
+
+  if (event === null && routeEvent.isLoading && typeof eventId === "string") {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleBack}
+            accessibilityLabel="Back"
+          />
+          <Text style={styles.chromeTitle}>Scanners</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <Text style={styles.emptyLoadingText}>Loading event...</Text>
+        </View>
+      </View>
+    );
+  }
 
   if (event === null || typeof eventId !== "string") {
     return (
@@ -459,6 +484,11 @@ const styles = StyleSheet.create({
   },
   emptyHost: {
     paddingTop: spacing.xl,
+  },
+  emptyLoadingText: {
+    fontSize: 14,
+    color: textTokens.secondary,
+    textAlign: "center",
   },
   transitionalBanner: {
     padding: spacing.sm + 2,

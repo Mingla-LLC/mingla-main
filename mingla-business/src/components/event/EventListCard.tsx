@@ -31,7 +31,7 @@ import { useOrderStore } from "../../store/orderStore";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 import { formatGbpRound } from "../../utils/currency";
 
-import { EventCover } from "../ui/EventCover";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import { Pill } from "../ui/Pill";
 
@@ -119,8 +119,10 @@ export const EventListCard: React.FC<EventListCardProps> = ({
       >
         {/* Cover */}
         <View style={styles.coverWrap}>
-          <EventCover
+          <EventCoverMedia
             hue={event.coverHue}
+            mediaUrl={event.coverMediaUrl}
+            mediaType={event.coverMediaType}
             radius={12}
             label=""
             height={COVER_H}

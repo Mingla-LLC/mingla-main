@@ -10,8 +10,7 @@
  * in the bundle but the redirect short-circuits before anything below
  * renders, so no styleguide JSX leaks to production users.
  *
- * Entry point: dev-only "Open dev styleguide" Button on the Account
- * tab (also gated on `__DEV__`).
+ * Internal route only. It is not linked from product account navigation.
  */
 
 import React, { useCallback, useState } from "react";

@@ -79,7 +79,7 @@ The reaper comment is wrong vs. SPEC. Fix during the SPEC patch:
 
 `/mingla-forensics take over` with this prompt:
 
-> Patch `Mingla_Artifacts/specs/SPEC_META_ORCH_0744_PROCESS_HARDENING.md` to resolve letter-W collision discovered at implementor Pre-Flight. Read `Mingla_Artifacts/HANDOFF_META_ORCH_0744_PROCESS_BLOCKED_ON_LETTER_W.md` for full context.
+> Patch `Mingla_Artifacts/specs/SPEC_META_ORCH_0744_PROCESS_HARDENING.md` to resolve letter-W collision discovered at implementor Pre-Flight. Read `Mingla_Artifacts/archive/handoffs_legacy/HANDOFF_META_ORCH_0744_PROCESS_BLOCKED_ON_LETTER_W.md` for full context.
 >
 > Required edits:
 > 1. **§1.4** — update letter inventory: reserved letters now include W (added by B2a Path C V3 hotfix per DEC-121); reassign M-5 to I-PROPOSED-X. Update the table.
@@ -162,7 +162,7 @@ No code or artifact files written. The only file produced is **THIS handoff brie
 ## 8. Quick-paste prompt for next chat
 
 ```
-Read Mingla_Artifacts/HANDOFF_META_ORCH_0744_PROCESS_BLOCKED_ON_LETTER_W.md
+Read Mingla_Artifacts/archive/handoffs_legacy/HANDOFF_META_ORCH_0744_PROCESS_BLOCKED_ON_LETTER_W.md
 then dispatch /mingla-forensics take over with the SPEC-patch task documented in §4 Step 1.
 After forensics returns, dispatch /mingla-orchestrator take over for re-REVIEW.
 After APPROVED, update Mingla_Artifacts/prompts/IMPL_META_ORCH_0744_PROCESS_HARDENING.md

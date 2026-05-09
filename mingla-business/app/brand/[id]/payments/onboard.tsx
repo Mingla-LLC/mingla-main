@@ -3,8 +3,8 @@
  *
  * B2a (post-2026-05-06): Renders BrandOnboardView with the real flow.
  * Status updates flow via webhook → DB trigger → Realtime → React Query
- * invalidate. This route's only job is to resolve the brand from the URL
- * segment and provide back-navigation handlers.
+ * invalidate. This route resolves brand detail first so stale list cache cannot
+ * keep showing old Stripe country/status after onboarding.
  *
  * Format-agnostic ID resolver per Cycle 2 invariant I-11.
  * Host-bg cascade per Cycle 2 invariant I-12.
@@ -19,18 +19,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandOnboardView } from "../../../../src/components/brand/BrandOnboardView";
 import { canvas } from "../../../../src/constants/designSystem";
-import { useBrandList } from "../../../../src/store/currentBrandStore";
+import { useBrand } from "../../../../src/hooks/useBrands";
 
 export default function BrandOnboardRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
-  const brands = useBrandList();
-  const brand =
-    typeof idParam === "string" && idParam.length > 0
-      ? brands.find((b) => b.id === idParam) ?? null
-      : null;
+  const brandId = typeof idParam === "string" && idParam.length > 0
+    ? idParam
+    : null;
+  const brandQuery = useBrand(brandId);
+  const brand = brandQuery.data ?? null;
 
   const handleBack = (): void => {
     if (router.canGoBack()) {

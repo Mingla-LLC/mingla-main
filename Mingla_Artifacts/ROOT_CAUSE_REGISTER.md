@@ -1,9 +1,89 @@
 # Root Cause Register
 
-> Last updated: 2026-05-07
+> Last updated: 2026-05-09
 > Proven root causes with causal clusters.
 
 ## Root Causes
+
+### RC-0764B: Stripe onboarding UI used split status truths and treated actionable KYC as terminal failure
+- **Discovery date:** 2026-05-09
+- **Proof:** `reports/INVESTIGATION_ORCH-0764B_STRIPE_ONBOARDING_STATE_RECONCILIATION.md` proved Payments could render cached `brand.stripeStatus=onboarding` while live `useBrandStripeStatus().requirements.disabled_reason=requirements.past_due` rendered restricted remediation. `reports/IMPLEMENTATION_ORCH-0764B_STRIPE_ONBOARDING_STATE_RECONCILIATION.md` reports implementation of the primary repair contract. `reports/RETEST_ORCH-0764B_STRIPE_ONBOARDING_STATE_RECONCILIATION.md` then proved two remaining P1 gaps: production return route `https://business.usemingla.com/stripe-onboarding-return` returns Vercel `404_NOT_FOUND`, and `BrandOnboardView` still has a cached `brand.stripeStatus === "active"` terminal-success bypass.
+- **Symptoms caused:** Users saw contradictory "Onboarding submitted — verifying" and "Verification overdue" states, remediation could leave the app through bare `connect.stripe.com/express_login`, and ordinary past-due KYC could end in "Stripe couldn't verify."
+- **Causal chain:**
+  1. Payments used cached `brand.stripeStatus` for the main banner while live Stripe requirements powered remediation cards.
+  2. Restricted remediation used a generic Express login URL instead of Mingla's controlled Account Link creation path.
+  3. The onboarding modal treated every `restricted` status as terminal failure rather than distinguishing actionable requirements from true Stripe rejection.
+  4. Browser return performed one refresh only, so Stripe propagation lag could produce false final states.
+  5. SQL status derivation checked `charges_enabled` before `requirements.disabled_reason`, while TS/product expectation already treated disabled requirements as `restricted`.
+  6. Business web export contained the onboarding return screen locally, but production routing did not serve the clean `/stripe-onboarding-return` URL used by Stripe.
+  7. `BrandOnboardView` retained an older cached-active shortcut, so one onboarding surface could still terminally trust stale brand status before live Stripe requirements loaded.
+- **Structural fix:** Primary repair is implemented: Payments now prefers live Stripe status over cached brand status; all actionable remediation CTAs route through Mingla's Account Link continuation; onboarding shell distinguishes `needs-information` from terminal `failed-stripe`; status settlement polls briefly after browser return; SQL parity migration `20260515000007_orch_0764b_stripe_status_derivation_parity.sql` makes `requirements.disabled_reason` win over `charges_enabled`. Rework `reports/IMPLEMENTATION_REWORK_ORCH-0764B_STRIPE_ONBOARDING_RETURN_AND_ACTIVE_BYPASS.md` adds the return-route rewrite and makes cached `active` wait for live status in `checking-status`.
+- **Status:** **OPEN - VERCEL DEPLOY GATE THEN TESTER 2026-05-09**. Next prompt after deploy: `prompts/TESTER_RETEST_REWORK_ORCH-0764B_STRIPE_ONBOARDING_RETURN_AND_ACTIVE_BYPASS.md`.
+- **Invariant / regression guard:** Stripe Connect account state has one effective UI truth per surface: live server status first, cached brand status only as loading fallback; actionable KYC requirements must be resumable through fresh Account Links, not terminal failure or generic Express login.
+- **Causal cluster:** Cluster 1/6 crossover: duplicate state authority plus external payment-provider hosted-flow semantics.
+- **Follow-ups not part of RC:** Checkout/destination charges, webhook fulfillment, Stripe live-mode review, and Vercel production route deployment remain separate gates.
+
+### RC-0764A: Stripe Accounts v2 onboarding is gated by Stripe key permission/context after versioning repair
+- **Discovery date:** 2026-05-08
+- **Proof:** `reports/RETEST_ORCH-0764A_STRIPE_API_V2_VERSION_HEADER_RUNTIME.md` proves the deployed version-header fix advanced runtime past the earlier missing `Stripe-Version` error. Fresh authenticated `Stripe Wise 2` runtime accepted Mingla ToS, repeated ToS safely, and then failed in `brand-stripe-onboard` with Stripe's permission/context error before account creation.
+- **Symptoms caused:** Organisers can accept Mingla ToS but cannot start Stripe payout onboarding; no `stripe_connect_accounts` row, no `account_id`, no `client_secret: null` success contract, and no Stripe-hosted onboarding URL are produced.
+- **Causal chain:**
+  1. ORCH-0764A moved from stale Connect onboarding/session behavior to raw Accounts v2 hosted onboarding.
+  2. Runtime first failed because raw `/v2` calls lacked `Stripe-Version`; ORCH-0764A version-header rework fixed that enough to reach Stripe's next gate.
+  3. The live deployed call now fails with Stripe permission/context wording, implicating key scope, key selection, required `Stripe-Context`, payload configuration, or platform/preview access.
+  4. The exact root cause is not yet proven; implementation would be premature without a key/context investigation and spec.
+- **Structural fix:** Pending forensics/spec with `prompts/FORENSICS_SPEC_ORCH-0764A_STRIPE_ACCOUNTS_V2_KEY_CONTEXT.md`.
+- **Status:** **OPEN - FORENSICS SPEC DISPATCH READY 2026-05-08**. Orchestrator review: `reports/REVIEW_RETEST_ORCH-0764A_STRIPE_ACCOUNTS_V2_KEY_CONTEXT_GATE.md`.
+- **Invariant / regression guard:** Stripe onboarding cannot be marked payout-ready until runtime proves HTTP `200`, `client_secret: null`, `account_id: acct_...`, Stripe-hosted `onboarding_url`, and a created/reused `stripe_connect_accounts` row.
+- **Causal cluster:** Cluster 6: external payment-provider capability/key configuration can masquerade as app integration failure.
+- **Follow-ups not part of RC:** ORCH-0764B checkout remains paused; webhook fulfillment and destination-charge checkout should not proceed until ORCH-0764A hosted onboarding is live-proven.
+
+### RC-0763: Business event truth split between server drafts/public reads and local organiser published events
+- **Discovery date:** 2026-05-08
+- **Proof:** `reports/INVESTIGATION_ORCH-0763_BUSINESS_EVENT_SYSTEM_REGRESSION_AUDIT.md` proves organiser Home/Events/Event Detail/Edit Published still resolve published events from local `liveEventStore`, while drafts and buyer public reads have moved toward server-backed paths. It also proves publish is client-side multi-table work without atomic event-promotion proof, and wizard autosave can overwrite dirty editor state with stale server/list responses.
+- **Symptoms caused:** A free event can appear published locally, then disappear after a new build/local storage loss; published-event edit/detail routes cannot recover from server; wizard typing glitches under autosave; current durable server evidence does not contain the user's reported published free event.
+- **Causal chain:**
+  1. ORCH-0756B introduced server-backed drafts but left organiser published events as persisted local `LiveEvent` rows.
+  2. ORCH-0759 made buyer public routes more server-backed, but organiser management routes still rely on local state.
+  3. Publish promotes tickets/event through client-side sequential writes and then creates a local `LiveEvent` from the draft.
+  4. The final event update does not prove one row was promoted, so false-local publication remains possible.
+  5. A new build, sign-out cleanup, app deletion, or local storage reset removes the local published event, leaving no organiser server hydration path.
+  6. Immediate full-object autosave and server/list upserts can also race active typing and destabilize the wizard.
+- **Structural fix:** Pending spec under `prompts/SPEC_ORCH-0763_BUSINESS_EVENT_SYSTEM_REGRESSION_REPAIR.md`. Required direction: atomic server-side publish RPC/transaction, server-backed organiser management event reads, local published-event store as cache only, edit-published server hydration, autosave debounce/revisioning/stale-response protection, and free-event regression coverage.
+- **Status:** **OPEN - SPEC DISPATCH READY 2026-05-08**. Orchestrator review: `reports/REVIEW_ORCH-0763_BUSINESS_EVENT_SYSTEM_REGRESSION_AUDIT.md`.
+- **Invariant / regression guard:** Proposed: organiser published-event source of truth must be server-backed; local stores may cache but cannot be the only authority for published/scheduled events. Publish must be atomic and must fail loudly if one durable server event is not promoted.
+- **Causal cluster:** Cluster 1/4 crossover: duplicate state authority plus non-atomic mutation/RETURNING-proof gap.
+- **Follow-ups not part of RC:** Giphy/Pexels provider integration, brand/profile media expansion, full paid checkout, and native cover-media runtime proof remain separate; they are blocked behind this event-integrity repair.
+
+### RC-0754: Transitional Home event stubs survived after their retirement cycle excluded Home
+- **Discovery date:** 2026-05-08
+- **Proof:** `reports/INVESTIGATION_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md` proves `mingla-business/app/(tabs)/home.tsx` still defines and renders `STUB_UPCOMING_ROWS` (`Sunday Languor Brunch`, `The Long Lunch (Series)`), hardcodes `"1 live · 2 upcoming"`, and uses fictional live-event values, while `mingla-business/app/(tabs)/events.tsx` already derives brand-scoped event rows from `useDraftsForBrand`, `useLiveEventsForBrand`, and lifecycle helpers.
+- **Symptoms caused:** The business app Home tab's Upcoming section and adjacent event summary can show fabricated upcoming/live operational data instead of the organiser's actual event pipeline.
+- **Causal chain:**
+  1. Cycle 1 introduced Home's live row plus two stub upcoming rows.
+  2. Cycle 3 intentionally preserved `STUB_UPCOMING_ROWS` while adding real draft rows and documented that Cycle 9 would retire the stubs when the real event list existed.
+  3. Cycle 9 shipped the full Events tab pipeline but explicitly declared "Live tonight on Home tab: NO TOUCH in Cycle 9."
+  4. No later cycle moved Home to the Events tab event derivation path, so the transitional rows and hardcoded summary copy remained.
+- **Structural fix:** Home fake-data signatures were removed, Home now derives event truth from brand-scoped draft/live/order stores, `I-PROPOSED-Z` strict fake-signature guard was added, and implementation rework aligned empty-state copy, live hero date line, all-unlimited capacity label, and KPI zero-bucket subcopy with the approved spec.
+- **Status:** **CLOSED CONDITIONAL PASS 2026-05-08** via DEC-132. Evidence: `reports/IMPLEMENTATION_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md`, `reports/IMPLEMENTATION_REWORK_ORCH-0754_BUSINESS_HOME_UPCOMING_SPEC_ALIGNMENT.md`, and tester conditional PASS `reports/TEST_REPORT_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md`. Accepted condition: full business-app lint remains red due unrelated repo-wide lint debt; no ORCH-0754 file appears in lint output.
+- **Invariant / regression guard:** `I-PROPOSED-Z HOME-NO-FABRICATED-EVENTS` ratified ACTIVE at close. Business Home must not contain fabricated event rows or hardcoded event metrics; Home event truth derives from brand-scoped draft/live/order sources.
+- **Causal cluster:** Cluster 3: transitional/demo data retirement drift after scope split.
+- **Follow-ups not part of RC:** Brand Profile fake `STUB_PAST_EVENTS`, Finance Reports Brand-level `events` stub dependency, and Supabase/client event status vocabulary drift are separate discoveries from ORCH-0754.
+
+### RC-0752: Android billing failure came from test-install eligibility plus stale cached app state, not app product-ID drift
+- **Discovery date:** 2026-05-07
+- **Proof:** `reports/INVESTIGATION_ORCH-0752_REVENUECAT_PRODUCT_OFFERING_CONFIGURATION.md` proved app code fetches RevenueCat `offerings.current` and buys returned packages rather than hardcoding store product IDs. `reports/INVESTIGATION_ORCH-0752B_ANDROID_PLAY_BILLING_PURCHASE_VERSION_GATE.md` captured the screenshot-era failure against a local/debug/sideload install. Close evidence in `reports/CLOSE_ORCH-0752_REVENUECAT_ANDROID_BILLING_CONFIG.md` shows the later tested app was the Play/internal build (`versionCode=12`, installer `com.android.vending`, no debug flag), app data was cleared successfully, and the user confirmed Billing works.
+- **Symptoms caused:** Android purchase/package QA showed Google Play "This version of the application is not configured for billing through Google Play" during the screenshot-era install, then later the Billing/paywall sheet appeared stuck loading packages.
+- **Causal chain:**
+  1. The screenshot-era app instance was not the Play/internal eligible install, so Google Play Billing rejected purchase launch.
+  2. The operator then installed the proper Play/internal build.
+  3. Stale local app data/cache preserved a bad offering/session state, so packages still appeared stuck.
+  4. Clearing app data forced a clean RevenueCat/offering/session path, and Billing worked after restart/sign-in.
+- **Structural fix:** External/test-state correction only: use the Play/internal build for billing QA and clear stale app data when switching from debug/sideload or broken offering states. No product-code product-ID fix was required.
+- **Status:** **CLOSED PASS 2026-05-07** via DEC-131 and user runtime confirmation after ADB install proof + `pm clear`.
+- **Invariant / regression guard:** Android purchase QA must record the installed package source/version/debug state before interpreting Play Billing errors. If packages are empty after known dashboard changes, clear app data or invalidate RevenueCat/query cached null state before escalating to code.
+- **Causal cluster:** Cluster 6: external billing/config/tester state can masquerade as app paywall failure.
+- **Follow-ups not part of RC:** ORCH-0752A Billing sheet plan-pricing UX redesign remains open; iOS App Store product approval remains external release readiness if production iOS purchases are launch scope.
 
 ### RC-0753: Remote-applied Supabase migration was not versioned in Git
 - **Discovery date:** 2026-05-07

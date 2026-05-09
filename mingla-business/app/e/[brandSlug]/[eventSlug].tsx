@@ -8,10 +8,14 @@
  */
 
 import React from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
-import { useLiveEventBySlug } from "../../../src/store/liveEventStore";
-import { useBrandList } from "../../../src/store/currentBrandStore";
+import {
+  spacing,
+  text as textTokens,
+} from "../../../src/constants/designSystem";
+import { usePublicEventBySlug } from "../../../src/hooks/usePublicEvents";
 import { PublicEventPage } from "../../../src/components/event/PublicEventPage";
 import { PublicEventNotFound } from "../../../src/components/event/PublicEventNotFound";
 
@@ -27,19 +31,58 @@ export default function PublicEventRoute(): React.ReactElement {
     ? params.eventSlug[0]
     : params.eventSlug;
 
-  const event = useLiveEventBySlug(
+  const publicEventQuery = usePublicEventBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
     typeof eventSlug === "string" ? eventSlug : null,
   );
-  const brands = useBrandList();
-  const brand =
-    event !== null
-      ? (brands.find((b) => b.id === event.brandId) ?? null)
-      : null;
 
-  if (event === null) {
+  if (publicEventQuery.isLoading || publicEventQuery.isFetching) {
+    return (
+      <View style={styles.stateWrap}>
+        <ActivityIndicator />
+        <Text style={styles.stateText}>Loading event...</Text>
+      </View>
+    );
+  }
+
+  if (publicEventQuery.isError) {
+    return (
+      <View style={styles.stateWrap}>
+        <Text style={styles.stateTitle}>Event could not load</Text>
+        <Text style={styles.stateText}>Refresh this page or try the link again.</Text>
+      </View>
+    );
+  }
+
+  if (publicEventQuery.data === null || publicEventQuery.data === undefined) {
     return <PublicEventNotFound />;
   }
 
-  return <PublicEventPage event={event} brand={brand} />;
+  return (
+    <PublicEventPage
+      event={publicEventQuery.data.event}
+      brand={publicEventQuery.data.brand}
+    />
+  );
 }
+
+const styles = StyleSheet.create({
+  stateWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.lg,
+    backgroundColor: "#0c0e12",
+  },
+  stateTitle: {
+    color: textTokens.primary,
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: spacing.xs,
+  },
+  stateText: {
+    color: textTokens.secondary,
+    fontSize: 14,
+    textAlign: "center",
+  },
+});

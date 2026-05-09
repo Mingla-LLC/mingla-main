@@ -22,7 +22,9 @@ src/hooks/useBrandListShim.ts | src/store/currentBrandStore.ts
 src/store/draftEventStore.ts | src/utils/liveEventConverter.ts
 src/store/draftEventStore.ts | src/store/liveEventStore.ts
 src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/liveEventAdapter.ts
-src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/recurrenceRule.ts | src/utils/scheduleDateExpansion.ts
-src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/scheduleDateExpansion.ts
+src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/publishedEventEditGuards.ts | src/utils/recurrenceRule.ts | src/utils/scheduleDateExpansion.ts
+src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/publishedEventEditGuards.ts | src/utils/scheduleDateExpansion.ts
+src/store/draftEventStore.ts | src/utils/serverDraftAutosaveGuards.ts
 src/store/liveEventStore.ts | src/store/orderStoreHelpers.ts
 src/store/liveEventStore.ts | src/utils/liveEventAdapter.ts
+src/store/liveEventStore.ts | src/utils/publishedEventEditGuards.ts

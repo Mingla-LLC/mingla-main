@@ -1,10 +1,10 @@
 # SPEC ORCH-0750E - Documentation Link Debt Burn-Down
 
-**Date:** 2026-05-07
-**Mode:** forensics SPEC
-**Status:** SPEC READY
-**Primary investigation:** `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md`
-**Implementation role:** `$implementor`
+**Date:** 2026-05-07  
+**Mode:** forensics SPEC  
+**Status:** SPEC READY  
+**Primary investigation:** `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0750E_DOCUMENTATION_LINK_DEBT_BURNDOWN.md`  
+**Implementation role:** `$implementor`  
 **Verification role:** `$tester`
 
 ## Plain-English Impact

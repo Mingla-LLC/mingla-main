@@ -48,7 +48,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -67,6 +66,11 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import {
+  checkoutPublicPath,
+  eventOgImageUrl,
+  eventPublicUrl,
+} from "../../constants/publicUrls";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
@@ -84,7 +88,7 @@ import {
   sortTicketsByDisplayOrder,
 } from "../../utils/ticketDisplay";
 
-import { EventCover } from "../ui/EventCover";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
@@ -163,17 +167,8 @@ const formatCountdown = (toIso: string): string => {
   return `in ${mins}m`;
 };
 
-/** TRANSITIONAL: when image upload lands (Cycle 5b/B-cycle), swap for real cover URL. */
-const ogImageUrl = (event: LiveEvent): string => {
-  // [TRANSITIONAL] Placeholder — real OG image generation lands when
-  // image upload exists. For now, use a static brand-color fallback.
-  // orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
-  return `https://business.mingla.com/og/event/${event.id}.png`;
-};
-
-// orch-strict-grep-allow platform-web-url-historical — H-2 cleanup ORCH pending post-V3 CLOSE; swap with MINGLA_BUSINESS_WEB_URL constant.
 const canonicalUrl = (event: LiveEvent): string =>
-  `https://business.mingla.com/e/${event.brandSlug}/${event.eventSlug}`;
+  eventPublicUrl({ brandSlug: event.brandSlug, eventSlug: event.eventSlug });
 
 // ---- Main component -------------------------------------------------
 
@@ -219,42 +214,6 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
-  const handleShare = useCallback(async (): Promise<void> => {
-    const url = canonicalUrl(event);
-    if (Platform.OS === "web") {
-      const navAny = (
-        globalThis as unknown as {
-          navigator?: {
-            share?: (data: { title: string; url: string }) => Promise<void>;
-            clipboard?: { writeText?: (s: string) => Promise<void> };
-          };
-        }
-      ).navigator;
-      if (navAny?.share !== undefined) {
-        try {
-          await navAny.share({ title: event.name, url });
-        } catch {
-          // user cancelled — surface no error
-        }
-      } else if (navAny?.clipboard?.writeText !== undefined) {
-        try {
-          await navAny.clipboard.writeText(url);
-          showToast("Link copied");
-        } catch {
-          showToast("Couldn't copy link.");
-        }
-      } else {
-        showToast("Share not supported on this browser.");
-      }
-    } else {
-      try {
-        await Share.share({ message: `${event.name}\n${url}`, url });
-      } catch {
-        // user cancelled
-      }
-    }
-  }, [event, showToast]);
-
   const handleBuyerAction = useCallback(
     (action: "buy" | "free" | "approval" | "password" | "waitlist"): void => {
       // Cycle 8: "buy" + "free" route to checkout (J-C1 → J-C5). Other
@@ -262,7 +221,7 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
       switch (action) {
         case "buy":
         case "free":
-          router.push(`/checkout/${event.id}` as never);
+          router.push(checkoutPublicPath(event.id) as never);
           return;
         case "approval":
           showToast("Approval flow lands Cycle 10 + B4.");
@@ -299,13 +258,26 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
             content={event.description.slice(0, 200) || event.name}
           />
           <meta property="og:url" content={canonicalUrl(event)} />
-          <meta property="og:image" content={ogImageUrl(event)} />
+          <meta
+            property="og:image"
+            content={eventOgImageUrl({
+              eventId: event.id,
+              coverMediaUrl: event.coverMediaUrl,
+            })}
+          />
           <meta property="og:type" content="event" />
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content={event.name} />
           <meta
             name="twitter:description"
             content={event.description.slice(0, 200) || event.name}
+          />
+          <meta
+            name="twitter:image"
+            content={eventOgImageUrl({
+              eventId: event.id,
+              coverMediaUrl: event.coverMediaUrl,
+            })}
           />
           <link rel="canonical" href={canonicalUrl(event)} />
         </Head>
@@ -433,7 +405,14 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
     <>
       {/* Hero cover */}
       <View style={styles.heroWrap}>
-        <EventCover hue={event.coverHue} radius={0} label="" height={380} />
+        <EventCoverMedia
+          hue={event.coverHue}
+          mediaUrl={event.coverMediaUrl}
+          mediaType={event.coverMediaType}
+          radius={0}
+          label=""
+          height={380}
+        />
         <View style={styles.heroOverlay} pointerEvents="none" />
       </View>
 
@@ -636,6 +615,10 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   const badges = formatTicketBadges(ticket);
   const buttonLabel = formatTicketButtonLabel(ticket);
   const isVisDisabled = ticket.visibility === "disabled";
+  const saleEnded =
+    ticket.saleEndAt !== null &&
+    Number.isFinite(new Date(ticket.saleEndAt).getTime()) &&
+    new Date(ticket.saleEndAt).getTime() <= Date.now();
   const isSoldOutTicket =
     !ticket.isUnlimited && (ticket.capacity ?? 0) === 0;
   // Cycle 12 — door-only tiers are info-only on the public page. Buyer
@@ -647,7 +630,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
 
   // Decide what action this ticket's button fires.
   const handleTap = (): void => {
-    if (variant === "past" || isVisDisabled) return;
+    if (variant === "past" || isVisDisabled || saleEnded) return;
     if (isDoorOnly) return; // Cycle 12 — info-only display; no purchase path
     if (variant === "pre-sale") return; // disabled during pre-sale
     if (isSoldOutTicket && ticket.waitlistEnabled) {
@@ -669,6 +652,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   // Compute final button label + disabled state per variant.
   const effectiveLabel: string = (() => {
     if (variant === "past") return "Sales ended";
+    if (saleEnded) return "Sales ended";
     if (variant === "pre-sale") return "On sale soon";
     if (isVisDisabled) return "Sales paused";
     if (isDoorOnly) return "Pay at the door"; // Cycle 12 — info-only
@@ -679,6 +663,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
 
   const isButtonDisabled =
     variant === "past" ||
+    saleEnded ||
     variant === "pre-sale" ||
     isVisDisabled ||
     isDoorOnly || // Cycle 12 — door-only tiers are info-only on buyer surfaces
@@ -776,7 +761,7 @@ const CancelledVariant: React.FC<CancelledVariantProps> = ({
       <Text style={styles.cancelledEventName}>{event.name}</Text>
       <Text style={styles.cancelledBody}>
         {brand?.displayName ?? "The organiser"} has cancelled this event.
-        If you purchased tickets, you'll receive refund details by email.
+        If you purchased tickets, you will receive refund details by email.
       </Text>
     </View>
   );

@@ -22,6 +22,7 @@ import i18n from '../i18n';
 import { savedCardKeys } from "../hooks/queryKeys";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { useFriends } from "../hooks/useFriends";
+import { performPrivateAuthCleanup } from "../utils/authCleanup";
 // Realtime hooks (useBoardRealtimeSync, useSavesRealtimeSync, useSocialRealtime)
 // moved to RealtimeSubscriptions.tsx component, mounted in index.tsx with
 // key={realtimeEpoch} for clean remount on resume. See ORCH-0336.
@@ -90,13 +91,11 @@ export function useAppState() {
   const signOutRef = useRef(signOut);
   signOutRef.current = signOut;
 
-  const {
-    _hasHydrated,
-    profile,
-    showAccountSettings,
-    setShowAccountSettings,
-    setProfile,
-  } = useAppStore();
+  const _hasHydrated = useAppStore((s) => s._hasHydrated);
+  const profile = useAppStore((s) => s.profile);
+  const showAccountSettings = useAppStore((s) => s.showAccountSettings);
+  const setShowAccountSettings = useAppStore((s) => s.setShowAccountSettings);
+  const setProfile = useAppStore((s) => s.setProfile);
 
   // Onboarding state
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
@@ -752,64 +751,11 @@ export function useAppState() {
       setShowShareModal(false);
       setShowOnboardingFlow(false);
 
-      // Dissociate device from user in OneSignal — next login will re-associate
-      const { logoutOneSignal } = await import("../services/oneSignalService");
-      logoutOneSignal();
-
-      // Reset RevenueCat customer so next sign-in gets the correct subscription state.
-      // Fire-and-forget — sign-out must not block on SDK cleanup.
-      import("../services/revenueCatService").then(({ logoutRevenueCat }) => {
-        logoutRevenueCat().catch((e: unknown) =>
-          console.warn("[SIGN-OUT] RevenueCat logout failed:", e)
-        );
-      }).catch(() => {});
-
-      // Reset Mixpanel identity so events aren't attributed to the previous user.
-      // trackLogout() calls reset() internally — clears distinct_id + super properties.
-      import("../services/mixpanelService").then(({ mixpanelService }) => {
-        try { mixpanelService.trackLogout(); } catch (e) {
-          console.warn("[SIGN-OUT] Mixpanel reset failed:", e);
-        }
-      }).catch(() => {});
-
-      // Clear in-memory offline queue (AsyncStorage key cleared by prefix sweep below)
-      const { realtimeService } = await import('../services/realtimeService');
-      realtimeService.clearQueue();
-
-      // Clear all user data from the store immediately
-      const store = useAppStore.getState();
-      store.clearUserData();
-
-      // Clear ALL user-scoped data from AsyncStorage.
-      // Uses prefix sweep instead of explicit key list — future-proof against new keys.
-      // Preserves: device-level keys (selected_language, translation_cache, REACT_QUERY_OFFLINE_CACHE)
-      // and the Zustand persist key (mingla-mobile-storage) which is reset by clearUserData() above.
-      // Wrapped in its own try/catch so queryClient.clear() and signOut() always execute
-      // even if AsyncStorage is corrupted or throws.
-      try {
-        const allKeys = await AsyncStorage.getAllKeys();
-        const userScopedKeys = allKeys.filter((key) => {
-          if (key.startsWith("mingla_")) return true;
-          if (key.startsWith("mingla:")) return true;
-          if (key.startsWith("@mingla")) return true;
-          if (key.startsWith("board_cache_")) return true;
-          if (key.startsWith("dismissed_cards_")) return true;
-          if (key.startsWith("debug_logs_")) return true;
-          if (key === "offline_data") return true;
-          if (key === "pending_actions") return true;
-          if (key === "realtime_offline_queue") return true;
-          if (key === "recommendation_cache") return true;
-          return false;
-        });
-        if (userScopedKeys.length > 0) {
-          await AsyncStorage.multiRemove(userScopedKeys);
-        }
-      } catch (storageError) {
-        console.error("AsyncStorage cleanup failed:", storageError);
-      }
-
-      // Clear React Query cache — prevents stale server data from leaking across accounts
-      queryClient.clear();
+      await performPrivateAuthCleanup({
+        reason: 'AppStateManager.handleSignOut',
+        previousUserId: user?.id,
+        currentUserId: null,
+      });
 
       // Clear local state
       setUserIdentity({
@@ -823,7 +769,7 @@ export function useAppState() {
       });
 
       // Try Supabase sign out (non-blocking - continue even if it fails)
-      await signOutRef.current();
+      await signOutRef.current({ skipPrivateCleanup: true });
     } catch (error) {
       console.error("Error during sign out:", error);
       // Continue with local state clearing even if other operations fail
@@ -837,7 +783,7 @@ export function useAppState() {
         createdAt: "",
       });
     }
-  }, [queryClient]);
+  }, [user?.id]);
 
   // Register handleSignOut with the 401 handler so forced sign-outs
   // trigger the full cleanup chain (SDK resets, AsyncStorage, React Query).

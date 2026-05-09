@@ -14,17 +14,19 @@
  * 6-state proposal per /ui-ux-pro-max design review (IMPL Phase 8 pre-flight):
  *
  *  Mount bypasses:
- *    - already-active: brand has charges_enabled=true; render success + redirect
+ *    - checking-status: cached active brand waits for live Stripe confirmation
+ *    - already-active: live Stripe status is active; render success + redirect
  *    - permission-denied: caller lacks finance_manager rank
  *
  *  Active states:
  *    idle → starting → in-flight → {
  *      complete-active   (status=active; verified; immediate)
  *      complete-verifying (status=onboarding; awaiting Stripe verification)
+ *      needs-information (status=restricted; actionable Stripe requirements)
  *      cancelled         (browser dismissed without completing)
  *      session-expired   (Stripe AccountSession TTL exceeded)
  *      failed-network    (mutation failed before browser opened)
- *      failed-stripe     (Stripe rejected; status=restricted)
+ *      failed-stripe     (terminal Stripe rejection)
  *    }
  *
  * Trust signals (per design review):
@@ -43,7 +45,7 @@
  * Per J-A10 spec §3.6 + B2a SPEC §4.5.1.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Linking,
@@ -78,6 +80,19 @@ import { Spinner } from "../ui/Spinner";
 import { BrandStripeCountryPicker } from "./BrandStripeCountryPicker";
 import { MinglaToSAcceptanceGate } from "../onboarding/MinglaToSAcceptanceGate";
 import { useAuth } from "../../context/AuthContext";
+import {
+  classifyStripeOnboardingOutcome,
+  deriveStripeOnboardingEntryState,
+  type StripeOnboardingOutcome,
+  type StripeRequirementsShape,
+} from "../../utils/stripeOnboardingOutcome";
+import { settleStripeStatus } from "../../utils/stripeStatusSettlement";
+import {
+  getStripeCountryLockedCopy,
+  getStripeCountryReplaceableCopy,
+  isStripeCountryPickerLocked,
+} from "../../utils/brandStripeUiState";
+import { BrandStripeCountryLockedError } from "../../services/brandStripeService";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
@@ -87,12 +102,15 @@ const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}` as const;
 
 type ViewState =
   | "permission-denied"
+  | "checking-status"
+  | "settling-status"
   | "already-active"
   | "idle"
   | "starting"
   | "in-flight"
   | "complete-active"
   | "complete-verifying"
+  | "needs-information"
   | "cancelled"
   | "session-expired"
   | "failed-network"
@@ -129,6 +147,13 @@ function announceForAccessibility(message: string): void {
   }
 }
 
+function coerceRequirements(
+  requirements: unknown,
+): StripeRequirementsShape | null {
+  if (requirements == null || typeof requirements !== "object") return null;
+  return requirements as StripeRequirementsShape;
+}
+
 export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   brand,
   onCancel,
@@ -138,13 +163,15 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const queryClient = useQueryClient();
   const onboardMutation = useStartBrandStripeOnboarding();
   const statusQuery = useBrandStripeStatus(brand?.id ?? null);
+  const startInProgressRef = useRef(false);
 
   // Mount-time bypass derivation
   const initialState: ViewState = (() => {
     if (brand === null) return "idle"; // not-found rendered separately below
-    // Already-active bypass: brand.stripeStatus comes from mapBrandRowToUi
-    // which derives from cache; trust that for fast initial render.
-    if (brand.stripeStatus === "active") return "already-active";
+    // Cached active is not enough to show terminal success: brand.stripeStatus
+    // lacks live requirements JSONB and detached_at. Confirm through
+    // useBrandStripeStatus before rendering "You're all set".
+    if (brand.stripeStatus === "active") return "checking-status";
     return "idle";
   })();
 
@@ -154,6 +181,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // Defaults to GB to preserve Phase 0 behaviour for unmodified callers.
   // Per SPEC §13 amendment A4 + I-PROPOSED-T (canonical 34-country allowlist).
   const [selectedCountry, setSelectedCountry] = useState<string>(DEFAULT_COUNTRY);
+  const [countryTouched, setCountryTouched] = useState(false);
   // V3 ToS gate: must pass before Stripe onboarding can start (per I-PROPOSED-U).
   // Gate component checks brand_team_members.mingla_tos_accepted_at and either
   // (a) auto-fires onPassed if already accepted, or (b) renders a sheet that
@@ -161,28 +189,160 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const { user } = useAuth();
   const [tosPassed, setTosPassed] = useState(false);
   const handleTosPassed = useCallback((): void => setTosPassed(true), []);
+  const handleCountryChange = useCallback((countryCode: string): void => {
+    setCountryTouched(true);
+    setSelectedCountry(countryCode);
+  }, []);
+
+  const savedStripeCountry = statusQuery.data?.country ?? null;
+  const countryPickerLocked = isStripeCountryPickerLocked({
+    stripeAccountId: statusQuery.data?.stripe_account_id ?? null,
+    status: statusQuery.data?.status ?? brand?.stripeStatus ?? null,
+    detailsSubmitted: statusQuery.data?.details_submitted ?? null,
+    chargesEnabled: statusQuery.data?.charges_enabled ?? null,
+    payoutsEnabled: statusQuery.data?.payouts_enabled ?? null,
+  });
+  const countryPickerHelper =
+    savedStripeCountry !== null &&
+      savedStripeCountry !== selectedCountry &&
+      !countryPickerLocked
+      ? getStripeCountryReplaceableCopy(selectedCountry)
+      : null;
+  const countryPickerWarning = countryPickerLocked
+    ? getStripeCountryLockedCopy(savedStripeCountry ?? selectedCountry)
+    : null;
+  const isCountryLockedError =
+    errorMessage?.includes("create a new brand") === true;
+
+  useEffect(() => {
+    if (countryTouched || savedStripeCountry === null) return;
+    setSelectedCountry(savedStripeCountry);
+  }, [countryTouched, savedStripeCountry]);
+
+  const applyOnboardingOutcome = useCallback(
+    (outcome: StripeOnboardingOutcome): void => {
+      switch (outcome) {
+        case "complete-active":
+          setViewState("complete-active");
+          setErrorMessage(null);
+          fireHaptic("success");
+          announceForAccessibility(
+            "Onboarding complete. You can publish events and accept payments now.",
+          );
+          break;
+        case "complete-verifying":
+          setViewState("complete-verifying");
+          setErrorMessage(null);
+          fireHaptic("success");
+          announceForAccessibility(
+            "Submitted to Stripe. Stripe is verifying your details.",
+          );
+          break;
+        case "needs-information":
+          setViewState("needs-information");
+          setErrorMessage(
+            "Stripe needs a few more details before payments can be enabled. Continue verification to finish the missing steps.",
+          );
+          fireHaptic("warning");
+          announceForAccessibility(
+            "Stripe needs more information. Continue verification to finish setup.",
+          );
+          break;
+        case "failed-stripe":
+          setViewState("failed-stripe");
+          setErrorMessage(
+            "Stripe could not verify this account. Contact support if this looks wrong.",
+          );
+          fireHaptic("error");
+          announceForAccessibility("Stripe could not verify this account.");
+          break;
+        case "session-expired":
+          setViewState("session-expired");
+          setErrorMessage(null);
+          fireHaptic("warning");
+          announceForAccessibility(
+            "Onboarding session ended. Tap continue setup to retry.",
+          );
+          break;
+      }
+    },
+    [],
+  );
 
   // Watch status query for in-flight → completion transitions while in browser
   useEffect(() => {
     if (viewState !== "in-flight") return;
     const status = statusQuery.data?.status;
     if (status === "active") {
-      setViewState("complete-active");
-      fireHaptic("success");
-      announceForAccessibility("Onboarding complete. You can publish events now.");
+      applyOnboardingOutcome("complete-active");
     } else if (status === "onboarding") {
       // Brand submitted; Stripe verifying. Don't auto-transition unless browser dismissed.
     } else if (status === "restricted") {
-      setViewState("failed-stripe");
-      setErrorMessage("Stripe needs additional information before you can sell tickets.");
-      fireHaptic("error");
+      applyOnboardingOutcome(
+        classifyStripeOnboardingOutcome({
+          status,
+          requirements: coerceRequirements(statusQuery.data?.requirements),
+        }),
+      );
     }
-  }, [viewState, statusQuery.data?.status]);
+  }, [
+    applyOnboardingOutcome,
+    statusQuery.data?.requirements,
+    statusQuery.data?.status,
+    viewState,
+  ]);
+
+  // Cached active must settle through the canonical live status query before
+  // terminal success. This keeps live restricted requirements from being hidden
+  // behind stale denormalized brand cache.
+  useEffect(() => {
+    if (viewState !== "checking-status" || brand === null) return;
+
+    if (statusQuery.isError) {
+      setViewState("failed-network");
+      setErrorMessage(
+        "We couldn't confirm your Stripe status. Check your connection and try again.",
+      );
+      fireHaptic("error");
+      announceForAccessibility("Could not confirm your Stripe status.");
+      return;
+    }
+
+    const entryState = deriveStripeOnboardingEntryState({
+      cachedStatus: brand.stripeStatus ?? null,
+      liveStatus: statusQuery.data?.status ?? null,
+      liveStatusLoaded: statusQuery.data != null,
+      requirements: coerceRequirements(statusQuery.data?.requirements),
+    });
+
+    if (entryState === "checking-status") return;
+
+    if (entryState === "already-active") {
+      setViewState("already-active");
+      setErrorMessage(null);
+      return;
+    }
+
+    if (entryState === "idle") {
+      setViewState("idle");
+      setErrorMessage(null);
+      return;
+    }
+
+    applyOnboardingOutcome(entryState);
+  }, [
+    applyOnboardingOutcome,
+    brand,
+    statusQuery.data,
+    statusQuery.isError,
+    viewState,
+  ]);
 
   // ----- Action handlers ------------------------------------------------
 
   const handleStart = useCallback(async (): Promise<void> => {
-    if (brand === null) return;
+    if (brand === null || startInProgressRef.current) return;
+    startInProgressRef.current = true;
     setViewState("starting");
     setErrorMessage(null);
     announceForAccessibility("Creating your Stripe account.");
@@ -204,50 +364,30 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         RETURN_DEEP_LINK,
       );
 
-      // Refresh status to determine outcome
+      setViewState("settling-status");
+      announceForAccessibility("Confirming your Stripe status.");
+
+      // Refresh status to determine outcome. Stripe can lag the browser
+      // return, so settle briefly before deciding what the user sees.
       await queryClient.invalidateQueries({
         queryKey: brandStripeStatusKeys.detail(brand.id),
       });
-      const refreshed = await statusQuery.refetch();
+      const refreshed = await settleStripeStatus(() => statusQuery.refetch());
+      const outcome = classifyStripeOnboardingOutcome({
+        status: refreshed?.status,
+        requirements: coerceRequirements(refreshed?.requirements),
+      });
 
       if (browserResult.type === "success") {
-        const status = refreshed.data?.status;
-        if (status === "active") {
-          setViewState("complete-active");
-          fireHaptic("success");
-          announceForAccessibility(
-            "Onboarding complete. You can publish events and accept payments now.",
-          );
-        } else if (status === "onboarding") {
-          setViewState("complete-verifying");
-          fireHaptic("success");
-          announceForAccessibility(
-            "Submitted to Stripe. Stripe is verifying your details.",
-          );
-        } else if (status === "restricted") {
-          setViewState("failed-stripe");
-          setErrorMessage(
-            "Stripe needs additional information before you can sell tickets.",
-          );
-          fireHaptic("error");
-        } else {
-          // status === "not_connected" implies session expired or never reached Stripe
-          setViewState("session-expired");
-          fireHaptic("warning");
-          announceForAccessibility(
-            "Onboarding session ended. Tap continue setup to retry.",
-          );
-        }
+        applyOnboardingOutcome(outcome);
       } else if (
         browserResult.type === "cancel" ||
         browserResult.type === "dismiss"
       ) {
-        // User dismissed without completing
-        const status = refreshed.data?.status;
-        if (status === "active") {
-          // Edge case: completed but dismissed via X — treat as success
-          setViewState("complete-active");
-          fireHaptic("success");
+        // Dismissed browser windows can still complete Stripe steps. Trust the
+        // bounded settlement if Stripe now reports a real account state.
+        if (outcome !== "session-expired") {
+          applyOnboardingOutcome(outcome);
         } else {
           setViewState("cancelled");
           fireHaptic("warning");
@@ -256,11 +396,17 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           );
         }
       } else {
-        setViewState("session-expired");
-        fireHaptic("warning");
+        applyOnboardingOutcome("session-expired");
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof BrandStripeCountryLockedError) {
+        setViewState("failed-stripe");
+        setErrorMessage(err.message);
+        fireHaptic("warning");
+        announceForAccessibility(err.message);
+        return;
+      }
       // Discriminate network vs Stripe errors
       if (
         message.toLowerCase().includes("stripe_api_error") ||
@@ -274,14 +420,29 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       }
       fireHaptic("error");
       announceForAccessibility("Onboarding failed. Tap try again.");
+    } finally {
+      startInProgressRef.current = false;
     }
-  }, [brand, onboardMutation, statusQuery, queryClient]);
+  }, [
+    applyOnboardingOutcome,
+    brand,
+    onboardMutation,
+    queryClient,
+    selectedCountry,
+    statusQuery,
+  ]);
 
   const handleTryAgain = useCallback((): void => {
     setViewState("idle");
     setErrorMessage(null);
     announceForAccessibility("Ready to retry onboarding.");
   }, []);
+
+  useEffect(() => {
+    if (viewState !== "complete-verifying") return;
+    if (statusQuery.data?.status !== "active") return;
+    applyOnboardingOutcome("complete-active");
+  }, [applyOnboardingOutcome, statusQuery.data?.status, viewState]);
 
   const handleDone = useCallback((): void => {
     onAfterDone();
@@ -402,6 +563,17 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           </>
         ) : null}
 
+        {viewState === "checking-status" || viewState === "settling-status" ? (
+          <View style={styles.stateBlock}>
+            <Spinner size={48} color={accent.warm} />
+            <Text style={styles.stateTitle}>Checking Stripe status...</Text>
+            <Text style={styles.stateSub}>
+              We{"’"}re confirming your account with Stripe before marking
+              payments ready.
+            </Text>
+          </View>
+        ) : null}
+
         {/* V3 ToS gate — renders an over-everything sheet when not accepted.
             When accepted (or on mount if previously accepted), fires
             handleTosPassed and the sheet stays hidden. The "Set up payments"
@@ -433,7 +605,10 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <View style={styles.prereqCard}>
                 <BrandStripeCountryPicker
                   value={selectedCountry}
-                  onChange={setSelectedCountry}
+                  onChange={handleCountryChange}
+                  disabled={countryPickerLocked}
+                  helperText={countryPickerHelper}
+                  warningText={countryPickerWarning}
                 />
               </View>
 
@@ -569,6 +744,40 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           </>
         ) : null}
 
+        {viewState === "needs-information" ? (
+          <>
+            <View style={styles.stateBlock}>
+              <View style={[styles.stateIconCircle, styles.stateIconCircleNeedsInfo]}>
+                <Icon name="flag" size={32} color={semantic.error} />
+              </View>
+              <Text style={styles.stateTitle}>More information needed</Text>
+              <Text style={styles.stateSub}>
+                {errorMessage ??
+                  "Stripe needs a few more details before payments can be enabled."}
+              </Text>
+            </View>
+            <View style={styles.actionsCol}>
+              <Button
+                label="Continue verification"
+                onPress={handleStart}
+                variant="primary"
+                size="lg"
+                fullWidth
+                disabled={onboardMutation.isPending}
+                accessibilityLabel="Continue Stripe verification"
+              />
+              <Button
+                label="Back to payments"
+                onPress={handleDone}
+                variant="secondary"
+                size="md"
+                fullWidth
+                accessibilityLabel="Back to payments"
+              />
+            </View>
+          </>
+        ) : null}
+
         {viewState === "cancelled" ? (
           <>
             <View style={styles.stateBlock}>
@@ -675,21 +884,38 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <View style={[styles.stateIconCircle, styles.stateIconCircleFailed]}>
                 <Icon name="flag" size={32} color={semantic.error} />
               </View>
-              <Text style={styles.stateTitle}>Stripe couldn{"’"}t verify</Text>
+              <Text style={styles.stateTitle}>
+                {isCountryLockedError
+                  ? "Stripe is already connected"
+                  : "Stripe couldn't verify"}
+              </Text>
               <Text style={styles.stateSub}>
-                {errorMessage ?? "Stripe needs additional information."} Try
-                again or contact support.
+                {isCountryLockedError
+                  ? errorMessage
+                  : `${errorMessage ?? "Stripe needs additional information."} Try again or contact support.`}
               </Text>
             </View>
             <View style={styles.actionsCol}>
-              <Button
-                label="Try again"
-                onPress={handleTryAgain}
-                variant="primary"
-                size="lg"
-                fullWidth
-                accessibilityLabel="Retry onboarding"
-              />
+              {isCountryLockedError ? null : (
+                <Button
+                  label="Try again"
+                  onPress={handleTryAgain}
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  accessibilityLabel="Retry onboarding"
+                />
+              )}
+              {isCountryLockedError ? (
+                <Button
+                  label="Back to payments"
+                  onPress={handleDone}
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  accessibilityLabel="Back to payments"
+                />
+              ) : null}
               <Pressable
                 onPress={handleSupport}
                 accessibilityLabel="Email Mingla support"
@@ -756,6 +982,10 @@ const styles = StyleSheet.create({
   stateIconCircleSuccess: {
     backgroundColor: accent.tint,
     borderColor: accent.border,
+  },
+  stateIconCircleNeedsInfo: {
+    backgroundColor: semantic.errorTint,
+    borderColor: "rgba(239, 68, 68, 0.45)",
   },
   stateIconCircleFailed: {
     backgroundColor: semantic.errorTint,

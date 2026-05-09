@@ -8,7 +8,7 @@
  * Per Cycle 9c spec §3.4.1.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,7 +24,7 @@ import {
   useOrderStore,
   type OrderRecord,
 } from "../../../../src/store/orderStore";
-import { useLiveEventStore } from "../../../../src/store/liveEventStore";
+import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
@@ -78,9 +78,10 @@ export default function EventOrdersListRoute(): React.ReactElement {
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
 
-  const event = useLiveEventStore((s) =>
-    typeof eventId === "string" ? s.events.find((e) => e.id === eventId) ?? null : null,
+  const routeEvent = useManagedEventRoute(
+    typeof eventId === "string" ? eventId : null,
   );
+  const event = routeEvent.event;
   // Cycle 9c rework v2 — select raw entries + filter in useMemo so the
   // selector returns a stable reference. getOrdersForEvent returns a fresh
   // filtered array each call which breaks useSyncExternalStore Object.is
@@ -125,6 +126,37 @@ export default function EventOrdersListRoute(): React.ReactElement {
   );
 
   const totalCount = orders.length;
+
+  useEffect(() => {
+    if (routeEvent.replacementEventId !== null) {
+      router.replace(`/event/${routeEvent.replacementEventId}/orders` as never);
+    }
+  }, [routeEvent.replacementEventId, router]);
+
+  if (event === null && routeEvent.isLoading && typeof eventId === "string") {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleBack}
+            accessibilityLabel="Back"
+          />
+          <Text style={styles.chromeTitle}>Orders</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <Text style={styles.emptyLoadingText}>Loading event...</Text>
+        </View>
+      </View>
+    );
+  }
 
   if (event === null || typeof eventId !== "string") {
     return (
@@ -359,5 +391,9 @@ const styles = StyleSheet.create({
   emptyHost: {
     paddingTop: spacing.xl,
   },
+  emptyLoadingText: {
+    fontSize: 14,
+    color: textTokens.secondary,
+    textAlign: "center",
+  },
 });
-

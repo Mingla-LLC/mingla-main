@@ -51,7 +51,7 @@ import { CoachMarkProvider, useCoachMarkContext } from "../src/contexts/CoachMar
 import { useCoachMark } from "../src/hooks/useCoachMark";
 import SpotlightOverlay from "../src/components/SpotlightOverlay";
 import { CustomPaywallScreen } from "../src/components/CustomPaywallScreen";
-import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from "../src/services/revenueCatService";
+import { configureRevenueCat, loginRevenueCat, logoutRevenueCatIfIdentified } from "../src/services/revenueCatService";
 import {
   initializeOneSignal,
   loginToOneSignal,
@@ -76,6 +76,7 @@ import { supabase } from "../src/services/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
 import { logger } from "../src/utils/logger";
+import { shouldDehydrateMinglaQuery } from "../src/utils/queryPersistence";
 // V2: inAppNotificationService is no longer imported — server-synced notifications
 // are handled by useNotifications hook + Supabase Realtime. The old service file
 // stays in place but is no longer referenced from the app root.
@@ -295,7 +296,9 @@ function AppContent() {
         console.warn("[RevenueCat] loginRevenueCat failed:", err)
       );
     } else {
-      logoutRevenueCat().catch(() => {});
+      logoutRevenueCatIfIdentified().catch((err) =>
+        console.warn("[RevenueCat] logoutRevenueCatIfIdentified failed:", err)
+      );
     }
   }, [user?.id, isLoadingAuth]);
 
@@ -2980,52 +2983,7 @@ function App() {
               // Exclude large/transient queries from persistence to prevent
               // Android CursorWindow overflow (2MB SQLite row limit)
               shouldDehydrateQuery: (query) => {
-                const queryKey = query.queryKey;
-
-                if (Array.isArray(queryKey)) {
-                  const firstKey = queryKey[0];
-                  // Never persist these heavy/transient queries:
-                  // - curated-experiences: very large payload (20 cards × 3 stops)
-                  // - recommendations: deprecated/redundant key
-                  // - phone-lookup: ephemeral keystroke-driven
-                  // - link-consent: transient
-                  // NOTE: deck-cards, savedCards, calendarEntries are now PERSISTED
-                  // to enable instant-on stale-while-revalidate UX.
-                  if (
-                    firstKey === "curated-experiences" ||
-                    firstKey === "recommendations" ||
-                    firstKey === "phone-lookup" ||
-                    firstKey === "link-consent"
-                  ) {
-                    return false;
-                  }
-
-                  // ORCH-0469 + ORCH-0474: Never persist non-populated deck-cards results.
-                  // Covers FOUR distinct edge-function paths — all return cards:[]:
-                  //   - path:'pool-empty'      (genuine empty seeding gap)
-                  //   - path:'pipeline' + filtered-to-zero (date/hours filter kills all)
-                  //   - path:'auth-required'   (JWT sub unreadable — SPEC_ORCH-0474 §7)
-                  //   - path:'pipeline-error'  (serveCardsFromPipeline threw)
-                  // All four land here with cards.length===0; the length check blocks
-                  // cross-session persistence uniformly. In-memory caching within the
-                  // current warm session is still allowed — cold start always fetches
-                  // fresh. staleTime: Infinity is safe ONLY because of this guard.
-                  if (firstKey === "deck-cards") {
-                    const data = query.state.data as { cards?: unknown[] } | undefined;
-                    if (!data || !Array.isArray(data.cards) || data.cards.length === 0) {
-                      return false;
-                    }
-                  }
-                }
-                // Never persist queries that are still fetching — their promises
-                // can't be serialized and cause "promise.then is not a function"
-                // crash during hydration on next app launch
-                if (query.state.fetchStatus === 'fetching') {
-                  return false;
-                }
-
-                // Persist lightweight queries (preferences, location, etc.)
-                return true;
+                return shouldDehydrateMinglaQuery(query, useAppStore.getState().user?.id ?? null);
               },
             },
           }}

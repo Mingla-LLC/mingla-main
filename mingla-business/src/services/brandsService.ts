@@ -69,6 +69,7 @@ export interface SoftDeleteSuccess {
   brandId: string;
 }
 export type SoftDeleteResult = SoftDeleteSuccess | SoftDeleteRejection;
+export const BRAND_DELETE_BLOCKING_EVENT_STATUSES = ["scheduled", "live"] as const;
 
 // ----- createBrand -------------------------------------------------------
 
@@ -185,7 +186,7 @@ export async function updateBrand(
  * Soft-deletes a brand via `UPDATE brands SET deleted_at = now()`.
  *
  * Three-step workflow:
- *   1. Count upcoming + live events for this brand. If > 0, return rejection
+ *   1. Count scheduled + live events for this brand. If > 0, return rejection
  *      (workflow rejection, NOT thrown — UI handles via reject-modal per
  *      Decision 11).
  *   2. UPDATE brands SET deleted_at = <now>. Idempotent — `.is("deleted_at", null)`
@@ -196,14 +197,13 @@ export async function updateBrand(
  * Per SPEC §3.2.7. NEVER swallows error per Const #3.
  */
 export async function softDeleteBrand(brandId: string): Promise<SoftDeleteResult> {
-  // Step 1 — count upcoming OR live events (assumption A-1: events.status enum
-  // includes 'upcoming' + 'live'). If enum differs, this returns wrong count;
-  // verified at IMPL pre-flight.
+  // Step 1 — count scheduled OR live events. DB enum is
+  // draft/scheduled/live/ended/cancelled; "upcoming" is a UI bucket only.
   const { count, error: countError } = await supabase
     .from("events")
     .select("id", { count: "exact", head: true })
     .eq("brand_id", brandId)
-    .in("status", ["upcoming", "live"])
+    .in("status", BRAND_DELETE_BLOCKING_EVENT_STATUSES)
     .is("deleted_at", null);
 
   if (countError) throw countError;

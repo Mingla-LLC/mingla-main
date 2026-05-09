@@ -12,25 +12,43 @@
 // Spec: Mingla_Artifacts/specs/SPEC_ORCH-0712_TRIAL_INTELLIGENCE.md §4
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  MINGLA_SIGNAL_IDS,
+  createClient,
+  SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
+import {
   // ORCH-0733 — computeCostUsd dropped from active import; only referenced
   // in commented-historical Anthropic helper. Re-add if Anthropic is ever
   // re-enabled (would also need DEC entry).
   computeCostUsdGemini,
+  MINGLA_SIGNAL_IDS,
 } from "../_shared/photoAestheticEnums.ts";
 import {
   composeCollage,
   fingerprintPhotos,
   MAX_PHOTOS,
 } from "../_shared/imageCollage.ts";
+import {
+  CHILD_RECONCILE_PAGE_SIZE,
+  type ChildTruthReconciliationResult,
+  deriveParentReconciliation,
+  type TrialChildCounterRow,
+} from "../_shared/placeIntelParentReconciliation.ts";
+import {
+  buildRetryChildRows,
+  type CompletedCoverageRow,
+  deriveCityCoverage,
+  type FailedTrialRow,
+  type RetryFilter,
+  selectFailedRowsForRetry,
+} from "../_shared/placeIntelRetryCoverage.ts";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 // ORCH-0733 — Anthropic Claude Haiku 4.5 dropped from active trial pipeline per
@@ -50,7 +68,8 @@ type Provider = "anthropic" | "gemini";
 // ORCH-0713 Gemini A/B (2026-05-05) — became sole provider per ORCH-0733.
 const GEMINI_MODEL_ID = "gemini-2.5-flash";
 const GEMINI_MODEL_NAME_SHORT = "gemini-2.5-flash";
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
+const GEMINI_API_URL =
+  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
 const SERPER_REVIEWS_URL = "https://google.serper.dev/reviews";
 const COLLAGE_BUCKET = "place-collages";
 // PROMPT_VERSION:
@@ -79,12 +98,12 @@ const COST_GUARD_USD = 5.0;
 
 // ORCH-0737 v6 — Anthropic-era per-place throttle constant removed (was dead code
 // post ORCH-0733 / DEC-101 dropping Anthropic from the trial pipeline).
-const REVIEWS_FETCH_THROTTLE_MS = 200;   // gentle Serper throttle
+const REVIEWS_FETCH_THROTTLE_MS = 200; // gentle Serper throttle
 
 // Reviews fetch
-const REVIEWS_PAGES_MAX = 5;             // ~100 reviews
+const REVIEWS_PAGES_MAX = 5; // ~100 reviews
 const REVIEWS_FRESHNESS_DAYS = 30;
-const TOP_REVIEWS_FOR_PROMPT = 30;       // top-N most-recent with text fed to Claude
+const TOP_REVIEWS_FOR_PROMPT = 30; // top-N most-recent with text fed to Claude
 
 // Retry config (mirrors score-place-photo-aesthetics)
 const MAX_ATTEMPTS = 4;
@@ -157,20 +176,193 @@ interface GeminiUsage {
   candidatesTokenCount: number;
 }
 
+const V8_TIMING_VERSION = "orch-0737-v8";
+const V8_TIMING_LOG_MARKER = "[ORCH-0737-V8-TIMING]";
+
+type TimingDiagnostics = Record<string, unknown>;
+
+interface GeminiHttpDiagnostics extends TimingDiagnostics {
+  gemini_total_ms: number;
+  gemini_attempt_count: number;
+  gemini_http_statuses: number[];
+  gemini_retry_after_ms_total: number;
+  gemini_backoff_ms_total: number;
+  gemini_error_kinds: string[];
+  gemini_final_outcome: string;
+}
+
+interface BatchContext {
+  batch_id: string;
+  batch_kind: "score" | "prep";
+  batch_iteration: number;
+  batch_parallel_n: number;
+  batch_row_count: number;
+  batch_started_at: string;
+  worker_elapsed_ms_at_batch_start: number;
+}
+
+interface PlacePoolTrialPromptRow {
+  id: string;
+  name: string | null;
+  primary_type: string | null;
+  types: string[] | null;
+  address: string | null;
+  rating: number | null;
+  review_count: number | null;
+  price_level: number | null;
+  price_range_start_cents: number | null;
+  price_range_end_cents: number | null;
+  price_range_currency: string | null;
+  editorial_summary: string | null;
+  generative_summary: string | null;
+  opening_hours: Record<string, unknown> | null;
+  photo_collage_url: string | null;
+  [key: string]: unknown;
+}
+
+type DiagnosticError = Error & {
+  geminiDiagnostics?: GeminiHttpDiagnostics;
+  timingDiagnostics?: TimingDiagnostics;
+};
+
+function elapsedMs(start: number): number {
+  return Math.max(0, Math.round(performance.now() - start));
+}
+
+function classifyError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("Collage fetch failed")) return "collage_fetch";
+  if (msg.includes("Gemini")) return "gemini";
+  if (msg.includes("MALFORMED_FUNCTION_CALL")) return "malformed_function_call";
+  if (msg.includes("place_pool fetch failed") || msg.includes("reviews")) {
+    return "db_read";
+  }
+  if (msg.includes("prerequisites_missing")) return "prerequisites_missing";
+  return "unknown";
+}
+
+function safeMergeDiagnostics(
+  ...records: Array<TimingDiagnostics | null | undefined>
+): TimingDiagnostics {
+  const out: TimingDiagnostics = {};
+  for (const record of records) {
+    if (!record) continue;
+    for (const [key, value] of Object.entries(record)) {
+      if (value !== undefined) out[key] = value;
+    }
+  }
+  return out;
+}
+
+function emitTiming(event: string, data: TimingDiagnostics): void {
+  try {
+    console.log(
+      `${V8_TIMING_LOG_MARKER} ${JSON.stringify({ event, ...data })}`,
+    );
+  } catch (err) {
+    console.warn(
+      `${V8_TIMING_LOG_MARKER} {"event":"emit_failed","error":${
+        JSON.stringify(String(err))
+      }}`,
+    );
+  }
+}
+
+function attachTimingDiagnostics(
+  err: unknown,
+  diagnostics: TimingDiagnostics,
+): never {
+  if (err instanceof Error) {
+    (err as DiagnosticError).timingDiagnostics = safeMergeDiagnostics(
+      (err as DiagnosticError).timingDiagnostics,
+      diagnostics,
+    );
+    throw err;
+  }
+  const wrapped = new Error(String(err)) as DiagnosticError;
+  wrapped.timingDiagnostics = diagnostics;
+  throw wrapped;
+}
+
+function getErrorDiagnostics(err: unknown): TimingDiagnostics {
+  if (!(err instanceof Error)) return {};
+  const diagnosticErr = err as DiagnosticError;
+  return safeMergeDiagnostics(
+    diagnosticErr.geminiDiagnostics,
+    diagnosticErr.timingDiagnostics,
+  );
+}
+
+function emptyGeminiDiagnostics(): GeminiHttpDiagnostics {
+  return {
+    gemini_total_ms: 0,
+    gemini_attempt_count: 0,
+    gemini_http_statuses: [],
+    gemini_retry_after_ms_total: 0,
+    gemini_backoff_ms_total: 0,
+    gemini_error_kinds: [],
+    gemini_final_outcome: "not_started",
+  };
+}
+
+function combineGeminiDiagnostics(
+  items: GeminiHttpDiagnostics[],
+): GeminiHttpDiagnostics {
+  const combined = emptyGeminiDiagnostics();
+  for (const item of items) {
+    combined.gemini_total_ms += item.gemini_total_ms || 0;
+    combined.gemini_attempt_count += item.gemini_attempt_count || 0;
+    combined.gemini_http_statuses.push(...(item.gemini_http_statuses || []));
+    combined.gemini_retry_after_ms_total += item.gemini_retry_after_ms_total ||
+      0;
+    combined.gemini_backoff_ms_total += item.gemini_backoff_ms_total || 0;
+    combined.gemini_error_kinds.push(...(item.gemini_error_kinds || []));
+    combined.gemini_final_outcome = item.gemini_final_outcome ||
+      combined.gemini_final_outcome;
+  }
+  combined.gemini_total_ms = Math.round(combined.gemini_total_ms);
+  combined.gemini_retry_after_ms_total = Math.round(
+    combined.gemini_retry_after_ms_total,
+  );
+  combined.gemini_backoff_ms_total = Math.round(
+    combined.gemini_backoff_ms_total,
+  );
+  return combined;
+}
+
 async function callGeminiWithRetry(
   apiKey: string,
   reqBody: Record<string, unknown>,
-): Promise<{ payload: any; usage: GeminiUsage }> {
+): Promise<
+  { payload: any; usage: GeminiUsage; diagnostics: GeminiHttpDiagnostics }
+> {
   let lastErrText = "";
-  let res: Response;
+  let res: Response | null = null;
+  const started = performance.now();
+  const diagnostics = emptyGeminiDiagnostics();
   // Gemini uses ?key=<API_KEY> query param auth (also supports x-goog-api-key header).
   const url = `${GEMINI_API_URL}?key=${encodeURIComponent(apiKey)}`;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(reqBody),
-    });
+    diagnostics.gemini_attempt_count = attempt;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reqBody),
+      });
+    } catch (err) {
+      diagnostics.gemini_total_ms = elapsedMs(started);
+      diagnostics.gemini_error_kinds.push("network_or_fetch_error");
+      diagnostics.gemini_final_outcome = "network_or_fetch_error";
+      if (err instanceof Error) {
+        (err as DiagnosticError).geminiDiagnostics = diagnostics;
+        throw err;
+      }
+      const wrapped = new Error(String(err)) as DiagnosticError;
+      wrapped.geminiDiagnostics = diagnostics;
+      throw wrapped;
+    }
+    diagnostics.gemini_http_statuses.push(res.status);
 
     if (res.ok) break;
 
@@ -178,31 +370,67 @@ async function callGeminiWithRetry(
     lastErrText = await res.text();
     const isRetryable = status === 429 || (status >= 500 && status < 600);
     if (!isRetryable || attempt === MAX_ATTEMPTS) {
-      throw new Error(`Gemini ${status}: ${lastErrText.slice(0, 500)}`);
+      diagnostics.gemini_total_ms = elapsedMs(started);
+      diagnostics.gemini_error_kinds.push(`http_${status}`);
+      diagnostics.gemini_final_outcome = `http_${status}`;
+      const err = new Error(
+        `Gemini ${status}: ${lastErrText.slice(0, 500)}`,
+      ) as DiagnosticError;
+      err.geminiDiagnostics = diagnostics;
+      throw err;
     }
     const retryAfter = res.headers.get("retry-after");
-    const retryAfterMs = retryAfter ? Math.min(60_000, Math.max(1_000, Number(retryAfter) * 1000)) : 0;
-    const backoffMs = retryAfterMs || (BASE_BACKOFF_MS * Math.pow(2, attempt - 1));
-    console.log(`[place-intel-trial] Gemini ${status} attempt ${attempt}/${MAX_ATTEMPTS}, sleeping ${backoffMs}ms`);
+    const retryAfterMs = retryAfter
+      ? Math.min(60_000, Math.max(1_000, Number(retryAfter) * 1000))
+      : 0;
+    const backoffMs = retryAfterMs ||
+      (BASE_BACKOFF_MS * Math.pow(2, attempt - 1));
+    if (Number.isFinite(retryAfterMs)) {
+      diagnostics.gemini_retry_after_ms_total += retryAfterMs;
+    }
+    diagnostics.gemini_backoff_ms_total += backoffMs;
+    console.log(
+      `[place-intel-trial] Gemini ${status} attempt ${attempt}/${MAX_ATTEMPTS}, sleeping ${backoffMs}ms`,
+    );
     await new Promise((r) => setTimeout(r, backoffMs));
   }
 
-  if (!res!.ok) throw new Error(`Gemini exhausted retries: ${lastErrText.slice(0, 500)}`);
+  if (!res!.ok) {
+    diagnostics.gemini_total_ms = elapsedMs(started);
+    diagnostics.gemini_error_kinds.push("retries_exhausted");
+    diagnostics.gemini_final_outcome = "retries_exhausted";
+    const err = new Error(
+      `Gemini exhausted retries: ${lastErrText.slice(0, 500)}`,
+    ) as DiagnosticError;
+    err.geminiDiagnostics = diagnostics;
+    throw err;
+  }
 
   const payload = await res!.json();
   const usage: GeminiUsage = payload?.usageMetadata
     ? {
-        promptTokenCount: payload.usageMetadata.promptTokenCount || 0,
-        candidatesTokenCount: payload.usageMetadata.candidatesTokenCount || 0,
-      }
+      promptTokenCount: payload.usageMetadata.promptTokenCount || 0,
+      candidatesTokenCount: payload.usageMetadata.candidatesTokenCount || 0,
+    }
     : { promptTokenCount: 0, candidatesTokenCount: 0 };
-  return { payload, usage };
+  diagnostics.gemini_total_ms = elapsedMs(started);
+  diagnostics.gemini_final_outcome = "ok";
+  return { payload, usage, diagnostics };
 }
 
 // Fetch a public URL and return base64-encoded bytes for Gemini inline_data.
-async function fetchAsBase64(url: string): Promise<{ base64: string; mimeType: string }> {
+async function fetchAsBase64(url: string): Promise<{
+  base64: string;
+  mimeType: string;
+  rawBytes: number;
+  base64Bytes: number;
+  elapsedMs: number;
+}> {
+  const started = performance.now();
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Collage fetch failed ${res.status}: ${url.slice(0, 80)}`);
+  if (!res.ok) {
+    throw new Error(`Collage fetch failed ${res.status}: ${url.slice(0, 80)}`);
+  }
   const contentType = res.headers.get("content-type") || "image/png";
   const buf = new Uint8Array(await res.arrayBuffer());
   // Encode to base64 (Deno-native — chunk to avoid stack overflow on large arrays)
@@ -212,7 +440,13 @@ async function fetchAsBase64(url: string): Promise<{ base64: string; mimeType: s
     binary += String.fromCharCode(...buf.subarray(i, i + chunkSize));
   }
   const base64 = btoa(binary);
-  return { base64, mimeType: contentType };
+  return {
+    base64,
+    mimeType: contentType,
+    rawBytes: buf.length,
+    base64Bytes: base64.length,
+    elapsedMs: elapsedMs(started),
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -236,7 +470,8 @@ async function fetchAsBase64(url: string): Promise<{ base64: string; mimeType: s
 // Drop strong_match + confidence_0_to_10 — replaced by single continuous score.
 const Q2_TOOL = {
   name: "evaluate_against_existing_signals",
-  description: "Score this place against each of Mingla's 16 existing signals on a 0-100 quality scale, with inappropriate_for as a hard veto for structural wrongness.",
+  description:
+    "Score this place against each of Mingla's 16 existing signals on a 0-100 quality scale, with inappropriate_for as a hard veto for structural wrongness.",
   input_schema: {
     type: "object",
     required: ["evaluations"],
@@ -245,23 +480,35 @@ const Q2_TOOL = {
         type: "array",
         items: {
           type: "object",
-          required: ["signal_id", "score_0_to_100", "inappropriate_for", "reasoning"],
+          required: [
+            "signal_id",
+            "score_0_to_100",
+            "inappropriate_for",
+            "reasoning",
+          ],
           properties: {
             signal_id: { type: "string", enum: MINGLA_SIGNAL_IDS },
             score_0_to_100: {
               type: "integer",
               minimum: 0,
               maximum: 100,
-              description: "Continuous quality of fit on 0-100 scale per the scoring rubric in the system prompt. Set to 0 when inappropriate_for=true.",
+              description:
+                "Continuous quality of fit on 0-100 scale per the scoring rubric in the system prompt. Set to 0 when inappropriate_for=true.",
             },
             inappropriate_for: {
               type: "boolean",
-              description: "TRUE only when 100% sure place is STRUCTURALLY wrong for this signal (e.g., event-only-by-appointment florist for `flowers`; gym for any food signal). Use sparingly. When TRUE, score_0_to_100 must be 0.",
+              description:
+                "TRUE only when 100% sure place is STRUCTURALLY wrong for this signal (e.g., event-only-by-appointment florist for `flowers`; gym for any food signal). Use sparingly. When TRUE, score_0_to_100 must be 0.",
             },
-            reasoning: { type: "string", description: "1-2 sentence rationale grounded in evidence (reviews, photos, place_pool fields). Max 500 chars." },
+            reasoning: {
+              type: "string",
+              description:
+                "1-2 sentence rationale grounded in evidence (reviews, photos, place_pool fields). Max 500 chars.",
+            },
           },
         },
-        description: "EXACTLY 16 evaluations, one per Mingla signal in the order provided.",
+        description:
+          "EXACTLY 16 evaluations, one per Mingla signal in the order provided.",
       },
     },
   },
@@ -272,7 +519,9 @@ const Q2_TOOL = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
@@ -283,8 +532,12 @@ serve(async (req: Request) => {
     const geminiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
     const serperKey = Deno.env.get("SERPER_API_KEY") ?? "";
 
-    if (!geminiKey) return json({ error: "GEMINI_API_KEY not configured" }, 500);
-    if (!serperKey) return json({ error: "SERPER_API_KEY not configured" }, 500);
+    if (!geminiKey) {
+      return json({ error: "GEMINI_API_KEY not configured" }, 500);
+    }
+    if (!serperKey) {
+      return json({ error: "SERPER_API_KEY not configured" }, 500);
+    }
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
@@ -293,7 +546,8 @@ serve(async (req: Request) => {
 
     if (!body.action) {
       return json({
-        error: "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial' | 'process_chunk' | 'list_active_runs'",
+        error:
+          "Missing 'action'. Use action='preview_run' | 'fetch_reviews' | 'compose_collage' | 'start_run' | 'run_trial_for_place' | 'run_status' | 'cancel_trial' | 'process_chunk' | 'list_active_runs' | 'city_coverage' | 'retry_failed_run'",
       }, 400);
     }
 
@@ -308,7 +562,12 @@ serve(async (req: Request) => {
       if (token !== supabaseServiceKey) {
         return json({ error: "process_chunk requires service-role auth" }, 403);
       }
-      return await handleProcessChunk(supabaseAdmin, body, geminiKey, serperKey);
+      return await handleProcessChunk(
+        supabaseAdmin,
+        body,
+        geminiKey,
+        serperKey,
+      );
     }
 
     // Auth gate (admin only) for all other actions
@@ -317,7 +576,9 @@ serve(async (req: Request) => {
       return json({ error: "Missing authorization" }, 401);
     }
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(
+      token,
+    );
     if (authErr || !user) return json({ error: "Invalid token" }, 401);
     const { data: adminRow } = await supabaseAdmin
       .from("admin_users")
@@ -335,7 +596,12 @@ serve(async (req: Request) => {
       case "compose_collage":
         return await handleComposeCollage(supabaseAdmin, body);
       case "start_run":
-        return await handleStartRun(supabaseAdmin, body, adminRow.id, supabaseServiceKey);
+        return await handleStartRun(
+          supabaseAdmin,
+          body,
+          adminRow.id,
+          supabaseServiceKey,
+        );
       case "run_trial_for_place":
         return await handleRunTrialForPlace(supabaseAdmin, body, geminiKey);
       case "run_status":
@@ -344,12 +610,23 @@ serve(async (req: Request) => {
         return await handleCancelTrial(supabaseAdmin, body, adminRow.id);
       case "list_active_runs":
         return await handleListActiveRuns(supabaseAdmin);
+      case "city_coverage":
+        return await handleCityCoverage(supabaseAdmin, body);
+      case "retry_failed_run":
+        return await handleRetryFailedRun(
+          supabaseAdmin,
+          body,
+          adminRow.id,
+          supabaseServiceKey,
+        );
       default:
         return json({ error: `Unknown action: ${body.action}` }, 400);
     }
   } catch (err) {
     console.error("[run-place-intelligence-trial] Unhandled error:", err);
-    return json({ error: err instanceof Error ? err.message : "Internal error" }, 500);
+    return json({
+      error: err instanceof Error ? err.message : "Internal error",
+    }, 500);
   }
 });
 
@@ -372,12 +649,17 @@ async function handlePreviewRun(
   }
 
   const sampleSizeRaw = body.sample_size ?? SAMPLE_SIZE_DEFAULT;
-  const sampleSize = typeof sampleSizeRaw === "number" && Number.isInteger(sampleSizeRaw)
-    ? sampleSizeRaw
-    : NaN;
-  if (!Number.isInteger(sampleSize) || sampleSize < SAMPLE_SIZE_MIN || sampleSize > SAMPLE_SIZE_MAX) {
+  const sampleSize =
+    typeof sampleSizeRaw === "number" && Number.isInteger(sampleSizeRaw)
+      ? sampleSizeRaw
+      : NaN;
+  if (
+    !Number.isInteger(sampleSize) || sampleSize < SAMPLE_SIZE_MIN ||
+    sampleSize > SAMPLE_SIZE_MAX
+  ) {
     return json({
-      error: `sample_size must be integer ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX} (default ${SAMPLE_SIZE_DEFAULT})`,
+      error:
+        `sample_size must be integer ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX} (default ${SAMPLE_SIZE_DEFAULT})`,
     }, 400);
   }
 
@@ -387,7 +669,9 @@ async function handlePreviewRun(
     .eq("id", cityId)
     .maybeSingle();
   if (cityErr) return json({ error: cityErr.message }, 500);
-  if (!city) return json({ error: "city_id does not exist in seeding_cities" }, 400);
+  if (!city) {
+    return json({ error: "city_id does not exist in seeding_cities" }, 400);
+  }
 
   const { count, error: countErr } = await db
     .from("place_pool")
@@ -402,11 +686,15 @@ async function handlePreviewRun(
   }
 
   const effectiveSampleSize = Math.min(sampleSize, totalServable);
-  const estimatedCostUsd = +(effectiveSampleSize * PER_PLACE_COST_USD).toFixed(4);
+  const estimatedCostUsd = +(effectiveSampleSize * PER_PLACE_COST_USD).toFixed(
+    4,
+  );
 
   if (estimatedCostUsd > COST_GUARD_USD) {
     return json({
-      error: `cost guard tripped: estimated $${estimatedCostUsd.toFixed(2)} > $${COST_GUARD_USD}`,
+      error: `cost guard tripped: estimated $${
+        estimatedCostUsd.toFixed(2)
+      } > $${COST_GUARD_USD}`,
     }, 400);
   }
 
@@ -436,7 +724,9 @@ async function handleFetchReviews(
 
   // Idempotency check
   if (!forceRefresh) {
-    const cutoff = new Date(Date.now() - REVIEWS_FRESHNESS_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const cutoff = new Date(
+      Date.now() - REVIEWS_FRESHNESS_DAYS * 24 * 60 * 60 * 1000,
+    ).toISOString();
     const { data: existing } = await db
       .from("place_external_reviews")
       .select("id", { count: "exact", head: false })
@@ -459,7 +749,9 @@ async function handleFetchReviews(
     .eq("id", placePoolId)
     .maybeSingle();
   if (ppErr) return json({ error: ppErr.message }, 500);
-  if (!pp?.google_place_id) return json({ error: "place has no google_place_id" }, 400);
+  if (!pp?.google_place_id) {
+    return json({ error: "place has no google_place_id" }, 400);
+  }
 
   // Page through Serper
   let nextPageToken: string | undefined;
@@ -484,7 +776,10 @@ async function handleFetchReviews(
       });
     } catch (err) {
       lastErr = err instanceof Error ? err.message : String(err);
-      console.error(`[place-intel-trial:fetch_reviews] page ${page} fetch error:`, lastErr);
+      console.error(
+        `[place-intel-trial:fetch_reviews] page ${page} fetch error:`,
+        lastErr,
+      );
       break;
     }
 
@@ -501,7 +796,8 @@ async function handleFetchReviews(
       const rows = reviews.map((r) => ({
         place_pool_id: placePoolId,
         source: "serper",
-        source_review_id: r.id || `${pp.google_place_id}-${page}-${Math.random()}`,
+        source_review_id: r.id ||
+          `${pp.google_place_id}-${page}-${Math.random()}`,
         review_text: r.snippet || null,
         rating: typeof r.rating === "number" ? r.rating : null,
         posted_at: r.isoDate || null,
@@ -552,7 +848,9 @@ async function handleComposeCollage(
   // Load place + reviewer photos
   const { data: pp, error: ppErr } = await db
     .from("place_pool")
-    .select("id, stored_photo_urls, photo_collage_url, photo_collage_fingerprint")
+    .select(
+      "id, stored_photo_urls, photo_collage_url, photo_collage_fingerprint",
+    )
     .eq("id", placePoolId)
     .maybeSingle();
   if (ppErr) return json({ error: ppErr.message }, 500);
@@ -572,7 +870,10 @@ async function handleComposeCollage(
   const reviewerPhotos: string[] = [];
   for (const row of (reviewRows || []) as Array<{ media: any[] }>) {
     for (const m of (row.media || [])) {
-      if (m?.imageUrl && reviewerPhotos.length < (MAX_PHOTOS - marketingPhotos.length)) {
+      if (
+        m?.imageUrl &&
+        reviewerPhotos.length < (MAX_PHOTOS - marketingPhotos.length)
+      ) {
         reviewerPhotos.push(m.imageUrl);
       }
     }
@@ -587,7 +888,10 @@ async function handleComposeCollage(
   const fingerprint = await fingerprintPhotos(allPhotos);
 
   // Idempotency: skip if cached fingerprint matches
-  if (!force && pp.photo_collage_fingerprint === fingerprint && pp.photo_collage_url) {
+  if (
+    !force && pp.photo_collage_fingerprint === fingerprint &&
+    pp.photo_collage_url
+  ) {
     return json({
       placePoolId,
       cached: true,
@@ -602,7 +906,9 @@ async function handleComposeCollage(
   try {
     result = await composeCollage(allPhotos);
   } catch (err) {
-    return json({ error: err instanceof Error ? err.message : "compose failed" }, 500);
+    return json({
+      error: err instanceof Error ? err.message : "compose failed",
+    }, 500);
   }
 
   // Upload to Storage
@@ -613,7 +919,9 @@ async function handleComposeCollage(
       contentType: "image/png",
       upsert: true,
     });
-  if (uploadErr) return json({ error: `Storage upload failed: ${uploadErr.message}` }, 500);
+  if (uploadErr) {
+    return json({ error: `Storage upload failed: ${uploadErr.message}` }, 500);
+  }
 
   const { data: urlData } = db.storage.from(COLLAGE_BUCKET).getPublicUrl(path);
   const publicUrl = urlData.publicUrl;
@@ -626,7 +934,12 @@ async function handleComposeCollage(
       photo_collage_fingerprint: fingerprint,
     })
     .eq("id", placePoolId);
-  if (updateErr) return json({ error: `place_pool update failed: ${updateErr.message}` }, 500);
+  if (updateErr) {
+    return json(
+      { error: `place_pool update failed: ${updateErr.message}` },
+      500,
+    );
+  }
 
   return json({
     placePoolId,
@@ -680,12 +993,17 @@ async function handleStartRun(
   let sampleSize: number | null = null;
   if (mode === "sample") {
     const sampleSizeRaw = body.sample_size ?? SAMPLE_SIZE_DEFAULT;
-    sampleSize = typeof sampleSizeRaw === "number" && Number.isInteger(sampleSizeRaw)
-      ? sampleSizeRaw
-      : NaN;
-    if (!Number.isInteger(sampleSize) || sampleSize < SAMPLE_SIZE_MIN || sampleSize > SAMPLE_SIZE_MAX) {
+    sampleSize =
+      typeof sampleSizeRaw === "number" && Number.isInteger(sampleSizeRaw)
+        ? sampleSizeRaw
+        : NaN;
+    if (
+      !Number.isInteger(sampleSize) || sampleSize < SAMPLE_SIZE_MIN ||
+      sampleSize > SAMPLE_SIZE_MAX
+    ) {
       return json({
-        error: `sample_size must be integer ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX} (default ${SAMPLE_SIZE_DEFAULT})`,
+        error:
+          `sample_size must be integer ${SAMPLE_SIZE_MIN}-${SAMPLE_SIZE_MAX} (default ${SAMPLE_SIZE_DEFAULT})`,
       }, 400);
     }
   }
@@ -697,7 +1015,9 @@ async function handleStartRun(
     .eq("id", cityId)
     .maybeSingle();
   if (cityErr) return json({ error: cityErr.message }, 500);
-  if (!city) return json({ error: "city_id does not exist in seeding_cities" }, 400);
+  if (!city) {
+    return json({ error: "city_id does not exist in seeding_cities" }, 400);
+  }
 
   // Load all servable place IDs for the city, ranked by review_count desc
   const { data: pool, error: poolErr } = await db
@@ -743,7 +1063,9 @@ async function handleStartRun(
   if (estCost > COST_GUARD_USD) {
     if (mode === "sample") {
       return json({
-        error: `cost guard tripped: estimated $${estCost.toFixed(2)} > $${COST_GUARD_USD}`,
+        error: `cost guard tripped: estimated $${
+          estCost.toFixed(2)
+        } > $${COST_GUARD_USD}`,
       }, 400);
     }
     if (mode === "full_city" && body.confirm_high_cost !== true) {
@@ -751,12 +1073,13 @@ async function handleStartRun(
         error: "cost_above_guard",
         estimated_cost_usd: estCost,
         cost_guard_usd: COST_GUARD_USD,
-        message: `Full-city run exceeds $${COST_GUARD_USD} cost guard. Resubmit with confirm_high_cost=true to override.`,
+        message:
+          `Full-city run exceeds $${COST_GUARD_USD} cost guard. Resubmit with confirm_high_cost=true to override.`,
       }, 400);
     }
   }
 
-  const estMinutes = Math.ceil(effectiveCount * 30 / 60);                   // 30s per place wallclock estimate
+  const estMinutes = Math.ceil(effectiveCount * 30 / 60); // 30s per place wallclock estimate
 
   // ORCH-0737: insert parent row FIRST so child FK can reference it.
   // Unique partial index on (city_id) WHERE status IN ('pending','running','cancelling')
@@ -785,21 +1108,25 @@ async function handleStartRun(
     if (parentInsertErr.code === "23505") {
       return json({
         error: "concurrent_run",
-        message: `A run is already in progress for ${city.name}. Cancel it first or wait for it to complete.`,
+        message:
+          `A run is already in progress for ${city.name}. Cancel it first or wait for it to complete.`,
       }, 409);
     }
-    return json({ error: `parent insert failed: ${parentInsertErr.message}` }, 500);
+    return json(
+      { error: `parent insert failed: ${parentInsertErr.message}` },
+      500,
+    );
   }
 
   console.log(
     `[place-intel-trial:start_run] mode=${mode} city=${city.name} (${cityId}) ` +
-    `count=${effectiveCount}/${totalServable} run=${runId} adminId=${adminId}`,
+      `count=${effectiveCount}/${totalServable} run=${runId} adminId=${adminId}`,
   );
 
   // Pre-insert pending child rows with parent_run_id set.
   const pendingRows = sampledIds.map((ppId) => ({
     run_id: runId,
-    parent_run_id: runId,                                                   // ORCH-0737 NEW
+    parent_run_id: runId, // ORCH-0737 NEW
     place_pool_id: ppId,
     city_id: cityId,
     signal_id: null,
@@ -816,7 +1143,11 @@ async function handleStartRun(
   if (insertErr) {
     // Roll back parent row to keep DB consistent
     await db.from("place_intelligence_runs")
-      .update({ status: "failed", error_reason: `child insert failed: ${insertErr.message}`, completed_at: new Date().toISOString() })
+      .update({
+        status: "failed",
+        error_reason: `child insert failed: ${insertErr.message}`,
+        completed_at: new Date().toISOString(),
+      })
       .eq("id", runId);
     return json({ error: insertErr.message }, 500);
   }
@@ -826,7 +1157,9 @@ async function handleStartRun(
   // Sample mode skips this; browser drives the loop.
   if (mode === "full_city" && serviceKey) {
     try {
-      const workerUrl = `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/run-place-intelligence-trial`;
+      const workerUrl = `${
+        Deno.env.get("SUPABASE_URL") ?? ""
+      }/functions/v1/run-place-intelligence-trial`;
       // fire-and-forget; intentional. Worker writes status to DB.
       fetch(workerUrl, {
         method: "POST",
@@ -836,7 +1169,9 @@ async function handleStartRun(
         },
         body: JSON.stringify({ action: "process_chunk", run_id: runId }),
       }).catch((err) => {
-        console.error(`[start_run] first-chunk kick failed (cron will retry): ${err.message}`);
+        console.error(
+          `[start_run] first-chunk kick failed (cron will retry): ${err.message}`,
+        );
       });
     } catch (err) {
       // Non-fatal: pg_cron tick (within 60s) will pick up the run.
@@ -849,11 +1184,11 @@ async function handleStartRun(
     cityId: city.id,
     cityName: city.name,
     cityCountry: city.country,
-    mode,                                                                   // ORCH-0737 NEW
+    mode, // ORCH-0737 NEW
     totalServable,
     totalPlaces: effectiveCount,
     estimatedCostUsd: estCost,
-    estimatedMinutes: estMinutes,                                           // ORCH-0737 NEW
+    estimatedMinutes: estMinutes, // ORCH-0737 NEW
     provider: "gemini",
     model: GEMINI_MODEL_NAME_SHORT,
     // Browser-loop compat: only return anchors for sample mode (since browser
@@ -884,18 +1219,25 @@ async function handleRunTrialForPlace(
   const anchorIndex = (body.anchor_index ?? null) as number | null;
 
   if (!geminiKey) {
-    return json({ error: "GEMINI_API_KEY not configured (operator: `supabase secrets set GEMINI_API_KEY=...`)" }, 500);
+    return json({
+      error:
+        "GEMINI_API_KEY not configured (operator: `supabase secrets set GEMINI_API_KEY=...`)",
+    }, 500);
   }
   if (!runId || !placePoolId) {
     return json({ error: "run_id, place_pool_id required" }, 400);
   }
 
   try {
-    const cost = await processOnePlace({
+    const { cost } = await processOnePlace({
       db,
       geminiKey,
       runId,
-      anchor: { place_pool_id: placePoolId, signal_id: signalId, anchor_index: anchorIndex },
+      anchor: {
+        place_pool_id: placePoolId,
+        signal_id: signalId,
+        anchor_index: anchorIndex,
+      },
     });
     return json({
       ok: true,
@@ -904,16 +1246,26 @@ async function handleRunTrialForPlace(
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[place-intel-trial:run_trial_for_place] ${placePoolId} failed:`, msg);
+    console.error(
+      `[place-intel-trial:run_trial_for_place] ${placePoolId} failed:`,
+      msg,
+    );
+    const diagnostics = safeMergeDiagnostics(getErrorDiagnostics(err), {
+      status: "failed",
+      error_kind: classifyError(err),
+      error_message: msg.slice(0, 500),
+    });
     await db
       .from("place_intelligence_trial_runs")
       .update({
         status: "failed",
         error_message: msg.slice(0, 500),
         completed_at: new Date().toISOString(),
+        timing_diagnostics: diagnostics,
       })
       .eq("run_id", runId)
       .eq("place_pool_id", placePoolId);
+    emitTiming("row_failed", diagnostics);
     return json({ error: msg, place_pool_id: placePoolId }, 500);
   }
 }
@@ -930,115 +1282,207 @@ async function processOnePlace(args: {
   geminiKey: string;
   runId: string;
   anchor: AnchorRow;
-}): Promise<number> {
+  batchContext?: BatchContext;
+}): Promise<{ cost: number; diagnostics: TimingDiagnostics }> {
   // ORCH-0733 — Anthropic dropped; Gemini 2.5 Flash sole provider.
   const { db, geminiKey, runId, anchor } = args;
-
-  // Mark running
-  await db
-    .from("place_intelligence_trial_runs")
-    .update({ status: "running", started_at: new Date().toISOString() })
-    .eq("run_id", runId)
-    .eq("place_pool_id", anchor.place_pool_id);
-
-  // Load place — ORCH-0737 v6: explicit column list (was `select("*")`).
-  // Strict superset of fields read by buildUserTextBlock + processOnePlace
-  // body. If buildUserTextBlock gains a new pp.<field> reference, ADD it here.
-  const { data: pp, error: ppErr } = await db
-    .from("place_pool")
-    .select(
-      "id, name, primary_type, types, address, rating, review_count, " +
-      "price_level, price_range_start_cents, price_range_end_cents, price_range_currency, " +
-      "editorial_summary, generative_summary, opening_hours, photo_collage_url, " +
-      // 23 boolean fields read individually by buildUserTextBlock
-      "serves_brunch, serves_lunch, serves_dinner, serves_breakfast, serves_beer, " +
-      "serves_wine, serves_cocktails, serves_coffee, serves_dessert, serves_vegetarian_food, " +
-      "outdoor_seating, live_music, good_for_groups, good_for_children, good_for_watching_sports, " +
-      "allows_dogs, has_restroom, reservable, menu_for_children, dine_in, takeout, delivery, curbside_pickup",
-    )
-    .eq("id", anchor.place_pool_id)
-    .single();
-  if (ppErr || !pp) throw new Error(`place_pool fetch failed: ${ppErr?.message ?? "not found"}`);
-
-  if (!pp.photo_collage_url) {
-    throw new Error("prerequisites_missing: photo_collage_url is null — fetch_reviews + compose_collage must run before run_trial_for_place");
-  }
-
-  // Load reviews — ORCH-0737 v6: limit to TOP_REVIEWS_FOR_PROMPT (was 100).
-  // The post-fetch filter `r.review_text && r.review_text.trim().length > 0`
-  // may drop some reviews; result is the top N reviews-with-text by recency.
-  // If empirical observation shows < TOP_REVIEWS_FOR_PROMPT reviews-with-text
-  // being passed to Gemini, bump this limit (suggest 1.5× = 45) and report.
-  const { data: reviews } = await db
-    .from("place_external_reviews")
-    .select("review_text, rating, posted_at, posted_label, has_media, media")
-    .eq("place_pool_id", anchor.place_pool_id)
-    .order("posted_at", { ascending: false, nullsFirst: false })
-    .limit(TOP_REVIEWS_FOR_PROMPT);
-  const reviewsList = reviews || [];
-
-  // Build text bundle
-  const reviewsWithText = reviewsList
-    .filter((r) => r.review_text && r.review_text.trim().length > 0)
-    .slice(0, TOP_REVIEWS_FOR_PROMPT);
-
-  const captions: string[] = [];
-  for (const r of reviewsList) {
-    const media = (r as { media?: any[] }).media || [];
-    for (const m of media) {
-      if (m?.caption && typeof m.caption === "string") captions.push(m.caption.trim());
-    }
-  }
-
-  // Build prompts
-  const systemPrompt = buildSystemPrompt();
-  const userTextBlock = buildUserTextBlock(pp, reviewsWithText, captions);
-
-  const inputPayload = {
-    place_id: pp.id,
-    place_name: pp.name,
-    primary_type: pp.primary_type,
-    rating: pp.rating,
-    review_count: pp.review_count,
-    reviews_in_prompt_count: reviewsWithText.length,
-    captions_in_prompt_count: captions.length,
-    collage_url: pp.photo_collage_url,
-    prompt_version: PROMPT_VERSION,
+  const rowStartedAt = new Date().toISOString();
+  const rowTimer = performance.now();
+  const batchContext = args.batchContext ?? {
+    batch_id: `${runId}-sample-${anchor.place_pool_id}-${Date.now()}`,
+    batch_kind: "score" as const,
+    batch_iteration: 0,
+    batch_parallel_n: 1,
+    batch_row_count: 1,
+    batch_started_at: rowStartedAt,
+    worker_elapsed_ms_at_batch_start: 0,
   };
+  const baseDiagnostics = {
+    version: V8_TIMING_VERSION,
+    run_id: runId,
+    parent_run_id: runId,
+    place_pool_id: anchor.place_pool_id,
+    phase: "score",
+    batch_id: batchContext.batch_id,
+    batch_kind: batchContext.batch_kind,
+    batch_iteration: batchContext.batch_iteration,
+    batch_parallel_n: batchContext.batch_parallel_n,
+    batch_row_count: batchContext.batch_row_count,
+    batch_started_at: batchContext.batch_started_at,
+    worker_elapsed_ms_at_batch_start:
+      batchContext.worker_elapsed_ms_at_batch_start,
+    row_started_at: rowStartedAt,
+  };
+  let dbReadMs = 0;
 
-  // ORCH-0733 — Q2 only via Gemini 2.5 Flash (sole provider).
-  // Q1 removed in v3 (harvested research into signal-lab/PROPOSALS.md).
-  // Anthropic dropped in v4 (commented-preserved helpers above for `git revert`).
-  // ORCH-0734 — `retried` field surfaces when MALFORMED_FUNCTION_CALL forced retry.
-  const { aggregate: q2, totalCostUsd: q2Cost, retried } = await callGeminiQuestion({
-    apiKey: geminiKey,
-    systemPrompt,
-    userTextBlock,
-    collageUrl: pp.photo_collage_url,
-    tool: Q2_TOOL,
-  });
+  try {
+    // Mark running
+    await db
+      .from("place_intelligence_trial_runs")
+      .update({ status: "running", started_at: new Date().toISOString() })
+      .eq("run_id", runId)
+      .eq("place_pool_id", anchor.place_pool_id);
 
-  // Persist. q1_response is nullable (verified) → write null on v3+ runs.
-  // ORCH-0734 — retry_count tracks Gemini MALFORMED_FUNCTION_CALL retries (0 or 1).
-  await db
-    .from("place_intelligence_trial_runs")
-    .update({
-      input_payload: inputPayload,
+    const dbReadStart = performance.now();
+    // Load place — ORCH-0737 v6: explicit column list (was `select("*")`).
+    // Strict superset of fields read by buildUserTextBlock + processOnePlace
+    // body. If buildUserTextBlock gains a new pp.<field> reference, ADD it here.
+    const { data: ppRaw, error: ppErr } = await db
+      .from("place_pool")
+      .select(
+        "id, name, primary_type, types, address, rating, review_count, " +
+          "price_level, price_range_start_cents, price_range_end_cents, price_range_currency, " +
+          "editorial_summary, generative_summary, opening_hours, photo_collage_url, " +
+          // 23 boolean fields read individually by buildUserTextBlock
+          "serves_brunch, serves_lunch, serves_dinner, serves_breakfast, serves_beer, " +
+          "serves_wine, serves_cocktails, serves_coffee, serves_dessert, serves_vegetarian_food, " +
+          "outdoor_seating, live_music, good_for_groups, good_for_children, good_for_watching_sports, " +
+          "allows_dogs, has_restroom, reservable, menu_for_children, dine_in, takeout, delivery, curbside_pickup",
+      )
+      .eq("id", anchor.place_pool_id)
+      .single();
+    if (ppErr || !ppRaw) {
+      throw new Error(
+        `place_pool fetch failed: ${ppErr?.message ?? "not found"}`,
+      );
+    }
+    const pp = ppRaw as unknown as PlacePoolTrialPromptRow;
+
+    if (!pp.photo_collage_url) {
+      throw new Error(
+        "prerequisites_missing: photo_collage_url is null — fetch_reviews + compose_collage must run before run_trial_for_place",
+      );
+    }
+
+    // Load reviews — ORCH-0737 v6: limit to TOP_REVIEWS_FOR_PROMPT (was 100).
+    // The post-fetch filter `r.review_text && r.review_text.trim().length > 0`
+    // may drop some reviews; result is the top N reviews-with-text by recency.
+    // If empirical observation shows < TOP_REVIEWS_FOR_PROMPT reviews-with-text
+    // being passed to Gemini, bump this limit (suggest 1.5× = 45) and report.
+    const { data: reviews } = await db
+      .from("place_external_reviews")
+      .select("review_text, rating, posted_at, posted_label, has_media, media")
+      .eq("place_pool_id", anchor.place_pool_id)
+      .order("posted_at", { ascending: false, nullsFirst: false })
+      .limit(TOP_REVIEWS_FOR_PROMPT);
+    dbReadMs = elapsedMs(dbReadStart);
+    const reviewsList = reviews || [];
+
+    // Build text bundle
+    const reviewsWithText = reviewsList
+      .filter((r) => r.review_text && r.review_text.trim().length > 0)
+      .slice(0, TOP_REVIEWS_FOR_PROMPT);
+
+    const captions: string[] = [];
+    for (const r of reviewsList) {
+      const media = (r as { media?: any[] }).media || [];
+      for (const m of media) {
+        if (m?.caption && typeof m.caption === "string") {
+          captions.push(m.caption.trim());
+        }
+      }
+    }
+
+    // Build prompts
+    const systemPrompt = buildSystemPrompt();
+    const userTextBlock = buildUserTextBlock(pp, reviewsWithText, captions);
+
+    const inputPayload = {
+      place_id: pp.id,
+      place_name: pp.name,
+      primary_type: pp.primary_type,
+      rating: pp.rating,
+      review_count: pp.review_count,
+      reviews_in_prompt_count: reviewsWithText.length,
+      captions_in_prompt_count: captions.length,
       collage_url: pp.photo_collage_url,
-      reviews_count: reviewsWithText.length,
-      q1_response: null,
-      q2_response: q2,
-      cost_usd: +q2Cost.toFixed(6),
-      status: "completed",
-      model: GEMINI_MODEL_NAME_SHORT,
-      model_version: GEMINI_MODEL_ID,
-      retry_count: retried ? 1 : 0,
-      completed_at: new Date().toISOString(),
-    })
-    .eq("run_id", runId)
-    .eq("place_pool_id", anchor.place_pool_id);
+      prompt_version: PROMPT_VERSION,
+    };
 
-  return q2Cost;
+    // ORCH-0733 — Q2 only via Gemini 2.5 Flash (sole provider).
+    // Q1 removed in v3 (harvested research into signal-lab/PROPOSALS.md).
+    // Anthropic dropped in v4 (commented-preserved helpers above for `git revert`).
+    // ORCH-0734 — `retried` field surfaces when MALFORMED_FUNCTION_CALL forced retry.
+    const {
+      aggregate: q2,
+      totalCostUsd: q2Cost,
+      retried,
+      diagnostics: questionDiagnostics,
+    } = await callGeminiQuestion({
+      apiKey: geminiKey,
+      systemPrompt,
+      userTextBlock,
+      collageUrl: pp.photo_collage_url,
+      tool: Q2_TOOL,
+    });
+
+    const completedAt = new Date().toISOString();
+    const preWriteDiagnostics = safeMergeDiagnostics(
+      baseDiagnostics,
+      questionDiagnostics,
+      {
+        status: "completed",
+        row_completed_at: completedAt,
+        row_total_ms: elapsedMs(rowTimer),
+        db_read_ms: dbReadMs,
+        db_write_ms: null,
+        error_kind: null,
+        error_message: null,
+      },
+    );
+
+    // Persist. q1_response is nullable (verified) → write null on v3+ runs.
+    // ORCH-0734 — retry_count tracks Gemini MALFORMED_FUNCTION_CALL retries (0 or 1).
+    const dbWriteStart = performance.now();
+    const { error: updateErr } = await db
+      .from("place_intelligence_trial_runs")
+      .update({
+        input_payload: inputPayload,
+        collage_url: pp.photo_collage_url,
+        reviews_count: reviewsWithText.length,
+        q1_response: null,
+        q2_response: q2,
+        cost_usd: +q2Cost.toFixed(6),
+        status: "completed",
+        model: GEMINI_MODEL_NAME_SHORT,
+        model_version: GEMINI_MODEL_ID,
+        retry_count: retried ? 1 : 0,
+        completed_at: completedAt,
+        timing_diagnostics: preWriteDiagnostics,
+      })
+      .eq("run_id", runId)
+      .eq("place_pool_id", anchor.place_pool_id);
+    if (updateErr) {
+      throw new Error(`trial row update failed: ${updateErr.message}`);
+    }
+
+    const finalDiagnostics = safeMergeDiagnostics(preWriteDiagnostics, {
+      db_write_ms: elapsedMs(dbWriteStart),
+    });
+    await db
+      .from("place_intelligence_trial_runs")
+      .update({ timing_diagnostics: finalDiagnostics })
+      .eq("run_id", runId)
+      .eq("place_pool_id", anchor.place_pool_id);
+    emitTiming("row_complete", finalDiagnostics);
+
+    return { cost: q2Cost, diagnostics: finalDiagnostics };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const diagnostics = safeMergeDiagnostics(
+      baseDiagnostics,
+      getErrorDiagnostics(err),
+      {
+        status: "failed",
+        row_completed_at: new Date().toISOString(),
+        row_total_ms: elapsedMs(rowTimer),
+        db_read_ms: dbReadMs,
+        error_kind: classifyError(err),
+        error_message: msg.slice(0, 500),
+      },
+    );
+    attachTimingDiagnostics(err, diagnostics);
+  }
 }
 
 // ─── Anthropic Q2 wrapper — DEPRECATED (ORCH-0733) ──────────────────────────
@@ -1129,11 +1573,17 @@ async function callGeminiQuestion(args: {
   userTextBlock: string;
   collageUrl: string;
   tool: typeof Q2_TOOL;
-}): Promise<{ aggregate: any; totalCostUsd: number; retried: boolean }> {
+}): Promise<{
+  aggregate: any;
+  totalCostUsd: number;
+  retried: boolean;
+  diagnostics: TimingDiagnostics;
+}> {
   const { apiKey, systemPrompt, userTextBlock, collageUrl, tool } = args;
 
   // Fetch + base64-encode collage (Gemini inline_data requires bytes; URL fetch unsupported)
-  const { base64, mimeType } = await fetchAsBase64(collageUrl);
+  const base64Result = await fetchAsBase64(collageUrl);
+  const { base64, mimeType } = base64Result;
 
   const reqBody = {
     contents: [{
@@ -1175,10 +1625,35 @@ async function callGeminiQuestion(args: {
   let totalCost = 0;
   let lastFinishReason: string | null = null;
   let attempt = 0;
+  const geminiAttempts: GeminiHttpDiagnostics[] = [];
 
   while (attempt <= MAX_MALFORMED_RETRIES) {
     attempt++;
-    const { payload, usage } = await callGeminiWithRetry(apiKey, reqBody);
+    let geminiResult: {
+      payload: any;
+      usage: GeminiUsage;
+      diagnostics: GeminiHttpDiagnostics;
+    };
+    try {
+      geminiResult = await callGeminiWithRetry(apiKey, reqBody);
+      geminiAttempts.push(geminiResult.diagnostics);
+    } catch (err) {
+      const partial =
+        (err instanceof Error && (err as DiagnosticError).geminiDiagnostics)
+          ? [(err as DiagnosticError).geminiDiagnostics!]
+          : [];
+      const diagnostics = safeMergeDiagnostics(
+        {
+          collage_fetch_base64_ms: base64Result.elapsedMs,
+          collage_raw_bytes: base64Result.rawBytes,
+          collage_base64_bytes: base64Result.base64Bytes,
+          malformed_function_retry_count: Math.max(0, attempt - 1),
+        },
+        combineGeminiDiagnostics([...geminiAttempts, ...partial]),
+      );
+      attachTimingDiagnostics(err, diagnostics);
+    }
+    const { payload, usage, diagnostics: geminiDiagnostics } = geminiResult;
     totalCost += computeCostUsdGemini({
       promptTokens: usage.promptTokenCount,
       candidatesTokens: usage.candidatesTokenCount,
@@ -1186,12 +1661,25 @@ async function callGeminiQuestion(args: {
 
     const candidates = payload?.candidates || [];
     if (candidates.length === 0) {
-      throw new Error("Gemini returned no candidates");
+      const err = new Error("Gemini returned no candidates");
+      attachTimingDiagnostics(
+        err,
+        safeMergeDiagnostics(
+          {
+            collage_fetch_base64_ms: base64Result.elapsedMs,
+            collage_raw_bytes: base64Result.rawBytes,
+            collage_base64_bytes: base64Result.base64Bytes,
+            malformed_function_retry_count: Math.max(0, attempt - 1),
+          },
+          combineGeminiDiagnostics(geminiAttempts),
+        ),
+      );
     }
     const finishReason = candidates[0]?.finishReason || "unknown";
     const parts = candidates[0]?.content?.parts || [];
     const fnCallPart = parts.find(
-      (p: { functionCall?: { name?: string } }) => p.functionCall?.name === tool.name,
+      (p: { functionCall?: { name?: string } }) =>
+        p.functionCall?.name === tool.name,
     );
 
     if (fnCallPart?.functionCall?.args) {
@@ -1200,6 +1688,15 @@ async function callGeminiQuestion(args: {
         aggregate: fnCallPart.functionCall.args,
         totalCostUsd: totalCost,
         retried: attempt > 1,
+        diagnostics: safeMergeDiagnostics(
+          {
+            collage_fetch_base64_ms: base64Result.elapsedMs,
+            collage_raw_bytes: base64Result.rawBytes,
+            collage_base64_bytes: base64Result.base64Bytes,
+            malformed_function_retry_count: Math.max(0, attempt - 1),
+          },
+          combineGeminiDiagnostics(geminiAttempts),
+        ),
       };
     }
 
@@ -1207,16 +1704,55 @@ async function callGeminiQuestion(args: {
     // Only retry on MALFORMED_FUNCTION_CALL (the known intermittent flake).
     // Other finish reasons (SAFETY, RECITATION, MAX_TOKENS, etc.) are
     // not retry-friendly with the same prompt — fail fast.
-    if (finishReason !== "MALFORMED_FUNCTION_CALL" || attempt > MAX_MALFORMED_RETRIES) {
-      throw new Error(`Gemini returned no function_call for ${tool.name} (finishReason=${finishReason})`);
+    if (
+      finishReason !== "MALFORMED_FUNCTION_CALL" ||
+      attempt > MAX_MALFORMED_RETRIES
+    ) {
+      const err = new Error(
+        `Gemini returned no function_call for ${tool.name} (finishReason=${finishReason})`,
+      );
+      attachTimingDiagnostics(
+        err,
+        safeMergeDiagnostics(
+          combineGeminiDiagnostics(geminiAttempts),
+          {
+            collage_fetch_base64_ms: base64Result.elapsedMs,
+            collage_raw_bytes: base64Result.rawBytes,
+            collage_base64_bytes: base64Result.base64Bytes,
+            malformed_function_retry_count: Math.max(0, attempt - 1),
+            gemini_error_kinds: [
+              ...((geminiDiagnostics.gemini_error_kinds || []) as string[]),
+              `finish_${finishReason}`,
+            ],
+            gemini_final_outcome: `finish_${finishReason}`,
+          },
+        ),
+      );
     }
     console.log(
-      `[place-intel-trial] MALFORMED_FUNCTION_CALL retry attempt ${attempt + 1}/${MAX_MALFORMED_RETRIES + 1}`,
+      `[place-intel-trial] MALFORMED_FUNCTION_CALL retry attempt ${
+        attempt + 1
+      }/${MAX_MALFORMED_RETRIES + 1}`,
     );
     // Loop continues for retry with same reqBody.
   }
 
-  throw new Error(`Gemini retry exhausted (finishReason=${lastFinishReason})`);
+  const err = new Error(
+    `Gemini retry exhausted (finishReason=${lastFinishReason})`,
+  );
+  attachTimingDiagnostics(
+    err,
+    safeMergeDiagnostics(
+      combineGeminiDiagnostics(geminiAttempts),
+      {
+        collage_fetch_base64_ms: base64Result.elapsedMs,
+        collage_raw_bytes: base64Result.rawBytes,
+        collage_base64_bytes: base64Result.base64Bytes,
+        malformed_function_retry_count: Math.max(0, attempt - 1),
+        gemini_final_outcome: `finish_${lastFinishReason ?? "unknown"}`,
+      },
+    ),
+  );
 }
 
 function buildSystemPrompt(): string {
@@ -1330,13 +1866,21 @@ function buildUserTextBlock(
     const currency = pp.price_range_currency || "USD";
     lines.push(`price_range: $${startUsd}-$${endUsd} ${currency}`);
   } else if (pp.price_range_start_cents != null) {
-    lines.push(`price_range_start: $${(pp.price_range_start_cents / 100).toFixed(0)}`);
+    lines.push(
+      `price_range_start: $${(pp.price_range_start_cents / 100).toFixed(0)}`,
+    );
   } else if (pp.price_range_end_cents != null) {
-    lines.push(`price_range_end: $${(pp.price_range_end_cents / 100).toFixed(0)}`);
+    lines.push(
+      `price_range_end: $${(pp.price_range_end_cents / 100).toFixed(0)}`,
+    );
   }
 
-  if (pp.editorial_summary) lines.push(`editorial_summary: ${pp.editorial_summary}`);
-  if (pp.generative_summary) lines.push(`generative_summary: ${pp.generative_summary}`);
+  if (pp.editorial_summary) {
+    lines.push(`editorial_summary: ${pp.editorial_summary}`);
+  }
+  if (pp.generative_summary) {
+    lines.push(`generative_summary: ${pp.generative_summary}`);
+  }
 
   // ORCH-0713 Phase 0.5 — Google booleans, BOTH true AND false lists.
   // Why split: SQL signal scorer treats null = no contribution (correct), but only
@@ -1345,10 +1889,29 @@ function buildUserTextBlock(
   // Negative booleans are real signal (e.g., `serves_wine: false` is a real downsignal
   // for fine_dining candidates).
   const allBooleanFields = [
-    "serves_brunch","serves_lunch","serves_dinner","serves_breakfast","serves_beer",
-    "serves_wine","serves_cocktails","serves_coffee","serves_dessert","serves_vegetarian_food",
-    "outdoor_seating","live_music","good_for_groups","good_for_children","good_for_watching_sports",
-    "allows_dogs","has_restroom","reservable","menu_for_children","dine_in","takeout","delivery","curbside_pickup",
+    "serves_brunch",
+    "serves_lunch",
+    "serves_dinner",
+    "serves_breakfast",
+    "serves_beer",
+    "serves_wine",
+    "serves_cocktails",
+    "serves_coffee",
+    "serves_dessert",
+    "serves_vegetarian_food",
+    "outdoor_seating",
+    "live_music",
+    "good_for_groups",
+    "good_for_children",
+    "good_for_watching_sports",
+    "allows_dogs",
+    "has_restroom",
+    "reservable",
+    "menu_for_children",
+    "dine_in",
+    "takeout",
+    "delivery",
+    "curbside_pickup",
   ];
   const truthy: string[] = [];
   const falsy: string[] = [];
@@ -1357,8 +1920,12 @@ function buildUserTextBlock(
     else if (pp[k] === false) falsy.push(k);
     // null = unknown, omitted from both lists
   }
-  if (truthy.length > 0) lines.push(`google_booleans_true: ${truthy.join(", ")}`);
-  if (falsy.length > 0) lines.push(`google_booleans_false: ${falsy.join(", ")}`);
+  if (truthy.length > 0) {
+    lines.push(`google_booleans_true: ${truthy.join(", ")}`);
+  }
+  if (falsy.length > 0) {
+    lines.push(`google_booleans_false: ${falsy.join(", ")}`);
+  }
 
   if (pp.opening_hours) {
     const oh = pp.opening_hours;
@@ -1370,7 +1937,9 @@ function buildUserTextBlock(
   }
 
   lines.push(``);
-  lines.push(`# ${reviewsWithText.length} most-recent customer reviews (full text)`);
+  lines.push(
+    `# ${reviewsWithText.length} most-recent customer reviews (full text)`,
+  );
   for (const r of reviewsWithText) {
     const star = r.rating ? `${r.rating}★ ` : "";
     const date = r.posted_label || r.posted_at || "";
@@ -1384,16 +1953,390 @@ function buildUserTextBlock(
   }
 
   lines.push(``);
-  lines.push(`The image above is a ${reviewsWithText.length}-review-supplemented photo grid combining marketing photos and customer-uploaded reviewer photos.`);
+  lines.push(
+    `The image above is a ${reviewsWithText.length}-review-supplemented photo grid combining marketing photos and customer-uploaded reviewer photos.`,
+  );
 
   return lines.join("\n");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORCH-0757: city coverage + failed-only retry
+// ═══════════════════════════════════════════════════════════════════════════
+
+const RETRY_SOURCE_PAGE_SIZE = 1000;
+const TERMINAL_PARENT_STATUSES = new Set(["complete", "failed", "cancelled"]);
+
+async function fetchAllPages<T>(
+  queryForPage: (
+    from: number,
+    to: number,
+  ) => Promise<{ data: T[] | null; error: { message: string } | null }>,
+  pageSize = RETRY_SOURCE_PAGE_SIZE,
+): Promise<{ rows: T[]; error?: string }> {
+  const rows: T[] = [];
+  let page = 0;
+
+  while (true) {
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+    const { data, error } = await queryForPage(from, to);
+    if (error) return { rows, error: error.message };
+
+    const pageRows = data ?? [];
+    rows.push(...pageRows);
+    if (pageRows.length < pageSize) break;
+    page++;
+  }
+
+  return { rows };
+}
+
+function countStatuses(
+  rows: { status: string | null; cost_usd?: number | null }[],
+) {
+  return {
+    pending: rows.filter((r) => r.status === "pending").length,
+    running: rows.filter((r) => r.status === "running").length,
+    completed: rows.filter((r) => r.status === "completed").length,
+    failed: rows.filter((r) => r.status === "failed").length,
+    cancelled: rows.filter((r) => r.status === "cancelled").length,
+  };
+}
+
+async function getLatestOrSourceRun(
+  db: SupabaseClient,
+  cityId: string,
+  sourceRunId?: string,
+) {
+  if (sourceRunId) {
+    const { data, error } = await db
+      .from("place_intelligence_runs")
+      .select("*")
+      .eq("id", sourceRunId)
+      .eq("city_id", cityId)
+      .maybeSingle();
+    return { run: data, error };
+  }
+
+  const { data, error } = await db
+    .from("place_intelligence_runs")
+    .select("*")
+    .eq("city_id", cityId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return { run: data, error };
+}
+
+async function handleCityCoverage(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const cityId = body.city_id;
+  const sourceRunId = body.source_run_id;
+  if (!cityId || typeof cityId !== "string") {
+    return json({ error: "city_id required (uuid)" }, 400);
+  }
+  if (sourceRunId != null && typeof sourceRunId !== "string") {
+    return json(
+      { error: "source_run_id must be a uuid string when provided" },
+      400,
+    );
+  }
+
+  const { data: city, error: cityErr } = await db
+    .from("seeding_cities")
+    .select("id, name, country")
+    .eq("id", cityId)
+    .maybeSingle();
+  if (cityErr) return json({ error: cityErr.message }, 500);
+  if (!city) return json({ error: "city not found" }, 404);
+
+  const { count: servableCount, error: servableErr } = await db
+    .from("place_pool")
+    .select("id", { count: "exact", head: true })
+    .eq("city_id", cityId)
+    .eq("is_servable", true);
+  if (servableErr) return json({ error: servableErr.message }, 500);
+
+  const completedFetch = await fetchAllPages<CompletedCoverageRow>(async (
+    from,
+    to,
+  ) =>
+    await db
+      .from("place_intelligence_trial_runs")
+      .select("place_pool_id")
+      .eq("city_id", cityId)
+      .eq("status", "completed")
+      .order("place_pool_id", { ascending: true })
+      .range(from, to)
+  );
+  if (completedFetch.error) return json({ error: completedFetch.error }, 500);
+
+  const coverage = deriveCityCoverage(servableCount ?? 0, completedFetch.rows);
+
+  const { run: latestRun, error: latestRunErr } = await getLatestOrSourceRun(
+    db,
+    cityId,
+    typeof sourceRunId === "string" ? sourceRunId : undefined,
+  );
+  if (latestRunErr) return json({ error: latestRunErr.message }, 500);
+
+  let latestRunStatusCounts = countStatuses([]);
+  let failedRows: FailedTrialRow[] = [];
+  let totalCostUsd = 0;
+  if (latestRun?.id) {
+    const childFetch = await fetchAllPages<{
+      id?: string;
+      place_pool_id?: string;
+      status: string | null;
+      cost_usd: number | null;
+      error_message?: string | null;
+    }>(async (from, to) =>
+      await db
+        .from("place_intelligence_trial_runs")
+        .select("id, place_pool_id, status, cost_usd, error_message")
+        .eq("parent_run_id", latestRun.id)
+        .order("id", { ascending: true })
+        .range(from, to)
+    );
+    if (childFetch.error) return json({ error: childFetch.error }, 500);
+    latestRunStatusCounts = countStatuses(childFetch.rows);
+    totalCostUsd = childFetch.rows.reduce(
+      (sum, row) => sum + Number(row.cost_usd ?? 0),
+      0,
+    );
+    failedRows = childFetch.rows
+      .filter((row) => row.status === "failed" && row.id && row.place_pool_id)
+      .map((row) => ({
+        id: row.id as string,
+        place_pool_id: row.place_pool_id as string,
+        error_message: row.error_message ?? null,
+      }));
+  }
+
+  const retrySelection = selectFailedRowsForRetry(failedRows, "retryable_only");
+
+  return json({
+    city,
+    ...coverage,
+    latest_run: latestRun ?? null,
+    latest_run_status_counts: latestRunStatusCounts,
+    latest_run_total_cost_usd: +totalCostUsd.toFixed(6),
+    failed_count: retrySelection.failedCount,
+    retryable_failed_count: retrySelection.retryableCount,
+    nonretryable_failed_count: retrySelection.nonretryableCount,
+    estimated_retry_cost_usd:
+      +(retrySelection.retryableCount * PER_PLACE_COST_USD).toFixed(4),
+    failure_classes: retrySelection.failureClasses,
+  });
+}
+
+async function insertRetryChildrenInChunks(
+  db: SupabaseClient,
+  rows: unknown[],
+): Promise<string | null> {
+  const chunkSize = 500;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    const { error } = await db
+      .from("place_intelligence_trial_runs")
+      .insert(chunk);
+    if (error) return error.message;
+  }
+  return null;
+}
+
+async function handleRetryFailedRun(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+  adminId: string,
+  serviceKey: string,
+): Promise<Response> {
+  const sourceRunId = body.source_run_id;
+  if (!sourceRunId || typeof sourceRunId !== "string") {
+    return json({ error: "source_run_id required (uuid)" }, 400);
+  }
+
+  const retryFilterRaw = (body.retry_filter as string | undefined) ??
+    "retryable_only";
+  if (retryFilterRaw !== "retryable_only" && retryFilterRaw !== "all_failed") {
+    return json({
+      error: "retry_filter must be 'retryable_only' or 'all_failed'",
+    }, 400);
+  }
+  const retryFilter = retryFilterRaw as RetryFilter;
+
+  const { data: sourceRun, error: sourceRunErr } = await db
+    .from("place_intelligence_runs")
+    .select("*")
+    .eq("id", sourceRunId)
+    .maybeSingle();
+  if (sourceRunErr) return json({ error: sourceRunErr.message }, 500);
+  if (!sourceRun) return json({ error: "source run not found" }, 404);
+  if (!TERMINAL_PARENT_STATUSES.has(sourceRun.status)) {
+    return json({
+      error: "source_run_not_terminal",
+      message:
+        "Failed-place retry is only allowed after the source run is terminal.",
+      source_status: sourceRun.status,
+    }, 409);
+  }
+
+  const failedFetch = await fetchAllPages<FailedTrialRow>(async (from, to) =>
+    await db
+      .from("place_intelligence_trial_runs")
+      .select("id, place_pool_id, error_message")
+      .eq("parent_run_id", sourceRunId)
+      .eq("status", "failed")
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
+  if (failedFetch.error) return json({ error: failedFetch.error }, 500);
+  if (failedFetch.rows.length === 0) {
+    return json({
+      error: "no_failed_rows",
+      message: "Source run has no failed places to retry.",
+    }, 400);
+  }
+
+  const retrySelection = selectFailedRowsForRetry(
+    failedFetch.rows,
+    retryFilter,
+  );
+  if (retrySelection.selectedRows.length === 0) {
+    return json({
+      error: "no_retryable_failed_rows",
+      message:
+        "Source run has failed rows, but none match the retryable failure classes.",
+      failed_count: retrySelection.failedCount,
+      retryable_failed_count: retrySelection.retryableCount,
+      nonretryable_failed_count: retrySelection.nonretryableCount,
+      failure_classes: retrySelection.failureClasses,
+    }, 400);
+  }
+
+  const retryCount = retrySelection.selectedRows.length;
+  const estCost = +(retryCount * PER_PLACE_COST_USD).toFixed(4);
+  if (estCost > COST_GUARD_USD && body.confirm_high_cost !== true) {
+    return json({
+      error: "cost_above_guard",
+      estimated_cost_usd: estCost,
+      cost_guard_usd: COST_GUARD_USD,
+      message:
+        `Retry run exceeds $${COST_GUARD_USD} cost guard. Resubmit with confirm_high_cost=true to override.`,
+    }, 400);
+  }
+
+  const runId = crypto.randomUUID();
+  const estMinutes = Math.ceil(retryCount * 30 / 60);
+  const startedAt = new Date().toISOString();
+  const { error: parentInsertErr } = await db
+    .from("place_intelligence_runs")
+    .insert({
+      id: runId,
+      city_id: sourceRun.city_id,
+      city_name: sourceRun.city_name,
+      mode: "retry_failed",
+      sample_size: null,
+      total_count: retryCount,
+      estimated_cost_usd: estCost,
+      estimated_minutes: estMinutes,
+      prompt_version: PROMPT_VERSION,
+      model: GEMINI_MODEL_NAME_SHORT,
+      started_by: adminId,
+      status: "running",
+      started_at: startedAt,
+      source_run_id: sourceRunId,
+      retry_filter: retryFilter,
+      retry_source_failed_count: retrySelection.failedCount,
+      retry_selected_count: retryCount,
+    });
+
+  if (parentInsertErr) {
+    if (parentInsertErr.code === "23505") {
+      return json({
+        error: "concurrent_run",
+        message:
+          `A run is already in progress for ${sourceRun.city_name}. Cancel it first or wait for it to complete.`,
+      }, 409);
+    }
+    return json({
+      error: `retry parent insert failed: ${parentInsertErr.message}`,
+    }, 500);
+  }
+
+  const retryChildRows = buildRetryChildRows({
+    runId,
+    cityId: sourceRun.city_id,
+    rows: retrySelection.selectedRows,
+    promptVersion: PROMPT_VERSION,
+    model: GEMINI_MODEL_NAME_SHORT,
+  });
+
+  const insertErr = await insertRetryChildrenInChunks(db, retryChildRows);
+  if (insertErr) {
+    await db.from("place_intelligence_runs")
+      .update({
+        status: "failed",
+        error_reason: `retry child insert failed: ${insertErr}`,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", runId);
+    return json({ error: insertErr }, 500);
+  }
+
+  if (serviceKey) {
+    try {
+      const workerUrl = `${
+        Deno.env.get("SUPABASE_URL") ?? ""
+      }/functions/v1/run-place-intelligence-trial`;
+      fetch(workerUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ action: "process_chunk", run_id: runId }),
+      }).catch((err) => {
+        console.error(
+          `[retry_failed_run] first-chunk kick failed (cron will retry): ${err.message}`,
+        );
+      });
+    } catch (err) {
+      console.error(`[retry_failed_run] first-chunk kick threw: ${err}`);
+    }
+  }
+
+  return json({
+    runId,
+    sourceRunId,
+    cityId: sourceRun.city_id,
+    cityName: sourceRun.city_name,
+    mode: "retry_failed",
+    totalPlaces: retryCount,
+    retrySelectedCount: retryCount,
+    retrySourceFailedCount: retrySelection.failedCount,
+    retryableFailedCount: retrySelection.retryableCount,
+    nonretryableFailedCount: retrySelection.nonretryableCount,
+    failureClasses: retrySelection.failureClasses,
+    estimatedCostUsd: estCost,
+    estimatedMinutes: estMinutes,
+    provider: "gemini",
+    model: GEMINI_MODEL_NAME_SHORT,
+    anchors: [],
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // run_status / cancel_trial
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function handleRunStatus(db: SupabaseClient, body: Record<string, unknown>): Promise<Response> {
+async function handleRunStatus(
+  db: SupabaseClient,
+  body: Record<string, unknown>,
+): Promise<Response> {
   const runId = body.run_id as string;
   if (!runId) return json({ error: "run_id required" }, 400);
 
@@ -1407,14 +2350,16 @@ async function handleRunStatus(db: SupabaseClient, body: Record<string, unknown>
 
   const { data, error } = await db
     .from("place_intelligence_trial_runs")
-    .select("place_pool_id, signal_id, anchor_index, status, cost_usd, error_message, started_at, completed_at, reviews_count")
+    .select(
+      "place_pool_id, signal_id, anchor_index, status, cost_usd, error_message, started_at, completed_at, reviews_count",
+    )
     .eq("run_id", runId)
     .order("signal_id");
   if (error) return json({ error: error.message }, 500);
   const rows = data || [];
   return json({
     runId,
-    parent,                                                                 // ORCH-0737 NEW
+    parent, // ORCH-0737 NEW
     totalPlaces: rows.length,
     statusCounts: {
       pending: rows.filter((r) => r.status === "pending").length,
@@ -1503,9 +2448,102 @@ async function handleListActiveRuns(db: SupabaseClient): Promise<Response> {
 //   because self-invoke chain stays single-threaded per parent_run_id)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const V6_BUDGET_MS = 110_000;            // 110s; leaves 40s headroom under 150s edge fn timeout
-const V6_SAFETY_MAX_ITERATIONS = 6;      // belt+suspenders against runaway loop on bug
-const V6_STUCK_CUTOFF_MIN = 5;           // rows stuck in 'running' >5min eligible for stuck-recovery
+const V6_BUDGET_MS = 110_000; // 110s; leaves 40s headroom under 150s edge fn timeout
+const V6_SAFETY_MAX_ITERATIONS = 6; // belt+suspenders against runaway loop on bug
+const V6_STUCK_CUTOFF_MIN = 5; // rows stuck in 'running' >5min eligible for stuck-recovery
+
+async function reconcileAndFinalizeParentFromChildren(
+  db: SupabaseClient,
+  runId: string,
+): Promise<ChildTruthReconciliationResult> {
+  const emptyResult = {
+    finalized: false,
+    reason: "not_checked",
+    totalChildren: 0,
+    terminalChildren: 0,
+    completedChildren: 0,
+    failedChildren: 0,
+    cancelledChildren: 0,
+    nonterminalChildren: 0,
+  };
+
+  const { data: parent, error: parentErr } = await db
+    .from("place_intelligence_runs")
+    .select(
+      "status, total_count, processed_count, succeeded_count, failed_count, cost_so_far_usd",
+    )
+    .eq("id", runId)
+    .maybeSingle();
+  if (parentErr || !parent) {
+    return {
+      ...emptyResult,
+      reason: parentErr
+        ? `parent_read_failed: ${parentErr.message}`
+        : "parent_missing",
+    };
+  }
+  if (!["running", "cancelling", "cancelled"].includes(parent.status)) {
+    return { ...emptyResult, reason: `parent_status=${parent.status}` };
+  }
+
+  const childRows: TrialChildCounterRow[] = [];
+  let page = 0;
+
+  while (true) {
+    const from = page * CHILD_RECONCILE_PAGE_SIZE;
+    const to = from + CHILD_RECONCILE_PAGE_SIZE - 1;
+    const { data: children, error: childErr } = await db
+      .from("place_intelligence_trial_runs")
+      .select("status, cost_usd")
+      .eq("parent_run_id", runId)
+      .order("id", { ascending: true })
+      .range(from, to);
+    if (childErr) {
+      return {
+        ...emptyResult,
+        reason: `child_read_failed: ${childErr.message}`,
+      };
+    }
+
+    const childPage = children ?? [];
+    childRows.push(...childPage);
+
+    if (childPage.length < CHILD_RECONCILE_PAGE_SIZE) break;
+    page++;
+  }
+
+  const reconciliation = deriveParentReconciliation(
+    parent,
+    childRows,
+    new Date().toISOString(),
+  );
+  if (!reconciliation.finalized || !reconciliation.updatePayload) {
+    return reconciliation;
+  }
+
+  if (reconciliation.reason !== "already_aligned") {
+    console.warn(
+      `[ORCH-0737 parent-reconcile] run=${runId} status=${parent.status}->${reconciliation.updatePayload.status} ` +
+        `processed=${parent.processed_count}->${reconciliation.updatePayload.processed_count} ` +
+        `succeeded=${parent.succeeded_count}->${reconciliation.updatePayload.succeeded_count} ` +
+        `failed=${parent.failed_count}->${reconciliation.updatePayload.failed_count}`,
+    );
+  }
+
+  const { error: updateErr } = await db
+    .from("place_intelligence_runs")
+    .update(reconciliation.updatePayload)
+    .eq("id", runId);
+  if (updateErr) {
+    return {
+      ...reconciliation,
+      finalized: false,
+      reason: `parent_update_failed: ${updateErr.message}`,
+    };
+  }
+
+  return reconciliation;
+}
 
 async function handleProcessChunk(
   db: SupabaseClient,
@@ -1519,7 +2557,9 @@ async function handleProcessChunk(
   const startedAtMs = Date.now();
 
   // ─── Step 1: Lock + status check (ONCE per invocation) ────────────────
-  const { data: run, error: lockErr } = await db.rpc("lock_run_for_chunk", { p_run_id: runId });
+  const { data: run, error: lockErr } = await db.rpc("lock_run_for_chunk", {
+    p_run_id: runId,
+  });
   if (lockErr) {
     if (lockErr.code === "55P03" || lockErr.code === "23P01") {
       return json({ skipped: true, reason: "concurrent_worker" });
@@ -1547,10 +2587,31 @@ async function handleProcessChunk(
     return json({ skipped: true, reason: `status=${run.status}` });
   }
   if (run.processed_count >= run.total_count) {
-    await db.from("place_intelligence_runs")
-      .update({ status: "complete", completed_at: new Date().toISOString() })
-      .eq("id", runId);
-    return json({ ok: true, action: "complete" });
+    const counterReconcile = await reconcileAndFinalizeParentFromChildren(
+      db,
+      runId,
+    );
+    if (counterReconcile.finalized) {
+      return json({
+        ok: true,
+        action: "complete",
+        reconciliation: counterReconcile,
+      });
+    }
+    console.warn(
+      `[ORCH-0737 parent-reconcile] counter says complete but children are not terminal: ${counterReconcile.reason}`,
+    );
+  }
+  const initialReconcile = await reconcileAndFinalizeParentFromChildren(
+    db,
+    runId,
+  );
+  if (initialReconcile.finalized) {
+    return json({
+      ok: true,
+      action: "complete_reconciled",
+      reconciliation: initialReconcile,
+    });
   }
 
   // ─── Step 2: Heartbeat update (ONCE per invocation, at start) ─────────
@@ -1570,7 +2631,10 @@ async function handleProcessChunk(
   let runComplete = false;
   let exitReason = "budget_exhausted";
 
-  while (Date.now() - startedAtMs < V6_BUDGET_MS && iterations < V6_SAFETY_MAX_ITERATIONS) {
+  while (
+    Date.now() - startedAtMs < V6_BUDGET_MS &&
+    iterations < V6_SAFETY_MAX_ITERATIONS
+  ) {
     iterations++;
 
     // Re-check cancel signal each iteration. If operator clicked Cancel
@@ -1606,22 +2670,40 @@ async function handleProcessChunk(
       });
     }
     if (liveRun.processed_count >= liveRun.total_count) {
-      await db.from("place_intelligence_runs")
-        .update({ status: "complete", completed_at: new Date().toISOString() })
-        .eq("id", runId);
+      const counterReconcile = await reconcileAndFinalizeParentFromChildren(
+        db,
+        runId,
+      );
+      if (counterReconcile.finalized) {
+        runComplete = true;
+        exitReason = counterReconcile.reason;
+        break;
+      }
+      console.warn(
+        `[ORCH-0737 parent-reconcile] live counter says complete but children are not terminal: ${counterReconcile.reason}`,
+      );
+    }
+    const liveReconcile = await reconcileAndFinalizeParentFromChildren(
+      db,
+      runId,
+    );
+    if (liveReconcile.finalized) {
       runComplete = true;
-      exitReason = "complete";
+      exitReason = liveReconcile.reason;
       break;
     }
 
     // Decide phase. Score-priority preserved from v4.
-    const stuckCutoff = new Date(Date.now() - V6_STUCK_CUTOFF_MIN * 60 * 1000).toISOString();
+    const stuckCutoff = new Date(Date.now() - V6_STUCK_CUTOFF_MIN * 60 * 1000)
+      .toISOString();
     const { count: scoreEligibleCount, error: countErr } = await db
       .from("place_intelligence_trial_runs")
       .select("id", { count: "exact", head: true })
       .eq("parent_run_id", runId)
       .eq("prep_status", "ready")
-      .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`);
+      .or(
+        `status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`,
+      );
     if (countErr) {
       exitReason = `phase_decide_failed: ${countErr.message}`;
       break;
@@ -1629,11 +2711,20 @@ async function handleProcessChunk(
 
     const phase = (scoreEligibleCount ?? 0) > 0 ? "score" : "prep";
     console.log(
-      `[v6 budget-loop] iter=${iterations} runId=${runId} phase=${phase} elapsed=${Date.now() - startedAtMs}ms`,
+      `[v6 budget-loop] iter=${iterations} runId=${runId} phase=${phase} elapsed=${
+        Date.now() - startedAtMs
+      }ms`,
     );
 
     if (phase === "score") {
-      const result = await runScoreIteration({ db, geminiKey, runId, stuckCutoff });
+      const result = await runScoreIteration({
+        db,
+        geminiKey,
+        runId,
+        stuckCutoff,
+        workerStartedAtMs: startedAtMs,
+        iteration: iterations,
+      });
       totalScored += result.scored;
       totalReclaimed += result.reclaimed;
       if (result.scored === 0) {
@@ -1641,26 +2732,29 @@ async function handleProcessChunk(
         continue;
       }
     } else {
-      const result = await runPrepIteration({ db, serperKey, runId, stuckCutoff });
+      const result = await runPrepIteration({
+        db,
+        serperKey,
+        runId,
+        stuckCutoff,
+        workerStartedAtMs: startedAtMs,
+        iteration: iterations,
+      });
       totalPrepped += result.prepped;
       totalPrepFailed += result.prep_failed;
       totalReclaimed += result.reclaimed;
       if (result.prepped === 0 && result.prep_failed === 0) {
         // No prep AND no score work → run functionally complete or all
         // remaining rows transient. Defensively re-check completion.
-        const { data: doneCheck } = await db
-          .from("place_intelligence_runs")
-          .select("processed_count, total_count")
-          .eq("id", runId)
-          .maybeSingle();
-        if (doneCheck && doneCheck.processed_count >= doneCheck.total_count) {
-          await db.from("place_intelligence_runs")
-            .update({ status: "complete", completed_at: new Date().toISOString() })
-            .eq("id", runId);
+        const doneCheck = await reconcileAndFinalizeParentFromChildren(
+          db,
+          runId,
+        );
+        if (doneCheck.finalized) {
           runComplete = true;
-          exitReason = "complete";
+          exitReason = doneCheck.reason;
         } else {
-          exitReason = "prep_no_eligible_yet";
+          exitReason = `prep_no_eligible_yet:${doneCheck.reason}`;
         }
         break;
       }
@@ -1669,7 +2763,9 @@ async function handleProcessChunk(
 
   if (iterations >= V6_SAFETY_MAX_ITERATIONS) {
     exitReason = "safety_max_iterations";
-    console.warn(`[v6 budget-loop] hit SAFETY_MAX_ITERATIONS=${V6_SAFETY_MAX_ITERATIONS} for run=${runId}`);
+    console.warn(
+      `[v6 budget-loop] hit SAFETY_MAX_ITERATIONS=${V6_SAFETY_MAX_ITERATIONS} for run=${runId}`,
+    );
   }
 
   // ─── Step 4: End-of-budget self-invoke (fire-and-forget) ──────────────
@@ -1683,11 +2779,21 @@ async function handleProcessChunk(
       .select("status, processed_count, total_count")
       .eq("id", runId)
       .maybeSingle();
-    const shouldChain = chainCheckRun
-      && chainCheckRun.status === "running"
-      && chainCheckRun.processed_count < chainCheckRun.total_count;
-    if (shouldChain) {
-      const selfUrl = `${Deno.env.get("SUPABASE_URL") ?? "https://gqnoajqerqhnvulmnyvv.supabase.co"}/functions/v1/run-place-intelligence-trial`;
+    const chainReconcile = chainCheckRun?.status === "running"
+      ? await reconcileAndFinalizeParentFromChildren(db, runId)
+      : null;
+    if (chainReconcile?.finalized) {
+      runComplete = true;
+      exitReason = chainReconcile.reason;
+    }
+    const shouldChain = chainCheckRun &&
+      chainCheckRun.status === "running" &&
+      chainCheckRun.processed_count < chainCheckRun.total_count;
+    if (!runComplete && shouldChain) {
+      const selfUrl = `${
+        Deno.env.get("SUPABASE_URL") ??
+          "https://gqnoajqerqhnvulmnyvv.supabase.co"
+      }/functions/v1/run-place-intelligence-trial`;
       const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
       try {
         // @ts-ignore — EdgeRuntime is Supabase-provided global, may not be in @types
@@ -1702,14 +2808,20 @@ async function handleProcessChunk(
               },
               body: JSON.stringify({ action: "process_chunk", run_id: runId }),
             }).catch((err) => {
-              console.warn(`[v6 self-invoke] dispatch failed (cron will recover): ${err}`);
+              console.warn(
+                `[v6 self-invoke] dispatch failed (cron will recover): ${err}`,
+              );
             }),
           );
         } else {
-          console.warn(`[v6 self-invoke] EdgeRuntime.waitUntil unavailable; cron will recover`);
+          console.warn(
+            `[v6 self-invoke] EdgeRuntime.waitUntil unavailable; cron will recover`,
+          );
         }
       } catch (err) {
-        console.warn(`[v6 self-invoke] error scheduling self-invoke (cron will recover): ${err}`);
+        console.warn(
+          `[v6 self-invoke] error scheduling self-invoke (cron will recover): ${err}`,
+        );
       }
     }
   }
@@ -1736,8 +2848,11 @@ async function runScoreIteration(args: {
   geminiKey: string;
   runId: string;
   stuckCutoff: string;
+  workerStartedAtMs: number;
+  iteration: number;
 }): Promise<{ scored: number; failed: number; reclaimed: number }> {
-  const { db, geminiKey, runId, stuckCutoff } = args;
+  const { db, geminiKey, runId, stuckCutoff, workerStartedAtMs, iteration } =
+    args;
 
   const { data: pickupRows, error: pickupErr } = await db
     .from("place_intelligence_trial_runs")
@@ -1745,7 +2860,7 @@ async function runScoreIteration(args: {
     .eq("parent_run_id", runId)
     .eq("prep_status", "ready")
     .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`)
-    .limit(6);                                                              // v6.1: parallel-6 Gemini (rate-limit safe; v6 parallel-12 hit 429 storms)
+    .limit(6); // v6.1: parallel-6 Gemini (rate-limit safe; v6 parallel-12 hit 429 storms)
 
   if (pickupErr) throw new Error(`score pickup failed: ${pickupErr.message}`);
   if (!pickupRows || pickupRows.length === 0) {
@@ -1754,7 +2869,9 @@ async function runScoreIteration(args: {
 
   const reclaimed = pickupRows.filter((r) => r.status === "running").length;
   if (reclaimed > 0) {
-    console.warn(`[v6 score] reclaimed ${reclaimed} stuck-running rows for run=${runId}`);
+    console.warn(
+      `[v6 score] reclaimed ${reclaimed} stuck-running rows for run=${runId}`,
+    );
   }
 
   const rowIds = pickupRows.map((r) => r.id);
@@ -1762,10 +2879,22 @@ async function runScoreIteration(args: {
     .update({ status: "running", started_at: new Date().toISOString() })
     .in("id", rowIds);
 
+  const batchStartedAtPerf = performance.now();
+  const batchStartedAtIso = new Date().toISOString();
+  const batchContext: BatchContext = {
+    batch_id: `${runId}-score-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+    batch_kind: "score",
+    batch_iteration: iteration,
+    batch_parallel_n: 6,
+    batch_row_count: pickupRows.length,
+    batch_started_at: batchStartedAtIso,
+    worker_elapsed_ms_at_batch_start: Date.now() - workerStartedAtMs,
+  };
+
   // Promise.all parallel — score is memory-light (Gemini receives base64 collage).
   const results = await Promise.all(pickupRows.map(async (row) => {
     try {
-      const cost = await processOnePlace({
+      const { cost, diagnostics } = await processOnePlace({
         db,
         geminiKey,
         runId,
@@ -1774,25 +2903,119 @@ async function runScoreIteration(args: {
           signal_id: row.signal_id,
           anchor_index: row.anchor_index,
         },
+        batchContext,
       });
-      return { ok: true, place_pool_id: row.place_pool_id, cost };
+      return {
+        ok: true,
+        id: row.id,
+        place_pool_id: row.place_pool_id,
+        cost,
+        diagnostics,
+      };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[v6 score] row ${row.place_pool_id} failed: ${msg}`);
+      const diagnostics = safeMergeDiagnostics(
+        {
+          version: V8_TIMING_VERSION,
+          run_id: runId,
+          parent_run_id: runId,
+          place_pool_id: row.place_pool_id,
+          phase: "score",
+          batch_id: batchContext.batch_id,
+          batch_kind: batchContext.batch_kind,
+          batch_iteration: batchContext.batch_iteration,
+          batch_parallel_n: batchContext.batch_parallel_n,
+          batch_row_count: batchContext.batch_row_count,
+          batch_started_at: batchContext.batch_started_at,
+          worker_elapsed_ms_at_batch_start:
+            batchContext.worker_elapsed_ms_at_batch_start,
+        },
+        getErrorDiagnostics(err),
+        {
+          status: "failed",
+          row_completed_at: new Date().toISOString(),
+          error_kind: classifyError(err),
+          error_message: msg.slice(0, 500),
+        },
+      );
       await db.from("place_intelligence_trial_runs")
         .update({
           status: "failed",
           error_message: msg.slice(0, 500),
           completed_at: new Date().toISOString(),
+          timing_diagnostics: diagnostics,
         })
         .eq("id", row.id);
-      return { ok: false, place_pool_id: row.place_pool_id, error: msg, cost: 0 };
+      emitTiming("row_failed", diagnostics);
+      return {
+        ok: false,
+        id: row.id,
+        place_pool_id: row.place_pool_id,
+        error: msg,
+        cost: 0,
+        diagnostics,
+      };
     }
+  }));
+
+  const batchTotalMs = elapsedMs(batchStartedAtPerf);
+  const workerElapsedEnd = Date.now() - workerStartedAtMs;
+  await Promise.all(results.map(async (r) => {
+    const finalDiagnostics = safeMergeDiagnostics(r.diagnostics, {
+      worker_elapsed_ms_at_batch_end: workerElapsedEnd,
+      batch_total_ms: batchTotalMs,
+    });
+    await db.from("place_intelligence_trial_runs")
+      .update({ timing_diagnostics: finalDiagnostics })
+      .eq("id", r.id);
+    r.diagnostics = finalDiagnostics;
   }));
 
   const succeeded = results.filter((r) => r.ok).length;
   const failed = results.length - succeeded;
   const chunkCost = results.reduce((s, r) => s + (r.cost || 0), 0);
+  const slowest = results.reduce((best, r) => {
+    const value = Number(r.diagnostics?.row_total_ms ?? 0);
+    const bestValue = Number(best?.diagnostics?.row_total_ms ?? -1);
+    return value > bestValue ? r : best;
+  }, results[0]);
+  const maxGeminiMs = Math.max(
+    ...results.map((r) => Number(r.diagnostics?.gemini_total_ms ?? 0)),
+  );
+  const maxBase64Ms = Math.max(
+    ...results.map((r) => Number(r.diagnostics?.collage_fetch_base64_ms ?? 0)),
+  );
+  const totalBackoffMs = results.reduce(
+    (sum, r) => sum + Number(r.diagnostics?.gemini_backoff_ms_total ?? 0),
+    0,
+  );
+  const totalRetryAfterMs = results.reduce(
+    (sum, r) => sum + Number(r.diagnostics?.gemini_retry_after_ms_total ?? 0),
+    0,
+  );
+  emitTiming("batch_complete", {
+    version: V8_TIMING_VERSION,
+    run_id: runId,
+    phase: "score",
+    batch_id: batchContext.batch_id,
+    batch_kind: batchContext.batch_kind,
+    batch_iteration: batchContext.batch_iteration,
+    batch_parallel_n: batchContext.batch_parallel_n,
+    batch_row_count: batchContext.batch_row_count,
+    batch_total_ms: batchTotalMs,
+    succeeded,
+    failed,
+    slowest_place_pool_id: slowest?.place_pool_id,
+    slowest_row_total_ms: slowest?.diagnostics?.row_total_ms ?? null,
+    max_gemini_ms: maxGeminiMs,
+    max_base64_ms: maxBase64Ms,
+    total_backoff_ms: totalBackoffMs,
+    total_retry_after_ms: totalRetryAfterMs,
+    worker_elapsed_ms_at_batch_start:
+      batchContext.worker_elapsed_ms_at_batch_start,
+    worker_elapsed_ms_at_batch_end: workerElapsedEnd,
+  });
 
   await db.rpc("increment_run_counters", {
     p_run_id: runId,
@@ -1821,8 +3044,11 @@ async function runPrepIteration(args: {
   serperKey: string;
   runId: string;
   stuckCutoff: string;
+  workerStartedAtMs: number;
+  iteration: number;
 }): Promise<{ prepped: number; prep_failed: number; reclaimed: number }> {
-  const { db, serperKey, runId, stuckCutoff } = args;
+  const { db, serperKey, runId, stuckCutoff, workerStartedAtMs, iteration } =
+    args;
 
   const { data: pickupRows, error: pickupErr } = await db
     .from("place_intelligence_trial_runs")
@@ -1830,7 +3056,7 @@ async function runPrepIteration(args: {
     .eq("parent_run_id", runId)
     .is("prep_status", null)
     .or(`status.eq.pending,and(status.eq.running,started_at.lt.${stuckCutoff})`)
-    .limit(12);                                                             // v6: parallel-12 outer (was 3 in v4, 6 in v5 spec)
+    .limit(12); // v6: parallel-12 outer (was 3 in v4, 6 in v5 spec)
 
   if (pickupErr) throw new Error(`prep pickup failed: ${pickupErr.message}`);
   if (!pickupRows || pickupRows.length === 0) {
@@ -1839,13 +3065,27 @@ async function runPrepIteration(args: {
 
   const reclaimed = pickupRows.filter((r) => r.status === "running").length;
   if (reclaimed > 0) {
-    console.warn(`[v6 prep] reclaimed ${reclaimed} stuck-prep rows for run=${runId}`);
+    console.warn(
+      `[v6 prep] reclaimed ${reclaimed} stuck-prep rows for run=${runId}`,
+    );
   }
 
   const rowIds = pickupRows.map((r) => r.id);
   await db.from("place_intelligence_trial_runs")
     .update({ status: "running", started_at: new Date().toISOString() })
     .in("id", rowIds);
+
+  const batchStartedAtPerf = performance.now();
+  const batchStartedAtIso = new Date().toISOString();
+  const batchContext: BatchContext = {
+    batch_id: `${runId}-prep-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+    batch_kind: "prep",
+    batch_iteration: iteration,
+    batch_parallel_n: 12,
+    batch_row_count: pickupRows.length,
+    batch_started_at: batchStartedAtIso,
+    worker_elapsed_ms_at_batch_start: Date.now() - workerStartedAtMs,
+  };
 
   // ─── PARALLEL-12 outer prep via Promise.all ─────────────────────────────
   // Each row's compose_collage now peaks at ~5 MB (URL-transformed photos
@@ -1856,41 +3096,136 @@ async function runPrepIteration(args: {
   // First v6 deploy will INVALIDATE existing fingerprint caches (URL pattern
   // changes). Acceptable one-time hit; subsequent runs hit cache as before.
   const results = await Promise.all(pickupRows.map(async (row) => {
+    const rowStartedAt = new Date().toISOString();
+    const rowTimer = performance.now();
+    const baseDiagnostics = {
+      version: V8_TIMING_VERSION,
+      run_id: runId,
+      parent_run_id: runId,
+      place_pool_id: row.place_pool_id,
+      phase: "prep",
+      batch_id: batchContext.batch_id,
+      batch_kind: batchContext.batch_kind,
+      batch_iteration: batchContext.batch_iteration,
+      batch_parallel_n: batchContext.batch_parallel_n,
+      batch_row_count: batchContext.batch_row_count,
+      batch_started_at: batchContext.batch_started_at,
+      worker_elapsed_ms_at_batch_start:
+        batchContext.worker_elapsed_ms_at_batch_start,
+      row_started_at: rowStartedAt,
+    };
+    let reviewsFetchMs: number | null = null;
+    let composeCollageMs: number | null = null;
     try {
       // fetch_reviews (idempotent — skips if fresh-within-30-days)
+      const reviewsStarted = performance.now();
       await handleFetchReviews(db, {
         place_pool_id: row.place_pool_id,
         force_refresh: false,
       }, serperKey);
+      reviewsFetchMs = elapsedMs(reviewsStarted);
 
       // compose_collage (idempotent — skips if fingerprint-matched cache)
       // Internally serial photo loop; per-call peak ~5 MB with URL transforms.
+      const composeStarted = performance.now();
       const collageRes = await handleComposeCollage(db, {
         place_pool_id: row.place_pool_id,
         force: false,
       });
       const collageBody = await collageRes.json();
+      composeCollageMs = elapsedMs(composeStarted);
       if (collageBody.error) {
         throw new Error(`compose_collage failed: ${collageBody.error}`);
       }
 
       // Mark prepared: prep_status='ready', status back to 'pending', started_at NULL
-      await db.from("place_intelligence_trial_runs")
-        .update({ prep_status: "ready", status: "pending", started_at: null })
+      const rowCompletedAt = new Date().toISOString();
+      const preWriteDiagnostics = safeMergeDiagnostics(baseDiagnostics, {
+        status: "pending",
+        row_completed_at: rowCompletedAt,
+        row_total_ms: elapsedMs(rowTimer),
+        reviews_fetch_ms: reviewsFetchMs,
+        compose_collage_ms: composeCollageMs,
+        compose_cached: !!collageBody.cached,
+        compose_photo_count: collageBody.photoCount ?? null,
+        compose_placed_count: collageBody.placedCount ?? null,
+        compose_failed_count: collageBody.failedCount ?? null,
+        db_write_ms: null,
+        error_kind: null,
+        error_message: null,
+      });
+      const dbWriteStarted = performance.now();
+      const { error: prepUpdateErr } = await db.from(
+        "place_intelligence_trial_runs",
+      )
+        .update({
+          prep_status: "ready",
+          status: "pending",
+          started_at: null,
+          timing_diagnostics: preWriteDiagnostics,
+        })
         .eq("id", row.id);
-      return { ok: true } as const;
+      if (prepUpdateErr) {
+        throw new Error(`prep row update failed: ${prepUpdateErr.message}`);
+      }
+      const finalDiagnostics = safeMergeDiagnostics(preWriteDiagnostics, {
+        db_write_ms: elapsedMs(dbWriteStarted),
+      });
+      await db.from("place_intelligence_trial_runs")
+        .update({ timing_diagnostics: finalDiagnostics })
+        .eq("id", row.id);
+      emitTiming("row_complete", finalDiagnostics);
+      return {
+        ok: true,
+        id: row.id,
+        place_pool_id: row.place_pool_id,
+        diagnostics: finalDiagnostics,
+      };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[v6 prep] row ${row.place_pool_id} prep failed: ${msg}`);
+      const diagnostics = safeMergeDiagnostics(
+        baseDiagnostics,
+        getErrorDiagnostics(err),
+        {
+          status: "failed",
+          row_completed_at: new Date().toISOString(),
+          row_total_ms: elapsedMs(rowTimer),
+          reviews_fetch_ms: reviewsFetchMs,
+          compose_collage_ms: composeCollageMs,
+          error_kind: classifyError(err),
+          error_message: msg.slice(0, 500),
+        },
+      );
       await db.from("place_intelligence_trial_runs")
         .update({
           status: "failed",
           error_message: `prep: ${msg.slice(0, 500)}`,
           completed_at: new Date().toISOString(),
+          timing_diagnostics: diagnostics,
         })
         .eq("id", row.id);
-      return { ok: false } as const;
+      emitTiming("row_failed", diagnostics);
+      return {
+        ok: false,
+        id: row.id,
+        place_pool_id: row.place_pool_id,
+        diagnostics,
+      };
     }
+  }));
+
+  const batchTotalMs = elapsedMs(batchStartedAtPerf);
+  const workerElapsedEnd = Date.now() - workerStartedAtMs;
+  await Promise.all(results.map(async (r) => {
+    const finalDiagnostics = safeMergeDiagnostics(r.diagnostics, {
+      worker_elapsed_ms_at_batch_end: workerElapsedEnd,
+      batch_total_ms: batchTotalMs,
+    });
+    await db.from("place_intelligence_trial_runs")
+      .update({ timing_diagnostics: finalDiagnostics })
+      .eq("id", r.id);
+    r.diagnostics = finalDiagnostics;
   }));
 
   let preppedCount = 0;
@@ -1899,6 +3234,29 @@ async function runPrepIteration(args: {
     if (r.ok) preppedCount++;
     else prepFailedCount++;
   }
+  const slowest = results.reduce((best, r) => {
+    const value = Number(r.diagnostics?.row_total_ms ?? 0);
+    const bestValue = Number(best?.diagnostics?.row_total_ms ?? -1);
+    return value > bestValue ? r : best;
+  }, results[0]);
+  emitTiming("batch_complete", {
+    version: V8_TIMING_VERSION,
+    run_id: runId,
+    phase: "prep",
+    batch_id: batchContext.batch_id,
+    batch_kind: batchContext.batch_kind,
+    batch_iteration: batchContext.batch_iteration,
+    batch_parallel_n: batchContext.batch_parallel_n,
+    batch_row_count: batchContext.batch_row_count,
+    batch_total_ms: batchTotalMs,
+    prepped: preppedCount,
+    prep_failed: prepFailedCount,
+    slowest_place_pool_id: slowest?.place_pool_id,
+    slowest_row_total_ms: slowest?.diagnostics?.row_total_ms ?? null,
+    worker_elapsed_ms_at_batch_start:
+      batchContext.worker_elapsed_ms_at_batch_start,
+    worker_elapsed_ms_at_batch_end: workerElapsedEnd,
+  });
 
   // Failed-prep rows count toward processed (terminal). Successful preps do NOT
   // count yet — they need to flow through score iteration.

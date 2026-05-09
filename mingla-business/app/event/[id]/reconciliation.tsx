@@ -30,7 +30,7 @@
  * Per Cycle 13 SPEC §4.3.2.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -50,11 +50,10 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
+import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
-import { useBrandList } from "../../../src/store/currentBrandStore";
 import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
 import { useGuestStore } from "../../../src/store/guestStore";
-import { useLiveEventStore } from "../../../src/store/liveEventStore";
 import { useOrderStore } from "../../../src/store/orderStore";
 import { useScanStore } from "../../../src/store/scanStore";
 import {
@@ -92,16 +91,11 @@ export default function ReconciliationRoute(): React.ReactElement {
   const operatorAccountId = user?.id ?? "anonymous";
 
   // ---- All hooks declared BEFORE early returns (ORCH-0710) ----
-  const event = useLiveEventStore((s) =>
-    typeof eventId === "string"
-      ? s.events.find((e) => e.id === eventId) ?? null
-      : null,
+  const routeEvent = useManagedEventRoute(
+    typeof eventId === "string" ? eventId : null,
   );
-  const brandList = useBrandList();
-  const brand =
-    event !== null
-      ? (brandList.find((b) => b.id === event.brandId) ?? null)
-      : null;
+  const event = routeEvent.event;
+  const brand = routeEvent.brand;
   const { rank } = useCurrentBrandRole(brand?.id ?? null);
 
   // Raw entries + useMemo per selector pattern rule (T-41 grep gate)
@@ -227,7 +221,31 @@ export default function ReconciliationRoute(): React.ReactElement {
     setByScannerExpanded((v) => !v);
   }, []);
 
+  useEffect(() => {
+    if (routeEvent.replacementEventId !== null) {
+      router.replace(
+        `/event/${routeEvent.replacementEventId}/reconciliation` as never,
+      );
+    }
+  }, [routeEvent.replacementEventId, router]);
+
   // ---- Early returns (after all hooks per ORCH-0710) ----
+
+  if (event === null && routeEvent.isLoading && typeof eventId === "string") {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <ChromeRow onBack={handleBack} />
+        <View style={styles.emptyHost}>
+          <Text style={styles.emptyLoadingText}>Loading event...</Text>
+        </View>
+      </View>
+    );
+  }
 
   // 1. Not found shell
   if (event === null || typeof eventId !== "string") {
@@ -798,6 +816,11 @@ const styles = StyleSheet.create({
   },
   emptyHost: {
     paddingTop: spacing.xl,
+  },
+  emptyLoadingText: {
+    fontSize: 14,
+    color: textTokens.secondary,
+    textAlign: "center",
   },
 
   // Headline ---------------------------------------------------------

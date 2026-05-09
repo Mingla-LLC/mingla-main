@@ -16,7 +16,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Play, RefreshCw, Square, ChevronDown, ChevronRight,
-  CheckCircle, XCircle, Globe, Clock,
+  CheckCircle, XCircle, Globe, Clock, RotateCcw,
 } from "lucide-react";
 import { supabase, invokeWithRefresh } from "../../lib/supabase";
 import { extractFunctionError } from "../../lib/edgeFunctionError";
@@ -28,6 +28,11 @@ import { Spinner } from "../ui/Spinner";
 function formatCost(n) {
   if (n == null) return "—";
   return `$${Number(n).toFixed(4)}`;
+}
+
+function formatPercent(n) {
+  if (n == null) return "—";
+  return `${Number(n).toFixed(1)}%`;
 }
 
 // ── Per-place result card ───────────────────────────────────────────────────
@@ -251,6 +256,33 @@ export function TrialResultsTab() {
   // activeRun is the polled parent row; updated every 5s while running.
   const [activeRunId, setActiveRunId] = useState(null);
   const [activeRun, setActiveRun] = useState(null);
+  const [cityCoverage, setCityCoverage] = useState(null);
+  const [coverageLoading, setCoverageLoading] = useState(false);
+  const [retryingFailed, setRetryingFailed] = useState(false);
+
+  const fetchCityCoverage = useCallback(async (targetCityId, { quiet = false } = {}) => {
+    if (!targetCityId) {
+      setCityCoverage(null);
+      return null;
+    }
+    setCoverageLoading(true);
+    try {
+      const { data, error } = await invokeWithRefresh("run-place-intelligence-trial", {
+        body: { action: "city_coverage", city_id: targetCityId },
+      });
+      if (error) throw new Error(await extractFunctionError(error, "city_coverage failed"));
+      setCityCoverage(data || null);
+      return data || null;
+    } catch (err) {
+      if (!quiet) {
+        addToast({ variant: "error", title: "Couldn't load city coverage", description: err.message });
+      }
+      setCityCoverage(null);
+      return null;
+    } finally {
+      setCoverageLoading(false);
+    }
+  }, [addToast]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -292,17 +324,24 @@ export function TrialResultsTab() {
       setCities(enriched);
 
       setAllRows(runsRes.data || []);
+      if (cityId) {
+        await fetchCityCoverage(cityId, { quiet: true });
+      }
     } catch (err) {
       console.error("[TrialResultsTab] load failed:", err);
       addToast({ variant: "error", title: "Couldn't load results", description: err.message });
     } finally {
       setLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, cityId, fetchCityCoverage]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    fetchCityCoverage(cityId);
+  }, [cityId, fetchCityCoverage]);
 
   // Group rows by run_id for display
   const runs = {};
@@ -333,7 +372,7 @@ export function TrialResultsTab() {
           setActiveRunId(data.runs[0].id);
           setActiveRun(data.runs[0]);
         }
-      } catch (_err) {
+      } catch {
         // silent
       }
     })();
@@ -358,17 +397,18 @@ export function TrialResultsTab() {
             if (["complete", "cancelled", "failed"].includes(data.parent.status)) {
               setActiveRunId(null);
               await refresh();
+              if (cityId) await fetchCityCoverage(cityId, { quiet: true });
               break;
             }
           }
-        } catch (_err) {
+        } catch {
           // silent — next poll will retry
         }
         await new Promise((r) => setTimeout(r, 5000));
       }
     })();
     return () => { cancelled = true; };
-  }, [activeRunId, refresh]);
+  }, [activeRunId, cityId, fetchCityCoverage, refresh]);
 
   // ORCH-0737 — cancel active full-city run (calls cancel_trial action).
   async function handleCancelActiveRun(runId) {
@@ -472,6 +512,19 @@ export function TrialResultsTab() {
 
       // Trigger polling — fetches initial parent state on first tick
       setActiveRunId(created.runId);
+      setActiveRun({
+        id: created.runId,
+        city_name: created.cityName,
+        mode: created.mode,
+        total_count: created.totalPlaces,
+        processed_count: 0,
+        succeeded_count: 0,
+        failed_count: 0,
+        cost_so_far_usd: 0,
+        estimated_cost_usd: created.estimatedCostUsd,
+        status: "running",
+      });
+      await fetchCityCoverage(cityId, { quiet: true });
     } catch (err) {
       addToast({ variant: "error", title: "Couldn't start run", description: err.message });
     } finally {
@@ -616,6 +669,7 @@ export function TrialResultsTab() {
             : ""),
       });
       await refresh();
+      await fetchCityCoverage(cityId, { quiet: true });
     } catch (err) {
       console.error("[TrialResultsTab] trial loop failed:", err);
       addToast({ variant: "error", title: "Trial failed", description: err.message });
@@ -631,6 +685,73 @@ export function TrialResultsTab() {
     addToast({ variant: "info", title: "Cancelling…", description: "Will stop after the current place." });
   }
 
+  async function handleRetryFailedPlaces() {
+    if (!cityCoverage?.latest_run?.id || !selectedCity || retryingFailed || activeRunId) return;
+
+    const retryCount = Number(cityCoverage.retryable_failed_count || 0);
+    if (retryCount <= 0) {
+      addToast({ variant: "info", title: "No retryable failures" });
+      return;
+    }
+
+    const estimatedCost = Number(cityCoverage.estimated_retry_cost_usd || retryCount * PER_PLACE_COST_USD);
+    if (!window.confirm(
+      `Retry ${retryCount} failed ${selectedCity.name} places.\n\n` +
+      `Estimated Gemini cost: ~$${estimatedCost.toFixed(2)}.\n` +
+      `Successful places will not be rerun.\n\n` +
+      `Continue?`
+    )) {
+      return;
+    }
+
+    const exceedsGuard = estimatedCost > 5;
+    if (exceedsGuard && !window.confirm(
+      `This retry will charge approximately $${estimatedCost.toFixed(2)} on the Gemini API.\n\n` +
+      `The default cost guard is $5. Confirm override?`
+    )) {
+      return;
+    }
+
+    setRetryingFailed(true);
+    try {
+      const { data, error } = await invokeWithRefresh("run-place-intelligence-trial", {
+        body: {
+          action: "retry_failed_run",
+          source_run_id: cityCoverage.latest_run.id,
+          retry_filter: "retryable_only",
+          confirm_high_cost: exceedsGuard,
+        },
+      });
+      if (error) throw new Error(await extractFunctionError(error, "retry_failed_run failed"));
+
+      addToast({
+        variant: "info",
+        title: "Retry run started",
+        description: `${data.cityName} · ${data.retrySelectedCount} failed places · est ${formatCost(data.estimatedCostUsd)}.`,
+      });
+
+      setActiveRunId(data.runId);
+      setActiveRun({
+        id: data.runId,
+        city_name: data.cityName,
+        mode: data.mode,
+        total_count: data.totalPlaces,
+        processed_count: 0,
+        succeeded_count: 0,
+        failed_count: 0,
+        cost_so_far_usd: 0,
+        estimated_cost_usd: data.estimatedCostUsd,
+        status: "running",
+      });
+      await refresh();
+      await fetchCityCoverage(cityId, { quiet: true });
+    } catch (err) {
+      addToast({ variant: "error", title: "Couldn't retry failed places", description: err.message });
+    } finally {
+      setRetryingFailed(false);
+    }
+  }
+
   const selectedCity = cities.find((c) => c.id === cityId) || null;
   // ORCH-0737 — effectiveCount depends on mode. full_city = all servable; sample = min(picker, servable)
   const effectiveCount = !selectedCity
@@ -643,14 +764,30 @@ export function TrialResultsTab() {
   const estMinutes = Math.ceil((effectiveCount * PER_PLACE_WALL_SECONDS) / 60);
   const estTimeStr = estMinutes >= 60 ? `~${(estMinutes / 60).toFixed(1)} hrs` : `~${estMinutes} min`;
   const exceedsCostGuard = estCostNum > 5;
-  const canRun = !!cityId && !running && !loading && !activeRunId;          // ORCH-0737 block while active full-city run
+  const canRun = !!cityId && !running && !loading && !activeRunId && !retryingFailed;          // ORCH-0737 block while active full-city run
+  const retryableFailedCount = Number(cityCoverage?.retryable_failed_count || 0);
+  const failedCount = Number(cityCoverage?.failed_count || 0);
+  const nonretryableFailedCount = Number(cityCoverage?.nonretryable_failed_count || 0);
+  const coverageSummary = cityCoverage?.coverage || cityCoverage || null;
+  const canRetryFailed = !!cityCoverage?.latest_run?.id && retryableFailedCount > 0 && !activeRunId && !running && !retryingFailed;
 
   return (
     <SectionCard
       title="Trial Results"
       subtitle={`${cities.length} cit${cities.length === 1 ? "y" : "ies"} available · ${runIds.length} historical run${runIds.length === 1 ? "" : "s"}`}
       action={
-        <Button size="sm" variant="ghost" icon={RefreshCw} onClick={refresh} disabled={loading}>Refresh</Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={RefreshCw}
+          onClick={async () => {
+            await refresh();
+            if (cityId) await fetchCityCoverage(cityId, { quiet: true });
+          }}
+          disabled={loading || coverageLoading}
+        >
+          Refresh
+        </Button>
       }
     >
       <div className="space-y-4">
@@ -661,9 +798,11 @@ export function TrialResultsTab() {
           <div className="border border-[var(--color-brand-200)] rounded-lg p-4 space-y-3 bg-[var(--color-brand-50)]">
             <div className="flex items-baseline justify-between gap-2">
               <h4 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
-                {activeRun.mode === "full_city"
-                  ? <><Globe className="w-4 h-4 inline" /> Full-city run</>
-                  : <><Clock className="w-4 h-4 inline" /> Sample run</>}
+                {activeRun.mode === "retry_failed"
+                  ? <><RotateCcw className="w-4 h-4 inline" /> Retry failed run</>
+                  : activeRun.mode === "full_city"
+                    ? <><Globe className="w-4 h-4 inline" /> Full-city run</>
+                    : <><Clock className="w-4 h-4 inline" /> Sample run</>}
                 {" — "}{activeRun.city_name}
               </h4>
               <span className="text-xs font-mono text-[var(--color-text-secondary)]">
@@ -705,7 +844,9 @@ export function TrialResultsTab() {
               </p>
             )}
             <p className="text-xs text-[var(--color-text-tertiary)] italic">
-              {activeRun.mode === "full_city"
+              {activeRun.mode === "retry_failed"
+                ? "Retrying failed places on the server — safe to close this tab. Status updates every 5s while page is open."
+                : activeRun.mode === "full_city"
                 ? "Running on the server — safe to close this tab. Status updates every 5s while page is open."
                 : "Sample run in progress."}
             </p>
@@ -878,6 +1019,82 @@ export function TrialResultsTab() {
             </span>
           </div>
         </div>
+
+        {selectedCity && (
+          <div className="border border-[var(--gray-200)] rounded-lg p-4 space-y-3 bg-[var(--color-background-primary)]">
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+              <div className="min-w-0">
+                <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                  City scored coverage - {selectedCity.name}
+                </h4>
+                <p className="text-xs text-[var(--color-text-tertiary)]">
+                  {coverageLoading
+                    ? "Loading coverage..."
+                    : cityCoverage
+                      ? `${coverageSummary.scored_count} / ${coverageSummary.servable_count} servable places scored (${formatPercent(coverageSummary.scored_percent)})`
+                      : "Coverage unavailable"}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={RotateCcw}
+                onClick={handleRetryFailedPlaces}
+                loading={retryingFailed}
+                disabled={!canRetryFailed}
+              >
+                Retry failed{retryableFailedCount > 0 ? ` (${retryableFailedCount})` : ""}
+              </Button>
+            </div>
+
+            {cityCoverage && (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div className="rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono">Scored</div>
+                    <div className="text-sm font-semibold text-[var(--color-text-primary)] tabular-nums">
+                      {coverageSummary.scored_count}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono">Unscored</div>
+                    <div className="text-sm font-semibold text-[var(--color-text-primary)] tabular-nums">
+                      {coverageSummary.unscored_count}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono">Failed</div>
+                    <div className="text-sm font-semibold text-[var(--color-error-700)] tabular-nums">
+                      {failedCount}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-[var(--color-text-tertiary)] font-mono">Retryable</div>
+                    <div className="text-sm font-semibold text-[var(--color-warning-700)] tabular-nums">
+                      {retryableFailedCount}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col md:flex-row md:items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                  <span>
+                    Latest run: {cityCoverage.latest_run
+                      ? `${cityCoverage.latest_run.id.slice(0, 8)}... (${cityCoverage.latest_run.status})`
+                      : "none"}
+                  </span>
+                  <span className="hidden md:inline text-[var(--color-text-tertiary)]">·</span>
+                  <span>
+                    Nonretryable failures: {nonretryableFailedCount}
+                  </span>
+                  <span className="hidden md:inline text-[var(--color-text-tertiary)]">·</span>
+                  <span>
+                    Estimated retry cost: {formatCost(cityCoverage.estimated_retry_cost_usd)}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {progress && (
           <div className="border border-[var(--gray-200)] rounded-lg p-3 space-y-2 bg-[var(--color-info-50)]">

@@ -1,0 +1,24 @@
+# Keep Vercel CLI uploads under the 10 MB request-body limit while preserving
+# the linked project root directory (`mingla-business`) for Vercel.
+
+node_modules/
+app-mobile/
+backend/
+mingla-marketing/
+oauth-redirect/
+scripts/
+supabase/
+tests/
+Mingla_Artifacts/
+Mingla_Roadmap/
+
+mingla-business/.env
+mingla-business/.expo/
+mingla-business/android/
+mingla-business/dist/
+mingla-business/ios/
+mingla-business/node_modules/
+
+mingla-admin/.env
+mingla-admin/dist/
+mingla-admin/node_modules/

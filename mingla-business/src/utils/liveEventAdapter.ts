@@ -40,6 +40,7 @@ import type {
 export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   id: e.id,
   brandId: e.brandId,
+  serverSlug: e.eventSlug,
   name: e.name,
   description: e.description,
   format: e.format,
@@ -56,6 +57,8 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   onlineUrl: e.onlineUrl,
   hideAddressUntilTicket: e.hideAddressUntilTicket,
   coverHue: e.coverHue,
+  coverMediaUrl: e.coverMediaUrl,
+  coverMediaType: e.coverMediaType,
   tickets: e.tickets,
   visibility: e.visibility,
   requireApproval: e.requireApproval,
@@ -95,6 +98,8 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   onlineUrl: "Online link",
   hideAddressUntilTicket: "Hide address until ticket",
   coverHue: "Cover hue",
+  coverMediaUrl: "Cover media",
+  coverMediaType: "Cover media type",
   tickets: "Tickets",
   visibility: "Visibility",
   requireApproval: "Require approval",
@@ -133,6 +138,8 @@ export const SAFE_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "description",
   "category",
   "coverHue",
+  "coverMediaUrl",
+  "coverMediaType",
   "hideAddressUntilTicket",
   "requireApproval",
   "hideRemainingCount",
@@ -194,6 +201,12 @@ export const editableDraftToPatch = (
     patch.hideAddressUntilTicket = edited.hideAddressUntilTicket;
   }
   if (original.coverHue !== edited.coverHue) patch.coverHue = edited.coverHue;
+  if (original.coverMediaUrl !== edited.coverMediaUrl) {
+    patch.coverMediaUrl = edited.coverMediaUrl;
+  }
+  if (original.coverMediaType !== edited.coverMediaType) {
+    patch.coverMediaType = edited.coverMediaType;
+  }
   if (!deepEqual(original.tickets, edited.tickets)) patch.tickets = edited.tickets;
   if (original.visibility !== edited.visibility) {
     patch.visibility = edited.visibility;

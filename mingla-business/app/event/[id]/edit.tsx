@@ -33,8 +33,25 @@ import {
 } from "../../../src/components/event/EventCreatorWizard";
 import { EditPublishedScreen } from "../../../src/components/event/EditPublishedScreen";
 import { useBrandList } from "../../../src/store/currentBrandStore";
-import { useDraftById } from "../../../src/store/draftEventStore";
+import {
+  useDraftById,
+  useDraftEventStore,
+  type DraftEvent,
+} from "../../../src/store/draftEventStore";
 import { useLiveEventStore } from "../../../src/store/liveEventStore";
+import {
+  useDiscardServerDraft,
+  useServerDraftAutosave,
+  useServerDraftById,
+} from "../../../src/hooks/useServerDraftEvents";
+import {
+  useBusinessEventById,
+  usePublishBusinessEventDraft,
+} from "../../../src/hooks/useBusinessEvents";
+import { createServerDraft } from "../../../src/services/eventDrafts";
+
+const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
+  draft.id.startsWith("d_") || draft.serverSlug === null;
 
 export default function EventEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -51,6 +68,8 @@ export default function EventEditRoute(): React.ReactElement {
   // EditPublishedScreen instead of the create wizard. The id refers to
   // a LIVE event, not a draft.
   const isEditPublished = modeParam === "edit-published";
+  const isLegacyLocalDraftId =
+    typeof idParam === "string" && idParam.startsWith("d_");
 
   const initialStep = useMemo<number | undefined>(() => {
     if (stepParam === undefined || stepParam.length === 0) return undefined;
@@ -64,33 +83,83 @@ export default function EventEditRoute(): React.ReactElement {
     if (typeof idParam !== "string" || idParam.length === 0) return null;
     return s.events.find((e) => e.id === idParam) ?? null;
   });
+  const businessEventQuery = useBusinessEventById(
+    isEditPublished && typeof idParam === "string" ? idParam : null,
+  );
+  const serverLiveEvent = businessEventQuery.data?.event ?? null;
+  const resolvedLiveEvent = serverLiveEvent ?? liveEvent;
 
   // Create/draft path: resolve DraftEvent.
   const draft = useDraftById(
     !isEditPublished && typeof idParam === "string" ? idParam : null,
   );
+  const serverDraftQuery = useServerDraftById(
+    !isEditPublished && typeof idParam === "string" && !isLegacyLocalDraftId
+      ? idParam
+      : null,
+  );
+  const autosave = useServerDraftAutosave();
+  const discardServerDraft = useDiscardServerDraft();
+  const publishServerDraft = usePublishBusinessEventDraft();
+  const replaceDraft = useDraftEventStore((s) => s.replaceDraft);
+  const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
+  const migratingLegacyIdRef = React.useRef<string | null>(null);
   const brands = useBrandList();
   const brand = useMemo(() => {
     if (isEditPublished) {
-      if (liveEvent === null) return null;
-      return brands.find((b) => b.id === liveEvent.brandId) ?? null;
+      if (businessEventQuery.data?.brand !== undefined) {
+        return businessEventQuery.data.brand;
+      }
+      if (resolvedLiveEvent === null) return null;
+      return brands.find((b) => b.id === resolvedLiveEvent.brandId) ?? null;
     }
     if (draft === null) return null;
     return brands.find((b) => b.id === draft.brandId) ?? null;
-  }, [isEditPublished, liveEvent, draft, brands]);
+  }, [isEditPublished, businessEventQuery.data?.brand, resolvedLiveEvent, draft, brands]);
 
   const [toast, setToast] = React.useState<{ visible: boolean; message: string }>(
     { visible: false, message: "" },
   );
 
   useEffect(() => {
+    if (
+      !isEditPublished &&
+      draft !== null &&
+      draft.id.startsWith("d_") &&
+      migratingLegacyIdRef.current !== draft.id
+    ) {
+      migratingLegacyIdRef.current = draft.id;
+      void createServerDraft(draft.brandId, draft)
+        .then((serverDraft) => {
+          replaceDraft(draft.id, serverDraft);
+          router.replace(`/event/${serverDraft.id}/edit?step=${initialStep ?? 0}` as never);
+        })
+        .catch(() => {
+          migratingLegacyIdRef.current = null;
+          setToast({
+            visible: true,
+            message: "Could not sync this local draft yet.",
+          });
+        });
+      return undefined;
+    }
     if (typeof idParam !== "string" || idParam.length === 0) {
       router.replace("/(tabs)/events" as never);
       return;
     }
     if (isEditPublished) {
-      if (liveEvent === null) {
-        // Live event not found — bounce to events tab.
+      if (
+        liveEvent !== null &&
+        liveEvent.id.startsWith("le_") &&
+        liveEvent.serverEventId !== null
+      ) {
+        router.replace(
+          `/event/${liveEvent.serverEventId}/edit?mode=edit-published` as never,
+        );
+        return undefined;
+      }
+      if (resolvedLiveEvent === null && !businessEventQuery.isLoading) {
+        // Published event not found — bounce to events tab.
         const t = setTimeout(() => {
           router.replace("/(tabs)/events" as never);
         }, 0);
@@ -98,7 +167,11 @@ export default function EventEditRoute(): React.ReactElement {
       }
       return undefined;
     }
-    if (draft === null) {
+    if (
+      draft === null &&
+      !serverDraftQuery.isLoading &&
+      !serverDraftQuery.isFetching
+    ) {
       // Draft not found — bounce home (existing behaviour).
       const t = setTimeout(() => {
         router.replace("/(tabs)/home" as never);
@@ -106,7 +179,19 @@ export default function EventEditRoute(): React.ReactElement {
       return (): void => clearTimeout(t);
     }
     return undefined;
-  }, [idParam, isEditPublished, draft, liveEvent, router]);
+  }, [
+    idParam,
+    isEditPublished,
+    draft,
+    liveEvent,
+    resolvedLiveEvent,
+    businessEventQuery.isLoading,
+    router,
+    replaceDraft,
+    initialStep,
+    serverDraftQuery.isFetching,
+    serverDraftQuery.isLoading,
+  ]);
 
   const isCreateMode = useMemo<boolean>(() => {
     if (draft === null) return false;
@@ -158,10 +243,21 @@ export default function EventEditRoute(): React.ReactElement {
     router.push(`/brand/${draft.brandId}/payments/onboard` as never);
   }, [draft, router]);
 
+  const handleDiscardDraft = React.useCallback(
+    async (draftToDiscard: DraftEvent): Promise<void> => {
+      if (isLocalOnlyDraft(draftToDiscard)) {
+        deleteDraft(draftToDiscard.id);
+        return;
+      }
+      await discardServerDraft.discardDraft(draftToDiscard);
+    },
+    [deleteDraft, discardServerDraft],
+  );
+
   // Cycle 9b-2 edit-published branch — render the focused edit screen
   // when ?mode=edit-published. Loading shell while liveEvent resolves.
   if (isEditPublished) {
-    if (liveEvent === null) {
+    if (resolvedLiveEvent === null) {
       return (
         <View
           style={[
@@ -176,7 +272,16 @@ export default function EventEditRoute(): React.ReactElement {
         </View>
       );
     }
-    return <EditPublishedScreen liveEvent={liveEvent} />;
+    return (
+      <EditPublishedScreen
+        liveEvent={resolvedLiveEvent}
+        disableLocalSaveReason={
+          liveEvent === null
+            ? "Server-loaded events are readable here. Full published-event editing needs the server edit mutation before saves are enabled."
+            : undefined
+        }
+      />
+    );
   }
 
   if (draft === null) {
@@ -210,6 +315,23 @@ export default function EventEditRoute(): React.ReactElement {
       onExit={handleExit}
       onOpenPreview={handleOpenPreview}
       onOpenStripeOnboard={handleOpenStripe}
+      onAutosaveDraft={draft.id.startsWith("d_") ? undefined : autosave.saveDraft}
+      onDiscardServerDraft={handleDiscardDraft}
+      onPublishDraft={async (draftToPublish) => {
+        const published = await publishServerDraft.publishDraft(draftToPublish);
+        return {
+          brandSlug: published.brand.slug,
+          eventSlug: published.event.eventSlug,
+        };
+      }}
+      serverSaveState={{
+        isSaving:
+          autosave.isSaving ||
+          discardServerDraft.isPending ||
+          publishServerDraft.isPending,
+        hasError: autosave.hasError || serverDraftQuery.isError,
+        lastSavedAt: autosave.lastSavedAt,
+      }}
     />
   );
 }

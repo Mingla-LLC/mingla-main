@@ -56,6 +56,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           "Mingla Business uses your photo library to upload brand and event imagery.",
       },
     ],
+    "expo-video",
     [
       "@stripe/stripe-react-native",
       {

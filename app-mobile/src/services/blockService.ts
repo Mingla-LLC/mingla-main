@@ -108,12 +108,24 @@ export async function unblockUser(
 export async function getBlockedUsers(): Promise<{
   data: BlockedUser[];
   error?: string;
+}>;
+export async function getBlockedUsers(expectedUserId: string): Promise<{
+  data: BlockedUser[];
+  error?: string;
+}>;
+export async function getBlockedUsers(expectedUserId?: string): Promise<{
+  data: BlockedUser[];
+  error?: string;
 }> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
       return { data: [], error: "Not authenticated" };
+    }
+
+    if (expectedUserId && user.id !== expectedUserId) {
+      return { data: [], error: "Auth state changed" };
     }
 
     // First, get the blocked_users records
