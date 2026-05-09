@@ -15,15 +15,15 @@ This matches the operator symptom: `Brand 3` exists in the organiser app, but it
 **Broken step:** Organiser brand profile -> **View public page** -> `/b/{brandSlug}` -> false not-found.
 
 **Evidence:**
-- [mingla-business/app/brand/[id]/index.tsx](/Users/sethogieva/Desktop/mingla-main/mingla-business/app/brand/[id]/index.tsx:105) routes `View public page` to `/b/${brandSlug}`.
-- [mingla-business/src/components/brand/BrandProfileView.tsx](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/components/brand/BrandProfileView.tsx:233) calls `onViewPublic(brand.slug)`; the CTA is rendered at [BrandProfileView.tsx](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/components/brand/BrandProfileView.tsx:635).
-- [mingla-business/app/b/[brandSlug]/index.tsx](/Users/sethogieva/Desktop/mingla-main/mingla-business/app/b/[brandSlug]/index.tsx:27) calls `usePublicBrandBySlug`.
-- [mingla-business/app/b/[brandSlug]/index.tsx](/Users/sethogieva/Desktop/mingla-main/mingla-business/app/b/[brandSlug]/index.tsx:49) renders `PublicBrandNotFound` whenever query data is `null` or `undefined`.
-- [mingla-business/src/hooks/usePublicEvents.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/hooks/usePublicEvents.ts:65) delegates to `getPublicBrandBySlug`.
-- [mingla-business/src/services/publicEventsService.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/services/publicEventsService.ts:358) queries `business_public_events_view` by `brand_slug`.
-- [mingla-business/src/services/publicEventsService.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/services/publicEventsService.ts:369) returns `null` when that view returns zero rows.
-- [supabase/migrations/20260515000005_orch_0763d_event_lifecycle_repair.sql](/Users/sethogieva/Desktop/mingla-main/supabase/migrations/20260515000005_orch_0763d_event_lifecycle_repair.sql:7) defines `business_public_events_view`.
-- [supabase/migrations/20260515000005_orch_0763d_event_lifecycle_repair.sql](/Users/sethogieva/Desktop/mingla-main/supabase/migrations/20260515000005_orch_0763d_event_lifecycle_repair.sql:38) only includes rows where the joined event is non-deleted, `visibility = 'public'`, and status is one of `scheduled`, `live`, `ended`, or `cancelled`.
+- [mingla-business/app/brand/[id]/index.tsx](/Users/sethogieva/Desktop/mingla-main/mingla-business/app/brand/[id]/index.tsx) routes `View public page` to `/b/${brandSlug}`.
+- [mingla-business/src/components/brand/BrandProfileView.tsx](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/components/brand/BrandProfileView.tsx) calls `onViewPublic(brand.slug)`; the CTA is rendered at [BrandProfileView.tsx](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/components/brand/BrandProfileView.tsx).
+- [mingla-business/app/b/[brandSlug]/index.tsx](/Users/sethogieva/Desktop/mingla-main/mingla-business/app/b/[brandSlug]/index.tsx) calls `usePublicBrandBySlug`.
+- [mingla-business/app/b/[brandSlug]/index.tsx](/Users/sethogieva/Desktop/mingla-main/mingla-business/app/b/[brandSlug]/index.tsx) renders `PublicBrandNotFound` whenever query data is `null` or `undefined`.
+- [mingla-business/src/hooks/usePublicEvents.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/hooks/usePublicEvents.ts) delegates to `getPublicBrandBySlug`.
+- [mingla-business/src/services/publicEventsService.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/services/publicEventsService.ts) queries `business_public_events_view` by `brand_slug`.
+- [mingla-business/src/services/publicEventsService.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/services/publicEventsService.ts) returns `null` when that view returns zero rows.
+- [supabase/migrations/20260515000005_orch_0763d_event_lifecycle_repair.sql](/Users/sethogieva/Desktop/mingla-main/supabase/migrations/20260515000005_orch_0763d_event_lifecycle_repair.sql) defines `business_public_events_view`.
+- [supabase/migrations/20260515000005_orch_0763d_event_lifecycle_repair.sql](/Users/sethogieva/Desktop/mingla-main/supabase/migrations/20260515000005_orch_0763d_event_lifecycle_repair.sql) only includes rows where the joined event is non-deleted, `visibility = 'public'`, and status is one of `scheduled`, `live`, `ended`, or `cancelled`.
 
 **Six-field proof:**
 
@@ -36,16 +36,16 @@ This matches the operator symptom: `Brand 3` exists in the organiser app, but it
 | Causal chain | Brand exists -> CTA navigates to `/b/{slug}` -> service asks an event view for brand identity -> no public event rows -> service returns `null` -> route renders not-found |
 | Verification step | Create or use a real brand with no public events, open `/b/{slug}` signed out; current build renders not-found. After fix it must render the brand name and `No upcoming events yet`. |
 
-**Invariant impact:** Violates `No dead taps`, `One owner per truth`, and `No fabricated data` from [README.md](/Users/sethogieva/Desktop/mingla-main/README.md:56). The CTA succeeds at navigation but lands on a false failure state.
+**Invariant impact:** Violates `No dead taps`, `One owner per truth`, and `No fabricated data` from [README.md](/Users/sethogieva/Desktop/mingla-main/README.md). The CTA succeeds at navigation but lands on a false failure state.
 
 ### F2 — Security Gap / Production-Hardening Gap — Current RLS cannot be fixed by directly querying `brands` from the public client
 
 **Symptom:** A direct client-side switch from `business_public_events_view` to `brands` is not a safe implementation plan.
 
 **Evidence:**
-- Latest public brand SELECT policy still requires at least one public event: [20260515000005_orch_0763d_event_lifecycle_repair.sql](/Users/sethogieva/Desktop/mingla-main/supabase/migrations/20260515000005_orch_0763d_event_lifecycle_repair.sql:49).
-- The baseline `brands_public_view` also intentionally exposed only brands with at least one public live event: [baseline_squash_orch_0729.sql](/Users/sethogieva/Desktop/mingla-main/supabase/migrations/20260505000000_baseline_squash_orch_0729.sql:7833).
-- The full `brands` row includes organiser/private-operational fields such as `account_id`, `contact_email`, `contact_phone`, `tax_settings`, `default_currency`, and Stripe status fields in [brandMapping.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/services/brandMapping.ts:27).
+- Latest public brand SELECT policy still requires at least one public event: [20260515000005_orch_0763d_event_lifecycle_repair.sql](/Users/sethogieva/Desktop/mingla-main/supabase/migrations/20260515000005_orch_0763d_event_lifecycle_repair.sql).
+- The baseline `brands_public_view` also intentionally exposed only brands with at least one public live event: [baseline_squash_orch_0729.sql](/Users/sethogieva/Desktop/mingla-main/supabase/migrations/20260505000000_baseline_squash_orch_0729.sql).
+- The full `brands` row includes organiser/private-operational fields such as `account_id`, `contact_email`, `contact_phone`, `tax_settings`, `default_currency`, and Stripe status fields in [brandMapping.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/services/brandMapping.ts).
 
 **Root cause:** Postgres RLS policies are row filters, not field-level public profiles. Widening anon SELECT on `brands` to all non-deleted brands would let public clients select columns that are not part of the public-brand contract unless table privileges/columns are also redesigned. The safer repair is a dedicated public read model or RPC exposing only approved public profile fields.
 
@@ -56,18 +56,18 @@ This matches the operator symptom: `Brand 3` exists in the organiser app, but it
 **Symptom:** Fixing only the Expo route would still leave crawler/social preview paths wrong for empty brands.
 
 **Evidence:**
-- [mingla-business/server/socialPreview.js](/Users/sethogieva/Desktop/mingla-main/mingla-business/server/socialPreview.js:155) `fetchPublicBrandBySlug` also queries `business_public_events_view`.
-- [mingla-business/api/public-brand.js](/Users/sethogieva/Desktop/mingla-main/mingla-business/api/public-brand.js:17) returns 404 when that lookup returns an empty row array.
-- [mingla-business/api/og-brand.js](/Users/sethogieva/Desktop/mingla-main/mingla-business/api/og-brand.js:13) passes an empty row array into the OG builder when no event rows exist, producing generic fallback behavior instead of brand identity.
+- [mingla-business/server/socialPreview.js](/Users/sethogieva/Desktop/mingla-main/mingla-business/server/socialPreview.js) `fetchPublicBrandBySlug` also queries `business_public_events_view`.
+- [mingla-business/api/public-brand.js](/Users/sethogieva/Desktop/mingla-main/mingla-business/api/public-brand.js) returns 404 when that lookup returns an empty row array.
+- [mingla-business/api/og-brand.js](/Users/sethogieva/Desktop/mingla-main/mingla-business/api/og-brand.js) passes an empty row array into the OG builder when no event rows exist, producing generic fallback behavior instead of brand identity.
 
 **Impact:** A real empty brand can render not-found or generic Mingla metadata to crawlers even if a client-side route later learns how to render the profile. That breaks the IG-bio/share surface the product originally promised.
 
 ### F4 — Likely Bug / Data-Fidelity Gap — Public brand mapper throws away current brand profile fields when events do exist
 
 **Evidence:**
-- [publicEventsService.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/services/publicEventsService.ts:159) maps brand identity from an event row.
-- The mapper hardcodes `kind: "popup"` and `address: null` at [publicEventsService.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/services/publicEventsService.ts:165).
-- Current `brands` rows contain persistent `kind`, `address`, `cover_hue`, `cover_media_url`, `cover_media_type`, and `profile_photo_type`: [brandMapping.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/services/brandMapping.ts:45), introduced by [20260506000000_brand_kind_address_cover_hue_media.sql](/Users/sethogieva/Desktop/mingla-main/supabase/migrations/20260506000000_brand_kind_address_cover_hue_media.sql:17).
+- [publicEventsService.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/services/publicEventsService.ts) maps brand identity from an event row.
+- The mapper hardcodes `kind: "popup"` and `address: null` at [publicEventsService.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/services/publicEventsService.ts).
+- Current `brands` rows contain persistent `kind`, `address`, `cover_hue`, `cover_media_url`, `cover_media_type`, and `profile_photo_type`: [brandMapping.ts](/Users/sethogieva/Desktop/mingla-main/mingla-business/src/services/brandMapping.ts), introduced by [20260506000000_brand_kind_address_cover_hue_media.sql](/Users/sethogieva/Desktop/mingla-main/supabase/migrations/20260506000000_brand_kind_address_cover_hue_media.sql).
 
 **Impact:** Public brand pages for populated brands can still render stale/default profile attributes because brand identity is a byproduct of the event read model. This is adjacent to the root cause and should be fixed by the same public brand profile read model.
 

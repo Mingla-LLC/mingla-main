@@ -399,25 +399,14 @@ export default function HomeTab(): React.ReactElement {
               <KpiTile
                 label="Last 7 days"
                 value={formatGbpRound(currentBrand.stats.rev)}
-                delta="+18%"
-                deltaUp
               />
             )}
 
-            <View style={styles.kpiGrid}>
-              <KpiTile
-                label="Active events"
-                value={eventSummary.counts.active}
-                sub={formatActiveEventsSub(eventSummary.counts)}
-                style={styles.kpiCell}
-              />
-              <KpiTile
-                label="Followers"
-                value={currentBrand.stats.followers.toLocaleString("en-GB")}
-                sub="audience"
-                style={styles.kpiCell}
-              />
-            </View>
+            <KpiTile
+              label="Active events"
+              value={eventSummary.counts.active}
+              sub={formatActiveEventsSub(eventSummary.counts)}
+            />
 
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Upcoming</Text>
@@ -699,15 +688,6 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     color: textTokens.tertiary,
     marginTop: 2,
-  },
-
-  // KPI grid ------------------------------------------------------------
-  kpiGrid: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  kpiCell: {
-    flex: 1,
   },
 
   // Section header ------------------------------------------------------

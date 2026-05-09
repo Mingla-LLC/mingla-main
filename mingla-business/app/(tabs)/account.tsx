@@ -46,6 +46,9 @@ interface ToastState {
   message: string;
 }
 
+const formatBrandEventCount = (count: number): string =>
+  `${count} ${count === 1 ? "event" : "events"}`;
+
 export default function AccountTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -185,9 +188,8 @@ export default function AccountTab(): React.ReactElement {
                     <Text style={styles.brandName} numberOfLines={1}>
                       {brand.displayName}
                     </Text>
-                    <Text style={styles.brandSub} numberOfLines={1}>
-                      {brand.stats.events} events ·{" "}
-                      {brand.stats.followers.toLocaleString("en-GB")} followers
+                    <Text style={styles.brandEventCount} numberOfLines={1}>
+                      {formatBrandEventCount(brand.stats.events)}
                     </Text>
                   </View>
                   <Icon name="chevR" size={16} color={textTokens.tertiary} />
@@ -420,10 +422,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: textTokens.primary,
   },
-  brandSub: {
+  brandEventCount: {
+    marginTop: 2,
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: 2,
+    fontWeight: typography.caption.fontWeight,
+    color: textTokens.secondary,
   },
 });

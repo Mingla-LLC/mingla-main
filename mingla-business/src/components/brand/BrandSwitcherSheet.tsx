@@ -217,11 +217,11 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                         <Text style={styles.brandName} numberOfLines={1}>
                           {brand.displayName}
                         </Text>
-                        <Text style={styles.brandSub} numberOfLines={1}>
-                          {brand.stats.events} events ·{" "}
-                          {brand.stats.followers.toLocaleString("en-GB")}{" "}
-                          followers
-                        </Text>
+                        {isActive ? (
+                          <Text style={styles.brandSub} numberOfLines={1}>
+                            Current brand
+                          </Text>
+                        ) : null}
                       </View>
                       {isActive ? (
                         <Icon name="check" size={18} color={accent.warm} />

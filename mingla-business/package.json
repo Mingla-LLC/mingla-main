@@ -20,7 +20,8 @@
     "test:orch-0756b": "npx jest serverDraftEventMapper.test serverDraftLifecycleGuards.test",
     "test:orch-0758a": "npx jest serverDraftEventMapper.test serverDraftLifecycleGuards.test eventCoverMediaService.test eventCoverMedia.test publishedEventEditGuards.test draftEventPristine.test",
     "test:orch-0759": "node ../.github/scripts/strict-grep/i-proposed-y-platform-web-url-from-env.mjs --self-test && node ../.github/scripts/strict-grep/i-proposed-y-platform-web-url-from-env.mjs && npx jest publicUrls.test eventDraftsPublishTickets.test serverDraftEventMapper.test serverDraftLifecycleGuards.test",
-    "test:orch-0763": "npx jest businessEventsPublish.test publicEventsService.test sharePublicUrl.test eventDraftsPublishTickets.test serverDraftEventMapper.test serverDraftLifecycleGuards.test serverDraftAutosaveGuards.test"
+    "test:orch-0763": "npx jest businessEventsPublish.test publicEventsService.test sharePublicUrl.test eventDraftsPublishTickets.test serverDraftEventMapper.test serverDraftLifecycleGuards.test serverDraftAutosaveGuards.test",
+    "test:orch-0768": "node ../.github/scripts/strict-grep/orch-0768-brand-audience-identity-honesty.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

@@ -12,18 +12,17 @@
  * Share button: always visible, opens ShareModal with brand URL.
  *
  * Honesty model (Constitution #9 + addendum §12):
- *   - Pop-up brands render `@slug` only (no separator, no faked location)
- *   - Physical brands render `@slug · {address}` only when address is
- *     non-empty. Physical-with-empty-address renders `@slug` only too.
+ *   - Pop-up brands do not render a route handle or faked location.
+ *   - Physical brands render public address/location text only when
+ *     address is non-empty.
  *   - "Verified host since YYYY" derived from brand owner's joinedAt;
  *     suppressed if no owner-member found.
  *   - No verified blue check, no rating, no Follow CTA, no Bell, no moreH
  *     — these were all designer features cut for Constitution #1 + #9
  *     compliance. See discoveries D-INV-CYCLE7-1..5.
  *
- * Stats card: rendered only when at least ONE stat has a non-zero value
- * (followers / events / attendees). Don't show "0 followers" — looks
- * worse than no card at all.
+ * Stats card: rendered only from public event rows. Private/stub audience
+ * totals are intentionally not public brand-page truth.
  *
  * Past tab: capped at 10 most recent, cancelled events filtered out.
  * Past event cards link to `/e/{brandSlug}/{eventSlug}` (Cycle 6's
@@ -144,11 +143,8 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // task once `creator_accounts.created_at` (or brand_team_members.invited_at
   // for the owner row) is wired through React Query.
   const verifiedHostSinceYear = useMemo<number | null>(() => null, []);
-
-  const showStatsCard = useMemo<boolean>(() => {
-    const s = brand.stats;
-    return s.followers > 0 || s.events > 0 || s.attendees > 0;
-  }, [brand.stats]);
+  const publicEventCount = events.length;
+  const showStatsCard = publicEventCount > 0;
 
   const handleClose = useCallback((): void => {
     // Cycle 7 FX3: route to founder brand profile, NOT all the way to
@@ -195,14 +191,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     [],
   );
 
-  // Brand identity card subline
+  // Brand identity card subline. Slug stays URL identity, not visible identity.
   const showLocation =
     brand.kind === "physical" &&
     brand.address !== null &&
     brand.address.trim().length > 0;
-  const handleSubline = showLocation
-    ? `@${brand.slug} · ${brand.address}`
-    : `@${brand.slug}`;
+  const identitySubline =
+    showLocation && brand.address !== null ? brand.address.trim() : null;
 
   return (
     <View style={styles.host}>
@@ -307,7 +302,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             style={styles.heroAvatarCentered}
           />
           <Text style={styles.brandNameCentered}>{brand.displayName}</Text>
-          <Text style={styles.handleLineCentered}>{handleSubline}</Text>
+          {identitySubline !== null ? (
+            <Text style={styles.handleLineCentered}>{identitySubline}</Text>
+          ) : null}
         </View>
 
         {/* Tagline / bio (lead) — centered */}
@@ -335,30 +332,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             style={styles.statsCard}
           >
             <View style={styles.statsRow}>
-              {brand.stats.followers > 0 ? (
-                <View style={styles.statCol}>
-                  <Text style={styles.statValue}>
-                    {formatStatNumber(brand.stats.followers)}
-                  </Text>
-                  <Text style={styles.statLabel}>FOLLOWERS</Text>
-                </View>
-              ) : null}
-              {brand.stats.events > 0 ? (
-                <View style={styles.statCol}>
-                  <Text style={styles.statValue}>
-                    {formatStatNumber(brand.stats.events)}
-                  </Text>
-                  <Text style={styles.statLabel}>EVENTS</Text>
-                </View>
-              ) : null}
-              {brand.stats.attendees > 0 ? (
-                <View style={styles.statCol}>
-                  <Text style={styles.statValue}>
-                    {formatStatNumber(brand.stats.attendees)}
-                  </Text>
-                  <Text style={styles.statLabel}>ATTENDEES</Text>
-                </View>
-              ) : null}
+              <View style={styles.statCol}>
+                <Text style={styles.statValue}>
+                  {formatStatNumber(publicEventCount)}
+                </Text>
+                <Text style={styles.statLabel}>EVENTS</Text>
+              </View>
             </View>
           </GlassCard>
         ) : null}
