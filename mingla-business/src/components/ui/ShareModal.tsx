@@ -101,6 +101,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     visible: boolean;
     message: string;
   }>({ visible: false, message: "" });
+  const [isCopying, setIsCopying] = React.useState<boolean>(false);
+  const [isSharing, setIsSharing] = React.useState<boolean>(false);
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -111,15 +113,21 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   }, []);
 
   const handleCopyLink = useCallback(async (): Promise<void> => {
+    if (isCopying) return;
+    setIsCopying(true);
     try {
       await copyPublicUrl(url);
       showToast("Link copied");
     } catch {
       showToast("Copy failed. Try Share via instead.");
+    } finally {
+      setIsCopying(false);
     }
-  }, [url, showToast]);
+  }, [isCopying, url, showToast]);
 
   const handleNativeShare = useCallback(async (): Promise<void> => {
+    if (isSharing) return;
+    setIsSharing(true);
     try {
       await sharePublicUrl({
         title,
@@ -130,8 +138,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       if (Platform.OS === "web") {
         showToast("Native share not supported on this browser.");
       }
+    } finally {
+      setIsSharing(false);
     }
-  }, [url, title, description, showToast]);
+  }, [isSharing, url, title, description, showToast]);
 
   const handleOpenLink = useCallback(async (): Promise<void> => {
     try {
@@ -192,6 +202,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             onPress={handleCopyLink}
             fullWidth
             leadingIcon="link"
+            loading={isCopying}
+            disabled={isSharing}
           />
         </View>
         <View style={styles.actionsRow}>
@@ -202,6 +214,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             onPress={handleNativeShare}
             fullWidth
             leadingIcon="share"
+            loading={isSharing}
+            disabled={isCopying}
           />
         </View>
 

@@ -12,15 +12,25 @@ const trimmedOrNull = (value: string | undefined): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-export const buildPublicShareText = ({
+export const buildPublicShareBody = ({
+  title,
+  description,
+}: Omit<SharePublicUrlInput, "url">): string => {
+  const body = trimmedOrNull(description) ?? trimmedOrNull(title);
+  return body ?? "";
+};
+
+export const buildAndroidPublicShareMessage = ({
   title,
   url,
   description,
 }: SharePublicUrlInput): string => {
-  const body = trimmedOrNull(description) ?? trimmedOrNull(title);
-  if (body === null) return url;
+  const body = buildPublicShareBody({ title, description });
+  if (body.length === 0) return url;
   return body.includes(url) ? body : `${body}\n${url}`;
 };
+
+export const buildPublicShareText = buildAndroidPublicShareMessage;
 
 const webNavigator = (): {
   clipboard?: { writeText?: (value: string) => Promise<void> };
@@ -57,26 +67,35 @@ export const sharePublicUrl = async ({
   url,
   description,
 }: SharePublicUrlInput): Promise<void> => {
-  const shareText = buildPublicShareText({ title, url, description });
+  const shareBody = buildPublicShareBody({ title, description });
   if (Platform.OS === "web") {
     const share = webNavigator()?.share;
     if (share === undefined) {
       throw new Error("native_share_unavailable");
     }
-    await share({
+    const data: { title: string; url: string; text?: string } = {
       title,
       url,
-      text: shareText,
+    };
+    if (shareBody.length > 0) {
+      data.text = shareBody;
+    }
+    await share(data);
+    return;
+  }
+
+  if (Platform.OS === "android") {
+    await Share.share({
+      title,
+      message: buildAndroidPublicShareMessage({ title, url, description }),
     });
     return;
   }
 
-  const message = [title, shareText]
-    .filter((part): part is string => typeof part === "string" && part.length > 0)
-    .join("\n");
+  const message = shareBody.length > 0 ? shareBody : trimmedOrNull(title);
   await Share.share({
     title,
-    message,
+    ...(message !== null ? { message } : {}),
     url,
   });
 };

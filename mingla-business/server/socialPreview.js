@@ -208,6 +208,84 @@ const formatDate = (value) => {
   }).format(parsed);
 };
 
+const eventLocationLabel = (row) =>
+  asText(row.location_text, row.is_online ? "Online" : "");
+
+const eventCoverUrl = (row) =>
+  isAbsoluteHttpUrl(row.cover_media_url) && row.cover_media_type !== "video"
+    ? row.cover_media_url
+    : null;
+
+const buildEventOgCardProps = (row) => ({
+  cardKind: "event",
+  title: row?.title || "Mingla event",
+  subtitle:
+    row?.description ||
+    (row?.brand_name ? `Hosted by ${row.brand_name}` : "Discover events on Mingla."),
+  kicker: row?.brand_name || "Mingla Business",
+  coverUrl: row !== null && row !== undefined ? eventCoverUrl(row) : null,
+  dateLabel: row !== null && row !== undefined ? formatDate(eventDate(row)) : "Date to be announced",
+  locationLabel: row !== null && row !== undefined ? eventLocationLabel(row) : "",
+});
+
+const parseEventDateValue = (row) => {
+  const date = eventDate(row);
+  if (date.length === 0) return null;
+  const time = new Date(`${date}T00:00:00.000Z`).getTime();
+  return Number.isNaN(time) ? null : time;
+};
+
+const chooseBrandFeatureEvent = (rows) => {
+  const dated = rows
+    .map((row) => ({ row, time: parseEventDateValue(row) }))
+    .filter((item) => item.time !== null && item.row.status !== "cancelled");
+  const active = dated.filter((item) => item.row.status !== "ended");
+  const today = new Date();
+  const todayUtc = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate(),
+  );
+  const upcoming = active.filter((item) => item.time >= todayUtc);
+  const candidates =
+    upcoming.length > 0 ? upcoming : active.length > 0 ? active : dated;
+  if (candidates.length === 0) return rows[0] ?? null;
+  return candidates.sort((a, b) => a.time - b.time)[0].row;
+};
+
+const buildBrandOgCardProps = (rows) => {
+  const brand = rows[0] ?? null;
+  const featureEvent = chooseBrandFeatureEvent(rows);
+  const eventCount = rows.length;
+  const eventCountLabel = `${eventCount} event${eventCount === 1 ? "" : "s"}`;
+  const featureDate =
+    featureEvent !== null ? formatDate(eventDate(featureEvent)) : "";
+  const nextEventLabel =
+    featureEvent !== null && asText(featureEvent.title).length > 0
+      ? `${truncate(featureEvent.title, 52)}${featureDate.length > 0 ? ` - ${featureDate}` : ""}`
+      : "";
+  const coverUrl =
+    brand !== null && isAbsoluteHttpUrl(brand.brand_profile_photo_url)
+      ? brand.brand_profile_photo_url
+      : featureEvent !== null
+        ? eventCoverUrl(featureEvent)
+        : null;
+
+  return {
+    cardKind: "brand",
+    title: brand?.brand_name || "Mingla Business",
+    subtitle:
+      brand?.brand_description ||
+      (brand
+        ? `Discover events from ${brand.brand_name} on Mingla.`
+        : "Create and share events on Mingla."),
+    kicker: brand?.brand_slug ? `@${brand.brand_slug}` : "Mingla Business",
+    coverUrl,
+    eventCountLabel,
+    nextEventLabel,
+  };
+};
+
 const pageShell = ({ title, description, canonicalUrl, imageUrl, type, body }) => `<!doctype html>
 <html lang="en">
 <head>
@@ -345,9 +423,22 @@ const renderNotFoundHtml = (title) =>
     body: `<section class="hero"><div><h1>${escapeHtml(title)}</h1><p>This Mingla page could not be found.</p></div></section>`,
   });
 
-const renderOgPng = async ({ title, subtitle, kicker, coverUrl }) => {
+const renderOgPng = async ({
+  title,
+  subtitle,
+  kicker,
+  coverUrl,
+  cardKind = "event",
+  dateLabel = "",
+  locationLabel = "",
+  eventCountLabel = "",
+  nextEventLabel = "",
+}) => {
   const { ImageResponse } = await import("@vercel/og");
   const cover = isAbsoluteHttpUrl(coverUrl) ? coverUrl : null;
+  const isBrand = cardKind === "brand";
+  const primaryChip = isBrand ? eventCountLabel : dateLabel;
+  const secondaryChip = isBrand ? nextEventLabel : locationLabel;
   const response = new ImageResponse(
     React.createElement(
       "div",
@@ -357,8 +448,8 @@ const renderOgPng = async ({ title, subtitle, kicker, coverUrl }) => {
           height: "630px",
           display: "flex",
           position: "relative",
-          background: "#050505",
-          color: "#fff7ef",
+          background: "linear-gradient(135deg, #fff7ef 0%, #f8dfc7 48%, #f47c20 100%)",
+          color: "#16110d",
           fontFamily: "Inter, Arial, sans-serif",
           overflow: "hidden",
         },
@@ -368,8 +459,9 @@ const renderOgPng = async ({ title, subtitle, kicker, coverUrl }) => {
             src: cover,
             style: {
               position: "absolute",
-              inset: 0,
-              width: "1200px",
+              right: 0,
+              top: 0,
+              width: "510px",
               height: "630px",
               objectFit: "cover",
             },
@@ -380,8 +472,19 @@ const renderOgPng = async ({ title, subtitle, kicker, coverUrl }) => {
           position: "absolute",
           inset: 0,
           background: cover
-            ? "linear-gradient(90deg, rgba(5,5,5,.94) 0%, rgba(5,5,5,.72) 58%, rgba(235,120,37,.9) 100%)"
-            : "linear-gradient(135deg, #050505 0%, #1b120c 58%, #eb7825 100%)",
+            ? "linear-gradient(90deg, rgba(255,247,239,.98) 0%, rgba(255,247,239,.94) 54%, rgba(244,124,32,.30) 78%, rgba(22,17,13,.28) 100%)"
+            : "radial-gradient(circle at 88% 22%, rgba(255,255,255,.40) 0%, rgba(255,255,255,0) 26%), linear-gradient(135deg, #fff7ef 0%, #f8dfc7 55%, #f47c20 100%)",
+        },
+      }),
+      React.createElement("div", {
+        style: {
+          position: "absolute",
+          right: "-160px",
+          bottom: "-210px",
+          width: "520px",
+          height: "520px",
+          borderRadius: "260px",
+          background: "rgba(22,17,13,.11)",
         },
       }),
       React.createElement(
@@ -390,17 +493,17 @@ const renderOgPng = async ({ title, subtitle, kicker, coverUrl }) => {
           style: {
             display: "flex",
             flexDirection: "column",
-            gap: "22px",
-            padding: "66px 64px",
-            width: "770px",
+            gap: "20px",
+            padding: "58px 64px",
+            width: "760px",
           },
         },
         React.createElement(
           "div",
           {
             style: {
-              color: "#f47c20",
-              fontSize: "32px",
+              color: "#9a430d",
+              fontSize: "30px",
               fontWeight: 800,
               letterSpacing: "1px",
             },
@@ -411,10 +514,54 @@ const renderOgPng = async ({ title, subtitle, kicker, coverUrl }) => {
           "div",
           {
             style: {
-              fontSize: "72px",
+              display: "flex",
+              gap: "14px",
+              flexWrap: "wrap",
+            },
+          },
+          primaryChip
+            ? React.createElement(
+                "div",
+                {
+                  style: {
+                    padding: "12px 18px",
+                    borderRadius: "999px",
+                    background: "#16110d",
+                    color: "#fff7ef",
+                    fontSize: "26px",
+                    fontWeight: 900,
+                  },
+                },
+                truncate(primaryChip, 46),
+              )
+            : null,
+          secondaryChip
+            ? React.createElement(
+                "div",
+                {
+                  style: {
+                    padding: "12px 18px",
+                    borderRadius: "999px",
+                    background: "rgba(244,124,32,.18)",
+                    color: "#5e2609",
+                    fontSize: "24px",
+                    fontWeight: 800,
+                    maxWidth: "610px",
+                  },
+                },
+                truncate(secondaryChip, 70),
+              )
+            : null,
+        ),
+        React.createElement(
+          "div",
+          {
+            style: {
+              fontSize: isBrand ? "78px" : "72px",
               lineHeight: 0.96,
               fontWeight: 900,
-              letterSpacing: "-1px",
+              letterSpacing: "0",
+              maxWidth: "720px",
             },
           },
           truncate(title, 62),
@@ -423,10 +570,11 @@ const renderOgPng = async ({ title, subtitle, kicker, coverUrl }) => {
           "div",
           {
             style: {
-              color: "#ead7c7",
-              fontSize: "34px",
+              color: "#4a2b19",
+              fontSize: "32px",
               lineHeight: 1.25,
-              fontWeight: 500,
+              fontWeight: 600,
+              maxWidth: "650px",
             },
           },
           truncate(subtitle, 118),
@@ -437,22 +585,24 @@ const renderOgPng = async ({ title, subtitle, kicker, coverUrl }) => {
         {
           style: {
             position: "absolute",
-            right: "54px",
-            top: "110px",
-            width: "300px",
-            height: "300px",
-            borderRadius: "48px",
-            background: "rgba(0,0,0,.64)",
+            right: "58px",
+            top: "82px",
+            width: "292px",
+            height: "292px",
+            borderRadius: "44px",
+            background: "#fffaf3",
+            boxShadow: "0 24px 70px rgba(22,17,13,.22)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            border: "2px solid rgba(244,124,32,.24)",
           },
         },
         React.createElement("img", {
           src: logoImageSource(),
           style: {
-            width: "250px",
-            height: "250px",
+            width: "232px",
+            height: "232px",
             objectFit: "contain",
           },
         }),
@@ -463,9 +613,9 @@ const renderOgPng = async ({ title, subtitle, kicker, coverUrl }) => {
           style: {
             position: "absolute",
             right: "72px",
-            bottom: "64px",
-            color: "#090909",
-            fontSize: "30px",
+            bottom: "58px",
+            color: "#5e2609",
+            fontSize: "28px",
             fontWeight: 900,
           },
         },
@@ -492,6 +642,8 @@ module.exports = {
   brandDescription,
   brandImageUrl,
   brandPublicUrl,
+  buildBrandOgCardProps,
+  buildEventOgCardProps,
   escapeHtml,
   eventDescription,
   eventImageUrl,

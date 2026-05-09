@@ -23,12 +23,21 @@ jest.mock("expo-clipboard", () => ({
 }));
 
 // eslint-disable-next-line import/first
-import { buildPublicShareText, copyPublicUrl, sharePublicUrl } from "../sharePublicUrl";
+import {
+  buildAndroidPublicShareMessage,
+  buildPublicShareBody,
+  buildPublicShareText,
+  copyPublicUrl,
+  sharePublicUrl,
+} from "../sharePublicUrl";
 
 const repoFile = (relativePath: string): string =>
   readFileSync(path.join(process.cwd(), relativePath), "utf8");
 
 const canonicalUrl = "https://business.usemingla.com/e/test-stripe/great-free-event";
+
+const countOccurrences = (source: string, needle: string): number =>
+  source.split(needle).length - 1;
 
 const setNavigator = (value: unknown): void => {
   Object.defineProperty(globalThis, "navigator", {
@@ -64,7 +73,7 @@ describe("sharePublicUrl helpers", () => {
     expect(writeText).toHaveBeenCalledWith(canonicalUrl);
   });
 
-  test("native share payload carries the SEO public URL, never an Expo/current route URL", async () => {
+  test("iOS native share payload carries the SEO public URL exactly once", async () => {
     await sharePublicUrl({
       title: "Great Free Event",
       url: canonicalUrl,
@@ -75,16 +84,39 @@ describe("sharePublicUrl helpers", () => {
       expect.objectContaining({
         title: "Great Free Event",
         url: canonicalUrl,
-        message: expect.stringContaining(canonicalUrl),
+        message: "A free Mingla QA event.",
       }),
     );
-    expect(JSON.stringify(mockShare.mock.calls)).not.toContain("exp://");
-    expect(JSON.stringify(mockShare.mock.calls)).not.toContain("localhost");
-    expect(JSON.stringify(mockShare.mock.calls)).not.toContain("https://mingla.com/e");
-    expect(JSON.stringify(mockShare.mock.calls)).not.toContain("business.mingla.com");
+    const payload = JSON.stringify(mockShare.mock.calls);
+    expect(countOccurrences(payload, canonicalUrl)).toBe(1);
+    expect(payload).not.toContain("exp://");
+    expect(payload).not.toContain("localhost");
+    expect(payload).not.toContain("https://mingla.com/e");
+    expect(payload).not.toContain("business.mingla.com");
   });
 
-  test("web share payload carries the SEO public URL in url and text", async () => {
+  test("android native share payload includes the SEO public URL once in message", async () => {
+    mockPlatformOS = "android";
+
+    await sharePublicUrl({
+      title: "Great Free Event",
+      url: canonicalUrl,
+      description: "A free Mingla QA event.",
+    });
+
+    expect(mockShare).toHaveBeenCalledWith({
+      title: "Great Free Event",
+      message: `A free Mingla QA event.\n${canonicalUrl}`,
+    });
+    const payload = JSON.stringify(mockShare.mock.calls);
+    expect(countOccurrences(payload, canonicalUrl)).toBe(1);
+    expect(payload).not.toContain("exp://");
+    expect(payload).not.toContain("localhost");
+    expect(payload).not.toContain("https://mingla.com/e");
+    expect(payload).not.toContain("business.mingla.com");
+  });
+
+  test("web share payload carries the SEO public URL exactly once", async () => {
     const webShare = jest.fn<(...args: unknown[]) => Promise<void>>();
     webShare.mockResolvedValue(undefined);
     mockPlatformOS = "web";
@@ -100,18 +132,33 @@ describe("sharePublicUrl helpers", () => {
       expect.objectContaining({
         title: "Great Free Event",
         url: canonicalUrl,
-        text: expect.stringContaining(canonicalUrl),
+        text: "A free Mingla QA event.",
       }),
     );
-    expect(JSON.stringify(webShare.mock.calls)).not.toContain("exp://");
-    expect(JSON.stringify(webShare.mock.calls)).not.toContain("localhost");
-    expect(JSON.stringify(webShare.mock.calls)).not.toContain("https://mingla.com/e");
-    expect(JSON.stringify(webShare.mock.calls)).not.toContain("business.mingla.com");
+    const payload = JSON.stringify(webShare.mock.calls);
+    expect(countOccurrences(payload, canonicalUrl)).toBe(1);
+    expect(payload).not.toContain("exp://");
+    expect(payload).not.toContain("localhost");
+    expect(payload).not.toContain("https://mingla.com/e");
+    expect(payload).not.toContain("business.mingla.com");
   });
 
-  test("share text includes the URL once and falls back to title without description", () => {
+  test("share body excludes the URL while android share text includes it once", () => {
     expect(
-      buildPublicShareText({
+      buildPublicShareBody({
+        title: "Great Free Event",
+        description: "A free Mingla QA event.",
+      }),
+    ).toBe("A free Mingla QA event.");
+
+    expect(
+      buildPublicShareBody({
+        title: "Great Free Event",
+      }),
+    ).toBe("Great Free Event");
+
+    expect(
+      buildAndroidPublicShareMessage({
         title: "Great Free Event",
         url: canonicalUrl,
         description: "A free Mingla QA event.",
@@ -119,24 +166,42 @@ describe("sharePublicUrl helpers", () => {
     ).toBe(`A free Mingla QA event.\n${canonicalUrl}`);
 
     expect(
-      buildPublicShareText({
+      buildAndroidPublicShareMessage({
         title: "Great Free Event",
         url: canonicalUrl,
       }),
     ).toBe(`Great Free Event\n${canonicalUrl}`);
 
     expect(
-      buildPublicShareText({
+      buildAndroidPublicShareMessage({
         title: "Great Free Event",
         url: canonicalUrl,
         description: `Already includes ${canonicalUrl}`,
       }),
     ).toBe(`Already includes ${canonicalUrl}`);
+
+    expect(
+      buildPublicShareText({
+        title: "Great Free Event",
+        url: canonicalUrl,
+        description: "A free Mingla QA event.",
+      }),
+    ).toBe(`A free Mingla QA event.\n${canonicalUrl}`);
   });
 
-  test("ShareModal only shows copy success after resolved copy and has a failure toast", () => {
+  test("ShareModal guards copy/share with pending state and preserves copy toasts", () => {
     const source = repoFile("src/components/ui/ShareModal.tsx");
 
+    expect(source).toContain("const [isCopying, setIsCopying]");
+    expect(source).toContain("const [isSharing, setIsSharing]");
+    expect(source).toContain("if (isCopying) return;");
+    expect(source).toContain("if (isSharing) return;");
+    expect(source).toContain("setIsCopying(true);");
+    expect(source).toContain("setIsSharing(true);");
+    expect(source).toContain("setIsCopying(false);");
+    expect(source).toContain("setIsSharing(false);");
+    expect(source).toContain("loading={isCopying}");
+    expect(source).toContain("loading={isSharing}");
     expect(source).toContain("await copyPublicUrl(url);");
     expect(source).toContain('showToast("Link copied")');
     expect(source).toContain("Copy failed");

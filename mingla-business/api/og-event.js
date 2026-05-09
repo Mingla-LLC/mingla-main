@@ -1,4 +1,5 @@
 const {
+  buildEventOgCardProps,
   fetchPublicEventById,
   firstQueryValue,
   renderOgPng,
@@ -11,24 +12,17 @@ module.exports = async function eventOgHandler(req, res) {
   try {
     const event =
       typeof eventId === "string" ? await fetchPublicEventById(eventId) : null;
-    const buffer = await renderOgPng({
-      title: event?.title || "Mingla event",
-      subtitle:
-        event?.description ||
-        (event?.brand_name
-          ? `Hosted by ${event.brand_name}`
-          : "Discover events on Mingla."),
-      kicker: event?.brand_name || "Mingla Business",
-      coverUrl:
-        event?.cover_media_type === "video" ? null : event?.cover_media_url || null,
-    });
+    const buffer = await renderOgPng(buildEventOgCardProps(event));
     sendPng(res, buffer);
   } catch {
     const buffer = await renderOgPng({
+      cardKind: "event",
       title: "Mingla event",
       subtitle: "Discover events on Mingla.",
       kicker: "Mingla Business",
       coverUrl: null,
+      dateLabel: "Date to be announced",
+      locationLabel: "",
     });
     sendPng(res, buffer);
   }

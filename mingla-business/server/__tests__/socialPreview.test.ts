@@ -5,6 +5,8 @@ declare const require: <T = unknown>(path: string) => T;
 const {
   brandImageUrl,
   brandPublicUrl,
+  buildBrandOgCardProps,
+  buildEventOgCardProps,
   eventImageUrl,
   eventPublicUrl,
   renderBrandHtml,
@@ -12,6 +14,8 @@ const {
 } = require("../socialPreview") as {
   brandImageUrl: (row: Record<string, unknown>) => string;
   brandPublicUrl: (row: Record<string, unknown>) => string;
+  buildBrandOgCardProps: (rows: Record<string, unknown>[]) => Record<string, string | null>;
+  buildEventOgCardProps: (row: Record<string, unknown> | null) => Record<string, string | null>;
   eventImageUrl: (row: Record<string, unknown>) => string;
   eventPublicUrl: (row: Record<string, unknown>) => string;
   renderBrandHtml: (rows: Record<string, unknown>[]) => string;
@@ -53,6 +57,7 @@ describe("social preview metadata renderers", () => {
     expect(html).toContain('property="og:url" content="https://business.usemingla.com/e/test-stripe/great-free-event"');
     expect(html).toContain('property="og:image" content="https://business.usemingla.com/og/event/event-1.png"');
     expect(html).toContain('name="twitter:image" content="https://business.usemingla.com/og/event/event-1.png"');
+    expect(html).toContain("<span class=\"pill\">May 8, 2026</span>");
     expect(html).not.toContain("business.mingla.com");
     expect(html).not.toContain("https://mingla.com/e");
     expect(html).not.toContain("exp://");
@@ -71,5 +76,45 @@ describe("social preview metadata renderers", () => {
     expect(html).not.toContain("business.mingla.com");
     expect(html).not.toContain("https://mingla.com");
     expect(html).not.toContain("localhost");
+  });
+
+  test("builds event OG card props with event date and location", () => {
+    expect(buildEventOgCardProps(row)).toEqual(
+      expect.objectContaining({
+        cardKind: "event",
+        title: "Great Free Event",
+        kicker: "Test Stripe",
+        dateLabel: "May 8, 2026",
+        locationLabel: "The Good Room",
+        coverUrl: null,
+      }),
+    );
+  });
+
+  test("builds brand OG card props with handle, event count, and next event cue", () => {
+    const nextRow = {
+      ...row,
+      id: "event-2",
+      title: "Summer Rooftop",
+      slug: "summer-rooftop",
+      cover_media_url: "https://cdn.example.com/cover.png",
+      cover_media_type: "image",
+      public_theme: {
+        business_event: {
+          when: { date: "2026-06-12" },
+        },
+      },
+    };
+
+    expect(buildBrandOgCardProps([nextRow, row])).toEqual(
+      expect.objectContaining({
+        cardKind: "brand",
+        title: "Test Stripe",
+        kicker: "@test-stripe",
+        eventCountLabel: "2 events",
+        nextEventLabel: "Summer Rooftop - Jun 12, 2026",
+        coverUrl: "https://cdn.example.com/cover.png",
+      }),
+    );
   });
 });
