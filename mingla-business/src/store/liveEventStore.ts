@@ -158,6 +158,8 @@ export interface LiveEvent {
   coverHue: number;
   coverMediaUrl: string | null;
   coverMediaType: EventCoverMediaType | null;
+  /** ISO 4217 immutable commerce currency for this published event. */
+  currency?: string;
   tickets: TicketStub[];
   visibility: DraftEventVisibility;
   requireApproval: boolean;

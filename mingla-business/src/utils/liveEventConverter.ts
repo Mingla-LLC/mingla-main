@@ -105,6 +105,7 @@ export const convertDraftToLiveEvent = (
     coverHue: draft.coverHue,
     coverMediaUrl: draft.coverMediaUrl,
     coverMediaType: draft.coverMediaType,
+    currency: draft.currency ?? brand.defaultCurrency ?? "GBP",
     tickets: draft.tickets,
     visibility: draft.visibility,
     requireApproval: draft.requireApproval,

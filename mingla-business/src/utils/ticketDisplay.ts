@@ -14,7 +14,7 @@
  */
 
 import type { TicketStub } from "../store/draftEventStore";
-import { formatGbpRound, formatCount } from "./currency";
+import { formatCurrencyRound, formatCount } from "./currency";
 
 export interface TicketBadge {
   label: string;
@@ -33,7 +33,11 @@ export const formatTicketSubline = (t: TicketStub): string => {
 
   // Price (always first)
   parts.push(
-    t.isFree ? "Free" : t.priceGbp !== null ? formatGbpRound(t.priceGbp) : "—",
+    t.isFree
+      ? "Free"
+      : t.priceGbp !== null
+        ? formatCurrencyRound(t.priceGbp, t.currency ?? "GBP")
+        : "—",
   );
 
   // Max purchase qty — only show when meaningful (cap < 10)

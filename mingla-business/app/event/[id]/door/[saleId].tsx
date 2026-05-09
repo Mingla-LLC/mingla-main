@@ -33,7 +33,7 @@ import {
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
-import { formatGbp } from "../../../../src/utils/currency";
+import { formatCurrency } from "../../../../src/utils/currency";
 import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
 
@@ -154,7 +154,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
       const refundedAmount =
         updated.refunds[updated.refunds.length - 1]?.amountGbp ?? 0;
       showToast(
-        `Refunded ${formatGbp(refundedAmount)}. Buyer stays checked in.`,
+        `Refunded ${formatCurrency(refundedAmount, updated.currency)}. Buyer stays checked in.`,
       );
     },
     [showToast],
@@ -299,7 +299,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
                     <Text style={styles.ticketSub}>
                       {t.isFreeAtSale
                         ? "Free"
-                        : formatGbp(t.unitPriceGbpAtSale)}{" "}
+                        : formatCurrency(t.unitPriceGbpAtSale, sale.currency)}{" "}
                       · #{idx + 1}
                     </Text>
                   </View>
@@ -324,14 +324,14 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Total</Text>
             <Text style={styles.summaryValue}>
-              {formatGbp(sale.totalGbpAtSale)}
+              {formatCurrency(sale.totalGbpAtSale, sale.currency)}
             </Text>
           </View>
           {sale.refundedAmountGbp > 0 ? (
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Refunded</Text>
               <Text style={styles.summaryValueWarn}>
-                −{formatGbp(sale.refundedAmountGbp)}
+                −{formatCurrency(sale.refundedAmountGbp, sale.currency)}
               </Text>
             </View>
           ) : null}
@@ -339,7 +339,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabelStrong}>Net</Text>
             <Text style={styles.summaryValueStrong}>
-              {formatGbp(sale.totalGbpAtSale - sale.refundedAmountGbp)}
+              {formatCurrency(sale.totalGbpAtSale - sale.refundedAmountGbp, sale.currency)}
             </Text>
           </View>
         </GlassCard>
@@ -396,7 +396,7 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
                 <View key={r.id} style={styles.refundRow}>
                   <View style={styles.refundCol}>
                     <Text style={styles.refundAmount}>
-                      −{formatGbp(r.amountGbp)}
+                      −{formatCurrency(r.amountGbp, sale.currency)}
                     </Text>
                     <Text style={styles.refundTime}>
                       {formatRelativeTime(r.refundedAt)}

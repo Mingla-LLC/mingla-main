@@ -48,7 +48,7 @@ import {
   deriveChannelFlags,
   notifyEventChanged,
 } from "../../services/eventChangeNotifier";
-import { formatGbp } from "../../utils/currency";
+import { formatCurrency } from "../../utils/currency";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -181,6 +181,8 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
               quantity: l.quantity - l.refundedQuantity,
               amountGbp:
                 (l.quantity - l.refundedQuantity) * l.unitPriceGbpAtPurchase,
+              amount:
+                (l.quantity - l.refundedQuantity) * l.unitPriceGbpAtPurchase,
             }))
         : partialLines
             .filter((p) => p.selectedQty > 0)
@@ -193,6 +195,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
                 ticketTypeId: p.ticketTypeId,
                 quantity: p.selectedQty,
                 amountGbp: p.selectedQty * unitPrice,
+                amount: p.selectedQty * unitPrice,
               };
             });
 
@@ -200,6 +203,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
     const result = recordRefund(order.id, {
       orderId: order.id,
       amountGbp: refundAmount,
+      amount: refundAmount,
       reason: trimmedReason,
       lines,
     });
@@ -282,7 +286,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
   const title =
     mode === "full"
-      ? `Refund ${formatGbp(refundAmount)}?`
+      ? `Refund ${formatCurrency(refundAmount, order.currency)}?`
       : `Refund partial`;
 
   return (
@@ -306,7 +310,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Refund total</Text>
                 <Text style={styles.summaryValueBold}>
-                  {formatGbp(refundAmount)}
+                  {formatCurrency(refundAmount, order.currency)}
                 </Text>
               </View>
             </View>
@@ -328,7 +332,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
                         {line.ticketNameAtPurchase}
                       </Text>
                       <Text style={styles.lineSubline}>
-                        {maxRefundable} remaining · {formatGbp(line.unitPriceGbpAtPurchase)} each
+                        {maxRefundable} remaining · {formatCurrency(line.unitPriceGbpAtPurchase, order.currency)} each
                       </Text>
                     </View>
                     <View style={styles.stepper}>
@@ -381,7 +385,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Refund total</Text>
                 <Text style={styles.summaryValueBold}>
-                  {formatGbp(partialTotalGbp)}
+                  {formatCurrency(partialTotalGbp, order.currency)}
                 </Text>
               </View>
             </View>
@@ -445,7 +449,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
             label={
               mode === "full"
                 ? "Send refund"
-                : `Refund ${formatGbp(refundAmount)}`
+                : `Refund ${formatCurrency(refundAmount, order.currency)}`
             }
             onPress={handleConfirm}
             variant="destructive"

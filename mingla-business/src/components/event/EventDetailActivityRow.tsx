@@ -24,7 +24,7 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import type { EditSeverity } from "../../store/eventEditLogStore";
-import { formatGbp } from "../../utils/currency";
+import { formatCurrency } from "../../utils/currency";
 import { Icon, type IconName } from "../ui/Icon";
 
 // ----- Activity feed types (Cycle 9c rework v3 + Cycle 9c-2 ext) ---
@@ -36,6 +36,7 @@ export type ActivityEvent =
       buyerName: string;
       summary: string;
       amountGbp: number;
+      currency?: string;
       at: string;
     }
   | {
@@ -44,6 +45,7 @@ export type ActivityEvent =
       buyerName: string;
       summary: string;
       amountGbp: number;
+      currency?: string;
       at: string;
     }
   | {
@@ -97,6 +99,7 @@ export type ActivityEvent =
       buyerName: string; // sale.buyerName or "Walk-up"
       summary: string; // "{buyer} — refunded £X (door)"
       amountGbp: number;
+      currency?: string;
       at: string; // refund.refundedAt ISO
     };
 
@@ -260,14 +263,14 @@ const EventDetailActivityRowInner: React.FC<EventDetailActivityRowProps> = ({
     amountLabel =
       a.amountGbp === 0
         ? "Free"
-        : `${spec.amountSign ?? ""}${formatGbp(a.amountGbp)}`;
+        : `${spec.amountSign ?? ""}${formatCurrency(a.amountGbp, a.currency ?? "GBP")}`;
   } else if (a.kind === "refund") {
-    amountLabel = `${spec.amountSign ?? ""}${formatGbp(a.amountGbp)}`;
+    amountLabel = `${spec.amountSign ?? ""}${formatCurrency(a.amountGbp, a.currency ?? "GBP")}`;
   } else if (a.kind === "event_door_refund") {
     // Cycle 12 — door refund renders amount the same as online refund
     // (warm color + minus sign) so the operator's eye sweep across the
     // feed sees "money out" consistently regardless of channel.
-    amountLabel = `${spec.amountSign ?? ""}${formatGbp(a.amountGbp)}`;
+    amountLabel = `${spec.amountSign ?? ""}${formatCurrency(a.amountGbp, a.currency ?? "GBP")}`;
   }
 
   // Row shape branches by stream:

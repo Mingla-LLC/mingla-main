@@ -44,6 +44,7 @@ import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Spinner } from "../ui/Spinner";
+import { formatCurrency } from "../../utils/currency";
 
 export type PaymentMethodId = "card" | "apple_pay" | "google_pay";
 export type PaymentResult = "ok" | "requiresAction" | "declined";
@@ -53,8 +54,9 @@ export interface PaymentElementStubProps {
   onPay: (method: PaymentMethodId, result: PaymentResult) => void;
   /** Set true while parent screen is processing — disables tabs + buttons. */
   processing: boolean;
-  /** GBP whole-units total — rendered into the Apple/Google Pay button label. */
-  totalGbp: number;
+  /** Major-unit total rendered into wallet button labels. */
+  total: number;
+  currency: string;
 }
 
 // Web platform sniffing — mirrors Cycle 6's pattern. On web, the
@@ -81,17 +83,11 @@ interface MethodTab {
   icon: IconName;
 }
 
-const formatGbpInline = (n: number): string =>
-  new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-    maximumFractionDigits: 2,
-  }).format(n);
-
 export const PaymentElementStub: React.FC<PaymentElementStubProps> = ({
   onPay,
   processing,
-  totalGbp,
+  total,
+  currency,
 }) => {
   const [activeTab, setActiveTab] = useState<PaymentMethodId>("card");
   const [cardNumber, setCardNumber] = useState<string>("");
@@ -218,7 +214,7 @@ export const PaymentElementStub: React.FC<PaymentElementStubProps> = ({
             onPress={() => handlePay("apple_pay")}
             disabled={processing}
             accessibilityRole="button"
-            accessibilityLabel={`Pay with Apple Pay, ${formatGbpInline(totalGbp)}`}
+            accessibilityLabel={`Pay with Apple Pay, ${formatCurrency(total, currency)}`}
             style={({ pressed }) => [
               styles.platformPayBtn,
               styles.platformPayBtnApple,
@@ -232,7 +228,7 @@ export const PaymentElementStub: React.FC<PaymentElementStubProps> = ({
               <>
                 <Icon name="apple" size={20} color="#ffffff" />
                 <Text style={styles.platformPayLabel}>
-                  Pay {formatGbpInline(totalGbp)}
+                  Pay {formatCurrency(total, currency)}
                 </Text>
               </>
             )}
@@ -247,7 +243,7 @@ export const PaymentElementStub: React.FC<PaymentElementStubProps> = ({
             onPress={() => handlePay("google_pay")}
             disabled={processing}
             accessibilityRole="button"
-            accessibilityLabel={`Pay with Google Pay, ${formatGbpInline(totalGbp)}`}
+            accessibilityLabel={`Pay with Google Pay, ${formatCurrency(total, currency)}`}
             style={({ pressed }) => [
               styles.platformPayBtn,
               styles.platformPayBtnGoogle,
@@ -261,7 +257,7 @@ export const PaymentElementStub: React.FC<PaymentElementStubProps> = ({
               <>
                 <Icon name="google" size={20} color="#ffffff" />
                 <Text style={styles.platformPayLabel}>
-                  Pay {formatGbpInline(totalGbp)}
+                  Pay {formatCurrency(total, currency)}
                 </Text>
               </>
             )}

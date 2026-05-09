@@ -31,7 +31,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { Brand, BrandStripeStatus } from "../../store/currentBrandStore";
-import { formatGbpRound, formatCount } from "../../utils/currency";
+import { formatCurrencyRound, formatCount } from "../../utils/currency";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../utils/permissionGates";
 import {
@@ -475,7 +475,12 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         <View style={styles.statsRow}>
           <KpiTile label="Events" value={brand.stats.events} sub="all time" style={styles.statCell} />
           <KpiTile label="Attendees" value={formatCount(brand.stats.attendees)} sub="all time" style={styles.statCell} />
-          <KpiTile label="GMV" value={formatGbpRound(brand.stats.rev)} sub="all time" style={styles.statCell} />
+          <KpiTile
+            label="GMV"
+            value={formatCurrencyRound(brand.stats.rev, brand.defaultCurrency ?? "GBP")}
+            sub="all time"
+            style={styles.statCell}
+          />
         </View>
 
         {/* SECTION C — Status-driven Stripe banner. Suppressed entirely

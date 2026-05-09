@@ -68,7 +68,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
-import { formatGbpRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 
 import { Avatar } from "../ui/Avatar";
@@ -660,8 +660,8 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
       .filter((p) => p > 0)
       .sort((a, b) => a - b);
     if (prices.length === 0) return null;
-    return `From ${formatGbpRound(prices[0])}`;
-  }, [event.tickets]);
+    return `From ${formatCurrencyRound(prices[0], event.currency ?? "GBP")}`;
+  }, [event.currency, event.tickets]);
 
   return (
     <Pressable

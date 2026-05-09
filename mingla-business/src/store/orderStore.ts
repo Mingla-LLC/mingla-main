@@ -41,6 +41,11 @@ import {
 } from "zustand/middleware";
 
 import type { CheckoutPaymentMethod } from "../components/checkout/CartContext";
+import {
+  orderLiveAmount,
+  summarizeEventMoney,
+  type EventMoneySummary,
+} from "../utils/moneySummary";
 
 // Cycle 9c rework v2 — orderStore is PURE DATA. Notification + edit-log
 // side effects fired by callers (RefundSheet + CancelOrderDialog) to break
@@ -61,6 +66,8 @@ export interface OrderLineRecord {
   ticketNameAtPurchase: string;
   /** FROZEN at purchase. NEVER mutated. */
   unitPriceGbpAtPurchase: number;
+  /** Currency-neutral alias for new ORCH-0769 records. */
+  unitPriceAtPurchase?: number;
   /** FROZEN at purchase. NEVER mutated. */
   isFreeAtPurchase: boolean;
   /** FROZEN at purchase. NEVER mutated. */
@@ -69,6 +76,8 @@ export interface OrderLineRecord {
   refundedQuantity: number;
   /** Mutable post-refund. Sum of refunds applied to this line. */
   refundedAmountGbp: number;
+  /** Currency-neutral alias for new ORCH-0769 records. */
+  refundedAmount?: number;
 }
 
 export interface BuyerSnapshot {
@@ -85,11 +94,13 @@ export interface RefundRecord {
   id: string;
   orderId: string;
   amountGbp: number;
+  /** Currency-neutral alias for new ORCH-0769 records. */
+  amount?: number;
   /** REQUIRED 10..200 chars trimmed (spec §3.1.1 D-9c-9). */
   reason: string;
   refundedAt: string;
   /** For partial refunds: which lines + quantities. Full refund = all lines. */
-  lines: { ticketTypeId: string; quantity: number; amountGbp: number }[];
+  lines: { ticketTypeId: string; quantity: number; amountGbp: number; amount?: number }[];
 }
 
 export interface OrderRecord {
@@ -102,14 +113,18 @@ export interface OrderRecord {
   buyer: BuyerSnapshot;
   lines: OrderLineRecord[];
   totalGbpAtPurchase: number;
+  /** Currency-neutral alias for new ORCH-0769 records. */
+  totalAtPurchase?: number;
   /** Locked per Const #10. */
-  currency: "GBP";
+  currency: string;
   paymentMethod: CheckoutPaymentMethod;
   paidAt: string;
   // Mutable lifecycle
   status: OrderStatus;
   /** Sum across all refunds (denormalized cache). */
   refundedAmountGbp: number;
+  /** Currency-neutral alias for new ORCH-0769 records. */
+  refundedAmount?: number;
   /** Append-only audit log. */
   refunds: RefundRecord[];
   cancelledAt: string | null;
@@ -165,6 +180,10 @@ export interface OrderStoreState {
    * refunded_partial orders for the event.
    */
   getRevenueForEvent: (eventId: string) => number;
+  getRevenueSummaryForEvent: (
+    eventId: string,
+    expectedCurrency?: string | null,
+  ) => EventMoneySummary;
 }
 
 // ---- ID generator ---------------------------------------------------
@@ -211,6 +230,11 @@ export const useOrderStore = create<OrderStoreState>()(
         const id = generateRefundId();
         const refundedAt = new Date().toISOString();
         const fullRefund: RefundRecord = { ...refund, id, refundedAt };
+        fullRefund.amount = fullRefund.amount ?? fullRefund.amountGbp;
+        fullRefund.lines = fullRefund.lines.map((line) => ({
+          ...line,
+          amount: line.amount ?? line.amountGbp,
+        }));
 
         // Update per-line aggregates from refund.lines[]
         const newLines = order.lines.map((line) => {
@@ -223,6 +247,9 @@ export const useOrderStore = create<OrderStoreState>()(
             refundedQuantity: line.refundedQuantity + lineRefund.quantity,
             refundedAmountGbp:
               line.refundedAmountGbp + lineRefund.amountGbp,
+            refundedAmount:
+              (line.refundedAmount ?? line.refundedAmountGbp) +
+              (lineRefund.amount ?? lineRefund.amountGbp),
           };
         });
 
@@ -239,6 +266,9 @@ export const useOrderStore = create<OrderStoreState>()(
           ...order,
           lines: newLines,
           refundedAmountGbp: newRefundedAmount,
+          refundedAmount:
+            (order.refundedAmount ?? order.refundedAmountGbp) +
+            (fullRefund.amount ?? fullRefund.amountGbp),
           refunds: [...order.refunds, fullRefund],
           status: newStatus,
         };
@@ -333,11 +363,23 @@ export const useOrderStore = create<OrderStoreState>()(
         const liveOrders = orders.filter(
           (o) => o.status === "paid" || o.status === "refunded_partial",
         );
-        return liveOrders.reduce(
-          (sum, o) =>
-            sum + Math.max(0, o.totalGbpAtPurchase - o.refundedAmountGbp),
-          0,
+        return liveOrders.reduce((sum, o) => sum + orderLiveAmount(o), 0);
+      },
+
+      getRevenueSummaryForEvent: (
+        eventId,
+        expectedCurrency = "GBP",
+      ): EventMoneySummary => {
+        const orders = get().entries.filter(
+          (o) =>
+            o.eventId === eventId &&
+            (o.status === "paid" || o.status === "refunded_partial"),
         );
+        return summarizeEventMoney({
+          expectedCurrency,
+          orders,
+          doorSales: [],
+        });
       },
     }),
     persistOptions,

@@ -26,7 +26,7 @@ import {
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 import type { DraftEvent, TicketStub } from "../../store/draftEventStore";
-import { formatGbpRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
 import {
   formatDraftDateLine,
   formatDraftDateSubline,
@@ -88,7 +88,7 @@ const PublicTicketRow: React.FC<{ ticket: TicketStub; isLast: boolean }> = ({
   const priceLabel = ticket.isFree
     ? "Free"
     : ticket.priceGbp !== null
-      ? formatGbpRound(ticket.priceGbp)
+      ? formatCurrencyRound(ticket.priceGbp, ticket.currency ?? "GBP")
       : "—";
   const subLine = formatTicketSubline(ticket);
   const badges = formatTicketBadges(ticket);

@@ -31,6 +31,7 @@ interface BusinessPublicEventViewRow {
   recurrence_rules: unknown;
   cover_media_url: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
+  currency?: string | null;
   visibility: string;
   show_on_discover: boolean;
   status: string;
@@ -260,6 +261,7 @@ const ticketRowToTicketStub = (row: TicketTypeRow): PublicTicketTypeRecord => ({
   id: row.id,
   name: row.name,
   priceGbp: row.is_free ? null : row.price_cents / 100,
+  currency: row.currency,
   capacity: row.quantity_total,
   isFree: row.is_free,
   isUnlimited: row.is_unlimited,
@@ -333,6 +335,9 @@ export const publicEventViewRowToEvent = (
     coverHue,
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
+    currency:
+      asStringOrNull(row.currency) ??
+      tickets.find((ticket) => ticket.currency !== undefined)?.currency,
     tickets,
     visibility: asVisibility(row.visibility),
     requireApproval: asBoolean(

@@ -16,7 +16,7 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import type { TicketStub } from "../../store/draftEventStore";
-import { formatGbp } from "../../utils/currency";
+import { formatCurrency } from "../../utils/currency";
 
 interface EventDetailTicketTypeRowProps {
   ticket: TicketStub;
@@ -33,7 +33,9 @@ const EventDetailTicketTypeRowInner: React.FC<EventDetailTicketTypeRowProps> = (
     ? Number.POSITIVE_INFINITY
     : (ticket.capacity ?? 0);
   const isSoldOut = !ticket.isUnlimited && cap > 0 && sold >= cap;
-  const priceText = ticket.isFree ? "Free" : formatGbp(ticket.priceGbp ?? 0);
+  const priceText = ticket.isFree
+    ? "Free"
+    : formatCurrency(ticket.priceGbp ?? 0, ticket.currency ?? "GBP");
   const capText = ticket.isUnlimited ? `${sold} sold` : `${sold} / ${cap}`;
 
   return (

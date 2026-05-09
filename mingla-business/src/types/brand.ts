@@ -49,9 +49,9 @@ export type BrandPayoutStatus = "paid" | "in_transit" | "failed";
 
 export interface BrandPayout {
   id: string;
-  /** Amount in GBP, positive number. Caller formats via Intl.NumberFormat. */
+  /** Legacy field name. Amount is in the row's explicit currency. */
   amountGbp: number;
-  currency: "GBP";
+  currency: string;
   status: BrandPayoutStatus;
   /** ISO 8601 timestamp when funds arrived (paid) or expected (in_transit). */
   arrivedAt: string;
@@ -60,11 +60,11 @@ export interface BrandPayout {
 export interface BrandRefund {
   id: string;
   /**
-   * Refund amount in GBP, positive number (the refund value, not negative).
+   * Legacy field name. Refund amount is in the row's explicit currency.
    * The minus prefix on display is a render-time concern.
    */
   amountGbp: number;
-  currency: "GBP";
+  currency: string;
   /** Display title of the event the refund relates to. */
   eventTitle: string;
   /** ISO 8601 timestamp when the refund processed. */
@@ -237,17 +237,15 @@ export type Brand = {
    * ISO 4217 default currency for this brand's payouts + ticket pricing.
    * NEW in B2a Path C V3 (Sub-C Session B). Drives multi-currency formatting
    * across the dashboard per Constitution #10 + I-PROPOSED-T. Mapped from
-   * `brands.default_currency`. Undefined treated as `"GBP"` at read sites.
+   * `brands.default_currency`. Undefined means currency is not set yet.
    */
   defaultCurrency?: string;
   /**
-   * Available balance (clears for next payout) in GBP whole-units.
-   * NEW in J-A10 schema v8. Undefined treated as 0 at read sites.
+   * Deprecated legacy cache. Do not use for active Payments display.
    */
   availableBalanceGbp?: number;
   /**
-   * Pending balance (Stripe escrow window before clearing) in GBP whole-units.
-   * NEW in J-A10 schema v8. Undefined treated as 0 at read sites.
+   * Deprecated legacy cache. Do not use for active Payments display.
    */
   pendingBalanceGbp?: number;
   /**

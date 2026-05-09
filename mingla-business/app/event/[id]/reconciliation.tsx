@@ -60,7 +60,7 @@ import {
   canPerformAction,
   gateCaptionFor,
 } from "../../../src/utils/permissionGates";
-import { formatGbp } from "../../../src/utils/currency";
+import { formatCurrency } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { deriveLiveStatus } from "../../../src/utils/eventLifecycle";
 import { exportReconciliationCsv } from "../../../src/utils/guestCsvExport";
@@ -110,6 +110,7 @@ export default function ReconciliationRoute(): React.ReactElement {
       eventId,
       status: deriveLiveStatus(event),
       eventName: event.name,
+      currency: event.currency ?? "GBP",
       orderEntries: allOrderEntries,
       doorEntries: allDoorEntries,
       compEntries: allCompEntries,
@@ -335,10 +336,18 @@ export default function ReconciliationRoute(): React.ReactElement {
         />
 
         {/* TICKETS section */}
-        <TicketsSection summary={summary} hasAnyData={hasAnyData} />
+        <TicketsSection
+          summary={summary}
+          hasAnyData={hasAnyData}
+          currency={event.currency ?? "GBP"}
+        />
 
         {/* REVENUE section */}
-        <RevenueSection summary={summary} hasAnyData={hasAnyData} />
+        <RevenueSection
+          summary={summary}
+          hasAnyData={hasAnyData}
+          currency={event.currency ?? "GBP"}
+        />
 
         {/* SCANS section */}
         <ScansSection
@@ -427,23 +436,25 @@ const HeadlineBanner: React.FC<HeadlineBannerProps> = ({
 interface TicketsSectionProps {
   summary: ReconciliationSummary;
   hasAnyData: boolean;
+  currency: string;
 }
 
 const TicketsSection: React.FC<TicketsSectionProps> = ({
   summary,
   hasAnyData,
+  currency,
 }) => (
   <View style={styles.section}>
     <Text style={styles.sectionHeading}>TICKETS</Text>
     <SectionRow
       label="Online sold"
       value={hasAnyData ? `${summary.onlineLiveTickets}` : "—"}
-      subValue={hasAnyData ? formatGbp(summary.onlineRevenue) : ""}
+      subValue={hasAnyData ? formatCurrency(summary.onlineRevenue, currency) : ""}
     />
     <SectionRow
       label="Door sold"
       value={hasAnyData ? `${summary.doorLiveTickets}` : "—"}
-      subValue={hasAnyData ? formatGbp(summary.doorRevenue) : ""}
+      subValue={hasAnyData ? formatCurrency(summary.doorRevenue, currency) : ""}
     />
     <SectionRow
       label="Comps"
@@ -465,11 +476,13 @@ const TicketsSection: React.FC<TicketsSectionProps> = ({
 interface RevenueSectionProps {
   summary: ReconciliationSummary;
   hasAnyData: boolean;
+  currency: string;
 }
 
 const RevenueSection: React.FC<RevenueSectionProps> = ({
   summary,
   hasAnyData,
+  currency,
 }) => {
   // Stripe fee stub on online revenue only (D-13-10).
   // Door revenue contributes 1.0 (cash zero fee; card_reader/NFC fees ship B-cycle).
@@ -481,66 +494,66 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
       {/* Online methods */}
       <SectionRow
         label="Card (online)"
-        value={formatGbp(summary.revenueByMethod.card)}
+        value={formatCurrency(summary.revenueByMethod.card, currency)}
       />
       <SectionRow
         label="Apple Pay"
-        value={formatGbp(summary.revenueByMethod.apple_pay)}
+        value={formatCurrency(summary.revenueByMethod.apple_pay, currency)}
       />
       <SectionRow
         label="Google Pay"
-        value={formatGbp(summary.revenueByMethod.google_pay)}
+        value={formatCurrency(summary.revenueByMethod.google_pay, currency)}
       />
       <SectionRow
         label="Free (online)"
-        value={formatGbp(summary.revenueByMethod.free)}
+        value={formatCurrency(summary.revenueByMethod.free, currency)}
       />
       {/* Door methods */}
       <SectionRow
         label="Cash (door)"
-        value={formatGbp(summary.revenueByMethod.cash)}
+        value={formatCurrency(summary.revenueByMethod.cash, currency)}
       />
       <SectionRow
         label="Card reader (door)"
-        value={formatGbp(summary.revenueByMethod.card_reader)}
+        value={formatCurrency(summary.revenueByMethod.card_reader, currency)}
         hint="B-cycle"
       />
       <SectionRow
         label="NFC tap (door)"
-        value={formatGbp(summary.revenueByMethod.nfc)}
+        value={formatCurrency(summary.revenueByMethod.nfc, currency)}
         hint="B-cycle"
       />
       <SectionRow
         label="Manual (door)"
-        value={formatGbp(summary.revenueByMethod.manual)}
+        value={formatCurrency(summary.revenueByMethod.manual, currency)}
       />
       <SectionDivider />
-      <SectionRow label="Gross" value={formatGbp(summary.grossRevenue)} />
+      <SectionRow label="Gross" value={formatCurrency(summary.grossRevenue, currency)} />
       <SectionRow
         label="Refunded (online)"
-        value={`−${formatGbp(summary.onlineRefunded)}`}
+        value={`−${formatCurrency(summary.onlineRefunded, currency)}`}
         variant="warn"
       />
       <SectionRow
         label="Refunded (door)"
-        value={`−${formatGbp(summary.doorRefunded)}`}
+        value={`−${formatCurrency(summary.doorRefunded, currency)}`}
         variant="warn"
       />
       <SectionDivider />
       <SectionRow
         label="NET"
-        value={hasAnyData ? formatGbp(summary.grossRevenue) : "—"}
+        value={hasAnyData ? formatCurrency(summary.grossRevenue, currency) : "—"}
         variant="big"
       />
       <SectionRow
         label="Stripe fee (online, 4% stub)"
-        value={`−${formatGbp(stripeFeeOnline)}`}
+        value={`−${formatCurrency(stripeFeeOnline, currency)}`}
         variant="muted"
       />
-      <SectionRow label="Door fee" value={formatGbp(0)} variant="muted" />
+      <SectionRow label="Door fee" value={formatCurrency(0, currency)} variant="muted" />
       <SectionRow
         label="PAYOUT (estimated)"
-        value={formatGbp(summary.payoutEstimate)}
+        value={formatCurrency(summary.payoutEstimate, currency)}
         variant="mid"
         hint="TRANSITIONAL — B-cycle Stripe payout API"
       />

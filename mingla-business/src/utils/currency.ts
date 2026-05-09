@@ -1,5 +1,5 @@
 /**
- * Currency formatters — single source of truth for GBP rendering across
+ * Currency formatters — single source of truth for money rendering across
  * mingla-business. ALL currency display passes through this util per
  * Constitution #10 (currency-aware UI).
  *
@@ -47,6 +47,11 @@ export const formatGbpRound = (value: number): string =>
     currency: "GBP",
     maximumFractionDigits: 0,
   }).format(value);
+
+export interface Money {
+  amount: number;
+  currency: string;
+}
 
 /**
  * Format a numeric count with thousands separators using en-GB locale.
@@ -110,6 +115,22 @@ export const formatCurrencyRound = (
     maximumFractionDigits: 0,
   }).format(major);
 };
+
+export const formatMoney = (
+  money: Money,
+  options: { rounded?: boolean; minor?: boolean } = {},
+): string =>
+  options.rounded === true
+    ? formatCurrencyRound(money.amount, money.currency, options.minor)
+    : formatCurrency(money.amount, money.currency, options.minor);
+
+export const normalizeCurrency = (currency?: string | null): string => {
+  const code = currency?.trim().toUpperCase();
+  return code !== undefined && code.length > 0 ? code : "GBP";
+};
+
+export const majorFromMinor = (value: number, currency: string): number =>
+  value / minorUnitFactor(normalizeCurrency(currency));
 
 /**
  * Sensible-default locale per currency. Avoids requiring callers to know

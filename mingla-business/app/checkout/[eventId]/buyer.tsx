@@ -8,7 +8,7 @@
  * pass validation.
  *
  * On Continue:
- *   - Free order (totals.totalGbp === 0) → generate stub OrderResult
+ *   - Free order (totals.total === 0) → generate stub OrderResult
  *     synchronously + recordResult + router.replace to /confirm. Skips
  *     Payment + 3DS entirely (Q-C5).
  *   - Paid order → router.push to /checkout/{eventId}/payment.
@@ -49,7 +49,7 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
-import { formatGbp } from "../../../src/utils/currency";
+import { formatCurrency } from "../../../src/utils/currency";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -238,7 +238,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         ticketIds,
         paidAt: new Date().toISOString(),
         paymentMethod: "free",
-        totalGbp: 0,
+        total: 0,
+        currency: totals.currency,
       });
       router.replace(`/checkout/${eventId}/confirm` as never);
       return;
@@ -314,7 +315,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
                 <Text style={styles.summaryLineTotal}>
                   {l.isFree
                     ? "Free"
-                    : formatGbp(l.unitPriceGbp * l.quantity)}
+                    : formatCurrency(l.unitPrice * l.quantity, l.currency)}
                 </Text>
               </View>
             ))}
@@ -322,7 +323,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             <View style={styles.summaryTotalRow}>
               <Text style={styles.summaryTotalLabel}>Total</Text>
               <Text style={styles.summaryTotalValue}>
-                {totals.isFree ? "Free" : formatGbp(totals.totalGbp)}
+                {totals.isFree ? "Free" : formatCurrency(totals.total, totals.currency)}
               </Text>
             </View>
           </GlassCard>
@@ -416,7 +417,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>
-            {totals.isFree ? "Free" : formatGbp(totals.totalGbp)}
+            {totals.isFree ? "Free" : formatCurrency(totals.total, totals.currency)}
           </Text>
         </View>
         <Button

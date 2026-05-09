@@ -75,7 +75,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";
-import { formatGbpRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
 import {
   formatDraftDateLine,
   formatDraftDateSubline,
@@ -412,6 +412,9 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           radius={0}
           label=""
           height={380}
+          muted={false}
+          showAudioControl
+          audioControlLabel="event cover video"
         />
         <View style={styles.heroOverlay} pointerEvents="none" />
       </View>
@@ -578,6 +581,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                   ticket={t}
                   isLast={i === visibleTickets.length - 1}
                   variant={variant}
+                  currency={event.currency ?? "GBP"}
                   onBuyerAction={onBuyerAction}
                 />
               ))}
@@ -595,6 +599,7 @@ interface PublicTicketRowProps {
   ticket: TicketStub;
   isLast: boolean;
   variant: "published" | "pre-sale" | "sold-out" | "past";
+  currency: string;
   onBuyerAction: (
     action: "buy" | "free" | "approval" | "password" | "waitlist",
   ) => void;
@@ -604,12 +609,13 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   ticket,
   isLast,
   variant,
+  currency,
   onBuyerAction,
 }) => {
   const priceLabel = ticket.isFree
     ? "Free"
     : ticket.priceGbp !== null
-      ? formatGbpRound(ticket.priceGbp)
+      ? formatCurrencyRound(ticket.priceGbp, ticket.currency ?? currency)
       : "—";
   const subLine = formatTicketSubline(ticket);
   const badges = formatTicketBadges(ticket);

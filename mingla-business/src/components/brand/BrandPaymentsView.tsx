@@ -54,8 +54,10 @@ import { BrandStripeKycRemediationCard } from "./BrandStripeKycRemediationCard";
 import { BrandStripeOrphanedRefundsSection } from "./BrandStripeOrphanedRefundsSection";
 import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
+import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
 import { getEffectiveBrandStripeStatus } from "../../utils/stripeOnboardingOutcome";
 import { ACTIVE_STRIPE_BANNER_TITLE } from "../../utils/brandStripeUiState";
+import { majorFromMinor } from "../../utils/currency";
 
 // Status-banner config table. ORCH-0764C requires active to render a visible
 // success confirmation; only truly unsupported statuses would be suppressed.
@@ -160,6 +162,9 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     liveStatus: stripeStatusQuery.data?.status,
     cachedStatus: brand?.stripeStatus,
   });
+  const stripeBalancesQuery = useBrandStripeBalances(brand?.id ?? null, {
+    stripeStatus,
+  });
   const bannerConfig = BANNER_CONFIG[stripeStatus];
 
   // [TRANSITIONAL] payouts + refunds still read from Zustand stub (brand.payouts,
@@ -217,10 +222,34 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
 
   // ----- Populated state -----
 
+  const liveBalances = stripeBalancesQuery.data;
+  const balanceCurrency = liveBalances?.currency ?? brand.defaultCurrency ?? null;
+  const availableDisplay =
+    liveBalances && balanceCurrency !== null
+      ? formatCurrency(
+          majorFromMinor(liveBalances.availableMinor, balanceCurrency),
+          balanceCurrency,
+        )
+      : "—";
+  const pendingDisplay =
+    liveBalances && balanceCurrency !== null
+      ? formatCurrency(
+          majorFromMinor(liveBalances.pendingMinor, balanceCurrency),
+          balanceCurrency,
+        )
+      : "—";
+  const balanceSub = liveBalances
+    ? "Ready to pay out"
+    : stripeStatus === "active"
+      ? "Balance unavailable"
+      : "Connect Stripe";
   const lastPayoutAmount = sortedPayouts[0]?.amountGbp;
+  const lastPayoutCurrency = sortedPayouts[0]?.currency;
   const lastPayoutDisplay =
-    brand.lastPayoutAt !== undefined && lastPayoutAmount !== undefined
-      ? formatCurrency(lastPayoutAmount, brand.defaultCurrency ?? "GBP")
+    brand.lastPayoutAt !== undefined &&
+    lastPayoutAmount !== undefined &&
+    lastPayoutCurrency !== undefined
+      ? formatCurrency(lastPayoutAmount, lastPayoutCurrency)
       : "—";
   const lastPayoutSub =
     brand.lastPayoutAt !== undefined
@@ -299,6 +328,15 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           </GlassCard>
         ) : null}
 
+        {stripeBalancesQuery.isError ? (
+          <GlassCard variant="base" padding={spacing.md} style={styles.statusRefreshWarning}>
+            <Text style={styles.statusRefreshTitle}>Couldn{"’"}t refresh Stripe balance</Text>
+            <Text style={styles.statusRefreshBody}>
+              Balance unavailable until Stripe balance refresh works.
+            </Text>
+          </GlassCard>
+        ) : null}
+
         {/* SECTION A2 — V3 multi-country surfaces (Sub-C Session A + B).
             Deadline banner on top (within 7 days, urgent). KYC remediation
             card next (when status non-active and there's a requirement code).
@@ -349,14 +387,14 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         <View style={styles.kpisRow}>
           <KpiTile
             label="Available"
-            value={formatCurrency(brand.availableBalanceGbp ?? 0, brand.defaultCurrency ?? "GBP")}
-            sub="Ready to pay out"
+            value={availableDisplay}
+            sub={balanceSub}
             style={styles.kpiCell}
           />
           <KpiTile
             label="Pending"
-            value={formatCurrency(brand.pendingBalanceGbp ?? 0, brand.defaultCurrency ?? "GBP")}
-            sub="In Stripe escrow"
+            value={pendingDisplay}
+            sub={liveBalances ? "In Stripe escrow" : "Balance unavailable"}
             style={styles.kpiCell}
           />
           <KpiTile
@@ -390,7 +428,9 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                 >
                   <View style={styles.txnLeftCol}>
                     <Text style={styles.txnAmount}>
-                      {formatCurrency(payout.amountGbp, brand.defaultCurrency ?? "GBP")}
+                      {payout.currency.length > 0
+                        ? formatCurrency(payout.amountGbp, payout.currency)
+                        : "—"}
                     </Text>
                     <Text style={styles.txnSub}>
                       {payout.status === "in_transit"
@@ -424,7 +464,9 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                     <View style={styles.txnLeftCol}>
                       {/* Render-time minus prefix on positive amount per spec §6 + AC#27 */}
                       <Text style={styles.txnAmountRefund}>
-                        {`−${formatCurrency(refund.amountGbp, brand.defaultCurrency ?? "GBP")}`}
+                        {refund.currency.length > 0
+                          ? `−${formatCurrency(refund.amountGbp, refund.currency)}`
+                          : "—"}
                       </Text>
                       <Text style={styles.txnSub} numberOfLines={1}>
                         {refund.eventTitle}

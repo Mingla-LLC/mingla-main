@@ -63,7 +63,7 @@ import {
   EMPTY_PREVIEW,
   type AccountDeletionPreview,
 } from "../../src/utils/accountDeletionPreview";
-import { formatGbp } from "../../src/utils/currency";
+import { formatCurrency } from "../../src/utils/currency";
 
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
@@ -374,7 +374,7 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
       {preview.soldOrdersCount > 0 ? (
         <CascadeRow
           icon="ticket"
-          label={`${preview.soldOrdersCount} ticket sale${preview.soldOrdersCount === 1 ? "" : "s"} · ${formatGbp(preview.totalRevenueGbp)}`}
+          label={`${preview.soldOrdersCount} ticket sale${preview.soldOrdersCount === 1 ? "" : "s"} · ${formatCurrency(preview.totalRevenueGbp, "GBP")}`}
         />
       ) : null}
       {preview.doorSalesCount > 0 ? (

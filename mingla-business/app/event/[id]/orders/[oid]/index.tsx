@@ -42,7 +42,7 @@ import {
 } from "../../../../../src/store/orderStore";
 import type { CheckoutPaymentMethod } from "../../../../../src/components/checkout/CartContext";
 import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRoute";
-import { formatGbp } from "../../../../../src/utils/currency";
+import { formatCurrency } from "../../../../../src/utils/currency";
 import {
   deriveChannelFlags,
   notifyEventChanged,
@@ -107,6 +107,7 @@ interface StatusBannerSpec {
 const statusBannerSpec = (
   status: OrderStatus,
   refundedAmountGbp: number,
+  currency: string,
 ): StatusBannerSpec => {
   switch (status) {
     case "paid":
@@ -123,7 +124,7 @@ const statusBannerSpec = (
         borderColor: "rgba(239, 68, 68, 0.32)",
         iconName: "refund",
         iconColor: semantic.error,
-        copy: `Refunded ${formatGbp(refundedAmountGbp)} · buyer will see in 3–5 days`,
+        copy: `Refunded ${formatCurrency(refundedAmountGbp, currency)} · buyer will see in 3–5 days`,
       };
     case "refunded_partial":
       return {
@@ -131,7 +132,7 @@ const statusBannerSpec = (
         borderColor: accent.border,
         iconName: "refund",
         iconColor: accent.warm,
-        copy: `Partially refunded ${formatGbp(refundedAmountGbp)}`,
+        copy: `Partially refunded ${formatCurrency(refundedAmountGbp, currency)}`,
       };
     case "cancelled":
       return {
@@ -319,7 +320,11 @@ export default function OrderDetailRoute(): React.ReactElement {
     );
   }
 
-  const banner = statusBannerSpec(order.status, order.refundedAmountGbp);
+  const banner = statusBannerSpec(
+    order.status,
+    order.refundedAmountGbp,
+    order.currency,
+  );
   const hue = hashStringToHue(order.id);
   const initials = getInitials(order.buyer.name);
 
@@ -419,18 +424,25 @@ export default function OrderDetailRoute(): React.ReactElement {
               value={
                 line.isFreeAtPurchase
                   ? "Free"
-                  : formatGbp(line.unitPriceGbpAtPurchase * line.quantity)
+                  : formatCurrency(
+                      line.unitPriceGbpAtPurchase * line.quantity,
+                      order.currency,
+                    )
               }
               mono={!line.isFreeAtPurchase}
             />
           ))}
-          <DetailRow label="Subtotal" value={formatGbp(subtotal)} mono />
+          <DetailRow
+            label="Subtotal"
+            value={formatCurrency(subtotal, order.currency)}
+            mono
+          />
           <DetailRow
             label="Total"
             value={
               order.totalGbpAtPurchase === 0
                 ? "Free"
-                : formatGbp(order.totalGbpAtPurchase)
+                : formatCurrency(order.totalGbpAtPurchase, order.currency)
             }
             mono
             bold
@@ -451,7 +463,7 @@ export default function OrderDetailRoute(): React.ReactElement {
           >
             <Text style={styles.sectionLabel}>Refund history</Text>
             {order.refunds.map((r) => (
-              <RefundLedgerRow key={r.id} refund={r} />
+              <RefundLedgerRow key={r.id} refund={r} currency={order.currency} />
             ))}
           </GlassCard>
         ) : null}
@@ -546,7 +558,7 @@ export default function OrderDetailRoute(): React.ReactElement {
           setRefundSheet({ ...refundSheet, visible: false });
           showToast(
             amountGbp > 0
-              ? `Refunded ${formatGbp(amountGbp)}`
+              ? `Refunded ${formatCurrency(amountGbp, order.currency)}`
               : "Couldn't refund — try again",
           );
         }}
@@ -613,13 +625,14 @@ const DetailRow: React.FC<DetailRowProps> = ({
 
 interface RefundLedgerRowProps {
   refund: RefundRecord;
+  currency: string;
 }
 
-const RefundLedgerRow: React.FC<RefundLedgerRowProps> = ({ refund }) => (
+const RefundLedgerRow: React.FC<RefundLedgerRowProps> = ({ refund, currency }) => (
   <View style={styles.refundLedgerRow}>
     <View style={styles.refundLedgerHeader}>
       <Text style={styles.refundLedgerAmount}>
-        {formatGbp(refund.amountGbp)}
+        {formatCurrency(refund.amountGbp, currency)}
       </Text>
       <Text style={styles.refundLedgerDate}>
         {formatRelativeDay(refund.refundedAt)}

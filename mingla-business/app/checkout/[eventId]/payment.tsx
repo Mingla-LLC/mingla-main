@@ -39,7 +39,7 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
-import { formatGbp } from "../../../src/utils/currency";
+import { formatCurrency } from "../../../src/utils/currency";
 import {
   generateOrderId,
   generateTicketId,
@@ -68,14 +68,16 @@ import { ThreeDSStubSheet } from "../../../src/components/checkout/ThreeDSStubSh
 
 const buildResultFromCart = (
   lines: CartLine[],
-  totalGbp: number,
+  total: number,
+  currency: string,
   paymentMethod: CheckoutPaymentMethod,
 ): {
   orderId: string;
   ticketIds: string[];
   paidAt: string;
   paymentMethod: CheckoutPaymentMethod;
-  totalGbp: number;
+  total: number;
+  currency: string;
 } => {
   const orderId = generateOrderId();
   const ticketIds: string[] = [];
@@ -89,7 +91,8 @@ const buildResultFromCart = (
     ticketIds,
     paidAt: new Date().toISOString(),
     paymentMethod,
-    totalGbp,
+    total,
+    currency,
   };
 };
 
@@ -194,7 +197,8 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
     (method: PaymentMethodId): void => {
       const result = buildResultFromCart(
         lines,
-        totals.totalGbp,
+        totals.total,
+        totals.currency,
         paymentMethodToCart(method),
       );
       recordResult(result);
@@ -202,7 +206,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         router.replace(`/checkout/${eventId}/confirm` as never);
       }
     },
-    [lines, totals.totalGbp, recordResult, router, eventId],
+    [lines, totals.total, totals.currency, recordResult, router, eventId],
   );
 
   const handleResult = useCallback(
@@ -308,7 +312,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
                 {l.ticketName}
               </Text>
               <Text style={styles.summaryTotal}>
-                {l.isFree ? "Free" : formatGbp(l.unitPriceGbp * l.quantity)}
+                {l.isFree ? "Free" : formatCurrency(l.unitPrice * l.quantity, l.currency)}
               </Text>
             </View>
           ))}
@@ -316,7 +320,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
           <View style={styles.summaryTotalRow}>
             <Text style={styles.summaryTotalLabel}>Total</Text>
             <Text style={styles.summaryTotalValue}>
-              {formatGbp(totals.totalGbp)}
+              {formatCurrency(totals.total, totals.currency)}
             </Text>
           </View>
         </GlassCard>
@@ -324,7 +328,8 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         <PaymentElementStub
           onPay={handleResult}
           processing={processing}
-          totalGbp={totals.totalGbp}
+          total={totals.total}
+          currency={totals.currency}
         />
 
         {__DEV__ ? (
@@ -381,18 +386,18 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>
-            {formatGbp(totals.totalGbp)}
+            {formatCurrency(totals.total, totals.currency)}
           </Text>
         </View>
         <Button
-          label={`Pay ${formatGbp(totals.totalGbp)}`}
+          label={`Pay ${formatCurrency(totals.total, totals.currency)}`}
           onPress={handleCardPay}
           variant="primary"
           size="lg"
           fullWidth
           loading={processing && pendingMethod === "card"}
           disabled={processing}
-          accessibilityLabel={`Pay ${formatGbp(totals.totalGbp)} with card`}
+          accessibilityLabel={`Pay ${formatCurrency(totals.total, totals.currency)} with card`}
         />
       </View>
 

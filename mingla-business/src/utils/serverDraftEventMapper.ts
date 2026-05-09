@@ -8,6 +8,7 @@ import type {
   TicketStub,
   WhenMode,
 } from "../store/draftEventStore";
+import { normalizeCurrency } from "./currency";
 
 export const BUSINESS_DRAFT_SCHEMA_VERSION = 1;
 
@@ -24,6 +25,7 @@ export interface ServerDraftEventRow {
   online_url: string | null;
   cover_media_url: string | null;
   cover_media_type: EventCoverMediaType | null;
+  currency?: string | null;
   is_online: boolean;
   is_recurring: boolean;
   is_multi_date: boolean;
@@ -48,6 +50,7 @@ export interface ServerDraftEventInsert {
   online_url: string | null;
   cover_media_url: string | null;
   cover_media_type: EventCoverMediaType | null;
+  currency: string;
   is_online: boolean;
   is_recurring: boolean;
   is_multi_date: boolean;
@@ -65,6 +68,7 @@ export interface ServerDraftEventUpdate {
   online_url: string | null;
   cover_media_url: string | null;
   cover_media_type: EventCoverMediaType | null;
+  currency: string;
   is_online: boolean;
   is_recurring: boolean;
   is_multi_date: boolean;
@@ -82,6 +86,7 @@ export interface BusinessDraftPayload {
   category: string | null;
   requestedVisibility: DraftEventVisibility;
   coverHue: number;
+  currency: string;
   whenMode: WhenMode;
   when: {
     date: string | null;
@@ -171,7 +176,12 @@ const normalizeTicketFromServer = (ticket: unknown, idx: number): TicketStub => 
     priceGbp:
       typeof t.priceGbp === "number" && Number.isFinite(t.priceGbp)
         ? t.priceGbp
-        : null,
+        : typeof t.price === "number" && Number.isFinite(t.price)
+          ? t.price
+          : typeof t.priceMajor === "number" && Number.isFinite(t.priceMajor)
+            ? t.priceMajor
+            : null,
+    currency: asStringOrNull(t.currency) ?? undefined,
     capacity:
       typeof t.capacity === "number" && Number.isFinite(t.capacity)
         ? t.capacity
@@ -214,6 +224,7 @@ const buildBusinessDraftPayload = (
   category: draft.category,
   requestedVisibility: draft.visibility,
   coverHue: draft.coverHue,
+  currency: normalizeCurrency(draft.currency),
   whenMode: draft.whenMode,
   when: {
     date: draft.date,
@@ -286,6 +297,7 @@ export const draftToServerInsert = (
   cover_media_url: draft.coverMediaUrl,
   cover_media_type:
     draft.coverMediaUrl === null ? null : draft.coverMediaType,
+  currency: normalizeCurrency(draft.currency),
   is_online: draft.format === "online" || draft.format === "hybrid",
   is_recurring: draft.whenMode === "recurring",
   is_multi_date: draft.whenMode === "multi_date",
@@ -308,6 +320,7 @@ export const draftToServerUpdate = (
   cover_media_url: draft.coverMediaUrl,
   cover_media_type:
     draft.coverMediaUrl === null ? null : draft.coverMediaType,
+  currency: normalizeCurrency(draft.currency),
   is_online: draft.format === "online" || draft.format === "hybrid",
   is_recurring: draft.whenMode === "recurring",
   is_multi_date: draft.whenMode === "multi_date",
@@ -371,6 +384,8 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     coverMediaUrl: row.cover_media_url,
     coverMediaType:
       row.cover_media_url === null ? null : asCoverMediaType(row.cover_media_type),
+    currency:
+      asStringOrNull(businessDraft.currency) ?? asStringOrNull(row.currency) ?? null,
     tickets: ticketsFromPayload(businessDraft.tickets),
     visibility: asVisibility(businessDraft.requestedVisibility),
     requireApproval: asBoolean(settings.requireApproval, false),

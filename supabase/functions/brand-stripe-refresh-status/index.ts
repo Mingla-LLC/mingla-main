@@ -180,13 +180,19 @@ serve(async (req) => {
       );
     }
 
-    // UPDATE stripe_connect_accounts; trigger mirrors to brands.stripe_*
+    // UPDATE stripe_connect_accounts; trigger mirrors to brands.stripe_* and
+    // active SCA default_currency to brands.default_currency.
     const { error: scaUpdateError } = await supabase
       .from("stripe_connect_accounts")
       .update({
         charges_enabled: account.charges_enabled ?? false,
         payouts_enabled: account.payouts_enabled ?? false,
         requirements: account.requirements ?? {},
+        country: account.country?.toUpperCase() ?? scaRow.country ?? null,
+        default_currency:
+          account.default_currency?.toUpperCase() ??
+          scaRow.default_currency ??
+          null,
         updated_at: new Date().toISOString(),
       })
       .eq("brand_id", brand_id);

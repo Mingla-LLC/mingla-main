@@ -29,7 +29,8 @@ import type { DraftEvent } from "../../store/draftEventStore";
 import type { Brand } from "../../store/currentBrandStore";
 import { useOrderStore } from "../../store/orderStore";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
-import { formatGbpRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
+import { summarizeEventMoney } from "../../utils/moneySummary";
 
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
@@ -96,7 +97,19 @@ export const EventListCard: React.FC<EventListCardProps> = ({
   }, [event.tickets]);
   // Cycle 9c — derive from useOrderStore (subscribes to live updates).
   const soldCount = useOrderStore((s) => s.getSoldCountForEvent(event.id));
-  const revenueGbp = useOrderStore((s) => s.getRevenueForEvent(event.id));
+  const orderEntries = useOrderStore((s) => s.entries);
+  const revenueSummary = useMemo(
+    () =>
+      summarizeEventMoney({
+        expectedCurrency: isLiveEvent(event, kind)
+          ? event.currency ?? brand.defaultCurrency
+          : brand.defaultCurrency,
+        orders: orderEntries.filter((order) => order.eventId === event.id),
+        doorSales: [],
+      }),
+    [brand.defaultCurrency, event, kind, orderEntries],
+  );
+  const revenueGbp = revenueSummary.onlineRevenue;
   const pct =
     totalCapacity > 0
       ? Math.min(100, Math.round((soldCount / totalCapacity) * 100))
@@ -211,7 +224,13 @@ export const EventListCard: React.FC<EventListCardProps> = ({
       {kind !== "draft" && status !== "past" ? (
         <View style={styles.revenueStrip} pointerEvents="none">
           <Text style={styles.revenueValue}>
-            {revenueGbp > 0 ? formatGbpRound(revenueGbp) : "—"}
+            {revenueGbp > 0
+              ? event.currency !== undefined || brand.defaultCurrency !== undefined
+                ? formatCurrencyRound(revenueGbp, event.currency ?? brand.defaultCurrency ?? "")
+                : "Currency not set"
+              : revenueSummary.mismatches.length > 0
+                ? "Currency review"
+              : "—"}
           </Text>
         </View>
       ) : null}

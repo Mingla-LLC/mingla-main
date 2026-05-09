@@ -101,7 +101,7 @@ export function useBrandStripeStatus(
       if (brandId === null) {
         throw new Error("useBrandStripeStatus: brandId is null but enabled");
       }
-      return refreshBrandStripeStatus(brandId);
+      return refreshBrandStripeStatus(brandId, session?.access_token ?? null);
     },
   });
 }

@@ -49,16 +49,44 @@ serve(async (req) => {
     console.error("[brand-stripe-balances] account read failed:", accountError);
     return jsonResponse({ error: "internal_error" }, 500);
   }
+  const { data: brand, error: brandError } = await supabase
+    .from("brands")
+    .select("default_currency")
+    .eq("id", brandId)
+    .maybeSingle();
+  if (brandError) {
+    console.error("[brand-stripe-balances] brand read failed:", brandError);
+    return jsonResponse({ error: "internal_error" }, 500);
+  }
+
+  const brandDefaultCurrency =
+    typeof brand?.default_currency === "string" && brand.default_currency.trim().length > 0
+      ? brand.default_currency.trim().toUpperCase()
+      : null;
+
   if (!account || account.detached_at) {
+    if (brandDefaultCurrency === null) {
+      return jsonResponse({ error: "currency_not_set" }, 409);
+    }
+    const retrievedAt = new Date().toISOString();
     return jsonResponse({
+      available_minor: 0,
+      pending_minor: 0,
       availableMinor: 0,
       pendingMinor: 0,
-      currency: "GBP",
+      currency: brandDefaultCurrency,
+      retrieved_at: retrievedAt,
+      retrievedAt,
       allCurrencies: { available: [], pending: [] },
     });
   }
 
-  const displayCurrency = String(account.default_currency ?? "GBP").trim().toLowerCase();
+  const displayCurrency = String(account.default_currency ?? brandDefaultCurrency)
+    .trim()
+    .toLowerCase();
+  if (displayCurrency.length === 0 || displayCurrency === "null") {
+    return jsonResponse({ error: "currency_not_set" }, 409);
+  }
   let balance;
   try {
     const stripe = stripeBalances();
@@ -86,10 +114,17 @@ serve(async (req) => {
     after: { display_currency: displayCurrency.toUpperCase() },
   });
 
+  const retrievedAt = new Date().toISOString();
+  const availableMinor = sumCurrency(balance.available ?? [], displayCurrency);
+  const pendingMinor = sumCurrency(balance.pending ?? [], displayCurrency);
   return jsonResponse({
-    availableMinor: sumCurrency(balance.available ?? [], displayCurrency),
-    pendingMinor: sumCurrency(balance.pending ?? [], displayCurrency),
+    available_minor: availableMinor,
+    pending_minor: pendingMinor,
+    availableMinor,
+    pendingMinor,
     currency: displayCurrency.toUpperCase(),
+    retrieved_at: retrievedAt,
+    retrievedAt,
     allCurrencies: {
       available: balance.available ?? [],
       pending: balance.pending ?? [],

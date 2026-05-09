@@ -172,10 +172,17 @@ export async function startBrandStripeOnboarding(
  */
 export async function refreshBrandStripeStatus(
   brandId: string,
+  accessToken?: string | null,
 ): Promise<RefreshStatusResult> {
   const { data, error } = await supabase.functions.invoke<RefreshStatusResult>(
     "brand-stripe-refresh-status",
-    { body: { brand_id: brandId } },
+    {
+      body: { brand_id: brandId },
+      headers:
+        typeof accessToken === "string" && accessToken.length > 0
+          ? { Authorization: `Bearer ${accessToken}` }
+          : undefined,
+    },
   );
   if (error) {
     throw await unwrapFunctionError("brand-stripe-refresh-status", error);

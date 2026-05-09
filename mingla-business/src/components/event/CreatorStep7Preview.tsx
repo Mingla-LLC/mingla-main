@@ -35,7 +35,8 @@ import {
   type BrandStripeStatus,
 } from "../../store/currentBrandStore";
 import { computePublishability } from "../../utils/draftEventValidation";
-import { formatGbpRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
+import { effectiveDraftCurrency } from "../../utils/moneySummary";
 import {
   formatDraftDateLine,
   formatDraftDateSubline,
@@ -56,7 +57,10 @@ interface CreatorStep7PreviewProps extends StepBodyProps {
   onConnectStripe: () => void;
 }
 
-const formatPriceLine = (tickets: { isFree: boolean; priceGbp: number | null }[]): string => {
+const formatPriceLine = (
+  tickets: { isFree: boolean; priceGbp: number | null }[],
+  currency: string,
+): string => {
   if (tickets.length === 0) return "No tickets yet";
   const allFree = tickets.every((t) => t.isFree);
   if (allFree) return "Free";
@@ -64,8 +68,9 @@ const formatPriceLine = (tickets: { isFree: boolean; priceGbp: number | null }[]
     .filter((t) => !t.isFree && t.priceGbp !== null)
     .map((t) => t.priceGbp ?? 0);
   if (paidPrices.length === 0) return "Free";
+  if (currency.length === 0) return "Currency not set";
   const minPrice = Math.min(...paidPrices);
-  return `From ${formatGbpRound(minPrice)}`;
+  return `From ${formatCurrencyRound(minPrice, currency)}`;
 };
 
 export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
@@ -89,7 +94,11 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
     draft.format === "online"
       ? "Online"
       : draft.venueName ?? "Set a venue in Step 3";
-  const priceLine = formatPriceLine(draft.tickets);
+  const displayCurrency = effectiveDraftCurrency(
+    draft.currency,
+    brand?.defaultCurrency ?? null,
+  );
+  const priceLine = formatPriceLine(draft.tickets, displayCurrency);
   // Cycle 5 — aggregated event-level ticket-modifier badges.
   const ticketBadges = formatEventLevelTicketBadges(draft.tickets);
 

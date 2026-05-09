@@ -46,7 +46,7 @@ import {
   useOrderStore,
   type OrderRecord,
 } from "../../../src/store/orderStore";
-import { formatGbp } from "../../../src/utils/currency";
+import { formatCurrency } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { expandTicketIds } from "../../../src/utils/expandTicketIds";
 
@@ -165,18 +165,22 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
       lines: lines.map((l) => ({
         ticketTypeId: l.ticketTypeId,
         ticketNameAtPurchase: l.ticketName,
-        unitPriceGbpAtPurchase: l.unitPriceGbp,
+        unitPriceGbpAtPurchase: l.unitPriceGbp ?? l.unitPrice,
+        unitPriceAtPurchase: l.unitPrice,
         isFreeAtPurchase: l.isFree,
         quantity: l.quantity,
         refundedQuantity: 0,
         refundedAmountGbp: 0,
+        refundedAmount: 0,
       })),
-      totalGbpAtPurchase: result.totalGbp,
-      currency: "GBP",
+      totalGbpAtPurchase: result.totalGbp ?? result.total,
+      totalAtPurchase: result.total,
+      currency: result.currency,
       paymentMethod: result.paymentMethod,
       paidAt: result.paidAt,
       status: "paid",
       refundedAmountGbp: 0,
+      refundedAmount: 0,
       refunds: [],
       cancelledAt: null,
       lastSeenEventUpdatedAt: event.updatedAt,
@@ -215,11 +219,13 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     const orderLines = lines.map((l) => ({
       ticketTypeId: l.ticketTypeId,
       ticketNameAtPurchase: l.ticketName,
-      unitPriceGbpAtPurchase: l.unitPriceGbp,
+      unitPriceGbpAtPurchase: l.unitPriceGbp ?? l.unitPrice,
+      unitPriceAtPurchase: l.unitPrice,
       isFreeAtPurchase: l.isFree,
       quantity: l.quantity,
       refundedQuantity: 0,
       refundedAmountGbp: 0,
+      refundedAmount: 0,
     }));
     return expandTicketIds(result.orderId, orderLines).map((t) => ({
       ticketId: t.ticketId,
@@ -282,7 +288,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
                 {l.ticketName}
               </Text>
               <Text style={styles.summaryTotal}>
-                {l.isFree ? "Free" : formatGbp(l.unitPriceGbp * l.quantity)}
+                {l.isFree ? "Free" : formatCurrency(l.unitPrice * l.quantity, l.currency)}
               </Text>
             </View>
           ))}
@@ -290,7 +296,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
           <View style={styles.summaryTotalRow}>
             <Text style={styles.summaryTotalLabel}>Total</Text>
             <Text style={styles.summaryTotalValue}>
-              {result.totalGbp === 0 ? "Free" : formatGbp(result.totalGbp)}
+              {result.total === 0 ? "Free" : formatCurrency(result.total, result.currency)}
             </Text>
           </View>
           <Text style={styles.orderId} accessibilityLabel={`Order ${result.orderId}`}>

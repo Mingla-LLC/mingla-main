@@ -35,7 +35,7 @@ import {
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
 import { useAuth } from "../../../../src/context/AuthContext";
-import { formatGbp } from "../../../../src/utils/currency";
+import { formatCurrency } from "../../../../src/utils/currency";
 import { expandTicketIds } from "../../../../src/utils/expandTicketIds";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
 import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
@@ -478,7 +478,7 @@ export default function GuestDetailRoute(): React.ReactElement {
     const refundedAmount =
       updated.refunds[updated.refunds.length - 1]?.amountGbp ?? 0;
     showToast(
-      `Refunded ${formatGbp(refundedAmount)}. ${name} stays checked in.`,
+      `Refunded ${formatCurrency(refundedAmount, updated.currency)}. ${name} stays checked in.`,
     );
   };
 
@@ -590,7 +590,7 @@ export default function GuestDetailRoute(): React.ReactElement {
                         <Text style={styles.perTicketSubline}>
                           {t.isFreeAtPurchase
                             ? "Free"
-                            : formatGbp(t.unitPriceGbpAtPurchase)}{" "}
+                            : formatCurrency(t.unitPriceGbpAtPurchase, order.currency)}{" "}
                           · #{idx + 1}
                         </Text>
                       </View>
@@ -673,7 +673,7 @@ export default function GuestDetailRoute(): React.ReactElement {
                         <Text style={styles.perTicketSubline}>
                           {t.isFreeAtSale
                             ? "Free"
-                            : formatGbp(t.unitPriceGbpAtSale)}{" "}
+                            : formatCurrency(t.unitPriceGbpAtSale, sale.currency)}{" "}
                           · #{idx + 1}
                         </Text>
                       </View>
@@ -698,7 +698,7 @@ export default function GuestDetailRoute(): React.ReactElement {
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Paid</Text>
                 <Text style={styles.summaryValue}>
-                  {formatGbp(order.totalGbpAtPurchase)}
+                  {formatCurrency(order.totalGbpAtPurchase, order.currency)}
                 </Text>
               </View>
               <View style={styles.summaryRow}>
@@ -720,7 +720,7 @@ export default function GuestDetailRoute(): React.ReactElement {
                         Refunded {formatRelativeTime(r.refundedAt)}
                       </Text>
                       <Text style={styles.summaryValueWarn}>
-                        −{formatGbp(r.amountGbp)}
+                        −{formatCurrency(r.amountGbp, order.currency)}
                       </Text>
                     </View>
                   ))}
@@ -755,14 +755,14 @@ export default function GuestDetailRoute(): React.ReactElement {
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Total</Text>
                 <Text style={styles.summaryValue}>
-                  {formatGbp(sale.totalGbpAtSale)}
+                  {formatCurrency(sale.totalGbpAtSale, sale.currency)}
                 </Text>
               </View>
               {sale.refundedAmountGbp > 0 ? (
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Refunded</Text>
                   <Text style={styles.summaryValueWarn}>
-                    −{formatGbp(sale.refundedAmountGbp)}
+                    −{formatCurrency(sale.refundedAmountGbp, sale.currency)}
                   </Text>
                 </View>
               ) : null}
@@ -788,7 +788,7 @@ export default function GuestDetailRoute(): React.ReactElement {
                         Refunded {formatRelativeTime(r.refundedAt)}
                       </Text>
                       <Text style={styles.summaryValueWarn}>
-                        −{formatGbp(r.amountGbp)}
+                        −{formatCurrency(r.amountGbp, sale.currency)}
                       </Text>
                     </View>
                   ))}

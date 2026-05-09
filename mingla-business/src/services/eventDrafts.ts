@@ -13,7 +13,7 @@ import {
 } from "../utils/serverDraftEventMapper";
 
 const EVENT_DRAFT_SELECT =
-  "id,brand_id,created_by,title,description,slug,location_text,online_url,cover_media_url,cover_media_type,is_online,is_recurring,is_multi_date,recurrence_rules,theme,visibility,status,timezone,created_at,updated_at,published_at,deleted_at";
+  "id,brand_id,created_by,title,description,slug,location_text,online_url,cover_media_url,cover_media_type,currency,is_online,is_recurring,is_multi_date,recurrence_rules,theme,visibility,status,timezone,created_at,updated_at,published_at,deleted_at";
 
 const serverDraftSlug = (): string =>
   generateEventSlug("draft", new Set<string>());
@@ -30,6 +30,49 @@ const requireUserId = async (): Promise<string> => {
 
 const rowToDraft = (row: unknown): DraftEvent =>
   serverRowToDraft(row as ServerDraftEventRow);
+
+const nullableCurrency = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0
+    ? value.trim().toUpperCase()
+    : null;
+
+const fetchBrandDefaultCurrency = async (brandId: string): Promise<string | null> => {
+  const { data, error } = await supabase
+    .from("brands")
+    .select("default_currency")
+    .eq("id", brandId)
+    .maybeSingle();
+  if (error !== null) throw error;
+  return nullableCurrency(
+    (data as { default_currency?: unknown } | null)?.default_currency,
+  );
+};
+
+const resolveDraftCurrencyForPublish = async (
+  draft: DraftEvent,
+  existingCurrency: unknown = null,
+): Promise<string> => {
+  const localCurrency = nullableCurrency(draft.currency);
+  if (localCurrency !== null) return localCurrency;
+  const serverCurrency = nullableCurrency(existingCurrency);
+  if (serverCurrency !== null) return serverCurrency;
+  const brandCurrency = await fetchBrandDefaultCurrency(draft.brandId);
+  if (brandCurrency === null) {
+    throw new Error("Brand currency is not set. Connect Stripe before publishing paid tickets.");
+  }
+  return brandCurrency;
+};
+
+const resolveDraftCurrencyForSave = async (
+  draft: DraftEvent,
+  existingCurrency: unknown = null,
+): Promise<string | null> => {
+  const localCurrency = nullableCurrency(draft.currency);
+  if (localCurrency !== null) return localCurrency;
+  const serverCurrency = nullableCurrency(existingCurrency);
+  if (serverCurrency !== null) return serverCurrency;
+  return fetchBrandDefaultCurrency(draft.brandId);
+};
 
 interface DiscardDraftRpcResponse {
   event_id: string;
@@ -72,8 +115,9 @@ export const syncDraftTicketsToServerEvent = async (
 
   if (softDeleteError !== null) throw softDeleteError;
 
+  const brandCurrency = await resolveDraftCurrencyForPublish(draft);
   const rows = draft.tickets.map((ticket) =>
-    draftTicketToTicketTypeInsert(draft.id, ticket),
+    draftTicketToTicketTypeInsert(draft.id, ticket, brandCurrency),
   );
   const { error: insertError } = await supabase.from("ticket_types").insert(rows);
 
@@ -86,7 +130,15 @@ export const createServerDraft = async (
 ): Promise<DraftEvent> => {
   const userId = await requireUserId();
   const now = new Date().toISOString();
-  const draft = sourceDraft ?? buildDraftEvent(brandId, undefined, now);
+  const effectiveCurrency =
+    nullableCurrency(sourceDraft?.currency) ?? (await fetchBrandDefaultCurrency(brandId));
+  const draft =
+    sourceDraft !== undefined
+      ? { ...sourceDraft, currency: effectiveCurrency }
+      : {
+          ...buildDraftEvent(brandId, undefined, now),
+          currency: effectiveCurrency,
+        };
   const legacyLocalDraftId =
     sourceDraft !== undefined && sourceDraft.id.startsWith("d_")
       ? sourceDraft.id
@@ -139,25 +191,38 @@ export const fetchDraftById = async (
   return data === null ? null : rowToDraft(data);
 };
 
-const fetchExistingTheme = async (draftId: string): Promise<unknown> => {
+interface ExistingDraftSaveContext {
+  theme: unknown;
+  currency: string | null;
+}
+
+const fetchExistingDraftSaveContext = async (
+  draftId: string,
+): Promise<ExistingDraftSaveContext> => {
   const { data, error } = await supabase
     .from("events")
-    .select("theme")
+    .select("theme,currency")
     .eq("id", draftId)
     .is("deleted_at", null)
     .single();
 
   if (error !== null) throw error;
-  return (data as { theme?: unknown } | null)?.theme ?? {};
+  const row = data as { theme?: unknown; currency?: unknown } | null;
+  return {
+    theme: row?.theme ?? {},
+    currency: nullableCurrency(row?.currency),
+  };
 };
 
 export const autosaveServerDraft = async (
   draft: DraftEvent,
 ): Promise<DraftEvent> => {
-  const existingTheme = await fetchExistingTheme(draft.id);
+  const existing = await fetchExistingDraftSaveContext(draft.id);
+  const effectiveCurrency = await resolveDraftCurrencyForSave(draft, existing.currency);
+  const normalizedDraft = { ...draft, currency: effectiveCurrency };
   const updatePayload = draftToServerUpdate(
-    draft,
-    existingTheme,
+    normalizedDraft,
+    existing.theme,
     draft.clientRevision ?? 0,
   );
 

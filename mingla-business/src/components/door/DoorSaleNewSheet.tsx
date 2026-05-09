@@ -63,7 +63,7 @@ import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";
 import { useScanStore } from "../../store/scanStore";
 import { expandDoorTickets } from "../../utils/expandDoorTickets";
-import { formatGbp } from "../../utils/currency";
+import { formatCurrency } from "../../utils/currency";
 
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
@@ -91,7 +91,8 @@ const isValidEmailOrEmpty = (s: string): boolean => {
 interface DoorCartLine {
   ticketTypeId: string;
   ticketName: string;
-  unitPriceGbp: number;
+  unitPrice: number;
+  currency: string;
   isFree: boolean;
   quantity: number;
 }
@@ -185,8 +186,8 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     [event.tickets],
   );
 
-  const totalGbp = useMemo<number>(
-    () => lines.reduce((sum, l) => sum + l.unitPriceGbp * l.quantity, 0),
+  const total = useMemo<number>(
+    () => lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0),
     [lines],
   );
 
@@ -211,7 +212,8 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
             {
               ticketTypeId: tier.id,
               ticketName: tier.name.length > 0 ? tier.name : "Untitled tier",
-              unitPriceGbp: unit,
+              unitPrice: unit,
+              currency: tier.currency ?? event.currency ?? "GBP",
               isFree: tier.isFree,
               quantity: safeQty,
             },
@@ -268,14 +270,17 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
         lines: lines.map((l) => ({
           ticketTypeId: l.ticketTypeId,
           ticketNameAtSale: l.ticketName,
-          unitPriceGbpAtSale: l.unitPriceGbp,
+          unitPriceGbpAtSale: l.unitPrice,
+          unitPriceAtSale: l.unitPrice,
           isFreeAtSale: l.isFree,
           quantity: l.quantity,
           refundedQuantity: 0,
           refundedAmountGbp: 0,
+          refundedAmount: 0,
         })),
-        totalGbpAtSale: totalGbp,
-        currency: "GBP",
+        totalGbpAtSale: total,
+        totalAtSale: total,
+        currency: event.currency ?? "GBP",
         notes: notes.trim(),
       });
       // Decision #5 + HIDDEN-1 contract — fire N scan records AFTER recordSale
@@ -313,7 +318,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     buyerPhone,
     paymentMethod,
     lines,
-    totalGbp,
+    total,
     notes,
     onSuccess,
   ]);
@@ -368,7 +373,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                 const priceLabel = tier.isFree
                   ? "Free"
                   : tier.priceGbp !== null
-                    ? formatGbp(tier.priceGbp)
+                    ? formatCurrency(tier.priceGbp, tier.currency ?? event.currency ?? "GBP")
                     : "—";
                 return (
                   <View key={tier.id} style={styles.tierRow}>
@@ -422,7 +427,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                   {totalQty} ticket{totalQty === 1 ? "" : "s"}
                 </Text>
                 <Text style={styles.cartSummaryValue}>
-                  {formatGbp(totalGbp)}
+                  {formatCurrency(total, event.currency ?? "GBP")}
                 </Text>
               </View>
             </View>
@@ -576,7 +581,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
         <View style={styles.dock}>
           <View style={styles.dockTotalRow}>
             <Text style={styles.dockTotalLabel}>Total</Text>
-            <Text style={styles.dockTotalValue}>{formatGbp(totalGbp)}</Text>
+            <Text style={styles.dockTotalValue}>{formatCurrency(total, event.currency ?? "GBP")}</Text>
           </View>
           <Button
             label={submitting ? "Recording..." : "Record sale"}
