@@ -1,11 +1,17 @@
-# Keep Vercel CLI uploads scoped to the linked mingla-business project.
-# The repo contains native builds and node_modules that exceed Vercel's
-# request body limit when deploying from the monorepo root.
+# Keep Vercel CLI uploads under the 10 MB request-body limit while preserving
+# the linked project root directory (`mingla-business`) for Vercel.
 
-*
-
-!mingla-business/
-!mingla-business/**
+node_modules/
+app-mobile/
+backend/
+mingla-admin/
+mingla-marketing/
+oauth-redirect/
+scripts/
+supabase/
+tests/
+Mingla_Artifacts/
+Mingla_Roadmap/
 
 mingla-business/.env
 mingla-business/.expo/
