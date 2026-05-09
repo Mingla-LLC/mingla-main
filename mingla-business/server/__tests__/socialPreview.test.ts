@@ -7,6 +7,7 @@ const {
   brandPublicUrl,
   buildBrandOgCardProps,
   buildEventOgCardProps,
+  buildOgTextFit,
   eventImageUrl,
   eventPublicUrl,
   renderBrandHtml,
@@ -19,10 +20,18 @@ const {
       | Record<string, unknown>[]
       | { brand: Record<string, unknown>; events: Record<string, unknown>[] }
       | null,
-  ) => Record<string, string | null>;
+  ) => Record<string, unknown>;
   buildEventOgCardProps: (
     row: Record<string, unknown> | null,
-  ) => Record<string, string | null>;
+  ) => Record<string, unknown>;
+  buildOgTextFit: (input: {
+    cardKind?: string;
+    title: string;
+    subtitle: string;
+    primaryChip?: string;
+    secondaryChip?: string;
+    accentLabel?: string;
+  }) => Record<string, unknown>;
   eventImageUrl: (row: Record<string, unknown>) => string;
   eventPublicUrl: (row: Record<string, unknown>) => string;
   renderBrandHtml: (
@@ -111,6 +120,30 @@ describe("social preview metadata renderers", () => {
     expect(html).not.toContain("localhost");
   });
 
+  test("uses the branded OG banner for share metadata even when source artwork exists", () => {
+    expect(
+      eventImageUrl({
+        ...row,
+        cover_media_url: "https://cdn.example.com/event-cover.png",
+        cover_media_type: "image",
+      }),
+    ).toBe("https://business.usemingla.com/og/event/event-1.png");
+    expect(
+      brandImageUrl({
+        ...brand,
+        profile_photo_url: "https://cdn.example.com/brand-profile.png",
+      }),
+    ).toBe("https://business.usemingla.com/og/brand/brand-3.png");
+    expect(
+      brandImageUrl({
+        ...brand,
+        profile_photo_url: null,
+        cover_media_url: "https://cdn.example.com/brand-cover.png",
+        cover_media_type: "image",
+      }),
+    ).toBe("https://business.usemingla.com/og/brand/brand-3.png");
+  });
+
   test("builds event OG card props with event date and location", () => {
     expect(buildEventOgCardProps(row)).toEqual(
       expect.objectContaining({
@@ -120,6 +153,13 @@ describe("social preview metadata renderers", () => {
         dateLabel: "May 8, 2026",
         locationLabel: "The Good Room",
         coverUrl: null,
+      }),
+    );
+    const props = buildEventOgCardProps(row);
+    expect(props.textFit).toEqual(
+      expect.objectContaining({
+        primaryChipText: "May 8, 2026",
+        secondaryChipText: "The Good Room",
       }),
     );
   });
@@ -157,6 +197,21 @@ describe("social preview metadata renderers", () => {
         eventCountLabel: "2 events",
         nextEventLabel: "Summer Rooftop - Jun 12, 2026",
         coverUrl: "https://cdn.example.com/cover.png",
+      }),
+    );
+    const props = buildBrandOgCardProps({
+      brand: {
+        ...brand,
+        slug: "test-stripe",
+        name: "Test Stripe",
+        description: "Host-led popups in London.",
+      },
+      events: [nextRow, row],
+    });
+    expect(props.textFit).toEqual(
+      expect.objectContaining({
+        primaryChipText: "2 events",
+        secondaryChipText: "Summer Rooftop - Jun 12, 2026",
       }),
     );
   });
@@ -198,4 +253,69 @@ describe("social preview metadata renderers", () => {
       }),
     );
   });
+
+  test("long event title uses compact bounded text fit for OG card", () => {
+    const longRow = {
+      ...row,
+      title: "Runtime Share Test FreeTA throwaway free-ticket QA",
+      location_text: "The venue - The place with a very long neighbourhood label",
+    };
+    const props = buildEventOgCardProps(longRow);
+    const textFit = props.textFit as Record<string, unknown>;
+
+    expect(textFit).toEqual(
+      expect.objectContaining({
+        titleFontSize: 58,
+        titleMaxLines: 2,
+        titleMaxHeight: 120,
+        secondaryChipMaxChars: 54,
+      }),
+    );
+    expect(textFit.titleText).toBe("Runtime Share Test FreeTA throwaway free-ticket QA");
+    expect(String(textFit.secondaryChipText)).toContain("...");
+    expect(Number(textFit.titleMaxHeight)).toBeLessThanOrEqual(154);
+    expect(Number(textFit.contentMaxHeight)).toBeLessThanOrEqual(492);
+  });
+
+  test("very long brand name and next-event cue use compact bounded text fit", () => {
+    const longTitle = "Runtime Share Test FreeTA throwaway free-ticket QA";
+    const props = buildBrandOgCardProps({
+      brand: {
+        ...brand,
+        slug: "long-brand",
+        name: "Runtime Share Test FreeTA throwaway free-ticket QA Collective",
+      },
+      events: [{ ...row, title: longTitle }],
+    });
+    const textFit = props.textFit as Record<string, unknown>;
+
+    expect(textFit).toEqual(
+      expect.objectContaining({
+        titleFontSize: 54,
+        titleMaxLines: 3,
+        titleMaxHeight: 154,
+        secondaryChipMaxChars: 42,
+      }),
+    );
+    expect(String(textFit.titleText)).toContain("Runtime Share Test");
+    expect(String(textFit.secondaryChipText)).toContain("...");
+    expect(Number(textFit.titleMaxHeight)).toBeLessThanOrEqual(154);
+    expect(Number(textFit.contentMaxHeight)).toBeLessThanOrEqual(492);
+  });
+
+  test("text fit strips oversized slots without changing canonical domain data", () => {
+    const fit = buildOgTextFit({
+      cardKind: "event",
+      title: "Runtime Share Test FreeTA throwaway free-ticket QA and then an even longer suffix",
+      subtitle: "A long but still honest event description that should never collide with the Mingla Business mark.",
+      primaryChip: "Nov 9, 2026",
+      secondaryChip: "The venue - The place with a very long neighbourhood label",
+      accentLabel: "Leggo This",
+    });
+
+    expect(String(fit.titleText).length).toBeLessThanOrEqual(66);
+    expect(String(fit.secondaryChipText).length).toBeLessThanOrEqual(42);
+    expect(fit.primaryChipText).toBe("Nov 9, 2026");
+  });
+
 });

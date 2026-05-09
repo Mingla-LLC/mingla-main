@@ -12,11 +12,25 @@ const trimmedOrNull = (value: string | undefined): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+const stripUrlFromBody = (body: string, url: string | undefined): string => {
+  if (url === undefined || url.trim().length === 0) return body;
+  return body
+    .split(url)
+    .join("")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+};
+
 export const buildPublicShareBody = ({
   title,
+  url,
   description,
-}: Omit<SharePublicUrlInput, "url">): string => {
-  const body = trimmedOrNull(description) ?? trimmedOrNull(title);
+}: Partial<Pick<SharePublicUrlInput, "url">> &
+  Omit<SharePublicUrlInput, "url">): string => {
+  const body = stripUrlFromBody(
+    trimmedOrNull(description) ?? trimmedOrNull(title) ?? "",
+    url,
+  );
   return body ?? "";
 };
 
@@ -25,7 +39,7 @@ export const buildAndroidPublicShareMessage = ({
   url,
   description,
 }: SharePublicUrlInput): string => {
-  const body = buildPublicShareBody({ title, description });
+  const body = buildPublicShareBody({ title, url, description });
   if (body.length === 0) return url;
   return body.includes(url) ? body : `${body}\n${url}`;
 };
@@ -67,7 +81,7 @@ export const sharePublicUrl = async ({
   url,
   description,
 }: SharePublicUrlInput): Promise<void> => {
-  const shareBody = buildPublicShareBody({ title, description });
+  const shareBody = buildPublicShareBody({ title, url, description });
   if (Platform.OS === "web") {
     const share = webNavigator()?.share;
     if (share === undefined) {
