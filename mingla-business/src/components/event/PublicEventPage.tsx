@@ -48,7 +48,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -215,42 +214,6 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
-  const handleShare = useCallback(async (): Promise<void> => {
-    const url = canonicalUrl(event);
-    if (Platform.OS === "web") {
-      const navAny = (
-        globalThis as unknown as {
-          navigator?: {
-            share?: (data: { title: string; url: string }) => Promise<void>;
-            clipboard?: { writeText?: (s: string) => Promise<void> };
-          };
-        }
-      ).navigator;
-      if (navAny?.share !== undefined) {
-        try {
-          await navAny.share({ title: event.name, url });
-        } catch {
-          // user cancelled — surface no error
-        }
-      } else if (navAny?.clipboard?.writeText !== undefined) {
-        try {
-          await navAny.clipboard.writeText(url);
-          showToast("Link copied");
-        } catch {
-          showToast("Couldn't copy link.");
-        }
-      } else {
-        showToast("Share not supported on this browser.");
-      }
-    } else {
-      try {
-        await Share.share({ message: `${event.name}\n${url}`, url });
-      } catch {
-        // user cancelled
-      }
-    }
-  }, [event, showToast]);
-
   const handleBuyerAction = useCallback(
     (action: "buy" | "free" | "approval" | "password" | "waitlist"): void => {
       // Cycle 8: "buy" + "free" route to checkout (J-C1 → J-C5). Other
@@ -308,6 +271,13 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
           <meta
             name="twitter:description"
             content={event.description.slice(0, 200) || event.name}
+          />
+          <meta
+            name="twitter:image"
+            content={eventOgImageUrl({
+              eventId: event.id,
+              coverMediaUrl: event.coverMediaUrl,
+            })}
           />
           <link rel="canonical" href={canonicalUrl(event)} />
         </Head>
@@ -645,6 +615,10 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   const badges = formatTicketBadges(ticket);
   const buttonLabel = formatTicketButtonLabel(ticket);
   const isVisDisabled = ticket.visibility === "disabled";
+  const saleEnded =
+    ticket.saleEndAt !== null &&
+    Number.isFinite(new Date(ticket.saleEndAt).getTime()) &&
+    new Date(ticket.saleEndAt).getTime() <= Date.now();
   const isSoldOutTicket =
     !ticket.isUnlimited && (ticket.capacity ?? 0) === 0;
   // Cycle 12 — door-only tiers are info-only on the public page. Buyer
@@ -656,7 +630,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
 
   // Decide what action this ticket's button fires.
   const handleTap = (): void => {
-    if (variant === "past" || isVisDisabled) return;
+    if (variant === "past" || isVisDisabled || saleEnded) return;
     if (isDoorOnly) return; // Cycle 12 — info-only display; no purchase path
     if (variant === "pre-sale") return; // disabled during pre-sale
     if (isSoldOutTicket && ticket.waitlistEnabled) {
@@ -678,6 +652,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   // Compute final button label + disabled state per variant.
   const effectiveLabel: string = (() => {
     if (variant === "past") return "Sales ended";
+    if (saleEnded) return "Sales ended";
     if (variant === "pre-sale") return "On sale soon";
     if (isVisDisabled) return "Sales paused";
     if (isDoorOnly) return "Pay at the door"; // Cycle 12 — info-only
@@ -688,6 +663,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
 
   const isButtonDisabled =
     variant === "past" ||
+    saleEnded ||
     variant === "pre-sale" ||
     isVisDisabled ||
     isDoorOnly || // Cycle 12 — door-only tiers are info-only on buyer surfaces

@@ -97,6 +97,22 @@ const STEPPER_STEPS: StepperStep[] = STEP_DEFS.map((s, i) => ({
   label: s.title,
 }));
 
+const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
+  draft.id.startsWith("d_") || draft.serverSlug === null;
+
+const discardErrorMessage = (error: unknown): string => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  if (message.includes("insufficient_event_permission")) {
+    return "You do not have permission to delete this draft for this brand.";
+  }
+  return "Could not delete draft. Try again.";
+};
+
 export type WizardExitMode = "published" | "discarded" | "abandoned";
 
 /** Slug pair returned to the route handler so it can navigate to the
@@ -178,6 +194,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const [errorsSheetVisible, setErrorsSheetVisible] = useState<boolean>(false);
   const [pendingErrors, setPendingErrors] = useState<ValidationError[]>([]);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
+  const [isDiscarding, setIsDiscarding] = useState<boolean>(false);
+  const [discardError, setDiscardError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
   // Track keyboard state — used to (a) hide the bottom dock during
   // typing so it doesn't take space between focused input and keyboard,
@@ -393,6 +411,17 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     return isDraftEventPristine(liveDraft);
   }, [liveDraft]);
 
+  const discardDraft = useCallback(
+    async (draft: DraftEvent): Promise<void> => {
+      if (isLocalOnlyDraft(draft) || onDiscardServerDraft === undefined) {
+        deleteDraft(draft.id);
+        return;
+      }
+      await onDiscardServerDraft(draft);
+    },
+    [deleteDraft, onDiscardServerDraft],
+  );
+
   // Chrome "X" — always exits the wizard to the Events tab. Independent
   // of which step the user is on; the dock's Back button handles step
   // navigation. Discard ConfirmDialog still appears in create-mode if
@@ -402,17 +431,14 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       if (isDraftPristine()) {
         void (async (): Promise<void> => {
           try {
-            if (onDiscardServerDraft !== undefined) {
-              await onDiscardServerDraft(liveDraft);
-            } else {
-              deleteDraft(liveDraft.id);
-            }
+            await discardDraft(liveDraft);
             onExit("abandoned");
-          } catch {
-            handleShowToast("Could not discard draft. Try again.");
+          } catch (error) {
+            handleShowToast(discardErrorMessage(error));
           }
         })();
       } else {
+        setDiscardError(null);
         setDiscardDialogVisible(true);
       }
     } else {
@@ -422,9 +448,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   }, [
     isCreateMode,
     isDraftPristine,
-    onDiscardServerDraft,
+    discardDraft,
     liveDraft,
-    deleteDraft,
     onExit,
     handleShowToast,
   ]);
@@ -436,27 +461,25 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     setCurrentStep((prev) => Math.max(0, prev - 1));
   }, []);
 
-  const handleConfirmDiscard = useCallback((): void => {
-    void (async (): Promise<void> => {
-      try {
-        if (onDiscardServerDraft !== undefined) {
-          await onDiscardServerDraft(liveDraft);
-        } else {
-          deleteDraft(liveDraft.id);
-        }
-        setDiscardDialogVisible(false);
-        onExit("discarded");
-      } catch {
-        handleShowToast("Could not delete draft. Try again.");
-      }
-    })();
-  }, [
-    onDiscardServerDraft,
-    liveDraft,
-    deleteDraft,
-    onExit,
-    handleShowToast,
-  ]);
+  const handleCloseDiscardDialog = useCallback((): void => {
+    if (isDiscarding) return;
+    setDiscardDialogVisible(false);
+    setDiscardError(null);
+  }, [isDiscarding]);
+
+  const handleConfirmDiscard = useCallback(async (): Promise<void> => {
+    setDiscardError(null);
+    setIsDiscarding(true);
+    try {
+      await discardDraft(liveDraft);
+      setDiscardDialogVisible(false);
+      onExit("discarded");
+    } catch (error) {
+      setDiscardError(discardErrorMessage(error));
+    } finally {
+      setIsDiscarding(false);
+    }
+  }, [discardDraft, liveDraft, onExit]);
 
   const handleContinue = useCallback((): void => {
     const errs = validateStep(currentStep, liveDraft);
@@ -776,12 +799,16 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       {/* Overlays — at root for I-13 portal contract */}
       <ConfirmDialog
         visible={discardDialogVisible}
-        onClose={() => setDiscardDialogVisible(false)}
+        onClose={handleCloseDiscardDialog}
         onConfirm={handleConfirmDiscard}
         title="Discard this event?"
         description="You'll lose your changes."
         confirmLabel="Discard"
         cancelLabel="Keep editing"
+        confirmLoading={isDiscarding}
+        confirmDisabled={isDiscarding}
+        closeDisabled={isDiscarding}
+        errorMessage={discardError}
         destructive
       />
 

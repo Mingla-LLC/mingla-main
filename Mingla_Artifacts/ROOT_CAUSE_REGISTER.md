@@ -1,9 +1,42 @@
 # Root Cause Register
 
-> Last updated: 2026-05-08
+> Last updated: 2026-05-09
 > Proven root causes with causal clusters.
 
 ## Root Causes
+
+### RC-0764B: Stripe onboarding UI used split status truths and treated actionable KYC as terminal failure
+- **Discovery date:** 2026-05-09
+- **Proof:** `reports/INVESTIGATION_ORCH-0764B_STRIPE_ONBOARDING_STATE_RECONCILIATION.md` proved Payments could render cached `brand.stripeStatus=onboarding` while live `useBrandStripeStatus().requirements.disabled_reason=requirements.past_due` rendered restricted remediation. `reports/IMPLEMENTATION_ORCH-0764B_STRIPE_ONBOARDING_STATE_RECONCILIATION.md` reports implementation of the primary repair contract. `reports/RETEST_ORCH-0764B_STRIPE_ONBOARDING_STATE_RECONCILIATION.md` then proved two remaining P1 gaps: production return route `https://business.usemingla.com/stripe-onboarding-return` returns Vercel `404_NOT_FOUND`, and `BrandOnboardView` still has a cached `brand.stripeStatus === "active"` terminal-success bypass.
+- **Symptoms caused:** Users saw contradictory "Onboarding submitted — verifying" and "Verification overdue" states, remediation could leave the app through bare `connect.stripe.com/express_login`, and ordinary past-due KYC could end in "Stripe couldn't verify."
+- **Causal chain:**
+  1. Payments used cached `brand.stripeStatus` for the main banner while live Stripe requirements powered remediation cards.
+  2. Restricted remediation used a generic Express login URL instead of Mingla's controlled Account Link creation path.
+  3. The onboarding modal treated every `restricted` status as terminal failure rather than distinguishing actionable requirements from true Stripe rejection.
+  4. Browser return performed one refresh only, so Stripe propagation lag could produce false final states.
+  5. SQL status derivation checked `charges_enabled` before `requirements.disabled_reason`, while TS/product expectation already treated disabled requirements as `restricted`.
+  6. Business web export contained the onboarding return screen locally, but production routing did not serve the clean `/stripe-onboarding-return` URL used by Stripe.
+  7. `BrandOnboardView` retained an older cached-active shortcut, so one onboarding surface could still terminally trust stale brand status before live Stripe requirements loaded.
+- **Structural fix:** Primary repair is implemented: Payments now prefers live Stripe status over cached brand status; all actionable remediation CTAs route through Mingla's Account Link continuation; onboarding shell distinguishes `needs-information` from terminal `failed-stripe`; status settlement polls briefly after browser return; SQL parity migration `20260515000007_orch_0764b_stripe_status_derivation_parity.sql` makes `requirements.disabled_reason` win over `charges_enabled`. Rework `reports/IMPLEMENTATION_REWORK_ORCH-0764B_STRIPE_ONBOARDING_RETURN_AND_ACTIVE_BYPASS.md` adds the return-route rewrite and makes cached `active` wait for live status in `checking-status`.
+- **Status:** **OPEN - VERCEL DEPLOY GATE THEN TESTER 2026-05-09**. Next prompt after deploy: `prompts/TESTER_RETEST_REWORK_ORCH-0764B_STRIPE_ONBOARDING_RETURN_AND_ACTIVE_BYPASS.md`.
+- **Invariant / regression guard:** Stripe Connect account state has one effective UI truth per surface: live server status first, cached brand status only as loading fallback; actionable KYC requirements must be resumable through fresh Account Links, not terminal failure or generic Express login.
+- **Causal cluster:** Cluster 1/6 crossover: duplicate state authority plus external payment-provider hosted-flow semantics.
+- **Follow-ups not part of RC:** Checkout/destination charges, webhook fulfillment, Stripe live-mode review, and Vercel production route deployment remain separate gates.
+
+### RC-0764A: Stripe Accounts v2 onboarding is gated by Stripe key permission/context after versioning repair
+- **Discovery date:** 2026-05-08
+- **Proof:** `reports/RETEST_ORCH-0764A_STRIPE_API_V2_VERSION_HEADER_RUNTIME.md` proves the deployed version-header fix advanced runtime past the earlier missing `Stripe-Version` error. Fresh authenticated `Stripe Wise 2` runtime accepted Mingla ToS, repeated ToS safely, and then failed in `brand-stripe-onboard` with Stripe's permission/context error before account creation.
+- **Symptoms caused:** Organisers can accept Mingla ToS but cannot start Stripe payout onboarding; no `stripe_connect_accounts` row, no `account_id`, no `client_secret: null` success contract, and no Stripe-hosted onboarding URL are produced.
+- **Causal chain:**
+  1. ORCH-0764A moved from stale Connect onboarding/session behavior to raw Accounts v2 hosted onboarding.
+  2. Runtime first failed because raw `/v2` calls lacked `Stripe-Version`; ORCH-0764A version-header rework fixed that enough to reach Stripe's next gate.
+  3. The live deployed call now fails with Stripe permission/context wording, implicating key scope, key selection, required `Stripe-Context`, payload configuration, or platform/preview access.
+  4. The exact root cause is not yet proven; implementation would be premature without a key/context investigation and spec.
+- **Structural fix:** Pending forensics/spec with `prompts/FORENSICS_SPEC_ORCH-0764A_STRIPE_ACCOUNTS_V2_KEY_CONTEXT.md`.
+- **Status:** **OPEN - FORENSICS SPEC DISPATCH READY 2026-05-08**. Orchestrator review: `reports/REVIEW_RETEST_ORCH-0764A_STRIPE_ACCOUNTS_V2_KEY_CONTEXT_GATE.md`.
+- **Invariant / regression guard:** Stripe onboarding cannot be marked payout-ready until runtime proves HTTP `200`, `client_secret: null`, `account_id: acct_...`, Stripe-hosted `onboarding_url`, and a created/reused `stripe_connect_accounts` row.
+- **Causal cluster:** Cluster 6: external payment-provider capability/key configuration can masquerade as app integration failure.
+- **Follow-ups not part of RC:** ORCH-0764B checkout remains paused; webhook fulfillment and destination-charge checkout should not proceed until ORCH-0764A hosted onboarding is live-proven.
 
 ### RC-0763: Business event truth split between server drafts/public reads and local organiser published events
 - **Discovery date:** 2026-05-08

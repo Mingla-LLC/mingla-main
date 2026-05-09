@@ -33,8 +33,8 @@ const sleep = (ms: number): Promise<void> =>
 export interface EndSalesSheetProps {
   visible: boolean;
   onClose: () => void;
-  /** Caller fires liveEventStore.updateLifecycle + Toast after this resolves. */
-  onConfirm: () => void;
+  /** Caller fires lifecycle mutation + Toast after this resolves. */
+  onConfirm: () => void | Promise<void>;
   eventName: string;
 }
 
@@ -50,8 +50,11 @@ export const EndSalesSheet: React.FC<EndSalesSheetProps> = ({
     if (submitting) return;
     setSubmitting(true);
     await sleep(PROCESSING_MS);
-    setSubmitting(false);
-    onConfirm();
+    try {
+      await onConfirm();
+    } finally {
+      setSubmitting(false);
+    }
   }, [submitting, onConfirm]);
 
   const handleCancel = useCallback((): void => {

@@ -13,7 +13,11 @@ jest.mock("../supabase", () => ({
   },
 }));
 
-import { publishBusinessEventDraft } from "../businessEvents";
+import {
+  cancelBusinessEvent,
+  endBusinessEventTicketSales,
+  publishBusinessEventDraft,
+} from "../businessEvents";
 import type { DraftEvent } from "../../store/draftEventStore";
 
 const repoFile = (relativePath: string): string =>
@@ -204,5 +208,63 @@ describe("business event publish RPC adapter", () => {
     expect(sql).toContain("NEW.status IN ('scheduled', 'live')");
     expect(sql).toContain("NEW.published_at IS NOT NULL");
     expect(sql).toContain("IF v_base_slug = '' OR v_base_slug LIKE 'draft-%'");
+  });
+
+  test("cancel adapter calls the server lifecycle RPC and maps the returned event", async () => {
+    const response = rpcSuccess("visa");
+    response.event.status = "cancelled";
+    response.event.updated_at = "2026-05-08T19:00:00.000Z";
+    rpcMock.mockResolvedValueOnce({ data: response, error: null });
+
+    const cancelled = await cancelBusinessEvent(
+      "00000000-0000-4000-8000-000000000001",
+    );
+
+    expect(rpcMock).toHaveBeenCalledWith("business_cancel_event", {
+      p_event_id: "00000000-0000-4000-8000-000000000001",
+    });
+    expect(cancelled.event.status).toBe("cancelled");
+    expect(cancelled.event.cancelledAt).toBe("2026-05-08T19:00:00.000Z");
+  });
+
+  test("end-sales adapter calls the server RPC and maps sale-ended disabled tickets", async () => {
+    const response = rpcSuccess("visa");
+    (response.tickets[0] as { sale_end_at: string | null }).sale_end_at =
+      "2026-05-08T19:00:00.000Z";
+    response.tickets[0].is_disabled = true;
+    rpcMock.mockResolvedValueOnce({ data: response, error: null });
+
+    const updated = await endBusinessEventTicketSales(
+      "00000000-0000-4000-8000-000000000001",
+    );
+
+    expect(rpcMock).toHaveBeenCalledWith(
+      "business_end_event_ticket_sales",
+      {
+        p_event_id: "00000000-0000-4000-8000-000000000001",
+      },
+    );
+    expect(updated.event.status).toBe("scheduled");
+    expect(updated.tickets[0]).toMatchObject({
+      saleEndAt: "2026-05-08T19:00:00.000Z",
+      visibility: "disabled",
+    });
+  });
+
+  test("lifecycle migration adds RPCs and keeps cancelled/ended public exact URLs readable", () => {
+    const sql = repoFile(
+      "../supabase/migrations/20260515000005_orch_0763d_event_lifecycle_repair.sql",
+    );
+
+    expect(sql).toContain("business_cancel_event");
+    expect(sql).toContain("business_end_event_ticket_sales");
+    expect(sql).toContain("FOR UPDATE");
+    expect(sql).toContain("biz_brand_effective_rank");
+    expect(sql).toContain("biz_role_rank('event_manager'");
+    expect(sql).toContain("status = 'cancelled'");
+    expect(sql).toContain("sale_end_at = v_now");
+    expect(sql).toContain("is_disabled = true");
+    expect(sql).toContain("'ended'::text");
+    expect(sql).toContain("'cancelled'::text");
   });
 });

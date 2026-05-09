@@ -1,5 +1,12 @@
 import { supabase } from "./supabase";
-import type { TicketStub } from "../store/draftEventStore";
+import type {
+  DraftEventFormat,
+  DraftEventVisibility,
+  MultiDateEntry,
+  RecurrenceRule,
+  TicketStub,
+  WhenMode,
+} from "../store/draftEventStore";
 import type { LiveEvent, LiveEventStatus } from "../store/liveEventStore";
 import type { Brand, BrandLinks } from "../store/currentBrandStore";
 
@@ -81,6 +88,53 @@ const asRecord = (value: unknown): JsonRecord =>
 
 const asNumber = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
+const asBoolean = (value: unknown, fallback: boolean): boolean =>
+  typeof value === "boolean" ? value : fallback;
+
+const asStringOrNull = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value : null;
+
+const asDateStringOrNull = (value: unknown): string | null => {
+  const candidate = asStringOrNull(value);
+  if (candidate === null) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(candidate)) return null;
+  const [year, month, day] = candidate.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return candidate;
+};
+
+const asWhenMode = (
+  value: unknown,
+  row: Pick<BusinessPublicEventViewRow, "is_recurring" | "is_multi_date">,
+): WhenMode => {
+  if (value === "recurring" || value === "multi_date" || value === "single") {
+    return value;
+  }
+  if (row.is_multi_date) return "multi_date";
+  if (row.is_recurring) return "recurring";
+  return "single";
+};
+
+const asFormat = (value: unknown, isOnline: boolean): DraftEventFormat => {
+  if (value === "in_person" || value === "online" || value === "hybrid") {
+    return value;
+  }
+  return isOnline ? "online" : "in_person";
+};
+
+const asVisibility = (value: string): DraftEventVisibility => {
+  if (value === "private") return "private";
+  if (value === "hidden") return "unlisted";
+  return "public";
+};
 
 const asLinks = (value: unknown): BrandLinks | undefined => {
   const record = asRecord(value);
@@ -167,12 +221,16 @@ const ticketRowToTicketStub = (row: TicketTypeRow): PublicTicketTypeRecord => ({
         : "door",
 });
 
-const viewRowToEvent = (
+export const publicEventViewRowToEvent = (
   row: BusinessPublicEventViewRow,
   tickets: PublicTicketTypeRecord[],
 ): PublicEventRecord => {
   const theme = asRecord(row.public_theme);
-  const coverHue = asNumber(theme.coverHue, 25);
+  const businessEvent = asRecord(theme.business_event);
+  const when = asRecord(businessEvent.when);
+  const location = asRecord(businessEvent.location);
+  const settings = asRecord(businessEvent.settings);
+  const coverHue = asNumber(businessEvent.coverHue ?? theme.coverHue, 25);
   return {
     id: row.id,
     serverEventId: row.id,
@@ -181,36 +239,59 @@ const viewRowToEvent = (
     eventSlug: row.slug,
     status: viewStatusToLiveStatus(row.status),
     publishedAt: row.published_at ?? row.updated_at,
-    cancelledAt: null,
+    cancelledAt: row.status === "cancelled" ? row.updated_at : null,
     endedAt: row.status === "ended" ? row.updated_at : null,
     name: row.title,
     description: row.description ?? "",
-    format: row.is_online ? "online" : "in_person",
-    category: null,
-    whenMode: row.is_multi_date ? "multi_date" : row.is_recurring ? "recurring" : "single",
-    date: null,
-    doorsOpen: null,
-    endsAt: null,
-    timezone: row.timezone,
+    format: asFormat(businessEvent.format, row.is_online),
+    category: asStringOrNull(businessEvent.category),
+    whenMode: asWhenMode(businessEvent.whenMode, row),
+    date: asDateStringOrNull(when.date),
+    doorsOpen: asStringOrNull(when.doorsOpen),
+    endsAt: asStringOrNull(when.endsAt),
+    timezone: asStringOrNull(when.timezone) ?? asStringOrNull(row.timezone) ?? "UTC",
     recurrenceRule:
-      row.recurrence_rules === null ? null : (row.recurrence_rules as never),
-    multiDates: null,
-    venueName: row.location_text,
-    address: row.location_text,
+      businessEvent.recurrenceRule === null ||
+      businessEvent.recurrenceRule === undefined
+        ? row.recurrence_rules === null
+          ? null
+          : (row.recurrence_rules as RecurrenceRule)
+        : (businessEvent.recurrenceRule as RecurrenceRule),
+    multiDates: Array.isArray(businessEvent.multiDates)
+      ? (businessEvent.multiDates as MultiDateEntry[])
+      : null,
+    venueName: asStringOrNull(location.venueName) ?? row.location_text,
+    address: asStringOrNull(location.address) ?? row.location_text,
     onlineUrl: row.online_url,
-    hideAddressUntilTicket: true,
+    hideAddressUntilTicket: asBoolean(
+      businessEvent.hideAddressUntilTicket,
+      true,
+    ),
     coverHue,
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
     tickets,
-    visibility: row.visibility === "private" ? "private" : row.visibility === "hidden" ? "unlisted" : "public",
-    requireApproval: tickets.some((ticket) => ticket.approvalRequired),
-    allowTransfers: tickets.every((ticket) => ticket.allowTransfers),
-    hideRemainingCount: false,
-    passwordProtected: tickets.some((ticket) => ticket.passwordProtected),
-    privateGuestList: true,
-    inPersonPaymentsEnabled: tickets.some(
-      (ticket) => ticket.availableAt === "both" || ticket.availableAt === "door",
+    visibility: asVisibility(row.visibility),
+    requireApproval: asBoolean(
+      settings.requireApproval,
+      tickets.some((ticket) => ticket.approvalRequired),
+    ),
+    allowTransfers: asBoolean(
+      settings.allowTransfers,
+      tickets.every((ticket) => ticket.allowTransfers),
+    ),
+    hideRemainingCount: asBoolean(settings.hideRemainingCount, false),
+    passwordProtected: asBoolean(
+      settings.passwordProtected,
+      tickets.some((ticket) => ticket.passwordProtected),
+    ),
+    privateGuestList: asBoolean(settings.privateGuestList, false),
+    inPersonPaymentsEnabled: asBoolean(
+      settings.inPersonPaymentsEnabled,
+      tickets.some(
+        (ticket) =>
+          ticket.availableAt === "both" || ticket.availableAt === "door",
+      ),
     ),
     orders: [],
     createdAt: row.created_at,
@@ -240,7 +321,7 @@ const detailFromRow = async (
 ): Promise<PublicEventDetail> => {
   const tickets = await fetchTickets(row.id);
   return {
-    event: viewRowToEvent(row, tickets),
+    event: publicEventViewRowToEvent(row, tickets),
     brand: viewRowToBrand(row),
     tickets,
   };
@@ -290,6 +371,8 @@ export const getPublicBrandBySlug = async (
   const eventTickets = await Promise.all(rows.map((row) => fetchTickets(row.id)));
   return {
     brand: viewRowToBrand(rows[0]),
-    events: rows.map((row, idx) => viewRowToEvent(row, eventTickets[idx] ?? [])),
+    events: rows.map((row, idx) =>
+      publicEventViewRowToEvent(row, eventTickets[idx] ?? []),
+    ),
   };
 };

@@ -425,3 +425,36 @@ export const publishBusinessEventDraft = async (
   }
   return eventFromPublishResponse(response);
 };
+
+export const cancelBusinessEvent = async (
+  eventId: string,
+): Promise<PublishedBusinessEvent> => {
+  const { data, error } = await supabase.rpc("business_cancel_event", {
+    p_event_id: eventId,
+  });
+
+  if (error !== null) throw error;
+  const response = data as PublishRpcResponse | null;
+  if (response === null) {
+    throw new Error("Cancel did not return a durable event.");
+  }
+  return eventFromPublishResponse(response);
+};
+
+export const endBusinessEventTicketSales = async (
+  eventId: string,
+): Promise<PublishedBusinessEvent> => {
+  const { data, error } = await supabase.rpc(
+    "business_end_event_ticket_sales",
+    {
+      p_event_id: eventId,
+    },
+  );
+
+  if (error !== null) throw error;
+  const response = data as PublishRpcResponse | null;
+  if (response === null) {
+    throw new Error("End ticket sales did not return a durable event.");
+  }
+  return eventFromPublishResponse(response);
+};

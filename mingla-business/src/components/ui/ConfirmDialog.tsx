@@ -52,6 +52,12 @@ export interface ConfirmDialogProps {
   confirmText?: string;
   /** Forces the Confirm action into the destructive variant for dangerous actions. */
   destructive?: boolean;
+  confirmLoading?: boolean;
+  confirmDisabled?: boolean;
+  errorMessage?: string | null;
+  closeDisabled?: boolean;
+  confirmTestID?: string;
+  cancelTestID?: string;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
@@ -70,6 +76,12 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   cancelLabel = "Cancel",
   confirmText,
   destructive = false,
+  confirmLoading = false,
+  confirmDisabled = false,
+  errorMessage = null,
+  closeDisabled = false,
+  confirmTestID,
+  cancelTestID,
   testID,
   style,
 }) => {
@@ -78,15 +90,20 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const progress = useSharedValue(0);
 
   const handleConfirm = useCallback(async (): Promise<void> => {
+    if (confirmDisabled || confirmLoading) return;
     try {
       await onConfirm();
     } catch (error) {
       if (__DEV__) {
-        // eslint-disable-next-line no-console
         console.error("[ConfirmDialog] onConfirm threw:", error);
       }
     }
-  }, [onConfirm]);
+  }, [confirmDisabled, confirmLoading, onConfirm]);
+
+  const handleClose = useCallback((): void => {
+    if (closeDisabled || confirmLoading) return;
+    onClose();
+  }, [closeDisabled, confirmLoading, onClose]);
 
   const triggerConfirm = useCallback((): void => {
     void handleConfirm();
@@ -117,12 +134,17 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   const typeMatches =
     variant !== "typeToConfirm" || (confirmText !== undefined && typedValue === confirmText);
+  const confirmBlocked = confirmDisabled || confirmLoading || !typeMatches;
 
   return (
-    <Modal visible={visible} onClose={onClose} testID={testID} style={style}>
+    <Modal visible={visible} onClose={handleClose} testID={testID} style={style}>
       <View style={styles.body}>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.description}>{description}</Text>
+
+        {errorMessage !== null && errorMessage.length > 0 ? (
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        ) : null}
 
         {variant === "typeToConfirm" ? (
           <View style={styles.inputWrap}>
@@ -144,19 +166,24 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <View style={styles.actionFlex}>
             <Button
               label={cancelLabel}
-              onPress={onClose}
+              onPress={handleClose}
               variant="secondary"
               size="md"
+              disabled={closeDisabled || confirmLoading}
               fullWidth
+              testID={cancelTestID}
             />
           </View>
           {variant === "holdToConfirm" ? (
             <View style={styles.actionFlex}>
               <Pressable
-                onPressIn={handleHoldStart}
-                onPressOut={handleHoldEnd}
+                onPressIn={confirmBlocked ? undefined : handleHoldStart}
+                onPressOut={confirmBlocked ? undefined : handleHoldEnd}
+                disabled={confirmBlocked}
                 accessibilityRole="button"
+                accessibilityState={{ disabled: confirmBlocked, busy: confirmLoading }}
                 accessibilityLabel={`Hold to ${confirmLabel.toLowerCase()}`}
+                testID={confirmTestID}
                 style={styles.holdButton}
               >
                 <Animated.View style={[styles.holdFill, progressBarStyle]} />
@@ -172,8 +199,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 onPress={triggerConfirm}
                 variant={destructive ? "destructive" : "primary"}
                 size="md"
-                disabled={!typeMatches}
+                disabled={confirmDisabled || !typeMatches}
+                loading={confirmLoading}
                 fullWidth
+                testID={confirmTestID}
               />
             </View>
           )}
@@ -198,6 +227,12 @@ const styles = StyleSheet.create({
     lineHeight: typography.body.lineHeight,
     fontWeight: typography.body.fontWeight,
     color: textTokens.secondary,
+  },
+  errorText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "600",
+    color: accent.warm,
   },
   inputWrap: {
     gap: spacing.sm,

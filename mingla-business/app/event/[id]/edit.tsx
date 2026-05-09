@@ -36,6 +36,7 @@ import { useBrandList } from "../../../src/store/currentBrandStore";
 import {
   useDraftById,
   useDraftEventStore,
+  type DraftEvent,
 } from "../../../src/store/draftEventStore";
 import { useLiveEventStore } from "../../../src/store/liveEventStore";
 import {
@@ -48,6 +49,9 @@ import {
   usePublishBusinessEventDraft,
 } from "../../../src/hooks/useBusinessEvents";
 import { createServerDraft } from "../../../src/services/eventDrafts";
+
+const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
+  draft.id.startsWith("d_") || draft.serverSlug === null;
 
 export default function EventEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -98,6 +102,7 @@ export default function EventEditRoute(): React.ReactElement {
   const discardServerDraft = useDiscardServerDraft();
   const publishServerDraft = usePublishBusinessEventDraft();
   const replaceDraft = useDraftEventStore((s) => s.replaceDraft);
+  const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const migratingLegacyIdRef = React.useRef<string | null>(null);
   const brands = useBrandList();
   const brand = useMemo(() => {
@@ -238,6 +243,17 @@ export default function EventEditRoute(): React.ReactElement {
     router.push(`/brand/${draft.brandId}/payments/onboard` as never);
   }, [draft, router]);
 
+  const handleDiscardDraft = React.useCallback(
+    async (draftToDiscard: DraftEvent): Promise<void> => {
+      if (isLocalOnlyDraft(draftToDiscard)) {
+        deleteDraft(draftToDiscard.id);
+        return;
+      }
+      await discardServerDraft.discardDraft(draftToDiscard);
+    },
+    [deleteDraft, discardServerDraft],
+  );
+
   // Cycle 9b-2 edit-published branch — render the focused edit screen
   // when ?mode=edit-published. Loading shell while liveEvent resolves.
   if (isEditPublished) {
@@ -300,7 +316,7 @@ export default function EventEditRoute(): React.ReactElement {
       onOpenPreview={handleOpenPreview}
       onOpenStripeOnboard={handleOpenStripe}
       onAutosaveDraft={draft.id.startsWith("d_") ? undefined : autosave.saveDraft}
-      onDiscardServerDraft={discardServerDraft.discardDraft}
+      onDiscardServerDraft={handleDiscardDraft}
       onPublishDraft={async (draftToPublish) => {
         const published = await publishServerDraft.publishDraft(draftToPublish);
         return {

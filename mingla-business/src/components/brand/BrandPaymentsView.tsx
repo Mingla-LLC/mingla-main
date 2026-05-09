@@ -19,21 +19,13 @@
  * Per J-A10 spec §3.5.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
-import {
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import React, { useCallback, useMemo } from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   accent,
   glass,
-  radius as radiusTokens,
   semantic,
   spacing,
   text as textTokens,
@@ -46,7 +38,7 @@ import type {
   BrandRefund,
   BrandStripeStatus,
 } from "../../store/currentBrandStore";
-import { formatGbp, formatCurrency } from "../../utils/currency";
+import { formatCurrency } from "../../utils/currency";
 import { formatRelativeTime } from "../../utils/relativeTime";
 
 import { Button } from "../ui/Button";
@@ -56,7 +48,6 @@ import type { IconName } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
 import { Pill } from "../ui/Pill";
 import type { PillVariant } from "../ui/Pill";
-import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
 // V3 multi-country surfaces — Sub-C Session A + B
 import { BrandStripeBankSection } from "./BrandStripeBankSection";
@@ -64,17 +55,12 @@ import { BrandStripeKycRemediationCard } from "./BrandStripeKycRemediationCard";
 import { BrandStripeOrphanedRefundsSection } from "./BrandStripeOrphanedRefundsSection";
 import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
-
-interface ToastState {
-  visible: boolean;
-  message: string;
-}
+import { getEffectiveBrandStripeStatus } from "../../utils/stripeOnboardingOutcome";
 
 // Status-banner config table. `null` entry suppresses the banner entirely
 // (active state's affirmative signal is the populated KPIs).
 // W-1 watch-point: kit lacks `alert`/`info` icons; restricted state uses
 // `flag` (action-needed connotation) + semantic.error coloring.
-type BannerCtaAction = "open_onboard" | "resolve_toast";
 
 interface BannerConfig {
   icon: IconName;
@@ -84,7 +70,6 @@ interface BannerConfig {
   ctaLabel: string;
   ctaVariant: "primary" | "destructive";
   destructive: boolean;
-  ctaAction: BannerCtaAction;
 }
 
 const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
@@ -96,7 +81,6 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     ctaLabel: "Connect Stripe",
     ctaVariant: "primary",
     destructive: false,
-    ctaAction: "open_onboard",
   },
   onboarding: {
     icon: "bank",
@@ -106,7 +90,6 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     ctaLabel: "Finish onboarding",
     ctaVariant: "primary",
     destructive: false,
-    ctaAction: "open_onboard",
   },
   active: null,
   restricted: {
@@ -114,10 +97,9 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     iconColor: semantic.error,
     title: "Action required — your account is limited",
     sub: "Stripe needs additional information before you can sell tickets.",
-    ctaLabel: "Resolve",
+    ctaLabel: "Continue verification",
     ctaVariant: "destructive",
     destructive: true,
-    ctaAction: "resolve_toast",
   },
 };
 
@@ -138,13 +120,13 @@ export interface BrandPaymentsViewProps {
   onBack: () => void;
   /**
    * Called when user taps Connect/Finish banner CTA — routes to onboarding
-   * shell. NOT called when status is restricted (Resolve fires Toast).
+   * shell. Restricted remediation uses the same route so the app creates a
+   * fresh Stripe Account Link.
    */
   onOpenOnboard: () => void;
   /**
    * Called when user taps the "Export finance report" Button — routes to
-   * the finance reports surface. NEW in J-A12 (replaces prior TRANSITIONAL
-   * Toast).
+   * the finance reports surface. NEW in J-A12.
    */
   onOpenReports: () => void;
 }
@@ -156,42 +138,19 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   onOpenReports,
 }) => {
   const insets = useSafeAreaInsets();
-  const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
-
-  const fireToast = useCallback((message: string): void => {
-    setToast({ visible: true, message });
-  }, []);
-
-  const handleDismissToast = useCallback((): void => {
-    setToast((prev) => ({ ...prev, visible: false }));
-  }, []);
-
-  // B2a: Resolve CTA on restricted state opens Stripe Express dashboard
-  // for the brand's Connect account. Stripe Express dashboard exposes the
-  // brand's own resolve-issue flow (Stripe-hosted; brand sees their KYC
-  // requirements + can update directly). Per SPEC §4.5.2.
-  // The brand's Stripe account_id comes from the cached brand.stripeStatus
-  // path — for the full state we'd need useBrandStripeStatus, but for this
-  // CTA we just deep-link to the generic Stripe Express login which routes
-  // the brand to their own account.
-  const handleResolveBanner = useCallback((): void => {
-    // Stripe Express dashboard login URL — brand authenticates with their
-    // Stripe Express credentials and lands on their own resolve-requirements
-    // flow. This is the correct deep-link per Stripe docs for restricted
-    // accounts on Connect Express.
-    void Linking.openURL("https://connect.stripe.com/express_login");
-  }, []);
 
   const handleExport = useCallback((): void => {
     onOpenReports();
   }, [onOpenReports]);
 
-  const stripeStatus = brand?.stripeStatus ?? "not_connected";
-  const bannerConfig = BANNER_CONFIG[stripeStatus];
-
   // V3 (Sub-C Session A): live status query gives access to requirements
   // shape for the KycRemediationCard. Sibling-pattern: cached + Realtime-fed.
   const stripeStatusQuery = useBrandStripeStatus(brand?.id ?? null);
+  const stripeStatus = getEffectiveBrandStripeStatus({
+    liveStatus: stripeStatusQuery.data?.status,
+    cachedStatus: brand?.stripeStatus,
+  });
+  const bannerConfig = BANNER_CONFIG[stripeStatus];
 
   // [TRANSITIONAL] payouts + refunds still read from Zustand stub (brand.payouts,
   // brand.refunds). B2a does NOT migrate these to real `payouts` + `refunds`
@@ -304,17 +263,23 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
             <View style={styles.bannerCtaRow}>
               <Button
                 label={bannerConfig.ctaLabel}
-                onPress={
-                  bannerConfig.ctaAction === "open_onboard"
-                    ? onOpenOnboard
-                    : handleResolveBanner
-                }
+                onPress={onOpenOnboard}
                 variant={bannerConfig.ctaVariant}
                 size="md"
                 fullWidth
                 accessibilityLabel={bannerConfig.ctaLabel}
               />
             </View>
+          </GlassCard>
+        ) : null}
+
+        {stripeStatusQuery.isError ? (
+          <GlassCard variant="base" padding={spacing.md} style={styles.statusRefreshWarning}>
+            <Text style={styles.statusRefreshTitle}>Couldn{"’"}t refresh Stripe status</Text>
+            <Text style={styles.statusRefreshBody}>
+              Showing the last saved status. Continue verification will create a
+              fresh Stripe link.
+            </Text>
           </GlassCard>
         ) : null}
 
@@ -332,7 +297,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               return (
                 <BrandStripeDeadlineBanner
                   deadline={deadline}
-                  onResolve={handleResolveBanner}
+                  onResolve={onOpenOnboard}
                 />
               );
             })()
@@ -347,7 +312,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               return (
                 <BrandStripeKycRemediationCard
                   requirements={requirements}
-                  onResolve={handleResolveBanner}
+                  onResolve={onOpenOnboard}
                 />
               );
             })()
@@ -356,7 +321,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         {brand && (stripeStatus === "active" || stripeStatus === "restricted") ? (
           <BrandStripeBankSection
             brandId={brand.id}
-            onResolve={handleResolveBanner}
+            onResolve={onOpenOnboard}
           />
         ) : null}
 
@@ -473,14 +438,6 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         </View>
       </ScrollView>
 
-      <View style={styles.toastWrap} pointerEvents="box-none">
-        <Toast
-          visible={toast.visible}
-          kind="info"
-          message={toast.message}
-          onDismiss={handleDismissToast}
-        />
-      </View>
     </View>
   );
 };
@@ -563,6 +520,22 @@ const styles = StyleSheet.create({
   bannerCtaRow: {
     marginTop: spacing.md,
   },
+  statusRefreshWarning: {
+    borderColor: "rgba(251, 191, 36, 0.35)",
+    borderWidth: 1,
+  },
+  statusRefreshTitle: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  statusRefreshBody: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
+    marginTop: 4,
+  },
 
   // KPI tiles ------------------------------------------------------------
   kpisRow: {
@@ -644,15 +617,6 @@ const styles = StyleSheet.create({
   // Export CTA -----------------------------------------------------------
   exportRow: {
     marginTop: spacing.sm,
-  },
-
-  // Toast ----------------------------------------------------------------
-  toastWrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: spacing.xl,
-    paddingHorizontal: spacing.md,
   },
 });
 

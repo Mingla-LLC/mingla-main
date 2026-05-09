@@ -15,9 +15,9 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue({
     data: {
-      client_secret: "cs_test",
+      client_secret: null,
       account_id: "acct_test",
-      onboarding_url: "https://business.mingla.com/connect-onboarding",
+      onboarding_url: "https://connect.stripe.com/setup/mock",
     },
     error: null,
   });
@@ -52,4 +52,33 @@ it("sends selected country for multi-country onboarding and reactivation", async
       country: "US",
     },
   });
+});
+
+it("surfaces edge function error details from the response body", async () => {
+  const error = new Error(
+    "Edge Function returned a non-2xx status code",
+  ) as Error & {
+    context: {
+      status: number;
+      clone: () => { json: () => Promise<unknown> };
+    };
+  };
+  error.context = {
+    status: 403,
+    clone: () => ({
+      json: async () => ({
+        error: "forbidden",
+        detail: "mingla_tos_not_accepted",
+      }),
+    }),
+  };
+  invokeMock.mockResolvedValue({ data: null, error });
+
+  await expect(
+    startBrandStripeOnboarding(
+      "33333333-3333-4333-8333-333333333333",
+      "mingla-business://return",
+      "US",
+    ),
+  ).rejects.toThrow("forbidden: mingla_tos_not_accepted");
 });

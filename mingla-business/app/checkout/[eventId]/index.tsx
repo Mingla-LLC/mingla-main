@@ -25,7 +25,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
-  accent,
   radius as radiusTokens,
   spacing,
   text as textTokens,
@@ -58,13 +57,19 @@ const isVisibleForBuyer = (t: TicketStub): boolean =>
   t.visibility !== "hidden" && t.availableAt !== "door";
 
 const computeIsPast = (event: LiveEvent): boolean => {
-  if (event.status === "cancelled") return true;
+  if (event.status === "cancelled" || event.status === "ended") return true;
   if (event.endedAt !== null) return true;
   if (event.date === null) return false;
   const dateMs = new Date(event.date).getTime();
   if (!Number.isFinite(dateMs)) return false;
   // Treat "past" as 24h after start — matches PublicEventPage's variant logic.
   return dateMs + 24 * 60 * 60 * 1000 < Date.now();
+};
+
+const ticketSalesEnded = (ticket: TicketStub): boolean => {
+  if (ticket.saleEndAt === null) return false;
+  const end = new Date(ticket.saleEndAt).getTime();
+  return Number.isFinite(end) && end <= Date.now();
 };
 
 export default function CheckoutTicketsScreen(): React.ReactElement {
@@ -172,8 +177,16 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     visibleTickets.every(
       (t) => !t.isUnlimited && (t.capacity ?? 0) <= 0,
     );
+  const allUnavailable =
+    visibleTickets.length > 0 &&
+    visibleTickets.every(
+      (t) =>
+        t.visibility === "disabled" ||
+        ticketSalesEnded(t) ||
+        (!t.isUnlimited && (t.capacity ?? 0) <= 0),
+    );
 
-  if (isPast || visibleTickets.length === 0 || allSoldOut) {
+  if (isPast || visibleTickets.length === 0 || allSoldOut || allUnavailable) {
     return (
       <View style={styles.host}>
         <CheckoutHeader
@@ -185,9 +198,13 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         <View style={styles.emptyWrap}>
           <EmptyState
             illustration="ticket"
-            title={isPast ? "This event isn't taking new tickets" : "Sold out"}
+            title={
+              isPast || allUnavailable
+                ? "This event isn't taking new tickets"
+                : "Sold out"
+            }
             description={
-              isPast
+              isPast || allUnavailable
                 ? "Sales are closed for this event."
                 : "All tickets for this event are gone."
             }

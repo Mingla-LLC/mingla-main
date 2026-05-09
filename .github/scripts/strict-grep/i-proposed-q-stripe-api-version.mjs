@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * I-PROPOSED-Q strict-grep gate — Stripe API version pinned via _shared/stripe.ts only.
+ * I-PROPOSED-Q strict-grep gate — Stripe SDK apiVersion pinned via _shared/stripe.ts only.
  *
  * Gate logic:
  *   For every .ts file in supabase/functions/:
@@ -13,19 +13,18 @@
  * Per B2a Path C SPEC §5 + INVARIANT_REGISTRY I-PROPOSED-Q (post-DEC-121).
  *
  * RATIONALE:
- *   D-B2-5 pins the Stripe API version to `2026-04-30.preview` (Accounts v2 public
- *   preview) globally for the Mingla Connect platform. Inline overrides in individual
- *   edge functions defeat this lock and cause behavioral drift between functions
- *   (e.g., one fn on v1 production, another on v2 preview, with different account
- *   shape contracts and webhook event types).
+ *   D-B2-5 pins Stripe SDK client apiVersion through one shared helper. Inline
+ *   SDK overrides in individual edge functions defeat this lock and cause
+ *   behavioral drift between functions.
  *
  *   Taofeek's `feat/b2-stripe-connect` branch demonstrated the failure mode: every
  *   edge function instantiated `new Stripe(...)` with `apiVersion: "2024-11-20.acacia"`
  *   inline, producing a parallel Stripe v1 universe that couldn't access Accounts v2
  *   controller properties (DEC-114 marketplace setup).
  *
- *   Single source of truth: `supabase/functions/_shared/stripe.ts` exports the `stripe`
- *   client + `STRIPE_API_VERSION` constant. All edge functions import from there.
+ *   Single source of truth for SDK clients: `supabase/functions/_shared/stripe.ts`
+ *   exports `STRIPE_API_VERSION`. Raw API v2 HTTP calls use their own
+ *   `STRIPE_BLUEPRINT_API_VERSION` header contract in `_shared/stripeBlueprintClient.ts`.
  *
  * EXEMPTIONS:
  *   - `_shared/stripe.ts` itself (where the canonical pin lives)
@@ -100,7 +99,7 @@ function reportViolation(filePath, lineNumber, lineText) {
   console.error(`ERROR: I-PROPOSED-Q violation in ${rel}:${lineNumber}`);
   console.error(`  ${lineText.trim()}`);
   console.error(
-    `  Inline apiVersion overrides defeat the global Stripe API version pin (D-B2-5).`,
+    `  Inline apiVersion overrides defeat the shared Stripe SDK version pin (D-B2-5).`,
   );
   console.error(
     `  Use the canonical client: import { stripe } from "../_shared/stripe.ts";`,

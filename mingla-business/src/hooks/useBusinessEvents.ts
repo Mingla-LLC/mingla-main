@@ -2,22 +2,79 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query";
 
 import type { DraftEvent } from "../store/draftEventStore";
 import type { LiveEvent } from "../store/liveEventStore";
 import {
+  cancelBusinessEvent,
+  endBusinessEventTicketSales,
   fetchBusinessEventById,
   fetchBusinessEventsForBrand,
   publishBusinessEventDraft,
   type BusinessEventDetail,
   type PublishedBusinessEvent,
 } from "../services/businessEvents";
+import type { Brand } from "../store/currentBrandStore";
 import { eventDraftKeys } from "./useServerDraftEvents";
+import { publicEventKeys } from "./usePublicEvents";
 
 const STALE_TIME_MS = 30 * 1000;
 const DISABLED_KEY = ["business-events-disabled"] as const;
+
+const logMutationError = (label: string, error: Error): void => {
+  console.error(`[${label}] Operation failed:`, error);
+};
+
+const detailForPublishedEvent = (
+  published: PublishedBusinessEvent,
+): BusinessEventDetail => ({
+  event: published.event,
+  brand: {
+    id: published.brand.id,
+    slug: published.brand.slug,
+    displayName: published.brand.displayName,
+    kind: "popup",
+    address: null,
+    coverHue: published.event.coverHue,
+    role: "owner",
+    stats: { events: 0, followers: 0, rev: 0, attendees: 0 },
+    currentLiveEvent: null,
+  } as Brand,
+  tickets: published.tickets,
+});
+
+const writePublishedEventCaches = (
+  queryClient: QueryClient,
+  published: PublishedBusinessEvent,
+  brandId: string,
+): void => {
+  queryClient.setQueryData(
+    businessEventKeys.detail(published.event.id),
+    detailForPublishedEvent(published),
+  );
+  queryClient.setQueryData<LiveEvent[]>(
+    businessEventKeys.list(brandId),
+    (prev) => {
+      const next = (prev ?? []).filter((event) => event.id !== published.event.id);
+      return [published.event, ...next];
+    },
+  );
+  queryClient.invalidateQueries({ queryKey: businessEventKeys.detail(published.event.id) });
+  queryClient.invalidateQueries({ queryKey: businessEventKeys.list(brandId) });
+  queryClient.invalidateQueries({ queryKey: publicEventKeys.detailById(published.event.id) });
+  queryClient.invalidateQueries({
+    queryKey: publicEventKeys.detailBySlug(
+      published.event.brandSlug,
+      published.event.eventSlug,
+    ),
+  });
+  queryClient.invalidateQueries({
+    queryKey: publicEventKeys.brandBySlug(published.event.brandSlug),
+  });
+};
 
 export const businessEventKeys = {
   all: ["business-events"] as const,
@@ -94,36 +151,68 @@ export const usePublishBusinessEventDraft = (): {
     onSuccess: (published, draft) => {
       queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
       queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
-      queryClient.setQueryData(
-        businessEventKeys.detail(published.event.id),
-        {
-          event: published.event,
-          brand: {
-            id: published.brand.id,
-            slug: published.brand.slug,
-            displayName: published.brand.displayName,
-            kind: "popup",
-            address: null,
-            coverHue: published.event.coverHue,
-            role: "owner",
-            stats: { events: 0, followers: 0, rev: 0, attendees: 0 },
-            currentLiveEvent: null,
-          },
-          tickets: published.tickets,
-        },
-      );
-      queryClient.setQueryData<LiveEvent[]>(
-        businessEventKeys.list(draft.brandId),
-        (prev) => {
-          const next = (prev ?? []).filter((event) => event.id !== published.event.id);
-          return [published.event, ...next];
-        },
-      );
+      writePublishedEventCaches(queryClient, published, draft.brandId);
+    },
+    onError: (error) => {
+      logMutationError("usePublishBusinessEventDraft", error);
     },
   });
 
   return {
     publishDraft: mutation.mutateAsync,
+    isPending: mutation.isPending,
+  };
+};
+
+export const useCancelBusinessEvent = (): {
+  cancelEvent: (input: { eventId: string; brandId: string }) => Promise<PublishedBusinessEvent>;
+  isPending: boolean;
+} => {
+  const queryClient = useQueryClient();
+  const mutation = useMutation<
+    PublishedBusinessEvent,
+    Error,
+    { eventId: string; brandId: string }
+  >({
+    mutationFn: ({ eventId }) => cancelBusinessEvent(eventId),
+    onSuccess: (published, input) => {
+      writePublishedEventCaches(queryClient, published, input.brandId);
+    },
+    onError: (error) => {
+      logMutationError("useCancelBusinessEvent", error);
+    },
+  });
+
+  return {
+    cancelEvent: mutation.mutateAsync,
+    isPending: mutation.isPending,
+  };
+};
+
+export const useEndBusinessEventTicketSales = (): {
+  endTicketSales: (input: {
+    eventId: string;
+    brandId: string;
+  }) => Promise<PublishedBusinessEvent>;
+  isPending: boolean;
+} => {
+  const queryClient = useQueryClient();
+  const mutation = useMutation<
+    PublishedBusinessEvent,
+    Error,
+    { eventId: string; brandId: string }
+  >({
+    mutationFn: ({ eventId }) => endBusinessEventTicketSales(eventId),
+    onSuccess: (published, input) => {
+      writePublishedEventCaches(queryClient, published, input.brandId);
+    },
+    onError: (error) => {
+      logMutationError("useEndBusinessEventTicketSales", error);
+    },
+  });
+
+  return {
+    endTicketSales: mutation.mutateAsync,
     isPending: mutation.isPending,
   };
 };

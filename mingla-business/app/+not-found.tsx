@@ -26,7 +26,7 @@ import {
 } from "../src/constants/designSystem";
 import { HapticFeedback } from "../src/utils/hapticFeedback";
 
-const logo = require("../assets/mingla_official_logo.png");
+const logo = require("../assets/brand/mingla-business-logo.png");
 
 export default function NotFoundScreen(): React.ReactElement {
   const router = useRouter();

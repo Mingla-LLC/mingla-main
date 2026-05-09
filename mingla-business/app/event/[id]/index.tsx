@@ -72,6 +72,10 @@ import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
 import { ReconciliationCtaTile } from "../../../src/components/event/ReconciliationCtaTile";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
+import {
+  useCancelBusinessEvent,
+  useEndBusinessEventTicketSales,
+} from "../../../src/hooks/useBusinessEvents";
 import { canPerformAction } from "../../../src/utils/permissionGates";
 
 const CANCEL_PROCESSING_MS = 1200;
@@ -128,6 +132,7 @@ export default function EventDetailScreen(): React.ReactElement {
   const [manageMenuVisible, setManageMenuVisible] = useState<boolean>(false);
   const [endSalesVisible, setEndSalesVisible] = useState<boolean>(false);
   const [cancelDialogVisible, setCancelDialogVisible] = useState<boolean>(false);
+  const [cancelSubmitting, setCancelSubmitting] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: "",
@@ -135,6 +140,9 @@ export default function EventDetailScreen(): React.ReactElement {
 
   // ----- Mutations ----------------------------------------------
   const updateLifecycle = useLiveEventStore((s) => s.updateLifecycle);
+  const cancelServerEvent = useCancelBusinessEvent();
+  const endServerTicketSales = useEndBusinessEventTicketSales();
+  const event = resolvedLiveEvent;
 
   // ----- Handlers -------------------------------------------------
   const handleBack = useCallback((): void => {
@@ -230,10 +238,19 @@ export default function EventDetailScreen(): React.ReactElement {
     setEndSalesVisible(true);
   }, []);
 
-  const handleEndSalesConfirm = useCallback((): void => {
+  const handleEndSalesConfirm = useCallback(async (): Promise<void> => {
     if (isServerBackedEvent) {
-      setEndSalesVisible(false);
-      showToast("Server event lifecycle changes are not available yet.");
+      if (event === null) return;
+      try {
+        await endServerTicketSales.endTicketSales({
+          eventId: event.id,
+          brandId: event.brandId,
+        });
+        setEndSalesVisible(false);
+        showToast("Ticket sales ended.");
+      } catch {
+        showToast("Could not end ticket sales. Try again.");
+      }
       return;
     }
     if (id !== null) {
@@ -241,7 +258,7 @@ export default function EventDetailScreen(): React.ReactElement {
     }
     setEndSalesVisible(false);
     showToast("Ticket sales ended.");
-  }, [id, isServerBackedEvent, updateLifecycle, showToast]);
+  }, [id, isServerBackedEvent, event, endServerTicketSales, updateLifecycle, showToast]);
 
   const handleCancelDialogOpen = useCallback((): void => {
     setCancelDialogVisible(true);
@@ -250,8 +267,21 @@ export default function EventDetailScreen(): React.ReactElement {
   const handleCancelConfirm = useCallback(async (): Promise<void> => {
     if (id === null) return;
     if (isServerBackedEvent) {
-      setCancelDialogVisible(false);
-      showToast("Server event cancellation is not available yet.");
+      if (event === null) return;
+      setCancelSubmitting(true);
+      try {
+        await cancelServerEvent.cancelEvent({
+          eventId: event.id,
+          brandId: event.brandId,
+        });
+        setCancelDialogVisible(false);
+        showToast("Event cancelled.");
+        router.replace("/(tabs)/events" as never);
+      } catch {
+        showToast("Could not cancel event. Try again.");
+      } finally {
+        setCancelSubmitting(false);
+      }
       return;
     }
     // 1.2s simulated processing per spec §3.0.1 Q-9-3.
@@ -267,7 +297,7 @@ export default function EventDetailScreen(): React.ReactElement {
       "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
     );
     router.replace("/(tabs)/events" as never);
-  }, [id, isServerBackedEvent, updateLifecycle, router, showToast]);
+  }, [id, isServerBackedEvent, event, cancelServerEvent, updateLifecycle, router, showToast]);
 
   const handleDeleteDraftStub = useCallback((): void => {
     // Cycle 9b-1 EventDetail is for LIVE events only — draft delete is
@@ -278,8 +308,6 @@ export default function EventDetailScreen(): React.ReactElement {
       "Draft delete not available from Event Detail. Use Events tab.",
     );
   }, [showToast]);
-
-  const event = resolvedLiveEvent;
 
   // Cycle 9c — populated from useOrderStore (subscribes to live updates).
   const revenueGbp = useOrderStore((s) =>
@@ -672,8 +700,7 @@ export default function EventDetailScreen(): React.ReactElement {
         {/* Cancel event CTA — opens ConfirmDialog with typeToConfirm.
             Cycle 13a J-T6 G1: gated on EDIT_EVENT; hidden for sub-rank users. */}
         {(status === "live" || status === "upcoming") &&
-        canEditEvent &&
-        !isServerBackedEvent ? (
+        canEditEvent ? (
           <View style={styles.cancelCtaWrap}>
             <Button
               label="Cancel event"
@@ -737,7 +764,7 @@ export default function EventDetailScreen(): React.ReactElement {
           }}
           onTransitionalToast={showToast}
           canEditEvent={canEditEvent}
-          canUseLifecycleActions={!isServerBackedEvent}
+          canUseLifecycleActions
         />
       ) : null}
 
@@ -752,7 +779,10 @@ export default function EventDetailScreen(): React.ReactElement {
       {/* Cancel event ConfirmDialog — typeToConfirm variant */}
       <ConfirmDialog
         visible={cancelDialogVisible}
-        onClose={() => setCancelDialogVisible(false)}
+        onClose={() => {
+          if (cancelSubmitting) return;
+          setCancelDialogVisible(false);
+        }}
         onConfirm={handleCancelConfirm}
         title="Cancel this event?"
         description="This is serious. Buyers will be notified by email and refunded automatically when those wire up (B-cycle). You can't undo this."

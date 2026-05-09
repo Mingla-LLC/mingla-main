@@ -31,6 +31,30 @@ const requireUserId = async (): Promise<string> => {
 const rowToDraft = (row: unknown): DraftEvent =>
   serverRowToDraft(row as ServerDraftEventRow);
 
+interface DiscardDraftRpcResponse {
+  event_id: string;
+  brand_id: string;
+  deleted_at: string;
+}
+
+const asDiscardDraftRpcResponse = (value: unknown): DiscardDraftRpcResponse => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("discardServerDraft: RPC returned malformed response");
+  }
+  const record = value as Record<string, unknown>;
+  const eventId = record.event_id;
+  const brandId = record.brand_id;
+  const deletedAt = record.deleted_at;
+  if (
+    typeof eventId !== "string" ||
+    typeof brandId !== "string" ||
+    typeof deletedAt !== "string"
+  ) {
+    throw new Error("discardServerDraft: RPC response missing discard fields");
+  }
+  return { event_id: eventId, brand_id: brandId, deleted_at: deletedAt };
+};
+
 export const syncDraftTicketsToServerEvent = async (
   draft: DraftEvent,
 ): Promise<void> => {
@@ -150,14 +174,12 @@ export const autosaveServerDraft = async (
 };
 
 export const discardServerDraft = async (draftId: string): Promise<void> => {
-  const { error } = await supabase
-    .from("events")
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("id", draftId)
-    .eq("status", "draft")
-    .is("deleted_at", null);
+  const { data, error } = await supabase.rpc("business_discard_event_draft", {
+    p_event_id: draftId,
+  });
 
   if (error !== null) throw error;
+  asDiscardDraftRpcResponse(data);
 };
 
 export const markServerDraftPublished = async (

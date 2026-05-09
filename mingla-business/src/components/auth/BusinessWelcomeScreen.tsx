@@ -33,7 +33,7 @@ import {
 import { s, vs } from "../../utils/responsive";
 
 const googleIcon = require("../../../assets/google_icon.png");
-const logo = require("../../../assets/mingla_official_logo.png");
+const logo = require("../../../assets/brand/mingla-business-logo.png");
 
 const TERMS_URL = "https://mingla.app/terms";
 const PRIVACY_URL = "https://mingla.app/privacy";

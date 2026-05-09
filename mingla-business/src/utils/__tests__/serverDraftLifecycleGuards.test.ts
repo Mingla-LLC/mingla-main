@@ -54,8 +54,51 @@ describe("server-backed draft lifecycle guards", () => {
     expect(source).toContain(".eq(\"status\", \"draft\")");
     expect(source).toContain("autosaveServerDraft");
     expect(source).toContain("discardServerDraft");
+    expect(source).toContain("business_discard_event_draft");
+    expect(source).not.toContain(".update({ deleted_at: new Date().toISOString() })");
     expect(source).toContain("Client-side draft promotion is disabled");
     expect(businessEvents).toContain("business_publish_event_draft");
+  });
+
+  test("draft discard RPC has explicit auth, rank, lifecycle, and grant guards", () => {
+    const source = repoFile(
+      "../supabase/migrations/20260515000006_orch_0763d_draft_discard_rpc.sql",
+    );
+
+    expect(source).toContain("CREATE OR REPLACE FUNCTION public.business_discard_event_draft");
+    expect(source).toContain("SECURITY DEFINER");
+    expect(source).toContain("v_user_id := auth.uid();");
+    expect(source).toContain("RAISE EXCEPTION 'not_authenticated'");
+    expect(source).toContain("FOR UPDATE");
+    expect(source).toContain("RAISE EXCEPTION 'event_draft_not_found'");
+    expect(source).toContain("RAISE EXCEPTION 'event_draft_not_discardable'");
+    expect(source).toContain("biz_brand_effective_rank(v_event.brand_id, v_user_id)");
+    expect(source).toContain("biz_role_rank('event_manager'");
+    expect(source).toContain("RAISE EXCEPTION 'insufficient_event_permission'");
+    expect(source).toContain("deleted_at = v_now");
+    expect(source).toContain("GRANT EXECUTE ON FUNCTION public.business_discard_event_draft(uuid) TO authenticated, service_role");
+  });
+
+  test("draft delete UI handles local-only drafts, server pending state, and visible errors", () => {
+    const eventsSource = repoFile("app/(tabs)/events.tsx");
+    const dialogSource = repoFile("src/components/ui/ConfirmDialog.tsx");
+    const editSource = repoFile("app/event/[id]/edit.tsx");
+    const wizardSource = repoFile("src/components/event/EventCreatorWizard.tsx");
+    const hookSource = repoFile("src/hooks/useServerDraftEvents.ts");
+
+    expect(eventsSource).toContain("isLocalOnlyDraft");
+    expect(eventsSource).toContain("deleteLocalDraft(draft.id)");
+    expect(eventsSource).toContain("discardServerDraft.discardDraft(draft)");
+    expect(eventsSource).toContain("deleteDraftSubmitting");
+    expect(eventsSource).toContain("errorMessage={deleteDraftError}");
+    expect(eventsSource).toContain('testID="delete-draft-confirm"');
+    expect(eventsSource).toContain('confirmTestID="delete-draft-confirm-button"');
+    expect(dialogSource).toContain("confirmLoading");
+    expect(dialogSource).toContain("errorMessage");
+    expect(editSource).toContain("isLocalOnlyDraft(draftToDiscard)");
+    expect(wizardSource).toContain("isLocalOnlyDraft(draft)");
+    expect(hookSource).toContain("onError");
+    expect(hookSource).toContain("useDiscardServerDraft");
   });
 
   test("brand delete blocking statuses use DB lifecycle values, not UI buckets", () => {
@@ -103,17 +146,28 @@ describe("server-backed draft lifecycle guards", () => {
     expect(wizardSource).toContain("markDraftDirty(liveDraft.id, nextRevision)");
   });
 
-  test("server-backed event detail lifecycle actions are honest unavailable states", () => {
+  test("server-backed event lifecycle actions use server RPC hooks", () => {
     const detailSource = repoFile("app/event/[id]/index.tsx");
     const eventsSource = repoFile("app/(tabs)/events.tsx");
     const menuSource = repoFile("src/components/event/EventManageMenu.tsx");
 
     expect(menuSource).toContain("canUseLifecycleActions");
-    expect(detailSource).toContain("Server event lifecycle changes are not available yet.");
-    expect(detailSource).toContain("Server event cancellation is not available yet.");
-    expect(detailSource).toContain("canUseLifecycleActions={!isServerBackedEvent}");
+    expect(menuSource).toContain('label: "Share event"');
+    expect(menuSource).not.toContain('label: "Copy share link"');
+    expect(detailSource).toContain("useCancelBusinessEvent");
+    expect(detailSource).toContain("useEndBusinessEventTicketSales");
+    expect(detailSource).toContain("cancelServerEvent.cancelEvent");
+    expect(detailSource).toContain("endServerTicketSales.endTicketSales");
+    expect(detailSource).not.toContain("Server event lifecycle changes are not available yet.");
+    expect(detailSource).not.toContain("Server event cancellation is not available yet.");
+    expect(detailSource).not.toContain("canUseLifecycleActions={!isServerBackedEvent}");
     expect(eventsSource).toContain("serverBackedEventIds");
-    expect(eventsSource).toContain("Server event lifecycle changes are not available yet.");
+    expect(eventsSource).toContain("useCancelBusinessEvent");
+    expect(eventsSource).toContain("useEndBusinessEventTicketSales");
+    expect(eventsSource).toContain("cancelServerEvent.cancelEvent");
+    expect(eventsSource).toContain("endServerTicketSales.endTicketSales");
+    expect(eventsSource).not.toContain("Server event lifecycle changes are not available yet.");
+    expect(eventsSource).not.toContain("Server event cancellation is not available yet.");
   });
 
   test("server-backed management subroutes use shared event route recovery", () => {

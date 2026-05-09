@@ -60,7 +60,6 @@ import {
   radius as radiusTokens,
   spacing,
   text as textTokens,
-  typography,
 } from "../../constants/designSystem";
 import {
   brandOgImageUrl,
@@ -118,7 +117,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     const cutoff = Date.now() - 24 * 60 * 60 * 1000; // include today
     return events
       .filter((e) => {
-        if (e.status === "cancelled") return false;
+        if (e.status === "cancelled" || e.status === "ended") return false;
         if (e.date === null) return true;
         const eventTime = new Date(e.date).getTime();
         return eventTime >= cutoff;
@@ -131,6 +130,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     return events
       .filter((e) => {
         if (e.status === "cancelled") return false;
+        if (e.status === "ended") return true;
         if (e.date === null) return false;
         const eventTime = new Date(e.date).getTime();
         return eventTime < cutoff;
@@ -240,6 +240,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             content={
               brand.bio?.slice(0, 200) ?? brand.tagline ?? brand.displayName
             }
+          />
+          <meta
+            name="twitter:image"
+            content={brandOgImageUrl({
+              brandSlug: brand.slug,
+              profilePhotoUrl: brand.photo,
+            })}
           />
           <link rel="canonical" href={canonicalUrl(brand)} />
         </Head>

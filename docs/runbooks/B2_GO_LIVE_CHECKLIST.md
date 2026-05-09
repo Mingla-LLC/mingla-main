@@ -50,7 +50,7 @@ Per https://docs.stripe.com/get-started/checklist/go-live:
   - STRIPE_WEBHOOK_SECRET (live Connect endpoint signing secret)
   - STRIPE_WEBHOOK_SECRET_PLATFORM (live Platform endpoint signing secret)
   - STRIPE_WEBHOOK_SECRET_PREVIOUS (empty string)
-  - STRIPE_API_VERSION (`2026-04-30.preview` until Stripe GA's Accounts v2)
+  - No `STRIPE_API_VERSION` secret is required for ORCH-0764 Accounts v2 hosted onboarding. Raw `/v2` helper calls send the code-owned `STRIPE_BLUEPRINT_API_VERSION` header from `_shared/stripeBlueprintClient.ts`.
   - CRON_SECRET (random 64-char string for cron-invoked edge fns)
   - RESEND_API_KEY (live)
 - [ ] EAS production build env vars set (`mingla-business`):

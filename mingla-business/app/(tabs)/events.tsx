@@ -49,7 +49,10 @@ import {
   type Brand,
 } from "../../src/store/currentBrandStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
-import { useDraftsForBrand } from "../../src/store/draftEventStore";
+import {
+  useDraftEventStore,
+  useDraftsForBrand,
+} from "../../src/store/draftEventStore";
 import type { DraftEvent } from "../../src/store/draftEventStore";
 import {
   useLiveEventStore,
@@ -70,7 +73,9 @@ import {
 } from "../../src/hooks/useServerDraftEvents";
 import {
   mergeServerAndLegacyLiveEvents,
+  useCancelBusinessEvent,
   useBusinessEventsForBrand,
+  useEndBusinessEventTicketSales,
 } from "../../src/hooks/useBusinessEvents";
 import { eventPublicUrl } from "../../src/constants/publicUrls";
 import { canPerformAction } from "../../src/utils/permissionGates";
@@ -100,6 +105,22 @@ const deriveLiveStatus = (event: LiveEvent): EventCardStatus => {
   if (now >= liveWindowStart && now < liveWindowEnd) return "live";
   if (now < liveWindowStart) return "upcoming";
   return "past";
+};
+
+const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
+  draft.id.startsWith("d_") || draft.serverSlug === null;
+
+const draftDeleteErrorMessage = (error: unknown): string => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  if (message.includes("insufficient_event_permission")) {
+    return "You do not have permission to delete this draft for this brand.";
+  }
+  return "Could not delete this draft. Try again.";
 };
 
 interface PillSpec {
@@ -158,10 +179,15 @@ export default function EventsTab(): React.ReactElement {
     id: string;
     name: string;
   } | null>(null);
+  const [deleteDraftSubmitting, setDeleteDraftSubmitting] = useState<boolean>(false);
+  const [deleteDraftError, setDeleteDraftError] = useState<string | null>(null);
 
   // Mutations for lifecycle actions (9b-1)
   const updateLifecycle = useLiveEventStore((s) => s.updateLifecycle);
+  const deleteLocalDraft = useDraftEventStore((s) => s.deleteDraft);
   const discardServerDraft = useDiscardServerDraft();
+  const cancelServerEvent = useCancelBusinessEvent();
+  const endServerTicketSales = useEndBusinessEventTicketSales();
 
   // ----- Categorize events into status buckets -------------------
   const liveEventEntries = useMemo<
@@ -391,14 +417,22 @@ export default function EventsTab(): React.ReactElement {
     setManageCtx(null);
   }, [manageCtx]);
 
-  const handleEndSalesConfirm = useCallback((): void => {
+  const handleEndSalesConfirm = useCallback(async (): Promise<void> => {
     if (endSalesEvent === null) return;
     if (serverBackedEventIds.has(endSalesEvent.id)) {
-      setEndSalesEvent(null);
-      setToast({
-        visible: true,
-        message: "Server event lifecycle changes are not available yet.",
-      });
+      try {
+        await endServerTicketSales.endTicketSales({
+          eventId: endSalesEvent.id,
+          brandId: endSalesEvent.brandId,
+        });
+        setEndSalesEvent(null);
+        setToast({ visible: true, message: "Ticket sales ended." });
+      } catch {
+        setToast({
+          visible: true,
+          message: "Could not end ticket sales. Try again.",
+        });
+      }
       return;
     }
     updateLifecycle(endSalesEvent.id, {
@@ -406,7 +440,7 @@ export default function EventsTab(): React.ReactElement {
     });
     setEndSalesEvent(null);
     setToast({ visible: true, message: "Ticket sales ended." });
-  }, [endSalesEvent, serverBackedEventIds, updateLifecycle]);
+  }, [endSalesEvent, serverBackedEventIds, updateLifecycle, endServerTicketSales]);
 
   const handleManageCancelEvent = useCallback((): void => {
     if (manageCtx === null || manageCtx.kind !== "live") return;
@@ -417,11 +451,25 @@ export default function EventsTab(): React.ReactElement {
   const handleCancelEventConfirm = useCallback(async (): Promise<void> => {
     if (cancelEvent === null) return;
     if (serverBackedEventIds.has(cancelEvent.id)) {
-      setCancelEvent(null);
-      setToast({
-        visible: true,
-        message: "Server event cancellation is not available yet.",
-      });
+      setCancelSubmitting(true);
+      try {
+        await cancelServerEvent.cancelEvent({
+          eventId: cancelEvent.id,
+          brandId: cancelEvent.brandId,
+        });
+        setCancelEvent(null);
+        setToast({
+          visible: true,
+          message: "Event cancelled.",
+        });
+      } catch {
+        setToast({
+          visible: true,
+          message: "Could not cancel event. Try again.",
+        });
+      } finally {
+        setCancelSubmitting(false);
+      }
       return;
     }
     setCancelSubmitting(true);
@@ -439,7 +487,7 @@ export default function EventsTab(): React.ReactElement {
       message:
         "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
     });
-  }, [cancelEvent, serverBackedEventIds, updateLifecycle]);
+  }, [cancelEvent, serverBackedEventIds, updateLifecycle, cancelServerEvent]);
 
   const handleManageDeleteDraft = useCallback((): void => {
     if (manageCtx === null || manageCtx.kind !== "draft") return;
@@ -448,26 +496,43 @@ export default function EventsTab(): React.ReactElement {
       id: draft.id,
       name: draft.name.length > 0 ? draft.name : "Untitled draft",
     });
+    setDeleteDraftError(null);
     setManageCtx(null);
   }, [manageCtx]);
 
-  const handleDeleteDraftConfirm = useCallback((): void => {
+  const handleCloseDeleteDraft = useCallback((): void => {
+    if (deleteDraftSubmitting) return;
+    setDeleteDraftCtx(null);
+    setDeleteDraftError(null);
+  }, [deleteDraftSubmitting]);
+
+  const handleDeleteDraftConfirm = useCallback(async (): Promise<void> => {
     if (deleteDraftCtx === null) return;
     const draft = drafts.find((d) => d.id === deleteDraftCtx.id);
-    if (draft === undefined) return;
-    void discardServerDraft
-      .discardDraft(draft)
-      .then(() => {
-        setDeleteDraftCtx(null);
-        setToast({ visible: true, message: "Draft deleted." });
-      })
-      .catch(() => {
-        setToast({
-          visible: true,
-          message: "Could not delete draft. Try again.",
-        });
-      });
-  }, [deleteDraftCtx, discardServerDraft, drafts]);
+    if (draft === undefined) {
+      setDeleteDraftCtx(null);
+      setDeleteDraftError(null);
+      return;
+    }
+    setDeleteDraftError(null);
+    if (isLocalOnlyDraft(draft)) {
+      deleteLocalDraft(draft.id);
+      setDeleteDraftCtx(null);
+      setToast({ visible: true, message: "Draft deleted." });
+      return;
+    }
+
+    setDeleteDraftSubmitting(true);
+    try {
+      await discardServerDraft.discardDraft(draft);
+      setDeleteDraftCtx(null);
+      setToast({ visible: true, message: "Draft deleted." });
+    } catch (error) {
+      setDeleteDraftError(draftDeleteErrorMessage(error));
+    } finally {
+      setDeleteDraftSubmitting(false);
+    }
+  }, [deleteDraftCtx, deleteLocalDraft, discardServerDraft, drafts]);
 
   // ----- Render ---------------------------------------------------
   return (
@@ -620,10 +685,7 @@ export default function EventsTab(): React.ReactElement {
           }}
           onTransitionalToast={showTransitionalToast}
           canEditEvent={canPerformAction(currentRank, "EDIT_EVENT")}
-          canUseLifecycleActions={
-            manageCtx.kind !== "live" ||
-            !serverBackedEventIds.has(manageCtx.event.id)
-          }
+          canUseLifecycleActions
         />
       ) : null}
 
@@ -644,7 +706,7 @@ export default function EventsTab(): React.ReactElement {
       {/* Delete draft ConfirmDialog — opened from manage menu's Delete event (drafts only) */}
       <ConfirmDialog
         visible={deleteDraftCtx !== null}
-        onClose={() => setDeleteDraftCtx(null)}
+        onClose={handleCloseDeleteDraft}
         onConfirm={handleDeleteDraftConfirm}
         title="Delete this draft?"
         description={
@@ -655,6 +717,13 @@ export default function EventsTab(): React.ReactElement {
         variant="simple"
         confirmLabel="Delete draft"
         cancelLabel="Keep draft"
+        confirmLoading={deleteDraftSubmitting}
+        confirmDisabled={deleteDraftSubmitting}
+        closeDisabled={deleteDraftSubmitting}
+        errorMessage={deleteDraftError}
+        testID="delete-draft-confirm"
+        confirmTestID="delete-draft-confirm-button"
+        cancelTestID="delete-draft-cancel-button"
         destructive
       />
 

@@ -10,9 +10,7 @@
  * primitive without changes.
  *
  * Web: uses `navigator.share` (when available) and `navigator.clipboard.writeText`.
- * Native: uses RN `Share.share` and (when available in mingla-business)
- *   `expo-clipboard`. Falls back to a Toast if clipboard is unavailable on
- *   either platform.
+ * Native: uses RN `Share.share` and `expo-clipboard`.
  *
  * Per Cycle 7 spec §2.6 + DEC-079 additive carve-out style.
  */
@@ -22,7 +20,6 @@ import {
   Linking,
   Platform,
   Pressable,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -43,6 +40,7 @@ import {
   twitterIntent,
   whatsappIntent,
 } from "../../utils/shareIntents";
+import { copyPublicUrl, sharePublicUrl } from "../../utils/sharePublicUrl";
 
 import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
@@ -113,63 +111,25 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   }, []);
 
   const handleCopyLink = useCallback(async (): Promise<void> => {
-    if (Platform.OS === "web") {
-      const navAny = (
-        globalThis as unknown as {
-          navigator?: {
-            clipboard?: { writeText?: (s: string) => Promise<void> };
-          };
-        }
-      ).navigator;
-      if (navAny?.clipboard?.writeText !== undefined) {
-        try {
-          await navAny.clipboard.writeText(url);
-          showToast("Link copied");
-        } catch {
-          showToast("Couldn't copy link.");
-        }
-      } else {
-        showToast("Copy not supported on this browser.");
-      }
-      return;
+    try {
+      await copyPublicUrl(url);
+      showToast("Link copied");
+    } catch {
+      showToast("Copy failed. Try Share via instead.");
     }
-    // Native: use expo-clipboard if available; else a Toast directing the
-    // user to the native share sheet (which always supports Copy).
-    showToast("Tap Share via to copy on iOS / Android.");
   }, [url, showToast]);
 
   const handleNativeShare = useCallback(async (): Promise<void> => {
-    if (Platform.OS === "web") {
-      const navAny = (
-        globalThis as unknown as {
-          navigator?: {
-            share?: (data: {
-              title: string;
-              url: string;
-              text?: string;
-            }) => Promise<void>;
-          };
-        }
-      ).navigator;
-      if (navAny?.share !== undefined) {
-        try {
-          await navAny.share({ title, url, text: description });
-        } catch {
-          // user cancelled — surface no error
-        }
-      } else {
-        showToast("Native share not supported on this browser.");
-      }
-      return;
-    }
-    // Native: RN Share.share
     try {
-      await Share.share({
-        message: `${title}\n${url}`,
+      await sharePublicUrl({
+        title,
         url,
+        description,
       });
     } catch {
-      // user cancelled
+      if (Platform.OS === "web") {
+        showToast("Native share not supported on this browser.");
+      }
     }
   }, [url, title, description, showToast]);
 

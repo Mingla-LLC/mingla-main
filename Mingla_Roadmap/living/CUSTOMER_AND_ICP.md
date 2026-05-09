@@ -2,7 +2,7 @@
 
 > Status: first PMM synthesis completed 2026-05-08.
 > Owner: `$pmm-mingla`.
-> Sources: Business PRD, Strategic Plan, Product Competitive Analysis, Positioning/GTM Strategy, Marketing Hub Strategy.
+> Sources: Business PRD, Strategic Plan, Product Competitive Analysis, Positioning/GTM Strategy, Marketing Hub Strategy, `Mingla_Roadmap/research/CONSUMER_EXPLORER_ICP_JTBD.md`.
 
 ## Customer Map
 
@@ -12,7 +12,7 @@
 | Multi-brand operator | Brand manager, finance manager, event manager | Account owner / business owner | Account owner | Finance/team members | Permissions, brand separation, finance visibility | Multiple accounts, shared passwords, spreadsheets |
 | Venue / hospitality brand | Manager/marketer/operator | Owner or GM | Owner/GM | Staff, regular customers | Filling slow nights, repeat visits, fragmented marketing | Instagram, Meta ads, Mailchimp, OpenTable/Resy, Eventbrite |
 | Ticket buyer / attendee | Consumer buying a ticket | Same person | Same person | Friends/partner | Trusting event page, checkout, QR, refunds | Eventbrite/Posh links, social posts, DMs |
-| Consumer planner | Couple/friend/new-city user | Same person | Same person | Partner/friends | Decision fatigue and stale plans | Google Maps, Yelp, TikTok, group chat |
+| Consumer Explorer social plan captain | Date-night planner, friend-group planner, or new-city social rebuilder | Same person | Same person | Partner/friends | Decision fatigue, stale plans, social-search overload, and group indecision | TikTok/Instagram saves, Google Maps, Yelp, Eventbrite/Posh, Reddit, group chat |
 | Door staff / scanner | Scanner user | Organiser pays | Organiser / event manager | Door lead | Fast entry, duplicate prevention, manual lookup | Paper lists, screenshots, spreadsheet check-in |
 
 ## Jobs To Be Done
@@ -35,6 +35,21 @@
 | Organiser | Upcoming event; existing ticketing tool frustration; need mobile-first setup; desire for better public page. |
 | Venue/hospitality brand | Slow nights; need repeat visits; frustration with ads that do not prove foot traffic. |
 | Consumer | Friday/weekend plan, date anxiety, new city, friend group indecision. |
+
+## Consumer Explorer ICP Lock
+
+> Source: `Mingla_Roadmap/research/CONSUMER_EXPLORER_ICP_JTBD.md`.
+> Confidence: Medium. External validation is strong; Mingla-specific cohort proof pending.
+
+Mingla Explorer's initial consumer ICP is the **Social Plan Captain**: an urban/suburban 22-35 year old who regularly chooses where to go for a partner, date, or small friend group and wants a faster path from "what should we do?" to a confident plan.
+
+| Priority | Segment | Core job | Why it matters |
+|---:|---|---|---|
+| 1 | Date-night planner | Find a thoughtful, vibe-fit plan for a partner/date without hours of searching. | Strong emotional pain, recurring use, clear Mingla+ potential. |
+| 1 | Friend-group plan captain | Get a small group to agree on where to go before the chat dies. | Strong referral loop and best fit for collaboration sessions. |
+| 2 | New-city social rebuilder | Learn the city and build social routines after moving. | Deep pain and strong mission fit, but depends on city density/community loops. |
+
+Do not position Explorer as generic local search. Position it around **vibe-fit social planning**: dates, friends, and new-city discovery that turn inspiration into commitment.
 
 ## Research Gaps
 

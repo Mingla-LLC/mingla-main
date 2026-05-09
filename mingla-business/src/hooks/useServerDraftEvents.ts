@@ -21,6 +21,10 @@ import {
 const STALE_TIME_MS = 30 * 1000;
 const DISABLED_KEY = ["event-drafts-disabled"] as const;
 
+const logMutationError = (label: string, error: Error): void => {
+  console.error(`[${label}] Operation failed:`, error);
+};
+
 export const eventDraftKeys = {
   all: ["event-drafts"] as const,
   lists: (): readonly ["event-drafts", "list"] =>
@@ -174,6 +178,9 @@ export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
       );
       setLastSavedAt(new Date().toISOString());
     },
+    onError: (error) => {
+      logMutationError("useServerDraftAutosave", error);
+    },
   });
 
   const saveDraft = useCallback(
@@ -215,6 +222,9 @@ export const useCreateServerDraft = (): {
       queryClient.setQueryData(eventDraftKeys.detail(draft.id), draft);
       queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
     },
+    onError: (error) => {
+      logMutationError("useCreateServerDraft", error);
+    },
   });
 
   return {
@@ -227,6 +237,7 @@ export const useCreateServerDraft = (): {
 export const useDiscardServerDraft = (): {
   discardDraft: (draft: DraftEvent) => Promise<void>;
   isPending: boolean;
+  error: Error | null;
 } => {
   const queryClient = useQueryClient();
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
@@ -237,10 +248,14 @@ export const useDiscardServerDraft = (): {
       queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
       queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
     },
+    onError: (error) => {
+      logMutationError("useDiscardServerDraft", error);
+    },
   });
 
   return {
     discardDraft: mutation.mutateAsync,
     isPending: mutation.isPending,
+    error: mutation.error,
   };
 };

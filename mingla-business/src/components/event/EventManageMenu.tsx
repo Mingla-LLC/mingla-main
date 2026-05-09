@@ -177,12 +177,12 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
       });
     }
 
-    // Copy share link — non-draft
+    // Share link — non-draft
     if (status !== "draft") {
       list.push({
         key: "share",
         icon: "share",
-        label: "Copy share link",
+        label: "Share event",
         tone: "default",
         onPress: () => {
           onClose();
