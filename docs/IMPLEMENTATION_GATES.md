@@ -56,3 +56,9 @@
 - [ ] Is it wrapped in `withTimeout` if near a user action?
 - [ ] Is there a `.catch(() => {})` anywhere? (If yes, replace with logging.)
 - [ ] Does it follow `docs/MUTATION_CONTRACT.md`?
+
+### 8. Regression Lock-In
+- [ ] What repo-running automated test fails before this behavior change and passes after it?
+- [ ] If an old test encodes the wrong contract, did I rewrite or replace it instead of weakening it?
+- [ ] Is the regression test included in the same scoped change that will be committed and pushed to GitHub?
+- [ ] If automation is impossible, is the reason documented and converted into an explicit tester manual gate?
