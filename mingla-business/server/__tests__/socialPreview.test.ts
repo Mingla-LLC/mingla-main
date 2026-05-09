@@ -91,7 +91,7 @@ describe("social preview metadata renderers", () => {
     );
   });
 
-  test("builds brand OG card props with handle, event count, and next event cue", () => {
+  test("builds brand OG card props without exposing the brand handle", () => {
     const nextRow = {
       ...row,
       id: "event-2",
@@ -110,11 +110,19 @@ describe("social preview metadata renderers", () => {
       expect.objectContaining({
         cardKind: "brand",
         title: "Test Stripe",
-        kicker: "@test-stripe",
+        kicker: "Mingla Business",
         eventCountLabel: "2 events",
         nextEventLabel: "Summer Rooftop - Jun 12, 2026",
         coverUrl: "https://cdn.example.com/cover.png",
       }),
     );
+  });
+
+  test("renders brand page metadata without showing the brand username", () => {
+    const html = renderBrandHtml([row]);
+
+    expect(html).toContain("<h1>Test Stripe</h1>");
+    expect(html).toContain("<span class=\"pill\">1 event</span>");
+    expect(html).not.toContain("@test-stripe");
   });
 });

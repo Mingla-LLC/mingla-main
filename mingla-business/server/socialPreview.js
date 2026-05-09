@@ -279,7 +279,7 @@ const buildBrandOgCardProps = (rows) => {
       (brand
         ? `Discover events from ${brand.brand_name} on Mingla.`
         : "Create and share events on Mingla."),
-    kicker: brand?.brand_slug ? `@${brand.brand_slug}` : "Mingla Business",
+    kicker: "Mingla Business",
     coverUrl,
     eventCountLabel,
     nextEventLabel,
@@ -397,7 +397,6 @@ const renderBrandHtml = (rows) => {
         <h1>${escapeHtml(row.brand_name)}</h1>
         <p>${escapeHtml(description)}</p>
         <div class="meta">
-          <span class="pill">@${escapeHtml(row.brand_slug)}</span>
           <span class="pill">${rows.length} event${rows.length === 1 ? "" : "s"}</span>
         </div>
       </div>
@@ -439,6 +438,8 @@ const renderOgPng = async ({
   const isBrand = cardKind === "brand";
   const primaryChip = isBrand ? eventCountLabel : dateLabel;
   const secondaryChip = isBrand ? nextEventLabel : locationLabel;
+  const label = isBrand ? "Featured brand" : "Featured event";
+  const accentLabel = isBrand ? "Mingla Business" : truncate(kicker, 44);
   const response = new ImageResponse(
     React.createElement(
       "div",
@@ -448,7 +449,7 @@ const renderOgPng = async ({
           height: "630px",
           display: "flex",
           position: "relative",
-          background: "linear-gradient(135deg, #fff7ef 0%, #f8dfc7 48%, #f47c20 100%)",
+          background: "linear-gradient(135deg, #fff7ef 0%, #ffe3c8 46%, #f47c20 100%)",
           color: "#16110d",
           fontFamily: "Inter, Arial, sans-serif",
           overflow: "hidden",
@@ -459,11 +460,12 @@ const renderOgPng = async ({
             src: cover,
             style: {
               position: "absolute",
-              right: 0,
-              top: 0,
-              width: "510px",
-              height: "630px",
+              right: "54px",
+              top: "64px",
+              width: "396px",
+              height: "438px",
               objectFit: "cover",
+              borderRadius: "40px",
             },
           })
         : null,
@@ -472,19 +474,31 @@ const renderOgPng = async ({
           position: "absolute",
           inset: 0,
           background: cover
-            ? "linear-gradient(90deg, rgba(255,247,239,.98) 0%, rgba(255,247,239,.94) 54%, rgba(244,124,32,.30) 78%, rgba(22,17,13,.28) 100%)"
-            : "radial-gradient(circle at 88% 22%, rgba(255,255,255,.40) 0%, rgba(255,255,255,0) 26%), linear-gradient(135deg, #fff7ef 0%, #f8dfc7 55%, #f47c20 100%)",
+            ? "linear-gradient(90deg, rgba(255,247,239,.99) 0%, rgba(255,247,239,.97) 54%, rgba(255,227,200,.68) 72%, rgba(244,124,32,.26) 100%)"
+            : "radial-gradient(circle at 88% 19%, rgba(255,255,255,.54) 0%, rgba(255,255,255,0) 25%), linear-gradient(135deg, #fff7ef 0%, #ffe3c8 55%, #f47c20 100%)",
         },
       }),
       React.createElement("div", {
         style: {
           position: "absolute",
-          right: "-160px",
-          bottom: "-210px",
-          width: "520px",
-          height: "520px",
-          borderRadius: "260px",
-          background: "rgba(22,17,13,.11)",
+          right: "-120px",
+          bottom: "-170px",
+          width: "470px",
+          height: "470px",
+          borderRadius: "235px",
+          background: "rgba(159,70,14,.18)",
+        },
+      }),
+      React.createElement("div", {
+        style: {
+          position: "absolute",
+          left: "42px",
+          top: "42px",
+          right: "42px",
+          bottom: "42px",
+          borderRadius: "48px",
+          border: "2px solid rgba(244,124,32,.20)",
+          background: "rgba(255,250,243,.58)",
         },
       }),
       React.createElement(
@@ -493,29 +507,40 @@ const renderOgPng = async ({
           style: {
             display: "flex",
             flexDirection: "column",
-            gap: "20px",
-            padding: "58px 64px",
-            width: "760px",
+            gap: "16px",
+            padding: "70px 70px",
+            width: "642px",
           },
         },
         React.createElement(
           "div",
           {
             style: {
+              display: "flex",
+              alignItems: "center",
+              gap: "16px",
               color: "#9a430d",
-              fontSize: "30px",
+              fontSize: "24px",
               fontWeight: 800,
-              letterSpacing: "1px",
+              letterSpacing: "0.8px",
             },
           },
-          truncate(kicker, 48),
+          React.createElement("div", {
+            style: {
+              width: "46px",
+              height: "6px",
+              borderRadius: "999px",
+              background: "#f47c20",
+            },
+          }),
+          label,
         ),
         React.createElement(
           "div",
           {
             style: {
               display: "flex",
-              gap: "14px",
+              gap: "12px",
               flexWrap: "wrap",
             },
           },
@@ -524,11 +549,11 @@ const renderOgPng = async ({
                 "div",
                 {
                   style: {
-                    padding: "12px 18px",
+                    padding: "10px 16px",
                     borderRadius: "999px",
                     background: "#16110d",
                     color: "#fff7ef",
-                    fontSize: "26px",
+                    fontSize: "23px",
                     fontWeight: 900,
                   },
                 },
@@ -540,16 +565,16 @@ const renderOgPng = async ({
                 "div",
                 {
                   style: {
-                    padding: "12px 18px",
+                    padding: "10px 16px",
                     borderRadius: "999px",
                     background: "rgba(244,124,32,.18)",
                     color: "#5e2609",
-                    fontSize: "24px",
+                    fontSize: "22px",
                     fontWeight: 800,
-                    maxWidth: "610px",
+                    maxWidth: "470px",
                   },
                 },
-                truncate(secondaryChip, 70),
+                truncate(secondaryChip, 54),
               )
             : null,
         ),
@@ -557,27 +582,39 @@ const renderOgPng = async ({
           "div",
           {
             style: {
-              fontSize: isBrand ? "78px" : "72px",
-              lineHeight: 0.96,
+              fontSize: isBrand ? "76px" : "70px",
+              lineHeight: 0.94,
               fontWeight: 900,
               letterSpacing: "0",
-              maxWidth: "720px",
+              maxWidth: "610px",
             },
           },
-          truncate(title, 62),
+          truncate(title, 54),
         ),
         React.createElement(
           "div",
           {
             style: {
               color: "#4a2b19",
-              fontSize: "32px",
+              fontSize: "28px",
               lineHeight: 1.25,
               fontWeight: 600,
-              maxWidth: "650px",
+              maxWidth: "570px",
             },
           },
-          truncate(subtitle, 118),
+          truncate(subtitle, 96),
+        ),
+        React.createElement(
+          "div",
+          {
+            style: {
+              marginTop: "8px",
+              color: "#9a430d",
+              fontSize: "25px",
+              fontWeight: 900,
+            },
+          },
+          accentLabel,
         ),
       ),
       React.createElement(
@@ -585,13 +622,13 @@ const renderOgPng = async ({
         {
           style: {
             position: "absolute",
-            right: "58px",
-            top: "82px",
-            width: "292px",
-            height: "292px",
-            borderRadius: "44px",
+            right: "78px",
+            top: cover ? "390px" : "106px",
+            width: cover ? "212px" : "318px",
+            height: cover ? "128px" : "318px",
+            borderRadius: cover ? "30px" : "46px",
             background: "#fffaf3",
-            boxShadow: "0 24px 70px rgba(22,17,13,.22)",
+            boxShadow: "0 24px 70px rgba(22,17,13,.20)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -601,8 +638,8 @@ const renderOgPng = async ({
         React.createElement("img", {
           src: logoImageSource(),
           style: {
-            width: "232px",
-            height: "232px",
+            width: cover ? "176px" : "250px",
+            height: cover ? "96px" : "250px",
             objectFit: "contain",
           },
         }),
@@ -612,10 +649,10 @@ const renderOgPng = async ({
         {
           style: {
             position: "absolute",
-            right: "72px",
-            bottom: "58px",
+            right: "78px",
+            bottom: "72px",
             color: "#5e2609",
-            fontSize: "28px",
+            fontSize: "26px",
             fontWeight: 900,
           },
         },
