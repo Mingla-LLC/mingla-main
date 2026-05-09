@@ -28,7 +28,7 @@ const iosUrlScheme = iosClientId
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: config.name ?? "mingla-business",
+  name: config.name ?? "Business",
   slug: config.slug ?? "mingla-business",
   // Cycle B2a — deep link scheme for Stripe Connect onboarding return.
   // expo-web-browser.openAuthSessionAsync requires this scheme to redirect
