@@ -4,7 +4,6 @@
 node_modules/
 app-mobile/
 backend/
-mingla-admin/
 mingla-marketing/
 oauth-redirect/
 scripts/
@@ -19,3 +18,7 @@ mingla-business/android/
 mingla-business/dist/
 mingla-business/ios/
 mingla-business/node_modules/
+
+mingla-admin/.env
+mingla-admin/dist/
+mingla-admin/node_modules/
