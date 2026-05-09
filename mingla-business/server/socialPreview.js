@@ -346,7 +346,7 @@ const renderNotFoundHtml = (title) =>
   });
 
 const renderOgPng = async ({ title, subtitle, kicker, coverUrl }) => {
-  const { ImageResponse } = require("@vercel/og");
+  const { ImageResponse } = await import("@vercel/og");
   const cover = isAbsoluteHttpUrl(coverUrl) ? coverUrl : null;
   const response = new ImageResponse(
     React.createElement(
