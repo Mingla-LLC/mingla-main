@@ -10,9 +10,9 @@ module.exports = async function brandOgHandler(req, res) {
   const brandSlug = firstQueryValue(req.query.brandSlug);
 
   try {
-    const rows =
-      typeof brandSlug === "string" ? await fetchPublicBrandBySlug(brandSlug) : [];
-    const buffer = await renderOgPng(buildBrandOgCardProps(rows));
+    const publicBrand =
+      typeof brandSlug === "string" ? await fetchPublicBrandBySlug(brandSlug) : null;
+    const buffer = await renderOgPng(buildBrandOgCardProps(publicBrand));
     sendPng(res, buffer);
   } catch {
     const buffer = await renderOgPng({

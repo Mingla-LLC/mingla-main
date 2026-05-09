@@ -8,7 +8,7 @@ import type {
   WhenMode,
 } from "../store/draftEventStore";
 import type { LiveEvent, LiveEventStatus } from "../store/liveEventStore";
-import type { Brand, BrandLinks } from "../store/currentBrandStore";
+import type { Brand, BrandCustomLink, BrandLinks } from "../types/brand";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -39,6 +39,25 @@ interface BusinessPublicEventViewRow {
   created_at: string;
   updated_at: string;
   public_theme: JsonRecord | null;
+}
+
+interface BusinessPublicBrandViewRow {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  profile_photo_url: string | null;
+  social_links: unknown;
+  custom_links: unknown;
+  display_attendee_count: boolean;
+  kind: "physical" | "popup";
+  address: string | null;
+  cover_hue: number;
+  cover_media_url: string | null;
+  cover_media_type: "image" | "video" | "gif" | null;
+  profile_photo_type: "image" | "video" | "gif" | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface TicketTypeRow {
@@ -136,8 +155,22 @@ const asVisibility = (value: string): DraftEventVisibility => {
   return "public";
 };
 
-const asLinks = (value: unknown): BrandLinks | undefined => {
-  const record = asRecord(value);
+const asCustomLinks = (value: unknown): BrandCustomLink[] => {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is BrandCustomLink =>
+      item !== null &&
+      typeof item === "object" &&
+      typeof (item as BrandCustomLink).label === "string" &&
+      typeof (item as BrandCustomLink).url === "string",
+  );
+};
+
+const asLinks = (
+  socialValue: unknown,
+  customValue?: unknown,
+): BrandLinks | undefined => {
+  const record = asRecord(socialValue);
   const links: BrandLinks = {};
   for (const key of [
     "website",
@@ -153,6 +186,8 @@ const asLinks = (value: unknown): BrandLinks | undefined => {
       links[key] = record[key];
     }
   }
+  const custom = asCustomLinks(customValue);
+  if (custom.length > 0) links.custom = custom;
   return Object.keys(links).length > 0 ? links : undefined;
 };
 
@@ -180,6 +215,34 @@ const viewRowToBrand = (row: BusinessPublicEventViewRow): PublicBrandRecord => {
     displayAttendeeCount: row.brand_display_attendee_count,
   };
 };
+
+export const publicBrandViewRowToBrand = (
+  row: BusinessPublicBrandViewRow,
+  eventCount = 0,
+): PublicBrandRecord => ({
+  id: row.id,
+  displayName: row.name,
+  slug: row.slug,
+  kind: row.kind,
+  address: row.address,
+  coverHue: row.cover_hue,
+  coverMediaUrl: row.cover_media_url ?? undefined,
+  coverMediaType: row.cover_media_type ?? undefined,
+  profilePhotoType: row.profile_photo_type ?? undefined,
+  photo: row.profile_photo_url ?? undefined,
+  role: "owner",
+  stats: {
+    events: eventCount,
+    followers: 0,
+    rev: 0,
+    attendees: 0,
+  },
+  currentLiveEvent: null,
+  bio: row.description ?? undefined,
+  tagline: undefined,
+  links: asLinks(row.social_links, row.custom_links),
+  displayAttendeeCount: row.display_attendee_count,
+});
 
 const viewStatusToLiveStatus = (status: string): LiveEventStatus => {
   if (
@@ -358,6 +421,15 @@ export const getPublicEventById = async (
 export const getPublicBrandBySlug = async (
   brandSlug: string,
 ): Promise<PublicBrandDetail | null> => {
+  const { data: brandData, error: brandError } = await supabase
+    .from("business_public_brands_view")
+    .select("*")
+    .eq("slug", brandSlug)
+    .maybeSingle();
+
+  if (brandError !== null) throw brandError;
+  if (brandData === null) return null;
+
   const { data, error } = await supabase
     .from("business_public_events_view")
     .select("*")
@@ -366,11 +438,12 @@ export const getPublicBrandBySlug = async (
 
   if (error !== null) throw error;
   const rows = (data ?? []) as BusinessPublicEventViewRow[];
-  if (rows.length === 0) return null;
-
   const eventTickets = await Promise.all(rows.map((row) => fetchTickets(row.id)));
   return {
-    brand: viewRowToBrand(rows[0]),
+    brand: publicBrandViewRowToBrand(
+      brandData as BusinessPublicBrandViewRow,
+      rows.length,
+    ),
     events: rows.map((row, idx) =>
       publicEventViewRowToEvent(row, eventTickets[idx] ?? []),
     ),

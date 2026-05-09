@@ -87,7 +87,16 @@ const isAbsoluteHttpUrl = (value) => {
 const eventPublicPath = (row) =>
   `/e/${encodeURIComponent(row.brand_slug)}/${encodeURIComponent(row.slug)}`;
 
-const brandPublicPath = (row) => `/b/${encodeURIComponent(row.brand_slug)}`;
+const brandSlug = (row) => row?.slug || row?.brand_slug || "";
+
+const brandName = (row) => row?.name || row?.brand_name || "Mingla Business";
+
+const brandDescriptionText = (row) => row?.description || row?.brand_description || "";
+
+const brandProfilePhotoUrl = (row) =>
+  row?.profile_photo_url || row?.brand_profile_photo_url || null;
+
+const brandPublicPath = (row) => `/b/${encodeURIComponent(brandSlug(row))}`;
 
 const eventPublicUrl = (row) => `${PUBLIC_ORIGIN}${eventPublicPath(row)}`;
 
@@ -97,7 +106,7 @@ const eventOgFallbackUrl = (row) =>
   `${PUBLIC_ORIGIN}/og/event/${encodeURIComponent(row.id)}.png`;
 
 const brandOgFallbackUrl = (row) =>
-  `${PUBLIC_ORIGIN}/og/brand/${encodeURIComponent(row.brand_slug)}.png`;
+  `${PUBLIC_ORIGIN}/og/brand/${encodeURIComponent(brandSlug(row))}.png`;
 
 const eventImageUrl = (row) => {
   if (isAbsoluteHttpUrl(row.cover_media_url) && row.cover_media_type !== "video") {
@@ -107,8 +116,12 @@ const eventImageUrl = (row) => {
 };
 
 const brandImageUrl = (row) => {
-  if (isAbsoluteHttpUrl(row.brand_profile_photo_url)) {
-    return row.brand_profile_photo_url;
+  const photoUrl = brandProfilePhotoUrl(row);
+  if (isAbsoluteHttpUrl(photoUrl)) {
+    return photoUrl;
+  }
+  if (isAbsoluteHttpUrl(row.cover_media_url) && row.cover_media_type !== "video") {
+    return row.cover_media_url;
   }
   return brandOgFallbackUrl(row);
 };
@@ -153,12 +166,21 @@ const fetchPublicEventById = async (eventId) => {
 };
 
 const fetchPublicBrandBySlug = async (brandSlug) => {
-  const rows = await requestJson("business_public_events_view", {
+  const brandRows = await requestJson("business_public_brands_view", {
+    select: "*",
+    slug: `eq.${brandSlug}`,
+    limit: "1",
+  });
+  if (!Array.isArray(brandRows) || brandRows.length === 0) return null;
+  const eventRows = await requestJson("business_public_events_view", {
     select: "*",
     brand_slug: `eq.${brandSlug}`,
     order: "published_at.desc.nullslast",
   });
-  return Array.isArray(rows) ? rows : [];
+  return {
+    brand: brandRows[0],
+    events: Array.isArray(eventRows) ? eventRows : [],
+  };
 };
 
 const eventDescription = (row) =>
@@ -170,8 +192,8 @@ const eventDescription = (row) =>
 
 const brandDescription = (row, count) =>
   truncate(
-    row.brand_description ||
-      `Discover ${count} event${count === 1 ? "" : "s"} from ${row.brand_name} on Mingla.`,
+    brandDescriptionText(row) ||
+      `Discover ${count} event${count === 1 ? "" : "s"} from ${brandName(row)} on Mingla.`,
     200,
   );
 
@@ -253,10 +275,23 @@ const chooseBrandFeatureEvent = (rows) => {
   return candidates.sort((a, b) => a.time - b.time)[0].row;
 };
 
-const buildBrandOgCardProps = (rows) => {
-  const brand = rows[0] ?? null;
-  const featureEvent = chooseBrandFeatureEvent(rows);
-  const eventCount = rows.length;
+const normalizeBrandPreviewInput = (input) => {
+  if (Array.isArray(input)) {
+    return { brand: input[0] ?? null, events: input };
+  }
+  if (input !== null && typeof input === "object") {
+    return {
+      brand: input.brand ?? null,
+      events: Array.isArray(input.events) ? input.events : [],
+    };
+  }
+  return { brand: null, events: [] };
+};
+
+const buildBrandOgCardProps = (input) => {
+  const { brand, events } = normalizeBrandPreviewInput(input);
+  const featureEvent = chooseBrandFeatureEvent(events);
+  const eventCount = events.length;
   const eventCountLabel = `${eventCount} event${eventCount === 1 ? "" : "s"}`;
   const featureDate =
     featureEvent !== null ? formatDate(eventDate(featureEvent)) : "";
@@ -265,19 +300,23 @@ const buildBrandOgCardProps = (rows) => {
       ? `${truncate(featureEvent.title, 52)}${featureDate.length > 0 ? ` - ${featureDate}` : ""}`
       : "";
   const coverUrl =
-    brand !== null && isAbsoluteHttpUrl(brand.brand_profile_photo_url)
-      ? brand.brand_profile_photo_url
+    brand !== null && isAbsoluteHttpUrl(brandProfilePhotoUrl(brand))
+      ? brandProfilePhotoUrl(brand)
+      : brand !== null &&
+          isAbsoluteHttpUrl(brand.cover_media_url) &&
+          brand.cover_media_type !== "video"
+        ? brand.cover_media_url
       : featureEvent !== null
         ? eventCoverUrl(featureEvent)
         : null;
 
   return {
     cardKind: "brand",
-    title: brand?.brand_name || "Mingla Business",
+    title: brand !== null ? brandName(brand) : "Mingla Business",
     subtitle:
-      brand?.brand_description ||
+      (brand !== null ? brandDescriptionText(brand) : "") ||
       (brand
-        ? `Discover events from ${brand.brand_name} on Mingla.`
+        ? `Discover events from ${brandName(brand)} on Mingla.`
         : "Create and share events on Mingla."),
     kicker: "Mingla Business",
     coverUrl,
@@ -370,13 +409,14 @@ const renderEventHtml = (row) => {
   });
 };
 
-const renderBrandHtml = (rows) => {
-  const row = rows[0];
-  const title = `${row.brand_name} on Mingla`;
-  const description = brandDescription(row, rows.length);
+const renderBrandHtml = (input) => {
+  const { brand, events } = normalizeBrandPreviewInput(input);
+  const row = brand ?? events[0];
+  const title = `${brandName(row)} on Mingla`;
+  const description = brandDescription(row, events.length);
   const canonicalUrl = brandPublicUrl(row);
   const imageUrl = brandImageUrl(row);
-  const cards = rows
+  const cards = events
     .slice(0, 8)
     .map(
       (event) => `<a class="card" href="${escapeHtml(eventPublicPath(event))}">
@@ -384,7 +424,7 @@ const renderBrandHtml = (rows) => {
         <span>${escapeHtml(eventDescription(event))}</span>
       </a>`,
     )
-    .join("");
+    .join("") || `<div class="card"><strong>No upcoming events yet</strong><span>Check back soon for new events from ${escapeHtml(brandName(row))}.</span></div>`;
 
   return pageShell({
     title,
@@ -394,10 +434,10 @@ const renderBrandHtml = (rows) => {
     type: "profile",
     body: `<section class="hero">
       <div>
-        <h1>${escapeHtml(row.brand_name)}</h1>
+        <h1>${escapeHtml(brandName(row))}</h1>
         <p>${escapeHtml(description)}</p>
         <div class="meta">
-          <span class="pill">${rows.length} event${rows.length === 1 ? "" : "s"}</span>
+          <span class="pill">${events.length} event${events.length === 1 ? "" : "s"}</span>
         </div>
       </div>
     </section>

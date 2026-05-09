@@ -5,6 +5,22 @@
 
 ## Root Causes
 
+### RC-0767: Public brand existence was derived from public event rows
+- **Discovery date:** 2026-05-09
+- **Proof:** `reports/INVESTIGATION_ORCH-0767_PUBLIC_BRAND_PAGE_EMPTY_BRAND_NOT_FOUND.md` proved `/b/{brandSlug}` called `getPublicBrandBySlug`, which queried `business_public_events_view`; that view only contains brands through qualifying public event rows, so a real brand with zero public events returned no rows and became `PublicBrandNotFound`.
+- **Symptoms caused:** Organisers could tap **View public page** for an existing empty brand such as `Brand 3` and see `We couldn't find that brand`.
+- **Causal chain:**
+  1. Brand profile routed to `/b/{brandSlug}` correctly.
+  2. Public brand route delegated to `getPublicBrandBySlug`.
+  3. `getPublicBrandBySlug` used `business_public_events_view` as both brand identity and event-list source.
+  4. Empty brands had no qualifying public event row.
+  5. Service returned `null`, and the route rendered not-found.
+- **Structural fix:** Added field-limited `business_public_brands_view` for public brand identity; kept `business_public_events_view` as public event-row source; refactored app/server preview code to return `{ brand, events: [] }` for real empty brands; added regression tests and deployed to `business.usemingla.com`.
+- **Status:** **CLOSED PASS 2026-05-09**. Evidence: `reports/IMPLEMENTATION_ORCH-0767_PUBLIC_BRAND_PAGE_EMPTY_BRAND_NOT_FOUND.md`, `reports/DEPLOY_ORCH-0767_PUBLIC_BRAND_PAGE_EMPTY_BRAND_NOT_FOUND.md`, `reports/CLOSE_ORCH-0767_PUBLIC_BRAND_PAGE_EMPTY_BRAND_NOT_FOUND.md`, and operator runtime acceptance.
+- **Invariant / regression guard:** Public brand existence must not be inferred from event rows. Public profile identity comes from a field-limited public brand read model; public event cards remain event-view-backed.
+- **Causal cluster:** Cluster 1/3 crossover: wrong source-of-truth plus launch-visible transitional public page behavior.
+- **Follow-ups not part of RC:** ORCH-0768 public `@slug` and fabricated audience/count cleanup remains separate.
+
 ### RC-0764B: Stripe onboarding UI used split status truths and treated actionable KYC as terminal failure
 - **Discovery date:** 2026-05-09
 - **Proof:** `reports/INVESTIGATION_ORCH-0764B_STRIPE_ONBOARDING_STATE_RECONCILIATION.md` proved Payments could render cached `brand.stripeStatus=onboarding` while live `useBrandStripeStatus().requirements.disabled_reason=requirements.past_due` rendered restricted remediation. `reports/IMPLEMENTATION_ORCH-0764B_STRIPE_ONBOARDING_STATE_RECONCILIATION.md` reports implementation of the primary repair contract. `reports/RETEST_ORCH-0764B_STRIPE_ONBOARDING_STATE_RECONCILIATION.md` then proved two remaining P1 gaps: production return route `https://business.usemingla.com/stripe-onboarding-return` returns Vercel `404_NOT_FOUND`, and `BrandOnboardView` still has a cached `brand.stripeStatus === "active"` terminal-success bypass.
