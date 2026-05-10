@@ -29,7 +29,6 @@ import {
 import {
   createEventCoverVideoUploadIntent,
   EVENT_COVER_MAX_SOURCE_VIDEO_BYTES,
-  EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS,
   EVENT_COVER_MAX_VIDEO_DURATION_MS,
   EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY,
   EVENT_COVER_VIDEO_PROCESSING_COPY,
@@ -46,6 +45,12 @@ import {
 } from "../ui/EventCoverMedia";
 
 import { type StepBodyProps } from "./types";
+import { useAuth } from "../../context/AuthContext";
+import { isBusinessAuthNotReadyError } from "../../utils/authReadiness";
+import {
+  validateNativeTrimmedEventCoverVideo,
+  type NativeTrimmedVideoUploadFields,
+} from "../../utils/eventCoverNativeVideo";
 
 const HUE_TILES: readonly number[] = [25, 100, 180, 220, 290, 320] as const;
 
@@ -57,14 +62,13 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
   coverMediaApplyMode = "draft_auto",
   onCoverVideoProcessingChange,
 }) => {
+  const { isAuthReady } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [mediaDisplayError, setMediaDisplayError] = useState<string | null>(
     null,
   );
-  const [pendingVideo, setPendingVideo] =
-    useState<ImagePicker.ImagePickerAsset | null>(null);
-  const [trimStartMs, setTrimStartMs] = useState(0);
   const [videoStatusText, setVideoStatusText] = useState<string | null>(null);
+  const [videoErrorText, setVideoErrorText] = useState<string | null>(null);
 
   useEffect(() => {
     setMediaDisplayError(null);
@@ -130,19 +134,36 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
 
   const showVideoProcessingError = useCallback(
     (error: unknown): void => {
-      if (error instanceof EventCoverVideoProcessingError) {
-        if (error.code === "provider_not_configured") {
-          onShowToast(EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY);
-          return;
+      const message = (() => {
+        if (isBusinessAuthNotReadyError(error)) {
+          return "Finishing sign-in before upload. Try again in a moment.";
         }
-        if (error.code === "source_upload_failed") {
-          onShowToast("Video upload failed before processing. Try again.");
-          return;
+        if (error instanceof EventCoverVideoProcessingError) {
+          if (error.code === "provider_not_configured") {
+            return EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY;
+          }
+          if (error.code === "source_upload_failed") {
+            return "Video upload failed before processing. Try again.";
+          }
+          return error.message;
         }
-        onShowToast(error.message);
-        return;
+        return "Video cover processing failed. Try another video.";
+      })();
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        console.warn("[CreatorStep4Cover] video processing error", {
+          code:
+            error instanceof EventCoverVideoProcessingError
+              ? error.code
+              : isBusinessAuthNotReadyError(error)
+                ? error.code
+                : "unknown",
+          message,
+          rawMessage: error instanceof Error ? error.message : String(error),
+        });
       }
-      onShowToast("Video cover processing failed. Try another video.");
+      setVideoStatusText(null);
+      setVideoErrorText(message);
+      onShowToast(message);
     },
     [onShowToast],
   );
@@ -208,39 +229,64 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
       asset: ImagePicker.ImagePickerAsset,
       eventId: string,
       applyMode: EventCoverVideoApplyMode,
-      startMs: number,
+      uploadFields: NativeTrimmedVideoUploadFields,
     ): Promise<void> => {
-      const durationMs = typeof asset.duration === "number" ? asset.duration : null;
-      if (durationMs === null || durationMs <= 0) {
-        throw new EventCoverMediaError(
-          "video_duration_unknown",
-          "We couldn't read this video's duration.",
-        );
-      }
-      const endMs = Math.min(startMs + EVENT_COVER_MAX_VIDEO_DURATION_MS, durationMs);
-      if (endMs <= startMs) {
-        throw new EventCoverMediaError("video_too_long", "Choose a longer video segment.");
-      }
       setVideoStatusText("Preparing secure video upload...");
+      setVideoErrorText(null);
+      if (__DEV__) {
+        console.info("[CreatorStep4Cover] upload-intent-start", {
+          applyMode,
+          eventId,
+          eventIdSource: coverMediaEventId === undefined ? "draft.id" : "coverMediaEventId",
+          brandId: draft.brandId,
+          isAuthReady,
+          sourceFileName: asset.fileName,
+          sourceMimeType: asset.mimeType,
+          sourceBytes: uploadFields.sourceBytes,
+          sourceDurationMs: uploadFields.sourceDurationMs,
+          trimStartMs: uploadFields.trimStartMs,
+          trimEndMs: uploadFields.trimEndMs,
+        });
+      }
       const intent = await createEventCoverVideoUploadIntent({
         applyMode,
         brandId: draft.brandId,
         eventId,
-        sourceBytes: asset.fileSize ?? 0,
-        sourceDurationMs: durationMs,
+        sourceBytes: uploadFields.sourceBytes,
+        sourceDurationMs: uploadFields.sourceDurationMs,
         sourceFileName: asset.fileName,
         sourceMimeType: asset.mimeType,
-        trimEndMs: endMs,
-        trimStartMs: startMs,
+        trimEndMs: uploadFields.trimEndMs,
+        trimStartMs: uploadFields.trimStartMs,
       });
+      if (__DEV__) {
+        console.info("[CreatorStep4Cover] upload-intent-success", {
+          jobId: intent.jobId,
+        });
+      }
       setVideoStatusText("Uploading video for processing...");
+      if (__DEV__) {
+        console.info("[CreatorStep4Cover] source-upload-start", {
+          jobId: intent.jobId,
+        });
+      }
       await uploadEventCoverVideoSource({
         fileName: asset.fileName,
         mimeType: asset.mimeType,
         upload: intent.upload,
         uri: asset.uri,
       });
+      if (__DEV__) {
+        console.info("[CreatorStep4Cover] source-upload-success", {
+          jobId: intent.jobId,
+        });
+      }
       setVideoStatusText("Compressing cover video...");
+      if (__DEV__) {
+        console.info("[CreatorStep4Cover] status-poll-start", {
+          jobId: intent.jobId,
+        });
+      }
       const status = await waitForEventCoverVideoReady(intent.jobId);
       if (status.processedUrl === null) {
         throw new EventCoverVideoProcessingError(
@@ -249,6 +295,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
         );
       }
       setMediaDisplayError(null);
+      setVideoErrorText(null);
       updateDraft({
         coverMediaType: "video",
         coverMediaUrl: status.processedUrl,
@@ -259,7 +306,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
           : "Cover video processed.",
       );
     },
-    [draft.brandId, onShowToast, updateDraft],
+    [coverMediaEventId, draft.brandId, isAuthReady, onShowToast, updateDraft],
   );
 
   const eventIdForUpload = useCallback((): string | null => {
@@ -278,6 +325,13 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
 
   const pickImageOrGifCover = useCallback(async (): Promise<void> => {
     if (uploading) return;
+    if (!isAuthReady) {
+      const message = "Finishing sign-in before upload. Try again in a moment.";
+      setVideoStatusText(null);
+      setVideoErrorText(message);
+      onShowToast(message);
+      return;
+    }
     if (!(await ensureMediaPermission())) return;
 
     const eventId = eventIdForUpload();
@@ -302,6 +356,8 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
   }, [
     ensureMediaPermission,
     eventIdForUpload,
+    isAuthReady,
+    onShowToast,
     showUploadError,
     uploadPickedAsset,
     uploading,
@@ -309,6 +365,13 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
 
   const pickVideoCover = useCallback(async (): Promise<void> => {
     if (uploading) return;
+    if (!isAuthReady) {
+      const message = "Finishing sign-in before upload. Try again in a moment.";
+      setVideoStatusText(null);
+      setVideoErrorText(message);
+      onShowToast(message);
+      return;
+    }
     if (!(await ensureMediaPermission())) return;
 
     const eventId = eventIdForUpload();
@@ -319,8 +382,9 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["videos"],
-        allowsEditing: false,
+        allowsEditing: true,
         quality: 1,
+        videoMaxDuration: 15,
         videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
         videoQuality: ImagePicker.UIImagePickerControllerQualityType.High,
       });
@@ -329,41 +393,46 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
       if (typeof __DEV__ !== "undefined" && __DEV__) {
         console.info("[CreatorStep4Cover] picked cover asset", {
           duration: asset.duration,
+          applyMode: coverMediaApplyMode,
+          brandId: draft.brandId,
+          eventId,
+          eventIdSource: coverMediaEventId === undefined ? "draft.id" : "coverMediaEventId",
           fileName: asset.fileName,
           fileSize: asset.fileSize,
+          isAuthReady,
           mimeType: asset.mimeType,
           type: asset.type,
           uri: asset.uri,
         });
       }
-      if (
-        typeof asset.fileSize === "number" &&
-        asset.fileSize > EVENT_COVER_MAX_SOURCE_VIDEO_BYTES
-      ) {
-        onShowToast("Choose a video under 500 MB.");
+      const validation = validateNativeTrimmedEventCoverVideo(asset, {
+        maxDurationMs: EVENT_COVER_MAX_VIDEO_DURATION_MS,
+        maxSourceBytes: EVENT_COVER_MAX_SOURCE_VIDEO_BYTES,
+      });
+      if (!validation.ok) {
+        if (typeof __DEV__ !== "undefined" && __DEV__) {
+          console.warn("[CreatorStep4Cover] native-trimmed video rejected", {
+            code: validation.code,
+            duration: asset.duration,
+            fileName: asset.fileName,
+            fileSize: asset.fileSize,
+            mimeType: asset.mimeType,
+            type: asset.type,
+            uri: asset.uri,
+          });
+        }
+        setVideoStatusText(null);
+        setVideoErrorText(validation.message);
+        onShowToast(validation.message);
         return;
       }
-      const durationMs = typeof asset.duration === "number" ? asset.duration : null;
-      if (durationMs === null || durationMs <= 0) {
-        showUploadError(
-          new EventCoverMediaError(
-            "video_duration_unknown",
-            "We couldn't read this video's duration.",
-          ),
-        );
-        return;
-      }
-      if (durationMs > EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS) {
-        onShowToast("Choose a video up to 5 minutes.");
-        return;
-      }
-      if (durationMs > EVENT_COVER_MAX_VIDEO_DURATION_MS) {
-        setPendingVideo(asset);
-        setTrimStartMs(0);
-        setVideoStatusText("Choose the 15-second section to use as the cover.");
-        return;
-      }
-      await processPickedVideo(asset, eventId, coverMediaApplyMode, 0);
+      await processPickedVideo(
+        asset,
+        eventId,
+        coverMediaApplyMode,
+        validation.uploadFields,
+      );
+      setVideoStatusText(null);
     } catch (error) {
       if (error instanceof EventCoverMediaError) showUploadError(error);
       else showVideoProcessingError(error);
@@ -375,55 +444,15 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
     ensureMediaPermission,
     eventIdForUpload,
     coverMediaApplyMode,
+    coverMediaEventId,
     onCoverVideoProcessingChange,
     onShowToast,
     processPickedVideo,
     showVideoProcessingError,
     showUploadError,
     uploading,
+    isAuthReady,
   ]);
-
-  const handleConfirmTrim = useCallback(async (): Promise<void> => {
-    if (pendingVideo === null || uploading) return;
-    const eventId = eventIdForUpload();
-    if (eventId === null) return;
-    setUploading(true);
-    onCoverVideoProcessingChange?.(true);
-    try {
-      await processPickedVideo(
-        pendingVideo,
-        eventId,
-        coverMediaApplyMode,
-        trimStartMs,
-      );
-      setPendingVideo(null);
-      setVideoStatusText(null);
-    } catch (error) {
-      if (error instanceof EventCoverMediaError) showUploadError(error);
-      else showVideoProcessingError(error);
-    } finally {
-      setUploading(false);
-      onCoverVideoProcessingChange?.(false);
-    }
-  }, [
-    coverMediaApplyMode,
-    eventIdForUpload,
-    onCoverVideoProcessingChange,
-    pendingVideo,
-    processPickedVideo,
-    showUploadError,
-    showVideoProcessingError,
-    trimStartMs,
-    uploading,
-  ]);
-
-  const shiftTrim = useCallback((deltaMs: number): void => {
-    setTrimStartMs((current) => {
-      const duration = pendingVideo?.duration ?? EVENT_COVER_MAX_VIDEO_DURATION_MS;
-      const maxStart = Math.max(0, duration - EVENT_COVER_MAX_VIDEO_DURATION_MS);
-      return Math.max(0, Math.min(maxStart, current + deltaMs));
-    });
-  }, [pendingVideo?.duration]);
 
   const handlePickCover = useCallback((): void => {
     if (uploading) return;
@@ -450,8 +479,8 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
 
   const handleRemoveCover = useCallback((): void => {
     setMediaDisplayError(null);
-    setPendingVideo(null);
     setVideoStatusText(null);
+    setVideoErrorText(null);
     updateDraft({ coverMediaUrl: null, coverMediaType: null });
     onShowToast("Uploaded cover removed.");
   }, [onShowToast, updateDraft]);
@@ -516,57 +545,13 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
         <Text style={styles.uploadLimitText}>
           {EVENT_COVER_UPLOAD_LIMIT_COPY} {EVENT_COVER_VIDEO_PROCESSING_COPY}
         </Text>
-        {pendingVideo !== null ? (
-          <View style={styles.trimPanel}>
-            <Text style={styles.trimTitle}>Trim video cover</Text>
-            <Text style={styles.trimCaption}>
-              {`${(trimStartMs / 1000).toFixed(0)}s-${Math.min(
-                ((pendingVideo.duration ?? 0) / 1000),
-                (trimStartMs + EVENT_COVER_MAX_VIDEO_DURATION_MS) / 1000,
-              ).toFixed(0)}s of ${Math.ceil((pendingVideo.duration ?? 0) / 1000)}s`}
-            </Text>
-            <View style={styles.trimActions}>
-              <Button
-                label="-5s"
-                variant="secondary"
-                size="sm"
-                shape="square"
-                onPress={() => shiftTrim(-5000)}
-                disabled={uploading || trimStartMs <= 0}
-              />
-              <Button
-                label="+5s"
-                variant="secondary"
-                size="sm"
-                shape="square"
-                onPress={() => shiftTrim(5000)}
-                disabled={
-                  uploading ||
-                  trimStartMs >=
-                    Math.max(
-                      0,
-                      (pendingVideo.duration ?? 0) -
-                        EVENT_COVER_MAX_VIDEO_DURATION_MS,
-                    )
-                }
-              />
-              <Button
-                label="Use this clip"
-                variant="primary"
-                size="sm"
-                shape="square"
-                onPress={() => {
-                  void handleConfirmTrim();
-                }}
-                loading={uploading}
-                disabled={uploading}
-                style={styles.trimConfirm}
-              />
-            </View>
-          </View>
-        ) : null}
         {videoStatusText !== null ? (
           <Text style={styles.videoStatusText}>{videoStatusText}</Text>
+        ) : null}
+        {videoErrorText !== null ? (
+          <Text accessibilityRole="alert" style={styles.videoErrorText}>
+            {videoErrorText}
+          </Text>
         ) : null}
         {mediaDisplayError !== null ? (
           <Text accessibilityRole="alert" style={styles.mediaErrorText}>
@@ -643,39 +628,16 @@ const styles = StyleSheet.create({
     color: semantic.error,
     marginTop: spacing.xs,
   },
-  trimPanel: {
-    marginTop: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-  },
-  trimTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: "700",
-    color: textTokens.primary,
-  },
-  trimCaption: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
-    marginTop: 2,
-  },
-  trimActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    marginTop: spacing.sm,
-  },
-  trimConfirm: {
-    flex: 1,
-  },
   videoStatusText: {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     color: accent.warm,
+    marginTop: spacing.xs,
+  },
+  videoErrorText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.error,
     marginTop: spacing.xs,
   },
   comingSoonCaption: {

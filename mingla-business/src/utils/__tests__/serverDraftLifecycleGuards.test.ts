@@ -20,11 +20,15 @@ describe("server-backed draft lifecycle guards", () => {
   test("create route waits for a server draft id before navigation", () => {
     const source = repoFile("app/event/create.tsx");
 
+    const authGuardIndex = source.indexOf("if (!isAuthReady");
     const createIndex = source.indexOf("createDraft(currentBrandId)");
     const navigationIndex = source.indexOf("`/event/${newDraft.id}/edit?step=0`");
 
+    expect(authGuardIndex).toBeGreaterThan(-1);
     expect(createIndex).toBeGreaterThan(-1);
+    expect(createIndex).toBeGreaterThan(authGuardIndex);
     expect(navigationIndex).toBeGreaterThan(createIndex);
+    expect(source).toContain("isBusinessAuthNotReadyError");
   });
 
   test("edit and preview routes do not redirect while server draft hydration is loading", () => {
@@ -45,6 +49,8 @@ describe("server-backed draft lifecycle guards", () => {
     expect(source).toContain("serverLegacyIds.has(draft.id)");
     expect(source).toContain("migratingIdsRef.current.has(draft.id)");
     expect(source).toContain("replaceDraft(draft.id, serverDraft)");
+    expect(source).toContain("brandId !== null && isAuthReady");
+    expect(source).toContain("isBusinessAuthNotReadyError(error)");
   });
 
   test("server autosave and discard still target draft rows while publish RPC owns promotion", () => {
@@ -74,6 +80,8 @@ describe("server-backed draft lifecycle guards", () => {
     const previewSource = repoFile("app/event/[id]/preview.tsx");
 
     expect(hookSource).toContain("isServerDraftLifecycleError");
+    expect(hookSource).toContain("requireBusinessAuthReady(authStatus, session)");
+    expect(hookSource).toContain("draft-save-deferred");
     expect(hookSource).toContain("Draft retired");
     expect(hookSource).toContain("deleteDraft(draft.id)");
     expect(hookSource).toContain("queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) })");

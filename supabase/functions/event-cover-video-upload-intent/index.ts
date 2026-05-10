@@ -21,12 +21,35 @@ const clampBitrate = (durationMs: number): string => {
   return `${Math.max(900, Math.min(9000, kbps))}k`;
 };
 
+const logInfo = (requestId: string, stage: string, payload: Record<string, unknown> = {}) => {
+  console.log("[event-cover-video-upload-intent]", JSON.stringify({
+    requestId,
+    stage,
+    ...payload,
+  }));
+};
+
+const logWarn = (requestId: string, stage: string, payload: Record<string, unknown> = {}) => {
+  console.warn("[event-cover-video-upload-intent]", JSON.stringify({
+    requestId,
+    stage,
+    ...payload,
+  }));
+};
+
 serve(async (req) => {
+  let requestId: string = crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+  if (req.method !== "POST") {
+    logWarn(requestId, "method_not_allowed", { method: req.method });
+    return jsonResponse({ error: "method_not_allowed" }, 405);
+  }
 
   const userIdOrResponse = await requireUserId(req);
-  if (userIdOrResponse instanceof Response) return userIdOrResponse;
+  if (userIdOrResponse instanceof Response) {
+    logWarn(requestId, "auth_failed", { status: userIdOrResponse.status });
+    return userIdOrResponse;
+  }
   const userId = userIdOrResponse;
 
   let body: {
@@ -39,14 +62,32 @@ serve(async (req) => {
     sourceDurationMs?: number | null;
     trimStartMs?: number;
     trimEndMs?: number;
+    clientRequestId?: string;
   };
   try {
     body = await req.json();
   } catch {
+    logWarn(requestId, "invalid_json");
     return jsonResponse({ error: "validation_error", detail: "invalid_json" }, 400);
   }
+  if (typeof body.clientRequestId === "string" && body.clientRequestId.trim().length > 0) {
+    requestId = body.clientRequestId.trim();
+  }
+
+  logInfo(requestId, "received", {
+    applyMode: body.applyMode,
+    brandId: body.brandId,
+    eventId: body.eventId,
+    sourceBytes: body.sourceBytes,
+    sourceDurationMs: body.sourceDurationMs,
+    sourceFileName: body.sourceFileName,
+    sourceMimeType: body.sourceMimeType,
+    trimEndMs: body.trimEndMs,
+    trimStartMs: body.trimStartMs,
+  });
 
   if (!providerConfigured()) {
+    logWarn(requestId, "provider_not_configured");
     return jsonResponse({
       error: "provider_not_configured",
       detail: "Video cover processing is not configured yet. Images and GIFs still work.",
@@ -56,9 +97,11 @@ serve(async (req) => {
   const eventId = body.eventId;
   const brandId = body.brandId;
   if (!isValidUuid(eventId)) {
+    logWarn(requestId, "event_id_invalid_uuid", { eventId });
     return jsonResponse({ error: "validation_error", detail: "event_id_invalid_uuid" }, 400);
   }
   if (!isValidUuid(brandId)) {
+    logWarn(requestId, "brand_id_invalid_uuid", { brandId });
     return jsonResponse({ error: "validation_error", detail: "brand_id_invalid_uuid" }, 400);
   }
   const applyMode = body.applyMode === "published_manual" ? "published_manual" : "draft_auto";
@@ -68,6 +111,10 @@ serve(async (req) => {
   const trimEndMs = Number(body.trimEndMs ?? Math.min(sourceDurationMs, MAX_DURATION_MS));
 
   if (!Number.isFinite(sourceBytes) || sourceBytes <= 0 || sourceBytes > MAX_SOURCE_VIDEO_BYTES) {
+    logWarn(requestId, "source_size_out_of_range", {
+      maxSourceBytes: MAX_SOURCE_VIDEO_BYTES,
+      sourceBytes,
+    });
     return jsonResponse({ error: "validation_error", detail: "source_size_out_of_range" }, 422);
   }
   if (
@@ -75,16 +122,61 @@ serve(async (req) => {
     sourceDurationMs <= 0 ||
     sourceDurationMs > MAX_SOURCE_VIDEO_DURATION_MS
   ) {
+    logWarn(requestId, "source_duration_out_of_range", {
+      maxSourceDurationMs: MAX_SOURCE_VIDEO_DURATION_MS,
+      sourceDurationMs,
+    });
     return jsonResponse({ error: "validation_error", detail: "source_duration_out_of_range" }, 422);
   }
   const trimError = validateTrimRange({ sourceDurationMs, trimStartMs, trimEndMs });
-  if (trimError !== null) return trimError;
+  if (trimError !== null) {
+    let detail: unknown = "trim_invalid";
+    try {
+      detail = (await trimError.clone().json() as { detail?: unknown }).detail ?? detail;
+    } catch {
+      // Keep fallback detail for malformed diagnostic body.
+    }
+    logWarn(requestId, "trim_range_rejected", {
+      detail,
+      sourceDurationMs,
+      trimEndMs,
+      trimStartMs,
+    });
+    return trimError;
+  }
+  logInfo(requestId, "validation_pass", {
+    applyMode,
+    sourceBytes,
+    sourceDurationMs,
+    trimEndMs,
+    trimStartMs,
+  });
 
   const supabase = serviceRoleClient();
   const allowed = await requireEventManager(supabase, eventId, brandId, userId);
-  if (allowed instanceof Response) return allowed;
+  if (allowed instanceof Response) {
+    let detail: unknown = null;
+    let error: unknown = null;
+    try {
+      const body = await allowed.clone().json() as { error?: unknown; detail?: unknown };
+      detail = body.detail ?? null;
+      error = body.error ?? null;
+    } catch {
+      // Response body is best-effort diagnostics only.
+    }
+    logWarn(requestId, "permission_rejected", {
+      detail,
+      error,
+      status: allowed.status,
+    });
+    return allowed;
+  }
+  logInfo(requestId, "permission_pass", {
+    brandId,
+    eventId,
+  });
 
-  await supabase
+  const { error: cancelError } = await supabase
     .from("event_cover_video_jobs")
     .update({
       status: "cancelled",
@@ -94,6 +186,16 @@ serve(async (req) => {
     })
     .eq("event_id", eventId)
     .not("status", "in", "(failed,cancelled,applied)");
+  if (cancelError) {
+    logWarn(requestId, "active_job_cancel_failed", {
+      code: cancelError.code,
+      details: cancelError.details,
+      hint: cancelError.hint,
+      message: cancelError.message,
+    });
+  } else {
+    logInfo(requestId, "active_jobs_cancelled", { eventId });
+  }
 
   const { data: job, error: insertError } = await supabase
     .from("event_cover_video_jobs")
@@ -114,9 +216,19 @@ serve(async (req) => {
     .select("id")
     .single();
   if (insertError || !job) {
-    console.error("[event-cover-video-upload-intent] job insert failed:", insertError);
+    console.error("[event-cover-video-upload-intent]", JSON.stringify({
+      brandId,
+      code: insertError?.code,
+      details: insertError?.details,
+      eventId,
+      hint: insertError?.hint,
+      message: insertError?.message,
+      requestId,
+      stage: "job_insert_failed",
+    }));
     return jsonResponse({ error: "internal_error" }, 500);
   }
+  logInfo(requestId, "job_insert_pass", { jobId: job.id });
 
   const cloudName = Deno.env.get("CLOUDINARY_CLOUD_NAME") ?? "";
   const apiKey = Deno.env.get("CLOUDINARY_API_KEY") ?? "";
@@ -144,11 +256,26 @@ serve(async (req) => {
     public_id: publicId,
     timestamp,
   });
+  logInfo(requestId, "cloudinary_signature_generated", {
+    jobId: job.id,
+    publicId,
+    trimDurationMs,
+  });
 
-  await supabase
+  const { error: payloadUpdateError } = await supabase
     .from("event_cover_video_jobs")
     .update({ provider_payload: { public_id: publicId, eager } })
     .eq("id", job.id);
+  if (payloadUpdateError) {
+    logWarn(requestId, "provider_payload_update_failed", {
+      code: payloadUpdateError.code,
+      details: payloadUpdateError.details,
+      hint: payloadUpdateError.hint,
+      jobId: job.id,
+      message: payloadUpdateError.message,
+    });
+  }
+  logInfo(requestId, "returned", { jobId: job.id, provider: "cloudinary" });
 
   return jsonResponse({
     jobId: job.id,

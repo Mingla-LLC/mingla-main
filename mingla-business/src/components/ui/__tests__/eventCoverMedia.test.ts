@@ -64,15 +64,22 @@ describe("EventCoverMedia presentation", () => {
     expect(source).toContain("quality: 1");
   });
 
-  test("event creator separates image/GIF picking from app-owned video processing", () => {
+  test("event creator separates image/GIF picking from native-trim-first video processing", () => {
     const source = repoFile("src/components/event/CreatorStep4Cover.tsx");
 
     expect(source).toContain('mediaTypes: ["images"]');
     expect(source).toContain('mediaTypes: ["videos"]');
+    expect(source).toContain("validateNativeTrimmedEventCoverVideo");
     expect(source).toContain("allowsEditing: false");
+    expect(source).toContain("allowsEditing: true");
+    expect(source).toContain("videoMaxDuration: 15");
     expect(source).toContain("createEventCoverVideoUploadIntent");
-    expect(source).toContain("Use this clip");
-    expect(source).not.toContain("videoMaxDuration");
+    expect(source).toContain("if (!isAuthReady)");
+    expect(source).toContain("Finishing sign-in before upload");
+    expect(source).not.toContain("Use this clip");
+    expect(source).not.toContain("Trim video cover");
+    expect(source).toContain("videoErrorText");
+    expect(source).toContain("setVideoStatusText(null)");
     expect(source).toContain("VideoExportPreset.H264_1280x720");
     expect(source).toContain("UIImagePickerControllerQualityType.High");
     expect(source).toContain("EVENT_COVER_VIDEO_PROCESSING_COPY");

@@ -37,11 +37,11 @@ import {
   typography,
 } from "../../constants/designSystem";
 import {
-  useBrandList,
   useCurrentBrandStore,
   type Brand,
 } from "../../store/currentBrandStore";
 import { useAuth } from "../../context/AuthContext";
+import { useBrandListState } from "../../hooks/useBrandListShim";
 import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
 import { useCreateBrand, SlugCollisionError } from "../../hooks/useBrands";
 import { Button } from "../ui/Button";
@@ -79,14 +79,15 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   onRequestDeleteBrand,
   testID,
 }) => {
-  const brands = useBrandList();
+  const brandList = useBrandListState();
+  const brands = brandList.brands;
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const { user } = useAuth();
   const createBrandMutation = useCreateBrand();
   const updateCreatorAccountMutation = useUpdateCreatorAccount();
 
-  const initialMode: Mode = brands.length === 0 ? "create" : "switch";
+  const initialMode: Mode = brandList.isTrueEmpty ? "create" : "switch";
   const [mode, setMode] = useState<Mode>(initialMode);
   const [displayName, setDisplayName] = useState<string>("Lonely Moth");
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -95,12 +96,12 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
 
   useEffect(() => {
     if (visible) {
-      setMode(brands.length === 0 ? "create" : "switch");
+      setMode(brandList.isTrueEmpty ? "create" : "switch");
       setDisplayName("Lonely Moth");
       setSubmitting(false);
       setSlugError(null);
     }
-  }, [brands.length, visible]);
+  }, [brandList.isTrueEmpty, visible]);
 
   // Clear inline error when operator types — fresh attempt
   useEffect(() => {
@@ -189,60 +190,70 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
             <View style={styles.header}>
               <Text style={styles.headerTitle}>Switch brand</Text>
             </View>
-            <ScrollView
-              style={styles.scrollArea}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {brands.map((brand) => {
-                const isActive = currentBrandId === brand.id;
-                return (
-                  <View key={brand.id} style={styles.brandRowOuter}>
-                    <Pressable
-                      onPress={() => handlePick(brand)}
-                      style={[
-                        styles.brandRow,
-                        isActive && styles.brandRowActive,
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Switch to ${brand.displayName}`}
-                      accessibilityState={{ selected: isActive }}
-                    >
-                      <View style={styles.brandAvatar}>
-                        <Text style={styles.brandInitial}>
-                          {brand.displayName.charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                      <View style={styles.brandTextCol}>
-                        <Text style={styles.brandName} numberOfLines={1}>
-                          {brand.displayName}
-                        </Text>
-                        {isActive ? (
-                          <Text style={styles.brandSub} numberOfLines={1}>
-                            Current brand
-                          </Text>
-                        ) : null}
-                      </View>
-                      {isActive ? (
-                        <Icon name="check" size={18} color={accent.warm} />
-                      ) : null}
-                    </Pressable>
-                    {/* Cycle 17e-A — per-row delete affordance */}
-                    {onRequestDeleteBrand !== undefined ? (
+            {brandList.isLoading ? (
+              <View style={styles.loadingState}>
+                <Text style={styles.emptyText}>Loading your brands…</Text>
+              </View>
+            ) : brandList.status === "error" ? (
+              <View style={styles.loadingState}>
+                <Text style={styles.emptyText}>Couldn't load your brands.</Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={styles.scrollArea}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                {brands.map((brand) => {
+                  const isActive = currentBrandId === brand.id;
+                  return (
+                    <View key={brand.id} style={styles.brandRowOuter}>
                       <Pressable
-                        onPress={() => handleRequestDelete(brand)}
+                        onPress={() => handlePick(brand)}
+                        style={[
+                          styles.brandRow,
+                          isActive && styles.brandRowActive,
+                        ]}
                         accessibilityRole="button"
-                        accessibilityLabel={`Delete ${brand.displayName}`}
-                        hitSlop={8}
-                        style={styles.rowDeleteBtn}
+                        accessibilityLabel={`Switch to ${brand.displayName}`}
+                        accessibilityState={{ selected: isActive }}
                       >
-                        <Icon name="trash" size={16} color={textTokens.tertiary} />
+                        <View style={styles.brandAvatar}>
+                          <Text style={styles.brandInitial}>
+                            {brand.displayName.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={styles.brandTextCol}>
+                          <Text style={styles.brandName} numberOfLines={1}>
+                            {brand.displayName}
+                          </Text>
+                          {isActive ? (
+                            <Text style={styles.brandSub} numberOfLines={1}>
+                              Current brand
+                            </Text>
+                          ) : null}
+                        </View>
+                        {isActive ? (
+                          <Icon name="check" size={18} color={accent.warm} />
+                        ) : null}
                       </Pressable>
-                    ) : null}
-                  </View>
-                );
-              })}
-            </ScrollView>
+                      {/* Cycle 17e-A — per-row delete affordance */}
+                      {onRequestDeleteBrand !== undefined ? (
+                        <Pressable
+                          onPress={() => handleRequestDelete(brand)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Delete ${brand.displayName}`}
+                          hitSlop={8}
+                          style={styles.rowDeleteBtn}
+                        >
+                          <Icon name="trash" size={16} color={textTokens.tertiary} />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
             <View style={styles.footer}>
               <Button
                 label="Create a new brand"
@@ -250,6 +261,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                 variant="primary"
                 size="lg"
                 leadingIcon="plus"
+                disabled={brandList.isLoading}
               />
             </View>
           </>
@@ -342,6 +354,17 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
+  },
+  loadingState: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+  },
+  emptyText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
   },
   formHelper: {
     fontSize: typography.bodySm.fontSize,

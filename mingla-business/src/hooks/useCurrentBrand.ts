@@ -27,20 +27,24 @@
 
 import { useEffect } from "react";
 
+import { useAuth } from "../context/AuthContext";
 import { useBrand } from "./useBrands";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 import type { Brand } from "../types/brand";
 
 export const useCurrentBrand = (): Brand | null => {
+  const { isAuthReady } = useAuth();
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const setCurrentBrandId = useCurrentBrandStore((s) => s.setCurrentBrandId);
-  const { data: brand, isFetched } = useBrand(currentBrandId);
+  const { data: brand, isError, isFetched } = useBrand(
+    isAuthReady ? currentBrandId : null,
+  );
 
   useEffect(() => {
-    if (currentBrandId !== null && isFetched && brand === null) {
+    if (isAuthReady && currentBrandId !== null && isFetched && !isError && brand === null) {
       setCurrentBrandId(null);
     }
-  }, [currentBrandId, isFetched, brand, setCurrentBrandId]);
+  }, [isAuthReady, currentBrandId, isFetched, isError, brand, setCurrentBrandId]);
 
   return brand ?? null;
 };

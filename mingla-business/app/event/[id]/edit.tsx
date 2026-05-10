@@ -51,6 +51,8 @@ import {
   usePublishBusinessEventDraft,
 } from "../../../src/hooks/useBusinessEvents";
 import { createServerDraft } from "../../../src/services/eventDrafts";
+import { useAuth } from "../../../src/context/AuthContext";
+import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -73,6 +75,7 @@ export default function EventEditRoute(): React.ReactElement {
   const isEditPublished = modeParam === "edit-published";
   const isLegacyLocalDraftId =
     typeof idParam === "string" && idParam.startsWith("d_");
+  const { isAuthReady } = useAuth();
 
   const initialStep = useMemo<number | undefined>(() => {
     if (stepParam === undefined || stepParam.length === 0) return undefined;
@@ -96,6 +99,7 @@ export default function EventEditRoute(): React.ReactElement {
       : null,
   );
   const serverDraftSettled =
+    isAuthReady &&
     !isLegacyLocalDraftId &&
     !serverDraftQuery.isLoading &&
     !serverDraftQuery.isFetching &&
@@ -144,14 +148,18 @@ export default function EventEditRoute(): React.ReactElement {
       draft.id.startsWith("d_") &&
       migratingLegacyIdRef.current !== draft.id
     ) {
+      if (!isAuthReady) return undefined;
       migratingLegacyIdRef.current = draft.id;
       void createServerDraft(draft.brandId, draft)
         .then((serverDraft) => {
           replaceDraft(draft.id, serverDraft);
           router.replace(`/event/${serverDraft.id}/edit?step=${initialStep ?? 0}` as never);
         })
-        .catch(() => {
+        .catch((error) => {
           migratingLegacyIdRef.current = null;
+          if (isBusinessAuthNotReadyError(error)) {
+            return;
+          }
           setToast({
             visible: true,
             message: "Could not sync this local draft yet.",
@@ -212,6 +220,9 @@ export default function EventEditRoute(): React.ReactElement {
     if (staleRecoveryDraftIdRef.current === idParam) {
       return undefined;
     }
+    if (!isAuthReady) {
+      return undefined;
+    }
     if (
       draft === null &&
       !serverDraftQuery.isLoading &&
@@ -227,6 +238,7 @@ export default function EventEditRoute(): React.ReactElement {
   }, [
     idParam,
     isEditPublished,
+    isAuthReady,
     draft,
     liveEvent,
     resolvedLiveEvent,

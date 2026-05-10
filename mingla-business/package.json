@@ -24,8 +24,9 @@
     "test:orch-0768": "node ../.github/scripts/strict-grep/orch-0768-brand-audience-identity-honesty.mjs",
     "test:orch-0769": "node ../.github/scripts/strict-grep/orch-0769-app-wide-currency.mjs && npx jest eventDraftsPublishTickets.test businessEventsPublish.test publicEventsService.test serverDraftEventMapper.test moneySummary.test brandStripeBalancesService.test",
     "test:orch-0766f": "node ../.github/scripts/strict-grep/orch-0766f-event-cover-quicktime-storage.mjs",
-    "test:orch-0770": "node ../.github/scripts/strict-grep/orch-0770-event-cover-video-processing.mjs && npx tsc --noEmit",
-    "test:orch-0771": "npx jest eventCoverMedia.test serverDraftLifecycleGuards.test"
+    "test:orch-0770": "node ../.github/scripts/strict-grep/orch-0770-event-cover-video-processing.mjs && npx jest eventCoverMedia.test eventCoverNativeVideo.test eventCoverVideoProcessingService.test && npx tsc --noEmit",
+    "test:orch-0771": "npx jest eventCoverMedia.test serverDraftLifecycleGuards.test",
+    "test:orch-0774a": "npx jest authReadiness.test brandListState.test eventCoverVideoProcessingService.test serverDraftLifecycleGuards.test eventCoverMedia.test"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

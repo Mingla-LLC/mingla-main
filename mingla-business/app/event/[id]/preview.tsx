@@ -45,6 +45,8 @@ import {
   useServerDraftById,
 } from "../../../src/hooks/useServerDraftEvents";
 import { createServerDraft } from "../../../src/services/eventDrafts";
+import { useAuth } from "../../../src/context/AuthContext";
+import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 
 export default function EventPreviewRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -54,12 +56,14 @@ export default function EventPreviewRoute(): React.ReactElement {
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const isLegacyLocalDraftId =
     typeof idParam === "string" && idParam.startsWith("d_");
+  const { isAuthReady } = useAuth();
 
   const draft = useDraftById(typeof idParam === "string" ? idParam : null);
   const serverDraftQuery = useServerDraftById(
     typeof idParam === "string" && !isLegacyLocalDraftId ? idParam : null,
   );
   const serverDraftSettled =
+    isAuthReady &&
     !isLegacyLocalDraftId &&
     !serverDraftQuery.isLoading &&
     !serverDraftQuery.isFetching &&
@@ -142,14 +146,18 @@ export default function EventPreviewRoute(): React.ReactElement {
       draft.id.startsWith("d_") &&
       migratingLegacyIdRef.current !== draft.id
     ) {
+      if (!isAuthReady) return undefined;
       migratingLegacyIdRef.current = draft.id;
       void createServerDraft(draft.brandId, draft)
         .then((serverDraft) => {
           replaceDraft(draft.id, serverDraft);
           router.replace(`/event/${serverDraft.id}/preview` as never);
         })
-        .catch(() => {
+        .catch((error) => {
           migratingLegacyIdRef.current = null;
+          if (isBusinessAuthNotReadyError(error)) {
+            return;
+          }
           setToast({
             visible: true,
             message: "Could not sync this local draft yet.",
@@ -179,6 +187,9 @@ export default function EventPreviewRoute(): React.ReactElement {
     if (staleRecoveryDraftIdRef.current === idParam) {
       return undefined;
     }
+    if (!isAuthReady) {
+      return undefined;
+    }
     if (
       typeof idParam !== "string" ||
       idParam.length === 0 ||
@@ -194,6 +205,7 @@ export default function EventPreviewRoute(): React.ReactElement {
     idParam,
     draft,
     router,
+    isAuthReady,
     replaceDraft,
     deleteDraft,
     queryClient,

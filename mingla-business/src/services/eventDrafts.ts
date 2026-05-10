@@ -11,6 +11,10 @@ import {
   serverRowToDraft,
   type ServerDraftEventRow,
 } from "../utils/serverDraftEventMapper";
+import {
+  BusinessAuthNotReadyError,
+  toBusinessAuthNotReadyError,
+} from "../utils/authReadiness";
 
 const EVENT_DRAFT_SELECT =
   "id,brand_id,created_by,title,description,slug,location_text,online_url,cover_media_url,cover_media_type,currency,is_online,is_recurring,is_multi_date,recurrence_rules,theme,visibility,status,timezone,created_at,updated_at,published_at,deleted_at";
@@ -47,10 +51,13 @@ const serverDraftSlug = (): string =>
 
 const requireUserId = async (): Promise<string> => {
   const { data, error } = await supabase.auth.getUser();
-  if (error !== null) throw error;
+  if (error !== null) throw toBusinessAuthNotReadyError(error) ?? error;
   const userId = data.user?.id;
   if (typeof userId !== "string" || userId.length === 0) {
-    throw new Error("Sign in before editing event drafts.");
+    throw new BusinessAuthNotReadyError(
+      "auth_not_ready",
+      "Finishing sign-in. Try again in a moment.",
+    );
   }
   return userId;
 };

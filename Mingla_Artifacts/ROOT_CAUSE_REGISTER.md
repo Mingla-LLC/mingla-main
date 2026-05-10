@@ -1,9 +1,58 @@
 # Root Cause Register
 
-> Last updated: 2026-05-09
+> Last updated: 2026-05-10
 > Proven root causes with causal clusters.
 
 ## Root Causes
+
+### RC-0774A: Auth/session readiness is not a hard gate for business server mutations
+- **Discovery date:** 2026-05-10
+- **Proof:** `reports/INVESTIGATION_ORCH-0774_AUTH_BRAND_LIVE_EVENT_EDIT_REGRESSION_CLUSTER.md` traces the logged `[useCreateServerDraft] AuthSessionMissingError` to `/event/create` calling `createDraft(currentBrandId)` solely from a persisted brand pointer while `createServerDraft()` immediately calls `supabase.auth.getUser()`. The same missing-session class can block auth-required video upload-intent/status/apply functions.
+- **Symptoms caused:** New event creation can fail or retry after login with `AuthSessionMissingError`; Step 4 video upload handoff can fail before source upload when no bearer token is available; auth-required business operations can emit noisy errors while the UI still appears signed in.
+- **Causal chain:**
+  1. AuthContext exposes `user/session/loading`, but app surfaces do not have one canonical "authenticated server calls are ready" gate.
+  2. `currentBrandId` can exist from persisted local state.
+  3. `/event/create` starts `createServerDraft()` from that pointer without proving `auth.getUser()` can succeed.
+  4. Supabase auth has no restored session/access token yet.
+  5. `auth.getUser()` throws `AuthSessionMissingError`, and the hook logs it as a generic operation failure.
+  6. Video upload-intent/status/apply share the same session-token dependency through Supabase Edge Function auth.
+- **Structural fix:** Approved spec `specs/SPEC_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`; implementation returned in `reports/IMPLEMENTATION_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`; orchestrator review `reports/REVIEW_IMPLEMENTATION_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`; tester prompt `prompts/TESTER_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`.
+- **Status:** **OPEN - PARTIAL RUNTIME SMOKE PASSED / MANUAL GATES REMAIN 2026-05-10**. Static tester returned conditional pass in `reports/TEST_REPORT_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`; runtime smoke `reports/RUNTIME_QA_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md` proved logged-in Account brands and create-event `Server draft` with no forbidden auth/create/autosave signatures in the filtered window. Close still requires the remaining operator-assisted gates: fresh login, edit/autosave/background, Step 4 image/GIF, Step 4 video processing/failure recovery, and true sign-out; or explicit operator risk acceptance.
+- **Invariant / regression guard:** Authenticated DB mutations and auth-required Edge Function calls must not start until auth/session is restored and usable. Transient auth restoration must not be treated as true sign-out or true empty data.
+- **Causal cluster:** Cluster 1/4 crossover: auth/session source-of-truth gap plus mutation readiness contract gap.
+- **Follow-ups not part of RC:** ORCH-0774B live-event server edit mutation, Giphy/Pexels, Cloudinary transcoding architecture, Stripe onboarding, and public playback remain separate.
+
+### RC-0774B: Brand-list loading/error states collapse into an empty brand list
+- **Discovery date:** 2026-05-10
+- **Proof:** `reports/INVESTIGATION_ORCH-0774_AUTH_BRAND_LIVE_EVENT_EDIT_REGRESSION_CLUSTER.md` shows `useBrandList()` returns `query.data ?? []` while `useBrands(user?.id ?? null)` is disabled when `user` is null. Account renders `Your brands` only when `brands.length > 0`, so loading/disabled/error and true no-brands become visually identical.
+- **Symptoms caused:** Organiser brands can appear to disappear while the user is still apparently logged in; Account can silently hide brand-management rows; Home/current-brand recovery can miscommunicate loading, no-selection, and empty states during auth transitions.
+- **Causal chain:**
+  1. Auth user is temporarily unavailable or a brand query is disabled/loading/error.
+  2. `useBrandList()` returns `[]`.
+  3. Account checks only array length.
+  4. The `Your brands` card disappears with no loading/recovery/error state.
+  5. Logout/login restores session/query data and the brands reappear.
+- **Structural fix:** Covered by approved ORCH-0774A spec `specs/SPEC_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`; implementation returned in `reports/IMPLEMENTATION_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`; tester verification pending via `prompts/TESTER_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`.
+- **Status:** **OPEN - PARTIAL RUNTIME SMOKE PASSED / MANUAL GATES REMAIN 2026-05-10**. Runtime smoke proved the current logged-in Account brand list is populated and not silently empty; close still requires fresh-login transition proof and the remaining ORCH-0774A operator-assisted runtime gates, or explicit operator risk acceptance.
+- **Invariant / regression guard:** "No brands" must only mean a fetched, authenticated, successful empty result. Loading, auth restoration, signed-out, and error are separate states.
+- **Causal cluster:** Cluster 1/3 crossover: query state collapsed into false product data.
+- **Follow-ups not part of RC:** ORCH-0768 count/identity honesty remains separate except where Account brand-list state is touched.
+
+### RC-0774C: Server-loaded live-event edit screen intentionally disables non-cover saves
+- **Discovery date:** 2026-05-10
+- **Proof:** `reports/INVESTIGATION_ORCH-0774_AUTH_BRAND_LIVE_EVENT_EDIT_REGRESSION_CLUSTER.md` proves that `app/event/[id]/edit.tsx` passes `disableLocalSaveReason` when a published event is loaded from `useBusinessEventById` instead of local `liveEventStore`, and `EditPublishedScreen` disables Save when that reason exists and the patch is not cover-media-only.
+- **Symptoms caused:** Organisers can open an already-live event, edit normal fields, and still see a greyed-out Save button. Cover-media-only updates can save, but title/date/ticket/settings edits cannot persist from server-loaded published events.
+- **Causal chain:**
+  1. ORCH-0763 enabled server-backed published-event hydration.
+  2. Local `liveEventStore` may not contain the event after new build/logout/cache loss.
+  3. The edit route uses server event detail.
+  4. The route marks the screen server-loaded/read-only for local save.
+  5. Non-cover edits are allowed in the UI but Save is disabled because no server edit mutation exists.
+- **Structural fix:** Needs separate ORCH-0774B spec after ORCH-0774A, unless operator explicitly prioritizes live-event edit mutation first.
+- **Status:** **OPEN - SPLIT FOLLOW-UP 2026-05-10**.
+- **Invariant / regression guard:** A server-loaded published event edit surface must either support saving allowed fields through a server mutation or present non-cover sections as read-only before the organiser edits them.
+- **Causal cluster:** Cluster 1: split local/server authority after server-backed event migration.
+- **Follow-ups not part of RC:** Auth-ready and video handoff guards are ORCH-0774A.
 
 ### RC-0772: Native video cleanup called `pause()` after Expo player disposal
 - **Discovery date:** 2026-05-09

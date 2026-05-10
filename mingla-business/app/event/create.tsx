@@ -32,6 +32,9 @@ import {
 import { Spinner } from "../../src/components/ui/Spinner";
 import { useCurrentBrandId } from "../../src/store/currentBrandStore";
 import { useCreateServerDraft } from "../../src/hooks/useServerDraftEvents";
+import { useAuth } from "../../src/context/AuthContext";
+import { isBusinessAuthNotReadyError } from "../../src/utils/authReadiness";
+import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 
 export default function EventCreateRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -41,11 +44,14 @@ export default function EventCreateRoute(): React.ReactElement {
   // cold-start + deep-link redirect-loop where the wrapper returned null
   // during the React Query fetch window before this effect could resolve.
   const currentBrandId = useCurrentBrandId();
+  const { isAuthReady } = useAuth();
+  const currentBrandRecovery = useCurrentBrandRecovery();
   const { createDraft, error } = useCreateServerDraft();
   const [hasStarted, setHasStarted] = React.useState<boolean>(false);
 
   useEffect(() => {
     if (hasStarted) return;
+    if (!isAuthReady || currentBrandRecovery.isResolving) return;
     if (currentBrandId === null) {
       router.replace("/(tabs)/home" as never);
       return;
@@ -55,10 +61,25 @@ export default function EventCreateRoute(): React.ReactElement {
       .then((newDraft) => {
         router.replace(`/event/${newDraft.id}/edit?step=0` as never);
       })
-      .catch(() => {
+      .catch((createError) => {
+        if (isBusinessAuthNotReadyError(createError)) {
+          if (__DEV__) {
+            console.info("[event/create] draft-create-auth-not-ready", {
+              authStatus: createError.authStatus,
+              code: createError.code,
+            });
+          }
+        }
         setHasStarted(false);
       });
-  }, [currentBrandId, createDraft, hasStarted, router]);
+  }, [
+    currentBrandId,
+    createDraft,
+    currentBrandRecovery.isResolving,
+    hasStarted,
+    isAuthReady,
+    router,
+  ]);
 
   return (
     <View
@@ -70,7 +91,11 @@ export default function EventCreateRoute(): React.ReactElement {
       <View style={styles.center}>
         <Spinner size={36} />
         <Text style={styles.label}>
-          {error === null ? "Starting a new event…" : "Couldn't start this draft. Retrying…"}
+          {!isAuthReady || currentBrandRecovery.isResolving
+            ? "Finishing sign-in…"
+            : error === null || isBusinessAuthNotReadyError(error)
+              ? "Starting a new event…"
+              : "Couldn't start this draft. Retrying…"}
         </Text>
       </View>
     </View>

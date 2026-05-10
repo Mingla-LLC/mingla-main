@@ -35,8 +35,8 @@ import {
   typography,
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
+import { useBrandListState } from "../../src/hooks/useBrandListShim";
 import {
-  useBrandList,
   useCurrentBrandStore,
   type Brand,
 } from "../../src/store/currentBrandStore";
@@ -53,7 +53,8 @@ export default function AccountTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, signOut, lastRecoveryEvent, clearLastRecoveryEvent } = useAuth();
-  const brands = useBrandList();
+  const brandList = useBrandListState();
+  const brands = brandList.brands;
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
 
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
@@ -166,7 +167,7 @@ export default function AccountTab(): React.ReactElement {
         <TopBar leftKind="brand" onBrandTap={handleOpenSwitcher} />
       </View>
       <ScrollView contentContainerStyle={styles.scroll}>
-        {brands.length > 0 ? (
+        {brandList.status === "ready" ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
             <Text style={styles.title}>Your brands</Text>
             <Text style={styles.body}>Tap a brand to open its profile.</Text>
@@ -196,6 +197,26 @@ export default function AccountTab(): React.ReactElement {
                 </Pressable>
               ))}
             </View>
+          </GlassCard>
+        ) : brandList.status === "auth_loading" ||
+          brandList.status === "query_loading" ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.title}>Your brands</Text>
+            <Text style={styles.body}>Loading your brands…</Text>
+          </GlassCard>
+        ) : brandList.status === "error" ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.title}>Your brands</Text>
+            <Text style={styles.body}>
+              Couldn't load your brands. Pull down or reopen Account to retry.
+            </Text>
+          </GlassCard>
+        ) : brandList.status === "empty" ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.title}>Your brands</Text>
+            <Text style={styles.body}>
+              Create your first brand from the brand switcher.
+            </Text>
           </GlassCard>
         ) : null}
 
