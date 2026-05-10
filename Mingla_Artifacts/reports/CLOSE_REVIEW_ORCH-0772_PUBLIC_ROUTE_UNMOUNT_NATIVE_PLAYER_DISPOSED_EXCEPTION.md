@@ -1,8 +1,9 @@
 # Close Review ORCH-0772 Public Route Unmount Native Player Disposed Exception
 
 Date: 2026-05-09
+Lock-in sync: 2026-05-10
 Mode: ORCHESTRATOR CLOSE REVIEW
-Status: CLOSE EVIDENCE PASS / GIT LOCK-IN BLOCKED BY OVERLAPPING DIRTY WORKTREE
+Status: CLOSED / GIT-LOCKED IN `0cfce5ee`
 
 ## Plain-English Outcome
 
@@ -10,7 +11,7 @@ The user-visible ORCH-0772 problem is fixed and independently retested: closing 
 
 The lifecycle evidence is sufficient for ORCH-0772 closure in product terms, scoped only to the native `expo-video` disposed shared-object teardown error. It does **not** close ORCH-0771 audible audio-after-close runtime QA or ORCH-0770 video processing/transcode/browser-safe playback.
 
-The final Git lock-in is blocked in this worktree because the product files needed for ORCH-0772 also contain earlier uncommitted media/audio lifecycle changes from adjacent ORCHs. A clean ORCH-0772-only commit cannot be made without either pulling in those overlapping changes or losing the tested contract.
+Git lock-in is now complete. The overlapping media/audio lifecycle work was bundled with the accepted event media lifecycle fixes and pushed to `origin/Seth` in commit `0cfce5ee24314a1a9078a20e92071c42c68508c8` (`Bundle event media lifecycle fixes`) on 2026-05-09.
 
 ## Evidence Chain
 
@@ -51,26 +52,17 @@ Product/lifecycle verdict:
 
 Lock-in verdict:
 
-**Commit/push is blocked until overlapping dirty work is either committed together under its own accepted lifecycle or split safely.**
+**Committed and pushed in `0cfce5ee24314a1a9078a20e92071c42c68508c8` on branch `Seth` / `origin/Seth`.**
 
-## Git Lock-In Blocker
+## Git Lock-In Resolution
 
-Current `git diff --stat` for the two ORCH-0772 code/test files shows:
+Earlier close review found that `EventCoverMedia.tsx` and `eventCoverMedia.test.ts` contained overlapping accepted media/audio lifecycle work, making an ORCH-0772-only commit unsafe from that `HEAD`. The resolution was to bundle the tested media lifecycle set together and lock it in with one scoped event-media commit:
 
 ```text
-mingla-business/src/components/ui/EventCoverMedia.tsx          | 288 +++++++++++++++++++--
-mingla-business/src/components/ui/__tests__/eventCoverMedia.test.ts | 128 ++++++++-
+0cfce5ee24314a1a9078a20e92071c42c68508c8 Bundle event media lifecycle fixes
 ```
 
-That diff is broader than the final ORCH-0772 cleanup rework. It includes prior uncommitted media/audio lifecycle functionality required by the current tested code path, including active playback intent, web/native video split, sound control wiring, media error surfacing, and earlier event-cover media tests. The ORCH-0772 cleanup fix sits inside that broader uncommitted surface.
-
-Because of that overlap:
-
-- staging only the tiny cleanup change is not representable against current `HEAD`;
-- staging the full files would commit adjacent ORCH work under an ORCH-0772 close commit;
-- omitting the adjacent files would produce a commit that does not reproduce the tested contract from a clean checkout.
-
-No product code was reverted or destructively changed.
+The pushed bundle preserves the tested ORCH-0772 contract and keeps scope boundaries explicit: ORCH-0772 is closed only for the native disposed-player route-unmount exception. ORCH-0771 audible audio-after-close and ORCH-0770 Cloudinary/transcode/browser playback remain separate open runtime gates.
 
 ## Scoped Files Involved In ORCH-0772 Evidence
 
@@ -86,12 +78,10 @@ Note: the generated tester prompt exists locally at `Mingla_Artifacts/prompts/TE
 
 ## Next Operational Step
 
-Use `$orchestrator` after the overlapping media/audio worktree is either:
+No further ORCH-0772 specialist dispatch remains. Continue with the separate media gates:
 
-1. committed under the correct accepted ORCH lifecycle(s), or
-2. split into a safe staged patch that includes all dependencies for ORCH-0772 without unrelated scope.
-
-Then run the close commit/push for ORCH-0772 lock-in.
+1. ORCH-0770 operator-assisted phone-video processing/runtime QA.
+2. ORCH-0771 runtime audio close/autoplay verification.
 
 ## Scope Guard
 
