@@ -15,6 +15,33 @@ import {
 const EVENT_DRAFT_SELECT =
   "id,brand_id,created_by,title,description,slug,location_text,online_url,cover_media_url,cover_media_type,currency,is_online,is_recurring,is_multi_date,recurrence_rules,theme,visibility,status,timezone,created_at,updated_at,published_at,deleted_at";
 
+export type ServerDraftLifecycleErrorCode =
+  | "draft_not_found"
+  | "draft_not_editable"
+  | "draft_not_readable";
+
+export class ServerDraftLifecycleError extends Error {
+  code: ServerDraftLifecycleErrorCode;
+  draftId: string;
+
+  constructor(code: ServerDraftLifecycleErrorCode, draftId: string) {
+    super(`Server draft is no longer editable: ${code}`);
+    this.name = "ServerDraftLifecycleError";
+    this.code = code;
+    this.draftId = draftId;
+  }
+}
+
+export const isServerDraftLifecycleError = (
+  error: unknown,
+): error is ServerDraftLifecycleError =>
+  error instanceof ServerDraftLifecycleError ||
+  (error !== null &&
+    typeof error === "object" &&
+    (error as { name?: unknown }).name === "ServerDraftLifecycleError" &&
+    typeof (error as { code?: unknown }).code === "string" &&
+    typeof (error as { draftId?: unknown }).draftId === "string");
+
 const serverDraftSlug = (): string =>
   generateEventSlug("draft", new Set<string>());
 
@@ -196,6 +223,26 @@ interface ExistingDraftSaveContext {
   currency: string | null;
 }
 
+const resolveMissingDraftLifecycle = async (
+  draftId: string,
+): Promise<ServerDraftLifecycleError> => {
+  const { data, error } = await supabase
+    .from("events")
+    .select("status,deleted_at")
+    .eq("id", draftId)
+    .maybeSingle();
+
+  if (error !== null) throw error;
+  const row = data as { status?: unknown; deleted_at?: unknown } | null;
+  if (row === null) {
+    return new ServerDraftLifecycleError("draft_not_found", draftId);
+  }
+  if (row.status !== "draft" || row.deleted_at !== null) {
+    return new ServerDraftLifecycleError("draft_not_editable", draftId);
+  }
+  return new ServerDraftLifecycleError("draft_not_readable", draftId);
+};
+
 const fetchExistingDraftSaveContext = async (
   draftId: string,
 ): Promise<ExistingDraftSaveContext> => {
@@ -203,10 +250,12 @@ const fetchExistingDraftSaveContext = async (
     .from("events")
     .select("theme,currency")
     .eq("id", draftId)
+    .eq("status", "draft")
     .is("deleted_at", null)
-    .single();
+    .maybeSingle();
 
   if (error !== null) throw error;
+  if (data === null) throw await resolveMissingDraftLifecycle(draftId);
   const row = data as { theme?: unknown; currency?: unknown } | null;
   return {
     theme: row?.theme ?? {},
@@ -233,9 +282,12 @@ export const autosaveServerDraft = async (
     .eq("status", "draft")
     .is("deleted_at", null)
     .select(EVENT_DRAFT_SELECT)
-    .single();
+    .maybeSingle();
 
   if (error !== null) throw error;
+  if (data === null) {
+    throw new ServerDraftLifecycleError("draft_not_editable", draft.id);
+  }
   return rowToDraft(data);
 };
 
@@ -244,7 +296,16 @@ export const discardServerDraft = async (draftId: string): Promise<void> => {
     p_event_id: draftId,
   });
 
-  if (error !== null) throw error;
+  if (error !== null) {
+    const message = error.message;
+    if (message.includes("event_draft_not_found")) {
+      throw new ServerDraftLifecycleError("draft_not_found", draftId);
+    }
+    if (message.includes("event_draft_not_discardable")) {
+      throw new ServerDraftLifecycleError("draft_not_editable", draftId);
+    }
+    throw error;
+  }
   asDiscardDraftRpcResponse(data);
 };
 

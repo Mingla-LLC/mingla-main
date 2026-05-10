@@ -50,14 +50,94 @@ describe("server-backed draft lifecycle guards", () => {
   test("server autosave and discard still target draft rows while publish RPC owns promotion", () => {
     const source = repoFile("src/services/eventDrafts.ts");
     const businessEvents = repoFile("src/services/businessEvents.ts");
+    const wizardSource = repoFile("src/components/event/EventCreatorWizard.tsx");
 
     expect(source).toContain(".eq(\"status\", \"draft\")");
+    expect(source).toContain("ServerDraftLifecycleError");
+    expect(source).toContain("isServerDraftLifecycleError");
+    expect(source).toContain(".maybeSingle()");
     expect(source).toContain("autosaveServerDraft");
     expect(source).toContain("discardServerDraft");
     expect(source).toContain("business_discard_event_draft");
     expect(source).not.toContain(".update({ deleted_at: new Date().toISOString() })");
     expect(source).toContain("Client-side draft promotion is disabled");
     expect(businessEvents).toContain("business_publish_event_draft");
+    expect(wizardSource).toContain("if (isPublishing) return;");
+    expect(wizardSource).toContain("disabled={publishDisabled || isPublishing}");
+    expect(wizardSource).toContain("confirmLoading={isPublishing}");
+    expect(wizardSource).toContain("confirmDisabled={isPublishing}");
+  });
+
+  test("stale server-backed drafts retire instead of autosaving local cache", () => {
+    const hookSource = repoFile("src/hooks/useServerDraftEvents.ts");
+    const editSource = repoFile("app/event/[id]/edit.tsx");
+    const previewSource = repoFile("app/event/[id]/preview.tsx");
+
+    expect(hookSource).toContain("isServerDraftLifecycleError");
+    expect(hookSource).toContain("Draft retired");
+    expect(hookSource).toContain("deleteDraft(draft.id)");
+    expect(hookSource).toContain("queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) })");
+    expect(hookSource).toContain("!isLocalOnlyDraftId(draft.id)");
+
+    expect(editSource).toContain("staleServerDraft");
+    expect(editSource).toContain("serverDraftQuery.data === null");
+    expect(editSource).toContain("!draft.id.startsWith(\"d_\")");
+    expect(editSource).toContain("onAutosaveDraft={draft.id.startsWith(\"d_\") ? undefined : autosave.saveDraft}");
+    expect(editSource).toContain("This draft is no longer editable.");
+
+    expect(previewSource).toContain("staleServerDraft");
+    expect(previewSource).toContain("serverDraftQuery.data === null");
+    expect(previewSource).toContain("!draft.id.startsWith(\"d_\")");
+    expect(previewSource).toContain("!draft.id.startsWith(\"d_\") && !staleServerDraft");
+  });
+
+  test("stale draft route recovery cannot be canceled by cleanup-cleared timeout", () => {
+    const editSource = repoFile("app/event/[id]/edit.tsx");
+    const previewSource = repoFile("app/event/[id]/preview.tsx");
+    const editStaleStart = editSource.indexOf("if (staleServerDraft) {");
+    const editStaleEnd = editSource.indexOf(
+      "if (staleRecoveryDraftIdRef.current === idParam)",
+      editStaleStart,
+    );
+    const previewStaleStart = previewSource.indexOf("if (staleServerDraft) {");
+    const previewStaleEnd = previewSource.indexOf(
+      "if (staleRecoveryDraftIdRef.current === idParam)",
+      previewStaleStart,
+    );
+    const editStaleBlock = editSource.slice(editStaleStart, editStaleEnd);
+    const previewStaleBlock = previewSource.slice(previewStaleStart, previewStaleEnd);
+
+    expect(editSource).toContain("const staleRecoveryDraftIdRef = React.useRef<string | null>(null)");
+    expect(previewSource).toContain("const staleRecoveryDraftIdRef = React.useRef<string | null>(null)");
+
+    expect(editStaleBlock).toContain("staleRecoveryDraftIdRef.current = draft.id");
+    expect(editStaleBlock).toContain("router.replace(recoveryRoute as never)");
+    expect(editStaleBlock).not.toContain("setTimeout");
+    expect(editStaleBlock).not.toContain("clearTimeout");
+    expect(editSource).toContain("staleRecoveryDraftIdRef.current === idParam");
+
+    expect(previewStaleBlock).toContain("staleRecoveryDraftIdRef.current = draft.id");
+    expect(previewStaleBlock).toContain("router.replace(\"/(tabs)/events\" as never)");
+    expect(previewStaleBlock).not.toContain("setTimeout");
+    expect(previewStaleBlock).not.toContain("clearTimeout");
+    expect(previewSource).toContain("staleRecoveryDraftIdRef.current === idParam");
+  });
+
+  test("publish and discard cleanup remove draft cache state", () => {
+    const businessHooks = repoFile("src/hooks/useBusinessEvents.ts");
+    const draftHooks = repoFile("src/hooks/useServerDraftEvents.ts");
+    const wizardSource = repoFile("src/components/event/EventCreatorWizard.tsx");
+
+    expect(businessHooks).toContain("deleteDraft(draft.id)");
+    expect(businessHooks).toContain("queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) })");
+    expect(businessHooks).toContain("(prev) => (prev ?? []).filter((d) => d.id !== draft.id)");
+
+    expect(draftHooks).toContain("discardServerDraft(draft.id)");
+    expect(draftHooks).toContain("if (isServerDraftLifecycleError(error)) return;");
+    expect(draftHooks).toContain("removeDraftFromListCache(queryClient, draft)");
+
+    expect(wizardSource).toContain("clearTimeout(autosaveTimerRef.current)");
+    expect(wizardSource).toContain("autosaveTimerRef.current = null");
   });
 
   test("draft discard RPC has explicit auth, rank, lifecycle, and grant guards", () => {
@@ -232,6 +312,22 @@ describe("server-backed draft lifecycle guards", () => {
 
     expect(validationIndex).toBeGreaterThan(-1);
     expect(serverWriteIndex).toBeGreaterThan(validationIndex);
+  });
+
+  test("server-loaded published event edits can save cover media without local store writes", () => {
+    const source = repoFile("src/components/event/EditPublishedScreen.tsx");
+
+    expect(source).toContain("isCoverMediaOnlyPatch");
+    expect(source).toContain("canSaveServerCoverMediaOnly");
+    expect(source).toContain(
+      "disableLocalSaveReason !== undefined && !isCoverMediaOnlyPatch(patch)",
+    );
+    expect(source).toContain(
+      "disableLocalSaveReason !== undefined && isCoverMediaOnlyPatch(patch)",
+    );
+    expect(source).toContain("invalidateServerEventCaches");
+    expect(source).toContain("businessEventKeys.detail(liveEvent.id)");
+    expect(source).toContain("publicEventKeys.detailBySlug(");
   });
 
   test("reduced-motion video covers render through video rather than Image fallback", () => {

@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 
 import type { DraftEvent } from "../store/draftEventStore";
+import { useDraftEventStore } from "../store/draftEventStore";
 import type { LiveEvent } from "../store/liveEventStore";
 import {
   cancelBusinessEvent,
@@ -145,11 +146,17 @@ export const usePublishBusinessEventDraft = (): {
   isPending: boolean;
 } => {
   const queryClient = useQueryClient();
+  const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const mutation = useMutation<PublishedBusinessEvent, Error, DraftEvent>({
     mutationFn: (draft) =>
       publishBusinessEventDraft(draft, draft.clientRevision ?? 0),
     onSuccess: (published, draft) => {
+      deleteDraft(draft.id);
       queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
+      queryClient.setQueryData<DraftEvent[]>(
+        eventDraftKeys.list(draft.brandId),
+        (prev) => (prev ?? []).filter((d) => d.id !== draft.id),
+      );
       queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
       writePublishedEventCaches(queryClient, published, draft.brandId);
     },

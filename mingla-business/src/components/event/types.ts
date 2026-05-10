@@ -55,6 +55,16 @@ export interface StepBodyProps {
    * local live id is le_* and is not the storage/database event id.
    */
   coverMediaEventId?: string | null;
+  /** Brand default currency used when legacy/local drafts have null currency. */
+  brandDefaultCurrency?: string | null;
+  /**
+   * Event cover video processing mode. Draft creation can auto-apply to the
+   * server draft once processed; published editing waits for the explicit
+   * Save changes action so the live cover is not replaced mid-edit.
+   */
+  coverMediaApplyMode?: "draft_auto" | "published_manual";
+  /** Lets parent flows block publish/save while a video cover is still processing. */
+  onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
 }
 
 export const errorForKey = (

@@ -66,6 +66,8 @@ export type IconName =
   | "send"
   | "play"
   | "pause"
+  | "volume"
+  | "volumeOff"
   | "template"
   | "upload"
   | "download"
@@ -279,6 +281,18 @@ const RENDERERS: Record<IconName, Renderer> = {
       <Rect x="14" y="4" width="4" height="16" rx="1" fill={color} stroke="none" />
     </>
   ),
+  volume: () => (
+    <>
+      <Path d="M4 9v6h4l5 4V5L8 9H4z" />
+      <Path d="M16 8a5 5 0 0 1 0 8M18.5 5.5a9 9 0 0 1 0 13" />
+    </>
+  ),
+  volumeOff: () => (
+    <>
+      <Path d="M4 9v6h4l5 4V5L8 9H4z" />
+      <Path d="M19 9l-6 6M13 9l6 6" />
+    </>
+  ),
   template: () => (
     <>
       <Rect x="3" y="3" width="18" height="6" rx="2" />
@@ -402,7 +416,6 @@ export const Icon: React.FC<IconProps> = ({
   const renderer = RENDERERS[name];
 
   if (!renderer && __DEV__) {
-    // eslint-disable-next-line no-console
     console.warn(`[Icon] Unknown icon name "${name}". Rendering fallback square.`);
   }
 

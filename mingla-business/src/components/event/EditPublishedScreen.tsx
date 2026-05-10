@@ -51,6 +51,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 
 import {
   accent,
@@ -62,6 +63,7 @@ import {
 } from "../../constants/designSystem";
 import {
   useLiveEventStore,
+  type EditableLiveEventFields,
   type LiveEvent,
   type UpdateLiveEventResult,
 } from "../../store/liveEventStore";
@@ -105,6 +107,8 @@ import {
   EventCoverMediaError,
   updatePublishedEventCoverMedia,
 } from "../../services/eventCoverMediaService";
+import { businessEventKeys } from "../../hooks/useBusinessEvents";
+import { publicEventKeys } from "../../hooks/usePublicEvents";
 
 // ---- Section configuration -----------------------------------------
 
@@ -128,9 +132,23 @@ const SECTIONS: readonly SectionConfig[] = [
 
 const SAVE_PROCESSING_MS = 800;
 const TOAST_NAV_DELAY_MS = 600;
+const COVER_MEDIA_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  "coverMediaUrl",
+  "coverMediaType",
+]);
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+const isCoverMediaOnlyPatch = (
+  patch: Partial<EditableLiveEventFields>,
+): boolean => {
+  const keys = Object.keys(patch) as (keyof EditableLiveEventFields)[];
+  return (
+    keys.length > 0 &&
+    keys.every((key) => COVER_MEDIA_PATCH_KEYS.has(key))
+  );
+};
 
 // ---- Component ------------------------------------------------------
 
@@ -164,6 +182,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const updateLiveEventFields = useLiveEventStore(
     (s) => s.updateLiveEventFields,
   );
@@ -187,6 +206,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     severity: "additive",
   });
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [coverVideoProcessing, setCoverVideoProcessing] = useState<boolean>(false);
 
   // Reject dialog — driven by guard-rail rejections
   const [rejectDialog, setRejectDialog] = useState<RejectDialogContent | null>(
@@ -301,11 +321,17 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     () => computeRichFieldDiffs(liveEvent, editState),
     [liveEvent, editState],
   );
+  const currentPatch = useMemo(
+    () => editableDraftToPatch(liveEvent, editState),
+    [liveEvent, editState],
+  );
+  const canSaveServerCoverMediaOnly =
+    disableLocalSaveReason !== undefined && isCoverMediaOnlyPatch(currentPatch);
 
   // ---- Save flow ----
   const handleSavePress = useCallback((): void => {
-    if (disableLocalSaveReason !== undefined) {
-      showToast(disableLocalSaveReason);
+    if (coverVideoProcessing) {
+      showToast("Wait for the cover video to finish processing first.");
       return;
     }
     // 1. Validate sections
@@ -325,9 +351,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       return;
     }
     // 2. Compute patch
-    const patch = editableDraftToPatch(liveEvent, editState);
+    const patch = currentPatch;
     if (Object.keys(patch).length === 0) {
       showToast("No changes to save.");
+      return;
+    }
+    if (disableLocalSaveReason !== undefined && !isCoverMediaOnlyPatch(patch)) {
+      showToast(disableLocalSaveReason);
       return;
     }
     // 3. Compute ticket diffs (only if patch.tickets changed)
@@ -347,12 +377,41 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       severity,
     });
   }, [
+    currentPatch,
+    coverVideoProcessing,
     disableLocalSaveReason,
     editState,
     fieldDiffs,
-    liveEvent,
+    liveEvent.tickets,
     sectionErrors,
     showToast,
+  ]);
+
+  const invalidateServerEventCaches = useCallback((): void => {
+    queryClient.invalidateQueries({
+      queryKey: businessEventKeys.detail(liveEvent.id),
+    });
+    queryClient.invalidateQueries({
+      queryKey: businessEventKeys.list(liveEvent.brandId),
+    });
+    queryClient.invalidateQueries({
+      queryKey: publicEventKeys.detailById(liveEvent.id),
+    });
+    queryClient.invalidateQueries({
+      queryKey: publicEventKeys.detailBySlug(
+        liveEvent.brandSlug,
+        liveEvent.eventSlug,
+      ),
+    });
+    queryClient.invalidateQueries({
+      queryKey: publicEventKeys.brandBySlug(liveEvent.brandSlug),
+    });
+  }, [
+    liveEvent.brandId,
+    liveEvent.brandSlug,
+    liveEvent.eventSlug,
+    liveEvent.id,
+    queryClient,
   ]);
 
   // ---- Map rejection result to dialog content ----
@@ -481,7 +540,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       if (submitting) return;
       setSubmitting(true);
       await sleep(SAVE_PROCESSING_MS);
-      const patch = editableDraftToPatch(liveEvent, editState);
+      const patch = currentPatch;
       const validation = validateLiveEventFieldUpdate(
         liveEvent,
         patch,
@@ -524,6 +583,20 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           return;
         }
       }
+      if (disableLocalSaveReason !== undefined && isCoverMediaOnlyPatch(patch)) {
+        invalidateServerEventCaches();
+        setSubmitting(false);
+        setModal((prev) => ({ ...prev, visible: false }));
+        showToast("Saved. Live now.");
+        setTimeout(() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace(`/event/${liveEvent.id}` as never);
+          }
+        }, TOAST_NAV_DELAY_MS);
+        return;
+      }
       const result = updateLiveEventFields(
         liveEvent.id,
         patch,
@@ -549,12 +622,14 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     [
       submitting,
       liveEvent,
-      editState,
+      currentPatch,
       soldCountCtx,
       updateLiveEventFields,
       router,
       showToast,
       buildRejectDialog,
+      disableLocalSaveReason,
+      invalidateServerEventCaches,
     ],
   );
 
@@ -585,6 +660,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         editMode: { soldCountByTier: soldCountCtx.soldCountByTier },
         canEditTicketPrice,
         coverMediaEventId: liveEvent.serverEventId,
+        brandDefaultCurrency: liveEvent.currency ?? null,
+        coverMediaApplyMode: "published_manual" as const,
+        onCoverVideoProcessingChange: setCoverVideoProcessing,
       };
       switch (key) {
         case "basics":
@@ -615,6 +693,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       soldCountCtx.soldCountByTier,
       canEditTicketPrice,
       liveEvent.serverEventId,
+      liveEvent.currency,
     ],
   );
 
@@ -773,7 +852,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             variant="primary"
             size="lg"
             fullWidth
-            disabled={submitting || disableLocalSaveReason !== undefined}
+            disabled={
+              submitting ||
+              coverVideoProcessing ||
+              (disableLocalSaveReason !== undefined &&
+                !canSaveServerCoverMediaOnly)
+            }
             accessibilityLabel="Save changes"
           />
         </View>

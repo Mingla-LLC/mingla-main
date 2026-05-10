@@ -21,7 +21,11 @@
     "test:orch-0758a": "npx jest serverDraftEventMapper.test serverDraftLifecycleGuards.test eventCoverMediaService.test eventCoverMedia.test publishedEventEditGuards.test draftEventPristine.test",
     "test:orch-0759": "node ../.github/scripts/strict-grep/i-proposed-y-platform-web-url-from-env.mjs --self-test && node ../.github/scripts/strict-grep/i-proposed-y-platform-web-url-from-env.mjs && npx jest publicUrls.test eventDraftsPublishTickets.test serverDraftEventMapper.test serverDraftLifecycleGuards.test",
     "test:orch-0763": "npx jest businessEventsPublish.test publicEventsService.test sharePublicUrl.test eventDraftsPublishTickets.test serverDraftEventMapper.test serverDraftLifecycleGuards.test serverDraftAutosaveGuards.test",
-    "test:orch-0768": "node ../.github/scripts/strict-grep/orch-0768-brand-audience-identity-honesty.mjs"
+    "test:orch-0768": "node ../.github/scripts/strict-grep/orch-0768-brand-audience-identity-honesty.mjs",
+    "test:orch-0769": "node ../.github/scripts/strict-grep/orch-0769-app-wide-currency.mjs && npx jest eventDraftsPublishTickets.test businessEventsPublish.test publicEventsService.test serverDraftEventMapper.test moneySummary.test brandStripeBalancesService.test",
+    "test:orch-0766f": "node ../.github/scripts/strict-grep/orch-0766f-event-cover-quicktime-storage.mjs",
+    "test:orch-0770": "node ../.github/scripts/strict-grep/orch-0770-event-cover-video-processing.mjs && npx tsc --noEmit",
+    "test:orch-0771": "npx jest eventCoverMedia.test serverDraftLifecycleGuards.test"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -42,6 +46,7 @@
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.20",
+    "expo-file-system": "~19.0.21",
     "expo-font": "~14.0.11",
     "expo-haptics": "~15.0.8",
     "expo-image-picker": "~17.0.11",

@@ -16,6 +16,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -36,8 +37,10 @@ import { useBrandList } from "../../../src/store/currentBrandStore";
 import {
   useDraftById,
   useDraftEventStore,
+  type DraftEvent,
 } from "../../../src/store/draftEventStore";
 import {
+  eventDraftKeys,
   useServerDraftAutosave,
   useServerDraftById,
 } from "../../../src/hooks/useServerDraftEvents";
@@ -46,6 +49,7 @@ import { createServerDraft } from "../../../src/services/eventDrafts";
 export default function EventPreviewRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const isLegacyLocalDraftId =
@@ -55,6 +59,16 @@ export default function EventPreviewRoute(): React.ReactElement {
   const serverDraftQuery = useServerDraftById(
     typeof idParam === "string" && !isLegacyLocalDraftId ? idParam : null,
   );
+  const serverDraftSettled =
+    !isLegacyLocalDraftId &&
+    !serverDraftQuery.isLoading &&
+    !serverDraftQuery.isFetching &&
+    !serverDraftQuery.isError;
+  const staleServerDraft =
+    draft !== null &&
+    !draft.id.startsWith("d_") &&
+    serverDraftSettled &&
+    serverDraftQuery.data === null;
   const autosave = useServerDraftAutosave();
   const brands = useBrandList();
   const brand = useMemo(() => {
@@ -63,7 +77,9 @@ export default function EventPreviewRoute(): React.ReactElement {
   }, [draft, brands]);
   const updateDraft = useDraftEventStore((s) => s.updateDraft);
   const replaceDraft = useDraftEventStore((s) => s.replaceDraft);
+  const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const migratingLegacyIdRef = React.useRef<string | null>(null);
+  const staleRecoveryDraftIdRef = React.useRef<string | null>(null);
 
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
@@ -92,7 +108,7 @@ export default function EventPreviewRoute(): React.ReactElement {
 
   const handleSaveOverride = React.useCallback(
     (patch: MultiDateOverrideSavePatch): void => {
-      if (draft === null || overrideEntryId === null) return;
+      if (draft === null || overrideEntryId === null || staleServerDraft) return;
       const existing = draft.multiDates ?? [];
       // Auto-sort: startTime change can re-order rows chronologically.
       const next = existing
@@ -108,7 +124,7 @@ export default function EventPreviewRoute(): React.ReactElement {
         )
         .sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`));
       updateDraft(draft.id, { multiDates: next });
-      if (!draft.id.startsWith("d_")) {
+      if (!draft.id.startsWith("d_") && !staleServerDraft) {
         autosave.saveDraft({
           ...draft,
           multiDates: next,
@@ -117,7 +133,7 @@ export default function EventPreviewRoute(): React.ReactElement {
       }
       setOverrideEntryId(null);
     },
-    [autosave, draft, overrideEntryId, updateDraft],
+    [autosave, draft, overrideEntryId, staleServerDraft, updateDraft],
   );
 
   useEffect(() => {
@@ -141,6 +157,28 @@ export default function EventPreviewRoute(): React.ReactElement {
         });
       return undefined;
     }
+    if (staleServerDraft) {
+      if (staleRecoveryDraftIdRef.current === draft.id) {
+        return undefined;
+      }
+      staleRecoveryDraftIdRef.current = draft.id;
+      deleteDraft(draft.id);
+      queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
+      queryClient.setQueryData<DraftEvent[]>(
+        eventDraftKeys.list(draft.brandId),
+        (prev) => (prev ?? []).filter((d) => d.id !== draft.id),
+      );
+      queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
+      setToast({
+        visible: true,
+        message: "This draft is no longer editable.",
+      });
+      router.replace("/(tabs)/events" as never);
+      return undefined;
+    }
+    if (staleRecoveryDraftIdRef.current === idParam) {
+      return undefined;
+    }
     if (
       typeof idParam !== "string" ||
       idParam.length === 0 ||
@@ -157,8 +195,13 @@ export default function EventPreviewRoute(): React.ReactElement {
     draft,
     router,
     replaceDraft,
+    deleteDraft,
+    queryClient,
     serverDraftQuery.isFetching,
+    serverDraftQuery.isError,
     serverDraftQuery.isLoading,
+    serverDraftQuery.data,
+    staleServerDraft,
   ]);
 
   const handleBack = (): void => {
@@ -190,6 +233,28 @@ export default function EventPreviewRoute(): React.ReactElement {
           <Spinner size={36} />
           <Text style={styles.label}>Loading…</Text>
         </View>
+      </View>
+    );
+  }
+
+  if (staleServerDraft) {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.center}>
+          <Spinner size={36} />
+          <Text style={styles.label}>Recovering event…</Text>
+        </View>
+        <Toast
+          visible={toast.visible}
+          kind="info"
+          message={toast.message}
+          onDismiss={() => setToast((p) => ({ ...p, visible: false }))}
+        />
       </View>
     );
   }

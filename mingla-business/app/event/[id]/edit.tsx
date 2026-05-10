@@ -16,6 +16,7 @@
 
 import React, { useEffect, useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -40,6 +41,7 @@ import {
 } from "../../../src/store/draftEventStore";
 import { useLiveEventStore } from "../../../src/store/liveEventStore";
 import {
+  eventDraftKeys,
   useDiscardServerDraft,
   useServerDraftAutosave,
   useServerDraftById,
@@ -56,6 +58,7 @@ const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
 export default function EventEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{
     id: string | string[];
     step?: string | string[];
@@ -83,12 +86,6 @@ export default function EventEditRoute(): React.ReactElement {
     if (typeof idParam !== "string" || idParam.length === 0) return null;
     return s.events.find((e) => e.id === idParam) ?? null;
   });
-  const businessEventQuery = useBusinessEventById(
-    isEditPublished && typeof idParam === "string" ? idParam : null,
-  );
-  const serverLiveEvent = businessEventQuery.data?.event ?? null;
-  const resolvedLiveEvent = serverLiveEvent ?? liveEvent;
-
   // Create/draft path: resolve DraftEvent.
   const draft = useDraftById(
     !isEditPublished && typeof idParam === "string" ? idParam : null,
@@ -98,12 +95,31 @@ export default function EventEditRoute(): React.ReactElement {
       ? idParam
       : null,
   );
+  const serverDraftSettled =
+    !isLegacyLocalDraftId &&
+    !serverDraftQuery.isLoading &&
+    !serverDraftQuery.isFetching &&
+    !serverDraftQuery.isError;
+  const staleServerDraft =
+    !isEditPublished &&
+    draft !== null &&
+    !draft.id.startsWith("d_") &&
+    serverDraftSettled &&
+    serverDraftQuery.data === null;
+  const businessEventQuery = useBusinessEventById(
+    typeof idParam === "string" && (isEditPublished || staleServerDraft)
+      ? idParam
+      : null,
+  );
+  const serverLiveEvent = businessEventQuery.data?.event ?? null;
+  const resolvedLiveEvent = serverLiveEvent ?? liveEvent;
   const autosave = useServerDraftAutosave();
   const discardServerDraft = useDiscardServerDraft();
   const publishServerDraft = usePublishBusinessEventDraft();
   const replaceDraft = useDraftEventStore((s) => s.replaceDraft);
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const migratingLegacyIdRef = React.useRef<string | null>(null);
+  const staleRecoveryDraftIdRef = React.useRef<string | null>(null);
   const brands = useBrandList();
   const brand = useMemo(() => {
     if (isEditPublished) {
@@ -167,6 +183,35 @@ export default function EventEditRoute(): React.ReactElement {
       }
       return undefined;
     }
+    if (staleServerDraft) {
+      if (businessEventQuery.isLoading || businessEventQuery.isFetching) {
+        return undefined;
+      }
+      if (staleRecoveryDraftIdRef.current === draft.id) {
+        return undefined;
+      }
+      staleRecoveryDraftIdRef.current = draft.id;
+      const recoveryRoute =
+        businessEventQuery.data?.event !== undefined
+          ? `/event/${draft.id}/edit?mode=edit-published`
+          : "/(tabs)/events";
+      deleteDraft(draft.id);
+      queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
+      queryClient.setQueryData<DraftEvent[]>(
+        eventDraftKeys.list(draft.brandId),
+        (prev) => (prev ?? []).filter((d) => d.id !== draft.id),
+      );
+      queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
+      setToast({
+        visible: true,
+        message: "This draft is no longer editable.",
+      });
+      router.replace(recoveryRoute as never);
+      return undefined;
+    }
+    if (staleRecoveryDraftIdRef.current === idParam) {
+      return undefined;
+    }
     if (
       draft === null &&
       !serverDraftQuery.isLoading &&
@@ -186,11 +231,18 @@ export default function EventEditRoute(): React.ReactElement {
     liveEvent,
     resolvedLiveEvent,
     businessEventQuery.isLoading,
+    businessEventQuery.isFetching,
+    businessEventQuery.data?.event,
     router,
     replaceDraft,
+    deleteDraft,
+    queryClient,
     initialStep,
     serverDraftQuery.isFetching,
+    serverDraftQuery.isError,
     serverDraftQuery.isLoading,
+    serverDraftQuery.data,
+    staleServerDraft,
   ]);
 
   const isCreateMode = useMemo<boolean>(() => {
@@ -295,6 +347,28 @@ export default function EventEditRoute(): React.ReactElement {
         <View style={styles.center}>
           <Spinner size={36} />
           <Text style={styles.label}>Loading…</Text>
+        </View>
+        <Toast
+          visible={toast.visible}
+          kind="info"
+          message={toast.message}
+          onDismiss={() => setToast((p) => ({ ...p, visible: false }))}
+        />
+      </View>
+    );
+  }
+
+  if (staleServerDraft) {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.center}>
+          <Spinner size={36} />
+          <Text style={styles.label}>Recovering event…</Text>
         </View>
         <Toast
           visible={toast.visible}

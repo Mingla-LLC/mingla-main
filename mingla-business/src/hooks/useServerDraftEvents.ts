@@ -3,6 +3,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query";
 
@@ -12,6 +13,7 @@ import {
   discardServerDraft,
   fetchDraftById,
   fetchDraftsForBrand,
+  isServerDraftLifecycleError,
 } from "../services/eventDrafts";
 import {
   useDraftEventStore,
@@ -23,6 +25,18 @@ const DISABLED_KEY = ["event-drafts-disabled"] as const;
 
 const logMutationError = (label: string, error: Error): void => {
   console.error(`[${label}] Operation failed:`, error);
+};
+
+const isLocalOnlyDraftId = (draftId: string): boolean => draftId.startsWith("d_");
+
+const removeDraftFromListCache = (
+  queryClient: QueryClient,
+  draft: DraftEvent,
+): void => {
+  queryClient.setQueryData<DraftEvent[]>(
+    eventDraftKeys.list(draft.brandId),
+    (prev) => (prev ?? []).filter((d) => d.id !== draft.id),
+  );
 };
 
 export const eventDraftKeys = {
@@ -160,6 +174,7 @@ export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const upsertServerDraft = useDraftEventStore((s) => s.upsertServerDraft);
+  const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const markDraftSaved = useDraftEventStore((s) => s.markDraftSaved);
   const mutation = useMutation<DraftEvent, Error, DraftEvent>({
     mutationFn: autosaveServerDraft,
@@ -178,7 +193,22 @@ export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
       );
       setLastSavedAt(new Date().toISOString());
     },
-    onError: (error) => {
+    onError: (error, draft) => {
+      if (isServerDraftLifecycleError(error)) {
+        if (!isLocalOnlyDraftId(draft.id)) {
+          deleteDraft(draft.id);
+          queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
+          removeDraftFromListCache(queryClient, draft);
+          queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
+        }
+        if (__DEV__) {
+          console.info("[useServerDraftAutosave] Draft retired:", {
+            code: error.code,
+            draftId: error.draftId,
+          });
+        }
+        return;
+      }
       logMutationError("useServerDraftAutosave", error);
     },
   });
@@ -195,11 +225,13 @@ export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
       saveDraft,
       saveDraftAsync: mutation.mutateAsync,
       isSaving: mutation.isPending,
-      hasError: mutation.isError,
+      hasError:
+        mutation.isError && !isServerDraftLifecycleError(mutation.error),
       lastSavedAt,
     }),
     [
       lastSavedAt,
+      mutation.error,
       mutation.isError,
       mutation.isPending,
       mutation.mutateAsync,
@@ -242,10 +274,18 @@ export const useDiscardServerDraft = (): {
   const queryClient = useQueryClient();
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const mutation = useMutation<void, Error, DraftEvent>({
-    mutationFn: (draft) => discardServerDraft(draft.id),
+    mutationFn: async (draft) => {
+      try {
+        await discardServerDraft(draft.id);
+      } catch (error) {
+        if (isServerDraftLifecycleError(error)) return;
+        throw error;
+      }
+    },
     onSuccess: (_void, draft) => {
       deleteDraft(draft.id);
       queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
+      removeDraftFromListCache(queryClient, draft);
       queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
     },
     onError: (error) => {
