@@ -54,7 +54,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import Head from "expo-router/head";
 
 import {
@@ -69,13 +69,14 @@ import {
 import {
   checkoutPublicPath,
   eventOgImageUrl,
+  eventPublicPath,
   eventPublicUrl,
 } from "../../constants/publicUrls";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";
-import { formatGbpRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
 import {
   formatDraftDateLine,
   formatDraftDateSubline,
@@ -87,6 +88,7 @@ import {
   formatTicketSubline,
   sortTicketsByDisplayOrder,
 } from "../../utils/ticketDisplay";
+import { isLegacyUnsafeEventCoverVideoUrl } from "../../utils/eventCoverMediaRules";
 
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
@@ -178,10 +180,15 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const pathname = usePathname();
   const { user } = useAuth();
   const userBrands = useBrandList();
   const [passwordUnlocked, setPasswordUnlocked] = useState<boolean>(false);
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
+  const [mediaPlaybackActive, setMediaPlaybackActive] = useState<boolean>(true);
+  const [coverVideoMuted, setCoverVideoMuted] = useState<boolean>(
+    Platform.OS === "web",
+  );
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: "",
@@ -201,8 +208,20 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
     if (user === null) return false;
     return userBrands.some((b) => b.id === event.brandId);
   }, [user, userBrands, event.brandId]);
+  const isCurrentPublicEventPath = useMemo<boolean>(
+    () =>
+      pathname ===
+      eventPublicPath({
+        brandSlug: event.brandSlug,
+        eventSlug: event.eventSlug,
+      }),
+    [event.brandSlug, event.eventSlug, pathname],
+  );
+  const publicHeroPlaybackActive =
+    mediaPlaybackActive && isCurrentPublicEventPath;
 
   const handleClose = useCallback((): void => {
+    setMediaPlaybackActive(false);
     router.replace("/(tabs)/events" as never);
   }, [router]);
 
@@ -291,6 +310,9 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
           brand={brand}
           variant="past"
           onBuyerAction={handleBuyerAction}
+          coverVideoMuted={coverVideoMuted}
+          onCoverVideoMutedChange={setCoverVideoMuted}
+          playbackActive={publicHeroPlaybackActive}
         />
       ) : variant === "password-gate" ? (
         <PasswordGateVariant
@@ -304,6 +326,9 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
           brand={brand}
           variant={variant}
           onBuyerAction={handleBuyerAction}
+          coverVideoMuted={coverVideoMuted}
+          onCoverVideoMutedChange={setCoverVideoMuted}
+          playbackActive={publicHeroPlaybackActive}
         />
       )}
 
@@ -362,6 +387,9 @@ interface PublishedBodyProps {
   onBuyerAction: (
     action: "buy" | "free" | "approval" | "password" | "waitlist",
   ) => void;
+  coverVideoMuted: boolean;
+  onCoverVideoMutedChange: (muted: boolean) => void;
+  playbackActive: boolean;
 }
 
 const PublishedBody: React.FC<PublishedBodyProps> = ({
@@ -369,6 +397,9 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
   brand,
   variant,
   onBuyerAction,
+  coverVideoMuted,
+  onCoverVideoMutedChange,
+  playbackActive,
 }) => {
   const insets = useSafeAreaInsets();
   const [showAllDates, setShowAllDates] = useState<boolean>(false);
@@ -379,6 +410,12 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
   const datesList = formatDraftDatesList(event);
   const titleLine = event.name.length > 0 ? event.name : "Untitled event";
   const brandLetter = (brand?.displayName?.charAt(0) ?? "?").toUpperCase();
+  const coverVideoUnsafe = isLegacyUnsafeEventCoverVideoUrl(
+    event.coverMediaUrl,
+    event.coverMediaType,
+  );
+  const safeCoverMediaUrl = coverVideoUnsafe ? null : event.coverMediaUrl;
+  const safeCoverMediaType = coverVideoUnsafe ? null : event.coverMediaType;
 
   const visibleTickets = useMemo(
     () => sortTicketsByDisplayOrder(
@@ -407,11 +444,18 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
       <View style={styles.heroWrap}>
         <EventCoverMedia
           hue={event.coverHue}
-          mediaUrl={event.coverMediaUrl}
-          mediaType={event.coverMediaType}
+          mediaUrl={safeCoverMediaUrl}
+          mediaType={safeCoverMediaType}
           radius={0}
           label=""
           height={380}
+          playbackActive={playbackActive}
+          muted={coverVideoMuted}
+          onMutedChange={onCoverVideoMutedChange}
+          showAudioControl={safeCoverMediaType === "video"}
+          audioControlLabel="event cover video"
+          audioControlPosition="topLeft"
+          audioControlTopOffset={insets.top + 60}
         />
         <View style={styles.heroOverlay} pointerEvents="none" />
       </View>
@@ -578,6 +622,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                   ticket={t}
                   isLast={i === visibleTickets.length - 1}
                   variant={variant}
+                  currency="GBP"
                   onBuyerAction={onBuyerAction}
                 />
               ))}
@@ -595,6 +640,7 @@ interface PublicTicketRowProps {
   ticket: TicketStub;
   isLast: boolean;
   variant: "published" | "pre-sale" | "sold-out" | "past";
+  currency: string;
   onBuyerAction: (
     action: "buy" | "free" | "approval" | "password" | "waitlist",
   ) => void;
@@ -604,12 +650,13 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   ticket,
   isLast,
   variant,
+  currency,
   onBuyerAction,
 }) => {
   const priceLabel = ticket.isFree
     ? "Free"
     : ticket.priceGbp !== null
-      ? formatGbpRound(ticket.priceGbp)
+      ? formatCurrencyRound(ticket.priceGbp, currency)
       : "—";
   const subLine = formatTicketSubline(ticket);
   const badges = formatTicketBadges(ticket);

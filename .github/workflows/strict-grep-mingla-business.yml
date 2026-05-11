@@ -38,6 +38,8 @@ on:
 #   - I-PROPOSED-M (i-proposed-m-persist-key-whitelist.mjs) — persist-key whitelist sync (META-ORCH-0744)
 #   - I-PROPOSED-N (i-proposed-n-transitional-exit-condition.mjs) — TRANSITIONAL exit-condition lint (META-ORCH-0744)
 #   - I-PROPOSED-X (i-proposed-x-web-deprecation.mjs) — web-export deprecation parser (META-ORCH-0744)
+#   - ORCH-0776 (orch-0776-video-processing-status-bridge.mjs) — event cover video processing status bridge
+#   - ORCH-0776D (orch-0776d-cancelled-at-schema.mjs) — event cover video cancelled_at schema/code parity
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -312,3 +314,25 @@ jobs:
         run: npx expo export -p web 2>/tmp/expo-export-web.stderr || true
       - name: Run I-PROPOSED-X parser
         run: node .github/scripts/strict-grep/i-proposed-x-web-deprecation.mjs /tmp/expo-export-web.stderr
+
+  orch-0776d-cancelled-at-schema:
+    name: "ORCH-0776D: event cover video cancelled_at schema/code parity"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0776D gate
+        run: node .github/scripts/strict-grep/orch-0776d-cancelled-at-schema.mjs
+
+  orch-0776-video-processing-status-bridge:
+    name: "ORCH-0776: video processing status bridge guard"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0776 gate
+        run: node .github/scripts/strict-grep/orch-0776-video-processing-status-bridge.mjs
