@@ -59,6 +59,22 @@
 
 ## ACTIVE (post ORCH-0777 CLOSE 2026-05-11)
 
+### I-PROPOSED-AI CUSTOMER_FACING_DESIGN_GATE
+
+**Statement:** Any Mingla customer-facing feature with a visual, interaction, communication, layout, copy, or brand-experience component must receive `ui-ux-mingla` design direction before implementation. The resulting specialist prompt/spec must cite the design direction and treat premium Mingla-native look and feel as acceptance criteria.
+
+**Rationale:** The operator directed that customer-facing features with design components must be designed first by `ui-ux-mingla` for premium look and feel. ORCH-0785 reinforced that emails, PDFs, receipts, and ticket confirmations are product surfaces, not backend afterthoughts; buyers judge Mingla's trust and quality from those artifacts.
+
+**Enforcement mechanism:** Codex `orchestrator-mingla` now includes a Customer-facing design gate in the User-Controlled Dispatch Contract and a Prime Directive requiring `ui-ux-mingla` design direction before customer-facing implementation. Orchestrator prompts for customer-facing design work must include either a UI/UX artifact path or an explicit design section before routing to implementor.
+
+**Test that catches regression:** Process review gate until automated prompt lint exists: any implementation prompt for a customer-facing feature that has UI, copy, email/PDF, public page, receipt, or branded-communication scope must be rejected if it lacks a `ui-ux-mingla` design artifact/section and premium acceptance criteria.
+
+**Codified:** 2026-05-11 by DEC-143 and ORCH-0785 intake. Evidence: `Mingla_Artifacts/reports/UI_UX_ORCH-0785_PREMIUM_TRANSACTIONAL_EMAIL_BRANDING.md`, `Mingla_Artifacts/prompts/FORENSICS_ORCH-0785_TRANSACTIONAL_EMAIL_BRAND_AND_TICKET_PDF_INVENTORY.md`, and `.codex/skills/orchestrator-mingla/SKILL.md`.
+
+**Scope exclusions:** Pure backend, SQL, infra, provider config, RLS, deploy, and data-only work does not require UI/UX unless the output changes a customer-facing surface, communication, or user-visible state.
+
+---
+
 ### I-PROPOSED-AG ORGANIZER_ORDER_BRAND_FROM_EVENT_AND_NOTIFICATION_CHILD_ROWS_AUTHORITATIVE
 
 **Statement:** Mingla Business organizer order queries must derive an order's brand from the event relation (`orders.event_id -> events.brand_id`), never from a direct `orders.brand_id` field. For ticket confirmation delivery state, child rows in `ticket_order_notifications` are the authoritative ledger; parent `orders.notification_status` is a rollup and must not be treated as more truthful than child email/SMS rows.
