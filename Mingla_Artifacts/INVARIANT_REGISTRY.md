@@ -7,6 +7,56 @@
 
 ---
 
+## ACTIVE (post ORCH-0784 CLOSE 2026-05-11)
+
+### I-PROPOSED-AJ NON_DRAFT_EVENT_LISTS_SHOW_SOLD_AND_ONLINE_AMOUNT
+
+**Statement:** In Mingla Business, every non-draft Home row/live hero summary and every non-draft Events list card must show both tickets sold and online amount made from server-backed order data. Draft rows remain draft surfaces and keep the `- / resume` contract.
+
+**Rationale:** ORCH-0784 proved organisers could see inconsistent or missing commerce summaries on the two main overview surfaces even when deeper server order truth existed. Overview rows are a trust surface: hiding sold count or amount made makes real sales look absent.
+
+**Enforcement mechanism:** `mingla-business/src/utils/eventSalesSummary.ts` is the shared label contract; `mingla-business/src/hooks/useEventOrders.ts` exposes `useEventSalesSummaries`; Home and `EventListCard` consume the shared summary instead of divergent presentation branches. `.github/scripts/strict-grep/orch-0784-event-list-sales-summary-visibility.mjs` and `.github/workflows/strict-grep-mingla-business.yml` register the structural guard.
+
+**Test that catches regression:** `cd mingla-business && npm run test:orch-0784` must pass. The gate fails if Home loses the amount slot, Events cards lose the summary labels, or the ORCH-0784 strict-grep/Jest coverage is removed.
+
+**Codified:** 2026-05-11 by ORCH-0784 / DEC-144. Evidence: `reports/QA_ORCH-0784_EVENT_LIST_SALES_SUMMARY_VISIBILITY.md` and `CLOSE_NOTE_ORCH-0784.md`.
+
+**Scope exclusions:** Door-sales revenue, unique-buyer counts, organiser resend-ticket CTA, notification rollup recompute, refunds/cancel production-grade behavior, and checkout/payment mutations are separate ORCHs.
+
+---
+
+### I-PROPOSED-AK TRUE_ZERO_ONLINE_REVENUE_VISIBLE_AS_CURRENCY_ZERO
+
+**Statement:** Event-list online revenue summaries must render a true zero as formatted currency zero (`$0`, `£0`, etc.), not as `-`, blank copy, or a fabricated unavailable state. Currency mismatch remains honest through `Currency review` when expected-currency revenue cannot be trusted.
+
+**Rationale:** Zero dollars is information, not missing data. ORCH-0784 proved the old Events presentation collapsed honest zero revenue into `-`, which could make organisers doubt whether the order data loaded.
+
+**Enforcement mechanism:** `buildEventSalesSummary` formats zero through the currency formatter and keeps mismatch handling delegated to `summarizeEventMoney`. The ORCH-0784 strict-grep guard blocks zero-revenue dash regressions.
+
+**Test that catches regression:** `cd mingla-business && npm run test:orch-0784` must pass; `eventSalesSummary.test` asserts finite/unlimited zero states render currency zero, and the strict-grep script rejects branches that gate true zero revenue to `-`.
+
+**Codified:** 2026-05-11 by ORCH-0784 / DEC-144. Evidence: `reports/QA_ORCH-0784_EVENT_LIST_SALES_SUMMARY_VISIBILITY.md`.
+
+**Scope exclusions:** This invariant does not redefine event finance reconciliation or include door-sale revenue in list summaries.
+
+---
+
+### I-PROPOSED-AL HOME_NON_DRAFT_SALES_SUMMARIES_DO_NOT_READ_USE_ORDER_STORE
+
+**Statement:** Mingla Business Home must not use local persisted `useOrderStore` as the source for non-draft sold counts or revenue summaries. Non-draft Home sales summaries belong to server-backed order queries; local draft state remains allowed only for draft/resume semantics.
+
+**Rationale:** ORCH-0784's root cause chain showed Home could disagree with Events/Event Detail because it read stale local order state while server orders already existed. This repeats the broader Mingla source-of-truth lesson: production commerce summaries must come from server records, not client mirrors.
+
+**Enforcement mechanism:** Home consumes `useEventSalesSummaries` for visible non-draft event IDs. `.github/scripts/strict-grep/orch-0784-event-list-sales-summary-visibility.mjs` rejects `useOrderStore`, `getSoldCountForEvent`, `getRevenueForEvent`, `getRevenueSummaryForEvent`, or `orderEntries` as Home non-draft sales-summary sources.
+
+**Test that catches regression:** `cd mingla-business && npm run test:orch-0784` must pass. ORCH-0754's Home no-fabricated-events gate and ORCH-0777's order-truth gate should also remain green as adjacent safety nets.
+
+**Codified:** 2026-05-11 by ORCH-0784 / DEC-144. Evidence: `reports/QA_ORCH-0784_EVENT_LIST_SALES_SUMMARY_VISIBILITY.md`.
+
+**Scope exclusions:** This invariant does not ban draft-store reads for draft rows and does not own ORCH-0782 resend/notification-rollup work.
+
+---
+
 ## ACTIVE (post ORCH-0777 CLOSE 2026-05-11)
 
 ### I-PROPOSED-AG ORGANIZER_ORDER_BRAND_FROM_EVENT_AND_NOTIFICATION_CHILD_ROWS_AUTHORITATIVE

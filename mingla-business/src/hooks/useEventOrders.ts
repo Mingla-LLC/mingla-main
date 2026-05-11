@@ -13,7 +13,12 @@ import {
   type EventOrderActivity,
   type EventOrderRevenue,
 } from "../services/eventOrdersService";
+import type { TicketStub } from "../store/draftEventStore";
 import type { OrderRecord } from "../store/orderStore";
+import {
+  buildEventSalesSummary,
+  type EventSalesSummary,
+} from "../utils/eventSalesSummary";
 
 export const eventOrdersKeys = {
   all: ["event-orders"] as const,
@@ -23,6 +28,12 @@ export const eventOrdersKeys = {
     [...eventOrdersKeys.all, eventId, "order", orderId] as const,
   soldCounts: (eventIds: string[]): readonly ["event-orders", "sold-counts", string] =>
     [...eventOrdersKeys.all, "sold-counts", eventIds.slice().sort().join("|")] as const,
+  salesSummary: (
+    eventId: string,
+    currency: string,
+    ticketSignature: string,
+  ): readonly ["event-orders", string, "sales-summary", string, string] =>
+    [...eventOrdersKeys.all, eventId, "sales-summary", currency, ticketSignature] as const,
 };
 
 const DISABLED_KEY = ["event-orders-disabled"] as const;
@@ -122,6 +133,56 @@ export const useEventSoldCounts = (
     },
     {},
   );
+};
+
+export interface EventSalesSummarySource {
+  id: string;
+  tickets: TicketStub[];
+  currency?: string | null;
+}
+
+const ticketCapacitySignature = (tickets: TicketStub[]): string =>
+  tickets
+    .map((ticket) =>
+      [
+        ticket.id,
+        ticket.isUnlimited ? "unlimited" : "finite",
+        ticket.capacity ?? "null",
+      ].join(":"),
+    )
+    .sort()
+    .join("|");
+
+export const useEventSalesSummaries = (
+  events: EventSalesSummarySource[],
+  brandDefaultCurrency?: string | null,
+): Record<string, EventSalesSummary> => {
+  const { loading, session } = useAuth();
+  const queries = useQueries({
+    queries: events.map((event) => ({
+      queryKey: eventOrdersKeys.salesSummary(
+        event.id,
+        event.currency ?? brandDefaultCurrency ?? "GBP",
+        ticketCapacitySignature(event.tickets),
+      ),
+      enabled: !loading && session !== null,
+      staleTime: 15 * 1000,
+      queryFn: () => fetchEventOrders(event.id),
+    })),
+  });
+
+  return events.reduce<Record<string, EventSalesSummary>>((acc, event, index) => {
+    const query = queries[index];
+    acc[event.id] = buildEventSalesSummary({
+      eventId: event.id,
+      tickets: event.tickets,
+      eventCurrency: event.currency,
+      brandDefaultCurrency,
+      orders: query?.data ?? [],
+      hasError: query?.isError ?? false,
+    });
+    return acc;
+  }, {});
 };
 
 export const useEventHasWebPurchases = (eventId: string | null): boolean => {

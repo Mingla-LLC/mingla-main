@@ -50,6 +50,7 @@ on:
 #   - ORCH-0777 (orch-0777-ticket-checkout-production.mjs) — production ticket checkout + organizer order visibility
 #   - ORCH-0778 (orch-0778-web-stripe-native-import-gate.mjs) — Stripe React Native imports stay behind .native payment boundaries (re-armed by ORCH-0781)
 #   - ORCH-0783 (orch-0783-event-cover-image-provider-pivot.mjs) — event cover image/provider pivot preserves legacy renderers
+#   - ORCH-0784 (orch-0784-event-list-sales-summary-visibility.mjs) — Home/Events list sales summaries stay visible and server-backed
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -379,3 +380,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0783 gate
         run: node .github/scripts/strict-grep/orch-0783-event-cover-image-provider-pivot.mjs
+
+  orch-0784-event-list-sales-summary-visibility:
+    name: "ORCH-0784: event list sales summary visibility"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0784 gate
+        run: node .github/scripts/strict-grep/orch-0784-event-list-sales-summary-visibility.mjs

@@ -9,7 +9,7 @@
  * Past events with soldCount=0 render at opacity 0.7 (Q-9-9).
  *
  * Sold count + revenue derive from the server-backed event orders hook.
- * 9a renders 0/cap and "—" placeholders.
+ * ORCH-0784 keeps both visible for finite, unlimited, zero, and nonzero states.
  *
  * Per Cycle 9 spec §3.A.2.
  */
@@ -28,8 +28,7 @@ import type { LiveEvent } from "../../store/liveEventStore";
 import type { DraftEvent } from "../../store/draftEventStore";
 import type { Brand } from "../../store/currentBrandStore";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
-import { formatCurrencyRound } from "../../utils/currency";
-import { summarizeEventMoney } from "../../utils/moneySummary";
+import { buildEventSalesSummary } from "../../utils/eventSalesSummary";
 import { useEventOrders } from "../../hooks/useEventOrders";
 
 import { EventCoverMedia } from "../ui/EventCoverMedia";
@@ -84,52 +83,32 @@ export const EventListCard: React.FC<EventListCardProps> = ({
       : null;
   }, [event, kind]);
 
-  // ----- Capacity / sold ------------------------------------------------
-  const totalCapacity = useMemo<number>((): number => {
-    let cap = 0;
-    let hasUnlimited = false;
-    for (const t of event.tickets) {
-      if (t.isUnlimited) hasUnlimited = true;
-      else cap += t.capacity ?? 0;
-    }
-    if (hasUnlimited && cap === 0) return 0;
-    return cap;
-  }, [event.tickets]);
+  // ----- Sales summary ---------------------------------------------------
   const eventOrdersQuery = useEventOrders(kind === "live" ? event.id : null);
   const orderEntries = eventOrdersQuery.data ?? [];
-  const soldCount = useMemo(
+  const salesSummary = useMemo(
     () =>
-      orderEntries.reduce((sum, order) => {
-        if (order.status !== "paid" && order.status !== "refunded_partial") return sum;
-        return (
-          sum +
-          order.lines.reduce(
-            (lineSum, line) => lineSum + Math.max(0, line.quantity - line.refundedQuantity),
-            0,
-          )
-        );
-      }, 0),
-    [orderEntries],
-  );
-  const revenueSummary = useMemo(
-    () =>
-      summarizeEventMoney({
-        expectedCurrency: isLiveEvent(event, kind)
-          ? event.currency ?? brand.defaultCurrency
-          : brand.defaultCurrency,
+      buildEventSalesSummary({
+        eventId: event.id,
+        tickets: event.tickets,
+        eventCurrency: isLiveEvent(event, kind) ? event.currency : null,
+        brandDefaultCurrency: brand.defaultCurrency,
         orders: orderEntries,
-        doorSales: [],
+        hasError: eventOrdersQuery.isError,
       }),
-    [brand.defaultCurrency, event, kind, orderEntries],
+    [brand.defaultCurrency, event, eventOrdersQuery.isError, kind, orderEntries],
   );
-  const revenueGbp = revenueSummary.onlineRevenue;
   const pct =
-    totalCapacity > 0
-      ? Math.min(100, Math.round((soldCount / totalCapacity) * 100))
+    salesSummary.finiteCapacity !== null
+      ? Math.min(100, Math.round((salesSummary.soldCount / salesSummary.finiteCapacity) * 100))
       : 0;
+  const cardAccessibilityLabel =
+    kind === "draft"
+      ? `Open ${title}`
+      : `Open ${title}. ${salesSummary.soldLabel}. ${salesSummary.revenueLabel}.`;
 
   // Past + 0 sold → fade per Q-9-9.
-  const isFaded = status === "past" && soldCount === 0;
+  const isFaded = status === "past" && salesSummary.soldCount === 0;
 
   // ----- Render -----------------------------------------------------
   return (
@@ -137,7 +116,7 @@ export const EventListCard: React.FC<EventListCardProps> = ({
       <Pressable
         onPress={onOpen}
         accessibilityRole="button"
-        accessibilityLabel={`Open ${title}`}
+        accessibilityLabel={cardAccessibilityLabel}
         style={({ pressed }) => [
           styles.cardBody,
           pressed && styles.cardBodyPressed,
@@ -179,34 +158,33 @@ export const EventListCard: React.FC<EventListCardProps> = ({
             {venue !== null ? ` · ${venue}` : ""}
           </Text>
 
-          {/* Progress bar OR sub-text */}
-          {totalCapacity > 0 ? (
-            <View style={styles.progressRow}>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${pct}%`,
-                      backgroundColor:
-                        kind === "draft"
-                          ? "rgba(255, 255, 255, 0.2)"
-                          : accent.warm,
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.progressLabel}>
-                {soldCount}/{totalCapacity}
-              </Text>
-            </View>
-          ) : kind === "draft" ? (
+          {/* Progress bar for finite capacity, explicit sold summary otherwise. */}
+          {kind === "draft" ? (
             <Text style={styles.subText}>
               {(event as DraftEvent).whenMode === "recurring"
                 ? "Series template"
                 : "Not published"}
             </Text>
-          ) : null}
+          ) : salesSummary.finiteCapacity !== null ? (
+            <View style={styles.progressRow}>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressFill,
+	                    {
+	                      width: `${pct}%`,
+	                      backgroundColor: accent.warm,
+	                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.progressLabel}>
+                {salesSummary.soldLabel}
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.subText}>{salesSummary.soldLabel}</Text>
+          )}
         </View>
 
         {/* Tap affordance — chevron-right at the inner end of the card
@@ -234,17 +212,9 @@ export const EventListCard: React.FC<EventListCardProps> = ({
       </View>
 
       {/* Revenue strip (non-draft only) */}
-      {kind !== "draft" && status !== "past" ? (
+      {kind !== "draft" ? (
         <View style={styles.revenueStrip} pointerEvents="none">
-          <Text style={styles.revenueValue}>
-            {revenueGbp > 0
-              ? event.currency !== undefined || brand.defaultCurrency !== undefined
-                ? formatCurrencyRound(revenueGbp, event.currency ?? brand.defaultCurrency ?? "")
-                : "Currency not set"
-              : revenueSummary.mismatches.length > 0
-                ? "Currency review"
-              : "—"}
-          </Text>
+          <Text style={styles.revenueValue}>{salesSummary.revenueLabel}</Text>
         </View>
       ) : null}
     </View>
