@@ -108,3 +108,95 @@ export async function dispatchTicketConfirmation(orderId: string): Promise<void>
     console.error("[ticket-checkout] confirmation dispatch failed", err);
   }
 }
+
+export type ProviderFailure = {
+  detail: string;
+  retryable: boolean;
+  status: number;
+};
+
+function providerErrorName(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const row = body as Record<string, unknown>;
+  for (const key of ["name", "code", "type", "error_code"]) {
+    const value = row[key];
+    if (typeof value === "string" && /^[a-zA-Z0-9_.:-]{1,80}$/.test(value)) {
+      return value;
+    }
+  }
+  const nested = row.error;
+  if (nested && typeof nested === "object") {
+    return providerErrorName(nested);
+  }
+  return null;
+}
+
+export function classifyNotificationProviderFailure(
+  provider: "resend" | "twilio",
+  status: number,
+  body: unknown,
+): ProviderFailure {
+  const retryable = status === 429 || status >= 500;
+  const authOrConfig = status === 400 || status === 401 || status === 403;
+  const name = providerErrorName(body);
+  const reason = authOrConfig ? "config" : retryable ? "retryable" : "provider";
+  return {
+    detail: [
+      `${provider}_send_failed`,
+      String(status),
+      reason,
+      name,
+    ].filter(Boolean).join(":"),
+    retryable,
+    status,
+  };
+}
+
+export function classifyStripePaymentIntentCreateFailure(error: unknown): {
+  detail: string;
+  httpStatus: number;
+} {
+  const row = error && typeof error === "object"
+    ? error as Record<string, unknown>
+    : {};
+  const statusCode = typeof row.statusCode === "number" ? row.statusCode : null;
+  const code = typeof row.code === "string" && /^[a-zA-Z0-9_.:-]{1,80}$/.test(row.code)
+    ? row.code
+    : null;
+  const type = typeof row.type === "string" && /^[a-zA-Z0-9_.:-]{1,80}$/.test(row.type)
+    ? row.type
+    : null;
+  const reason = statusCode === 401 || statusCode === 403
+    ? "stripe_key_or_capability_config"
+    : statusCode === 400
+    ? "stripe_request_or_account_config"
+    : statusCode === 429 || (typeof statusCode === "number" && statusCode >= 500)
+    ? "stripe_retryable"
+    : "stripe_payment_intent_create_failed";
+
+  return {
+    detail: [
+      "stripe_payment_intent_create_failed",
+      statusCode === null ? null : String(statusCode),
+      reason,
+      code,
+      type,
+    ].filter(Boolean).join(":"),
+    httpStatus: statusCode === 400 ? 409 : statusCode === 401 || statusCode === 403 ? 502 : 500,
+  };
+}
+
+export type PaymentIntentCancelClient = {
+  paymentIntents: {
+    cancel: (paymentIntentId: string) => Promise<unknown>;
+  };
+};
+
+export async function cancelPaymentIntentIfClientAvailable(
+  stripe: PaymentIntentCancelClient | null,
+  paymentIntentId: string,
+): Promise<boolean> {
+  if (stripe === null) return false;
+  await stripe.paymentIntents.cancel(paymentIntentId);
+  return true;
+}

@@ -32,3 +32,18 @@ verify_jwt = false
 # request headers. Default 150s applies in the interim.
 [functions.run-place-intelligence-trial]
 verify_jwt = true
+
+# ORCH-0777 live-fire 2026-05-11: Stripe webhooks have no Supabase JWT.
+# Signature is verified inside the function via STRIPE_WEBHOOK_SECRET.
+[functions.stripe-webhook]
+verify_jwt = false
+
+# Twilio status callback also third-party — function authenticates via
+# TWILIO_STATUS_CALLBACK_SECRET query param.
+[functions.twilio-message-status]
+verify_jwt = false
+
+# Buyer status endpoint serves anonymous buyers reading their own checkout
+# session by buyerStatusToken; no Supabase JWT involved.
+[functions.ticket-checkout-status]
+verify_jwt = false

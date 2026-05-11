@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import {
+  cancelPaymentIntentIfClientAvailable,
+  classifyStripePaymentIntentCreateFailure,
   checkoutIdempotencyKey,
   dispatchTicketConfirmation,
   jsonResponse,
@@ -146,22 +148,46 @@ serve(async (req) => {
     return jsonResponse({ error: "stripe_account_not_ready" }, 409);
   }
 
-  const stripe = stripeTicketCheckout();
-  // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
-  const paymentIntent = await stripe.paymentIntents.create(
-    {
-      amount: totalCents,
-      currency,
-      automatic_payment_methods: { enabled: true },
-      transfer_data: { destination: stripeAccountId },
-      metadata: {
-        mingla_checkout_session_id: checkoutSessionId,
-        mingla_event_id: eventId,
-        mingla_buyer_email: buyerEmail,
+  let paymentIntent: {
+    id: string;
+    client_secret?: string | null;
+  };
+  let stripe: ReturnType<typeof stripeTicketCheckout> | null = null;
+  try {
+    stripe = stripeTicketCheckout();
+    // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+    paymentIntent = await stripe.paymentIntents.create(
+      {
+        amount: totalCents,
+        currency,
+        automatic_payment_methods: { enabled: true },
+        transfer_data: { destination: stripeAccountId },
+        metadata: {
+          mingla_checkout_session_id: checkoutSessionId,
+          mingla_event_id: eventId,
+          mingla_buyer_email: buyerEmail,
+        },
       },
-    },
-    { idempotencyKey: `ticket_checkout:${checkoutSessionId}` },
-  );
+      { idempotencyKey: `ticket_checkout:${checkoutSessionId}` },
+    );
+  } catch (err) {
+    const failure = classifyStripePaymentIntentCreateFailure(err);
+    console.error("[ticket-checkout-create] payment intent create failed", failure.detail);
+    await supabase
+      .from("ticket_checkout_sessions")
+      .update({
+        status: "failed",
+        failed_at: new Date().toISOString(),
+        failure_reason: failure.detail,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", checkoutSessionId)
+      .is("stripe_payment_intent_id", null);
+    return jsonResponse(
+      { error: "payment_intent_create_failed", detail: failure.detail },
+      failure.httpStatus,
+    );
+  }
 
   const clientSecret = String(paymentIntent.client_secret ?? "");
   const { error: persistPaymentError } = await supabase
@@ -176,11 +202,12 @@ serve(async (req) => {
     .eq("id", checkoutSessionId);
   if (persistPaymentError) {
     console.error("[ticket-checkout-create] payment intent persist failed", persistPaymentError);
-    try {
-      // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
-      await stripe.paymentIntents.cancel(paymentIntent.id);
-    } catch (cancelError) {
-      console.error("[ticket-checkout-create] payment intent cancel failed", cancelError);
+    if (stripe !== null) {
+      try {
+        await cancelPaymentIntentIfClientAvailable(stripe, paymentIntent.id);
+      } catch (cancelError) {
+        console.error("[ticket-checkout-create] payment intent cancel failed", cancelError);
+      }
     }
     return jsonResponse(
       { error: "payment_session_persist_failed", detail: persistPaymentError.message },

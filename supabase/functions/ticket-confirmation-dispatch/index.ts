@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
+  classifyNotificationProviderFailure,
   jsonResponse,
+  ProviderFailure,
   serviceClient,
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
@@ -22,7 +24,10 @@ async function sendResendEmail(input: {
     body: JSON.stringify({ from, to: input.to, subject: input.subject, html: input.html }),
   });
   const json = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`resend_send_failed:${response.status}`);
+  if (!response.ok) {
+    const failure = classifyNotificationProviderFailure("resend", response.status, json);
+    throw new ProviderSendError(failure);
+  }
   return { id: typeof json.id === "string" ? json.id : null };
 }
 
@@ -55,8 +60,21 @@ async function sendTwilioMessage(input: { to: string; body: string }): Promise<{
     },
   );
   const json = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`twilio_send_failed:${response.status}`);
+  if (!response.ok) {
+    const failure = classifyNotificationProviderFailure("twilio", response.status, json);
+    throw new ProviderSendError(failure);
+  }
   return { sid: typeof json.sid === "string" ? json.sid : null };
+}
+
+class ProviderSendError extends Error {
+  retryable: boolean;
+
+  constructor(failure: ProviderFailure) {
+    super(failure.detail);
+    this.name = "ProviderSendError";
+    this.retryable = failure.retryable;
+  }
 }
 
 serve(async (req) => {
@@ -147,7 +165,8 @@ serve(async (req) => {
       outcomes.push({ channel: notification.channel, status: "sent" });
     } catch (err) {
       const attemptCount = Number(notification.attempt_count ?? 0) + 1;
-      const terminal = attemptCount >= 3;
+      const retryable = err instanceof ProviderSendError ? err.retryable : true;
+      const terminal = !retryable || attemptCount >= 3;
       await supabase.from("ticket_order_notifications").update({
         status: terminal ? "failed_terminal" : "failed_retryable",
         last_error: err instanceof Error ? err.message : String(err),
