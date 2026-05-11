@@ -75,6 +75,7 @@ const fetchBrandDefaultCurrency = async (brandId: string): Promise<string | null
     .from("brands")
     .select("default_currency")
     .eq("id", brandId)
+    .is("deleted_at", null)
     .maybeSingle();
   if (error !== null) throw error;
   return nullableCurrency(

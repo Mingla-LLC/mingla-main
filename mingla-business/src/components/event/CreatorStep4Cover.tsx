@@ -27,6 +27,8 @@ import {
   uploadEventCoverMedia,
 } from "../../services/eventCoverMediaService";
 import {
+  acknowledgeEventCoverVideoSourceUploaded,
+  cancelEventCoverVideoJob,
   createEventCoverVideoUploadIntent,
   EVENT_COVER_MAX_SOURCE_VIDEO_BYTES,
   EVENT_COVER_MAX_VIDEO_DURATION_MS,
@@ -34,6 +36,7 @@ import {
   EVENT_COVER_VIDEO_PROCESSING_COPY,
   EventCoverVideoProcessingError,
   type EventCoverVideoApplyMode,
+  type EventCoverVideoStatus,
   type EventCoverVideoUploadProgress,
   uploadEventCoverVideoSource,
   waitForEventCoverVideoReady,
@@ -55,6 +58,31 @@ import {
 
 const HUE_TILES: readonly number[] = [25, 100, 180, 220, 290, 320] as const;
 
+type VideoCoverProcessingState =
+  | { kind: "idle" }
+  | { kind: "preparing"; label: string; percent: number }
+  | { kind: "uploading"; label: string; percent: number | null }
+  | { kind: "processing"; label: string; percent: number | null; jobId: string }
+  | { kind: "timeout"; label: string; jobId: string; lastStatus: EventCoverVideoStatus }
+  | { kind: "failed"; label: string; jobId?: string; canRetry: boolean }
+  | { kind: "ready"; label: string };
+
+const progressPercentForState = (
+  state: VideoCoverProcessingState,
+): number | null => {
+  switch (state.kind) {
+    case "preparing":
+      return state.percent;
+    case "uploading":
+    case "processing":
+      return state.percent;
+    case "ready":
+      return 100;
+    default:
+      return null;
+  }
+};
+
 export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
   draft,
   updateDraft,
@@ -73,6 +101,25 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
     null,
   );
   const [videoErrorText, setVideoErrorText] = useState<string | null>(null);
+  const [videoProcessingState, setVideoProcessingState] =
+    useState<VideoCoverProcessingState>({ kind: "idle" });
+
+  const setVideoState = useCallback((state: VideoCoverProcessingState): void => {
+    setVideoProcessingState(state);
+    if (state.kind === "idle") {
+      setVideoStatusText(null);
+      setVideoUploadPercent(null);
+      return;
+    }
+    if (state.kind === "failed") {
+      setVideoStatusText(null);
+      setVideoUploadPercent(null);
+      setVideoErrorText(state.label);
+      return;
+    }
+    setVideoStatusText(state.label);
+    setVideoUploadPercent(progressPercentForState(state));
+  }, []);
 
   useEffect(() => {
     setMediaDisplayError(null);
@@ -211,12 +258,37 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
           sourceDurationMs: diagnostic?.sourceDurationMs,
         });
       }
+      if (
+        error instanceof EventCoverVideoProcessingError &&
+        error.code === "processing_timeout" &&
+        error.lastStatus !== undefined
+      ) {
+        setVideoErrorText(null);
+        setVideoState({
+          jobId: error.lastStatus.jobId,
+          kind: "timeout",
+          label: error.message,
+          lastStatus: error.lastStatus,
+        });
+        return;
+      }
       setVideoStatusText(null);
       setVideoUploadPercent(null);
-      setVideoErrorText(message);
+      setVideoState({
+        canRetry:
+          error instanceof EventCoverVideoProcessingError
+            ? error.code !== "cancelled"
+            : true,
+        jobId:
+          error instanceof EventCoverVideoProcessingError
+            ? error.lastStatus?.jobId
+            : undefined,
+        kind: "failed",
+        label: message,
+      });
       onShowToast(message);
     },
-    [onShowToast],
+    [onShowToast, setVideoState],
   );
 
   const ensureMediaPermission = useCallback(async (): Promise<boolean> => {
@@ -282,8 +354,11 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
       applyMode: EventCoverVideoApplyMode,
       uploadFields: NativeTrimmedVideoUploadFields,
     ): Promise<void> => {
-      setVideoStatusText("Preparing secure video upload...");
-      setVideoUploadPercent(null);
+      setVideoState({
+        kind: "preparing",
+        label: "Preparing secure upload...",
+        percent: 10,
+      });
       setVideoErrorText(null);
       if (__DEV__) {
         console.info("[CreatorStep4Cover] upload-intent-start", {
@@ -330,18 +405,20 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
           jobId: intent.jobId,
         });
       }
-      setVideoStatusText("Uploading video for processing...");
-      setVideoUploadPercent(0);
+      setVideoState({ kind: "uploading", label: "Uploading video... 0%", percent: 0 });
       if (__DEV__) {
         console.info("[CreatorStep4Cover] source-upload-start", {
           jobId: intent.jobId,
         });
       }
       const handleUploadProgress = (progress: EventCoverVideoUploadProgress): void => {
-        setVideoUploadPercent(progress.percent);
-        setVideoStatusText(`Uploading video... ${progress.percent}%`);
+        setVideoState({
+          kind: "uploading",
+          label: `Uploading video... ${progress.percent}%`,
+          percent: progress.percent,
+        });
       };
-      await uploadEventCoverVideoSource({
+      const providerUploadResponse = await uploadEventCoverVideoSource({
         fileName: asset.fileName,
         mimeType: asset.mimeType,
         onProgress: handleUploadProgress,
@@ -354,14 +431,41 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
           jobId: intent.jobId,
         });
       }
-      setVideoStatusText("Upload complete. Compressing browser-safe video...");
-      setVideoUploadPercent(null);
+      const acknowledged = await acknowledgeEventCoverVideoSourceUploaded({
+        brandId: draft.brandId,
+        eventId,
+        jobId: intent.jobId,
+        providerUploadResponse,
+      });
+      setVideoState({
+        jobId: acknowledged.jobId,
+        kind: "processing",
+        label: acknowledged.stageLabel,
+        percent: acknowledged.progressPercent,
+      });
       if (__DEV__) {
         console.info("[CreatorStep4Cover] status-poll-start", {
           jobId: intent.jobId,
         });
       }
-      const status = await waitForEventCoverVideoReady(intent.jobId);
+      const status = await waitForEventCoverVideoReady(intent.jobId, {
+        onStatus: (nextStatus) => {
+          setVideoState({
+            jobId: nextStatus.jobId,
+            kind: "processing",
+            label: nextStatus.stageLabel,
+            percent: nextStatus.progressPercent,
+          });
+          if (__DEV__) {
+            console.info("[CreatorStep4Cover] status-poll-snapshot", {
+              jobId: nextStatus.jobId,
+              status: nextStatus.status,
+              stageLabel: nextStatus.stageLabel,
+              updatedAt: nextStatus.updatedAt,
+            });
+          }
+        },
+      });
       if (status.processedUrl === null) {
         throw new EventCoverVideoProcessingError(
           "processed_url_missing",
@@ -371,6 +475,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
       setMediaDisplayError(null);
       setVideoErrorText(null);
       setVideoUploadPercent(null);
+      setVideoState({ kind: "ready", label: status.stageLabel });
       updateDraft({
         coverMediaType: "video",
         coverMediaUrl: status.processedUrl,
@@ -381,7 +486,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
           : "Cover video processed.",
       );
     },
-    [coverMediaEventId, draft.brandId, isAuthReady, onShowToast, updateDraft],
+    [coverMediaEventId, draft.brandId, isAuthReady, onShowToast, setVideoState, updateDraft],
   );
 
   const eventIdForUpload = useCallback((): string | null => {
@@ -402,7 +507,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
     if (uploading) return;
     if (!isAuthReady) {
       const message = "Finishing sign-in before upload. Try again in a moment.";
-      setVideoStatusText(null);
+      setVideoState({ kind: "idle" });
       setVideoErrorText(message);
       onShowToast(message);
       return;
@@ -433,6 +538,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
     eventIdForUpload,
     isAuthReady,
     onShowToast,
+    setVideoState,
     showUploadError,
     uploadPickedAsset,
     uploading,
@@ -442,7 +548,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
     if (uploading) return;
     if (!isAuthReady) {
       const message = "Finishing sign-in before upload. Try again in a moment.";
-      setVideoStatusText(null);
+      setVideoState({ kind: "idle" });
       setVideoErrorText(message);
       onShowToast(message);
       return;
@@ -496,8 +602,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
             uri: asset.uri,
           });
         }
-        setVideoStatusText(null);
-        setVideoUploadPercent(null);
+        setVideoState({ kind: "idle" });
         setVideoErrorText(validation.message);
         onShowToast(validation.message);
         return;
@@ -508,7 +613,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
         coverMediaApplyMode,
         validation.uploadFields,
       );
-      setVideoStatusText(null);
+      setVideoState({ kind: "idle" });
     } catch (error) {
       if (error instanceof EventCoverMediaError) showUploadError(error);
       else showVideoProcessingError(error);
@@ -526,6 +631,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
     processPickedVideo,
     showVideoProcessingError,
     showUploadError,
+    setVideoState,
     uploading,
     isAuthReady,
   ]);
@@ -555,12 +661,82 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
 
   const handleRemoveCover = useCallback((): void => {
     setMediaDisplayError(null);
-    setVideoStatusText(null);
-    setVideoUploadPercent(null);
+    setVideoState({ kind: "idle" });
     setVideoErrorText(null);
     updateDraft({ coverMediaUrl: null, coverMediaType: null });
     onShowToast("Uploaded cover removed.");
-  }, [onShowToast, updateDraft]);
+  }, [onShowToast, setVideoState, updateDraft]);
+
+  const handleCheckVideoProcessingAgain = useCallback(async (): Promise<void> => {
+    if (videoProcessingState.kind !== "timeout") return;
+    const jobId = videoProcessingState.jobId;
+    setUploading(true);
+    onCoverVideoProcessingChange?.(true);
+    setVideoErrorText(null);
+    try {
+      const status = await waitForEventCoverVideoReady(jobId, {
+        onStatus: (nextStatus) => {
+          setVideoState({
+            jobId: nextStatus.jobId,
+            kind: "processing",
+            label: nextStatus.stageLabel,
+            percent: nextStatus.progressPercent,
+          });
+        },
+        pollIntervalMs: 2500,
+        timeoutMs: 30_000,
+      });
+      if (status.processedUrl === null) {
+        throw new EventCoverVideoProcessingError(
+          "processed_url_missing",
+          "Video processing finished without a playable cover.",
+          { lastStatus: status },
+        );
+      }
+      setMediaDisplayError(null);
+      updateDraft({
+        coverMediaType: "video",
+        coverMediaUrl: status.processedUrl,
+      });
+      setVideoState({ kind: "ready", label: status.stageLabel });
+      onShowToast(
+        status.applyMode === "published_manual"
+          ? "Video ready. Save changes to publish the new cover."
+          : "Cover video processed.",
+      );
+    } catch (error) {
+      showVideoProcessingError(error);
+    } finally {
+      setUploading(false);
+      onCoverVideoProcessingChange?.(false);
+    }
+  }, [
+    onCoverVideoProcessingChange,
+    onShowToast,
+    setVideoState,
+    showVideoProcessingError,
+    updateDraft,
+    videoProcessingState,
+  ]);
+
+  const handleCancelVideoProcessing = useCallback(async (): Promise<void> => {
+    if (videoProcessingState.kind !== "timeout") return;
+    setUploading(true);
+    try {
+      const status = await cancelEventCoverVideoJob(videoProcessingState.jobId);
+      setVideoState({
+        canRetry: true,
+        jobId: status.jobId,
+        kind: "failed",
+        label: status.stageLabel,
+      });
+      onShowToast("Video processing cancelled.");
+    } catch (error) {
+      showVideoProcessingError(error);
+    } finally {
+      setUploading(false);
+    }
+  }, [onShowToast, setVideoState, showVideoProcessingError, videoProcessingState]);
 
   const handleMediaRenderError = useCallback(
     (event: EventCoverMediaErrorEvent): void => {
@@ -649,6 +825,43 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
           <Text accessibilityRole="alert" style={styles.videoErrorText}>
             {videoErrorText}
           </Text>
+        ) : null}
+        {videoProcessingState.kind === "timeout" ? (
+          <View style={styles.videoRecoveryRow}>
+            <Button
+              label="Check again"
+              variant="secondary"
+              size="sm"
+              shape="square"
+              onPress={() => {
+                void handleCheckVideoProcessingAgain();
+              }}
+              disabled={uploading}
+              style={styles.videoRecoveryButton}
+            />
+            <Button
+              label="Replace video"
+              variant="ghost"
+              size="sm"
+              shape="square"
+              onPress={pickVideoCover}
+              disabled={uploading}
+              style={styles.videoRecoveryButton}
+            />
+            {videoProcessingState.lastStatus.canCancel ? (
+              <Button
+                label="Cancel processing"
+                variant="ghost"
+                size="sm"
+                shape="square"
+                onPress={() => {
+                  void handleCancelVideoProcessing();
+                }}
+                disabled={uploading}
+                style={styles.videoRecoveryButton}
+              />
+            ) : null}
+          </View>
         ) : null}
         {mediaDisplayError !== null ? (
           <Text accessibilityRole="alert" style={styles.mediaErrorText}>
@@ -750,6 +963,15 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     color: semantic.error,
     marginTop: spacing.xs,
+  },
+  videoRecoveryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  videoRecoveryButton: {
+    minWidth: 108,
   },
   comingSoonCaption: {
     fontSize: typography.caption.fontSize,

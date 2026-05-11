@@ -282,3 +282,175 @@ export function assertProcessedDerivative(input: {
   }
   return { ok: true, url: input.url, bytes, durationMs };
 }
+
+export type EventCoverVideoJobStatus =
+  | "source_uploading"
+  | "source_uploaded"
+  | "processing_queued"
+  | "processing"
+  | "ready"
+  | "failed"
+  | "cancelled"
+  | "applied";
+
+export type EventCoverVideoStatusPayload = {
+  jobId: string;
+  eventId: string;
+  brandId: string;
+  status: EventCoverVideoJobStatus;
+  applyMode: "draft_auto" | "published_manual";
+  stageLabel: string;
+  progressKind: "determinate" | "indeterminate" | "terminal";
+  progressPercent: number | null;
+  isTerminal: boolean;
+  canRetry: boolean;
+  canCheckAgain: boolean;
+  canCancel: boolean;
+  processedUrl: string | null;
+  processedMimeType: string | null;
+  processedBytes: number | null;
+  processedDurationMs: number | null;
+  failureCode: string | null;
+  failureMessage: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  sourceUploadedAt: string | null;
+  appliedAt: string | null;
+  cancelledAt: string | null;
+};
+
+export type EventCoverVideoReadyUpdateInput = {
+  applyMode: "draft_auto" | "published_manual" | string | null;
+  derivative: {
+    bytes: number;
+    durationMs: number;
+    url: string;
+  };
+  providerPayload: Record<string, unknown>;
+};
+
+export function eventCoverVideoReadyUpdate(input: EventCoverVideoReadyUpdateInput): Record<string, unknown> {
+  return {
+    processed_bytes: input.derivative.bytes,
+    processed_duration_ms: input.derivative.durationMs,
+    processed_mime_type: "video/mp4",
+    processed_url: input.derivative.url,
+    provider_payload: input.providerPayload,
+    completed_at: input.applyMode === "published_manual"
+      ? new Date().toISOString()
+      : null,
+    status: "ready",
+  };
+}
+
+type EventCoverVideoJobRow = {
+  id: string;
+  event_id: string;
+  brand_id: string;
+  status: string | null;
+  apply_mode: string | null;
+  processed_url?: string | null;
+  processed_mime_type?: string | null;
+  processed_bytes?: number | null;
+  processed_duration_ms?: number | null;
+  failure_code?: string | null;
+  failure_message?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  applied_at?: string | null;
+  cancelled_at?: string | null;
+  provider_payload?: unknown;
+};
+
+const stageForStatus = (
+  status: EventCoverVideoJobStatus,
+): {
+  label: string;
+  progressKind: "determinate" | "indeterminate" | "terminal";
+  progressPercent: number | null;
+} => {
+  switch (status) {
+    case "source_uploading":
+      return { label: "Uploading video...", progressKind: "determinate", progressPercent: 35 };
+    case "source_uploaded":
+      return {
+        label: "Upload complete. Preparing processing...",
+        progressKind: "indeterminate",
+        progressPercent: 45,
+      };
+    case "processing_queued":
+    case "processing":
+      return {
+        label: "Processing browser-safe video...",
+        progressKind: "indeterminate",
+        progressPercent: 70,
+      };
+    case "ready":
+      return { label: "Video ready.", progressKind: "terminal", progressPercent: 100 };
+    case "applied":
+      return { label: "Cover video updated.", progressKind: "terminal", progressPercent: 100 };
+    case "failed":
+      return { label: "Video processing failed.", progressKind: "terminal", progressPercent: null };
+    case "cancelled":
+      return {
+        label: "Video processing cancelled.",
+        progressKind: "terminal",
+        progressPercent: null,
+      };
+  }
+};
+
+const sourceUploadedAtFromPayload = (providerPayload: unknown): string | null => {
+  if (providerPayload === null || typeof providerPayload !== "object") return null;
+  const sourceUpload = (providerPayload as { source_upload?: unknown }).source_upload;
+  if (sourceUpload === null || typeof sourceUpload !== "object") return null;
+  const value = (sourceUpload as { acknowledged_at?: unknown }).acknowledged_at;
+  return typeof value === "string" ? value : null;
+};
+
+export function mapEventCoverVideoStatus(
+  job: EventCoverVideoJobRow,
+): EventCoverVideoStatusPayload {
+  const knownStatuses: EventCoverVideoJobStatus[] = [
+    "source_uploading",
+    "source_uploaded",
+    "processing_queued",
+    "processing",
+    "ready",
+    "failed",
+    "cancelled",
+    "applied",
+  ];
+  const status = knownStatuses.includes(job.status as EventCoverVideoJobStatus)
+    ? job.status as EventCoverVideoJobStatus
+    : "processing";
+  const stage = stageForStatus(status);
+  const isTerminal = ["ready", "failed", "cancelled", "applied"].includes(status);
+  const isActive = !isTerminal;
+  return {
+    appliedAt: job.applied_at ?? null,
+    applyMode: job.apply_mode === "published_manual" ? "published_manual" : "draft_auto",
+    brandId: job.brand_id,
+    canCancel: isActive,
+    canCheckAgain: isActive,
+    canRetry: status === "failed" || status === "cancelled",
+    cancelledAt: job.cancelled_at ?? null,
+    createdAt: job.created_at ?? null,
+    eventId: job.event_id,
+    failureCode: job.failure_code ?? null,
+    failureMessage: job.failure_message ?? null,
+    isTerminal,
+    jobId: job.id,
+    processedBytes: typeof job.processed_bytes === "number" ? job.processed_bytes : null,
+    processedDurationMs:
+      typeof job.processed_duration_ms === "number" ? job.processed_duration_ms : null,
+    processedMimeType: job.processed_mime_type ?? null,
+    processedUrl: job.processed_url ?? null,
+    progressKind: stage.progressKind,
+    progressPercent: stage.progressPercent,
+    sourceUploadedAt: sourceUploadedAtFromPayload(job.provider_payload),
+    stageLabel: stage.label,
+    status,
+    updatedAt: job.updated_at ?? null,
+  };
+}

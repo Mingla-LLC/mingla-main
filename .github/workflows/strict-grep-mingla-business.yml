@@ -45,7 +45,9 @@ on:
 #   - I-PROPOSED-M (i-proposed-m-persist-key-whitelist.mjs) — persist-key whitelist sync (META-ORCH-0744)
 #   - I-PROPOSED-N (i-proposed-n-transitional-exit-condition.mjs) — TRANSITIONAL exit-condition lint (META-ORCH-0744)
 #   - I-PROPOSED-X (i-proposed-x-web-deprecation.mjs) — web-export deprecation parser (META-ORCH-0744)
+#   - ORCH-0776 (orch-0776-video-processing-status-bridge.mjs) — event cover video processing status bridge
 #   - ORCH-0776D (orch-0776d-cancelled-at-schema.mjs) — event cover video cancelled_at schema/code parity
+#   - ORCH-0777 (orch-0777-ticket-checkout-production.mjs) — production ticket checkout + organizer order visibility
 #   - ORCH-0778 (orch-0778-web-stripe-native-import-gate.mjs) — Stripe React Native imports stay behind .native payment boundaries (re-armed by ORCH-0781)
 #
 # Future gates to register (proposed but not yet implemented):
@@ -332,6 +334,28 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0776D gate
         run: node .github/scripts/strict-grep/orch-0776d-cancelled-at-schema.mjs
+
+  orch-0776-video-processing-status-bridge:
+    name: "ORCH-0776: video processing status bridge guard"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0776 gate
+        run: node .github/scripts/strict-grep/orch-0776-video-processing-status-bridge.mjs
+
+  orch-0777-ticket-checkout-production:
+    name: "ORCH-0777: production ticket checkout and organizer order visibility"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0777 gate
+        run: node .github/scripts/strict-grep/orch-0777-ticket-checkout-production.mjs
 
   orch-0778-web-stripe-native-import-gate:
     name: "ORCH-0778: Stripe native imports stay behind .native boundaries"

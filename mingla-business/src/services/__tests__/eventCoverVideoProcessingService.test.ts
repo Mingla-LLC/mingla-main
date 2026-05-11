@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 import {
+  acknowledgeEventCoverVideoSourceUploaded,
+  cancelEventCoverVideoJob,
   createEventCoverVideoUploadIntent,
   EventCoverVideoProcessingError,
   fetchEventCoverVideoStatus,
   uploadEventCoverVideoSource,
+  waitForEventCoverVideoReady,
 } from "../eventCoverVideoProcessingService";
 import { supabase } from "../supabase";
 import { BusinessAuthNotReadyError } from "../../utils/authReadiness";
@@ -42,6 +45,8 @@ const createUploadTask = FileSystem.createUploadTask as unknown as jest.MockedFu
 describe("event cover video processing service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    invoke.mockReset();
+    createUploadTask.mockReset();
   });
 
   test("maps upload-intent unauthenticated response to auth-not-ready", async () => {
@@ -255,14 +260,26 @@ describe("event cover video processing service", () => {
     invoke.mockResolvedValue({
       data: {
         applyMode: "draft_auto",
+        brandId: "brand_1",
+        canCancel: false,
+        canCheckAgain: false,
+        canRetry: true,
+        createdAt: "2026-05-10T00:00:00.000Z",
+        eventId: "event_1",
         failureCode: "provider_failed",
         failureMessage: "Cloudinary failed.",
+        isTerminal: true,
         jobId: "job_1",
         processedBytes: null,
         processedDurationMs: null,
         processedMimeType: null,
         processedUrl: null,
+        progressKind: "terminal",
+        progressPercent: null,
+        sourceUploadedAt: null,
+        stageLabel: "Video processing failed.",
         status: "failed",
+        updatedAt: "2026-05-10T00:00:01.000Z",
       },
       error: null,
     });
@@ -297,6 +314,171 @@ describe("event cover video processing service", () => {
       name: "EventCoverVideoProcessingError",
       phase: "upload_intent",
       requestId: expect.any(String),
+    });
+  });
+
+  test("acknowledges source upload after Cloudinary accepts the source", async () => {
+    invoke.mockResolvedValue({
+      data: {
+        applyMode: "draft_auto",
+        brandId: "brand_1",
+        canCancel: true,
+        canCheckAgain: true,
+        canRetry: false,
+        eventId: "event_1",
+        failureCode: null,
+        failureMessage: null,
+        isTerminal: false,
+        jobId: "job_1",
+        processedBytes: null,
+        processedDurationMs: null,
+        processedMimeType: null,
+        processedUrl: null,
+        progressKind: "indeterminate",
+        progressPercent: 45,
+        sourceUploadedAt: "2026-05-10T00:00:00.000Z",
+        stageLabel: "Upload complete. Preparing processing...",
+        status: "source_uploaded",
+      },
+      error: null,
+    });
+
+    await expect(
+      acknowledgeEventCoverVideoSourceUploaded({
+        brandId: "brand_1",
+        eventId: "event_1",
+        jobId: "job_1",
+        providerUploadResponse: {
+          asset_id: "asset_1",
+          bytes: 1234,
+          duration: 8,
+          format: "mov",
+          public_id: "event-covers/raw/brand/event/job",
+          resource_type: "video",
+        },
+      }),
+    ).resolves.toMatchObject({
+      jobId: "job_1",
+      progressPercent: 45,
+      stageLabel: "Upload complete. Preparing processing...",
+      status: "source_uploaded",
+    });
+
+    expect(invoke).toHaveBeenCalledWith(
+      "event-cover-video-source-uploaded",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          brandId: "brand_1",
+          eventId: "event_1",
+          jobId: "job_1",
+          providerUploadResponse: expect.objectContaining({
+            asset_id: "asset_1",
+            public_id: "event-covers/raw/brand/event/job",
+          }),
+        }),
+      }),
+    );
+  });
+
+  test("waits with status callbacks and carries last status on timeout", async () => {
+    const snapshots = [
+      {
+        applyMode: "draft_auto",
+        brandId: "brand_1",
+        canCancel: true,
+        canCheckAgain: true,
+        canRetry: false,
+        eventId: "event_1",
+        isTerminal: false,
+        jobId: "job_1",
+        progressKind: "indeterminate",
+        progressPercent: 70,
+        stageLabel: "Processing browser-safe video...",
+        status: "processing",
+      },
+      {
+        applyMode: "draft_auto",
+        brandId: "brand_1",
+        canCancel: true,
+        canCheckAgain: true,
+        canRetry: false,
+        eventId: "event_1",
+        isTerminal: false,
+        jobId: "job_1",
+        progressKind: "indeterminate",
+        progressPercent: 70,
+        stageLabel: "Processing browser-safe video...",
+        status: "processing",
+      },
+    ];
+    invoke
+      .mockResolvedValueOnce({ data: snapshots[0], error: null })
+      .mockResolvedValueOnce({ data: snapshots[1], error: null });
+
+    const seen: string[] = [];
+    await expect(waitForEventCoverVideoReady("job_1", {
+      onStatus: (status) => seen.push(status.status),
+      pollIntervalMs: 1,
+      timeoutMs: 2,
+    })).rejects.toMatchObject({
+      code: "processing_timeout",
+      lastStatus: expect.objectContaining({
+        jobId: "job_1",
+        status: "processing",
+      }),
+      message: "Your video is still processing. You can check again in a moment.",
+    });
+    expect(seen.length).toBeGreaterThanOrEqual(1);
+    expect(seen[0]).toBe("processing");
+  });
+
+  test("wait resolves ready status and cancel returns enriched terminal status", async () => {
+    invoke
+      .mockResolvedValueOnce({
+        data: {
+          applyMode: "draft_auto",
+          brandId: "brand_1",
+          canCancel: false,
+          canCheckAgain: false,
+          canRetry: false,
+          eventId: "event_1",
+          isTerminal: true,
+          jobId: "job_1",
+          processedUrl: "https://cdn.example.com/processed.mp4",
+          progressKind: "terminal",
+          progressPercent: 100,
+          stageLabel: "Cover video updated.",
+          status: "applied",
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          applyMode: "draft_auto",
+          brandId: "brand_1",
+          canCancel: false,
+          canCheckAgain: false,
+          canRetry: true,
+          eventId: "event_1",
+          isTerminal: true,
+          jobId: "job_2",
+          progressKind: "terminal",
+          stageLabel: "Video processing cancelled.",
+          status: "cancelled",
+        },
+        error: null,
+      });
+
+    await expect(
+      waitForEventCoverVideoReady("job_1", { timeoutMs: 10 }),
+    ).resolves.toMatchObject({
+      processedUrl: "https://cdn.example.com/processed.mp4",
+      status: "applied",
+    });
+    await expect(cancelEventCoverVideoJob("job_2")).resolves.toMatchObject({
+      canRetry: true,
+      stageLabel: "Video processing cancelled.",
+      status: "cancelled",
     });
   });
 

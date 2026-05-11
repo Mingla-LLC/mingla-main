@@ -176,6 +176,35 @@ export default function EventOrdersListRoute(): React.ReactElement {
     );
   }
 
+  if (ordersQuery.isError) {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleBack}
+            accessibilityLabel="Back"
+          />
+          <Text style={styles.chromeTitle}>Orders</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <EmptyState
+            illustration="ticket"
+            title="Couldn't load orders"
+            description="Something went wrong loading orders. Pull to retry."
+          />
+        </View>
+      </View>
+    );
+  }
+
   if (event === null || typeof eventId !== "string") {
     return (
       <View

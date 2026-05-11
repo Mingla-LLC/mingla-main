@@ -1,9 +1,33 @@
-import type { DoorPaymentMethod, DoorSaleRecord } from "../store/doorSalesStore";
-import type { OrderRecord } from "../store/orderStore";
 import type { CheckoutPaymentMethod } from "../components/checkout/CartContext";
 import { normalizeCurrency } from "./currency";
 
 export type MoneySource = "order" | "door_sale" | "refund" | "legacy_brand";
+export type MoneyDoorPaymentMethod = "cash" | "card_reader" | "nfc" | "manual";
+
+type MoneyRefund = { amount?: number; amountGbp: number };
+
+type MoneyOrderRecord = {
+  id: string;
+  totalAtPurchase?: number;
+  totalGbpAtPurchase: number;
+  refundedAmount?: number;
+  refundedAmountGbp: number;
+  currency: string;
+  status: "paid" | "refunded_full" | "refunded_partial" | "cancelled";
+  paymentMethod: CheckoutPaymentMethod;
+  refunds: MoneyRefund[];
+};
+
+type MoneyDoorSaleRecord = {
+  id: string;
+  totalAtSale?: number;
+  totalGbpAtSale: number;
+  refundedAmount?: number;
+  refundedAmountGbp: number;
+  currency: string;
+  paymentMethod: MoneyDoorPaymentMethod;
+  refunds: MoneyRefund[];
+};
 
 export interface CurrencyMismatch {
   source: MoneySource;
@@ -28,7 +52,7 @@ export interface EventMoneySummary {
   doorRefunded: number;
   totalRefunded: number;
   payoutEstimate: number;
-  revenueByMethod: Partial<Record<CheckoutPaymentMethod | DoorPaymentMethod, number>>;
+  revenueByMethod: Partial<Record<CheckoutPaymentMethod | MoneyDoorPaymentMethod, number>>;
   byCurrency: CurrencyBreakdown[];
   mismatches: CurrencyMismatch[];
   currenciesPresent: string[];
@@ -56,14 +80,14 @@ const addCurrency = (
   map.set(currency, current);
 };
 
-export const orderLiveAmount = (order: OrderRecord): number =>
+export const orderLiveAmount = (order: MoneyOrderRecord): number =>
   Math.max(
     0,
     (order.totalAtPurchase ?? order.totalGbpAtPurchase) -
       (order.refundedAmount ?? order.refundedAmountGbp),
   );
 
-export const doorSaleLiveAmount = (sale: DoorSaleRecord): number =>
+export const doorSaleLiveAmount = (sale: MoneyDoorSaleRecord): number =>
   Math.max(
     0,
     (sale.totalAtSale ?? sale.totalGbpAtSale) -
@@ -75,8 +99,8 @@ export const refundAmount = (refund: { amount?: number; amountGbp: number }): nu
 
 export const summarizeEventMoney = (args: {
   expectedCurrency?: string | null;
-  orders: OrderRecord[];
-  doorSales: DoorSaleRecord[];
+  orders: MoneyOrderRecord[];
+  doorSales: MoneyDoorSaleRecord[];
 }): EventMoneySummary => {
   const expectedCurrency = normalizeCurrency(args.expectedCurrency);
   const byCurrency = new Map<string, CurrencyBreakdown>();
@@ -88,7 +112,7 @@ export const summarizeEventMoney = (args: {
   let doorRefunded = 0;
 
   const addRevenue = (
-    method: CheckoutPaymentMethod | DoorPaymentMethod,
+    method: CheckoutPaymentMethod | MoneyDoorPaymentMethod,
     amount: number,
   ): void => {
     revenueByMethod[method] = round2((revenueByMethod[method] ?? 0) + amount);

@@ -3,6 +3,7 @@ import {
   corsHeaders,
   isValidUuid,
   jsonResponse,
+  mapEventCoverVideoStatus,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
@@ -43,17 +44,5 @@ serve(async (req) => {
   const allowed = await requireEventManager(supabase, job.event_id, job.brand_id, userId);
   if (allowed instanceof Response) return allowed;
 
-  return jsonResponse({
-    jobId: job.id,
-    eventId: job.event_id,
-    brandId: job.brand_id,
-    status: job.status,
-    applyMode: job.apply_mode,
-    processedUrl: job.processed_url,
-    processedMimeType: job.processed_mime_type,
-    processedBytes: job.processed_bytes,
-    processedDurationMs: job.processed_duration_ms,
-    failureCode: job.failure_code,
-    failureMessage: job.failure_message,
-  });
+  return jsonResponse(mapEventCoverVideoStatus(job));
 });

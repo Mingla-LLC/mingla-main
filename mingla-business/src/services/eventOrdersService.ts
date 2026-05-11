@@ -4,7 +4,6 @@ import type { OrderRecord } from "../store/orderStore";
 interface OrderRow {
   id: string;
   event_id: string;
-  brand_id: string | null;
   buyer_email: string | null;
   buyer_name: string | null;
   buyer_phone_e164: string | null;
@@ -15,6 +14,7 @@ interface OrderRow {
   payment_status: string;
   confirmed_at: string | null;
   created_at: string;
+  events: { brand_id: null | string } | null;
   order_line_items: Array<{
     ticket_type_id: string;
     quantity: number;
@@ -66,7 +66,6 @@ export const fetchEventOrders = async (
     .select(`
       id,
       event_id,
-      brand_id,
       buyer_email,
       buyer_name,
       buyer_phone,
@@ -77,6 +76,7 @@ export const fetchEventOrders = async (
       payment_status,
       confirmed_at,
       created_at,
+      events!inner ( brand_id ),
       order_line_items (
         ticket_type_id,
         quantity,
@@ -93,7 +93,7 @@ export const fetchEventOrders = async (
   return ((data ?? []) as unknown as OrderRow[]).map((order) => ({
     id: order.id,
     eventId: order.event_id,
-    brandId: order.brand_id ?? "",
+    brandId: order.events?.brand_id ?? "",
     buyer: {
       name: order.buyer_name ?? "Anonymous",
       email: order.buyer_email ?? "",

@@ -7,7 +7,39 @@
 
 ---
 
+## ACTIVE (post ORCH-0777 CLOSE 2026-05-11)
+
+### I-PROPOSED-AG ORGANIZER_ORDER_BRAND_FROM_EVENT_AND_NOTIFICATION_CHILD_ROWS_AUTHORITATIVE
+
+**Statement:** Mingla Business organizer order queries must derive an order's brand from the event relation (`orders.event_id -> events.brand_id`), never from a direct `orders.brand_id` field. For ticket confirmation delivery state, child rows in `ticket_order_notifications` are the authoritative ledger; parent `orders.notification_status` is a rollup and must not be treated as more truthful than child email/SMS rows.
+
+**Rationale:** ORCH-0777 proved production `orders.brand_id` does not exist, so selecting it made organizer Orders falsely empty even when durable checkout rows existed. The same close chain proved child notification rows can show the real mixed state while parent rollup can lag or be stale; treating the rollup as canonical would create false failures or false success.
+
+**Enforcement mechanism:** `mingla-business/src/services/eventOrdersService.ts` uses an `events!inner(brand_id)` embed and maps `OrderRecord.brandId` from `order.events?.brand_id`. `.github/scripts/strict-grep/orch-0777-ticket-checkout-production.mjs`, `.github/workflows/strict-grep-mingla-business.yml`, and `mingla-business/src/services/__tests__/ticketCheckoutMigrationGuards.test.ts` guard against reintroducing direct `orders.brand_id` selection or mapping.
+
+**Test that catches regression:** `cd mingla-business && npx jest src/services/__tests__/ticketCheckoutMigrationGuards.test.ts --runInBand` and `node .github/scripts/strict-grep/orch-0777-ticket-checkout-production.mjs` must pass. A regression that re-adds `brand_id` to the `from("orders")` select, local `OrderRow`, or mapper fails these gates.
+
+**Codified:** 2026-05-11 by ORCH-0777 / DEC-139. Evidence: `Mingla_Artifacts/reports/QA_ORCH-0777_REAL_DEVICE_ORDER_VISIBILITY_AND_NOTIFICATION_REVIVAL.md` and `Mingla_Artifacts/CLOSE_NOTE_ORCH-0777.md`.
+
+**Scope exclusions:** This invariant does not implement the organizer "Resend ticket" CTA or rollup recompute. Those belong to ORCH-0782. Twilio sender/toll-free configuration remains an external provider lane unless future evidence proves a Mingla code regression.
+
+---
+
 ## ACTIVE (post META-ORCH-0780 CLOSE 2026-05-10)
+
+### I-PROPOSED-AF SUPABASE_AUTH_WEB_REDIRECT_ALLOWLIST_PER_SURFACE
+
+**Statement:** Any Mingla web surface that calls Supabase `signInWithOAuth` must have its public HTTPS production domain and deployment preview patterns present in the Supabase Auth redirect allow-list, and the Supabase Auth Site URL must be a public HTTPS web fallback appropriate for that surface. Expo schemes such as `exp://*` may be retained for Expo/native development redirects, but must never be the project-wide Site URL fallback for a browser OAuth flow.
+
+**Rationale:** ORCH-0779 proved the business web Google sign-in callback failed because Supabase Auth project `gqnoajqerqhnvulmnyvv` used `site_url = "exp://*"` and lacked business web production/preview redirect entries. When Web Google OAuth returned from account selection, Supabase rejected the requested web redirect and fell back to the Expo Go scheme, producing Safari's invalid-address failure.
+
+**Enforcement mechanism:** Operational configuration contract in `DEC-138`: before any web surface ships or changes OAuth callback domains, verify Supabase Auth `site_url` and `uri_allow_list` include that surface's production custom domain, wildcard path, Vercel preview pattern, and local web callback pattern. Future implementation/spec prompts that touch web OAuth must require a config-readback evidence row, not just app-code inspection.
+
+**Test that catches regression:** Manual/operator gate until ORCH-0781 or a future auth-config automation cycle adds an automated config snapshot: a config readback must show `site_url = https://business.usemingla.com` for the current business web surface and allow-list entries covering `https://business.usemingla.com`, `https://business.usemingla.com/**`, `https://mingla-business-seth-ogievas-projects.vercel.app/`, `https://mingla-business-seth-ogievas-projects.vercel.app/**`, `https://mingla-business-*-seth-ogievas-projects.vercel.app`, `https://mingla-business-*-seth-ogievas-projects.vercel.app/**`, and `http://localhost:8091/**`.
+
+**Codified:** 2026-05-11 by ORCH-0779 / DEC-138. Evidence: `.worktrees/orch-0779-business-android-google-signin-developer-error/Mingla_Artifacts/reports/QA_ORCH-0779_BUSINESS_ANDROID_GOOGLE_SIGNIN_DEVELOPER_ERROR.md` §12 and `.worktrees/orch-0779-business-android-google-signin-developer-error/Mingla_Artifacts/reports/FORENSIC_HYPOTHESIS_ORCH-0779_WEB_CALLBACK.md`.
+
+**Scope exclusions:** This invariant does not govern native Android/iOS ID-token sign-in, Google Cloud OAuth package/SHA tuples, Stripe web import boundaries, or checkout live-fire behavior.
 
 ### I-PROPOSED-AE STRIPE_REACT_NATIVE_NATIVE_BOUNDARY_ONLY
 
@@ -19,7 +51,7 @@
 
 **Test that catches regression:** `cd mingla-business && npm run test:orch-0778` must pass on the clean tree and must fail with exit 1 if any non-`.native` app/source file imports `@stripe/stripe-react-native`. QA additionally verified `npx expo export --platform web` succeeds and the built web bundle contains zero `stripe-react-native`, `codegenNativeComponent`, or `StripeProvider`.
 
-**Codified:** 2026-05-10 by ORCH-0778 / DEC-137. Evidence: `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0778_ORCH0777_WEB_EXPORT_STRIPE_NATIVE_IMPORT_GATE.md`, `Mingla_Artifacts/reports/QA_ORCH-0778_ORCH0777_WEB_EXPORT_STRIPE_NATIVE_IMPORT_GATE.md`, and `Mingla_Artifacts/CLOSE_NOTE_ORCH-0778.md`.
+**Codified:** 2026-05-10 (DEC-137, ORCH-0778); re-armed 2026-05-11 (ORCH-0781). Evidence: `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0778_ORCH0777_WEB_EXPORT_STRIPE_NATIVE_IMPORT_GATE.md`, `Mingla_Artifacts/reports/QA_ORCH-0778_ORCH0777_WEB_EXPORT_STRIPE_NATIVE_IMPORT_GATE.md`, `Mingla_Artifacts/CLOSE_NOTE_ORCH-0778.md`, `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0781_CLEAN_TREE_STRIPE_WEB_IMPORT_GATE_REGRESSION.md`, `Mingla_Artifacts/reports/QA_ORCH-0781_CLEAN_TREE_STRIPE_WEB_IMPORT_GATE_REGRESSION.md`, and `Mingla_Artifacts/CLOSE_NOTE_ORCH-0781.md`.
 
 **Scope exclusions:** Native iOS/Android PaymentSheet live-fire remains ORCH-0777 close responsibility. This invariant only governs web bundle import safety and platform-boundary preservation; it does not close ORCH-0777 backend checkout, QR pepper, B2 RLS, Resend/Twilio, scanner, or native live-fire gates.
 
@@ -100,6 +132,31 @@ Two derived rules:
 **Codified:** 2026-05-10 by META-ORCH-0755 Step 8 / DEC-135. Operator directive: "best worktree strategy to implement across all claude and codex skills that creates sync and coordination across skills, but also makes sure that one working tree is used for related work until it closes."
 
 Full strategy reference: `Mingla_Artifacts/WORKTREE_STRATEGY.md`.
+
+---
+
+## ACTIVE (post ORCH-0776 CLOSE 2026-05-11)
+
+### I-PROPOSED-AH PROCESSED_EVENT_COVER_VIDEO_ONLY
+
+**Statement:** Mingla Business must never publish a raw phone video upload as `events.cover_media_url`. Event cover videos reach public cover surfaces only after the event-cover-video job reaches a processed `ready` or `applied` state and the URL is a browser-safe processed derivative.
+
+**Authority:** `supabase/functions/_shared/eventCoverVideo.ts`, `supabase/functions/event-cover-video-webhook/index.ts`, `supabase/functions/event-cover-video-apply/index.ts`, and `mingla-business/src/services/eventCoverVideoProcessingService.ts` own the processing/status contract. `mingla-business/src/components/event/CreatorStep4Cover.tsx` owns the user-facing upload/status/recovery UI.
+
+**Rationale:** ORCH-0776 proved the old event-cover flow could leave organisers waiting behind misleading processing copy and could not rely on a durable source-upload/status bridge. The close locks the replacement contract: real upload progress only during source upload, honest indeterminate processing status afterward, and public playback from processed Cloudinary MP4 derivatives only.
+
+**Enforcement:**
+1. The source-upload acknowledgement function never writes `events.cover_media_url`.
+2. The webhook ready path writes only live-schema columns accepted by `public.event_cover_video_jobs` and validates processed derivative shape before cover application.
+3. The apply path reads a `ready` job row rather than trusting raw client/provider upload output.
+4. Strict-grep jobs protect the ORCH-0776 status bridge, ORCH-0776A progress honesty, ORCH-0776D cancellation schema, and ORCH-0770 browser-safe processing guard.
+5. Client UI distinguishes real byte progress from indeterminate processing and exposes recovery/cancel/status recheck behavior without fake percentages.
+
+**Test that catches a regression:** `cd mingla-business && npm run test:orch-0776`, `npm run test:orch-0776a`, `npm run test:orch-0776d`, `npm run test:orch-0770`, plus `deno test --allow-env --allow-net supabase/functions/_shared/eventCoverVideo.test.ts` and Deno checks for the six event-cover-video function entrypoints.
+
+**Established:** 2026-05-11 by ORCH-0776 CLOSE. DEC-140 logged.
+
+**Cross-references:** `reports/INVESTIGATION_ORCH-0776_EVENT_COVER_VIDEO_PROCESSING_PROGRESS_STALL.md`, `specs/SPEC_ORCH-0776_EVENT_COVER_VIDEO_PROCESSING_STATUS_AND_PROGRESS.md`, `reports/IMPLEMENTATION_ORCH-0776_EVENT_COVER_VIDEO_PROCESSING_SPEED_AND_STATUS.md`, `reports/QA_ORCH-0776_EVENT_COVER_VIDEO_PROCESSING_SPEED_AND_STATUS_RETEST.md`.
 
 ---
 
