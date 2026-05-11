@@ -18,6 +18,12 @@ import { supabase } from "../services/supabase";
 import { ensureCreatorAccount } from "../services/creatorAccount";
 import { tryRecoverAccountIfDeleted } from "../hooks/useAccountDeletion";
 import { clearAllStores } from "../utils/clearAllStores";
+import {
+  deriveBusinessAuthStatus,
+  hasUsableBusinessSession,
+  isBusinessAuthReady,
+  type BusinessAuthStatus,
+} from "../utils/authReadiness";
 // ORCH-0740 Cycle 1: clear React Query cache on signOut (Constitutional #6).
 // Companion to clearAllStores() — Zustand was previously the only layer reset
 // on signOut, leaving React Query cache as a Constitutional #6 leak (HF-1
@@ -64,6 +70,10 @@ type AuthContextValue = {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  authStatus: BusinessAuthStatus;
+  isAuthReady: boolean;
+  hasUsableSession: boolean;
+  authError: Error | null;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signInWithApple: () => Promise<{ error: Error | null }>;
   /**
@@ -98,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<Error | null>(null);
   // Cycle 14 — D-CYCLE14-FOR-6 + I-35: recover-on-sign-in flag.
   const [lastRecoveryEvent, setLastRecoveryEvent] = useState<{
     recoveredAt: string;
@@ -110,6 +121,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
 
     const bootstrap = async () => {
+      if (__DEV__) {
+        console.info("[auth] bootstrap-start");
+      }
       const {
         data: { session: s },
         error,
@@ -117,11 +131,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
       if (error) {
         console.warn("[auth] getSession", error.message);
+        setAuthError(error);
         setLoading(false);
         return;
       }
+      setAuthError(null);
       setSession(s);
       setUser(s?.user ?? null);
+      if (__DEV__) {
+        console.info(s?.user ? "[auth] bootstrap-ready" : "[auth] bootstrap-no-session");
+      }
       if (s?.user) {
         // ORCH-0743 / Note A: wrap ensureCreatorAccount so a creator_accounts
         // upsert error is surfaced (Const #3) without aborting auth bootstrap.
@@ -151,6 +170,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, s) => {
       if (!mounted) return;
+      if (__DEV__) {
+        console.info("[auth] auth-event", {
+          event: _event,
+          hasSession: s !== null,
+          hasUser: s?.user !== undefined,
+        });
+      }
+      setAuthError(null);
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
@@ -181,6 +208,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Defensive Constitution #6 coverage — clears stores even when
         // signout happens server-side (token revoked, session expired)
         // without going through our signOut() button.
+        if (__DEV__) {
+          console.info("[auth] signed-out-store-clear");
+        }
         clearAllStores();
         // ORCH-0740 Cycle 1: companion to clearAllStores() — also clear RQ
         // cache when signOut happens server-side (closes HF-1 from ORCH-0738).
@@ -489,11 +519,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryClient.clear();
   }, []);
 
+  const authStatus = useMemo(
+    () =>
+      deriveBusinessAuthStatus({
+        authError,
+        loading,
+        session,
+        user,
+      }),
+    [authError, loading, session, user],
+  );
+  const hasUsableSession = useMemo(
+    () => hasUsableBusinessSession(session),
+    [session],
+  );
+  const isAuthReady = useMemo(
+    () => isBusinessAuthReady(authStatus, session),
+    [authStatus, session],
+  );
+
   const value = useMemo(
     () => ({
       user,
       session,
       loading,
+      authStatus,
+      isAuthReady,
+      hasUsableSession,
+      authError,
       signInWithGoogle,
       signInWithApple,
       signInWithEmail,
@@ -506,6 +559,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       session,
       loading,
+      authStatus,
+      isAuthReady,
+      hasUsableSession,
+      authError,
       signInWithGoogle,
       signInWithApple,
       signInWithEmail,

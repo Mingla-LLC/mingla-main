@@ -18,6 +18,12 @@ verify_jwt = true
 [functions.ticketmaster-events]
 verify_jwt = false
 
+# ORCH-0770: Cloudinary is a third-party webhook sender and cannot provide
+# Supabase user JWTs. The gateway is public; the function authenticates
+# requests with Cloudinary's signed notification headers.
+[functions.event-cover-video-webhook]
+verify_jwt = false
+
 # ORCH-0737 v2 patch (post-smoke 2026-05-06): wall-clock limit bump to 200s
 # DEFERRED — `max_request_duration_seconds` is not recognised by the local
 # supabase CLI version; removed 2026-05-06 to unblock ORCH-0734 deploy.

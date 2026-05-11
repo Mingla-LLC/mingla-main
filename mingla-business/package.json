@@ -20,7 +20,11 @@
     "test:orch-0756b": "npx jest serverDraftEventMapper.test serverDraftLifecycleGuards.test",
     "test:orch-0758a": "npx jest serverDraftEventMapper.test serverDraftLifecycleGuards.test eventCoverMediaService.test eventCoverMedia.test publishedEventEditGuards.test draftEventPristine.test",
     "test:orch-0759": "node ../.github/scripts/strict-grep/i-proposed-y-platform-web-url-from-env.mjs --self-test && node ../.github/scripts/strict-grep/i-proposed-y-platform-web-url-from-env.mjs && npx jest publicUrls.test eventDraftsPublishTickets.test serverDraftEventMapper.test serverDraftLifecycleGuards.test",
-    "test:orch-0763": "npx jest businessEventsPublish.test publicEventsService.test sharePublicUrl.test eventDraftsPublishTickets.test serverDraftEventMapper.test serverDraftLifecycleGuards.test serverDraftAutosaveGuards.test"
+    "test:orch-0763": "npx jest businessEventsPublish.test publicEventsService.test sharePublicUrl.test eventDraftsPublishTickets.test serverDraftEventMapper.test serverDraftLifecycleGuards.test serverDraftAutosaveGuards.test",
+    "test:orch-0770": "node ../.github/scripts/strict-grep/orch-0770-event-cover-video-processing.mjs && npx jest eventCoverMedia.test eventCoverNativeVideo.test eventCoverVideoProcessingService.test && npx tsc --noEmit",
+    "test:orch-0776a": "node ../.github/scripts/strict-grep/orch-0776a-video-upload-progress-honesty.mjs && npx jest eventCoverVideoProcessingService.test",
+    "test:orch-0776d": "node ../.github/scripts/strict-grep/orch-0776d-cancelled-at-schema.mjs && jest --runInBand src/services/__tests__/eventCoverVideoProcessingService.test.ts",
+    "test:orch-0776": "node ../.github/scripts/strict-grep/orch-0776-video-processing-status-bridge.mjs && npx jest eventCoverVideoProcessingService.test"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -41,6 +45,7 @@
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.20",
+    "expo-file-system": "~19.0.21",
     "expo-font": "~14.0.11",
     "expo-haptics": "~15.0.8",
     "expo-image-picker": "~17.0.11",
