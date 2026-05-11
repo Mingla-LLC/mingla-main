@@ -1,9 +1,9 @@
 # Implementation Report: ORCH-0777 Persist-Failure Cancel Scope Rework
 
-> Date: 2026-05-11  
-> Owner: Codex `implementor-mingla`  
-> Working tree: main (`/Users/sethogieva/Desktop/mingla-main`)  
-> Status: **implemented and verified**  
+> Date: 2026-05-11
+> Owner: Codex `implementor-mingla`
+> Working tree: main (`/Users/sethogieva/Desktop/mingla-main`)
+> Status: **implemented and verified**
 > Source prompt: `Mingla_Artifacts/prompts/IMPLEMENTOR_REWORK_ORCH-0777_PERSIST_FAILURE_CANCEL_SCOPE.md`
 
 ## 1. Layman Summary
