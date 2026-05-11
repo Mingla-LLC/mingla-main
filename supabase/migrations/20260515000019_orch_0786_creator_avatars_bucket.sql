@@ -7,20 +7,66 @@
 --
 -- Idempotent: safe to re-apply against production where the bucket + policies
 -- already exist.
+--
+-- Column-existence guards mirror the ORCH-0758A event_covers migration so this
+-- replays cleanly against older Supabase Postgres baseline images in CI (where
+-- storage.buckets.public / file_size_limit / allowed_mime_types may not yet exist).
 
--- 1. Bucket: insert only if absent
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES (
-  'creator_avatars',
-  'creator_avatars',
-  true,
-  10485760, -- 10 MB
-  ARRAY['image/jpeg','image/png','image/webp']
-)
-ON CONFLICT (id) DO UPDATE
-  SET public = EXCLUDED.public,
-      file_size_limit = EXCLUDED.file_size_limit,
-      allowed_mime_types = EXCLUDED.allowed_mime_types;
+DO $$
+DECLARE
+  has_public boolean;
+  has_file_size_limit boolean;
+  has_allowed_mime_types boolean;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'storage'
+      AND table_name = 'buckets'
+      AND column_name = 'public'
+  ) INTO has_public;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'storage'
+      AND table_name = 'buckets'
+      AND column_name = 'file_size_limit'
+  ) INTO has_file_size_limit;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'storage'
+      AND table_name = 'buckets'
+      AND column_name = 'allowed_mime_types'
+  ) INTO has_allowed_mime_types;
+
+  IF has_public AND has_file_size_limit AND has_allowed_mime_types THEN
+    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    VALUES (
+      'creator_avatars',
+      'creator_avatars',
+      true,
+      10485760, -- 10 MB
+      ARRAY['image/jpeg','image/png','image/webp']
+    )
+    ON CONFLICT (id) DO UPDATE
+      SET public = EXCLUDED.public,
+          file_size_limit = EXCLUDED.file_size_limit,
+          allowed_mime_types = EXCLUDED.allowed_mime_types;
+  ELSIF has_public THEN
+    INSERT INTO storage.buckets (id, name, public)
+    VALUES ('creator_avatars', 'creator_avatars', true)
+    ON CONFLICT (id) DO UPDATE
+      SET public = EXCLUDED.public;
+  ELSE
+    INSERT INTO storage.buckets (id, name)
+    VALUES ('creator_avatars', 'creator_avatars')
+    ON CONFLICT (id) DO UPDATE
+      SET name = EXCLUDED.name;
+  END IF;
+END $$;
 
 -- 2. RLS policies on storage.objects (drop-then-create for idempotency)
 
