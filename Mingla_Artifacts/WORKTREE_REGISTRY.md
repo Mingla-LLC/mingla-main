@@ -23,7 +23,7 @@ Strategy reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md). Codified by ME
 
 | Worktree path | Branch | ORCH-ID | Closed (date) | Merge SHA | CLOSE entry |
 |---------------|--------|---------|---------------|-----------|-------------|
-| _none yet_ | — | — | — | — | — |
+| `.worktrees/orch-0781-clean-tree-stripe-web-import-regression/` | `orch/0781-clean-tree-stripe-web-import-regression` | ORCH-0781 | 2026-05-11 | `9b65912f` | `Mingla_Artifacts/CLOSE_NOTE_ORCH-0781.md` |
 
 **Retention:** entries here for 14 days after CLOSE, then move to the archive section. The retention window lets the operator and orchestrator inspect recent merges without consulting raw git history.
 

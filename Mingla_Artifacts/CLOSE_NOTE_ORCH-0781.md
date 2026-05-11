@@ -52,9 +52,12 @@ Paste the URLs here when available:
 - C-781-1 job (target evidence): https://github.com/Mingla-LLC/mingla-main/actions/runs/25650581900/job/75287924718 — `ORCH-0778: Stripe native imports stay behind .native boundaries` — **success**
   - Sibling ORCH-0776D job present and passing in same run: https://github.com/Mingla-LLC/mingla-main/actions/runs/25650581900/job/75287924716 (confirms ORCH-0781 added the ORCH-0778 job without replacing ORCH-0776D)
   - Overall run `conclusion = failure` is driven by 4 pre-existing Seth gate failures unrelated to ORCH-0781: I-PROPOSED-A (job `75287924637`), I-PROPOSED-R (`75287924659`), I-PROPOSED-K (`75287924700`), I-PROPOSED-N (`75287924727`). These four were already red on Seth before ORCH-0781 branched and are out of scope for this dispatch.
-- C-781-3 push-run URL: _pending merge to `Seth` or `main` once unrelated dirty ORCH-0777 / ORCH-0779 / product work is isolated_
+- C-781-3 push run: https://github.com/Mingla-LLC/mingla-main/actions/runs/25650854329 (`Seth`, event: `push`, head `9b65912f`)
+  - Target ORCH-0778 job: https://github.com/Mingla-LLC/mingla-main/actions/runs/25650854329/job/75288692678 — `ORCH-0778: Stripe native imports stay behind .native boundaries` — **success**
+  - Sibling ORCH-0776D job present and passing: https://github.com/Mingla-LLC/mingla-main/actions/runs/25650854329/job/75288692680 (confirms ORCH-0781 kept additive sibling coverage on push, not replacement)
+  - Overall run is not ORCH-0781-green because unrelated pre-existing Seth gates are red, including I-PROPOSED-A (`75288692574`), I-PROPOSED-R (`75288692630`), I-PROPOSED-K (`75288692664`), and I-PROPOSED-N (`75288692641`). These remain out of scope for this dispatch.
 
-These are not close blockers because QA proved the gate logic and workflow structure locally; they are external Actions receipt capture. C-781-1 is now captured; C-781-3 will be captured automatically by the `[main, Seth]` push trigger after the merge step that the dirty-tree hard guard currently blocks.
+These are not close blockers because QA proved the gate logic and workflow structure locally; they are external Actions receipt capture. C-781-1 and C-781-3 are now captured. The strict-grep workflow's overall red conclusion is driven by unrelated Seth gates, while the ORCH-0781 target evidence is green.
 
 ## Deploy Notes
 
@@ -62,7 +65,7 @@ No Supabase migration, Edge Function deploy, provider mutation, EAS OTA, or nati
 
 ## Lock-In Status
 
-Implementation branch commit `14c3b59d` is close-ready, and close artifact commit `cc1dfabe` has been pushed to `origin/orch/0781-clean-tree-stripe-web-import-regression`. This branch push does not satisfy C-781-3 because the workflow's new `push` trigger intentionally targets only `[main, Seth]`; C-781-3 must be captured after merge/push to one of those branches. The main checkout currently contains unrelated dirty ORCH-0777/0779/product work, including files that overlap the ORCH-0781 implementation surface, so the final merge/remove step must wait until those unrelated changes are isolated or committed by their owners. Until then, `WORKTREE_REGISTRY.md` marks the worktree as `CLOSED PASS / branch pushed / merge-remove pending`.
+Implementation branch commit `14c3b59d` is merged to `Seth` by merge commit `9b65912f`, and close-evidence commit `bc64e241` is included in that merge. C-781-1 and C-781-3 are both captured. The ORCH-0781 worktree/branch may now be removed locally; no Supabase, EAS, provider, product-code deploy, or mobile OTA action belongs to this close.
 
 Recommended commit message for the close artifact sync:
 
