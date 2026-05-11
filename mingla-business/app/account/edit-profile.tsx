@@ -45,7 +45,8 @@ import {
   useCreatorAccount,
   useUpdateCreatorAccount,
 } from "../../src/hooks/useCreatorAccount";
-import { supabase } from "../../src/services/supabase";
+import { uploadCreatorAvatar } from "../../src/services/creatorAvatarService";
+import { CreatorAvatarError } from "../../src/utils/creatorAvatarRules";
 
 import { Button } from "../../src/components/ui/Button";
 import { ConfirmDialog } from "../../src/components/ui/ConfirmDialog";
@@ -73,6 +74,33 @@ export default function EditProfileRoute(): React.ReactElement {
     visible: false,
     message: "",
   });
+  // ORCH-0786 — render-only cache-bust token. Bumped after a successful upload
+  // and on onError retry. NEVER persisted into creator_accounts.avatar_url
+  // (I-PROPOSED-AE: STORAGE-URL-PERSISTED-WITHOUT-CACHE-BUSTER).
+  const [avatarRenderToken, setAvatarRenderToken] = useState<number | null>(
+    null,
+  );
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState<boolean>(false);
+
+  const avatarImageSource = useMemo<{ uri: string } | null>(() => {
+    if (photoUri === null || photoUri.length === 0) return null;
+    return {
+      uri:
+        avatarRenderToken === null
+          ? photoUri
+          : `${photoUri}${photoUri.includes("?") ? "&" : "?"}t=${avatarRenderToken}`,
+    };
+  }, [photoUri, avatarRenderToken]);
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [photoUri]);
+
+  // Save CTA is reserved for name edits. Avatar auto-saves on pick.
+  const nameDirty = useMemo<boolean>(
+    () => name.trim() !== (account?.display_name ?? "").trim(),
+    [name, account?.display_name],
+  );
 
   // Hydrate form once account row resolves
   useEffect(() => {
@@ -154,33 +182,36 @@ export default function EditProfileRoute(): React.ReactElement {
     const asset = result.assets[0];
     setUploadingPhoto(true);
     try {
-      const ext = asset.uri.split(".").pop()?.toLowerCase() ?? "jpg";
-      const validExt = ["jpg", "jpeg", "png", "webp"].includes(ext)
-        ? ext === "jpeg"
-          ? "jpg"
-          : ext
-        : "jpg";
-      const path = `${user.id}.${validExt}`;
-      const response = await fetch(asset.uri);
-      const blob = await response.blob();
-      const { error: uploadError } = await supabase.storage
-        .from("creator_avatars")
-        .upload(path, blob, {
-          upsert: true,
-          contentType: blob.type !== "" ? blob.type : `image/${validExt}`,
-        });
-      if (uploadError) throw uploadError;
-      const { data: publicUrlData } = supabase.storage
-        .from("creator_avatars")
-        .getPublicUrl(path);
-      // Cache-bust so the new image renders even though the URL is unchanged
-      setPhotoUri(`${publicUrlData.publicUrl}?t=${Date.now()}`);
-    } catch (_err) {
-      showToast("Couldn't upload photo. Tap to try again.");
+      const { publicUrl } = await uploadCreatorAvatar(
+        user.id,
+        {
+          uri: asset.uri,
+          mimeType: asset.mimeType ?? null,
+          fileName: asset.fileName ?? null,
+          fileSize: asset.fileSize ?? null,
+        },
+        { previousPublicUrl: account?.avatar_url ?? null },
+      );
+      // Persist canonical URL only — render-time cache-bust lives in avatarImageSource.
+      setPhotoUri(publicUrl);
+      setAvatarRenderToken(Date.now());
+      // Auto-persist avatar_url so storage bytes and DB row commit together.
+      // Save CTA is reserved for name edits (handleSave below).
+      await updateAccount({
+        display_name: (account?.display_name ?? name).trim(),
+        avatar_url: publicUrl,
+      });
+      showToast("Photo updated.");
+    } catch (err) {
+      if (err instanceof CreatorAvatarError) {
+        showToast(err.message);
+      } else {
+        showToast("Couldn't upload photo. Tap to try again.");
+      }
     } finally {
       setUploadingPhoto(false);
     }
-  }, [user, showToast]);
+  }, [user, photoGate, account, name, updateAccount, showToast]);
 
   const handleSave = useCallback(async (): Promise<void> => {
     const trimmedName = name.trim();
@@ -296,8 +327,18 @@ export default function EditProfileRoute(): React.ReactElement {
               pressed && styles.avatarWrapPressed,
             ]}
           >
-            {photoUri !== null && photoUri.length > 0 ? (
-              <Image source={{ uri: photoUri }} style={styles.avatarImage} />
+            {avatarImageSource !== null && !avatarLoadFailed ? (
+              <Image
+                source={avatarImageSource}
+                style={styles.avatarImage}
+                onError={() => {
+                  setAvatarLoadFailed(true);
+                  showToast(
+                    "Couldn't show your photo. Tap the avatar to retry.",
+                  );
+                }}
+                accessibilityIgnoresInvertColors
+              />
             ) : (
               <View style={styles.avatarFallback}>
                 <Text style={styles.avatarInitials}>{initials}</Text>
@@ -353,17 +394,19 @@ export default function EditProfileRoute(): React.ReactElement {
           </Text>
         </View>
 
-        {/* Save CTA */}
-        <View style={styles.saveRow}>
-          <Button
-            label={updating ? "Saving..." : "Save"}
-            onPress={handleSave}
-            variant="primary"
-            size="md"
-            fullWidth
-            disabled={updating || uploadingPhoto}
-          />
-        </View>
+        {/* Save CTA — only when the name has unsaved edits (avatar auto-saves on pick) */}
+        {nameDirty ? (
+          <View style={styles.saveRow}>
+            <Button
+              label={updating ? "Saving..." : "Save"}
+              onPress={handleSave}
+              variant="primary"
+              size="md"
+              fullWidth
+              disabled={updating || uploadingPhoto}
+            />
+          </View>
+        ) : null}
 
         <View style={styles.deleteAccountRow}>
           <Button
