@@ -179,9 +179,9 @@ assertIncludes(
   "historical deploy report with DB-level QR pepper instructions must be explicitly marked superseded",
 );
 assertIncludes(
-  "Mingla_Artifacts/prompts/OPERATOR_ORCH-0777_PRODUCTION_CONFIG_B2_AND_LIVE_FIRE_GATE.md",
+  "Mingla_Artifacts/reports/TEST_REPORT_RETEST_ORCH-0777_QR_PEPPER_SESSION_GUC.md",
   "Do not clear QR pepper through database-level Postgres configuration",
-  "current operator live-fire prompt must not route QR pepper through database-level config",
+  "tracked QR pepper retest evidence must preserve the operator guard against database-level config",
 );
 
 assertNotIncludes(
