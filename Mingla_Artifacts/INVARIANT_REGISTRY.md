@@ -7,6 +7,48 @@
 
 ---
 
+## ACTIVE (post ORCH-0789 + ORCH-0790 + ORCH-0791 combined CLOSE 2026-05-11)
+
+Three invariants introduced by SPEC §4 of ORCH-0789 + ORCH-0790 and SPEC §4 of ORCH-0791 governing the public buyer checkout failure surfaces. Promoted DRAFT→ACTIVE on 2026-05-11 after the operator-witnessed refund→repurchase live-fire passed end-to-end on iPhone (Stripe test mode) and the SQL probe confirmed the new tombstone RPC body is live on remote (`pg_get_functiondef` returned `has_tombstone: true, has_terminal_check: true`).
+
+### I-PROPOSED-AU ERROR_TOAST_DISMISSIBLE
+
+**Statement:** Every `<Toast kind="error">` rendered in `mingla-business/` must be user-dismissible without an external state change. The Toast primitive must provide at least (a) a tap-anywhere-on-card dismiss path, (b) an explicit close-icon `Pressable` with `accessibilityLabel="Dismiss notification"`, and (c) a bounded auto-dismiss timer in `AUTO_DISMISS.error` (positive finite milliseconds; null is forbidden).
+
+**Rationale:** ORCH-0789 RC-789-1 — permanent error toasts (the pre-fix `AUTO_DISMISS.error = null` + render tree with no `Pressable`) strand iPhone buyers because the native `<Modal>` portal has no system back affordance on iOS. Combined with the Stripe-cancel-misclassification bug (RC-789-2), a buyer who simply closed the payment sheet was locked into a fake "card declined" banner they could not dismiss.
+
+**Enforcement mechanism:** `.github/scripts/strict-grep/orch-0789-error-toast-dismissible.mjs` §1, §2, §3 (Pressable import, `accessibilityLabel="Dismiss notification"`, numeric `AUTO_DISMISS.error`).
+
+**Test that catches regression:** `npx jest --testPathPattern Toast.test` — 5 tests assert `AUTO_DISMISS.error` is bounded (positive, finite, ≥ 8 s, ≤ 20 s) plus the unchanged success/info/warn timings. Plus the strict-grep gate runs in CI.
+
+**Status:** DRAFT — flips ACTIVE on ORCH-0789/0790 CLOSE.
+
+### I-PROPOSED-AV STRIPE_ERROR_CODE_DISCRIMINATED
+
+**Statement:** The Mingla Business Stripe wrapper (`mingla-business/src/payments/stripePaymentSheet.ts` + `.native.ts` + `.web.ts`) must preserve Stripe RN's `PaymentSheetError.code` discriminator (`"Canceled" | "Failed" | "Timeout"`) through to callers. Consumers of `presentPaymentSheet` and `initPaymentSheet` results must branch on `error.code` rather than treating any error as a decline. Unknown Stripe codes coerce to `"Failed"` (conservative — caller surfaces a real-error toast rather than silently swallowing).
+
+**Rationale:** ORCH-0789 RC-789-2 — the pre-fix wrapper narrowed Stripe's typed `StripeError<PaymentSheetError>` down to `{ error?: { message?: string } }`, throwing away the `code` field. The payment screen then treated `Canceled` (user closed the sheet) identically to `Failed` (real decline), producing the "card declined when no card was entered" symptom. Preserving the discriminator at the wrapper boundary is the structural fix.
+
+**Enforcement mechanism:** `.github/scripts/strict-grep/orch-0789-error-toast-dismissible.mjs` §4, §5 (PaymentSheetErrorCode union declaration; `switch (payResult.error.code)` in `payment.tsx`; explicit `case "Canceled"` for silent return).
+
+**Test that catches regression:** `npx jest --testPathPattern stripePaymentSheet.test` — 7 tests against `normalizePaymentSheetResult` covering empty, Canceled, Failed+declineCode, Timeout, unknown-code fallback, missing-message fallback, optional-fields-omitted.
+
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0789/0790/0791 combined CLOSE.
+
+### I-PROPOSED-AW CHECKOUT-SESSION-NEVER-REUSED-POST-TERMINAL
+
+**Statement:** `public.biz_ticket_checkout_create_session` MUST NOT return an existing `ticket_checkout_sessions` row whose `status` is in the terminal set (`paid_completed`, `free_completed`, `failed`, `expired`). When such a terminal session is matched by `idempotency_key`, the RPC must tombstone the row's `idempotency_key` (suffix with `:tombstone:<id>::text`) so the UNIQUE constraint frees the deterministic buyer key for a fresh insert. In-flight statuses (`pending_free`, `requires_payment`, `awaiting_web_redirect`, `processing_payment`) continue to short-circuit to the existing row, preserving I-CHECKOUT-IDEMPOTENT for genuine in-checkout retries.
+
+**Rationale:** ORCH-0791 RC-791-1..5 — the pre-fix RPC returned the existing session unconditionally on idempotency-key match, including post-refund `paid_completed` rows. The edge function then reused the same Stripe PaymentIntent via the `ticket_checkout:<sessionId>` idempotency key, and Stripe returned the terminal succeeded → refunded PI. PaymentSheet rejected re-confirmation with `code: "Failed"`, surfacing as a fake "Card declined" to buyers who had merely refunded a prior order. The tombstone approach preserves the audit trail (old row remains with original `id` / `order_id` / `stripe_payment_intent_id`) while unblocking legitimate post-refund repurchases.
+
+**Enforcement mechanism:** `.github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs` asserts (1) the terminal-status set check `IN ('paid_completed','free_completed','failed','expired')`, (2) the tombstone UPDATE `idempotency_key || ':tombstone:' || id::text`, and (3) the in-flight short-circuit RETURN remains present (≥ 2 `RETURN jsonb_build_object` occurrences in the function body).
+
+**Test that catches regression:** strict-grep gate runs in CI; live SQL probes against staging or production after `supabase db push` confirm both the terminal-tombstone path (SC-01..SC-04) and the in-flight short-circuit path (SC-05..SC-08) of `SPEC_ORCH-0791_REPURCHASE_AFTER_REFUND_FAILS.md` §3.
+
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0789/0790/0791 combined CLOSE.
+
+---
+
 ## ACTIVE (post ORCH-0786 CLOSE 2026-05-11)
 
 These four invariants govern the Business profile avatar surface. SPEC §6 of ORCH-0786 named them `I-PROPOSED-AD..AF` but those identifiers were already allocated to unrelated invariants (AD UNIVERSAL_SKILL_OUTPUT_FORMAT, AE STRIPE_REACT_NATIVE_NATIVE_BOUNDARY_ONLY, AF SUPABASE_AUTH_WEB_REDIRECT_ALLOWLIST_PER_SURFACE) so runtime identifiers are `AQ..AT`. Spec text is binding; the rename is a registry-only correction matching the ORCH-0785 precedent. AT is new (established at CLOSE after Supabase MCP probe surfaced the `user_metadata` clobber root cause).

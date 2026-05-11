@@ -44,6 +44,11 @@ import {
   useCart,
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
+import {
+  clearCheckoutResumePayload,
+  readCheckoutResumePayload,
+  writeCheckoutResumePayload,
+} from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { useStripePaymentSheet } from "../../../src/payments/stripePaymentSheet";
 
@@ -55,8 +60,17 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
 
   const publicEventQuery = usePublicEventById(eventId);
   const event = publicEventQuery.data?.event ?? null;
-  const { lines, buyer, recordResult } = useCart();
+  const { lines, buyer, recordResult, setLineQuantity, setBuyer } = useCart();
   const totals = useCartTotals();
+
+  // ORCH-0789/0790 REWORK: on web, the buyer may be returning from a
+  // Stripe Checkout cancel. Cart context is in-memory and was wiped by
+  // the full-page reload. Restore lines + buyer from sessionStorage
+  // BEFORE the defensive bounce evaluates, so the buyer doesn't lose
+  // their selections after a Stripe-side cancel.
+  const [restoreChecked, setRestoreChecked] = useState<boolean>(
+    Platform.OS !== "web",
+  );
   const {
     initPaymentSheet,
     isPaymentSheetSupported,
@@ -71,11 +85,47 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const finalizingRef = useRef<boolean>(false);
 
+  // ----- ORCH-0789/0790 REWORK: web sessionStorage restore -----
+  // Runs once on mount (web only). If cart context is empty but we have
+  // a resume payload in sessionStorage for this eventId, restore lines
+  // + buyer so the defensive bounce below sees the populated cart on
+  // its next evaluation. Storage entry is NOT cleared here — only the
+  // confirm screen clears on confirmed success (so a buyer who cancels
+  // on Stripe can retry without rebuilding the cart).
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    if (eventId === null) return;
+    if (restoreChecked) return;
+    const storage = (globalThis as unknown as { sessionStorage?: Storage })
+      .sessionStorage;
+    const payload = readCheckoutResumePayload(storage, eventId);
+    if (payload !== null && lines.length === 0) {
+      for (const l of payload.lines) {
+        setLineQuantity({
+          ticketTypeId: l.ticketTypeId,
+          ticketName: l.ticketName,
+          unitPrice: l.unitPrice,
+          unitPriceGbp: l.unitPriceGbp,
+          currency: l.currency,
+          isFree: l.isFree,
+          quantity: l.quantity,
+        });
+      }
+      setBuyer(payload.buyer);
+    }
+    setRestoreChecked(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per mount;
+    // intentional that we don't re-restore if cart changes after.
+  }, [eventId]);
+
   // ----- Defensive guards ------------------------------------------
   // Free orders never reach this screen (J-C2 skips to /confirm).
   // Cart empty → bounce to J-C1. Buyer details invalid → bounce to /buyer.
+  // Gated on restoreChecked so the web Stripe-cancel-return path has a
+  // chance to restore cart context before this bounces.
   useEffect(() => {
     if (eventId === null) return;
+    if (!restoreChecked) return;
     if (lines.length === 0) {
       router.replace(`/checkout/${eventId}` as never);
       return;
@@ -99,6 +149,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
     buyer.name,
     buyer.email,
     buyer.phone,
+    restoreChecked,
     router,
   ]);
 
@@ -137,12 +188,71 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   const handlePay = useCallback(async (): Promise<void> => {
     if (processing) return;
     if (eventId === null) return;
+
+    // ORCH-0790: web buyers go through Stripe Checkout Sessions (hosted page +
+    // redirect). Native buyers use the existing Stripe RN PaymentSheet flow.
+    if (Platform.OS === "web") {
+      try {
+        setProcessing(true);
+        setPaymentError(null);
+        const checkout = await createTicketCheckout({
+          eventId,
+          buyer,
+          lines,
+          surface: "web",
+        });
+        if (checkout.kind !== "requires_web_redirect") {
+          throw new Error("Web checkout did not return a redirect URL.");
+        }
+        setCheckoutSessionId(checkout.checkoutSessionId);
+        // Persist resume payload BEFORE the redirect — sessionStorage is
+        // scoped to the tab and survives Stripe's success_url full-page
+        // return. We persist lines + buyer too so a Stripe-side cancel
+        // returns the buyer to a populated /payment screen (instead of
+        // bouncing to /checkout/{eventId} with an empty cart) and a
+        // Stripe-side success returns to /confirm with a complete
+        // summary card and "Sent to {email}" line. Putting
+        // buyerStatusToken in the URL would leak it to history /
+        // referrers / analytics, so storage-only.
+        const storage = (globalThis as unknown as { sessionStorage?: Storage })
+          .sessionStorage;
+        writeCheckoutResumePayload(storage, eventId, {
+          checkoutSessionId: checkout.checkoutSessionId,
+          buyerStatusToken: checkout.buyerStatusToken,
+          lines,
+          buyer,
+        });
+        const w = (globalThis as unknown as { location?: { assign?: (u: string) => void } });
+        if (w.location?.assign) {
+          w.location.assign(checkout.hostedCheckoutUrl);
+        } else {
+          // Sandbox / test environments where location.assign is unavailable.
+          // Reset processing and surface an error so the buyer isn't stuck.
+          setProcessing(false);
+          setPaymentError(
+            "Couldn't redirect to Stripe. Please try again from a standard browser.",
+          );
+        }
+        return;
+      } catch (error) {
+        setProcessing(false);
+        setPaymentError(
+          error instanceof Error
+            ? error.message
+            : "We couldn't start checkout. Please try again.",
+        );
+        return;
+      }
+    }
+
     if (!isPaymentSheetSupported) {
+      // Native build that somehow resolved the web stub — defensive only.
       setPaymentError(
-        "Ticket payments are not available on web yet. Please complete checkout in the Mingla Business mobile app.",
+        "Payment isn't available right now. Please try again from the latest app version.",
       );
       return;
     }
+
     try {
       setProcessing(true);
       setPaymentError(null);
@@ -157,12 +267,33 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         allowsDelayedPaymentMethods: false,
       });
       if (initResult.error) {
-        throw new Error(initResult.error.message);
+        // initPaymentSheet failures are config / network issues, not user
+        // intent. Surface as inline error (no decline toast).
+        setProcessing(false);
+        setPaymentError(initResult.error.message);
+        return;
       }
       const payResult = await presentPaymentSheet();
       if (payResult.error) {
-        setDeclineToast(true);
-        throw new Error(payResult.error.message);
+        // ORCH-0789: Stripe's PaymentSheet error.code distinguishes user-cancel
+        // ("Canceled") from real failures ("Failed") from "Timeout". Treating
+        // every error as a decline strands buyers who simply closed the sheet.
+        switch (payResult.error.code) {
+          case "Canceled":
+            // Buyer closed the sheet — Stripe already gave visual feedback.
+            // Silent return to the payment summary; no toast, no error text.
+            setProcessing(false);
+            return;
+          case "Timeout":
+            setProcessing(false);
+            setPaymentError("Stripe took too long — please try again.");
+            return;
+          case "Failed":
+          default:
+            setDeclineToast(true);
+            setProcessing(false);
+            return;
+        }
       }
 
       setFinalizing(true);
@@ -305,7 +436,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
           <Text style={styles.summaryLabel}>PAYMENT</Text>
           <Text style={styles.paymentCopy}>
             {Platform.OS === "web"
-              ? "Ticket payments are not available on web yet. Please complete checkout in the Mingla Business mobile app."
+              ? "You'll be redirected to Stripe to complete your purchase securely. Apple Pay and Google Pay are supported."
               : "Card, Apple Pay, and Google Pay are handled by Stripe."}
           </Text>
           {checkoutSessionId !== null ? (
