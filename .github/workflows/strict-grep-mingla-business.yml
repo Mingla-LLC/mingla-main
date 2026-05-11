@@ -49,6 +49,7 @@ on:
 #   - ORCH-0776D (orch-0776d-cancelled-at-schema.mjs) — event cover video cancelled_at schema/code parity
 #   - ORCH-0777 (orch-0777-ticket-checkout-production.mjs) — production ticket checkout + organizer order visibility
 #   - ORCH-0778 (orch-0778-web-stripe-native-import-gate.mjs) — Stripe React Native imports stay behind .native payment boundaries (re-armed by ORCH-0781)
+#   - ORCH-0783 (orch-0783-event-cover-image-provider-pivot.mjs) — event cover image/provider pivot preserves legacy renderers
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -367,3 +368,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0778 gate
         run: node .github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs
+
+  orch-0783-event-cover-image-provider-pivot:
+    name: "ORCH-0783: event cover image provider pivot"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0783 gate
+        run: node .github/scripts/strict-grep/orch-0783-event-cover-image-provider-pivot.mjs

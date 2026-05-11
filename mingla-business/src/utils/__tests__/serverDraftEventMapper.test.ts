@@ -82,6 +82,11 @@ const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
   coverHue: 180,
   coverMediaUrl: "https://cdn.example.com/event-cover.gif",
   coverMediaType: "gif",
+  coverMediaProvider: "giphy",
+  coverMediaSourceUrl: "https://giphy.com/gifs/event-cover",
+  coverMediaCredit: "GIPHY",
+  coverMediaCreditUrl: "https://giphy.com",
+  coverMediaAlt: "Dancing cover GIF",
   tickets: [ticket()],
   visibility: "unlisted",
   requireApproval: true,
@@ -112,6 +117,11 @@ const rowFromPayload = (
   online_url: source.onlineUrl,
   cover_media_url: source.coverMediaUrl,
   cover_media_type: source.coverMediaType,
+  cover_media_provider: source.coverMediaProvider ?? null,
+  cover_media_source_url: source.coverMediaSourceUrl ?? null,
+  cover_media_credit: source.coverMediaCredit ?? null,
+  cover_media_credit_url: source.coverMediaCreditUrl ?? null,
+  cover_media_alt: source.coverMediaAlt ?? null,
   currency,
   is_online: source.format === "online",
   is_recurring: source.whenMode === "recurring",
@@ -144,9 +154,19 @@ describe("serverDraftEventMapper", () => {
     expect(hydrated.privateGuestList).toBe(true);
     expect(payload.cover_media_url).toBe(source.coverMediaUrl);
     expect(payload.cover_media_type).toBe("gif");
+    expect(payload.cover_media_provider).toBe("giphy");
+    expect(payload.cover_media_source_url).toBe("https://giphy.com/gifs/event-cover");
+    expect(payload.cover_media_credit).toBe("GIPHY");
+    expect(payload.cover_media_credit_url).toBe("https://giphy.com");
+    expect(payload.cover_media_alt).toBe("Dancing cover GIF");
     expect(payload.currency).toBe("GBP");
     expect(hydrated.coverMediaUrl).toBe(source.coverMediaUrl);
     expect(hydrated.coverMediaType).toBe("gif");
+    expect(hydrated.coverMediaProvider).toBe("giphy");
+    expect(hydrated.coverMediaSourceUrl).toBe("https://giphy.com/gifs/event-cover");
+    expect(hydrated.coverMediaCredit).toBe("GIPHY");
+    expect(hydrated.coverMediaCreditUrl).toBe("https://giphy.com");
+    expect(hydrated.coverMediaAlt).toBe("Dancing cover GIF");
     expect(hydrated.currency).toBe("GBP");
   });
 
@@ -193,9 +213,15 @@ describe("serverDraftEventMapper", () => {
 
     expect(payload.cover_media_url).toBeNull();
     expect(payload.cover_media_type).toBeNull();
+    expect(payload.cover_media_provider).toBeNull();
+    expect(payload.cover_media_source_url).toBeNull();
+    expect(payload.cover_media_credit).toBeNull();
+    expect(payload.cover_media_credit_url).toBeNull();
+    expect(payload.cover_media_alt).toBeNull();
     expect(hydrated.coverHue).toBe(180);
     expect(hydrated.coverMediaUrl).toBeNull();
     expect(hydrated.coverMediaType).toBeNull();
+    expect(hydrated.coverMediaProvider).toBeNull();
   });
 
   test("uses a non-empty fallback title for blank drafts", () => {

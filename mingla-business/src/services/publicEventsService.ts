@@ -9,6 +9,10 @@ import type {
 } from "../store/draftEventStore";
 import type { LiveEvent, LiveEventStatus } from "../store/liveEventStore";
 import type { Brand, BrandCustomLink, BrandLinks } from "../types/brand";
+import {
+  asEventCoverMediaProvider,
+  type EventCoverMediaProvider,
+} from "../types/eventCoverProvider";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -31,6 +35,11 @@ interface BusinessPublicEventViewRow {
   recurrence_rules: unknown;
   cover_media_url: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
+  cover_media_provider: EventCoverMediaProvider | null;
+  cover_media_source_url: string | null;
+  cover_media_credit: string | null;
+  cover_media_credit_url: string | null;
+  cover_media_alt: string | null;
   currency?: string | null;
   visibility: string;
   show_on_discover: boolean;
@@ -335,6 +344,11 @@ export const publicEventViewRowToEvent = (
     coverHue,
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
+    coverMediaProvider: asEventCoverMediaProvider(row.cover_media_provider),
+    coverMediaSourceUrl: asStringOrNull(row.cover_media_source_url),
+    coverMediaCredit: asStringOrNull(row.cover_media_credit),
+    coverMediaCreditUrl: asStringOrNull(row.cover_media_credit_url),
+    coverMediaAlt: asStringOrNull(row.cover_media_alt),
     currency:
       asStringOrNull(row.currency) ??
       tickets.find((ticket) => ticket.currency !== undefined)?.currency,

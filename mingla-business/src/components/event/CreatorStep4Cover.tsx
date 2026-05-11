@@ -1,15 +1,21 @@
 /**
- * Wizard Step 4 — Cover.
+ * Wizard Step 4 - Cover.
  *
- * Designer source: screens-creator.jsx lines 163-184 (CreatorStep4).
- * Event cover editor. Uploaded image/GIF/video media is canonical; the
- * hue grid remains the fallback when no uploaded media is present.
- *
- * Per Cycle 3 spec §3.9 Step 4.
+ * ORCH-0783 makes new cover creation image/provider-first. Legacy video
+ * covers still render elsewhere through EventCoverMedia, but this step no
+ * longer exposes the active phone-video workflow or visible hue picker.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import * as ImagePicker from "expo-image-picker";
 
 import {
@@ -20,29 +26,25 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-
 import {
   EventCoverMediaError,
   EVENT_COVER_UPLOAD_LIMIT_COPY,
   uploadEventCoverMedia,
 } from "../../services/eventCoverMediaService";
 import {
-  acknowledgeEventCoverVideoSourceUploaded,
-  cancelEventCoverVideoJob,
-  createEventCoverVideoUploadIntent,
-  EVENT_COVER_MAX_SOURCE_VIDEO_BYTES,
-  EVENT_COVER_MAX_VIDEO_DURATION_MS,
-  EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY,
-  EVENT_COVER_VIDEO_PROCESSING_COPY,
-  EventCoverVideoProcessingError,
-  type EventCoverVideoApplyMode,
-  type EventCoverVideoStatus,
-  type EventCoverVideoUploadProgress,
-  uploadEventCoverVideoSource,
-  waitForEventCoverVideoReady,
-} from "../../services/eventCoverVideoProcessingService";
+  searchGiphyEventCovers,
+  type GiphyCoverSearchResult,
+} from "../../services/giphyEventCoverService";
+import {
+  searchPexelsEventCovers,
+  type PexelsCoverSearchResult,
+} from "../../services/pexelsEventCoverService";
+import { EventCoverProviderError } from "../../services/eventCoverProviderError";
+import {
+  eventCoverProviderCreditLabel,
+  UPLOAD_EVENT_COVER_PROVIDER_METADATA,
+} from "../../types/eventCoverProvider";
 import { Button } from "../ui/Button";
-import { EventCover } from "../ui/EventCover";
 import {
   EventCoverMedia,
   type EventCoverMediaErrorEvent,
@@ -50,87 +52,39 @@ import {
 
 import { type StepBodyProps } from "./types";
 import { useAuth } from "../../context/AuthContext";
-import { isBusinessAuthNotReadyError } from "../../utils/authReadiness";
-import {
-  validateNativeTrimmedEventCoverVideo,
-  type NativeTrimmedVideoUploadFields,
-} from "../../utils/eventCoverNativeVideo";
 
-const HUE_TILES: readonly number[] = [25, 100, 180, 220, 290, 320] as const;
-
-type VideoCoverProcessingState =
-  | { kind: "idle" }
-  | { kind: "preparing"; label: string; percent: number }
-  | { kind: "uploading"; label: string; percent: number | null }
-  | { kind: "processing"; label: string; percent: number | null; jobId: string }
-  | { kind: "timeout"; label: string; jobId: string; lastStatus: EventCoverVideoStatus }
-  | { kind: "failed"; label: string; jobId?: string; canRetry: boolean }
-  | { kind: "ready"; label: string };
-
-const progressPercentForState = (
-  state: VideoCoverProcessingState,
-): number | null => {
-  switch (state.kind) {
-    case "preparing":
-      return state.percent;
-    case "uploading":
-    case "processing":
-      return state.percent;
-    case "ready":
-      return 100;
-    default:
-      return null;
-  }
-};
+type ProviderTab = "giphy" | "pexels";
+type SearchStatus = "idle" | "loading" | "error";
 
 export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
   draft,
   updateDraft,
   onShowToast,
-  coverMediaEventId,
-  coverMediaApplyMode = "draft_auto",
-  onCoverVideoProcessingChange,
 }) => {
   const { isAuthReady } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [mediaDisplayError, setMediaDisplayError] = useState<string | null>(
     null,
   );
-  const [videoStatusText, setVideoStatusText] = useState<string | null>(null);
-  const [videoUploadPercent, setVideoUploadPercent] = useState<number | null>(
-    null,
+  const [providerTab, setProviderTab] = useState<ProviderTab>("giphy");
+  const [query, setQuery] = useState("");
+  const [searchStatus, setSearchStatus] = useState<SearchStatus>("idle");
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [giphyResults, setGiphyResults] = useState<GiphyCoverSearchResult[]>(
+    [],
   );
-  const [videoErrorText, setVideoErrorText] = useState<string | null>(null);
-  const [videoProcessingState, setVideoProcessingState] =
-    useState<VideoCoverProcessingState>({ kind: "idle" });
-
-  const setVideoState = useCallback((state: VideoCoverProcessingState): void => {
-    setVideoProcessingState(state);
-    if (state.kind === "idle") {
-      setVideoStatusText(null);
-      setVideoUploadPercent(null);
-      return;
-    }
-    if (state.kind === "failed") {
-      setVideoStatusText(null);
-      setVideoUploadPercent(null);
-      setVideoErrorText(state.label);
-      return;
-    }
-    setVideoStatusText(state.label);
-    setVideoUploadPercent(progressPercentForState(state));
-  }, []);
+  const [pexelsResults, setPexelsResults] = useState<PexelsCoverSearchResult[]>(
+    [],
+  );
 
   useEffect(() => {
     setMediaDisplayError(null);
   }, [draft.coverMediaUrl]);
 
-  const handleSelectHue = useCallback(
-    (hue: number): void => {
-      updateDraft({ coverHue: hue });
-    },
-    [updateDraft],
-  );
+  const selectedCredit = eventCoverProviderCreditLabel({
+    provider: draft.coverMediaProvider,
+    credit: draft.coverMediaCredit,
+  });
 
   const showUploadError = useCallback(
     (error: unknown): void => {
@@ -140,40 +94,18 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
             onShowToast("Photo library permission is needed to add a cover.");
             return;
           case "unsupported_type":
-            if (/JPEG|PNG|WebP|GIF/.test(error.message)) {
-              onShowToast("Choose a JPEG, PNG, WebP, or GIF.");
-              return;
-            }
-            if (/MP4\/MOV\/WebM|MP4, MOV, or WebM/.test(error.message)) {
-              onShowToast(
-                "Choose an MP4, MOV, or WebM video up to 15 seconds.",
-              );
-              return;
-            }
-            onShowToast("Choose an image, GIF, or MP4/MOV/WebM video.");
+            onShowToast("Choose a JPEG, PNG, WebP, or GIF.");
             return;
           case "file_too_large":
             onShowToast("Covers must be 30 MB or smaller.");
-            return;
-          case "video_too_long":
-            onShowToast(
-              "Cover videos must be 15 seconds or shorter. Choose another video or trim this one.",
-            );
-            return;
-          case "video_duration_unknown":
-            onShowToast(
-              "We couldn't read this video's duration. Try a 15-second MP4, MOV, or WebM.",
-            );
             return;
           case "missing_server_event_id":
             onShowToast("This event needs a server draft before media upload.");
             return;
           case "display_failed":
-            onShowToast(
-              "Uploaded, but this cover could not be displayed. Try another image or video.",
-            );
+            onShowToast("Uploaded, but this cover could not be displayed.");
             return;
-          case "upload_failed":
+          default:
             onShowToast("Cover upload failed. Try again.");
             return;
         }
@@ -181,114 +113,6 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
       onShowToast("Cover upload failed. Try again.");
     },
     [onShowToast],
-  );
-
-  const showVideoProcessingError = useCallback(
-    (error: unknown): void => {
-      const diagnostic =
-        error !== null && typeof error === "object"
-          ? (error as {
-              applyMode?: unknown;
-              brandId?: unknown;
-              edgeDetail?: unknown;
-              edgeError?: unknown;
-              edgeStatus?: unknown;
-              eventId?: unknown;
-              phase?: unknown;
-              requestId?: unknown;
-              sourceBytes?: unknown;
-              sourceDurationMs?: unknown;
-            })
-          : null;
-      const message = (() => {
-        if (isBusinessAuthNotReadyError(error)) {
-          return "Finishing sign-in before upload. Try again in a moment.";
-        }
-        if (error instanceof EventCoverVideoProcessingError) {
-          if (error.code === "provider_not_configured") {
-            return EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY;
-          }
-          if (error.code === "source_upload_failed") {
-            return "Video upload failed before processing. Try again.";
-          }
-          return error.message;
-        }
-        return "Video cover processing failed. Try another video.";
-      })();
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.warn("[CreatorStep4Cover] video processing error", {
-          applyMode: diagnostic?.applyMode,
-          brandId: diagnostic?.brandId,
-          code:
-            error instanceof EventCoverVideoProcessingError
-              ? error.code
-              : isBusinessAuthNotReadyError(error)
-                ? error.code
-                : "unknown",
-          diagnostic:
-            diagnostic?.requestId !== undefined
-              ? JSON.stringify({
-                  applyMode: diagnostic.applyMode,
-                  brandId: diagnostic.brandId,
-                  code:
-                    error instanceof EventCoverVideoProcessingError
-                      ? error.code
-                      : isBusinessAuthNotReadyError(error)
-                        ? error.code
-                        : "unknown",
-                  edgeDetail: diagnostic.edgeDetail,
-                  edgeError: diagnostic.edgeError,
-                  edgeStatus: diagnostic.edgeStatus,
-                  eventId: diagnostic.eventId,
-                  phase: diagnostic.phase,
-                  requestId: diagnostic.requestId,
-                  sourceBytes: diagnostic.sourceBytes,
-                  sourceDurationMs: diagnostic.sourceDurationMs,
-                })
-              : undefined,
-          edgeDetail: diagnostic?.edgeDetail,
-          edgeError: diagnostic?.edgeError,
-          edgeStatus: diagnostic?.edgeStatus,
-          eventId: diagnostic?.eventId,
-          message,
-          phase: diagnostic?.phase,
-          rawMessage: error instanceof Error ? error.message : String(error),
-          requestId: diagnostic?.requestId,
-          sourceBytes: diagnostic?.sourceBytes,
-          sourceDurationMs: diagnostic?.sourceDurationMs,
-        });
-      }
-      if (
-        error instanceof EventCoverVideoProcessingError &&
-        error.code === "processing_timeout" &&
-        error.lastStatus !== undefined
-      ) {
-        setVideoErrorText(null);
-        setVideoState({
-          jobId: error.lastStatus.jobId,
-          kind: "timeout",
-          label: error.message,
-          lastStatus: error.lastStatus,
-        });
-        return;
-      }
-      setVideoStatusText(null);
-      setVideoUploadPercent(null);
-      setVideoState({
-        canRetry:
-          error instanceof EventCoverVideoProcessingError
-            ? error.code !== "cancelled"
-            : true,
-        jobId:
-          error instanceof EventCoverVideoProcessingError
-            ? error.lastStatus?.jobId
-            : undefined,
-        kind: "failed",
-        label: message,
-      });
-      onShowToast(message);
-    },
-    [onShowToast, setVideoState],
   );
 
   const ensureMediaPermission = useCallback(async (): Promise<boolean> => {
@@ -305,192 +129,8 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
     return true;
   }, [showUploadError]);
 
-  const uploadPickedAsset = useCallback(
-    async (
-      asset: ImagePicker.ImagePickerAsset,
-      eventId: string,
-    ): Promise<void> => {
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.info("[CreatorStep4Cover] picked cover asset", {
-          duration: asset.duration,
-          fileName: asset.fileName,
-          fileSize: asset.fileSize,
-          mimeType: asset.mimeType,
-          type: asset.type,
-          uri: asset.uri,
-        });
-      }
-      const upload = await uploadEventCoverMedia({
-        uri: asset.uri,
-        brandId: draft.brandId,
-        eventId,
-        mimeType: asset.mimeType,
-        fileName: asset.fileName,
-        fileSize: asset.fileSize,
-        durationMs: typeof asset.duration === "number" ? asset.duration : null,
-        pickerType: asset.type,
-      });
-      setMediaDisplayError(null);
-      updateDraft({
-        coverMediaUrl: upload.publicUrl,
-        coverMediaType: upload.mediaType,
-      });
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.info("[CreatorStep4Cover] cover media draft update queued", {
-          coverMediaType: upload.mediaType,
-          coverMediaUrl: upload.publicUrl,
-          storagePath: upload.storagePath,
-        });
-      }
-      onShowToast("Cover updated.");
-    },
-    [draft.brandId, onShowToast, updateDraft],
-  );
-
-  const processPickedVideo = useCallback(
-    async (
-      asset: ImagePicker.ImagePickerAsset,
-      eventId: string,
-      applyMode: EventCoverVideoApplyMode,
-      uploadFields: NativeTrimmedVideoUploadFields,
-    ): Promise<void> => {
-      setVideoState({
-        kind: "preparing",
-        label: "Preparing secure upload...",
-        percent: 10,
-      });
-      setVideoErrorText(null);
-      if (__DEV__) {
-        console.info("[CreatorStep4Cover] upload-intent-start", {
-          applyMode,
-          eventId,
-          eventIdSource: coverMediaEventId === undefined ? "draft.id" : "coverMediaEventId",
-          brandId: draft.brandId,
-          isAuthReady,
-          sourceFileName: asset.fileName,
-          sourceMimeType: asset.mimeType,
-          sourceBytes: uploadFields.sourceBytes,
-          sourceDurationMs: uploadFields.sourceDurationMs,
-          trimStartMs: uploadFields.trimStartMs,
-          trimEndMs: uploadFields.trimEndMs,
-        });
-      }
-      let intent: Awaited<ReturnType<typeof createEventCoverVideoUploadIntent>>;
-      try {
-        intent = await createEventCoverVideoUploadIntent({
-          applyMode,
-          brandId: draft.brandId,
-          eventId,
-          sourceBytes: uploadFields.sourceBytes,
-          sourceDurationMs: uploadFields.sourceDurationMs,
-          sourceFileName: asset.fileName,
-          sourceMimeType: asset.mimeType,
-          trimEndMs: uploadFields.trimEndMs,
-          trimStartMs: uploadFields.trimStartMs,
-        });
-      } catch (error) {
-        if (error !== null && typeof error === "object") {
-          Object.assign(error, {
-            applyMode,
-            brandId: draft.brandId,
-            eventId,
-            sourceBytes: uploadFields.sourceBytes,
-            sourceDurationMs: uploadFields.sourceDurationMs,
-          });
-        }
-        throw error;
-      }
-      if (__DEV__) {
-        console.info("[CreatorStep4Cover] upload-intent-success", {
-          jobId: intent.jobId,
-        });
-      }
-      setVideoState({ kind: "uploading", label: "Uploading video... 0%", percent: 0 });
-      if (__DEV__) {
-        console.info("[CreatorStep4Cover] source-upload-start", {
-          jobId: intent.jobId,
-        });
-      }
-      const handleUploadProgress = (progress: EventCoverVideoUploadProgress): void => {
-        setVideoState({
-          kind: "uploading",
-          label: `Uploading video... ${progress.percent}%`,
-          percent: progress.percent,
-        });
-      };
-      const providerUploadResponse = await uploadEventCoverVideoSource({
-        fileName: asset.fileName,
-        mimeType: asset.mimeType,
-        onProgress: handleUploadProgress,
-        upload: intent.upload,
-        uri: asset.uri,
-      });
-      setVideoUploadPercent(100);
-      if (__DEV__) {
-        console.info("[CreatorStep4Cover] source-upload-success", {
-          jobId: intent.jobId,
-        });
-      }
-      const acknowledged = await acknowledgeEventCoverVideoSourceUploaded({
-        brandId: draft.brandId,
-        eventId,
-        jobId: intent.jobId,
-        providerUploadResponse,
-      });
-      setVideoState({
-        jobId: acknowledged.jobId,
-        kind: "processing",
-        label: acknowledged.stageLabel,
-        percent: acknowledged.progressPercent,
-      });
-      if (__DEV__) {
-        console.info("[CreatorStep4Cover] status-poll-start", {
-          jobId: intent.jobId,
-        });
-      }
-      const status = await waitForEventCoverVideoReady(intent.jobId, {
-        onStatus: (nextStatus) => {
-          setVideoState({
-            jobId: nextStatus.jobId,
-            kind: "processing",
-            label: nextStatus.stageLabel,
-            percent: nextStatus.progressPercent,
-          });
-          if (__DEV__) {
-            console.info("[CreatorStep4Cover] status-poll-snapshot", {
-              jobId: nextStatus.jobId,
-              status: nextStatus.status,
-              stageLabel: nextStatus.stageLabel,
-              updatedAt: nextStatus.updatedAt,
-            });
-          }
-        },
-      });
-      if (status.processedUrl === null) {
-        throw new EventCoverVideoProcessingError(
-          "processed_url_missing",
-          "Video processing finished without a playable cover.",
-        );
-      }
-      setMediaDisplayError(null);
-      setVideoErrorText(null);
-      setVideoUploadPercent(null);
-      setVideoState({ kind: "ready", label: status.stageLabel });
-      updateDraft({
-        coverMediaType: "video",
-        coverMediaUrl: status.processedUrl,
-      });
-      onShowToast(
-        applyMode === "published_manual"
-          ? "Video ready. Save changes to publish the new cover."
-          : "Cover video processed.",
-      );
-    },
-    [coverMediaEventId, draft.brandId, isAuthReady, onShowToast, setVideoState, updateDraft],
-  );
-
   const eventIdForUpload = useCallback((): string | null => {
-    const eventId = coverMediaEventId ?? draft.id;
+    const eventId = draft.id;
     if (eventId.trim().length === 0) {
       showUploadError(
         new EventCoverMediaError(
@@ -501,19 +141,15 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
       return null;
     }
     return eventId;
-  }, [coverMediaEventId, draft.id, showUploadError]);
+  }, [draft.id, showUploadError]);
 
   const pickImageOrGifCover = useCallback(async (): Promise<void> => {
     if (uploading) return;
     if (!isAuthReady) {
-      const message = "Finishing sign-in before upload. Try again in a moment.";
-      setVideoState({ kind: "idle" });
-      setVideoErrorText(message);
-      onShowToast(message);
+      onShowToast("Finishing sign-in before upload. Try again in a moment.");
       return;
     }
     if (!(await ensureMediaPermission())) return;
-
     const eventId = eventIdForUpload();
     if (eventId === null) return;
 
@@ -527,216 +163,119 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
         quality: 1,
       });
       if (result.canceled || result.assets.length === 0) return;
-      await uploadPickedAsset(result.assets[0], eventId);
+      const asset = result.assets[0];
+      const upload = await uploadEventCoverMedia({
+        uri: asset.uri,
+        brandId: draft.brandId,
+        eventId,
+        mimeType: asset.mimeType,
+        fileName: asset.fileName,
+        fileSize: asset.fileSize,
+        durationMs: null,
+        pickerType: asset.type,
+      });
+      setMediaDisplayError(null);
+      updateDraft({
+        coverMediaUrl: upload.publicUrl,
+        coverMediaType: upload.mediaType,
+        coverMediaProvider: UPLOAD_EVENT_COVER_PROVIDER_METADATA.provider,
+        coverMediaSourceUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.sourceUrl,
+        coverMediaCredit: UPLOAD_EVENT_COVER_PROVIDER_METADATA.credit,
+        coverMediaCreditUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.creditUrl,
+        coverMediaAlt: UPLOAD_EVENT_COVER_PROVIDER_METADATA.alt,
+      });
+      onShowToast("Cover updated.");
     } catch (error) {
       showUploadError(error);
     } finally {
       setUploading(false);
     }
   }, [
+    draft.brandId,
     ensureMediaPermission,
     eventIdForUpload,
     isAuthReady,
     onShowToast,
-    setVideoState,
     showUploadError,
-    uploadPickedAsset,
+    updateDraft,
     uploading,
   ]);
 
-  const pickVideoCover = useCallback(async (): Promise<void> => {
-    if (uploading) return;
-    if (!isAuthReady) {
-      const message = "Finishing sign-in before upload. Try again in a moment.";
-      setVideoState({ kind: "idle" });
-      setVideoErrorText(message);
-      onShowToast(message);
+  const runProviderSearch = useCallback(async (): Promise<void> => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setSearchError("Search with at least two characters.");
       return;
     }
-    if (!(await ensureMediaPermission())) return;
-
-    const eventId = eventIdForUpload();
-    if (eventId === null) return;
-
-    setUploading(true);
-    onCoverVideoProcessingChange?.(true);
+    setSearchStatus("loading");
+    setSearchError(null);
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["videos"],
-        allowsEditing: true,
-        quality: 1,
-        videoMaxDuration: 15,
-        videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
-        videoQuality: ImagePicker.UIImagePickerControllerQualityType.High,
-      });
-      if (result.canceled || result.assets.length === 0) return;
-      const asset = result.assets[0];
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.info("[CreatorStep4Cover] picked cover asset", {
-          duration: asset.duration,
-          applyMode: coverMediaApplyMode,
-          brandId: draft.brandId,
-          eventId,
-          eventIdSource: coverMediaEventId === undefined ? "draft.id" : "coverMediaEventId",
-          fileName: asset.fileName,
-          fileSize: asset.fileSize,
-          isAuthReady,
-          mimeType: asset.mimeType,
-          type: asset.type,
-          uri: asset.uri,
-        });
+      if (providerTab === "giphy") {
+        const results = await searchGiphyEventCovers(trimmed, { limit: 12 });
+        setGiphyResults(results);
+      } else {
+        const page = await searchPexelsEventCovers(trimmed, { perPage: 12 });
+        setPexelsResults(page.photos);
       }
-      const validation = validateNativeTrimmedEventCoverVideo(asset, {
-        maxDurationMs: EVENT_COVER_MAX_VIDEO_DURATION_MS,
-        maxSourceBytes: EVENT_COVER_MAX_SOURCE_VIDEO_BYTES,
-      });
-      if (!validation.ok) {
-        if (typeof __DEV__ !== "undefined" && __DEV__) {
-          console.warn("[CreatorStep4Cover] native-trimmed video rejected", {
-            code: validation.code,
-            duration: asset.duration,
-            fileName: asset.fileName,
-            fileSize: asset.fileSize,
-            mimeType: asset.mimeType,
-            type: asset.type,
-            uri: asset.uri,
-          });
-        }
-        setVideoState({ kind: "idle" });
-        setVideoErrorText(validation.message);
-        onShowToast(validation.message);
-        return;
-      }
-      await processPickedVideo(
-        asset,
-        eventId,
-        coverMediaApplyMode,
-        validation.uploadFields,
-      );
-      setVideoState({ kind: "idle" });
+      setSearchStatus("idle");
     } catch (error) {
-      if (error instanceof EventCoverMediaError) showUploadError(error);
-      else showVideoProcessingError(error);
-    } finally {
-      setUploading(false);
-      onCoverVideoProcessingChange?.(false);
+      const message =
+        error instanceof EventCoverProviderError
+          ? error.message
+          : "Cover search failed. Try again.";
+      setSearchStatus("error");
+      setSearchError(message);
+      onShowToast(message);
     }
-  }, [
-    ensureMediaPermission,
-    eventIdForUpload,
-    coverMediaApplyMode,
-    coverMediaEventId,
-    onCoverVideoProcessingChange,
-    onShowToast,
-    processPickedVideo,
-    showVideoProcessingError,
-    showUploadError,
-    setVideoState,
-    uploading,
-    isAuthReady,
-  ]);
+  }, [onShowToast, providerTab, query]);
 
-  const handlePickCover = useCallback((): void => {
-    if (uploading) return;
-    Alert.alert("Choose cover media", EVENT_COVER_UPLOAD_LIMIT_COPY, [
-      {
-        text: "Image or GIF",
-        onPress: () => {
-          void pickImageOrGifCover();
-        },
-      },
-      {
-        text: "Video",
-        onPress: () => {
-          void pickVideoCover();
-        },
-      },
-      { text: "Cancel", style: "cancel" },
-    ]);
-  }, [
-    pickImageOrGifCover,
-    pickVideoCover,
-    uploading,
-  ]);
+  const selectGiphy = useCallback(
+    (result: GiphyCoverSearchResult): void => {
+      setMediaDisplayError(null);
+      updateDraft({
+        coverMediaUrl: result.mediaUrl,
+        coverMediaType: "gif",
+        coverMediaProvider: "giphy",
+        coverMediaSourceUrl: result.sourceUrl,
+        coverMediaCredit: result.credit,
+        coverMediaCreditUrl: result.creditUrl,
+        coverMediaAlt: result.alt,
+      });
+      onShowToast("GIPHY cover selected.");
+    },
+    [onShowToast, updateDraft],
+  );
+
+  const selectPexels = useCallback(
+    (result: PexelsCoverSearchResult): void => {
+      setMediaDisplayError(null);
+      updateDraft({
+        coverMediaUrl: result.mediaUrl,
+        coverMediaType: "image",
+        coverMediaProvider: "pexels",
+        coverMediaSourceUrl: result.sourceUrl,
+        coverMediaCredit: result.credit,
+        coverMediaCreditUrl: result.creditUrl,
+        coverMediaAlt: result.alt,
+      });
+      onShowToast("Pexels cover selected.");
+    },
+    [onShowToast, updateDraft],
+  );
 
   const handleRemoveCover = useCallback((): void => {
     setMediaDisplayError(null);
-    setVideoState({ kind: "idle" });
-    setVideoErrorText(null);
-    updateDraft({ coverMediaUrl: null, coverMediaType: null });
-    onShowToast("Uploaded cover removed.");
-  }, [onShowToast, setVideoState, updateDraft]);
-
-  const handleCheckVideoProcessingAgain = useCallback(async (): Promise<void> => {
-    if (videoProcessingState.kind !== "timeout") return;
-    const jobId = videoProcessingState.jobId;
-    setUploading(true);
-    onCoverVideoProcessingChange?.(true);
-    setVideoErrorText(null);
-    try {
-      const status = await waitForEventCoverVideoReady(jobId, {
-        onStatus: (nextStatus) => {
-          setVideoState({
-            jobId: nextStatus.jobId,
-            kind: "processing",
-            label: nextStatus.stageLabel,
-            percent: nextStatus.progressPercent,
-          });
-        },
-        pollIntervalMs: 2500,
-        timeoutMs: 30_000,
-      });
-      if (status.processedUrl === null) {
-        throw new EventCoverVideoProcessingError(
-          "processed_url_missing",
-          "Video processing finished without a playable cover.",
-          { lastStatus: status },
-        );
-      }
-      setMediaDisplayError(null);
-      updateDraft({
-        coverMediaType: "video",
-        coverMediaUrl: status.processedUrl,
-      });
-      setVideoState({ kind: "ready", label: status.stageLabel });
-      onShowToast(
-        status.applyMode === "published_manual"
-          ? "Video ready. Save changes to publish the new cover."
-          : "Cover video processed.",
-      );
-    } catch (error) {
-      showVideoProcessingError(error);
-    } finally {
-      setUploading(false);
-      onCoverVideoProcessingChange?.(false);
-    }
-  }, [
-    onCoverVideoProcessingChange,
-    onShowToast,
-    setVideoState,
-    showVideoProcessingError,
-    updateDraft,
-    videoProcessingState,
-  ]);
-
-  const handleCancelVideoProcessing = useCallback(async (): Promise<void> => {
-    if (videoProcessingState.kind !== "timeout") return;
-    setUploading(true);
-    try {
-      const status = await cancelEventCoverVideoJob(videoProcessingState.jobId);
-      setVideoState({
-        canRetry: true,
-        jobId: status.jobId,
-        kind: "failed",
-        label: status.stageLabel,
-      });
-      onShowToast("Video processing cancelled.");
-    } catch (error) {
-      showVideoProcessingError(error);
-    } finally {
-      setUploading(false);
-    }
-  }, [onShowToast, setVideoState, showVideoProcessingError, videoProcessingState]);
+    updateDraft({
+      coverMediaUrl: null,
+      coverMediaType: null,
+      coverMediaProvider: null,
+      coverMediaSourceUrl: null,
+      coverMediaCredit: null,
+      coverMediaCreditUrl: null,
+      coverMediaAlt: null,
+    });
+    onShowToast("Cover removed.");
+  }, [onShowToast, updateDraft]);
 
   const handleMediaRenderError = useCallback(
     (event: EventCoverMediaErrorEvent): void => {
@@ -744,18 +283,22 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
         console.info("[CreatorStep4Cover] cover media render failed", event);
       }
       setMediaDisplayError(
-        "Uploaded, but this cover could not be displayed. Try another image or video.",
+        "Uploaded, but this cover could not be displayed. Try another image or GIF.",
       );
       onShowToast(
-        "Uploaded, but this cover could not be displayed. Try another image or video.",
+        "Uploaded, but this cover could not be displayed. Try another image or GIF.",
       );
     },
     [onShowToast],
   );
 
+  const currentResults = useMemo(
+    () => (providerTab === "giphy" ? giphyResults : pexelsResults),
+    [giphyResults, pexelsResults, providerTab],
+  );
+
   return (
     <View>
-      {/* Cover preview */}
       <View style={styles.field}>
         <Text style={styles.fieldLabel}>Cover</Text>
         <View style={styles.coverPreview}>
@@ -764,21 +307,24 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
             mediaUrl={draft.coverMediaUrl}
             mediaType={draft.coverMediaType}
             radius={radiusTokens.lg}
-            label="cover · 16:9"
+            label={draft.coverMediaAlt ?? "event cover"}
             height={180}
             onMediaError={handleMediaRenderError}
           />
         </View>
+        {selectedCredit !== null ? (
+          <Text style={styles.creditText}>{selectedCredit}</Text>
+        ) : null}
         <View style={styles.actionRow}>
           <Button
             label={
-              draft.coverMediaUrl === null ? "Upload cover" : "Replace cover"
+              draft.coverMediaUrl === null ? "Upload image/GIF" : "Replace upload"
             }
             leadingIcon="upload"
             variant="secondary"
             size="md"
             shape="square"
-            onPress={handlePickCover}
+            onPress={pickImageOrGifCover}
             loading={uploading}
             disabled={uploading}
             style={styles.actionButton}
@@ -795,74 +341,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
             />
           ) : null}
         </View>
-        <Text style={styles.uploadLimitText}>
-          {EVENT_COVER_UPLOAD_LIMIT_COPY} {EVENT_COVER_VIDEO_PROCESSING_COPY}
-        </Text>
-        {videoStatusText !== null ? (
-          <View style={styles.videoStatusWrap}>
-            <Text style={styles.videoStatusText}>{videoStatusText}</Text>
-            {videoUploadPercent !== null ? (
-              <View
-                accessibilityRole="progressbar"
-                accessibilityValue={{
-                  max: 100,
-                  min: 0,
-                  now: videoUploadPercent,
-                }}
-                style={styles.videoProgressTrack}
-              >
-                <View
-                  style={[
-                    styles.videoProgressFill,
-                    { width: `${videoUploadPercent}%` },
-                  ]}
-                />
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-        {videoErrorText !== null ? (
-          <Text accessibilityRole="alert" style={styles.videoErrorText}>
-            {videoErrorText}
-          </Text>
-        ) : null}
-        {videoProcessingState.kind === "timeout" ? (
-          <View style={styles.videoRecoveryRow}>
-            <Button
-              label="Check again"
-              variant="secondary"
-              size="sm"
-              shape="square"
-              onPress={() => {
-                void handleCheckVideoProcessingAgain();
-              }}
-              disabled={uploading}
-              style={styles.videoRecoveryButton}
-            />
-            <Button
-              label="Replace video"
-              variant="ghost"
-              size="sm"
-              shape="square"
-              onPress={pickVideoCover}
-              disabled={uploading}
-              style={styles.videoRecoveryButton}
-            />
-            {videoProcessingState.lastStatus.canCancel ? (
-              <Button
-                label="Cancel processing"
-                variant="ghost"
-                size="sm"
-                shape="square"
-                onPress={() => {
-                  void handleCancelVideoProcessing();
-                }}
-                disabled={uploading}
-                style={styles.videoRecoveryButton}
-              />
-            ) : null}
-          </View>
-        ) : null}
+        <Text style={styles.uploadLimitText}>{EVENT_COVER_UPLOAD_LIMIT_COPY}</Text>
         {mediaDisplayError !== null ? (
           <Text accessibilityRole="alert" style={styles.mediaErrorText}>
             {mediaDisplayError}
@@ -870,35 +349,120 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
         ) : null}
       </View>
 
-      {/* Cover style grid — fallback for events without uploaded media. */}
       <View style={styles.field}>
-        <Text style={styles.fieldLabel}>Cover style</Text>
-        <View style={styles.tileGrid}>
-          {HUE_TILES.map((hue) => {
-            const active = draft.coverHue === hue;
-            return (
-              <Pressable
-                key={hue}
-                onPress={() => handleSelectHue(hue)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`Cover hue ${hue}${active ? " (selected)" : ""}`}
-                style={[styles.tile, active && styles.tileActive]}
-              >
-                <View style={styles.tileInner}>
-                  <EventCover hue={hue} radius={radiusTokens.md} label="" />
-                </View>
-              </Pressable>
-            );
-          })}
+        <Text style={styles.fieldLabel}>Find a cover</Text>
+        <View style={styles.providerTabs}>
+          <ProviderTabButton
+            label="GIPHY"
+            active={providerTab === "giphy"}
+            onPress={() => setProviderTab("giphy")}
+          />
+          <ProviderTabButton
+            label="Pexels"
+            active={providerTab === "pexels"}
+            onPress={() => setProviderTab("pexels")}
+          />
         </View>
-        <Text style={styles.comingSoonCaption}>
-          Used whenever uploaded media is removed or fails to load.
-        </Text>
+        <View style={styles.searchRow}>
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder={
+              providerTab === "giphy" ? "Search GIFs" : "Search landscape photos"
+            }
+            placeholderTextColor={textTokens.tertiary}
+            returnKeyType="search"
+            onSubmitEditing={() => {
+              void runProviderSearch();
+            }}
+            style={styles.searchInput}
+          />
+          <Button
+            label="Search"
+            variant="secondary"
+            size="md"
+            shape="square"
+            onPress={() => {
+              void runProviderSearch();
+            }}
+            loading={searchStatus === "loading"}
+            disabled={searchStatus === "loading"}
+            style={styles.searchButton}
+          />
+        </View>
+        {searchError !== null ? (
+          <Text accessibilityRole="alert" style={styles.mediaErrorText}>
+            {searchError}
+          </Text>
+        ) : null}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.providerResults}
+        >
+          {currentResults.map((result) =>
+            providerTab === "giphy" ? (
+              <ProviderResultTile
+                key={`giphy-${result.id}`}
+                imageUrl={(result as GiphyCoverSearchResult).previewUrl}
+                label={(result as GiphyCoverSearchResult).alt ?? "GIPHY GIF"}
+                credit="GIPHY"
+                onPress={() => selectGiphy(result as GiphyCoverSearchResult)}
+              />
+            ) : (
+              <ProviderResultTile
+                key={`pexels-${(result as PexelsCoverSearchResult).id}`}
+                imageUrl={(result as PexelsCoverSearchResult).mediaUrl}
+                label={(result as PexelsCoverSearchResult).alt ?? "Pexels photo"}
+                credit={(result as PexelsCoverSearchResult).credit}
+                onPress={() => selectPexels(result as PexelsCoverSearchResult)}
+              />
+            ),
+          )}
+        </ScrollView>
       </View>
     </View>
   );
 };
+
+const ProviderTabButton: React.FC<{
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}> = ({ label, active, onPress }) => (
+  <Pressable
+    accessibilityRole="button"
+    accessibilityState={{ selected: active }}
+    onPress={onPress}
+    style={[styles.providerTab, active && styles.providerTabActive]}
+  >
+    <Text style={[styles.providerTabText, active && styles.providerTabTextActive]}>
+      {label}
+    </Text>
+  </Pressable>
+);
+
+const ProviderResultTile: React.FC<{
+  imageUrl: string;
+  label: string;
+  credit: string;
+  onPress: () => void;
+}> = ({ imageUrl, label, credit, onPress }) => (
+  <Pressable
+    accessibilityRole="button"
+    accessibilityLabel={`Select ${label}`}
+    onPress={onPress}
+    style={({ pressed }) => [
+      styles.resultTile,
+      pressed && styles.resultTilePressed,
+    ]}
+  >
+    <Image source={{ uri: imageUrl }} style={styles.resultImage} />
+    <Text style={styles.resultCredit} numberOfLines={1}>
+      {credit}
+    </Text>
+  </Pressable>
+);
 
 const styles = StyleSheet.create({
   field: {
@@ -915,6 +479,12 @@ const styles = StyleSheet.create({
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
     marginBottom: spacing.sm,
+  },
+  creditText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    marginBottom: spacing.xs,
   },
   actionRow: {
     flexDirection: "row",
@@ -938,68 +508,73 @@ const styles = StyleSheet.create({
     color: semantic.error,
     marginTop: spacing.xs,
   },
-  videoStatusText: {
+  providerTabs: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  providerTab: {
+    borderRadius: radiusTokens.sm,
+    borderWidth: 1,
+    borderColor: textTokens.quaternary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  providerTabActive: {
+    borderColor: accent.warm,
+    backgroundColor: "rgba(255, 122, 69, 0.12)",
+  },
+  providerTabText: {
+    color: textTokens.secondary,
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
+    fontWeight: "600",
+  },
+  providerTabTextActive: {
     color: accent.warm,
   },
-  videoStatusWrap: {
-    marginTop: spacing.xs,
-  },
-  videoProgressTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: textTokens.quaternary,
-    overflow: "hidden",
-    marginTop: spacing.xs,
-  },
-  videoProgressFill: {
-    height: "100%",
-    borderRadius: 2,
-    backgroundColor: accent.warm,
-  },
-  videoErrorText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: semantic.error,
-    marginTop: spacing.xs,
-  },
-  videoRecoveryRow: {
+  searchRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.sm,
+    gap: spacing.sm,
   },
-  videoRecoveryButton: {
-    minWidth: 108,
-  },
-  comingSoonCaption: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    fontStyle: "italic",
-    textAlign: "center",
-    marginTop: spacing.md,
-  },
-  tileGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-  },
-  tile: {
-    width: "31%",
-    aspectRatio: 1,
-    padding: 2,
-    borderRadius: radiusTokens.md + 2,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  tileActive: {
-    borderColor: accent.warm,
-  },
-  tileInner: {
+  searchInput: {
     flex: 1,
+    minHeight: 44,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: textTokens.quaternary,
+    color: textTokens.primary,
+    paddingHorizontal: spacing.sm,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+  },
+  searchButton: {
+    minWidth: 96,
+  },
+  providerResults: {
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  resultTile: {
+    width: 128,
     borderRadius: radiusTokens.md,
     overflow: "hidden",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  },
+  resultTilePressed: {
+    opacity: 0.75,
+  },
+  resultImage: {
+    width: "100%",
+    height: 84,
+    backgroundColor: textTokens.quaternary,
+  },
+  resultCredit: {
+    color: textTokens.tertiary,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 6,
   },
 });

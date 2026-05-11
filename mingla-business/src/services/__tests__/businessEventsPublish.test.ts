@@ -45,6 +45,11 @@ const baseDraft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
   coverHue: 25,
   coverMediaUrl: null,
   coverMediaType: null,
+  coverMediaProvider: null,
+  coverMediaSourceUrl: null,
+  coverMediaCredit: null,
+  coverMediaCreditUrl: null,
+  coverMediaAlt: null,
   tickets: [
     {
       id: "ticket-local",
@@ -99,6 +104,11 @@ const rpcSuccess = (slug: string) => ({
     recurrence_rules: null,
     cover_media_url: null,
     cover_media_type: null,
+    cover_media_provider: null,
+    cover_media_source_url: null,
+    cover_media_credit: null,
+    cover_media_credit_url: null,
+    cover_media_alt: null,
     currency: "USD",
     visibility: "public",
     status: "scheduled",
@@ -163,13 +173,54 @@ const rpcSuccess = (slug: string) => ({
 
 describe("business event publish RPC adapter", () => {
   test("uses the atomic publish RPC and trusts the returned final slug", async () => {
-    rpcMock.mockResolvedValueOnce({ data: rpcSuccess("visa"), error: null });
+    const response = rpcSuccess("visa");
+    const eventWithCover = response.event as Omit<
+      typeof response.event,
+      | "cover_media_alt"
+      | "cover_media_credit"
+      | "cover_media_credit_url"
+      | "cover_media_provider"
+      | "cover_media_source_url"
+      | "cover_media_type"
+      | "cover_media_url"
+    > & {
+      cover_media_alt: string | null;
+      cover_media_credit: string | null;
+      cover_media_credit_url: string | null;
+      cover_media_provider: string | null;
+      cover_media_source_url: string | null;
+      cover_media_type: "image" | "gif" | "video" | null;
+      cover_media_url: string | null;
+    };
+    eventWithCover.cover_media_url = "https://images.pexels.com/photos/1/landscape.jpeg";
+    eventWithCover.cover_media_type = "image";
+    eventWithCover.cover_media_provider = "pexels";
+    eventWithCover.cover_media_source_url = "https://www.pexels.com/photo/1/";
+    eventWithCover.cover_media_credit = "Jane Photographer";
+    eventWithCover.cover_media_credit_url = "https://www.pexels.com/@jane";
+    eventWithCover.cover_media_alt = "Guests at a supper club";
+    rpcMock.mockResolvedValueOnce({ data: response, error: null });
 
-    const published = await publishBusinessEventDraft(baseDraft());
+    const published = await publishBusinessEventDraft(
+      baseDraft({
+        coverMediaUrl: "https://images.pexels.com/photos/1/landscape.jpeg",
+        coverMediaType: "image",
+        coverMediaProvider: "pexels",
+        coverMediaSourceUrl: "https://www.pexels.com/photo/1/",
+        coverMediaCredit: "Jane Photographer",
+        coverMediaCreditUrl: "https://www.pexels.com/@jane",
+        coverMediaAlt: "Guests at a supper club",
+      }),
+    );
 
     expect(rpcMock).toHaveBeenCalledWith("business_publish_event_draft", {
       p_event_id: "00000000-0000-4000-8000-000000000001",
       p_draft_payload: expect.objectContaining({
+        cover_media_alt: "Guests at a supper club",
+        cover_media_credit: "Jane Photographer",
+        cover_media_credit_url: "https://www.pexels.com/@jane",
+        cover_media_provider: "pexels",
+        cover_media_source_url: "https://www.pexels.com/photo/1/",
         title: "Visa",
         visibility: "public",
       }),
@@ -179,6 +230,9 @@ describe("business event publish RPC adapter", () => {
     expect(published.event.eventSlug).toBe("visa");
     expect(published.event.eventSlug).not.toMatch(/^draft-/);
     expect(published.event.status).toBe("scheduled");
+    expect(published.event.coverMediaProvider).toBe("pexels");
+    expect(published.event.coverMediaCredit).toBe("Jane Photographer");
+    expect(published.event.coverMediaAlt).toBe("Guests at a supper club");
     expect(published.tickets[0]).toMatchObject({
       name: "The free",
       priceGbp: null,

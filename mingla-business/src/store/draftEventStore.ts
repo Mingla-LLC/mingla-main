@@ -40,6 +40,7 @@ import {
   shouldApplyServerDraft,
   type DraftEditMeta,
 } from "../utils/serverDraftAutosaveGuards";
+import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
 import type { LiveEvent } from "./liveEventStore";
 
 /**
@@ -260,6 +261,11 @@ export interface DraftEvent {
   coverMediaUrl: string | null;
   /** Type for coverMediaUrl. Null when no uploaded media is present. */
   coverMediaType: EventCoverMediaType | null;
+  coverMediaProvider?: EventCoverMediaProvider | null;
+  coverMediaSourceUrl?: string | null;
+  coverMediaCredit?: string | null;
+  coverMediaCreditUrl?: string | null;
+  coverMediaAlt?: string | null;
   // Step 5 — Tickets
   /** ISO 4217 event commerce currency. Null means server should use brand default. */
   currency?: string | null;
@@ -346,6 +352,11 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   coverHue: 25,
   coverMediaUrl: null,
   coverMediaType: null,
+  coverMediaProvider: null,
+  coverMediaSourceUrl: null,
+  coverMediaCredit: null,
+  coverMediaCreditUrl: null,
+  coverMediaAlt: null,
   currency: null,
   tickets: [],
   visibility: "public",
@@ -390,6 +401,11 @@ type V1DraftEvent = Omit<
   | "multiDates"
   | "coverMediaUrl"
   | "coverMediaType"
+  | "coverMediaProvider"
+  | "coverMediaSourceUrl"
+  | "coverMediaCredit"
+  | "coverMediaCreditUrl"
+  | "coverMediaAlt"
   | "currency"
 > & {
   tickets: V1TicketStub[];
@@ -415,6 +431,11 @@ type V2DraftEvent = Omit<
   | "tickets"
   | "coverMediaUrl"
   | "coverMediaType"
+  | "coverMediaProvider"
+  | "coverMediaSourceUrl"
+  | "coverMediaCredit"
+  | "coverMediaCreditUrl"
+  | "coverMediaAlt"
   | "currency"
 > & {
   tickets: V3TicketStub[];
@@ -432,6 +453,11 @@ type V3DraftEvent = Omit<
   | "inPersonPaymentsEnabled"
   | "coverMediaUrl"
   | "coverMediaType"
+  | "coverMediaProvider"
+  | "coverMediaSourceUrl"
+  | "coverMediaCredit"
+  | "coverMediaCreditUrl"
+  | "coverMediaAlt"
   | "currency"
 > & {
   tickets: V3TicketStub[];
@@ -474,6 +500,11 @@ type V4DraftEvent = Omit<
   | "inPersonPaymentsEnabled"
   | "coverMediaUrl"
   | "coverMediaType"
+  | "coverMediaProvider"
+  | "coverMediaSourceUrl"
+  | "coverMediaCredit"
+  | "coverMediaCreditUrl"
+  | "coverMediaAlt"
   | "currency"
 > & {
   tickets: V4TicketStub[];
@@ -524,6 +555,11 @@ type V5DraftEvent = Omit<
   | "inPersonPaymentsEnabled"
   | "coverMediaUrl"
   | "coverMediaType"
+  | "coverMediaProvider"
+  | "coverMediaSourceUrl"
+  | "coverMediaCredit"
+  | "coverMediaCreditUrl"
+  | "coverMediaAlt"
   | "currency"
 > & {
   tickets: V5TicketStub[];
@@ -539,7 +575,15 @@ const upgradeV5TicketToV6 = (t: V5TicketStub): TicketStub => ({
 
 type V6DraftEvent = Omit<
   DraftEvent,
-  "serverSlug" | "coverMediaUrl" | "coverMediaType" | "currency"
+  | "serverSlug"
+  | "coverMediaUrl"
+  | "coverMediaType"
+  | "coverMediaProvider"
+  | "coverMediaSourceUrl"
+  | "coverMediaCredit"
+  | "coverMediaCreditUrl"
+  | "coverMediaAlt"
+  | "currency"
 >;
 
 const upgradeV5DraftToV6 = (d: V5DraftEvent): V6DraftEvent => ({
@@ -553,7 +597,21 @@ const upgradeV6DraftToV7 = (d: V6DraftEvent): DraftEvent => ({
   serverSlug: null,
   coverMediaUrl: null,
   coverMediaType: null,
+  coverMediaProvider: null,
+  coverMediaSourceUrl: null,
+  coverMediaCredit: null,
+  coverMediaCreditUrl: null,
+  coverMediaAlt: null,
   currency: null,
+});
+
+const withProviderMetadataDefaults = (draft: DraftEvent): DraftEvent => ({
+  ...draft,
+  coverMediaProvider: draft.coverMediaProvider ?? null,
+  coverMediaSourceUrl: draft.coverMediaSourceUrl ?? null,
+  coverMediaCredit: draft.coverMediaCredit ?? null,
+  coverMediaCreditUrl: draft.coverMediaCreditUrl ?? null,
+  coverMediaAlt: draft.coverMediaAlt ?? null,
 });
 
 const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
@@ -562,7 +620,7 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   name: "mingla-business.draftEvent.v1",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state): PersistedState => ({ drafts: state.drafts }),
-  version: 9,
+  version: 10,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { drafts: [] };
@@ -610,18 +668,24 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
     if (version === 7) {
       const v7 = persistedState as { drafts: Array<Omit<DraftEvent, "serverSlug">> };
       return {
-        drafts: v7.drafts.map((draft) => ({
+        drafts: v7.drafts.map((draft) => withProviderMetadataDefaults({
           ...draft,
           serverSlug: null,
           currency: null,
-        })),
+        } as DraftEvent)),
       };
     }
     if (version === 8) {
       const v8 = persistedState as { drafts: Array<Omit<DraftEvent, "currency">> };
       return {
-        drafts: v8.drafts.map((draft) => ({ ...draft, currency: null })),
+        drafts: v8.drafts.map((draft) =>
+          withProviderMetadataDefaults({ ...draft, currency: null } as DraftEvent),
+        ),
       };
+    }
+    if (version === 9) {
+      const v9 = persistedState as { drafts: DraftEvent[] };
+      return { drafts: v9.drafts.map(withProviderMetadataDefaults) };
     }
     return persistedState as PersistedState;
   },

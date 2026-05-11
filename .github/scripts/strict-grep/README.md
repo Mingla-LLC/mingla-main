@@ -29,6 +29,7 @@ scaffold rewrite needed.
 | I-PROPOSED-Y | `i-proposed-y-platform-web-url-from-env.mjs` | B2a Path C V3 forensics fix | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-Y |
 | I-PROPOSED-Z | `i-proposed-z-home-no-fabricated-events.mjs` | ORCH-0754 | `Mingla_Artifacts/specs/SPEC_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md` |
 | I-PROPOSED-X | `i-proposed-x-web-deprecation.mjs` | META-ORCH-0744 | `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-PROPOSED-X |
+| ORCH-0783 | `orch-0783-event-cover-image-provider-pivot.mjs` | ORCH-0783 | `Mingla_Artifacts/specs/SPEC_ORCH-0783_EVENT_COVER_IMAGE_PROVIDER_PIVOT.md` |
 
 ## Future gates (proposed but not yet implemented)
 

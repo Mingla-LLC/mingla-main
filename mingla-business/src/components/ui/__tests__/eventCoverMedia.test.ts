@@ -50,7 +50,7 @@ describe("EventCoverMedia presentation", () => {
 
     expect(source).toContain("EVENT_COVER_UPLOAD_LIMIT_COPY");
     expect(rulesSource).toContain(
-      "Upload an image or GIF up to 30 MB. Videos are trimmed to 15 seconds and compressed before they go live.",
+      "Upload a JPEG, PNG, WebP, or GIF up to 30 MB.",
     );
   });
 
@@ -68,34 +68,34 @@ describe("EventCoverMedia presentation", () => {
     const source = repoFile("src/components/event/CreatorStep4Cover.tsx");
 
     expect(source).toContain('mediaTypes: ["images"]');
-    expect(source).toContain('mediaTypes: ["videos"]');
-    expect(source).toContain("validateNativeTrimmedEventCoverVideo");
+    expect(source).not.toContain('mediaTypes: ["videos"]');
+    expect(source).not.toContain("validateNativeTrimmedEventCoverVideo");
     expect(source).toContain("allowsEditing: false");
-    expect(source).toContain("allowsEditing: true");
-    expect(source).toContain("videoMaxDuration: 15");
-    expect(source).toContain("createEventCoverVideoUploadIntent");
+    expect(source).not.toContain("allowsEditing: true");
+    expect(source).not.toContain("videoMaxDuration: 15");
+    expect(source).not.toContain("createEventCoverVideoUploadIntent");
     expect(source).toContain("if (!isAuthReady)");
     expect(source).toContain("Finishing sign-in before upload");
     expect(source).not.toContain("Use this clip");
     expect(source).not.toContain("Trim video cover");
-    expect(source).toContain("videoErrorText");
-    expect(source).toContain("setVideoStatusText(null)");
-    expect(source).toContain("VideoExportPreset.H264_1280x720");
-    expect(source).toContain("UIImagePickerControllerQualityType.High");
-    expect(source).toContain("EVENT_COVER_VIDEO_PROCESSING_COPY");
+    expect(source).toContain("searchGiphyEventCovers");
+    expect(source).toContain("searchPexelsEventCovers");
+    expect(source).toContain("coverMediaProvider");
+    expect(source).not.toContain("VideoExportPreset.H264_1280x720");
+    expect(source).not.toContain("UIImagePickerControllerQualityType.High");
+    expect(source).not.toContain("EVENT_COVER_VIDEO_PROCESSING_COPY");
   });
 
-  test("event creator logs upload-intent diagnostics with request id and edge detail", () => {
+  test("event creator no longer logs active video upload-intent diagnostics", () => {
     const source = repoFile("src/components/event/CreatorStep4Cover.tsx");
 
-    expect(source).toContain("requestId: diagnostic?.requestId");
-    expect(source).toContain("edgeStatus: diagnostic?.edgeStatus");
-    expect(source).toContain("edgeError: diagnostic?.edgeError");
-    expect(source).toContain("edgeDetail: diagnostic?.edgeDetail");
-    expect(source).toContain("sourceDurationMs: diagnostic?.sourceDurationMs");
-    expect(source).toContain("sourceBytes: diagnostic?.sourceBytes");
-    expect(source).toContain("JSON.stringify({");
-    expect(source).toContain("Object.assign(error, {");
+    expect(source).not.toContain("requestId: diagnostic?.requestId");
+    expect(source).not.toContain("edgeStatus: diagnostic?.edgeStatus");
+    expect(source).not.toContain("edgeError: diagnostic?.edgeError");
+    expect(source).not.toContain("edgeDetail: diagnostic?.edgeDetail");
+    expect(source).not.toContain("sourceDurationMs: diagnostic?.sourceDurationMs");
+    expect(source).not.toContain("sourceBytes: diagnostic?.sourceBytes");
+    expect(source).not.toContain("Object.assign(error, {");
   });
 
   test("event cover videos use inline browser-safe playback props", () => {

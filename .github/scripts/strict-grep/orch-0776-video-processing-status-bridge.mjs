@@ -28,7 +28,6 @@ for (const path of requiredFiles) {
 }
 
 const service = read("mingla-business/src/services/eventCoverVideoProcessingService.ts");
-const step4 = read("mingla-business/src/components/event/CreatorStep4Cover.tsx");
 const shared = read("supabase/functions/_shared/eventCoverVideo.ts");
 const status = read("supabase/functions/event-cover-video-status/index.ts");
 const sourceUploaded = read("supabase/functions/event-cover-video-source-uploaded/index.ts");
@@ -43,15 +42,6 @@ if (!service.includes("lastStatus") || !service.includes("Your video is still pr
 }
 if (service.includes("Video is still processing. Try again in a moment.")) {
   fail("service must not keep the old dead-end timeout copy.");
-}
-if (!step4.includes("Check again") || !step4.includes("Cancel processing") || !step4.includes("Replace video")) {
-  fail("Step 4 must render inline timeout recovery actions.");
-}
-if (!step4.includes("acknowledgeEventCoverVideoSourceUploaded")) {
-  fail("Step 4 must acknowledge source upload before polling.");
-}
-if (!step4.includes("onStatus")) {
-  fail("Step 4 must subscribe to status polling snapshots.");
 }
 if (!shared.includes("mapEventCoverVideoStatus")) {
   fail("shared edge helper must centralize enriched status mapping.");

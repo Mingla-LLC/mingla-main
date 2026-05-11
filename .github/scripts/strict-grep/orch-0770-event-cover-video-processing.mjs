@@ -28,17 +28,11 @@ for (const path of mustExist) {
 }
 
 const creator = read("mingla-business/src/components/event/CreatorStep4Cover.tsx");
-if (!creator.includes("createEventCoverVideoUploadIntent")) {
-  fail("CreatorStep4Cover must use the processing upload-intent flow for videos.");
-}
-if (!creator.includes("allowsEditing: true") || !creator.includes("videoMaxDuration: 15")) {
-  fail("CreatorStep4Cover must request native video editing before upload-intent.");
-}
-if (!creator.includes("validateNativeTrimmedEventCoverVideo")) {
-  fail("CreatorStep4Cover must validate native-trimmed video output before upload-intent.");
+if (creator.includes("createEventCoverVideoUploadIntent")) {
+  fail("CreatorStep4Cover must not expose the dormant video upload-intent flow after ORCH-0783.");
 }
 if (creator.includes("Use this clip") || creator.includes("Trim video cover")) {
-  fail("CreatorStep4Cover must not expose the retired custom trim panel in the native-trim flow.");
+  fail("CreatorStep4Cover must not expose the retired custom trim panel.");
 }
 
 const service = read("mingla-business/src/services/eventCoverVideoProcessingService.ts");
