@@ -58,7 +58,7 @@ No Supabase migration, Edge Function deploy, provider mutation, EAS OTA, or nati
 
 ## Lock-In Status
 
-Implementation branch commit `14c3b59d` is close-ready. The main checkout currently contains unrelated dirty ORCH-0777/0779/product work, including files that overlap the ORCH-0781 implementation surface, so the final merge/remove step must wait until those unrelated changes are isolated or committed by their owners. Until then, `WORKTREE_REGISTRY.md` marks the worktree as `CLOSED PASS / branch push + merge/remove pending`.
+Implementation branch commit `14c3b59d` is close-ready, and close artifact commit `cc1dfabe` has been pushed to `origin/orch/0781-clean-tree-stripe-web-import-regression`. This branch push does not satisfy C-781-3 because the workflow's new `push` trigger intentionally targets only `[main, Seth]`; C-781-3 must be captured after merge/push to one of those branches. The main checkout currently contains unrelated dirty ORCH-0777/0779/product work, including files that overlap the ORCH-0781 implementation surface, so the final merge/remove step must wait until those unrelated changes are isolated or committed by their owners. Until then, `WORKTREE_REGISTRY.md` marks the worktree as `CLOSED PASS / branch pushed / merge-remove pending`.
 
 Recommended commit message for the close artifact sync:
 
