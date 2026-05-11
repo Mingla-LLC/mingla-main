@@ -7,6 +7,36 @@
 
 ---
 
+## ACTIVE (post ORCH-0792 CLOSE 2026-05-11)
+
+Two invariants introduced by SPEC §9 of ORCH-0792 governing the canonical authority for event timing. SPEC originally named them `I-PROPOSED-AW` and `I-PROPOSED-AX` but the Codex `orchestrator-mingla` CLOSE of ORCH-0789/0790/0791 landed first and took AW (CHECKOUT-SESSION-NEVER-REUSED-POST-TERMINAL). Renumbered runtime IDs are `AX` and `AY`. Spec text is binding; the rename is a registry-only correction matching the ORCH-0785 / ORCH-0786 precedent.
+
+### I-PROPOSED-AX EVENT_HAS_MASTER_DATE
+
+**Statement:** Every `events` row with `status IN ('scheduled', 'live')` AND `deleted_at IS NULL` MUST have exactly one `event_dates` row with `is_master = true` and non-null `start_at` / `end_at` / `timezone`. Draft and cancelled events are exempt.
+
+**Rationale:** ORCH-0792 RC-1 — the prior `business_publish_event_draft` RPC validated title, tickets, and currency but never wrote `event_dates` rows, leaving 17/17 production events with zero canonical date rows. Buyer email date line, ticket PDF date line, calendar block, and `.ics` attachment all silently rendered empty because downstream consumers correctly defaulted to null rather than fabricating from the JSON scratchpad.
+
+**Enforcement mechanism:** (1) DB constraint trigger `trg_events_enforce_master_date` blocks `events.status` transitions to `scheduled`/`live` unless a master `event_dates` row exists; (2) partial unique index `event_dates_master_unique ON event_dates(event_id) WHERE is_master = true` enforces the ≤1 cardinality; (3) `.github/scripts/strict-grep/orch-0792-publish-writes-event-dates.mjs` asserts the latest publish RPC definition contains `INSERT INTO public.event_dates`.
+
+**Test that catches regression:** `npx jest --testPathPattern businessEvents_master_date.test.ts` (4 PASS) plus the strict-grep gate in CI. Migration `20260525000002_orch_0792_event_master_date_required.sql` and `20260525000001_orch_0792_backfill_event_dates_from_theme.sql` covered the production backfill (8 legacy rows inserted, 0 skipped, cancelled "Visa" event excluded by design).
+
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0792 CLOSE after operator `supabase db push` succeeded + DB probes confirmed 8 backfilled rows + partial unique index present + trigger present.
+
+### I-PROPOSED-AY EVENT_DATES_SOLE_DATE_AUTHORITY
+
+**Statement:** Post-publish reads of event timing MUST source from `event_dates` (directly or via the `master_*` columns on `business_management_events_view` / `business_public_events_view`). Reads from `theme.business_event.when` / `business_event.multiDates` / `business_event.recurrenceRule` JSON paths are draft-side mirrors only and MUST NOT be the source for production read paths. The Mingla pipeline maintains a single authoritative source for event timing.
+
+**Rationale:** ORCH-0792 RC-2 — split-brain state where `theme.business_event.when` JSON and `event_dates` table held duplicate (or contradictory) timing data, with the Mingla Business app reading JSON and the buyer email dispatcher reading `event_dates`. Restoring `event_dates` as canonical eliminates Constitution #2 (One owner per truth) violation.
+
+**Enforcement mechanism:** `.github/scripts/strict-grep/orch-0792-no-published-event-theme-reads.mjs` walks `mingla-business/src/services/` and `supabase/functions/` for forbidden `businessEvent.when` / `asRecord(businessEvent.when)` / SQL `business_event->'when'` patterns. Allowlist exempts draft-side mappers (`serverDraftEventMapper.ts`, `draftEventStore.ts`, `CreatorStep2When.tsx`, `EventCreatorWizard.tsx`, `EditPublishedScreen.tsx`, `eventDrafts.ts`) and transitional `businessEvent.multiDates` reads (queued for follow-up).
+
+**Test that catches regression:** Strict-grep gate + Jest test `businessEvents_master_date.test.ts` asserts `LiveEvent.date` / `doorsOpen` / `endsAt` come from `master_*` columns even when stale `theme.business_event.when` values are present.
+
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0792 CLOSE. Service-layer migration in `businessEvents.ts:282-294` and `publicEventsService.ts:303` complete.
+
+---
+
 ## ACTIVE (post ORCH-0789 + ORCH-0790 + ORCH-0791 combined CLOSE 2026-05-11)
 
 Three invariants introduced by SPEC §4 of ORCH-0789 + ORCH-0790 and SPEC §4 of ORCH-0791 governing the public buyer checkout failure surfaces. Promoted DRAFT→ACTIVE on 2026-05-11 after the operator-witnessed refund→repurchase live-fire passed end-to-end on iPhone (Stripe test mode) and the SQL probe confirmed the new tombstone RPC body is live on remote (`pg_get_functiondef` returned `has_tombstone: true, has_terminal_check: true`).
