@@ -30,6 +30,11 @@ export interface TicketPdfInput {
     qrPayload: string;
   }>;
   attendeeNameHint: string | null;
+  // Optional Mingla wordmark PNG URL. When provided the renderer fetches the
+  // image and embeds it in the top band instead of the text "Mingla".
+  // If fetch fails (network/HTTP error) we silently fall back to the text
+  // rendering so PDF generation never blocks ticket dispatch.
+  logoUrl?: string;
 }
 
 export interface TicketPdfResult {
@@ -90,30 +95,56 @@ export async function buildTicketPdf(
 
   const dateLine = formatEventDateLine(input.event.startAtIso, input.event.timezone);
 
+  // Try to embed the wordmark. Failures fall back to the text "Mingla".
+  let logoImage: Awaited<ReturnType<typeof pdf.embedPng>> | null = null;
+  if (input.logoUrl) {
+    try {
+      const res = await fetch(input.logoUrl);
+      if (res.ok) {
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        logoImage = await pdf.embedPng(bytes);
+      }
+    } catch (_err) {
+      logoImage = null;
+    }
+  }
+
   for (const ticket of input.tickets) {
     const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
-    // Top orange band
-    page.drawRectangle({
-      x: 0,
-      y: PAGE_HEIGHT - 80,
-      width: PAGE_WIDTH,
-      height: 80,
+    // Top header band. Logo on the white area, slim orange accent strip below.
+    if (logoImage) {
+      const targetWidth = 140;
+      const scaled = logoImage.scaleToFit(targetWidth, 56);
+      page.drawImage(logoImage, {
+        x: 32,
+        y: PAGE_HEIGHT - 24 - scaled.height,
+        width: scaled.width,
+        height: scaled.height,
+      });
+    } else {
+      page.drawText("Mingla", {
+        x: 32,
+        y: PAGE_HEIGHT - 56,
+        size: 28,
+        font: fontBold,
+        color: rgb(BRAND_ORANGE_R, BRAND_ORANGE_G, BRAND_ORANGE_B),
+      });
+    }
+    page.drawText("TICKET", {
+      x: PAGE_WIDTH - 96,
+      y: PAGE_HEIGHT - 46,
+      size: 11,
+      font: fontBold,
       color: rgb(BRAND_ORANGE_R, BRAND_ORANGE_G, BRAND_ORANGE_B),
     });
-    page.drawText("Mingla", {
-      x: 32,
-      y: PAGE_HEIGHT - 48,
-      size: 24,
-      font: fontBold,
-      color: rgb(1, 1, 1),
-    });
-    page.drawText("Ticket", {
-      x: PAGE_WIDTH - 96,
-      y: PAGE_HEIGHT - 44,
-      size: 14,
-      font: fontRegular,
-      color: rgb(1, 1, 1),
+    // Slim orange accent strip
+    page.drawRectangle({
+      x: 0,
+      y: PAGE_HEIGHT - 92,
+      width: PAGE_WIDTH,
+      height: 4,
+      color: rgb(BRAND_ORANGE_R, BRAND_ORANGE_G, BRAND_ORANGE_B),
     });
 
     // Event block
