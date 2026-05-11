@@ -166,7 +166,7 @@ export const IconChrome: React.FC<IconChromeProps> = ({
   if (!interactive) {
     return (
       <View testID={testID} style={style}>
-        {renderInteractive({ pressed: false })}
+        {renderInteractive({ pressed: false, hovered: false })}
       </View>
     );
   }
