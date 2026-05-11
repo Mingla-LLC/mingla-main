@@ -33,7 +33,9 @@
     "test:orch-0776d": "node ../.github/scripts/strict-grep/orch-0776d-cancelled-at-schema.mjs && jest --runInBand src/services/__tests__/eventCoverVideoProcessingService.test.ts",
     "test:orch-0777": "node ../.github/scripts/strict-grep/orch-0777-ticket-checkout-production.mjs && npx jest phone.test eventOrdersService.test ticketCheckoutService.test ticketCheckoutMigrationGuards.test && npx tsc --noEmit",
     "test:orch-0778": "node ../.github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs",
-    "test:orch-0783": "node ../.github/scripts/strict-grep/orch-0783-event-cover-image-provider-pivot.mjs && npx jest serverDraftEventMapper.test businessEventsPublish.test publicEventsService.test eventCoverMediaService.test eventCoverMedia.test giphyEventCoverService.test pexelsEventCoverService.test liveEventAdapter.test"
+    "test:orch-0783": "node ../.github/scripts/strict-grep/orch-0783-event-cover-image-provider-pivot.mjs && npx jest serverDraftEventMapper.test businessEventsPublish.test publicEventsService.test eventCoverMediaService.test eventCoverMedia.test giphyEventCoverService.test pexelsEventCoverService.test liveEventAdapter.test",
+    "test:orch-0784": "node ../.github/scripts/strict-grep/orch-0784-event-list-sales-summary-visibility.mjs && npx jest eventSalesSummary.test",
+    "test:orch-0786": "node ../.github/scripts/strict-grep/orch-0786-creator-avatar-upload-integrity.mjs && npx jest creatorAvatarService.test creatorAvatarRules.test creatorAvatarFileReader.test edit-profile.avatar.test"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

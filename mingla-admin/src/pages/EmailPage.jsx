@@ -160,6 +160,10 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
   const [body, setBody] = useState("");
   const [fromName, setFromName] = useState("Mingla");
   const [fromEmail, setFromEmail] = useState("hello@usemingla.com");
+  // ORCH-0785: brand-shell toggle defaults ON. When ON, the edge function
+  // wraps subject+body in the Mingla shared shell (logo + footer). OFF sends
+  // raw plain text for operator test pings.
+  const [useBrandShell, setUseBrandShell] = useState(true);
   const [segment, setSegment] = useState({ type: "all", country: "", onboarding: "", status: "", city: "", tier: "", last_active: "" });
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -364,8 +368,8 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
       const estimatedRecipients = estimate?.will_receive || 0;
 
       const payload = mode === "individual"
-        ? { action: "send", to: toEmail.trim(), subject, body, fromName, fromEmail }
-        : { action: "send_bulk", segment: seg, subject, body, fromName, fromEmail };
+        ? { action: "send", to: toEmail.trim(), subject, body, fromName, fromEmail, useBrandShell }
+        : { action: "send_bulk", segment: seg, subject, body, fromName, fromEmail, useBrandShell };
 
       const result = await callEdgeFunction(payload);
 
@@ -447,7 +451,7 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
                 supabase secrets set RESEND_API_KEY=re_xxxxxxxx
               </code>
             </p>
-            <p><strong>Step 4:</strong> Verify your sending domain in Resend, or use <code className="px-1.5 py-0.5 rounded text-xs bg-[var(--gray-100)]">onboarding@resend.dev</code> for testing</p>
+            <p><strong>Step 4:</strong> Verify your sending domain in Resend (DKIM/SPF/DMARC for <code className="px-1.5 py-0.5 rounded text-xs bg-[var(--gray-100)]">usemingla.com</code> — needed for <code className="px-1.5 py-0.5 rounded text-xs bg-[var(--gray-100)]">tickets@</code>, <code className="px-1.5 py-0.5 rounded text-xs bg-[var(--gray-100)]">hello@</code>, <code className="px-1.5 py-0.5 rounded text-xs bg-[var(--gray-100)]">notifications@</code>). Sandbox senders are blocked by the Mingla shell.</p>
             <p>
               <strong>Step 5:</strong> Deploy the Edge Function:{" "}
               <code className="ml-1 px-2 py-1 rounded text-xs bg-[var(--gray-100)]">
@@ -648,11 +652,20 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
               value={fromEmail}
               onChange={(e) => setFromEmail(e.target.value)}
               helper={
-                fromEmail && !fromEmail.endsWith("@usemingla.com") && !fromEmail.endsWith("@resend.dev")
-                  ? "Only @usemingla.com and @resend.dev domains are verified in Resend"
+                fromEmail && !fromEmail.endsWith("@usemingla.com")
+                  ? "Only verified @usemingla.com senders will deliver — Mingla blocks @resend.dev"
                   : undefined
               }
             />
+          </div>
+
+          {/* ORCH-0785 brand-shell toggle */}
+          <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] p-3">
+            <div>
+              <p className="text-sm font-medium text-[var(--color-text-primary)]">Use Mingla brand shell</p>
+              <p className="text-xs text-[var(--color-text-tertiary)]">Wraps the email in the Mingla header, footer, and accessible HTML layout. Recommended for all customer-facing sends.</p>
+            </div>
+            <Toggle checked={useBrandShell} onChange={setUseBrandShell} />
           </div>
 
           {/* Subject */}
@@ -685,6 +698,12 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
       {/* Preview Modal */}
       <Modal open={showPreview} onClose={() => setShowPreview(false)} title="Email Preview" size="md">
         <ModalBody>
+          {useBrandShell && (
+            <div className="mb-3 text-xs text-[var(--color-text-tertiary)] flex items-center gap-2">
+              <span className="inline-block px-2 py-0.5 rounded-full bg-[var(--color-brand-500)] text-white font-medium">Mingla brand shell ON</span>
+              <span>Final email wraps this content in the Mingla logo header + support footer.</span>
+            </div>
+          )}
           <div className="rounded-lg p-6" style={{ background: "#ffffff", color: "#333", fontFamily: "system-ui, sans-serif" }}>
             <div style={{ borderBottom: "1px solid #eee", paddingBottom: 12, marginBottom: 16 }}>
               <p style={{ fontSize: 12, color: "#888", margin: 0 }}>From: {fromName} &lt;{fromEmail}&gt;</p>

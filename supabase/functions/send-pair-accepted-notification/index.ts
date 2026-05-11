@@ -1,3 +1,7 @@
+// ORCH-0785: This function does NOT send email despite its name.
+// The customer email path is `_shared/email/` + `ticket-confirmation-dispatch`
+// (transactional) or `notify-dispatch` with `emailVariant: "generic_notification"`
+// (system/relational). Rename deferred to a separate ORCH.
 // PAIR REQUEST ACCEPTED NOTIFICATION (Block 3 — hardened 2026-03-21)
 // Cloned from send-friend-accepted-notification. Dispatches via notify-dispatch
 // so preferences, quiet hours, and push delivery are all handled.

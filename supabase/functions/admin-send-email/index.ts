@@ -1,5 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  assertNotResendSandbox,
+  EMAIL_SENDERS,
+  formatSenderHeader,
+  renderTransactionalEmail,
+  type SenderIdentity,
+} from "../_shared/email/index.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -18,35 +25,100 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-async function sendViaResend(
-  to: string,
-  subject: string,
-  body: string,
-  fromName: string,
-  fromEmail: string
-): Promise<{ ok: boolean; error?: string }> {
+function resolveSenderFromInput(
+  fromName: string | undefined,
+  fromEmail: string | undefined,
+): SenderIdentity {
+  if (fromEmail && fromEmail.includes("@")) {
+    return {
+      name: (fromName ?? "Mingla").trim() || "Mingla",
+      address: fromEmail.trim(),
+    };
+  }
+  return EMAIL_SENDERS.admin;
+}
+
+interface SendOptions {
+  to: string;
+  subject: string;
+  body: string;
+  fromName?: string;
+  fromEmail?: string;
+  useBrandShell?: boolean;
+  cta?: { label: string; url: string };
+}
+
+async function sendViaResend(opts: SendOptions): Promise<{
+  ok: boolean;
+  error?: string;
+}> {
+  const sender = resolveSenderFromInput(opts.fromName, opts.fromEmail);
   try {
+    assertNotResendSandbox(sender);
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  let resendBody: Record<string, unknown>;
+  if (opts.useBrandShell === false) {
+    resendBody = {
+      from: formatSenderHeader(sender),
+      to: [opts.to],
+      subject: opts.subject,
+      text: opts.body,
+      // no-attachment: admin compose plain-text mode.
+    };
+  } else {
+    let rendered;
+    try {
+      rendered = renderTransactionalEmail({
+        variant: "admin_compose",
+        recipient: { name: null, email: opts.to },
+        body: {
+          variant: "admin_compose",
+          title: opts.subject,
+          paragraphs: opts.body.split("\n\n"),
+          cta: opts.cta ?? null,
+        },
+        sender,
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+    resendBody = {
+      from: formatSenderHeader(rendered.from),
+      to: [opts.to],
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      // no-attachment: admin compose has no PDF.
+    };
+  }
+
+  try {
+    // no-attachment: admin compose (both brand-shell and plain-text modes)
+    // ships subject + body only; PDFs are exclusive to ticket confirmation.
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${RESEND_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        from: `${fromName} <${fromEmail}>`,
-        to: [to],
-        subject,
-        text: body,
-      }),
+      body: JSON.stringify(resendBody),
     });
-
     if (!res.ok) {
       const errBody = await res.text();
       return { ok: false, error: `Resend ${res.status}: ${errBody}` };
     }
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err.message };
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -56,7 +128,6 @@ serve(async (req) => {
   }
 
   try {
-    // Auth
     const authHeader = req.headers.get("authorization");
     if (!authHeader) return jsonResponse({ error: "No authorization header" }, 401);
 
@@ -65,7 +136,6 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) return jsonResponse({ error: "Unauthorized" }, 401);
 
-    // Admin check
     const { data: adminRow } = await supabase
       .from("admin_users")
       .select("id")
@@ -78,16 +148,14 @@ serve(async (req) => {
     const { action } = body;
 
     if (action === "check_provider") {
-      // EmailPage calls this on mount to verify Resend is configured
       return jsonResponse({
         provider: "resend",
         configured: !!RESEND_API_KEY,
-        from_domain: body.fromEmail || "noreply@usemingla.com",
+        from_domain: body.fromEmail || EMAIL_SENDERS.admin.address,
       });
     }
 
     if (action === "estimate") {
-      // Estimate recipient count for a segment
       const { segment } = body;
       let query = supabase.from("profiles").select("id", { count: "exact", head: true });
 
@@ -106,26 +174,34 @@ serve(async (req) => {
     }
 
     if (action === "send") {
-      // Individual email
-      const { to, subject, body: emailBody, fromName, fromEmail } = body;
+      const {
+        to,
+        subject,
+        body: emailBody,
+        fromName,
+        fromEmail,
+        useBrandShell,
+        cta,
+      } = body;
       if (!to || !subject || !emailBody) {
         return jsonResponse({ error: "to, subject, body are required" }, 400);
       }
 
-      const result = await sendViaResend(
+      const result = await sendViaResend({
         to,
         subject,
-        emailBody,
-        fromName || "Mingla",
-        fromEmail || "noreply@usemingla.com"
-      );
+        body: emailBody,
+        fromName: fromName || EMAIL_SENDERS.admin.name,
+        fromEmail: fromEmail || EMAIL_SENDERS.admin.address,
+        useBrandShell: useBrandShell !== false,
+        cta: cta && cta.label && cta.url ? { label: cta.label, url: cta.url } : undefined,
+      });
 
-      // Log to admin_email_log
       await supabase.from("admin_email_log").insert({
         subject,
         body: emailBody,
-        from_name: fromName || "Mingla",
-        from_email: fromEmail || "noreply@usemingla.com",
+        from_name: fromName || EMAIL_SENDERS.admin.name,
+        from_email: fromEmail || EMAIL_SENDERS.admin.address,
         recipient_type: "individual",
         recipient_email: to,
         recipient_count: 1,
@@ -143,13 +219,19 @@ serve(async (req) => {
     }
 
     if (action === "send_bulk") {
-      // Bulk email to segment
-      const { segment, subject, body: emailBody, fromName, fromEmail } = body;
+      const {
+        segment,
+        subject,
+        body: emailBody,
+        fromName,
+        fromEmail,
+        useBrandShell,
+        cta,
+      } = body;
       if (!subject || !emailBody) {
         return jsonResponse({ error: "subject, body are required" }, 400);
       }
 
-      // Fetch recipients
       let query = supabase.from("profiles").select("id, email, first_name").not("email", "is", null);
 
       if (segment?.type === "country") {
@@ -170,14 +252,16 @@ serve(async (req) => {
 
       for (const r of recipients || []) {
         if (!r.email) { failed++; continue; }
-        const personalizedBody = emailBody.replace(/{name}/g, r.first_name || "there");
-        const result = await sendViaResend(
-          r.email,
+        const personalizedBody = emailBody.replace(/\{name\}/g, r.first_name || "there");
+        const result = await sendViaResend({
+          to: r.email,
           subject,
-          personalizedBody,
-          fromName || "Mingla",
-          fromEmail || "noreply@usemingla.com"
-        );
+          body: personalizedBody,
+          fromName: fromName || EMAIL_SENDERS.admin.name,
+          fromEmail: fromEmail || EMAIL_SENDERS.admin.address,
+          useBrandShell: useBrandShell !== false,
+          cta: cta && cta.label && cta.url ? { label: cta.label, url: cta.url } : undefined,
+        });
         if (result.ok) sent++;
         else {
           failed++;
@@ -185,12 +269,11 @@ serve(async (req) => {
         }
       }
 
-      // Log to admin_email_log
       await supabase.from("admin_email_log").insert({
         subject,
         body: emailBody,
-        from_name: fromName || "Mingla",
-        from_email: fromEmail || "noreply@usemingla.com",
+        from_name: fromName || EMAIL_SENDERS.admin.name,
+        from_email: fromEmail || EMAIL_SENDERS.admin.address,
         recipient_type: "bulk",
         segment_filter: segment || null,
         recipient_count: (recipients || []).length,
@@ -206,6 +289,6 @@ serve(async (req) => {
     return jsonResponse({ error: `Unknown action: ${action}` }, 400);
 
   } catch (err) {
-    return jsonResponse({ error: err.message }, 500);
+    return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 500);
   }
 });

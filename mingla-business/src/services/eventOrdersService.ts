@@ -1,5 +1,36 @@
 import { supabase } from "./supabase";
-import type { OrderRecord } from "../store/orderStore";
+import type { OrderRecord, RefundRecord } from "../store/orderStore";
+
+// ORCH-0787: Order shape now includes server-truth refunds + line-level refund accounting
+// + cancellation columns. The hardcoded `refunds: []` stub is gone.
+
+interface OrderLineItemRow {
+  id: string;
+  ticket_type_id: string;
+  quantity: number;
+  unit_price_cents: number;
+  total_cents: number;
+  ticket_types: { name: string; is_free: boolean } | null;
+}
+
+interface RefundLineItemRow {
+  order_line_item_id: string;
+  ticket_type_id: string;
+  quantity: number;
+  amount_cents: number;
+}
+
+interface RefundRow {
+  id: string;
+  amount_cents: number;
+  currency: string;
+  reason: string | null;
+  status: string;
+  processed_at: string | null;
+  created_at: string;
+  stripe_refund_id: string | null;
+  refund_line_items: RefundLineItemRow[];
+}
 
 interface OrderRow {
   id: string;
@@ -14,14 +45,14 @@ interface OrderRow {
   payment_status: string;
   confirmed_at: string | null;
   created_at: string;
+  // ORCH-0787 cancellation columns
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_reason: string | null;
+  refunded_amount_cents: number;
   events: { brand_id: null | string } | null;
-  order_line_items: Array<{
-    ticket_type_id: string;
-    quantity: number;
-    unit_price_cents: number;
-    total_cents: number;
-    ticket_types: { name: string; is_free: boolean } | null;
-  }>;
+  order_line_items: OrderLineItemRow[];
+  refunds: RefundRow[];
 }
 
 export interface EventOrderRevenue {
@@ -42,11 +73,41 @@ export interface EventOrderActivity {
   at: string;
 }
 
+// ORCH-0787: split the conflated 'failed' → 'cancelled' mapping per I-PROPOSED-(new)
+// ORDER-CANCELLED-VS-FAILED-SEPARATION. 'failed' is a Stripe gateway failure (rare for
+// finalized orders — pre-finalization failures live in ticket_checkout_sessions). 'cancelled'
+// is intentional organiser cancellation via biz_cancel_order. OrderStatus does not include
+// 'failed' today (orderStore.ts:56-60 union); we map failed orders to 'cancelled' status
+// at the surface level only for visibility — they remain DB-distinct via payment_status.
+// TODO ORCH-0788 / follow-up: extend OrderStatus union with 'failed' once UI is ready.
 const statusFromPayment = (status: string): OrderRecord["status"] => {
   if (status === "refunded") return "refunded_full";
   if (status === "partial_refund") return "refunded_partial";
-  if (status === "failed") return "cancelled";
+  if (status === "cancelled") return "cancelled";
+  // 'failed' orders are gateway failures that finalized into the orders table. Today the
+  // orders list filters won't surface them; if they appear, surface as paid (default) and
+  // rely on the next ORCH to add explicit Failed visibility. Tickets are still 'valid' for
+  // failed orders so scanner gates remain correct.
+  if (status === "failed") return "paid";
   return "paid";
+};
+
+const mapRefundRow = (row: RefundRow, orderCurrency: string): RefundRecord => {
+  const amountMajor = row.amount_cents / 100;
+  return {
+    id: row.id,
+    orderId: "", // populated by caller
+    amountGbp: amountMajor,
+    amount: amountMajor,
+    reason: row.reason ?? "",
+    refundedAt: row.processed_at ?? row.created_at,
+    lines: (row.refund_line_items ?? []).map((rli) => ({
+      ticketTypeId: rli.ticket_type_id,
+      quantity: rli.quantity,
+      amountGbp: rli.amount_cents / 100,
+      amount: rli.amount_cents / 100,
+    })),
+  };
 };
 
 const paymentMethodFromRow = (method: string): OrderRecord["paymentMethod"] => {
@@ -61,6 +122,8 @@ const paymentMethodFromRow = (method: string): OrderRecord["paymentMethod"] => {
 export const fetchEventOrders = async (
   eventId: string,
 ): Promise<OrderRecord[]> => {
+  // ORCH-0787: select includes refunds + refund_line_items (joined) for server-truth refund state.
+  // Also pulls orders.cancelled_at + cancellation_reason + refunded_amount_cents cache.
   const { data, error } = await supabase
     .from("orders")
     .select(`
@@ -76,13 +139,34 @@ export const fetchEventOrders = async (
       payment_status,
       confirmed_at,
       created_at,
+      cancelled_at,
+      cancelled_by,
+      cancellation_reason,
+      refunded_amount_cents,
       events!inner ( brand_id ),
       order_line_items (
+        id,
         ticket_type_id,
         quantity,
         unit_price_cents,
         total_cents,
         ticket_types (name, is_free)
+      ),
+      refunds (
+        id,
+        amount_cents,
+        currency,
+        reason,
+        status,
+        processed_at,
+        created_at,
+        stripe_refund_id,
+        refund_line_items (
+          order_line_item_id,
+          ticket_type_id,
+          quantity,
+          amount_cents
+        )
       )
     `)
     .eq("event_id", eventId)
@@ -90,39 +174,69 @@ export const fetchEventOrders = async (
 
   if (error) throw error;
 
-  return ((data ?? []) as unknown as OrderRow[]).map((order) => ({
-    id: order.id,
-    eventId: order.event_id,
-    brandId: order.events?.brand_id ?? "",
-    buyer: {
-      name: order.buyer_name ?? "Anonymous",
-      email: order.buyer_email ?? "",
-      phone: order.buyer_phone_e164 ?? order.buyer_phone ?? "",
-      marketingOptIn: false,
-    },
-    lines: order.order_line_items.map((line) => ({
-      ticketTypeId: line.ticket_type_id,
-      ticketNameAtPurchase: line.ticket_types?.name ?? "Ticket",
-      unitPriceGbpAtPurchase: line.unit_price_cents / 100,
-      unitPriceAtPurchase: line.unit_price_cents / 100,
-      isFreeAtPurchase: line.ticket_types?.is_free ?? line.unit_price_cents === 0,
-      quantity: line.quantity,
-      refundedQuantity: 0,
-      refundedAmountGbp: 0,
-      refundedAmount: 0,
-    })),
-    totalGbpAtPurchase: order.total_cents / 100,
-    totalAtPurchase: order.total_cents / 100,
-    currency: order.currency.trim(),
-    paymentMethod: paymentMethodFromRow(order.payment_method),
-    paidAt: order.confirmed_at ?? order.created_at,
-    status: statusFromPayment(order.payment_status),
-    refundedAmountGbp: 0,
-    refundedAmount: 0,
-    refunds: [],
-    cancelledAt: order.payment_status === "failed" ? order.created_at : null,
-    lastSeenEventUpdatedAt: order.created_at,
-  }));
+  return ((data ?? []) as unknown as OrderRow[]).map((order) => {
+    // ORCH-0787: filter refunds to status='succeeded' for the visible refund ledger.
+    // Pending/failed refunds do not appear in the UI (they exist for reconciliation only).
+    const succeededRefunds = (order.refunds ?? []).filter((r) => r.status === "succeeded");
+    const orderCurrency = order.currency.trim();
+
+    // Build per-line refund accounting from refund_line_items across succeeded refunds.
+    const refundedQtyByLine: Record<string, number> = {};
+    const refundedAmountByLine: Record<string, number> = {};
+    for (const refund of succeededRefunds) {
+      for (const rli of refund.refund_line_items ?? []) {
+        refundedQtyByLine[rli.order_line_item_id] =
+          (refundedQtyByLine[rli.order_line_item_id] ?? 0) + rli.quantity;
+        refundedAmountByLine[rli.order_line_item_id] =
+          (refundedAmountByLine[rli.order_line_item_id] ?? 0) + rli.amount_cents;
+      }
+    }
+
+    const refundedAmountMajor = (order.refunded_amount_cents ?? 0) / 100;
+
+    return {
+      id: order.id,
+      eventId: order.event_id,
+      brandId: order.events?.brand_id ?? "",
+      buyer: {
+        name: order.buyer_name ?? "Anonymous",
+        email: order.buyer_email ?? "",
+        phone: order.buyer_phone_e164 ?? order.buyer_phone ?? "",
+        marketingOptIn: false,
+      },
+      lines: order.order_line_items.map((line) => {
+        const refundedQty = refundedQtyByLine[line.id] ?? 0;
+        const refundedAmountCents = refundedAmountByLine[line.id] ?? 0;
+        return {
+          orderLineItemId: line.id,
+          ticketTypeId: line.ticket_type_id,
+          ticketNameAtPurchase: line.ticket_types?.name ?? "Ticket",
+          unitPriceGbpAtPurchase: line.unit_price_cents / 100,
+          unitPriceAtPurchase: line.unit_price_cents / 100,
+          isFreeAtPurchase: line.ticket_types?.is_free ?? line.unit_price_cents === 0,
+          quantity: line.quantity,
+          refundedQuantity: refundedQty,
+          refundedAmountGbp: refundedAmountCents / 100,
+          refundedAmount: refundedAmountCents / 100,
+        };
+      }),
+      totalGbpAtPurchase: order.total_cents / 100,
+      totalAtPurchase: order.total_cents / 100,
+      currency: orderCurrency,
+      paymentMethod: paymentMethodFromRow(order.payment_method),
+      paidAt: order.confirmed_at ?? order.created_at,
+      status: statusFromPayment(order.payment_status),
+      refundedAmountGbp: refundedAmountMajor,
+      refundedAmount: refundedAmountMajor,
+      refunds: succeededRefunds.map((row) => ({
+        ...mapRefundRow(row, orderCurrency),
+        orderId: order.id,
+      })),
+      // ORCH-0787: cancelled_at is the canonical column. Failed payments are NOT mapped to cancelled.
+      cancelledAt: order.cancelled_at,
+      lastSeenEventUpdatedAt: order.created_at,
+    };
+  });
 };
 
 export const getEventOrderById = (

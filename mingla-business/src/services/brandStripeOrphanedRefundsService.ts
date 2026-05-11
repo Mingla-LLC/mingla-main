@@ -3,10 +3,16 @@
  *
  * Per B2a Path C V3 SPEC §6 + DEC-V3-7.
  *
+ * ORCH-0787 (Q-7 folded scope, S-09 fix): corrected column names to match the
+ * actual `payment_webhook_events` schema. Pre-fix this service queried
+ * `event_id`, `raw_payload`, `event_type`, `account_id` — but the real columns
+ * are `stripe_event_id`, `payload`, `type` (no `account_id` until the ORCH-0787
+ * migration adds it as a generated column from `payload->>'account'`).
+ *
  * Reads `payment_webhook_events` directly (no edge fn — RLS allows brand
  * payments-managers to read their brand's webhook events). Filters to:
- *   - event_type = 'charge.refund.updated'
- *   - account_id matches the brand's former stripe_account_id
+ *   - type = 'charge.refund.updated' (or modern refund.* once ORCH-0787 webhook lands)
+ *   - account_id (generated column) matches the brand's stripe_account_id
  *
  * Returns the most recent 20 refund events with derived display fields.
  */
@@ -22,8 +28,8 @@ export interface OrphanedRefundEntry {
 }
 
 interface RawWebhookEventRow {
-  event_id: string;
-  raw_payload: Record<string, unknown> | null;
+  stripe_event_id: string;
+  payload: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -45,10 +51,12 @@ export async function fetchBrandStripeOrphanedRefunds(
   const stripeAccountId = connectRow?.stripe_account_id ?? null;
   if (stripeAccountId === null) return [];
 
+  // ORCH-0787 fix: use real columns (`stripe_event_id`, `payload`, `type`) and the new
+  // generated `account_id` column added in migration 20260520000000.
   const { data, error } = await supabase
     .from("payment_webhook_events")
-    .select("event_id, raw_payload, created_at")
-    .eq("event_type", "charge.refund.updated")
+    .select("stripe_event_id, payload, created_at")
+    .eq("type", "charge.refund.updated")
     .eq("account_id", stripeAccountId)
     .order("created_at", { ascending: false })
     .limit(MAX_ROWS)
@@ -57,11 +65,11 @@ export async function fetchBrandStripeOrphanedRefunds(
   if (error) throw error;
 
   return (data ?? []).map((row) => {
-    const payload = (row.raw_payload ?? {}) as Record<string, unknown>;
+    const payload = (row.payload ?? {}) as Record<string, unknown>;
     const dataObj = (payload.data as { object?: Record<string, unknown> } | undefined)
       ?.object ?? {};
     return {
-      eventId: row.event_id,
+      eventId: row.stripe_event_id,
       amountMinor:
         typeof dataObj.amount === "number" ? (dataObj.amount as number) : 0,
       currency:

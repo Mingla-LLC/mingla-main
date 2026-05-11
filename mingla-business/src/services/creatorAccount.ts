@@ -10,7 +10,14 @@ export interface CreatorAccountUpdatePatch {
 
 /**
  * Ensures a row exists in public.creator_accounts for the signed-in user.
- * Safe to call on every session / auth state change (idempotent upsert).
+ * Safe to call on every session / auth state change.
+ *
+ * SEED-ONLY contract (ORCH-0786 follow-up): OAuth identity claims
+ * (`display_name`, `avatar_url`) are written ONLY when the row is first
+ * created. On every subsequent call the upsert short-circuits via
+ * `ignoreDuplicates: true` so user customisations (avatar uploads, name
+ * edits) are never overwritten by the provider's `user_metadata` snapshot
+ * on token refresh, app reload, or sign-in.
  */
 export async function ensureCreatorAccount(user: User): Promise<void> {
   const displayName =
@@ -31,7 +38,11 @@ export async function ensureCreatorAccount(user: User): Promise<void> {
       display_name: displayName,
       avatar_url: avatarUrl,
     },
-    { onConflict: "id", ignoreDuplicates: false }
+    // ignoreDuplicates: true → INSERT ... ON CONFLICT (id) DO NOTHING.
+    // Race-safe (bootstrap + onAuthStateChange may fire concurrently) and
+    // preserves user-customisable fields (display_name, avatar_url) on
+    // every reload after the first sign-in seed.
+    { onConflict: "id", ignoreDuplicates: true },
   );
 
   // Const #3 (no silent failures): throw on error. Callers in AuthContext

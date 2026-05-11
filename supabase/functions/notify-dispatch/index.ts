@@ -2,6 +2,13 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendPush } from "../_shared/push-utils.ts";
 import { getTranslatedNotification } from "../_shared/push-translations.ts";
+import {
+  assertNotResendSandbox,
+  EMAIL_SENDERS,
+  formatSenderHeader,
+  renderTransactionalEmail,
+  type SenderIdentity,
+} from "../_shared/email/index.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,30 +23,117 @@ function jsonResponse(body: object, status = 200) {
   });
 }
 
-async function sendEmailViaResend(
+// ORCH-0785 — Resend sender constant resolved via EMAIL_SENDERS.system.
+// Hard guard: assertNotResendSandbox runs before every POST. There is NO
+// resend.dev fallback. If RESEND_SYSTEM_FROM/RESEND_FROM_EMAIL is unset, the
+// usemingla.com default is used; @resend.dev senders throw.
+async function sendResendPlainEmail(
   to: string,
   subject: string,
   text: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const key = Deno.env.get("RESEND_API_KEY");
   if (!key) return { ok: false, error: "RESEND_API_KEY missing" };
-  const from = Deno.env.get("RESEND_FROM_EMAIL") ??
-    "Mingla Business <onboarding@resend.dev>";
+  let sender: SenderIdentity = EMAIL_SENDERS.system;
+  // Backwards-compatible env: callers still using RESEND_FROM_EMAIL.
+  const legacyOverride = Deno.env.get("RESEND_FROM_EMAIL");
+  if (legacyOverride && legacyOverride.trim().length > 0) {
+    const match = legacyOverride.trim().match(
+      /^(?:(.+?)\s*<)?([^<>\s]+@[^<>\s]+)>?$/,
+    );
+    if (match) {
+      sender = { name: (match[1] ?? "Mingla").trim(), address: match[2] };
+    }
+  }
   try {
+    assertNotResendSandbox(sender);
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  try {
+    // no-attachment: notify-dispatch legacy plain-text path; generic_notification
+    // branded path is HTML+text only with no PDF/file payload.
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from, to: [to], subject, text }),
+      body: JSON.stringify({
+        from: formatSenderHeader(sender),
+        to: [to],
+        subject,
+        text,
+      }),
     });
     if (!res.ok) {
       return { ok: false, error: `Resend ${res.status}: ${await res.text()}` };
     }
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+async function sendResendBrandedEmail(
+  to: string,
+  payload: {
+    title: string;
+    body: string;
+    cta?: { label: string; url: string };
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  const key = Deno.env.get("RESEND_API_KEY");
+  if (!key) return { ok: false, error: "RESEND_API_KEY missing" };
+  let rendered;
+  try {
+    rendered = renderTransactionalEmail({
+      variant: "generic_notification",
+      recipient: { name: null, email: to },
+      body: {
+        variant: "generic_notification",
+        title: payload.title,
+        paragraphs: payload.body.split("\n\n"),
+        cta: payload.cta ?? null,
+      },
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+  try {
+    // no-attachment: generic notification path carries no PDF/file payload.
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: formatSenderHeader(rendered.from),
+        to: [to],
+        subject: rendered.subject,
+        html: rendered.html,
+        text: rendered.text,
+      }),
+    });
+    if (!res.ok) {
+      return { ok: false, error: `Resend ${res.status}: ${await res.text()}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 
@@ -150,6 +244,8 @@ serve(async (req) => {
       expiresAt,
       pushOverrides = {},
       skipPush = false,
+      emailVariant,
+      emailCta,
     } = payload;
 
     if ((!userId && !emailTo) || !type || !title || !body) {
@@ -246,7 +342,24 @@ serve(async (req) => {
 
     let emailSent = false;
     if (emailTo) {
-      const emailResult = await sendEmailViaResend(emailTo, title, body);
+      // ORCH-0785: callers opt into the Mingla brand shell with
+      // `emailVariant: "generic_notification"`. The legacy plain-text path is
+      // retained for backwards compatibility but now routes through
+      // EMAIL_SENDERS.system — no more onboarding@resend.dev fallback.
+      const emailResult = emailVariant === "generic_notification"
+        ? await sendResendBrandedEmail(emailTo, {
+          title,
+          body,
+          cta: emailCta && typeof emailCta === "object" &&
+              typeof (emailCta as { label?: unknown }).label === "string" &&
+              typeof (emailCta as { url?: unknown }).url === "string"
+            ? {
+              label: (emailCta as { label: string }).label,
+              url: (emailCta as { url: string }).url,
+            }
+            : undefined,
+        })
+        : await sendResendPlainEmail(emailTo, title, body);
       emailSent = emailResult.ok;
       if (!emailResult.ok) {
         console.warn("[notify-dispatch] Email send failed:", emailResult.error);
@@ -405,7 +518,7 @@ serve(async (req) => {
 
     let pushSent = false;
     try {
-      pushSent = await sendPush(pushPayload as Parameters<typeof sendPush>[0]);
+      pushSent = await sendPush(pushPayload as unknown as Parameters<typeof sendPush>[0]);
     } catch (pushErr) {
       console.warn("[notify-dispatch] Push send failed:", pushErr);
     }

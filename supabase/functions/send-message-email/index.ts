@@ -1,3 +1,7 @@
+// ORCH-0785: This function does NOT send email despite its name.
+// The customer email path is `_shared/email/` + `ticket-confirmation-dispatch`
+// (transactional) or `notify-dispatch` with `emailVariant: "generic_notification"`
+// (system/relational). Rename deferred to a separate ORCH.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { sendPush } from "../_shared/push-utils.ts";
 

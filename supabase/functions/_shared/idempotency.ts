@@ -25,7 +25,8 @@ export type StripeOperation =
   | "detach_account" // accounts.del best-effort detach
   | "balance_retrieve" // connected account balance retrieve
   | "kyc_account_retrieve" // KYC reminder cron account refresh
-  | "kyc_account_link"; // KYC reminder resume link
+  | "kyc_account_link" // KYC reminder resume link
+  | "ticket_refund_create"; // ORCH-0787: refund-order edge function Stripe refund call
 
 export function generateIdempotencyKey(
   brandId: string,

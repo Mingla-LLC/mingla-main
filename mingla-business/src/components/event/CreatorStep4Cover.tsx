@@ -432,6 +432,7 @@ const ProviderTabButton: React.FC<{
 }> = ({ label, active, onPress }) => (
   <Pressable
     accessibilityRole="button"
+    accessibilityLabel={label}
     accessibilityState={{ selected: active }}
     onPress={onPress}
     style={[styles.providerTab, active && styles.providerTabActive]}

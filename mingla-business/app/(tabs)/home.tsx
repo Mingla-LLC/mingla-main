@@ -10,8 +10,7 @@
  * Sheet's onBrandCreated → Toast "{displayName} is ready" (per dispatch AC#2).
  *
  * Cycle 3 wires draft rows from draftEventStore.
- * ORCH-0754 wires live rows from liveEventStore + orderStore metrics, so the
- * first-screen event story is derived from current-brand local event truth.
+ * ORCH-0784 wires non-draft sales summaries from server-backed order truth.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -57,15 +56,14 @@ import {
   useLiveEventsForBrand,
   type LiveEvent,
 } from "../../src/store/liveEventStore";
-import { useOrderStore } from "../../src/store/orderStore";
 import {
   buildBrandEventSummary,
   type BrandEventSummaryCounts,
   type BrandEventSummaryItem,
 } from "../../src/utils/brandEventSummary";
+import { useEventSalesSummaries } from "../../src/hooks/useEventOrders";
 import { formatCurrencyRound } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
-import { summarizeEventMoney } from "../../src/utils/moneySummary";
 import { formatRelativeTime } from "../../src/utils/relativeTime";
 
 interface ToastState {
@@ -99,13 +97,6 @@ const formatCapacityLabel = (event: LiveEvent): string => {
     return "Unlimited";
   }
   return capacity === null ? "—" : capacity.toLocaleString("en-GB");
-};
-
-const formatSoldOutOfCapacity = (event: LiveEvent, sold: number): string => {
-  const capacity = finiteTicketCapacity(event);
-  const soldLabel = sold.toLocaleString("en-GB");
-  if (capacity === null) return soldLabel;
-  return `${soldLabel} / ${capacity.toLocaleString("en-GB")}`;
 };
 
 const formatActiveEventsSub = (counts: BrandEventSummaryCounts): string => {
@@ -145,8 +136,6 @@ export default function HomeTab(): React.ReactElement {
       ),
     [businessEventsQuery.data, legacyLiveEvents],
   );
-  const orderEntries = useOrderStore((s) => s.entries);
-  const getSoldCountForEvent = useOrderStore((s) => s.getSoldCountForEvent);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // Cycle 17e-A REWORK: BrandDeleteSheet state — opens from BrandSwitcherSheet
   // trash icon taps. Mirrors account.tsx pattern per ORCH-0734-RW SPEC §3.3.
@@ -258,44 +247,49 @@ export default function HomeTab(): React.ReactElement {
     [liveEvents, drafts],
   );
   const primaryLiveEvent = getLiveEventFromItem(eventSummary.primaryLiveItem);
+  const summaryLiveEvents = useMemo(
+    () =>
+      eventSummary.activeItems.flatMap((item) =>
+        item.kind === "live" ? [item.event as LiveEvent] : [],
+      ),
+    [eventSummary.activeItems],
+  );
+  const eventSalesSummaries = useEventSalesSummaries(
+    summaryLiveEvents,
+    currentBrand?.defaultCurrency,
+  );
 
   const liveHeroMetrics = useMemo(() => {
-    void orderEntries;
-
     if (primaryLiveEvent === null) {
       return {
-        revenueGbp: 0,
-        soldCount: 0,
+        revenueLabel: "—",
+        soldValue: "0",
         capacity: null as number | null,
         progress: 0,
       };
     }
 
     const capacity = finiteTicketCapacity(primaryLiveEvent);
-    const soldCount = getSoldCountForEvent(primaryLiveEvent.id);
-    const moneySummary = summarizeEventMoney({
-      expectedCurrency:
-        primaryLiveEvent.currency ?? currentBrand?.defaultCurrency,
-      orders: orderEntries.filter(
-        (order) => order.eventId === primaryLiveEvent.id,
-      ),
-      doorSales: [],
-    });
+    const salesSummary = eventSalesSummaries[primaryLiveEvent.id];
+    const soldCount = salesSummary?.soldCount ?? 0;
     return {
-      revenueGbp: moneySummary.onlineRevenue,
-      soldCount,
+      revenueLabel:
+        salesSummary?.revenueLabel ??
+        formatCurrencyRound(
+          0,
+          primaryLiveEvent.currency ?? currentBrand?.defaultCurrency ?? "GBP",
+        ),
+      soldValue:
+        salesSummary?.hasError === true
+          ? "Unable"
+          : soldCount.toLocaleString("en-GB"),
       capacity,
       progress:
         capacity !== null && capacity > 0
           ? Math.min(1, soldCount / capacity)
           : 0,
     };
-  }, [
-    primaryLiveEvent,
-    currentBrand?.defaultCurrency,
-    orderEntries,
-    getSoldCountForEvent,
-  ]);
+  }, [primaryLiveEvent, currentBrand?.defaultCurrency, eventSalesSummaries]);
 
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
@@ -366,13 +360,7 @@ export default function HomeTab(): React.ReactElement {
                 </Text>
                 <View style={styles.heroAmountRow}>
                   <Text style={styles.heroAmountSold}>
-                    {primaryLiveEvent.currency !== undefined ||
-                    currentBrand.defaultCurrency !== undefined
-                      ? formatCurrencyRound(
-                          liveHeroMetrics.revenueGbp,
-                          primaryLiveEvent.currency ?? currentBrand.defaultCurrency ?? "",
-                        )
-                      : "—"}
+                    {liveHeroMetrics.revenueLabel}
                   </Text>
                   <Text style={styles.heroAmountGoal}> revenue</Text>
                 </View>
@@ -393,7 +381,7 @@ export default function HomeTab(): React.ReactElement {
                 <View style={styles.heroStatRow}>
                   <View style={styles.heroStatCell}>
                     <Text style={styles.heroStatValue}>
-                      {liveHeroMetrics.soldCount.toLocaleString("en-GB")}
+                      {liveHeroMetrics.soldValue}
                     </Text>
                     <Text style={styles.heroStatLabel}>Tickets sold</Text>
                   </View>
@@ -504,7 +492,18 @@ export default function HomeTab(): React.ReactElement {
                   }
 
                   const event = item.event as LiveEvent;
-                  const soldCount = getSoldCountForEvent(event.id);
+                  const salesSummary = eventSalesSummaries[event.id];
+                  const soldLabel = salesSummary?.soldLabel ?? "0 sold";
+                  const rowSoldLabel =
+                    salesSummary?.finiteCapacity !== null && salesSummary !== undefined
+                      ? `${soldLabel} sold`
+                      : soldLabel;
+                  const revenueLabel =
+                    salesSummary?.revenueLabel ??
+                    formatCurrencyRound(
+                      0,
+                      event.currency ?? currentBrand.defaultCurrency ?? "GBP",
+                    );
                   const isLive = item.status === "live";
 
                   return (
@@ -514,7 +513,7 @@ export default function HomeTab(): React.ReactElement {
                       accessibilityRole="button"
                       accessibilityLabel={`Open event: ${
                         event.name || "Untitled"
-                      }`}
+                      }. ${rowSoldLabel}. ${revenueLabel}.`}
                       style={styles.eventRow}
                     >
                       <View style={styles.eventCoverWrap}>
@@ -546,9 +545,11 @@ export default function HomeTab(): React.ReactElement {
                       </View>
                       <View style={styles.eventSoldCol}>
                         <Text style={styles.eventSoldValue}>
-                          {formatSoldOutOfCapacity(event, soldCount)}
+                          {rowSoldLabel}
                         </Text>
-                        <Text style={styles.eventSoldLabel}>sold</Text>
+                        <Text style={styles.eventRevenueValue}>
+                          {revenueLabel}
+                        </Text>
                       </View>
                     </Pressable>
                   );
@@ -774,11 +775,19 @@ const styles = StyleSheet.create({
   eventSoldCol: {
     alignItems: "flex-end",
     paddingRight: 2,
+    minWidth: 74,
   },
   eventSoldValue: {
     fontSize: typography.bodySm.fontSize,
     fontWeight: "600",
     color: textTokens.primary,
+  },
+  eventRevenueValue: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: textTokens.primary,
+    fontVariant: ["tabular-nums"],
+    marginTop: 2,
   },
   eventSoldLabel: {
     fontSize: 10,

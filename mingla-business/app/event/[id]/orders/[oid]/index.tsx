@@ -35,12 +35,14 @@ import {
   spacing,
   text as textTokens,
 } from "../../../../../src/constants/designSystem";
-import type { OrderStatus, RefundRecord } from "../../../../../src/store/orderStore";
+import type { OrderRecord, OrderStatus, RefundRecord } from "../../../../../src/store/orderStore";
 import type { CheckoutPaymentMethod } from "../../../../../src/components/checkout/CartContext";
 import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRoute";
 import { formatCurrency } from "../../../../../src/utils/currency";
 import { useEventOrderById } from "../../../../../src/hooks/useEventOrders";
 import { resendTicketConfirmation } from "../../../../../src/services/ticketCheckoutService";
+import { useCurrentBrandRole } from "../../../../../src/hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../../../../src/utils/permissionGates";
 
 import { Button } from "../../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../../src/components/ui/EmptyState";
@@ -48,6 +50,32 @@ import { GlassCard } from "../../../../../src/components/ui/GlassCard";
 import { Icon } from "../../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../../src/components/ui/IconChrome";
 import { Toast } from "../../../../../src/components/ui/Toast";
+
+// ORCH-0787: real refund + cancel sheets (replacing stubbed onPress toasts).
+import { RefundSheet } from "../../../../../src/components/orders/RefundSheet";
+import { CancelOrderDialog } from "../../../../../src/components/orders/CancelOrderDialog";
+
+// ORCH-0787: derive primary-action visibility per Cycle 9c §3.4.2.
+// Replaces the hardcoded `const showRefundFull = false; ...` stub.
+const deriveActionFlags = (
+  order: OrderRecord,
+  canRefund: boolean,
+): {
+  showRefundFull: boolean;
+  showRefundPartialAgain: boolean;
+  showCancelOrder: boolean;
+  showSecondaryPartialFromFull: boolean;
+} => {
+  const paid = order.status === "paid";
+  const partial = order.status === "refunded_partial";
+  const isFree = order.paymentMethod === "free";
+  return {
+    showRefundFull: canRefund && !isFree && paid,
+    showRefundPartialAgain: canRefund && !isFree && partial,
+    showCancelOrder: canRefund && isFree && paid,
+    showSecondaryPartialFromFull: canRefund && !isFree && paid,
+  };
+};
 
 const PAYMENT_METHOD_LABEL: Record<CheckoutPaymentMethod, string> = {
   card: "Card",
@@ -162,10 +190,19 @@ export default function OrderDetailRoute(): React.ReactElement {
   const event = routeEvent.event;
 
   const [resendSubmitting, setResendSubmitting] = useState<boolean>(false);
+  // ORCH-0787: real sheet/dialog state replacing the hardcoded `false` action flags.
+  const [refundSheetMode, setRefundSheetMode] = useState<"full" | "partial" | null>(null);
+  const [cancelDialogVisible, setCancelDialogVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<{
     visible: boolean;
     message: string;
   }>({ visible: false, message: "" });
+
+  // ORCH-0787: caller permission must be derived BEFORE any early returns to satisfy
+  // Rules of Hooks. brandId may be empty while order is loading; canPerformAction
+  // returns false on null/empty rank which gates the buttons off until order resolves.
+  const { rank: callerRank } = useCurrentBrandRole(orderQuery.data?.brandId ?? null);
+  const canRefund = canPerformAction(callerRank, "REFUND_ORDER");
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -274,11 +311,16 @@ export default function OrderDetailRoute(): React.ReactElement {
   const hue = hashStringToHue(order.id);
   const initials = getInitials(order.buyer.name);
 
-  // ---- Primary action button derivation (HF-9c-1 deterministic) ----
-  const showRefundFull = false;
-  const showRefundPartialAgain = false;
-  const showCancelOrder = false;
-  const showSecondaryPartialFromFull = false;
+  // ---- Primary action button derivation (ORCH-0787) ----
+  // Replaces the Cycle-9c-era hardcoded `false` flags. callerRank + canRefund are
+  // computed at the top of the component before any early returns. Free orders use
+  // the cancel path; paid orders use the refund path (Q-1 collapse).
+  const {
+    showRefundFull,
+    showRefundPartialAgain,
+    showCancelOrder,
+    showSecondaryPartialFromFull,
+  } = deriveActionFlags(order, canRefund);
 
   const subtotal = order.lines.reduce(
     (sum, l) => sum + l.quantity * l.unitPriceGbpAtPurchase,
@@ -431,7 +473,7 @@ export default function OrderDetailRoute(): React.ReactElement {
             <>
               <Button
                 label="Refund order"
-                onPress={() => showToast("Refunds are coming soon.")}
+                onPress={() => setRefundSheetMode("full")}
                 variant="destructive"
                 size="lg"
                 fullWidth
@@ -439,9 +481,7 @@ export default function OrderDetailRoute(): React.ReactElement {
               />
               {showSecondaryPartialFromFull ? (
                 <Pressable
-                  onPress={() =>
-                    showToast("Partial refunds are coming soon.")
-                  }
+                  onPress={() => setRefundSheetMode("partial")}
                   accessibilityRole="button"
                   accessibilityLabel="Partial refund"
                   style={styles.partialLink}
@@ -455,7 +495,7 @@ export default function OrderDetailRoute(): React.ReactElement {
           {showRefundPartialAgain ? (
             <Button
               label="Refund again"
-              onPress={() => showToast("Partial refunds are coming soon.")}
+              onPress={() => setRefundSheetMode("partial")}
               variant="destructive"
               size="lg"
               fullWidth
@@ -466,7 +506,7 @@ export default function OrderDetailRoute(): React.ReactElement {
           {showCancelOrder ? (
             <Button
               label="Cancel order"
-              onPress={() => showToast("Order cancellation is coming soon.")}
+              onPress={() => setCancelDialogVisible(true)}
               variant="destructive"
               size="lg"
               fullWidth
@@ -488,6 +528,34 @@ export default function OrderDetailRoute(): React.ReactElement {
           ) : null}
         </View>
       </ScrollView>
+
+      {/* ORCH-0787: Refund + Cancel sheets render inside the parent View
+          (per feedback_rn_sub_sheet_must_render_inside_parent — sibling
+          Modal mounts compete at the OS root layer). */}
+      {refundSheetMode !== null ? (
+        <RefundSheet
+          visible={refundSheetMode !== null}
+          mode={refundSheetMode}
+          order={order}
+          onClose={() => setRefundSheetMode(null)}
+          onSuccess={(amountGbp) => {
+            showToast(`Refunded ${formatCurrency(amountGbp, order.currency)}`);
+            setRefundSheetMode(null);
+          }}
+        />
+      ) : null}
+
+      <CancelOrderDialog
+        visible={cancelDialogVisible}
+        orderId={order.id}
+        eventId={order.eventId}
+        buyerName={order.buyer.name}
+        onClose={() => setCancelDialogVisible(false)}
+        onSuccess={() => {
+          showToast("Order cancelled");
+          setCancelDialogVisible(false);
+        }}
+      />
 
       {/* Toast (self-positions via Modal portal) */}
       <Toast
