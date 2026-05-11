@@ -19,7 +19,6 @@
       },
       "entitlements": {
         "com.apple.developer.in-app-payments": [
-          "merchant.com.sethogieva.minglabusiness",
           "merchant.com.sethogieva.minglabusiness"
         ]
       },
@@ -46,11 +45,6 @@
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.INTERNET",
-        "android.permission.CAMERA",
-        "android.permission.NFC",
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.INTERNET",
         "android.permission.RECORD_AUDIO"
       ],
       "intentFilters": [
@@ -68,7 +62,10 @@
             "DEFAULT"
           ]
         }
-      ]
+      ],
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "web": {
       "output": "static",
