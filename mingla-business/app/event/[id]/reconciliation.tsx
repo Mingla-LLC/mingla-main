@@ -54,8 +54,8 @@ import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
 import { useGuestStore } from "../../../src/store/guestStore";
-import { useOrderStore } from "../../../src/store/orderStore";
 import { useScanStore } from "../../../src/store/scanStore";
+import { useEventReconciliation } from "../../../src/hooks/useEventOrders";
 import {
   canPerformAction,
   gateCaptionFor,
@@ -99,7 +99,7 @@ export default function ReconciliationRoute(): React.ReactElement {
   const { rank } = useCurrentBrandRole(brand?.id ?? null);
 
   // Raw entries + useMemo per selector pattern rule (T-41 grep gate)
-  const allOrderEntries = useOrderStore((s) => s.entries);
+  const allOrderEntries = useEventReconciliation(typeof eventId === "string" ? eventId : null);
   const allDoorEntries = useDoorSalesStore((s) => s.entries);
   const allCompEntries = useGuestStore((s) => s.entries);
   const allScanEntries = useScanStore((s) => s.entries);

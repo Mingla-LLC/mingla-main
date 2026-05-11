@@ -36,7 +36,6 @@ import {
   type LiveEvent,
 } from "../../../src/store/liveEventStore";
 import { useDraftById } from "../../../src/store/draftEventStore";
-import { useOrderStore } from "../../../src/store/orderStore";
 import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
 import { useScanStore } from "../../../src/store/scanStore";
 import { useEventEditLogStore } from "../../../src/store/eventEditLogStore";
@@ -77,6 +76,7 @@ import {
   useCancelBusinessEvent,
   useEndBusinessEventTicketSales,
 } from "../../../src/hooks/useBusinessEvents";
+import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { canPerformAction } from "../../../src/utils/permissionGates";
 
 const CANCEL_PROCESSING_MS = 1200;
@@ -310,11 +310,25 @@ export default function EventDetailScreen(): React.ReactElement {
     );
   }, [showToast]);
 
-  // Total tickets sold across all tiers — drives "X sold" subtext on Orders ActionTile.
-  const totalSoldCount = useOrderStore((s) =>
-    event !== null ? s.getSoldCountForEvent(event.id) : 0,
+  const eventOrdersQuery = useEventOrders(event?.id ?? null);
+  const allOrderEntries = eventOrdersQuery.data ?? [];
+  const totalSoldCount = useMemo<number>(
+    () =>
+      allOrderEntries.reduce(
+        (sum, order) => {
+          if (order.status !== "paid" && order.status !== "refunded_partial") return sum;
+          return (
+            sum +
+            order.lines.reduce(
+              (lineSum, line) => lineSum + Math.max(0, line.quantity - line.refundedQuantity),
+              0,
+            )
+          );
+        },
+        0,
+      ),
+    [allOrderEntries],
   );
-  const allOrderEntries = useOrderStore((s) => s.entries);
   // Cycle 12 — door sale KPIs (gated on event.inPersonPaymentsEnabled below
   // when rendering the J-D1 ActionTile). Per SPEC §4.5 selector pattern rule
   // (and dispatch §2.7 grep ban): NEVER subscribe to fresh-computation

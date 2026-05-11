@@ -226,7 +226,10 @@ serve(async (req) => {
       requestId,
       stage: "job_insert_failed",
     }));
-    return jsonResponse({ error: "internal_error" }, 500);
+    return jsonResponse(
+      { error: "internal_error", detail: "job_insert_failed" },
+      500,
+    );
   }
   logInfo(requestId, "job_insert_pass", { jobId: job.id });
 

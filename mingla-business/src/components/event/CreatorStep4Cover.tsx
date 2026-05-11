@@ -34,6 +34,7 @@ import {
   EVENT_COVER_VIDEO_PROCESSING_COPY,
   EventCoverVideoProcessingError,
   type EventCoverVideoApplyMode,
+  type EventCoverVideoUploadProgress,
   uploadEventCoverVideoSource,
   waitForEventCoverVideoReady,
 } from "../../services/eventCoverVideoProcessingService";
@@ -68,6 +69,9 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
     null,
   );
   const [videoStatusText, setVideoStatusText] = useState<string | null>(null);
+  const [videoUploadPercent, setVideoUploadPercent] = useState<number | null>(
+    null,
+  );
   const [videoErrorText, setVideoErrorText] = useState<string | null>(null);
 
   useEffect(() => {
@@ -134,6 +138,21 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
 
   const showVideoProcessingError = useCallback(
     (error: unknown): void => {
+      const diagnostic =
+        error !== null && typeof error === "object"
+          ? (error as {
+              applyMode?: unknown;
+              brandId?: unknown;
+              edgeDetail?: unknown;
+              edgeError?: unknown;
+              edgeStatus?: unknown;
+              eventId?: unknown;
+              phase?: unknown;
+              requestId?: unknown;
+              sourceBytes?: unknown;
+              sourceDurationMs?: unknown;
+            })
+          : null;
       const message = (() => {
         if (isBusinessAuthNotReadyError(error)) {
           return "Finishing sign-in before upload. Try again in a moment.";
@@ -151,17 +170,49 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
       })();
       if (typeof __DEV__ !== "undefined" && __DEV__) {
         console.warn("[CreatorStep4Cover] video processing error", {
+          applyMode: diagnostic?.applyMode,
+          brandId: diagnostic?.brandId,
           code:
             error instanceof EventCoverVideoProcessingError
               ? error.code
               : isBusinessAuthNotReadyError(error)
                 ? error.code
                 : "unknown",
+          diagnostic:
+            diagnostic?.requestId !== undefined
+              ? JSON.stringify({
+                  applyMode: diagnostic.applyMode,
+                  brandId: diagnostic.brandId,
+                  code:
+                    error instanceof EventCoverVideoProcessingError
+                      ? error.code
+                      : isBusinessAuthNotReadyError(error)
+                        ? error.code
+                        : "unknown",
+                  edgeDetail: diagnostic.edgeDetail,
+                  edgeError: diagnostic.edgeError,
+                  edgeStatus: diagnostic.edgeStatus,
+                  eventId: diagnostic.eventId,
+                  phase: diagnostic.phase,
+                  requestId: diagnostic.requestId,
+                  sourceBytes: diagnostic.sourceBytes,
+                  sourceDurationMs: diagnostic.sourceDurationMs,
+                })
+              : undefined,
+          edgeDetail: diagnostic?.edgeDetail,
+          edgeError: diagnostic?.edgeError,
+          edgeStatus: diagnostic?.edgeStatus,
+          eventId: diagnostic?.eventId,
           message,
+          phase: diagnostic?.phase,
           rawMessage: error instanceof Error ? error.message : String(error),
+          requestId: diagnostic?.requestId,
+          sourceBytes: diagnostic?.sourceBytes,
+          sourceDurationMs: diagnostic?.sourceDurationMs,
         });
       }
       setVideoStatusText(null);
+      setVideoUploadPercent(null);
       setVideoErrorText(message);
       onShowToast(message);
     },
@@ -232,6 +283,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
       uploadFields: NativeTrimmedVideoUploadFields,
     ): Promise<void> => {
       setVideoStatusText("Preparing secure video upload...");
+      setVideoUploadPercent(null);
       setVideoErrorText(null);
       if (__DEV__) {
         console.info("[CreatorStep4Cover] upload-intent-start", {
@@ -248,40 +300,62 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
           trimEndMs: uploadFields.trimEndMs,
         });
       }
-      const intent = await createEventCoverVideoUploadIntent({
-        applyMode,
-        brandId: draft.brandId,
-        eventId,
-        sourceBytes: uploadFields.sourceBytes,
-        sourceDurationMs: uploadFields.sourceDurationMs,
-        sourceFileName: asset.fileName,
-        sourceMimeType: asset.mimeType,
-        trimEndMs: uploadFields.trimEndMs,
-        trimStartMs: uploadFields.trimStartMs,
-      });
+      let intent: Awaited<ReturnType<typeof createEventCoverVideoUploadIntent>>;
+      try {
+        intent = await createEventCoverVideoUploadIntent({
+          applyMode,
+          brandId: draft.brandId,
+          eventId,
+          sourceBytes: uploadFields.sourceBytes,
+          sourceDurationMs: uploadFields.sourceDurationMs,
+          sourceFileName: asset.fileName,
+          sourceMimeType: asset.mimeType,
+          trimEndMs: uploadFields.trimEndMs,
+          trimStartMs: uploadFields.trimStartMs,
+        });
+      } catch (error) {
+        if (error !== null && typeof error === "object") {
+          Object.assign(error, {
+            applyMode,
+            brandId: draft.brandId,
+            eventId,
+            sourceBytes: uploadFields.sourceBytes,
+            sourceDurationMs: uploadFields.sourceDurationMs,
+          });
+        }
+        throw error;
+      }
       if (__DEV__) {
         console.info("[CreatorStep4Cover] upload-intent-success", {
           jobId: intent.jobId,
         });
       }
       setVideoStatusText("Uploading video for processing...");
+      setVideoUploadPercent(0);
       if (__DEV__) {
         console.info("[CreatorStep4Cover] source-upload-start", {
           jobId: intent.jobId,
         });
       }
+      const handleUploadProgress = (progress: EventCoverVideoUploadProgress): void => {
+        setVideoUploadPercent(progress.percent);
+        setVideoStatusText(`Uploading video... ${progress.percent}%`);
+      };
       await uploadEventCoverVideoSource({
         fileName: asset.fileName,
         mimeType: asset.mimeType,
+        onProgress: handleUploadProgress,
         upload: intent.upload,
         uri: asset.uri,
       });
+      setVideoUploadPercent(100);
       if (__DEV__) {
         console.info("[CreatorStep4Cover] source-upload-success", {
           jobId: intent.jobId,
         });
       }
-      setVideoStatusText("Compressing cover video...");
+      setVideoStatusText("Upload complete. Compressing browser-safe video...");
+      setVideoUploadPercent(null);
       if (__DEV__) {
         console.info("[CreatorStep4Cover] status-poll-start", {
           jobId: intent.jobId,
@@ -296,6 +370,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
       }
       setMediaDisplayError(null);
       setVideoErrorText(null);
+      setVideoUploadPercent(null);
       updateDraft({
         coverMediaType: "video",
         coverMediaUrl: status.processedUrl,
@@ -422,6 +497,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
           });
         }
         setVideoStatusText(null);
+        setVideoUploadPercent(null);
         setVideoErrorText(validation.message);
         onShowToast(validation.message);
         return;
@@ -480,6 +556,7 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
   const handleRemoveCover = useCallback((): void => {
     setMediaDisplayError(null);
     setVideoStatusText(null);
+    setVideoUploadPercent(null);
     setVideoErrorText(null);
     updateDraft({ coverMediaUrl: null, coverMediaType: null });
     onShowToast("Uploaded cover removed.");
@@ -546,7 +623,27 @@ export const CreatorStep4Cover: React.FC<StepBodyProps> = ({
           {EVENT_COVER_UPLOAD_LIMIT_COPY} {EVENT_COVER_VIDEO_PROCESSING_COPY}
         </Text>
         {videoStatusText !== null ? (
-          <Text style={styles.videoStatusText}>{videoStatusText}</Text>
+          <View style={styles.videoStatusWrap}>
+            <Text style={styles.videoStatusText}>{videoStatusText}</Text>
+            {videoUploadPercent !== null ? (
+              <View
+                accessibilityRole="progressbar"
+                accessibilityValue={{
+                  max: 100,
+                  min: 0,
+                  now: videoUploadPercent,
+                }}
+                style={styles.videoProgressTrack}
+              >
+                <View
+                  style={[
+                    styles.videoProgressFill,
+                    { width: `${videoUploadPercent}%` },
+                  ]}
+                />
+              </View>
+            ) : null}
+          </View>
         ) : null}
         {videoErrorText !== null ? (
           <Text accessibilityRole="alert" style={styles.videoErrorText}>
@@ -632,7 +729,21 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     color: accent.warm,
+  },
+  videoStatusWrap: {
     marginTop: spacing.xs,
+  },
+  videoProgressTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: textTokens.quaternary,
+    overflow: "hidden",
+    marginTop: spacing.xs,
+  },
+  videoProgressFill: {
+    height: "100%",
+    borderRadius: 2,
+    backgroundColor: accent.warm,
   },
   videoErrorText: {
     fontSize: typography.caption.fontSize,

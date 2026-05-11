@@ -68,7 +68,6 @@ import {
   type UpdateLiveEventResult,
 } from "../../store/liveEventStore";
 import { getSoldCountContextForEvent } from "../../store/orderStoreHelpers";
-import { useOrderStore } from "../../store/orderStore";
 import {
   computeRichFieldDiffs,
   computeTicketDiffs,
@@ -109,6 +108,7 @@ import {
 } from "../../services/eventCoverMediaService";
 import { businessEventKeys } from "../../hooks/useBusinessEvents";
 import { publicEventKeys } from "../../hooks/usePublicEvents";
+import { useEventHasWebPurchases } from "../../hooks/useEventOrders";
 
 // ---- Section configuration -----------------------------------------
 
@@ -743,20 +743,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   }, [fieldDiffs]);
 
   // ---- webPurchasePresent ----
-  // Cycle 9c — populate from useOrderStore + paymentMethod filter.
-  const webPurchasePresent = useMemo(
-    () =>
-      useOrderStore
-        .getState()
-        .getOrdersForEvent(liveEvent.id)
-        .some(
-          (o) =>
-            o.paymentMethod === "card" ||
-            o.paymentMethod === "apple_pay" ||
-            o.paymentMethod === "google_pay",
-        ),
-    [liveEvent.id],
-  );
+  const webPurchasePresent = useEventHasWebPurchases(liveEvent.id);
 
   // ---- Render ----
   return (

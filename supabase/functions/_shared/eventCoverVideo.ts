@@ -86,7 +86,10 @@ export async function requireEventManager(
     .maybeSingle();
   if (eventError) {
     console.error("[event-cover-video] event read failed:", eventError);
-    return jsonResponse({ error: "internal_error" }, 500);
+    return jsonResponse(
+      { error: "internal_error", detail: "event_read_failed" },
+      500,
+    );
   }
   if (!event) return jsonResponse({ error: "not_found", detail: "event_not_found" }, 404);
 
@@ -96,7 +99,10 @@ export async function requireEventManager(
   );
   if (rankError) {
     console.error("[event-cover-video] role check failed:", rankError);
-    return jsonResponse({ error: "internal_error" }, 500);
+    return jsonResponse(
+      { error: "internal_error", detail: "role_check_failed" },
+      500,
+    );
   }
   const { data: requiredRank, error: requiredRankError } = await supabase.rpc(
     "biz_role_rank",
@@ -104,7 +110,10 @@ export async function requireEventManager(
   );
   if (requiredRankError) {
     console.error("[event-cover-video] role rank failed:", requiredRankError);
-    return jsonResponse({ error: "internal_error" }, 500);
+    return jsonResponse(
+      { error: "internal_error", detail: "role_rank_failed" },
+      500,
+    );
   }
   if (Number(rank ?? 0) < Number(requiredRank ?? 40)) {
     return jsonResponse({ error: "forbidden", detail: "permission_denied" }, 403);

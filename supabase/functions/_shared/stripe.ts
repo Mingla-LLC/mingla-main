@@ -57,5 +57,7 @@ export const stripeDetach = () => createStripeClient("STRIPE_RAK_DETACH");
 export const stripeBalances = () => createStripeClient("STRIPE_RAK_BALANCES");
 export const stripeKycReminder = () =>
   createStripeClient("STRIPE_RAK_KYC_REMINDER");
+export const stripeTicketCheckout = () =>
+  createStripeClient("STRIPE_RAK_TICKET_CHECKOUT");
 
 export type StripeClient = ReturnType<typeof createStripeClient>;

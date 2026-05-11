@@ -8,6 +8,7 @@ import {
   dispatchNotification,
   getBrandPaymentManagerUserIds,
 } from "./stripeEdgeAuth.ts";
+import { qrTokenPepper } from "./ticketCheckout.ts";
 import {
   getKycRemediationForRequirements,
   mapPayoutFailureCode,
@@ -30,6 +31,9 @@ export const STRIPE_ROUTED_EVENT_TYPES = [
   "person.deleted",
   "application_fee.created",
   "application_fee.refunded",
+  "payment_intent.succeeded",
+  "payment_intent.payment_failed",
+  "payment_intent.canceled",
 ] as const;
 
 export type RoutedStripeEventType = typeof STRIPE_ROUTED_EVENT_TYPES[number];
@@ -440,6 +444,74 @@ async function handleApplicationFee(
   return brandId;
 }
 
+async function handleTicketCheckoutPaymentIntent(
+  supabase: SupabaseClient,
+  event: StripeWebhookEvent,
+): Promise<string | null> {
+  const paymentIntent = event.data.object;
+  const paymentIntentId = objectString(paymentIntent, "id");
+  if (!paymentIntentId) throw new Error(`${event.type} missing payment_intent.id`);
+
+  const { data: session, error: sessionError } = await supabase
+    .from("ticket_checkout_sessions")
+    .select("id, brand_id, event_id, order_id")
+    .eq("stripe_payment_intent_id", paymentIntentId)
+    .maybeSingle();
+  if (sessionError) throw new Error(`ticket checkout session lookup failed: ${sessionError.message}`);
+  if (!session) return null;
+
+  if (event.type === "payment_intent.succeeded") {
+    const charges = paymentIntent.charges as { data?: Array<Record<string, unknown>> } | undefined;
+    const latestCharge = charges?.data?.[0] ?? null;
+    const paymentMethodTypes = Array.isArray(paymentIntent.payment_method_types)
+      ? paymentIntent.payment_method_types
+      : [];
+    const methodType = typeof paymentMethodTypes[0] === "string"
+      ? paymentMethodTypes[0]
+      : objectString(paymentIntent, "payment_method");
+    const { data: finalized, error: finalizeError } = await supabase.rpc(
+      "biz_ticket_checkout_finalize",
+      {
+        p_checkout_session_id: session.id,
+        p_stripe_payment_intent_id: paymentIntentId,
+        p_stripe_charge_id: latestCharge ? objectString(latestCharge, "id") : null,
+        p_stripe_payment_method_type: methodType,
+        p_qr_token_pepper: qrTokenPepper(),
+      },
+    );
+    if (finalizeError) throw new Error(`ticket checkout finalize failed: ${finalizeError.message}`);
+    const orderId = typeof (finalized as Record<string, unknown> | null)?.orderId === "string"
+      ? String((finalized as Record<string, unknown>).orderId)
+      : null;
+    if (orderId) {
+      const url = Deno.env.get("SUPABASE_URL");
+      const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (url && key) {
+        await fetch(`${url}/functions/v1/ticket-confirmation-dispatch`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${key}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ orderId }),
+        });
+      }
+    }
+  } else {
+    await supabase
+      .from("ticket_checkout_sessions")
+      .update({
+        status: "failed",
+        updated_at: new Date().toISOString(),
+        metadata: { stripe_webhook_event_id: event.id, stripe_event_type: event.type },
+      })
+      .eq("id", session.id)
+      .is("order_id", null);
+  }
+
+  return session.brand_id as string | null;
+}
+
 export async function routeStripeEvent(
   supabase: SupabaseClient,
   stripe: StripeClient,
@@ -481,6 +553,11 @@ export async function routeStripeEvent(
     case "application_fee.created":
     case "application_fee.refunded":
       brandId = await handleApplicationFee(supabase, event);
+      break;
+    case "payment_intent.succeeded":
+    case "payment_intent.payment_failed":
+    case "payment_intent.canceled":
+      brandId = await handleTicketCheckoutPaymentIntent(supabase, event);
       break;
     default:
       await writeAudit(supabase, {

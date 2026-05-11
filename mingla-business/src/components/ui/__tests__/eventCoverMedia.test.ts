@@ -85,6 +85,19 @@ describe("EventCoverMedia presentation", () => {
     expect(source).toContain("EVENT_COVER_VIDEO_PROCESSING_COPY");
   });
 
+  test("event creator logs upload-intent diagnostics with request id and edge detail", () => {
+    const source = repoFile("src/components/event/CreatorStep4Cover.tsx");
+
+    expect(source).toContain("requestId: diagnostic?.requestId");
+    expect(source).toContain("edgeStatus: diagnostic?.edgeStatus");
+    expect(source).toContain("edgeError: diagnostic?.edgeError");
+    expect(source).toContain("edgeDetail: diagnostic?.edgeDetail");
+    expect(source).toContain("sourceDurationMs: diagnostic?.sourceDurationMs");
+    expect(source).toContain("sourceBytes: diagnostic?.sourceBytes");
+    expect(source).toContain("JSON.stringify({");
+    expect(source).toContain("Object.assign(error, {");
+  });
+
   test("event cover videos use inline browser-safe playback props", () => {
     const source = repoFile("src/components/ui/EventCoverMedia.tsx");
     const publicPageSource = repoFile("src/components/event/PublicEventPage.tsx");

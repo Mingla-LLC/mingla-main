@@ -7,6 +7,102 @@
 
 ---
 
+## ACTIVE (post META-ORCH-0780 CLOSE 2026-05-10)
+
+### I-PROPOSED-AE STRIPE_REACT_NATIVE_NATIVE_BOUNDARY_ONLY
+
+**Statement:** In `mingla-business`, `@stripe/stripe-react-native` imports are allowed only inside explicit `.native` payment boundary files. Generic files that resolve on web, including `app/**` routes/layouts and ordinary `src/**` modules, must never import or dynamically import `@stripe/stripe-react-native`.
+
+**Rationale:** ORCH-0776D QA discovery D-0776D-QA-1 proved ORCH-0777 checkout pulled Stripe React Native into the Expo web bundle from `app/checkout/[eventId]/payment.tsx`, causing `npx expo export --platform web` to fail on native-only `codegenNativeComponent`. ORCH-0778 fixed the root cause by moving native Stripe imports behind `.native` files and providing `.web` unsupported/pass-through counterparts.
+
+**Enforcement mechanism:** `.github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs` scans `mingla-business/app` and `mingla-business/src` for import-form references to `@stripe/stripe-react-native` and permits only the approved `.native` boundary files. `mingla-business/package.json` exposes the gate as `npm run test:orch-0778`. `.github/workflows/strict-grep-mingla-business.yml` registers the CI job `orch-0778-web-stripe-native-import-gate`.
+
+**Test that catches regression:** `cd mingla-business && npm run test:orch-0778` must pass on the clean tree and must fail with exit 1 if any non-`.native` app/source file imports `@stripe/stripe-react-native`. QA additionally verified `npx expo export --platform web` succeeds and the built web bundle contains zero `stripe-react-native`, `codegenNativeComponent`, or `StripeProvider`.
+
+**Codified:** 2026-05-10 by ORCH-0778 / DEC-137. Evidence: `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0778_ORCH0777_WEB_EXPORT_STRIPE_NATIVE_IMPORT_GATE.md`, `Mingla_Artifacts/reports/QA_ORCH-0778_ORCH0777_WEB_EXPORT_STRIPE_NATIVE_IMPORT_GATE.md`, and `Mingla_Artifacts/CLOSE_NOTE_ORCH-0778.md`.
+
+**Scope exclusions:** Native iOS/Android PaymentSheet live-fire remains ORCH-0777 close responsibility. This invariant only governs web bundle import safety and platform-boundary preservation; it does not close ORCH-0777 backend checkout, QR pepper, B2 RLS, Resend/Twilio, scanner, or native live-fire gates.
+
+### I-PROPOSED-AD UNIVERSAL_SKILL_OUTPUT_FORMAT
+
+**Statement:** Every active Claude and Codex Mingla skill chat response MUST use exactly four sections, in this order, with no additional sections:
+
+1. Historical context — one short layman paragraph.
+2. What was just done — tight bullets for actions taken this turn.
+3. What needs to happen — one short layman paragraph.
+4. Exact handoff message — copy-paste-ready next step beginning with `NEXT HANDOFF — paste into [target skill or operator]:`, or `NEXT HANDOFF — none; awaiting operator direction.`
+
+This invariant governs chat-output shape only. Durable reports, specs, QA verdict bodies, implementation report schemas, design specs, roadmap artifacts, and other detailed outputs still live in their existing `Mingla_Artifacts/` or `Mingla_Roadmap/` files and are cited from Sections 2 and 4.
+
+**Enforcement mechanism:** Canonical memory `~/.claude/projects/-Users-sethogieva-Desktop-mingla-main/memory/feedback_universal_skill_output_format.md` defines the global rule. META-ORCH-0780 inserted the same Response Protocol block into the remaining 12 active skill files across Claude and Codex, while preserving skill-specific artifact-file schemas as supplementary notes. The rule supersedes older chat-shape instructions such as compact "Layman summary" templates, "Default Output" templates, and standalone Next-Handoff-only response contracts.
+
+**Test that catches regression:** Process-smoke gate: open any updated `SKILL.md`, locate `## Response Protocol — Universal 4-Section Output (Non-Negotiable, codified 2026-05-10)`, and confirm the section matches the canonical memory. Grep gate used at implementation close: each of the 12 target files contains exactly one `Response Protocol — Universal 4-Section Output` block, and no target file contains conflicting old response-shape markers such as `Layman summary:`, `Design summary:`, `Verdict: [`, `Output Contract`, `Default Output`, `Output Pattern`, `Next-Handoff Paragraph`, or `Every chat response MUST end`.
+
+**Codified:** 2026-05-10 by META-ORCH-0780 / DEC-136. Evidence: `Mingla_Artifacts/reports/IMPLEMENTATION_META-ORCH-0780_UNIVERSAL_SKILL_OUTPUT_FORMAT_ROLLOUT.md`.
+
+**Scope exclusions:** Claude `mingla-categorizer` remains RETIRED and excluded. Claude `mingla-orchestrator` and Codex `orchestrator-mingla` were already updated before this rollout and were not re-touched in the META-ORCH-0780 implementation pass.
+
+---
+
+## ACTIVE (post META-ORCH-0755 STEP 1 2026-05-10)
+
+### I-PROPOSED-AB CANONICAL_PIPELINE_ROUTING
+
+**Statement:** The Mingla agent pipeline has fixed per-phase canonical owners. Every dispatch prompt MUST name the canonical owner for the phase it dispatches:
+
+- INVESTIGATE → Claude `mingla-forensics`
+- SPEC → Claude `mingla-forensics`
+- IMPLEMENT → Codex `implementor-mingla`
+- TEST / VERIFY → Claude `mingla-forensics` (TEST mode)
+- CLOSE → Codex `orchestrator-mingla`
+- LOCK-IN → Codex `orchestrator-mingla`
+
+Mirror skills on the opposite side (e.g., Codex `forensic-mingla`, Claude `mingla-implementor`, Claude `mingla-tester`, Claude `mingla-orchestrator`) are retained for content parity and emergency/audit use only — they are not the default dispatch target. Operator may explicitly redirect a single phase to the mirror; absent explicit redirect, the canonical owner is the default.
+
+**Enforcement mechanism:** Both orchestrator skills (Codex + Claude) carry an identical "Canonical Pipeline Routing" block. Any dispatch prompt produced without a `Canonical owner: <skill>` field is malformed.
+
+**Test that catches regression:** Strict-grep check on every dispatch prompt under `Mingla_Artifacts/prompts/` requiring the literal string `Canonical owner:` and one of the seven approved skill names. Implementor adds the gate in Step 5 of the META-ORCH-0755 plan.
+
+**Codified:** 2026-05-10 by META-ORCH-0755 / DEC-133. Operator directive: "We must have parity. Only difference is that Claude forensics will handle testing and specing, and Codex will handle implementation and closing."
+
+### I-PROPOSED-AB.1 NEXT_HANDOFF_PARAGRAPH (sub-rule under I-PROPOSED-AB)
+
+**Statement:** Every chat response from any lifecycle-pipeline skill — Claude `mingla-forensics` (canonical), Codex `implementor-mingla` (canonical), Codex `orchestrator-mingla` (canonical), Claude `mingla-orchestrator` (parity mirror), Claude `mingla-implementor` (parity mirror), Codex `forensic-mingla` (parity mirror), Claude `mingla-tester` (legacy mirror), Codex `tester-mingla` (legacy mirror) — MUST end with a single prose "Next Handoff" paragraph that the operator can copy and paste verbatim into the next agent.
+
+The paragraph format is:
+
+- One labeled block beginning `NEXT HANDOFF — paste into [target skill]:` on its own line, then a blank line, then 3–5 full prose sentences (no bullets).
+- Six required elements embedded in the prose: (1) target skill + side (Codex / Claude), (2) the goal in one sentence, (3) inputs (every artifact file path the next agent must read), (4) hard guards (the constraints that actually apply — out-of-scope code prohibition, no `supabase db push`, no edge deploy until operator gate, no provider secrets, etc.), (5) expected output (exact artifact filename + folder), (6) downstream routing (the skill that comes after the next agent).
+- Stand-alone: the paragraph must be coherent without the rest of the chat — paste it cold into a fresh agent and that agent should know exactly what to do.
+- Cite, don't summarise: refer to artifact files; do not restate findings.
+
+**Enforcement mechanism:** Each of the eight skill `SKILL.md` files carries an identical "Next-Handoff Paragraph" subsection in its Output Contract. Any skill response missing the labeled block is a Prime Directive violation.
+
+**Test that catches regression:** Strict-grep gate over the eight skill files requiring the literal string `NEXT HANDOFF — paste into` to appear in each `Output Contract` section. Implementor adds the gate alongside the META-ORCH-0755-B reference-file parity sweep.
+
+**Codified:** 2026-05-10 by META-ORCH-0755 Step 7 / DEC-134. Operator directive: "each output should have a small paragraph to the next person that I can copy and paste with what is required and all necessary information that is needed so I can communicate seamlessly between codex and claude and the respective skills."
+
+### I-PROPOSED-AC ONE_WORKTREE_PER_ORCH
+
+**Statement:** Every ORCH that touches product code runs in its own git worktree at `.worktrees/orch-XXXX-<short>/` on branch `orch/XXXX-<short>`, opened at the first INVESTIGATE dispatch from `origin/main` and closed at CLOSE via `git merge --no-ff` + `git worktree remove` + `git branch -d`. Parallel ORCHs each get their own worktree — no worktree is shared across unrelated ORCH-IDs.
+
+Two derived rules:
+
+- **Artifact location split:** scoped artifacts that name an ORCH-ID in the filename (`reports/INVESTIGATION_ORCH-XXXX_*`, `specs/SPEC_ORCH-XXXX_*`, `reports/IMPLEMENTATION_ORCH-XXXX_*`, `reports/QA_ORCH-XXXX_*` / `TEST_REPORT_ORCH-XXXX_*`, scoped prompts) commit inside the worktree on the ORCH branch. Global indexes (`DECISION_LOG.md`, `INVARIANT_REGISTRY.md`, `WORLD_MAP.md`, `PRIORITY_BOARD.md`, `MASTER_BUG_LIST.md`, `AGENT_HANDOFFS.md`, `COVERAGE_MAP.md`, `PRODUCT_SNAPSHOT.md`, `ROOT_CAUSE_REGISTER.md`, `OPEN_INVESTIGATIONS.md`, `WORKTREE_REGISTRY.md`) are written only by the orchestrator in main.
+- **Skill location:** `.claude/skills/` and `.codex/skills/` enter each worktree via symlink to main at worktree-creation time. Skill files are never edited from inside a worktree.
+
+**Exception:** META-ORCHs (process-only work that touches indexes / skills / artifacts but not product code) run in main with no worktree. Example: META-ORCH-0755 itself, META-ORCH-0744-PROCESS, future skill-parity sweeps.
+
+**Enforcement mechanism:** every Next-Handoff paragraph from every lifecycle skill names the worktree path via a `Working tree: .worktrees/<slug>/` line (or `Working tree: main (META-ORCH process work)` for META-ORCHs). The orchestrator updates `Mingla_Artifacts/WORKTREE_REGISTRY.md` on every phase transition, tracking active worktrees plus 14-day recently-closed retention.
+
+**Test that catches regression:** strict-grep gate (queued under META-ORCH-0755-B for implementor to add) requiring (a) the literal string `Working tree:` to appear in every Next-Handoff paragraph in every dispatch prompt under `Mingla_Artifacts/prompts/`, and (b) any commit on `main` directly touching product code under `app-mobile/`, `mingla-business/`, `mingla-admin/`, or `supabase/` to trace to a merged ORCH branch via `--first-parent` history (i.e. direct commits to main on those paths are forbidden except for META-ORCHs flagged explicitly).
+
+**Codified:** 2026-05-10 by META-ORCH-0755 Step 8 / DEC-135. Operator directive: "best worktree strategy to implement across all claude and codex skills that creates sync and coordination across skills, but also makes sure that one working tree is used for related work until it closes."
+
+Full strategy reference: `Mingla_Artifacts/WORKTREE_STRATEGY.md`.
+
+---
+
 ## ACTIVE (post ORCH-0756A IMPLEMENTATION 2026-05-08)
 
 ### I-PROPOSED-AA ACTIVE_BRAND_RECOVERS_FROM_SERVER_DEFAULT

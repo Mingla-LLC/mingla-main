@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { BusinessAuthNotReadyError } from "../utils/authReadiness";
+import * as FileSystem from "expo-file-system/legacy";
 
 export const EVENT_COVER_FINAL_MAX_BYTES = 25 * 1024 * 1024;
 export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 15_000;
@@ -34,6 +35,27 @@ interface UploadIntentResponse {
 
 type EdgeErrorPayload = { error?: string; detail?: string };
 
+export type EventCoverVideoProcessingPhase =
+  | "upload_intent"
+  | "source_upload"
+  | "status"
+  | "apply";
+
+interface EventCoverVideoErrorMetadata {
+  requestId?: string;
+  phase?: EventCoverVideoProcessingPhase;
+  edgeStatus?: number;
+  edgeError?: string;
+  edgeDetail?: string;
+}
+
+export interface EventCoverVideoUploadProgress {
+  phase: "source_upload";
+  bytesSent: number;
+  bytesTotal: number;
+  percent: number;
+}
+
 export interface EventCoverVideoStatus {
   jobId: string;
   status: EventCoverVideoJobStatus;
@@ -53,68 +75,134 @@ interface StatusResponse extends Partial<EventCoverVideoStatus> {
 
 export class EventCoverVideoProcessingError extends Error {
   code: string;
+  requestId?: string;
+  phase?: EventCoverVideoProcessingPhase;
+  edgeStatus?: number;
+  edgeError?: string;
+  edgeDetail?: string;
 
-  constructor(code: string, message: string) {
+  constructor(
+    code: string,
+    message: string,
+    metadata: EventCoverVideoErrorMetadata = {},
+  ) {
     super(message);
     this.name = "EventCoverVideoProcessingError";
     this.code = code;
+    this.requestId = metadata.requestId;
+    this.phase = metadata.phase;
+    this.edgeStatus = metadata.edgeStatus;
+    this.edgeError = metadata.edgeError;
+    this.edgeDetail = metadata.edgeDetail;
   }
 }
 
-const throwMalformed = (label: string): never => {
+const attachVideoErrorMetadata = <
+  T extends EventCoverVideoProcessingError | BusinessAuthNotReadyError,
+>(
+  error: T,
+  metadata: EventCoverVideoErrorMetadata,
+): T => {
+  Object.assign(error, metadata);
+  return error;
+};
+
+const throwMalformed = (
+  label: string,
+  metadata: EventCoverVideoErrorMetadata = {},
+): never => {
   throw new EventCoverVideoProcessingError(
     "malformed_response",
     `${label} returned an unexpected response.`,
+    metadata,
   );
 };
 
 const processingErrorFromPayload = (
   payload: EdgeErrorPayload | null,
   fallback: string,
+  metadata: EventCoverVideoErrorMetadata = {},
 ): EventCoverVideoProcessingError | BusinessAuthNotReadyError => {
+  const edgeMetadata = {
+    ...metadata,
+    edgeDetail: payload?.detail ?? metadata.edgeDetail,
+    edgeError: payload?.error ?? metadata.edgeError,
+  };
   if (payload?.error === "unauthenticated") {
-    return new BusinessAuthNotReadyError(
-      "unauthenticated",
-      "Finishing sign-in. Try again in a moment.",
+    return attachVideoErrorMetadata(
+      new BusinessAuthNotReadyError(
+        "unauthenticated",
+        "Finishing sign-in. Try again in a moment.",
+      ),
+      edgeMetadata,
     );
   }
   if (payload?.error === "provider_not_configured") {
     return new EventCoverVideoProcessingError(
       "provider_not_configured",
       payload.detail ?? EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY,
+      edgeMetadata,
     );
   }
   if (payload?.error === "validation_error") {
     return new EventCoverVideoProcessingError(
       "validation_error",
       validationDetailMessage(payload.detail),
+      edgeMetadata,
     );
   }
   if (payload?.error === "forbidden") {
     return new EventCoverVideoProcessingError(
       "forbidden",
       "You do not have permission to update this event cover.",
+      edgeMetadata,
     );
   }
   if (payload?.error === "not_found") {
     return new EventCoverVideoProcessingError(
       "not_found",
       "This video cover job could not be found.",
+      edgeMetadata,
     );
   }
   if (payload?.error === "job_not_ready") {
     return new EventCoverVideoProcessingError(
       "job_not_ready",
       "Video is still processing. Try again in a moment.",
+      edgeMetadata,
+    );
+  }
+  if (payload?.error === "internal_error") {
+    return new EventCoverVideoProcessingError(
+      "internal_error",
+      internalErrorDetailMessage(payload.detail),
+      edgeMetadata,
     );
   }
   if (typeof payload?.error === "string") {
     return new EventCoverVideoProcessingError(
       payload.error,
       payload.detail ?? fallback,
+      edgeMetadata,
     );
   }
-  return new EventCoverVideoProcessingError("edge_error", fallback);
+  return new EventCoverVideoProcessingError("edge_error", fallback, edgeMetadata);
+};
+
+const internalErrorDetailMessage = (detail?: string): string => {
+  switch (detail) {
+    case "event_read_failed":
+      return "Could not verify this event before upload. Try again.";
+    case "role_check_failed":
+    case "role_rank_failed":
+      return "Could not verify your event permissions before upload. Try again.";
+    case "job_insert_failed":
+      return "Could not create a video processing job. Try again.";
+    case "provider_payload_update_failed":
+      return "Could not finish preparing the video processing job. Try again.";
+    default:
+      return "Could not prepare video upload. Try again.";
+  }
 };
 
 const validationDetailMessage = (detail?: string): string => {
@@ -149,13 +237,106 @@ const devWarn = (label: string, payload: Record<string, unknown>): void => {
   }
 };
 
+const clampPercent = (value: number): number =>
+  Math.max(0, Math.min(100, Math.round(value)));
+
+const emitUploadProgress = (
+  callback: ((progress: EventCoverVideoUploadProgress) => void) | undefined,
+  bytesSent: number,
+  bytesTotal: number,
+): void => {
+  if (
+    callback === undefined ||
+    !Number.isFinite(bytesSent) ||
+    !Number.isFinite(bytesTotal) ||
+    bytesTotal <= 0
+  ) {
+    return;
+  }
+  callback({
+    bytesSent: Math.max(0, bytesSent),
+    bytesTotal,
+    percent: clampPercent((bytesSent / bytesTotal) * 100),
+    phase: "source_upload",
+  });
+};
+
+const cloudinaryUploadFailureDetail = (body: unknown, status: number): string => {
+  if (
+    body !== null &&
+    typeof body === "object" &&
+    typeof (body as { error?: { message?: unknown } }).error?.message === "string"
+  ) {
+    return (body as { error: { message: string } }).error.message;
+  }
+  return `Cloud upload failed (${status}).`;
+};
+
+const uploadEventCoverVideoSourceWithXhr = async (input: {
+  upload: { url: string; fields: Record<string, string> };
+  uri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  onProgress?: (progress: EventCoverVideoUploadProgress) => void;
+}): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    Object.entries(input.upload.fields).forEach(([key, value]) => {
+      if (key !== "resource_type") formData.append(key, value);
+    });
+    formData.append("file", {
+      name: input.fileName ?? "event-cover.mov",
+      type: input.mimeType ?? "video/quicktime",
+      uri: input.uri,
+    } as unknown as Blob);
+
+    xhr.upload.onprogress = (event) => {
+      emitUploadProgress(input.onProgress, event.loaded, event.total);
+    };
+    xhr.onerror = () => {
+      reject(
+        new EventCoverVideoProcessingError(
+          "source_upload_failed",
+          "Video upload failed before processing. Try again.",
+        ),
+      );
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        emitUploadProgress(input.onProgress, 1, 1);
+        resolve();
+        return;
+      }
+      let body: unknown = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        // Keep status detail when provider body is not JSON.
+      }
+      const detail = cloudinaryUploadFailureDetail(body, xhr.status);
+      devWarn("source-upload-failed", {
+        detail,
+        status: xhr.status,
+      });
+      reject(new EventCoverVideoProcessingError("source_upload_failed", detail));
+    };
+    xhr.open("POST", input.upload.url);
+    xhr.send(formData);
+  });
+
 const edgeError = async (
   error: unknown,
   fallback: string,
+  metadata: EventCoverVideoErrorMetadata = {},
 ): Promise<EventCoverVideoProcessingError | BusinessAuthNotReadyError> => {
   const maybe = error as {
     message?: string;
     context?: { status?: number; json?: () => Promise<unknown> };
+  };
+  const edgeMetadata = {
+    ...metadata,
+    edgeStatus: maybe?.context?.status ?? metadata.edgeStatus,
   };
   if (maybe?.context?.status === 401) {
     devWarn("edge-error-auth", {
@@ -163,9 +344,15 @@ const edgeError = async (
       message: maybe.message,
       status: maybe.context.status,
     });
-    return new BusinessAuthNotReadyError(
-      "unauthenticated",
-      "Finishing sign-in. Try again in a moment.",
+    return attachVideoErrorMetadata(
+      new BusinessAuthNotReadyError(
+        "unauthenticated",
+        "Finishing sign-in. Try again in a moment.",
+      ),
+      {
+        ...edgeMetadata,
+        edgeError: "unauthenticated",
+      },
     );
   }
   if (typeof maybe?.context?.json === "function") {
@@ -183,13 +370,18 @@ const edgeError = async (
         return processingErrorFromPayload(
           edgePayload,
           fallback,
+          edgeMetadata,
         );
       }
     } catch {
       // Keep the edge message fallback when the function body is unavailable.
     }
   }
-  return new EventCoverVideoProcessingError("edge_error", maybe?.message ?? fallback);
+  return new EventCoverVideoProcessingError(
+    "edge_error",
+    maybe?.message ?? fallback,
+    edgeMetadata,
+  );
 };
 
 export const createEventCoverVideoUploadIntent = async (input: {
@@ -229,7 +421,10 @@ export const createEventCoverVideoUploadIntent = async (input: {
       eventId: input.eventId,
       requestId,
     });
-    throw await edgeError(error, "Could not prepare video upload.");
+    throw await edgeError(error, "Could not prepare video upload.", {
+      phase: "upload_intent",
+      requestId,
+    });
   }
   if (data?.error !== undefined) {
     devWarn("upload-intent-rejected", {
@@ -237,7 +432,10 @@ export const createEventCoverVideoUploadIntent = async (input: {
       error: data.error,
       requestId,
     });
-    throw processingErrorFromPayload(data, "Could not prepare video upload.");
+    throw processingErrorFromPayload(data, "Could not prepare video upload.", {
+      phase: "upload_intent",
+      requestId,
+    });
   }
   const jobId = data?.jobId;
   const uploadUrl = data?.upload?.url;
@@ -253,7 +451,10 @@ export const createEventCoverVideoUploadIntent = async (input: {
       hasUploadUrl: typeof uploadUrl === "string",
       requestId,
     });
-    throwMalformed("event-cover-video-upload-intent");
+    throwMalformed("event-cover-video-upload-intent", {
+      phase: "upload_intent",
+      requestId,
+    });
   }
   devLog("upload-intent-ready", {
     jobId,
@@ -274,34 +475,60 @@ export const uploadEventCoverVideoSource = async (input: {
   uri: string;
   fileName?: string | null;
   mimeType?: string | null;
+  onProgress?: (progress: EventCoverVideoUploadProgress) => void;
 }): Promise<void> => {
-  const formData = new FormData();
-  Object.entries(input.upload.fields).forEach(([key, value]) => {
-    if (key !== "resource_type") formData.append(key, value);
-  });
-  formData.append("file", {
-    name: input.fileName ?? "event-cover.mov",
-    type: input.mimeType ?? "video/quicktime",
-    uri: input.uri,
-  } as unknown as Blob);
-
-  const response = await fetch(input.upload.url, {
-    body: formData,
-    method: "POST",
-  });
-  if (!response.ok) {
-    let detail = `Cloud upload failed (${response.status}).`;
-    try {
-      const body = await response.json();
-      if (typeof body?.error?.message === "string") detail = body.error.message;
-    } catch {
-      // Keep status detail when provider body is not JSON.
+  const parameters = Object.fromEntries(
+    Object.entries(input.upload.fields).filter(([key]) => key !== "resource_type"),
+  );
+  try {
+    const task = FileSystem.createUploadTask(
+      input.upload.url,
+      input.uri,
+      {
+        fieldName: "file",
+        httpMethod: "POST",
+        mimeType: input.mimeType ?? "video/quicktime",
+        parameters,
+        sessionType: FileSystem.FileSystemSessionType.FOREGROUND,
+        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      },
+      (event) => {
+        emitUploadProgress(
+          input.onProgress,
+          event.totalBytesSent,
+          event.totalBytesExpectedToSend,
+        );
+      },
+    );
+    const result = await task.uploadAsync();
+    if (result === null || result === undefined) {
+      throw new EventCoverVideoProcessingError(
+        "source_upload_failed",
+        "Cloud upload did not return a response.",
+      );
     }
-    devWarn("source-upload-failed", {
-      detail,
-      status: response.status,
+    if (result.status < 200 || result.status >= 300) {
+      let body: unknown = null;
+      try {
+        body = JSON.parse(result.body);
+      } catch {
+        // Keep status detail when provider body is not JSON.
+      }
+      const detail = cloudinaryUploadFailureDetail(body, result.status);
+      devWarn("source-upload-failed", {
+        detail,
+        status: result.status,
+      });
+      throw new EventCoverVideoProcessingError("source_upload_failed", detail);
+    }
+    emitUploadProgress(input.onProgress, 1, 1);
+  } catch (error) {
+    if (error instanceof EventCoverVideoProcessingError) throw error;
+    devWarn("source-upload-task-failed", {
+      message: error instanceof Error ? error.message : String(error),
+      fallback: "xhr",
     });
-    throw new EventCoverVideoProcessingError("source_upload_failed", detail);
+    await uploadEventCoverVideoSourceWithXhr(input);
   }
 };
 

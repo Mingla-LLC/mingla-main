@@ -25,10 +25,8 @@ import {
 import { useGuestStore } from "../../../../src/store/guestStore";
 import { useEventEditLogStore } from "../../../../src/store/eventEditLogStore";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
-import {
-  useOrderStore,
-  type OrderRecord,
-} from "../../../../src/store/orderStore";
+import type { OrderRecord } from "../../../../src/store/orderStore";
+import { useEventGuestById, useEventGuestList } from "../../../../src/hooks/useEventOrders";
 import { useScanStore } from "../../../../src/store/scanStore";
 import {
   useDoorSalesStore,
@@ -167,10 +165,9 @@ export default function GuestDetailRoute(): React.ReactElement {
   // Cycle 11 J-S5/S6 — derived check-in state from useScanStore.
   // Raw subscription + useMemo per selector pattern rule.
   const allScanEntries = useScanStore((s) => s.entries);
-  const order = useOrderStore((s) =>
-    parsed !== null && parsed.kind === "order"
-      ? s.getOrderById(parsed.innerId)
-      : null,
+  const order = useEventGuestById(
+    typeof eventId === "string" ? eventId : null,
+    parsed !== null && parsed.kind === "order" ? parsed.innerId : null,
   );
   const comp = useGuestStore((s) =>
     parsed !== null && parsed.kind === "comp"
@@ -185,7 +182,7 @@ export default function GuestDetailRoute(): React.ReactElement {
   );
 
   // Cross-event purchase history for this buyer's email (same brand only).
-  const allOrderEntries = useOrderStore((s) => s.entries);
+  const allOrderEntries = useEventGuestList(typeof eventId === "string" ? eventId : null);
   const otherOrders = useMemo<OrderRecord[]>(() => {
     if (order === null) return [];
     const lower = order.buyer.email.toLowerCase();
