@@ -113,8 +113,11 @@ class FakeDb {
   }
 }
 
-Deno.test("router exposes 19 subscribed events and excludes fake requirements event", () => {
-  assertEquals(STRIPE_ROUTED_EVENT_TYPES.length, 19);
+Deno.test("router exposes 22 subscribed events and excludes fake requirements event", () => {
+  // ORCH-0787 added charge.refunded + refund.created + refund.updated (3 events) to the
+  // existing 19, bringing total to 22. The legacy charge.refund.updated remains for
+  // detached-account audit-only handling per stripeWebhookRouter.ts:28.
+  assertEquals(STRIPE_ROUTED_EVENT_TYPES.length, 22);
   assertEquals(STRIPE_ROUTED_EVENT_TYPES.includes("account.updated"), true);
   assertEquals(
     STRIPE_ROUTED_EVENT_TYPES.includes("application_fee.refunded"),
