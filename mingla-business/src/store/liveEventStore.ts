@@ -38,6 +38,7 @@ import type {
   WhenMode,
   EventCoverMediaType,
 } from "./draftEventStore";
+import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
 import { useEventEditLogStore } from "./eventEditLogStore";
 import { useOrderStore } from "./orderStore";
 import type { SoldCountContext } from "./orderStoreHelpers";
@@ -88,6 +89,11 @@ export type EditableLiveEventFields = Pick<
   | "coverHue"
   | "coverMediaUrl"
   | "coverMediaType"
+  | "coverMediaProvider"
+  | "coverMediaSourceUrl"
+  | "coverMediaCredit"
+  | "coverMediaCreditUrl"
+  | "coverMediaAlt"
   | "tickets"
   | "visibility"
   | "requireApproval"
@@ -158,6 +164,11 @@ export interface LiveEvent {
   coverHue: number;
   coverMediaUrl: string | null;
   coverMediaType: EventCoverMediaType | null;
+  coverMediaProvider?: EventCoverMediaProvider | null;
+  coverMediaSourceUrl?: string | null;
+  coverMediaCredit?: string | null;
+  coverMediaCreditUrl?: string | null;
+  coverMediaAlt?: string | null;
   /** ISO 4217 immutable commerce currency for this published event. */
   currency?: string;
   tickets: TicketStub[];
@@ -251,6 +262,11 @@ type V1LiveEvent = Omit<
   | "serverEventId"
   | "coverMediaUrl"
   | "coverMediaType"
+  | "coverMediaProvider"
+  | "coverMediaSourceUrl"
+  | "coverMediaCredit"
+  | "coverMediaCreditUrl"
+  | "coverMediaAlt"
 > & {
   tickets: V1LiveTicketStub[];
   /** Pre-Cycle-10 events may not have this field. */
@@ -262,7 +278,17 @@ const upgradeV1LiveTicketToV2 = (t: V1LiveTicketStub): TicketStub => ({
   availableAt: "both",
 });
 
-type V2LiveEvent = Omit<LiveEvent, "serverEventId" | "coverMediaUrl" | "coverMediaType">;
+type V2LiveEvent = Omit<
+  LiveEvent,
+  | "serverEventId"
+  | "coverMediaUrl"
+  | "coverMediaType"
+  | "coverMediaProvider"
+  | "coverMediaSourceUrl"
+  | "coverMediaCredit"
+  | "coverMediaCreditUrl"
+  | "coverMediaAlt"
+>;
 
 const upgradeV1LiveEventToV2 = (e: V1LiveEvent): V2LiveEvent => ({
   ...e,
@@ -277,13 +303,27 @@ const upgradeLiveEventToV3 = (e: V2LiveEvent): LiveEvent => ({
   serverEventId: null,
   coverMediaUrl: null,
   coverMediaType: null,
+  coverMediaProvider: null,
+  coverMediaSourceUrl: null,
+  coverMediaCredit: null,
+  coverMediaCreditUrl: null,
+  coverMediaAlt: null,
+});
+
+const withProviderMetadataDefaults = (event: LiveEvent): LiveEvent => ({
+  ...event,
+  coverMediaProvider: event.coverMediaProvider ?? null,
+  coverMediaSourceUrl: event.coverMediaSourceUrl ?? null,
+  coverMediaCredit: event.coverMediaCredit ?? null,
+  coverMediaCreditUrl: event.coverMediaCreditUrl ?? null,
+  coverMediaAlt: event.coverMediaAlt ?? null,
 });
 
 const persistOptions: PersistOptions<LiveEventState, PersistedState> = {
   name: "mingla-business.liveEvent.v1",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state): PersistedState => ({ events: state.events }),
-  version: 3,
+  version: 4,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { events: [] };
@@ -298,6 +338,10 @@ const persistOptions: PersistOptions<LiveEventState, PersistedState> = {
     if (version === 2) {
       const v2 = persistedState as { events: V2LiveEvent[] };
       return { events: v2.events.map(upgradeLiveEventToV3) };
+    }
+    if (version === 3) {
+      const v3 = persistedState as { events: LiveEvent[] };
+      return { events: v3.events.map(withProviderMetadataDefaults) };
     }
     return persistedState as PersistedState;
   },

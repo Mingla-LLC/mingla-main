@@ -15,6 +15,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "tsc": "tsc",
     "test:orch-0754": "node ../.github/scripts/strict-grep/i-proposed-z-home-no-fabricated-events.mjs && npx jest brandEventSummary.test",
     "test:orch-0756a": "node ../.github/scripts/strict-grep/orch-0756a-active-brand-recovery.mjs && npx jest currentBrandResolver.test",
     "test:orch-0756b": "npx jest serverDraftEventMapper.test serverDraftLifecycleGuards.test",
@@ -31,7 +32,8 @@
     "test:orch-0776a": "node ../.github/scripts/strict-grep/orch-0776a-video-upload-progress-honesty.mjs && npx jest eventCoverVideoProcessingService.test",
     "test:orch-0776d": "node ../.github/scripts/strict-grep/orch-0776d-cancelled-at-schema.mjs && jest --runInBand src/services/__tests__/eventCoverVideoProcessingService.test.ts",
     "test:orch-0777": "node ../.github/scripts/strict-grep/orch-0777-ticket-checkout-production.mjs && npx jest phone.test eventOrdersService.test ticketCheckoutService.test ticketCheckoutMigrationGuards.test && npx tsc --noEmit",
-    "test:orch-0778": "node ../.github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs"
+    "test:orch-0778": "node ../.github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs",
+    "test:orch-0783": "node ../.github/scripts/strict-grep/orch-0783-event-cover-image-provider-pivot.mjs && npx jest serverDraftEventMapper.test businessEventsPublish.test publicEventsService.test eventCoverMediaService.test eventCoverMedia.test giphyEventCoverService.test pexelsEventCoverService.test liveEventAdapter.test"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

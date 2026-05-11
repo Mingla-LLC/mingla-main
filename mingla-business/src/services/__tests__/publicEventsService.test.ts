@@ -77,6 +77,11 @@ const row = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({
   recurrence_rules: null,
   cover_media_url: null,
   cover_media_type: null,
+  cover_media_provider: null,
+  cover_media_source_url: null,
+  cover_media_credit: null,
+  cover_media_credit_url: null,
+  cover_media_alt: null,
   visibility: "public",
   show_on_discover: true,
   status: "scheduled",
@@ -160,13 +165,25 @@ describe("public event view mapper", () => {
   });
 
   test("brand cards and checkout details receive the same mapped date shape", () => {
-    const brandEvent = publicEventViewRowToEvent(row() as never, [ticket()]);
-    const checkoutEvent = publicEventViewRowToEvent(row() as never, [ticket()]);
+    const providerRow = row({
+      cover_media_url: "https://media.giphy.com/media/event/giphy.gif",
+      cover_media_type: "gif",
+      cover_media_provider: "giphy",
+      cover_media_source_url: "https://giphy.com/gifs/event",
+      cover_media_credit: "GIPHY",
+      cover_media_credit_url: "https://giphy.com",
+      cover_media_alt: "Looping party GIF",
+    });
+    const brandEvent = publicEventViewRowToEvent(providerRow as never, [ticket()]);
+    const checkoutEvent = publicEventViewRowToEvent(providerRow as never, [ticket()]);
 
     expect(brandEvent.date).toBe("2026-05-08");
     expect(brandEvent.doorsOpen).toBe("21:00");
     expect(checkoutEvent.date).toBe(brandEvent.date);
     expect(checkoutEvent.doorsOpen).toBe(brandEvent.doorsOpen);
+    expect(brandEvent.coverMediaProvider).toBe("giphy");
+    expect(checkoutEvent.coverMediaCredit).toBe("GIPHY");
+    expect(checkoutEvent.coverMediaAlt).toBe("Looping party GIF");
   });
 
   test("preserves recurring and multi-date payloads", () => {

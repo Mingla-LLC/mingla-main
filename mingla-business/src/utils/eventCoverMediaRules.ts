@@ -3,7 +3,7 @@ import type { EventCoverMediaType } from "../store/draftEventStore";
 export const EVENT_COVER_MAX_BYTES = 30 * 1024 * 1024;
 export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 15_000;
 export const EVENT_COVER_UPLOAD_LIMIT_COPY =
-  "Upload an image or GIF up to 30 MB. Videos are trimmed to 15 seconds and compressed before they go live.";
+  "Upload a JPEG, PNG, WebP, or GIF up to 30 MB.";
 
 export type EventCoverMediaErrorCode =
   | "permission_denied"

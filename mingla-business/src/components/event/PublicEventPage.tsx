@@ -89,6 +89,7 @@ import {
   sortTicketsByDisplayOrder,
 } from "../../utils/ticketDisplay";
 import { isLegacyUnsafeEventCoverVideoUrl } from "../../utils/eventCoverMediaRules";
+import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
@@ -416,6 +417,10 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
   );
   const safeCoverMediaUrl = coverVideoUnsafe ? null : event.coverMediaUrl;
   const safeCoverMediaType = coverVideoUnsafe ? null : event.coverMediaType;
+  const coverCredit = eventCoverProviderCreditLabel({
+    provider: coverVideoUnsafe ? null : event.coverMediaProvider,
+    credit: coverVideoUnsafe ? null : event.coverMediaCredit,
+  });
 
   const visibleTickets = useMemo(
     () => sortTicketsByDisplayOrder(
@@ -458,6 +463,11 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
           audioControlTopOffset={insets.top + 60}
         />
         <View style={styles.heroOverlay} pointerEvents="none" />
+        {coverCredit !== null ? (
+          <View style={styles.coverCreditBadge} pointerEvents="none">
+            <Text style={styles.coverCreditText}>{coverCredit}</Text>
+          </View>
+        ) : null}
       </View>
 
       {/* Floating chrome lifted to page-level (PublicEventPage) — close
@@ -921,6 +931,22 @@ const styles = StyleSheet.create({
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.32)",
+  },
+  coverCreditBadge: {
+    position: "absolute",
+    right: spacing.md,
+    bottom: spacing.sm,
+    maxWidth: "70%",
+    borderRadius: 999,
+    backgroundColor: "rgba(0, 0, 0, 0.48)",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  coverCreditText: {
+    color: textTokens.inverse,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: "600",
   },
   floatingChrome: {
     position: "absolute",

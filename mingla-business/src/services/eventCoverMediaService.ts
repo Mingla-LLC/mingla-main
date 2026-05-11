@@ -14,6 +14,7 @@ import {
   type EventCoverMediaErrorCode,
 } from "../utils/eventCoverMediaRules";
 import { readEventCoverFileBytes } from "./eventCoverFileReader";
+import type { EventCoverProviderMetadata } from "../types/eventCoverProvider";
 
 export const EVENT_COVER_BUCKET = "event_covers";
 export {
@@ -187,6 +188,7 @@ export const updatePublishedEventCoverMedia = async (
   serverEventId: string,
   mediaUrl: string | null,
   mediaType: EventCoverMediaType | null,
+  metadata: EventCoverProviderMetadata | null = null,
 ): Promise<void> => {
   if (serverEventId.trim().length === 0) {
     throw new EventCoverMediaError(
@@ -199,6 +201,11 @@ export const updatePublishedEventCoverMedia = async (
     .update({
       cover_media_url: mediaUrl,
       cover_media_type: mediaUrl === null ? null : mediaType,
+      cover_media_provider: mediaUrl === null ? null : metadata?.provider ?? null,
+      cover_media_source_url: mediaUrl === null ? null : metadata?.sourceUrl ?? null,
+      cover_media_credit: mediaUrl === null ? null : metadata?.credit ?? null,
+      cover_media_credit_url: mediaUrl === null ? null : metadata?.creditUrl ?? null,
+      cover_media_alt: mediaUrl === null ? null : metadata?.alt ?? null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", serverEventId)

@@ -59,6 +59,11 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   coverHue: e.coverHue,
   coverMediaUrl: e.coverMediaUrl,
   coverMediaType: e.coverMediaType,
+  coverMediaProvider: e.coverMediaProvider ?? null,
+  coverMediaSourceUrl: e.coverMediaSourceUrl ?? null,
+  coverMediaCredit: e.coverMediaCredit ?? null,
+  coverMediaCreditUrl: e.coverMediaCreditUrl ?? null,
+  coverMediaAlt: e.coverMediaAlt ?? null,
   tickets: e.tickets,
   visibility: e.visibility,
   requireApproval: e.requireApproval,
@@ -100,6 +105,11 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   coverHue: "Cover hue",
   coverMediaUrl: "Cover media",
   coverMediaType: "Cover media type",
+  coverMediaProvider: "Cover media provider",
+  coverMediaSourceUrl: "Cover media source",
+  coverMediaCredit: "Cover media credit",
+  coverMediaCreditUrl: "Cover media credit URL",
+  coverMediaAlt: "Cover media alt text",
   tickets: "Tickets",
   visibility: "Visibility",
   requireApproval: "Require approval",
@@ -140,6 +150,11 @@ export const SAFE_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "coverHue",
   "coverMediaUrl",
   "coverMediaType",
+  "coverMediaProvider",
+  "coverMediaSourceUrl",
+  "coverMediaCredit",
+  "coverMediaCreditUrl",
+  "coverMediaAlt",
   "hideAddressUntilTicket",
   "requireApproval",
   "hideRemainingCount",
@@ -206,6 +221,21 @@ export const editableDraftToPatch = (
   }
   if (original.coverMediaType !== edited.coverMediaType) {
     patch.coverMediaType = edited.coverMediaType;
+  }
+  if (original.coverMediaProvider !== edited.coverMediaProvider) {
+    patch.coverMediaProvider = edited.coverMediaProvider ?? null;
+  }
+  if (original.coverMediaSourceUrl !== edited.coverMediaSourceUrl) {
+    patch.coverMediaSourceUrl = edited.coverMediaSourceUrl ?? null;
+  }
+  if (original.coverMediaCredit !== edited.coverMediaCredit) {
+    patch.coverMediaCredit = edited.coverMediaCredit ?? null;
+  }
+  if (original.coverMediaCreditUrl !== edited.coverMediaCreditUrl) {
+    patch.coverMediaCreditUrl = edited.coverMediaCreditUrl ?? null;
+  }
+  if (original.coverMediaAlt !== edited.coverMediaAlt) {
+    patch.coverMediaAlt = edited.coverMediaAlt ?? null;
   }
   if (!deepEqual(original.tickets, edited.tickets)) patch.tickets = edited.tickets;
   if (original.visibility !== edited.visibility) {

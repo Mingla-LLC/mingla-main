@@ -8,6 +8,10 @@ import type {
   TicketStub,
   WhenMode,
 } from "../store/draftEventStore";
+import {
+  asEventCoverMediaProvider,
+  type EventCoverMediaProvider,
+} from "../types/eventCoverProvider";
 import { normalizeCurrency } from "./currency";
 
 export const BUSINESS_DRAFT_SCHEMA_VERSION = 1;
@@ -25,6 +29,11 @@ export interface ServerDraftEventRow {
   online_url: string | null;
   cover_media_url: string | null;
   cover_media_type: EventCoverMediaType | null;
+  cover_media_provider?: EventCoverMediaProvider | null;
+  cover_media_source_url?: string | null;
+  cover_media_credit?: string | null;
+  cover_media_credit_url?: string | null;
+  cover_media_alt?: string | null;
   currency?: string | null;
   is_online: boolean;
   is_recurring: boolean;
@@ -50,6 +59,11 @@ export interface ServerDraftEventInsert {
   online_url: string | null;
   cover_media_url: string | null;
   cover_media_type: EventCoverMediaType | null;
+  cover_media_provider: EventCoverMediaProvider | null;
+  cover_media_source_url: string | null;
+  cover_media_credit: string | null;
+  cover_media_credit_url: string | null;
+  cover_media_alt: string | null;
   currency: string;
   is_online: boolean;
   is_recurring: boolean;
@@ -68,6 +82,11 @@ export interface ServerDraftEventUpdate {
   online_url: string | null;
   cover_media_url: string | null;
   cover_media_type: EventCoverMediaType | null;
+  cover_media_provider: EventCoverMediaProvider | null;
+  cover_media_source_url: string | null;
+  cover_media_credit: string | null;
+  cover_media_credit_url: string | null;
+  cover_media_alt: string | null;
   currency: string;
   is_online: boolean;
   is_recurring: boolean;
@@ -86,6 +105,13 @@ export interface BusinessDraftPayload {
   category: string | null;
   requestedVisibility: DraftEventVisibility;
   coverHue: number;
+  coverProvider: {
+    provider: EventCoverMediaProvider | null;
+    sourceUrl: string | null;
+    credit: string | null;
+    creditUrl: string | null;
+    alt: string | null;
+  };
   currency: string;
   whenMode: WhenMode;
   when: {
@@ -224,6 +250,13 @@ const buildBusinessDraftPayload = (
   category: draft.category,
   requestedVisibility: draft.visibility,
   coverHue: draft.coverHue,
+  coverProvider: {
+    provider: draft.coverMediaProvider ?? null,
+    sourceUrl: draft.coverMediaSourceUrl ?? null,
+    credit: draft.coverMediaCredit ?? null,
+    creditUrl: draft.coverMediaCreditUrl ?? null,
+    alt: draft.coverMediaAlt ?? null,
+  },
   currency: normalizeCurrency(draft.currency),
   whenMode: draft.whenMode,
   when: {
@@ -297,6 +330,16 @@ export const draftToServerInsert = (
   cover_media_url: draft.coverMediaUrl,
   cover_media_type:
     draft.coverMediaUrl === null ? null : draft.coverMediaType,
+  cover_media_provider:
+    draft.coverMediaUrl === null ? null : draft.coverMediaProvider ?? null,
+  cover_media_source_url:
+    draft.coverMediaUrl === null ? null : draft.coverMediaSourceUrl ?? null,
+  cover_media_credit:
+    draft.coverMediaUrl === null ? null : draft.coverMediaCredit ?? null,
+  cover_media_credit_url:
+    draft.coverMediaUrl === null ? null : draft.coverMediaCreditUrl ?? null,
+  cover_media_alt:
+    draft.coverMediaUrl === null ? null : draft.coverMediaAlt ?? null,
   currency: normalizeCurrency(draft.currency),
   is_online: draft.format === "online" || draft.format === "hybrid",
   is_recurring: draft.whenMode === "recurring",
@@ -320,6 +363,16 @@ export const draftToServerUpdate = (
   cover_media_url: draft.coverMediaUrl,
   cover_media_type:
     draft.coverMediaUrl === null ? null : draft.coverMediaType,
+  cover_media_provider:
+    draft.coverMediaUrl === null ? null : draft.coverMediaProvider ?? null,
+  cover_media_source_url:
+    draft.coverMediaUrl === null ? null : draft.coverMediaSourceUrl ?? null,
+  cover_media_credit:
+    draft.coverMediaUrl === null ? null : draft.coverMediaCredit ?? null,
+  cover_media_credit_url:
+    draft.coverMediaUrl === null ? null : draft.coverMediaCreditUrl ?? null,
+  cover_media_alt:
+    draft.coverMediaUrl === null ? null : draft.coverMediaAlt ?? null,
   currency: normalizeCurrency(draft.currency),
   is_online: draft.format === "online" || draft.format === "hybrid",
   is_recurring: draft.whenMode === "recurring",
@@ -384,6 +437,39 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     coverMediaUrl: row.cover_media_url,
     coverMediaType:
       row.cover_media_url === null ? null : asCoverMediaType(row.cover_media_type),
+    coverMediaProvider:
+      row.cover_media_url === null
+        ? null
+        : asEventCoverMediaProvider(
+            row.cover_media_provider ??
+              asRecord(businessDraft.coverProvider).provider,
+          ),
+    coverMediaSourceUrl:
+      row.cover_media_url === null
+        ? null
+        : asStringOrNull(
+            row.cover_media_source_url ??
+              asRecord(businessDraft.coverProvider).sourceUrl,
+          ),
+    coverMediaCredit:
+      row.cover_media_url === null
+        ? null
+        : asStringOrNull(
+            row.cover_media_credit ?? asRecord(businessDraft.coverProvider).credit,
+          ),
+    coverMediaCreditUrl:
+      row.cover_media_url === null
+        ? null
+        : asStringOrNull(
+            row.cover_media_credit_url ??
+              asRecord(businessDraft.coverProvider).creditUrl,
+          ),
+    coverMediaAlt:
+      row.cover_media_url === null
+        ? null
+        : asStringOrNull(
+            row.cover_media_alt ?? asRecord(businessDraft.coverProvider).alt,
+          ),
     currency:
       asStringOrNull(businessDraft.currency) ?? asStringOrNull(row.currency) ?? null,
     tickets: ticketsFromPayload(businessDraft.tickets),

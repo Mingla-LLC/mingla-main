@@ -11,6 +11,10 @@ import type {
 } from "../store/draftEventStore";
 import type { LiveEvent, LiveEventStatus } from "../store/liveEventStore";
 import type { Brand, BrandLinks } from "../store/currentBrandStore";
+import {
+  asEventCoverMediaProvider,
+  type EventCoverMediaProvider,
+} from "../types/eventCoverProvider";
 import { draftToServerUpdate, publishedVisibilityForDraft } from "../utils/serverDraftEventMapper";
 
 type JsonRecord = Record<string, unknown>;
@@ -34,6 +38,11 @@ interface BusinessManagementEventRow {
   recurrence_rules: unknown;
   cover_media_url: string | null;
   cover_media_type: EventCoverMediaType | null;
+  cover_media_provider: EventCoverMediaProvider | null;
+  cover_media_source_url: string | null;
+  cover_media_credit: string | null;
+  cover_media_credit_url: string | null;
+  cover_media_alt: string | null;
   currency?: string | null;
   visibility: string;
   show_on_discover: boolean;
@@ -86,6 +95,11 @@ interface PublishRpcResponse {
     recurrence_rules: unknown;
     cover_media_url: string | null;
     cover_media_type: EventCoverMediaType | null;
+    cover_media_provider?: EventCoverMediaProvider | null;
+    cover_media_source_url?: string | null;
+    cover_media_credit?: string | null;
+    cover_media_credit_url?: string | null;
+    cover_media_alt?: string | null;
     currency?: string | null;
     visibility: string;
     status: string;
@@ -288,6 +302,11 @@ const eventFromRow = (
     coverHue: asNumber(businessEvent.coverHue ?? theme.coverHue, 25),
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
+    coverMediaProvider: asEventCoverMediaProvider(row.cover_media_provider),
+    coverMediaSourceUrl: asStringOrNull(row.cover_media_source_url),
+    coverMediaCredit: asStringOrNull(row.cover_media_credit),
+    coverMediaCreditUrl: asStringOrNull(row.cover_media_credit_url),
+    coverMediaAlt: asStringOrNull(row.cover_media_alt),
     currency:
       asStringOrNull(row.currency) ??
       tickets.find((ticket) => ticket.currency !== undefined)?.currency,
@@ -385,6 +404,11 @@ const eventFromPublishResponse = (
     recurrence_rules: response.event.recurrence_rules,
     cover_media_url: response.event.cover_media_url,
     cover_media_type: response.event.cover_media_type,
+    cover_media_provider: response.event.cover_media_provider ?? null,
+    cover_media_source_url: response.event.cover_media_source_url ?? null,
+    cover_media_credit: response.event.cover_media_credit ?? null,
+    cover_media_credit_url: response.event.cover_media_credit_url ?? null,
+    cover_media_alt: response.event.cover_media_alt ?? null,
     currency: response.event.currency,
     visibility: response.event.visibility,
     show_on_discover: false,

@@ -135,6 +135,11 @@ const TOAST_NAV_DELAY_MS = 600;
 const COVER_MEDIA_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "coverMediaUrl",
   "coverMediaType",
+  "coverMediaProvider",
+  "coverMediaSourceUrl",
+  "coverMediaCredit",
+  "coverMediaCreditUrl",
+  "coverMediaAlt",
 ]);
 
 const sleep = (ms: number): Promise<void> =>
@@ -554,7 +559,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         return;
       }
       const mediaPatchPresent =
-        patch.coverMediaUrl !== undefined || patch.coverMediaType !== undefined;
+        patch.coverMediaUrl !== undefined ||
+        patch.coverMediaType !== undefined ||
+        patch.coverMediaProvider !== undefined ||
+        patch.coverMediaSourceUrl !== undefined ||
+        patch.coverMediaCredit !== undefined ||
+        patch.coverMediaCreditUrl !== undefined ||
+        patch.coverMediaAlt !== undefined;
       if (mediaPatchPresent) {
         if (liveEvent.serverEventId === null) {
           setSubmitting(false);
@@ -571,6 +582,28 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             patch.coverMediaType !== undefined
               ? patch.coverMediaType
               : liveEvent.coverMediaType,
+            {
+              provider:
+                patch.coverMediaProvider !== undefined
+                  ? patch.coverMediaProvider
+                  : liveEvent.coverMediaProvider ?? null,
+              sourceUrl:
+                patch.coverMediaSourceUrl !== undefined
+                  ? patch.coverMediaSourceUrl
+                  : liveEvent.coverMediaSourceUrl ?? null,
+              credit:
+                patch.coverMediaCredit !== undefined
+                  ? patch.coverMediaCredit
+                  : liveEvent.coverMediaCredit ?? null,
+              creditUrl:
+                patch.coverMediaCreditUrl !== undefined
+                  ? patch.coverMediaCreditUrl
+                  : liveEvent.coverMediaCreditUrl ?? null,
+              alt:
+                patch.coverMediaAlt !== undefined
+                  ? patch.coverMediaAlt
+                  : liveEvent.coverMediaAlt ?? null,
+            },
           );
         } catch (error) {
           setSubmitting(false);
@@ -725,7 +758,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         (sec.key === "cover" &&
           (changedKeys.has("coverHue") ||
             changedKeys.has("coverMediaUrl") ||
-            changedKeys.has("coverMediaType"))) ||
+            changedKeys.has("coverMediaType") ||
+            changedKeys.has("coverMediaProvider") ||
+            changedKeys.has("coverMediaSourceUrl") ||
+            changedKeys.has("coverMediaCredit") ||
+            changedKeys.has("coverMediaCreditUrl") ||
+            changedKeys.has("coverMediaAlt"))) ||
         (sec.key === "tickets" && changedKeys.has("tickets")) ||
         (sec.key === "settings" &&
           (changedKeys.has("visibility") ||
