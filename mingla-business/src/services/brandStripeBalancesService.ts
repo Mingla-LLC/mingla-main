@@ -31,14 +31,9 @@ interface RawBalancesResponse {
   retrieved_at?: string;
 }
 
-export async function fetchBrandStripeBalances(
-  brandId: string,
-): Promise<BrandStripeBalancesResult> {
-  const { data, error } = await supabase.functions.invoke<RawBalancesResponse>(
-    "brand-stripe-balances",
-    { body: { brand_id: brandId } },
-  );
-  if (error) throw error;
+export function parseBrandStripeBalancesResponse(
+  data: RawBalancesResponse | null,
+): BrandStripeBalancesResult {
   if (data === null) {
     throw new Error("fetchBrandStripeBalances: edge fn returned null");
   }
@@ -57,4 +52,22 @@ export async function fetchBrandStripeBalances(
     pendingMinor: data.pending_minor,
     retrievedAt: data.retrieved_at ?? new Date().toISOString(),
   };
+}
+
+export async function fetchBrandStripeBalances(
+  brandId: string,
+  accessToken?: string | null,
+): Promise<BrandStripeBalancesResult> {
+  const { data, error } = await supabase.functions.invoke<RawBalancesResponse>(
+    "brand-stripe-balances",
+    {
+      body: { brand_id: brandId },
+      headers:
+        typeof accessToken === "string" && accessToken.length > 0
+          ? { Authorization: `Bearer ${accessToken}` }
+          : undefined,
+    },
+  );
+  if (error) throw error;
+  return parseBrandStripeBalancesResponse(data);
 }

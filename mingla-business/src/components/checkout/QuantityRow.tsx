@@ -35,7 +35,7 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import type { TicketStub } from "../../store/draftEventStore";
-import { formatGbp } from "../../utils/currency";
+import { formatCurrency } from "../../utils/currency";
 
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -127,7 +127,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
 
   // Render -----------------------------------------------------------
   const priceText =
-    ticket.isFree ? "Free" : formatGbp(ticket.priceGbp ?? 0);
+    ticket.isFree ? "Free" : formatCurrency(ticket.priceGbp ?? 0, ticket.currency ?? "GBP");
 
   return (
     <GlassCard

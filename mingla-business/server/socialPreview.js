@@ -74,6 +74,74 @@ const truncate = (value, max) => {
   return `${text.slice(0, Math.max(0, max - 3)).trimEnd()}...`;
 };
 
+const textLength = (value) => asText(value).length;
+
+const titleFitForLength = (length, isBrand) => {
+  if (length > 74) {
+    return {
+      titleFontSize: isBrand ? 48 : 46,
+      titleMaxChars: isBrand ? 70 : 66,
+      titleMaxLines: 3,
+      titleMaxHeight: 142,
+      titleLineHeight: 0.98,
+    };
+  }
+  if (length > 52) {
+    return {
+      titleFontSize: isBrand ? 54 : 52,
+      titleMaxChars: isBrand ? 64 : 60,
+      titleMaxLines: 3,
+      titleMaxHeight: 154,
+      titleLineHeight: 0.96,
+    };
+  }
+  if (length > 36) {
+    return {
+      titleFontSize: isBrand ? 62 : 58,
+      titleMaxChars: isBrand ? 58 : 54,
+      titleMaxLines: 2,
+      titleMaxHeight: 120,
+      titleLineHeight: 0.96,
+    };
+  }
+  return {
+    titleFontSize: isBrand ? 76 : 70,
+    titleMaxChars: 54,
+    titleMaxLines: 2,
+    titleMaxHeight: isBrand ? 146 : 134,
+    titleLineHeight: 0.94,
+  };
+};
+
+const buildOgTextFit = ({
+  cardKind = "event",
+  title,
+  subtitle,
+  primaryChip = "",
+  secondaryChip = "",
+  accentLabel = "",
+}) => {
+  const isBrand = cardKind === "brand";
+  const titleFit = titleFitForLength(textLength(title), isBrand);
+  const subtitleMaxChars = titleFit.titleMaxLines >= 3 ? 72 : 96;
+  const secondaryChipMaxChars = titleFit.titleMaxLines >= 3 ? 42 : 54;
+  return {
+    ...titleFit,
+    titleText: truncate(title, titleFit.titleMaxChars),
+    subtitleText: truncate(subtitle, subtitleMaxChars),
+    primaryChipText: truncate(primaryChip, 42),
+    secondaryChipText: truncate(secondaryChip, secondaryChipMaxChars),
+    accentText: truncate(accentLabel, titleFit.titleMaxLines >= 3 ? 34 : 44),
+    subtitleMaxChars,
+    subtitleMaxLines: titleFit.titleMaxLines >= 3 ? 2 : 2,
+    subtitleMaxHeight: titleFit.titleMaxLines >= 3 ? 64 : 72,
+    primaryChipMaxChars: 42,
+    secondaryChipMaxChars,
+    chipMaxHeight: 50,
+    contentMaxHeight: 492,
+  };
+};
+
 const isAbsoluteHttpUrl = (value) => {
   if (typeof value !== "string" || value.length === 0) return false;
   try {
@@ -87,7 +155,16 @@ const isAbsoluteHttpUrl = (value) => {
 const eventPublicPath = (row) =>
   `/e/${encodeURIComponent(row.brand_slug)}/${encodeURIComponent(row.slug)}`;
 
-const brandPublicPath = (row) => `/b/${encodeURIComponent(row.brand_slug)}`;
+const brandSlug = (row) => row?.slug || row?.brand_slug || "";
+
+const brandName = (row) => row?.name || row?.brand_name || "Mingla Business";
+
+const brandDescriptionText = (row) => row?.description || row?.brand_description || "";
+
+const brandProfilePhotoUrl = (row) =>
+  row?.profile_photo_url || row?.brand_profile_photo_url || null;
+
+const brandPublicPath = (row) => `/b/${encodeURIComponent(brandSlug(row))}`;
 
 const eventPublicUrl = (row) => `${PUBLIC_ORIGIN}${eventPublicPath(row)}`;
 
@@ -97,21 +174,11 @@ const eventOgFallbackUrl = (row) =>
   `${PUBLIC_ORIGIN}/og/event/${encodeURIComponent(row.id)}.png`;
 
 const brandOgFallbackUrl = (row) =>
-  `${PUBLIC_ORIGIN}/og/brand/${encodeURIComponent(row.brand_slug)}.png`;
+  `${PUBLIC_ORIGIN}/og/brand/${encodeURIComponent(brandSlug(row))}.png`;
 
-const eventImageUrl = (row) => {
-  if (isAbsoluteHttpUrl(row.cover_media_url) && row.cover_media_type !== "video") {
-    return row.cover_media_url;
-  }
-  return eventOgFallbackUrl(row);
-};
+const eventImageUrl = (row) => eventOgFallbackUrl(row);
 
-const brandImageUrl = (row) => {
-  if (isAbsoluteHttpUrl(row.brand_profile_photo_url)) {
-    return row.brand_profile_photo_url;
-  }
-  return brandOgFallbackUrl(row);
-};
+const brandImageUrl = (row) => brandOgFallbackUrl(row);
 
 const requestJson = async (pathname, searchParams) => {
   const url = new URL(`${SUPABASE_URL}/rest/v1/${pathname}`);
@@ -153,12 +220,21 @@ const fetchPublicEventById = async (eventId) => {
 };
 
 const fetchPublicBrandBySlug = async (brandSlug) => {
-  const rows = await requestJson("business_public_events_view", {
+  const brandRows = await requestJson("business_public_brands_view", {
+    select: "*",
+    slug: `eq.${brandSlug}`,
+    limit: "1",
+  });
+  if (!Array.isArray(brandRows) || brandRows.length === 0) return null;
+  const eventRows = await requestJson("business_public_events_view", {
     select: "*",
     brand_slug: `eq.${brandSlug}`,
     order: "published_at.desc.nullslast",
   });
-  return Array.isArray(rows) ? rows : [];
+  return {
+    brand: brandRows[0],
+    events: Array.isArray(eventRows) ? eventRows : [],
+  };
 };
 
 const eventDescription = (row) =>
@@ -170,8 +246,8 @@ const eventDescription = (row) =>
 
 const brandDescription = (row, count) =>
   truncate(
-    row.brand_description ||
-      `Discover ${count} event${count === 1 ? "" : "s"} from ${row.brand_name} on Mingla.`,
+    brandDescriptionText(row) ||
+      `Discover ${count} event${count === 1 ? "" : "s"} from ${brandName(row)} on Mingla.`,
     200,
   );
 
@@ -216,17 +292,36 @@ const eventCoverUrl = (row) =>
     ? row.cover_media_url
     : null;
 
-const buildEventOgCardProps = (row) => ({
-  cardKind: "event",
-  title: row?.title || "Mingla event",
-  subtitle:
+const buildEventOgCardProps = (row) => {
+  const title = row?.title || "Mingla event";
+  const subtitle =
     row?.description ||
-    (row?.brand_name ? `Hosted by ${row.brand_name}` : "Discover events on Mingla."),
-  kicker: row?.brand_name || "Mingla Business",
-  coverUrl: row !== null && row !== undefined ? eventCoverUrl(row) : null,
-  dateLabel: row !== null && row !== undefined ? formatDate(eventDate(row)) : "Date to be announced",
-  locationLabel: row !== null && row !== undefined ? eventLocationLabel(row) : "",
-});
+    (row?.brand_name ? `Hosted by ${row.brand_name}` : "Discover events on Mingla.");
+  const kicker = row?.brand_name || "Mingla Business";
+  const dateLabel =
+    row !== null && row !== undefined
+      ? formatDate(eventDate(row))
+      : "Date to be announced";
+  const locationLabel =
+    row !== null && row !== undefined ? eventLocationLabel(row) : "";
+  return {
+    cardKind: "event",
+    title,
+    subtitle,
+    kicker,
+    coverUrl: row !== null && row !== undefined ? eventCoverUrl(row) : null,
+    dateLabel,
+    locationLabel,
+    textFit: buildOgTextFit({
+      cardKind: "event",
+      title,
+      subtitle,
+      primaryChip: dateLabel,
+      secondaryChip: locationLabel,
+      accentLabel: kicker,
+    }),
+  };
+};
 
 const parseEventDateValue = (row) => {
   const date = eventDate(row);
@@ -253,10 +348,23 @@ const chooseBrandFeatureEvent = (rows) => {
   return candidates.sort((a, b) => a.time - b.time)[0].row;
 };
 
-const buildBrandOgCardProps = (rows) => {
-  const brand = rows[0] ?? null;
-  const featureEvent = chooseBrandFeatureEvent(rows);
-  const eventCount = rows.length;
+const normalizeBrandPreviewInput = (input) => {
+  if (Array.isArray(input)) {
+    return { brand: input[0] ?? null, events: input };
+  }
+  if (input !== null && typeof input === "object") {
+    return {
+      brand: input.brand ?? null,
+      events: Array.isArray(input.events) ? input.events : [],
+    };
+  }
+  return { brand: null, events: [] };
+};
+
+const buildBrandOgCardProps = (input) => {
+  const { brand, events } = normalizeBrandPreviewInput(input);
+  const featureEvent = chooseBrandFeatureEvent(events);
+  const eventCount = events.length;
   const eventCountLabel = `${eventCount} event${eventCount === 1 ? "" : "s"}`;
   const featureDate =
     featureEvent !== null ? formatDate(eventDate(featureEvent)) : "";
@@ -265,24 +373,40 @@ const buildBrandOgCardProps = (rows) => {
       ? `${truncate(featureEvent.title, 52)}${featureDate.length > 0 ? ` - ${featureDate}` : ""}`
       : "";
   const coverUrl =
-    brand !== null && isAbsoluteHttpUrl(brand.brand_profile_photo_url)
-      ? brand.brand_profile_photo_url
+    brand !== null && isAbsoluteHttpUrl(brandProfilePhotoUrl(brand))
+      ? brandProfilePhotoUrl(brand)
+      : brand !== null &&
+          isAbsoluteHttpUrl(brand.cover_media_url) &&
+          brand.cover_media_type !== "video"
+        ? brand.cover_media_url
       : featureEvent !== null
         ? eventCoverUrl(featureEvent)
         : null;
 
+  const title = brand !== null ? brandName(brand) : "Mingla Business";
+  const subtitle =
+    (brand !== null ? brandDescriptionText(brand) : "") ||
+    (brand
+      ? `Discover events from ${brandName(brand)} on Mingla.`
+      : "Create and share events on Mingla.");
+  const kicker = "Mingla Business";
+
   return {
     cardKind: "brand",
-    title: brand?.brand_name || "Mingla Business",
-    subtitle:
-      brand?.brand_description ||
-      (brand
-        ? `Discover events from ${brand.brand_name} on Mingla.`
-        : "Create and share events on Mingla."),
-    kicker: "Mingla Business",
+    title,
+    subtitle,
+    kicker,
     coverUrl,
     eventCountLabel,
     nextEventLabel,
+    textFit: buildOgTextFit({
+      cardKind: "brand",
+      title,
+      subtitle,
+      primaryChip: eventCountLabel,
+      secondaryChip: nextEventLabel,
+      accentLabel: kicker,
+    }),
   };
 };
 
@@ -370,13 +494,14 @@ const renderEventHtml = (row) => {
   });
 };
 
-const renderBrandHtml = (rows) => {
-  const row = rows[0];
-  const title = `${row.brand_name} on Mingla`;
-  const description = brandDescription(row, rows.length);
+const renderBrandHtml = (input) => {
+  const { brand, events } = normalizeBrandPreviewInput(input);
+  const row = brand ?? events[0];
+  const title = `${brandName(row)} on Mingla`;
+  const description = brandDescription(row, events.length);
   const canonicalUrl = brandPublicUrl(row);
   const imageUrl = brandImageUrl(row);
-  const cards = rows
+  const cards = events
     .slice(0, 8)
     .map(
       (event) => `<a class="card" href="${escapeHtml(eventPublicPath(event))}">
@@ -384,7 +509,7 @@ const renderBrandHtml = (rows) => {
         <span>${escapeHtml(eventDescription(event))}</span>
       </a>`,
     )
-    .join("");
+    .join("") || `<div class="card"><strong>No upcoming events yet</strong><span>Check back soon for new events from ${escapeHtml(brandName(row))}.</span></div>`;
 
   return pageShell({
     title,
@@ -394,10 +519,10 @@ const renderBrandHtml = (rows) => {
     type: "profile",
     body: `<section class="hero">
       <div>
-        <h1>${escapeHtml(row.brand_name)}</h1>
+        <h1>${escapeHtml(brandName(row))}</h1>
         <p>${escapeHtml(description)}</p>
         <div class="meta">
-          <span class="pill">${rows.length} event${rows.length === 1 ? "" : "s"}</span>
+          <span class="pill">${events.length} event${events.length === 1 ? "" : "s"}</span>
         </div>
       </div>
     </section>
@@ -440,6 +565,14 @@ const renderOgPng = async ({
   const secondaryChip = isBrand ? nextEventLabel : locationLabel;
   const label = isBrand ? "Featured brand" : "Featured event";
   const accentLabel = isBrand ? "Mingla Business" : truncate(kicker, 44);
+  const textFit = buildOgTextFit({
+    cardKind,
+    title,
+    subtitle,
+    primaryChip,
+    secondaryChip,
+    accentLabel,
+  });
   const response = new ImageResponse(
     React.createElement(
       "div",
@@ -507,9 +640,11 @@ const renderOgPng = async ({
           style: {
             display: "flex",
             flexDirection: "column",
-            gap: "16px",
-            padding: "70px 70px",
+            gap: "13px",
+            padding: "64px 70px",
             width: "642px",
+            maxHeight: `${textFit.contentMaxHeight}px`,
+            overflow: "hidden",
           },
         },
         React.createElement(
@@ -555,9 +690,11 @@ const renderOgPng = async ({
                     color: "#fff7ef",
                     fontSize: "23px",
                     fontWeight: 900,
+                    maxHeight: `${textFit.chipMaxHeight}px`,
+                    overflow: "hidden",
                   },
                 },
-                truncate(primaryChip, 46),
+                textFit.primaryChipText,
               )
             : null,
           secondaryChip
@@ -572,9 +709,11 @@ const renderOgPng = async ({
                     fontSize: "22px",
                     fontWeight: 800,
                     maxWidth: "470px",
+                    maxHeight: `${textFit.chipMaxHeight}px`,
+                    overflow: "hidden",
                   },
                 },
-                truncate(secondaryChip, 54),
+                textFit.secondaryChipText,
               )
             : null,
         ),
@@ -582,14 +721,16 @@ const renderOgPng = async ({
           "div",
           {
             style: {
-              fontSize: isBrand ? "76px" : "70px",
-              lineHeight: 0.94,
+              fontSize: `${textFit.titleFontSize}px`,
+              lineHeight: textFit.titleLineHeight,
               fontWeight: 900,
               letterSpacing: "0",
               maxWidth: "610px",
+              maxHeight: `${textFit.titleMaxHeight}px`,
+              overflow: "hidden",
             },
           },
-          truncate(title, 54),
+          textFit.titleText,
         ),
         React.createElement(
           "div",
@@ -600,9 +741,11 @@ const renderOgPng = async ({
               lineHeight: 1.25,
               fontWeight: 600,
               maxWidth: "570px",
+              maxHeight: `${textFit.subtitleMaxHeight}px`,
+              overflow: "hidden",
             },
           },
-          truncate(subtitle, 96),
+          textFit.subtitleText,
         ),
         React.createElement(
           "div",
@@ -614,7 +757,7 @@ const renderOgPng = async ({
               fontWeight: 900,
             },
           },
-          accentLabel,
+          textFit.accentText,
         ),
       ),
       React.createElement(
@@ -681,6 +824,7 @@ module.exports = {
   brandPublicUrl,
   buildBrandOgCardProps,
   buildEventOgCardProps,
+  buildOgTextFit,
   escapeHtml,
   eventDescription,
   eventImageUrl,

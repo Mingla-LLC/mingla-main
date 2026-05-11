@@ -1,5 +1,15 @@
 # Coverage Map
 
+> **2026-05-11 - ORCH-0777 COVERAGE PROMOTED - organizer Orders and notification revival are guarded.** Coverage delta: Mingla Business organizer Orders now has server-backed production coverage for the `orders -> events.brand_id` path instead of querying a nonexistent `orders.brand_id`, and failed-terminal ticket notification revival has privacy-safe DB-ledger proof for the operator order. Evidence: QA `reports/QA_ORCH-0777_REAL_DEVICE_ORDER_VISIBILITY_AND_NOTIFICATION_REVIVAL.md`; close note `CLOSE_NOTE_ORCH-0777.md`; strict-grep script `.github/scripts/strict-grep/orch-0777-ticket-checkout-production.mjs`; workflow job `orch-0777-ticket-checkout-production`; Jest guard `mingla-business/src/services/__tests__/ticketCheckoutMigrationGuards.test.ts`. Residual coverage debt is ORCH-0782: organizer resend action and parent notification rollup recompute.
+
+> **2026-05-11 - ORCH-0779 CLOSED PASS - business auth callback coverage promoted for Android + Web.** Coverage delta: `mingla-business` Google sign-in coverage moves to green for the scoped Android native and production Web OAuth callback paths. Evidence: Android authenticated-state PASS on fresh EAS development build `3cd6960d-90d1-4ce0-96f5-761128ba3591`; Web authenticated-session PASS on `https://business.usemingla.com` after Supabase Auth `site_url` / redirect allow-list repair; Vercel deployment `dpl_CPQgBkaXa5nTvVNsCgeAe1UVQ6M5`; QA report `.worktrees/orch-0779-business-android-google-signin-developer-error/Mingla_Artifacts/reports/QA_ORCH-0779_BUSINESS_ANDROID_GOOGLE_SIGNIN_DEVELOPER_ERROR.md` §11-§12. Residual coverage note: iOS was deliberately out of scope for this close and should not be implied by the ORCH-0779 grade.
+
+> **2026-05-11 - ORCH-0781 COVERAGE RESTORED - Stripe web import boundary guard is green across npm, CI, and push.** Coverage delta: the ORCH-0778 Stripe-native boundary is again guarded beyond product code because `npm run test:orch-0778`, CI job `orch-0778-web-stripe-native-import-gate`, workflow `push` coverage for `[main, Seth]`, and gate-script self-validation are all present. Evidence: implementation `reports/IMPLEMENTATION_ORCH-0781_CLEAN_TREE_STRIPE_WEB_IMPORT_GATE_REGRESSION.md`; QA PASS `reports/QA_ORCH-0781_CLEAN_TREE_STRIPE_WEB_IMPORT_GATE_REGRESSION.md`; close note `CLOSE_NOTE_ORCH-0781.md`; branch HEAD `14c3b59d`. Residual checkout backend/live-fire risk remains ORCH-0777, not ORCH-0781. Residual coverage note: C-781-1 PR/job URL and C-781-3 push-run URL are first-push/merge evidence only and should be pasted into the close note when available.
+
+> **2026-05-10 - ORCH-0778 COVERAGE RESTORED - checkout web-export native import boundary is green.** Coverage delta: mingla-business checkout web bundle/export confidence returns to green for the specific Stripe-native import regression. Evidence: QA PASS `reports/QA_ORCH-0778_ORCH0777_WEB_EXPORT_STRIPE_NATIVE_IMPORT_GATE.md`; `npx expo export --platform web` succeeds; bundle contains zero `stripe-react-native`, `codegenNativeComponent`, or `StripeProvider`; strict-grep gate catches imports outside `.native` payment boundaries. Remaining checkout coverage risk is ORCH-0777 live-fire/native PaymentSheet/backend notification proof, not ORCH-0778.
+
+> **2026-05-10 - ORCH-0776D CLOSED PASS - event-cover video upload-intent coverage promoted to guarded.** Heatmap delta: the event-cover video upload preparation path moves from known S0/P0 broken to live-verified Grade A for the cancel/insert/signing chain. Covered evidence: `reports/QA_ORCH-0776D_EVENT_COVER_VIDEO_CANCELLED_AT_AND_DETAIL_DEPLOY.md` proves static gates, migration shape, strict-grep guard, regression tests, live DB schema/index state, five v4 Edge Function deploys, direct authenticated upload-intent HTTP 200, and DB auto-cancel of the prior active row with `cancelled_at` + `failure_code='superseded'`. Residual coverage debt: ORCH-0776A still owns visible source-upload/progress UX runtime proof, and ORCH-0776 broader processing/webhook/apply status remains separate.
+
 > **2026-05-08 - ORCH-0761 CLOSED PASS - documentation artifact placement coverage strengthened.** Heatmap delta is docs/product-ops only: `Mingla_Artifacts/` root cleanup is now guarded by archive/backup indexes and `scripts/docs/check_artifact_placement.py`. Covered evidence: `reports/TEST_REPORT_ORCH-0761_ARTIFACT_CLEANUP_AND_ARCHIVE_PLAN.md` verified moved paths, old root-path absence, no root SQL breadcrumb, SQL not executed, manifest reclassification, placement/readme gates, and unchanged inherited link debt. Residual coverage debt: separate design-package/handoff absorption archive pass remains future cleanup.
 
 > **2026-05-08 - ORCH-0754 CLOSED CONDITIONAL PASS - mingla-business Home event-summary surface promoted to guarded.** Heatmap delta: Business Home Upcoming / Active-events KPI moves from fabricated demo data to verified local event truth. Covered surfaces: `mingla-business/app/(tabs)/home.tsx` now consumes `useDraftsForBrand`, `useLiveEventsForBrand`, `buildBrandEventSummary`, and order-store metrics; `brandEventSummary` helper has focused Jest coverage for draft-only, upcoming-only, live-window, past/cancelled exclusion, and mixed ordering; I-PROPOSED-Z strict-grep locks the removed fake signatures. Evidence: `reports/TEST_REPORT_ORCH-0754_BUSINESS_HOME_UPCOMING_STUB_DATA.md`. Residual coverage debt: full business-app lint remains red outside this surface, and runtime simulator/device visual smoke of the four Home states is recommended before broad business-app release.
@@ -113,7 +123,7 @@
 | Chat / DM | 8 | 0 | 0 | 0 | 0 | 8 | 100% | 0% | Unaudited |
 | Payments & Subscriptions | 15 | 8 | 6 | 1 | 0 | 0 | 0% | 0% | Strong |
 | Calendar & Scheduling | 8 | 0 | 0 | 0 | 0 | 8 | 100% | 0% | Unaudited |
-| Holidays & Events | 8 | 1 | 1 | 0 | 0 | 6 | 75% | 0% | Weak |
+| Holidays & Events | 8 | 2 | 1 | 0 | 0 | 5 | 63% | 0% | Weak |
 | People Discovery | 10 | 0 | 0 | 0 | 0 | 10 | 100% | 0% | Unaudited |
 | Pairing System | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
 | Sharing & Invites | 10 | 0 | 0 | 0 | 0 | 10 | 100% | 0% | Unaudited |
@@ -130,7 +140,7 @@
 | Analytics & Tracking | 11 | 1 | 0 | 2 | 2 | 6 | 55% | 0% | Weak |
 | Weather & External | 6 | 0 | 0 | 0 | 0 | 6 | 100% | 0% | Unaudited |
 | UI Components | 10 | 3 | 0 | 0 | 0 | 7 | 70% | 0% | Weak |
-| **TOTAL** | **303** | **100** | **24** | **4** | **4** | **171** | **56%** | **0%** | **Weak → Slightly improving** |
+| **TOTAL** | **303** | **101** | **24** | **4** | **4** | **170** | **56%** | **0%** | **Weak → Slightly improving** |
 
 ## Heatmap Summary
 

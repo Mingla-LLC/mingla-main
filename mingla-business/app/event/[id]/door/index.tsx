@@ -42,7 +42,8 @@ import {
 } from "../../../../src/store/doorSalesStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
-import { formatGbp } from "../../../../src/utils/currency";
+import { formatCurrency, normalizeCurrency } from "../../../../src/utils/currency";
+import { summarizeEventMoney } from "../../../../src/utils/moneySummary";
 import { exportDoorSalesCsv } from "../../../../src/utils/guestCsvExport";
 import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
 
@@ -169,28 +170,37 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
       );
   }, [allEntries, eventId]);
 
+  const doorMoneySummary = useMemo(
+    () =>
+      summarizeEventMoney({
+        expectedCurrency: event?.currency ?? "GBP",
+        orders: [],
+        doorSales: eventSales,
+      }),
+    [event?.currency, eventSales],
+  );
   // Reconciliation totals — net of refunds, by payment method.
-  const totalsByMethod = useMemo<Record<DoorPaymentMethod, number>>(() => {
-    const totals: Record<DoorPaymentMethod, number> = {
-      cash: 0,
-      card_reader: 0,
-      nfc: 0,
-      manual: 0,
-    };
-    for (const s of eventSales) {
-      const live = s.totalGbpAtSale - s.refundedAmountGbp;
-      if (live <= 0) continue;
-      totals[s.paymentMethod] += live;
-    }
-    return totals;
-  }, [eventSales]);
+  const totalsByMethod = useMemo<Record<DoorPaymentMethod, number>>(
+    () => ({
+      cash: doorMoneySummary.revenueByMethod.cash ?? 0,
+      card_reader: doorMoneySummary.revenueByMethod.card_reader ?? 0,
+      nfc: doorMoneySummary.revenueByMethod.nfc ?? 0,
+      manual: doorMoneySummary.revenueByMethod.manual ?? 0,
+    }),
+    [doorMoneySummary.revenueByMethod],
+  );
 
   const totalsByScanner = useMemo<
     Record<string, Record<DoorPaymentMethod, number>>
   >(() => {
     const map: Record<string, Record<DoorPaymentMethod, number>> = {};
     for (const s of eventSales) {
-      const live = s.totalGbpAtSale - s.refundedAmountGbp;
+      if (normalizeCurrency(s.currency) !== doorMoneySummary.expectedCurrency) {
+        continue;
+      }
+      const live =
+        (s.totalAtSale ?? s.totalGbpAtSale) -
+        (s.refundedAmount ?? s.refundedAmountGbp);
       if (live <= 0) continue;
       const scannerKey = s.recordedBy;
       const existing =
@@ -205,15 +215,8 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
     return map;
   }, [eventSales]);
 
-  const grossTotal = useMemo<number>(
-    () => eventSales.reduce((sum, s) => sum + s.totalGbpAtSale, 0),
-    [eventSales],
-  );
-  const refundedTotal = useMemo<number>(
-    () => eventSales.reduce((sum, s) => sum + s.refundedAmountGbp, 0),
-    [eventSales],
-  );
-  const netTotal = grossTotal - refundedTotal;
+  const refundedTotal = doorMoneySummary.doorRefunded;
+  const netTotal = doorMoneySummary.doorRevenue;
 
   // ---- UI state ----
   const [newSheetOpen, setNewSheetOpen] = useState<boolean>(false);
@@ -422,17 +425,26 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
         <View style={styles.reconCard}>
           <Text style={styles.reconHeading}>Reconciliation</Text>
 
+          {doorMoneySummary.mismatches.length > 0 ? (
+            <View style={styles.currencyWarning}>
+              <Text style={styles.currencyWarningTitle}>Currency review needed</Text>
+              <Text style={styles.currencyWarningBody}>
+                {`${doorMoneySummary.mismatches.length} stale sale(s) were excluded from ${doorMoneySummary.expectedCurrency} totals.`}
+              </Text>
+            </View>
+          ) : null}
+
           <View style={styles.reconRow}>
             <Text style={styles.reconLabel}>Cash</Text>
             <Text style={styles.reconValue}>
-              {formatGbp(totalsByMethod.cash)}
+              {formatCurrency(totalsByMethod.cash, event.currency ?? "GBP")}
             </Text>
           </View>
           <View style={styles.reconRow}>
             <View style={styles.reconLabelCol}>
               <Text style={styles.reconLabel}>Card reader</Text>
               <Text style={styles.reconLabelHint}>
-                ({formatGbp(totalsByMethod.card_reader)} — B-cycle)
+                ({formatCurrency(totalsByMethod.card_reader, event.currency ?? "GBP")} — B-cycle)
               </Text>
             </View>
           </View>
@@ -440,14 +452,14 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
             <View style={styles.reconLabelCol}>
               <Text style={styles.reconLabel}>NFC tap</Text>
               <Text style={styles.reconLabelHint}>
-                ({formatGbp(totalsByMethod.nfc)} — B-cycle)
+                ({formatCurrency(totalsByMethod.nfc, event.currency ?? "GBP")} — B-cycle)
               </Text>
             </View>
           </View>
           <View style={styles.reconRow}>
             <Text style={styles.reconLabel}>Manual</Text>
             <Text style={styles.reconValue}>
-              {formatGbp(totalsByMethod.manual)}
+              {formatCurrency(totalsByMethod.manual, event.currency ?? "GBP")}
             </Text>
           </View>
 
@@ -455,12 +467,14 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
           <View style={styles.reconRow}>
             <Text style={styles.reconLabel}>Refunded</Text>
             <Text style={styles.reconValueWarn}>
-              −{formatGbp(refundedTotal)}
+              −{formatCurrency(refundedTotal, event.currency ?? "GBP")}
             </Text>
           </View>
           <View style={styles.reconRow}>
             <Text style={styles.reconLabelStrong}>NET</Text>
-            <Text style={styles.reconValueStrong}>{formatGbp(netTotal)}</Text>
+            <Text style={styles.reconValueStrong}>
+              {formatCurrency(netTotal, event.currency ?? "GBP")}
+            </Text>
           </View>
 
           {/* By-scanner expandable */}
@@ -495,11 +509,11 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
                     <Text style={styles.scannerName}>{scannerLabel}</Text>
                     <View style={styles.scannerSubRow}>
                       <Text style={styles.scannerSubLabel}>
-                        Cash {formatGbp(totals.cash)} · Manual{" "}
-                        {formatGbp(totals.manual)}
+                        Cash {formatCurrency(totals.cash, event.currency ?? "GBP")} · Manual{" "}
+                        {formatCurrency(totals.manual, event.currency ?? "GBP")}
                       </Text>
                       <Text style={styles.scannerTotal}>
-                        {formatGbp(scannerTotal)}
+                        {formatCurrency(scannerTotal, event.currency ?? "GBP")}
                       </Text>
                     </View>
                   </View>
@@ -574,7 +588,7 @@ const DoorSaleRowCard: React.FC<DoorSaleRowCardProps> = ({ sale, onPress }) => {
   const relativeTime = formatRelativeTime(sale.recordedAt);
   const hue = hashStringToHue(sale.id);
   const initials = getInitials(buyerName);
-  const subline = `${ticketSummary} · ${formatGbp(sale.totalGbpAtSale)} · ${relativeTime}`;
+  const subline = `${ticketSummary} · ${formatCurrency(sale.totalGbpAtSale, sale.currency)} · ${relativeTime}`;
   const pillSpec = doorPaymentPill(sale.paymentMethod, sale.status);
 
   return (
@@ -703,6 +717,25 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginBottom: spacing.sm,
     textTransform: "uppercase",
+  },
+  currencyWarning: {
+    padding: spacing.sm,
+    borderRadius: radiusTokens.sm,
+    borderWidth: 1,
+    borderColor: "rgba(235, 120, 37, 0.30)",
+    backgroundColor: "rgba(235, 120, 37, 0.10)",
+    marginBottom: spacing.sm,
+  },
+  currencyWarningTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  currencyWarningBody: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: textTokens.secondary,
+    marginTop: 2,
   },
   reconRow: {
     flexDirection: "row",

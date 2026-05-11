@@ -124,9 +124,12 @@ export interface ReconciliationCsvSummary {
   totalRefunded: number;
   netRevenue: number;
   uniqueScannedTickets: number;
+  currency: string;
+  currenciesPresent?: string[];
+  currencyMismatchCount?: number;
 }
 
-const formatGbpForCsv = (n: number): string => n.toFixed(2);
+const formatMoneyForCsv = (n: number): string => n.toFixed(2);
 
 export const serializeGuestsToCsv = (
   rows: ExportGuestRow[],
@@ -150,8 +153,11 @@ export const serializeGuestsToCsv = (
     "Date",
     "Notes",
     "Gross",
+    "Currency",
     "Refunded",
+    "Refunded currency",
     "Net",
+    "Net currency",
   ];
 
   // Cycle 13 — optional summary stanza (5 lines of `#`-prefixed metadata)
@@ -162,9 +168,15 @@ export const serializeGuestsToCsv = (
     stanzaLines.push(
       `# Tickets: ${summary.totalLiveTickets} live · ${summary.uniqueScannedTickets} scanned`,
     );
-    stanzaLines.push(`# Revenue: gross ${formatGbpForCsv(summary.grossRevenue)} GBP`);
-    stanzaLines.push(`# Refunded: ${formatGbpForCsv(summary.totalRefunded)} GBP`);
-    stanzaLines.push(`# Net: ${formatGbpForCsv(summary.netRevenue)} GBP`);
+    stanzaLines.push(`# Revenue: gross ${formatMoneyForCsv(summary.grossRevenue)} ${summary.currency}`);
+    stanzaLines.push(`# Refunded: ${formatMoneyForCsv(summary.totalRefunded)} ${summary.currency}`);
+    stanzaLines.push(`# Net: ${formatMoneyForCsv(summary.netRevenue)} ${summary.currency}`);
+    if (summary.currenciesPresent !== undefined && summary.currenciesPresent.length > 1) {
+      stanzaLines.push(`# Currencies present: ${summary.currenciesPresent.join(", ")}`);
+    }
+    if ((summary.currencyMismatchCount ?? 0) > 0) {
+      stanzaLines.push(`# Currency mismatches excluded from ${summary.currency} totals: ${summary.currencyMismatchCount}`);
+    }
   }
 
   const lines: string[] = [...stanzaLines, headers.join(",")];
@@ -187,9 +199,12 @@ export const serializeGuestsToCsv = (
         o.id,
         formatYmd(o.paidAt),
         "",
-        formatGbpForCsv(grossPaid),
-        formatGbpForCsv(refunded),
-        formatGbpForCsv(net),
+        formatMoneyForCsv(grossPaid),
+        o.currency,
+        formatMoneyForCsv(refunded),
+        o.currency,
+        formatMoneyForCsv(net),
+        o.currency,
       ];
       lines.push(fields.map(csvEscape).join(","));
     } else if (row.kind === "comp") {
@@ -207,8 +222,11 @@ export const serializeGuestsToCsv = (
         formatYmd(c.addedAt),
         c.notes,
         "0.00",
+        "",
         "0.00",
+        "",
         "0.00",
+        "",
       ];
       lines.push(fields.map(csvEscape).join(","));
     } else {
@@ -230,9 +248,12 @@ export const serializeGuestsToCsv = (
         s.id,
         formatYmd(s.recordedAt),
         s.notes,
-        formatGbpForCsv(grossPaid),
-        formatGbpForCsv(refunded),
-        formatGbpForCsv(net),
+        formatMoneyForCsv(grossPaid),
+        s.currency,
+        formatMoneyForCsv(refunded),
+        s.currency,
+        formatMoneyForCsv(net),
+        s.currency,
       ];
       lines.push(fields.map(csvEscape).join(","));
     }
@@ -427,6 +448,9 @@ export const exportReconciliationCsv = async (
     // here under "Net" so the 5-line preamble reads cleanly to an accountant.
     netRevenue: args.summary.grossRevenue,
     uniqueScannedTickets: args.summary.uniqueScannedTickets,
+    currency: args.event.currency ?? "GBP",
+    currenciesPresent: args.summary.currenciesPresent,
+    currencyMismatchCount: args.summary.currencyMismatches.length,
   };
 
   const csv = serializeGuestsToCsv(rows, stanza);
@@ -438,4 +462,3 @@ export const exportReconciliationCsv = async (
   const action = await downloadCsvNative(csv, filename);
   return { method: action };
 };
-

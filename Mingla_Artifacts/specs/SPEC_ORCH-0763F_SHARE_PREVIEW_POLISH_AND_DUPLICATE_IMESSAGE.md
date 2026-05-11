@@ -19,6 +19,7 @@ In scope:
 - Add copy/share in-flight guards in `ShareModal`.
 - Rework event OG card data and visual design.
 - Rework brand OG card data and visual design.
+- Add typography/layout safety for long event names, brand names, venues, and next-event labels.
 - Add focused tests and runtime QA gates.
 
 Out of scope:
@@ -146,6 +147,8 @@ Visual contract:
 - If no cover is available, use a warm branded gradient/fallback that is not black-dominant.
 - Show the date as a visible first-class chip or line on the PNG card.
 - Keep brand name and event title readable at small preview sizes.
+- Long event names must not overlap lower text, chips, logo, cover, or footer/domain elements.
+- Long location/venue text must clamp or truncate inside its allotted chip/line.
 - Keep the logo legible, but do not place black logo artwork inside a nearly identical black panel.
 - Keep `business.usemingla.com` visible only if contrast is sufficient; otherwise remove or restyle it.
 
@@ -187,12 +190,29 @@ Brand page richness rules:
 - If profile photo is missing but a public event cover exists, use the event cover as supporting visual.
 - If both are missing, use a branded warm fallback.
 - Show brand handle and event count.
+- Long brand names must not overlap event count, handle, next-event cue, logo, profile/cover image, or footer/domain elements.
+- Long next-event labels must clamp or truncate inside their allotted chip/line.
 - If a next upcoming event/date can be safely derived, show that cue. If not, fall back to event count only.
 
 Sorting note:
 
 - Current `fetchPublicBrandBySlug` orders by `published_at.desc.nullslast`.
 - If showing "next event", implementation must sort candidate rows by parsed event date from `public_theme.business_event.when.date` and ignore cancelled/ended rows unless no upcoming rows exist.
+
+## 7A. Typography/Layout Safety Contract
+
+The renderer must handle real organiser strings, including long titles and brand names, without visual collision.
+
+Implementation may use line clamp, max-height, dynamic font-size buckets, stricter slot-specific truncation, compact long-text variants, or measured layout helpers supported by the current `@vercel/og`/Satori setup.
+
+Minimum regression fixtures:
+
+- Event title: `Runtime Share Test FreeTA throwaway free-ticket QA`
+- Brand name: `Runtime Share Test FreeTA throwaway free-ticket QA Collective`
+- Venue/location: `The venue - The place with a very long neighbourhood label`
+- Next-event label: same long event title plus date
+
+Pass condition: fixtures render as non-empty 1200x630 PNGs and the test/code contract proves title/chip/subtitle bounds cannot collide with adjacent zones.
 
 ## 8. Metadata HTML Contract
 
@@ -269,6 +289,8 @@ Update `mingla-business/server/__tests__/socialPreview.test.ts`:
 - Event OG input/render contract includes date label.
 - Brand render contract includes brand handle and event count.
 - Brand OG input/render contract includes richer brand fields.
+- Long event-title and long brand-name fixtures exercise the overflow-safe typography contract.
+- Long location and next-event cue fixtures clamp/truncate safely.
 - No wrong domains appear in event or brand HTML.
 
 Because PNG visual parsing is brittle, tests should prefer pure data/layout-contract assertions. If the renderer is refactored into `buildEventOgCardProps` and `buildBrandOgCardProps`, unit test those pure helpers directly.

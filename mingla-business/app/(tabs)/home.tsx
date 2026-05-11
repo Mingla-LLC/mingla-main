@@ -63,8 +63,9 @@ import {
   type BrandEventSummaryCounts,
   type BrandEventSummaryItem,
 } from "../../src/utils/brandEventSummary";
-import { formatGbpRound } from "../../src/utils/currency";
+import { formatCurrencyRound } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
+import { summarizeEventMoney } from "../../src/utils/moneySummary";
 import { formatRelativeTime } from "../../src/utils/relativeTime";
 
 interface ToastState {
@@ -146,7 +147,6 @@ export default function HomeTab(): React.ReactElement {
   );
   const orderEntries = useOrderStore((s) => s.entries);
   const getSoldCountForEvent = useOrderStore((s) => s.getSoldCountForEvent);
-  const getRevenueForEvent = useOrderStore((s) => s.getRevenueForEvent);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // Cycle 17e-A REWORK: BrandDeleteSheet state — opens from BrandSwitcherSheet
   // trash icon taps. Mirrors account.tsx pattern per ORCH-0734-RW SPEC §3.3.
@@ -273,8 +273,16 @@ export default function HomeTab(): React.ReactElement {
 
     const capacity = finiteTicketCapacity(primaryLiveEvent);
     const soldCount = getSoldCountForEvent(primaryLiveEvent.id);
+    const moneySummary = summarizeEventMoney({
+      expectedCurrency:
+        primaryLiveEvent.currency ?? currentBrand?.defaultCurrency,
+      orders: orderEntries.filter(
+        (order) => order.eventId === primaryLiveEvent.id,
+      ),
+      doorSales: [],
+    });
     return {
-      revenueGbp: getRevenueForEvent(primaryLiveEvent.id),
+      revenueGbp: moneySummary.onlineRevenue,
       soldCount,
       capacity,
       progress:
@@ -284,9 +292,9 @@ export default function HomeTab(): React.ReactElement {
     };
   }, [
     primaryLiveEvent,
+    currentBrand?.defaultCurrency,
     orderEntries,
     getSoldCountForEvent,
-    getRevenueForEvent,
   ]);
 
   return (
@@ -358,7 +366,13 @@ export default function HomeTab(): React.ReactElement {
                 </Text>
                 <View style={styles.heroAmountRow}>
                   <Text style={styles.heroAmountSold}>
-                    {formatGbpRound(liveHeroMetrics.revenueGbp)}
+                    {primaryLiveEvent.currency !== undefined ||
+                    currentBrand.defaultCurrency !== undefined
+                      ? formatCurrencyRound(
+                          liveHeroMetrics.revenueGbp,
+                          primaryLiveEvent.currency ?? currentBrand.defaultCurrency ?? "",
+                        )
+                      : "—"}
                   </Text>
                   <Text style={styles.heroAmountGoal}> revenue</Text>
                 </View>
@@ -398,26 +412,22 @@ export default function HomeTab(): React.ReactElement {
             ) : (
               <KpiTile
                 label="Last 7 days"
-                value={formatGbpRound(currentBrand.stats.rev)}
-                delta="+18%"
-                deltaUp
+                value={
+                  currentBrand.defaultCurrency !== undefined
+                    ? formatCurrencyRound(
+                        currentBrand.stats.rev,
+                        currentBrand.defaultCurrency,
+                      )
+                    : "—"
+                }
               />
             )}
 
-            <View style={styles.kpiGrid}>
-              <KpiTile
-                label="Active events"
-                value={eventSummary.counts.active}
-                sub={formatActiveEventsSub(eventSummary.counts)}
-                style={styles.kpiCell}
-              />
-              <KpiTile
-                label="Followers"
-                value={currentBrand.stats.followers.toLocaleString("en-GB")}
-                sub="audience"
-                style={styles.kpiCell}
-              />
-            </View>
+            <KpiTile
+              label="Active events"
+              value={eventSummary.counts.active}
+              sub={formatActiveEventsSub(eventSummary.counts)}
+            />
 
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Upcoming</Text>
@@ -699,15 +709,6 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     color: textTokens.tertiary,
     marginTop: 2,
-  },
-
-  // KPI grid ------------------------------------------------------------
-  kpiGrid: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  kpiCell: {
-    flex: 1,
   },
 
   // Section header ------------------------------------------------------

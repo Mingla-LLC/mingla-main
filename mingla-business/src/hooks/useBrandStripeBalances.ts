@@ -14,10 +14,12 @@
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import {
   fetchBrandStripeBalances,
   type BrandStripeBalancesResult,
 } from "../services/brandStripeBalancesService";
+import { shouldEnableBrandStripeStatusQuery } from "./brandStripeStatusAuthGate";
 
 const STALE_TIME_MS = 30 * 1000;
 const REFETCH_INTERVAL_MS = 60 * 1000;
@@ -39,12 +41,21 @@ export function useBrandStripeBalances(
   brandId: string | null,
   options: UseBrandStripeBalancesOptions,
 ): UseQueryResult<BrandStripeBalancesResult> {
-  const enabled = brandId !== null && options.stripeStatus === "active";
+  const { loading, session, user } = useAuth();
+  const enabled =
+    options.stripeStatus === "active" &&
+    shouldEnableBrandStripeStatusQuery({
+      brandId,
+      authLoading: loading,
+      user,
+      session,
+    });
 
   return useQuery<BrandStripeBalancesResult>({
-    queryKey: enabled
-      ? brandStripeBalancesKeys.detail(brandId)
-      : DISABLED_KEY,
+    queryKey:
+      enabled && brandId !== null
+        ? brandStripeBalancesKeys.detail(brandId)
+        : DISABLED_KEY,
     enabled,
     staleTime: STALE_TIME_MS,
     refetchInterval: enabled ? REFETCH_INTERVAL_MS : false,
@@ -52,7 +63,7 @@ export function useBrandStripeBalances(
       if (brandId === null) {
         throw new Error("useBrandStripeBalances: brandId is null but enabled");
       }
-      return fetchBrandStripeBalances(brandId);
+      return fetchBrandStripeBalances(brandId, session?.access_token ?? null);
     },
   });
 }

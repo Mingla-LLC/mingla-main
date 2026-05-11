@@ -33,7 +33,7 @@ import { eventPublicPath } from "../../../src/constants/publicUrls";
 import type { LiveEvent } from "../../../src/store/liveEventStore";
 import type { TicketStub } from "../../../src/store/draftEventStore";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
-import { formatGbp } from "../../../src/utils/currency";
+import { formatCurrency } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 
 import { Button } from "../../../src/components/ui/Button";
@@ -269,7 +269,8 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                 setLineQuantity({
                   ticketTypeId: ticket.id,
                   ticketName: ticket.name,
-                  unitPriceGbp: ticket.priceGbp ?? 0,
+                  unitPrice: ticket.priceGbp ?? 0,
+                  currency: ticket.currency ?? event.currency ?? "GBP",
                   isFree: ticket.isFree,
                   quantity: next,
                 })
@@ -293,7 +294,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
               ? "—"
               : totals.isFree
                 ? "Free"
-                : formatGbp(totals.totalGbp)}
+                : formatCurrency(totals.total, totals.currency)}
           </Text>
         </View>
         <Button
@@ -308,7 +309,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
               ? "Add tickets above"
               : totals.isFree
                 ? "Reserve free ticket"
-                : `Continue to buyer details, total ${formatGbp(totals.totalGbp)}`
+                : `Continue to buyer details, total ${formatCurrency(totals.total, totals.currency)}`
           }
         />
       </View>

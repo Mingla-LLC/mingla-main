@@ -34,6 +34,7 @@ interface BusinessManagementEventRow {
   recurrence_rules: unknown;
   cover_media_url: string | null;
   cover_media_type: EventCoverMediaType | null;
+  currency?: string | null;
   visibility: string;
   show_on_discover: boolean;
   status: string;
@@ -85,6 +86,7 @@ interface PublishRpcResponse {
     recurrence_rules: unknown;
     cover_media_url: string | null;
     cover_media_type: EventCoverMediaType | null;
+    currency?: string | null;
     visibility: string;
     status: string;
     published_at: string | null;
@@ -194,6 +196,7 @@ export const ticketRowToTicketStub = (row: TicketTypeRow): TicketStub => ({
   id: row.id,
   name: row.name,
   priceGbp: row.is_free ? null : row.price_cents / 100,
+  currency: row.currency,
   capacity: row.quantity_total,
   isFree: row.is_free,
   isUnlimited: row.is_unlimited,
@@ -285,6 +288,9 @@ const eventFromRow = (
     coverHue: asNumber(businessEvent.coverHue ?? theme.coverHue, 25),
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
+    currency:
+      asStringOrNull(row.currency) ??
+      tickets.find((ticket) => ticket.currency !== undefined)?.currency,
     tickets,
     visibility: asVisibility(row.visibility),
     requireApproval: asBoolean(settings.requireApproval, tickets.some((t) => t.approvalRequired)),
@@ -357,6 +363,9 @@ const eventFromPublishResponse = (
   response: PublishRpcResponse,
 ): PublishedBusinessEvent => {
   const businessEvent = asRecord(asRecord(response.event.theme).business_event);
+  if (response.event.currency === null || response.event.currency === undefined) {
+    throw new Error("Published event is missing currency.");
+  }
   const row: BusinessManagementEventRow = {
     id: response.event.id,
     brand_id: response.event.brand_id,
@@ -376,6 +385,7 @@ const eventFromPublishResponse = (
     recurrence_rules: response.event.recurrence_rules,
     cover_media_url: response.event.cover_media_url,
     cover_media_type: response.event.cover_media_type,
+    currency: response.event.currency,
     visibility: response.event.visibility,
     show_on_discover: false,
     status: response.event.status,

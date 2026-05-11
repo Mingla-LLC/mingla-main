@@ -64,4 +64,13 @@ stripe-values.md
 stripe-values*.md
 *-stripe-keys.md
 *-stripe-secrets.md
+
+# === Provider credentials scratch (never commit) ===
+Mingla_Artifacts/cloudinary_details.md
+resend api key.md
+resend-api-key*.md
+*-resend-keys.md
+*api key*.md
+*api-key*.md
+*api_key*.md
 .vercel

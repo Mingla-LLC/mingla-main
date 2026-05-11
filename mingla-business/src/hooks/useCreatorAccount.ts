@@ -47,9 +47,9 @@ export const creatorAccountKeys = {
 const DISABLED_KEY = ["creator-account-disabled"] as const;
 
 export const useCreatorAccount = (): CreatorAccountState => {
-  const { user } = useAuth();
+  const { isAuthReady, user } = useAuth();
   const userId = user?.id ?? null;
-  const enabled = userId !== null;
+  const enabled = isAuthReady && userId !== null;
 
   const { data, isLoading, isFetched, isError, refetch } =
     useQuery<CreatorAccountRow | null>({

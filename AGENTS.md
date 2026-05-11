@@ -16,6 +16,10 @@ All product work should:
 - Distinguish facts, assumptions, risks, and open questions.
 - Produce something usable by product, engineering, marketing, sales, customer success, or leadership.
 
+## Regression Test Habit
+
+For every behavior fix or delivered feature, require a repo-running regression test that would fail before the change and pass after it. If the intended behavior changes, rewrite or replace the old test so it encodes the new contract. The regression test must be included in the same scoped GitHub commit/push as the feature or fix. Any exception must be explicit, justified, and converted into a tester manual gate.
+
 ## Communication Style
 
 Prefer:

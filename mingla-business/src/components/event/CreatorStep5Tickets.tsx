@@ -32,7 +32,8 @@ import {
 } from "../../constants/designSystem";
 import type { TicketStub } from "../../store/draftEventStore";
 import { generateTicketId } from "../../utils/draftEventId";
-import { formatGbpRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
+import { effectiveDraftCurrency } from "../../utils/moneySummary";
 import {
   moveTicketDown,
   moveTicketUp,
@@ -57,6 +58,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   showErrors,
   editMode,
   canEditTicketPrice = true,
+  brandDefaultCurrency,
 }) => {
   // ORCH-0704 v2 — sold-count map. Empty in create-flow + ORCH-0704 stub mode.
   const soldCountByTier = editMode?.soldCountByTier ?? {};
@@ -75,6 +77,11 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
 
   // Sorted tickets — single source of truth for render order.
   const sortedTickets = sortTicketsByDisplayOrder(draft.tickets);
+  const displayCurrency = effectiveDraftCurrency(
+    draft.currency,
+    brandDefaultCurrency,
+  );
+  const hasDisplayCurrency = displayCurrency.length > 0;
 
   const handleAddTicket = useCallback((): void => {
     setEditingTicketId(null);
@@ -185,12 +192,15 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
     ? "Free event"
     : hasUnlimitedPaidTicket
       ? "Unlimited"
-      : formatGbpRound(
+      : !hasDisplayCurrency
+        ? "Currency not set"
+      : formatCurrencyRound(
           draft.tickets.reduce(
             (sum, t) =>
               sum + (t.isFree ? 0 : (t.priceGbp ?? 0) * (t.capacity ?? 0)),
             0,
           ),
+          displayCurrency,
         );
 
   // Find the next available displayOrder for the new-ticket sheet.
@@ -248,6 +258,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
                 onMoveDown={() => handleMoveDown(t.id)}
                 errorMessage={firstError}
                 soldCount={soldCountByTier[t.id] ?? 0}
+                eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}
               />
             );
           })}
@@ -295,6 +306,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           editingTicket !== null ? (soldCountByTier[editingTicket.id] ?? 0) : 0
         }
         canEditPrice={canEditTicketPrice}
+        eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}
       />
 
       <ConfirmDialog

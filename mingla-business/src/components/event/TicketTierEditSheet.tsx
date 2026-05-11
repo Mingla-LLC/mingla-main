@@ -38,6 +38,7 @@ import type {
   TicketVisibility,
 } from "../../store/draftEventStore";
 import { generateTicketId } from "../../utils/draftEventId";
+import { formatCurrency } from "../../utils/currency";
 
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -66,6 +67,20 @@ const HIDDEN_WEB_INPUT_STYLE = {
   opacity: 0,
   pointerEvents: "none",
 } as const;
+
+const currencySymbol = (currency?: string): string | null => {
+  if (currency === undefined || currency.trim().length === 0) return null;
+  try {
+    const parts = new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: currency.trim().toUpperCase(),
+      maximumFractionDigits: 0,
+    }).formatToParts(0);
+    return parts.find((part) => part.type === "currency")?.value ?? currency;
+  } catch {
+    return currency.trim().toUpperCase();
+  }
+};
 
 // ---- Visibility options ---------------------------------------------
 
@@ -279,6 +294,8 @@ export interface TicketTierEditSheetProps {
    * compatible.
    */
   canEditPrice?: boolean;
+  /** ISO 4217 event/brand currency used for price copy in the sheet. */
+  eventCurrency?: string;
 }
 
 export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
@@ -289,6 +306,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   nextOrder,
   soldCount = 0,
   canEditPrice = true,
+  eventCurrency,
 }) => {
   // ORCH-0704 v2: when this tier has sales, lock price + isFree + isUnlimited
   // fields and surface the refund-first messaging.
@@ -341,6 +359,14 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
 
   // Cycle 12 — Available-at sub-sheet
   const [availableAt, setAvailableAt] = useState<TicketAvailableAt>("both");
+  const priceCurrency = initial?.currency ?? eventCurrency;
+  const priceCurrencyLabel = currencySymbol(priceCurrency);
+  const lockedPriceLabel =
+    priceCurrency !== undefined &&
+    priceCurrency.trim().length > 0 &&
+    Number.isFinite(Number.parseFloat(priceText))
+      ? formatCurrency(Number.parseFloat(priceText), priceCurrency)
+      : "—";
   const [availSheetVisible, setAvailSheetVisible] = useState<boolean>(false);
 
   // Keyboard awareness — handled natively via the ScrollView's
@@ -736,7 +762,11 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           {/* Price (when not free) — ORCH-0704 v2: locked when sales exist */}
           {!isFree ? (
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Price (£)</Text>
+              <Text style={styles.fieldLabel}>
+                {priceCurrencyLabel !== null
+                  ? `Price (${priceCurrencyLabel})`
+                  : "Price"}
+              </Text>
               <View
                 style={[
                   styles.inputWrap,
@@ -751,7 +781,11 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   keyboardType="decimal-pad"
                   style={styles.textInput}
                   editable={!isPriceLocked}
-                  accessibilityLabel="Ticket price in pounds"
+                  accessibilityLabel={
+                    priceCurrency !== undefined && priceCurrency.trim().length > 0
+                      ? `Ticket price in ${priceCurrency.trim().toUpperCase()}`
+                      : "Ticket price"
+                  }
                 />
               </View>
               {isPriceLockedByRank ? (
@@ -761,7 +795,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                 </Text>
               ) : isPriceLocked ? (
                 <Text style={styles.helperHint}>
-                  Existing buyers locked at £{priceText || "—"}. Change
+                  Existing buyers locked at {lockedPriceLabel}. Change
                   applies to new buyers only — refund first to change.
                 </Text>
               ) : null}

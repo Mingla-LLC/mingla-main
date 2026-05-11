@@ -7,16 +7,18 @@ import {
   type DraftEditMeta,
 } from "../serverDraftAutosaveGuards";
 
-const draftWithRevision = (clientRevision?: number): DraftEvent =>
+const draftWithRevision = (
+  clientRevision?: number,
+  coverMediaUrl: string | null = null,
+): DraftEvent =>
   ({
     id: "draft-1",
     clientRevision,
+    coverMediaType: coverMediaUrl === null ? null : "image",
+    coverMediaUrl,
   }) as DraftEvent;
 
-const editMeta = (
-  clientRevision: number,
-  dirty: boolean,
-): DraftEditMeta => ({
+const editMeta = (clientRevision: number, dirty: boolean): DraftEditMeta => ({
   clientRevision,
   lastAcceptedServerRevision: clientRevision - 1,
   dirty,
@@ -62,6 +64,24 @@ describe("server draft autosave guards", () => {
         serverDraft: draftWithRevision(4),
         localDraft: draftWithRevision(3),
         editMeta: editMeta(3, false),
+      }),
+    ).toBe(true);
+  });
+
+  test("protects newly uploaded cover media from stale server draft echoes", () => {
+    expect(
+      shouldApplyServerDraft({
+        serverDraft: draftWithRevision(2, null),
+        localDraft: draftWithRevision(3, "https://cdn.example.com/cover.png"),
+        editMeta: editMeta(3, true),
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldApplyServerDraft({
+        serverDraft: draftWithRevision(4, "https://cdn.example.com/cover.png"),
+        localDraft: draftWithRevision(3, "https://cdn.example.com/cover.png"),
+        editMeta: editMeta(3, true),
       }),
     ).toBe(true);
   });

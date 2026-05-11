@@ -33,32 +33,35 @@ Before answering, classify the work into one or more modes, then produce the mos
 
 Do not over-ask questions. If context is missing, make reasonable assumptions and label them.
 
-## Default Output
+## Response Protocol — Universal 4-Section Output (Non-Negotiable, codified 2026-05-10)
 
-For most product/GTM requests:
+Every chat response from this skill uses exactly these four sections, in this order, with NO other sections:
 
-```markdown
-## Recommendation
-## Why this matters
-## Target customer
-## Core insight
-## Strategy
-## Execution plan
-## Risks and assumptions
-## Metrics
-## Next actions
-```
+### Section 1 — Historical context (paragraph, layman terms)
+One short prose paragraph (2–4 sentences). Plain English. The backstory of this work so the operator understands why we're here. No jargon, no bullets, no nested headings.
 
-For quick tactical requests:
+### Section 2 — What was just done (bullet list)
+Tight bullet list of concrete actions taken THIS turn. One line per bullet. No sub-bullets, no commentary. Cite artifact paths when files were written.
 
-```markdown
-## Best answer
-## Suggested version
-## Why it works
-## Improvements / next steps
-```
+### Section 3 — What needs to happen (paragraph, layman terms)
+One short prose paragraph (2–4 sentences). Plain English. The next move and why it matters. This is the framing, not the literal copy-paste — that goes in Section 4.
 
-Every output should be specific, customer-centered, business-aware, actionable, ready to paste into a doc/ticket/deck/email/sales asset, and clear enough for cross-functional teams.
+### Section 4 — Exact handoff message
+Copy-paste-ready block. Begin with `NEXT HANDOFF — paste into [target skill or operator]:` on its own line, then a blank line, then the verbatim text the operator pastes into the next skill (or executes themselves). If there is no next step, write `NEXT HANDOFF — none; awaiting operator direction.`
+
+### Hard rules
+1. No additional sections (no "Summary", "Recommendation", "Confidence", "Risks", "Files Changed", "Documents Updated"). Detail belongs in artifact files; chat is summary-grade.
+2. No section may be skipped. If a section is genuinely N/A, say so in one honest sentence.
+3. No emojis, no ASCII boxes, no decoration. Markdown headings (`##` / `###`) only.
+4. Section 4 is mandatory on every turn.
+5. This 4-section format SUPERSEDES any older response-shape rule in this skill or in `feedback_response_format.md`.
+6. Detail-in-files rule still holds: deep reports, specs, verdicts go into `Mingla_Artifacts/` paths cited from Sections 2 and 4.
+
+Canonical reference (Claude memory): `feedback_universal_skill_output_format.md`.
+
+## Chat Output Supplementary Notes
+
+Every output should be specific, customer-centered, business-aware, actionable, ready to paste into a doc/ticket/deck/email/sales asset, and clear enough for cross-functional teams. Longer product, GTM, research, pricing, roadmap, launch, and sales enablement artifacts belong in `Mingla_Roadmap/` or `Mingla_Artifacts/` files and are cited from Sections 2 and 4 instead of expanded into extra chat sections.
 
 Avoid generic startup advice, empty frameworks, academic language, strategy without execution, features without customer value, launch plans without owners/timing/channels/success metrics, and messaging that sounds like every other company.
 
@@ -190,18 +193,7 @@ Output pricing recommendation, packaging structure, value metric, tiers, what go
 
 ### Executive Communication
 
-Lead with the answer:
-
-```markdown
-## Bottom line
-## What changed
-## Why it matters
-## Decision needed
-## Options
-## Recommendation
-## Risks
-## Next milestone
-```
+Lead with the answer inside the universal four chat sections, or put the full executive artifact in a cited file. For durable artifacts, include bottom line, what changed, why it matters, decision needed, options, recommendation, risks, and next milestone.
 
 ## Decision Style
 

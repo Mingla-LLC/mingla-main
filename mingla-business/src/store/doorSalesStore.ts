@@ -40,6 +40,11 @@ import {
   persist,
   type PersistOptions,
 } from "zustand/middleware";
+import {
+  doorSaleLiveAmount,
+  summarizeEventMoney,
+  type EventMoneySummary,
+} from "../utils/moneySummary";
 
 // ---- Types ----------------------------------------------------------
 
@@ -52,6 +57,8 @@ export interface DoorSaleLine {
   ticketNameAtSale: string;
   /** FROZEN at sale. NEVER mutated. */
   unitPriceGbpAtSale: number;
+  /** Currency-neutral alias for new ORCH-0769 records. */
+  unitPriceAtSale?: number;
   /** FROZEN at sale. NEVER mutated. */
   isFreeAtSale: boolean;
   /** FROZEN at sale. NEVER mutated. */
@@ -60,6 +67,8 @@ export interface DoorSaleLine {
   refundedQuantity: number;
   /** Mutable post-refund. Sum of refunds applied to this line. */
   refundedAmountGbp: number;
+  /** Currency-neutral alias for new ORCH-0769 records. */
+  refundedAmount?: number;
 }
 
 export interface DoorRefundRecord {
@@ -67,11 +76,13 @@ export interface DoorRefundRecord {
   id: string;
   saleId: string;
   amountGbp: number;
+  /** Currency-neutral alias for new ORCH-0769 records. */
+  amount?: number;
   /** REQUIRED 10..200 chars trimmed (mirrors Cycle 9c refund reason). */
   reason: string;
   refundedAt: string;
   /** Per-line attribution. */
-  lines: { ticketTypeId: string; quantity: number; amountGbp: number }[];
+  lines: { ticketTypeId: string; quantity: number; amountGbp: number; amount?: number }[];
 }
 
 export type DoorSaleStatus = "completed" | "refunded_full" | "refunded_partial";
@@ -96,8 +107,10 @@ export interface DoorSaleRecord {
   paymentMethod: DoorPaymentMethod;
   lines: DoorSaleLine[];
   totalGbpAtSale: number;
+  /** Currency-neutral alias for new ORCH-0769 records. */
+  totalAtSale?: number;
   /** Locked per Const #10. */
-  currency: "GBP";
+  currency: string;
   /** Operator notes (e.g., "John gave £50 cash, change £20"). 0..500 chars. */
   notes: string;
   recordedAt: string;
@@ -105,6 +118,8 @@ export interface DoorSaleRecord {
   status: DoorSaleStatus;
   /** Sum across all refunds (denormalized cache). */
   refundedAmountGbp: number;
+  /** Currency-neutral alias for new ORCH-0769 records. */
+  refundedAmount?: number;
   /** Append-only audit log. */
   refunds: DoorRefundRecord[];
 }
@@ -140,6 +155,10 @@ export interface DoorSalesStoreState {
   /** Fresh array; USE VIA .getState() ONLY (one-shot lookups). */
   getSalesForEvent: (eventId: string) => DoorSaleRecord[];
   getDoorRevenueForEvent: (eventId: string) => number;
+  getDoorRevenueSummaryForEvent: (
+    eventId: string,
+    expectedCurrency?: string | null,
+  ) => EventMoneySummary;
   getDoorSoldCountForEvent: (eventId: string) => number;
 }
 
@@ -192,6 +211,7 @@ export const useDoorSalesStore = create<DoorSalesStoreState>()(
           recordedAt: new Date().toISOString(),
           status: "completed",
           refundedAmountGbp: 0,
+          refundedAmount: 0,
           refunds: [],
         };
         // Prepend so getSalesForEvent returns newest-first naturally.
@@ -205,6 +225,11 @@ export const useDoorSalesStore = create<DoorSalesStoreState>()(
         const id = generateDoorRefundId();
         const refundedAt = new Date().toISOString();
         const fullRefund: DoorRefundRecord = { ...refund, id, refundedAt };
+        fullRefund.amount = fullRefund.amount ?? fullRefund.amountGbp;
+        fullRefund.lines = fullRefund.lines.map((line) => ({
+          ...line,
+          amount: line.amount ?? line.amountGbp,
+        }));
 
         // Update per-line aggregates from refund.lines[]
         const newLines = sale.lines.map((line) => {
@@ -217,6 +242,9 @@ export const useDoorSalesStore = create<DoorSalesStoreState>()(
             refundedQuantity: line.refundedQuantity + lineRefund.quantity,
             refundedAmountGbp:
               line.refundedAmountGbp + lineRefund.amountGbp,
+            refundedAmount:
+              (line.refundedAmount ?? line.refundedAmountGbp) +
+              (lineRefund.amount ?? lineRefund.amountGbp),
           };
         });
 
@@ -233,6 +261,9 @@ export const useDoorSalesStore = create<DoorSalesStoreState>()(
           ...sale,
           lines: newLines,
           refundedAmountGbp: newRefundedAmount,
+          refundedAmount:
+            (sale.refundedAmount ?? sale.refundedAmountGbp) +
+            (fullRefund.amount ?? fullRefund.amountGbp),
           refunds: [...sale.refunds, fullRefund],
           status: newStatus,
         };
@@ -264,11 +295,19 @@ export const useDoorSalesStore = create<DoorSalesStoreState>()(
 
       getDoorRevenueForEvent: (eventId): number => {
         const sales = get().entries.filter((e) => e.eventId === eventId);
-        return sales.reduce(
-          (sum, s) =>
-            sum + Math.max(0, s.totalGbpAtSale - s.refundedAmountGbp),
-          0,
-        );
+        return sales.reduce((sum, s) => sum + doorSaleLiveAmount(s), 0);
+      },
+
+      getDoorRevenueSummaryForEvent: (
+        eventId,
+        expectedCurrency = "GBP",
+      ): EventMoneySummary => {
+        const sales = get().entries.filter((e) => e.eventId === eventId);
+        return summarizeEventMoney({
+          expectedCurrency,
+          orders: [],
+          doorSales: sales,
+        });
       },
 
       getDoorSoldCountForEvent: (eventId): number => {

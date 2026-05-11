@@ -37,7 +37,7 @@ export interface BrandRow {
   custom_links: unknown;
   display_attendee_count: boolean;
   tax_settings: unknown;
-  default_currency: string;
+  default_currency: string | null;
   stripe_connect_id: string | null;
   stripe_payouts_enabled: boolean;
   stripe_charges_enabled: boolean;
@@ -66,7 +66,7 @@ export type BrandTableInsert = {
   custom_links?: BrandCustomLink[];
   display_attendee_count?: boolean;
   tax_settings?: Record<string, unknown>;
-  default_currency?: string;
+  default_currency?: string | null;
   stripe_connect_id?: string | null;
   stripe_payouts_enabled?: boolean;
   stripe_charges_enabled?: boolean;
@@ -234,10 +234,9 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     links,
     displayAttendeeCount: row.display_attendee_count,
     stripeStatus,
-    // B2a Path C V3 (Sub-C Session B): expose brands.default_currency to UI
-    // so multi-currency formatters (formatCurrency) can render localized
-    // amounts. Defaults to GBP for legacy rows that pre-date the V3 widening.
-    defaultCurrency: row.default_currency || "GBP",
+    // ORCH-0769: expose brands.default_currency only once Stripe/brand setup
+    // has actually set it. Undefined means "currency not set" — do not imply GBP.
+    defaultCurrency: row.default_currency || undefined,
   };
 }
 
@@ -262,7 +261,7 @@ export function mapUiToBrandInsert(input: MapUiToBrandInsertInput): BrandTableIn
     social_links: linksToSocialJson(brand.links),
     custom_links: brand.links?.custom?.length ? brand.links.custom : [],
     tax_settings: {},
-    default_currency: "GBP",
+    default_currency: brand.defaultCurrency ?? null,
     stripe_connect_id: null,
     stripe_payouts_enabled: false,
     stripe_charges_enabled: false,

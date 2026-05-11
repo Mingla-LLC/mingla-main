@@ -36,13 +36,13 @@ import {
   type LiveEvent,
 } from "../../../src/store/liveEventStore";
 import { useDraftById } from "../../../src/store/draftEventStore";
-import { useOrderStore } from "../../../src/store/orderStore";
 import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
 import { useScanStore } from "../../../src/store/scanStore";
 import { useEventEditLogStore } from "../../../src/store/eventEditLogStore";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { deriveLiveStatus } from "../../../src/utils/eventLifecycle";
-import { formatGbp } from "../../../src/utils/currency";
+import { formatCurrency } from "../../../src/utils/currency";
+import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { eventPublicUrl } from "../../../src/constants/publicUrls";
 
 // Cycle 17d Stage 2 §F.4 — ActivityEvent type + activityRowKey + helpers
@@ -76,6 +76,7 @@ import {
   useCancelBusinessEvent,
   useEndBusinessEventTicketSales,
 } from "../../../src/hooks/useBusinessEvents";
+import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { canPerformAction } from "../../../src/utils/permissionGates";
 
 const CANCEL_PROCESSING_MS = 1200;
@@ -309,16 +310,24 @@ export default function EventDetailScreen(): React.ReactElement {
     );
   }, [showToast]);
 
-  // Cycle 9c — populated from useOrderStore (subscribes to live updates).
-  const revenueGbp = useOrderStore((s) =>
-    event !== null ? s.getRevenueForEvent(event.id) : 0,
-  );
-  // [TRANSITIONAL] payout = revenue × 0.96 (4% stub Stripe fee retention).
-  // EXIT: B-cycle wires real Stripe payouts; payout comes from Stripe API.
-  const payoutGbp = Math.round(revenueGbp * 96) / 100;
-  // Total tickets sold across all tiers — drives "X sold" subtext on Orders ActionTile.
-  const totalSoldCount = useOrderStore((s) =>
-    event !== null ? s.getSoldCountForEvent(event.id) : 0,
+  const eventOrdersQuery = useEventOrders(event?.id ?? null);
+  const allOrderEntries = eventOrdersQuery.data ?? [];
+  const totalSoldCount = useMemo<number>(
+    () =>
+      allOrderEntries.reduce(
+        (sum, order) => {
+          if (order.status !== "paid" && order.status !== "refunded_partial") return sum;
+          return (
+            sum +
+            order.lines.reduce(
+              (lineSum, line) => lineSum + Math.max(0, line.quantity - line.refundedQuantity),
+              0,
+            )
+          );
+        },
+        0,
+      ),
+    [allOrderEntries],
   );
   // Cycle 12 — door sale KPIs (gated on event.inPersonPaymentsEnabled below
   // when rendering the J-D1 ActionTile). Per SPEC §4.5 selector pattern rule
@@ -337,19 +346,30 @@ export default function EventDetailScreen(): React.ReactElement {
     }
     return count;
   }, [allDoorEntries, event]);
-  const doorRevenue = useMemo<number>(() => {
-    if (event === null) return 0;
-    let revenue = 0;
-    for (const sale of allDoorEntries) {
-      if (sale.eventId !== event.id) continue;
-      revenue += sale.totalGbpAtSale - sale.refundedAmountGbp;
-    }
-    return revenue;
-  }, [allDoorEntries, event]);
+  const moneySummary = useMemo(
+    () =>
+      summarizeEventMoney({
+        expectedCurrency: event?.currency ?? brand?.defaultCurrency,
+        orders:
+          event === null
+            ? []
+            : allOrderEntries.filter((order) => order.eventId === event.id),
+        doorSales:
+          event === null
+            ? []
+            : allDoorEntries.filter((sale) => sale.eventId === event.id),
+      }),
+    [allDoorEntries, allOrderEntries, event],
+  );
+  const revenueGbp = moneySummary.onlineRevenue;
+  // [TRANSITIONAL] payout = revenue × 0.96 (4% stub Stripe fee retention).
+  // EXIT: B-cycle wires real Stripe payouts; payout comes from Stripe API.
+  const payoutGbp = moneySummary.payoutEstimate - moneySummary.doorRevenue;
+  const doorRevenue = moneySummary.doorRevenue;
+  const displayCurrency = event?.currency ?? brand?.defaultCurrency ?? moneySummary.expectedCurrency;
   // Per-tier sold count map — stable ref via raw entries + useMemo (same
   // pattern as Cycle 9c rework v2 fix; avoids infinite-loop on
   // getSoldCountByTier returning a fresh object each call).
-  const allOrderEntries = useOrderStore((s) => s.entries);
   const soldCountByTier = useMemo<Record<string, number>>(() => {
     if (event === null) return {};
     const eventOrders = allOrderEntries.filter(
@@ -395,6 +415,7 @@ export default function EventDetailScreen(): React.ReactElement {
         buyerName,
         summary: purchaseSummary,
         amountGbp: o.totalGbpAtPurchase,
+        currency: o.currency,
         at: o.paidAt,
       });
       for (const r of o.refunds) {
@@ -405,6 +426,7 @@ export default function EventDetailScreen(): React.ReactElement {
           buyerName,
           summary: `refunded ${refundedQty}× tickets`,
           amountGbp: r.amountGbp,
+          currency: o.currency,
           at: r.refundedAt,
         });
       }
@@ -497,8 +519,9 @@ export default function EventDetailScreen(): React.ReactElement {
           saleId: sale.id,
           refundId: r.id,
           buyerName,
-          summary: `${buyerName} — refunded ${formatGbp(r.amountGbp)} (door)`,
+          summary: `${buyerName} — refunded ${formatCurrency(r.amountGbp, sale.currency)} (door)`,
           amountGbp: r.amountGbp,
+          currency: sale.currency,
           at: r.refundedAt,
         });
       }
@@ -645,7 +668,7 @@ export default function EventDetailScreen(): React.ReactElement {
             <ActionTile
               icon="ticket"
               label="Door Sales"
-              sub={`${doorSoldCount} sold · ${formatGbp(doorRevenue)}`}
+              sub={`${doorSoldCount} sold · ${formatCurrency(doorRevenue, displayCurrency)}`}
               onPress={handleDoorSales}
             />
           ) : null}
@@ -657,7 +680,20 @@ export default function EventDetailScreen(): React.ReactElement {
         </View>
 
         {/* Revenue card */}
-        <EventDetailKpiCard revenueGbp={revenueGbp} payoutGbp={payoutGbp} />
+        <EventDetailKpiCard
+          revenueGbp={revenueGbp}
+          payoutGbp={payoutGbp}
+          currency={displayCurrency}
+        />
+
+        {moneySummary.mismatches.length > 0 ? (
+          <GlassCard variant="base" radius="md" padding={spacing.md}>
+            <Text style={styles.currencyWarningTitle}>Currency review needed</Text>
+            <Text style={styles.currencyWarningBody}>
+              {`${moneySummary.mismatches.length} stale row(s) in ${moneySummary.currenciesPresent.join(", ")} were excluded from ${moneySummary.expectedCurrency} totals.`}
+            </Text>
+          </GlassCard>
+        ) : null}
 
         {/* Ticket types section */}
         <Text style={styles.sectionLabel}>TICKET TYPES</Text>
@@ -919,6 +955,17 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     textAlign: "center",
     paddingVertical: spacing.sm,
+  },
+  currencyWarningTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  currencyWarningBody: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: textTokens.secondary,
+    marginTop: 4,
   },
   cancelCtaWrap: {
     marginTop: spacing.xl,

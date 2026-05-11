@@ -622,7 +622,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
                   ticket={t}
                   isLast={i === visibleTickets.length - 1}
                   variant={variant}
-                  currency="GBP"
+                  currency={event.currency ?? "GBP"}
                   onBuyerAction={onBuyerAction}
                 />
               ))}
@@ -656,7 +656,7 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
   const priceLabel = ticket.isFree
     ? "Free"
     : ticket.priceGbp !== null
-      ? formatCurrencyRound(ticket.priceGbp, currency)
+      ? formatCurrencyRound(ticket.priceGbp, ticket.currency ?? currency)
       : "—";
   const subLine = formatTicketSubline(ticket);
   const badges = formatTicketBadges(ticket);

@@ -40,7 +40,7 @@ import {
   useDoorSalesStore,
   type DoorSaleRecord,
 } from "../../store/doorSalesStore";
-import { formatGbp } from "../../utils/currency";
+import { formatCurrency } from "../../utils/currency";
 
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
@@ -159,6 +159,7 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
           ticketTypeId: p.ticketTypeId,
           quantity: p.selectedQty,
           amountGbp: p.selectedQty * unitPrice,
+          amount: p.selectedQty * unitPrice,
         };
       });
 
@@ -171,6 +172,7 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
     const updated = useDoorSalesStore.getState().recordRefund(sale.id, {
       saleId: sale.id,
       amountGbp: refundTotalGbp,
+      amount: refundTotalGbp,
       reason: trimmedReason,
       lines: refundLines,
     });
@@ -242,7 +244,7 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
                           {maxRefundable} remaining ·{" "}
                           {line.isFreeAtSale
                             ? "Free"
-                            : formatGbp(line.unitPriceGbpAtSale)}{" "}
+                            : formatCurrency(line.unitPriceGbpAtSale, sale.currency)}{" "}
                           each
                         </Text>
                       </View>
@@ -302,7 +304,7 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Refund total</Text>
                   <Text style={styles.summaryValueBold}>
-                    {formatGbp(refundTotalGbp)}
+                    {formatCurrency(refundTotalGbp, sale.currency)}
                   </Text>
                 </View>
               </>
@@ -363,7 +365,7 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
         {/* Sticky bottom CTAs */}
         <View style={styles.actions}>
           <Button
-            label={`Refund ${formatGbp(refundTotalGbp)}`}
+            label={`Refund ${formatCurrency(refundTotalGbp, sale.currency)}`}
             onPress={handleConfirm}
             variant="destructive"
             size="lg"

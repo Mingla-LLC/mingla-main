@@ -8,7 +8,7 @@
  *
  * Past events with soldCount=0 render at opacity 0.7 (Q-9-9).
  *
- * [Cycle 9c] soldCount + revenueGbp will derive from useOrderStore.
+ * Sold count + revenue derive from the server-backed event orders hook.
  * 9a renders 0/cap and "—" placeholders.
  *
  * Per Cycle 9 spec §3.A.2.
@@ -27,9 +27,10 @@ import {
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { DraftEvent } from "../../store/draftEventStore";
 import type { Brand } from "../../store/currentBrandStore";
-import { useOrderStore } from "../../store/orderStore";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
-import { formatGbpRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
+import { summarizeEventMoney } from "../../utils/moneySummary";
+import { useEventOrders } from "../../hooks/useEventOrders";
 
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
@@ -83,7 +84,7 @@ export const EventListCard: React.FC<EventListCardProps> = ({
       : null;
   }, [event, kind]);
 
-  // ----- Capacity / sold (stub in 9a — populated from useOrderStore in 9c) -----
+  // ----- Capacity / sold ------------------------------------------------
   const totalCapacity = useMemo<number>((): number => {
     let cap = 0;
     let hasUnlimited = false;
@@ -94,9 +95,34 @@ export const EventListCard: React.FC<EventListCardProps> = ({
     if (hasUnlimited && cap === 0) return 0;
     return cap;
   }, [event.tickets]);
-  // Cycle 9c — derive from useOrderStore (subscribes to live updates).
-  const soldCount = useOrderStore((s) => s.getSoldCountForEvent(event.id));
-  const revenueGbp = useOrderStore((s) => s.getRevenueForEvent(event.id));
+  const eventOrdersQuery = useEventOrders(kind === "live" ? event.id : null);
+  const orderEntries = eventOrdersQuery.data ?? [];
+  const soldCount = useMemo(
+    () =>
+      orderEntries.reduce((sum, order) => {
+        if (order.status !== "paid" && order.status !== "refunded_partial") return sum;
+        return (
+          sum +
+          order.lines.reduce(
+            (lineSum, line) => lineSum + Math.max(0, line.quantity - line.refundedQuantity),
+            0,
+          )
+        );
+      }, 0),
+    [orderEntries],
+  );
+  const revenueSummary = useMemo(
+    () =>
+      summarizeEventMoney({
+        expectedCurrency: isLiveEvent(event, kind)
+          ? event.currency ?? brand.defaultCurrency
+          : brand.defaultCurrency,
+        orders: orderEntries,
+        doorSales: [],
+      }),
+    [brand.defaultCurrency, event, kind, orderEntries],
+  );
+  const revenueGbp = revenueSummary.onlineRevenue;
   const pct =
     totalCapacity > 0
       ? Math.min(100, Math.round((soldCount / totalCapacity) * 100))
@@ -211,7 +237,13 @@ export const EventListCard: React.FC<EventListCardProps> = ({
       {kind !== "draft" && status !== "past" ? (
         <View style={styles.revenueStrip} pointerEvents="none">
           <Text style={styles.revenueValue}>
-            {revenueGbp > 0 ? formatGbpRound(revenueGbp) : "—"}
+            {revenueGbp > 0
+              ? event.currency !== undefined || brand.defaultCurrency !== undefined
+                ? formatCurrencyRound(revenueGbp, event.currency ?? brand.defaultCurrency ?? "")
+                : "Currency not set"
+              : revenueSummary.mismatches.length > 0
+                ? "Currency review"
+              : "—"}
           </Text>
         </View>
       ) : null}

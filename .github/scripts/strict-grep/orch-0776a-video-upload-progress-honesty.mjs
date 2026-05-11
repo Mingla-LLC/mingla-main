@@ -31,8 +31,8 @@ if (!service.includes("totalBytesSent") || !service.includes("totalBytesExpected
 if (!step4.includes("Uploading video... ${progress.percent}%")) {
   fail("Step 4 must render a determinate source-upload percentage.");
 }
-if (!step4.includes("acknowledgeEventCoverVideoSourceUploaded") || !step4.includes("stageLabel")) {
-  fail("Step 4 must use backend stage labels after upload acknowledgement.");
+if (!step4.includes("Upload complete. Compressing browser-safe video...")) {
+  fail("Step 4 must use honest provider-processing copy after upload completes.");
 }
 if (/Compressing[^"`']*%\b/.test(step4)) {
   fail("Step 4 must not display a fake numeric Cloudinary processing percentage.");
@@ -42,3 +42,4 @@ if (!test.includes("uploads source video with real byte progress")) {
 }
 
 console.log("[orch-0776a] video upload progress honesty guard passed");
+

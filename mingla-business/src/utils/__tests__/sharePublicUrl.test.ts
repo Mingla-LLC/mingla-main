@@ -147,9 +147,18 @@ describe("sharePublicUrl helpers", () => {
     expect(
       buildPublicShareBody({
         title: "Great Free Event",
+        url: canonicalUrl,
         description: "A free Mingla QA event.",
       }),
     ).toBe("A free Mingla QA event.");
+
+    expect(
+      buildPublicShareBody({
+        title: "Great Free Event",
+        url: canonicalUrl,
+        description: `Already includes ${canonicalUrl}`,
+      }),
+    ).toBe("Already includes");
 
     expect(
       buildPublicShareBody({
@@ -178,7 +187,7 @@ describe("sharePublicUrl helpers", () => {
         url: canonicalUrl,
         description: `Already includes ${canonicalUrl}`,
       }),
-    ).toBe(`Already includes ${canonicalUrl}`);
+    ).toBe(`Already includes\n${canonicalUrl}`);
 
     expect(
       buildPublicShareText({

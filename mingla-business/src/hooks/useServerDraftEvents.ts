@@ -3,6 +3,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query";
 
@@ -12,17 +13,35 @@ import {
   discardServerDraft,
   fetchDraftById,
   fetchDraftsForBrand,
+  isServerDraftLifecycleError,
 } from "../services/eventDrafts";
 import {
   useDraftEventStore,
   type DraftEvent,
 } from "../store/draftEventStore";
+import { useAuth } from "../context/AuthContext";
+import {
+  isBusinessAuthNotReadyError,
+  requireBusinessAuthReady,
+} from "../utils/authReadiness";
 
 const STALE_TIME_MS = 30 * 1000;
 const DISABLED_KEY = ["event-drafts-disabled"] as const;
 
 const logMutationError = (label: string, error: Error): void => {
   console.error(`[${label}] Operation failed:`, error);
+};
+
+const isLocalOnlyDraftId = (draftId: string): boolean => draftId.startsWith("d_");
+
+const removeDraftFromListCache = (
+  queryClient: QueryClient,
+  draft: DraftEvent,
+): void => {
+  queryClient.setQueryData<DraftEvent[]>(
+    eventDraftKeys.list(draft.brandId),
+    (prev) => (prev ?? []).filter((d) => d.id !== draft.id),
+  );
 };
 
 export const eventDraftKeys = {
@@ -40,7 +59,8 @@ export const eventDraftKeys = {
 export const useServerDraftsForBrand = (
   brandId: string | null,
 ): UseQueryResult<DraftEvent[]> => {
-  const enabled = brandId !== null;
+  const { isAuthReady } = useAuth();
+  const enabled = brandId !== null && isAuthReady;
   const upsertServerDrafts = useDraftEventStore((s) => s.upsertServerDrafts);
   const replaceDraft = useDraftEventStore((s) => s.replaceDraft);
   const localDrafts = useDraftEventStore((s) => s.drafts);
@@ -110,6 +130,7 @@ export const useServerDraftsForBrand = (
             );
           })
           .catch((error) => {
+            if (isBusinessAuthNotReadyError(error)) return;
             if (__DEV__) {
               console.error("[eventDrafts] legacy migration failed", error);
             }
@@ -126,7 +147,8 @@ export const useServerDraftsForBrand = (
 export const useServerDraftById = (
   draftId: string | null,
 ): UseQueryResult<DraftEvent | null> => {
-  const enabled = draftId !== null;
+  const { isAuthReady } = useAuth();
+  const enabled = draftId !== null && isAuthReady;
   const upsertServerDraft = useDraftEventStore((s) => s.upsertServerDraft);
   const query = useQuery<DraftEvent | null>({
     queryKey:
@@ -157,12 +179,17 @@ export interface ServerDraftAutosaveState {
 }
 
 export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
+  const { authStatus, isAuthReady, session } = useAuth();
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const upsertServerDraft = useDraftEventStore((s) => s.upsertServerDraft);
+  const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const markDraftSaved = useDraftEventStore((s) => s.markDraftSaved);
   const mutation = useMutation<DraftEvent, Error, DraftEvent>({
-    mutationFn: autosaveServerDraft,
+    mutationFn: async (draft) => {
+      requireBusinessAuthReady(authStatus, session);
+      return autosaveServerDraft(draft);
+    },
     onSuccess: (draft) => {
       const accepted = upsertServerDraft(draft);
       if (!accepted) return;
@@ -178,16 +205,49 @@ export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
       );
       setLastSavedAt(new Date().toISOString());
     },
-    onError: (error) => {
+    onError: (error, draft) => {
+      if (isServerDraftLifecycleError(error)) {
+        if (!isLocalOnlyDraftId(draft.id)) {
+          deleteDraft(draft.id);
+          queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
+          removeDraftFromListCache(queryClient, draft);
+          queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
+        }
+        if (__DEV__) {
+          console.info("[useServerDraftAutosave] Draft retired:", {
+            code: error.code,
+            draftId: error.draftId,
+          });
+        }
+        return;
+      }
+      if (isBusinessAuthNotReadyError(error)) {
+        if (__DEV__) {
+          console.info("[useServerDraftAutosave] Deferred until auth ready:", {
+            code: error.code,
+            authStatus: error.authStatus,
+          });
+        }
+        return;
+      }
       logMutationError("useServerDraftAutosave", error);
     },
   });
 
   const saveDraft = useCallback(
     (draft: DraftEvent): void => {
+      if (!isAuthReady) {
+        if (__DEV__) {
+          console.info("[useServerDraftAutosave] draft-save-deferred", {
+            authStatus,
+            draftId: draft.id,
+          });
+        }
+        return;
+      }
       mutation.mutate(draft);
     },
-    [mutation],
+    [authStatus, isAuthReady, mutation],
   );
 
   return useMemo(
@@ -195,11 +255,15 @@ export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
       saveDraft,
       saveDraftAsync: mutation.mutateAsync,
       isSaving: mutation.isPending,
-      hasError: mutation.isError,
+      hasError:
+        mutation.isError &&
+        !isServerDraftLifecycleError(mutation.error) &&
+        !isBusinessAuthNotReadyError(mutation.error),
       lastSavedAt,
     }),
     [
       lastSavedAt,
+      mutation.error,
       mutation.isError,
       mutation.isPending,
       mutation.mutateAsync,
@@ -213,16 +277,29 @@ export const useCreateServerDraft = (): {
   isPending: boolean;
   error: Error | null;
 } => {
+  const { authStatus, session } = useAuth();
   const queryClient = useQueryClient();
   const upsertDraft = useDraftEventStore((s) => s.upsertDraft);
   const mutation = useMutation<DraftEvent, Error, string>({
-    mutationFn: (brandId) => createServerDraft(brandId),
+    mutationFn: (brandId) => {
+      requireBusinessAuthReady(authStatus, session);
+      return createServerDraft(brandId);
+    },
     onSuccess: (draft) => {
       upsertDraft(draft);
       queryClient.setQueryData(eventDraftKeys.detail(draft.id), draft);
       queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
     },
     onError: (error) => {
+      if (isBusinessAuthNotReadyError(error)) {
+        if (__DEV__) {
+          console.info("[useCreateServerDraft] draft-create-auth-not-ready", {
+            authStatus: error.authStatus,
+            code: error.code,
+          });
+        }
+        return;
+      }
       logMutationError("useCreateServerDraft", error);
     },
   });
@@ -242,10 +319,18 @@ export const useDiscardServerDraft = (): {
   const queryClient = useQueryClient();
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const mutation = useMutation<void, Error, DraftEvent>({
-    mutationFn: (draft) => discardServerDraft(draft.id),
+    mutationFn: async (draft) => {
+      try {
+        await discardServerDraft(draft.id);
+      } catch (error) {
+        if (isServerDraftLifecycleError(error)) return;
+        throw error;
+      }
+    },
     onSuccess: (_void, draft) => {
       deleteDraft(draft.id);
       queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
+      removeDraftFromListCache(queryClient, draft);
       queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
     },
     onError: (error) => {

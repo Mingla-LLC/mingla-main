@@ -36,15 +36,19 @@ export interface CartLine {
   /** Snapshot of name at selection time — display-stable if event is renamed mid-checkout. */
   ticketName: string;
   quantity: number;
-  /** GBP whole-units. 0 for free tickets. */
-  unitPriceGbp: number;
+  /** Major units in `currency`. */
+  unitPrice: number;
+  /** Legacy compatibility only. New code writes `unitPrice`. */
+  unitPriceGbp?: number;
+  /** ISO 4217 event currency. */
+  currency: string;
   isFree: boolean;
 }
 
 export interface BuyerDetails {
   name: string;
   email: string;
-  /** Optional. Stored as buyer-typed string; B3 normalises to E.164. */
+  /** Required for production checkout. Edge functions normalise to E.164. */
   phone: string;
   marketingOptIn: boolean;
 }
@@ -65,9 +69,23 @@ export type CheckoutPaymentMethod =
 export interface OrderResult {
   orderId: string;
   ticketIds: string[];
+  checkoutSessionId?: string;
   paidAt: string;
   paymentMethod: CheckoutPaymentMethod;
-  totalGbp: number;
+  /** Legacy compatibility only. New code writes `total`. */
+  totalGbp?: number;
+  total: number;
+  totalCents?: number;
+  currency: string;
+  paymentStatus?: "paid";
+  notificationStatus?: "queued" | "sent" | "partial" | "failed" | string;
+  tickets: Array<{
+    ticketId: string;
+    ticketTypeId?: string;
+    ticketName: string;
+    qrPayload: string;
+    status: string;
+  }>;
 }
 
 export interface CartState {
@@ -84,7 +102,9 @@ type CartAction =
       type: "SET_LINE_QUANTITY";
       ticketTypeId: string;
       ticketName: string;
-      unitPriceGbp: number;
+      unitPrice: number;
+      unitPriceGbp?: number;
+      currency: string;
       isFree: boolean;
       quantity: number;
     }
@@ -108,8 +128,17 @@ const INITIAL_STATE: CartState = {
 const reducer = (state: CartState, action: CartAction): CartState => {
   switch (action.type) {
     case "SET_LINE_QUANTITY": {
-      const { ticketTypeId, ticketName, unitPriceGbp, isFree, quantity } =
+      const { ticketTypeId, ticketName, unitPrice, unitPriceGbp, currency, isFree, quantity } =
         action;
+      const normalizedCurrency = currency.toUpperCase();
+      const existingCurrency = state.lines[0]?.currency;
+      if (
+        existingCurrency !== undefined &&
+        existingCurrency !== normalizedCurrency &&
+        quantity > 0
+      ) {
+        throw new Error("Cart cannot mix currencies.");
+      }
       const existing = state.lines.find((l) => l.ticketTypeId === ticketTypeId);
       if (quantity <= 0) {
         // Remove line if quantity drops to zero.
@@ -124,7 +153,15 @@ const reducer = (state: CartState, action: CartAction): CartState => {
           ...state,
           lines: [
             ...state.lines,
-            { ticketTypeId, ticketName, quantity, unitPriceGbp, isFree },
+            {
+              ticketTypeId,
+              ticketName,
+              quantity,
+              unitPrice,
+              unitPriceGbp: unitPriceGbp ?? unitPrice,
+              currency: normalizedCurrency,
+              isFree,
+            },
           ],
         };
       }
@@ -154,7 +191,9 @@ export interface CartContextValue extends CartState {
   setLineQuantity: (params: {
     ticketTypeId: string;
     ticketName: string;
-    unitPriceGbp: number;
+    unitPrice: number;
+    unitPriceGbp?: number;
+    currency: string;
     isFree: boolean;
     quantity: number;
   }) => void;
@@ -176,7 +215,9 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     (params: {
       ticketTypeId: string;
       ticketName: string;
-      unitPriceGbp: number;
+      unitPrice: number;
+      unitPriceGbp?: number;
+      currency: string;
       isFree: boolean;
       quantity: number;
     }): void => {
@@ -222,8 +263,13 @@ export const useCart = (): CartContextValue => {
 };
 
 export interface CartTotals {
+  /** Legacy compatibility only. Same value as subtotal. */
   subtotalGbp: number;
+  /** Legacy compatibility only. Same value as total. */
   totalGbp: number;
+  subtotal: number;
+  total: number;
+  currency: string;
   totalQuantity: number;
   isFree: boolean;
   isEmpty: boolean;
@@ -232,17 +278,22 @@ export interface CartTotals {
 export const useCartTotals = (): CartTotals => {
   const { lines } = useCart();
   return useMemo<CartTotals>((): CartTotals => {
-    let subtotalGbp = 0;
+    let subtotal = 0;
     let totalQuantity = 0;
+    let currency = "";
     for (const line of lines) {
-      subtotalGbp += line.unitPriceGbp * line.quantity;
+      subtotal += line.unitPrice * line.quantity;
       totalQuantity += line.quantity;
+      currency = line.currency;
     }
     const isEmpty = totalQuantity === 0;
-    const isFree = !isEmpty && subtotalGbp === 0;
+    const isFree = !isEmpty && subtotal === 0;
     return {
-      subtotalGbp,
-      totalGbp: subtotalGbp,
+      subtotalGbp: subtotal,
+      totalGbp: subtotal,
+      subtotal,
+      total: subtotal,
+      currency,
       totalQuantity,
       isFree,
       isEmpty,

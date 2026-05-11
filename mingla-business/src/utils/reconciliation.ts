@@ -30,7 +30,12 @@ import type { DoorSaleRecord } from "../store/doorSalesStore";
 import type { OrderRecord } from "../store/orderStore";
 import type { ScanRecord } from "../store/scanStore";
 import { expandDoorTickets } from "./expandDoorTickets";
-import { formatGbp } from "./currency";
+import { formatCurrency } from "./currency";
+import {
+  summarizeEventMoney,
+  type CurrencyBreakdown,
+  type CurrencyMismatch,
+} from "./moneySummary";
 
 // ---- Types -----------------------------------------------------------
 
@@ -83,6 +88,9 @@ export interface ReconciliationSummary {
   onlineRefunded: number;
   /** Door refund subtotal; for break-down rendering. */
   doorRefunded: number;
+  currenciesPresent: string[];
+  currencyBreakdown: CurrencyBreakdown[];
+  currencyMismatches: CurrencyMismatch[];
 
   // ---- Scans ----
   uniqueScannedTickets: number;
@@ -105,6 +113,7 @@ export interface ReconciliationInputs {
   eventId: string;
   status: EventLifecycleStatus;
   eventName: string;
+  currency?: string;
   orderEntries: OrderRecord[];
   doorEntries: DoorSaleRecord[];
   compEntries: CompGuestEntry[];
@@ -145,6 +154,9 @@ export const EMPTY_SUMMARY: ReconciliationSummary = {
   payoutEstimate: 0,
   onlineRefunded: 0,
   doorRefunded: 0,
+  currenciesPresent: [],
+  currencyBreakdown: [],
+  currencyMismatches: [],
   uniqueScannedTickets: 0,
   scanDups: 0,
   scanWrongEvent: 0,
@@ -195,6 +207,7 @@ export const computeReconciliation = (
   const {
     eventId,
     status,
+    currency = "GBP",
     orderEntries,
     doorEntries,
     compEntries,
@@ -228,64 +241,24 @@ export const computeReconciliation = (
 
   const totalLiveTickets = onlineLiveTickets + doorLiveTickets + compTickets;
 
-  // ---- Revenue (online live = total - refunded; cancelled excluded) ----
-  let onlineRevenue = 0;
-  for (const order of liveOrders) {
-    onlineRevenue += Math.max(
-      0,
-      order.totalGbpAtPurchase - order.refundedAmountGbp,
-    );
-  }
-
-  // ---- Revenue (door live = total - refunded across ALL door sales for the event) ----
-  let doorRevenue = 0;
-  for (const sale of eventDoorSales) {
-    doorRevenue += Math.max(0, sale.totalGbpAtSale - sale.refundedAmountGbp);
-  }
-
-  const grossRevenue = round2(onlineRevenue + doorRevenue);
-
-  // ---- Refunds (gross out per channel) ----
-  let onlineRefunded = 0;
-  for (const order of eventOrders) {
-    for (const refund of order.refunds) {
-      onlineRefunded += refund.amountGbp;
-    }
-  }
-  let doorRefunded = 0;
-  for (const sale of eventDoorSales) {
-    for (const refund of sale.refunds) {
-      doorRefunded += refund.amountGbp;
-    }
-  }
-  const totalRefunded = round2(onlineRefunded + doorRefunded);
-
-  // ---- Per-method revenue (live, post-refund) ----
+  const moneySummary = summarizeEventMoney({
+    expectedCurrency: currency,
+    orders: eventOrders,
+    doorSales: eventDoorSales,
+  });
   const revenueByMethod: Record<PaymentMethodKey, number> = {
     ...ZERO_REVENUE_BY_METHOD,
+    ...moneySummary.revenueByMethod,
   };
-  for (const order of liveOrders) {
-    const live = Math.max(
-      0,
-      order.totalGbpAtPurchase - order.refundedAmountGbp,
-    );
-    if (live <= 0) continue;
-    revenueByMethod[order.paymentMethod] += live;
-  }
-  for (const sale of eventDoorSales) {
-    const live = Math.max(0, sale.totalGbpAtSale - sale.refundedAmountGbp);
-    if (live <= 0) continue;
-    revenueByMethod[sale.paymentMethod] += live;
-  }
-  // Round each method total to mitigate float drift
-  for (const key of Object.keys(revenueByMethod) as PaymentMethodKey[]) {
-    revenueByMethod[key] = round2(revenueByMethod[key]);
-  }
-
-  // ---- Settlement stub split (D-13-10) ----
-  // [TRANSITIONAL] payoutEstimate = round(onlineRevenue × 96)/100 + doorRevenue.
-  // EXIT: B-cycle Stripe payout API for online; Stripe Terminal SDK fee schedules for card_reader/NFC.
-  const payoutEstimate = round2(round2(onlineRevenue * 0.96) + doorRevenue);
+  const {
+    onlineRevenue,
+    doorRevenue,
+    grossRevenue,
+    onlineRefunded,
+    doorRefunded,
+    totalRefunded,
+    payoutEstimate,
+  } = moneySummary;
 
   // ---- Scans ----
   const eventScans = scanEntries.filter((s) => s.eventId === eventId);
@@ -355,8 +328,17 @@ export const computeReconciliation = (
   if (d2Diff > 0.005) {
     discrepancies.push({
       kind: "method_sum_mismatch",
-      copy: `${formatGbp(d2Diff)} unattributed across payment methods`,
-      followupHint: `Sum-by-method (${formatGbp(methodSum)}) doesn't equal grand revenue (${formatGbp(grossRevenue)}). Likely rounding artifact; verify in B-cycle.`,
+      copy: `${formatCurrency(d2Diff, currency)} unattributed across payment methods`,
+      followupHint: `Sum-by-method (${formatCurrency(methodSum, currency)}) doesn't equal grand revenue (${formatCurrency(grossRevenue, currency)}). Likely rounding artifact; verify in B-cycle.`,
+    });
+  }
+
+  for (const mismatch of moneySummary.mismatches) {
+    discrepancies.push({
+      kind: "method_sum_mismatch",
+      copy: `${mismatch.actualCurrency} ${mismatch.source === "order" ? "order" : "door sale"} excluded from ${moneySummary.expectedCurrency} totals`,
+      followupHint:
+        "Currency mismatch detected. Review the source record before using this reconciliation total for finance.",
     });
   }
 
@@ -398,6 +380,9 @@ export const computeReconciliation = (
     payoutEstimate,
     onlineRefunded: round2(onlineRefunded),
     doorRefunded: round2(doorRefunded),
+    currenciesPresent: moneySummary.currenciesPresent,
+    currencyBreakdown: moneySummary.byCurrency,
+    currencyMismatches: moneySummary.mismatches,
     uniqueScannedTickets,
     scanDups,
     scanWrongEvent,

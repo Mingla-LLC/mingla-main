@@ -33,10 +33,7 @@ import {
 } from "../../../../src/constants/designSystem";
 import { useGuestStore } from "../../../../src/store/guestStore";
 import type { CompGuestEntry } from "../../../../src/store/guestStore";
-import {
-  useOrderStore,
-  type OrderRecord,
-} from "../../../../src/store/orderStore";
+import type { OrderRecord } from "../../../../src/store/orderStore";
 import { useScanStore } from "../../../../src/store/scanStore";
 import {
   useDoorSalesStore,
@@ -44,6 +41,7 @@ import {
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
+import { useEventGuestList } from "../../../../src/hooks/useEventOrders";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { exportGuestsCsv } from "../../../../src/utils/guestCsvExport";
 
@@ -214,7 +212,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const brand = routeEvent.brand;
 
   // Raw subscriptions — merge in useMemo to maintain stable refs.
-  const allOrderEntries = useOrderStore((s) => s.entries);
+  const allOrderEntries = useEventGuestList(typeof eventId === "string" ? eventId : null);
   const allCompEntries = useGuestStore((s) => s.entries);
   // Cycle 12 — door sale entries merged into the J-G1 list.
   const allDoorEntries = useDoorSalesStore((s) => s.entries);

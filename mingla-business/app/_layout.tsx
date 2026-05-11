@@ -31,6 +31,7 @@ import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
 import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
+import { StripeNativeProvider } from "../src/payments/StripeNativeProvider";
 
 // J-X3 — Sentry init (DEC-098 D-16-2). Guarded by env-absent so dev/build
 // without DSN is a no-op, not a runtime error. EXIT condition: operator
@@ -206,9 +207,11 @@ export default function RootLayout(): React.ReactElement {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <RootLayoutInner />
-          </AuthProvider>
+          <StripeNativeProvider>
+            <AuthProvider>
+              <RootLayoutInner />
+            </AuthProvider>
+          </StripeNativeProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

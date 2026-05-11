@@ -35,20 +35,12 @@ import {
   spacing,
   text as textTokens,
 } from "../../../../../src/constants/designSystem";
-import {
-  useOrderStore,
-  type OrderStatus,
-  type RefundRecord,
-} from "../../../../../src/store/orderStore";
+import type { OrderStatus, RefundRecord } from "../../../../../src/store/orderStore";
 import type { CheckoutPaymentMethod } from "../../../../../src/components/checkout/CartContext";
 import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRoute";
-import { formatGbp } from "../../../../../src/utils/currency";
-import {
-  deriveChannelFlags,
-  notifyEventChanged,
-} from "../../../../../src/services/eventChangeNotifier";
-import { useEventEditLogStore } from "../../../../../src/store/eventEditLogStore";
-import { getBrandFromCache } from "../../../../../src/hooks/useBrands";
+import { formatCurrency } from "../../../../../src/utils/currency";
+import { useEventOrderById } from "../../../../../src/hooks/useEventOrders";
+import { resendTicketConfirmation } from "../../../../../src/services/ticketCheckoutService";
 
 import { Button } from "../../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../../src/components/ui/EmptyState";
@@ -56,16 +48,6 @@ import { GlassCard } from "../../../../../src/components/ui/GlassCard";
 import { Icon } from "../../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../../src/components/ui/IconChrome";
 import { Toast } from "../../../../../src/components/ui/Toast";
-
-import { CancelOrderDialog } from "../../../../../src/components/orders/CancelOrderDialog";
-import {
-  RefundSheet,
-  type RefundMode,
-} from "../../../../../src/components/orders/RefundSheet";
-
-const RESEND_PROCESSING_MS = 800;
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 const PAYMENT_METHOD_LABEL: Record<CheckoutPaymentMethod, string> = {
   card: "Card",
@@ -107,6 +89,7 @@ interface StatusBannerSpec {
 const statusBannerSpec = (
   status: OrderStatus,
   refundedAmountGbp: number,
+  currency: string,
 ): StatusBannerSpec => {
   switch (status) {
     case "paid":
@@ -123,7 +106,7 @@ const statusBannerSpec = (
         borderColor: "rgba(239, 68, 68, 0.32)",
         iconName: "refund",
         iconColor: semantic.error,
-        copy: `Refunded ${formatGbp(refundedAmountGbp)} · buyer will see in 3–5 days`,
+        copy: `Refunded ${formatCurrency(refundedAmountGbp, currency)} · buyer will see in 3–5 days`,
       };
     case "refunded_partial":
       return {
@@ -131,7 +114,7 @@ const statusBannerSpec = (
         borderColor: accent.border,
         iconName: "refund",
         iconColor: accent.warm,
-        copy: `Partially refunded ${formatGbp(refundedAmountGbp)}`,
+        copy: `Partially refunded ${formatCurrency(refundedAmountGbp, currency)}`,
       };
     case "cancelled":
       return {
@@ -168,19 +151,16 @@ export default function OrderDetailRoute(): React.ReactElement {
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
   const orderId = Array.isArray(params.oid) ? params.oid[0] : params.oid;
 
-  const order = useOrderStore((s) =>
-    typeof orderId === "string" ? s.getOrderById(orderId) : null,
+  const orderQuery = useEventOrderById(
+    typeof eventId === "string" ? eventId : null,
+    typeof orderId === "string" ? orderId : null,
   );
+  const order = orderQuery.data ?? null;
   const routeEvent = useManagedEventRoute(
     typeof eventId === "string" ? eventId : null,
   );
   const event = routeEvent.event;
 
-  const [refundSheet, setRefundSheet] = useState<{
-    visible: boolean;
-    mode: RefundMode;
-  }>({ visible: false, mode: "full" });
-  const [cancelDialogVisible, setCancelDialogVisible] = useState<boolean>(false);
   const [resendSubmitting, setResendSubmitting] = useState<boolean>(false);
   const [toast, setToast] = useState<{
     visible: boolean;
@@ -213,47 +193,14 @@ export default function OrderDetailRoute(): React.ReactElement {
   const handleResend = useCallback(async (): Promise<void> => {
     if (order === null || event === null || resendSubmitting) return;
     setResendSubmitting(true);
-    await sleep(RESEND_PROCESSING_MS);
-    // Cycle 2 / ORCH-0742: read the live Brand record from the React Query
-    // cache by ID. Falls back to empty when cache miss — best-effort copy.
-    const cachedBrand = getBrandFromCache(order.brandId);
-    const brandName = cachedBrand?.displayName ?? "";
-    const occurredAt = new Date().toISOString();
-    const reason = "Resent ticket";
-
-    // Audit log entry — additive severity (no buyer-fatigue spam)
-    useEventEditLogStore.getState().recordEdit({
-      eventId: order.eventId,
-      brandId: order.brandId,
-      reason,
-      severity: "additive",
-      changedFieldKeys: ["__resend__"],
-      diffSummary: ["Ticket resent"],
-      affectedOrderIds: [order.id],
-      orderId: order.id,
-    });
-
-    // Notification — email-only (banner=false, sms=false, push=false).
-    // Direct one-off send rather than the standard deriveChannelFlags
-    // path because resend is buyer-targeted, not event-broadcast.
-    void notifyEventChanged(
-      {
-        eventId: order.eventId,
-        eventName: event.name,
-        brandName,
-        brandSlug: event.brandSlug,
-        eventSlug: event.eventSlug,
-        reason,
-        diffSummary: ["Ticket resent"],
-        severity: "additive",
-        affectedOrderIds: [order.id],
-        occurredAt,
-      },
-      { banner: false, email: true, sms: false, push: false },
-    );
-
-    setResendSubmitting(false);
-    showToast(`Sent to ${order.buyer.email}`);
+    try {
+      await resendTicketConfirmation(order.id);
+      showToast(`Sent to ${order.buyer.email}`);
+    } catch {
+      showToast("Could not resend ticket. Try again.");
+    } finally {
+      setResendSubmitting(false);
+    }
   }, [order, event, resendSubmitting, showToast]);
 
   useEffect(() => {
@@ -319,18 +266,19 @@ export default function OrderDetailRoute(): React.ReactElement {
     );
   }
 
-  const banner = statusBannerSpec(order.status, order.refundedAmountGbp);
+  const banner = statusBannerSpec(
+    order.status,
+    order.refundedAmountGbp,
+    order.currency,
+  );
   const hue = hashStringToHue(order.id);
   const initials = getInitials(order.buyer.name);
 
   // ---- Primary action button derivation (HF-9c-1 deterministic) ----
-  const showRefundFull =
-    order.paymentMethod !== "free" && order.status === "paid";
-  const showRefundPartialAgain =
-    order.paymentMethod !== "free" && order.status === "refunded_partial";
-  const showCancelOrder =
-    order.paymentMethod === "free" && order.status === "paid";
-  const showSecondaryPartialFromFull = showRefundFull;
+  const showRefundFull = false;
+  const showRefundPartialAgain = false;
+  const showCancelOrder = false;
+  const showSecondaryPartialFromFull = false;
 
   const subtotal = order.lines.reduce(
     (sum, l) => sum + l.quantity * l.unitPriceGbpAtPurchase,
@@ -419,18 +367,25 @@ export default function OrderDetailRoute(): React.ReactElement {
               value={
                 line.isFreeAtPurchase
                   ? "Free"
-                  : formatGbp(line.unitPriceGbpAtPurchase * line.quantity)
+                  : formatCurrency(
+                      line.unitPriceGbpAtPurchase * line.quantity,
+                      order.currency,
+                    )
               }
               mono={!line.isFreeAtPurchase}
             />
           ))}
-          <DetailRow label="Subtotal" value={formatGbp(subtotal)} mono />
+          <DetailRow
+            label="Subtotal"
+            value={formatCurrency(subtotal, order.currency)}
+            mono
+          />
           <DetailRow
             label="Total"
             value={
               order.totalGbpAtPurchase === 0
                 ? "Free"
-                : formatGbp(order.totalGbpAtPurchase)
+                : formatCurrency(order.totalGbpAtPurchase, order.currency)
             }
             mono
             bold
@@ -451,7 +406,7 @@ export default function OrderDetailRoute(): React.ReactElement {
           >
             <Text style={styles.sectionLabel}>Refund history</Text>
             {order.refunds.map((r) => (
-              <RefundLedgerRow key={r.id} refund={r} />
+              <RefundLedgerRow key={r.id} refund={r} currency={order.currency} />
             ))}
           </GlassCard>
         ) : null}
@@ -476,9 +431,7 @@ export default function OrderDetailRoute(): React.ReactElement {
             <>
               <Button
                 label="Refund order"
-                onPress={() =>
-                  setRefundSheet({ visible: true, mode: "full" })
-                }
+                onPress={() => showToast("Refunds are coming soon.")}
                 variant="destructive"
                 size="lg"
                 fullWidth
@@ -487,7 +440,7 @@ export default function OrderDetailRoute(): React.ReactElement {
               {showSecondaryPartialFromFull ? (
                 <Pressable
                   onPress={() =>
-                    setRefundSheet({ visible: true, mode: "partial" })
+                    showToast("Partial refunds are coming soon.")
                   }
                   accessibilityRole="button"
                   accessibilityLabel="Partial refund"
@@ -502,7 +455,7 @@ export default function OrderDetailRoute(): React.ReactElement {
           {showRefundPartialAgain ? (
             <Button
               label="Refund again"
-              onPress={() => setRefundSheet({ visible: true, mode: "partial" })}
+              onPress={() => showToast("Partial refunds are coming soon.")}
               variant="destructive"
               size="lg"
               fullWidth
@@ -513,7 +466,7 @@ export default function OrderDetailRoute(): React.ReactElement {
           {showCancelOrder ? (
             <Button
               label="Cancel order"
-              onPress={() => setCancelDialogVisible(true)}
+              onPress={() => showToast("Order cancellation is coming soon.")}
               variant="destructive"
               size="lg"
               fullWidth
@@ -535,34 +488,6 @@ export default function OrderDetailRoute(): React.ReactElement {
           ) : null}
         </View>
       </ScrollView>
-
-      {/* Refund sheet */}
-      <RefundSheet
-        visible={refundSheet.visible}
-        mode={refundSheet.mode}
-        order={order}
-        onClose={() => setRefundSheet({ ...refundSheet, visible: false })}
-        onSuccess={(amountGbp) => {
-          setRefundSheet({ ...refundSheet, visible: false });
-          showToast(
-            amountGbp > 0
-              ? `Refunded ${formatGbp(amountGbp)}`
-              : "Couldn't refund — try again",
-          );
-        }}
-      />
-
-      {/* Cancel order dialog */}
-      <CancelOrderDialog
-        visible={cancelDialogVisible}
-        orderId={order.id}
-        buyerName={order.buyer.name}
-        onClose={() => setCancelDialogVisible(false)}
-        onSuccess={() => {
-          setCancelDialogVisible(false);
-          showToast("Order cancelled");
-        }}
-      />
 
       {/* Toast (self-positions via Modal portal) */}
       <Toast
@@ -613,13 +538,14 @@ const DetailRow: React.FC<DetailRowProps> = ({
 
 interface RefundLedgerRowProps {
   refund: RefundRecord;
+  currency: string;
 }
 
-const RefundLedgerRow: React.FC<RefundLedgerRowProps> = ({ refund }) => (
+const RefundLedgerRow: React.FC<RefundLedgerRowProps> = ({ refund, currency }) => (
   <View style={styles.refundLedgerRow}>
     <View style={styles.refundLedgerHeader}>
       <Text style={styles.refundLedgerAmount}>
-        {formatGbp(refund.amountGbp)}
+        {formatCurrency(refund.amountGbp, currency)}
       </Text>
       <Text style={styles.refundLedgerDate}>
         {formatRelativeDay(refund.refundedAt)}

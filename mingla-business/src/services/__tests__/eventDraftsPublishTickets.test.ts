@@ -28,7 +28,7 @@ const ticket = (patch: Partial<TicketStub> = {}): TicketStub => ({
 
 describe("draft ticket publish mapping", () => {
   test("maps local draft tickets into server ticket_types rows without local IDs", () => {
-    const row = draftTicketToTicketTypeInsert("event-uuid", ticket());
+    const row = draftTicketToTicketTypeInsert("event-uuid", ticket(), "USD");
 
     expect(row).not.toHaveProperty("id");
     expect(row).toMatchObject({
@@ -36,7 +36,7 @@ describe("draft ticket publish mapping", () => {
       name: "General",
       description: "Entry plus drink.",
       price_cents: 1250,
-      currency: "GBP",
+      currency: "USD",
       quantity_total: 40,
       is_unlimited: false,
       is_free: false,
@@ -68,6 +68,7 @@ describe("draft ticket publish mapping", () => {
         visibility: "hidden",
         availableAt: "door",
       }),
+      "USD",
     );
 
     expect(row.price_cents).toBe(0);
@@ -75,5 +76,21 @@ describe("draft ticket publish mapping", () => {
     expect(row.is_hidden).toBe(true);
     expect(row.available_online).toBe(false);
     expect(row.available_in_person).toBe(true);
+  });
+
+  test("uses the event currency instead of a hidden GBP default", () => {
+    const row = draftTicketToTicketTypeInsert(
+      "event-uuid",
+      ticket({ currency: "eur" }),
+      "USD",
+    );
+
+    expect(row.currency).toBe("EUR");
+  });
+
+  test("rejects missing event currency instead of falling back to GBP", () => {
+    expect(() => draftTicketToTicketTypeInsert("event-uuid", ticket())).toThrow(
+      "Ticket currency is not set.",
+    );
   });
 });

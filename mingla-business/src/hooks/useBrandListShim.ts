@@ -18,10 +18,47 @@
 
 import { useAuth } from "../context/AuthContext";
 import type { Brand } from "../store/currentBrandStore";
+import {
+  resolveBrandListStatus,
+  type BrandListStatus,
+} from "../utils/brandListState";
 import { useBrands } from "./useBrands";
 
-export const useBrandList = (): Brand[] => {
-  const { user } = useAuth();
+export { resolveBrandListStatus, type BrandListStatus };
+
+export interface BrandListState {
+  brands: Brand[];
+  status: BrandListStatus;
+  isTrueEmpty: boolean;
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => Promise<unknown>;
+}
+
+export const useBrandListState = (): BrandListState => {
+  const { authStatus, user } = useAuth();
   const query = useBrands(user?.id ?? null);
-  return query.data ?? [];
+  const brands = query.data ?? [];
+  const status = resolveBrandListStatus({
+    authStatus,
+    hasUser: user !== null,
+    isError: query.isError,
+    isFetched: query.isFetched,
+    isFetching: query.isFetching,
+    isLoading: query.isLoading,
+    itemCount: brands.length,
+  });
+  return {
+    brands,
+    status,
+    isTrueEmpty: status === "empty",
+    isLoading: status === "auth_loading" || status === "query_loading",
+    error: query.error ?? null,
+    refetch: query.refetch,
+  };
+};
+
+export const useBrandList = (): Brand[] => {
+  const { brands } = useBrandListState();
+  return brands;
 };

@@ -21,10 +21,10 @@ import {
   text as textTokens,
 } from "../../../../src/constants/designSystem";
 import {
-  useOrderStore,
   type OrderRecord,
 } from "../../../../src/store/orderStore";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
+import { useEventOrders } from "../../../../src/hooks/useEventOrders";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
@@ -82,17 +82,10 @@ export default function EventOrdersListRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
   );
   const event = routeEvent.event;
-  // Cycle 9c rework v2 — select raw entries + filter in useMemo so the
-  // selector returns a stable reference. getOrdersForEvent returns a fresh
-  // filtered array each call which breaks useSyncExternalStore Object.is
-  // and infinite-loops the render. Same pattern as useLiveEventBySlug.
-  const allOrderEntries = useOrderStore((s) => s.entries);
+  const ordersQuery = useEventOrders(typeof eventId === "string" ? eventId : null);
   const orders = useMemo<OrderRecord[]>(
-    () =>
-      typeof eventId === "string"
-        ? allOrderEntries.filter((o) => o.eventId === eventId)
-        : [],
-    [allOrderEntries, eventId],
+    () => ordersQuery.data ?? [],
+    [ordersQuery.data],
   );
 
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -153,6 +146,60 @@ export default function EventOrdersListRoute(): React.ReactElement {
         </View>
         <View style={styles.emptyHost}>
           <Text style={styles.emptyLoadingText}>Loading event...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (ordersQuery.isLoading) {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleBack}
+            accessibilityLabel="Back"
+          />
+          <Text style={styles.chromeTitle}>Orders</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <Text style={styles.emptyLoadingText}>Loading orders...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (ordersQuery.isError) {
+    return (
+      <View
+        style={[
+          styles.host,
+          { paddingTop: insets.top, backgroundColor: canvas.discover },
+        ]}
+      >
+        <View style={styles.chromeRow}>
+          <IconChrome
+            icon="close"
+            size={36}
+            onPress={handleBack}
+            accessibilityLabel="Back"
+          />
+          <Text style={styles.chromeTitle}>Orders</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <EmptyState
+            illustration="ticket"
+            title="Couldn't load orders"
+            description="Something went wrong loading orders. Pull to retry."
+          />
         </View>
       </View>
     );

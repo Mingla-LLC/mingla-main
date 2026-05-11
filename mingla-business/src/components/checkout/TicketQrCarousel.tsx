@@ -32,10 +32,10 @@ import {
 import { buildQrPayload } from "../../utils/stubOrderId";
 
 export interface CarouselTicket {
-  /** tkt_<orderSuffix>_<lineIdx>_<seatIdx> */
   ticketId: string;
-  /** Display name from the line (FROZEN at purchase). */
   ticketName: string;
+  /** Server-issued QR payload. Older local previews fall back to buildQrPayload. */
+  qrPayload?: string;
 }
 
 export interface TicketQrCarouselProps {
@@ -83,7 +83,7 @@ export const TicketQrCarousel: React.FC<TicketQrCarouselProps> = ({
     () =>
       tickets.map((t, i) => ({
         ...t,
-        payload: buildQrPayload(orderId, t.ticketId),
+        payload: t.qrPayload ?? buildQrPayload(orderId, t.ticketId),
         index: i,
       })),
     [orderId, tickets],

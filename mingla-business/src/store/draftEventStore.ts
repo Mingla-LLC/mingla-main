@@ -78,8 +78,10 @@ export type TicketAvailableAt = "online" | "door" | "both";
 export interface TicketStub {
   id: string;
   name: string;
-  /** Null when isFree=true; otherwise positive number in GBP whole-units. */
+  /** Null when isFree=true; otherwise positive major-unit price. */
   priceGbp: number | null;
+  /** ISO 4217 event/ticket currency. Undefined means inherit the event. */
+  currency?: string;
   /**
    * Positive integer when constrained; null is allowed semantically but
    * only when `isUnlimited` is true. Validation rejects null capacity
@@ -259,6 +261,8 @@ export interface DraftEvent {
   /** Type for coverMediaUrl. Null when no uploaded media is present. */
   coverMediaType: EventCoverMediaType | null;
   // Step 5 — Tickets
+  /** ISO 4217 event commerce currency. Null means server should use brand default. */
+  currency?: string | null;
   tickets: TicketStub[];
   // Step 6 — Settings
   visibility: DraftEventVisibility;
@@ -342,6 +346,7 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   coverHue: 25,
   coverMediaUrl: null,
   coverMediaType: null,
+  currency: null,
   tickets: [],
   visibility: "public",
   requireApproval: false,
@@ -385,6 +390,7 @@ type V1DraftEvent = Omit<
   | "multiDates"
   | "coverMediaUrl"
   | "coverMediaType"
+  | "currency"
 > & {
   tickets: V1TicketStub[];
   hideAddressUntilTicket?: boolean;
@@ -409,6 +415,7 @@ type V2DraftEvent = Omit<
   | "tickets"
   | "coverMediaUrl"
   | "coverMediaType"
+  | "currency"
 > & {
   tickets: V3TicketStub[];
   /** Locked literal in v2; removed in v3 (replaced by whenMode). */
@@ -425,6 +432,7 @@ type V3DraftEvent = Omit<
   | "inPersonPaymentsEnabled"
   | "coverMediaUrl"
   | "coverMediaType"
+  | "currency"
 > & {
   tickets: V3TicketStub[];
 };
@@ -466,6 +474,7 @@ type V4DraftEvent = Omit<
   | "inPersonPaymentsEnabled"
   | "coverMediaUrl"
   | "coverMediaType"
+  | "currency"
 > & {
   tickets: V4TicketStub[];
 };
@@ -515,6 +524,7 @@ type V5DraftEvent = Omit<
   | "inPersonPaymentsEnabled"
   | "coverMediaUrl"
   | "coverMediaType"
+  | "currency"
 > & {
   tickets: V5TicketStub[];
 };
@@ -529,7 +539,7 @@ const upgradeV5TicketToV6 = (t: V5TicketStub): TicketStub => ({
 
 type V6DraftEvent = Omit<
   DraftEvent,
-  "serverSlug" | "coverMediaUrl" | "coverMediaType"
+  "serverSlug" | "coverMediaUrl" | "coverMediaType" | "currency"
 >;
 
 const upgradeV5DraftToV6 = (d: V5DraftEvent): V6DraftEvent => ({
@@ -543,6 +553,7 @@ const upgradeV6DraftToV7 = (d: V6DraftEvent): DraftEvent => ({
   serverSlug: null,
   coverMediaUrl: null,
   coverMediaType: null,
+  currency: null,
 });
 
 const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
@@ -551,7 +562,7 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   name: "mingla-business.draftEvent.v1",
   storage: createJSONStorage(() => AsyncStorage),
   partialize: (state): PersistedState => ({ drafts: state.drafts }),
-  version: 8,
+  version: 9,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { drafts: [] };
@@ -599,7 +610,17 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
     if (version === 7) {
       const v7 = persistedState as { drafts: Array<Omit<DraftEvent, "serverSlug">> };
       return {
-        drafts: v7.drafts.map((draft) => ({ ...draft, serverSlug: null })),
+        drafts: v7.drafts.map((draft) => ({
+          ...draft,
+          serverSlug: null,
+          currency: null,
+        })),
+      };
+    }
+    if (version === 8) {
+      const v8 = persistedState as { drafts: Array<Omit<DraftEvent, "currency">> };
+      return {
+        drafts: v8.drafts.map((draft) => ({ ...draft, currency: null })),
       };
     }
     return persistedState as PersistedState;

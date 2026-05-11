@@ -48,22 +48,13 @@ import {
   spacing,
   text as textTokens,
 } from "../../../../src/constants/designSystem";
-import { useOrderStore } from "../../../../src/store/orderStore";
 import {
   useScanStore,
   type ScanResult,
 } from "../../../../src/store/scanStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
-
-import {
-  expandTicketIds,
-  parseTicketId,
-} from "../../../../src/utils/expandTicketIds";
-import {
-  parseQrPayload,
-  type ParsedQrPayload,
-} from "../../../../src/utils/qrPayload";
+import { scanTicket } from "../../../../src/services/scanTicketService";
 
 import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
@@ -284,20 +275,26 @@ export default function ScannerCameraRoute(): React.ReactElement {
     };
   }, []);
 
-  const recordScanWithResult = useCallback(
-    (parsed: ParsedQrPayload, result: ScanResult): void => {
-      if (event === null) return;
+  const recordServerScan = useCallback(
+    (scan: {
+      result: ScanResult;
+      ticketId: string | null;
+      orderId: string | null;
+      buyerName: string | null;
+      ticketName: string | null;
+    }): void => {
+      if (event === null || scan.ticketId === null) return;
       useScanStore.getState().recordScan({
-        ticketId: parsed.ticketId,
-        orderId: parsed.orderId,
+        ticketId: scan.ticketId,
+        orderId: scan.orderId ?? "",
         eventId: event.id,
         brandId: event.brandId,
         scannerUserId: operatorAccountId,
-        scanResult: result,
+        scanResult: scan.result,
         via: "qr",
-        offlineQueued: true,
-        buyerNameAtScan: "",
-        ticketNameAtScan: "",
+        offlineQueued: false,
+        buyerNameAtScan: scan.buyerName ?? "",
+        ticketNameAtScan: scan.ticketName ?? "",
       });
     },
     [event, operatorAccountId],
@@ -307,127 +304,56 @@ export default function ScannerCameraRoute(): React.ReactElement {
     (scan: BarcodeScanningResult): void => {
       if (overlayVisibleRef.current) return; // guard against double-fire
       if (event === null) return;
-
-      const parsed = parseQrPayload(scan.data);
-      if (parsed === null) {
-        showResult({ kind: "not_found", message: "Invalid QR code" });
-        void Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Error,
-        );
-        return;
-      }
-
-      // J-S3 duplicate guard
-      const existingSuccess = useScanStore
-        .getState()
-        .getSuccessfulScanByTicketId(parsed.ticketId);
-      if (existingSuccess !== null) {
-        const detail =
-          existingSuccess.scannerUserId === operatorAccountId
-            ? "Scanned by you"
-            : "Scanned by another scanner";
-        showResult({
-          kind: "duplicate",
-          message: `Already checked in ${formatRelativeTime(existingSuccess.scannedAt)}`,
-          detail,
-        });
-        void Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Warning,
-        );
-        return;
-      }
-
-      const order = useOrderStore.getState().getOrderById(parsed.orderId);
-      if (order === null) {
-        showResult({ kind: "not_found", message: "Ticket not found" });
-        void Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Error,
-        );
-        recordScanWithResult(parsed, "not_found");
-        return;
-      }
-      if (order.eventId !== event.id) {
-        showResult({ kind: "wrong_event", message: "Different event" });
-        void Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Error,
-        );
-        recordScanWithResult(parsed, "wrong_event");
-        return;
-      }
-      if (order.status === "cancelled") {
-        showResult({ kind: "cancelled_order", message: "Order cancelled" });
-        void Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Error,
-        );
-        recordScanWithResult(parsed, "cancelled_order");
-        return;
-      }
-      if (order.status === "refunded_full") {
-        showResult({ kind: "void", message: "Ticket refunded" });
-        void Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Error,
-        );
-        recordScanWithResult(parsed, "void");
-        return;
-      }
-
-      // Validate the ticketId actually maps to a real seat in this order
-      const parsedTicket = parseTicketId(parsed.ticketId);
-      if (parsedTicket === null) {
-        showResult({ kind: "not_found", message: "Invalid ticket ID format" });
-        void Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Error,
-        );
-        recordScanWithResult(parsed, "not_found");
-        return;
-      }
-      const expanded = expandTicketIds(parsed.orderId, order.lines);
-      const validTicket = expanded.find((t) => t.ticketId === parsed.ticketId);
-      if (validTicket === undefined) {
-        showResult({ kind: "not_found", message: "Ticket not in this order" });
-        void Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Error,
-        );
-        recordScanWithResult(parsed, "not_found");
-        return;
-      }
-
-      // Per-seat partial-refund check
-      const line = order.lines[validTicket.lineIdx];
-      if (validTicket.seatIdx >= line.quantity - line.refundedQuantity) {
-        showResult({ kind: "void", message: "Ticket refunded" });
-        void Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Error,
-        );
-        recordScanWithResult(parsed, "void");
-        return;
-      }
-
-      // SUCCESS PATH
-      const buyerName =
-        order.buyer.name.trim().length > 0 ? order.buyer.name : "Anonymous";
-      useScanStore.getState().recordScan({
-        ticketId: parsed.ticketId,
-        orderId: parsed.orderId,
-        eventId: event.id,
-        brandId: event.brandId,
-        scannerUserId: operatorAccountId,
-        scanResult: "success",
-        via: "qr",
-        offlineQueued: true,
-        buyerNameAtScan: buyerName,
-        ticketNameAtScan: validTicket.ticketName,
-      });
-      showResult({
-        kind: "success",
-        message: `${buyerName} checked in`,
-        detail: validTicket.ticketName,
-      });
-      void Haptics.notificationAsync(
-        Haptics.NotificationFeedbackType.Success,
-      );
+      overlayVisibleRef.current = true;
+      void (async () => {
+        try {
+          const result = await scanTicket(event.id, scan.data);
+          const kind = result.result as ScanResult;
+          recordServerScan({
+            result: kind,
+            ticketId: result.ticketId,
+            orderId: result.orderId,
+            buyerName: result.buyerName,
+            ticketName: result.ticketName,
+          });
+          if (kind === "success") {
+            showResult({
+              kind,
+              message: `${result.buyerName ?? "Guest"} checked in`,
+              detail: result.ticketName ?? "Ticket",
+            });
+            void Haptics.notificationAsync(
+              Haptics.NotificationFeedbackType.Success,
+            );
+            return;
+          }
+          const message =
+            kind === "duplicate"
+              ? "Already checked in"
+              : kind === "wrong_event"
+                ? "Different event"
+                : kind === "void"
+                  ? "Ticket not valid"
+                  : "Ticket not found";
+          showResult({ kind, message, detail: result.ticketName ?? undefined });
+          void Haptics.notificationAsync(
+            kind === "duplicate"
+              ? Haptics.NotificationFeedbackType.Warning
+              : Haptics.NotificationFeedbackType.Error,
+          );
+        } catch (error) {
+          showResult({
+            kind: "not_found",
+            message: "Scan failed",
+            detail: error instanceof Error ? error.message : undefined,
+          });
+          void Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Error,
+          );
+        }
+      })();
     },
-    [event, operatorAccountId, showResult, recordScanWithResult],
+    [event, showResult, recordServerScan],
   );
 
   // ---- Not-found shell ---------------------------------------------
@@ -561,18 +487,11 @@ export default function ScannerCameraRoute(): React.ReactElement {
         <View style={styles.chromeRightSlot} />
       </View>
 
-      {/* TESTING MODE banner — Cycle 11 J-S1 / ORCH-0711.
-          [TRANSITIONAL] Cross-device order lookup gap means scanner reads
-          only from this device's useOrderStore. In production with two
-          devices the scanner cannot validate buyer orders — surface this
-          honestly per Constitution #7. EXIT: B-cycle scan-ticket edge
-          function wires server-side order lookup and this banner becomes
-          unnecessary. */}
+      {/* Server-backed scan mode. */}
       <View style={styles.testingBanner} pointerEvents="none">
-        <Icon name="flag" size={14} color={accent.warm} />
+        <Icon name="check" size={14} color={accent.warm} />
         <Text style={styles.testingBannerText} numberOfLines={2}>
-          Testing mode — scanner only validates orders made on this device.
-          Cross-device scanning lands when the backend ships in B-cycle.
+          Live mode — scanner validates issued tickets against the server.
         </Text>
       </View>
 

@@ -17,7 +17,7 @@ import {
   spacing,
   text as textTokens,
 } from "../../constants/designSystem";
-import { formatGbp } from "../../utils/currency";
+import { formatCurrency } from "../../utils/currency";
 
 import { GlassCard } from "../ui/GlassCard";
 
@@ -26,11 +26,13 @@ export interface EventDetailKpiCardProps {
   revenueGbp: number;
   /** GBP whole-units (revenueGbp × 0.96 stub Stripe fee). 0 in 9a. */
   payoutGbp: number;
+  currency?: string;
 }
 
 export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
   revenueGbp,
   payoutGbp,
+  currency = "GBP",
 }) => {
   const hasData = revenueGbp > 0;
 
@@ -45,13 +47,13 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
         <View style={styles.col}>
           <Text style={styles.label}>REVENUE</Text>
           <Text style={styles.bigValue}>
-            {hasData ? formatGbp(revenueGbp) : "£0.00"}
+            {formatCurrency(hasData ? revenueGbp : 0, currency)}
           </Text>
         </View>
         <View style={styles.colRight}>
           <Text style={styles.label}>PAYOUT</Text>
           <Text style={styles.midValue}>
-            {hasData ? formatGbp(payoutGbp) : "£0.00"}
+            {formatCurrency(hasData ? payoutGbp : 0, currency)}
           </Text>
         </View>
       </View>

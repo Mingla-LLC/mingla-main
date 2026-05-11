@@ -100,6 +100,7 @@ const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
 const rowFromPayload = (
   source: DraftEvent,
   theme: Record<string, unknown>,
+  currency: string | null = source.currency ?? "GBP",
 ): ServerDraftEventRow => ({
   id: source.id,
   brand_id: source.brandId,
@@ -111,6 +112,7 @@ const rowFromPayload = (
   online_url: source.onlineUrl,
   cover_media_url: source.coverMediaUrl,
   cover_media_type: source.coverMediaType,
+  currency,
   is_online: source.format === "online",
   is_recurring: source.whenMode === "recurring",
   is_multi_date: source.whenMode === "multi_date",
@@ -142,8 +144,46 @@ describe("serverDraftEventMapper", () => {
     expect(hydrated.privateGuestList).toBe(true);
     expect(payload.cover_media_url).toBe(source.coverMediaUrl);
     expect(payload.cover_media_type).toBe("gif");
+    expect(payload.currency).toBe("GBP");
     expect(hydrated.coverMediaUrl).toBe(source.coverMediaUrl);
     expect(hydrated.coverMediaType).toBe("gif");
+    expect(hydrated.currency).toBe("GBP");
+  });
+
+  test("normalizes null-currency inserts and server draft JSON to GBP", () => {
+    const source = draft({ currency: null });
+    const payload = draftToServerInsert(source, "user-1", "draft-currency");
+    const businessDraft = payload.theme.business_draft as { currency: string };
+
+    expect(payload.currency).toBe("GBP");
+    expect(businessDraft.currency).toBe("GBP");
+  });
+
+  test("normalizes null-currency updates while preserving uploaded cover media", () => {
+    const source = draft({
+      coverMediaType: "video",
+      coverMediaUrl: "https://cdn.example.com/cover.mov",
+      currency: null,
+    });
+    const payload = draftToServerUpdate(source, {});
+    const businessDraft = payload.theme.business_draft as { currency: string };
+
+    expect(payload.currency).toBe("GBP");
+    expect(payload.cover_media_url).toBe("https://cdn.example.com/cover.mov");
+    expect(payload.cover_media_type).toBe("video");
+    expect(businessDraft.currency).toBe("GBP");
+  });
+
+  test("preserves explicit event currency through update and hydration", () => {
+    const source = draft({ currency: "usd" });
+    const payload = draftToServerUpdate(source, {});
+    const hydrated = serverRowToDraft(rowFromPayload(source, payload.theme, "USD"));
+
+    expect(payload.currency).toBe("USD");
+    expect((payload.theme.business_draft as { currency: string }).currency).toBe(
+      "USD",
+    );
+    expect(hydrated.currency).toBe("USD");
   });
 
   test("hydrates null cover media and keeps hue fallback", () => {

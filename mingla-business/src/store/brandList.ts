@@ -56,7 +56,7 @@ export const STUB_BRANDS: Brand[] = [
     address: "East London",
     coverHue: 25,
     role: "owner",
-    stats: { events: 3, followers: 2418, rev: 24180, attendees: 728 },
+    stats: { events: 3, followers: 2418, rev: 0, attendees: 728 },
     currentLiveEvent: null,
     bio: "A six-year-running curatorial project from Sara Marlowe. Limited capacity, generous time. Slow-burn evenings in East London where the room and the music share equal billing.",
     tagline: "One room. One sound system. Slow-burn evenings.",
@@ -92,7 +92,7 @@ export const STUB_BRANDS: Brand[] = [
     address: "Hackney, London",
     coverHue: 320,
     role: "owner",
-    stats: { events: 1, followers: 412, rev: 1860, attendees: 124 },
+    stats: { events: 1, followers: 412, rev: 0, attendees: 124 },
     currentLiveEvent: null,
     bio: "A weekly long-lunch series in Hackney. Twelve seats, four courses, no rush. Run by chef Ada Kwame and producer Liam Reeves since 2024.",
     tagline: "Twelve seats. Four courses. No rush.",
@@ -121,7 +121,7 @@ export const STUB_BRANDS: Brand[] = [
     address: null,
     coverHue: 220,
     role: "owner",
-    stats: { events: 6, followers: 1124, rev: 8420, attendees: 1860 },
+    stats: { events: 6, followers: 1124, rev: 0, attendees: 1860 },
     currentLiveEvent: {
       name: "Slow Burn vol. 4",
       soldGbp: 8420,
@@ -145,24 +145,15 @@ export const STUB_BRANDS: Brand[] = [
     },
     displayAttendeeCount: true,
     stripeStatus: "active",
-    availableBalanceGbp: 156.20,
-    pendingBalanceGbp: 45.60,
-    lastPayoutAt: "2026-04-27T10:00:00Z",
-    payouts: [
-      { id: "p_sl_4", amountGbp: 156.20, currency: "GBP", status: "in_transit", arrivedAt: "2026-05-01T10:00:00Z" },
-      { id: "p_sl_3", amountGbp: 482.50, currency: "GBP", status: "paid", arrivedAt: "2026-04-27T10:00:00Z" },
-      { id: "p_sl_2", amountGbp: 312.80, currency: "GBP", status: "paid", arrivedAt: "2026-04-20T10:00:00Z" },
-      { id: "p_sl_1", amountGbp: 198.40, currency: "GBP", status: "paid", arrivedAt: "2026-04-13T10:00:00Z" },
-    ],
-    refunds: [
-      { id: "r_sl_2", amountGbp: 24.00, currency: "GBP", eventTitle: "Slow Burn vol. 4", refundedAt: "2026-04-25T15:30:00Z", reason: "Couldn't make it" },
-      { id: "r_sl_1", amountGbp: 48.00, currency: "GBP", eventTitle: "Slow Burn vol. 3", refundedAt: "2026-04-22T11:00:00Z" },
-    ],
+    availableBalanceGbp: 0,
+    pendingBalanceGbp: 0,
+    payouts: [],
+    refunds: [],
     events: [
       {
         id: "e_sl_4",
         title: "Slow Burn vol. 4",
-        revenueGbp: 8420,
+        revenueGbp: 0,
         soldCount: 284,
         status: "ended",
         heldAt: "2026-04-26T20:00:00Z",
@@ -171,7 +162,7 @@ export const STUB_BRANDS: Brand[] = [
       {
         id: "e_sl_brunches",
         title: "Sunday Languor — March brunches",
-        revenueGbp: 5420,
+        revenueGbp: 0,
         soldCount: 248,
         status: "ended",
         heldAt: "2026-03-30T11:30:00Z",
@@ -180,7 +171,7 @@ export const STUB_BRANDS: Brand[] = [
       {
         id: "e_sl_sitdown",
         title: "A Long Sit-Down",
-        revenueGbp: 1920,
+        revenueGbp: 0,
         soldCount: 32,
         status: "upcoming",
         heldAt: "2026-05-15T19:00:00Z",
@@ -188,7 +179,7 @@ export const STUB_BRANDS: Brand[] = [
       {
         id: "e_sl_3",
         title: "Slow Burn vol. 3",
-        revenueGbp: 2960,
+        revenueGbp: 0,
         soldCount: 392,
         status: "ended",
         heldAt: "2026-03-15T20:00:00Z",
@@ -203,7 +194,7 @@ export const STUB_BRANDS: Brand[] = [
     address: null,
     coverHue: 290,
     role: "owner",
-    stats: { events: 2, followers: 824, rev: 3120, attendees: 256 },
+    stats: { events: 2, followers: 824, rev: 0, attendees: 256 },
     currentLiveEvent: null,
     bio: "Pop-up listening sessions in unconventional spaces — laundrettes, art studios, basements. Founded by sound designer Maya Okonkwo. Locations announced 24 hours before.",
     tagline: "Listening sessions in unexpected places.",
@@ -219,16 +210,13 @@ export const STUB_BRANDS: Brand[] = [
     stripeStatus: "restricted",
     availableBalanceGbp: 0,
     pendingBalanceGbp: 0,
-    lastPayoutAt: "2026-04-09T10:00:00Z",
-    payouts: [
-      { id: "p_hr_1", amountGbp: 88.00, currency: "GBP", status: "paid", arrivedAt: "2026-04-09T10:00:00Z" },
-    ],
+    payouts: [],
     refunds: [],
     events: [
       {
         id: "e_hr_studio",
         title: "Hidden Rooms — Studio",
-        revenueGbp: 88,
+        revenueGbp: 0,
         soldCount: 50,
         status: "ended",
         heldAt: "2026-04-09T20:00:00Z",
@@ -239,7 +227,6 @@ export const STUB_BRANDS: Brand[] = [
 
 /**
  * The brand the dev-seed button activates. Sunday Languor is chosen so the
- * hero KPI in AC#3 ("Slow Burn vol. 4 — Live tonight £8,420 / £12,000")
- * appears immediately after seeding without manual brand-switching.
+ * brand shell appears immediately after seeding without manual brand-switching.
  */
 export const STUB_DEFAULT_BRAND_ID = "sl";

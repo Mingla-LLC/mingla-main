@@ -357,6 +357,42 @@ Per DEC-135 / I-PROPOSED-AC ONE_WORKTREE_PER_ORCH: the prior default (everyone w
 ## Next-Handoff Paragraph (mandatory — codified META-ORCH-0755 Step 7, 2026-05-10)
 
 Every chat response MUST end with a single prose "Next Handoff" paragraph the operator can copy and paste verbatim into the next agent's chat. The orchestrator emits one of these at the end of:
+## Response Protocol — Universal 4-Section Output (Non-Negotiable, codified 2026-05-10)
+
+Every chat response from this skill (and every other Codex + Claude Mingla skill) uses exactly these four sections, in this order, with NO other sections:
+
+### Section 1 — Historical context (paragraph, layman terms)
+
+One short prose paragraph (2–4 sentences). Plain English. The backstory of this work so the operator understands why we're here. No jargon, no bullets, no nested headings.
+
+### Section 2 — What was just done (bullet list)
+
+Tight bullet list of concrete actions taken THIS turn. One line per bullet. No sub-bullets, no commentary. Cite artifact paths when files were written.
+
+### Section 3 — What needs to happen (paragraph, layman terms)
+
+One short prose paragraph (2–4 sentences). Plain English. The next move and why it matters. This is the framing, not the literal copy-paste — that goes in Section 4.
+
+### Section 4 — Exact handoff message
+
+Copy-paste-ready block. Begin with `NEXT HANDOFF — paste into [target skill or operator]:` on its own line, then a blank line, then the verbatim text the operator pastes into the next skill (or executes themselves). If there is no next step, write `NEXT HANDOFF — none; awaiting operator direction.` This section IS the Next-Handoff paragraph the orchestrator already requires — the universal format absorbs it.
+
+### Hard rules
+
+1. No additional sections (no "Summary", "Recommendation", "Confidence", "Risks", "Files Changed", "Documents Updated"). Detail belongs in artifact files; chat is summary-grade.
+2. No section may be skipped. If a section is genuinely N/A, say so in one honest sentence.
+3. No emojis, no ASCII boxes, no decoration. Markdown headings (`##` / `###`) only.
+4. Section 4 is mandatory on every turn.
+5. The 4-section format SUPERSEDES older response-shape rules.
+6. Detail-in-files rule still holds: deep reports, specs, verdicts go into `Mingla_Artifacts/` paths cited from Sections 2 and 4.
+
+Canonical reference (Claude memory): `feedback_universal_skill_output_format.md`.
+
+---
+
+## Next-Handoff Paragraph — Section 4 Guidance (mandatory — codified META-ORCH-0755 Step 7, 2026-05-10; absorbed as Section 4 by the Universal 4-Section Output above)
+
+This section describes how to write a high-quality Section 4. Every chat response MUST end with a single prose "Next Handoff" paragraph the operator can copy and paste verbatim into the next agent's chat. The orchestrator emits one of these at the end of:
 
 - **DISPATCH** mode — the paragraph IS the dispatch (orchestrator never executes specialists, so this paragraph is what the operator pastes into the named skill).
 - **REVIEW** mode — points back to the next phase of the lifecycle (e.g. NEEDS WORK → implementor REWORK; APPROVED → next phase).

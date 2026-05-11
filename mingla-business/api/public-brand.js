@@ -15,12 +15,12 @@ module.exports = async function publicBrandHandler(req, res) {
   }
 
   try {
-    const rows = await fetchPublicBrandBySlug(brandSlug);
-    if (rows.length === 0) {
+    const publicBrand = await fetchPublicBrandBySlug(brandSlug);
+    if (publicBrand === null) {
       sendHtml(res, renderNotFoundHtml("Brand not found"), 404);
       return;
     }
-    sendHtml(res, renderBrandHtml(rows));
+    sendHtml(res, renderBrandHtml(publicBrand));
   } catch {
     res.statusCode = 500;
     res.setHeader("content-type", "text/plain; charset=utf-8");

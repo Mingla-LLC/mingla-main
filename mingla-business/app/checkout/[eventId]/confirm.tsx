@@ -5,14 +5,13 @@
  *
  * Reached via:
  *   - Paid order → J-C3 Payment success → router.replace
- *   - Paid order → J-C3 → 3DS sheet success → router.replace
- *   - Free order → J-C2 Buyer "Reserve free ticket" → synchronous OrderResult
- *     generation → router.replace (skips Payment + 3DS entirely)
+ *   - Paid order → J-C3 Stripe PaymentSheet success → server status → replace
+ *   - Free order → J-C2 Buyer "Reserve free ticket" → server order/ticket
+ *     creation → router.replace
  *
  * Native back is BLOCKED — buyer must use explicit "Back to event" CTA.
  *
- * [TRANSITIONAL] Email send is a no-op in stub mode — wires to Resend in
- * B-cycle.
+ * Email/SMS send is queued by the checkout backend after tickets exist.
  * [TRANSITIONAL] Wallet add is a toast — Apple .pkpass + Google Wallet
  * pass land in B-cycle (requires Apple Developer cert + service account
  * JSON).
@@ -42,13 +41,8 @@ import {
 } from "../../../src/constants/designSystem";
 import { eventPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
-import {
-  useOrderStore,
-  type OrderRecord,
-} from "../../../src/store/orderStore";
-import { formatGbp } from "../../../src/utils/currency";
+import { formatCurrency } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
-import { expandTicketIds } from "../../../src/utils/expandTicketIds";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -146,44 +140,6 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     }
   }, [result, eventId, router]);
 
-  // ----- Cycle 9c — buyer→founder order persistence (I-18) -----
-  // Records the OrderRecord into useOrderStore so the operator's Orders
-  // ledger reflects this purchase. Idempotent dedupe by orderId — safe
-  // to fire on every mount; recordOrder returns existing if id present.
-  useEffect(() => {
-    if (eventId === null || result === null || event === null) return;
-    const order: OrderRecord = {
-      id: result.orderId,
-      eventId,
-      brandId: event.brandId,
-      buyer: {
-        name: buyer.name,
-        email: buyer.email,
-        phone: buyer.phone,
-        marketingOptIn: buyer.marketingOptIn,
-      },
-      lines: lines.map((l) => ({
-        ticketTypeId: l.ticketTypeId,
-        ticketNameAtPurchase: l.ticketName,
-        unitPriceGbpAtPurchase: l.unitPriceGbp,
-        isFreeAtPurchase: l.isFree,
-        quantity: l.quantity,
-        refundedQuantity: 0,
-        refundedAmountGbp: 0,
-      })),
-      totalGbpAtPurchase: result.totalGbp,
-      currency: "GBP",
-      paymentMethod: result.paymentMethod,
-      paidAt: result.paidAt,
-      status: "paid",
-      refundedAmountGbp: 0,
-      refunds: [],
-      cancelledAt: null,
-      lastSeenEventUpdatedAt: event.updatedAt,
-    };
-    useOrderStore.getState().recordOrder(order);
-  }, [eventId, event, result, lines, buyer]);
-
   // ----- Handlers -----
   const handleBackToEvent = useCallback((): void => {
     // Disarm the beforeRemove + popstate guards — this is the explicit
@@ -207,25 +163,16 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
   }, []);
 
   // ----- Memos -----
-  // Cycle 11 J-S8 — multi-ticket QR carousel.
-  // Build CarouselTicket[] inline from the cart's `lines` so each row
-  // gets the operator-frozen ticketName + a deterministic ticketId.
+  // Production checkout returns server-issued QR payloads. Confirmation renders
+  // only those durable tickets so scanner and organizer views share truth.
   const carouselTickets = useMemo(() => {
-    if (result === null || result.ticketIds.length === 0) return [];
-    const orderLines = lines.map((l) => ({
-      ticketTypeId: l.ticketTypeId,
-      ticketNameAtPurchase: l.ticketName,
-      unitPriceGbpAtPurchase: l.unitPriceGbp,
-      isFreeAtPurchase: l.isFree,
-      quantity: l.quantity,
-      refundedQuantity: 0,
-      refundedAmountGbp: 0,
+    if (result === null) return [];
+    return result.tickets.map((ticket) => ({
+      ticketId: ticket.ticketId,
+      ticketName: ticket.ticketName,
+      qrPayload: ticket.qrPayload,
     }));
-    return expandTicketIds(result.orderId, orderLines).map((t) => ({
-      ticketId: t.ticketId,
-      ticketName: t.ticketName,
-    }));
-  }, [result, lines]);
+  }, [result]);
 
   const totalTickets = carouselTickets.length;
 
@@ -254,8 +201,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
           </View>
           <Text style={styles.heroTitle}>You&apos;re in</Text>
           <Text style={styles.heroEmail} numberOfLines={2}>
-            Sent to {buyer.email} — check your spam folder if you don&apos;t see
-            it in 5 min.
+            Sent to {buyer.email} and {buyer.phone}.
           </Text>
         </View>
 
@@ -282,7 +228,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
                 {l.ticketName}
               </Text>
               <Text style={styles.summaryTotal}>
-                {l.isFree ? "Free" : formatGbp(l.unitPriceGbp * l.quantity)}
+                {l.isFree ? "Free" : formatCurrency(l.unitPrice * l.quantity, l.currency)}
               </Text>
             </View>
           ))}
@@ -290,7 +236,7 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
           <View style={styles.summaryTotalRow}>
             <Text style={styles.summaryTotalLabel}>Total</Text>
             <Text style={styles.summaryTotalValue}>
-              {result.totalGbp === 0 ? "Free" : formatGbp(result.totalGbp)}
+              {result.total === 0 ? "Free" : formatCurrency(result.total, result.currency)}
             </Text>
           </View>
           <Text style={styles.orderId} accessibilityLabel={`Order ${result.orderId}`}>

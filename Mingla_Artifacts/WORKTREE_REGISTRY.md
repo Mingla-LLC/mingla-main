@@ -13,6 +13,7 @@ Strategy reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md). Codified by ME
 | Worktree path | Branch | ORCH-ID | Current phase | Opened (date) | Last main-sync | Current canonical owner | Notes |
 |---------------|--------|---------|---------------|---------------|----------------|-------------------------|-------|
 | `.worktrees/orch-0778-orch0777-web-export-stripe-import/` | `orch-0778-orch0777-web-export-stripe-import` | ORCH-0778 | CLOSE ready / operator commit+merge pending | 2026-05-10 | 2026-05-10 | Codex `orchestrator-mingla` | QA PASS; merge ORCH-0778 before canonical ORCH-0777 close, then reconcile seeded ORCH-0777 frontend files. |
+| `.worktrees/orch-0776-event-cover-video-processing-speed/` | `orch/0776-event-cover-video-processing-speed` | ORCH-0776 | TEST / retest prompt ready after Edge deploy | 2026-05-11 | 2026-05-11 | Claude `mingla-forensics` TEST mode | Codex orchestrator deployed six-function event-cover video bundle from the ORCH-0776 worktree; retest prompt is `Mingla_Artifacts/prompts/TESTER_RETEST_ORCH-0776_EVENT_COVER_VIDEO_PROCESSING_SPEED_AND_STATUS.md`. |
 | `.worktrees/orch-0779-business-android-google-signin-developer-error/` | `orch/0779-business-android-google-signin-developer-error` | ORCH-0779 | CLOSED PASS / git lock-in pending | 2026-05-10 | 2026-05-11 | Codex `orchestrator-mingla` | Android runtime PASS, production Web authenticated-session PASS after Supabase Auth callback config patch + Vercel deploy `dpl_CPQgBkaXa5nTvVNsCgeAe1UVQ6M5`; iOS out of scope. Worktree still contains uncommitted ORCH-0779 scoped files, so merge/remove requires separate clean lock-in after current main dirty ORCH-0777 work is isolated. |
 
 **Update rule:** the orchestrator updates this table on every phase transition (INVESTIGATE → SPEC → IMPLEMENT → TEST → CLOSE) and on every mid-cycle sync. Updates happen in main only.
@@ -23,7 +24,6 @@ Strategy reference: [WORKTREE_STRATEGY.md](WORKTREE_STRATEGY.md). Codified by ME
 
 | Worktree path | Branch | ORCH-ID | Closed (date) | Merge SHA | CLOSE entry |
 |---------------|--------|---------|---------------|-----------|-------------|
-| `.worktrees/orch-0776-event-cover-video-processing-speed/` | `orch/0776-event-cover-video-processing-speed` | ORCH-0776 | 2026-05-11 | `ac6cb5a5` | `Mingla_Artifacts/reports/QA_ORCH-0776_EVENT_COVER_VIDEO_PROCESSING_SPEED_AND_STATUS_RETEST.md` |
 | `.worktrees/orch-0781-clean-tree-stripe-web-import-regression/` | `orch/0781-clean-tree-stripe-web-import-regression` | ORCH-0781 | 2026-05-11 | `9b65912f` | `Mingla_Artifacts/CLOSE_NOTE_ORCH-0781.md` |
 
 **Retention:** entries here for 14 days after CLOSE, then move to the archive section. The retention window lets the operator and orchestrator inspect recent merges without consulting raw git history.

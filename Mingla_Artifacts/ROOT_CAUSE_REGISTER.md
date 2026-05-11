@@ -1,6 +1,7 @@
 # Root Cause Register
 
 > Last updated: 2026-05-09
+> Last updated: 2026-05-11
 > Proven root causes with causal clusters.
 
 ## Root Causes
@@ -19,6 +20,184 @@
 - **Invariant / regression guard:** Vercel deployment ignore rules must never exclude a configured project root that Vercel is expected to build. Ignore project-local generated outputs and secrets, not the package directory itself.
 - **Causal cluster:** Cluster 6: deployment packaging/config drift can masquerade as an application build failure.
 - **Follow-ups not part of RC:** ORCH-0764B/0764C Stripe runtime gates, ORCH-0763 event/share runtime gates, and product QA remain separate.
+### RC-0777: Organizer Orders queried nonexistent `orders.brand_id`; failed-terminal notification rows were outside retry selection
+- **Discovery date:** 2026-05-11
+- **Proof:** `reports/INVESTIGATION_ORCH-0777_REAL_DEVICE_ORDER_VISIBILITY_AND_FREE_EMAIL_FAILURE.md` proved `mingla-business/src/services/eventOrdersService.ts` selected `brand_id` directly from `orders`, while production `orders.brand_id` does not exist. The same investigation proved the operator's free-checkout notification rows created during the provider repair window were `failed_terminal`, which the dispatcher retry selector intentionally ignores.
+- **Symptoms caused:** Organizers saw false-empty Orders/revenue/guest/sold/activity surfaces even though durable checkout rows existed; the operator's free ticket confirmation would not revive without explicit state repair because terminal rows are not polled.
+- **Structural fix:** `eventOrdersService` now sources brand identity through `events!inner(brand_id)`, preserves `OrderRecord.brandId`, and the Orders screen renders an honest load error instead of falling through to "No orders yet" on query failure. Regression coverage was added through `ticketCheckoutMigrationGuards.test.ts`, `.github/scripts/strict-grep/orch-0777-ticket-checkout-production.mjs`, and the strict-grep workflow job. The targeted failed-terminal notification rows were revived without migration or Edge Function deploy.
+- **Status:** **CLOSED PASS 2026-05-11**. Evidence: spec `specs/SPEC_ORCH-0777_REAL_DEVICE_ORDER_VISIBILITY_AND_NOTIFICATION_REVIVAL.md`; implementation `reports/IMPLEMENTATION_ORCH-0777_REAL_DEVICE_ORDER_VISIBILITY_AND_NOTIFICATION_REVIVAL.md`; QA `reports/QA_ORCH-0777_REAL_DEVICE_ORDER_VISIBILITY_AND_NOTIFICATION_REVIVAL.md`; close note `CLOSE_NOTE_ORCH-0777.md`; operator attestation accepted the residual Twilio external lane and confirmed Orders/tickets.
+- **Invariant / regression guard:** Organizer order queries must source brand identity from the event relation, not from a nonexistent `orders.brand_id` column; failed-terminal notification revival must be deliberate, privacy-safe, and idempotent.
+- **Causal cluster:** Cluster 2/3 crossover: schema/source-of-truth mismatch plus notification state-machine terminal classification.
+- **Follow-ups not part of RC:** ORCH-0782 owns organizer "Resend ticket" CTA and notification rollup recompute. Twilio toll-free / Messaging Service sender configuration remains an external provider lane unless a future proof shows a Mingla code regression.
+
+### RC-0781: Clean-tree sweep reverted Stripe web boundary and removed its guard wiring
+- **Discovery date:** 2026-05-11
+- **Proof:** `reports/INVESTIGATION_ORCH-0781_CLEAN_TREE_STRIPE_WEB_IMPORT_GATE_REGRESSION.md` proves commit `ca69de38` changed `mingla-business/app/_layout.tsx` back to direct `@stripe/stripe-react-native` import/`StripeProvider`, changed `mingla-business/app/checkout/[eventId]/payment.tsx` back to direct `useStripe` while removing the web unsupported short-circuit, removed `mingla-business/package.json` script `test:orch-0778`, and replaced the `.github/workflows/strict-grep-mingla-business.yml` ORCH-0778 CI job slot with ORCH-0776D. `b7431fe1` restored only the two product-code files. ORCH-0781 implementation `14c3b59d` then restored the missing npm/CI/push wiring and made the gate self-validate those layers.
+- **Symptoms caused:** Mingla Business Web became undeployable when Stripe React Native pulled native-only React Native internals into the Expo web bundle; the failure surfaced during ORCH-0779 Vercel deploy work instead of through the intended repo-time guard. At HEAD, production web builds again, but future direct `@stripe/stripe-react-native` imports outside `.native` payment-boundary files are no longer protected by the documented npm command or CI job.
+- **Causal chain:** ORCH-0778 closed with platform-resolved wrappers, `test:orch-0778`, and CI job `orch-0778-web-stripe-native-import-gate`; `ca69de38` performed a broad clean-tree sweep that restored pre-ORCH-0778 product file shapes and edited the guard files in the same commit; the workflow only triggered on `pull_request`, so direct pushes to `Seth` bypassed every strict-grep gate even if the job had still existed; Vercel/web export caught the native-only import chain later; `b7431fe1` fixed the product files but left npm/CI guard wiring disarmed.
+- **Structural fix:** Closed by ORCH-0781: restored `test:orch-0778`, restored the CI job as a sibling without removing ORCH-0776D, added `push` triggers for `main` and `Seth`, and added self-wiring checks that fail on missing npm script, CI job, or push trigger.
+- **Status:** **CLOSED PASS 2026-05-11**. Evidence: implementation `reports/IMPLEMENTATION_ORCH-0781_CLEAN_TREE_STRIPE_WEB_IMPORT_GATE_REGRESSION.md`; QA PASS `reports/QA_ORCH-0781_CLEAN_TREE_STRIPE_WEB_IMPORT_GATE_REGRESSION.md`; close note `CLOSE_NOTE_ORCH-0781.md`; branch HEAD `14c3b59d`.
+- **Invariant / regression guard:** `@stripe/stripe-react-native` may appear only in approved `.native` Mingla Business payment-boundary files. The local npm command and CI job named by `I-PROPOSED-AE` must exist and must run on both pull requests and direct pushes for protected branches.
+- **Causal cluster:** Cluster 5/6 crossover: release/provenance drift plus external/native package boundary enforcement disarmed by broad branch cleanup.
+- **Follow-ups not part of RC:** D-0781-2 should audit ORCH-0776A and ORCH-0777 strict-grep scripts that appear npm-wired but not CI-wired. ORCH-0777 checkout backend, B2 Connect, scanner, Resend/Twilio, QR pepper, and native live-fire remain separate.
+
+### RC-0779: Supabase Auth Site URL pointed web OAuth callbacks at Expo Go
+- **Discovery date:** 2026-05-11
+- **Proof:** ORCH-0779 Web callback forensics predicted the allow-list/Site URL failure class in `.worktrees/orch-0779-business-android-google-signin-developer-error/Mingla_Artifacts/reports/FORENSIC_HYPOTHESIS_ORCH-0779_WEB_CALLBACK.md`. The confirmed Supabase Auth project `gqnoajqerqhnvulmnyvv` state had `site_url = "exp://*"` and lacked the production/preview business web redirect allow-list entries, so rejected `redirectTo` values fell back to the Expo Go URL and Safari reported an invalid address.
+- **Symptoms caused:** Production Web Google sign-in could launch Google account selection but could not return into authenticated Mingla state; Safari/web callback could fall through to `exp://*`. Android native sign-in was unaffected by this Web callback root cause because Android used the native ID-token flow and separately passed after the Google Cloud Android OAuth tuple was correct.
+- **Structural fix:** Supabase Management API patch changed `site_url` to `https://business.usemingla.com` and appended business production, Vercel preview, wildcard preview, and localhost `8091` redirect patterns while preserving prior demo/admin/marketing/Expo/localhost entries. Production deploy `dpl_CPQgBkaXa5nTvVNsCgeAe1UVQ6M5` was aliased to `https://business.usemingla.com`.
+- **Status:** **CLOSED PASS 2026-05-11**. Evidence: QA report `.worktrees/orch-0779-business-android-google-signin-developer-error/Mingla_Artifacts/reports/QA_ORCH-0779_BUSINESS_ANDROID_GOOGLE_SIGNIN_DEVELOPER_ERROR.md` §11-§12; pushed commit `b7431fe1`; operator-confirmed production Web authenticated state.
+- **Invariant / regression guard:** Supabase Auth Site URL must be the public HTTPS domain for the surface initiating web OAuth; `exp://*` is Expo Go-only and cannot be the project-wide fallback for web. `uri_allow_list` must include every production custom domain and Vercel preview pattern for each web surface that calls `signInWithOAuth`.
+- **Causal cluster:** Cluster 1/6 crossover: external auth provider redirect authority misconfigured relative to production web host.
+- **Follow-ups not part of RC:** ORCH-0781 owns the separate Stripe web import regression caused by `ca69de38`; ORCH-0777 owns checkout live-fire/native PaymentSheet.
+
+### RC-0774A: Auth/session readiness is not a hard gate for business server mutations
+- **Discovery date:** 2026-05-10
+- **Proof:** `reports/INVESTIGATION_ORCH-0774_AUTH_BRAND_LIVE_EVENT_EDIT_REGRESSION_CLUSTER.md` traces the logged `[useCreateServerDraft] AuthSessionMissingError` to `/event/create` calling `createDraft(currentBrandId)` solely from a persisted brand pointer while `createServerDraft()` immediately calls `supabase.auth.getUser()`. The same missing-session class can block auth-required video upload-intent/status/apply functions.
+- **Symptoms caused:** New event creation can fail or retry after login with `AuthSessionMissingError`; Step 4 video upload handoff can fail before source upload when no bearer token is available; auth-required business operations can emit noisy errors while the UI still appears signed in.
+- **Causal chain:**
+  1. AuthContext exposes `user/session/loading`, but app surfaces do not have one canonical "authenticated server calls are ready" gate.
+  2. `currentBrandId` can exist from persisted local state.
+  3. `/event/create` starts `createServerDraft()` from that pointer without proving `auth.getUser()` can succeed.
+  4. Supabase auth has no restored session/access token yet.
+  5. `auth.getUser()` throws `AuthSessionMissingError`, and the hook logs it as a generic operation failure.
+  6. Video upload-intent/status/apply share the same session-token dependency through Supabase Edge Function auth.
+- **Structural fix:** Approved spec `specs/SPEC_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`; implementation returned in `reports/IMPLEMENTATION_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`; orchestrator review `reports/REVIEW_IMPLEMENTATION_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`; tester prompt `prompts/TESTER_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`.
+- **Status:** **OPEN - PARTIAL RUNTIME SMOKE PASSED / MANUAL GATES REMAIN 2026-05-10**. Static tester returned conditional pass in `reports/TEST_REPORT_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`; runtime smoke `reports/RUNTIME_QA_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md` proved logged-in Account brands and create-event `Server draft` with no forbidden auth/create/autosave signatures in the filtered window. Close still requires the remaining operator-assisted gates: fresh login, edit/autosave/background, Step 4 image/GIF, Step 4 video processing/failure recovery, and true sign-out; or explicit operator risk acceptance.
+- **Invariant / regression guard:** Authenticated DB mutations and auth-required Edge Function calls must not start until auth/session is restored and usable. Transient auth restoration must not be treated as true sign-out or true empty data.
+- **Causal cluster:** Cluster 1/4 crossover: auth/session source-of-truth gap plus mutation readiness contract gap.
+- **Follow-ups not part of RC:** ORCH-0774B live-event server edit mutation, Giphy/Pexels, Cloudinary transcoding architecture, Stripe onboarding, and public playback remain separate.
+
+### RC-0774B: Brand-list loading/error states collapse into an empty brand list
+- **Discovery date:** 2026-05-10
+- **Proof:** `reports/INVESTIGATION_ORCH-0774_AUTH_BRAND_LIVE_EVENT_EDIT_REGRESSION_CLUSTER.md` shows `useBrandList()` returns `query.data ?? []` while `useBrands(user?.id ?? null)` is disabled when `user` is null. Account renders `Your brands` only when `brands.length > 0`, so loading/disabled/error and true no-brands become visually identical.
+- **Symptoms caused:** Organiser brands can appear to disappear while the user is still apparently logged in; Account can silently hide brand-management rows; Home/current-brand recovery can miscommunicate loading, no-selection, and empty states during auth transitions.
+- **Causal chain:**
+  1. Auth user is temporarily unavailable or a brand query is disabled/loading/error.
+  2. `useBrandList()` returns `[]`.
+  3. Account checks only array length.
+  4. The `Your brands` card disappears with no loading/recovery/error state.
+  5. Logout/login restores session/query data and the brands reappear.
+- **Structural fix:** Covered by approved ORCH-0774A spec `specs/SPEC_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`; implementation returned in `reports/IMPLEMENTATION_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`; tester verification pending via `prompts/TESTER_ORCH-0774A_AUTH_READY_BRAND_VIDEO_HANDOFF_GUARDS.md`.
+- **Status:** **OPEN - PARTIAL RUNTIME SMOKE PASSED / MANUAL GATES REMAIN 2026-05-10**. Runtime smoke proved the current logged-in Account brand list is populated and not silently empty; close still requires fresh-login transition proof and the remaining ORCH-0774A operator-assisted runtime gates, or explicit operator risk acceptance.
+- **Invariant / regression guard:** "No brands" must only mean a fetched, authenticated, successful empty result. Loading, auth restoration, signed-out, and error are separate states.
+- **Causal cluster:** Cluster 1/3 crossover: query state collapsed into false product data.
+- **Follow-ups not part of RC:** ORCH-0768 count/identity honesty remains separate except where Account brand-list state is touched.
+
+### RC-0774C: Server-loaded live-event edit screen intentionally disables non-cover saves
+- **Discovery date:** 2026-05-10
+- **Proof:** `reports/INVESTIGATION_ORCH-0774_AUTH_BRAND_LIVE_EVENT_EDIT_REGRESSION_CLUSTER.md` proves that `app/event/[id]/edit.tsx` passes `disableLocalSaveReason` when a published event is loaded from `useBusinessEventById` instead of local `liveEventStore`, and `EditPublishedScreen` disables Save when that reason exists and the patch is not cover-media-only.
+- **Symptoms caused:** Organisers can open an already-live event, edit normal fields, and still see a greyed-out Save button. Cover-media-only updates can save, but title/date/ticket/settings edits cannot persist from server-loaded published events.
+- **Causal chain:**
+  1. ORCH-0763 enabled server-backed published-event hydration.
+  2. Local `liveEventStore` may not contain the event after new build/logout/cache loss.
+  3. The edit route uses server event detail.
+  4. The route marks the screen server-loaded/read-only for local save.
+  5. Non-cover edits are allowed in the UI but Save is disabled because no server edit mutation exists.
+- **Structural fix:** Needs separate ORCH-0774B spec after ORCH-0774A, unless operator explicitly prioritizes live-event edit mutation first.
+- **Status:** **OPEN - SPLIT FOLLOW-UP 2026-05-10**.
+- **Invariant / regression guard:** A server-loaded published event edit surface must either support saving allowed fields through a server mutation or present non-cover sections as read-only before the organiser edits them.
+- **Causal cluster:** Cluster 1: split local/server authority after server-backed event migration.
+- **Follow-ups not part of RC:** Auth-ready and video handoff guards are ORCH-0774A.
+
+### RC-0772: Native video cleanup called `pause()` after Expo player disposal
+- **Discovery date:** 2026-05-09
+- **Proof:** `reports/RUNTIME_QA_ORCH-0772_PUBLIC_ROUTE_UNMOUNT_FAIL.md` reproduced the exact public event route-unmount failure after opening `mingla-business://e/leggothis/a-life-in-vegas` and routing away to Events: `FunctionCallException: Calling the 'pause' function has failed` caused by `NativeSharedObjectNotFoundException: Unable to find the native shared object associated with given JavaScript object`.
+- **Symptoms caused:** Repeated red iOS native errors after a public event video route unmounted or closed, even though the user had simply left the event page.
+- **Causal chain:**
+  1. Public event pages can render native `expo-video` covers.
+  2. `EventCoverNativeVideo` cleanup called `player.pause()` while unmounting.
+  3. Expo can dispose the native shared object before or during React cleanup.
+  4. The cleanup `pause()` call then targets a JavaScript wrapper whose native object no longer exists.
+  5. The iOS native layer emits `FunctionCallException` / `NativeSharedObjectNotFoundException`.
+- **Structural fix:** `reports/IMPLEMENTATION_REWORK_ORCH-0772_PUBLIC_ROUTE_UNMOUNT_NATIVE_PLAYER_DISPOSED_EXCEPTION.md` removed cleanup-time native pause and kept mounted pause paths for `shouldPlay === false` plus AppState inactive/background. Review: `reports/REVIEW_IMPLEMENTATION_REWORK_ORCH-0772_PUBLIC_ROUTE_UNMOUNT_NATIVE_PLAYER_DISPOSED_EXCEPTION.md`; tester PASS: `reports/RETEST_ORCH-0772_PUBLIC_ROUTE_UNMOUNT_NATIVE_PLAYER_DISPOSED_EXCEPTION.md`; close review: `reports/CLOSE_REVIEW_ORCH-0772_PUBLIC_ROUTE_UNMOUNT_NATIVE_PLAYER_DISPOSED_EXCEPTION.md`.
+- **Status:** **PRODUCT FIXED / CLOSE-READY; GIT LOCK-IN BLOCKED 2026-05-09**. Independent tester retest passed the exact public route-unmount smoke with zero disposed-player signatures. Final commit/push is blocked because the relevant code/test files overlap with earlier uncommitted media/audio lifecycle work, so a clean ORCH-0772-only commit cannot be safely staged from current `HEAD`.
+- **Invariant / regression guard:** Native route-unmount cleanup must not call player methods on a potentially disposed `expo-video` shared object. Pause/play calls belong to mounted lifecycle transitions; cleanup should remove listeners/subscriptions only.
+- **Causal cluster:** Cluster 4: media lifecycle side effect after native resource disposal.
+- **Follow-ups not part of RC:** ORCH-0771 audible audio lifecycle and ORCH-0770 video processing/browser-safe playback remain separate.
+
+### RC-0773: Stale local draft cache survived server draft lifecycle changes
+- **Discovery date:** 2026-05-09
+- **Proof:** `reports/INVESTIGATION_ORCH-0773_DRAFT_AUTOSAVE_PGRST116_MISSING_SERVER_ROW.md` proved the active fixture: local AsyncStorage still contains a `DraftEvent` for id `98e880f3-43ef-47ab-a530-deaa117b21a7`, while the remote/public row for that same id is already `status = scheduled`, `visibility = public`, and `currency = USD`. The context read in `mingla-business/src/services/eventDrafts.ts` can see the row because it does not require draft status; the autosave update then filters `status = draft`, updates zero rows, and `.single()` emits `PGRST116`.
+- **Symptoms caused:** Repeated `[useServerDraftAutosave]` `PGRST116` / `Cannot coerce the result to a single JSON object`; media/edit changes can appear local but fail to persist; ORCH-0770 runtime media verification is polluted by unrelated autosave failures.
+- **Causal chain:**
+  1. A server draft is published/promoted to a scheduled/public event.
+  2. The business app still has a persisted local `DraftEvent` copy for the same id.
+  3. Edit route/wizard can render that stale local draft instead of retiring it when the server draft detail is missing/non-draft.
+  4. Autosave reads enough server context to build a save, then updates with `status = draft`.
+  5. The update affects zero rows because the row is no longer a draft.
+  6. `.single()` converts that lifecycle mismatch into repeated generic `PGRST116` errors instead of a typed stale-draft outcome.
+- **Structural fix:** Approved spec `specs/SPEC_ORCH-0773_DRAFT_AUTOSAVE_STALE_LOCAL_DRAFT_LIFECYCLE.md`; implementor prompt `prompts/IMPLEMENTOR_REWORK_ORCH-0773_DRAFT_AUTOSAVE_STALE_LOCAL_DRAFT_LIFECYCLE.md`.
+- **Status:** **PASS ACCEPTED BY OPERATOR 2026-05-09**. First implementation report: `reports/IMPLEMENTATION_REWORK_ORCH-0773_DRAFT_AUTOSAVE_STALE_LOCAL_DRAFT_LIFECYCLE.md`. First review: `reports/REVIEW_IMPLEMENTATION_REWORK_ORCH-0773_DRAFT_AUTOSAVE_STALE_LOCAL_DRAFT_LIFECYCLE.md`. Route/test rework implementation: `reports/IMPLEMENTATION_REWORK_ORCH-0773B_STALE_DRAFT_RECOVERY_ROUTE_AND_TEST_ASSERTION.md`; review: `reports/REVIEW_IMPLEMENTATION_REWORK_ORCH-0773B_STALE_DRAFT_RECOVERY_ROUTE_AND_TEST_ASSERTION.md`; tester retest: `reports/RETEST_ORCH-0773B_DRAFT_AUTOSAVE_STALE_LOCAL_DRAFT_LIFECYCLE.md`; retest review: `reports/REVIEW_RETEST_ORCH-0773B_DRAFT_AUTOSAVE_STALE_LOCAL_DRAFT_LIFECYCLE.md`; runtime QA: `reports/RUNTIME_QA_ORCH-0773B_DRAFT_AUTOSAVE_STALE_LOCAL_DRAFT_LIFECYCLE.md`; runtime review: `reports/REVIEW_RUNTIME_QA_ORCH-0773B_DRAFT_AUTOSAVE_STALE_LOCAL_DRAFT_LIFECYCLE.md`; operator acceptance: `reports/OPERATOR_ACCEPTANCE_ORCH-0773B_DRAFT_AUTOSAVE_STALE_LOCAL_DRAFT_LIFECYCLE.md`. Residual risk accepted: runtime stale-fixture proof unavailable.
+- **Invariant / regression guard:** A non-local draft whose server row is missing, deleted, or no longer `status = draft` must be treated as a lifecycle transition, not an autosave error loop. Local draft cache must be retired or routed away before the wizard can keep editing/autosaving stale state.
+- **Causal cluster:** Cluster 1/4 crossover: duplicate local/server state authority plus mutation result contract gap.
+- **Follow-ups not part of RC:** ORCH-0770 Cloudinary/transcode/browser playback, ORCH-0771 audio lifecycle, ORCH-0772 native player teardown, Giphy/Pexels, brand/profile/ticket media, Stripe, and checkout remain separate.
+
+### RC-0771: Event-cover video playback had no active-surface silence contract
+- **Discovery date:** 2026-05-09
+- **Proof:** `reports/INVESTIGATION_ORCH-0771_EVENT_VIDEO_AUDIO_PERSISTS_AFTER_CLOSE.md` proves the public event hero can intentionally render audible native video (`muted={false}`), while `EventCoverMedia` starts/restarts playback through ready/autoplay/play-to-end/AppState-active paths and does not explicitly pause on close, route blur, AppState inactive/background, cleanup start, or `autoplay=false`.
+- **Symptoms caused:** Video sound can continue after a public event page appears closed, especially if route unmount/release races with navigation, share-sheet return, AppState transitions, or hidden stack retention.
+- **Causal chain:**
+  1. Public event page renders an audible `EventCoverMedia` hero.
+  2. The shared native video component treats `autoplay` plus ready/AppState active/play-to-end as sufficient to call `player.play()`.
+  3. The component depends on eventual `useVideoPlayer` unmount cleanup, but does not pause immediately when the page becomes inactive or closes.
+  4. AppState `active` replay is not gated by current route/surface visibility.
+  5. A stale/hidden/still-mounted public event hero can continue or resume audio after the user leaves the page.
+- **Structural fix:** Approved narrow spec `specs/SPEC_ORCH-0771_EVENT_VIDEO_AUDIO_CLOSE_LIFECYCLE.md`; orchestrator reviews: `reports/REVIEW_ORCH-0771_EVENT_VIDEO_AUDIO_PERSISTS_AFTER_CLOSE.md`, `reports/REVIEW_SPEC_ORCH-0771_EVENT_VIDEO_AUDIO_CLOSE_LIFECYCLE.md`, `reports/REVIEW_IMPLEMENTATION_ORCH-0771_EVENT_VIDEO_AUDIO_CLOSE_LIFECYCLE.md`, and `reports/REVIEW_TEST_REPORT_ORCH-0771_EVENT_VIDEO_AUDIO_CLOSE_LIFECYCLE.md`; implementation report `reports/IMPLEMENTATION_ORCH-0771_EVENT_VIDEO_AUDIO_CLOSE_LIFECYCLE.md`; conditional tester report `reports/TEST_REPORT_ORCH-0771_EVENT_VIDEO_AUDIO_CLOSE_LIFECYCLE.md`; runtime tester prompt `prompts/TESTER_RUNTIME_ORCH-0771_EVENT_VIDEO_AUDIO_CLOSE_LIFECYCLE.md`.
+- **Status:** **OPEN - CONDITIONAL STATIC PASS / RUNTIME VERIFY NEXT 2026-05-09**.
+- **Invariant / regression guard:** Event-cover video may autoplay, loop, and auto-resume only while its surface is active and visible. Close, route deactivation, AppState inactive/background, cleanup, and `autoplay=false` must silence/pause the player immediately. Public-page autoplay and valid focused auto-resume must be preserved.
+- **Causal cluster:** Cluster 4/6 crossover: media lifecycle side effect without an explicit screen-visibility authority.
+- **Follow-ups not part of RC:** ORCH-0770 video transcode/compression, media upload validation, public video codec compatibility, safe-area chrome layout, Giphy/Pexels, brand/profile media, and ticket media remain separate.
+
+### RC-0770: Public event cover videos accepted native-only QuickTime/HEVC assets as web-public media
+- **Discovery date:** 2026-05-09
+- **Proof:** `reports/INVESTIGATION_ORCH-0770_PUBLIC_EVENT_VIDEO_BROWSER_BLACK_HERO.md` directly probed public Supabase event-cover objects and proved they are served as `video/quicktime` / `.mov`, include QuickTime/HEVC `hvc1` markers, lack H.264 `avc1` markers, and in at least one failing sample place `moov` after `mdat` rather than using fast-start ordering.
+- **Symptoms caused:** Public event pages can show a black video hero or a still frame in browser; video playback can fail or not resume after share-sheet/app visibility changes; the sound/mute button can overlap public-page chrome and be hard to reach on mobile.
+- **Causal chain:**
+  1. The picker accepts iPhone-shot MOV/QuickTime videos.
+  2. Upload/storage fixes allow those raw files into `event_covers`.
+  3. The app saves the raw public URL as the event cover without proving browser-safe codec/container/metadata.
+  4. Browser public pages receive `video/quicktime` HEVC assets instead of MP4/H.264/AAC fast-start derivatives.
+  5. Browser playback fails even though native app playback may work.
+  6. Public media sound control is positioned independently from close/share chrome, creating mobile safe-area overlap.
+- **Structural fix:** Implemented in `reports/IMPLEMENTATION_ORCH-0770_FULL_PHONE_VIDEO_TRANSCODE_COMPRESSION.md`: Supabase job table + Cloudinary-backed Edge Function pipeline for upload intent/status/webhook/apply/cancel, app-owned trim UI, processed public MP4 derivative, live-event save boundary, and legacy unsafe MOV fallback avoidance. Original spec `specs/SPEC_ORCH-0770_BROWSER_SAFE_EVENT_COVER_VIDEO_PIPELINE.md` is superseded by `specs/SPEC_AMENDMENT_ORCH-0770_FULL_PHONE_VIDEO_TRANSCODE_COMPRESSION.md`.
+- **Status:** **OPEN - STATIC/DEPLOY PASS, OPERATOR-ASSISTED RUNTIME QA NEXT 2026-05-09**. Webhook/security rework evidence: `reports/IMPLEMENTATION_REWORK_ORCH-0770_CLOUDINARY_WEBHOOK_AND_SECRET_HARDENING.md`; orchestrator rework review: `reports/REVIEW_IMPLEMENTATION_REWORK_ORCH-0770_CLOUDINARY_WEBHOOK_AND_SECRET_HARDENING.md`; tester report: `reports/TEST_REPORT_ORCH-0770_FULL_PHONE_VIDEO_TRANSCODE_COMPRESSION_RUNTIME.md`; orchestrator test review: `reports/REVIEW_TEST_REPORT_ORCH-0770_FULL_PHONE_VIDEO_TRANSCODE_COMPRESSION_RUNTIME.md`. Next prompt: `prompts/TESTER_OPERATOR_ASSISTED_RUNTIME_ORCH-0770_FULL_PHONE_VIDEO_TRANSCODE_COMPRESSION.md`. Remaining gate: prove real phone video -> Cloudinary processing -> webhook callback -> processed MP4 apply -> public browser playback with job-row data. Cloudinary API secret rotation remains recommended because credential material previously existed in local/chat context.
+- **Invariant / regression guard:** A public event cover video must be a processed browser-safe derivative before it can become the public cover URL. Raw picker video may not be published unchanged; phone-shot videos must be transcoded/compressed into MP4/H.264/AAC fast-start public derivatives, with final public cover size <=25 MB.
+- **Causal cluster:** Cluster 4/6 crossover: media pipeline accepted native-device artifacts without browser delivery normalization.
+- **Follow-ups not part of RC:** Giphy/Pexels provider picker, brand page media, profile media, and ticket media remain separate and blocked behind this base event-cover video contract.
+
+### RC-0769: Stripe account currency was stranded outside the app-wide commerce currency model
+- **Discovery date:** 2026-05-09
+- **Proof:** `reports/INVESTIGATION_ORCH-0769_APP_WIDE_CURRENCY_AFTER_STRIPE_ONBOARDING.md` proves `brand-stripe-onboard` writes selected/default currency to `stripe_connect_accounts.default_currency`, while `brands.default_currency` remains GBP and `Brand.defaultCurrency` is mapped from `brands.default_currency`. It also proves event publish forces `ticket_types.currency = 'GBP'`, checkout/order/door/refund snapshots freeze `currency: "GBP"` and `*Gbp` fields, and broad UI/export surfaces still use GBP-only formatters/fields.
+- **Symptoms caused:** After onboarding with Stripe in a non-GBP country/currency, organisers and buyers can still see GBP across Home, Events, public pages, checkout, orders, door sales, reconciliation, finance reports, exports, and stored event/order records.
+- **Causal chain:**
+  1. Stripe country selection determines a default currency.
+  2. Onboarding upserts that currency only into `stripe_connect_accounts`.
+  3. SCA-to-brand sync triggers mirror Stripe id/enabled flags but not `default_currency`.
+  4. Business app brand queries map `Brand.defaultCurrency` from still-GBP `brands.default_currency`.
+  5. Event publish, checkout, order, door sale, refund, reconciliation, and export contracts still persist/render GBP-specific fields.
+  6. Partial `formatCurrency` usage in Brand Payments cannot correct app-wide state because its source is still GBP and adjacent amounts are still GBP-named.
+- **Structural fix:** Partial implementation returned via `reports/IMPLEMENTATION_ORCH-0769_APP_WIDE_CURRENCY_AFTER_STRIPE_ONBOARDING.md`, DB push rework via `reports/IMPLEMENTATION_REWORK_ORCH-0769_DB_PUSH_SQL_SCOPE_FIX.md`, and deploy via `reports/DEPLOY_ORCH-0769_APP_WIDE_CURRENCY_AFTER_STRIPE_ONBOARDING.md`. Fresh rework investigation `reports/INVESTIGATION_REWORK_ORCH-0769_CURRENCY_MISMATCH_REVENUE_RECON_WIZARD_ORDERS_SALES.md` proves the first implementation did not finish the semantic money model: active summaries still aggregate currencyless legacy numbers and repaint them as event/brand currency.
+- **Status:** **OPEN - IMPLEMENTOR REWORK DISPATCH READY 2026-05-09**. Rework prompt: `prompts/IMPLEMENTOR_REWORK_ORCH-0769_CURRENCY_MISMATCH_REVENUE_RECON_WIZARD_ORDERS_SALES.md`; expected output: `reports/IMPLEMENTATION_REWORK_ORCH-0769_CURRENCY_MISMATCH_REVENUE_RECON_WIZARD_ORDERS_SALES.md`. Close remains blocked on semantic rework, independent QA, business deploy/OTA, and non-GBP runtime proof.
+- **Invariant / regression guard:** Currency display and persisted commerce amounts must carry a real ISO currency source; active single-currency totals may be shown only when all included rows match the displayed currency. Historical GBP transactions must remain GBP. Mixed currencies must be grouped or flagged, never silently summed.
+- **Causal cluster:** Cluster 1/4/6 crossover: duplicate source-of-truth, non-neutral persisted commerce schema, and Stripe integration metadata stranded from app state.
+- **Follow-ups not part of RC:** ORCH-0764A/B/C Stripe onboarding/status repairs remain separate; real paid checkout/destination charges are not solved by this RC alone.
+
+### RC-0767: Public brand existence was derived from public event rows
+- **Discovery date:** 2026-05-09
+- **Proof:** `reports/INVESTIGATION_ORCH-0767_PUBLIC_BRAND_PAGE_EMPTY_BRAND_NOT_FOUND.md` proved `/b/{brandSlug}` called `getPublicBrandBySlug`, which queried `business_public_events_view`; that view only contains brands through qualifying public event rows, so a real brand with zero public events returned no rows and became `PublicBrandNotFound`.
+- **Symptoms caused:** Organisers could tap **View public page** for an existing empty brand such as `Brand 3` and see `We couldn't find that brand`.
+- **Causal chain:**
+  1. Brand profile routed to `/b/{brandSlug}` correctly.
+  2. Public brand route delegated to `getPublicBrandBySlug`.
+  3. `getPublicBrandBySlug` used `business_public_events_view` as both brand identity and event-list source.
+  4. Empty brands had no qualifying public event row.
+  5. Service returned `null`, and the route rendered not-found.
+- **Structural fix:** Added field-limited `business_public_brands_view` for public brand identity; kept `business_public_events_view` as public event-row source; refactored app/server preview code to return `{ brand, events: [] }` for real empty brands; added regression tests and deployed to `business.usemingla.com`.
+- **Status:** **CLOSED PASS 2026-05-09**. Evidence: `reports/IMPLEMENTATION_ORCH-0767_PUBLIC_BRAND_PAGE_EMPTY_BRAND_NOT_FOUND.md`, `reports/DEPLOY_ORCH-0767_PUBLIC_BRAND_PAGE_EMPTY_BRAND_NOT_FOUND.md`, `reports/CLOSE_ORCH-0767_PUBLIC_BRAND_PAGE_EMPTY_BRAND_NOT_FOUND.md`, and operator runtime acceptance.
+- **Invariant / regression guard:** Public brand existence must not be inferred from event rows. Public profile identity comes from a field-limited public brand read model; public event cards remain event-view-backed.
+- **Causal cluster:** Cluster 1/3 crossover: wrong source-of-truth plus launch-visible transitional public page behavior.
+- **Follow-ups not part of RC:** ORCH-0768 public `@slug` and fabricated audience/count cleanup remains separate.
 
 ### RC-0764B: Stripe onboarding UI used split status truths and treated actionable KYC as terminal failure
 - **Discovery date:** 2026-05-09

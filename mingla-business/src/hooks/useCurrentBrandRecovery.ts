@@ -19,7 +19,7 @@ const DEFAULT_BRAND_SAVE_ERROR =
 const inFlightDefaultWrites = new Set<string>();
 
 export const useCurrentBrandRecovery = (): CurrentBrandRecoveryState => {
-  const { user } = useAuth();
+  const { authStatus, isAuthReady, user } = useAuth();
   const userId = user?.id ?? null;
   const brandsQuery = useBrands(userId);
   const creatorAccount = useCreatorAccount();
@@ -38,7 +38,12 @@ export const useCurrentBrandRecovery = (): CurrentBrandRecoveryState => {
   );
   const defaultBrandId = creatorAccount.data?.default_brand_id ?? null;
   const dataReady =
-    userId !== null && brandsQuery.isFetched && creatorAccount.isFetched;
+    isAuthReady &&
+    userId !== null &&
+    brandsQuery.isFetched &&
+    !brandsQuery.isError &&
+    creatorAccount.isFetched &&
+    !creatorAccount.isError;
   const resolution = useMemo(
     () =>
       dataReady
@@ -52,7 +57,7 @@ export const useCurrentBrandRecovery = (): CurrentBrandRecoveryState => {
   );
 
   useEffect(() => {
-    if (userId === null || resolution === null) return;
+    if (!isAuthReady || userId === null || resolution === null) return;
 
     const appliedKey = [
       userId,
@@ -87,6 +92,7 @@ export const useCurrentBrandRecovery = (): CurrentBrandRecoveryState => {
       });
   }, [
     userId,
+    isAuthReady,
     currentBrandId,
     defaultBrandId,
     brandIdsKey,
@@ -95,12 +101,14 @@ export const useCurrentBrandRecovery = (): CurrentBrandRecoveryState => {
   ]);
 
   const isResolving =
-    userId !== null &&
+    (authStatus === "bootstrapping" || authStatus === "refreshing") ||
+    (isAuthReady &&
+      userId !== null &&
     (!brandsQuery.isFetched ||
       !creatorAccount.isFetched ||
       (resolution !== null &&
         resolution.brandId !== currentBrandId &&
-        errorMessage === null));
+        errorMessage === null)));
 
   return {
     isResolving,

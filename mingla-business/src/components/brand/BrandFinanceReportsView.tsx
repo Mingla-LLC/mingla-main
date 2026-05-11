@@ -61,7 +61,8 @@ import type {
   BrandEventStub,
   BrandRefund,
 } from "../../store/currentBrandStore";
-import { formatCount, formatGbp, formatGbpRound } from "../../utils/currency";
+import { formatCount, formatCurrency, formatCurrencyRound } from "../../utils/currency";
+import { summarizeLegacyBrandFinance } from "../../utils/moneySummary";
 
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -220,18 +221,18 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
     return all.filter((r) => new Date(r.refundedAt).getTime() >= cutoff);
   }, [brand, period]);
 
-  const grossSales = useMemo<number>(
-    () => filteredEvents.reduce((sum, e) => sum + e.revenueGbp, 0),
-    [filteredEvents],
+  const financeSummary = useMemo(
+    () =>
+      summarizeLegacyBrandFinance({
+        brandCurrency: brand?.defaultCurrency ?? null,
+        events: filteredEvents,
+        refunds: filteredRefunds,
+      }),
+    [brand?.defaultCurrency, filteredEvents, filteredRefunds],
   );
-  const totalRefunds = useMemo<number>(
-    () => filteredRefunds.reduce((sum, r) => sum + r.amountGbp, 0),
-    [filteredRefunds],
-  );
-  const eventCount = useMemo<number>(
-    () => filteredEvents.filter((e) => e.revenueGbp > 0).length,
-    [filteredEvents],
-  );
+  const grossSales = financeSummary.grossSales;
+  const totalRefunds = financeSummary.totalRefunds;
+  const eventCount = financeSummary.eventCount;
   const minglaFee = grossSales * MINGLA_PERCENT + eventCount * MINGLA_FLAT_GBP;
   const stripeFee = grossSales * STRIPE_PERCENT + eventCount * STRIPE_FLAT_GBP;
   const netToBank = grossSales - totalRefunds - minglaFee - stripeFee;
@@ -286,6 +287,7 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
   // ----- Populated state -----
 
   const isRestricted = brand.stripeStatus === "restricted";
+  const currency = financeSummary.currency;
   const totalEvents = (brand.events ?? []).length;
   const showEmptyState = filteredEvents.length === 0;
   const emptyTitle =
@@ -349,6 +351,26 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
           </GlassCard>
         ) : null}
 
+        {financeSummary.mismatches.length > 0 ? (
+          <GlassCard
+            variant="base"
+            padding={spacing.md}
+            style={styles.transitionalBanner}
+          >
+            <View style={styles.bannerRow}>
+              <View style={styles.transitionalIconWrap}>
+                <Icon name="receipt" size={20} color={accent.warm} />
+              </View>
+              <View style={styles.bannerTextCol}>
+                <Text style={styles.bannerTitle}>Legacy finance data is GBP</Text>
+                <Text style={styles.bannerSub}>
+                  These cached finance rows are recorded in GBP. New {brand.defaultCurrency} event finance will appear separately after live server finance rows land.
+                </Text>
+              </View>
+            </View>
+          </GlassCard>
+        ) : null}
+
         {/* Period switcher */}
         <View style={styles.periodRow}>
           {PERIOD_OPTIONS.map((p) => {
@@ -391,7 +413,7 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
               <Text style={styles.headlineLabel}>
                 {`Net revenue · ${PERIOD_LABEL[period]}`}
               </Text>
-              <Text style={styles.headlineValue}>{formatGbpRound(netToBank)}</Text>
+              <Text style={styles.headlineValue}>{formatCurrencyRound(netToBank, currency)}</Text>
               {sparklineBars.length > 0 ? (
                 <View style={styles.sparklineRow}>
                   {sparklineBars.map((heightPct, i) => {
@@ -418,20 +440,20 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
 
             {/* Breakdown */}
             <GlassCard variant="base" padding={spacing.md}>
-              <BreakdownRow label="Gross sales" value={formatGbp(grossSales)} />
+              <BreakdownRow label="Gross sales" value={formatCurrency(grossSales, currency)} />
               <BreakdownRow
                 label="Refunds"
-                value={`−${formatGbp(totalRefunds)}`}
+                value={`−${formatCurrency(totalRefunds, currency)}`}
               />
               <BreakdownRow
                 label="Mingla fee (2% + £0.30)"
-                value={`−${formatGbp(minglaFee)}`}
+                value={`−${formatCurrency(minglaFee, currency)}`}
               />
               <BreakdownRow
                 label="Stripe processing"
-                value={`−${formatGbp(stripeFee)}`}
+                value={`−${formatCurrency(stripeFee, currency)}`}
               />
-              <BreakdownRow label="Net to bank" value={formatGbp(netToBank)} last />
+              <BreakdownRow label="Net to bank" value={formatCurrency(netToBank, currency)} last />
             </GlassCard>
 
             {/* Top events */}
@@ -461,7 +483,7 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
                       </Text>
                     </View>
                     <Text style={styles.eventAmount}>
-                      {formatGbpRound(event.revenueGbp)}
+                      {formatCurrencyRound(event.revenueGbp, currency)}
                     </Text>
                   </View>
                 );
@@ -621,6 +643,10 @@ const styles = StyleSheet.create({
     borderColor: "rgba(239, 68, 68, 0.45)",
     borderWidth: 1,
   },
+  transitionalBanner: {
+    borderColor: "rgba(235, 120, 37, 0.35)",
+    borderWidth: 1,
+  },
   bannerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -633,6 +659,16 @@ const styles = StyleSheet.create({
     backgroundColor: semantic.errorTint,
     borderWidth: 1,
     borderColor: "rgba(239, 68, 68, 0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  transitionalIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -17,7 +17,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { TicketStub } from "../../store/draftEventStore";
-import { formatGbpRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
 import {
   formatTicketBadges,
   formatTicketCapacity,
@@ -45,6 +45,7 @@ interface TicketTierCardProps {
    * to 0 in create-flow (no edit mode passed).
    */
   soldCount?: number;
+  eventCurrency?: string;
 }
 
 const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
@@ -58,6 +59,7 @@ const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
   onMoveDown,
   errorMessage,
   soldCount = 0,
+  eventCurrency,
 }) => {
   const hasSales = soldCount > 0;
   const subLine = formatTicketSubline(ticket);
@@ -66,7 +68,9 @@ const TicketTierCardInner: React.FC<TicketTierCardProps> = ({
   const priceLabel = ticket.isFree
     ? "Free"
     : ticket.priceGbp !== null
-      ? formatGbpRound(ticket.priceGbp)
+      ? ticket.currency !== undefined || eventCurrency !== undefined
+        ? formatCurrencyRound(ticket.priceGbp, ticket.currency ?? eventCurrency ?? "")
+        : "Currency not set"
       : "—";
 
   // Disabled-visibility tickets render greyed

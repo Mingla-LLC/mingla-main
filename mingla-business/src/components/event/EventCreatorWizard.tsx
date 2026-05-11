@@ -195,6 +195,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const [pendingErrors, setPendingErrors] = useState<ValidationError[]>([]);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
   const [isDiscarding, setIsDiscarding] = useState<boolean>(false);
+  const [coverVideoProcessing, setCoverVideoProcessing] = useState<boolean>(false);
   const [discardError, setDiscardError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
   // Track keyboard state — used to (a) hide the bottom dock during
@@ -413,6 +414,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
 
   const discardDraft = useCallback(
     async (draft: DraftEvent): Promise<void> => {
+      if (autosaveTimerRef.current !== null) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
       if (isLocalOnlyDraft(draft) || onDiscardServerDraft === undefined) {
         deleteDraft(draft.id);
         return;
@@ -521,6 +526,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   }, [liveDraft, stripeStatus, handleShowToast]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
+    if (isPublishing) return;
     setIsPublishing(true);
     const draftName = liveDraft.name;
     // Simulated 1.2s submit per spec AC#28.
@@ -552,6 +558,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     }
   }, [
     liveDraft,
+    isPublishing,
     onExit,
     onPublishDraft,
     deleteDraft,
@@ -578,7 +585,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // Cycle 5: Publish button disabled when Stripe is required but not
   // connected. The Stripe-blocked-card in Step 7 body owns the
   // "Connect Stripe" CTA — the dock banner was removed for cleaner UX.
-  const publishDisabled = publishability.status === "blocked-stripe";
+  const publishDisabled =
+    publishability.status === "blocked-stripe" || coverVideoProcessing;
 
   // Publish modal copy varies per whenMode (Cycle 4 spec §3.8.2).
   const publishModalTitle = useMemo<string>(() => {
@@ -608,6 +616,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       onShowToast: handleShowToast,
       scrollToBottom,
       coverMediaEventId: liveDraft.id,
+      brandDefaultCurrency: brand?.defaultCurrency ?? null,
+      coverMediaApplyMode: "draft_auto" as const,
+      onCoverVideoProcessingChange: setCoverVideoProcessing,
     };
     switch (currentStep) {
       case 0:
@@ -756,7 +767,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
                 size="md"
                 onPress={handlePublishTap}
                 loading={isPublishing}
-                disabled={publishDisabled}
+                disabled={publishDisabled || isPublishing}
                 fullWidth
               />
             </View>
@@ -819,6 +830,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         title={publishModalTitle}
         description="Public sale starts immediately. You can edit details after publishing."
         confirmLabel="Publish"
+        confirmLoading={isPublishing}
+        confirmDisabled={isPublishing}
+        closeDisabled={isPublishing}
       />
 
       <PublishErrorsSheet

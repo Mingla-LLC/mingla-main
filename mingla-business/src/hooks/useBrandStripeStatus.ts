@@ -18,11 +18,13 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import {
   refreshBrandStripeStatus,
   type RefreshStatusResult,
 } from "../services/brandStripeService";
+import { shouldEnableBrandStripeStatusQuery } from "./brandStripeStatusAuthGate";
 import { brandKeys } from "./useBrands";
 
 const STALE_TIME_MS = 30 * 1000; // 30s — matches webhook + poll fallback per D-B2-11
@@ -39,7 +41,13 @@ export function useBrandStripeStatus(
   brandId: string | null,
 ): UseQueryResult<RefreshStatusResult> {
   const queryClient = useQueryClient();
-  const enabled = brandId !== null;
+  const { loading, session, user } = useAuth();
+  const enabled = shouldEnableBrandStripeStatusQuery({
+    brandId,
+    authLoading: loading,
+    user,
+    session,
+  });
 
   // Realtime subscription per D-B2-11
   useEffect(() => {
@@ -83,7 +91,7 @@ export function useBrandStripeStatus(
   }, [enabled, brandId, queryClient]);
 
   return useQuery<RefreshStatusResult>({
-    queryKey: enabled
+    queryKey: enabled && brandId !== null
       ? brandStripeStatusKeys.detail(brandId)
       : DISABLED_KEY,
     enabled,
@@ -93,7 +101,7 @@ export function useBrandStripeStatus(
       if (brandId === null) {
         throw new Error("useBrandStripeStatus: brandId is null but enabled");
       }
-      return refreshBrandStripeStatus(brandId);
+      return refreshBrandStripeStatus(brandId, session?.access_token ?? null);
     },
   });
 }

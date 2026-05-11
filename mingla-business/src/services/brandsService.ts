@@ -30,6 +30,10 @@ import {
 } from "./brandMapping";
 import type { Brand, BrandRole } from "../store/currentBrandStore";
 
+interface EventBrandIdRow {
+  brand_id: string | null;
+}
+
 /**
  * Thrown by `createBrand` when slug collides with an existing non-deleted brand
  * (Postgrest 23505 unique_violation on `idx_brands_slug_active`).
@@ -122,11 +126,41 @@ export async function getBrands(accountId: string): Promise<Brand[]> {
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data as BrandRow[]).map((row) =>
+  const rows = data as BrandRow[];
+  const eventCounts = await getEventCountsByBrandIds(rows.map((row) => row.id));
+  return rows.map((row) => {
     // Default role "owner" — useCurrentBrandRole resolves real role per brand.
     // Service layer cannot know caller's role per-brand without a join.
-    mapBrandRowToUi(row, { role: "owner" }),
-  );
+    const brand = mapBrandRowToUi(row, { role: "owner" });
+    return {
+      ...brand,
+      stats: {
+        ...brand.stats,
+        events: eventCounts.get(row.id) ?? 0,
+      },
+    };
+  });
+}
+
+async function getEventCountsByBrandIds(
+  brandIds: string[],
+): Promise<Map<string, number>> {
+  if (brandIds.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from("events")
+    .select("brand_id")
+    .in("brand_id", brandIds)
+    .is("deleted_at", null);
+
+  if (error) throw error;
+
+  const counts = new Map<string, number>();
+  for (const row of data as EventBrandIdRow[]) {
+    if (row.brand_id === null) continue;
+    counts.set(row.brand_id, (counts.get(row.brand_id) ?? 0) + 1);
+  }
+  return counts;
 }
 
 // ----- getBrand (single) -------------------------------------------------

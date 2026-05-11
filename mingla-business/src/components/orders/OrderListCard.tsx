@@ -19,7 +19,7 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import type { OrderRecord } from "../../store/orderStore";
-import { formatGbpRound } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
 
 import { Pill } from "../ui/Pill";
 
@@ -129,7 +129,7 @@ export const OrderListCard: React.FC<OrderListCardProps> = ({
       initials: getInitials(order.buyer.name),
       amountLabel: order.totalGbpAtPurchase === 0
         ? "Free"
-        : formatGbpRound(order.totalGbpAtPurchase),
+        : formatCurrencyRound(order.totalGbpAtPurchase, order.currency),
       subline: `${order.id} · ${summarizeLines(order.lines)} · ${formatRelativeTime(order.paidAt)}`,
     };
   }, [order]);
