@@ -47,11 +47,6 @@ SELECT
   e.recurrence_rules,
   e.cover_media_url,
   e.cover_media_type,
-  e.cover_media_provider,
-  e.cover_media_source_url,
-  e.cover_media_credit,
-  e.cover_media_credit_url,
-  e.cover_media_alt,
   e.visibility,
   e.show_on_discover,
   e.status,
@@ -60,7 +55,12 @@ SELECT
   e.created_at,
   e.updated_at,
   (e.theme - 'business_draft') AS management_theme,
-  e.currency
+  e.currency,
+  e.cover_media_provider,
+  e.cover_media_source_url,
+  e.cover_media_credit,
+  e.cover_media_credit_url,
+  e.cover_media_alt
 FROM public.events e
 JOIN public.brands b ON b.id = e.brand_id
 WHERE e.deleted_at IS NULL
@@ -91,11 +91,6 @@ SELECT
   e.recurrence_rules,
   e.cover_media_url,
   e.cover_media_type,
-  e.cover_media_provider,
-  e.cover_media_source_url,
-  e.cover_media_credit,
-  e.cover_media_credit_url,
-  e.cover_media_alt,
   e.visibility,
   e.show_on_discover,
   e.status,
@@ -104,7 +99,12 @@ SELECT
   e.created_at,
   e.updated_at,
   (e.theme - 'business_draft') AS public_theme,
-  e.currency
+  e.currency,
+  e.cover_media_provider,
+  e.cover_media_source_url,
+  e.cover_media_credit,
+  e.cover_media_credit_url,
+  e.cover_media_alt
 FROM public.events e
 JOIN public.brands b ON b.id = e.brand_id
 WHERE e.deleted_at IS NULL
