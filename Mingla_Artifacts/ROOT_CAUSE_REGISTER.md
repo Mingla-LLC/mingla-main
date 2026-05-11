@@ -1,9 +1,40 @@
 # Root Cause Register
 
-> Last updated: 2026-05-10
+> Last updated: 2026-05-11
 > Proven root causes with causal clusters.
 
 ## Root Causes
+
+### RC-0777: Organizer Orders queried nonexistent `orders.brand_id`; failed-terminal notification rows were outside retry selection
+- **Discovery date:** 2026-05-11
+- **Proof:** `reports/INVESTIGATION_ORCH-0777_REAL_DEVICE_ORDER_VISIBILITY_AND_FREE_EMAIL_FAILURE.md` proved `mingla-business/src/services/eventOrdersService.ts` selected `brand_id` directly from `orders`, while production `orders.brand_id` does not exist. The same investigation proved the operator's free-checkout notification rows created during the provider repair window were `failed_terminal`, which the dispatcher retry selector intentionally ignores.
+- **Symptoms caused:** Organizers saw false-empty Orders/revenue/guest/sold/activity surfaces even though durable checkout rows existed; the operator's free ticket confirmation would not revive without explicit state repair because terminal rows are not polled.
+- **Structural fix:** `eventOrdersService` now sources brand identity through `events!inner(brand_id)`, preserves `OrderRecord.brandId`, and the Orders screen renders an honest load error instead of falling through to "No orders yet" on query failure. Regression coverage was added through `ticketCheckoutMigrationGuards.test.ts`, `.github/scripts/strict-grep/orch-0777-ticket-checkout-production.mjs`, and the strict-grep workflow job. The targeted failed-terminal notification rows were revived without migration or Edge Function deploy.
+- **Status:** **CLOSED PASS 2026-05-11**. Evidence: spec `specs/SPEC_ORCH-0777_REAL_DEVICE_ORDER_VISIBILITY_AND_NOTIFICATION_REVIVAL.md`; implementation `reports/IMPLEMENTATION_ORCH-0777_REAL_DEVICE_ORDER_VISIBILITY_AND_NOTIFICATION_REVIVAL.md`; QA `reports/QA_ORCH-0777_REAL_DEVICE_ORDER_VISIBILITY_AND_NOTIFICATION_REVIVAL.md`; close note `CLOSE_NOTE_ORCH-0777.md`; operator attestation accepted the residual Twilio external lane and confirmed Orders/tickets.
+- **Invariant / regression guard:** Organizer order queries must source brand identity from the event relation, not from a nonexistent `orders.brand_id` column; failed-terminal notification revival must be deliberate, privacy-safe, and idempotent.
+- **Causal cluster:** Cluster 2/3 crossover: schema/source-of-truth mismatch plus notification state-machine terminal classification.
+- **Follow-ups not part of RC:** ORCH-0782 owns organizer "Resend ticket" CTA and notification rollup recompute. Twilio toll-free / Messaging Service sender configuration remains an external provider lane unless a future proof shows a Mingla code regression.
+
+### RC-0781: Clean-tree sweep reverted Stripe web boundary and removed its guard wiring
+- **Discovery date:** 2026-05-11
+- **Proof:** `reports/INVESTIGATION_ORCH-0781_CLEAN_TREE_STRIPE_WEB_IMPORT_GATE_REGRESSION.md` proves commit `ca69de38` changed `mingla-business/app/_layout.tsx` back to direct `@stripe/stripe-react-native` import/`StripeProvider`, changed `mingla-business/app/checkout/[eventId]/payment.tsx` back to direct `useStripe` while removing the web unsupported short-circuit, removed `mingla-business/package.json` script `test:orch-0778`, and replaced the `.github/workflows/strict-grep-mingla-business.yml` ORCH-0778 CI job slot with ORCH-0776D. `b7431fe1` restored only the two product-code files. ORCH-0781 implementation `14c3b59d` then restored the missing npm/CI/push wiring and made the gate self-validate those layers.
+- **Symptoms caused:** Mingla Business Web became undeployable when Stripe React Native pulled native-only React Native internals into the Expo web bundle; the failure surfaced during ORCH-0779 Vercel deploy work instead of through the intended repo-time guard. At HEAD, production web builds again, but future direct `@stripe/stripe-react-native` imports outside `.native` payment-boundary files are no longer protected by the documented npm command or CI job.
+- **Causal chain:** ORCH-0778 closed with platform-resolved wrappers, `test:orch-0778`, and CI job `orch-0778-web-stripe-native-import-gate`; `ca69de38` performed a broad clean-tree sweep that restored pre-ORCH-0778 product file shapes and edited the guard files in the same commit; the workflow only triggered on `pull_request`, so direct pushes to `Seth` bypassed every strict-grep gate even if the job had still existed; Vercel/web export caught the native-only import chain later; `b7431fe1` fixed the product files but left npm/CI guard wiring disarmed.
+- **Structural fix:** Closed by ORCH-0781: restored `test:orch-0778`, restored the CI job as a sibling without removing ORCH-0776D, added `push` triggers for `main` and `Seth`, and added self-wiring checks that fail on missing npm script, CI job, or push trigger.
+- **Status:** **CLOSED PASS 2026-05-11**. Evidence: implementation `reports/IMPLEMENTATION_ORCH-0781_CLEAN_TREE_STRIPE_WEB_IMPORT_GATE_REGRESSION.md`; QA PASS `reports/QA_ORCH-0781_CLEAN_TREE_STRIPE_WEB_IMPORT_GATE_REGRESSION.md`; close note `CLOSE_NOTE_ORCH-0781.md`; branch HEAD `14c3b59d`.
+- **Invariant / regression guard:** `@stripe/stripe-react-native` may appear only in approved `.native` Mingla Business payment-boundary files. The local npm command and CI job named by `I-PROPOSED-AE` must exist and must run on both pull requests and direct pushes for protected branches.
+- **Causal cluster:** Cluster 5/6 crossover: release/provenance drift plus external/native package boundary enforcement disarmed by broad branch cleanup.
+- **Follow-ups not part of RC:** D-0781-2 should audit ORCH-0776A and ORCH-0777 strict-grep scripts that appear npm-wired but not CI-wired. ORCH-0777 checkout backend, B2 Connect, scanner, Resend/Twilio, QR pepper, and native live-fire remain separate.
+
+### RC-0779: Supabase Auth Site URL pointed web OAuth callbacks at Expo Go
+- **Discovery date:** 2026-05-11
+- **Proof:** ORCH-0779 Web callback forensics predicted the allow-list/Site URL failure class in `.worktrees/orch-0779-business-android-google-signin-developer-error/Mingla_Artifacts/reports/FORENSIC_HYPOTHESIS_ORCH-0779_WEB_CALLBACK.md`. The confirmed Supabase Auth project `gqnoajqerqhnvulmnyvv` state had `site_url = "exp://*"` and lacked the production/preview business web redirect allow-list entries, so rejected `redirectTo` values fell back to the Expo Go URL and Safari reported an invalid address.
+- **Symptoms caused:** Production Web Google sign-in could launch Google account selection but could not return into authenticated Mingla state; Safari/web callback could fall through to `exp://*`. Android native sign-in was unaffected by this Web callback root cause because Android used the native ID-token flow and separately passed after the Google Cloud Android OAuth tuple was correct.
+- **Structural fix:** Supabase Management API patch changed `site_url` to `https://business.usemingla.com` and appended business production, Vercel preview, wildcard preview, and localhost `8091` redirect patterns while preserving prior demo/admin/marketing/Expo/localhost entries. Production deploy `dpl_CPQgBkaXa5nTvVNsCgeAe1UVQ6M5` was aliased to `https://business.usemingla.com`.
+- **Status:** **CLOSED PASS 2026-05-11**. Evidence: QA report `.worktrees/orch-0779-business-android-google-signin-developer-error/Mingla_Artifacts/reports/QA_ORCH-0779_BUSINESS_ANDROID_GOOGLE_SIGNIN_DEVELOPER_ERROR.md` §11-§12; pushed commit `b7431fe1`; operator-confirmed production Web authenticated state.
+- **Invariant / regression guard:** Supabase Auth Site URL must be the public HTTPS domain for the surface initiating web OAuth; `exp://*` is Expo Go-only and cannot be the project-wide fallback for web. `uri_allow_list` must include every production custom domain and Vercel preview pattern for each web surface that calls `signInWithOAuth`.
+- **Causal cluster:** Cluster 1/6 crossover: external auth provider redirect authority misconfigured relative to production web host.
+- **Follow-ups not part of RC:** ORCH-0781 owns the separate Stripe web import regression caused by `ca69de38`; ORCH-0777 owns checkout live-fire/native PaymentSheet.
 
 ### RC-0774A: Auth/session readiness is not a hard gate for business server mutations
 - **Discovery date:** 2026-05-10

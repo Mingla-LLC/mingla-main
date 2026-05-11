@@ -184,6 +184,27 @@ assertIncludes(
   "current operator live-fire prompt must not route QR pepper through database-level config",
 );
 
+assertNotIncludes(
+  "mingla-business/src/services/eventOrdersService.ts",
+  "brand_id: string | null",
+  "eventOrdersService must not declare an orders.brand_id field on the local OrderRow type",
+);
+assertRegexAbsent(
+  "mingla-business/src/services/eventOrdersService.ts",
+  /event_id,\s*brand_id,\s*buyer_email/,
+  "eventOrdersService must not select brand_id from the orders table",
+);
+assertRegex(
+  "mingla-business/src/services/eventOrdersService.ts",
+  /events!?inner?\s*\(\s*brand_id/,
+  "eventOrdersService must source brand_id transitively from events embed",
+);
+assertNotIncludes(
+  "mingla-business/src/services/eventOrdersService.ts",
+  'order.brand_id ?? ""',
+  "eventOrdersService must map brandId from order.events.brand_id, not order.brand_id",
+);
+
 for (const file of [
   "mingla-business/app/event/[id]/index.tsx",
   "mingla-business/app/event/[id]/orders/[oid]/index.tsx",

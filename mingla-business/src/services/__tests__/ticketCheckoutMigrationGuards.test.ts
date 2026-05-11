@@ -29,6 +29,14 @@ const scanTicketPath = path.resolve(
   __dirname,
   "../../../../supabase/functions/scan-ticket/index.ts",
 );
+const scanWrongEventMigrationPath = path.resolve(
+  __dirname,
+  "../../../../supabase/migrations/20260515000017_orch_0777_scan_wrong_event_result.sql",
+);
+const eventOrdersServicePath = path.resolve(
+  __dirname,
+  "../../services/eventOrdersService.ts",
+);
 
 describe("ORCH-0777 migration guards", () => {
   const sql = fs.readFileSync(migrationPath, "utf8");
@@ -38,6 +46,7 @@ describe("ORCH-0777 migration guards", () => {
   const ticketCheckoutCreate = fs.readFileSync(ticketCheckoutCreatePath, "utf8");
   const stripeWebhookRouter = fs.readFileSync(stripeWebhookRouterPath, "utf8");
   const scanTicket = fs.readFileSync(scanTicketPath, "utf8");
+  const scanWrongEventSql = fs.readFileSync(scanWrongEventMigrationPath, "utf8");
 
   it("allows scheduled/live events with a NOT = ANY selling predicate", () => {
     expect(sql).toContain(
@@ -102,5 +111,49 @@ describe("ORCH-0777 migration guards", () => {
     expect(stripeWebhookRouter).toContain("p_qr_token_pepper: qrTokenPepper()");
     expect(scanTicket).toContain("qrTokenPepper()");
     expect(scanTicket).toContain("p_qr_token_pepper: qrPepper");
+  });
+
+  it("keeps paid checkout and provider failures structured and non-secret", () => {
+    expect(sharedTicketCheckout).toContain("classifyStripePaymentIntentCreateFailure");
+    expect(sharedTicketCheckout).toContain("stripe_key_or_capability_config");
+    expect(ticketCheckoutCreate).toContain("payment_intent_create_failed");
+    expect(ticketCheckoutCreate).toContain("failure_reason: failure.detail");
+    expect(ticketCheckoutCreate).toContain(".is(\"stripe_payment_intent_id\", null)");
+    expect(ticketCheckoutCreate).not.toMatch(/await stripe\.paymentIntents\.create\([\s\S]*\);\n\n  const clientSecret/);
+    expect(ticketCheckoutCreate).toContain("let stripe: ReturnType<typeof stripeTicketCheckout> | null = null;");
+    expect(ticketCheckoutCreate).toContain("stripe = stripeTicketCheckout();");
+    expect(ticketCheckoutCreate).toContain("if (stripe !== null)");
+    expect(ticketCheckoutCreate).toContain("cancelPaymentIntentIfClientAvailable(stripe, paymentIntent.id)");
+    expect(ticketCheckoutCreate).toContain("payment_session_persist_failed");
+
+    expect(sharedTicketCheckout).toContain("classifyNotificationProviderFailure");
+    expect(sharedTicketCheckout).toContain("`${provider}_send_failed`");
+    expect(sharedTicketCheckout).toContain("status === 400 || status === 401 || status === 403");
+    expect(sharedTicketCheckout).not.toContain("recipient@example.test");
+  });
+
+  it("keeps wrong-event scans from violating the scan_events ticket-event trigger", () => {
+    expect(scanWrongEventSql).toContain("v_scan_result := 'wrong_event'");
+    expect(scanWrongEventSql).toContain("v_scan_event_id := CASE");
+    expect(scanWrongEventSql).toContain("WHEN v_scan_result = 'wrong_event' THEN v_ticket.event_id");
+    expect(scanWrongEventSql).toContain("'requestedEventId', p_event_id");
+    expect(scanWrongEventSql).toContain("GRANT EXECUTE ON FUNCTION public.biz_ticket_scan(uuid, text, uuid, text) TO service_role");
+  });
+});
+
+describe("ORCH-0777 organizer order visibility repair", () => {
+  const ordersService = fs.readFileSync(eventOrdersServicePath, "utf8");
+
+  it("does not select orders.brand_id (column does not exist on production)", () => {
+    expect(ordersService).not.toMatch(/event_id,\s*brand_id,\s*buyer_email/);
+  });
+
+  it("does not declare orders.brand_id on the OrderRow interface", () => {
+    expect(ordersService).not.toMatch(/brand_id:\s*string\s*\|\s*null/);
+  });
+
+  it("sources brandId transitively from events embed", () => {
+    expect(ordersService).toMatch(/events!?inner?\s*\(\s*brand_id/);
+    expect(ordersService).toMatch(/order\.events\?\.brand_id\s*\?\?\s*""/);
   });
 });
