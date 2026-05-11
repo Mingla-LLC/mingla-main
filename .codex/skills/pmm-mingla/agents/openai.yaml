@@ -1,4 +1,0 @@
-interface:
-  display_name: "Mingla PMM"
-  short_description: "Product, GTM, positioning, launch, and sales enablement"
-  default_prompt: "Use $pmm-mingla to create product strategy, PRDs, positioning, GTM plans, launch assets, sales enablement, research plans, pricing hypotheses, or executive product narratives for Mingla."
