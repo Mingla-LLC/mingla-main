@@ -7,11 +7,11 @@
 
 ---
 
-## DRAFT (pre ORCH-0785 CLOSE — flips to ACTIVE on tester PASS + orchestrator CLOSE)
+## ACTIVE (post ORCH-0785 CLOSE 2026-05-11)
 
-These four invariants were introduced by SPEC §14 of ORCH-0785. The implementation is complete and the strict-grep gates are passing locally on Seth, but the invariants stay DRAFT until Claude `mingla-forensics` (TEST mode) returns PASS and the orchestrator runs CLOSE. The spec named them `I-PROPOSED-AD..AG` but those identifiers were already allocated to unrelated invariants (universal skill output format, Stripe native boundary, Supabase auth redirect allowlist, organiser order brand authoritative), so the runtime identifiers are `I-PROPOSED-AL..AO`. Spec text is binding; the rename is a registry-only correction.
+These four invariants were introduced by SPEC §14 of ORCH-0785 and promoted DRAFT→ACTIVE at CLOSE after Claude `mingla-tester` returned PASS with zero P0/P1/P2/P3 findings. The spec named them `I-PROPOSED-AD..AG` but those identifiers were already allocated to unrelated invariants (universal skill output format, Stripe native boundary, Supabase auth redirect allowlist, organiser order brand authoritative), so the runtime identifiers are `I-PROPOSED-AM..AP` (AL was already taken by ORCH-0784 HOME_NON_DRAFT_SALES_SUMMARIES_DO_NOT_READ_USE_ORDER_STORE). Spec text is binding; the rename is a registry-only correction.
 
-### I-PROPOSED-AL EMAIL_BRAND_SHELL_SINGLETON (DRAFT — was named I-PROPOSED-AD in spec)
+### I-PROPOSED-AM EMAIL_BRAND_SHELL_SINGLETON
 
 **Statement:** Every customer-facing email Mingla sends server-side must flow through `supabase/functions/_shared/email/index.ts` (`renderTransactionalEmail`). No file under `supabase/functions/**/*.ts` outside `_shared/email/**` may construct its own `<!doctype html>`, `<!DOCTYPE html>`, or `<html lang=` string.
 
@@ -21,9 +21,9 @@ These four invariants were introduced by SPEC §14 of ORCH-0785. The implementat
 
 **Test that catches regression:** `node .github/scripts/strict-grep/orch-0785-shell-singleton.mjs` returns exit code 1 if any new edge function builds its own HTML shell.
 
-**Status:** DRAFT — flips to ACTIVE on ORCH-0785 CLOSE.
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0785 CLOSE.
 
-### I-PROPOSED-AM RESEND_NO_SANDBOX_SENDER (DRAFT — was named I-PROPOSED-AE in spec)
+### I-PROPOSED-AN RESEND_NO_SANDBOX_SENDER
 
 **Statement:** No Mingla code path may send Resend email from any `*@resend.dev` address. `assertNotResendSandbox` must run before every `POST https://api.resend.com/emails`.
 
@@ -33,9 +33,9 @@ These four invariants were introduced by SPEC §14 of ORCH-0785. The implementat
 
 **Test that catches regression:** ORCH-0785-B exits 1 if `onboarding@resend.dev` appears outside a comment in any source file; senders.test.ts asserts the runtime throw.
 
-**Status:** DRAFT — flips to ACTIVE on ORCH-0785 CLOSE.
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0785 CLOSE.
 
-### I-PROPOSED-AN BUYER_INPUT_HTML_ESCAPED (DRAFT — was named I-PROPOSED-AF in spec)
+### I-PROPOSED-AO BUYER_INPUT_HTML_ESCAPED
 
 **Statement:** Any caller-supplied string interpolated into an email HTML template literal must flow through `escapeHtml` (or be a pre-rendered `*Html` fragment built by a sibling renderer that already escaped its inputs).
 
@@ -45,9 +45,9 @@ These four invariants were introduced by SPEC §14 of ORCH-0785. The implementat
 
 **Test that catches regression:** ORCH-0785-C exits 1 if any new HTML template interpolation of an `order|event|brand|recipient|attendee|cta|paragraph|line|ticket` identifier is not wrapped in `escapeHtml(...)` or a `*Html` already-escaped variable.
 
-**Status:** DRAFT — flips to ACTIVE on ORCH-0785 CLOSE.
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0785 CLOSE.
 
-### I-PROPOSED-AO TICKET_PDF_PRIVACY (DRAFT — was named I-PROPOSED-AG in spec)
+### I-PROPOSED-AP TICKET_PDF_PRIVACY
 
 **Statement:** Ticket PDFs must not include `qr_token_hash`, the QR pepper, Stripe payment IDs (`stripe_payment_intent_id`, `stripe_charge_id`), or buyer phone numbers (`buyer_phone`, `buyer_phone_e164`). PDFs may include `buyer_name`, event title/start/location, brand name, order short id, ticket name, and the existing `tickets.qr_code` payload.
 
@@ -57,7 +57,7 @@ These four invariants were introduced by SPEC §14 of ORCH-0785. The implementat
 
 **Test that catches regression:** ORCH-0785-E exits 1 if `_shared/ticketPdf.ts` or `ticket-confirmation-dispatch/index.ts` references a forbidden privacy token outside the orders SELECT context.
 
-**Status:** DRAFT — flips to ACTIVE on ORCH-0785 CLOSE.
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0785 CLOSE.
 
 ---
 
