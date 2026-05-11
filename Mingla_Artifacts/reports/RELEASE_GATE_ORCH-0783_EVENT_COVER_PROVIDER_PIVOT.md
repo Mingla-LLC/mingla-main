@@ -2,11 +2,11 @@
 
 **Date:** 2026-05-11  
 **Operator request:** apply ORCH-0783 release gates, configure provider keys without exposing values, deploy Pexels Edge Function, update `Seth`, clean stale branches, and report remaining smoke status.  
-**Final repo state:** `Seth`, `origin/Seth`, and `origin/main` all point to `a6cb084a`.
+**Final repo state:** `Seth`, `origin/Seth`, and `origin/main` all point to `60d33fc4` for release-gate execution; manual smoke PASS recorded in follow-up doc commit.
 
 ## Plain-English Summary
 
-The event-cover provider pivot is now deployed at the database/function level. The Pexels secret and GIPHY public env names were configured outside Git, the migration is live, and the Pexels search function is active. Automated release checks passed, but the real iOS/Android/Web parity smoke still needs a signed-in operator/device pass because this terminal session cannot complete real media-picker, native-device, or authenticated browser journeys.
+The event-cover provider pivot is now deployed at the database/function level and has passed the remaining manual parity smoke. The Pexels secret and GIPHY public env names were configured outside Git, the migration is live, the Pexels search function is active, automated checks passed, and Seth confirmed the real iOS/Android/Web release smoke passes.
 
 ## Actions Completed
 
@@ -20,6 +20,7 @@ The event-cover provider pivot is now deployed at the database/function level. T
 | Deploy `event-cover-pexels-search` | PASS | Supabase function `event-cover-pexels-search` ACTIVE version 3, updated `2026-05-11 08:08:47 UTC`. |
 | Verify unauthenticated function route | PASS expected 401 | POST without auth returned 401 from Supabase gateway, confirming route exists and `verify_jwt = true`. |
 | Delete stale remote branches | PASS | Deleted `orch/0777-ticket-checkout-production`, `orch/0781-clean-tree-stripe-web-import-regression`, `orch-0750e-link-burndown`, and `feat/b1-business-schema-rls`; `git ls-remote --heads` returns no rows for them. |
+| iOS/Android/Web parity smoke | PASS | Operator confirmation in chat on 2026-05-11: "it all passes." |
 
 ## Fixes Made During Release Gate
 
@@ -47,9 +48,9 @@ Results:
 - TypeScript passed after the `IconChrome` fix.
 - Expo web export passed; static routes included checkout, order, public event, edit event, and event card surfaces.
 
-## Not Completed
+## Manual Parity Smoke Passed
 
-The iOS/Android/Web parity smoke was not fully completed in this terminal session. Required manual/authenticated checks still need a real signed-in organizer/buyer flow and devices or browser session:
+The iOS/Android/Web parity smoke was completed by the operator after the terminal-side deploy gates. Seth confirmed all requested release checks passed:
 
 - Local image/GIF upload.
 - GIPHY selection.
@@ -73,5 +74,6 @@ EAS also tried to auto-install/configure `expo-updates`, creating native/package
 
 - `Seth` release-gate commit: `89c8ece7` (`Stabilize ORCH-0783 release gates`).
 - `main` promotion commit: `a6cb084a` (`Promote Seth: stabilize ORCH-0783 release gates`).
+- Release-gate report commit: `60d33fc4` (`Promote Seth: record ORCH-0783 release gate`).
 - Supabase migration remote state includes `20260515000018`.
 - Supabase function `event-cover-pexels-search` is ACTIVE version 3.
