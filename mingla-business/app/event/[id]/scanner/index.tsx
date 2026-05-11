@@ -54,7 +54,10 @@ import {
 } from "../../../../src/store/scanStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
-import { scanTicket } from "../../../../src/services/scanTicketService";
+import {
+  ScanTicketError,
+  scanTicket,
+} from "../../../../src/services/scanTicketService";
 
 import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
@@ -342,10 +345,27 @@ export default function ScannerCameraRoute(): React.ReactElement {
               : Haptics.NotificationFeedbackType.Error,
           );
         } catch (error) {
+          // ORCH-0795: surface the real edge-function failure reason.
+          // ScanTicketError.code tells us whether the scanner is not
+          // authorized (403/scanner_not_authorized) vs. a generic failure.
+          let message = "Scan failed";
+          let detail: string | undefined =
+            error instanceof Error && error.message
+              ? error.message
+              : undefined;
+          if (error instanceof ScanTicketError) {
+            if (error.code === "scanner_not_authorized") {
+              message = "You're not authorized to scan this event";
+              detail = "Ask the event owner to add you as a scanner.";
+            } else if (error.code === "auth_required") {
+              message = "Please sign in again";
+              detail = "Your session expired.";
+            }
+          }
           showResult({
             kind: "not_found",
-            message: "Scan failed",
-            detail: error instanceof Error ? error.message : undefined,
+            message,
+            detail,
           });
           void Haptics.notificationAsync(
             Haptics.NotificationFeedbackType.Error,
@@ -485,14 +505,6 @@ export default function ScannerCameraRoute(): React.ReactElement {
         />
         <Text style={styles.chromeTitle}>Scan tickets</Text>
         <View style={styles.chromeRightSlot} />
-      </View>
-
-      {/* Server-backed scan mode. */}
-      <View style={styles.testingBanner} pointerEvents="none">
-        <Icon name="check" size={14} color={accent.warm} />
-        <Text style={styles.testingBannerText} numberOfLines={2}>
-          Live mode — scanner validates issued tickets against the server.
-        </Text>
       </View>
 
       {/* Camera viewport */}
@@ -699,23 +711,6 @@ const styles = StyleSheet.create({
   },
   chromeRightSlot: {
     width: 36,
-  },
-  testingBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs + 2,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm - 2,
-    backgroundColor: "rgba(235, 120, 37, 0.16)",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(235, 120, 37, 0.32)",
-  },
-  testingBannerText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: "500",
-    color: textTokens.primary,
-    lineHeight: 16,
   },
   emptyHost: {
     flex: 1,

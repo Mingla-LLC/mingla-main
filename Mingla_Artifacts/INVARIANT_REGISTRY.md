@@ -7,6 +7,24 @@
 
 ---
 
+## ACTIVE (post ORCH-0795 CLOSE 2026-05-11)
+
+One invariant introduced by SPEC §6.1 of ORCH-0795 governing the canonical guarantee that every event has at least one active scanner row for its brand owner at all times. Promoted DRAFT→ACTIVE on 2026-05-11 by ORCH-0795 CLOSE after operator-witnessed live-fire on iPhone (Seth scanned an old issued ticket → success overlay rendered) and five independent DB invariant probes via Supabase MCP returned A=0 owner-orphan live events, B=0 soft-deleted remaining, C=9 Seth active events, D=0 active rows on deleted events, E=0 duplicate active rows.
+
+### I-PROPOSED-AZ EVENT_HAS_MANAGER_SCANNER
+
+**Statement:** Every `public.events` row with `deleted_at IS NULL` AND a `public.brands` parent with `deleted_at IS NULL` AND `account_id IS NOT NULL` MUST have at least one `public.event_scanners` row with `removed_at IS NULL` for `user_id = brands.account_id` (the brand owner) at minimum, and SHOULD have additional active rows for every `brand_team_members` user whose role rank is >= `event_manager` at the time of event creation. The auto-provision threshold is exactly `biz_role_rank('event_manager') = 40`, mirroring the existing `"Event manager plus can insert events"` RLS policy on `public.events` — anyone who can create the event can scan its tickets.
+
+**Rationale:** ORCH-0795 RC — pre-fix, no code path ever wrote scanner rows for brand owners at event-create time. The only INSERT path was the operator-to-operator InviteScannerSheet flow, which left 17/17 of Seth's owned events with 0 active scanner rows in production, producing HTTP 403 `scanner_not_authorized` on every scan attempt. Without this invariant the entire B4 Scanner cycle is blocked.
+
+**Enforcement mechanism:** (1) DB trigger `biz_event_auto_provision_scanners_after_insert AFTER INSERT ON public.events FOR EACH ROW` (SECURITY DEFINER, search_path locked, idempotent via NOT EXISTS guard); (2) one-time backfill block in the migration writes rows for every existing event whose qualifying users lack an active row; (3) migration-internal verification probes (`pg_proc` existence check, `pg_trigger` attachment check, zero-orphan post-backfill check) gate the migration apply with `RAISE EXCEPTION`; (4) strict-grep CI gate `.github/scripts/strict-grep/orch-0795-event-scanner-auto-provision.mjs` enforces 6 patterns (migration filename exists, trigger function declared, trigger attachment on `AFTER INSERT ON public.events`, `biz_role_rank('event_manager')` literal pinned, scanTicketService exports `ScanTicketError` + `ScanTicketErrorCode`, scanner UI references both `ScanTicketError` and the `"scanner_not_authorized"` literal). Soft-deleted rows are intentionally NOT resurrected by the trigger — they represent deliberate manager-removal actions.
+
+**Test that catches regression:** (a) `node .github/scripts/strict-grep/orch-0795-event-scanner-auto-provision.mjs` exits 0 with `PASS (6/6 checks)`; (b) `npx jest --testPathPattern scanTicketService` from `mingla-business/` passes 6/6 (success path + 4 classifier branches + instanceof guarantee); (c) live DB probe `SELECT count(*) FROM events e JOIN brands b ON b.id = e.brand_id WHERE e.deleted_at IS NULL AND b.deleted_at IS NULL AND b.account_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM event_scanners es WHERE es.event_id = e.id AND es.user_id = b.account_id AND es.removed_at IS NULL)` returns 0; (d) Probe 3 in migration §4 fires `RAISE EXCEPTION` on apply if any orphan remains.
+
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0795 CLOSE.
+
+---
+
 ## ACTIVE (post ORCH-0792 CLOSE 2026-05-11)
 
 Two invariants introduced by SPEC §9 of ORCH-0792 governing the canonical authority for event timing. SPEC originally named them `I-PROPOSED-AW` and `I-PROPOSED-AX` but the Codex `orchestrator-mingla` CLOSE of ORCH-0789/0790/0791 landed first and took AW (CHECKOUT-SESSION-NEVER-REUSED-POST-TERMINAL). Renumbered runtime IDs are `AX` and `AY`. Spec text is binding; the rename is a registry-only correction matching the ORCH-0785 / ORCH-0786 precedent.
