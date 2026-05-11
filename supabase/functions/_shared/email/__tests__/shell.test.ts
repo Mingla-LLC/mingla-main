@@ -64,7 +64,10 @@ Deno.test("paid ticket render: shell wraps body with logo, footer, total", () =>
   assertStringIncludes(result.html, "Brighton Marina");
   assertStringIncludes(result.html, "Total");
   assertStringIncludes(result.html, "support@usemingla.com");
-  assertStringIncludes(result.html, "experience app");
+  // Footer wordmark replaced the "experience app" tagline — logo now renders
+  // in both header and footer (two <img> tags pointing at the same URL).
+  const logoMatches = result.html.match(/mingla-logo\.png/g) ?? [];
+  assert(logoMatches.length >= 2);
   assertStringIncludes(result.html, "QR in attached PDF");
   assert(!result.html.includes("dating app"));
   assert(result.subject.startsWith("Your Mingla tickets"));

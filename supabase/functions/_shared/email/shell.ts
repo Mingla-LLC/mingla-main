@@ -4,7 +4,7 @@
 // supabase/functions/ may build its own <!doctype html> string.
 
 import { escapeHtml } from "./escape.ts";
-import { FOOTER_DISCLAIMER, MINGLA_TAGLINE } from "./copy.ts";
+import { FOOTER_DISCLAIMER } from "./copy.ts";
 
 const BRAND_ORANGE = "#FF6B2C";
 const BRAND_INK = "#0F1115";
@@ -41,8 +41,8 @@ export function renderShell(input: ShellInput): string {
         <td align="center" style="padding:32px 16px;">
           <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#FFFFFF;border:1px solid ${BRAND_BORDER};border-radius:16px;overflow:hidden;">
             <tr>
-              <td style="padding:24px 28px;border-bottom:1px solid ${BRAND_BORDER};">
-                <img src="${logo}" alt="Mingla" width="120" style="display:block;border:0;outline:none;text-decoration:none;height:auto;" />
+              <td align="center" style="padding:28px 28px 24px 28px;border-bottom:1px solid ${BRAND_BORDER};">
+                <img src="${logo}" alt="Mingla" width="180" style="display:inline-block;border:0;outline:none;text-decoration:none;height:auto;max-width:180px;" />
               </td>
             </tr>
             <tr>
@@ -52,7 +52,7 @@ export function renderShell(input: ShellInput): string {
             </tr>
             <tr>
               <td style="padding:24px 28px;border-top:1px solid ${BRAND_BORDER};background:${BRAND_BG_SOFT};font-size:13px;line-height:1.5;color:${BRAND_MUTED};">
-                <p style="margin:0 0 8px 0;color:${BRAND_INK};font-weight:600;">${escapeHtml(MINGLA_TAGLINE)}</p>
+                <img src="${logo}" alt="Mingla" width="100" style="display:block;border:0;outline:none;text-decoration:none;height:auto;max-width:100px;margin:0 0 10px 0;" />
                 <p style="margin:0 0 8px 0;">Need help? <a href="mailto:${support}" style="color:${BRAND_ORANGE};text-decoration:none;">${support}</a></p>
                 <p style="margin:0 0 8px 0;">${address}</p>
                 <p style="margin:0;font-size:12px;color:${BRAND_MUTED};">${escapeHtml(FOOTER_DISCLAIMER)}</p>

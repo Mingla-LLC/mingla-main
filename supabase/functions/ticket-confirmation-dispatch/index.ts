@@ -19,6 +19,22 @@ import {
   type TicketBodyInput,
 } from "../_shared/email/index.ts";
 import { buildTicketPdf } from "../_shared/ticketPdf.ts";
+import { buildCalendarLinks } from "../_shared/email/calendar.ts";
+
+const MINGLA_LOGO_URL = Deno.env.get("MINGLA_LOGO_URL") ?? null;
+
+function icsToBase64(ics: string): string {
+  const bytes = new TextEncoder().encode(ics);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(
+      null,
+      Array.from(bytes.subarray(i, i + chunk)),
+    );
+  }
+  return btoa(binary);
+}
 
 class ProviderSendError extends Error {
   retryable: boolean;
@@ -343,6 +359,7 @@ serve(async (req) => {
       order: { shortId: context.bodyInput.order.shortId },
       tickets: context.ticketsForPdf,
       attendeeNameHint: order.buyer_name,
+      logoUrl: MINGLA_LOGO_URL ?? undefined,
     });
     console.log(
       `[ticket-confirmation-dispatch] order=${context.bodyInput.order.shortId} html_bytes=${renderedEmail.html.length} pdf_bytes=${renderedPdf.byteLength}`,
@@ -394,16 +411,32 @@ serve(async (req) => {
             status: 0,
           });
         }
+        const attachments: Array<{ filename: string; content: string }> = [{
+          filename: renderedPdf.filename,
+          content: renderedPdf.contentBase64,
+        }];
+        const calendarLinks = buildCalendarLinks({
+          title: context.bodyInput.event.title,
+          startAtIso: context.bodyInput.event.startAt,
+          endAtIso: null,
+          locationText: context.bodyInput.event.locationText,
+          isOnline: context.bodyInput.event.isOnline,
+          description:
+            `${context.bodyInput.event.title} — hosted by ${context.bodyInput.brand.name}. Order #${context.bodyInput.order.shortId}.`,
+        });
+        if (calendarLinks) {
+          attachments.push({
+            filename: calendarLinks.icsFilename,
+            content: icsToBase64(calendarLinks.icsContent),
+          });
+        }
         const sent = await sendResendEmailWithAttachment({
           from: formatSenderHeader(renderedEmail.from),
           to: notification.recipient,
           subject: renderedEmail.subject,
           html: renderedEmail.html,
           text: renderedEmail.text,
-          attachments: [{
-            filename: renderedPdf.filename,
-            content: renderedPdf.contentBase64,
-          }],
+          attachments,
         });
         await supabase.from("ticket_order_notifications").update({
           status: "sent",

@@ -7,6 +7,7 @@ import { formatEventDateLine } from "./dateLine.ts";
 import { formatMoneyFromCents, formatMoneyOrFree } from "./currency.ts";
 import { SHELL_TOKENS } from "./shell.ts";
 import { ticketCopyFor } from "./copy.ts";
+import { buildCalendarLinks, renderCalendarBlockHtml } from "./calendar.ts";
 import type { TicketBodyInput } from "./types.ts";
 
 const { BRAND_ORANGE, BRAND_INK, BRAND_MUTED, BRAND_BG_SOFT, BRAND_BORDER } =
@@ -117,6 +118,20 @@ function renderTicketBlock(
   </table>`;
 }
 
+function renderCalendarSection(input: TicketBodyInput): string {
+  const links = buildCalendarLinks({
+    title: input.event.title,
+    startAtIso: input.event.startAt,
+    endAtIso: null,
+    locationText: input.event.locationText,
+    isOnline: input.event.isOnline,
+    description:
+      `${input.event.title} — hosted by ${input.brand.name}. Order #${input.order.shortId}. Tickets attached to your confirmation email.`,
+  });
+  if (!links) return "";
+  return renderCalendarBlockHtml(links);
+}
+
 export function renderTicketBody(input: TicketBodyInput): {
   html: string;
   text: string;
@@ -160,7 +175,8 @@ export function renderTicketBody(input: TicketBodyInput): {
     </div>
     ${renderTicketBlock(input.order, copy.attachmentBadge)}
     ${renderLineItems(input.order)}
-    ${orderShortLineHtml}`;
+    ${orderShortLineHtml}
+    ${renderCalendarSection(input)}`;
 
   const totalText = input.order.totalCents > 0
     ? formatMoneyFromCents(input.order.totalCents, input.order.currency)
