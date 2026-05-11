@@ -47,10 +47,14 @@ DIAG marker reap for `[ORCH-0781-DIAG]` across `mingla-business/src/`, `mingla-b
 
 Paste the URLs here when available:
 
-- C-781-1 PR/job run URL: _pending first push / PR_
-- C-781-3 push-run URL: _pending first push / merge_
+- C-781-1 PR: https://github.com/Mingla-LLC/mingla-main/pull/71 (`orch/0781-clean-tree-stripe-web-import-regression` → `Seth`)
+- C-781-1 PR run (against head `58ee4f39`): https://github.com/Mingla-LLC/mingla-main/actions/runs/25650581900 (workflow: `Strict Grep Gates (Mingla Business)`, event: `pull_request`)
+- C-781-1 job (target evidence): https://github.com/Mingla-LLC/mingla-main/actions/runs/25650581900/job/75287924718 — `ORCH-0778: Stripe native imports stay behind .native boundaries` — **success**
+  - Sibling ORCH-0776D job present and passing in same run: https://github.com/Mingla-LLC/mingla-main/actions/runs/25650581900/job/75287924716 (confirms ORCH-0781 added the ORCH-0778 job without replacing ORCH-0776D)
+  - Overall run `conclusion = failure` is driven by 4 pre-existing Seth gate failures unrelated to ORCH-0781: I-PROPOSED-A (job `75287924637`), I-PROPOSED-R (`75287924659`), I-PROPOSED-K (`75287924700`), I-PROPOSED-N (`75287924727`). These four were already red on Seth before ORCH-0781 branched and are out of scope for this dispatch.
+- C-781-3 push-run URL: _pending merge to `Seth` or `main` once unrelated dirty ORCH-0777 / ORCH-0779 / product work is isolated_
 
-These are not close blockers because QA proved the gate logic and workflow structure locally; they are external Actions receipt capture.
+These are not close blockers because QA proved the gate logic and workflow structure locally; they are external Actions receipt capture. C-781-1 is now captured; C-781-3 will be captured automatically by the `[main, Seth]` push trigger after the merge step that the dirty-tree hard guard currently blocks.
 
 ## Deploy Notes
 
