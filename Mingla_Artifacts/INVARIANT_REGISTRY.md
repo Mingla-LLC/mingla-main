@@ -122,14 +122,14 @@ Four derived rules:
 
 - **Single working location:** Claude and Codex skills must open `/Users/sethogieva/Desktop/mingla-main` on branch `Seth` for investigation, spec, implementation, testing, review, close, product docs, and artifact work.
 - **Scope by ORCH-ID:** product code, migrations, prompts, reports, specs, QA files, and global indexes can coexist in the shared checkout, but commits must stage only the scoped files for the current ORCH or process task. Unrelated dirty files are preserved and explicitly excluded.
-- **Close promotion:** Codex `orchestrator-mingla` commits scoped close-out work on `Seth`, pushes `Seth`, then merges or PRs `Seth` into `main` and pushes `main`. If promotion fails, the close report records the blocker and exact `Seth` commit SHA.
+- **Close promotion:** Codex `orchestrator-mingla` runs scoped local checks, commits scoped close-out work on `Seth`, pushes `Seth` only after local checks pass, opens a GitHub PR from `Seth` to `main`, waits for GitHub checks/statuses to pass, and only then merges the PR. Direct local merge/push to `main` is forbidden unless the operator explicitly overrides the rule for that one incident. If promotion fails, the close report records the blocker and exact `Seth` commit SHA.
 - **Layman operator guidance:** every skill output must explain any required operator action in plain English before giving exact commands or copy-paste handoffs.
 
 **Legacy handling:** `Mingla_Artifacts/WORKTREE_REGISTRY.md` is now a transition ledger for old `.worktrees/...` rows only. New work must not add active worktree rows.
 
-**Enforcement mechanism:** every Next-Handoff paragraph from every lifecycle skill names `Working tree: /Users/sethogieva/Desktop/mingla-main on branch Seth`. Skill files and strategy artifacts must not instruct new work to open `.worktrees/<slug>/`.
+**Enforcement mechanism:** every Next-Handoff paragraph from every lifecycle skill names `Working tree: /Users/sethogieva/Desktop/mingla-main on branch Seth`. Skill files and strategy artifacts must not instruct new work to open `.worktrees/<slug>/`, must not treat a push to `Seth` as successful until local checks pass, and must not promote to `main` without a GitHub PR with passing checks.
 
-**Test that catches regression:** strict-grep gate should fail if lifecycle skill instructions or new prompts include `.worktrees/<slug>` as the working location for new work, or if they omit the canonical `Working tree: /Users/sethogieva/Desktop/mingla-main on branch Seth` handoff text.
+**Test that catches regression:** strict-grep gate should fail if lifecycle skill instructions or new prompts include `.worktrees/<slug>` as the working location for new work, omit the canonical `Working tree: /Users/sethogieva/Desktop/mingla-main on branch Seth` handoff text, include legacy direct-main merge/push commands as the normal close path, or omit the checked PR requirement.
 
 **Codified:** 2026-05-11 by operator directive superseding META-ORCH-0755 Step 8 / DEC-135. Operator directive: "I want to remove the need to work on different working tree across all skills both Claude and Codex. I want to register that Seth is the working branch, and all work should be done there on the working tree. When close is done, we push to main. I also want outputs to contain a layman explanation for me if I have to do anything walking me through the steps."
 

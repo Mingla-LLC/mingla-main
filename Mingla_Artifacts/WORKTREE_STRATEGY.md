@@ -20,7 +20,7 @@ Plain meaning: Seth should not have to remember which `.worktrees/...` folder be
 | Location | Path / branch | Owner | What happens here |
 |----------|---------------|-------|-------------------|
 | **Shared working tree** | `/Users/sethogieva/Desktop/mingla-main` on branch `Seth` | All Claude and Codex Mingla skills | Investigation, specs, implementation, tests, scoped reports, prompts, product code, migrations, and artifact updates. |
-| **Promotion branch** | `main` | Codex `orchestrator-mingla` at CLOSE | Finished, evidence-backed work is merged or PR'd from `Seth` into `main`, then pushed. |
+| **Promotion branch** | `main` | Codex `orchestrator-mingla` at CLOSE | Finished, evidence-backed work reaches `main` only through a GitHub PR from `Seth` after local checks and GitHub PR checks pass. |
 | **Legacy worktree registry** | `Mingla_Artifacts/WORKTREE_REGISTRY.md` | Codex `orchestrator-mingla` | Historical transition ledger only. Do not add new active worktree rows. |
 
 ---
@@ -33,8 +33,8 @@ All Mingla skills operate in `/Users/sethogieva/Desktop/mingla-main` on branch `
 **Rule 2 — Scope by ORCH, not by filesystem.**  
 Multiple ORCHs may exist in the same checkout, so every agent must stage and commit only the files named by its dispatch/spec. Unrelated dirty files are preserved and explicitly excluded. Reports, prompts, specs, tests, code, migrations, and global indexes stay in the shared checkout.
 
-**Rule 3 — Close promotes `Seth` to `main`.**  
-When tester PASS or accepted CONDITIONAL PASS returns and close artifacts are synced, Codex `orchestrator-mingla` commits scoped close-out work on `Seth`, pushes `Seth`, merges or PRs `Seth` into `main`, pushes `main`, and returns to `Seth` for the next task.
+**Rule 3 — Close promotes `Seth` to `main` through a checked PR.**  
+When tester PASS or accepted CONDITIONAL PASS returns and close artifacts are synced, Codex `orchestrator-mingla` runs the scoped local checks, commits scoped close-out work on `Seth`, pushes `Seth` only after those local checks pass, opens a GitHub PR from `Seth` to `main`, waits for GitHub PR checks/statuses to pass, merges the PR, and returns to `Seth` for the next task. Direct local merge/push to `main` is forbidden unless the operator explicitly overrides the rule for that one incident.
 
 **Rule 4 — Outputs explain operator steps in layman terms.**  
 If Seth/the operator has to run a command, dispatch another skill, approve a risk, apply a migration, publish an OTA update, or do any manual check, the response must first explain the steps in plain English and then provide the exact command or handoff block.
@@ -66,17 +66,19 @@ Codex `orchestrator-mingla` runs or emits this after close evidence is complete:
 cd /Users/sethogieva/Desktop/mingla-main
 git checkout Seth
 git status --short
+<run scoped local checks and confirm PASS>
 git add <scoped files only>
 git commit -m "Close ORCH-XXXX: <one-line summary>"
 git push origin Seth
-git checkout main
-git pull --ff-only origin main
-git merge --no-ff Seth -m "Promote Seth: close ORCH-XXXX"
-git push origin main
+gh pr create --base main --head Seth --title "Close ORCH-XXXX: <one-line summary>" --body "<evidence summary + checks>"
+gh pr checks <PR number> --watch
+gh pr merge <PR number> --merge --delete-branch=false
+git fetch origin
 git checkout Seth
+git pull --ff-only origin Seth
 ```
 
-If the merge or push fails, report the blocker, preserve the `Seth` commit SHA, and leave the repo on `Seth`. Do not delete any branch or worktree.
+If local checks fail, do not push `Seth`; report the failing command and fix or dispatch rework. If the PR cannot be opened, GitHub checks fail, or merge is blocked, report the blocker, preserve the `Seth` commit SHA, and leave the repo on `Seth`. Do not delete any branch or worktree.
 
 ---
 
@@ -84,7 +86,7 @@ If the merge or push fails, report the blocker, preserve the `Seth` commit SHA, 
 
 | Skill | Required behavior |
 |-------|-------------------|
-| Codex `orchestrator-mingla` | Canonical close owner. Verifies branch `Seth`, writes prompts/artifacts, commits scoped close work, pushes `Seth`, promotes to `main`, and explains operator steps in layman terms. |
+| Codex `orchestrator-mingla` | Canonical close owner. Verifies branch `Seth`, writes prompts/artifacts, runs scoped local checks, commits scoped close work, pushes `Seth`, opens a PR to `main`, waits for GitHub checks, merges only when green, and explains operator steps in layman terms. |
 | Claude `mingla-orchestrator` | Parity mirror. Uses the same branch language and routes final close to Codex unless explicitly told otherwise. |
 | Claude `mingla-forensics` / Codex `forensic-mingla` | Investigate, spec, and test from `/Users/sethogieva/Desktop/mingla-main` on `Seth`; write reports/specs there. |
 | Codex `implementor-mingla` / Claude `mingla-implementor` | Implement from `/Users/sethogieva/Desktop/mingla-main` on `Seth`; stage only scoped files; include repo-running regression tests in the scoped commit. |
