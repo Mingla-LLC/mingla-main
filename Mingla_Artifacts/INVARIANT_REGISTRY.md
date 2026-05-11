@@ -7,6 +7,60 @@
 
 ---
 
+## ACTIVE (post ORCH-0786 CLOSE 2026-05-11)
+
+These four invariants govern the Business profile avatar surface. SPEC §6 of ORCH-0786 named them `I-PROPOSED-AD..AF` but those identifiers were already allocated to unrelated invariants (AD UNIVERSAL_SKILL_OUTPUT_FORMAT, AE STRIPE_REACT_NATIVE_NATIVE_BOUNDARY_ONLY, AF SUPABASE_AUTH_WEB_REDIRECT_ALLOWLIST_PER_SURFACE) so runtime identifiers are `AQ..AT`. Spec text is binding; the rename is a registry-only correction matching the ORCH-0785 precedent. AT is new (established at CLOSE after Supabase MCP probe surfaced the `user_metadata` clobber root cause).
+
+### I-PROPOSED-AQ RN-FILE-UPLOAD-VIA-EXPO-FILE-SYSTEM
+
+**Statement:** Every React Native picker-driven storage upload in `mingla-business/app/**` and `mingla-business/src/services/**` must read bytes via `expo-file-system` (`new File(uri).arrayBuffer()` or equivalent). `fetch(asset.uri).blob()` and `(await fetch(uri)).blob()` are forbidden for picker assets.
+
+**Rationale:** RN's `fetch().blob()` polyfill silently returns size-0 Blobs on iOS in production builds, producing storage objects with zero bytes that decode to a black tile. ORCH-0766B (event covers) and ORCH-0786 (creator avatars) both proved this root cause. The `expo-file-system` `File(uri).arrayBuffer()` path is the proven alternative.
+
+**Enforcement mechanism:** `.github/scripts/strict-grep/orch-0786-creator-avatar-upload-integrity.mjs` assertions 1+2 + jest `creatorAvatarFileReader.test.ts` T-17 (spies on global `fetch` and asserts the reader does not call it).
+
+**Test that catches regression:** `cd mingla-business && npm run test:orch-0786` must pass. The strict-grep gate fails if any new picker-driven upload reintroduces `fetch(asset.uri).blob()` or `(await fetch(uri)).blob()`.
+
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0786 CLOSE.
+
+### I-PROPOSED-AR STORAGE-URL-PERSISTED-WITHOUT-CACHE-BUSTER
+
+**Statement:** URLs persisted into Postgres columns (`creator_accounts.avatar_url`, future avatar/cover columns under the same contract) must be canonical public URLs without a `?t=` / `?v=` / `?cb=` cache-bust query token. Cache-busting is a render-time concern only and lives in component-local state (e.g. `useMemo` on `{ uri: \`${url}?t=${token}\` }`).
+
+**Rationale:** Persisted cache-bust tokens stamp meaningless timestamps into the database, are not semantic, and look like real query parameters to downstream consumers (CDN, share links, third-party renderers). They also make storage-path uniqueness ambiguous and obscure the canonical URL. ORCH-0786 surfaced this directly when operator's avatar_url contained `?t=1778489182992` as a permanent suffix.
+
+**Enforcement mechanism:** `.github/scripts/strict-grep/orch-0786-creator-avatar-upload-integrity.mjs` assertion 7 + jest `edit-profile.avatar.test.tsx` T-19/T-20 (assert persisted URL has no `?t=` substring).
+
+**Test that catches regression:** ORCH-0786 gate exits 1 if `edit-profile.tsx` calls `setPhotoUri` with a cache-bust suffix or passes a `?t=`-suffixed `avatar_url` to `updateAccount`.
+
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0786 CLOSE.
+
+### I-PROPOSED-AS AVATAR-IMAGE-HAS-ONERROR-FALLBACK
+
+**Statement:** Every avatar `<Image>` in `mingla-business/app/account/**` must have an `onError` handler that flips a local state flag to render the initials fallback view. The pattern is `onError={() => setAvatarLoadFailed(true)}` paired with a JSX guard `avatarImageSource !== null && !avatarLoadFailed ? <Image .../> : <InitialsView />`.
+
+**Rationale:** Constitution #3 (no silent failures) + Constitution #9 (no fabricated data). A black tile after `<Image>` decode failure is fabricated data — the user thinks their photo is saved when actually rendering failed. Truthful initials are the correct fallback.
+
+**Enforcement mechanism:** `.github/scripts/strict-grep/orch-0786-creator-avatar-upload-integrity.mjs` assertion 6 + jest `edit-profile.avatar.test.tsx` T-18.
+
+**Test that catches regression:** ORCH-0786 gate exits 1 if `edit-profile.tsx` does not contain `onError={` or omits `setAvatarLoadFailed(true)`.
+
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0786 CLOSE.
+
+### I-PROPOSED-AT OAUTH_USER_METADATA_SEED_ONLY
+
+**Statement:** `ensureCreatorAccount` (and any future identity-seeding helper for OAuth-backed Mingla accounts) must write OAuth identity claims (`display_name`, `avatar_url`) only on initial row insertion. Subsequent token refresh, auth-state-change, and bootstrap calls must short-circuit via `INSERT … ON CONFLICT DO NOTHING` (`ignoreDuplicates: true`) so user customisations are never overwritten by `user_metadata` snapshots.
+
+**Rationale:** OAuth providers (Google, Apple) own the identity claims at sign-in time, but the moment a user customises a field (uploads an avatar, edits a name), those customisations become the source of truth. The pre-ORCH-0786 `upsert({...}, { onConflict: "id", ignoreDuplicates: false })` clobbered uploaded avatars back to `lh3.googleusercontent.com` URLs on every auth event. This invariant cements Constitution #2 (one owner per truth) — the user, not the OAuth provider, owns `creator_accounts.avatar_url` and `display_name` post-seed.
+
+**Enforcement mechanism:** `mingla-business/src/services/creatorAccount.ts:ensureCreatorAccount` uses `{ onConflict: "id", ignoreDuplicates: true }`. Race-safe (bootstrap and `onAuthStateChange` may fire concurrently).
+
+**Test that catches regression:** `cd mingla-business && npx jest creatorAccountEnsure` — T-25 asserts `ignoreDuplicates: true` on the upsert options; T-26 asserts seed shape; T-27 asserts throw-on-error; T-28 asserts missing-metadata fallback.
+
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0786 CLOSE. New invariant (no spec §6 precedent — established at CLOSE).
+
+---
+
 ## ACTIVE (post ORCH-0785 CLOSE 2026-05-11)
 
 These four invariants were introduced by SPEC §14 of ORCH-0785 and promoted DRAFT→ACTIVE at CLOSE after Claude `mingla-tester` returned PASS with zero P0/P1/P2/P3 findings. The spec named them `I-PROPOSED-AD..AG` but those identifiers were already allocated to unrelated invariants (universal skill output format, Stripe native boundary, Supabase auth redirect allowlist, organiser order brand authoritative), so the runtime identifiers are `I-PROPOSED-AM..AP` (AL was already taken by ORCH-0784 HOME_NON_DRAFT_SALES_SUMMARIES_DO_NOT_READ_USE_ORDER_STORE). Spec text is binding; the rename is a registry-only correction.
