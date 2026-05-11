@@ -3,6 +3,7 @@ import {
   corsHeaders,
   isValidUuid,
   jsonResponse,
+  mapEventCoverVideoStatus,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
@@ -29,7 +30,7 @@ serve(async (req) => {
   const supabase = serviceRoleClient();
   const { data: job, error: jobError } = await supabase
     .from("event_cover_video_jobs")
-    .select("id,event_id,brand_id,status")
+    .select("*")
     .eq("id", body.jobId)
     .maybeSingle();
   if (jobError) {
@@ -39,17 +40,26 @@ serve(async (req) => {
   if (!job) return jsonResponse({ error: "not_found", detail: "job_not_found" }, 404);
   const allowed = await requireEventManager(supabase, job.event_id, job.brand_id, userId);
   if (allowed instanceof Response) return allowed;
-  if (job.status === "applied") return jsonResponse({ error: "already_applied" }, 409);
+  if (["ready", "failed", "cancelled", "applied"].includes(job.status)) {
+    return jsonResponse(mapEventCoverVideoStatus(job));
+  }
 
-  await supabase
+  const { data: updatedJob, error: updateError } = await supabase
     .from("event_cover_video_jobs")
     .update({
       cancelled_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
       failure_code: "user_cancelled",
       failure_message: "Cancelled by user.",
       status: "cancelled",
     })
-    .eq("id", job.id);
+    .eq("id", job.id)
+    .select("*")
+    .maybeSingle();
+  if (updateError || !updatedJob) {
+    console.error("[event-cover-video-cancel] cancel failed:", updateError);
+    return jsonResponse({ error: "internal_error", detail: "cancel_failed" }, 500);
+  }
 
-  return jsonResponse({ ok: true });
+  return jsonResponse(mapEventCoverVideoStatus(updatedJob));
 });

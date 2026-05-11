@@ -135,6 +135,31 @@ Full strategy reference: `Mingla_Artifacts/WORKTREE_STRATEGY.md`.
 
 ---
 
+## ACTIVE (post ORCH-0776 CLOSE 2026-05-11)
+
+### I-PROPOSED-AH PROCESSED_EVENT_COVER_VIDEO_ONLY
+
+**Statement:** Mingla Business must never publish a raw phone video upload as `events.cover_media_url`. Event cover videos reach public cover surfaces only after the event-cover-video job reaches a processed `ready` or `applied` state and the URL is a browser-safe processed derivative.
+
+**Authority:** `supabase/functions/_shared/eventCoverVideo.ts`, `supabase/functions/event-cover-video-webhook/index.ts`, `supabase/functions/event-cover-video-apply/index.ts`, and `mingla-business/src/services/eventCoverVideoProcessingService.ts` own the processing/status contract. `mingla-business/src/components/event/CreatorStep4Cover.tsx` owns the user-facing upload/status/recovery UI.
+
+**Rationale:** ORCH-0776 proved the old event-cover flow could leave organisers waiting behind misleading processing copy and could not rely on a durable source-upload/status bridge. The close locks the replacement contract: real upload progress only during source upload, honest indeterminate processing status afterward, and public playback from processed Cloudinary MP4 derivatives only.
+
+**Enforcement:**
+1. The source-upload acknowledgement function never writes `events.cover_media_url`.
+2. The webhook ready path writes only live-schema columns accepted by `public.event_cover_video_jobs` and validates processed derivative shape before cover application.
+3. The apply path reads a `ready` job row rather than trusting raw client/provider upload output.
+4. Strict-grep jobs protect the ORCH-0776 status bridge, ORCH-0776A progress honesty, ORCH-0776D cancellation schema, and ORCH-0770 browser-safe processing guard.
+5. Client UI distinguishes real byte progress from indeterminate processing and exposes recovery/cancel/status recheck behavior without fake percentages.
+
+**Test that catches a regression:** `cd mingla-business && npm run test:orch-0776`, `npm run test:orch-0776a`, `npm run test:orch-0776d`, `npm run test:orch-0770`, plus `deno test --allow-env --allow-net supabase/functions/_shared/eventCoverVideo.test.ts` and Deno checks for the six event-cover-video function entrypoints.
+
+**Established:** 2026-05-11 by ORCH-0776 CLOSE. DEC-140 logged.
+
+**Cross-references:** `reports/INVESTIGATION_ORCH-0776_EVENT_COVER_VIDEO_PROCESSING_PROGRESS_STALL.md`, `specs/SPEC_ORCH-0776_EVENT_COVER_VIDEO_PROCESSING_STATUS_AND_PROGRESS.md`, `reports/IMPLEMENTATION_ORCH-0776_EVENT_COVER_VIDEO_PROCESSING_SPEED_AND_STATUS.md`, `reports/QA_ORCH-0776_EVENT_COVER_VIDEO_PROCESSING_SPEED_AND_STATUS_RETEST.md`.
+
+---
+
 ## ACTIVE (post ORCH-0756A IMPLEMENTATION 2026-05-08)
 
 ### I-PROPOSED-AA ACTIVE_BRAND_RECOVERS_FROM_SERVER_DEFAULT

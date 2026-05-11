@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   assertProcessedDerivative,
   corsHeaders,
+  eventCoverVideoReadyUpdate,
   jsonResponse,
   serviceRoleClient,
   verifyCloudinaryNotificationSignature,
@@ -60,8 +61,18 @@ serve(async (req) => {
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
 
   const rawBody = await req.text();
+  console.log("[event-cover-video-webhook]", JSON.stringify({
+    hasSignature: Boolean(req.headers.get("x-cld-signature")),
+    hasTimestamp: Boolean(req.headers.get("x-cld-timestamp")),
+    stage: "webhook_received",
+  }));
   const webhookVerification = await verifyWebhook(req, rawBody);
   if (!webhookVerification.ok) {
+    console.warn("[event-cover-video-webhook]", JSON.stringify({
+      code: webhookVerification.code,
+      stage: "webhook_rejected",
+      status: webhookVerification.status,
+    }));
     return jsonResponse({
       error: "forbidden",
       detail: webhookVerification.code,
@@ -81,11 +92,32 @@ serve(async (req) => {
   }
 
   const supabase = serviceRoleClient();
+  const { data: existingJob, error: existingJobError } = await supabase
+    .from("event_cover_video_jobs")
+    .select("id,status,event_id,apply_mode")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (existingJobError || !existingJob) {
+    console.error("[event-cover-video-webhook] job read failed:", existingJobError);
+    return jsonResponse({ error: "internal_error", detail: "job_read_failed" }, 500);
+  }
+  if (existingJob.status === "cancelled") {
+    console.log("[event-cover-video-webhook]", JSON.stringify({
+      jobId,
+      stage: "late_webhook_ignored_cancelled",
+    }));
+    return jsonResponse({ ok: true, ignored: "cancelled" });
+  }
+  if (existingJob.status === "applied") {
+    return jsonResponse({ ok: true, ignored: "already_applied" });
+  }
+
   const failed = Boolean(payload.error) || payload.status === "failed";
   if (failed) {
     await supabase
       .from("event_cover_video_jobs")
       .update({
+        completed_at: new Date().toISOString(),
         status: "failed",
         failure_code: "provider_failed",
         failure_message: typeof payload.error === "string" ? payload.error : "Video processing failed.",
@@ -123,6 +155,7 @@ serve(async (req) => {
     await supabase
       .from("event_cover_video_jobs")
       .update({
+        completed_at: new Date().toISOString(),
         status: "failed",
         failure_code: derivative.code,
         failure_message: derivative.message,
@@ -134,15 +167,11 @@ serve(async (req) => {
 
   const { data: job, error: jobError } = await supabase
     .from("event_cover_video_jobs")
-    .update({
-      processed_at: new Date().toISOString(),
-      processed_bytes: derivative.bytes,
-      processed_duration_ms: derivative.durationMs,
-      processed_mime_type: "video/mp4",
-      processed_url: derivative.url,
-      provider_payload: payload,
-      status: "ready",
-    })
+    .update(eventCoverVideoReadyUpdate({
+      applyMode: existingJob.apply_mode,
+      derivative,
+      providerPayload: payload,
+    }))
     .eq("id", jobId)
     .select("id,event_id,apply_mode")
     .maybeSingle();
@@ -152,7 +181,7 @@ serve(async (req) => {
   }
 
   if (job.apply_mode === "draft_auto") {
-    await supabase
+    const { error: eventUpdateError } = await supabase
       .from("events")
       .update({
         cover_media_type: "video",
@@ -161,9 +190,24 @@ serve(async (req) => {
       })
       .eq("id", job.event_id)
       .is("deleted_at", null);
+    if (eventUpdateError) {
+      console.error("[event-cover-video-webhook] event update failed:", eventUpdateError);
+      await supabase
+        .from("event_cover_video_jobs")
+        .update({
+          failure_code: "apply_failed",
+          failure_message: "Processed video is ready, but Mingla could not apply it automatically.",
+        })
+        .eq("id", job.id);
+      return jsonResponse({ ok: true, status: "ready", applyFailed: true });
+    }
     await supabase
       .from("event_cover_video_jobs")
-      .update({ applied_at: new Date().toISOString(), status: "applied" })
+      .update({
+        applied_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "applied",
+      })
       .eq("id", job.id);
   }
 

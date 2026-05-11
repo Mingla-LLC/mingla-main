@@ -3,6 +3,7 @@ import {
   corsHeaders,
   isValidUuid,
   jsonResponse,
+  mapEventCoverVideoStatus,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
@@ -40,7 +41,10 @@ serve(async (req) => {
   const allowed = await requireEventManager(supabase, job.event_id, job.brand_id, userId);
   if (allowed instanceof Response) return allowed;
   if (job.status !== "ready" || !job.processed_url) {
-    return jsonResponse({ error: "job_not_ready" }, 409);
+    return jsonResponse({
+      error: "job_not_ready",
+      status: mapEventCoverVideoStatus(job),
+    }, 409);
   }
 
   const { error: updateError } = await supabase
@@ -58,7 +62,11 @@ serve(async (req) => {
   }
   await supabase
     .from("event_cover_video_jobs")
-    .update({ applied_at: new Date().toISOString(), status: "applied" })
+    .update({
+      applied_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
+      status: "applied",
+    })
     .eq("id", job.id);
 
   return jsonResponse({ ok: true, processedUrl: job.processed_url });

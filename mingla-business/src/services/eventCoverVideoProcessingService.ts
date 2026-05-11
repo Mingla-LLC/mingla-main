@@ -38,7 +38,9 @@ type EdgeErrorPayload = { error?: string; detail?: string };
 export type EventCoverVideoProcessingPhase =
   | "upload_intent"
   | "source_upload"
+  | "source_uploaded"
   | "status"
+  | "cancel"
   | "apply";
 
 interface EventCoverVideoErrorMetadata {
@@ -47,6 +49,7 @@ interface EventCoverVideoErrorMetadata {
   edgeStatus?: number;
   edgeError?: string;
   edgeDetail?: string;
+  lastStatus?: EventCoverVideoStatus;
 }
 
 export interface EventCoverVideoUploadProgress {
@@ -58,20 +61,49 @@ export interface EventCoverVideoUploadProgress {
 
 export interface EventCoverVideoStatus {
   jobId: string;
+  eventId: string;
+  brandId: string;
   status: EventCoverVideoJobStatus;
   applyMode: EventCoverVideoApplyMode;
+  stageLabel: string;
+  progressKind: "determinate" | "indeterminate" | "terminal";
+  progressPercent: number | null;
+  isTerminal: boolean;
+  canRetry: boolean;
+  canCheckAgain: boolean;
+  canCancel: boolean;
   processedUrl: string | null;
   processedMimeType: string | null;
   processedBytes: number | null;
   processedDurationMs: number | null;
   failureCode: string | null;
   failureMessage: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  sourceUploadedAt: string | null;
+  appliedAt: string | null;
+  cancelledAt: string | null;
 }
 
 interface StatusResponse extends Partial<EventCoverVideoStatus> {
   error?: string;
   detail?: string;
 }
+
+export type EventCoverVideoProviderUploadResponse = {
+  asset_id?: string;
+  public_id?: string;
+  bytes?: number;
+  duration?: number;
+  format?: string;
+  resource_type?: string;
+};
+
+type WaitForEventCoverVideoReadyOptions = {
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  onStatus?: (status: EventCoverVideoStatus) => void;
+};
 
 export class EventCoverVideoProcessingError extends Error {
   code: string;
@@ -80,6 +112,7 @@ export class EventCoverVideoProcessingError extends Error {
   edgeStatus?: number;
   edgeError?: string;
   edgeDetail?: string;
+  lastStatus?: EventCoverVideoStatus;
 
   constructor(
     code: string,
@@ -94,6 +127,7 @@ export class EventCoverVideoProcessingError extends Error {
     this.edgeStatus = metadata.edgeStatus;
     this.edgeError = metadata.edgeError;
     this.edgeDetail = metadata.edgeDetail;
+    this.lastStatus = metadata.lastStatus;
   }
 }
 
@@ -168,7 +202,7 @@ const processingErrorFromPayload = (
   if (payload?.error === "job_not_ready") {
     return new EventCoverVideoProcessingError(
       "job_not_ready",
-      "Video is still processing. Try again in a moment.",
+      "Your video is still processing. You can check again in a moment.",
       edgeMetadata,
     );
   }
@@ -272,13 +306,29 @@ const cloudinaryUploadFailureDetail = (body: unknown, status: number): string =>
   return `Cloud upload failed (${status}).`;
 };
 
+const sanitizeProviderUploadResponse = (
+  body: unknown,
+): EventCoverVideoProviderUploadResponse | null => {
+  if (body === null || typeof body !== "object") return null;
+  const payload = body as Record<string, unknown>;
+  return {
+    asset_id: typeof payload.asset_id === "string" ? payload.asset_id : undefined,
+    bytes: typeof payload.bytes === "number" ? payload.bytes : undefined,
+    duration: typeof payload.duration === "number" ? payload.duration : undefined,
+    format: typeof payload.format === "string" ? payload.format : undefined,
+    public_id: typeof payload.public_id === "string" ? payload.public_id : undefined,
+    resource_type:
+      typeof payload.resource_type === "string" ? payload.resource_type : undefined,
+  };
+};
+
 const uploadEventCoverVideoSourceWithXhr = async (input: {
   upload: { url: string; fields: Record<string, string> };
   uri: string;
   fileName?: string | null;
   mimeType?: string | null;
   onProgress?: (progress: EventCoverVideoUploadProgress) => void;
-}): Promise<void> =>
+}): Promise<EventCoverVideoProviderUploadResponse | null> =>
   new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
@@ -303,16 +353,16 @@ const uploadEventCoverVideoSourceWithXhr = async (input: {
       );
     };
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        emitUploadProgress(input.onProgress, 1, 1);
-        resolve();
-        return;
-      }
       let body: unknown = null;
       try {
         body = JSON.parse(xhr.responseText);
       } catch {
         // Keep status detail when provider body is not JSON.
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        emitUploadProgress(input.onProgress, 1, 1);
+        resolve(sanitizeProviderUploadResponse(body));
+        return;
       }
       const detail = cloudinaryUploadFailureDetail(body, xhr.status);
       devWarn("source-upload-failed", {
@@ -476,7 +526,7 @@ export const uploadEventCoverVideoSource = async (input: {
   fileName?: string | null;
   mimeType?: string | null;
   onProgress?: (progress: EventCoverVideoUploadProgress) => void;
-}): Promise<void> => {
+}): Promise<EventCoverVideoProviderUploadResponse | null> => {
   const parameters = Object.fromEntries(
     Object.entries(input.upload.fields).filter(([key]) => key !== "resource_type"),
   );
@@ -522,13 +572,18 @@ export const uploadEventCoverVideoSource = async (input: {
       throw new EventCoverVideoProcessingError("source_upload_failed", detail);
     }
     emitUploadProgress(input.onProgress, 1, 1);
+    try {
+      return sanitizeProviderUploadResponse(JSON.parse(result.body));
+    } catch {
+      return null;
+    }
   } catch (error) {
     if (error instanceof EventCoverVideoProcessingError) throw error;
     devWarn("source-upload-task-failed", {
       message: error instanceof Error ? error.message : String(error),
       fallback: "xhr",
     });
-    await uploadEventCoverVideoSourceWithXhr(input);
+    return await uploadEventCoverVideoSourceWithXhr(input);
   }
 };
 
@@ -549,24 +604,87 @@ export const fetchEventCoverVideoStatus = async (
   if (data === null) {
     throwMalformed("event-cover-video-status");
   }
-  const payload = data as StatusResponse;
+  return mapStatusResponse(data as StatusResponse, "event-cover-video-status");
+};
+
+const mapStatusResponse = (
+  payload: StatusResponse,
+  label: string,
+): EventCoverVideoStatus => {
   const responseJobId = payload.jobId;
   const statusValue = payload.status;
   if (typeof responseJobId !== "string" || typeof statusValue !== "string") {
-    throwMalformed("event-cover-video-status");
+    throwMalformed(label);
   }
+  const status = statusValue as EventCoverVideoJobStatus;
+  const stageLabel =
+    typeof payload.stageLabel === "string" ? payload.stageLabel : status;
   return {
     applyMode: payload.applyMode === "published_manual" ? "published_manual" : "draft_auto",
+    appliedAt: payload.appliedAt ?? null,
+    brandId: typeof payload.brandId === "string" ? payload.brandId : "",
+    canCancel: Boolean(payload.canCancel),
+    canCheckAgain: Boolean(payload.canCheckAgain),
+    canRetry: Boolean(payload.canRetry),
+    cancelledAt: payload.cancelledAt ?? null,
+    createdAt: payload.createdAt ?? null,
+    eventId: typeof payload.eventId === "string" ? payload.eventId : "",
     failureCode: payload.failureCode ?? null,
     failureMessage: payload.failureMessage ?? null,
+    isTerminal: Boolean(payload.isTerminal),
     jobId: responseJobId as string,
     processedBytes: typeof payload.processedBytes === "number" ? payload.processedBytes : null,
     processedDurationMs:
       typeof payload.processedDurationMs === "number" ? payload.processedDurationMs : null,
     processedMimeType: payload.processedMimeType ?? null,
     processedUrl: payload.processedUrl ?? null,
-    status: statusValue as EventCoverVideoJobStatus,
+    progressKind: payload.progressKind ?? "indeterminate",
+    progressPercent:
+      typeof payload.progressPercent === "number" ? payload.progressPercent : null,
+    sourceUploadedAt: payload.sourceUploadedAt ?? null,
+    stageLabel,
+    status,
+    updatedAt: payload.updatedAt ?? null,
   };
+};
+
+export const acknowledgeEventCoverVideoSourceUploaded = async (input: {
+  jobId: string;
+  eventId: string;
+  brandId: string;
+  providerUploadResponse?: EventCoverVideoProviderUploadResponse | null;
+}): Promise<EventCoverVideoStatus> => {
+  const requestId = `${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+  const { data, error } = await supabase.functions.invoke<StatusResponse>(
+    "event-cover-video-source-uploaded",
+    {
+      body: {
+        ...input,
+        clientRequestId: requestId,
+      },
+    },
+  );
+  if (error) {
+    throw await edgeError(error, "Could not confirm video upload.", {
+      phase: "source_uploaded",
+      requestId,
+    });
+  }
+  if (data?.error !== undefined) {
+    throw processingErrorFromPayload(data, "Could not confirm video upload.", {
+      phase: "source_uploaded",
+      requestId,
+    });
+  }
+  if (data === null) {
+    throwMalformed("event-cover-video-source-uploaded", {
+      phase: "source_uploaded",
+      requestId,
+    });
+  }
+  return mapStatusResponse(data as StatusResponse, "event-cover-video-source-uploaded");
 };
 
 export const applyEventCoverVideoJob = async (jobId: string): Promise<string> => {
@@ -588,24 +706,54 @@ export const applyEventCoverVideoJob = async (jobId: string): Promise<string> =>
   return processedUrl as string;
 };
 
+export const cancelEventCoverVideoJob = async (
+  jobId: string,
+): Promise<EventCoverVideoStatus> => {
+  const { data, error } = await supabase.functions.invoke<StatusResponse>(
+    "event-cover-video-cancel",
+    { body: { jobId } },
+  );
+  if (error) {
+    throw await edgeError(error, "Could not cancel video processing.", {
+      phase: "cancel",
+    });
+  }
+  if (data?.error !== undefined) {
+    throw processingErrorFromPayload(data, "Could not cancel video processing.", {
+      phase: "cancel",
+    });
+  }
+  if (data === null) throwMalformed("event-cover-video-cancel");
+  return mapStatusResponse(data as StatusResponse, "event-cover-video-cancel");
+};
+
 export const waitForEventCoverVideoReady = async (
   jobId: string,
-  timeoutMs = 120_000,
+  options: WaitForEventCoverVideoReadyOptions | number = {},
 ): Promise<EventCoverVideoStatus> => {
+  const timeoutMs = typeof options === "number" ? options : options.timeoutMs ?? 120_000;
+  const pollIntervalMs =
+    typeof options === "number" ? 2500 : options.pollIntervalMs ?? 2500;
+  const onStatus = typeof options === "number" ? undefined : options.onStatus;
   const startedAt = Date.now();
+  let lastStatus: EventCoverVideoStatus | undefined;
   while (Date.now() - startedAt < timeoutMs) {
     const status = await fetchEventCoverVideoStatus(jobId);
+    lastStatus = status;
+    onStatus?.(status);
     if (status.status === "ready" || status.status === "applied") return status;
     if (status.status === "failed" || status.status === "cancelled") {
       throw new EventCoverVideoProcessingError(
         status.failureCode ?? status.status,
         status.failureMessage ?? "Video processing failed.",
+        { lastStatus: status, phase: "status" },
       );
     }
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
   throw new EventCoverVideoProcessingError(
     "processing_timeout",
-    "Video is still processing. Try again in a moment.",
+    "Your video is still processing. You can check again in a moment.",
+    { lastStatus, phase: "status" },
   );
 };

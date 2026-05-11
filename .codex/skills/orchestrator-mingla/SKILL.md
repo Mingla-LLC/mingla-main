@@ -39,8 +39,14 @@ Read these references as needed:
 - [references/claude-skill-audit.md](references/claude-skill-audit.md) for the brutal audit of the source skill and what this version improves.
 - [references/operating-system.md](references/operating-system.md) for modes, lifecycle, and role boundaries.
 - [references/artifact-system.md](references/artifact-system.md) for `Mingla_Artifacts/` documents and sync rules.
+- [references/artifact-templates.md](references/artifact-templates.md) for Claude parity artifact document schemas.
+- [references/bootstrap-sequence.md](references/bootstrap-sequence.md) for Claude parity artifact bootstrap procedure.
 - [references/priority-scoring.md](references/priority-scoring.md) for ranking and severity escalation.
 - [references/mingla-journey-and-invariants.md](references/mingla-journey-and-invariants.md) for journey mapping, constitution, and recurring failure patterns.
+- [references/user-journey-map.md](references/user-journey-map.md) for Claude parity journey-step mapping.
+- [references/invariant-registry.md](references/invariant-registry.md) for Claude parity invariant registry reference.
+- [references/constitutional-compliance.md](references/constitutional-compliance.md) for Claude parity architecture compliance review.
+- [references/failure-patterns.md](references/failure-patterns.md) for Claude parity recurring failure patterns.
 - [references/agent-prompts.md](references/agent-prompts.md) when writing handoff prompts.
 - [references/review-close-protocol.md](references/review-close-protocol.md) when reviewing returned work or closing items.
 
@@ -348,6 +354,9 @@ Per DEC-135 / I-PROPOSED-AC ONE_WORKTREE_PER_ORCH: the prior default (everyone w
 
 ---
 
+## Next-Handoff Paragraph (mandatory — codified META-ORCH-0755 Step 7, 2026-05-10)
+
+Every chat response MUST end with a single prose "Next Handoff" paragraph the operator can copy and paste verbatim into the next agent's chat. The orchestrator emits one of these at the end of:
 ## Response Protocol — Universal 4-Section Output (Non-Negotiable, codified 2026-05-10)
 
 Every chat response from this skill (and every other Codex + Claude Mingla skill) uses exactly these four sections, in this order, with NO other sections:

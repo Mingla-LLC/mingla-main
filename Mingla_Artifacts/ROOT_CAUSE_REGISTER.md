@@ -1,10 +1,25 @@
 # Root Cause Register
 
+> Last updated: 2026-05-09
 > Last updated: 2026-05-11
 > Proven root causes with causal clusters.
 
 ## Root Causes
 
+### RC-PR69: Admin Vercel deployment payload excluded the admin package
+- **Discovery date:** 2026-05-09
+- **Proof:** Failed admin Vercel deployment logged `ENOENT: no such file or directory, open '/vercel/path0/mingla-admin/package.json'` while running `npm run build`. PR 69 final status then showed `Vercel - mingla-admin` SUCCESS after commit `466d98f2`, and PR 69 merged at `89e107340920e39f9546d7947419d014d6a9d517` with all checks successful. Close report: `reports/CLOSE_PR-69_ADMIN_VERCEL_AND_CI_CHECKS.md`.
+- **Symptoms caused:** Admin preview deployment failed before build compilation because npm could not find `mingla-admin/package.json` inside the Vercel deployment root.
+- **Causal chain:**
+  1. Vercel configured the admin project to build from `/vercel/path0/mingla-admin`.
+  2. The repo-level `.vercelignore` excluded `mingla-admin/` from the uploaded deployment payload.
+  3. Vercel still entered the configured admin root and ran `npm run build`.
+  4. npm failed before dependency resolution or compilation because `package.json` was absent.
+- **Structural fix:** `.vercelignore` now allows `mingla-admin/` into the deployment payload while continuing to exclude admin `.env`, `dist/`, and `node_modules/`. Related PR checks also repaired strict invariant gates and made the event-cover storage migration compatible with the CI storage schema.
+- **Status:** **CLOSED PASS 2026-05-09**. Evidence: final PR head `291de92684a3b770d9776b25aa75f96350a6f551` had successful admin/business/marketing Vercel contexts, Supabase Preview, migration baseline, Deno Stripe tests, docs-artifact-regression, GitGuardian, and strict grep gates before merge.
+- **Invariant / regression guard:** Vercel deployment ignore rules must never exclude a configured project root that Vercel is expected to build. Ignore project-local generated outputs and secrets, not the package directory itself.
+- **Causal cluster:** Cluster 6: deployment packaging/config drift can masquerade as an application build failure.
+- **Follow-ups not part of RC:** ORCH-0764B/0764C Stripe runtime gates, ORCH-0763 event/share runtime gates, and product QA remain separate.
 ### RC-0777: Organizer Orders queried nonexistent `orders.brand_id`; failed-terminal notification rows were outside retry selection
 - **Discovery date:** 2026-05-11
 - **Proof:** `reports/INVESTIGATION_ORCH-0777_REAL_DEVICE_ORDER_VISIBILITY_AND_FREE_EMAIL_FAILURE.md` proved `mingla-business/src/services/eventOrdersService.ts` selected `brand_id` directly from `orders`, while production `orders.brand_id` does not exist. The same investigation proved the operator's free-checkout notification rows created during the provider repair window were `failed_terminal`, which the dispatcher retry selector intentionally ignores.
