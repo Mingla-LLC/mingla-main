@@ -7,6 +7,60 @@
 
 ---
 
+## DRAFT (pre ORCH-0785 CLOSE — flips to ACTIVE on tester PASS + orchestrator CLOSE)
+
+These four invariants were introduced by SPEC §14 of ORCH-0785. The implementation is complete and the strict-grep gates are passing locally on Seth, but the invariants stay DRAFT until Claude `mingla-forensics` (TEST mode) returns PASS and the orchestrator runs CLOSE. The spec named them `I-PROPOSED-AD..AG` but those identifiers were already allocated to unrelated invariants (universal skill output format, Stripe native boundary, Supabase auth redirect allowlist, organiser order brand authoritative), so the runtime identifiers are `I-PROPOSED-AL..AO`. Spec text is binding; the rename is a registry-only correction.
+
+### I-PROPOSED-AL EMAIL_BRAND_SHELL_SINGLETON (DRAFT — was named I-PROPOSED-AD in spec)
+
+**Statement:** Every customer-facing email Mingla sends server-side must flow through `supabase/functions/_shared/email/index.ts` (`renderTransactionalEmail`). No file under `supabase/functions/**/*.ts` outside `_shared/email/**` may construct its own `<!doctype html>`, `<!DOCTYPE html>`, or `<html lang=` string.
+
+**Rationale:** Two parallel email shells drift independently within a release and produce inconsistent buyer trust signals. One renderer = one brand surface.
+
+**Enforcement mechanism:** `.github/scripts/strict-grep/orch-0785-shell-singleton.mjs` (ORCH-0785-D gate).
+
+**Test that catches regression:** `node .github/scripts/strict-grep/orch-0785-shell-singleton.mjs` returns exit code 1 if any new edge function builds its own HTML shell.
+
+**Status:** DRAFT — flips to ACTIVE on ORCH-0785 CLOSE.
+
+### I-PROPOSED-AM RESEND_NO_SANDBOX_SENDER (DRAFT — was named I-PROPOSED-AE in spec)
+
+**Statement:** No Mingla code path may send Resend email from any `*@resend.dev` address. `assertNotResendSandbox` must run before every `POST https://api.resend.com/emails`.
+
+**Rationale:** The Resend sandbox sender renders as "unknown / spam-likely" in modern inboxes and broke brand trust silently when env vars were missing. The hard-error path is far less harmful than a delivered email from a sandbox sender.
+
+**Enforcement mechanism:** `.github/scripts/strict-grep/orch-0785-no-resend-sandbox-fallback.mjs` (ORCH-0785-B gate) + runtime guard in `supabase/functions/_shared/email/senders.ts:assertNotResendSandbox`.
+
+**Test that catches regression:** ORCH-0785-B exits 1 if `onboarding@resend.dev` appears outside a comment in any source file; senders.test.ts asserts the runtime throw.
+
+**Status:** DRAFT — flips to ACTIVE on ORCH-0785 CLOSE.
+
+### I-PROPOSED-AN BUYER_INPUT_HTML_ESCAPED (DRAFT — was named I-PROPOSED-AF in spec)
+
+**Statement:** Any caller-supplied string interpolated into an email HTML template literal must flow through `escapeHtml` (or be a pre-rendered `*Html` fragment built by a sibling renderer that already escaped its inputs).
+
+**Rationale:** Buyer-name / event-title / brand-name strings are user-controlled in practice; a stored XSS reaching email clients would be a customer-trust + security-disclosure incident.
+
+**Enforcement mechanism:** `.github/scripts/strict-grep/orch-0785-buyer-string-escape.mjs` (ORCH-0785-C gate).
+
+**Test that catches regression:** ORCH-0785-C exits 1 if any new HTML template interpolation of an `order|event|brand|recipient|attendee|cta|paragraph|line|ticket` identifier is not wrapped in `escapeHtml(...)` or a `*Html` already-escaped variable.
+
+**Status:** DRAFT — flips to ACTIVE on ORCH-0785 CLOSE.
+
+### I-PROPOSED-AO TICKET_PDF_PRIVACY (DRAFT — was named I-PROPOSED-AG in spec)
+
+**Statement:** Ticket PDFs must not include `qr_token_hash`, the QR pepper, Stripe payment IDs (`stripe_payment_intent_id`, `stripe_charge_id`), or buyer phone numbers (`buyer_phone`, `buyer_phone_e164`). PDFs may include `buyer_name`, event title/start/location, brand name, order short id, ticket name, and the existing `tickets.qr_code` payload.
+
+**Rationale:** PDFs are downloaded, forwarded, and printed; once they leave the Mingla device they can be screenshotted, OCR'd, or shared in support tickets. Treat them as if they are public.
+
+**Enforcement mechanism:** `.github/scripts/strict-grep/orch-0785-pdf-privacy.mjs` (ORCH-0785-E gate).
+
+**Test that catches regression:** ORCH-0785-E exits 1 if `_shared/ticketPdf.ts` or `ticket-confirmation-dispatch/index.ts` references a forbidden privacy token outside the orders SELECT context.
+
+**Status:** DRAFT — flips to ACTIVE on ORCH-0785 CLOSE.
+
+---
+
 ## ACTIVE (post ORCH-0784 CLOSE 2026-05-11)
 
 ### I-PROPOSED-AJ NON_DRAFT_EVENT_LISTS_SHOW_SOLD_AND_ONLINE_AMOUNT

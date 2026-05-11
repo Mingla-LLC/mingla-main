@@ -104,6 +104,9 @@ export async function dispatchNotification(
     idempotencyKey?: string | null;
     deepLink?: string | null;
     skipPush?: boolean;
+    // ORCH-0785: opt into Mingla brand shell for email path.
+    emailVariant?: "generic_notification";
+    emailCta?: { label: string; url: string };
   },
 ): Promise<void> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";

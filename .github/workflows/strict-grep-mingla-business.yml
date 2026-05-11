@@ -45,12 +45,18 @@ on:
 #   - I-PROPOSED-M (i-proposed-m-persist-key-whitelist.mjs) — persist-key whitelist sync (META-ORCH-0744)
 #   - I-PROPOSED-N (i-proposed-n-transitional-exit-condition.mjs) — TRANSITIONAL exit-condition lint (META-ORCH-0744)
 #   - I-PROPOSED-X (i-proposed-x-web-deprecation.mjs) — web-export deprecation parser (META-ORCH-0744)
+#   - ORCH-0785-A (orch-0785-resend-attachment-aware.mjs) — Resend POST must declare attachments or opt out (ORCH-0785)
+#   - ORCH-0785-B (orch-0785-no-resend-sandbox-fallback.mjs) — no onboarding@resend.dev fallback in source (ORCH-0785)
+#   - ORCH-0785-C (orch-0785-buyer-string-escape.mjs) — buyer/event/order strings must flow through escapeHtml (ORCH-0785)
+#   - ORCH-0785-D (orch-0785-shell-singleton.mjs) — shared email shell singleton (ORCH-0785)
+#   - ORCH-0785-E (orch-0785-pdf-privacy.mjs) — ticket PDF privacy contract (ORCH-0785)
 #   - ORCH-0776 (orch-0776-video-processing-status-bridge.mjs) — event cover video processing status bridge
 #   - ORCH-0776D (orch-0776d-cancelled-at-schema.mjs) — event cover video cancelled_at schema/code parity
 #   - ORCH-0777 (orch-0777-ticket-checkout-production.mjs) — production ticket checkout + organizer order visibility
 #   - ORCH-0778 (orch-0778-web-stripe-native-import-gate.mjs) — Stripe React Native imports stay behind .native payment boundaries (re-armed by ORCH-0781)
 #   - ORCH-0783 (orch-0783-event-cover-image-provider-pivot.mjs) — event cover image/provider pivot preserves legacy renderers
 #   - ORCH-0784 (orch-0784-event-list-sales-summary-visibility.mjs) — Home/Events list sales summaries stay visible and server-backed
+#   - ORCH-0786 (orch-0786-creator-avatar-upload-integrity.mjs) — creator avatar upload uses expo-file-system + canonical URL + Image onError fallback
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -391,3 +397,80 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0784 gate
         run: node .github/scripts/strict-grep/orch-0784-event-list-sales-summary-visibility.mjs
+
+  orch-0786-creator-avatar-upload-integrity:
+    name: "ORCH-0786: creator avatar upload integrity"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0786 gate
+        run: node .github/scripts/strict-grep/orch-0786-creator-avatar-upload-integrity.mjs
+
+  orch-0787-refund-cancel-flow:
+    name: "ORCH-0787: order refund + cancel production-grade flow"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0787 gate
+        run: node .github/scripts/strict-grep/orch-0787-refund-cancel-flow.mjs
+
+  orch-0785-a-resend-attachment-aware:
+    name: "ORCH-0785-A: Resend POST must declare attachments or opt out"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0785-A gate
+        run: node .github/scripts/strict-grep/orch-0785-resend-attachment-aware.mjs
+
+  orch-0785-b-no-resend-sandbox-fallback:
+    name: "ORCH-0785-B: no onboarding@resend.dev fallback in source"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0785-B gate
+        run: node .github/scripts/strict-grep/orch-0785-no-resend-sandbox-fallback.mjs
+
+  orch-0785-c-buyer-string-escape:
+    name: "ORCH-0785-C: buyer/event/order strings must flow through escapeHtml"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0785-C gate
+        run: node .github/scripts/strict-grep/orch-0785-buyer-string-escape.mjs
+
+  orch-0785-d-shell-singleton:
+    name: "ORCH-0785-D: shared email shell singleton"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0785-D gate
+        run: node .github/scripts/strict-grep/orch-0785-shell-singleton.mjs
+
+  orch-0785-e-pdf-privacy:
+    name: "ORCH-0785-E: ticket PDF privacy contract"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0785-E gate
+        run: node .github/scripts/strict-grep/orch-0785-pdf-privacy.mjs

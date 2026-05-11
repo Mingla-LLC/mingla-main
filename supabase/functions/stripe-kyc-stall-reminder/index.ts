@@ -24,15 +24,23 @@ async function notifyBrand(
     idempotencyKey: string;
     data?: Record<string, unknown>;
     emailTo?: string | null;
+    emailCta?: { label: string; url: string };
   },
 ): Promise<number> {
   const supabase = serviceRoleClient();
   const userIds = await getBrandPaymentManagerUserIds(supabase, input.brandId);
   let count = 0;
+  // ORCH-0785: opt into Mingla brand shell for the email path.
+  const emailCta = input.emailCta ?? {
+    label: "Resolve in Mingla Business",
+    url: `https://usemingla.com/business`,
+  };
   for (let i = 0; i < userIds.length; i += 1) {
     await dispatchNotification({
       userId: userIds[i],
       emailTo: i === 0 ? input.emailTo : null,
+      emailVariant: "generic_notification",
+      emailCta,
       brandId: input.brandId,
       type: input.type,
       title: input.title,
@@ -48,6 +56,8 @@ async function notifyBrand(
   if (userIds.length === 0 && input.emailTo) {
     await dispatchNotification({
       emailTo: input.emailTo,
+      emailVariant: "generic_notification",
+      emailCta,
       type: input.type,
       title: input.title,
       body: input.body,

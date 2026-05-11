@@ -34,8 +34,11 @@ serve(async (req) => {
   const silent = silentForMs > SIX_HOURS_MS;
 
   if (silent) {
+    // ORCH-0785: opt into Mingla brand shell for ops alerts (no CTA — pure
+    // system notification).
     await dispatchNotification({
       emailTo: "ops@mingla.app",
+      emailVariant: "generic_notification",
       type: "ops.webhook_silence_alert",
       title: "Stripe webhook silence alert",
       body: "No Stripe webhook events have been recorded for more than 6 hours.",
