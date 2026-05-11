@@ -60,6 +60,12 @@ export type OrderStatus =
   | "cancelled";
 
 export interface OrderLineRecord {
+  /**
+   * ORCH-0787: server `order_line_items.id` (UUID). Required by RefundSheet to
+   * call `biz_refund_order` with per-line refund manifest. Optional for legacy
+   * client-side-only orders that pre-date the server-truth migration.
+   */
+  orderLineItemId?: string;
   /** References LiveEvent.tickets[].id (stable across event edits). */
   ticketTypeId: string;
   /** FROZEN at purchase. NEVER mutated. */
@@ -145,19 +151,28 @@ export interface OrderStoreState {
    */
   recordOrder: (order: OrderRecord) => OrderRecord;
   /**
+   * @deprecated since ORCH-0787 (2026-05-11). Use `useRefundOrder()` from
+   * `useEventOrders.ts` instead. This method only writes to client-side Zustand
+   * and does NOT call Stripe or persist server-side. New flows (RefundSheet)
+   * route through the `refund-order` edge function. Will be removed by
+   * ORCH-0788 (orderStore full ID-only contraction).
+   *
    * Appends RefundRecord, updates per-line refundedQuantity +
    * refundedAmountGbp, flips status to "refunded_full" or
-   * "refunded_partial". Fires destructive notification + records edit
-   * log entry. Returns updated OrderRecord, or null if order not found.
+   * "refunded_partial". Returns updated OrderRecord, or null if order not found.
    */
   recordRefund: (
     orderId: string,
     refund: Omit<RefundRecord, "id" | "refundedAt">,
   ) => OrderRecord | null;
   /**
-   * Sets status="cancelled" + cancelledAt. Fires destructive notification
-   * + records edit log entry. Returns updated OrderRecord, or null if
-   * order not found.
+   * @deprecated since ORCH-0787 (2026-05-11). Use `useCancelOrder()` from
+   * `useEventOrders.ts` instead. This method only writes to client-side Zustand
+   * and does NOT persist server-side. New flows (CancelOrderDialog) route through
+   * the `cancel-order` edge function. Will be removed by ORCH-0788.
+   *
+   * Sets status="cancelled" + cancelledAt. Returns updated OrderRecord, or null
+   * if order not found.
    */
   cancelOrder: (orderId: string, reason: string) => OrderRecord | null;
   /** Buyer-side acknowledge — does NOT fire notification. */

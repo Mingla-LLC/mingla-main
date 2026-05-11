@@ -15,7 +15,7 @@
  * Per Cycle 9c spec §3.4.4.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Platform,
   StyleSheet,
@@ -33,28 +33,23 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { useOrderStore } from "../../store/orderStore";
-import { getBrandFromCache } from "../../hooks/useBrands";
-import { useEventEditLogStore } from "../../store/eventEditLogStore";
-import { useLiveEventStore } from "../../store/liveEventStore";
-import {
-  deriveChannelFlags,
-  notifyEventChanged,
-} from "../../services/eventChangeNotifier";
+// ORCH-0787: replaced useOrderStore.cancelOrder (Zustand stub) with the real
+// cancel-order edge function via useCancelOrder mutation. Event-edit-log + parent
+// notification rollup side effects are removed in v1 (owned by ORCH-0782).
+import { useCancelOrder } from "../../hooks/useEventOrders";
+import { randomId } from "../../utils/randomId";
 
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 
 const REASON_MIN = 10;
 const REASON_MAX = 200;
-const PROCESSING_MS = 1200;
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 export interface CancelOrderDialogProps {
   visible: boolean;
   orderId: string;
+  /** ORCH-0787: required for React Query cache invalidation on success. */
+  eventId: string;
   buyerName: string;
   onClose: () => void;
   onSuccess: () => void;
@@ -63,21 +58,27 @@ export interface CancelOrderDialogProps {
 export const CancelOrderDialog: React.FC<CancelOrderDialogProps> = ({
   visible,
   orderId,
+  eventId,
   buyerName,
   onClose,
   onSuccess,
 }) => {
-  const cancelOrder = useOrderStore((s) => s.cancelOrder);
+  // ORCH-0787: server-truth mutation. Replaces the stub useOrderStore.cancelOrder.
+  const cancelMutation = useCancelOrder(eventId);
   const [reason, setReason] = useState<string>("");
-  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const idempotencyKeyRef = useRef<string>("");
 
   // Reset state on visible flip → true (defensive)
   useEffect(() => {
     if (visible) {
       setReason("");
-      setSubmitting(false);
+      setErrorMessage(null);
+      idempotencyKeyRef.current = randomId();
     }
   }, [visible]);
+
+  const submitting = cancelMutation.isPending;
 
   const trimmedLen = reason.trim().length;
   const reasonValid =
@@ -85,57 +86,19 @@ export const CancelOrderDialog: React.FC<CancelOrderDialogProps> = ({
 
   const handleConfirm = useCallback(async (): Promise<void> => {
     if (submitting || !reasonValid) return;
-    setSubmitting(true);
-    await sleep(PROCESSING_MS);
-    const trimmedReason = reason.trim();
-    const result = cancelOrder(orderId, trimmedReason);
-
-    // Cycle 9c rework v2 — fire side effects from the caller (was inside
-    // the store; moved out to break require cycle).
-    if (result !== null) {
-      const event = useLiveEventStore
-        .getState()
-        .getLiveEvent(result.eventId);
-      if (event !== null) {
-        // Cycle 2 / ORCH-0742: read the live Brand record from the React
-        // Query cache by ID. Falls back to empty when cache miss — best-
-        // effort copy.
-        const cachedBrand = getBrandFromCache(result.brandId);
-        const brandName = cachedBrand?.displayName ?? "";
-        const cancelledAt = result.cancelledAt ?? new Date().toISOString();
-        useEventEditLogStore.getState().recordEdit({
-          eventId: result.eventId,
-          brandId: result.brandId,
-          reason: trimmedReason,
-          severity: "destructive",
-          changedFieldKeys: ["__cancel__"],
-          diffSummary: ["Order cancelled"],
-          affectedOrderIds: [result.id],
-          orderId: result.id,
-        });
-        void notifyEventChanged(
-          {
-            eventId: result.eventId,
-            eventName: event.name,
-            brandName,
-            brandSlug: event.brandSlug,
-            eventSlug: event.eventSlug,
-            reason: trimmedReason,
-            diffSummary: ["Order cancelled"],
-            severity: "destructive",
-            affectedOrderIds: [result.id],
-            occurredAt: cancelledAt,
-          },
-          deriveChannelFlags("destructive", false),
-        );
-      }
-    }
-
-    setSubmitting(false);
-    if (result !== null) {
+    setErrorMessage(null);
+    try {
+      await cancelMutation.mutateAsync({
+        orderId,
+        reason: reason.trim(),
+        idempotencyKey: idempotencyKeyRef.current,
+      });
       onSuccess();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setErrorMessage(message);
     }
-  }, [submitting, reasonValid, cancelOrder, orderId, reason, onSuccess]);
+  }, [submitting, reasonValid, cancelMutation, orderId, reason, onSuccess]);
 
   const handleClose = useCallback((): void => {
     if (submitting) return;
@@ -191,6 +154,12 @@ export const CancelOrderDialog: React.FC<CancelOrderDialogProps> = ({
             </Text>
           </View>
         </View>
+
+        {errorMessage !== null ? (
+          <Text style={styles.errorCaption} accessibilityRole="text">
+            {errorMessage}
+          </Text>
+        ) : null}
 
         <View style={styles.actions}>
           <View style={styles.actionFlex}>
@@ -294,6 +263,13 @@ const styles = StyleSheet.create({
   },
   actionFlex: {
     flex: 1,
+  },
+  errorCaption: {
+    fontSize: 13,
+    color: semantic.error,
+    textAlign: "center",
+    lineHeight: 18,
+    marginTop: spacing.xs,
   },
 });
 

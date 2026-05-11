@@ -26,6 +26,31 @@ export function serviceClient() {
   });
 }
 
+/**
+ * userClient — supabase-js bound to the caller's JWT.
+ *
+ * Use for RPC calls inside SECURITY DEFINER functions that read `auth.uid()`
+ * to identify the caller (e.g., biz_refund_order, biz_cancel_order). The
+ * service-role client sends an Authorization header with no `sub` claim, so
+ * `auth.uid()` returns NULL inside the RPC and every permission gate that
+ * depends on the caller identity fails closed with `permission_denied`.
+ *
+ * verify_jwt is enforced at the gateway, so the request has already presented
+ * a valid user JWT by the time the function handler runs.
+ */
+export function userClient(req: Request) {
+  const url = Deno.env.get("SUPABASE_URL");
+  const anon = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!url || !anon) {
+    throw new Error("supabase_anon_env_missing");
+  }
+  const authHeader = req.headers.get("authorization") ?? "";
+  return createClient(url, anon, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 export function qrTokenPepper(): string {
   const pepper = Deno.env.get("app.qr_token_pepper")?.trim() ?? "";
   if (

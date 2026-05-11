@@ -19,7 +19,7 @@
  * Per Cycle 9c spec §3.4.3.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -40,15 +40,12 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { OrderRecord } from "../../store/orderStore";
-import { useOrderStore } from "../../store/orderStore";
-import { getBrandFromCache } from "../../hooks/useBrands";
-import { useEventEditLogStore } from "../../store/eventEditLogStore";
-import { useLiveEventStore } from "../../store/liveEventStore";
-import {
-  deriveChannelFlags,
-  notifyEventChanged,
-} from "../../services/eventChangeNotifier";
+// ORCH-0787: replaced useOrderStore.recordRefund (Zustand-only client-side stub) with the
+// real refund-order edge function via useRefundOrder mutation. Event-edit-log + parent
+// notification rollup side effects are removed in v1 (owned by ORCH-0782 if it needs them).
+import { useRefundOrder } from "../../hooks/useEventOrders";
 import { formatCurrency } from "../../utils/currency";
+import { randomId } from "../../utils/randomId";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -62,10 +59,6 @@ import {
 
 const REASON_MIN = 10;
 const REASON_MAX = 200;
-const REFUND_PROCESSING_MS = 1200;
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 export type RefundMode = "full" | "partial";
 
@@ -90,24 +83,33 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const recordRefund = useOrderStore((s) => s.recordRefund);
+  // ORCH-0787: useRefundOrder is the server-truth mutation. Replaces the stub
+  // useOrderStore.recordRefund (which only wrote to Zustand).
+  const refundMutation = useRefundOrder(order.eventId);
   const [reason, setReason] = useState<string>("");
-  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [partialLines, setPartialLines] = useState<PartialLineState[]>([]);
+  // ORCH-0787: idempotency key regenerated on each sheet-open. Retries within the same
+  // sheet share the key so Stripe and the RPC dedupe correctly.
+  const idempotencyKeyRef = useRef<string>("");
 
   // Reset state on visible flip → true (defensive)
   useEffect(() => {
     if (visible) {
       setReason("");
-      setSubmitting(false);
+      setErrorMessage(null);
       setPartialLines(
         order.lines.map((l) => ({
           ticketTypeId: l.ticketTypeId,
           selectedQty: 0,
         })),
       );
+      // Fresh idempotency key per sheet-open.
+      idempotencyKeyRef.current = randomId();
     }
   }, [visible, order.lines]);
+
+  const submitting = refundMutation.isPending;
 
   // Available lines for partial refund (only those with remaining qty)
   const refundableLines = useMemo(
@@ -169,20 +171,20 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
   const handleConfirm = useCallback(async (): Promise<void> => {
     if (!canSubmit) return;
-    setSubmitting(true);
-    await sleep(REFUND_PROCESSING_MS);
+    setErrorMessage(null);
 
+    // ORCH-0787: build refund-order edge function payload using order_line_items.id
+    // (the server-side UUID). For full refunds, refund remaining qty on every line.
     const lines =
       mode === "full"
         ? order.lines
             .filter((l) => l.quantity - l.refundedQuantity > 0)
             .map((l) => ({
-              ticketTypeId: l.ticketTypeId,
+              orderLineItemId: l.orderLineItemId ?? "",
               quantity: l.quantity - l.refundedQuantity,
-              amountGbp:
-                (l.quantity - l.refundedQuantity) * l.unitPriceGbpAtPurchase,
-              amount:
-                (l.quantity - l.refundedQuantity) * l.unitPriceGbpAtPurchase,
+              amountCents: Math.round(
+                (l.quantity - l.refundedQuantity) * l.unitPriceGbpAtPurchase * 100,
+              ),
             }))
         : partialLines
             .filter((p) => p.selectedQty > 0)
@@ -192,89 +194,44 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
               );
               const unitPrice = orderLine?.unitPriceGbpAtPurchase ?? 0;
               return {
-                ticketTypeId: p.ticketTypeId,
+                orderLineItemId: orderLine?.orderLineItemId ?? "",
                 quantity: p.selectedQty,
-                amountGbp: p.selectedQty * unitPrice,
-                amount: p.selectedQty * unitPrice,
+                amountCents: Math.round(p.selectedQty * unitPrice * 100),
               };
             });
 
-    const trimmedReason = reason.trim();
-    const result = recordRefund(order.id, {
-      orderId: order.id,
-      amountGbp: refundAmount,
-      amount: refundAmount,
-      reason: trimmedReason,
-      lines,
-    });
-
-    // Cycle 9c rework v2 — fire side effects from the caller (was inside
-    // the store; moved out to break require cycle).
-    if (result !== null) {
-      const event = useLiveEventStore
-        .getState()
-        .getLiveEvent(result.eventId);
-      if (event !== null) {
-        // Cycle 2 / ORCH-0742: read the live Brand record from the React
-        // Query cache by ID (any cached list/detail). Falls back to empty
-        // when the cache hasn't seen this brand yet — best-effort copy.
-        const cachedBrand = getBrandFromCache(result.brandId);
-        const brandName = cachedBrand?.displayName ?? "";
-        const allLinesFullyRefunded = result.status === "refunded_full";
-        const occurredAt =
-          result.refunds[result.refunds.length - 1]?.refundedAt ??
-          new Date().toISOString();
-        const diffSummary = [
-          allLinesFullyRefunded
-            ? "Refund issued"
-            : "Partial refund issued",
-        ];
-        useEventEditLogStore.getState().recordEdit({
-          eventId: result.eventId,
-          brandId: result.brandId,
-          reason: trimmedReason,
-          severity: "destructive",
-          changedFieldKeys: ["__refund__"],
-          diffSummary: [
-            allLinesFullyRefunded
-              ? "Order fully refunded"
-              : "Order partially refunded",
-          ],
-          affectedOrderIds: [result.id],
-          orderId: result.id,
-        });
-        void notifyEventChanged(
-          {
-            eventId: result.eventId,
-            eventName: event.name,
-            brandName,
-            brandSlug: event.brandSlug,
-            eventSlug: event.eventSlug,
-            reason: trimmedReason,
-            diffSummary,
-            severity: "destructive",
-            affectedOrderIds: [result.id],
-            occurredAt,
-          },
-          deriveChannelFlags("destructive", false),
-        );
-      }
+    // Defensive: if any line is missing orderLineItemId, the order pre-dates the
+    // ORCH-0787 migration. Surface a clear error instead of calling the edge fn.
+    if (lines.some((l) => !l.orderLineItemId)) {
+      setErrorMessage(
+        "This order can't be refunded in-app. It may pre-date the refund system. Refund it from the Stripe dashboard instead.",
+      );
+      return;
     }
 
-    setSubmitting(false);
-    if (result !== null) {
-      onSuccess(refundAmount);
-    } else {
-      // Order disappeared mid-flight (rare). Surface via parent toast.
-      onSuccess(0);
+    const trimmedReason = reason.trim();
+    try {
+      const result = await refundMutation.mutateAsync({
+        orderId: order.id,
+        lines,
+        reason: trimmedReason,
+        idempotencyKey: idempotencyKeyRef.current,
+      });
+      // Success path: React Query invalidates event-orders queries automatically.
+      // No Zustand write. No event-edit-log fire (server audit row already written).
+      onSuccess(result.amountCents / 100);
+      return;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setErrorMessage(message);
+      return;
     }
   }, [
     canSubmit,
     mode,
     order,
     partialLines,
-    recordRefund,
-    refundAmount,
+    refundMutation,
     reason,
     onSuccess,
   ]);
@@ -445,6 +402,11 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
         {/* Sticky bottom CTAs */}
         <View style={styles.actions}>
+          {errorMessage !== null ? (
+            <Text style={styles.errorCaption} accessibilityRole="text">
+              {errorMessage}
+            </Text>
+          ) : null}
           <Button
             label={
               mode === "full"
@@ -672,6 +634,13 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginTop: 6,
     textAlign: "center",
+  },
+  errorCaption: {
+    fontSize: 13,
+    color: semantic.error,
+    marginBottom: spacing.sm,
+    textAlign: "center",
+    lineHeight: 18,
   },
 });
 

@@ -1,4 +1,11 @@
-import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import {
@@ -13,6 +20,16 @@ import {
   type EventOrderActivity,
   type EventOrderRevenue,
 } from "../services/eventOrdersService";
+import {
+  issueOrderRefund,
+  type RefundOrderInput,
+  type RefundOrderResult,
+} from "../services/orderRefundService";
+import {
+  cancelFreeOrder,
+  type CancelOrderInput,
+  type CancelOrderResult,
+} from "../services/orderCancelService";
 import type { TicketStub } from "../store/draftEventStore";
 import type { OrderRecord } from "../store/orderStore";
 import {
@@ -188,6 +205,67 @@ export const useEventSalesSummaries = (
 export const useEventHasWebPurchases = (eventId: string | null): boolean => {
   const ordersQuery = useEventOrders(eventId);
   return getEventHasWebPurchases(ordersQuery.data ?? []);
+};
+
+// ============================================================
+// ORCH-0787: Refund + Cancel mutations
+// ============================================================
+
+/**
+ * useRefundOrder — issues an organiser-initiated refund via the refund-order edge function.
+ *
+ * Invalidates all `event-orders` queries scoped to the order's event so the list, detail,
+ * sold-count rollups, and sales summaries all refresh after a successful refund.
+ *
+ * Errors surface as typed RefundOrderError objects with `.code` and `.detail`. The caller
+ * (RefundSheet) is responsible for showing a user-facing toast via the message map.
+ */
+export const useRefundOrder = (
+  eventId: string | null,
+): UseMutationResult<RefundOrderResult, Error, RefundOrderInput> => {
+  const queryClient = useQueryClient();
+  return useMutation<RefundOrderResult, Error, RefundOrderInput>({
+    mutationFn: (input) => issueOrderRefund(input),
+    onSuccess: () => {
+      if (eventId !== null) {
+        // Invalidate every event-orders query scoped to this event (detail, order,
+        // sold-counts, sales-summary). Predicate match covers all factory variants.
+        queryClient.invalidateQueries({
+          predicate: (query) =>
+            query.queryKey[0] === "event-orders" &&
+            query.queryKey[1] === eventId,
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: eventOrdersKeys.all });
+      }
+    },
+  });
+};
+
+/**
+ * useCancelOrder — cancels a FREE order via the cancel-order edge function.
+ *
+ * Q-1 (operator-locked): paid orders cannot be cancelled — they must be refunded. The
+ * underlying RPC rejects paid orders with `paid_orders_must_be_refunded_not_cancelled`.
+ */
+export const useCancelOrder = (
+  eventId: string | null,
+): UseMutationResult<CancelOrderResult, Error, CancelOrderInput> => {
+  const queryClient = useQueryClient();
+  return useMutation<CancelOrderResult, Error, CancelOrderInput>({
+    mutationFn: (input) => cancelFreeOrder(input),
+    onSuccess: () => {
+      if (eventId !== null) {
+        queryClient.invalidateQueries({
+          predicate: (query) =>
+            query.queryKey[0] === "event-orders" &&
+            query.queryKey[1] === eventId,
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: eventOrdersKeys.all });
+      }
+    },
+  });
 };
 
 export { getEventOrderRevenue, getEventSoldCounts, getEventHasWebPurchases };

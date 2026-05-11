@@ -26,6 +26,12 @@ export const STRIPE_ROUTED_EVENT_TYPES = [
   "payout.failed",
   "payout.canceled",
   "charge.refund.updated",
+  // ORCH-0787: subscribe to the modern Stripe refund event family for full coverage
+  // beyond the legacy charge.refund.updated event. STRIPE_API_VERSION '2026-04-22.dahlia'
+  // emits all three under different conditions; the reconciler is idempotent across them.
+  "charge.refunded",
+  "refund.created",
+  "refund.updated",
   "person.created",
   "person.updated",
   "person.deleted",
@@ -376,33 +382,182 @@ async function handleDeauthorized(
   return brandId;
 }
 
-async function handleRefundUpdated(
+/**
+ * ORCH-0787: handle refund event family (charge.refund.updated, charge.refunded,
+ * refund.created, refund.updated).
+ *
+ * Reconciles into public.refunds via biz_refund_order_commit_from_webhook:
+ *   - Match by stripe_refund_id (idempotent webhook replay).
+ *   - Match by metadata.idempotency_key (in-app refund pending, Stripe-acked before commit
+ *     RPC fires — race mitigation per SPEC §15 highest-risk implementation detail).
+ *   - Otherwise create a new succeeded refund row (dashboard-initiated refund).
+ *
+ * For detached connected accounts (orphan path), preserves the legacy audit-only
+ * behaviour because there is no in-app order to advance.
+ */
+async function handleRefundEvent(
   supabase: SupabaseClient,
   event: StripeWebhookEvent,
 ): Promise<string | null> {
   const refund = event.data.object;
   const refundId = objectString(refund, "id");
-  if (!refundId) throw new Error("charge.refund.updated missing refund.id");
+  if (!refundId) {
+    throw new Error(`${event.type} missing refund.id`);
+  }
+  const paymentIntentId = objectString(refund, "payment_intent");
   const stripeAccountId = accountIdForEvent(event);
-  if (!stripeAccountId) return null;
-  const { data, error } = await supabase
-    .from("stripe_connect_accounts")
-    .select("brand_id, detached_at")
-    .eq("stripe_account_id", stripeAccountId)
+  const refundStatus = objectString(refund, "status") ?? "succeeded";
+  const amountCents = Number(refund.amount ?? 0);
+  const currency = char3(refund.currency);
+  const metadata = (refund.metadata ?? {}) as Record<string, unknown>;
+  const idempotencyHint = typeof metadata.mingla_idempotency_key === "string"
+    ? metadata.mingla_idempotency_key
+    : null;
+  const orderIdHint = typeof metadata.mingla_order_id === "string"
+    ? metadata.mingla_order_id
+    : null;
+
+  // Resolve brand (and detect detached/orphan accounts).
+  let brandId: string | null = null;
+  let detachedAt: string | null = null;
+  if (stripeAccountId) {
+    const { data, error } = await supabase
+      .from("stripe_connect_accounts")
+      .select("brand_id, detached_at")
+      .eq("stripe_account_id", stripeAccountId)
+      .maybeSingle();
+    if (error) throw new Error(`refund account lookup failed: ${error.message}`);
+    brandId = data?.brand_id ?? null;
+    detachedAt = data?.detached_at ?? null;
+  }
+
+  // Detached/orphan account: preserve legacy audit-only behaviour. The
+  // BrandStripeOrphanedRefundsSection surfaces these from payment_webhook_events.
+  if (brandId && detachedAt) {
+    await writeAudit(supabase, {
+      user_id: null,
+      brand_id: brandId,
+      event_id: event.id,
+      action: "stripe_connect.detached_refund_updated",
+      target_type: "detached_refund",
+      target_id: refundId,
+      after: refund,
+    });
+    return brandId;
+  }
+
+  // Only act on settled refunds. Stripe also emits refund.created/refund.updated for
+  // pending and canceled refunds; we treat 'succeeded' as the trigger for state advance.
+  if (refundStatus !== "succeeded") {
+    await writeAudit(supabase, {
+      user_id: null,
+      brand_id: brandId,
+      event_id: event.id,
+      action: `stripe.${event.type}.${refundStatus}`,
+      target_type: "refund",
+      target_id: refundId,
+      after: refund,
+    });
+    return brandId;
+  }
+
+  // Find the order. Prefer metadata.mingla_order_id (set by refund-order edge function);
+  // fallback to lookup by payment_intent_id.
+  let orderId: string | null = orderIdHint;
+  if (!orderId && paymentIntentId) {
+    const { data: orderRow, error: orderLookupError } = await supabase
+      .from("orders")
+      .select("id")
+      .eq("stripe_payment_intent_id", paymentIntentId)
+      .maybeSingle();
+    if (orderLookupError) {
+      throw new Error(`order lookup failed: ${orderLookupError.message}`);
+    }
+    orderId = orderRow?.id ?? null;
+  }
+
+  if (!orderId) {
+    // Truly orphan: no matching order. Audit and let the orphan section surface it.
+    await writeAudit(supabase, {
+      user_id: null,
+      brand_id: brandId,
+      event_id: event.id,
+      action: `stripe.${event.type}.orphan`,
+      target_type: "refund",
+      target_id: refundId,
+      after: refund,
+    });
+    return brandId;
+  }
+
+  // Reconcile into public.refunds (UPSERT path + ticket void + status advance).
+  // The RPC is SECURITY DEFINER service-role and handles both:
+  //   - Match-existing-by-stripe_refund_id (idempotent webhook replay).
+  //   - Match-existing-by-metadata.idempotency_key (race: in-app refund pending).
+  //   - Create-new-succeeded (dashboard-initiated refund).
+  const { error: commitError } = await supabase.rpc(
+    "biz_refund_order_commit_from_webhook",
+    {
+      p_order_id: orderId,
+      p_stripe_refund_id: refundId,
+      p_amount_cents: amountCents,
+      p_currency: currency,
+      p_application_fee_refunded_cents: Number(refund.application_fee_refunded ?? 0),
+      p_idempotency_key_hint: idempotencyHint,
+    },
+  );
+
+  if (commitError) {
+    throw new Error(`refund webhook commit failed: ${commitError.message}`);
+  }
+
+  // Enqueue buyer notification only if this was a NEW (dashboard-initiated) refund.
+  // The in-app refund-order edge function already enqueued one; we detect by checking
+  // whether the refund row had a NULL stripe_refund_id before this call — but we
+  // can't tell post-hoc. Simpler: idempotency_key on ticket_order_notifications
+  // makes the enqueue safe. Use refund:<order>:<stripe_refund_id> — same key as
+  // the edge function.
+  const { data: orderDetail } = await supabase
+    .from("orders")
+    .select("event_id, buyer_email, currency")
+    .eq("id", orderId)
     .maybeSingle();
-  if (error) throw new Error(`refund account lookup failed: ${error.message}`);
-  if (!data?.brand_id || !data.detached_at) return data?.brand_id ?? null;
+
+  if (orderDetail?.buyer_email && orderDetail.buyer_email.length > 0) {
+    await supabase.from("ticket_order_notifications").upsert(
+      {
+        order_id: orderId,
+        event_id: orderDetail.event_id,
+        channel: "email",
+        recipient: orderDetail.buyer_email,
+        status: "pending",
+        idempotency_key: `refund:${orderId}:${refundId}`,
+        attempt_count: 0,
+        payload: {
+          template_key: "buyer_refund_issued",
+          amount_cents: amountCents,
+          currency: String(orderDetail.currency ?? currency),
+          reason: "Dashboard-initiated refund (Stripe)",
+          is_full_refund: false,
+          stripe_refund_id: refundId,
+          source: "webhook_reconciliation",
+        },
+      },
+      { onConflict: "idempotency_key" },
+    );
+  }
 
   await writeAudit(supabase, {
     user_id: null,
-    brand_id: data.brand_id,
+    brand_id: brandId,
     event_id: event.id,
-    action: "stripe_connect.detached_refund_updated",
-    target_type: "detached_refund",
+    action: `stripe.${event.type}.reconciled`,
+    target_type: "refund",
     target_id: refundId,
     after: refund,
   });
-  return data.brand_id;
+
+  return brandId;
 }
 
 async function handleApplicationFee(
@@ -547,8 +702,12 @@ export async function routeStripeEvent(
     case "payout.canceled":
       brandId = await handlePayout(supabase, event);
       break;
+    // ORCH-0787: unified refund event family
     case "charge.refund.updated":
-      brandId = await handleRefundUpdated(supabase, event);
+    case "charge.refunded":
+    case "refund.created":
+    case "refund.updated":
+      brandId = await handleRefundEvent(supabase, event);
       break;
     case "application_fee.created":
     case "application_fee.refunded":

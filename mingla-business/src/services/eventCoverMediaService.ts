@@ -15,6 +15,7 @@ import {
 } from "../utils/eventCoverMediaRules";
 import { readEventCoverFileBytes } from "./eventCoverFileReader";
 import type { EventCoverProviderMetadata } from "../types/eventCoverProvider";
+import { randomId } from "../utils/randomId";
 
 export const EVENT_COVER_BUCKET = "event_covers";
 export {
@@ -47,14 +48,6 @@ export interface EventCoverUploadResult {
   storagePath: string;
   mediaType: EventCoverMediaType;
 }
-
-const randomId = (): string => {
-  const maybeCrypto = globalThis.crypto as Crypto | undefined;
-  if (typeof maybeCrypto?.randomUUID === "function") {
-    return maybeCrypto.randomUUID();
-  }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-};
 
 export const eventCoverPath = (
   brandId: string,

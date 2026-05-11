@@ -59,5 +59,9 @@ export const stripeKycReminder = () =>
   createStripeClient("STRIPE_RAK_KYC_REMINDER");
 export const stripeTicketCheckout = () =>
   createStripeClient("STRIPE_RAK_TICKET_CHECKOUT");
+// ORCH-0787: Refund issuance uses platform-account refunds with reverse_transfer.
+// Restricted API key must grant refunds:write + application_fees:read on the platform account.
+export const stripeTicketRefund = () =>
+  createStripeClient("STRIPE_RAK_TICKET_REFUND");
 
 export type StripeClient = ReturnType<typeof createStripeClient>;
