@@ -29,7 +29,8 @@
     "test:orch-0774a": "npx jest authReadiness.test brandListState.test eventCoverVideoProcessingService.test serverDraftLifecycleGuards.test eventCoverMedia.test",
     "test:orch-0776a": "node ../.github/scripts/strict-grep/orch-0776a-video-upload-progress-honesty.mjs && npx jest eventCoverVideoProcessingService.test",
     "test:orch-0776d": "node ../.github/scripts/strict-grep/orch-0776d-cancelled-at-schema.mjs && jest --runInBand src/services/__tests__/eventCoverVideoProcessingService.test.ts",
-    "test:orch-0777": "node ../.github/scripts/strict-grep/orch-0777-ticket-checkout-production.mjs && npx jest phone.test eventOrdersService.test ticketCheckoutService.test ticketCheckoutMigrationGuards.test && npx tsc --noEmit"
+    "test:orch-0777": "node ../.github/scripts/strict-grep/orch-0777-ticket-checkout-production.mjs && npx jest phone.test eventOrdersService.test ticketCheckoutService.test ticketCheckoutMigrationGuards.test && npx tsc --noEmit",
+    "test:orch-0778": "node ../.github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
