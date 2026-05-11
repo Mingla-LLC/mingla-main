@@ -52,7 +52,42 @@ interface BusinessManagementEventRow {
   created_at: string;
   updated_at: string;
   management_theme: JsonRecord | null;
+  // ORCH-0792: master event_dates columns surfaced by the view.
+  // LEFT JOIN means these are null on draft rows; the view filter
+  // currently excludes drafts so non-null in practice post-backfill.
+  master_start_at: string | null;
+  master_end_at: string | null;
+  master_timezone: string | null;
+  master_event_date_id: string | null;
 }
+
+// ORCH-0792: derive YYYY-MM-DD + HH:MM in the event's IANA timezone from a
+// UTC ISO timestamp. Returns nulls when input is null so callers can fall
+// back gracefully (e.g., a draft row pre-backfill).
+const splitTimestampInTz = (
+  iso: string | null,
+  tz: string,
+): { date: string | null; time: string | null } => {
+  if (iso === null) return { date: null, time: null };
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return { date: null, time: null };
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(dt);
+  const get = (type: string): string =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    time: `${get("hour")}:${get("minute")}`,
+  };
+};
 
 interface TicketTypeRow {
   id: string;
@@ -115,6 +150,18 @@ interface PublishRpcResponse {
     name: string;
   };
   tickets: TicketTypeRow[];
+  // ORCH-0792: publish RPC also returns event_dates rows so the client can
+  // populate date displays without a second round-trip. Optional to keep
+  // backward compatibility with pre-ORCH-0792 test fixtures; runtime
+  // production responses always include this field.
+  eventDates?: Array<{
+    id: string;
+    event_id: string;
+    start_at: string;
+    end_at: string;
+    timezone: string;
+    is_master: boolean;
+  }>;
   client_revision: number | null;
 }
 
@@ -261,9 +308,15 @@ const eventFromRow = (
 ): LiveEvent => {
   const theme = asRecord(row.management_theme);
   const businessEvent = asRecord(theme.business_event);
-  const when = asRecord(businessEvent.when);
   const location = asRecord(businessEvent.location);
   const settings = asRecord(businessEvent.settings);
+
+  // ORCH-0792: dates sourced from event_dates via master_* columns on the
+  // view (I-PROPOSED-AY EVENT_DATES_SOLE_DATE_AUTHORITY). The view filter
+  // excludes drafts; post-backfill every non-draft row has master_*.
+  const dateTimezone = row.master_timezone ?? row.timezone;
+  const startSplit = splitTimestampInTz(row.master_start_at, dateTimezone);
+  const endSplit = splitTimestampInTz(row.master_end_at, dateTimezone);
 
   return {
     id: row.id,
@@ -280,10 +333,10 @@ const eventFromRow = (
     format: asFormat(businessEvent.format, row.is_online),
     category: asStringOrNull(businessEvent.category),
     whenMode: asWhenMode(businessEvent.whenMode, row),
-    date: asStringOrNull(when.date),
-    doorsOpen: asStringOrNull(when.doorsOpen),
-    endsAt: asStringOrNull(when.endsAt),
-    timezone: asStringOrNull(when.timezone) ?? row.timezone,
+    date: startSplit.date,
+    doorsOpen: startSplit.time,
+    endsAt: endSplit.time,
+    timezone: dateTimezone,
     recurrenceRule:
       businessEvent.recurrenceRule === null ||
       businessEvent.recurrenceRule === undefined
@@ -385,6 +438,11 @@ const eventFromPublishResponse = (
   if (response.event.currency === null || response.event.currency === undefined) {
     throw new Error("Published event is missing currency.");
   }
+  // ORCH-0792: extract master event_dates row from the RPC response so the
+  // synthetic BusinessManagementEventRow has master_* populated, matching
+  // what business_management_events_view returns on subsequent fetches.
+  const masterRow =
+    (response.eventDates ?? []).find((d) => d.is_master === true) ?? null;
   const row: BusinessManagementEventRow = {
     id: response.event.id,
     brand_id: response.event.brand_id,
@@ -421,6 +479,10 @@ const eventFromPublishResponse = (
       ...asRecord(response.event.theme),
       business_event: businessEvent,
     },
+    master_start_at: masterRow?.start_at ?? null,
+    master_end_at: masterRow?.end_at ?? null,
+    master_timezone: masterRow?.timezone ?? null,
+    master_event_date_id: masterRow?.id ?? null,
   };
   const tickets = (response.tickets ?? []).map(ticketRowToTicketStub);
   return {

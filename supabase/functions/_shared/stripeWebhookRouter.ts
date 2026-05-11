@@ -40,6 +40,11 @@ export const STRIPE_ROUTED_EVENT_TYPES = [
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "payment_intent.canceled",
+  // ORCH-0790: web Checkout Sessions emit this when the buyer completes
+  // payment on the Stripe-hosted page. We use it to record the
+  // PaymentIntent id against our session so the payment_intent.succeeded
+  // event arriving shortly after can finalise via the existing path.
+  "checkout.session.completed",
 ] as const;
 
 export type RoutedStripeEventType = typeof STRIPE_ROUTED_EVENT_TYPES[number];
@@ -607,12 +612,48 @@ async function handleTicketCheckoutPaymentIntent(
   const paymentIntentId = objectString(paymentIntent, "id");
   if (!paymentIntentId) throw new Error(`${event.type} missing payment_intent.id`);
 
-  const { data: session, error: sessionError } = await supabase
+  let { data: session, error: sessionError } = await supabase
     .from("ticket_checkout_sessions")
     .select("id, brand_id, event_id, order_id")
     .eq("stripe_payment_intent_id", paymentIntentId)
     .maybeSingle();
   if (sessionError) throw new Error(`ticket checkout session lookup failed: ${sessionError.message}`);
+  // ORCH-0790: web Checkout Sessions create the session row BEFORE the
+  // PaymentIntent exists, so the initial lookup by PI id misses on the
+  // first PI webhook. Fall back to the Mingla checkout session id
+  // embedded in the PI metadata, and back-fill stripe_payment_intent_id
+  // so subsequent webhooks short-circuit on the PI lookup.
+  if (!session) {
+    const piMetadata =
+      paymentIntent.metadata as Record<string, unknown> | undefined;
+    const mingleCheckoutSessionId =
+      typeof piMetadata?.mingla_checkout_session_id === "string"
+        ? piMetadata.mingla_checkout_session_id
+        : null;
+    if (mingleCheckoutSessionId) {
+      const fallback = await supabase
+        .from("ticket_checkout_sessions")
+        .select("id, brand_id, event_id, order_id")
+        .eq("id", mingleCheckoutSessionId)
+        .maybeSingle();
+      if (fallback.error) {
+        throw new Error(
+          `ticket checkout session metadata lookup failed: ${fallback.error.message}`,
+        );
+      }
+      if (fallback.data) {
+        session = fallback.data;
+        await supabase
+          .from("ticket_checkout_sessions")
+          .update({
+            stripe_payment_intent_id: paymentIntentId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", session.id)
+          .is("stripe_payment_intent_id", null);
+      }
+    }
+  }
   if (!session) return null;
 
   if (event.type === "payment_intent.succeeded") {
@@ -667,6 +708,54 @@ async function handleTicketCheckoutPaymentIntent(
   return session.brand_id as string | null;
 }
 
+// ORCH-0790: handle Stripe Checkout Session completion for the web buyer
+// flow. The Checkout Session carries our mingla_checkout_session_id in
+// metadata, plus the id of the PaymentIntent Stripe created on the
+// connected account. We back-fill stripe_payment_intent_id so the
+// PaymentIntent.succeeded event (whichever order it arrives in) can
+// resolve our session via the existing handler.
+async function handleCheckoutSessionCompleted(
+  supabase: SupabaseClient,
+  event: StripeWebhookEvent,
+): Promise<string | null> {
+  const csObject = event.data.object;
+  const paymentIntentId = objectString(csObject, "payment_intent");
+  const metadata = csObject.metadata as Record<string, unknown> | undefined;
+  const mingleCheckoutSessionId =
+    typeof metadata?.mingla_checkout_session_id === "string"
+      ? metadata.mingla_checkout_session_id
+      : null;
+  if (!mingleCheckoutSessionId) {
+    console.warn(
+      "[stripe-webhook] checkout.session.completed missing mingla metadata",
+      objectString(csObject, "id"),
+    );
+    return null;
+  }
+  const { data: session, error: lookupError } = await supabase
+    .from("ticket_checkout_sessions")
+    .select("id, brand_id")
+    .eq("id", mingleCheckoutSessionId)
+    .maybeSingle();
+  if (lookupError) {
+    throw new Error(
+      `checkout.session.completed session lookup failed: ${lookupError.message}`,
+    );
+  }
+  if (!session) return null;
+  if (paymentIntentId) {
+    await supabase
+      .from("ticket_checkout_sessions")
+      .update({
+        stripe_payment_intent_id: paymentIntentId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", session.id)
+      .is("stripe_payment_intent_id", null);
+  }
+  return session.brand_id as string | null;
+}
+
 export async function routeStripeEvent(
   supabase: SupabaseClient,
   stripe: StripeClient,
@@ -717,6 +806,13 @@ export async function routeStripeEvent(
     case "payment_intent.payment_failed":
     case "payment_intent.canceled":
       brandId = await handleTicketCheckoutPaymentIntent(supabase, event);
+      break;
+    // ORCH-0790: web Stripe Checkout Session completion. Records the
+    // PaymentIntent id against our session so payment_intent.succeeded
+    // (whichever order it arrives in) can finalise tickets via the
+    // existing handler. Idempotent: re-running this event is a no-op.
+    case "checkout.session.completed":
+      brandId = await handleCheckoutSessionCompleted(supabase, event);
       break;
     default:
       await writeAudit(supabase, {

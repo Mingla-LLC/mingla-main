@@ -50,7 +50,12 @@ import { Icon } from "../../../src/components/ui/Icon";
 import { Toast } from "../../../src/components/ui/Toast";
 
 import { useCart } from "../../../src/components/checkout/CartContext";
+import {
+  clearCheckoutResumePayload,
+  readCheckoutResumePayload,
+} from "../../../src/components/checkout/checkoutPersistence";
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
+import { pollTicketCheckoutStatus } from "../../../src/services/ticketCheckoutService";
 
 // Wallet button visibility:
 //   - iOS native: Apple Wallet only (Apple's platform)
@@ -72,8 +77,22 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
 
   const publicEventQuery = usePublicEventById(eventId);
   const event = publicEventQuery.data?.event ?? null;
-  const { lines, buyer, result } = useCart();
+  const {
+    lines,
+    buyer,
+    result,
+    recordResult,
+    setLineQuantity,
+    setBuyer,
+  } = useCart();
   const [walletToast, setWalletToast] = useState<boolean>(false);
+  // ORCH-0790: web buyers complete checkout on Stripe's hosted page, which
+  // returns them here with ?cs={CHECKOUT_SESSION_ID}. The cart context is
+  // empty on this cold reload — we need to resume polling the order status
+  // using the {checkoutSessionId, buyerStatusToken} we stashed in
+  // sessionStorage before the redirect, then call recordResult so the
+  // existing render path takes over.
+  const [webResumeError, setWebResumeError] = useState<string | null>(null);
   // Ref flag — flipped to true when buyer taps "Back to event." The
   // beforeRemove listener checks this and lets the navigation through
   // when set, so the explicit CTA exit isn't blocked by the same guard
@@ -132,13 +151,114 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
     };
   }, []);
 
+  // ----- ORCH-0790 + REWORK: web Stripe Checkout resume -----
+  // On web, Stripe's success_url returns us here with ?cs=…, after a
+  // full-page reload that wiped cart context. Read the persisted resume
+  // payload from sessionStorage, restore lines + buyer (so the summary
+  // card and "Sent to {email}" line render with real data), then poll
+  // the order status and recordResult so the QR carousel mounts. Storage
+  // is cleared only on confirmed success — failed polls leave the entry
+  // in place so a refresh can retry.
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    if (eventId === null) return;
+    if (result !== null) return;
+    const win = (globalThis as unknown as {
+      sessionStorage?: Storage;
+      location?: { search?: string };
+    });
+    const search = win.location?.search ?? "";
+    if (!/[?&]cs=/.test(search)) return;
+    const payload = readCheckoutResumePayload(win.sessionStorage, eventId);
+    if (payload === null) return;
+
+    // Restore cart context BEFORE the poll so the summary + hero render
+    // correctly even while the order is still finalising.
+    if (lines.length === 0) {
+      for (const l of payload.lines) {
+        setLineQuantity({
+          ticketTypeId: l.ticketTypeId,
+          ticketName: l.ticketName,
+          unitPrice: l.unitPrice,
+          unitPriceGbp: l.unitPriceGbp,
+          currency: l.currency,
+          isFree: l.isFree,
+          quantity: l.quantity,
+        });
+      }
+    }
+    if (buyer.email.length === 0 && buyer.phone.length === 0) {
+      setBuyer(payload.buyer);
+    }
+
+    let cancelled = false;
+    (async (): Promise<void> => {
+      try {
+        const status = await pollTicketCheckoutStatus(
+          payload.checkoutSessionId,
+          payload.buyerStatusToken,
+        );
+        if (cancelled) return;
+        if (status === null || status.order === null) {
+          setWebResumeError(
+            "Your payment is being finalised — tickets will arrive by email shortly.",
+          );
+          return;
+        }
+        recordResult({
+          orderId: status.order.orderId,
+          ticketIds: status.order.tickets.map((t) => t.ticketId),
+          checkoutSessionId: status.checkoutSessionId,
+          paidAt: new Date().toISOString(),
+          paymentMethod: "card",
+          total: status.order.totalCents / 100,
+          totalCents: status.order.totalCents,
+          currency: status.order.currency,
+          paymentStatus: status.order.paymentStatus,
+          notificationStatus: status.order.notificationStatus,
+          tickets: status.order.tickets,
+        });
+        clearCheckoutResumePayload(win.sessionStorage, eventId);
+      } catch (err) {
+        if (cancelled) return;
+        console.warn("[checkout-confirm] web resume failed", err);
+        setWebResumeError(
+          "Your payment is being finalised — tickets will arrive by email shortly.",
+        );
+      }
+    })();
+    return (): void => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally
+    // only runs when eventId / result first allow it; lines/buyer not in deps
+    // because we read them once for the empty-check then restore.
+  }, [eventId, result]);
+
   // ----- Defensive: result missing → bounce to /checkout/{eventId} -----
+  // Skip the bounce on web while a resume is in flight (?cs= present and
+  // storage has a payload), so the Stripe success redirect doesn't get
+  // kicked back to the cart screen before pollTicketCheckoutStatus
+  // completes or the resume-error fallback renders.
   useEffect(() => {
     if (eventId === null) return;
-    if (result === null) {
-      router.replace(`/checkout/${eventId}` as never);
+    if (result !== null) return;
+    if (Platform.OS === "web") {
+      const win = (globalThis as unknown as {
+        location?: { search?: string };
+        sessionStorage?: Storage;
+      });
+      const search = win.location?.search ?? "";
+      if (
+        /[?&]cs=/.test(search) &&
+        readCheckoutResumePayload(win.sessionStorage, eventId) !== null
+      ) {
+        return;
+      }
+      if (webResumeError !== null) return;
     }
-  }, [result, eventId, router]);
+    router.replace(`/checkout/${eventId}` as never);
+  }, [result, eventId, router, webResumeError]);
 
   // ----- Handlers -----
   const handleBackToEvent = useCallback((): void => {
@@ -176,7 +296,32 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
 
   const totalTickets = carouselTickets.length;
 
-  // Render an empty shell while the defensive useEffect redirects.
+  // ORCH-0790: web cold-start resume hasn't finished AND surfaced an error
+  // (typical when the webhook is slow). Render a friendly fallback so the
+  // buyer knows their payment succeeded even though tickets aren't loaded.
+  if (
+    Platform.OS === "web" &&
+    result === null &&
+    webResumeError !== null &&
+    event !== null
+  ) {
+    return (
+      <View style={styles.host}>
+        <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+          <View style={styles.checkBadge}>
+            <Icon name="check" size={36} color={textTokens.primary} />
+          </View>
+          <Text style={styles.heroTitle}>Payment received</Text>
+          <Text style={styles.heroEmail} numberOfLines={4}>
+            {webResumeError}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Render an empty shell while the defensive useEffect redirects (or the
+  // web resume is still polling).
   if (event === null || result === null) {
     return <View style={styles.host} />;
   }

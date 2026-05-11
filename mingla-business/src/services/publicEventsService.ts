@@ -49,7 +49,40 @@ interface BusinessPublicEventViewRow {
   created_at: string;
   updated_at: string;
   public_theme: JsonRecord | null;
+  // ORCH-0792: master event_dates columns surfaced by the view.
+  master_start_at: string | null;
+  master_end_at: string | null;
+  master_timezone: string | null;
+  master_event_date_id: string | null;
 }
+
+// ORCH-0792: split a UTC ISO timestamp into YYYY-MM-DD + HH:MM in a target
+// IANA timezone. Returns nulls if input is null. Used to render event dates
+// sourced from event_dates back into the date/time shape consumers expect.
+const splitTimestampInTz = (
+  iso: string | null,
+  tz: string,
+): { date: string | null; time: string | null } => {
+  if (iso === null) return { date: null, time: null };
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return { date: null, time: null };
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(dt);
+  const get = (type: string): string =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    time: `${get("hour")}:${get("minute")}`,
+  };
+};
 
 interface BusinessPublicBrandViewRow {
   id: string;
@@ -301,10 +334,15 @@ export const publicEventViewRowToEvent = (
 ): PublicEventRecord => {
   const theme = asRecord(row.public_theme);
   const businessEvent = asRecord(theme.business_event);
-  const when = asRecord(businessEvent.when);
   const location = asRecord(businessEvent.location);
   const settings = asRecord(businessEvent.settings);
   const coverHue = asNumber(businessEvent.coverHue ?? theme.coverHue, 25);
+  // ORCH-0792: dates sourced from event_dates via master_* columns on the
+  // view (I-PROPOSED-AY EVENT_DATES_SOLE_DATE_AUTHORITY).
+  const dateTimezone =
+    row.master_timezone ?? asStringOrNull(row.timezone) ?? "UTC";
+  const startSplit = splitTimestampInTz(row.master_start_at, dateTimezone);
+  const endSplit = splitTimestampInTz(row.master_end_at, dateTimezone);
   return {
     id: row.id,
     serverEventId: row.id,
@@ -320,10 +358,10 @@ export const publicEventViewRowToEvent = (
     format: asFormat(businessEvent.format, row.is_online),
     category: asStringOrNull(businessEvent.category),
     whenMode: asWhenMode(businessEvent.whenMode, row),
-    date: asDateStringOrNull(when.date),
-    doorsOpen: asStringOrNull(when.doorsOpen),
-    endsAt: asStringOrNull(when.endsAt),
-    timezone: asStringOrNull(when.timezone) ?? asStringOrNull(row.timezone) ?? "UTC",
+    date: startSplit.date,
+    doorsOpen: startSplit.time,
+    endsAt: endSplit.time,
+    timezone: dateTimezone,
     recurrenceRule:
       businessEvent.recurrenceRule === null ||
       businessEvent.recurrenceRule === undefined

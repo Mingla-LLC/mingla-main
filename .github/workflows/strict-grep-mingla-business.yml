@@ -420,6 +420,28 @@ jobs:
       - name: Run ORCH-0787 gate
         run: node .github/scripts/strict-grep/orch-0787-refund-cancel-flow.mjs
 
+  orch-0789-error-toast-dismissible:
+    name: "ORCH-0789: error toast must be user-dismissible + Stripe code preserved"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0789 gate
+        run: node .github/scripts/strict-grep/orch-0789-error-toast-dismissible.mjs
+
+  orch-0791-checkout-session-never-reused-post-terminal:
+    name: "ORCH-0791: checkout session must never be reused post-terminal"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0791 gate
+        run: node .github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs
+
   orch-0785-a-resend-attachment-aware:
     name: "ORCH-0785-A: Resend POST must declare attachments or opt out"
     runs-on: ubuntu-latest
@@ -474,3 +496,25 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0785-E gate
         run: node .github/scripts/strict-grep/orch-0785-pdf-privacy.mjs
+
+  orch-0792-a-publish-writes-event-dates:
+    name: "ORCH-0792-A: publish RPC writes event_dates"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0792-A gate
+        run: node .github/scripts/strict-grep/orch-0792-publish-writes-event-dates.mjs
+
+  orch-0792-b-no-published-event-theme-reads:
+    name: "ORCH-0792-B: post-publish reads source from event_dates not theme JSON"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0792-B gate
+        run: node .github/scripts/strict-grep/orch-0792-no-published-event-theme-reads.mjs

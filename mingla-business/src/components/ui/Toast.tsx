@@ -35,7 +35,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, Platform, StyleSheet, Text, View } from "react-native";
+import { Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
@@ -59,8 +59,9 @@ import {
 
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
+import { AUTO_DISMISS, type ToastKind } from "./toastTimings";
 
-export type ToastKind = "success" | "error" | "warn" | "info";
+export type { ToastKind };
 
 export interface ToastProps {
   visible: boolean;
@@ -70,6 +71,14 @@ export interface ToastProps {
   testID?: string;
   /** Optional override on the Animated.View wrap. Rarely needed — Toast self-positions. */
   style?: StyleProp<ViewStyle>;
+  /**
+   * ORCH-0789: optional per-instance override for auto-dismiss timing (ms).
+   * Default per kind: success/info = 2600, warn = 6000, error = 12000.
+   * Pass `null` to disable auto-dismiss for this instance — only valid for
+   * callers that guarantee an external dismiss path. Error toasts MUST stay
+   * user-dismissible (close icon + tap-to-dismiss are always rendered).
+   */
+  autoDismissMs?: number | null;
 }
 
 const ENTRY_DURATION = 220;
@@ -128,12 +137,11 @@ const KIND_TOKENS: Record<ToastKind, KindTokens> = {
   },
 };
 
-const AUTO_DISMISS: Record<ToastKind, number | null> = {
-  success: 2600,
-  info: 2600,
-  warn: 6000,
-  error: null,
-};
+// ORCH-0789: AUTO_DISMISS lives in toastTimings.ts so the
+// I-PROPOSED-ERROR-TOAST-DISMISSIBLE invariant can be unit-tested
+// without mounting the full RN render tree. error: 12000 — bounded
+// fallback paired with the close icon + tap-anywhere affordances below
+// so an error toast can never strand a buyer.
 
 // Web backdrop-filter detection (mirrors GlassChrome pattern).
 const supportsBackdropFilter: boolean =
@@ -154,6 +162,7 @@ export const Toast: React.FC<ToastProps> = ({
   onDismiss,
   testID,
   style,
+  autoDismissMs,
 }) => {
   const insets = useSafeAreaInsets();
   const opacity = useSharedValue(0);
@@ -217,11 +226,13 @@ export const Toast: React.FC<ToastProps> = ({
 
   useEffect(() => {
     if (!visible) return;
-    const ms = AUTO_DISMISS[kind];
+    // ORCH-0789: per-instance autoDismissMs overrides per-kind default;
+    // null explicitly disables auto-dismiss for that one instance.
+    const ms = autoDismissMs === undefined ? AUTO_DISMISS[kind] : autoDismissMs;
     if (ms === null) return;
     const timer = setTimeout(onDismiss, ms);
     return (): void => clearTimeout(timer);
-  }, [kind, onDismiss, visible]);
+  }, [autoDismissMs, kind, onDismiss, visible]);
 
   useEffect(() => {
     return (): void => {
@@ -261,7 +272,17 @@ export const Toast: React.FC<ToastProps> = ({
           ]}
           testID={testID}
         >
-          <View style={[styles.card, shadows.glassCardElevated]}>
+          {/* ORCH-0789: tap-anywhere-on-card dismisses. The inner close
+              Pressable below also calls onDismiss directly; RN event
+              bubbling means the outer onPress runs after the inner one
+              fires, but onDismiss is idempotent (parent flips
+              visible→false on first call). */}
+          <Pressable
+            onPress={onDismiss}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss notification"
+            style={[styles.card, shadows.glassCardElevated]}
+          >
             {/* L1 — Blur base (or solid fallback on web w/o backdrop-filter) */}
             {blurOk ? (
               <BlurView
@@ -302,7 +323,7 @@ export const Toast: React.FC<ToastProps> = ({
               pointerEvents="none"
             />
 
-            {/* Content row — icon badge + message */}
+            {/* Content row — icon badge + message + close button */}
             <View style={styles.body}>
               <View style={[styles.iconBadge, { backgroundColor: tokens.iconBg }]}>
                 <Icon name={tokens.icon} size={18} color="#ffffff" />
@@ -310,8 +331,19 @@ export const Toast: React.FC<ToastProps> = ({
               <Text style={styles.message} numberOfLines={3}>
                 {message}
               </Text>
+              {/* ORCH-0789: explicit close affordance. 32×32 visible target
+                  with hitSlop 12 → 56×56 effective hit area (I-38). */}
+              <Pressable
+                onPress={onDismiss}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss notification"
+                style={styles.closeButton}
+              >
+                <Icon name="close" size={16} color={textTokens.primary} />
+              </Pressable>
             </View>
-          </View>
+          </Pressable>
         </Animated.View>
       </View>
     </Modal>
@@ -368,6 +400,15 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     fontWeight: "500",
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
   },
 });
 

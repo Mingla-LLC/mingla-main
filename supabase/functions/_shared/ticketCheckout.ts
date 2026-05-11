@@ -181,6 +181,23 @@ export function classifyStripePaymentIntentCreateFailure(error: unknown): {
   detail: string;
   httpStatus: number;
 } {
+  return classifyStripeCreateFailure(error, "stripe_payment_intent_create_failed");
+}
+
+// ORCH-0790: Web buyer checkout via Stripe Checkout Sessions. Same classification
+// shape as PaymentIntent creation; only the detail prefix differs so observability
+// can split the two surfaces in logs.
+export function classifyStripeCheckoutSessionCreateFailure(error: unknown): {
+  detail: string;
+  httpStatus: number;
+} {
+  return classifyStripeCreateFailure(error, "stripe_checkout_session_create_failed");
+}
+
+function classifyStripeCreateFailure(
+  error: unknown,
+  prefix: "stripe_payment_intent_create_failed" | "stripe_checkout_session_create_failed",
+): { detail: string; httpStatus: number } {
   const row = error && typeof error === "object"
     ? error as Record<string, unknown>
     : {};
@@ -197,11 +214,11 @@ export function classifyStripePaymentIntentCreateFailure(error: unknown): {
     ? "stripe_request_or_account_config"
     : statusCode === 429 || (typeof statusCode === "number" && statusCode >= 500)
     ? "stripe_retryable"
-    : "stripe_payment_intent_create_failed";
+    : prefix;
 
   return {
     detail: [
-      "stripe_payment_intent_create_failed",
+      prefix,
       statusCode === null ? null : String(statusCode),
       reason,
       code,

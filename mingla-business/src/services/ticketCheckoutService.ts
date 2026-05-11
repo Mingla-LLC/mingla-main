@@ -5,6 +5,14 @@ export interface TicketCheckoutCreateInput {
   eventId: string;
   buyer: BuyerDetails;
   lines: CartLine[];
+  /**
+   * ORCH-0790: discriminator for the checkout surface. "native" (default for
+   * backwards compatibility with older mobile builds) creates a PaymentIntent
+   * + client_secret for Stripe RN PaymentSheet. "web" creates a hosted Stripe
+   * Checkout Session and returns a `hostedCheckoutUrl` for the web buyer to
+   * redirect to.
+   */
+  surface?: "native" | "web";
 }
 
 export interface TicketCheckoutRequiresPayment {
@@ -16,6 +24,20 @@ export interface TicketCheckoutRequiresPayment {
   clientSecret: string;
   paymentIntentId: string;
   publishableKey: string | null;
+}
+
+// ORCH-0790: web buyers redirect to a Stripe-hosted Checkout Session page.
+// The host app is expected to assign window.location to hostedCheckoutUrl
+// and to persist {checkoutSessionId, buyerStatusToken} to sessionStorage
+// before redirect so the confirm screen can resume polling after Stripe's
+// success_url returns the buyer to /checkout/{eventId}/confirm.
+export interface TicketCheckoutRequiresWebRedirect {
+  kind: "requires_web_redirect";
+  checkoutSessionId: string;
+  buyerStatusToken: string;
+  hostedCheckoutUrl: string;
+  totalCents: number;
+  currency: string;
 }
 
 export interface TicketCheckoutFreeCompleted {
@@ -33,6 +55,7 @@ export interface TicketCheckoutFreeCompleted {
 
 export type TicketCheckoutCreateResult =
   | TicketCheckoutRequiresPayment
+  | TicketCheckoutRequiresWebRedirect
   | TicketCheckoutFreeCompleted;
 
 export interface TicketCheckoutStatusResult {
@@ -69,6 +92,9 @@ export const createTicketCheckout = async (
       quantity: line.quantity,
       expectedUnitPriceCents: centsFromMajor(line.unitPrice),
     })),
+    // ORCH-0790: omit surface when undefined so the edge function applies its
+    // own "native" default — older mobile builds never send this field.
+    ...(input.surface !== undefined ? { surface: input.surface } : {}),
   });
 
 export const getTicketCheckoutStatus = async (
