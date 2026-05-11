@@ -5,6 +5,7 @@ Owner: Codex `orchestrator-mingla`
 Verdict accepted for close: CONDITIONAL PASS  
 Grade: A-  
 Working tree: `.worktrees/orch-0783-event-cover-image-provider-pivot/`
+Merge SHA: `6151201f`
 
 ## Close Decision
 
