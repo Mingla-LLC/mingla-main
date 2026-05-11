@@ -114,22 +114,24 @@ The paragraph format is:
 
 **Codified:** 2026-05-10 by META-ORCH-0755 Step 7 / DEC-134. Operator directive: "each output should have a small paragraph to the next person that I can copy and paste with what is required and all necessary information that is needed so I can communicate seamlessly between codex and claude and the respective skills."
 
-### I-PROPOSED-AC ONE_WORKTREE_PER_ORCH
+### I-PROPOSED-AC SETH_SINGLE_WORKING_BRANCH
 
-**Statement:** Every ORCH that touches product code runs in its own git worktree at `.worktrees/orch-XXXX-<short>/` on branch `orch/XXXX-<short>`, opened at the first INVESTIGATE dispatch from `origin/main` and closed at CLOSE via `git merge --no-ff` + `git worktree remove` + `git branch -d`. Parallel ORCHs each get their own worktree — no worktree is shared across unrelated ORCH-IDs.
+**Statement:** Every Mingla ORCH and process task runs in the single shared checkout at `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`. Per-ORCH `.worktrees/<slug>/` checkouts are retired for new work. Completed, evidence-backed close work is promoted from `Seth` to `main` only after lifecycle gates are satisfied.
 
-Two derived rules:
+Four derived rules:
 
-- **Artifact location split:** scoped artifacts that name an ORCH-ID in the filename (`reports/INVESTIGATION_ORCH-XXXX_*`, `specs/SPEC_ORCH-XXXX_*`, `reports/IMPLEMENTATION_ORCH-XXXX_*`, `reports/QA_ORCH-XXXX_*` / `TEST_REPORT_ORCH-XXXX_*`, scoped prompts) commit inside the worktree on the ORCH branch. Global indexes (`DECISION_LOG.md`, `INVARIANT_REGISTRY.md`, `WORLD_MAP.md`, `PRIORITY_BOARD.md`, `MASTER_BUG_LIST.md`, `AGENT_HANDOFFS.md`, `COVERAGE_MAP.md`, `PRODUCT_SNAPSHOT.md`, `ROOT_CAUSE_REGISTER.md`, `OPEN_INVESTIGATIONS.md`, `WORKTREE_REGISTRY.md`) are written only by the orchestrator in main.
-- **Skill location:** `.claude/skills/` and `.codex/skills/` enter each worktree via symlink to main at worktree-creation time. Skill files are never edited from inside a worktree.
+- **Single working location:** Claude and Codex skills must open `/Users/sethogieva/Desktop/mingla-main` on branch `Seth` for investigation, spec, implementation, testing, review, close, product docs, and artifact work.
+- **Scope by ORCH-ID:** product code, migrations, prompts, reports, specs, QA files, and global indexes can coexist in the shared checkout, but commits must stage only the scoped files for the current ORCH or process task. Unrelated dirty files are preserved and explicitly excluded.
+- **Close promotion:** Codex `orchestrator-mingla` commits scoped close-out work on `Seth`, pushes `Seth`, then merges or PRs `Seth` into `main` and pushes `main`. If promotion fails, the close report records the blocker and exact `Seth` commit SHA.
+- **Layman operator guidance:** every skill output must explain any required operator action in plain English before giving exact commands or copy-paste handoffs.
 
-**Exception:** META-ORCHs (process-only work that touches indexes / skills / artifacts but not product code) run in main with no worktree. Example: META-ORCH-0755 itself, META-ORCH-0744-PROCESS, future skill-parity sweeps.
+**Legacy handling:** `Mingla_Artifacts/WORKTREE_REGISTRY.md` is now a transition ledger for old `.worktrees/...` rows only. New work must not add active worktree rows.
 
-**Enforcement mechanism:** every Next-Handoff paragraph from every lifecycle skill names the worktree path via a `Working tree: .worktrees/<slug>/` line (or `Working tree: main (META-ORCH process work)` for META-ORCHs). The orchestrator updates `Mingla_Artifacts/WORKTREE_REGISTRY.md` on every phase transition, tracking active worktrees plus 14-day recently-closed retention.
+**Enforcement mechanism:** every Next-Handoff paragraph from every lifecycle skill names `Working tree: /Users/sethogieva/Desktop/mingla-main on branch Seth`. Skill files and strategy artifacts must not instruct new work to open `.worktrees/<slug>/`.
 
-**Test that catches regression:** strict-grep gate (queued under META-ORCH-0755-B for implementor to add) requiring (a) the literal string `Working tree:` to appear in every Next-Handoff paragraph in every dispatch prompt under `Mingla_Artifacts/prompts/`, and (b) any commit on `main` directly touching product code under `app-mobile/`, `mingla-business/`, `mingla-admin/`, or `supabase/` to trace to a merged ORCH branch via `--first-parent` history (i.e. direct commits to main on those paths are forbidden except for META-ORCHs flagged explicitly).
+**Test that catches regression:** strict-grep gate should fail if lifecycle skill instructions or new prompts include `.worktrees/<slug>` as the working location for new work, or if they omit the canonical `Working tree: /Users/sethogieva/Desktop/mingla-main on branch Seth` handoff text.
 
-**Codified:** 2026-05-10 by META-ORCH-0755 Step 8 / DEC-135. Operator directive: "best worktree strategy to implement across all claude and codex skills that creates sync and coordination across skills, but also makes sure that one working tree is used for related work until it closes."
+**Codified:** 2026-05-11 by operator directive superseding META-ORCH-0755 Step 8 / DEC-135. Operator directive: "I want to remove the need to work on different working tree across all skills both Claude and Codex. I want to register that Seth is the working branch, and all work should be done there on the working tree. When close is done, we push to main. I also want outputs to contain a layman explanation for me if I have to do anything walking me through the steps."
 
 Full strategy reference: `Mingla_Artifacts/WORKTREE_STRATEGY.md`.
 
