@@ -23,7 +23,6 @@ import {
 import type { KeyboardEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useStripe } from "@stripe/stripe-react-native";
 
 import {
   spacing,
@@ -46,6 +45,7 @@ import {
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { useStripePaymentSheet } from "../../../src/payments/stripePaymentSheet";
 
 export default function CheckoutPaymentScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -57,7 +57,11 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   const event = publicEventQuery.data?.event ?? null;
   const { lines, buyer, recordResult } = useCart();
   const totals = useCartTotals();
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const {
+    initPaymentSheet,
+    isPaymentSheetSupported,
+    presentPaymentSheet,
+  } = useStripePaymentSheet();
 
   const [processing, setProcessing] = useState<boolean>(false);
   const [finalizing, setFinalizing] = useState<boolean>(false);
@@ -133,6 +137,12 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   const handlePay = useCallback(async (): Promise<void> => {
     if (processing) return;
     if (eventId === null) return;
+    if (!isPaymentSheetSupported) {
+      setPaymentError(
+        "Ticket payments are not available on web yet. Please complete checkout in the Mingla Business mobile app.",
+      );
+      return;
+    }
     try {
       setProcessing(true);
       setPaymentError(null);
@@ -208,6 +218,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
     buyer,
     eventId,
     initPaymentSheet,
+    isPaymentSheetSupported,
     lines,
     presentPaymentSheet,
     processing,
@@ -293,7 +304,9 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         <GlassCard variant="base" radius="lg" padding={spacing.md}>
           <Text style={styles.summaryLabel}>PAYMENT</Text>
           <Text style={styles.paymentCopy}>
-            Card, Apple Pay, and Google Pay are handled by Stripe.
+            {Platform.OS === "web"
+              ? "Ticket payments are not available on web yet. Please complete checkout in the Mingla Business mobile app."
+              : "Card, Apple Pay, and Google Pay are handled by Stripe."}
           </Text>
           {checkoutSessionId !== null ? (
             <Text style={styles.paymentMeta}>Session {checkoutSessionId.slice(0, 8)}</Text>

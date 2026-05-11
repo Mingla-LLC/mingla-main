@@ -22,10 +22,8 @@ import { Stack } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { focusManager, QueryClientProvider } from "@tanstack/react-query";
-import { StripeProvider } from "@stripe/stripe-react-native";
 import * as Sentry from "@sentry/react-native";
 import * as SplashScreen from "expo-splash-screen";
-import Constants from "expo-constants";
 
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
@@ -33,6 +31,7 @@ import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
 import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
+import { StripeNativeProvider } from "../src/payments/StripeNativeProvider";
 
 // J-X3 — Sentry init (DEC-098 D-16-2). Guarded by env-absent so dev/build
 // without DSN is a no-op, not a runtime error. EXIT condition: operator
@@ -62,11 +61,6 @@ const SPLASH_MIN_VISIBLE_MS = 500;
 // hasn't responded by then, release the splash anyway — flash falls back
 // to ORCH-0742 baseline behavior. Prevents indefinite splash on bad networks.
 const BRAND_FETCH_TIMEOUT_MS = 2000;
-const stripePublishableKey =
-  (Constants.expoConfig?.extra as Record<string, string | undefined> | undefined)
-    ?.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ??
-  process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ??
-  "";
 
 function RootLayoutInner(): React.ReactElement {
   // J-X5 — splash hide synchronized with TWO gates:
@@ -213,11 +207,11 @@ export default function RootLayout(): React.ReactElement {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <StripeProvider publishableKey={stripePublishableKey}>
+          <StripeNativeProvider>
             <AuthProvider>
               <RootLayoutInner />
             </AuthProvider>
-          </StripeProvider>
+          </StripeNativeProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
