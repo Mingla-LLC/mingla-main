@@ -48,7 +48,7 @@ export interface CartLine {
 export interface BuyerDetails {
   name: string;
   email: string;
-  /** Optional. Stored as buyer-typed string; B3 normalises to E.164. */
+  /** Required for production checkout. Edge functions normalise to E.164. */
   phone: string;
   marketingOptIn: boolean;
 }
@@ -69,12 +69,23 @@ export type CheckoutPaymentMethod =
 export interface OrderResult {
   orderId: string;
   ticketIds: string[];
+  checkoutSessionId?: string;
   paidAt: string;
   paymentMethod: CheckoutPaymentMethod;
   /** Legacy compatibility only. New code writes `total`. */
   totalGbp?: number;
   total: number;
+  totalCents?: number;
   currency: string;
+  paymentStatus?: "paid";
+  notificationStatus?: "queued" | "sent" | "partial" | "failed" | string;
+  tickets: Array<{
+    ticketId: string;
+    ticketTypeId?: string;
+    ticketName: string;
+    qrPayload: string;
+    status: string;
+  }>;
 }
 
 export interface CartState {

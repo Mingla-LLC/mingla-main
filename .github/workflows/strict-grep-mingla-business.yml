@@ -38,6 +38,7 @@ on:
 #   - I-PROPOSED-M (i-proposed-m-persist-key-whitelist.mjs) — persist-key whitelist sync (META-ORCH-0744)
 #   - I-PROPOSED-N (i-proposed-n-transitional-exit-condition.mjs) — TRANSITIONAL exit-condition lint (META-ORCH-0744)
 #   - I-PROPOSED-X (i-proposed-x-web-deprecation.mjs) — web-export deprecation parser (META-ORCH-0744)
+#   - ORCH-0778 (orch-0778-web-stripe-native-import-gate.mjs) — Stripe React Native imports stay behind .native payment boundaries
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -312,3 +313,14 @@ jobs:
         run: npx expo export -p web 2>/tmp/expo-export-web.stderr || true
       - name: Run I-PROPOSED-X parser
         run: node .github/scripts/strict-grep/i-proposed-x-web-deprecation.mjs /tmp/expo-export-web.stderr
+
+  orch-0778-web-stripe-native-import-gate:
+    name: "ORCH-0778: Stripe native imports stay behind .native boundaries"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0778 gate
+        run: node .github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs

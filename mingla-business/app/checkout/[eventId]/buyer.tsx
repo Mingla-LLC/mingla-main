@@ -3,14 +3,13 @@
  *
  * Route: /checkout/{eventId}/buyer
  *
- * Buyer types name + email + optional phone + marketing opt-in. Validation
+ * Buyer types name + email + required phone + marketing opt-in. Validation
  * runs inline on each field. Continue button disabled until name + email
  * pass validation.
  *
  * On Continue:
- *   - Free order (totals.total === 0) → generate stub OrderResult
- *     synchronously + recordResult + router.replace to /confirm. Skips
- *     Payment + 3DS entirely (Q-C5).
+ *   - Free order (totals.total === 0) → create server order/tickets and route
+ *     to /confirm after durable sales rows exist.
  *   - Paid order → router.push to /checkout/{eventId}/payment.
  *
  * Keyboard handling lifted from EventCreatorWizard.tsx pattern (Keyboard
@@ -50,6 +49,8 @@ import {
 } from "../../../src/constants/designSystem";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import { formatCurrency } from "../../../src/utils/currency";
+import { isRequiredPhoneValid } from "../../../src/utils/phone";
+import { createTicketCheckout } from "../../../src/services/ticketCheckoutService";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -61,14 +62,8 @@ import {
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import {
-  generateOrderId,
-  generateTicketId,
-} from "../../../src/utils/stubOrderId";
-
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_MIN_CHARS = 2;
-const PHONE_MIN_CHARS = 7;
 
 interface ValidationState {
   nameError: string | null;
@@ -89,7 +84,7 @@ const validate = (
 
   const nameValid = nameTrim.length >= NAME_MIN_CHARS;
   const emailValid = EMAIL_REGEX.test(emailTrim);
-  const phoneValid = phoneTrim.length === 0 || phoneTrim.length >= PHONE_MIN_CHARS;
+  const phoneValid = isRequiredPhoneValid(phoneTrim);
 
   return {
     nameError:
@@ -97,7 +92,7 @@ const validate = (
     emailError:
       showErrors && !emailValid ? "Enter a valid email" : null,
     phoneError:
-      showErrors && !phoneValid ? "Enter a valid phone or leave blank" : null,
+      showErrors && !phoneValid ? "Enter a valid mobile number" : null,
     isValid: nameValid && emailValid && phoneValid,
   };
 };
@@ -112,6 +107,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   const event = publicEventQuery.data?.event ?? null;
   const { lines, buyer, setBuyer, recordResult } = useCart();
   const totals = useCartTotals();
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Touched flags — show validation errors only after first focus blur,
   // so a fresh-mount form doesn't immediately scream red.
@@ -216,32 +213,44 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     }
   }, [router, eventId]);
 
-  const handleContinue = useCallback((): void => {
+  const handleContinue = useCallback(async (): Promise<void> => {
     // Mark all fields touched so any validation errors render
     setNameTouched(true);
     setEmailTouched(true);
     setPhoneTouched(true);
     if (!validation.isValid) return;
     if (eventId === null) return;
+    setSubmitError(null);
     if (totals.isFree) {
-      // Free-skip path — generate stub OrderResult synchronously, no
-      // payment + 3DS detour. Per Q-C5 + spec §4.7.
-      const orderId = generateOrderId();
-      const ticketIds: string[] = [];
-      lines.forEach((line, lineIdx) => {
-        for (let seatIdx = 0; seatIdx < line.quantity; seatIdx += 1) {
-          ticketIds.push(generateTicketId(orderId, lineIdx, seatIdx));
+      try {
+        setSubmitting(true);
+        const result = await createTicketCheckout({ eventId, buyer, lines });
+        if (result.kind !== "free_completed") {
+          throw new Error("Free checkout unexpectedly required payment.");
         }
-      });
-      recordResult({
-        orderId,
-        ticketIds,
-        paidAt: new Date().toISOString(),
-        paymentMethod: "free",
-        total: 0,
-        currency: totals.currency,
-      });
-      router.replace(`/checkout/${eventId}/confirm` as never);
+        recordResult({
+          orderId: result.orderId,
+          ticketIds: result.tickets.map((ticket) => ticket.ticketId),
+          checkoutSessionId: result.checkoutSessionId,
+          paidAt: new Date().toISOString(),
+          paymentMethod: "free",
+          total: result.totalCents / 100,
+          totalCents: result.totalCents,
+          currency: result.currency,
+          paymentStatus: result.paymentStatus,
+          notificationStatus: result.notificationStatus,
+          tickets: result.tickets,
+        });
+        router.replace(`/checkout/${eventId}/confirm` as never);
+      } catch (error) {
+        setSubmitError(
+          error instanceof Error
+            ? error.message
+            : "Could not reserve tickets. Please try again.",
+        );
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
     router.push(`/checkout/${eventId}/payment` as never);
@@ -249,7 +258,9 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     validation.isValid,
     eventId,
     totals.isFree,
+    totals.currency,
     lines,
+    buyer,
     recordResult,
     router,
   ]);
@@ -363,14 +374,14 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           ) : null}
         </View>
 
-        {/* Phone (optional) */}
+        {/* Phone */}
         <View style={styles.fieldWrap}>
           <Input
             value={buyer.phone}
             onChangeText={(next) => setBuyer({ phone: next })}
             variant="text"
-            placeholder="Phone (optional)"
-            accessibilityLabel="Phone number, optional"
+            placeholder="Mobile number"
+            accessibilityLabel="Mobile number"
             onFocus={requestScrollToInput}
             onBlur={() => setPhoneTouched(true)}
           />
@@ -404,6 +415,9 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             Email me about this organiser&apos;s future events
           </Text>
         </Pressable>
+        {submitError !== null ? (
+          <Text style={styles.errorText}>{submitError}</Text>
+        ) : null}
       </ScrollView>
 
       {/* Sticky bottom bar */}
@@ -426,7 +440,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           variant="primary"
           size="lg"
           fullWidth
-          disabled={!validation.isValid}
+          loading={submitting}
+          disabled={!validation.isValid || submitting}
         />
       </View>
 

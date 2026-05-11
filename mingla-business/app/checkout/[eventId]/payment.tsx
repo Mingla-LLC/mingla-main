@@ -3,28 +3,18 @@
  *
  * Route: /checkout/{eventId}/payment
  *
- * Stub Stripe Payment Element with 4 method tabs (Card / Apple Pay /
- * Google Pay). Free orders never reach this screen — they skip from
- * J-C2 directly to /confirm. 3DS challenge opens as a Sheet over this
- * screen when __DEV__ Force-3DS toggle is ticked.
+ * Production Stripe PaymentSheet. Free orders never reach this screen.
  *
- * On payment success: generate stub OrderResult → recordResult into
- * cart Context → router.replace to /confirm.
+ * On payment success: wait for the server-backed checkout status, record the
+ * issued tickets into cart Context, then router.replace to /confirm.
  *
  * Per Cycle 8 spec §4.6.
  */
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -40,10 +30,11 @@ import {
 } from "../../../src/constants/designSystem";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import { formatCurrency } from "../../../src/utils/currency";
+import { isRequiredPhoneValid } from "../../../src/utils/phone";
 import {
-  generateOrderId,
-  generateTicketId,
-} from "../../../src/utils/stubOrderId";
+  createTicketCheckout,
+  pollTicketCheckoutStatus,
+} from "../../../src/services/ticketCheckoutService";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -53,63 +44,8 @@ import {
   useCart,
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
-import type {
-  CartLine,
-  CheckoutPaymentMethod,
-} from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import {
-  PaymentElementStub,
-  runCardPaymentStub,
-  type PaymentMethodId,
-  type PaymentResult,
-} from "../../../src/components/checkout/PaymentElementStub";
-import { ThreeDSStubSheet } from "../../../src/components/checkout/ThreeDSStubSheet";
-
-const buildResultFromCart = (
-  lines: CartLine[],
-  total: number,
-  currency: string,
-  paymentMethod: CheckoutPaymentMethod,
-): {
-  orderId: string;
-  ticketIds: string[];
-  paidAt: string;
-  paymentMethod: CheckoutPaymentMethod;
-  total: number;
-  currency: string;
-} => {
-  const orderId = generateOrderId();
-  const ticketIds: string[] = [];
-  lines.forEach((line, lineIdx) => {
-    for (let seatIdx = 0; seatIdx < line.quantity; seatIdx += 1) {
-      ticketIds.push(generateTicketId(orderId, lineIdx, seatIdx));
-    }
-  });
-  return {
-    orderId,
-    ticketIds,
-    paidAt: new Date().toISOString(),
-    paymentMethod,
-    total,
-    currency,
-  };
-};
-
-const paymentMethodToCart = (m: PaymentMethodId): CheckoutPaymentMethod => {
-  switch (m) {
-    case "card":
-      return "card";
-    case "apple_pay":
-      return "apple_pay";
-    case "google_pay":
-      return "google_pay";
-    default: {
-      const _exhaustive: never = m;
-      return _exhaustive;
-    }
-  }
-};
+import { useStripePaymentSheet } from "../../../src/payments/stripePaymentSheet";
 
 export default function CheckoutPaymentScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -121,19 +57,19 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
   const event = publicEventQuery.data?.event ?? null;
   const { lines, buyer, recordResult } = useCart();
   const totals = useCartTotals();
+  const {
+    initPaymentSheet,
+    isPaymentSheetSupported,
+    presentPaymentSheet,
+  } = useStripePaymentSheet();
 
   const [processing, setProcessing] = useState<boolean>(false);
-  const [pendingMethod, setPendingMethod] = useState<PaymentMethodId | null>(
-    null,
-  );
-  const [threeDSVisible, setThreeDSVisible] = useState<boolean>(false);
+  const [finalizing, setFinalizing] = useState<boolean>(false);
+  const [finalizingTimedOut, setFinalizingTimedOut] = useState<boolean>(false);
+  const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
   const [declineToast, setDeclineToast] = useState<boolean>(false);
-  // __DEV__ test toggles — Card method's bottom-bar Pay button reads these
-  // to decide whether to return "ok" / "requiresAction" / "declined" from
-  // the stub. PaymentElementStub renders its own toggles for visual parity
-  // but the Card Pay button lives in this screen's sticky bottom bar.
-  const [force3DS, setForce3DS] = useState<boolean>(false);
-  const [forceDecline, setForceDecline] = useState<boolean>(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const finalizingRef = useRef<boolean>(false);
 
   // ----- Defensive guards ------------------------------------------
   // Free orders never reach this screen (J-C2 skips to /confirm).
@@ -148,7 +84,11 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
       router.replace(`/checkout/${eventId}/buyer` as never);
       return;
     }
-    if (buyer.name.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyer.email.trim())) {
+    if (
+      buyer.name.trim().length < 2 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyer.email.trim()) ||
+      !isRequiredPhoneValid(buyer.phone)
+    ) {
       router.replace(`/checkout/${eventId}/buyer` as never);
       return;
     }
@@ -158,6 +98,7 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
     totals.isFree,
     buyer.name,
     buyer.email,
+    buyer.phone,
     router,
   ]);
 
@@ -193,69 +134,104 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
     }
   }, [router, eventId]);
 
-  const completePayment = useCallback(
-    (method: PaymentMethodId): void => {
-      const result = buildResultFromCart(
-        lines,
-        totals.total,
-        totals.currency,
-        paymentMethodToCart(method),
-      );
-      recordResult(result);
-      if (eventId !== null) {
-        router.replace(`/checkout/${eventId}/confirm` as never);
-      }
-    },
-    [lines, totals.total, totals.currency, recordResult, router, eventId],
-  );
-
-  const handleResult = useCallback(
-    (method: PaymentMethodId, result: PaymentResult): void => {
-      setProcessing(false);
-      setPendingMethod(null);
-      switch (result) {
-        case "ok":
-          completePayment(method);
-          return;
-        case "requiresAction":
-          setPendingMethod(method);
-          setThreeDSVisible(true);
-          return;
-        case "declined":
-          setDeclineToast(true);
-          return;
-        default: {
-          const _exhaustive: never = result;
-          return _exhaustive;
-        }
-      }
-    },
-    [completePayment],
-  );
-
-  // Card method "Pay" lives in this screen's bottom bar; Apple/Google Pay
-  // tabs trigger their own onPay callback inside PaymentElementStub.
-  const handleCardPay = useCallback(async (): Promise<void> => {
+  const handlePay = useCallback(async (): Promise<void> => {
     if (processing) return;
-    setProcessing(true);
-    setPendingMethod("card");
-    const result = await runCardPaymentStub(force3DS, forceDecline);
-    handleResult("card", result);
-  }, [processing, force3DS, forceDecline, handleResult]);
-
-  // 3DS sheet
-  const handleThreeDSSuccess = useCallback((): void => {
-    setThreeDSVisible(false);
-    if (pendingMethod !== null) {
-      completePayment(pendingMethod);
-      setPendingMethod(null);
+    if (eventId === null) return;
+    if (!isPaymentSheetSupported) {
+      setPaymentError(
+        "Ticket payments are not available on web yet. Please complete checkout in the Mingla Business mobile app.",
+      );
+      return;
     }
-  }, [pendingMethod, completePayment]);
+    try {
+      setProcessing(true);
+      setPaymentError(null);
+      const checkout = await createTicketCheckout({ eventId, buyer, lines });
+      if (checkout.kind !== "requires_payment") {
+        throw new Error("Checkout did not return a payment session.");
+      }
+      setCheckoutSessionId(checkout.checkoutSessionId);
+      const initResult = await initPaymentSheet({
+        merchantDisplayName: "Mingla",
+        paymentIntentClientSecret: checkout.clientSecret,
+        allowsDelayedPaymentMethods: false,
+      });
+      if (initResult.error) {
+        throw new Error(initResult.error.message);
+      }
+      const payResult = await presentPaymentSheet();
+      if (payResult.error) {
+        setDeclineToast(true);
+        throw new Error(payResult.error.message);
+      }
 
-  const handleThreeDSClose = useCallback((): void => {
-    setThreeDSVisible(false);
-    setPendingMethod(null);
-  }, []);
+      setFinalizing(true);
+      finalizingRef.current = true;
+      const status = await pollTicketCheckoutStatus(
+        checkout.checkoutSessionId,
+        checkout.buyerStatusToken,
+      );
+      if (!finalizingRef.current) return;
+      if (status === null || status.order === null) {
+        finalizingRef.current = false;
+        setFinalizingTimedOut(true);
+        setFinalizing(false);
+        setProcessing(false);
+        console.warn("[ticket-checkout] paid checkout finalization timed out", {
+          checkoutSessionId: checkout.checkoutSessionId,
+        });
+        return;
+      }
+      recordResult({
+        orderId: status.order.orderId,
+        ticketIds: status.order.tickets.map((ticket) => ticket.ticketId),
+        checkoutSessionId: status.checkoutSessionId,
+        paidAt: new Date().toISOString(),
+        paymentMethod: "card",
+        total: status.order.totalCents / 100,
+        totalCents: status.order.totalCents,
+        currency: status.order.currency,
+        paymentStatus: status.order.paymentStatus,
+        notificationStatus: status.order.notificationStatus,
+        tickets: status.order.tickets,
+      });
+      router.replace(`/checkout/${eventId}/confirm` as never);
+    } catch (error) {
+      if (finalizingRef.current) {
+        finalizingRef.current = false;
+        setFinalizingTimedOut(true);
+        setFinalizing(false);
+        setProcessing(false);
+        return;
+      }
+      setPaymentError(
+        error instanceof Error
+          ? error.message
+          : "Payment could not be completed. Please try again.",
+      );
+    } finally {
+      if (!finalizingRef.current) {
+        setProcessing(false);
+      }
+    }
+  }, [
+    buyer,
+    eventId,
+    initPaymentSheet,
+    isPaymentSheetSupported,
+    lines,
+    presentPaymentSheet,
+    processing,
+    recordResult,
+    router,
+  ]);
+
+  useEffect(
+    () => () => {
+      finalizingRef.current = false;
+    },
+    [],
+  );
 
   // Render an empty shell while defensive guards redirect.
   if (
@@ -325,57 +301,37 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
           </View>
         </GlassCard>
 
-        <PaymentElementStub
-          onPay={handleResult}
-          processing={processing}
-          total={totals.total}
-          currency={totals.currency}
-        />
+        <GlassCard variant="base" radius="lg" padding={spacing.md}>
+          <Text style={styles.summaryLabel}>PAYMENT</Text>
+          <Text style={styles.paymentCopy}>
+            {Platform.OS === "web"
+              ? "Ticket payments are not available on web yet. Please complete checkout in the Mingla Business mobile app."
+              : "Card, Apple Pay, and Google Pay are handled by Stripe."}
+          </Text>
+          {checkoutSessionId !== null ? (
+            <Text style={styles.paymentMeta}>Session {checkoutSessionId.slice(0, 8)}</Text>
+          ) : null}
+        </GlassCard>
 
-        {__DEV__ ? (
-          <View style={styles.devLifted}>
-            <Text style={styles.devLiftedHint}>
-              Note: __DEV__ toggles inside the Payment Element apply to Apple
-              Pay / Google Pay tabs. The bottom-bar &quot;Pay&quot; button (Card
-              method) uses these explicit toggles below for parity in stub
-              testing:
+        {finalizing || finalizingTimedOut ? (
+          <GlassCard variant="base" radius="lg" padding={spacing.md}>
+            <Text style={styles.finalizingTitle}>
+              {finalizingTimedOut ? "Payment received" : "Finalizing your tickets..."}
             </Text>
-            <View style={styles.devLiftedRow}>
-              <Pressable
-                onPress={() => setForce3DS((v) => !v)}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: force3DS }}
-                accessibilityLabel="Force 3DS challenge (Card, testing only)"
-                style={[
-                  styles.devLiftedToggle,
-                  force3DS && styles.devLiftedToggleOn,
-                ]}
-              >
-                <Text style={styles.devLiftedToggleText}>
-                  {force3DS ? "✓ " : ""}Force 3DS (Card)
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setForceDecline((v) => !v)}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: forceDecline }}
-                accessibilityLabel="Force payment decline (testing only)"
-                style={[
-                  styles.devLiftedToggle,
-                  forceDecline && styles.devLiftedToggleOn,
-                ]}
-              >
-                <Text style={styles.devLiftedToggleText}>
-                  {forceDecline ? "✓ " : ""}Force decline (Card)
-                </Text>
-              </Pressable>
-            </View>
-          </View>
+            <Text style={styles.finalizingCopy}>
+              {finalizingTimedOut
+                ? "Your ticket will arrive by email and message shortly."
+                : "Stripe has accepted the payment. We are waiting for the server to issue your tickets."}
+            </Text>
+          </GlassCard>
+        ) : null}
+
+        {paymentError !== null && !finalizing && !finalizingTimedOut ? (
+          <Text style={styles.errorText}>{paymentError}</Text>
         ) : null}
       </ScrollView>
 
-      {/* Sticky bottom bar — Card method's Pay button. Apple/Google Pay
-          tabs render their own pay buttons inside PaymentElementStub. */}
+      {/* Sticky bottom bar */}
       <View
         style={[
           styles.bottomBar,
@@ -391,21 +347,15 @@ export default function CheckoutPaymentScreen(): React.ReactElement {
         </View>
         <Button
           label={`Pay ${formatCurrency(totals.total, totals.currency)}`}
-          onPress={handleCardPay}
+          onPress={handlePay}
           variant="primary"
           size="lg"
           fullWidth
-          loading={processing && pendingMethod === "card"}
-          disabled={processing}
+          loading={processing}
+          disabled={processing || finalizingTimedOut}
           accessibilityLabel={`Pay ${formatCurrency(totals.total, totals.currency)} with card`}
         />
       </View>
-
-      <ThreeDSStubSheet
-        visible={threeDSVisible}
-        onClose={handleThreeDSClose}
-        onSuccess={handleThreeDSSuccess}
-      />
 
       {/* Decline toast — top-anchored absolute wrapper (Cycle 8a lesson) */}
       <View style={styles.toastWrap} pointerEvents="box-none">
@@ -486,38 +436,32 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.2,
   },
-  devLifted: {
-    marginTop: spacing.md,
-    padding: spacing.sm,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(245, 158, 11, 0.3)",
-    backgroundColor: "rgba(245, 158, 11, 0.06)",
+  paymentCopy: {
+    fontSize: 14,
+    color: textTokens.secondary,
+    lineHeight: 20,
   },
-  devLiftedHint: {
+  paymentMeta: {
+    marginTop: spacing.sm,
     fontSize: 11,
-    color: textTokens.tertiary,
-    fontStyle: "italic",
+    color: textTokens.quaternary,
+  },
+  finalizingTitle: {
+    fontSize: 16,
+    color: textTokens.primary,
+    fontWeight: "700",
     marginBottom: spacing.xs,
   },
-  devLiftedRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    flexWrap: "wrap",
-  },
-  devLiftedToggle: {
-    paddingVertical: 4,
-    paddingHorizontal: spacing.sm,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.4)",
-  },
-  devLiftedToggleOn: {
-    backgroundColor: "rgba(245, 158, 11, 0.18)",
-  },
-  devLiftedToggleText: {
-    fontSize: 11,
+  finalizingCopy: {
+    fontSize: 14,
     color: textTokens.secondary,
+    lineHeight: 20,
+  },
+  errorText: {
+    marginTop: spacing.sm,
+    fontSize: 12,
+    color: "#ef4444",
+    fontWeight: "500",
   },
   bottomBar: {
     position: "absolute",
