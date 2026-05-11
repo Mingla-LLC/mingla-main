@@ -92,10 +92,12 @@ Deno.test("Stripe PaymentIntent create failures map to structured checkout error
 
 Deno.test("paid checkout persist failure cancel uses the provided nullable Stripe client", async () => {
   const canceledPaymentIntentIds: string[] = [];
+  const idempotencyKeys: string[] = [];
   const stripe = {
     paymentIntents: {
-      cancel: (paymentIntentId: string) => {
+      cancel: (paymentIntentId: string, options: { idempotencyKey: string }) => {
         canceledPaymentIntentIds.push(paymentIntentId);
+        idempotencyKeys.push(options.idempotencyKey);
         return Promise.resolve({ id: paymentIntentId });
       },
     },
@@ -106,9 +108,11 @@ Deno.test("paid checkout persist failure cancel uses the provided nullable Strip
     true,
   );
   assertEquals(canceledPaymentIntentIds, ["pi_persist_failure_test"]);
+  assertEquals(idempotencyKeys, ["ticket_checkout_cancel:pi_persist_failure_test"]);
   assertEquals(
     await cancelPaymentIntentIfClientAvailable(null, "pi_not_created"),
     false,
   );
   assertEquals(canceledPaymentIntentIds, ["pi_persist_failure_test"]);
+  assertEquals(idempotencyKeys, ["ticket_checkout_cancel:pi_persist_failure_test"]);
 });

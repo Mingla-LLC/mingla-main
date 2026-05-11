@@ -188,7 +188,10 @@ export function classifyStripePaymentIntentCreateFailure(error: unknown): {
 
 export type PaymentIntentCancelClient = {
   paymentIntents: {
-    cancel: (paymentIntentId: string) => Promise<unknown>;
+    cancel: (
+      paymentIntentId: string,
+      options: { idempotencyKey: string },
+    ) => Promise<unknown>;
   };
 };
 
@@ -197,6 +200,8 @@ export async function cancelPaymentIntentIfClientAvailable(
   paymentIntentId: string,
 ): Promise<boolean> {
   if (stripe === null) return false;
-  await stripe.paymentIntents.cancel(paymentIntentId);
+  await stripe.paymentIntents.cancel(paymentIntentId, {
+    idempotencyKey: `ticket_checkout_cancel:${paymentIntentId}`,
+  });
   return true;
 }

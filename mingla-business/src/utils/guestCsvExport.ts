@@ -322,7 +322,7 @@ const downloadCsvNative = async (
   // Share API can't share files directly without expo-sharing +
   // expo-file-system (not installed in mingla-business). For now,
   // share the CSV text content; operators can paste/import in their
-  // target app or copy to clipboard. Discovery D-CYCLE10-IMPL-1
+  // target app or copy to clipboard. B-cycle exit: Discovery D-CYCLE10-IMPL-1
   // recommends adding expo-sharing + expo-file-system in a future
   // cycle to enable proper file-share UX on iOS/Android.
   //
