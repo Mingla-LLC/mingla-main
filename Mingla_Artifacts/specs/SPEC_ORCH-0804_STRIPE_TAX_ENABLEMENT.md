@@ -4,7 +4,7 @@
 **Date:** 2026-05-12
 **Working tree:** `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`
 **Investigation:** [INVESTIGATION_ORCH-0801_BRAND_PAGE_FULL_AUDIT.md](../reports/INVESTIGATION_ORCH-0801_BRAND_PAGE_FULL_AUDIT.md) §F-01
-**Dispatch:** [prompts/SPEC_ORCH-0804_STRIPE_TAX_ENABLEMENT.md](../prompts/SPEC_ORCH-0804_STRIPE_TAX_ENABLEMENT.md)
+**Dispatch:** `Mingla_Artifacts/prompts/SPEC_ORCH-0804_STRIPE_TAX_ENABLEMENT.md` — PRIVATE_PROMPT_NOT_VERSIONED
 **Stripe docs verified:** https://docs.stripe.com/tax/tax-for-platforms (2026-05-12), https://docs.stripe.com/connect/supported-embedded-components (2026-05-12)
 
 ---

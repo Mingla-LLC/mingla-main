@@ -25,6 +25,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 import { stripeTaxDashboardLink } from "../_shared/stripe.ts";
 import { writeAudit } from "../_shared/audit.ts";
+import { generateIdempotencyKey } from "../_shared/idempotency.ts";
 import {
   corsHeaders,
   isValidUuid,
@@ -94,6 +95,10 @@ serve(async (req) => {
     // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
     loginLink = await stripe.accounts.createLoginLink(
       account.stripe_account_id,
+      undefined,
+      {
+        idempotencyKey: generateIdempotencyKey(brandId, "tax_dashboard_link"),
+      },
     );
   } catch (err) {
     const detail = err instanceof Error ? err.message : "unknown_error";
