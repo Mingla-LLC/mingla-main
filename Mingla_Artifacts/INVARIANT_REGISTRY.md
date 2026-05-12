@@ -7,6 +7,24 @@
 
 ---
 
+## ACTIVE (post ORCH-0788 CLOSE 2026-05-11)
+
+One invariant introduced by SPEC §14 of ORCH-0788 governing the canonical contract that every `payload->>'template_key'` value written to `public.ticket_order_notifications` must be addressable by `ticket-confirmation-dispatch` without falling back to the legacy default renderer. Promoted DRAFT→ACTIVE on 2026-05-11 by ORCH-0788 CLOSE after production proof: the operator's 6-hour-stranded refund test row `81fe2a68-…` sent successfully at 23:55:01 UTC with valid Resend `provider_message_id` via the new `buyer_refund_issued` template route, and 5 independent MCP production probes confirmed zero unsent email rows post-deploy.
+
+### I-PROPOSED-BA NOTIFICATION_TEMPLATE_KEY_DISPATCHED
+
+**Statement:** Every `public.ticket_order_notifications` row with `payload->>'template_key' IS NOT NULL` MUST be addressable by the `ticket-confirmation-dispatch` edge function via an explicit case in its template_key switch. Every `template_key` value written by ANY enqueuing path (current writers: `refund-order/index.ts`, `cancel-order/index.ts`, `_shared/stripeWebhookRouter.ts` refund handler; future writers: any new path that INSERTs into `ticket_order_notifications`) MUST have a matching switch arm in the dispatcher. Unknown template_keys MUST flip the row to `status='failed_terminal'` with `last_error='unknown_template_key:<value>'` rather than rendering the wrong template silently. NULL `template_key` implies `'buyer_ticket_confirmation'` legacy default (backward compat for rows written by `biz_ticket_checkout_finalize_session` RPC which never sets the field).
+
+**Rationale:** ORCH-0788 RC-1 — pre-fix the dispatcher ignored `payload.template_key` entirely; refund/cancel rows would have either stayed pending forever (silent failure — Constitution #3) or rendered as ticket-confirmation emails with buyer's original tickets attached (silent wrong-render — actively misleading). Both failure modes are invariant violations of Constitution #3 (No silent failures). The defensive `unknown_template_key:` failed_terminal path ensures that future writers introducing a new template_key without updating the dispatcher fail LOUDLY at the first row instead of silently mis-rendering.
+
+**Enforcement mechanism:** (1) Strict-grep CI gate `.github/scripts/strict-grep/orch-0788-notification-template-key-dispatched.mjs` (7 checks) asserts adapter file exports both translation functions, dispatcher SELECTs `payload`, dispatcher references all three known template_key literals plus the `unknown_template_key:` defensive default, all three writers import + call `dispatchTicketConfirmation`, stripeWebhookRouter refund handler contains the inline fetch to dispatcher, migration registers the cron job at `*/5 * * * *`. (2) Deno unit tests in `supabase/functions/_shared/email/__tests__/buyerLifecycleAdapters.test.ts` (8 tests) + `supabase/functions/notification-retry-sweeper/index.test.ts` (10 tests) cover each adapter branch + sweeper invariants. (3) Dispatcher source itself contains the exhaustive switch — the `else` branch is the defensive last-resort that flips unknown rows to `failed_terminal` instead of silently mis-rendering.
+
+**Test that catches regression:** strict-grep CI gate fails the PR if any of the 7 checks regresses. Production-level regression visible via brand-team SELECT RLS policy on `ticket_order_notifications` — any row stuck at `failed_terminal` with `last_error LIKE 'unknown_template_key:%'` is operator-visible.
+
+**Status:** ACTIVE — codified 2026-05-11 by ORCH-0788 CLOSE after production proof + 75+ verification points (5 MCP probes + 35 Deno tests + 5 deno check + 7 strict-grep + 3 successful pg_cron runs).
+
+---
+
 ## ACTIVE (post ORCH-0795 CLOSE 2026-05-11)
 
 One invariant introduced by SPEC §6.1 of ORCH-0795 governing the canonical guarantee that every event has at least one active scanner row for its brand owner at all times. Promoted DRAFT→ACTIVE on 2026-05-11 by ORCH-0795 CLOSE after operator-witnessed live-fire on iPhone (Seth scanned an old issued ticket → success overlay rendered) and five independent DB invariant probes via Supabase MCP returned A=0 owner-orphan live events, B=0 soft-deleted remaining, C=9 Seth active events, D=0 active rows on deleted events, E=0 duplicate active rows.
