@@ -15,7 +15,8 @@
         "NSCameraUsageDescription": "Mingla Business uses your camera to scan attendee tickets at the door.",
         "NSPhotoLibraryUsageDescription": "Mingla Business uses your photo library to upload brand and event imagery.",
         "NSPhotoLibraryAddUsageDescription": "Mingla Business saves event tickets to your photo library when you tap Save.",
-        "NSFaceIDUsageDescription": "Mingla Business uses Face ID to confirm Apple Pay transactions at the door."
+        "NSFaceIDUsageDescription": "Mingla Business uses Face ID to confirm Apple Pay transactions at the door.",
+        "NSUserTrackingUsageDescription": "Mingla Business uses your advertising identifier to measure the performance of our ads and help us reach more organizers like you."
       },
       "entitlements": {
         "com.apple.developer.in-app-payments": [
@@ -83,6 +84,13 @@
           "dark": {
             "backgroundColor": "#050505"
           }
+        }
+      ],
+      "react-native-appsflyer",
+      [
+        "onesignal-expo-plugin",
+        {
+          "mode": "production"
         }
       ]
     ],

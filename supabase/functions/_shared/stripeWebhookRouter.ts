@@ -13,6 +13,12 @@ import {
   getKycRemediationForRequirements,
   mapPayoutFailureCode,
 } from "./stripeKycRemediation.ts";
+// ORCH-0808 — AppsFlyer S2S poster for revenue + milestone events.
+import {
+  postAppsFlyerS2SEvent,
+  resolveBrandOwnerUserId,
+  claimBrandMilestone,
+} from "./appsFlyerS2S.ts";
 
 export const STRIPE_ROUTED_EVENT_TYPES = [
   "account.updated",
@@ -207,6 +213,39 @@ async function syncAccount(
     },
   });
 
+  // ORCH-0808 — AppsFlyer S2S: fire mingla_stripe_connect_activated exactly
+  // once per brand on the first charges_enabled true. Idempotent via
+  // brand_appsflyer_milestones.first_activated_at — restriction→un-restriction
+  // cycles do NOT re-fire. Never propagates failure to Stripe.
+  if (account.charges_enabled === true) {
+    try {
+      const isFirst = await claimBrandMilestone(
+        supabase,
+        brandId,
+        "first_activated_at",
+      );
+      if (isFirst) {
+        const ownerUserId = await resolveBrandOwnerUserId(supabase, brandId);
+        if (ownerUserId) {
+          await postAppsFlyerS2SEvent({
+            supabase,
+            userId: ownerUserId,
+            eventName: "mingla_stripe_connect_activated",
+            eventValues: {
+              brand_id: brandId,
+              stripe_account_id: stripeAccountId,
+            },
+          });
+        }
+      }
+    } catch (afError) {
+      console.warn(
+        "[stripe-webhook] AppsFlyer connect-activated S2S threw:",
+        afError instanceof Error ? afError.message : String(afError),
+      );
+    }
+  }
+
   return brandId;
 }
 
@@ -345,6 +384,44 @@ async function handlePayout(
     target_id: payoutId,
     after: payout,
   });
+
+  // ORCH-0808 — AppsFlyer S2S: fire mingla_first_payout exactly once per
+  // brand on the first paid payout. Other payout statuses (created, failed,
+  // canceled, in_transit) do NOT trigger the milestone. Idempotent via
+  // brand_appsflyer_milestones. Never propagates failure to Stripe.
+  if (event.type === "payout.paid") {
+    try {
+      const isFirst = await claimBrandMilestone(
+        supabase,
+        brandId,
+        "first_payout_at",
+      );
+      if (isFirst) {
+        const ownerUserId = await resolveBrandOwnerUserId(supabase, brandId);
+        if (ownerUserId) {
+          const amountCents = Number(payout.amount ?? 0);
+          const currency = char3(payout.currency, "USD");
+          await postAppsFlyerS2SEvent({
+            supabase,
+            userId: ownerUserId,
+            eventName: "mingla_first_payout",
+            eventValues: {
+              af_revenue: Math.round(amountCents) / 100,
+              af_currency: currency,
+              brand_id: brandId,
+              stripe_payout_id: payoutId,
+            },
+          });
+        }
+      }
+    } catch (afError) {
+      console.warn(
+        "[stripe-webhook] AppsFlyer first-payout S2S threw:",
+        afError instanceof Error ? afError.message : String(afError),
+      );
+    }
+  }
+
   return brandId;
 }
 
@@ -712,6 +789,46 @@ async function handleTicketCheckoutPaymentIntent(
           body: JSON.stringify({ orderId }),
         });
       }
+    }
+
+    // ORCH-0808 — AppsFlyer S2S: fire af_purchase exactly once per brand
+    // for the FIRST ticket sale. Idempotent via brand_appsflyer_milestones.
+    // Never propagates failure to Stripe (the helper swallows + logs).
+    try {
+      const brandId = session.brand_id as string | null;
+      if (brandId) {
+        const isFirst = await claimBrandMilestone(
+          supabase,
+          brandId,
+          "first_ticket_sold_at",
+        );
+        if (isFirst) {
+          const ownerUserId = await resolveBrandOwnerUserId(supabase, brandId);
+          if (ownerUserId) {
+            const amountCents = Number(paymentIntent.amount ?? 0);
+            const currency = char3(paymentIntent.currency, "USD");
+            const revenue = Math.round(amountCents) / 100;
+            await postAppsFlyerS2SEvent({
+              supabase,
+              userId: ownerUserId,
+              eventName: "af_purchase",
+              eventValues: {
+                af_revenue: revenue,
+                af_currency: currency,
+                brand_id: brandId,
+                milestone: "first_ticket_sold",
+              },
+            });
+          }
+        }
+      }
+    } catch (afError) {
+      // Belt-and-suspenders: helper already never throws, but if anything
+      // wraps it (e.g. lookup throws unexpectedly), do not propagate.
+      console.warn(
+        "[stripe-webhook] AppsFlyer first-ticket S2S threw:",
+        afError instanceof Error ? afError.message : String(afError),
+      );
     }
   } else {
     await supabase

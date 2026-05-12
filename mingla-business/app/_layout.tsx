@@ -32,6 +32,10 @@ import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
 import { StripeNativeProvider } from "../src/payments/StripeNativeProvider";
+import { initializeAppsFlyer } from "../src/services/appsFlyerService";
+import { mixpanelService } from "../src/services/mixpanelService";
+import { revenueCatService } from "../src/services/revenueCatService";
+import { initializeOneSignal } from "../src/services/oneSignalService";
 
 // J-X3 — Sentry init (DEC-098 D-16-2). Guarded by env-absent so dev/build
 // without DSN is a no-op, not a runtime error. EXIT condition: operator
@@ -117,6 +121,18 @@ function RootLayoutInner(): React.ReactElement {
     }, remaining);
     return () => clearTimeout(timer);
   }, [loading, brandReady, splashHidden]);
+
+  // ORCH-0808 — AppsFlyer SDK init runs once at mount. Identity binding +
+  // first-event fire (af_complete_registration / af_login) happen in
+  // AuthContext on SIGNED_IN. Env-missing case is no-op + logged warn.
+  // Mixpanel init runs alongside — same pattern, env-guarded.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    initializeAppsFlyer();
+    void mixpanelService.initialize();
+    revenueCatService.initialize();
+    initializeOneSignal();
+  }, []); // intentionally once
 
   // ORCH-0740 Cycle 1: AppState → React Query focusManager wiring.
   // When the app comes back to foreground, tell React Query to refetch

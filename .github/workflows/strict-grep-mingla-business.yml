@@ -646,3 +646,36 @@ jobs:
         run: npm install --no-save @babel/parser @babel/traverse
       - name: Run ORCH-0808 gate
         run: node .github/scripts/strict-grep/orch-0808-appsflyer-devices-app-discriminator.mjs
+
+  orch-0809-no-discover-price-filter:
+    name: "ORCH-0809: Discover price filter fully removed (Const #3, #9)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0809 Gate 1
+        run: node .github/scripts/strict-grep/orch-0809-no-discover-price-filter.mjs
+
+  orch-0809-tm-classification-by-id:
+    name: "ORCH-0809: Discover TM classification by ID (I-PROPOSED-BI)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0809 Gate 2
+        run: node .github/scripts/strict-grep/orch-0809-tm-classification-by-id.mjs
+
+  orch-0809-tm-local-time-window:
+    name: "ORCH-0809: Discover TM local-time date window (I-PROPOSED-BJ)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0809 Gate 3
+        run: node .github/scripts/strict-grep/orch-0809-tm-local-time-window.mjs

@@ -3,6 +3,16 @@
 .env.local
 .env*.local
 
+# === Operator credential stashes (never commit) ===
+*Appsflyer Dev Key*
+*AppsFlyer Dev Key*
+*Dev Key.md
+*REST API Key*
+*Service Token*
+*Project Token*
+*API Key.md
+*Secret Key*
+
 # === macOS ===
 .DS_Store
 

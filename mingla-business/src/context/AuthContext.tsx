@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Alert, Platform } from "react-native";
@@ -18,6 +19,23 @@ import { supabase } from "../services/supabase";
 import { ensureCreatorAccount } from "../services/creatorAccount";
 import { tryRecoverAccountIfDeleted } from "../hooks/useAccountDeletion";
 import { clearAllStores } from "../utils/clearAllStores";
+// ORCH-0808 — AppsFlyer identity binding + first-event fire.
+import {
+  setAppsFlyerUserId,
+  clearAppsFlyerUserId,
+  registerAppsFlyerDevice,
+  resetAppsFlyerDeviceCache,
+  logAppsFlyerEvent,
+} from "../services/appsFlyerService";
+// ORCH-0808-FOLLOWUP — Mixpanel identity binding.
+import { mixpanelService } from "../services/mixpanelService";
+// ORCH-0808-FOLLOWUP — RevenueCat identity binding (install-only scope).
+import { revenueCatService } from "../services/revenueCatService";
+// ORCH-0808-FOLLOWUP — OneSignal identity binding (install-only scope).
+import {
+  loginToOneSignal,
+  logoutOneSignal,
+} from "../services/oneSignalService";
 import {
   deriveBusinessAuthStatus,
   hasUsableBusinessSession,
@@ -117,6 +135,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLastRecoveryEvent(null);
   }, []);
 
+  // ORCH-0808 — fires af_complete_registration / af_login at most once per
+  // auth session lifecycle. Reset on SIGNED_OUT so the next sign-in re-fires.
+  const afEventFiredRef = useRef(false);
+
   useEffect(() => {
     let mounted = true;
 
@@ -160,6 +182,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (recovered && mounted) {
           setLastRecoveryEvent({ recoveredAt: new Date().toISOString() });
         }
+        // ORCH-0808 — bind AppsFlyer identity on warm restore (cold-start
+        // with persisted session). Idempotent. No first-event fire here —
+        // that lives in the SIGNED_IN branch of onAuthStateChange so we
+        // don't inflate af_login counts on every cold launch.
+        setAppsFlyerUserId(s.user.id);
+        registerAppsFlyerDevice(s.user.id);
+        // ORCH-0808-FOLLOWUP — Mixpanel identity on warm restore. Idempotent.
+        // No "Login" event fire on warm restore (mirrors AppsFlyer policy).
+        mixpanelService.identify(s.user.id);
+        // ORCH-0808-FOLLOWUP — RevenueCat identity on warm restore. Idempotent.
+        revenueCatService.identify(s.user.id);
+        // ORCH-0808-FOLLOWUP — OneSignal identity on warm restore. Idempotent.
+        loginToOneSignal(s.user.id);
       }
       setLoading(false);
     };
@@ -203,6 +238,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (recovered && mounted) {
             setLastRecoveryEvent({ recoveredAt: new Date().toISOString() });
           }
+          // ORCH-0808 — AppsFlyer + Mixpanel identity + first-event fire (once per session).
+          // first-time vs returning determined by creator_accounts.created_at
+          // recency: ensureCreatorAccount above just inserted-or-noop'd the row,
+          // so a created_at within the last 30 seconds means this sign-in is the
+          // creation event (first-time creator). Otherwise the row pre-existed.
+          setAppsFlyerUserId(s.user.id);
+          registerAppsFlyerDevice(s.user.id);
+          mixpanelService.identify(s.user.id);
+          revenueCatService.identify(s.user.id);
+          loginToOneSignal(s.user.id);
+          if (!afEventFiredRef.current) {
+            afEventFiredRef.current = true;
+            void (async () => {
+              try {
+                const provider =
+                  (s.user.app_metadata as { provider?: string } | undefined)
+                    ?.provider ?? "email";
+                const method =
+                  provider === "google" || provider === "apple"
+                    ? provider
+                    : "email";
+                const { data: account } = await supabase
+                  .from("creator_accounts")
+                  .select("created_at, email, display_name")
+                  .eq("id", s.user.id)
+                  .maybeSingle();
+                const createdAt = account?.created_at
+                  ? new Date(account.created_at).getTime()
+                  : null;
+                const isFirstTime =
+                  createdAt !== null && Date.now() - createdAt < 30_000;
+                if (isFirstTime) {
+                  logAppsFlyerEvent("af_complete_registration", {
+                    af_registration_method: method,
+                  });
+                } else {
+                  logAppsFlyerEvent("af_login", {
+                    af_login_method: method,
+                  });
+                }
+                // Mixpanel bundled login: identify + profile + super properties + Login/Signup event.
+                mixpanelService.trackLogin({
+                  id: s.user.id,
+                  email: account?.email ?? s.user.email ?? null,
+                  provider: method,
+                  displayName: account?.display_name ?? null,
+                  isFirstTime,
+                });
+              } catch (e) {
+                console.warn("[AppsFlyer/Mixpanel] first-event fire failed:", e);
+              }
+            })();
+          }
         }
       } else if (_event === "SIGNED_OUT") {
         // Defensive Constitution #6 coverage — clears stores even when
@@ -215,6 +303,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // ORCH-0740 Cycle 1: companion to clearAllStores() — also clear RQ
         // cache when signOut happens server-side (closes HF-1 from ORCH-0738).
         queryClient.clear();
+        // ORCH-0808 — Constitution #6: clear AppsFlyer identity + dedup cache
+        // so the next signed-in user is not attributed under the prior user's
+        // customer_user_id, and the device-registration upsert re-runs fresh.
+        clearAppsFlyerUserId();
+        resetAppsFlyerDeviceCache();
+        afEventFiredRef.current = false;
+        // ORCH-0808-FOLLOWUP — Mixpanel: fire Logout event + reset distinct_id
+        // so the next signed-in user is not attributed to the prior user.
+        mixpanelService.trackLogout();
+        // ORCH-0808-FOLLOWUP — RevenueCat: reset to anonymous appUserID.
+        revenueCatService.logOut();
+        // ORCH-0808-FOLLOWUP — OneSignal: unlink device from user alias.
+        logoutOneSignal();
       }
       setLoading(false);
     });
@@ -517,6 +618,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Query cache so cached query data doesn't survive signout (closes HF-1
     // from ORCH-0738).
     queryClient.clear();
+    // ORCH-0808 — companion to clearAllStores() — clear AppsFlyer identity
+    // + dedup cache so the next signed-in user is attributed correctly. The
+    // SIGNED_OUT handler in onAuthStateChange also calls this defensively for
+    // server-fired signouts (token revoked, etc.); explicit-signOut runs it
+    // here for symmetry.
+    clearAppsFlyerUserId();
+    resetAppsFlyerDeviceCache();
+    afEventFiredRef.current = false;
+    // ORCH-0808-FOLLOWUP — Mixpanel: fire Logout event + reset distinct_id.
+    mixpanelService.trackLogout();
+    // ORCH-0808-FOLLOWUP — RevenueCat: reset to anonymous appUserID.
+    revenueCatService.logOut();
+    // ORCH-0808-FOLLOWUP — OneSignal: unlink device from user alias.
+    logoutOneSignal();
   }, []);
 
   const authStatus = useMemo(

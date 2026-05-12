@@ -16,6 +16,8 @@ import {
   type EventCoverMediaProvider,
 } from "../types/eventCoverProvider";
 import { draftToServerUpdate, publishedVisibilityForDraft } from "../utils/serverDraftEventMapper";
+// ORCH-0808 — organizer-funnel instrumentation.
+import { logAppsFlyerEvent } from "./appsFlyerService";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -519,6 +521,16 @@ export const publishBusinessEventDraft = async (
   if (response.event.slug.startsWith("draft-")) {
     throw new Error("Publish returned a draft placeholder slug.");
   }
+
+  // ORCH-0808 — organizer-funnel event. Fires on every successful publish
+  // (NOT every re-publish — `business_publish_event_draft` RPC only succeeds
+  // on the draft→live transition; subsequent edits go through update RPCs).
+  // Fire-and-forget; no-op when AppsFlyer env missing.
+  logAppsFlyerEvent("mingla_event_published", {
+    event_id: response.event.id,
+    brand_id: response.brand.id,
+  });
+
   return eventFromPublishResponse(response);
 };
 

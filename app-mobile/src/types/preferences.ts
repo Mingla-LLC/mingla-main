@@ -38,4 +38,15 @@ export interface UserPreferences {
 
   // ORCH-0434: Multi-day date selection for 'pick_dates' mode
   selected_dates: string[] | null;
+
+  // ORCH-0809: Discover Ticketmaster city picker.
+  // NULL on all five = no override; Discover uses GPS-resolved city as default.
+  // All five are written together when the user picks a city via CityPickerSheet
+  // (Slice M2). lat/lng are denormalized from Google Places autocomplete and
+  // feed the ticketmaster-events edge function's <5-result lat/lng fallback path.
+  discover_city_name?: string | null;
+  discover_city_state_code?: string | null;
+  discover_city_country_code?: string | null;
+  discover_city_lat?: number | null;
+  discover_city_lng?: number | null;
 }
