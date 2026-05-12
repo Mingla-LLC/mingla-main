@@ -59,6 +59,7 @@ on:
 #   - ORCH-0786 (orch-0786-creator-avatar-upload-integrity.mjs) — creator avatar upload uses expo-file-system + canonical URL + Image onError fallback
 #   - ORCH-0795 (orch-0795-event-scanner-auto-provision.mjs) — event_scanners auto-provision trigger + UI honesty plumbing (I-PROPOSED-AZ EVENT_HAS_MANAGER_SCANNER)
 #   - ORCH-0788 (orch-0788-notification-template-key-dispatched.mjs) — buyer notification dispatcher routes by template_key + writers inline-dispatch + sweeper migration (I-PROPOSED-BA NOTIFICATION_TEMPLATE_KEY_DISPATCHED)
+#   - ORCH-0793 (orch-0793-scan-time-window.mjs) — biz_ticket_scan event_dates time-window enforcement + mobile discriminator plumbing (I-PROPOSED-BB SCAN_TIME_WINDOW_ENFORCED)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -542,3 +543,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0788 gate
         run: node .github/scripts/strict-grep/orch-0788-notification-template-key-dispatched.mjs
+
+  orch-0793-scan-time-window:
+    name: "ORCH-0793: biz_ticket_scan event_dates time-window enforcement (I-PROPOSED-BB)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0793 gate
+        run: node .github/scripts/strict-grep/orch-0793-scan-time-window.mjs

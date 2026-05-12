@@ -89,6 +89,37 @@ const formatRelativeTime = (iso: string): string => {
   return `${Math.floor(delta / RELATIVE_TIME_MS.day)}d ago`;
 };
 
+// ORCH-0793 — render an upcoming door time as the operator reads it.
+// Same day → "at 9:00 PM"; tomorrow → "tomorrow 9:00 PM";
+// further out → "Fri Nov 14, 9:00 PM". UTC ISO in, locale string out.
+const formatDoorTime = (iso: string): string => {
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return "";
+  const now = new Date();
+  const sameDay =
+    then.getFullYear() === now.getFullYear() &&
+    then.getMonth() === now.getMonth() &&
+    then.getDate() === now.getDate();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const isTomorrow =
+    then.getFullYear() === tomorrow.getFullYear() &&
+    then.getMonth() === tomorrow.getMonth() &&
+    then.getDate() === tomorrow.getDate();
+  const time = then.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  if (sameDay) return `at ${time}`;
+  if (isTomorrow) return `tomorrow ${time}`;
+  const date = then.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  return `${date}, ${time}`;
+};
+
 interface ResultOverlayState {
   kind: ScanResult;
   message: string;
@@ -123,6 +154,16 @@ const overlaySpec = (kind: ScanResult): ResultOverlaySpec => {
         iconName: "close",
         iconColor: semantic.error,
         badgeBg: "rgba(239, 68, 68, 0.18)",
+      };
+    // ORCH-0793 — time-window discriminators. Warning tone (amber/flag)
+    // matches "duplicate" because both are recoverable: the ticket stays
+    // valid and the buyer can re-scan inside the window.
+    case "not_yet_open":
+    case "event_ended":
+      return {
+        iconName: "flag",
+        iconColor: accent.warm,
+        badgeBg: "rgba(235, 120, 37, 0.18)",
       };
     default: {
       const _exhaust: never = kind;
@@ -330,17 +371,36 @@ export default function ScannerCameraRoute(): React.ReactElement {
             );
             return;
           }
-          const message =
-            kind === "duplicate"
-              ? "Already checked in"
-              : kind === "wrong_event"
-                ? "Different event"
-                : kind === "void"
-                  ? "Ticket not valid"
-                  : "Ticket not found";
-          showResult({ kind, message, detail: result.ticketName ?? undefined });
+          // ORCH-0793 — explicit branches so the time-window cases can
+          // pull nextStartAt / lastEndAt off the server response.
+          let message: string;
+          let detail: string | undefined = result.ticketName ?? undefined;
+          if (kind === "duplicate") {
+            message = "Already checked in";
+          } else if (kind === "wrong_event") {
+            message = "Different event";
+          } else if (kind === "void") {
+            message = "Ticket not valid";
+          } else if (kind === "not_yet_open") {
+            message = "Doors aren't open yet";
+            detail = result.nextStartAt
+              ? `Opens ${formatDoorTime(result.nextStartAt)}`
+              : "Try again closer to start time";
+          } else if (kind === "event_ended") {
+            message = result.lastEndAt
+              ? `Event ended ${formatRelativeTime(result.lastEndAt)}`
+              : "Event has ended";
+            detail = "Ticket can't be used after the event";
+          } else {
+            message = "Ticket not found";
+          }
+          showResult({ kind, message, detail });
+          // Warning tone for recoverable states (duplicate + the two new
+          // time-window states); Error tone for the not-recoverable ones.
           void Haptics.notificationAsync(
-            kind === "duplicate"
+            kind === "duplicate" ||
+              kind === "not_yet_open" ||
+              kind === "event_ended"
               ? Haptics.NotificationFeedbackType.Warning
               : Haptics.NotificationFeedbackType.Error,
           );
@@ -634,6 +694,9 @@ const SESSION_RESULT_LABEL: Record<ScanResult, string> = {
   not_found: "404",
   void: "VOID",
   cancelled_order: "CXLD",
+  // ORCH-0793 — time-window discriminators in the session log tail.
+  not_yet_open: "EARLY",
+  event_ended: "LATE",
 };
 
 const SESSION_RESULT_ICON: Record<ScanResult, "check" | "flag" | "close"> = {
@@ -643,6 +706,8 @@ const SESSION_RESULT_ICON: Record<ScanResult, "check" | "flag" | "close"> = {
   not_found: "close",
   void: "close",
   cancelled_order: "close",
+  not_yet_open: "flag",
+  event_ended: "flag",
 };
 
 const SessionLogRow: React.FC<SessionLogRowProps> = ({ scan }) => {

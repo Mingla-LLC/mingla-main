@@ -51,7 +51,11 @@ export type ScanResult =
   | "wrong_event"
   | "not_found"
   | "void"
-  | "cancelled_order";
+  | "cancelled_order"
+  // ORCH-0793 — time-window discriminators. Neither flips tickets.status,
+  // so the same ticket can succeed when re-scanned inside the window.
+  | "not_yet_open"
+  | "event_ended";
 
 export interface ScanRecord {
   /** sc_<base36-ts>_<base36-rand4> */

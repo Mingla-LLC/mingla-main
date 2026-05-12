@@ -16,12 +16,25 @@
 import { supabase } from "./supabase";
 
 export interface ServerScanResult {
-  result: "success" | "duplicate" | "wrong_event" | "not_found" | "void";
+  result:
+    | "success"
+    | "duplicate"
+    | "wrong_event"
+    | "not_found"
+    | "void"
+    // ORCH-0793 — buyer-burn-prevention discriminators. Both leave
+    // tickets.status='valid' so the buyer can retry inside the window.
+    | "not_yet_open"
+    | "event_ended";
   scanId: string | null;
   ticketId: string | null;
   orderId: string | null;
   buyerName: string | null;
   ticketName: string | null;
+  // ORCH-0793 — ISO8601. Present when result='not_yet_open'.
+  nextStartAt: string | null;
+  // ORCH-0793 — ISO8601. Present when result='event_ended'.
+  lastEndAt: string | null;
 }
 
 export type ScanTicketErrorCode =
