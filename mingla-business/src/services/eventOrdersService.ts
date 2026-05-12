@@ -51,7 +51,6 @@ interface OrderRow {
   cancelled_by: string | null;
   cancellation_reason: string | null;
   refunded_amount_cents: number;
-  application_fee_amount_cents: number | null;
   stripe_application_fee_amount_cents: number | null;
   events: { brand_id: null | string } | null;
   order_line_items: OrderLineItemRow[];
@@ -147,7 +146,6 @@ export const fetchEventOrders = async (
       cancelled_by,
       cancellation_reason,
       refunded_amount_cents,
-      application_fee_amount_cents,
       stripe_application_fee_amount_cents,
       events!inner ( brand_id ),
       order_line_items (
@@ -237,7 +235,11 @@ export const fetchEventOrders = async (
       refundedAmountGbp: refundedAmountMajor,
       refundedAmount: refundedAmountMajor,
       refundedAmountCents: order.refunded_amount_cents ?? 0,
-      applicationFeeAmountCents: order.application_fee_amount_cents ?? 0,
+      // ORCH-0796 HOTFIX: orders.application_fee_amount_cents was defined in
+      // migration 20260515000013 but never landed in prod; only the
+      // stripe_application_fee_amount_cents (webhook-confirmed) column exists.
+      // The moneySummary fallback chain stays as defensive code in case the
+      // column gets added in a future migration.
       stripeApplicationFeeAmountCents: order.stripe_application_fee_amount_cents,
       refunds: succeededRefunds.map((row) => ({
         ...mapRefundRow(row, orderCurrency),
