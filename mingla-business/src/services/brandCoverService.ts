@@ -65,6 +65,23 @@ export const uploadBrandCover = async (
     );
   }
 
+  // ORCH-0805 hotfix (2026-05-12) — pre-read size guard. Reject oversize
+  // files via expo-image-picker's `asset.fileSize` BEFORE the byte read,
+  // because `expo-file-system.File.arrayBuffer()` on a 15–30 MB GIF blocks
+  // the JS thread long enough to look like a hard app freeze. Most modern
+  // ImagePicker invocations return a numeric fileSize on both iOS and
+  // Android; when it's absent we fall through to the post-read check
+  // below (rare path, acceptable brief freeze risk).
+  if (
+    typeof input.fileSize === "number" &&
+    input.fileSize > BRAND_COVER_MAX_BYTES
+  ) {
+    throw new BrandCoverError(
+      "file_too_large",
+      "That file is too large — pick one under 8 MB.",
+    );
+  }
+
   const { bytes, byteLength } = await readBrandCoverFileBytes(input.uri);
 
   // ORCH-0786 — fetch(uri).blob() silently returns size-0 on RN iOS.
@@ -78,7 +95,7 @@ export const uploadBrandCover = async (
   if (byteLength > BRAND_COVER_MAX_BYTES) {
     throw new BrandCoverError(
       "file_too_large",
-      "That file is too large — pick one under 15 MB.",
+      "That file is too large — pick one under 8 MB.",
     );
   }
 

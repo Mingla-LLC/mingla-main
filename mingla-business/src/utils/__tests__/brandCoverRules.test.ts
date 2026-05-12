@@ -22,8 +22,8 @@ describe("BRAND_COVER_ALLOWED_MIME_TYPES", () => {
     ]);
   });
 
-  test("max bytes is 15 MB", () => {
-    expect(BRAND_COVER_MAX_BYTES).toBe(15 * 1024 * 1024);
+  test("max bytes is 8 MB (ORCH-0805 hotfix — lowered from 15 MB after device-freeze report)", () => {
+    expect(BRAND_COVER_MAX_BYTES).toBe(8 * 1024 * 1024);
   });
 });
 

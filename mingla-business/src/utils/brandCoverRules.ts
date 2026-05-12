@@ -16,7 +16,15 @@
  * Per ORCH-0805 SPEC §6.1.
  */
 
-export const BRAND_COVER_MAX_BYTES = 15 * 1024 * 1024; // 15 MB
+// ORCH-0805 hotfix (2026-05-12) — lowered from 15 MB to 8 MB after operator
+// device smoke reported full app freeze on a real GIF pick. Root cause:
+// reading 10–30 MB of bytes through expo-file-system blocks the JS thread
+// long enough to look like a hard freeze. 8 MB keeps cover quality high
+// while bounding worst-case read time to ~1–2 s on real devices. Bucket
+// `file_size_limit` lowered to match in
+// `20260529000001_orch_0805_brand_covers_lower_cap.sql` to preserve
+// Constitution #13 exclusion-consistency.
+export const BRAND_COVER_MAX_BYTES = 8 * 1024 * 1024; // 8 MB
 
 export const BRAND_COVER_ALLOWED_MIME_TYPES = [
   "image/jpeg",

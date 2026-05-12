@@ -229,7 +229,7 @@ const UploadTab: React.FC<TabProps> = ({ onPick, disabled }) => {
         <Icon name="upload" size={28} color={accent.warm} />
         <Text style={styles.uploadCardTitle}>Upload from your device</Text>
         <Text style={styles.uploadCardBody}>
-          JPEG, PNG, WebP, or animated GIF. Up to 15 MB.
+          JPEG, PNG, WebP, or animated GIF. Up to 8 MB.
         </Text>
         <View style={styles.uploadCardBtn}>
           <Button
