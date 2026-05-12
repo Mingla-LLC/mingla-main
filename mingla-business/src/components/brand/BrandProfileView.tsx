@@ -54,19 +54,13 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
-import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
-
-interface ToastState {
-  visible: boolean;
-  message: string;
-}
 
 interface OperationsRow {
   icon: IconName;
   label: string;
   sub: string;
-  /** Tap handler — navigation when the journey is live, fireToast when not. */
+  /** Tap handler — navigation to the linked surface. */
   onPress: () => void;
 }
 
@@ -99,8 +93,8 @@ const normalizeSocialUrl = (raw: string, base: string): string => {
  * which calls router.push to navigate. This view component never imports
  * `useRouter` — keeps the view re-renderable in tests / web parity.
  *
- * Tax & VAT row (Operations row #3) stays TRANSITIONAL Toast until §5.3.6
- * settings cycle — no `onTax` prop yet.
+ * Tax & VAT is configured under Payments & Stripe (ORCH-0804 "Tax &
+ * registrations" CTA in BrandPaymentsView). No standalone Operations row.
  */
 export interface BrandProfileViewProps {
   brand: Brand | null;
@@ -190,7 +184,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onRequestDelete,
 }) => {
   const insets = useSafeAreaInsets();
-  const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
 
   // ORCH-0807 Rev 3 — Brand cover band on the hero card. 3-state fallback
   // chain mirrors PublicBrandPage.tsx:259-304 verbatim: (1) coverMediaUrl
@@ -205,14 +198,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   useEffect(() => {
     setCoverMediaFailed(false);
   }, [coverMediaUrl]);
-
-  const fireToast = useCallback((message: string): void => {
-    setToast({ visible: true, message });
-  }, []);
-
-  const handleDismissToast = useCallback((): void => {
-    setToast((prev) => ({ ...prev, visible: false }));
-  }, []);
 
   const handleEdit = useCallback((): void => {
     if (brand !== null) {
@@ -253,12 +238,10 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     [onOpenLink],
   );
 
-  // Hook-derived Operations rows. Per-row onPress closes over either
-  // fireToast (still-TRANSITIONAL rows) or the live navigation callback.
-  // Live wirings: J-A8 onEdit (sticky shelf — separate from this list) ·
-  // J-A9 onTeam (Team row) · J-A10 onPayments (Payments row) ·
+  // Hook-derived Operations rows. Each row's onPress is a live navigation
+  // callback. Live wirings: J-A8 onEdit (sticky shelf — separate from this
+  // list) · J-A9 onTeam (Team row) · J-A10 onPayments (Payments row) ·
   // J-A12 onReports (Finance reports row).
-  // [TRANSITIONAL] Tax & VAT row stays TRANSITIONAL until §5.3.6 settings cycle.
   // Cycle 13a (SPEC §4.14): Audit log row gated on brand_admin+ rank.
   // useCurrentBrandRole runs every render with the current brand id; null
   // brand short-circuits via the hook's `enabled` flag, never an early return
@@ -290,12 +273,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         },
       },
       {
-        icon: "receipt",
-        label: "Tax & VAT",
-        sub: "Not configured",
-        onPress: () => fireToast("Tax settings land in a later cycle."),
-      },
-      {
         icon: "chart",
         label: "Finance reports",
         sub: "Stripe-ready CSVs",
@@ -317,7 +294,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     return rows;
   }, [
     brand,
-    fireToast,
     onTeam,
     onPayments,
     onReports,
@@ -655,15 +631,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           </View>
         </View>
       </View>
-
-      <View style={styles.toastWrap} pointerEvents="box-none">
-        <Toast
-          visible={toast.visible}
-          kind="info"
-          message={toast.message}
-          onDismiss={handleDismissToast}
-        />
-      </View>
     </View>
   );
 };
@@ -929,14 +896,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // Toast ----------------------------------------------------------------
-  toastWrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 96,
-    paddingHorizontal: spacing.md,
-  },
   // Cycle 17e-A — danger zone for brand deletion
   dangerZone: {
     marginTop: spacing.xl,
