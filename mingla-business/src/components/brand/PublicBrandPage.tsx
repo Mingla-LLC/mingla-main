@@ -40,8 +40,10 @@
  *   driven by hue — mirror `EventCover.tsx`'s `baseColour` pattern.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Image as ExpoImage } from "expo-image";
 import {
+  Image as RNImage,
   Linking,
   Platform,
   Pressable,
@@ -102,6 +104,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const userBrands = useBrandList();
   const [activeTab, setActiveTab] = useState<Tab>("upcoming");
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
+  // ORCH-0805 — track cover media load failure so the hero falls back to the
+  // hue gradient. Reset whenever the underlying URL changes.
+  const [coverMediaFailed, setCoverMediaFailed] = useState<boolean>(false);
+  const coverMediaUrl = brand?.coverMediaUrl ?? null;
+  useEffect(() => {
+    setCoverMediaFailed(false);
+  }, [coverMediaUrl]);
 
   // Founder-aware close chrome: shown only when the visitor owns this
   // brand. Forward-compat — when B-cycle wires real auth + useBrandList
@@ -247,16 +256,50 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         </Head>
       ) : null}
 
-      {/* Cover band hero — hue driven by brand.coverHue (Cycle 7 FX2 + FX3).
-          Uses hsl() — RN normalize-colors only accepts hex/rgb/hsl/hwb.
-          See header docstring "Platform notes" for the lesson. */}
+      {/* ORCH-0805 — cover hero with 3-state fallback chain.
+          1. brand.coverMediaUrl present + load succeeds → image element
+             (expo-image on Android for correct GIF animation; RN core
+             <Image> on iOS + web because both platforms animate GIFs
+             natively and expo-image's web shim has surfaced render-not-loading
+             issues in this codebase — ORCH-0805-WEB hotfix 2026-05-12).
+          2. brand.coverMediaUrl present but load fails → hue gradient
+             (defensive fallback; onError flips coverMediaFailed).
+          3. brand.coverMediaUrl null → hue gradient (legacy / unset brands).
+          Hue fallback uses hsl() — RN normalize-colors only accepts
+          hex/rgb/hsl/hwb. See header docstring "Platform notes". */}
       <View style={styles.heroWrap} pointerEvents="none">
-        <View
-          style={[
-            styles.heroGradient,
-            { backgroundColor: `hsl(${brand.coverHue}, 60%, 45%)` },
-          ]}
-        />
+        {coverMediaUrl !== null && coverMediaUrl.length > 0 && !coverMediaFailed ? (
+          Platform.OS === "android" ? (
+            <ExpoImage
+              source={{ uri: coverMediaUrl }}
+              style={styles.heroGradient}
+              contentFit="cover"
+              onError={() => setCoverMediaFailed(true)}
+              accessibilityLabel="Brand cover"
+            />
+          ) : (
+            <RNImage
+              source={{ uri: coverMediaUrl }}
+              // ORCH-0805-WEB hotfix 2026-05-12 — explicit width/height: "100%"
+              // is mandatory on react-native-web; the heroGradient style's
+              // `position: absolute; inset: 0` alone does NOT stretch the
+              // DOM <img> element to fill its parent the way it does on RN
+              // native. Without these dimensions, the cover renders at 0px
+              // size and looks like the page is missing the cover entirely.
+              style={[styles.heroGradient, { width: "100%", height: "100%" }]}
+              resizeMode="cover"
+              onError={() => setCoverMediaFailed(true)}
+              accessibilityLabel="Brand cover"
+            />
+          )
+        ) : (
+          <View
+            style={[
+              styles.heroGradient,
+              { backgroundColor: `hsl(${brand.coverHue}, 60%, 45%)` },
+            ]}
+          />
+        )}
         <View style={styles.heroFade} />
       </View>
 

@@ -112,6 +112,7 @@ export default function BrandEditRoute(): React.ReactElement {
     >
       <BrandEditView
         brand={brand}
+        accountId={user?.id ?? null}
         onCancel={handleBack}
         onSave={handleSave}
         onAfterSave={handleBack}

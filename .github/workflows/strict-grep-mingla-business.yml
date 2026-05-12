@@ -577,3 +577,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0806 gate
         run: node .github/scripts/strict-grep/orch-0806-audit-action-labels.mjs
+
+  orch-0805-brand-cover-overhaul:
+    name: "ORCH-0805: brand cover overhaul (custom upload + Pexels + GIPHY) (I-PROPOSED-BE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0805 gate
+        run: node .github/scripts/strict-grep/orch-0805-brand-cover-overhaul.mjs

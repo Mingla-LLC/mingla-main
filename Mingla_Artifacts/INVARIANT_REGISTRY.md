@@ -7,6 +7,24 @@
 
 ---
 
+## ACTIVE (post ORCH-0805 CLOSE 2026-05-12)
+
+One invariant introduced by ORCH-0805 SPEC §10 — the brand cover overhaul. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0805 CLOSE after Claude `mingla-tester` CONDITIONAL PASS verdict upgraded to PASS on operator acceptance of the SPEC §11 Check 8 deviation (P0:0 P1:0 P2:1 P3:2 P4:5).
+
+### I-PROPOSED-BE BRAND_COVER_MEDIA_HONORED
+
+**Rule:** When `brands.cover_media_url` is non-null, the public brand page hero (`PublicBrandPage.tsx`) AND the edit-brand preview (`BrandEditView.tsx`) MUST render the media URL via `expo-image` (correct GIF animation on Android). The hue gradient (`brands.cover_hue`) is a fallback render path used ONLY when `cover_media_url` IS NULL OR the media URL fails to load (`onError` flip). The 6-swatch user-selectable hue picker MUST NOT be reintroduced as a primary cover authoring affordance. `cover_media_url` writes flow through `useBrandCoverUpload` (routes through `brandCoverService.uploadBrandCover` for device uploads and `coverFromProviderRef` → `validateBrandCoverProviderUrl` for Pexels/GIPHY refs) — no direct writes from components.
+
+**Storage tier:** `brand_covers` Supabase Storage bucket with `public = true` for anonymous read, brand-admin-only write/update/delete via `public.biz_brand_effective_rank_for_caller((split_part(name, '/', 1))::uuid) >= public.biz_role_rank('brand_admin')`. Path convention `{brandId}/{token}.{ext}` enforced by service layer. Bucket `allowed_mime_types ARRAY['image/jpeg','image/png','image/webp','image/gif']` matches client `BRAND_COVER_ALLOWED_MIME_TYPES` exactly (Constitution #13 exclusion-consistency). Bucket `file_size_limit = 15728640` (15 MB) matches client `BRAND_COVER_MAX_BYTES`.
+
+**Enforcement:** Strict-grep gate `orch-0805-brand-cover-overhaul` in `.github/workflows/strict-grep-mingla-business.yml` (9 checks — SPEC §11 had 10, Check 8 dropped per implementation §3 / QA report P2 / operator acceptance because retaining the literal `"Photo upload lands in a later cycle."` is required by SPEC §15's avatar-deferral hard guard). Negative controls proven on 3 different check paths (Checks 5, 6, 7).
+
+**Test:** `mingla-business/src/utils/__tests__/brandCoverRules.test.ts` — 28 jest specs covering MIME resolution, media-type discriminator, storage path, path token, public URL extraction with query strip + cross-bucket reject, Pexels/GIPHY allowlist validation including host-mismatch reject + HTTP reject + malformed URL reject.
+
+**Migration hotfix during CLOSE:** the initial migration draft used `biz_brand_effective_rank(btm.role::text)` which is not a valid function signature (the actual `biz_brand_effective_rank` takes `(uuid, uuid)`). Replaced with `biz_brand_effective_rank_for_caller(uuid)` SECURITY DEFINER helper. Recorded as META-ORCH-0805-PROCESS-A follow-up to codify "validate RLS helper signatures via `grep CREATE OR REPLACE FUNCTION` before writing the policy" so future SPECs don't repeat the mistake.
+
+---
+
 ## ACTIVE (post ORCH-0806 CLOSE 2026-05-12)
 
 One invariant introduced by ORCH-0806 SPEC §9 + §10 — the audit-log slug→label resolver. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0806 CLOSE after Claude `mingla-tester` PASS verdict (P0:0 P1:0 P2:1 P3:2 P4:2) with all three local gates re-run independently (tsc EXIT 0, jest 35/35, strict-grep 8/8) and negative control re-proven on a different slug (`mingla_tos_accept`) than the implementor used (`order_cancelled`).
