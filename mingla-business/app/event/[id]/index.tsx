@@ -37,6 +37,7 @@ import {
 } from "../../../src/store/liveEventStore";
 import { useDraftById } from "../../../src/store/draftEventStore";
 import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
+import { useGuestStore } from "../../../src/store/guestStore";
 import { useScanStore } from "../../../src/store/scanStore";
 import { useEventEditLogStore } from "../../../src/store/eventEditLogStore";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
@@ -346,6 +347,12 @@ export default function EventDetailScreen(): React.ReactElement {
     }
     return count;
   }, [allDoorEntries, event]);
+  const allCompEntries = useGuestStore((s) => s.entries);
+  const compGuestCount = useMemo<number>(() => {
+    if (event === null) return 0;
+    return allCompEntries.filter((c) => c.eventId === event.id).length;
+  }, [allCompEntries, event]);
+  const totalGuestCount = totalSoldCount + doorSoldCount + compGuestCount;
   const moneySummary = useMemo(
     () =>
       summarizeEventMoney({
@@ -647,7 +654,7 @@ export default function EventDetailScreen(): React.ReactElement {
           <ActionTile
             icon="user"
             label="Guests"
-            sub="0 pending"
+            sub={`${totalGuestCount} ${totalGuestCount === 1 ? "guest" : "guests"}`}
             onPress={handleGuests}
           />
           <ActionTile
