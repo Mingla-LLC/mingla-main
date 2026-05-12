@@ -369,9 +369,10 @@ export default function EventDetailScreen(): React.ReactElement {
     [allDoorEntries, allOrderEntries, event],
   );
   const revenueGbp = moneySummary.onlineRevenue;
-  // [TRANSITIONAL] payout = revenue × 0.96 (4% stub Stripe fee retention).
-  // EXIT: B-cycle wires real Stripe payouts; payout comes from Stripe API.
-  const payoutGbp = moneySummary.payoutEstimate - moneySummary.doorRevenue;
+  // ORCH-0796 — online-only net to organiser, derived from real Stripe app-fee + refund
+  // columns. Null when no online activity exists; KPI card renders that as 0 via its
+  // existing hasData guard.
+  const payoutGbp = moneySummary.onlineNetMajor;
   const doorRevenue = moneySummary.doorRevenue;
   const displayCurrency = event?.currency ?? brand?.defaultCurrency ?? moneySummary.expectedCurrency;
   // Per-tier sold count map — stable ref via raw entries + useMemo (same
@@ -666,7 +667,6 @@ export default function EventDetailScreen(): React.ReactElement {
             <ActionTile
               icon="user"
               label="Brand page"
-              sub={`@${brand.slug}`}
               onPress={handleBrandPage}
             />
           ) : null}

@@ -167,11 +167,10 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   });
   const bannerConfig = BANNER_CONFIG[stripeStatus];
 
-  // [TRANSITIONAL] payouts + refunds still read from Zustand stub (brand.payouts,
-  // brand.refunds). B2a does NOT migrate these to real `payouts` + `refunds`
-  // table queries — that ships in B2b/B3 per SPEC §3.2 non-goals + DISC-2 +
-  // DISC-7 from forensics. Existing Zustand fields will be deprecated to
-  // orphan storage at that time; persist migration v12→v13 will drop them.
+  // ORCH-0796 — `brand.payouts` and `brand.refunds` are intentionally unpopulated
+  // by mapBrandRowToUi today (ORCH-0742 collapsed the persist payload to currentBrandId
+  // only). This screen renders the empty state. Real per-brand payout/refund listing
+  // is tracked separately from per-event reconciliation.
   const sortedPayouts = useMemo<BrandPayout[]>(() => {
     if (brand === null) return [];
     return (brand.payouts ?? [])
@@ -416,9 +415,6 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           </GlassCard>
         ) : (
           <GlassCard variant="base" padding={0}>
-            {/* [TRANSITIONAL] payout rows are visually inert in Cycle 2 —
-                no detail-view drill-in. B2 wires per-payout detail screens
-                with full Stripe transaction breakdown. */}
             {sortedPayouts.map((payout, index) => {
               const isLast = index === sortedPayouts.length - 1;
               return (

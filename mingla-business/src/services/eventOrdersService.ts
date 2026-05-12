@@ -29,6 +29,7 @@ interface RefundRow {
   processed_at: string | null;
   created_at: string;
   stripe_refund_id: string | null;
+  application_fee_refunded_cents: number | null;
   refund_line_items: RefundLineItemRow[];
 }
 
@@ -50,6 +51,8 @@ interface OrderRow {
   cancelled_by: string | null;
   cancellation_reason: string | null;
   refunded_amount_cents: number;
+  application_fee_amount_cents: number | null;
+  stripe_application_fee_amount_cents: number | null;
   events: { brand_id: null | string } | null;
   order_line_items: OrderLineItemRow[];
   refunds: RefundRow[];
@@ -107,6 +110,7 @@ const mapRefundRow = (row: RefundRow, orderCurrency: string): RefundRecord => {
       amountGbp: rli.amount_cents / 100,
       amount: rli.amount_cents / 100,
     })),
+    applicationFeeRefundedCents: row.application_fee_refunded_cents ?? 0,
   };
 };
 
@@ -143,6 +147,8 @@ export const fetchEventOrders = async (
       cancelled_by,
       cancellation_reason,
       refunded_amount_cents,
+      application_fee_amount_cents,
+      stripe_application_fee_amount_cents,
       events!inner ( brand_id ),
       order_line_items (
         id,
@@ -161,6 +167,7 @@ export const fetchEventOrders = async (
         processed_at,
         created_at,
         stripe_refund_id,
+        application_fee_refunded_cents,
         refund_line_items (
           order_line_item_id,
           ticket_type_id,
@@ -222,12 +229,16 @@ export const fetchEventOrders = async (
       }),
       totalGbpAtPurchase: order.total_cents / 100,
       totalAtPurchase: order.total_cents / 100,
+      totalCents: order.total_cents,
       currency: orderCurrency,
       paymentMethod: paymentMethodFromRow(order.payment_method),
       paidAt: order.confirmed_at ?? order.created_at,
       status: statusFromPayment(order.payment_status),
       refundedAmountGbp: refundedAmountMajor,
       refundedAmount: refundedAmountMajor,
+      refundedAmountCents: order.refunded_amount_cents ?? 0,
+      applicationFeeAmountCents: order.application_fee_amount_cents ?? 0,
+      stripeApplicationFeeAmountCents: order.stripe_application_fee_amount_cents,
       refunds: succeededRefunds.map((row) => ({
         ...mapRefundRow(row, orderCurrency),
         orderId: order.id,

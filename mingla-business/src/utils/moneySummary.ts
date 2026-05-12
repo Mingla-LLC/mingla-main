@@ -4,7 +4,12 @@ import { normalizeCurrency } from "./currency";
 export type MoneySource = "order" | "door_sale" | "refund" | "legacy_brand";
 export type MoneyDoorPaymentMethod = "cash" | "card_reader" | "nfc" | "manual";
 
-type MoneyRefund = { amount?: number; amountGbp: number };
+type MoneyRefund = {
+  amount?: number;
+  amountGbp: number;
+  /** ORCH-0796 — app-fee portion of the refund in minor units. */
+  applicationFeeRefundedCents?: number;
+};
 
 type MoneyOrderRecord = {
   id: string;
@@ -12,6 +17,11 @@ type MoneyOrderRecord = {
   totalGbpAtPurchase: number;
   refundedAmount?: number;
   refundedAmountGbp: number;
+  /** ORCH-0796 — minor-unit precision sources for expectedPayout computation. */
+  totalCents?: number;
+  refundedAmountCents?: number;
+  applicationFeeAmountCents?: number;
+  stripeApplicationFeeAmountCents?: number | null;
   currency: string;
   status: "paid" | "refunded_full" | "refunded_partial" | "cancelled";
   paymentMethod: CheckoutPaymentMethod;
@@ -51,7 +61,25 @@ export interface EventMoneySummary {
   onlineRefunded: number;
   doorRefunded: number;
   totalRefunded: number;
-  payoutEstimate: number;
+  /**
+   * Net to the organiser's Stripe account from online sales only, in
+   * expected-currency major units. Derived from real per-order Stripe
+   * application-fee columns. Null when no online activity exists. ORCH-0796.
+   */
+  onlineNetMajor: number | null;
+  /**
+   * Sum of Stripe application fees on online sales (major units). Equals
+   * `onlineRevenue - onlineNetMajor - onlineRefunded + appFeeRefunded`. Null
+   * when no online activity exists. ORCH-0796.
+   */
+  stripeFeeOnlineMajor: number | null;
+  /**
+   * Expected net to the organiser's Stripe account from this event, in
+   * expected-currency major units. Sum of online net + cash door revenue.
+   * Null when no payments (online or door) exist — signals UI to render "—".
+   * ORCH-0796.
+   */
+  expectedPayoutMajor: number | null;
   revenueByMethod: Partial<Record<CheckoutPaymentMethod | MoneyDoorPaymentMethod, number>>;
   byCurrency: CurrencyBreakdown[];
   mismatches: CurrencyMismatch[];
@@ -110,6 +138,12 @@ export const summarizeEventMoney = (args: {
   let doorRevenue = 0;
   let onlineRefunded = 0;
   let doorRefunded = 0;
+  // ORCH-0796 — net-to-organiser accumulators (minor units for precision).
+  // Only paid + refunded_partial orders in the expected currency contribute.
+  let onlineNetCents = 0;
+  let stripeFeeOnlineCents = 0;
+  let hasAnyOnlinePayment = false;
+  let hasAnyDoorPayment = false;
 
   const addRevenue = (
     method: CheckoutPaymentMethod | MoneyDoorPaymentMethod,
@@ -143,6 +177,33 @@ export const summarizeEventMoney = (args: {
     }
     onlineRevenue += live;
     if (live > 0) addRevenue(order.paymentMethod, live);
+
+    // ORCH-0796 — net-to-organiser per order from real Stripe columns.
+    // Only paid + refunded_partial orders contribute (refunded_full nets to 0 via the
+    // total - refunded subtraction; cancelled never went through Stripe).
+    if (isRevenueLive) {
+      hasAnyOnlinePayment = true;
+      const totalCents = order.totalCents
+        ?? Math.round((order.totalAtPurchase ?? order.totalGbpAtPurchase) * 100);
+      // Prefer Stripe-confirmed app fee; fall back to Mingla-intended when webhook
+      // hasn't landed yet. Treat null/undefined → 0 (defensive; real paid orders
+      // should always carry one of the two values).
+      const appFeeCents = order.stripeApplicationFeeAmountCents
+        ?? order.applicationFeeAmountCents
+        ?? 0;
+      const refundedCents = order.refundedAmountCents
+        ?? Math.round((order.refundedAmount ?? order.refundedAmountGbp) * 100);
+      const appFeeRefundedCents = order.refunds.reduce(
+        (acc, r) => acc + (r.applicationFeeRefundedCents ?? 0),
+        0,
+      );
+      // Destination-charge model: organiser receives (total - app_fee), reduced
+      // by net refunds (refund_amount - app_fee_refunded). Math.max guards a
+      // pathological refund-overshoot edge case.
+      const net = Math.max(0, totalCents - appFeeCents - refundedCents + appFeeRefundedCents);
+      onlineNetCents += net;
+      stripeFeeOnlineCents += Math.max(0, appFeeCents - appFeeRefundedCents);
+    }
   }
 
   for (const sale of args.doorSales) {
@@ -167,11 +228,23 @@ export const summarizeEventMoney = (args: {
       continue;
     }
     doorRevenue += live;
-    if (live > 0) addRevenue(sale.paymentMethod, live);
+    if (live > 0) {
+      addRevenue(sale.paymentMethod, live);
+      hasAnyDoorPayment = true;
+    }
   }
 
   const grossRevenue = round2(onlineRevenue + doorRevenue);
   const totalRefunded = round2(onlineRefunded + doorRefunded);
+
+  // ORCH-0796 — null signals "no payments" so UI renders "—" instead of £0.00.
+  const onlineNetMajor = hasAnyOnlinePayment ? round2(onlineNetCents / 100) : null;
+  const stripeFeeOnlineMajor = hasAnyOnlinePayment ? round2(stripeFeeOnlineCents / 100) : null;
+  const expectedPayoutMajor =
+    hasAnyOnlinePayment || hasAnyDoorPayment
+      ? round2((onlineNetCents / 100) + (hasAnyDoorPayment ? doorRevenue : 0))
+      : null;
+
   return {
     expectedCurrency,
     onlineRevenue: round2(onlineRevenue),
@@ -180,7 +253,9 @@ export const summarizeEventMoney = (args: {
     onlineRefunded: round2(onlineRefunded),
     doorRefunded: round2(doorRefunded),
     totalRefunded,
-    payoutEstimate: round2(round2(onlineRevenue * 0.96) + doorRevenue),
+    onlineNetMajor,
+    stripeFeeOnlineMajor,
+    expectedPayoutMajor,
     revenueByMethod,
     byCurrency: Array.from(byCurrency.values()).sort((a, b) =>
       a.currency.localeCompare(b.currency),

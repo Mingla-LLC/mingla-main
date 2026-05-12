@@ -14,8 +14,11 @@
  * (D-CYCLE13-RECON-FOR-1; B-cycle backlog). Cycle 13 dedupes by ticketId via Set for the
  * uniqueScannedTickets count.
  *
- * D-13-10 settlement-stub split: payoutEstimate = round(onlineRevenue × 96)/100 + doorRevenue.
- * Online×0.96 (Stripe fee stub); door×1.0 (cash fees zero; card_reader/NFC schedules ship B-cycle).
+ * D-13-10 (ORCH-0796 reframed): expectedPayoutMajor derived from real per-order Stripe
+ * application-fee columns (orders.stripe_application_fee_amount_cents +
+ * orders.refunded_amount_cents + refunds.application_fee_refunded_cents). Door revenue
+ * contributes 1.0 (cash; card_reader/NFC fee schedules ship when Terminal SDK lands).
+ * Returns null when no payments exist so UI renders "—" instead of £0.00.
  *
  * D1/D2/D3 discrepancy detection: ADVISORY-only per D-13-4. D4 (unscanned) is informational,
  * NOT a discrepancy (reframed as "no-shows" on past events per D-13-6).
@@ -82,8 +85,16 @@ export interface ReconciliationSummary {
   totalRefunded: number;
   /** Sum of values across all 8 keys MUST equal grossRevenue (within ±0.005 rounding tolerance). */
   revenueByMethod: Record<PaymentMethodKey, number>;
-  /** [TRANSITIONAL] payoutEstimate per D-13-10. EXIT: B-cycle Stripe payout API + Stripe Terminal SDK. */
-  payoutEstimate: number;
+  /**
+   * Expected net to organiser's Stripe account in event currency major units.
+   * Null when no payments exist — UI must render "—" rather than 0. ORCH-0796.
+   */
+  expectedPayoutMajor: number | null;
+  /**
+   * Stripe application fee on online sales (major units). Null when no online
+   * activity exists. ORCH-0796.
+   */
+  stripeFeeOnlineMajor: number | null;
   /** Online refund subtotal; for break-down rendering. */
   onlineRefunded: number;
   /** Door refund subtotal; for break-down rendering. */
@@ -151,7 +162,8 @@ export const EMPTY_SUMMARY: ReconciliationSummary = {
   grossRevenue: 0,
   totalRefunded: 0,
   revenueByMethod: { ...ZERO_REVENUE_BY_METHOD },
-  payoutEstimate: 0,
+  expectedPayoutMajor: null,
+  stripeFeeOnlineMajor: null,
   onlineRefunded: 0,
   doorRefunded: 0,
   currenciesPresent: [],
@@ -257,7 +269,8 @@ export const computeReconciliation = (
     onlineRefunded,
     doorRefunded,
     totalRefunded,
-    payoutEstimate,
+    expectedPayoutMajor,
+    stripeFeeOnlineMajor,
   } = moneySummary;
 
   // ---- Scans ----
@@ -377,7 +390,8 @@ export const computeReconciliation = (
     grossRevenue,
     totalRefunded,
     revenueByMethod,
-    payoutEstimate,
+    expectedPayoutMajor,
+    stripeFeeOnlineMajor,
     onlineRefunded: round2(onlineRefunded),
     doorRefunded: round2(doorRefunded),
     currenciesPresent: moneySummary.currenciesPresent,
