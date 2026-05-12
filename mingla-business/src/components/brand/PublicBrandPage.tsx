@@ -40,7 +40,8 @@
  *   driven by hue — mirror `EventCover.tsx`'s `baseColour` pattern.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Image as ExpoImage } from "expo-image";
 import {
   Linking,
   Platform,
@@ -102,6 +103,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const userBrands = useBrandList();
   const [activeTab, setActiveTab] = useState<Tab>("upcoming");
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
+  // ORCH-0805 — track cover media load failure so the hero falls back to the
+  // hue gradient. Reset whenever the underlying URL changes.
+  const [coverMediaFailed, setCoverMediaFailed] = useState<boolean>(false);
+  const coverMediaUrl = brand?.coverMediaUrl ?? null;
+  useEffect(() => {
+    setCoverMediaFailed(false);
+  }, [coverMediaUrl]);
 
   // Founder-aware close chrome: shown only when the visitor owns this
   // brand. Forward-compat — when B-cycle wires real auth + useBrandList
@@ -247,16 +255,31 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         </Head>
       ) : null}
 
-      {/* Cover band hero — hue driven by brand.coverHue (Cycle 7 FX2 + FX3).
-          Uses hsl() — RN normalize-colors only accepts hex/rgb/hsl/hwb.
-          See header docstring "Platform notes" for the lesson. */}
+      {/* ORCH-0805 — cover hero with 3-state fallback chain.
+          1. brand.coverMediaUrl present + load succeeds → expo-image
+             (correctly animates GIFs on Android, unlike RN core <Image>).
+          2. brand.coverMediaUrl present but load fails → hue gradient
+             (defensive fallback; onError flips coverMediaFailed).
+          3. brand.coverMediaUrl null → hue gradient (legacy / unset brands).
+          Hue fallback uses hsl() — RN normalize-colors only accepts
+          hex/rgb/hsl/hwb. See header docstring "Platform notes". */}
       <View style={styles.heroWrap} pointerEvents="none">
-        <View
-          style={[
-            styles.heroGradient,
-            { backgroundColor: `hsl(${brand.coverHue}, 60%, 45%)` },
-          ]}
-        />
+        {coverMediaUrl !== null && coverMediaUrl.length > 0 && !coverMediaFailed ? (
+          <ExpoImage
+            source={{ uri: coverMediaUrl }}
+            style={styles.heroGradient}
+            contentFit="cover"
+            onError={() => setCoverMediaFailed(true)}
+            accessibilityLabel="Brand cover"
+          />
+        ) : (
+          <View
+            style={[
+              styles.heroGradient,
+              { backgroundColor: `hsl(${brand.coverHue}, 60%, 45%)` },
+            ]}
+          />
+        )}
         <View style={styles.heroFade} />
       </View>
 

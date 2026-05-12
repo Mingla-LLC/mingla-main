@@ -32,6 +32,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -44,6 +45,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { brandPublicUrl } from "../../constants/publicUrls";
+import { joinBrandDescription } from "../../services/brandMapping";
 import type { Brand } from "../../store/currentBrandStore";
 
 import { Avatar } from "../ui/Avatar";
@@ -55,6 +57,7 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
+import { BrandCoverPickerSheet } from "./BrandCoverPickerSheet";
 
 interface ToastState {
   visible: boolean;
@@ -72,7 +75,10 @@ const POST_SAVE_NAV_DELAY_MS = 300;
 // Cycle 7 FX2 cover-hue tiles — MIRROR Cycle 3 CreatorStep4Cover.tsx
 // hue array verbatim. If the event-cover palette ever expands, brand
 // covers should follow (keep these arrays in sync).
-const COVER_HUE_TILES: readonly number[] = [25, 100, 180, 220, 290, 320] as const;
+// ORCH-0805 — COVER_HUE_TILES constant removed. Hue is now a fallback render
+// value only; cover authoring goes through BrandCoverPickerSheet (upload +
+// Pexels + GIPHY). The 6-swatch user-selectable picker is permanently
+// removed (enforced by strict-grep gate orch-0805-brand-cover-overhaul).
 
 interface InlineToggleProps {
   value: boolean;
@@ -208,6 +214,9 @@ const textAreaStyles = StyleSheet.create({
 
 export interface BrandEditViewProps {
   brand: Brand | null;
+  /** Operator account ID — required to drive useUpdateBrand from inside the
+   * cover picker sheet (ORCH-0805 §7.1). Null when no auth user. */
+  accountId: string | null;
   /** Back-arrow / cancel handler. Parent decides where to navigate. */
   onCancel: () => void;
   /**
@@ -228,6 +237,7 @@ export interface BrandEditViewProps {
 
 export const BrandEditView: React.FC<BrandEditViewProps> = ({
   brand,
+  accountId,
   onCancel,
   onSave,
   onAfterSave,
@@ -300,11 +310,36 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     setDiscardDialogVisible(false);
   }, []);
 
-  // [TRANSITIONAL] photo upload — exit when photo upload pipeline lands
-  // (likely Cycle 14+ or sooner if Stripe/checkout requires brand photos).
+  // [TRANSITIONAL] brand-AVATAR photo upload — deferred to ORCH-0805-A.
+  // ORCH-0805 (this cycle) covers the brand COVER overhaul only; the avatar
+  // pencil at SECTION A still fires this deferral toast until 0805-A ships
+  // a creator-avatar-style upload pipeline scoped to brand avatars.
   const handlePhotoEdit = useCallback((): void => {
     fireToast("Photo upload lands in a later cycle.");
   }, [fireToast]);
+
+  // ORCH-0805 — brand COVER picker sheet (Upload / Pexels / GIPHY).
+  const [coverPickerVisible, setCoverPickerVisible] = useState<boolean>(false);
+  const handleOpenCoverPicker = useCallback((): void => {
+    setCoverPickerVisible(true);
+  }, []);
+  const handleCloseCoverPicker = useCallback((): void => {
+    setCoverPickerVisible(false);
+  }, []);
+  const handleCoverPicked = useCallback(
+    (result: { publicUrl: string; mediaType: "image" | "gif" }): void => {
+      setDraft((prev) =>
+        prev === null
+          ? prev
+          : {
+              ...prev,
+              coverMediaUrl: result.publicUrl,
+              coverMediaType: result.mediaType,
+            },
+      );
+    },
+    [],
+  );
 
   // ----- Not-found state -----
   if (brand === null || draft === null) {
@@ -434,48 +469,48 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             />
           </View>
 
-          {/* SECTION B-1.5 — Brand cover (Cycle 7 FX2 v11).
-              Hue-only stub mirrors Cycle 3 CreatorStep4Cover pattern.
-              Live preview reflects current hue selection; tap a swatch
-              to update draft.coverHue. Image upload deferred to B-cycle. */}
+          {/* SECTION B-1.5 — Brand cover (ORCH-0805).
+              The 6-swatch hue picker was removed; covers now flow through
+              BrandCoverPickerSheet (Upload / Pexels / GIPHY). The hue value
+              persists in DB as a fallback render when no media URL is set.
+              Preview renders the media URL when present, the hue when not. */}
           <Text style={styles.sectionLabel}>BRAND COVER</Text>
           <View style={styles.fieldsCol}>
             <View style={styles.coverPreviewWrap}>
-              <EventCover
-                hue={draft.coverHue}
-                radius={radiusTokens.lg}
-                label=""
-                height={120}
-              />
+              {typeof draft.coverMediaUrl === "string" &&
+              draft.coverMediaUrl.length > 0 ? (
+                <ExpoImage
+                  source={{ uri: draft.coverMediaUrl }}
+                  style={styles.coverPreviewMedia}
+                  contentFit="cover"
+                  accessibilityLabel="Cover preview"
+                />
+              ) : (
+                <EventCover
+                  hue={draft.coverHue}
+                  radius={radiusTokens.lg}
+                  label=""
+                  height={120}
+                />
+              )}
             </View>
             <Text style={styles.kindHint}>
               This shows up at the top of your public brand page.
             </Text>
-            <View style={styles.coverHueRow}>
-              {COVER_HUE_TILES.map((hue) => {
-                const active = draft.coverHue === hue;
-                return (
-                  <Pressable
-                    key={hue}
-                    onPress={() => setDraft({ ...draft, coverHue: hue })}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    accessibilityLabel={`Cover hue ${hue}${active ? " (selected)" : ""}`}
-                    style={[
-                      styles.coverHueTile,
-                      active && styles.coverHueTileActive,
-                    ]}
-                  >
-                    <View style={styles.coverHueTileInner}>
-                      <EventCover hue={hue} radius={radiusTokens.md} label="" />
-                    </View>
-                  </Pressable>
-                );
-              })}
+            <View style={styles.coverCtaRow}>
+              <Button
+                label={
+                  typeof draft.coverMediaUrl === "string" &&
+                  draft.coverMediaUrl.length > 0
+                    ? "Change cover"
+                    : "Add cover"
+                }
+                onPress={handleOpenCoverPicker}
+                variant="secondary"
+                size="md"
+                leadingIcon="upload"
+              />
             </View>
-            <Text style={styles.coverComingSoonCaption}>
-              Photo and video uploads coming soon.
-            </Text>
           </View>
 
           {/* SECTION B-2 — Brand kind (Cycle 7 v10).
@@ -750,6 +785,22 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           onDismiss={handleDismissToast}
         />
       </View>
+
+      {/* ORCH-0805 — brand cover picker. Mounted inside the parent host View
+          per the sub-sheet-inside-parent rule; native Modal sibling mounts
+          compete at the OS root layer (Cycle 12 / 13a precedent). */}
+      {brand !== null && accountId !== null ? (
+        <BrandCoverPickerSheet
+          visible={coverPickerVisible}
+          brandId={brand.id}
+          accountId={accountId}
+          existingDescription={joinBrandDescription(brand.tagline, brand.bio)}
+          currentMediaUrl={draft?.coverMediaUrl ?? null}
+          onClose={handleCloseCoverPicker}
+          onPicked={handleCoverPicked}
+          onErrorToast={fireToast}
+        />
+      ) : null}
     </View>
   );
 };
@@ -886,40 +937,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
   },
 
-  // Brand cover hue picker (Cycle 7 FX2 v11) -------------------------
+  // Brand cover (ORCH-0805) ------------------------------------------
   coverPreviewWrap: {
     borderRadius: radiusTokens.lg,
     overflow: "hidden",
     marginBottom: spacing.xs,
+    height: 120,
   },
-  coverHueRow: {
+  coverPreviewMedia: {
+    width: "100%",
+    height: "100%",
+  },
+  coverCtaRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.sm,
-  },
-  coverHueTile: {
-    width: "31%",
-    aspectRatio: 1,
-    padding: 2,
-    borderRadius: radiusTokens.md + 2,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  coverHueTileActive: {
-    borderColor: accent.warm,
-  },
-  coverHueTileInner: {
-    flex: 1,
-    borderRadius: radiusTokens.md,
-    overflow: "hidden",
-  },
-  coverComingSoonCaption: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    fontStyle: "italic",
-    textAlign: "center",
+    justifyContent: "center",
     marginTop: spacing.sm,
   },
 
