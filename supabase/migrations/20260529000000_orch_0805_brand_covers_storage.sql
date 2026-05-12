@@ -24,9 +24,58 @@ BEGIN;
 
 -- 1. Create the bucket. public = true so anonymous buyers can render the
 --    cover on `/b/{slug}` without a signed URL roundtrip.
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('brand_covers', 'brand_covers', true)
-ON CONFLICT (id) DO NOTHING;
+--
+--    Use a column-detection fallback so the migration applies cleanly on
+--    older `storage.buckets` schemas in CI (Supabase Postgres test image
+--    pre-dates the `public` / `file_size_limit` / `allowed_mime_types`
+--    columns; production has them). Mirrors the ORCH-0786 creator_avatars
+--    bucket precedent at `20260515000019_orch_0786_creator_avatars_bucket.sql:15-69`.
+DO $$
+DECLARE
+  has_public boolean;
+  has_file_size_limit boolean;
+  has_allowed_mime_types boolean;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'public'
+  ) INTO has_public;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'file_size_limit'
+  ) INTO has_file_size_limit;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'allowed_mime_types'
+  ) INTO has_allowed_mime_types;
+
+  IF has_public AND has_file_size_limit AND has_allowed_mime_types THEN
+    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    VALUES (
+      'brand_covers',
+      'brand_covers',
+      true,
+      15728640, -- 15 MB
+      ARRAY['image/jpeg','image/png','image/webp','image/gif']
+    )
+    ON CONFLICT (id) DO UPDATE
+      SET public = EXCLUDED.public,
+          file_size_limit = EXCLUDED.file_size_limit,
+          allowed_mime_types = EXCLUDED.allowed_mime_types;
+  ELSIF has_public THEN
+    INSERT INTO storage.buckets (id, name, public)
+    VALUES ('brand_covers', 'brand_covers', true)
+    ON CONFLICT (id) DO UPDATE
+      SET public = EXCLUDED.public;
+  ELSE
+    INSERT INTO storage.buckets (id, name)
+    VALUES ('brand_covers', 'brand_covers')
+    ON CONFLICT (id) DO UPDATE
+      SET name = EXCLUDED.name;
+  END IF;
+END $$;
 
 -- 2. Public read on every object in the bucket (matches event_covers and
 --    creator_avatars precedent).
@@ -86,16 +135,33 @@ USING (
 -- 6. Bucket-level MIME allowlist + size cap. Image + GIF only; video MIME
 --    types intentionally excluded (deferred to future ORCH per SPEC §2
 --    non-goals). 15 MB cap to accommodate GIF covers.
-UPDATE storage.buckets
-SET
-  allowed_mime_types = ARRAY[
-    'image/jpeg',
-    'image/png',
-    'image/webp',
-    'image/gif'
-  ],
-  file_size_limit = 15728640  -- 15 MB
-WHERE id = 'brand_covers';
+--
+--    Already applied via the INSERT path above when columns exist; this
+--    extra UPDATE is a no-op on modern schemas (covered by ON CONFLICT
+--    SET) and is intentionally skipped on legacy schemas where these
+--    columns do not exist.
+DO $$
+DECLARE
+  has_file_size_limit boolean;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'file_size_limit'
+  ) INTO has_file_size_limit;
+
+  IF has_file_size_limit THEN
+    UPDATE storage.buckets
+    SET
+      allowed_mime_types = ARRAY[
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/gif'
+      ],
+      file_size_limit = 15728640  -- 15 MB
+    WHERE id = 'brand_covers';
+  END IF;
+END $$;
 
 -- 7. Apply-time verification probes. Fail fast on apply if the bucket or
 --    public read policy is missing, so a broken migration cannot land

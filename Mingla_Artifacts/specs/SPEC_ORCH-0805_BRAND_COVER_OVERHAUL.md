@@ -4,7 +4,7 @@
 **Date:** 2026-05-12
 **Working tree:** `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`
 **Investigation:** [INVESTIGATION_ORCH-0801_BRAND_PAGE_FULL_AUDIT.md](../reports/INVESTIGATION_ORCH-0801_BRAND_PAGE_FULL_AUDIT.md) §F-06, §F-09
-**Dispatch:** [prompts/SPEC_ORCH-0805_BRAND_COVER_OVERHAUL.md](../prompts/SPEC_ORCH-0805_BRAND_COVER_OVERHAUL.md)
+**Dispatch:** `Mingla_Artifacts/prompts/SPEC_ORCH-0805_BRAND_COVER_OVERHAUL.md` — PRIVATE_PROMPT_NOT_VERSIONED (the `prompts/` directory is gitignored per the documentation system policy; dispatch evidence lives in this SPEC + the parent investigation cited below).
 **Operator decisions:** All 6 of Open Questions §8 (Q1-Q6) locked from Wave 1 dispatch
 
 ---
