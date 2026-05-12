@@ -153,9 +153,9 @@ and pastes the relevant segment + genre IDs into `DISCOVER_SEGMENT_ID` and `DISC
 | Constitution #13 Exclusion consistency | PRESERVED | The same slug→ID resolution applies whether the call comes via v1 or v2 wire shape. |
 | I-LOCATION-INVALIDATE-ON-LOCATION-ONLY (`useUserLocation.ts:148`) | UNTOUCHED | The guard at lines 145-150 was not touched. Location query key is unchanged. |
 | Zustand-persist no server snapshots | N/A — M2 work | DiscoverCity persistence happens via React Query's preferences cache + DB write, not Zustand persist. |
-| I-PROPOSED-BH DISCOVER_CITY_PERSISTED | DRAFT — schema ready | DB columns + edge function support shipped; persistence flip happens in M2 with CityPickerSheet. Will flip ACTIVE on ORCH-0809 CLOSE. |
-| I-PROPOSED-BI DISCOVER_TM_CLASSIFICATION_BY_ID | DRAFT — server resolver ready | Resolver shipped. Music + Sports IDs verified. Genre IDs deferred to M2. Will flip ACTIVE on CLOSE. |
-| I-PROPOSED-BJ DISCOVER_TM_LOCAL_TIME_WINDOWS | DRAFT — wire path ready | Edge function prefers `localStartEndDateTime` when provided. DiscoverScreen still sends UTC via v1 adapter; M2 swaps. Will flip ACTIVE on CLOSE. |
+| I-PROPOSED-BL DISCOVER_CITY_PERSISTED | DRAFT — schema ready | DB columns + edge function support shipped; persistence flip happens in M2 with CityPickerSheet. Will flip ACTIVE on ORCH-0809 CLOSE. |
+| I-PROPOSED-BM DISCOVER_TM_CLASSIFICATION_BY_ID | DRAFT — server resolver ready | Resolver shipped. Music + Sports IDs verified. Genre IDs deferred to M2. Will flip ACTIVE on CLOSE. |
+| I-PROPOSED-BN DISCOVER_TM_LOCAL_TIME_WINDOWS | DRAFT — wire path ready | Edge function prefers `localStartEndDateTime` when provided. DiscoverScreen still sends UTC via v1 adapter; M2 swaps. Will flip ACTIVE on CLOSE. |
 
 ## §6 Gates Run
 

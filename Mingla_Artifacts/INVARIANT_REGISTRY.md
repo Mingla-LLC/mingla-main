@@ -7,6 +7,68 @@
 
 ---
 
+## ACTIVE (post ORCH-0809 + ORCH-0809-D + ORCH-0809-E CLOSE 2026-05-12)
+
+Three invariants introduced by ORCH-0809 SPEC §7 — Discover Ticketmaster filter expansion v1. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0809 CLOSE after Claude `mingla-forensics` pre-M3 audit + re-audit PASS verdict (`reports/QA_ORCH-0809_PRE_M3_AUDIT_REPORT.md` §13 — P0:0 P1:0 P2:3 P3:2 P4:5), all 3 strict-grep gates green with negative-control proofs, 23/23 Deno tests, 10/10 mobile regression checks, edge function deployed, EAS OTAs published, operator confirmed "works perfect" / "all works" across 4 live-test phases.
+
+### I-PROPOSED-BL DISCOVER_CITY_PERSISTED
+
+**Rule:** When the user picks a city via `CityPickerSheet` on Discover, the chosen `(discover_city_name, discover_city_state_code, discover_city_country_code, discover_city_lat, discover_city_lng)` MUST persist to `public.preferences` for that user. Subsequent app sessions MUST render that city as the active Discover filter regardless of current GPS position. GPS-derived city is the chip's default ONLY when `discover_city_name IS NULL` for the user. The five `discover_city_*` columns inherit `preferences_owner_*` RLS policies (additive nullable columns; row-level predicate `user_id = auth.uid()` already gates access).
+
+**Why:** Pre-ORCH-0809, Discover was GPS-only — users could not browse events in another city, fix a wrong GPS read, or pre-plan a trip. This is the primary content surface in the mobile app; locking it to device location was a credibility-floor problem. Persistence is via DB columns (not Zustand) because the chosen city is server-side preference state, not transient client UI state.
+
+**Enforcement:** Mobile regression check `app-mobile/scripts/ci/orch-0809-regression-check.mjs` T-08 + T-09 (CityPickerSheet writes all five fields; UserPreferences type declares all five). Migration `20260601000001_orch_0809_discover_city_preferences.sql` includes apply-time `DO $$ RAISE EXCEPTION` probe that fails the transaction if fewer than 5 columns are present on `preferences`. CityPickerSheet failure modes covered: empty/whitespace query, no matches, network failure, missing place location, preferences write failure (all surface user-visible errors per Constitution #3).
+
+**Source:** SPEC `specs/SPEC_ORCH-0809_DISCOVER_TICKETMASTER_FILTER_EXPANSION_V1.md` §5.1 + §5.7, implementation reports `IMPLEMENTATION_ORCH-0809_*_M1.md` + `_M2.md` for the migration + UI wiring.
+
+**EXIT condition:** permanent invariant. Reversal would require a SPEC reversing the city-picker decision and reverting to GPS-only — not on the queue. Future ORCHs may extend the city picker (e.g., multi-city tracking) but the persistence rule stays.
+
+### I-PROPOSED-BM DISCOVER_TM_CLASSIFICATION_BY_ID
+
+**Rule:** Discover Ticketmaster queries MUST pass real `segmentId` and `genreId` values resolved from `supabase/functions/_shared/ticketmasterClassifications.ts`. The client MUST NOT ship TM classification ID literals (those starting with `KZ`). The edge function MUST resolve client-provided slugs to TM IDs server-side via `resolveTmClassification` and MUST reject unknown `segmentSlug` with HTTP 400 `{ error: "unknown segmentSlug: <value>", supported: [<slugs>] }` rather than silently falling back to Music. Keyword-based genre proxying (the pre-M2 `GENRE_TO_KEYWORDS` map in `DiscoverScreen.tsx`) is removed; free-text `keyword` remains a legitimate user-input search param when product re-introduces a search box. Curated sub-genre unions (e.g., the "afro" chip mapping to `genreId=World + subGenreId=[9 IDs]`) flow through the same `resolveTmClassification` helper which now returns `{ segmentId, genreIds, subGenreIds }`.
+
+**Why:** Pre-ORCH-0809, the edge function hardcoded `segmentId = "KZFzniwnSyZfZ7v7nJ"` (Music) — Sports / Arts & Theatre / Film were unreachable. Genre chips did keyword fuzzy-match against event text — "Hip-Hop & R&B" returned jazz events whose blurb mentioned "hip vibe" and missed legit hip-hop events that didn't spell the word. Constitution #9 violation. Server-owned classification IDs (Constitution #2 one owner per truth) ensure the client never ships TM secrets and the slug→ID mapping has a single source of truth.
+
+**Enforcement:** Strict-grep gate `orch-0809-tm-classification-by-id` at `.github/scripts/strict-grep/orch-0809-tm-classification-by-id.mjs` (7 checks): (1) shared classifications file exists; (2) exports DISCOVER_SEGMENT_ID + DISCOVER_GENRE_ID + resolveTmClassification; (3) no `"VERIFY"` placeholder in active code; (4) edge function imports both `resolveTmClassification` AND `DISCOVER_SEGMENT_ID` from the shared file; (5) recursive sweep of `app-mobile/src` + `app-mobile/app` confirms zero `KZFzniwn` literals (the TM ID prefix); (6) DiscoverScreen.tsx no longer references `GENRE_TO_KEYWORDS`; (7) edge function contains the phrase `unknown segmentSlug` rejection literal. Negative-control verified: adding `KZFzniwn` literal anywhere in `app-mobile/` fires Check 5. Deno tests T-01..T-04 + T-11..T-13 + ORCH-0809-E spot-checks at `supabase/functions/ticketmaster-events/index.test.ts` (23 tests, all PASS).
+
+**Source:** SPEC §5.2 + §5.3 + §5.4 + §5.5, server constants file (4 segments + 39 top-level genre IDs + 1 curated union; all IDs live-verified against TM `/discovery/v2/classifications.json` on 2026-05-12 via operator's TM consumer key).
+
+**EXIT condition:** permanent invariant. New curated-union chips extend the value-type mapping (`string | { genreId; subGenreIds[] }`) — the strict-grep gate stays compatible.
+
+### I-PROPOSED-BN DISCOVER_TM_LOCAL_TIME_WINDOWS
+
+**Rule:** Discover date chips (Tonight, This Weekend, Next Week, This Month) MUST compute their Ticketmaster query window in the user's device-local timezone via the `toLocalISO` helper defined inside `getDateRange` in `app-mobile/src/components/DiscoverScreen.tsx`, and MUST pass the resulting comma-joined pair to TM via the `localStartEndDateTime` parameter. UTC `startDateTime` and `endDateTime` paths are REMOVED from the Discover query path. The edge function still accepts the legacy UTC pair for backward compat with any v1 caller, but the Discover client always sends `localStartEndDateTime`. The old `toISONoMs` UTC helper is removed file-wide.
+
+**Why:** Pre-ORCH-0809, "Tonight" tapped at 11pm local in NYC asked TM for `now → 23:59:59Z` — UTC was already past midnight, so the request was effectively "events between 11pm and 23:59 UTC today" which excluded any local late-evening event whose UTC start was tomorrow. Same drift on Weekend chip near Sunday-evening. Constitution #12 (validate at the right time — use the user's timezone, not the server's). `localStartEndDateTime` is TM's native format for local-time queries (no trailing `Z`, no offset).
+
+**Enforcement:** Strict-grep gate `orch-0809-tm-local-time-window` at `.github/scripts/strict-grep/orch-0809-tm-local-time-window.mjs` (5 checks, with a brace-balanced extractor that survives the function's return-type signature containing `{`/`}` pairs): (1) no `toISOString()` inside `getDateRange` body; (2) no `toISONoMs` helper file-wide; (3) `toLocalISO` helper present inside `getDateRange` body; (4) edge function wires `localStartEndDateTime` in both request body destructure AND `params.set` on the TM URL; (5) edge function contains the `pass either city or location, not both` rejection literal (M2.1 reinforcement). Negative-control verified: replacing `\`${toLocalISO(start)},${toLocalISO(end)}\`` with `new Date().toISOString()` fires Check 1.
+
+**Source:** SPEC §5.7 (date math contract), `supabase/functions/ticketmaster-events/index.ts:314-368` (URL builder prefers `localStartEndDateTime` over UTC pair), `DiscoverScreen.tsx:123-180` (`getDateRange` rewrite with `toLocalISO`).
+
+**EXIT condition:** permanent invariant. If a future ORCH adds new date chips, they MUST use the same local-time helper.
+
+---
+
+## DRAFT (registered by ORCH-0809 CLOSE — process invariant emerging from recurring pattern)
+
+### I-PROPOSED-BO FILTER_DIMENSION_VALIDATED_OR_KEYED
+
+**Rule (DRAFT — flips ACTIVE on first ORCH that explicitly enforces this in a SPEC):** Any user-selectable filter dimension on any Mingla surface (Discover, Map, Saved, Likes, future Marketing audiences, future search) MUST satisfy BOTH:
+
+1. **Validated at the server boundary** — if the dimension's value space is finite and known (segment slug, classification ID, tier, status enum), the server boundary rejects unknown values with a structured 4xx response containing the supported value list. OR **explicitly degraded with a user-visible signal** — if the dimension's value space is open or only-partially-supported (e.g., a chip that's known to have no real backend mapping yet), the UI MUST surface a user-visible hint ("More options coming soon") AND the chip MUST NOT render as if it filters. **Silently falling through to a default — the chip looks interactive but does nothing — is a Constitution #3 + #9 violation.**
+
+2. **Appears in every cache key on every layer** — the dimension's selected value MUST be part of: (a) the AsyncStorage cache key for any client-side cached fetch, (b) any React Query `queryKey` for the dimension's owning entity, (c) the server-side cache key for any backend cache fronting the dimension's data source. Switching the dimension MUST guarantee a cache miss; a cache hit MUST imply the previous fetch ran with the same dimension values. **Stale-cache hits with mismatched dimension values are a Constitution #4 (one key per entity) violation.**
+
+**Why this exists:** Within ORCH-0809 alone (a single ORCH against a single surface), this bug class hit SIX times: (1) the original price filter silently hid events with no UX signal, (2) city changes didn't bust the AsyncStorage cache because city wasn't in the key, (3) date filter changes silently served stale events for the same reason, (4) unknown `segmentSlug` silently fell back to Music at the edge function, (5) banner state drifted from displayed events on cache hits because `fallbackActive` wasn't in the payload, (6) unknown genre slugs silently no-op'd at the edge function until M3 hotfix hid the unmapped chips. Six iterations of the same root cause within one ORCH is process signal that a permanent structural rule is needed. The fix shipped in M3 + M2.1 + the hotfix + ORCH-0809-D + ORCH-0809-E all converge on this rule.
+
+**Enforcement (target — to be ratcheted up as the invariant matures):** Initially codified by ORCH-0809's three strict-grep gates which together cover the Discover surface's compliance. Future-state target: a meta-CI gate that scans any new filter dimension's introduction (PR-level analysis of cache-key composition + server-boundary validation) and asserts both clauses. Until that meta-gate exists, this invariant operates as a SPEC-review checklist item: every new SPEC that introduces a user-selectable filter dimension MUST demonstrate satisfaction of both clauses before SPEC review APPROVES.
+
+**Source:** Six iterations within ORCH-0809 (price filter pre-M2 silent hide / city-not-in-cache-key hotfix v1 / date-not-in-cache-key hotfix v2 / unknown segmentSlug M2.1 / banner state drift M2.1 P1-1 / unknown genreSlug M3 hotfix). Pre-M3 audit report `Mingla_Artifacts/reports/QA_ORCH-0809_PRE_M3_AUDIT_REPORT.md` §11 + §13 named this as the missing permanent invariant. CLOSE entry on this invariant is the registration step.
+
+**EXIT condition:** flips DRAFT→ACTIVE when the next SPEC explicitly references this invariant in its review checklist and the SPEC's enforcement path codifies both clauses (server-boundary validation + every-layer cache-key inclusion).
+
+---
+
 ## ACTIVE (post ORCH-0807 CLOSE 2026-05-12)
 
 One invariant introduced by ORCH-0807 SPEC §8 — brand profile photo upload offering native square crop. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0807 CLOSE after Claude `mingla-tester` PASS verdict (P0:0 P1:0 P2:0 P3:1 P4:4), with the strict-grep gate green (2/2), 3 negative-controls firing on every guard, migration applied on remote (bucket + 4 RLS policies verified live), tsc clean on all scoped files, jest 20/20, operator manual smoke confirmed end-to-end ("all works great").

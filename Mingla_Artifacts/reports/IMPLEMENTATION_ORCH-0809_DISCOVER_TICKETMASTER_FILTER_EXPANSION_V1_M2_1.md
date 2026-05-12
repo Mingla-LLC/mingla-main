@@ -99,9 +99,9 @@ M2.1 closes both with surgical edits (no scope creep). One adjacent P2 (`fallbac
 | Constitution #4 — One key per entity | PRESERVED | PRESERVED |
 | Constitution #9 — No fabricated data | **FAIL (audit P1-1 + P1-2)** | **RESTORED** — banner matches events; unknown slug rejected before fabrication |
 | Constitution #13 — Exclusion consistency | PRESERVED | PRESERVED |
-| I-PROPOSED-BH DISCOVER_CITY_PERSISTED | DRAFT — ready | DRAFT — ready (no change) |
-| I-PROPOSED-BI DISCOVER_TM_CLASSIFICATION_BY_ID | DRAFT — partial (silent fallback gap) | DRAFT — **structurally complete now** (server-owned classification with explicit rejection of unknown slugs) |
-| I-PROPOSED-BJ DISCOVER_TM_LOCAL_TIME_WINDOWS | DRAFT — ready | DRAFT — ready (no change) |
+| I-PROPOSED-BL DISCOVER_CITY_PERSISTED | DRAFT — ready | DRAFT — ready (no change) |
+| I-PROPOSED-BM DISCOVER_TM_CLASSIFICATION_BY_ID | DRAFT — partial (silent fallback gap) | DRAFT — **structurally complete now** (server-owned classification with explicit rejection of unknown slugs) |
+| I-PROPOSED-BN DISCOVER_TM_LOCAL_TIME_WINDOWS | DRAFT — ready | DRAFT — ready (no change) |
 | I-LOCATION-INVALIDATE-ON-LOCATION-ONLY | UNTOUCHED | UNTOUCHED |
 | Zustand-persist no server snapshots | PRESERVED | PRESERVED |
 

@@ -146,7 +146,7 @@ return new Intl.DateTimeFormat("en-CA", {
   ...
 ```
 
-Pre-existing (NOT introduced by ORCH-0809) but conflicts with I-PROPOSED-BJ DISCOVER_TM_LOCAL_TIME_WINDOWS which mandates local-time computation throughout the Discover query path. PST / GMT / JST users have a slightly different "today" boundary for cache TTL purposes. Low impact (the cache TTL is just "is this from the same calendar day") but inconsistent with the new invariant. Recommend `timeZone: undefined` to use device-local.
+Pre-existing (NOT introduced by ORCH-0809) but conflicts with I-PROPOSED-BN DISCOVER_TM_LOCAL_TIME_WINDOWS which mandates local-time computation throughout the Discover query path. PST / GMT / JST users have a slightly different "today" boundary for cache TTL purposes. Low impact (the cache TTL is just "is this from the same calendar day") but inconsistent with the new invariant. Recommend `timeZone: undefined` to use device-local.
 
 ### 🟠 P2-4 — Edge function doesn't 400 when both `city` AND `location` are sent
 

@@ -158,9 +158,9 @@ Per SPEC §5.3 + I-PROPOSED-BH: when a slug has no resolved genre ID, the edge f
 | Constitution #13 Exclusion consistency | PRESERVED — edge function applies the same segment/genre resolution to v1 + v2 wire shapes. |
 | I-LOCATION-INVALIDATE-ON-LOCATION-ONLY (`useUserLocation.ts:148`) | UNTOUCHED — preserved verbatim. |
 | Zustand-persist no server snapshots (`feedback_zustand_persist_no_server_snapshots.md`) | PRESERVED — `selectedCity` lives in component state + DB persistence, NOT Zustand persist. The Zustand registry holds only the `{ date, segment, genre }` filter triple (loose strings, no server data). |
-| I-PROPOSED-BH DISCOVER_CITY_PERSISTED | DRAFT → ready to flip ACTIVE on CLOSE | Both the schema (M1) and the UI persistence path (M2) shipped. |
-| I-PROPOSED-BI DISCOVER_TM_CLASSIFICATION_BY_ID | DRAFT → ready to flip ACTIVE on CLOSE | Server constants + client slug union live. Genre IDs deferred to M3 — partial fulfillment but the contract is structurally in place. |
-| I-PROPOSED-BJ DISCOVER_TM_LOCAL_TIME_WINDOWS | DRAFT → ready to flip ACTIVE on CLOSE | Wire path + DiscoverScreen date math both emit local-time. |
+| I-PROPOSED-BL DISCOVER_CITY_PERSISTED | DRAFT → ready to flip ACTIVE on CLOSE | Both the schema (M1) and the UI persistence path (M2) shipped. |
+| I-PROPOSED-BM DISCOVER_TM_CLASSIFICATION_BY_ID | DRAFT → ready to flip ACTIVE on CLOSE | Server constants + client slug union live. Genre IDs deferred to M3 — partial fulfillment but the contract is structurally in place. |
+| I-PROPOSED-BN DISCOVER_TM_LOCAL_TIME_WINDOWS | DRAFT → ready to flip ACTIVE on CLOSE | Wire path + DiscoverScreen date math both emit local-time. |
 
 ## §7 Gates Run
 

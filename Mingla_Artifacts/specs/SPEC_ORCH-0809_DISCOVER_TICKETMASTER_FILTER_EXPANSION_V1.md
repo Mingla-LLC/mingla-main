@@ -589,15 +589,15 @@ If `reverseGeocode` already exists with a different signature, the implementor a
 
 ### §7.2 — New invariants proposed
 
-**I-PROPOSED-BH DISCOVER_CITY_PERSISTED** (status: DRAFT — flips ACTIVE on ORCH-0809 CLOSE)
+**I-PROPOSED-BL DISCOVER_CITY_PERSISTED** (status: DRAFT — flips ACTIVE on ORCH-0809 CLOSE)
 
 When the user selects a city on the Discover surface, the chosen `(discover_city_name, discover_city_state_code, discover_city_country_code, discover_city_lat, discover_city_lng)` MUST persist to `public.preferences` for that user. Subsequent app sessions MUST render that city as the active Discover filter regardless of current GPS position. GPS-derived city is the chip's default ONLY when `discover_city_name IS NULL` for the user. Strict-grep gate Check 2 enforces presence of the migration + the columns + the upsert call site.
 
-**I-PROPOSED-BI DISCOVER_TM_CLASSIFICATION_BY_ID** (status: DRAFT — flips ACTIVE on ORCH-0809 CLOSE)
+**I-PROPOSED-BM DISCOVER_TM_CLASSIFICATION_BY_ID** (status: DRAFT — flips ACTIVE on ORCH-0809 CLOSE)
 
 Discover Ticketmaster queries MUST pass real `segmentId` and `genreId` values resolved from `supabase/functions/_shared/ticketmasterClassifications.ts`. The client MUST NOT ship TM classification ID literals (those starting with `KZ`). The edge function MUST resolve client-provided slugs to TM IDs server-side via `resolveTmClassification`. Keyword-based genre proxying (the old `GENRE_TO_KEYWORDS` map) is removed; free-text `keyword` remains a legitimate user-input search param when product re-introduces a search box. Strict-grep gate enforces zero client TM-ID references and zero `"VERIFY"` placeholders in the server constants file.
 
-**I-PROPOSED-BJ DISCOVER_TM_LOCAL_TIME_WINDOWS** (status: DRAFT — flips ACTIVE on ORCH-0809 CLOSE)
+**I-PROPOSED-BN DISCOVER_TM_LOCAL_TIME_WINDOWS** (status: DRAFT — flips ACTIVE on ORCH-0809 CLOSE)
 
 Discover date chips (Tonight, This Weekend, Next Week, This Month) MUST compute their Ticketmaster query window in the user's device-local timezone and pass it to TM via `localStartEndDateTime`. UTC `startDateTime` and `endDateTime` are REMOVED from the Discover query path. The edge function still accepts the legacy UTC pair for backward compat with any v1 caller, but Discover always sends `localStartEndDateTime`. Strict-grep gate enforces removal of `toISOString()` + `Z`-suffixed format builders in the `getDateRange` function within `DiscoverScreen.tsx`.
 

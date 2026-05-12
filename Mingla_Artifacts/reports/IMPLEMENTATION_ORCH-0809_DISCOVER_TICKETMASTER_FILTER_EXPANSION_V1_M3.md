@@ -34,7 +34,7 @@ The M2.1 edge function changes (segment slug validation + both-location rejectio
 ### File 2 — `.github/scripts/strict-grep/orch-0809-tm-classification-by-id.mjs` (NEW)
 
 **What it did before:** N/A
-**What it does now:** Seven-check Node script enforcing I-PROPOSED-BI DISCOVER_TM_CLASSIFICATION_BY_ID. Checks: (1) shared classifications file exists, (2) exports DISCOVER_SEGMENT_ID + DISCOVER_GENRE_ID + resolveTmClassification, (3) no `"VERIFY"` literal in active code (comments stripped), (4) edge function imports both resolveTmClassification AND DISCOVER_SEGMENT_ID from shared, (5) recursive sweep of `app-mobile/src` + `app-mobile/app` confirms zero `KZFzniwn` literals, (6) DiscoverScreen.tsx no longer references `GENRE_TO_KEYWORDS`, (7) re-audit reinforcement — edge function contains the phrase `unknown segmentSlug` in active code (M2.1 P1-2 guard).
+**What it does now:** Seven-check Node script enforcing I-PROPOSED-BM DISCOVER_TM_CLASSIFICATION_BY_ID. Checks: (1) shared classifications file exists, (2) exports DISCOVER_SEGMENT_ID + DISCOVER_GENRE_ID + resolveTmClassification, (3) no `"VERIFY"` literal in active code (comments stripped), (4) edge function imports both resolveTmClassification AND DISCOVER_SEGMENT_ID from shared, (5) recursive sweep of `app-mobile/src` + `app-mobile/app` confirms zero `KZFzniwn` literals, (6) DiscoverScreen.tsx no longer references `GENRE_TO_KEYWORDS`, (7) re-audit reinforcement — edge function contains the phrase `unknown segmentSlug` in active code (M2.1 P1-2 guard).
 **Why:** SPEC §9 Gate 2 + re-audit §13 recommendation.
 **Lines:** 167
 **Negative control:** appended `const LEAK = "KZFzniwnSyZfZ7v7nJ"` to `app-mobile/src/types/discoverFilters.ts` → gate exits 1 with "Check 5 FAIL: 1 file(s) under app-mobile/ contain the literal KZFzniwn"; restored → PASS 7/7.
@@ -42,7 +42,7 @@ The M2.1 edge function changes (segment slug validation + both-location rejectio
 ### File 3 — `.github/scripts/strict-grep/orch-0809-tm-local-time-window.mjs` (NEW)
 
 **What it did before:** N/A
-**What it does now:** Five-check Node script enforcing I-PROPOSED-BJ DISCOVER_TM_LOCAL_TIME_WINDOWS. Uses a brace-balanced extractor (not a naive regex — the function return type `{ localStartEndDateTime: string | null }` itself contains `{`/`}` pairs that would confuse a regex extractor; the extractor heuristic looks for the first `{` followed by a statement keyword to identify the body opening). Checks: (1) no `toISOString()` inside getDateRange body, (2) old `toISONoMs` helper removed file-wide, (3) `toLocalISO` helper present inside getDateRange body, (4) edge function wires `localStartEndDateTime` in both request body destructure AND TM URL params.set, (5) re-audit reinforcement — edge function contains the phrase `pass either city or location, not both` (M2.1 P2-4 guard).
+**What it does now:** Five-check Node script enforcing I-PROPOSED-BN DISCOVER_TM_LOCAL_TIME_WINDOWS. Uses a brace-balanced extractor (not a naive regex — the function return type `{ localStartEndDateTime: string | null }` itself contains `{`/`}` pairs that would confuse a regex extractor; the extractor heuristic looks for the first `{` followed by a statement keyword to identify the body opening). Checks: (1) no `toISOString()` inside getDateRange body, (2) old `toISONoMs` helper removed file-wide, (3) `toLocalISO` helper present inside getDateRange body, (4) edge function wires `localStartEndDateTime` in both request body destructure AND TM URL params.set, (5) re-audit reinforcement — edge function contains the phrase `pass either city or location, not both` (M2.1 P2-4 guard).
 **Why:** SPEC §9 Gate 3 + re-audit §13 recommendation.
 **Lines:** 175
 **Negative control:** replaced `\`${toLocalISO(start)},${toLocalISO(end)}\`` in DiscoverScreen.tsx with `new Date().toISOString()` → gate exits 1 with "Check 1 FAIL: DiscoverScreen.tsx getDateRange uses toISOString()"; restored → PASS 5/5.
@@ -96,9 +96,9 @@ Ten checks: (1) NightOutCache.fallbackActive field present, (2) saveNightOutCach
 
 **What changed:** Bulk sed pass renumbered invariant IDs `BG/BH/BI → BH/BI/BJ` to resolve the late-discovered collision with `orch-0807-brand-avatar-square` which had already claimed I-PROPOSED-BG. Three-stage temp-token rename preserved the mapping order:
 
-- `I-PROPOSED-BG DISCOVER_CITY_PERSISTED` → `I-PROPOSED-BH DISCOVER_CITY_PERSISTED`
-- `I-PROPOSED-BH DISCOVER_TM_CLASSIFICATION_BY_ID` → `I-PROPOSED-BI DISCOVER_TM_CLASSIFICATION_BY_ID`
-- `I-PROPOSED-BI DISCOVER_TM_LOCAL_TIME_WINDOWS` → `I-PROPOSED-BJ DISCOVER_TM_LOCAL_TIME_WINDOWS`
+- `I-PROPOSED-BG DISCOVER_CITY_PERSISTED` → `I-PROPOSED-BL DISCOVER_CITY_PERSISTED`
+- `I-PROPOSED-BH DISCOVER_TM_CLASSIFICATION_BY_ID` → `I-PROPOSED-BM DISCOVER_TM_CLASSIFICATION_BY_ID`
+- `I-PROPOSED-BI DISCOVER_TM_LOCAL_TIME_WINDOWS` → `I-PROPOSED-BN DISCOVER_TM_LOCAL_TIME_WINDOWS`
 
 Files touched:
 - `Mingla_Artifacts/specs/SPEC_ORCH-0809_DISCOVER_TICKETMASTER_FILTER_EXPANSION_V1.md`
@@ -140,9 +140,9 @@ The strict-grep workflow registration in `.github/workflows/strict-grep-mingla-b
 
 | Invariant | Pre-M3 | Post-M3 |
 |---|---|---|
-| I-PROPOSED-BH DISCOVER_CITY_PERSISTED (renumbered from BG) | DRAFT | DRAFT — ready to flip ACTIVE on CLOSE (DB migration live, M2 persistence wired, M2.1 fixed cache restoration) |
-| I-PROPOSED-BI DISCOVER_TM_CLASSIFICATION_BY_ID (renumbered from BH) | DRAFT | DRAFT — ready to flip ACTIVE on CLOSE (server constants shipped, slug→ID resolver live, Gate 2 protects, Deno tests confirm) |
-| I-PROPOSED-BJ DISCOVER_TM_LOCAL_TIME_WINDOWS (renumbered from BI) | DRAFT | DRAFT — ready to flip ACTIVE on CLOSE (local-time date math live, Gate 3 protects, Deno test confirms wire path) |
+| I-PROPOSED-BL DISCOVER_CITY_PERSISTED (renumbered from BG) | DRAFT | DRAFT — ready to flip ACTIVE on CLOSE (DB migration live, M2 persistence wired, M2.1 fixed cache restoration) |
+| I-PROPOSED-BM DISCOVER_TM_CLASSIFICATION_BY_ID (renumbered from BH) | DRAFT | DRAFT — ready to flip ACTIVE on CLOSE (server constants shipped, slug→ID resolver live, Gate 2 protects, Deno tests confirm) |
+| I-PROPOSED-BN DISCOVER_TM_LOCAL_TIME_WINDOWS (renumbered from BI) | DRAFT | DRAFT — ready to flip ACTIVE on CLOSE (local-time date math live, Gate 3 protects, Deno test confirms wire path) |
 | Constitution #3 No silent failures | RESTORED post-M2.1 | PRESERVED + locked by Gate 2 Check 7 |
 | Constitution #9 No fabricated data | RESTORED post-M2.1 | PRESERVED + locked by Gate 2 + mobile regression T-03 |
 | Constitution #2 One owner per truth | PRESERVED | PRESERVED + locked by Gate 2 Check 5 (no client TM IDs) |
@@ -160,7 +160,7 @@ The strict-grep workflow registration in `.github/workflows/strict-grep-mingla-b
 
 ## §6 Discoveries for Orchestrator
 
-- **Process invariant strongly recommended for the registry:** *"any user-selectable filter dimension MUST either be validated at the server boundary OR explicitly degrade with a user-visible signal — never silently fall through to a default; AND MUST appear in every cache key on every layer (AsyncStorage + React Query + edge function cache)."* This bug class hit ORCH-0809 four times (price filter, city in AsyncStorage key, date in AsyncStorage key, segmentSlug at edge function). The invariant text is ready to register; the strict-grep Gate 2 Check 7 + Gate 1 are already in place to enforce key parts of it. Recommended ID: I-PROPOSED-BK FILTER_DIMENSION_VALIDATED_OR_KEYED. Pre-existing per-skill memory `feedback_supabase_neq_null.md` is the SQL analog — this is the broader cross-layer version.
+- **Process invariant strongly recommended for the registry:** *"any user-selectable filter dimension MUST either be validated at the server boundary OR explicitly degrade with a user-visible signal — never silently fall through to a default; AND MUST appear in every cache key on every layer (AsyncStorage + React Query + edge function cache)."* This bug class hit ORCH-0809 four times (price filter, city in AsyncStorage key, date in AsyncStorage key, segmentSlug at edge function). The invariant text is ready to register; the strict-grep Gate 2 Check 7 + Gate 1 are already in place to enforce key parts of it. Recommended ID: I-PROPOSED-BO FILTER_DIMENSION_VALIDATED_OR_KEYED. Pre-existing per-skill memory `feedback_supabase_neq_null.md` is the SQL analog — this is the broader cross-layer version.
 - **Invariant ID assignment process gap:** the SPEC's planned BG/BH/BI weren't validated against the live registry or against in-flight ORCH workflow registrations at SPEC-write time. The orchestrator should grep `.github/workflows/strict-grep-mingla-business.yml` for `I-PROPOSED-` labels in addition to `INVARIANT_REGISTRY.md` before assigning new IDs.
 - **Pre-existing unrelated tsc errors** in `ConnectionsPage.tsx:2763` + `HomePage.tsx:246,249` are still present, untouched throughout ORCH-0809. Candidate for a separate cleanup ORCH.
 - **ORCH-0809-D candidate (segment + genre expansion):** when operator provides TM `/classifications.json` output, a follow-up slice extends `DiscoverSegmentSlug` union (add `arts-theatre`, `comedy`, `family`, `film`) + populates `DISCOVER_GENRE_ID` with verified IDs + extends `SEGMENT_OPTIONS` in DiscoverScreen.tsx. No code restructure — purely additive.
