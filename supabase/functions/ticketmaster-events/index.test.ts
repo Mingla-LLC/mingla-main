@@ -128,9 +128,10 @@ Deno.test(
 
 // ─── Cache key v2 (M2 hotfixes + M2.1) ──────────────────────────────────────
 
-Deno.test("edge function cache key v2 includes all four filter dimensions", () => {
+Deno.test("edge function cache key v2 includes all filter dimensions incl. sub-genre", () => {
   // The buildCacheKey function lives in this same file; assert it composes
-  // city/lat-lng + segment + genre + dt + keywords into the key.
+  // city/lat-lng + segment + genre + sub-genre + dt + keywords into the key.
+  // ORCH-0809-E added `sub:` as the sub-genre dimension for curated unions.
   const cacheKeyFnBlock = EDGE_SRC.match(
     /function buildCacheKey[\s\S]*?\n\}/,
   );
@@ -139,9 +140,40 @@ Deno.test("edge function cache key v2 includes all four filter dimensions", () =
     "buildCacheKey function must be defined in index.ts",
   );
   const body = cacheKeyFnBlock![0];
-  for (const dim of ["city", "seg", "gen", "kw", "dt", "v2:"]) {
+  for (const dim of ["city", "seg", "gen", "sub", "kw", "dt", "v2:"]) {
     assertStringIncludes(body, dim);
   }
+});
+
+Deno.test("ORCH-0809-E — 'afro' slug resolves to genreId + subGenreIds union", () => {
+  const result = resolveTmClassification("music", ["afro"]);
+  assertEquals(result.segmentId, DISCOVER_SEGMENT_ID.music);
+  // afro → World genre + 9 sub-genres
+  assertEquals(result.genreIds.length, 1);
+  assertEquals(result.genreIds[0], "KnvZfZ7vAeF"); // World
+  assert(
+    result.subGenreIds.length === 9,
+    `expected 9 subGenreIds for afro union; got ${result.subGenreIds.length}`,
+  );
+  // Spot-check the 3 anchor IDs that were live-verified during ORCH-0809-E
+  assert(result.subGenreIds.includes("KZazBEonSMnZfZ7v6Ek"), "Afro-Beat ID present");
+  assert(result.subGenreIds.includes("KZazBEonSMnZfZ7v6Ev"), "African ID present");
+  assert(result.subGenreIds.includes("KZazBEonSMnZfZ7v6E6"), "Afro-Cuban ID present");
+});
+
+Deno.test("ORCH-0809-E — top-level slug with string mapping returns empty subGenreIds", () => {
+  // Backward compat: existing 38 top-level slugs (rock, pop, basketball, etc.)
+  // map to plain string genre IDs, no sub-genre fan-out.
+  const result = resolveTmClassification("music", ["rock"]);
+  assertEquals(result.genreIds, ["KnvZfZ7vAeA"]);
+  assertEquals(result.subGenreIds, []);
+});
+
+Deno.test("ORCH-0809-E — edge function wires subGenreId into the TM URL", () => {
+  assert(
+    /params\.set\s*\(\s*["']subGenreId["']/.test(EDGE_SRC),
+    "URL builder must set subGenreId on the outgoing TM URL when subGenreIds.length > 0",
+  );
 });
 
 Deno.test("edge function fallback path triggers under CITY_FALLBACK_THRESHOLD", () => {

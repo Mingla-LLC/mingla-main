@@ -28,6 +28,8 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { geocodingService, AutocompleteSuggestion } from "../../services/geocodingService";
@@ -211,7 +213,18 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
+      {/* ORCH-0809-final: KeyboardAvoidingView lifts the sheet above the
+          on-screen keyboard so the TextInput + autocomplete results stay
+          visible while typing. iOS uses behavior="padding" (the system
+          keyboard inset becomes bottom padding on the KAV, which pushes
+          the bottom-aligned sheet up). Android relies on the system's
+          windowSoftInputMode=adjustResize (the default for this app);
+          adding `behavior="height"` on Android causes overshoot, so
+          leave it undefined. Per memory feedback_keyboard_never_blocks_input. */}
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.header}>
@@ -310,7 +323,7 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
               ))}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -322,17 +335,25 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.55)",
   },
   backdrop: {
-    flex: 1,
+    // Small tappable strip at the very top of the modal so the user can
+    // dismiss the sheet by tapping outside it. Fixed inset (not flex) so the
+    // sheet below it can flex: 1 fill the rest of the screen — sheet
+    // background then flows to the bottom (or to the keyboard top when the
+    // KAV is engaged), eliminating the prior "half-screen background" gap.
+    height: 80,
   },
   sheet: {
+    // ORCH-0809 polish: sheet fills the visible area below the dismissible
+    // backdrop strip — flush bottom = screen bottom when no keyboard, flush
+    // bottom = keyboard top when KeyboardAvoidingView is engaged. Previously
+    // capped at 55-85% which left a band of dark backdrop below the sheet.
+    flex: 1,
     backgroundColor: "rgba(20,22,26,0.98)",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 12,
     paddingHorizontal: 20,
     paddingBottom: 36,
-    maxHeight: "85%",
-    minHeight: "55%",
   },
   header: {
     flexDirection: "row",

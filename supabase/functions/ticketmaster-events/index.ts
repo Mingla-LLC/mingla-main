@@ -144,6 +144,7 @@ interface CacheKeyInput {
   lng?: number;
   segmentId: string;
   genreIds: string[];
+  subGenreIds: string[];
   localStartEndDateTime?: string;
   startDate?: string;
   keywords: string[];
@@ -153,6 +154,9 @@ interface CacheKeyInput {
 function buildCacheKey(input: CacheKeyInput): string {
   const segPart = input.segmentId;
   const genrePart = [...input.genreIds].sort().join(",") || "any";
+  // ORCH-0809-E: sub-genre union must be part of the cache key so different
+  // sub-genre combinations don't share entries (FILTER_DIMENSION invariant).
+  const subPart = [...input.subGenreIds].sort().join(",") || "any";
   const dtPart = input.localStartEndDateTime
     ? `local:${input.localStartEndDateTime}`
     : input.startDate
@@ -164,13 +168,13 @@ function buildCacheKey(input: CacheKeyInput): string {
   if (input.city && !input.usedFallback) {
     const stateStr = (input.stateCode ?? "").toLowerCase();
     const countryStr = (input.countryCode ?? "").toLowerCase();
-    return `v2:city:${input.city.toLowerCase()}:${stateStr}:${countryStr}:seg:${segPart}:gen:${genrePart}:kw:${kwPart}:dt:${dtPart}`;
+    return `v2:city:${input.city.toLowerCase()}:${stateStr}:${countryStr}:seg:${segPart}:gen:${genrePart}:sub:${subPart}:kw:${kwPart}:dt:${dtPart}`;
   }
 
   // Lat/lng path: either v2 with no city, or v2 fallback after city returned <5
   const lat = input.lat?.toFixed(1) ?? "0";
   const lng = input.lng?.toFixed(1) ?? "0";
-  return `v2:geo:${lat}:${lng}:seg:${segPart}:gen:${genrePart}:kw:${kwPart}:dt:${dtPart}${fallbackPart}`;
+  return `v2:geo:${lat}:${lng}:seg:${segPart}:gen:${genrePart}:sub:${subPart}:kw:${kwPart}:dt:${dtPart}${fallbackPart}`;
 }
 
 // ── Image Picker ─────────────────────────────────────────────────────────────
@@ -298,6 +302,7 @@ interface TmQueryInput {
   radius?: number;
   segmentId: string;
   genreIds: string[];
+  subGenreIds: string[];
   localStartEndDateTime?: string;
   startDate?: string;
   endDate?: string;
@@ -333,6 +338,12 @@ function buildTmUrl(input: TmQueryInput): string {
 
   if (input.genreIds.length > 0) {
     params.set("genreId", input.genreIds.join(","));
+  }
+
+  // ORCH-0809-E: sub-genre union for curated chips like "Afro" that fan out
+  // to multiple TM sub-genres in a single request.
+  if (input.subGenreIds.length > 0) {
+    params.set("subGenreId", input.subGenreIds.join(","));
   }
 
   if (input.keywords.length > 0) {
@@ -497,8 +508,10 @@ serve(async (req: Request) => {
       );
     }
 
-    // Resolve segment + genre slugs to TM IDs (server-owned)
-    const { segmentId, genreIds } = resolveTmClassification(
+    // Resolve segment + genre slugs to TM IDs (server-owned).
+    // ORCH-0809-E: subGenreIds may also be returned for curated-union chips
+    // like "afro" (one slug → many TM sub-genres under a shared genre).
+    const { segmentId, genreIds, subGenreIds } = resolveTmClassification(
       segmentSlug,
       genreSlugs ?? [],
     );
@@ -518,6 +531,7 @@ serve(async (req: Request) => {
       lng: location?.lng,
       segmentId,
       genreIds,
+      subGenreIds,
       localStartEndDateTime,
       startDate,
       keywords: searchKeywords,
@@ -567,6 +581,7 @@ serve(async (req: Request) => {
       radius: searchRadius,
       segmentId,
       genreIds,
+      subGenreIds,
       localStartEndDateTime,
       startDate,
       endDate,
@@ -645,6 +660,7 @@ serve(async (req: Request) => {
         radius: radiusFallback ?? 50,
         segmentId,
         genreIds,
+        subGenreIds,
         localStartEndDateTime,
         startDate,
         endDate,
@@ -669,6 +685,7 @@ serve(async (req: Request) => {
           lng: lngFallback,
           segmentId,
           genreIds,
+          subGenreIds,
           localStartEndDateTime,
           startDate,
           keywords: searchKeywords,

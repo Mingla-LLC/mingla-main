@@ -12,6 +12,9 @@
 *Project Token*
 *API Key.md
 *Secret Key*
+*Auth Token*
+*sentry*.md
+*Sentry*.md
 
 # === macOS ===
 .DS_Store
@@ -84,4 +87,8 @@ resend-api-key*.md
 *api-key*.md
 *api_key*.md
 pexels_giphy_values.md
+ticketmasterdetails.md
+ticketmaster-details*.md
+*-ticketmaster-keys.md
+*-ticketmaster-secrets.md
 .vercel

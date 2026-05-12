@@ -1267,29 +1267,65 @@ function DiscoverScreen({
   ];
   // ORCH-0809 M2: priceFilterOptions REMOVED with the price filter.
   // genreFilterOptions is now context-aware: chips depend on the active segment.
+  // ORCH-0809-D: 4 segments (Music / Sports / Arts & Theatre / Film) per real
+  // TM classification structure. Comedy and Family are NOT separate segments
+  // in TM — they live as genres inside Arts & Theatre and Film respectively.
   const SEGMENT_OPTIONS: { id: SegmentFilter; labelKey: string; fallback: string }[] = [
     { id: "music", labelKey: "discover:filters.segment_music", fallback: "Music" },
     { id: "sports", labelKey: "discover:filters.segment_sports", fallback: "Sports" },
+    { id: "arts-theatre", labelKey: "discover:filters.segment_arts_theatre", fallback: "Arts & Theatre" },
+    { id: "film", labelKey: "discover:filters.segment_film", fallback: "Film" },
   ];
-  // i18n fallback strings let us ship before locale entries are added — discover:filters
-  // doesn't yet have segment_* / genre_* entries for all slugs.
+  // i18n fallback labels for every renderable genre slug across all 4 segments.
+  // Source slugs + IDs verified against TM /discovery/v2/classifications.json
+  // on 2026-05-12. Lockstep with DISCOVER_GENRE_ID + GENRES_BY_SEGMENT.
   const GENRE_LABEL_FALLBACK: Record<DiscoverGenreSlug, string> = {
     all: "All genres",
-    afrobeats: "Afrobeats",
-    dancehall: "Dancehall",
-    "hiphop-rnb": "Hip-Hop & R&B",
-    house: "House",
-    techno: "Techno",
-    "jazz-blues": "Jazz & Blues",
-    "latin-salsa": "Latin & Salsa",
+    // Music — curated unions (ORCH-0809-E)
+    afro: "Afro",
+    // Music — top-level
+    rock: "Rock",
+    pop: "Pop",
+    "hiphop-rap": "Hip-Hop / Rap",
+    rnb: "R&B",
+    country: "Country",
+    latin: "Latin",
+    "dance-electronic": "Dance / Electronic",
+    jazz: "Jazz",
+    blues: "Blues",
     reggae: "Reggae",
-    kpop: "K-Pop",
-    "acoustic-indie": "Acoustic & Indie",
+    classical: "Classical",
+    folk: "Folk",
+    alternative: "Alternative",
+    metal: "Metal",
+    world: "World",
+    // Sports
     basketball: "Basketball",
-    "football-nfl": "Football (NFL)",
+    football: "Football",
     baseball: "Baseball",
     soccer: "Soccer",
     hockey: "Hockey",
+    tennis: "Tennis",
+    boxing: "Boxing",
+    wrestling: "Wrestling",
+    golf: "Golf",
+    motorsports: "Motorsports",
+    // Arts & Theatre
+    theatre: "Theatre",
+    comedy: "Comedy",
+    dance: "Dance",
+    opera: "Opera",
+    "childrens-theatre": "Children's Theatre",
+    "magic-illusion": "Magic & Illusion",
+    // Film
+    "action-adventure": "Action & Adventure",
+    "film-comedy": "Comedy",
+    drama: "Drama",
+    documentary: "Documentary",
+    family: "Family",
+    horror: "Horror",
+    animation: "Animation",
+    "science-fiction": "Science Fiction",
   };
   const genreFilterOptions: { id: GenreFilter; label: string }[] =
     GENRES_BY_SEGMENT[selectedFilters.segment].map((slug) => {
@@ -1764,6 +1800,14 @@ function DiscoverScreen({
                     );
                   })}
                 </View>
+                {/* ORCH-0809 M3 hotfix: when only "All" is renderable (genre IDs
+                    pending TM /classifications curl + ORCH-0809-D), surface a
+                    subtle hint so the user isn't confused by the empty filter. */}
+                {genreFilterOptions.length <= 1 ? (
+                  <Text style={styles.filterSectionHint}>
+                    More genre filters coming soon.
+                  </Text>
+                ) : null}
               </View>
             </ScrollView>
 
@@ -2157,6 +2201,12 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
+  },
+  filterSectionHint: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 12,
+    marginTop: 8,
+    marginLeft: 2,
   },
   filterOptionsGrid: {
     flexDirection: "row",
