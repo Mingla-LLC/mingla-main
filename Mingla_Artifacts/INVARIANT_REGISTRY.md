@@ -7,6 +7,28 @@
 
 ---
 
+## ACTIVE (post ORCH-0807 CLOSE 2026-05-12)
+
+One invariant introduced by ORCH-0807 SPEC §8 — brand profile photo upload offering native square crop. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0807 CLOSE after Claude `mingla-tester` PASS verdict (P0:0 P1:0 P2:0 P3:1 P4:4), with the strict-grep gate green (2/2), 3 negative-controls firing on every guard, migration applied on remote (bucket + 4 RLS policies verified live), tsc clean on all scoped files, jest 20/20, operator manual smoke confirmed end-to-end ("all works great").
+
+### I-PROPOSED-BG BRAND_AVATAR_NATIVE_CROP_OFFERED
+
+**Rule:** `mingla-business/src/components/brand/BrandAvatarPickerSheet.tsx` MUST invoke `expo-image-picker.launchImageLibraryAsync` with both `allowsEditing: true` AND `aspect: [1, 1]` so the user is offered the native square-crop UI (Android enforces the 1:1 ratio; iOS shows a 1:1 overlay hint). The user's choice — to crop square or to ignore the hint and submit non-square — is final. `mingla-business/package.json` MUST NOT declare `expo-image-manipulator` as a dependency. The `brand_avatars` Supabase Storage bucket MUST enforce 5 MB cap + JPEG/PNG/WEBP MIME allowlist + brand-admin write predicate via `biz_brand_effective_rank_for_caller((split_part(name, '/', 1))::uuid) >= biz_role_rank('brand_admin')`. The `Avatar` primitive's `hero` variant MUST render as a full circle (`borderRadius: 999`) at every render site (BrandProfileView, BrandEditView, BrandMemberDetailView, PublicBrandPage).
+
+**Why:** Operator chose to trust the user with the mechanism we provide rather than enforce square server-side. Tradeoff: defense-in-depth drops from 3 tiers (manipulator + assertion + RLS) to 1 tier (RLS), but the dependency tree stays simpler and the UX stays honest. If a user ignores the 1:1 hint on iOS and submits a non-square photo, the round-circle Avatar primitive cover-crops the visible portion at render time — Constitution #9 honored because the stored URL is the user's real picked photo, not a fabricated square.
+
+**Enforcement:** Strict-grep gate `orch-0807-brand-avatar-square` at `.github/scripts/strict-grep/orch-0807-brand-avatar-square.mjs`. Two checks: (1) `BrandAvatarPickerSheet.tsx` contains `allowsEditing: true` AND `aspect: [1, 1]`; (2) `package.json` does NOT contain `expo-image-manipulator`. Three negative-control paths verified: toggling `allowsEditing` fires Check 1; changing `aspect` to anything other than `[1, 1]` fires Check 1; re-adding `expo-image-manipulator` to package.json fires Check 2. Each fires with a named diagnostic; restore returns gate to PASS.
+
+**Storage tier:** `brand_avatars` Supabase Storage bucket with `public = true` for anonymous read (renders on public brand page + buyer emails), 5 MB cap, `allowed_mime_types ARRAY['image/jpeg','image/png','image/webp']` (NO `image/gif`, NO video — v1 is static images only). RLS predicate matches `brand_covers` exactly: `public.biz_brand_effective_rank_for_caller((split_part(name, '/', 1))::uuid) >= public.biz_role_rank('brand_admin')`. Path convention `{brandId}/{token}.{ext}` enforced by service layer via `brandAvatarStoragePath`. Bucket migration: `supabase/migrations/20260531000000_orch_0807_brand_avatars_storage.sql`.
+
+**Avatar primitive shape:** `mingla-business/src/components/ui/Avatar.tsx` hero variant uses `borderRadius: 999` (was `radiusTokens.lg` rounded-square pre-ORCH-0807). All four hero render sites — BrandProfileView, BrandEditView, BrandMemberDetailView, PublicBrandPage — display the avatar as a full circle for brand/person identity semantics.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0807_BRAND_PROFILE_PHOTO_UPLOAD.md` (read the Post-implementation Correction block at the top), implementation report `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0807_BRAND_PROFILE_PHOTO_UPLOAD.md` (Rev 1 + Rev 2 + Rev 3 + Rev 3b), QA report `Mingla_Artifacts/reports/QA_ORCH-0807_BRAND_PROFILE_PHOTO_UPLOAD_REPORT.md`, close note `Mingla_Artifacts/CLOSE_NOTE_ORCH-0807.md`.
+
+**EXIT condition:** permanent invariant. Reversal would require a new SPEC + DEC entry — likely scenarios: (a) a future ORCH adds support for GIF or video avatars (would extend the MIME allowlist + change the rule but preserve the "native crop offered" core); (b) a future product decision wants server-enforced square (would re-add a manipulator dep or an edge fn). Neither is on the queue.
+
+---
+
 ## ACTIVE (post ORCH-0804 CLOSE 2026-05-12)
 
 One invariant introduced by ORCH-0804 SPEC §8 — Stripe Tax enablement on ticket Checkout Sessions. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0804 CLOSE after Claude `mingla-tester` PASS verdict (P0:0 P1:0 P2:0 P3:0 P4:3) with the strict-grep gate green (6/6), the migration applied on remote, all 4 edge functions deployed, and `tsc --noEmit` clean in `mingla-business`.

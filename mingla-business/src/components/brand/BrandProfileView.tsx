@@ -17,8 +17,17 @@
  * Per spec §3.4. Sticky shelf renders absolute-positioned above safe-area.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Image as RNImage,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -182,6 +191,20 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
+
+  // ORCH-0807 Rev 3 — Brand cover band on the hero card. 3-state fallback
+  // chain mirrors PublicBrandPage.tsx:259-304 verbatim: (1) coverMediaUrl
+  // present + load succeeds → image element (expo-image on Android for
+  // correct GIF animation; RN core <Image> on iOS+web per ORCH-0805-WEB
+  // hotfix); (2) coverMediaUrl present + load fails → hue gradient via
+  // onError flip; (3) coverMediaUrl null → hue gradient.
+  const coverMediaUrl =
+    typeof brand?.coverMediaUrl === "string" ? brand.coverMediaUrl : null;
+  const [coverMediaFailed, setCoverMediaFailed] = useState<boolean>(false);
+  // Reset failure flag whenever the URL changes (brand switch, new upload).
+  useEffect(() => {
+    setCoverMediaFailed(false);
+  }, [coverMediaUrl]);
 
   const fireToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -350,12 +373,56 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         contentContainerStyle={[styles.scroll, { paddingBottom: 96 + Math.max(insets.bottom, spacing.md) }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* SECTION A — Hero */}
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <View style={styles.heroAvatarRow}>
-            <Avatar name={brand.displayName} size="hero" />
+        {/* SECTION A — Hero card with cover band + half-overlap avatar.
+            ORCH-0807 Rev 3 — mirrors the PublicBrandPage.tsx:259-346 pattern
+            so the internal Brand Profile view shows the same hero treatment
+            buyers see on the public page. Cover band fills the top of the
+            card edge-to-edge (GlassCard padding=0); the round avatar sits
+            on top with -42px margin-top so half-of-it overlaps the cover. */}
+        <GlassCard variant="elevated" padding={0}>
+          <View style={styles.heroCoverBand} pointerEvents="none">
+            {coverMediaUrl !== null && coverMediaUrl.length > 0 && !coverMediaFailed ? (
+              Platform.OS === "android" ? (
+                <ExpoImage
+                  source={{ uri: coverMediaUrl }}
+                  style={styles.heroCoverFill}
+                  contentFit="cover"
+                  onError={() => setCoverMediaFailed(true)}
+                  accessibilityLabel="Brand cover"
+                />
+              ) : (
+                <RNImage
+                  source={{ uri: coverMediaUrl }}
+                  // ORCH-0805-WEB hotfix — explicit width/height "100%"
+                  // because react-native-web's <img> doesn't honor
+                  // position: absolute; inset: 0 the way RN native does.
+                  style={[
+                    styles.heroCoverFill,
+                    { width: "100%", height: "100%" },
+                  ]}
+                  resizeMode="cover"
+                  onError={() => setCoverMediaFailed(true)}
+                  accessibilityLabel="Brand cover"
+                />
+              )
+            ) : (
+              <View
+                style={[
+                  styles.heroCoverFill,
+                  { backgroundColor: `hsl(${brand.coverHue}, 60%, 45%)` },
+                ]}
+              />
+            )}
           </View>
-          <Text style={styles.heroName}>{brand.displayName}</Text>
+          <View style={styles.heroBody}>
+            <View style={styles.heroAvatarRow}>
+              {/* ORCH-0807 — wires profile_photo_url to the read-side Avatar.
+                  The negative marginTop on heroAvatarRow pulls half the
+                  84×84 avatar up over the cover band (mirrors
+                  PublicBrandPage's half-in/half-out overlap). */}
+              <Avatar name={brand.displayName} size="hero" photo={brand.photo} />
+            </View>
+            <Text style={styles.heroName}>{brand.displayName}</Text>
           {typeof brand.tagline === "string" && brand.tagline.length > 0 ? (
             <Text style={styles.heroTagline}>{brand.tagline}</Text>
           ) : null}
@@ -432,6 +499,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
               </View>
             );
           })()}
+          </View>
         </GlassCard>
 
         {/* SECTION B — Stats Strip */}
@@ -636,8 +704,29 @@ const styles = StyleSheet.create({
   },
 
   // Hero -----------------------------------------------------------------
+  // ORCH-0807 Rev 3 — cover band on top of the hero card, padded content
+  // body below, avatar pulled up -42px so half of its 84×84 frame overlaps
+  // the cover band (matches PublicBrandPage half-in/half-out pattern).
+  heroCoverBand: {
+    height: 140,
+    width: "100%",
+    overflow: "hidden",
+    borderTopLeftRadius: radiusTokens.lg,
+    borderTopRightRadius: radiusTokens.lg,
+  },
+  heroCoverFill: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  heroBody: {
+    padding: spacing.lg,
+  },
   heroAvatarRow: {
     alignItems: "center",
+    marginTop: -42, // half of Avatar hero size (84) → 50% overlap on cover band
     marginBottom: spacing.md,
   },
   heroName: {

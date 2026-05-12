@@ -3,7 +3,13 @@
  *
  * Two size variants:
  *   `row`  (40×40, fully circular, 18px initial) — list rows, member rows
- *   `hero` (84×84, lg-rounded square, 36px initial) — profile heros
+ *   `hero` (84×84, fully circular, 36px initial) — profile heros
+ *
+ * ORCH-0807 (2026-05-12): `hero` was rounded-square (radius=lg) before;
+ * flipped to full circle for brand/member profile-photo semantics. All
+ * four hero render sites (BrandProfileView, BrandEditView, Brand-
+ * MemberDetailView, PublicBrandPage) are identity surfaces where a circle
+ * is universally correct. See INVESTIGATION_ORCH-0807 §3 HIDDEN-FLAW-1.
  *
  * Visual contract (preserved from inline implementations across J-A7/J-A8/
  * J-A9): circular wrap with `accent.tint` background + 1px `accent.border` +
@@ -26,10 +32,7 @@ import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import {
-  accent,
-  radius as radiusTokens,
-} from "../../constants/designSystem";
+import { accent } from "../../constants/designSystem";
 
 export type AvatarSize = "row" | "hero";
 
@@ -70,7 +73,11 @@ const SIZE_TOKENS: Record<AvatarSize, SizeTokens> = {
   hero: {
     width: 84,
     height: 84,
-    borderRadius: radiusTokens.lg,
+    // ORCH-0807: full circle (was radiusTokens.lg / rounded-square). All
+    // four hero render sites (BrandProfileView, BrandEditView, Brand-
+    // MemberDetailView, PublicBrandPage) are person/brand identity
+    // surfaces where a circle is universally correct.
+    borderRadius: 999,
     fontSize: 36,
   },
 };

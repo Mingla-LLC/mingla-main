@@ -58,6 +58,7 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
+import { BrandAvatarPickerSheet } from "./BrandAvatarPickerSheet";
 import { BrandCoverPickerSheet } from "./BrandCoverPickerSheet";
 
 interface ToastState {
@@ -312,12 +313,30 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   }, []);
 
   // [TRANSITIONAL] brand-AVATAR photo upload — deferred to ORCH-0805-A.
-  // ORCH-0805 (this cycle) covers the brand COVER overhaul only; the avatar
-  // pencil at SECTION A still fires this deferral toast until 0805-A ships
-  // a creator-avatar-style upload pipeline scoped to brand avatars.
+  // ORCH-0807 — brand AVATAR picker sheet (Upload only). Replaces the
+  // prior transitional toast `"Photo upload lands in a later cycle."`
+  // that lived here through the ORCH-0805 cover cycle.
+  const [avatarPickerVisible, setAvatarPickerVisible] = useState<boolean>(false);
   const handlePhotoEdit = useCallback((): void => {
-    fireToast("Photo upload lands in a later cycle.");
-  }, [fireToast]);
+    setAvatarPickerVisible(true);
+  }, []);
+  const handleCloseAvatarPicker = useCallback((): void => {
+    setAvatarPickerVisible(false);
+  }, []);
+  const handleAvatarPicked = useCallback(
+    (result: { publicUrl: string }): void => {
+      setDraft((prev) =>
+        prev === null
+          ? prev
+          : {
+              ...prev,
+              photo: result.publicUrl,
+              profilePhotoType: "image",
+            },
+      );
+    },
+    [],
+  );
 
   // ORCH-0805 — brand COVER picker sheet (Upload / Pexels / GIPHY).
   const [coverPickerVisible, setCoverPickerVisible] = useState<boolean>(false);
@@ -417,7 +436,15 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           <GlassCard variant="elevated" padding={spacing.lg}>
             <View style={styles.photoBlock}>
               <View style={styles.heroAvatarWrap}>
-                <Avatar name={brand.displayName} size="hero" />
+                {/* ORCH-0807 — read photo from draft so the just-uploaded
+                    avatar renders immediately on pick success (the draft
+                    is updated by handleAvatarPicked before DB persistence
+                    via the existing Save flow). */}
+                <Avatar
+                  name={brand.displayName}
+                  size="hero"
+                  photo={draft.photo}
+                />
                 <Pressable
                   onPress={handlePhotoEdit}
                   accessibilityRole="button"
@@ -813,6 +840,22 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           currentMediaUrl={draft?.coverMediaUrl ?? null}
           onClose={handleCloseCoverPicker}
           onPicked={handleCoverPicked}
+          onErrorToast={fireToast}
+        />
+      ) : null}
+
+      {/* ORCH-0807 — brand avatar picker (Upload only). Sibling of the
+          cover picker; mounted inside the parent host View per the
+          sub-sheet-inside-parent rule. */}
+      {brand !== null && accountId !== null ? (
+        <BrandAvatarPickerSheet
+          visible={avatarPickerVisible}
+          brandId={brand.id}
+          accountId={accountId}
+          existingDescription={joinBrandDescription(brand.tagline, brand.bio)}
+          currentPhotoUrl={draft?.photo ?? null}
+          onClose={handleCloseAvatarPicker}
+          onPicked={handleAvatarPicked}
           onErrorToast={fireToast}
         />
       ) : null}

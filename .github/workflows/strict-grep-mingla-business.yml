@@ -61,6 +61,7 @@ on:
 #   - ORCH-0788 (orch-0788-notification-template-key-dispatched.mjs) — buyer notification dispatcher routes by template_key + writers inline-dispatch + sweeper migration (I-PROPOSED-BA NOTIFICATION_TEMPLATE_KEY_DISPATCHED)
 #   - ORCH-0793 (orch-0793-scan-time-window.mjs) — biz_ticket_scan event_dates time-window enforcement + mobile discriminator plumbing (I-PROPOSED-BB SCAN_TIME_WINDOW_ENFORCED)
 #   - ORCH-0796 (orch-0796-no-stub-payout-fee.mjs) — Reconciliation expected-payout derived from real Stripe app-fee + refund cols, no 4% stub (I-PROPOSED-BC EVENT_PAYOUT_DATA_DERIVED)
+#   - ORCH-0808 (orch-0808-appsflyer-devices-app-discriminator.mjs) — appsflyer_devices writes carry app: 'consumer' | 'business' (I-PROPOSED-AF-DISCRIMINATOR)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -610,3 +611,27 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0802 gate
         run: node .github/scripts/strict-grep/orch-0802-stripe-embedded-components-routing.mjs
+
+  orch-0807-brand-avatar-square:
+    name: "ORCH-0807: Brand avatar square enforcement (I-PROPOSED-BG)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0807 gate
+        run: node .github/scripts/strict-grep/orch-0807-brand-avatar-square.mjs
+
+  orch-0808-appsflyer-devices-app-discriminator:
+    name: "ORCH-0808: appsflyer_devices writes carry app: (I-PROPOSED-AF-DISCRIMINATOR)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Babel parser
+        run: npm install --no-save @babel/parser @babel/traverse
+      - name: Run ORCH-0808 gate
+        run: node .github/scripts/strict-grep/orch-0808-appsflyer-devices-app-discriminator.mjs
