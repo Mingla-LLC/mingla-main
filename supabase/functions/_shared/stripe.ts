@@ -55,13 +55,22 @@ export const stripeRefreshStatus = () =>
   createStripeClient("STRIPE_RAK_REFRESH_STATUS");
 export const stripeDetach = () => createStripeClient("STRIPE_RAK_DETACH");
 export const stripeBalances = () => createStripeClient("STRIPE_RAK_BALANCES");
-// ORCH-0804 — RAK with `accounts:write` scope used by
-// brand-stripe-tax-dashboard-link to call accounts.createLoginLink on the
-// connected account. Operator must create this RAK + set the
-// STRIPE_RAK_TAX_DASHBOARD_LINK Supabase secret before the new edge
-// function deploys.
+// ORCH-0804 hotfix (post-CLOSE 2026-05-12) — accounts.createLoginLink is
+// classified by Stripe as a "secret-key-only" endpoint and rejects ALL
+// restricted API keys regardless of scope (verified live 2026-05-12 against
+// rk_test_…rTqEG1 — returned invalid_request_error with explicit
+// "required permissions are not available for use by restricted keys"). The
+// SPEC's RAK recommendation was therefore wrong; the correct config uses the
+// platform's full STRIPE_SECRET_KEY. Blast radius is bounded by:
+//   (1) requirePaymentsManager auth gate on every call
+//   (2) audit log emit on every success
+//   (3) call only generates a signed Express Dashboard URL — does not move
+//       money, does not mutate connected-account state, does not return
+//       sensitive data beyond the URL itself
+// The legacy STRIPE_RAK_TAX_DASHBOARD_LINK secret can be revoked in Stripe
+// Dashboard once this fix deploys.
 export const stripeTaxDashboardLink = () =>
-  createStripeClient("STRIPE_RAK_TAX_DASHBOARD_LINK");
+  createStripeClient("STRIPE_SECRET_KEY");
 export const stripeKycReminder = () =>
   createStripeClient("STRIPE_RAK_KYC_REMINDER");
 export const stripeTicketCheckout = () =>
