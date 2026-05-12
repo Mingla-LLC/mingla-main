@@ -23,6 +23,7 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import {
+  Image as RNImage,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -479,12 +480,26 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             <View style={styles.coverPreviewWrap}>
               {typeof draft.coverMediaUrl === "string" &&
               draft.coverMediaUrl.length > 0 ? (
-                <ExpoImage
-                  source={{ uri: draft.coverMediaUrl }}
-                  style={styles.coverPreviewMedia}
-                  contentFit="cover"
-                  accessibilityLabel="Cover preview"
-                />
+                // ORCH-0805-WEB hotfix (2026-05-12) — expo-image only on
+                // Android (where it correctly animates GIFs). iOS + web use
+                // RN core Image, which renders + animates GIFs natively
+                // and avoids the expo-image-web-shim failure mode that hid
+                // covers on the public brand page in a browser.
+                Platform.OS === "android" ? (
+                  <ExpoImage
+                    source={{ uri: draft.coverMediaUrl }}
+                    style={styles.coverPreviewMedia}
+                    contentFit="cover"
+                    accessibilityLabel="Cover preview"
+                  />
+                ) : (
+                  <RNImage
+                    source={{ uri: draft.coverMediaUrl }}
+                    style={styles.coverPreviewMedia}
+                    resizeMode="cover"
+                    accessibilityLabel="Cover preview"
+                  />
+                )
               ) : (
                 <EventCover
                   hue={draft.coverHue}

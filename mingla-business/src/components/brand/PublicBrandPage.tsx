@@ -43,6 +43,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Image as ExpoImage } from "expo-image";
 import {
+  Image as RNImage,
   Linking,
   Platform,
   Pressable,
@@ -256,8 +257,11 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       ) : null}
 
       {/* ORCH-0805 — cover hero with 3-state fallback chain.
-          1. brand.coverMediaUrl present + load succeeds → expo-image
-             (correctly animates GIFs on Android, unlike RN core <Image>).
+          1. brand.coverMediaUrl present + load succeeds → image element
+             (expo-image on Android for correct GIF animation; RN core
+             <Image> on iOS + web because both platforms animate GIFs
+             natively and expo-image's web shim has surfaced render-not-loading
+             issues in this codebase — ORCH-0805-WEB hotfix 2026-05-12).
           2. brand.coverMediaUrl present but load fails → hue gradient
              (defensive fallback; onError flips coverMediaFailed).
           3. brand.coverMediaUrl null → hue gradient (legacy / unset brands).
@@ -265,13 +269,23 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           hex/rgb/hsl/hwb. See header docstring "Platform notes". */}
       <View style={styles.heroWrap} pointerEvents="none">
         {coverMediaUrl !== null && coverMediaUrl.length > 0 && !coverMediaFailed ? (
-          <ExpoImage
-            source={{ uri: coverMediaUrl }}
-            style={styles.heroGradient}
-            contentFit="cover"
-            onError={() => setCoverMediaFailed(true)}
-            accessibilityLabel="Brand cover"
-          />
+          Platform.OS === "android" ? (
+            <ExpoImage
+              source={{ uri: coverMediaUrl }}
+              style={styles.heroGradient}
+              contentFit="cover"
+              onError={() => setCoverMediaFailed(true)}
+              accessibilityLabel="Brand cover"
+            />
+          ) : (
+            <RNImage
+              source={{ uri: coverMediaUrl }}
+              style={styles.heroGradient}
+              resizeMode="cover"
+              onError={() => setCoverMediaFailed(true)}
+              accessibilityLabel="Brand cover"
+            />
+          )
         ) : (
           <View
             style={[
