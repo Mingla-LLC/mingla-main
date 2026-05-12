@@ -11,7 +11,8 @@
  *   D-13-7: PDF DEFERRED to B-cycle (CTA renders disabled with "B-cycle" caption)
  *   D-13-8: CSV with Gross/Refunded/Net columns + summary stanza prefix
  *   D-13-9: filename {slug}-reconciliation-{YYYY-MM-DD}.csv
- *   D-13-10: payoutEstimate split (online×0.96 + door×1.0)
+ *   D-13-10 (ORCH-0796 reframed): expectedPayoutMajor derived from real Stripe
+ *           application_fee_amount + refunded_amount columns (no fee stub).
  *   D-13-11: audit_log integration DEFERRED entirely
  *
  * Selector pattern rule (Cycle 9c v2 + Cycle 12 lesson): ALL multi-record reads use raw
@@ -24,10 +25,7 @@
  *
  * ORCH-0710: ALL hooks declared BEFORE any conditional early-return shell.
  *
- * [TRANSITIONAL] payoutEstimate uses 4% Stripe-fee stub on online revenue. EXIT: B-cycle
- * Stripe payout API integration + Stripe Terminal SDK fee schedules.
- *
- * Per Cycle 13 SPEC §4.3.2.
+ * Per Cycle 13 SPEC §4.3.2 + ORCH-0796 reframe (real expected-payout wiring).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -484,9 +482,9 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
   hasAnyData,
   currency,
 }) => {
-  // Stripe fee stub on online revenue only (D-13-10).
-  // Door revenue contributes 1.0 (cash zero fee; card_reader/NFC fees ship B-cycle).
-  const stripeFeeOnline = Math.round(summary.onlineRevenue * 4) / 100;
+  // ORCH-0796 — real Stripe application_fee from order rows; null when no online activity.
+  // Door revenue contributes 1.0 net (cash; card_reader/NFC fee schedules ship when Terminal SDK lands).
+  const stripeFeeOnline = summary.stripeFeeOnlineMajor;
 
   return (
     <View style={styles.section}>
@@ -546,16 +544,28 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
         variant="big"
       />
       <SectionRow
-        label="Stripe fee (online, 4% stub)"
-        value={`−${formatCurrency(stripeFeeOnline, currency)}`}
+        label="Stripe fee (online)"
+        value={
+          stripeFeeOnline !== null
+            ? `−${formatCurrency(stripeFeeOnline, currency)}`
+            : "—"
+        }
         variant="muted"
       />
       <SectionRow label="Door fee" value={formatCurrency(0, currency)} variant="muted" />
       <SectionRow
-        label="PAYOUT (estimated)"
-        value={formatCurrency(summary.payoutEstimate, currency)}
+        label="EXPECTED PAYOUT"
+        value={
+          summary.expectedPayoutMajor !== null
+            ? formatCurrency(summary.expectedPayoutMajor, currency)
+            : "—"
+        }
         variant="mid"
-        hint="TRANSITIONAL — B-cycle Stripe payout API"
+        hint={
+          summary.expectedPayoutMajor !== null
+            ? "Net to your Stripe account after fees and refunds"
+            : "No payments yet"
+        }
       />
     </View>
   );

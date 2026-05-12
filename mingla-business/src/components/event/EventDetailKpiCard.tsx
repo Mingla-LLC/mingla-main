@@ -22,10 +22,13 @@ import { formatCurrency } from "../../utils/currency";
 import { GlassCard } from "../ui/GlassCard";
 
 export interface EventDetailKpiCardProps {
-  /** GBP whole-units. 0 in 9a. */
+  /** Major units. 0 when there are no orders. */
   revenueGbp: number;
-  /** GBP whole-units (revenueGbp × 0.96 stub Stripe fee). 0 in 9a. */
-  payoutGbp: number;
+  /**
+   * Net to organiser's Stripe account from online sales only (major units).
+   * Null when no online payments exist — renders as "—". ORCH-0796.
+   */
+  payoutGbp: number | null;
   currency?: string;
 }
 
@@ -53,7 +56,9 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
         <View style={styles.colRight}>
           <Text style={styles.label}>PAYOUT</Text>
           <Text style={styles.midValue}>
-            {formatCurrency(hasData ? payoutGbp : 0, currency)}
+            {hasData && payoutGbp !== null
+              ? formatCurrency(payoutGbp, currency)
+              : "—"}
           </Text>
         </View>
       </View>

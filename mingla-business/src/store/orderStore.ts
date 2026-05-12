@@ -107,6 +107,12 @@ export interface RefundRecord {
   refundedAt: string;
   /** For partial refunds: which lines + quantities. Full refund = all lines. */
   lines: { ticketTypeId: string; quantity: number; amountGbp: number; amount?: number }[];
+  /**
+   * Application-fee portion of this refund in minor units. Set by the
+   * refund-order edge function / stripe-webhook on `charge.refunded`. Added
+   * back when computing expected-payout-to-organiser per ORCH-0796.
+   */
+  applicationFeeRefundedCents?: number;
 }
 
 export interface OrderRecord {
@@ -131,6 +137,20 @@ export interface OrderRecord {
   refundedAmountGbp: number;
   /** Currency-neutral alias for new ORCH-0769 records. */
   refundedAmount?: number;
+  /** Total refunded in minor units (server-truth cache). ORCH-0796. */
+  refundedAmountCents?: number;
+  /** Total order amount in minor units. ORCH-0796 — needed for net-to-organiser. */
+  totalCents?: number;
+  /**
+   * Mingla-intended platform fee at charge creation (cents). Pre-webhook
+   * fallback for `stripeApplicationFeeAmountCents`. ORCH-0796.
+   */
+  applicationFeeAmountCents?: number;
+  /**
+   * Stripe-confirmed platform fee on the charge (cents). Null until the
+   * Stripe webhook lands. ORCH-0796.
+   */
+  stripeApplicationFeeAmountCents?: number | null;
   /** Append-only audit log. */
   refunds: RefundRecord[];
   cancelledAt: string | null;

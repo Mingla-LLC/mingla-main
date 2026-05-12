@@ -41,12 +41,10 @@ import {
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
-import { EventCover } from "../ui/EventCover";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
-import { Pill } from "../ui/Pill";
 import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
 
@@ -54,37 +52,6 @@ interface ToastState {
   visible: boolean;
   message: string;
 }
-
-interface StubPastEventRow {
-  id: string;
-  title: string;
-  when: string;
-  hue: number;
-  sold: string;
-}
-
-// [TRANSITIONAL] stub past-events list — replaced by real event fetch in
-// Cycle 3 when event endpoints land. Keyed by brand.id so each brand shows
-// distinct copy. Empty arrays render the empty-events GlassCard.
-const STUB_PAST_EVENTS: Record<string, StubPastEventRow[]> = {
-  lm: [
-    { id: "lm-p1", title: "Slow Burn vol. 3", when: "Sat · 21:00", hue: 25, sold: "228 / 240" },
-    { id: "lm-p2", title: "Slow Burn vol. 2", when: "Sat · 21:00", hue: 35, sold: "238 / 240" },
-    { id: "lm-p3", title: "Slow Burn vol. 1", when: "Sat · 20:00", hue: 45, sold: "262 / 280" },
-  ],
-  tll: [
-    { id: "tll-p1", title: "Long Lunch — Aug edition", when: "Sun · 13:00", hue: 150, sold: "12 / 12" },
-  ],
-  sl: [
-    { id: "sl-p1", title: "Sunday Languor — June", when: "Sun · 11:30", hue: 195, sold: "62 / 80" },
-    { id: "sl-p2", title: "Sunday Languor — May", when: "Sun · 11:30", hue: 200, sold: "78 / 80" },
-    { id: "sl-p3", title: "Sunday Languor — April", when: "Sun · 11:30", hue: 205, sold: "74 / 80" },
-  ],
-  hr: [
-    { id: "hr-p1", title: "Hidden Rooms — Laundrette", when: "Fri · 20:00", hue: 340, sold: "48 / 50" },
-    { id: "hr-p2", title: "Hidden Rooms — Studio", when: "Sat · 21:00", hue: 350, sold: "44 / 50" },
-  ],
-};
 
 interface OperationsRow {
   icon: IconName;
@@ -242,10 +209,11 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     }
   }, [brand, onStripe]);
 
-  // [TRANSITIONAL] Empty-bio CTA — exit when J-A8 lands.
   const handleEmptyBio = useCallback((): void => {
-    fireToast("Editing lands in J-A8.");
-  }, [fireToast]);
+    if (brand !== null) {
+      onEdit(brand.id);
+    }
+  }, [brand, onEdit]);
 
   // Cycle 7 FX1: routes to /event/create via parent route handler.
   // Retired Cycle-2 J-A7 TRANSITIONAL Toast (exit condition met by Cycle 3).
@@ -261,11 +229,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     },
     [onOpenLink],
   );
-
-  const pastEvents = useMemo<StubPastEventRow[]>(() => {
-    if (brand === null) return [];
-    return STUB_PAST_EVENTS[brand.id] ?? [];
-  }, [brand]);
 
   // Hook-derived Operations rows. Per-row onPress closes over either
   // fireToast (still-TRANSITIONAL rows) or the live navigation callback.
@@ -555,45 +518,21 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Recent events</Text>
         </View>
-        {pastEvents.length === 0 ? (
-          <GlassCard variant="base" padding={spacing.lg}>
-            <Text style={styles.emptyEventsTitle}>No events yet</Text>
-            <Text style={styles.emptyEventsBody}>
-              Events you create will show here.
-            </Text>
-            <View style={styles.emptyEventsBtnRow}>
-              <Button
-                label="Create your first event"
-                onPress={handleCreateEvent}
-                variant="primary"
-                size="md"
-                leadingIcon="plus"
-              />
-            </View>
-          </GlassCard>
-        ) : (
-          <View style={styles.eventsCol}>
-            {/* [TRANSITIONAL] stub past-event rows — replaced by real fetch in Cycle 3. */}
-            {pastEvents.map((row) => (
-              <View key={row.id} style={styles.eventRow}>
-                <View style={styles.eventCoverWrap}>
-                  <EventCover hue={row.hue} radius={12} label="" height={56} width={56} />
-                </View>
-                <View style={styles.eventTextCol}>
-                  <View style={styles.eventPillRow}>
-                    <Pill variant="draft">Past</Pill>
-                  </View>
-                  <Text style={styles.eventTitle} numberOfLines={1}>{row.title}</Text>
-                  <Text style={styles.eventWhen} numberOfLines={1}>{row.when}</Text>
-                </View>
-                <View style={styles.eventSoldCol}>
-                  <Text style={styles.eventSoldValue}>{row.sold}</Text>
-                  <Text style={styles.eventSoldLabel}>sold</Text>
-                </View>
-              </View>
-            ))}
+        <GlassCard variant="base" padding={spacing.lg}>
+          <Text style={styles.emptyEventsTitle}>No events yet</Text>
+          <Text style={styles.emptyEventsBody}>
+            Events you create will show here.
+          </Text>
+          <View style={styles.emptyEventsBtnRow}>
+            <Button
+              label="Create your first event"
+              onPress={handleCreateEvent}
+              variant="primary"
+              size="md"
+              leadingIcon="plus"
+            />
           </View>
-        )}
+        </GlassCard>
 
         {/* Cycle 17e-A — Danger zone (delete brand) */}
         {onRequestDelete !== undefined && brand !== null ? (
@@ -866,58 +805,6 @@ const styles = StyleSheet.create({
   },
 
   // Events ---------------------------------------------------------------
-  eventsCol: {
-    gap: spacing.sm,
-  },
-  eventRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radiusTokens.lg,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
-  eventCoverWrap: {
-    width: 56,
-    height: 56,
-    flexShrink: 0,
-  },
-  eventTextCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  eventPillRow: {
-    flexDirection: "row",
-    marginBottom: 2,
-  },
-  eventTitle: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: "600",
-    color: textTokens.primary,
-    marginBottom: 2,
-  },
-  eventWhen: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
-  },
-  eventSoldCol: {
-    alignItems: "flex-end",
-    paddingRight: 2,
-  },
-  eventSoldValue: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
-  eventSoldLabel: {
-    fontSize: 10,
-    color: textTokens.tertiary,
-  },
-
   emptyEventsTitle: {
     fontSize: typography.h3.fontSize,
     lineHeight: typography.h3.lineHeight,
