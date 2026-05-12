@@ -599,3 +599,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0804 gate
         run: node .github/scripts/strict-grep/orch-0804-stripe-tax-enabled-on-checkout.mjs
+
+  orch-0802-stripe-embedded-components-routing:
+    name: "ORCH-0802: Stripe Embedded Components routing (I-PROPOSED-O)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0802 gate
+        run: node .github/scripts/strict-grep/orch-0802-stripe-embedded-components-routing.mjs

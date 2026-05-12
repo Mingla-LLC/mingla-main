@@ -18,7 +18,7 @@
  * Per J-A10 spec §3.5.
  */
 
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -53,6 +53,10 @@ import { BrandStripeBankSection } from "./BrandStripeBankSection";
 import { BrandStripeKycRemediationCard } from "./BrandStripeKycRemediationCard";
 import { BrandStripeOrphanedRefundsSection } from "./BrandStripeOrphanedRefundsSection";
 import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
+// ORCH-0802 — Danger zone: Disconnect Stripe sheet (was HIDDEN-FLAW-2 in
+// investigation — detach hook+service shipped in B2a Path C V3 without a
+// UI surface).
+import { BrandStripeDetachConfirmSheet } from "./BrandStripeDetachConfirmSheet";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
 import { useBrandStripeTaxDashboardLink } from "../../hooks/useBrandStripeTaxDashboardLink";
@@ -176,6 +180,18 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     if (brand?.id === undefined || taxDashboardLink.isPending) return;
     taxDashboardLink.mutate(brand.id);
   }, [brand?.id, taxDashboardLink]);
+
+  // ORCH-0802 — Disconnect Stripe sheet visibility. Sheet is only ever
+  // reachable from the Danger zone CTA below, which itself only renders
+  // when stripeStatus is active OR restricted (SPEC §6.3 visibility gate).
+  const [detachSheetVisible, setDetachSheetVisible] = useState<boolean>(false);
+  const handleOpenDetach = useCallback((): void => {
+    setDetachSheetVisible(true);
+  }, []);
+  const handleCloseDetach = useCallback((): void => {
+    setDetachSheetVisible(false);
+  }, []);
+
   const bannerConfig = BANNER_CONFIG[stripeStatus];
 
   // ORCH-0796 — `brand.payouts` and `brand.refunds` are intentionally unpopulated
@@ -551,8 +567,47 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
             fullWidth
           />
         </View>
+
+        {/* SECTION F — ORCH-0802 Danger zone: Disconnect Stripe.
+            Only rendered for active/restricted (the only states where
+            there is a real connection to sever). Hidden for not_connected
+            (nothing to disconnect) and onboarding (would strand the brand
+            mid-onboarding without a recovery path). */}
+        {(stripeStatus === "active" || stripeStatus === "restricted") &&
+        brand !== null ? (
+          <View style={styles.dangerZone}>
+            <Text style={styles.dangerZoneTitle}>DANGER ZONE</Text>
+            <GlassCard variant="base" padding={spacing.md}>
+              <Text style={styles.dangerZoneBody}>
+                Disconnecting stops {brand.displayName} from selling
+                tickets. Existing buyers keep their tickets; refunds
+                remain visible under your refund history.
+              </Text>
+              <View style={styles.dangerZoneBtnRow}>
+                <Button
+                  label="Disconnect Stripe"
+                  onPress={handleOpenDetach}
+                  variant="destructive"
+                  size="md"
+                  leadingIcon="bank"
+                  accessibilityLabel={`Disconnect Stripe from ${brand.displayName}`}
+                />
+              </View>
+            </GlassCard>
+          </View>
+        ) : null}
       </ScrollView>
 
+      {/* ORCH-0802 — Detach confirmation sheet. Mounted outside the
+          ScrollView so the modal overlay isn't clipped by the scroll
+          frame. brandId/brandName are null-guarded — the sheet renders
+          null when either is missing. */}
+      <BrandStripeDetachConfirmSheet
+        visible={detachSheetVisible}
+        brandId={brand?.id ?? null}
+        brandName={brand?.displayName ?? null}
+        onClose={handleCloseDetach}
+      />
     </View>
   );
 };
@@ -778,6 +833,27 @@ const styles = StyleSheet.create({
 
   // Export CTA -----------------------------------------------------------
   exportRow: {
+    marginTop: spacing.sm,
+  },
+
+  // ORCH-0802 — Danger zone (Disconnect Stripe) --------------------------
+  dangerZone: {
+    marginTop: spacing.lg,
+    gap: spacing.sm,
+  },
+  dangerZoneTitle: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    color: semantic.error,
+  },
+  dangerZoneBody: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+  },
+  dangerZoneBtnRow: {
+    flexDirection: "row",
     marginTop: spacing.sm,
   },
 });

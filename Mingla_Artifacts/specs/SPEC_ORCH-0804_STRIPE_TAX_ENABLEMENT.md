@@ -200,7 +200,7 @@ Both with category `stripe_connect`, icon `bank`. Required by `I-PROPOSED-BD AUD
 
 Tiny function: validates the calling user is brand_admin+ on the requested brand, fetches `stripe_account_id` from `stripe_connect_accounts`, calls `stripe.accounts.createLoginLink(stripeAccountId)`, returns the URL. Mirror the shape of any existing `*-link` function in the codebase (forensics will identify during implementation; likely a tweak of `brand-stripe-onboard`).
 
-`verify_jwt: true`. RAK with permissions `accounts:write` (createLoginLink scope) — operator creates this RAK and adds to Supabase secrets as `STRIPE_RAK_TAX_DASHBOARD_LINK`.
+`verify_jwt: true`. **POST-CLOSE CORRECTION (2026-05-12 hotfix):** the SPEC originally specified a RAK with `accounts:write` scope, but live testing against Stripe revealed that `accounts.createLoginLink` is a secret-key-only endpoint — Stripe rejects ALL Restricted API Keys for this call regardless of scope, with the error `"the required permissions are not available for use by restricted keys"`. The edge function uses the platform's `STRIPE_SECRET_KEY` instead. Blast-radius mitigations: `requirePaymentsManager` auth gate, audit log on every call, call only generates a signed URL (no money movement, no account-state mutation).
 
 ---
 

@@ -27,6 +27,8 @@ One invariant introduced by ORCH-0804 SPEC §8 — Stripe Tax enablement on tick
 - `stripe_tax.checkout_enabled` audit slug emission — registered in `auditActionLabels.ts` resolver but not yet emitted by the edge function. Queued as ORCH-0804-C.
 - Specialised friendly toast for Stripe `tax_calculation_failed` error — queued as ORCH-0804-D.
 
+**Post-CLOSE correction (2026-05-12 hotfix, commit `621b8068`):** the `brand-stripe-tax-dashboard-link` edge function uses the platform `STRIPE_SECRET_KEY` (not a RAK) because `accounts.createLoginLink` is a secret-key-only endpoint per Stripe. The original SPEC §5.4 RAK recommendation was wrong; live probe returned `invalid_request_error: "the required permissions are not available for use by restricted keys"`. Blast-radius mitigations preserved: `requirePaymentsManager` auth gate, audit log emit on every call, call only generates a signed Express Dashboard URL (no money movement, no account-state mutation). The legacy `STRIPE_RAK_TAX_DASHBOARD_LINK` Supabase secret can be revoked in Stripe Dashboard.
+
 **Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0804_STRIPE_TAX_ENABLEMENT.md`, implementation report `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0804_STRIPE_TAX_ENABLEMENT.md`, QA report `Mingla_Artifacts/reports/QA_ORCH-0804_STRIPE_TAX_ENABLEMENT.md`, close note `Mingla_Artifacts/CLOSE_NOTE_ORCH-0804.md`.
 
 ---
@@ -2710,9 +2712,9 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **EXIT condition:** Permanent invariant. The PostgREST + supabase-js contract that produces silent 0-row success is unlikely to change.
 
-### I-PROPOSED-O — STRIPE-EMBEDDED-COMPONENTS-VIA-OFFICIAL-SDK-ONLY (DRAFT — flips ACTIVE on B2a CLOSE)
+### I-PROPOSED-O — STRIPE-EMBEDDED-COMPONENTS-VIA-OFFICIAL-SDK-ONLY (ACTIVE post-ORCH-0802 CLOSE 2026-05-12)
 
-**Status:** DRAFT (pre-written at B2a SPEC dispatch authoring; flips to ACTIVE on B2a CLOSE per orchestrator standard close protocol).
+**Status:** ACTIVE. Pre-written at B2a SPEC dispatch authoring; the WebView-ban portion has been enforced via the `i-proposed-o-stripe-no-webview-wrap` strict-grep gate since B2a CLOSE. ORCH-0802 ratifies the full rule (including the Path A held-until-GA clause documented in the §"Post-ORCH-0802 amendment" block at the end of this entry) per `Mingla_Artifacts/specs/SPEC_ORCH-0802_STRIPE_CONNECT_EMBEDDED_COMPONENTS.md` §8.
 
 **Statement:** Mingla MUST NOT DIY-wrap `@stripe/connect-js` in `react-native-webview` / `WKWebView` / Android WebView. Connect Embedded Components are exposed via either: (a) Stripe's prescribed native preview SDK component (`@stripe/stripe-react-native` `<ConnectAccountOnboarding>` once GA — Path A future upgrade), OR (b) Mingla-hosted web page rendering web SDK (`@stripe/connect-js` + `@stripe/react-connect-js`) opened via `expo-web-browser` (system browser, sandboxed, NOT host-app-controlled — Path B current).
 
@@ -2720,9 +2722,30 @@ Direct-predicate policies (`account_id = auth.uid()`-style) bypass both failure 
 
 **Enforcement:** CI gate at `.github/workflows/strict-grep-mingla-business.yml` job `i-proposed-o-stripe-no-webview-wrap` running `.github/scripts/strict-grep/i-proposed-o-stripe-no-webview-wrap.mjs`. Scans `mingla-business/src/` + `mingla-business/app/` for files importing BOTH `@stripe/connect-js` (or `@stripe/react-connect-js`) AND `react-native-webview`. Allowlist tag (file-level): `// orch-strict-grep-allow stripe-connect-js-with-webview — <reason>`.
 
-**Source:** B2a SPEC §8.2 + spike report `Mingla_Artifacts/reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md` §6 G-1.
+**Source:** B2a SPEC §8.2 + spike report `Mingla_Artifacts/reports/SPIKE_CYCLE_B2_STRIPE_CONNECT_SDK.md` §6 G-1. Amended ORCH-0802 SPEC §8.
 
-**EXIT condition:** Permanent invariant. Stripe's prohibition is documented public policy; reversal would require Stripe to publicly endorse WebView wrapping (no precedent).
+**EXIT condition (WebView ban):** Permanent invariant. Stripe's prohibition is documented public policy; reversal would require Stripe to publicly endorse WebView wrapping (no precedent).
+
+**Post-ORCH-0802 amendment (2026-05-12):**
+
+ORCH-0802 confirmed live against https://docs.stripe.com/connect/supported-embedded-components on 2026-05-12 that Stripe's React Native Connect Embedded Components SDK ships exactly three components — Account Onboarding, Payments, Payouts — all in Preview status. The other 30+ Connect Embedded Components in Stripe's catalogue are Web JS only. Native RN SDK adoption (Path A) is therefore HELD until Preview status lifts across all three RN components.
+
+The full ratified routing rule is:
+
+- **Path B (canonical today):** Mingla-hosted web page using `@stripe/connect-js` (load) + `@stripe/react-connect-js` (component wrappers), opened in the device's system browser via `expo-web-browser.openAuthSessionAsync`. Existing example: `mingla-business/app/connect-onboarding.tsx` for Account Onboarding.
+- **Path A (held until GA):** `@stripe/stripe-react-native` Connect Embedded Components rendered inline in the native app. FORBIDDEN until all three RN Preview components (Account Onboarding, Payments, Payouts) reach GA status on the Stripe-supported-embedded-components page. Re-evaluate at the close of each subsequent quarter.
+- **FORBIDDEN regardless of path** (the original WebView-ban clause above): DIY-wrapping `@stripe/connect-js` inside `react-native-webview` / `WKWebView` / Android WebView.
+
+**Enforcement (post-ORCH-0802):**
+
+Two strict-grep gates run together:
+
+1. `i-proposed-o-stripe-no-webview-wrap` (pre-existing) — enforces the WebView ban from B2a CLOSE.
+2. `orch-0802-stripe-embedded-components-routing` (new) at `.github/scripts/strict-grep/orch-0802-stripe-embedded-components-routing.mjs`. Three checks: (a) forbid `@stripe/connect-js` and `@stripe/react-connect-js` imports in `mingla-business/src/` (Web JS packages must stay in the `mingla-business/app/` Mingla-hosted pages); (b) forbid co-occurrence of `@stripe/stripe-react-native` import + `ConnectComponentsProvider` reference (Path A marker); (c) forbid co-occurrence of `WebView` + `@stripe/connect-js`/`connect.stripe.com` in the same file (anti-WebView-wrap belt-and-braces). Negative-control: planting a `@stripe/connect-js` import in any `mingla-business/src/` file fires Check 1 with a named diagnostic and the gate exits non-zero.
+
+**EXIT condition for the Path-A-held clause:** When all three RN Connect Embedded Components reach GA status, register a new ORCH cycle to re-evaluate Path A adoption, update this amendment text, and update Check 2 of the new strict-grep gate.
+
+**ORCH-0802 cross-references:** `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0802_STRIPE_CONNECT_EMBEDDED_COMPONENTS.md` + `Mingla_Artifacts/specs/SPEC_ORCH-0802_STRIPE_CONNECT_EMBEDDED_COMPONENTS.md`.
 
 ### I-PROPOSED-P — STRIPE-STATE-CANONICAL-IS-CONNECT-ACCOUNTS (DRAFT — flips ACTIVE on B2a CLOSE)
 
