@@ -29,9 +29,31 @@ import {
   type BrandRow,
 } from "./brandMapping";
 import type { Brand, BrandRole } from "../store/currentBrandStore";
+// ORCH-0808 — organizer-funnel instrumentation.
+import { logAppsFlyerEvent } from "./appsFlyerService";
 
 interface EventBrandIdRow {
   brand_id: string | null;
+}
+
+// ORCH-0810 — brand KPI aggregation (attendees + GMV).
+// Const #9 fix: tiles previously rendered hardcoded zeros under an "all time"
+// label. Real aggregation reads orders joined to events.brand_id, excluding
+// failed / cancelled / fully-refunded payments. GMV is summed in the brand's
+// defaultCurrency only; mixed-currency orders for the same brand are ignored
+// in the headline tile (the brand chose one default currency at create time).
+interface OrderStatsRow {
+  total_cents: number | null;
+  currency: string | null;
+  payment_status: string | null;
+  refunded_amount_cents: number | null;
+  events: { brand_id: string | null } | null;
+  order_line_items: { quantity: number | null }[] | null;
+}
+
+interface BrandStatsAggregate {
+  attendees: number;
+  revByCurrencyCents: Map<string, number>;
 }
 
 /**
@@ -112,6 +134,11 @@ export async function createBrand(
     throw new Error("createBrand: insert returned null row");
   }
 
+  // ORCH-0808 — organizer-funnel event. Fires once per brand insert (not per
+  // user) — every brand a creator publishes is a separate funnel step.
+  // Fire-and-forget; AppsFlyer service is no-op when env is missing.
+  logAppsFlyerEvent("mingla_brand_created", { brand_id: data.id as string });
+
   return mapBrandRowToUi(data as BrandRow, { role });
 }
 
@@ -127,16 +154,23 @@ export async function getBrands(accountId: string): Promise<Brand[]> {
 
   if (error) throw error;
   const rows = data as BrandRow[];
-  const eventCounts = await getEventCountsByBrandIds(rows.map((row) => row.id));
+  const brandIds = rows.map((row) => row.id);
+  const [eventCounts, statsAgg] = await Promise.all([
+    getEventCountsByBrandIds(brandIds),
+    aggregateBrandStatsByBrandIds(brandIds),
+  ]);
   return rows.map((row) => {
     // Default role "owner" — useCurrentBrandRole resolves real role per brand.
     // Service layer cannot know caller's role per-brand without a join.
     const brand = mapBrandRowToUi(row, { role: "owner" });
+    const agg = statsAgg.get(row.id);
     return {
       ...brand,
       stats: {
         ...brand.stats,
         events: eventCounts.get(row.id) ?? 0,
+        attendees: agg?.attendees ?? 0,
+        rev: pickRevForCurrency(agg, brand.defaultCurrency),
       },
     };
   });
@@ -163,6 +197,71 @@ async function getEventCountsByBrandIds(
   return counts;
 }
 
+// ORCH-0810 — aggregate attendees + GMV across all orders for a set of brands.
+// Excludes orders with payment_status in (failed, cancelled, refunded) so
+// fully-refunded and cancelled orders do not inflate the headline tiles.
+// partial_refund orders are included with refunded_amount_cents netted out.
+export async function aggregateBrandStatsByBrandIds(
+  brandIds: string[],
+): Promise<Map<string, BrandStatsAggregate>> {
+  const result = new Map<string, BrandStatsAggregate>();
+  for (const id of brandIds) {
+    result.set(id, { attendees: 0, revByCurrencyCents: new Map() });
+  }
+  if (brandIds.length === 0) return result;
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select(`
+      total_cents,
+      currency,
+      payment_status,
+      refunded_amount_cents,
+      events!inner ( brand_id ),
+      order_line_items ( quantity )
+    `)
+    .in("events.brand_id", brandIds)
+    .not("payment_status", "in", "(failed,cancelled,refunded)");
+
+  if (error) throw error;
+
+  for (const row of (data ?? []) as unknown as OrderStatsRow[]) {
+    const brandId = row.events?.brand_id ?? null;
+    if (brandId === null) continue;
+    const bucket = result.get(brandId);
+    if (bucket === undefined) continue;
+
+    const qty = (row.order_line_items ?? []).reduce(
+      (sum, line) => sum + (line.quantity ?? 0),
+      0,
+    );
+    bucket.attendees += qty;
+
+    const net = (row.total_cents ?? 0) - (row.refunded_amount_cents ?? 0);
+    const currency = (row.currency ?? "").trim().toUpperCase();
+    if (currency.length === 0) continue;
+    bucket.revByCurrencyCents.set(
+      currency,
+      (bucket.revByCurrencyCents.get(currency) ?? 0) + net,
+    );
+  }
+
+  return result;
+}
+
+function pickRevForCurrency(
+  agg: BrandStatsAggregate | undefined,
+  defaultCurrency: string | undefined,
+): number {
+  if (agg === undefined) return 0;
+  if (defaultCurrency === undefined || defaultCurrency.trim().length === 0) {
+    return 0;
+  }
+  const cents = agg.revByCurrencyCents.get(defaultCurrency.trim().toUpperCase());
+  if (cents === undefined || cents <= 0) return 0;
+  return cents / 100;
+}
+
 // ----- getBrand (single) -------------------------------------------------
 
 export async function getBrand(brandId: string): Promise<Brand | null> {
@@ -175,7 +274,21 @@ export async function getBrand(brandId: string): Promise<Brand | null> {
 
   if (error) throw error;
   if (data === null) return null;
-  return mapBrandRowToUi(data as BrandRow, { role: "owner" });
+  const brand = mapBrandRowToUi(data as BrandRow, { role: "owner" });
+  const [eventCounts, statsAgg] = await Promise.all([
+    getEventCountsByBrandIds([brand.id]),
+    aggregateBrandStatsByBrandIds([brand.id]),
+  ]);
+  const agg = statsAgg.get(brand.id);
+  return {
+    ...brand,
+    stats: {
+      ...brand.stats,
+      events: eventCounts.get(brand.id) ?? 0,
+      attendees: agg?.attendees ?? 0,
+      rev: pickRevForCurrency(agg, brand.defaultCurrency),
+    },
+  };
 }
 
 // ----- updateBrand -------------------------------------------------------

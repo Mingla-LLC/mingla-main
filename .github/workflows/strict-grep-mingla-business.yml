@@ -623,6 +623,17 @@ jobs:
       - name: Run ORCH-0807 gate
         run: node .github/scripts/strict-grep/orch-0807-brand-avatar-square.mjs
 
+  orch-0810-brand-stats-no-fabrication:
+    name: "ORCH-0810: Brand KPI tiles sourced from real aggregator (Const #9)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0810 gate
+        run: node .github/scripts/strict-grep/orch-0810-brand-stats-no-fabrication.mjs
+
   orch-0808-appsflyer-devices-app-discriminator:
     name: "ORCH-0808: appsflyer_devices writes carry app: (I-PROPOSED-AF-DISCRIMINATOR)"
     runs-on: ubuntu-latest
