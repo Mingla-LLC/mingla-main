@@ -18,6 +18,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import {
+  dispatchTicketConfirmation,
   jsonResponse,
   serviceClient,
   ticketCorsHeaders,
@@ -104,7 +105,7 @@ serve(async (req: Request): Promise<Response> => {
 
   const cancelResult = result as Record<string, unknown>;
 
-  // Enqueue buyer notification (ORCH-0785 dispatcher consumes template_key).
+  // Enqueue buyer notification (ORCH-0788 dispatcher routes by template_key).
   const { data: orderDetail } = await supabase
     .from("orders")
     .select("event_id, buyer_email")
@@ -128,6 +129,9 @@ serve(async (req: Request): Promise<Response> => {
     if (notifError) {
       console.error("[cancel-order] notification enqueue failed (non-fatal)", notifError.message);
     }
+    // ORCH-0788: inline-dispatch so the buyer cancel email goes out
+    // immediately. Failure is NON-FATAL — sweeper picks up retryable rows.
+    await dispatchTicketConfirmation(orderId);
   } else {
     console.warn("[cancel-order] no buyer_email; skipping notification enqueue", { orderId });
   }

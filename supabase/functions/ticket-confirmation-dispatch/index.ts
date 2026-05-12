@@ -1,7 +1,25 @@
-// ORCH-0785 — Buyer ticket confirmation dispatcher.
-// Sends branded HTML email + PDF ticket attachments via Resend, and SMS via
-// Twilio. Service-role auth + ledger transition + rollup recompute behaviour
-// preserved from ORCH-0777 baseline. PDF render failure is RETRYABLE.
+// ORCH-0788 — Buyer notification dispatcher (formerly ORCH-0785
+// "ticket confirmation" dispatcher).
+//
+// Routes by `payload->>'template_key'` per notification row:
+//   - NULL or missing → "buyer_ticket_confirmation" (legacy default,
+//     preserves the W1 enqueue path from biz_ticket_checkout_finalize_session
+//     which never sets template_key). Renders ticket body + PDF + .ics
+//     attachment exactly as the ORCH-0785 baseline did.
+//   - "buyer_refund_issued" → renders refund notification via
+//     refundIssuedToGenericBody adapter through the existing
+//     generic_notification variant; sender override to EMAIL_SENDERS.tickets.
+//     No PDF, no calendar.
+//   - "buyer_order_cancelled" → same shape with cancel adapter.
+//   - Unknown template_key → immediate failed_terminal with
+//     last_error="unknown_template_key:<value>" (defensive, I-PROPOSED-BA).
+//
+// Per SPEC §5.4: NO new EmailVariant union members. Refund/cancel ride
+// through the existing generic_notification variant using adapter
+// functions and a sender override.
+//
+// Service-role auth + ledger transition + rollup recompute behaviour
+// preserved from ORCH-0777 baseline. PDF render failure remains RETRYABLE.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
@@ -20,6 +38,13 @@ import {
 } from "../_shared/email/index.ts";
 import { buildTicketPdf } from "../_shared/ticketPdf.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
+import {
+  type BuyerContext,
+  orderCancelledToGenericBody,
+  type OrderCancelledPayloadShape,
+  refundIssuedToGenericBody,
+  type RefundIssuedPayloadShape,
+} from "../_shared/email/buyerLifecycleAdapters.ts";
 
 const MINGLA_LOGO_URL = Deno.env.get("MINGLA_LOGO_URL") ?? null;
 
@@ -374,9 +399,10 @@ serve(async (req) => {
     };
   }
 
+  // ORCH-0788: SELECT payload so we can route by template_key per row.
   const { data: notifications, error: notificationError } = await supabase
     .from("ticket_order_notifications")
-    .select("id, channel, recipient, status, attempt_count")
+    .select("id, channel, recipient, status, attempt_count, payload")
     .eq("order_id", orderId)
     .in("status", ["pending", "failed_retryable"]);
   if (notificationError) {
@@ -389,8 +415,23 @@ serve(async (req) => {
     );
   }
 
-  const outcomes: Array<{ channel: string; status: string }> = [];
+  // ORCH-0788: BuyerContext shared by refund/cancel adapters. Built once
+  // from the order join; cheap to materialise even on rows that don't use it.
+  const buyerContext: BuyerContext = {
+    buyerName: order.buyer_name,
+    eventTitle: context.bodyInput.event.title,
+    brandName: context.bodyInput.brand.name,
+    orderShortId: context.bodyInput.order.shortId,
+  };
+
+  const outcomes: Array<{ channel: string; status: string; templateKey: string }> = [];
   for (const notification of notifications ?? []) {
+    // ORCH-0788 I-PROPOSED-BA: COALESCE template_key with legacy default.
+    const rawPayload = (notification.payload ?? {}) as Record<string, unknown>;
+    const templateKey = typeof rawPayload.template_key === "string"
+      ? rawPayload.template_key
+      : "buyer_ticket_confirmation";
+
     await supabase
       .from("ticket_order_notifications")
       .update({
@@ -399,44 +440,99 @@ serve(async (req) => {
         updated_at: new Date().toISOString(),
       })
       .eq("id", notification.id);
+
     try {
-      if (notification.channel === "email") {
-        if (!renderedEmail || !renderedPdf) {
-          // Render failure surfaces as retryable. Either render input is
-          // transiently incomplete (missing event/brand row) or the PDF
-          // library hit a recoverable issue.
-          throw new ProviderSendError({
-            retryable: true,
-            detail: renderError?.code ?? "email_render_unknown_failure",
-            status: 0,
+      if (templateKey === "buyer_ticket_confirmation") {
+        // Legacy path — preserved exactly as ORCH-0785 baseline.
+        if (notification.channel === "email") {
+          if (!renderedEmail || !renderedPdf) {
+            // Render failure surfaces as retryable. Either render input is
+            // transiently incomplete (missing event/brand row) or the PDF
+            // library hit a recoverable issue.
+            throw new ProviderSendError({
+              retryable: true,
+              detail: renderError?.code ?? "email_render_unknown_failure",
+              status: 0,
+            });
+          }
+          const attachments: Array<{ filename: string; content: string }> = [{
+            filename: renderedPdf.filename,
+            content: renderedPdf.contentBase64,
+          }];
+          const calendarLinks = buildCalendarLinks({
+            title: context.bodyInput.event.title,
+            startAtIso: context.bodyInput.event.startAt,
+            endAtIso: null,
+            locationText: context.bodyInput.event.locationText,
+            isOnline: context.bodyInput.event.isOnline,
+            description:
+              `${context.bodyInput.event.title} — hosted by ${context.bodyInput.brand.name}. Order #${context.bodyInput.order.shortId}.`,
           });
+          if (calendarLinks) {
+            attachments.push({
+              filename: calendarLinks.icsFilename,
+              content: icsToBase64(calendarLinks.icsContent),
+            });
+          }
+          const sent = await sendResendEmailWithAttachment({
+            from: formatSenderHeader(renderedEmail.from),
+            to: notification.recipient,
+            subject: renderedEmail.subject,
+            html: renderedEmail.html,
+            text: renderedEmail.text,
+            attachments,
+          });
+          await supabase.from("ticket_order_notifications").update({
+            status: "sent",
+            provider: "resend",
+            provider_message_id: sent.id,
+            sent_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq("id", notification.id);
+        } else {
+          const sent = await sendTwilioMessage({
+            to: notification.recipient,
+            body: smsBody,
+          });
+          await supabase.from("ticket_order_notifications").update({
+            status: "sent",
+            provider: "twilio",
+            provider_message_id: sent.sid,
+            sent_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq("id", notification.id);
         }
-        const attachments: Array<{ filename: string; content: string }> = [{
-          filename: renderedPdf.filename,
-          content: renderedPdf.contentBase64,
-        }];
-        const calendarLinks = buildCalendarLinks({
-          title: context.bodyInput.event.title,
-          startAtIso: context.bodyInput.event.startAt,
-          endAtIso: null,
-          locationText: context.bodyInput.event.locationText,
-          isOnline: context.bodyInput.event.isOnline,
-          description:
-            `${context.bodyInput.event.title} — hosted by ${context.bodyInput.brand.name}. Order #${context.bodyInput.order.shortId}.`,
+        outcomes.push({ channel: notification.channel, status: "sent", templateKey });
+      } else if (templateKey === "buyer_refund_issued") {
+        // ORCH-0788 §5: refund email via generic_notification adapter.
+        // Email-only per SPEC §10.1 (CF-1 SMS deferred).
+        if (notification.channel !== "email") {
+          await supabase.from("ticket_order_notifications").update({
+            status: "skipped",
+            last_error: "channel_not_supported_for_template",
+            updated_at: new Date().toISOString(),
+          }).eq("id", notification.id);
+          outcomes.push({ channel: notification.channel, status: "skipped", templateKey });
+          continue;
+        }
+        const refundBody = refundIssuedToGenericBody(
+          rawPayload as unknown as RefundIssuedPayloadShape,
+          buyerContext,
+        );
+        const refundEmail = renderTransactionalEmail({
+          variant: "generic_notification",
+          recipient: { name: order.buyer_name, email: order.buyer_email ?? "" },
+          body: refundBody,
+          sender: EMAIL_SENDERS.tickets, // ORCH-0788 §5.2 — same sender as purchase
         });
-        if (calendarLinks) {
-          attachments.push({
-            filename: calendarLinks.icsFilename,
-            content: icsToBase64(calendarLinks.icsContent),
-          });
-        }
+        assertNotResendSandbox(refundEmail.from);
         const sent = await sendResendEmailWithAttachment({
-          from: formatSenderHeader(renderedEmail.from),
+          from: formatSenderHeader(refundEmail.from),
           to: notification.recipient,
-          subject: renderedEmail.subject,
-          html: renderedEmail.html,
-          text: renderedEmail.text,
-          attachments,
+          subject: refundEmail.subject,
+          html: refundEmail.html,
+          text: refundEmail.text,
+          attachments: [], // ORCH-0788 §5.3 — no PDF, no calendar
         });
         await supabase.from("ticket_order_notifications").update({
           status: "sent",
@@ -445,20 +541,57 @@ serve(async (req) => {
           sent_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }).eq("id", notification.id);
-      } else {
-        const sent = await sendTwilioMessage({
+        outcomes.push({ channel: notification.channel, status: "sent", templateKey });
+      } else if (templateKey === "buyer_order_cancelled") {
+        // ORCH-0788 §5: cancel email via generic_notification adapter.
+        if (notification.channel !== "email") {
+          await supabase.from("ticket_order_notifications").update({
+            status: "skipped",
+            last_error: "channel_not_supported_for_template",
+            updated_at: new Date().toISOString(),
+          }).eq("id", notification.id);
+          outcomes.push({ channel: notification.channel, status: "skipped", templateKey });
+          continue;
+        }
+        const cancelBody = orderCancelledToGenericBody(
+          rawPayload as unknown as OrderCancelledPayloadShape,
+          buyerContext,
+        );
+        const cancelEmail = renderTransactionalEmail({
+          variant: "generic_notification",
+          recipient: { name: order.buyer_name, email: order.buyer_email ?? "" },
+          body: cancelBody,
+          sender: EMAIL_SENDERS.tickets,
+        });
+        assertNotResendSandbox(cancelEmail.from);
+        const sent = await sendResendEmailWithAttachment({
+          from: formatSenderHeader(cancelEmail.from),
           to: notification.recipient,
-          body: smsBody,
+          subject: cancelEmail.subject,
+          html: cancelEmail.html,
+          text: cancelEmail.text,
+          attachments: [],
         });
         await supabase.from("ticket_order_notifications").update({
           status: "sent",
-          provider: "twilio",
-          provider_message_id: sent.sid,
+          provider: "resend",
+          provider_message_id: sent.id,
           sent_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }).eq("id", notification.id);
+        outcomes.push({ channel: notification.channel, status: "sent", templateKey });
+      } else {
+        // ORCH-0788 I-PROPOSED-BA defensive: unknown template_key flips to
+        // failed_terminal immediately so the row surfaces visibly via the
+        // brand-team SELECT RLS policy instead of silently rendering the
+        // wrong template. No retry attempts consumed.
+        await supabase.from("ticket_order_notifications").update({
+          status: "failed_terminal",
+          last_error: `unknown_template_key:${templateKey}`,
+          updated_at: new Date().toISOString(),
+        }).eq("id", notification.id);
+        outcomes.push({ channel: notification.channel, status: "failed_terminal", templateKey });
       }
-      outcomes.push({ channel: notification.channel, status: "sent" });
     } catch (err) {
       const attemptCount = Number(notification.attempt_count ?? 0) + 1;
       const retryable = err instanceof ProviderSendError ? err.retryable : true;
@@ -471,6 +604,7 @@ serve(async (req) => {
       outcomes.push({
         channel: notification.channel,
         status: terminal ? "failed_terminal" : "failed_retryable",
+        templateKey,
       });
     }
   }

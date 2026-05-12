@@ -25,6 +25,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import {
+  dispatchTicketConfirmation,
   jsonResponse,
   serviceClient,
   ticketCorsHeaders,
@@ -281,7 +282,7 @@ serve(async (req: Request): Promise<Response> => {
 
   const commit = commitResult as Record<string, unknown>;
 
-  // Step 4: enqueue buyer notification (ORCH-0785 dispatcher consumes the template_key).
+  // Step 4: enqueue buyer notification (ORCH-0788 dispatcher routes by template_key).
   // Look up event_id + buyer email for the notification recipient.
   const { data: orderDetail } = await supabase
     .from("orders")
@@ -311,6 +312,11 @@ serve(async (req: Request): Promise<Response> => {
     if (notifError) {
       console.error("[refund-order] notification enqueue failed (non-fatal)", notifError.message);
     }
+    // ORCH-0788: inline-dispatch so the buyer email goes out immediately
+    // after the refund commits. Failure is NON-FATAL — the
+    // notification-retry-sweeper picks up failed_retryable rows on cron.
+    // Mirrors the working stripeWebhookRouter checkout-finalize pattern.
+    await dispatchTicketConfirmation(orderId);
   } else {
     console.warn("[refund-order] no buyer_email; skipping notification enqueue", { orderId });
   }

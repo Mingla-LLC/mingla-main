@@ -521,7 +521,7 @@ async function handleRefundEvent(
   // whether the refund row had a NULL stripe_refund_id before this call — but we
   // can't tell post-hoc. Simpler: idempotency_key on ticket_order_notifications
   // makes the enqueue safe. Use refund:<order>:<stripe_refund_id> — same key as
-  // the edge function.
+  // the edge function. ORCH-0788 dispatcher routes by template_key.
   const { data: orderDetail } = await supabase
     .from("orders")
     .select("event_id, buyer_email, currency")
@@ -550,6 +550,26 @@ async function handleRefundEvent(
       },
       { onConflict: "idempotency_key" },
     );
+    // ORCH-0788: inline-dispatch (inlined fetch instead of
+    // dispatchTicketConfirmation import to avoid circular import — this
+    // file lives in _shared/ and ticketCheckout.ts also lives in _shared/).
+    // Failure is NON-FATAL — sweeper picks up retryable rows.
+    const supaUrl = Deno.env.get("SUPABASE_URL");
+    const supaKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (supaUrl && supaKey) {
+      try {
+        await fetch(`${supaUrl}/functions/v1/ticket-confirmation-dispatch`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${supaKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ orderId }),
+        });
+      } catch (err) {
+        console.error("[stripe-webhook] refund dispatch failed (non-fatal)", err);
+      }
+    }
   }
 
   await writeAudit(supabase, {
