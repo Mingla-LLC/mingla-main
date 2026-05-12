@@ -27,6 +27,8 @@ One invariant introduced by ORCH-0804 SPEC §8 — Stripe Tax enablement on tick
 - `stripe_tax.checkout_enabled` audit slug emission — registered in `auditActionLabels.ts` resolver but not yet emitted by the edge function. Queued as ORCH-0804-C.
 - Specialised friendly toast for Stripe `tax_calculation_failed` error — queued as ORCH-0804-D.
 
+**Post-CLOSE correction (2026-05-12 hotfix, commit `621b8068`):** the `brand-stripe-tax-dashboard-link` edge function uses the platform `STRIPE_SECRET_KEY` (not a RAK) because `accounts.createLoginLink` is a secret-key-only endpoint per Stripe. The original SPEC §5.4 RAK recommendation was wrong; live probe returned `invalid_request_error: "the required permissions are not available for use by restricted keys"`. Blast-radius mitigations preserved: `requirePaymentsManager` auth gate, audit log emit on every call, call only generates a signed Express Dashboard URL (no money movement, no account-state mutation). The legacy `STRIPE_RAK_TAX_DASHBOARD_LINK` Supabase secret can be revoked in Stripe Dashboard.
+
 **Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0804_STRIPE_TAX_ENABLEMENT.md`, implementation report `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0804_STRIPE_TAX_ENABLEMENT.md`, QA report `Mingla_Artifacts/reports/QA_ORCH-0804_STRIPE_TAX_ENABLEMENT.md`, close note `Mingla_Artifacts/CLOSE_NOTE_ORCH-0804.md`.
 
 ---
