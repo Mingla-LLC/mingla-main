@@ -280,7 +280,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           ) : (
             <RNImage
               source={{ uri: coverMediaUrl }}
-              style={styles.heroGradient}
+              // ORCH-0805-WEB hotfix 2026-05-12 — explicit width/height: "100%"
+              // is mandatory on react-native-web; the heroGradient style's
+              // `position: absolute; inset: 0` alone does NOT stretch the
+              // DOM <img> element to fill its parent the way it does on RN
+              // native. Without these dimensions, the cover renders at 0px
+              // size and looks like the page is missing the cover entirely.
+              style={[styles.heroGradient, { width: "100%", height: "100%" }]}
               resizeMode="cover"
               onError={() => setCoverMediaFailed(true)}
               accessibilityLabel="Brand cover"
