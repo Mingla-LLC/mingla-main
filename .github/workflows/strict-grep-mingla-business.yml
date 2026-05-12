@@ -566,3 +566,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0796 gate
         run: node .github/scripts/strict-grep/orch-0796-no-stub-payout-fee.mjs
+
+  orch-0806-audit-action-labels:
+    name: "ORCH-0806: audit log slug → human label resolver (I-PROPOSED-BD)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0806 gate
+        run: node .github/scripts/strict-grep/orch-0806-audit-action-labels.mjs

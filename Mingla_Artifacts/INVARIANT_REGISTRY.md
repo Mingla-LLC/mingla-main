@@ -7,6 +7,22 @@
 
 ---
 
+## ACTIVE (post ORCH-0806 CLOSE 2026-05-12)
+
+One invariant introduced by ORCH-0806 SPEC §9 + §10 — the audit-log slug→label resolver. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0806 CLOSE after Claude `mingla-tester` PASS verdict (P0:0 P1:0 P2:1 P3:2 P4:2) with all three local gates re-run independently (tsc EXIT 0, jest 35/35, strict-grep 8/8) and negative control re-proven on a different slug (`mingla_tos_accept`) than the implementor used (`order_cancelled`).
+
+### I-PROPOSED-BD AUDIT_LOG_HUMAN_READABLE
+
+**Rule:** Every distinct `action` string emitted by `writeAudit()` across `supabase/functions/**` MUST resolve to a non-`other` category in `mingla-business/src/utils/auditActionLabels.ts → resolveAuditActionLabel()`. Static slugs MUST be listed in `KNOWN_STATIC_SLUGS`; dynamic slugs (template-literal / variable-bound) MUST have a matching pattern matcher in the resolver. The brand audit-log screen (`mingla-business/app/brand/[id]/audit-log.tsx`) MUST render only resolver output, never raw `action` text.
+
+**Enforcement:** Strict-grep gate `orch-0806-audit-action-labels` in `.github/workflows/strict-grep-mingla-business.yml` (8 checks; script at `.github/scripts/strict-grep/orch-0806-audit-action-labels.mjs`). Check 3 intersects every static `action: "<slug>"` literal in files that call `writeAudit` against `KNOWN_STATIC_SLUGS` and fails CI on any missing slug. Check 7 negative-grep ensures the raw-slug render path (`styles.rowAction`) cannot be reintroduced.
+
+**Test:** `mingla-business/src/utils/__tests__/auditActionLabels.test.ts` — 35 jest tests including a data-driven loop (T-07) asserting every entry in `KNOWN_STATIC_SLUGS` resolves to category ≠ `"other"`. Negative control: removing any single slug from `KNOWN_STATIC_SLUGS` produces an exact-named Check 3 FAIL.
+
+**Coverage gap (P3, documented in QA report for follow-up ORCH-0806-A consideration):** Check 3 regex matches only inline `action: "literal"` property declarations. Variable-bound static slug emission (e.g., `brand-stripe-detach/index.ts:78-84` ternary then property shorthand) is NOT caught by the gate. Existing emitters are correctly registered; future similar patterns require manual discipline.
+
+---
+
 ## ACTIVE (post ORCH-0796 CLOSE 2026-05-12)
 
 One invariant introduced by SPEC §9 of ORCH-0796 governing the canonical contract that the per-event Reconciliation screen's expected-payout figure stays derived from real per-order Stripe application-fee + refund columns, never from a hardcoded fee multiplier or a "TRANSITIONAL" placeholder. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0796 CLOSE after RETEST PASS verdict — strict-grep gate green (5/5), implementor unit tests green (13/13), tester independent regression tests green (5/5 INDEP-1..INDEP-5), full utils suite green (140/140), tsc clean.
