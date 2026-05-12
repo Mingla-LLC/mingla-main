@@ -55,6 +55,7 @@ import { BrandStripeOrphanedRefundsSection } from "./BrandStripeOrphanedRefundsS
 import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
+import { useBrandStripeTaxDashboardLink } from "../../hooks/useBrandStripeTaxDashboardLink";
 import { getEffectiveBrandStripeStatus } from "../../utils/stripeOnboardingOutcome";
 import { ACTIVE_STRIPE_BANNER_TITLE } from "../../utils/brandStripeUiState";
 import { majorFromMinor } from "../../utils/currency";
@@ -165,6 +166,16 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   const stripeBalancesQuery = useBrandStripeBalances(brand?.id ?? null, {
     stripeStatus,
   });
+  // ORCH-0804 — Tax & registrations CTA. Mutation opens Stripe Express
+  // Dashboard via createLoginLink so the brand admin can manage their
+  // Stripe Tax registrations (no RN <TaxSettings /> component yet — web
+  // only). Disclosed: brand is merchant of record; Stripe Tax adds ~0.5%
+  // on top of regular Stripe fees.
+  const taxDashboardLink = useBrandStripeTaxDashboardLink();
+  const handleOpenTaxDashboard = useCallback((): void => {
+    if (brand?.id === undefined || taxDashboardLink.isPending) return;
+    taxDashboardLink.mutate(brand.id);
+  }, [brand?.id, taxDashboardLink]);
   const bannerConfig = BANNER_CONFIG[stripeStatus];
 
   // ORCH-0796 — `brand.payouts` and `brand.refunds` are intentionally unpopulated
@@ -404,6 +415,56 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           />
         </View>
 
+        {/* SECTION B.5 — ORCH-0804 Tax & registrations.
+            Brand opens Stripe Express Dashboard to register for Stripe Tax
+            in each jurisdiction they sell tickets in. Brand is the merchant
+            of record. Stripe Tax adds ~0.5% on top of regular Stripe fees,
+            billed to the brand. No RN <TaxSettings /> component exists yet
+            (https://docs.stripe.com/connect/supported-embedded-components —
+            Tax Settings is web-only GA as of 2026-05-12). When Stripe ships
+            the RN component, retire this CTA in favor of the embedded
+            component. */}
+        {stripeStatus === "active" && brand !== null ? (
+          <GlassCard
+            variant="base"
+            padding={spacing.md}
+            style={styles.taxCtaCard}
+          >
+            <View style={styles.taxCtaRow}>
+              <View style={styles.taxCtaIconCol}>
+                <Icon name="bank" size={20} color={accent.warm} />
+              </View>
+              <View style={styles.taxCtaTextCol}>
+                <Text style={styles.taxCtaTitle}>Tax & registrations</Text>
+                <Text style={styles.taxCtaBody}>
+                  Manage tax registrations in Stripe Dashboard. Stripe Tax
+                  adds about 0.5% on top of Stripe fees. You're the
+                  merchant of record.
+                </Text>
+                {taxDashboardLink.isError ? (
+                  <Text style={styles.taxCtaError}>
+                    Couldn't open Stripe. Try again.
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+            <View style={styles.taxCtaBtnRow}>
+              <Button
+                label={
+                  taxDashboardLink.isPending
+                    ? "Opening Stripe…"
+                    : "Open Stripe Dashboard"
+                }
+                onPress={handleOpenTaxDashboard}
+                variant="secondary"
+                size="md"
+                disabled={taxDashboardLink.isPending}
+                leadingIcon="link"
+              />
+            </View>
+          </GlassCard>
+        ) : null}
+
         {/* SECTION C — Recent Payouts */}
         <Text style={styles.sectionLabel}>RECENT PAYOUTS</Text>
         {sortedPayouts.length === 0 ? (
@@ -606,6 +667,45 @@ const styles = StyleSheet.create({
   },
   kpiCell: {
     flex: 1,
+  },
+
+  // ORCH-0804 — Tax & registrations CTA card -----------------------------
+  taxCtaCard: {
+    marginTop: spacing.md,
+  },
+  taxCtaRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  taxCtaIconCol: {
+    width: 26,
+    paddingTop: 2,
+  },
+  taxCtaTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  taxCtaTitle: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
+    marginBottom: 2,
+  },
+  taxCtaBody: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+  },
+  taxCtaError: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.error,
+    marginTop: 4,
+  },
+  taxCtaBtnRow: {
+    marginTop: spacing.sm,
+    alignItems: "flex-start",
   },
 
   // Section labels -------------------------------------------------------

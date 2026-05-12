@@ -53,6 +53,17 @@ serve(async (req) => {
     return jsonResponse({ error: "ticket_lookup_failed", detail: ticketError.message }, 500);
   }
 
+  // ORCH-0804 — pull Stripe Tax amount from the orders row. Defaults to 0
+  // when missing (free order, door sale, brand not registered in buyer
+  // jurisdiction, or the race where checkout.session.completed arrived
+  // before payment_intent.succeeded finalized the row).
+  const { data: orderRow } = await supabase
+    .from("orders")
+    .select("tax_amount_cents")
+    .eq("id", session.order_id)
+    .maybeSingle();
+  const taxAmountCents = Number(orderRow?.tax_amount_cents ?? 0);
+
   return jsonResponse({
     checkoutSessionId,
     status: session.status,
@@ -62,6 +73,7 @@ serve(async (req) => {
       paymentStatus: "paid",
       totalCents: session.total_cents,
       currency: String(session.currency ?? "GBP").trim(),
+      taxAmountCents,
       tickets: (tickets ?? []).map((ticket: Record<string, unknown>) => ({
         ticketId: ticket.id,
         ticketTypeId: ticket.ticket_type_id,

@@ -773,6 +773,51 @@ async function handleCheckoutSessionCompleted(
       .eq("id", session.id)
       .is("stripe_payment_intent_id", null);
   }
+
+  // ORCH-0804 / I-PROPOSED-BF — persist Stripe Tax data on the order row.
+  // session.total_details.amount_tax + session.tax_calculation are
+  // Checkout-Session-only fields (NOT on the PaymentIntent), so this is the
+  // only webhook handler that can extract them. The orders row is INSERTed
+  // by biz_ticket_checkout_finalize RPC (called from
+  // handleTicketCheckoutPaymentIntent on payment_intent.succeeded). In
+  // typical Stripe event ordering, payment_intent.succeeded fires BEFORE
+  // checkout.session.completed, so the order row exists when we get here
+  // and the UPDATE-by-payment-intent-id succeeds. If session.completed
+  // arrives first (rare race), the UPDATE matches 0 rows and tax data is
+  // lost on the orders row — known limitation queued as ORCH-0804-B
+  // hardening (persist tax to ticket_checkout_sessions too + have the
+  // finalize RPC copy from there).
+  if (paymentIntentId) {
+    const totalDetails = csObject.total_details as
+      | Record<string, unknown>
+      | undefined;
+    const taxAmountCents = Number(totalDetails?.amount_tax ?? 0);
+    const taxCalculationRef = csObject.tax_calculation;
+    const taxCalculationId = typeof taxCalculationRef === "string"
+      ? taxCalculationRef
+      : null;
+    if (taxAmountCents > 0 || taxCalculationId !== null) {
+      const { error: taxUpdateError } = await supabase
+        .from("orders")
+        .update({
+          tax_amount_cents: taxAmountCents,
+          tax_calculation_id: taxCalculationId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("stripe_payment_intent_id", paymentIntentId);
+      if (taxUpdateError) {
+        // Non-fatal: log + continue. Tax data can be reconciled later via
+        // Stripe Dashboard. Better to surface the brand_id than fail the
+        // whole webhook on a tax-persist error.
+        console.warn(
+          "[stripe-webhook] orders tax UPDATE failed",
+          taxUpdateError.message,
+          paymentIntentId,
+        );
+      }
+    }
+  }
+
   return session.brand_id as string | null;
 }
 

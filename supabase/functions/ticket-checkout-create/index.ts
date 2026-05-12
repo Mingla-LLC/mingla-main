@@ -191,6 +191,16 @@ serve(async (req) => {
     try {
       stripeWeb = stripeTicketCheckout();
       // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+      // ORCH-0804 / I-PROPOSED-BF — Stripe Tax enablement.
+      // automatic_tax + liability.account designates the connected account
+      // (brand) as merchant of record. customer_update.address: "auto" tells
+      // Stripe Checkout to collect the buyer address (required for tax
+      // jurisdiction lookup). Removing any of these silently disables tax
+      // collection in regulated jurisdictions — a legal exposure for brands.
+      // The strict-grep gate orch-0804-stripe-tax-enabled-on-checkout
+      // enforces these params at CI time. Reference:
+      // https://docs.stripe.com/tax/tax-for-platforms (destination-charge
+      // platform model).
       checkoutSession = await stripeWeb.checkout.sessions.create(
         {
           mode: "payment",
@@ -216,6 +226,16 @@ serve(async (req) => {
               mingla_event_id: eventId,
               mingla_buyer_email: buyerEmail,
             },
+          },
+          automatic_tax: {
+            enabled: true,
+            liability: {
+              type: "account",
+              account: stripeAccountId,
+            },
+          },
+          customer_update: {
+            address: "auto",
           },
           customer_email: buyerEmail,
           success_url:
@@ -285,6 +305,13 @@ serve(async (req) => {
     });
   }
 
+  // ORCH-0804 / I-PROPOSED-BF — native PaymentIntent path is NOT tax-enabled
+  // in v1. Stripe Tax on PaymentIntent requires pre-computing a tax_calculation
+  // id via separate POST /v1/tax/calculations call. Material complexity.
+  // Deferred to ORCH-0804-A. Until then, only the web Checkout Session path
+  // above collects tax. Buyer using the native Payment Sheet today pays
+  // without tax; brand carries the tax compliance gap on those orders.
+  // Document in the ORCH-0804-A follow-up.
   let paymentIntent: {
     id: string;
     client_secret?: string | null;

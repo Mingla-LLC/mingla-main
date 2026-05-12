@@ -55,6 +55,13 @@ export const stripeRefreshStatus = () =>
   createStripeClient("STRIPE_RAK_REFRESH_STATUS");
 export const stripeDetach = () => createStripeClient("STRIPE_RAK_DETACH");
 export const stripeBalances = () => createStripeClient("STRIPE_RAK_BALANCES");
+// ORCH-0804 — RAK with `accounts:write` scope used by
+// brand-stripe-tax-dashboard-link to call accounts.createLoginLink on the
+// connected account. Operator must create this RAK + set the
+// STRIPE_RAK_TAX_DASHBOARD_LINK Supabase secret before the new edge
+// function deploys.
+export const stripeTaxDashboardLink = () =>
+  createStripeClient("STRIPE_RAK_TAX_DASHBOARD_LINK");
 export const stripeKycReminder = () =>
   createStripeClient("STRIPE_RAK_KYC_REMINDER");
 export const stripeTicketCheckout = () =>

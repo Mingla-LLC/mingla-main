@@ -588,3 +588,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0805 gate
         run: node .github/scripts/strict-grep/orch-0805-brand-cover-overhaul.mjs
+
+  orch-0804-stripe-tax-enabled-on-checkout:
+    name: "ORCH-0804: Stripe Tax enabled on Checkout Sessions (I-PROPOSED-BF)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0804 gate
+        run: node .github/scripts/strict-grep/orch-0804-stripe-tax-enabled-on-checkout.mjs
