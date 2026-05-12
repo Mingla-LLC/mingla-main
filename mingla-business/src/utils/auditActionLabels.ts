@@ -73,6 +73,9 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "order_refund_issued",
   "mingla_tos_accept",
   "ops.webhook_silence_check_fired",
+  // ORCH-0804 — Stripe Tax enablement on ticket Checkout Sessions.
+  "stripe_tax.checkout_enabled",
+  "stripe_tax.registration_link_opened",
 ];
 
 const humanizeSlug = (slug: string): string => {
@@ -209,6 +212,21 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
         detail: "Liveness probe ran — no inbound webhooks in window.",
         category: "ops",
         iconHint: "settings",
+      };
+    // ORCH-0804 — Stripe Tax slugs.
+    case "stripe_tax.checkout_enabled":
+      return {
+        title: "Stripe Tax enabled on checkout",
+        detail: "First tax-enabled Checkout Session created for this brand.",
+        category: "stripe_connect",
+        iconHint: "bank",
+      };
+    case "stripe_tax.registration_link_opened":
+      return {
+        title: "Opened Stripe Tax dashboard",
+        detail: "Brand admin opened Stripe Express Dashboard to manage tax registrations.",
+        category: "stripe_connect",
+        iconHint: "bank",
       };
   }
 

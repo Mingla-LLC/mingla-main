@@ -49,6 +49,12 @@ export interface TicketCheckoutFreeCompleted {
   paymentStatus: "paid";
   totalCents: number;
   currency: string;
+  /** ORCH-0804 — Stripe Tax amount in cents. 0 on free / door sales and on
+   * orders where the brand isn't registered for tax in the buyer's
+   * jurisdiction. Source: orders.tax_amount_cents persisted by
+   * stripeWebhookRouter.handleCheckoutSessionCompleted from
+   * session.total_details.amount_tax. */
+  taxAmountCents?: number;
   tickets: OrderResult["tickets"];
   notificationStatus: OrderResult["notificationStatus"];
 }

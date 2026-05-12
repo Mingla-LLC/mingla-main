@@ -77,6 +77,14 @@ export interface OrderResult {
   total: number;
   totalCents?: number;
   currency: string;
+  /** ORCH-0804 — Stripe Tax amount in major units (e.g. £20.00 → 20). 0 when
+   * no tax collected (brand not registered in buyer jurisdiction, free
+   * ticket, or door sale). UI renders a tax line only when > 0. */
+  tax?: number;
+  /** ORCH-0804 — raw tax in cents from orders.tax_amount_cents. Source of
+   * truth for any math; `tax` above is the display-friendly major-units
+   * version. 0 on no-tax orders. */
+  taxAmountCents?: number;
   paymentStatus?: "paid";
   notificationStatus?: "queued" | "sent" | "partial" | "failed" | string;
   tickets: Array<{

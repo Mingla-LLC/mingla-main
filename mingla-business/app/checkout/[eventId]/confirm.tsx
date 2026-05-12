@@ -205,6 +205,11 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
           );
           return;
         }
+        // ORCH-0804 — pass Stripe Tax data into the order result so the
+        // confirmation can render a tax line. taxAmountCents defaults to 0
+        // when the status edge fn doesn't return it (older build / free
+        // order / brand not registered in buyer jurisdiction).
+        const taxCents = Number(status.order.taxAmountCents ?? 0);
         recordResult({
           orderId: status.order.orderId,
           ticketIds: status.order.tickets.map((t) => t.ticketId),
@@ -214,6 +219,8 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
           total: status.order.totalCents / 100,
           totalCents: status.order.totalCents,
           currency: status.order.currency,
+          tax: taxCents > 0 ? taxCents / 100 : 0,
+          taxAmountCents: taxCents,
           paymentStatus: status.order.paymentStatus,
           notificationStatus: status.order.notificationStatus,
           tickets: status.order.tickets,
@@ -378,6 +385,19 @@ export default function CheckoutConfirmScreen(): React.ReactElement {
             </View>
           ))}
           <View style={styles.summaryDivider} />
+          {/* ORCH-0804 — Stripe Tax line. Renders ONLY when tax was
+              collected (tax > 0). Zero-tax orders show the total row alone
+              per Constitution #9 (no fabricated data — never display a
+              "Tax £0.00" row that misleads buyers about jurisdictional
+              registration state). */}
+          {typeof result.tax === "number" && result.tax > 0 ? (
+            <View style={styles.summaryTotalRow}>
+              <Text style={styles.summaryTotalLabel}>Tax</Text>
+              <Text style={styles.summaryTotalValue}>
+                {formatCurrency(result.tax, result.currency)}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.summaryTotalRow}>
             <Text style={styles.summaryTotalLabel}>Total</Text>
             <Text style={styles.summaryTotalValue}>

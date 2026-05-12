@@ -7,6 +7,30 @@
 
 ---
 
+## ACTIVE (post ORCH-0804 CLOSE 2026-05-12)
+
+One invariant introduced by ORCH-0804 SPEC §8 — Stripe Tax enablement on ticket Checkout Sessions. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0804 CLOSE after Claude `mingla-tester` PASS verdict (P0:0 P1:0 P2:0 P3:0 P4:3) with the strict-grep gate green (6/6), the migration applied on remote, all 4 edge functions deployed, and `tsc --noEmit` clean in `mingla-business`.
+
+### I-PROPOSED-BF STRIPE_TAX_ENABLED_ON_CHECKOUT
+
+**Rule:** Every `stripeWeb.checkout.sessions.create` call in `supabase/functions/ticket-checkout-create/index.ts` (and any future ticket-checkout edge function that creates Stripe Checkout Sessions) MUST pass `automatic_tax: { enabled: true, liability: { type: "account", account: <connected_account_id> } }` AND `customer_update: { address: "auto" }`. The `<connected_account_id>` MUST equal the `payment_intent_data.transfer_data.destination` value (same connected account is both the payout destination and the merchant-of-record / tax-liable party). Webhook handlers for `checkout.session.completed` in `supabase/functions/_shared/stripeWebhookRouter.ts` MUST persist `session.total_details.amount_tax` to `orders.tax_amount_cents` and `session.tax_calculation` to `orders.tax_calculation_id` on the matching `orders` row keyed by `stripe_payment_intent_id`. The brand-side `BrandPaymentsView.tsx` MUST surface a "Tax & registrations" CTA (importing `useBrandStripeTaxDashboardLink`) with disclosure copy containing the literal phrase "merchant of record" so the brand explicitly understands their compliance posture.
+
+**Why:** Without these four params, Stripe silently disables tax collection on the destination-charge platform model — the call succeeds, the buyer pays, and no tax is collected anywhere. In regulated jurisdictions (UK VAT, EU VAT-OSS, US states with sales-tax nexus) this compounds compliance debt invisibly with every paid ticket sale.
+
+**Enforcement:** Strict-grep gate `orch-0804-stripe-tax-enabled-on-checkout` in `.github/workflows/strict-grep-mingla-business.yml` (6 checks; script at `.github/scripts/strict-grep/orch-0804-stripe-tax-enabled-on-checkout.mjs`). Checks 3 + 4 enforce the Checkout Session params; Check 5 enforces webhook persistence; Check 6 enforces the merchant-of-record disclosure copy + hook import; Checks 1 + 2 enforce the migration + `tax_amount_cents` column.
+
+**Test:** Migration applies cleanly via `supabase db push --linked` with in-migration `RAISE EXCEPTION` probes verifying both new columns. `tsc --noEmit` in `mingla-business` exits 0. `deno check` on all 4 touched edge function files exits 0. Negative-control: removing `automatic_tax:` from the Checkout Session call fires Check 3 with a named-literal diagnostic.
+
+**Out of scope / explicit non-goals:**
+- Native PaymentIntent path tax (line ~307 of `ticket-checkout-create/index.ts`) — queued as ORCH-0804-A. Requires pre-call to `POST /v1/tax/calculations` to compute a `tax_calculation_id` before the PI is created.
+- Webhook race-condition hardening (rare ordering where `session.completed` fires before `payment_intent.succeeded`) — queued as ORCH-0804-B. Today's UPDATE-by-payment-intent-id matches 0 rows in that rare ordering and the tax data is lost.
+- `stripe_tax.checkout_enabled` audit slug emission — registered in `auditActionLabels.ts` resolver but not yet emitted by the edge function. Queued as ORCH-0804-C.
+- Specialised friendly toast for Stripe `tax_calculation_failed` error — queued as ORCH-0804-D.
+
+**Source:** SPEC `Mingla_Artifacts/specs/SPEC_ORCH-0804_STRIPE_TAX_ENABLEMENT.md`, implementation report `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0804_STRIPE_TAX_ENABLEMENT.md`, QA report `Mingla_Artifacts/reports/QA_ORCH-0804_STRIPE_TAX_ENABLEMENT.md`, close note `Mingla_Artifacts/CLOSE_NOTE_ORCH-0804.md`.
+
+---
+
 ## ACTIVE (post ORCH-0805 CLOSE 2026-05-12)
 
 One invariant introduced by ORCH-0805 SPEC §10 — the brand cover overhaul. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0805 CLOSE after Claude `mingla-tester` CONDITIONAL PASS verdict upgraded to PASS on operator acceptance of the SPEC §11 Check 8 deviation (P0:0 P1:0 P2:1 P3:2 P4:5).
