@@ -830,7 +830,7 @@ A successful Phase A implementation, verified by tester, must:
 - ❌ Bare `crypto.randomUUID()` — use `mingla-business/src/utils/randomId.ts` (per DEC-148)
 - ❌ Call SECURITY DEFINER RPCs with `serviceClient()` when RPC reads `auth.uid()` — use `userClient(req)` (per DEC-148)
 - ❌ Modify the Email `channel_payload.kind='email'` shape — additive-only (I-PROPOSED-BQ)
-- ❌ Touch ORCH-0817 (RCS) or ORCH-0816 (ads research) work in this PR
+- ❌ Touch ORCH-0817 (RCS) or ORCH-0818 (ads research, renumbered from 0816) work in this PR
 
 ---
 
@@ -919,7 +919,7 @@ preferred over ui-ux-pro-max because Mingla-bespoke.
 - Epic: `Mingla_Artifacts/github/epics/cycle-b5.md` Phase A row
 - Decision: `Mingla_Artifacts/DECISION_LOG.md` DEC-149 (dual-surface placement)
 - Infrastructure gap: `Mingla_Artifacts/MARKETING_HUB_INFRASTRUCTURE_GAP_ANALYSIS.md`
-- Sibling ORCHs: ORCH-0816 (ads research), ORCH-0817 (RCS strategy)
+- Sibling ORCHs: ORCH-0818 (ads research, renumbered from 0816 on 2026-05-12), ORCH-0817 (RCS strategy)
 - Live-broadcast dependency: ORCH-0777 (production ticket checkout)
 - Bottom-nav anticipation comment: `mingla-business/app/(tabs)/_layout.tsx:6-7`
 - Mingla-bespoke design rules referenced: `feedback_keyboard_never_blocks_input.md`, `feedback_rn_sub_sheet_must_render_inside_parent.md`, `feedback_rn_color_formats.md`, `feedback_toast_needs_absolute_wrap.md`, `feedback_back_listener_disarm_pattern.md`, `feedback_rls_returning_owner_gap.md`, `feedback_zustand_persist_no_server_snapshots.md`, `feedback_implementor_uses_ui_ux_pro_max.md`

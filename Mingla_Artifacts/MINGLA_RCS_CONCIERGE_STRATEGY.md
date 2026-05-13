@@ -227,7 +227,7 @@ Cycle B6 / Mingla Brain P3 is the AI-agent layer that lives on top of this hub
 
 - The `rcs-webhook` edge function's intent classifier becomes the agent's
   webhook entry point. Same plumbing.
-- The agent reads `MINGLA_ADS_PLAYBOOK.md` (ORCH-0816) + `Mingla_Artifacts/MINGLA_BUSINESS_MARKETING_HUB_STRATEGY.md`
+- The agent reads `MINGLA_ADS_PLAYBOOK.md` (ORCH-0818) + `Mingla_Artifacts/MINGLA_BUSINESS_MARKETING_HUB_STRATEGY.md`
   as system-prompt knowledge.
 - The agent can compose outbound rich cards by calling `rcs-send` directly —
   no UI changes required.

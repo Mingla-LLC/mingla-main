@@ -37,6 +37,28 @@ import type {
 } from "../../types/marketing";
 
 // ---------------------------------------------------------------------------
+// UUID validation (P1-2 fix, ORCH-0815-A2-B follow-up 2026-05-12)
+// ---------------------------------------------------------------------------
+// The `.or()` PostgREST filter builder accepts a raw filter STRING — it is
+// NOT parameterized like `.eq()`. Any user-controllable value interpolated
+// into the filter string is a filter-injection vector. RLS prevents data
+// exfiltration, but pathological IDs (commas, parens, single quotes) can
+// silently corrupt the unsubscribe filter — over-suppress or under-suppress
+// — which is a CAN-SPAM compliance risk in production.
+//
+// Defensive guard: assert every ID is a strict UUID before letting it reach
+// the `.or()` builder. Bare `.eq()` calls are safe (parameterized) and need
+// no extra check, but consistency keeps the contract simple.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function assertUuid(value: string, label: string): void {
+  if (!UUID_RE.test(value)) {
+    throw new Error(`${label}: expected UUID, got ${JSON.stringify(value)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Input contracts
 // ---------------------------------------------------------------------------
 
@@ -82,6 +104,7 @@ export async function resolveBrandBuyers(
   if (!brandId) {
     throw new Error("resolveBrandBuyers: brandId is required");
   }
+  assertUuid(brandId, "resolveBrandBuyers.brandId");
 
   // Step 1 — pull every paid/partial_refund order whose event belongs to this brand.
   // events!inner enforces the join filter.
@@ -132,6 +155,7 @@ export async function resolveEventBuyers(
   if (!eventId) {
     throw new Error("resolveEventBuyers: eventId is required");
   }
+  assertUuid(eventId, "resolveEventBuyers.eventId");
 
   const { data, error } = await supabase
     .from("orders")
@@ -164,6 +188,10 @@ export async function resolveEventBuyers(
 
   let unsubs: UnsubRow[] = [];
   if (brandId !== null) {
+    // Defensive UUID guard — brandId here is server-derived from
+    // orders[0].events.brand_id (RLS-gated) but the `.or()` builder
+    // accepts a raw filter string, so we revalidate before composition.
+    assertUuid(brandId, "resolveEventBuyers.brandId (server-derived)");
     const { data: unsubData, error: unsubError } = await supabase
       .from("marketing_unsubscribes")
       .select("contact_email, channel, scope, brand_id")

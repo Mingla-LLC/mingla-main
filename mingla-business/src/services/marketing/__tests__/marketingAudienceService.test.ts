@@ -56,7 +56,7 @@ interface UnsubFixture {
 function buildOrder(overrides: Partial<OrderFixture> = {}): OrderFixture {
   return {
     id: "ord_1",
-    event_id: "evt_1",
+    event_id: "00000000-0000-0000-0000-0000000000b1",
     buyer_email: "alex@example.com",
     buyer_name: "Alex M.",
     buyer_phone: "+15555550001",
@@ -66,7 +66,7 @@ function buildOrder(overrides: Partial<OrderFixture> = {}): OrderFixture {
     payment_status: "paid",
     confirmed_at: "2026-04-20T18:00:00Z",
     created_at: "2026-04-20T18:00:00Z",
-    events: { id: "evt_1", title: "Sunset Rooftop", brand_id: "brand_A" },
+    events: { id: "00000000-0000-0000-0000-0000000000b1", title: "Sunset Rooftop", brand_id: "00000000-0000-0000-0000-0000000000a1" },
     ...overrides,
   };
 }
@@ -148,7 +148,7 @@ describe("marketingAudienceService — resolveBrandBuyers (T-01)", () => {
       ],
       unsubs: [],
     });
-    const result = await resolveBrandBuyers("brand_A");
+    const result = await resolveBrandBuyers("00000000-0000-0000-0000-0000000000a1");
     expect(result.rows).toHaveLength(2);
     const alex = result.rows.find((r) => r.contact_key === "alex@example.com");
     expect(alex).toBeDefined();
@@ -165,7 +165,7 @@ describe("marketingAudienceService — resolveBrandBuyers (T-01)", () => {
       ],
       unsubs: [],
     });
-    const result = await resolveBrandBuyers("brand_A");
+    const result = await resolveBrandBuyers("00000000-0000-0000-0000-0000000000a1");
     expect(result.reach.total).toBe(2);
     expect(result.reach.reachable_email).toBe(2);
   });
@@ -179,7 +179,7 @@ describe("marketingAudienceService — resolveBrandBuyers (T-01)", () => {
       ],
       unsubs: [],
     });
-    const result = await resolveBrandBuyers("brand_A");
+    const result = await resolveBrandBuyers("00000000-0000-0000-0000-0000000000a1");
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]?.contact_key).toBe("real@x.com");
   });
@@ -190,7 +190,7 @@ describe("marketingAudienceService — resolveBrandBuyers (T-01)", () => {
       unsubs: [],
       ordersError: new Error("rls_denied"),
     });
-    await expect(resolveBrandBuyers("brand_A")).rejects.toThrow("rls_denied");
+    await expect(resolveBrandBuyers("00000000-0000-0000-0000-0000000000a1")).rejects.toThrow("rls_denied");
   });
 
   it("throws when brandId is empty", async () => {
@@ -199,25 +199,42 @@ describe("marketingAudienceService — resolveBrandBuyers (T-01)", () => {
       /brandId is required/i,
     );
   });
+
+  // P1-2 fix (ORCH-0815-A2-B 2026-05-12) — PostgREST filter-injection guard.
+  it("throws when brandId is not a valid UUID (PostgREST filter-injection guard)", async () => {
+    setupSupabaseMock({ orders: [], unsubs: [] });
+    // A pathological brand id containing PostgREST filter separators
+    // would corrupt the `.or()` filter string. Guard rejects it before
+    // the query is built.
+    await expect(
+      resolveBrandBuyers("abc),scope.eq.global,(brand_id.eq.something"),
+    ).rejects.toThrow(/UUID/);
+    // Plain non-UUID string also rejected.
+    await expect(resolveBrandBuyers("brand_A")).rejects.toThrow(/UUID/);
+    // Valid UUID format passes the guard (mock returns empty data).
+    await expect(
+      resolveBrandBuyers("00000000-0000-0000-0000-0000000000a1"),
+    ).resolves.toBeDefined();
+  });
 });
 
 describe("marketingAudienceService — resolveEventBuyers (T-02)", () => {
   it("scopes to a single event_id and aggregates the same way", async () => {
     setupSupabaseMock({
       orders: [
-        buildOrder({ id: "ord_a", event_id: "evt_1", buyer_email: "x@x.com" }),
-        buildOrder({ id: "ord_b", event_id: "evt_1", buyer_email: "y@x.com" }),
+        buildOrder({ id: "ord_a", event_id: "00000000-0000-0000-0000-0000000000b1", buyer_email: "x@x.com" }),
+        buildOrder({ id: "ord_b", event_id: "00000000-0000-0000-0000-0000000000b1", buyer_email: "y@x.com" }),
       ],
       unsubs: [],
     });
-    const result = await resolveEventBuyers("evt_1");
+    const result = await resolveEventBuyers("00000000-0000-0000-0000-0000000000b1");
     expect(result.rows).toHaveLength(2);
     expect(result.reach.total).toBe(2);
   });
 
   it("returns empty result without throwing when no orders exist", async () => {
     setupSupabaseMock({ orders: [], unsubs: [] });
-    const result = await resolveEventBuyers("evt_empty");
+    const result = await resolveEventBuyers("00000000-0000-0000-0000-0000000000b2");
     expect(result.rows).toEqual([]);
     expect(result.reach.total).toBe(0);
     expect(result.reach.reachable_email).toBe(0);
@@ -243,11 +260,11 @@ describe("marketingAudienceService — consent filtering (T-03 + T-04)", () => {
           contact_email: "alex@example.com",
           channel: "email",
           scope: "brand",
-          brand_id: "brand_A",
+          brand_id: "00000000-0000-0000-0000-0000000000a1",
         },
       ],
     });
-    const result = await resolveBrandBuyers("brand_A");
+    const result = await resolveBrandBuyers("00000000-0000-0000-0000-0000000000a1");
     expect(result.rows).toHaveLength(2);
     expect(result.reach.total).toBe(2);
     expect(result.reach.reachable_email).toBe(1);
@@ -269,7 +286,7 @@ describe("marketingAudienceService — consent filtering (T-03 + T-04)", () => {
         },
       ],
     });
-    const result = await resolveBrandBuyers("brand_A");
+    const result = await resolveBrandBuyers("00000000-0000-0000-0000-0000000000a1");
     const alex = result.rows[0];
     expect(alex?.consent.email_marketing_ok).toBe(false);
     expect(alex?.consent.sms_marketing_ok).toBe(false);
@@ -285,11 +302,11 @@ describe("marketingAudienceService — consent filtering (T-03 + T-04)", () => {
           contact_email: "alex@example.com",
           channel: "email",
           scope: "brand",
-          brand_id: "brand_A",
+          brand_id: "00000000-0000-0000-0000-0000000000a1",
         },
       ],
     });
-    const result = await resolveBrandBuyers("brand_A");
+    const result = await resolveBrandBuyers("00000000-0000-0000-0000-0000000000a1");
     expect(result.rows[0]?.consent.email_marketing_ok).toBe(false);
   });
 });

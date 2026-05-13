@@ -71,10 +71,6 @@ function formatSpend(minor: number, currency: string): string {
 }
 
 export const BuyerRow: React.FC<BuyerRowProps> = ({ buyer, onPress }) => {
-  const handlePress = (): void => {
-    if (onPress !== undefined) onPress(buyer);
-  };
-
   const consentLine = useMemo(() => {
     if (buyer.consent.email_marketing_ok && buyer.consent.sms_marketing_ok) {
       return { text: "marketing OK · SMS OK", tone: "ok" as const };
@@ -102,9 +98,57 @@ export const BuyerRow: React.FC<BuyerRowProps> = ({ buyer, onPress }) => {
     }, ${formatSpend(buyer.total_spend_minor, buyer.total_spend_currency)} total, ${eventBit}, ${consentLine.text}`;
   }, [buyer, consentLine.text]);
 
+  const inner = (
+    <View style={styles.stack}>
+      <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">
+        {buyer.display_name}
+      </Text>
+      <Text style={styles.meta} numberOfLines={1} ellipsizeMode="tail">
+        {buyer.masked_email ?? buyer.masked_phone ?? "no contact"}
+        {" · "}
+        {buyer.order_count} {buyer.order_count === 1 ? "order" : "orders"}
+        {" · "}
+        {formatSpend(buyer.total_spend_minor, buyer.total_spend_currency)}
+      </Text>
+      <Text style={styles.subMeta} numberOfLines={1} ellipsizeMode="tail">
+        {buyer.last_event_name !== null
+          ? `Last: ${buyer.last_event_name} · ${formatRelativeDate(buyer.last_purchase_at)}`
+          : "No event history"}
+      </Text>
+      <Text
+        style={[
+          styles.consent,
+          consentLine.tone === "ok" ? styles.consentOk : styles.consentMuted,
+        ]}
+        numberOfLines={1}
+      >
+        {consentLine.text}
+      </Text>
+    </View>
+  );
+
+  // Constitution #1 (no dead taps): render plain <View> when caller passes
+  // no onPress. Press-feedback affordance would lie about tappability —
+  // Phase A routes (Brand Blasts, Event Blasts) don't open buyer detail
+  // yet, so they don't pass onPress and we render a non-interactive row.
+  // When sub-ORCH-B (or a future ORCH) wires real customer-detail
+  // navigation, callers start passing onPress and the row automatically
+  // becomes a real button with press feedback. No render-branch drift.
+  if (onPress === undefined) {
+    return (
+      <View
+        style={styles.row}
+        accessibilityRole="none"
+        accessibilityLabel={accessibilityLabel}
+      >
+        {inner}
+      </View>
+    );
+  }
+
   return (
     <Pressable
-      onPress={handlePress}
+      onPress={() => onPress(buyer)}
       style={({ pressed }) => [
         styles.row,
         pressed ? styles.rowPressed : null,
@@ -113,32 +157,7 @@ export const BuyerRow: React.FC<BuyerRowProps> = ({ buyer, onPress }) => {
       accessibilityLabel={accessibilityLabel}
       hitSlop={4}
     >
-      <View style={styles.stack}>
-        <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">
-          {buyer.display_name}
-        </Text>
-        <Text style={styles.meta} numberOfLines={1} ellipsizeMode="tail">
-          {buyer.masked_email ?? buyer.masked_phone ?? "no contact"}
-          {" · "}
-          {buyer.order_count} {buyer.order_count === 1 ? "order" : "orders"}
-          {" · "}
-          {formatSpend(buyer.total_spend_minor, buyer.total_spend_currency)}
-        </Text>
-        <Text style={styles.subMeta} numberOfLines={1} ellipsizeMode="tail">
-          {buyer.last_event_name !== null
-            ? `Last: ${buyer.last_event_name} · ${formatRelativeDate(buyer.last_purchase_at)}`
-            : "No event history"}
-        </Text>
-        <Text
-          style={[
-            styles.consent,
-            consentLine.tone === "ok" ? styles.consentOk : styles.consentMuted,
-          ]}
-          numberOfLines={1}
-        >
-          {consentLine.text}
-        </Text>
-      </View>
+      {inner}
     </Pressable>
   );
 };
