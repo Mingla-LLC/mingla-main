@@ -691,3 +691,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0816 gate
         run: node .github/scripts/strict-grep/orch-0816-last-7-days-binds-rev7d.mjs
+
+  orch-0815-b-composer-and-send:
+    name: "ORCH-0815-B: Marketing composer + send pipeline invariants"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0815-B gate
+        run: node .github/scripts/strict-grep/orch-0815-b-composer-and-send.mjs

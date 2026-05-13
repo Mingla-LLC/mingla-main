@@ -57,6 +57,10 @@ function detectActive(pathname: string): MarketingSubNavId {
 export const MarketingSubNav: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
+  // Composer is a child route of Campaigns, NOT a sub-nav tab — hide the
+  // 4-pill segmented control while the operator is authoring a campaign.
+  // SPEC §4.2 (ORCH-0815-B) + Phase A `_layout.tsx` deferred this to Phase B.
+  if (pathname.includes("/campaigns/compose")) return null;
   const active = detectActive(pathname);
 
   const handleTabPress = (path: string): void => {

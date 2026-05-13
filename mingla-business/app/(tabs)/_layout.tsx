@@ -59,6 +59,11 @@ export default function TabsLayout(): React.ReactElement {
 
   const activeId = useMemo(() => detectActiveTab(pathname), [pathname]);
 
+  // Focused authoring surfaces hide the BottomNav so the route's own
+  // sticky footer (e.g. ComposerFooter's Save draft + Review & schedule)
+  // isn't covered. Currently: marketing composer (ORCH-0815-B).
+  const hideBottomNav = pathname.includes("/campaigns/compose");
+
   const handleChange = (id: string): void => {
     // Expo Router resolves /(tabs)/<id> to /<id> at runtime.
     router.push(`/(tabs)/${id}` as never);
@@ -67,18 +72,20 @@ export default function TabsLayout(): React.ReactElement {
   return (
     <View style={styles.host}>
       <Slot />
-      <View
-        pointerEvents="box-none"
-        style={[
-          styles.navWrap,
-          {
-            paddingBottom: Math.max(insets.bottom, spacing.sm),
-            paddingTop: spacing.sm,
-          },
-        ]}
-      >
-        <BottomNav tabs={TABS} active={activeId} onChange={handleChange} />
-      </View>
+      {hideBottomNav ? null : (
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.navWrap,
+            {
+              paddingBottom: Math.max(insets.bottom, spacing.sm),
+              paddingTop: spacing.sm,
+            },
+          ]}
+        >
+          <BottomNav tabs={TABS} active={activeId} onChange={handleChange} />
+        </View>
+      )}
     </View>
   );
 }

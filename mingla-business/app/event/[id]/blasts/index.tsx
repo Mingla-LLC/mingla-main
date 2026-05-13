@@ -18,7 +18,7 @@
  * SPEC reference: SPEC §5.8. DESIGN reference: §7.8.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -36,7 +36,6 @@ import { GlassCard } from "../../../../src/components/ui/GlassCard";
 import { TopBar } from "../../../../src/components/ui/TopBar";
 import {
   canvas,
-  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -53,7 +52,6 @@ export default function EventBlastsRoute(): React.ReactElement {
     typeof idParam === "string" && idParam.length > 0 ? idParam : null;
 
   const buyersQuery = useEventBuyers(eventId);
-  const [composerToast, setComposerToast] = useState<string | null>(null);
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) router.back();
@@ -61,11 +59,14 @@ export default function EventBlastsRoute(): React.ReactElement {
   }, [router, eventId]);
 
   const handleBlast = useCallback(
-    (_kind: BlastAudienceKind, _targetId: string): void => {
-      setComposerToast("Composer ships in the next phase. Audience is ready.");
-      setTimeout(() => setComposerToast(null), 4000);
+    (kind: BlastAudienceKind, targetId: string): void => {
+      // ORCH-0815-B Phase 2 — composer route is live. Navigate with the
+      // audience pre-fill query param shape `{kind}:{id}` (I-PROPOSED-BU).
+      router.push(
+        `/marketing/campaigns/compose?audience=${kind}:${targetId}` as never,
+      );
     },
-    [],
+    [router],
   );
 
   const buyers = buyersQuery.data;
@@ -181,13 +182,6 @@ export default function EventBlastsRoute(): React.ReactElement {
         </View>
       ) : null}
 
-      {composerToast !== null ? (
-        <View style={styles.toastWrap} pointerEvents="none">
-          <View style={styles.toast}>
-            <Text style={styles.toastText}>{composerToast}</Text>
-          </View>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -248,28 +242,5 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-  },
-  toastWrap: {
-    // Cleared above the safe-area-aware glass CTA (56pt button + 8pt
-    // top padding + up to ~34pt iPhone bottom inset). 120pt offset leaves
-    // a small breathing gap between toast and CTA.
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 120,
-    paddingHorizontal: spacing.md,
-    zIndex: 100,
-  },
-  toast: {
-    backgroundColor: semantic.infoTint,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: semantic.info,
-  },
-  toastText: {
-    ...typography.bodySm,
-    color: textTokens.primary,
   },
 });
