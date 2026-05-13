@@ -221,18 +221,44 @@ export async function acknowledgeDisclosure(): Promise<void> {
 }
 
 export async function deleteConversation(conversationId: string): Promise<void> {
-  // CASCADE removes messages + pending actions
-  const { error } = await supabase
+  // CASCADE removes messages + pending actions.
+  // .select("id") chained per I-PROPOSED-I MUTATION-ROWCOUNT-VERIFIED — if
+  // the conversation row doesn't exist (already deleted or RLS denial),
+  // supabase-js without .select() silently treats 0-row delete as success.
+  const { data, error } = await supabase
     .from("agent_conversations")
     .delete()
-    .eq("id", conversationId);
+    .eq("id", conversationId)
+    .select("id");
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error("Conversation not found or already deleted");
+  }
 }
 
 export async function deleteAllAriData(): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
-  // CASCADE handles agent_messages and agent_pending_actions
-  await supabase.from("agent_conversations").delete().eq("user_id", user.id);
-  await supabase.from("agent_user_profile").delete().eq("user_id", user.id);
+  // CASCADE handles agent_messages and agent_pending_actions.
+  // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0821 delete-all-Ari-data is intentionally
+  // tolerant of 0-row outcomes — a user who never used Ari has zero rows in
+  // these tables, and the action is still semantically "deleted everything"
+  // when there was nothing to delete. .select("id") is chained so the
+  // rowcount IS verified at the supabase-js layer, but a 0-count return is
+  // not treated as an error here.
+  const conversationsResult = await supabase
+    .from("agent_conversations")
+    .delete()
+    .eq("user_id", user.id)
+    .select("id");
+  if (conversationsResult.error) throw conversationsResult.error;
+  // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0821 — same rationale as above for
+  // agent_user_profile (single-row table, may not exist for users who never
+  // saw the AI disclosure modal).
+  const profileResult = await supabase
+    .from("agent_user_profile")
+    .delete()
+    .eq("user_id", user.id)
+    .select("id");
+  if (profileResult.error) throw profileResult.error;
 }
