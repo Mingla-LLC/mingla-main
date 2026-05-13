@@ -74,6 +74,8 @@ interface OrderStatsFixture {
   currency: string | null;
   payment_status: string | null;
   refunded_amount_cents: number | null;
+  /** ORCH-0816 — optional so existing fixtures don't need a value. */
+  created_at?: string | null;
   events: { brand_id: string | null } | null;
   order_line_items: { quantity: number | null }[] | null;
 }
@@ -277,5 +279,134 @@ describe("aggregateBrandStatsByBrandIds", () => {
     const result = await aggregateBrandStatsByBrandIds(["brand-A"]);
     expect(result.get("brand-A")?.attendees).toBe(0);
     expect(result.get("brand-A")?.revByCurrencyCents.size).toBe(0);
+  });
+});
+
+// ORCH-0816 — windowed last-7-day GMV alongside lifetime totals.
+describe("aggregateBrandStatsByBrandIds — ORCH-0816 7-day window", () => {
+  const nowIso = (offsetMs: number): string =>
+    new Date(Date.now() - offsetMs).toISOString();
+
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+  test("splits lifetime and 7-day buckets by created_at", async () => {
+    const orderStatsQuery = ordersQuery({
+      data: [
+        // 1 day old — counts toward both lifetime and 7-day
+        {
+          total_cents: 1000,
+          currency: "GBP",
+          payment_status: "paid",
+          refunded_amount_cents: 0,
+          created_at: nowIso(1 * ONE_DAY_MS),
+          events: { brand_id: "brand-A" },
+          order_line_items: [{ quantity: 1 }],
+        },
+        // 6 days old — counts toward both lifetime and 7-day
+        {
+          total_cents: 1000,
+          currency: "GBP",
+          payment_status: "paid",
+          refunded_amount_cents: 0,
+          created_at: nowIso(6 * ONE_DAY_MS),
+          events: { brand_id: "brand-A" },
+          order_line_items: [{ quantity: 1 }],
+        },
+        // 30 days old — counts toward lifetime only
+        {
+          total_cents: 1000,
+          currency: "GBP",
+          payment_status: "paid",
+          refunded_amount_cents: 0,
+          created_at: nowIso(30 * ONE_DAY_MS),
+          events: { brand_id: "brand-A" },
+          order_line_items: [{ quantity: 1 }],
+        },
+      ],
+      error: null,
+    });
+    mockFrom.mockImplementation(() => orderStatsQuery);
+    const result = await aggregateBrandStatsByBrandIds(["brand-A"]);
+    const bucket = result.get("brand-A");
+    expect(bucket).toBeDefined();
+    // Lifetime: 3 orders × 1000 cents = 3000
+    expect(bucket?.revByCurrencyCents.get("GBP")).toBe(3000);
+    // 7-day: 2 orders × 1000 cents = 2000 (the 30-day-old order is excluded)
+    expect(bucket?.rev7dByCurrencyCents.get("GBP")).toBe(2000);
+  });
+
+  test("nets refunded_amount_cents in both windows", async () => {
+    const orderStatsQuery = ordersQuery({
+      data: [
+        {
+          total_cents: 1000,
+          currency: "GBP",
+          payment_status: "partial_refund",
+          refunded_amount_cents: 300,
+          created_at: nowIso(2 * ONE_DAY_MS),
+          events: { brand_id: "brand-A" },
+          order_line_items: [{ quantity: 1 }],
+        },
+      ],
+      error: null,
+    });
+    mockFrom.mockImplementation(() => orderStatsQuery);
+    const result = await aggregateBrandStatsByBrandIds(["brand-A"]);
+    const bucket = result.get("brand-A");
+    expect(bucket?.revByCurrencyCents.get("GBP")).toBe(700);
+    expect(bucket?.rev7dByCurrencyCents.get("GBP")).toBe(700);
+  });
+
+  test("excludes rows with null created_at from 7-day window, keeps in lifetime", async () => {
+    const orderStatsQuery = ordersQuery({
+      data: [
+        {
+          total_cents: 5000,
+          currency: "GBP",
+          payment_status: "paid",
+          refunded_amount_cents: 0,
+          created_at: null,
+          events: { brand_id: "brand-A" },
+          order_line_items: [{ quantity: 1 }],
+        },
+      ],
+      error: null,
+    });
+    mockFrom.mockImplementation(() => orderStatsQuery);
+    const result = await aggregateBrandStatsByBrandIds(["brand-A"]);
+    const bucket = result.get("brand-A");
+    expect(bucket?.revByCurrencyCents.get("GBP")).toBe(5000);
+    expect(bucket?.rev7dByCurrencyCents.has("GBP")).toBe(false);
+  });
+
+  test("keeps currency buckets isolated across windows", async () => {
+    const orderStatsQuery = ordersQuery({
+      data: [
+        {
+          total_cents: 1000,
+          currency: "GBP",
+          payment_status: "paid",
+          refunded_amount_cents: 0,
+          created_at: nowIso(2 * ONE_DAY_MS),
+          events: { brand_id: "brand-A" },
+          order_line_items: [{ quantity: 1 }],
+        },
+        {
+          total_cents: 9999,
+          currency: "USD",
+          payment_status: "paid",
+          refunded_amount_cents: 0,
+          created_at: nowIso(2 * ONE_DAY_MS),
+          events: { brand_id: "brand-A" },
+          order_line_items: [{ quantity: 1 }],
+        },
+      ],
+      error: null,
+    });
+    mockFrom.mockImplementation(() => orderStatsQuery);
+    const result = await aggregateBrandStatsByBrandIds(["brand-A"]);
+    const bucket = result.get("brand-A");
+    expect(bucket?.rev7dByCurrencyCents.get("GBP")).toBe(1000);
+    expect(bucket?.rev7dByCurrencyCents.get("USD")).toBe(9999);
   });
 });

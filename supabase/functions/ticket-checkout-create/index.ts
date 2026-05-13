@@ -193,10 +193,13 @@ serve(async (req) => {
       // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
       // ORCH-0804 / I-PROPOSED-BF — Stripe Tax enablement.
       // automatic_tax + liability.account designates the connected account
-      // (brand) as merchant of record. customer_update.address: "auto" tells
-      // Stripe Checkout to collect the buyer address (required for tax
-      // jurisdiction lookup). Removing any of these silently disables tax
-      // collection in regulated jurisdictions — a legal exposure for brands.
+      // (brand) as merchant of record. Stripe Checkout auto-collects the
+      // buyer's billing address on the new Customer (created from
+      // customer_email) when automatic_tax is enabled, so jurisdiction
+      // lookup works without a customer_update block. (ORCH-0811 removed
+      // customer_update: it requires an existing `customer` id and Stripe
+      // rejects the request with "You cannot use customer_update without
+      // setting customer" when paired with customer_email.)
       // The strict-grep gate orch-0804-stripe-tax-enabled-on-checkout
       // enforces these params at CI time. Reference:
       // https://docs.stripe.com/tax/tax-for-platforms (destination-charge
@@ -234,9 +237,12 @@ serve(async (req) => {
               account: stripeAccountId,
             },
           },
-          customer_update: {
-            address: "auto",
-          },
+          // ORCH-0811 — customer_update is only valid alongside an existing
+          // `customer` id. Mingla creates a new Stripe Customer per buyer via
+          // customer_email, so Stripe rejects customer_update with "You cannot
+          // use customer_update without setting customer". Checkout auto-
+          // collects billing address on new Customers when automatic_tax is
+          // enabled, so removing this line preserves tax jurisdiction lookup.
           customer_email: buyerEmail,
           success_url:
             `${baseUrl}/checkout/${eventId}/confirm?cs={CHECKOUT_SESSION_ID}`,

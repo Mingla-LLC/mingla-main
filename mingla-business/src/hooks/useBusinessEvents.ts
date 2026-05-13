@@ -41,7 +41,7 @@ const detailForPublishedEvent = (
     address: null,
     coverHue: published.event.coverHue,
     role: "owner",
-    stats: { events: 0, followers: 0, rev: 0, attendees: 0 },
+    stats: { events: 0, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
     currentLiveEvent: null,
   } as Brand,
   tickets: published.tickets,

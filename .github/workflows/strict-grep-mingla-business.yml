@@ -62,6 +62,7 @@ on:
 #   - ORCH-0793 (orch-0793-scan-time-window.mjs) — biz_ticket_scan event_dates time-window enforcement + mobile discriminator plumbing (I-PROPOSED-BB SCAN_TIME_WINDOW_ENFORCED)
 #   - ORCH-0796 (orch-0796-no-stub-payout-fee.mjs) — Reconciliation expected-payout derived from real Stripe app-fee + refund cols, no 4% stub (I-PROPOSED-BC EVENT_PAYOUT_DATA_DERIVED)
 #   - ORCH-0808 (orch-0808-appsflyer-devices-app-discriminator.mjs) — appsflyer_devices writes carry app: 'consumer' | 'business' (I-PROPOSED-AF-DISCRIMINATOR)
+#   - ORCH-0816 (orch-0816-last-7-days-binds-rev7d.mjs) — "Last 7 days" KPI tile binds stats.rev7d, never stats.rev (label/data agreement)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -679,3 +680,14 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0809 Gate 3
         run: node .github/scripts/strict-grep/orch-0809-tm-local-time-window.mjs
+
+  orch-0816-last-7-days-binds-rev7d:
+    name: "ORCH-0816: Last 7 days KPI tile binds stats.rev7d (label/data agreement)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0816 gate
+        run: node .github/scripts/strict-grep/orch-0816-last-7-days-binds-rev7d.mjs

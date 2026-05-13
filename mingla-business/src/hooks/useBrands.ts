@@ -17,6 +17,7 @@
  * SlugCollisionError to inline form error UX (caller pattern).
  */
 
+import { useEffect } from "react";
 import {
   useMutation,
   useQuery,
@@ -26,6 +27,7 @@ import {
 
 import { supabase } from "../services/supabase";
 import { queryClient } from "../config/queryClient";
+import { eventOrdersKeys } from "./useEventOrders";
 import {
   createBrand,
   getBrands,
@@ -41,7 +43,11 @@ import type { Brand } from "../store/currentBrandStore";
 // (Constitutional #4 — one query key per entity).
 import { brandRoleKeys } from "./useCurrentBrandRole";
 
-const STALE_TIME_MS = 5 * 60 * 1000; // 5 min — brands change infrequently
+// ORCH-0816 — brand stats (rev, rev7d, attendees) follow ticket sales, which
+// change frequently. Combined with the Realtime subscription on `orders`
+// below, 30s gives a fast-enough fallback when Realtime drops the connection
+// or the publication migration has not landed.
+const STALE_TIME_MS = 30 * 1000;
 
 // ----- Query key factory -------------------------------------------------
 
@@ -104,6 +110,37 @@ export const useBrands = (
   accountId: string | null,
 ): UseQueryResult<Brand[]> => {
   const enabled = accountId !== null;
+  const rqClient = useQueryClient();
+
+  // ORCH-0816 — Realtime subscription on `public.orders` for brand-stats
+  // freshness. RLS gates per-brand visibility, so the owner only receives
+  // events for orders on their own brand's events. Pattern mirrors
+  // `useBrandStripeBankVerification` verbatim. Requires migration
+  // `20260602000004_orch_0816_orders_realtime_publication.sql`.
+  useEffect(() => {
+    if (!enabled || accountId === null) return;
+    const channelName = `brand-stats-orders-${accountId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+        },
+        () => {
+          rqClient.invalidateQueries({ queryKey: brandKeys.all });
+          rqClient.invalidateQueries({ queryKey: eventOrdersKeys.all });
+        },
+      )
+      .subscribe();
+
+    return (): void => {
+      void supabase.removeChannel(channel);
+    };
+  }, [enabled, accountId, rqClient]);
+
   return useQuery<Brand[]>({
     queryKey: enabled ? brandKeys.list(accountId) : DISABLED_KEY,
     enabled,
@@ -121,6 +158,34 @@ export const useBrand = (
   brandId: string | null,
 ): UseQueryResult<Brand | null> => {
   const enabled = brandId !== null;
+  const rqClient = useQueryClient();
+
+  // ORCH-0816 — same Realtime pattern as useBrands, scoped per brand. RLS
+  // still constrains delivery to the brand team. Used by BrandProfileView.
+  useEffect(() => {
+    if (!enabled || brandId === null) return;
+    const channelName = `brand-stats-orders-detail-${brandId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+        },
+        () => {
+          rqClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
+          rqClient.invalidateQueries({ queryKey: eventOrdersKeys.all });
+        },
+      )
+      .subscribe();
+
+    return (): void => {
+      void supabase.removeChannel(channel);
+    };
+  }, [enabled, brandId, rqClient]);
+
   return useQuery<Brand | null>({
     queryKey: enabled ? brandKeys.detail(brandId) : DISABLED_KEY,
     enabled,
@@ -167,7 +232,7 @@ export const useCreateBrand = (): UseCreateBrandResult => {
         address: input.address,
         coverHue: input.coverHue,
         role: "owner",
-        stats: { events: 0, followers: 0, rev: 0, attendees: 0 },
+        stats: { events: 0, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
         currentLiveEvent: null,
         bio: input.bio,
         tagline: input.tagline,

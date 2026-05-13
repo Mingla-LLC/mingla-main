@@ -47,6 +47,9 @@ interface OrderStatsRow {
   currency: string | null;
   payment_status: string | null;
   refunded_amount_cents: number | null;
+  // ORCH-0816 — used to bucket orders into the last-7-day window for the
+  // home-screen "Last 7 days" tile. Lifetime totals remain on `rev`.
+  created_at: string | null;
   events: { brand_id: string | null } | null;
   order_line_items: { quantity: number | null }[] | null;
 }
@@ -54,7 +57,12 @@ interface OrderStatsRow {
 interface BrandStatsAggregate {
   attendees: number;
   revByCurrencyCents: Map<string, number>;
+  // ORCH-0816 — last-7-day rolling window, computed in the same pass as the
+  // lifetime total so the home tile and the brand-profile tile share one query.
+  rev7dByCurrencyCents: Map<string, number>;
 }
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Thrown by `createBrand` when slug collides with an existing non-deleted brand
@@ -171,6 +179,7 @@ export async function getBrands(accountId: string): Promise<Brand[]> {
         events: eventCounts.get(row.id) ?? 0,
         attendees: agg?.attendees ?? 0,
         rev: pickRevForCurrency(agg, brand.defaultCurrency),
+        rev7d: pickRev7dForCurrency(agg, brand.defaultCurrency),
       },
     };
   });
@@ -206,9 +215,18 @@ export async function aggregateBrandStatsByBrandIds(
 ): Promise<Map<string, BrandStatsAggregate>> {
   const result = new Map<string, BrandStatsAggregate>();
   for (const id of brandIds) {
-    result.set(id, { attendees: 0, revByCurrencyCents: new Map() });
+    result.set(id, {
+      attendees: 0,
+      revByCurrencyCents: new Map(),
+      rev7dByCurrencyCents: new Map(),
+    });
   }
   if (brandIds.length === 0) return result;
+
+  // ORCH-0816 — single round-trip computes BOTH lifetime and 7-day buckets.
+  // Client-side window filtering keeps the query identical to the prior shape
+  // and avoids two network calls per brand list refresh.
+  const sinceIso = new Date(Date.now() - SEVEN_DAYS_MS).toISOString();
 
   const { data, error } = await supabase
     .from("orders")
@@ -217,6 +235,7 @@ export async function aggregateBrandStatsByBrandIds(
       currency,
       payment_status,
       refunded_amount_cents,
+      created_at,
       events!inner ( brand_id ),
       order_line_items ( quantity )
     `)
@@ -244,6 +263,13 @@ export async function aggregateBrandStatsByBrandIds(
       currency,
       (bucket.revByCurrencyCents.get(currency) ?? 0) + net,
     );
+
+    if (row.created_at !== null && row.created_at >= sinceIso) {
+      bucket.rev7dByCurrencyCents.set(
+        currency,
+        (bucket.rev7dByCurrencyCents.get(currency) ?? 0) + net,
+      );
+    }
   }
 
   return result;
@@ -258,6 +284,24 @@ function pickRevForCurrency(
     return 0;
   }
   const cents = agg.revByCurrencyCents.get(defaultCurrency.trim().toUpperCase());
+  if (cents === undefined || cents <= 0) return 0;
+  return cents / 100;
+}
+
+// ORCH-0816 — mirror of pickRevForCurrency for the 7-day window. Same mixed-
+// currency exclusion rules apply: only orders in the brand's default currency
+// surface on the headline tile.
+function pickRev7dForCurrency(
+  agg: BrandStatsAggregate | undefined,
+  defaultCurrency: string | undefined,
+): number {
+  if (agg === undefined) return 0;
+  if (defaultCurrency === undefined || defaultCurrency.trim().length === 0) {
+    return 0;
+  }
+  const cents = agg.rev7dByCurrencyCents.get(
+    defaultCurrency.trim().toUpperCase(),
+  );
   if (cents === undefined || cents <= 0) return 0;
   return cents / 100;
 }
@@ -287,6 +331,7 @@ export async function getBrand(brandId: string): Promise<Brand | null> {
       events: eventCounts.get(brand.id) ?? 0,
       attendees: agg?.attendees ?? 0,
       rev: pickRevForCurrency(agg, brand.defaultCurrency),
+      rev7d: pickRev7dForCurrency(agg, brand.defaultCurrency),
     },
   };
 }

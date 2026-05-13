@@ -7,7 +7,15 @@
  * Connect destination-charge model (verified against
  * https://docs.stripe.com/tax/tax-for-platforms on 2026-05-12):
  *   - automatic_tax: { enabled: true, liability: { type: "account", account: <connected_account_id> } }
- *   - customer_update: { address: "auto" }
+ *
+ * NOTE: ORCH-0811 removed the previously required `customer_update: { address: "auto" }`.
+ * That parameter is only valid alongside an existing `customer` id; Mingla
+ * creates a fresh Customer per buyer via `customer_email`, and Stripe
+ * rejected every Checkout Session with "You cannot use customer_update
+ * without setting customer". Stripe Checkout auto-collects the billing
+ * address on the new Customer when automatic_tax is enabled, so tax
+ * jurisdiction lookup still works.
+ *
  * Plus persists the resulting tax data to `orders.tax_amount_cents` via the
  * webhook router, exposes the "Tax & registrations" CTA on the brand
  * Payments tab with merchant-of-record disclosure copy, and registers the
@@ -19,8 +27,8 @@
  *      supabase/migrations/.
  *   2. Migration declares `ADD COLUMN IF NOT EXISTS tax_amount_cents`.
  *   3. `ticket-checkout-create/index.ts` contains `automatic_tax:` AND
- *      `liability:` AND `account: stripeAccountId` AND
- *      `customer_update:` with `address: "auto"`.
+ *      `liability:` AND `account: stripeAccountId`. Must NOT contain
+ *      `customer_update:` (ORCH-0811: incompatible with customer_email).
  *   4. `_shared/stripeWebhookRouter.ts` references `total_details` AND
  *      `amount_tax` AND `tax_amount_cents` (proves the webhook persists tax
  *      data on the orders row).
@@ -122,9 +130,17 @@ if (!/account\s*:\s*stripeAccountId/.test(checkoutSrc)) {
     "Check 3 FAIL: ticket-checkout-create/index.ts is missing `account: stripeAccountId` — tax liability not pinned to the connected account",
   );
 }
-if (!/customer_update\s*:\s*\{[^}]*address\s*:\s*"auto"/s.test(checkoutSrc)) {
+// ORCH-0811: customer_update is INCOMPATIBLE with customer_email (Stripe
+// rejects: "You cannot use customer_update without setting customer").
+// Active code lines that pass this param to Stripe must not exist; comments
+// referencing it for history are fine — we strip line comments before scanning.
+const checkoutSrcSansComments = checkoutSrc
+  .split("\n")
+  .filter((line) => !/^\s*(\/\/|\*)/.test(line))
+  .join("\n");
+if (/customer_update\s*:/.test(checkoutSrcSansComments)) {
   failures.push(
-    "Check 3 FAIL: ticket-checkout-create/index.ts is missing `customer_update: { address: \"auto\" }` — Stripe Tax cannot resolve buyer jurisdiction without it",
+    "Check 3 FAIL: ticket-checkout-create/index.ts passes `customer_update:` to Stripe — ORCH-0811 forbids this; it is incompatible with customer_email and breaks every Checkout Session create",
   );
 }
 
