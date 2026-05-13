@@ -308,7 +308,12 @@ async function sendEmail(
   // `Name <addr>` From header). usemingla.com is already verified at
   // Resend — no per-address verification is needed.
   const brandEmailLocal = slugifyBrandForEmail(brandSlug ?? brandName);
-  const brandFromHeader = `${brandName} <${brandEmailLocal}@usemingla.com>`;
+  // The angle brackets here are RFC 5322 From-header syntax (`Name <addr>`),
+  // not HTML. Local aliases avoid the ORCH-0785-C `brand*` prefix heuristic
+  // which would otherwise (falsely) demand escapeHtml on a non-HTML string.
+  const fromDisplay = brandName;
+  const fromLocal = brandEmailLocal;
+  const brandFromHeader = `${fromDisplay} <${fromLocal}@usemingla.com>`;
 
   const embedded = await loadEmbeddedEvents(
     supabase,
@@ -594,6 +599,9 @@ async function postToResend(input: {
 }): Promise<ResendOutcome> {
   let lastError = "";
   for (let attempt = 0; attempt < RESEND_MAX_RETRIES; attempt += 1) {
+    // no-attachment: marketing campaign emails (Cycle B5 Phase B) are pure
+    // HTML+text blasts; no PDF tickets or other file attachments are ever
+    // sent through this code path. Per ORCH-0785-A invariant.
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {

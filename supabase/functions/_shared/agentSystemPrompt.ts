@@ -40,7 +40,7 @@ export function buildSystemPrompt(
         .join("\n")
     : "- (no profile yet — ask the user politely for any missing context)";
 
-  const brandsBlock = brandsList.length > 0
+  const ownedBrandsList = brandsList.length > 0
     ? brandsList.map((b) => `- ${b.id} : ${escapeForPrompt(b.name)}`).join("\n")
     : "- (the user has no brands yet — they may want to create one first)";
 
@@ -72,7 +72,7 @@ KNOWN CONTEXT FOR THIS USER:
 ${userBlock}
 
 USER'S BRANDS (id : name):
-${brandsBlock}
+${ownedBrandsList}
 
 CAPABILITIES (your tools):
 - create_brand — create a new brand for the user

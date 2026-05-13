@@ -24,10 +24,23 @@ function walk(dir) {
 }
 
 const SHELL_DIR = path.join("supabase", "functions", "_shared", "email");
+
+// Allowlist — paths that legitimately render HTML outside the email shell
+// because they serve HTTP response pages, NOT marketing/transactional emails.
+// Each entry must include the reason inline.
+const ALLOWLIST_DIRS = [
+  // marketing-unsubscribe renders an HTTP confirmation form + success page
+  // shown in the recipient's browser when they click the List-Unsubscribe
+  // link. These are web pages, not email bodies — the email-shell-singleton
+  // invariant is scoped to email composition, not HTTP responses.
+  path.join("supabase", "functions", "marketing-unsubscribe"),
+];
+
 const failures = [];
 for (const file of walk(ROOT_FNS)) {
   const rel = path.relative(ROOT, file);
   if (rel.startsWith(SHELL_DIR + path.sep) || rel === SHELL_DIR) continue;
+  if (ALLOWLIST_DIRS.some((p) => rel.startsWith(p + path.sep) || rel === p)) continue;
   const text = fs.readFileSync(file, "utf8");
   for (const needle of NEEDLES) {
     if (!text.includes(needle)) continue;

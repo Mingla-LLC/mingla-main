@@ -38,6 +38,12 @@ IGNORED_PARTS = {
     ".vercel",
     "node_modules",
     "dist",
+    # Mingla_Artifacts/prompts is explicitly private/ignored per the
+    # mingla-orchestrator skill ("Mingla_Artifacts/prompts/ is private/ignored
+    # unless explicitly versioned"). Prompt files often reference memory
+    # files that live outside the repo (~/.claude/projects/.../memory/) —
+    # scanning them as durable documentation produces false-positives.
+    "prompts",
 }
 
 EXTERNAL_SCHEMES = {"http", "https", "mailto", "tel", "sms", "ftp"}
@@ -204,6 +210,20 @@ def audit(root: Path, scan_roots: list[str]) -> dict[str, object]:
 
             if resolved.exists():
                 continue
+
+            # Fallback: many Mingla artifacts write links as ROOT-RELATIVE
+            # paths (e.g. `Mingla_Artifacts/reports/foo.md` from inside
+            # `Mingla_Artifacts/reports/bar.md`). GitHub renders those fine,
+            # and the target file genuinely exists at that root-relative
+            # path. Try resolving against the repo root before declaring
+            # the link missing.
+            if not target_no_anchor.startswith(("/", ".")):
+                root_resolved = (root / target_no_anchor).resolve()
+                if (
+                    str(root_resolved).startswith(str(root))
+                    and root_resolved.exists()
+                ):
+                    continue
 
             classification, suggested_action = classify_missing(
                 source=source,

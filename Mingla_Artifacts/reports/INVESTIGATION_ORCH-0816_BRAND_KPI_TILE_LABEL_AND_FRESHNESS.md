@@ -23,7 +23,7 @@ Per-event tiles (`useEventSalesSummaries`) feel "live" because they use a 15-sec
 
 | Order | File | Why |
 |---|---|---|
-| 1 | [mingla-business/app/(tabs)/home.tsx](mingla-business/app/(tabs)/home.tsx) | Find the tile and what value it binds to |
+| 1 | [mingla-business/app/(tabs)/home.tsx](mingla-business/app/%28tabs%29/home.tsx) | Find the tile and what value it binds to |
 | 2 | [mingla-business/src/services/brandsService.ts](mingla-business/src/services/brandsService.ts) | Trace `brand.stats.rev` to its query |
 | 3 | [mingla-business/src/hooks/useBrands.ts](mingla-business/src/hooks/useBrands.ts) | React Query freshness config for brand data |
 | 4 | [mingla-business/src/config/queryClient.ts](mingla-business/src/config/queryClient.ts) | Global QueryClient defaults |
@@ -42,7 +42,7 @@ Per-event tiles (`useEventSalesSummaries`) feel "live" because they use a 15-sec
 
 | Field | Evidence |
 |---|---|
-| File + line | [mingla-business/app/(tabs)/home.tsx:401-411](mingla-business/app/(tabs)/home.tsx#L401-L411) (consumer); [mingla-business/src/services/brandsService.ts:204-250](mingla-business/src/services/brandsService.ts#L204-L250) (producer) |
+| File + line | [mingla-business/app/(tabs)/home.tsx:401-411](mingla-business/app/%28tabs%29/home.tsx#L401-L411) (consumer); [mingla-business/src/services/brandsService.ts:204-250](mingla-business/src/services/brandsService.ts#L204-L250) (producer) |
 | Exact code (producer) | `await supabase.from("orders").select("...").in("events.brand_id", brandIds).not("payment_status", "in", "(failed,cancelled,refunded)")` — **no date predicate** |
 | Exact code (consumer) | `<KpiTile label="Last 7 days" value={... formatCurrencyRound(currentBrand.stats.rev, ...) ...} />` |
 | What it does | Sums `(total_cents - refunded_amount_cents)` across **all orders ever placed** for any of the brand's events, scoped only by `payment_status` exclusion. Result is bound to a tile labeled "Last 7 days". |
@@ -56,7 +56,7 @@ Classification: **🔴 Root cause** (Constitution #9 "No fabricated data" — th
 
 | Field | Evidence |
 |---|---|
-| File + line | [mingla-business/src/hooks/useBrands.ts:44](mingla-business/src/hooks/useBrands.ts#L44) (`STALE_TIME_MS = 5 * 60 * 1000`); [mingla-business/src/config/queryClient.ts:35-37](mingla-business/src/config/queryClient.ts#L35-L37) (`refetchOnWindowFocus: false`); [mingla-business/app/(tabs)/home.tsx](mingla-business/app/(tabs)/home.tsx) — no `RefreshControl`; no Realtime subscription on `orders` anywhere in the brand-stats flow. |
+| File + line | [mingla-business/src/hooks/useBrands.ts:44](mingla-business/src/hooks/useBrands.ts#L44) (`STALE_TIME_MS = 5 * 60 * 1000`); [mingla-business/src/config/queryClient.ts:35-37](mingla-business/src/config/queryClient.ts#L35-L37) (`refetchOnWindowFocus: false`); [mingla-business/app/(tabs)/home.tsx](mingla-business/app/%28tabs%29/home.tsx) — no `RefreshControl`; no Realtime subscription on `orders` anywhere in the brand-stats flow. |
 | Exact code | `const STALE_TIME_MS = 5 * 60 * 1000; // 5 min — brands change infrequently` + `useQuery({ queryKey: ..., staleTime: STALE_TIME_MS, ... })` |
 | What it does | After a buyer (anonymous, separate device/session) completes checkout: the server-side webhook updates `orders`. The brand owner's app has no listener on this table. The brand list query holds its cached result for 5 minutes and will not refetch on window focus or app foreground. On the next remount after staleness, it refetches — but only then. |
 | What it should do | Within a few seconds of any non-failed order landing for any of the brand's events, the brand owner's stats tiles should reflect the new attendee count and GMV. |

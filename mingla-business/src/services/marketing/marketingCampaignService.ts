@@ -163,12 +163,19 @@ export async function cancelScheduled(
 
 export async function deleteDraft(campaignId: string): Promise<void> {
   assertUuid(campaignId, "deleteDraft.campaign_id");
-  const { error } = await supabase
+  // .select("id") per I-PROPOSED-I MUTATION-ROWCOUNT-VERIFIED — verify a
+  // matching draft row actually existed; if not (already sent, not a draft,
+  // or RLS denied), throw rather than silently succeed.
+  const { data, error } = await supabase
     .from("marketing_campaigns")
     .delete()
     .eq("id", campaignId)
-    .eq("status", "draft");
+    .eq("status", "draft")
+    .select("id");
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error("Draft not found, already sent, or not eligible for deletion");
+  }
 }
 
 export async function listCampaigns(input: {
