@@ -55,8 +55,17 @@ import { useSavedCards } from "../hooks/useSavedCards";
 import { savedCardsService } from "../services/savedCardsService";
 import { savedCardKeys } from "../hooks/queryKeys";
 import { useQueryClient } from "@tanstack/react-query";
-import { PRICE_TIERS, TIER_BY_SLUG, type PriceTierSlug } from "../constants/priceTiers";
 import { glass } from "../constants/designSystem";
+// ORCH-0809 M2: city picker + segment switcher
+import { CityPickerSheet } from "./discover/CityPickerSheet";
+import {
+  type DiscoverSegmentSlug,
+  type DiscoverGenreSlug,
+  type DiscoverCity,
+  GENRES_BY_SEGMENT,
+} from "../types/discoverFilters";
+import { geocodingService } from "../services/geocodingService";
+import { PreferencesService } from "../services/preferencesService";
 
 const NIGHT_OUT_CACHE_KEY = "mingla_night_out_cache";
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -90,33 +99,41 @@ interface NightOutCardData {
 }
 
 type DateFilter = "any" | "today" | "tomorrow" | "weekend" | "next-week" | "month";
-type PriceFilter = "any" | "chill" | "comfy" | "bougie" | "lavish" | "free" | "under-25" | "25-50" | "50-100" | "over-100";
-type GenreFilter = "all" | "afrobeats" | "dancehall" | "hiphop-rnb" | "house" | "techno" | "jazz-blues" | "latin-salsa" | "reggae" | "kpop" | "acoustic-indie";
+// ORCH-0809 M2: Price filter deleted from Discover (TM has no price query param;
+// reintroduction is a separate ORCH when Mingla Business native events land in Discover).
+// Genre slugs sourced from the shared DiscoverGenreSlug union (server-owned classification).
+type GenreFilter = DiscoverGenreSlug;
+type SegmentFilter = DiscoverSegmentSlug;
 
 interface NightOutFilters {
   date: DateFilter;
-  price: PriceFilter;
+  segment: SegmentFilter;
   genre: GenreFilter;
 }
 
-const GENRE_TO_KEYWORDS: Record<GenreFilter, string[]> = {
-  "all":             [],
-  "afrobeats":       ["afrobeats", "amapiano"],
-  "dancehall":       ["dancehall", "soca"],
-  "hiphop-rnb":      ["hip hop", "r&b", "rnb", "hip-hop"],
-  "house":           ["house", "deep house", "afro house"],
-  "techno":          ["techno", "electronic"],
-  "jazz-blues":      ["jazz", "blues"],
-  "latin-salsa":     ["latin", "salsa", "reggaeton"],
-  "reggae":          ["reggae", "dub"],
-  "kpop":            ["kpop", "k-pop"],
-  "acoustic-indie":  ["acoustic", "indie"],
-};
+// ORCH-0809 M2: GENRE_TO_KEYWORDS map removed. Genre filtering now uses real Ticketmaster
+// `genreId` classification IDs resolved server-side by `resolveTmClassification` in
+// `supabase/functions/_shared/ticketmasterClassifications.ts`. Slugs cross the wire as
+// `segmentSlug` + `genreSlugs[]`. Genre IDs ship as the operator runs the TM
+// `/classifications` verification curl (see SPEC §5.3 + M1 implementation report).
 
-function getDateRange(filter: DateFilter): { startDate: string; endDate: string } {
+/**
+ * ORCH-0809 M2: returns the Ticketmaster `localStartEndDateTime` query value for
+ * the active date chip, computed in the user's device-local timezone. Format is
+ * TM's local-time pair `"YYYY-MM-DDTHH:mm:ss,YYYY-MM-DDTHH:mm:ss"` (no trailing
+ * `Z`, no timezone offset suffix). Returns null for the "any" chip.
+ *
+ * Local-time math means "Tonight" at 11:55 PM local still includes 11:56 PM
+ * events; "This Weekend" on Sat 11:00 PM still includes Sat late shows even
+ * though UTC has already rolled to Sunday. Replaces the prior UTC `toISOString`
+ * helper.
+ */
+function getDateRange(filter: DateFilter): { localStartEndDateTime: string | null } {
   const now = new Date();
-  // Ticketmaster requires ISO 8601 WITHOUT milliseconds: YYYY-MM-DDTHH:mm:ssZ
-  const toISONoMs = (d: Date): string => d.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const toLocalISO = (d: Date): string => {
+    const pad = (n: number): string => n.toString().padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
   const startOfDay = (d: Date): Date => {
     const copy = new Date(d);
     copy.setHours(0, 0, 0, 0);
@@ -127,14 +144,18 @@ function getDateRange(filter: DateFilter): { startDate: string; endDate: string 
     copy.setHours(23, 59, 59, 0);
     return copy;
   };
+  const pair = (start: Date, end: Date): string =>
+    `${toLocalISO(start)},${toLocalISO(end)}`;
 
   switch (filter) {
+    case "any":
+      return { localStartEndDateTime: null };
     case "today":
-      return { startDate: toISONoMs(now), endDate: toISONoMs(endOfDay(now)) };
+      return { localStartEndDateTime: pair(now, endOfDay(now)) };
     case "tomorrow": {
       const tmrw = new Date(now);
       tmrw.setDate(tmrw.getDate() + 1);
-      return { startDate: toISONoMs(startOfDay(tmrw)), endDate: toISONoMs(endOfDay(tmrw)) };
+      return { localStartEndDateTime: pair(startOfDay(tmrw), endOfDay(tmrw)) };
     }
     case "weekend": {
       const dayOfWeek = now.getDay();
@@ -146,9 +167,9 @@ function getDateRange(filter: DateFilter): { startDate: string; endDate: string 
       sunday.setDate(sunday.getDate() + 2);
       sunday.setHours(23, 59, 59, 0);
       if (dayOfWeek === 0 || dayOfWeek === 6 || (dayOfWeek === 5 && now.getHours() >= 18)) {
-        return { startDate: toISONoMs(now), endDate: toISONoMs(sunday) };
+        return { localStartEndDateTime: pair(now, sunday) };
       }
-      return { startDate: toISONoMs(friday), endDate: toISONoMs(sunday) };
+      return { localStartEndDateTime: pair(friday, sunday) };
     }
     case "next-week": {
       const monday = new Date(now);
@@ -157,14 +178,14 @@ function getDateRange(filter: DateFilter): { startDate: string; endDate: string 
       const nextSunday = new Date(monday);
       nextSunday.setDate(nextSunday.getDate() + 6);
       nextSunday.setHours(23, 59, 59, 0);
-      return { startDate: toISONoMs(monday), endDate: toISONoMs(nextSunday) };
+      return { localStartEndDateTime: pair(monday, nextSunday) };
     }
     case "month":
-    case "any":
     default: {
       const monthLater = new Date(now);
       monthLater.setDate(monthLater.getDate() + 30);
-      return { startDate: toISONoMs(now), endDate: toISONoMs(monthLater) };
+      monthLater.setHours(23, 59, 59, 0);
+      return { localStartEndDateTime: pair(now, monthLater) };
     }
   }
 }
@@ -807,15 +828,25 @@ function DiscoverScreen({
   // import — narrow back to the typed unions here, where the shape is owned).
   const discoverFiltersSnapshot = useMemo(() => useAppStore.getState().discoverFilters, []);
   const setDiscoverFiltersRegistry = useAppStore((s) => s.setDiscoverFilters);
+  // ORCH-0809 M2: filter shape now { date, segment, genre } — price field removed.
   const [selectedFilters, setSelectedFilters] = useState<NightOutFilters>(
     discoverFiltersSnapshot
       ? {
           date: discoverFiltersSnapshot.date as DateFilter,
-          price: discoverFiltersSnapshot.price as PriceFilter,
+          segment: (discoverFiltersSnapshot.segment as SegmentFilter) ?? "music",
           genre: discoverFiltersSnapshot.genre as GenreFilter,
         }
-      : { date: "any", price: "any", genre: "all" }
+      : { date: "any", segment: "music", genre: "all" }
   );
+
+  // ORCH-0809 M2: city picker state. selectedCity comes from preferences;
+  // gpsDefaultCity comes from reverse-geocoding the device GPS on first paint.
+  // effectiveCity = selectedCity ?? gpsDefaultCity.
+  const [selectedCity, setSelectedCity] = useState<DiscoverCity | null>(null);
+  const [gpsDefaultCity, setGpsDefaultCity] = useState<DiscoverCity | null>(null);
+  const [isCityPickerVisible, setIsCityPickerVisible] = useState(false);
+  const [fallbackActive, setFallbackActive] = useState(false);
+  const effectiveCity: DiscoverCity | null = selectedCity ?? gpsDefaultCity;
 
   // Sync local filter state back to the Zustand registry on every change so
   // the values survive tab unmount under Path B (ORCH-0679 Wave 2.8).
@@ -836,6 +867,67 @@ function DiscoverScreen({
   const nightOutGpsLat = deviceGpsLat;
   const nightOutGpsLng = deviceGpsLng;
 
+  // ORCH-0809 M2: load persisted Discover city from preferences on mount.
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    (async () => {
+      const prefs = await PreferencesService.getUserPreferences(user.id);
+      if (cancelled || !prefs) return;
+      if (
+        prefs.discover_city_name &&
+        typeof prefs.discover_city_lat === "number" &&
+        typeof prefs.discover_city_lng === "number"
+      ) {
+        setSelectedCity({
+          name: prefs.discover_city_name,
+          stateCode: prefs.discover_city_state_code ?? null,
+          countryCode: prefs.discover_city_country_code ?? null,
+          lat: prefs.discover_city_lat,
+          lng: prefs.discover_city_lng,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  // ORCH-0809 M2: reverse-geocode GPS to derive the default city chip value
+  // when the user hasn't picked one. Only runs when we have GPS and no
+  // selectedCity (selectedCity takes precedence).
+  useEffect(() => {
+    if (selectedCity) return; // user override wins
+    if (typeof nightOutGpsLat !== "number" || typeof nightOutGpsLng !== "number") return;
+    if (gpsDefaultCity) return; // already resolved once this session
+    let cancelled = false;
+    (async () => {
+      const result = await geocodingService.reverseGeocode(nightOutGpsLat, nightOutGpsLng);
+      if (cancelled || !result.city) return;
+      // state/country come from the reverseGeocode result strings; we coerce
+      // common forms to ISO codes. Best-effort only — TM tolerates city-name-only.
+      const countryStr = result.country ?? "";
+      const stateStr = result.state ?? "";
+      const countryCode =
+        countryStr === "United States" || countryStr === "USA" || countryStr === "US"
+          ? "US"
+          : countryStr.length === 2
+          ? countryStr.toUpperCase()
+          : null;
+      const stateCode = stateStr.length === 2 ? stateStr.toUpperCase() : null;
+      setGpsDefaultCity({
+        name: result.city,
+        stateCode,
+        countryCode,
+        lat: nightOutGpsLat,
+        lng: nightOutGpsLng,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [nightOutGpsLat, nightOutGpsLng, selectedCity, gpsDefaultCity]);
+
   const getTodayDateString = (): string => {
     return new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/New_York",
@@ -846,17 +938,41 @@ function DiscoverScreen({
   };
 
   interface NightOutCache {
+    // TTL date (calendar day the cache was saved). The actual filter dimensions
+    // (city, segment, dateFilter, genre) live in the cache KEY, not the payload —
+    // the key is the authoritative identity. The payload only needs:
+    // (a) `date` for the same-calendar-day TTL gate, and
+    // (b) `fallbackActive` for restoring the banner state on cache hit
+    //     (ORCH-0809 M2.1 P1-1 audit finding — the banner state was drifting
+    //     from displayed events because the cache hit branch left fallbackActive
+    //     unchanged from the previous fetch).
     date: string;
     venues: NightOutCardData[];
     genre: string;
+    fallbackActive: boolean;
   }
 
-  const nightOutCacheKey = `${NIGHT_OUT_CACHE_KEY}_${user?.id}_${nightOutGpsLat?.toFixed(2)}_${nightOutGpsLng?.toFixed(2)}_${selectedFilters.genre}`;
+  // ORCH-0809 M2 hotfix v2: include city + segment + DATE FILTER + genre in the
+  // cache key so changing any of them invalidates the stale on-device cache.
+  // Prior key omitted city, segment, and date — switching any of them served
+  // stale events from a previous fetch. `v2` prefix isolates from v1 rows.
+  const nightOutCityKey = effectiveCity?.name
+    ? `city:${effectiveCity.name.toLowerCase()}`
+    : `geo:${nightOutGpsLat?.toFixed(2)}:${nightOutGpsLng?.toFixed(2)}`;
+  const nightOutCacheKey = `${NIGHT_OUT_CACHE_KEY}_v2_${user?.id}_${nightOutCityKey}_seg:${selectedFilters.segment}_date:${selectedFilters.date}_gen:${selectedFilters.genre}`;
 
-  const saveNightOutCache = async (venues: NightOutCardData[]): Promise<void> => {
+  const saveNightOutCache = async (
+    venues: NightOutCardData[],
+    fallbackActiveAtSave: boolean,
+  ): Promise<void> => {
     if (!user?.id) return;
     try {
-      const cacheData: NightOutCache = { date: getTodayDateString(), venues, genre: selectedFilters.genre };
+      const cacheData: NightOutCache = {
+        date: getTodayDateString(),
+        venues,
+        genre: selectedFilters.genre,
+        fallbackActive: fallbackActiveAtSave,
+      };
       await AsyncStorage.setItem(nightOutCacheKey, JSON.stringify(cacheData));
     } catch (err) {
       console.error("[Discover] Error saving cache:", err);
@@ -903,14 +1019,17 @@ function DiscoverScreen({
     coordinates: venue.coordinates,
     ticketUrl: venue.ticketUrl,
     ticketStatus: venue.ticketStatus,
-    distance: venue.distance,
+    // ORCH-0809 M1: venue.distance is `number | null` (null when city-mode active).
+    // NightOutCardData expects `number | undefined`; coerce null → undefined.
+    distance: venue.distance ?? undefined,
   });
 
   const nightOutFetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchNightOutEvents = useCallback(
     async (skipCache: boolean = false): Promise<void> => {
-      if (!nightOutGpsLat || !nightOutGpsLng) return;
+      // ORCH-0809 M2: require EITHER an effective city OR GPS to fetch.
+      if (!effectiveCity && (!nightOutGpsLat || !nightOutGpsLng)) return;
       setNightOutLoading(true);
       setNightOutError(null);
       try {
@@ -923,36 +1042,67 @@ function DiscoverScreen({
             cached.genre === selectedFilters.genre
           ) {
             setNightOutCards(cached.venues);
+            // ORCH-0809 M2.1 (P1-1 audit fix): restore fallbackActive from the
+            // cached payload so the banner state matches the displayed events.
+            // `?? false` covers pre-M2.1 cache entries that didn't include the
+            // field (they auto-expire over TTL; transitional safety only).
+            setFallbackActive(cached.fallbackActive ?? false);
             setNightOutLoading(false);
             return;
           }
         }
-        const { startDate, endDate } = getDateRange(selectedFilters.date);
-        const { events } = await NightOutExperiencesService.getEvents(
-          { lat: nightOutGpsLat, lng: nightOutGpsLng },
-          {
-            radius: 50,
-            keywords: GENRE_TO_KEYWORDS[selectedFilters.genre],
-            startDate,
-            endDate,
-            sort: "date,asc",
-          }
-        );
+        const { localStartEndDateTime } = getDateRange(selectedFilters.date);
+        const genreSlugs: DiscoverGenreSlug[] =
+          selectedFilters.genre === "all" ? [] : [selectedFilters.genre];
+        const { events, meta } = await NightOutExperiencesService.search({
+          city: effectiveCity
+            ? {
+                name: effectiveCity.name,
+                stateCode: effectiveCity.stateCode,
+                countryCode: effectiveCity.countryCode,
+                fallbackLat: effectiveCity.lat,
+                fallbackLng: effectiveCity.lng,
+                fallbackRadiusKm: 50,
+              }
+            : undefined,
+          location: !effectiveCity && nightOutGpsLat && nightOutGpsLng
+            ? { lat: nightOutGpsLat, lng: nightOutGpsLng }
+            : undefined,
+          radius: !effectiveCity ? 50 : undefined,
+          segmentSlug: selectedFilters.segment,
+          genreSlugs,
+          localStartEndDateTime: localStartEndDateTime ?? undefined,
+          sort: "date,asc",
+        });
+        const usedFallbackNow = meta?.usedFallback === true;
+        setFallbackActive(usedFallbackNow);
         const cards = events.map(transformNightOutVenue);
         setNightOutCards(cards);
-        saveNightOutCache(cards);
+        // ORCH-0809 M2.1 (P1-1 audit fix): persist fallbackActive alongside the
+        // cached events so the banner state is correctly restored on cache hit.
+        saveNightOutCache(cards, usedFallbackNow);
       } catch (err) {
         console.error("[Discover] Error fetching events:", err);
         setNightOutError(t("discover:errors.failed_events"));
+        // ORCH-0809 M2.1 (P2-1 audit fix): reset fallbackActive on error so the
+        // banner doesn't stay stuck on after a failed retry / city switch.
+        setFallbackActive(false);
       } finally {
         setNightOutLoading(false);
       }
     },
-    // loadNightOutCache + saveNightOutCache change with user/gps/genre — captured via
-    // the primitives below; excluded from deps so this callback is stable within a
-    // filter combination (the effect below re-runs on primitive changes).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nightOutGpsLat, nightOutGpsLng, selectedFilters.date, selectedFilters.genre, t]
+    [
+      effectiveCity?.name,
+      effectiveCity?.lat,
+      effectiveCity?.lng,
+      nightOutGpsLat,
+      nightOutGpsLng,
+      selectedFilters.date,
+      selectedFilters.segment,
+      selectedFilters.genre,
+      t,
+    ],
   );
 
   useEffect(() => {
@@ -1074,55 +1224,37 @@ function DiscoverScreen({
     handleCloseFilterModal();
   };
   const handleResetFilters = (): void => {
-    setSelectedFilters({ date: "any", price: "any", genre: "all" });
+    // ORCH-0809 M2: reset uses { date, segment, genre } — price field gone.
+    setSelectedFilters({ date: "any", segment: "music", genre: "all" });
   };
 
-  // Client-side price filter + sort by nearest date
-  /**
-   * [ORCH-0670 Slice A S-2 lock-in] Filter consumes PRICE_TIERS via TIER_BY_SLUG.
-   * Do NOT add hardcoded USD ranges here — tier ranges live in priceTiers.ts.
-   * Regression test: T-04..T-07 verify tier filtering on a venue with mixed prices.
-   */
+  // ORCH-0809 M2: city picker handlers
+  const handleOpenCityPicker = (): void => setIsCityPickerVisible(true);
+  const handleCloseCityPicker = (): void => setIsCityPickerVisible(false);
+  const handleCityPicked = (city: DiscoverCity): void => {
+    setSelectedCity(city);
+    setIsCityPickerVisible(false);
+    // Fetch refreshes via the useEffect dependency on effectiveCity.name/lat/lng
+  };
+
+  // ORCH-0809 M2: price filter REMOVED. The prior client-side tier overlap-check
+  // silently hid Ticketmaster events because TM has no price query param —
+  // Constitution #3 violation. Reintroduction is a separate ORCH when Mingla
+  // Business native events (with structured ticket_types.unit_price_cents
+  // pricing) are integrated into Discover. Filtered list is now sort-only.
   const filteredNightOutCards = useMemo(() => {
-    let filtered = nightOutCards;
-    if (selectedFilters.price !== "any") {
-      filtered = filtered.filter((card) => {
-        if (card.priceMin === null && card.priceMax === null) return false;
-        const min = card.priceMin || 0;
-        const max = card.priceMax || min;
-
-        // Look up tier bounds from the canonical PRICE_TIERS constant.
-        // Tier slug emitted by chips at priceFilterOptions now matches the
-        // filter switch via TIER_BY_SLUG. Removes the dual-taxonomy bug class.
-        const tier = TIER_BY_SLUG[selectedFilters.price as PriceTierSlug];
-        if (!tier) return true; // unknown slug — pass-through (defensive)
-
-        // Filter logic: card range overlaps tier range.
-        // tier.max === null → upper bound is infinity (lavish).
-        const tierMin = tier.min;
-        const tierMax = tier.max ?? Number.POSITIVE_INFINITY;
-
-        // Overlap check: card.range AND tier.range have non-empty intersection.
-        // - card range: [min, max]
-        // - tier range: [tierMin, tierMax]
-        // Overlap iff: min <= tierMax AND max >= tierMin
-        return min <= tierMax && max >= tierMin;
-      });
-    }
-    filtered = [...filtered].sort((a, b) => {
+    return [...nightOutCards].sort((a, b) => {
       const dateA = a.localDate || "9999-12-31";
       const dateB = b.localDate || "9999-12-31";
       return dateA.localeCompare(dateB);
     });
-    return filtered;
-  }, [nightOutCards, selectedFilters.price]);
+  }, [nightOutCards]);
 
-  // [ORCH-0670 Slice A S-2 lock-in] After S-2, tier slugs (chill/comfy/bougie/lavish)
-  // actually filter via TIER_BY_SLUG. The badge counter accurately reflects active filters.
-  // Do NOT modify this calculation without first confirming the price-filter switch still
-  // honors the tier-slug → range mapping in filteredNightOutCards above.
+  // ORCH-0809 M2: badge counts non-default segment and non-"all" genre.
+  // Price counter removed.
   const moreChipBadgeCount =
-    (selectedFilters.price !== "any" ? 1 : 0) + (selectedFilters.genre !== "all" ? 1 : 0);
+    (selectedFilters.segment !== "music" ? 1 : 0) +
+    (selectedFilters.genre !== "all" ? 1 : 0);
 
   // Filter modal option lists
   const dateFilterOptions: { id: DateFilter; label: string }[] = [
@@ -1133,26 +1265,77 @@ function DiscoverScreen({
     { id: "next-week", label: t("discover:filters.next_week") },
     { id: "month", label: t("discover:filters.this_month") },
   ];
-  const priceFilterOptions: { id: PriceFilter; label: string }[] = [
-    { id: "any", label: t("discover:filters.any_price") },
-    ...PRICE_TIERS.filter((tier) => tier.slug !== "any").map((tier) => ({
-      id: tier.slug as PriceFilter,
-      label: `${t(`common:tier_${tier.slug}`)} · ${t(`common:tier_range_${tier.slug}`)}`,
-    })),
+  // ORCH-0809 M2: priceFilterOptions REMOVED with the price filter.
+  // genreFilterOptions is now context-aware: chips depend on the active segment.
+  // ORCH-0809-D: 4 segments (Music / Sports / Arts & Theatre / Film) per real
+  // TM classification structure. Comedy and Family are NOT separate segments
+  // in TM — they live as genres inside Arts & Theatre and Film respectively.
+  const SEGMENT_OPTIONS: { id: SegmentFilter; labelKey: string; fallback: string }[] = [
+    { id: "music", labelKey: "discover:filters.segment_music", fallback: "Music" },
+    { id: "sports", labelKey: "discover:filters.segment_sports", fallback: "Sports" },
+    { id: "arts-theatre", labelKey: "discover:filters.segment_arts_theatre", fallback: "Arts & Theatre" },
+    { id: "film", labelKey: "discover:filters.segment_film", fallback: "Film" },
   ];
-  const genreFilterOptions: { id: GenreFilter; label: string }[] = [
-    { id: "all", label: t("discover:filters.all_genres") },
-    { id: "afrobeats", label: t("discover:filters.afrobeats") },
-    { id: "dancehall", label: t("discover:filters.dancehall") },
-    { id: "hiphop-rnb", label: t("discover:filters.hiphop_rnb") },
-    { id: "house", label: t("discover:filters.house") },
-    { id: "techno", label: t("discover:filters.techno") },
-    { id: "jazz-blues", label: t("discover:filters.jazz_blues") },
-    { id: "latin-salsa", label: t("discover:filters.latin_salsa") },
-    { id: "reggae", label: t("discover:filters.reggae") },
-    { id: "kpop", label: t("discover:filters.kpop") },
-    { id: "acoustic-indie", label: t("discover:filters.acoustic_indie") },
-  ];
+  // i18n fallback labels for every renderable genre slug across all 4 segments.
+  // Source slugs + IDs verified against TM /discovery/v2/classifications.json
+  // on 2026-05-12. Lockstep with DISCOVER_GENRE_ID + GENRES_BY_SEGMENT.
+  const GENRE_LABEL_FALLBACK: Record<DiscoverGenreSlug, string> = {
+    all: "All genres",
+    // Music — curated unions (ORCH-0809-E)
+    afro: "Afro",
+    // Music — top-level
+    rock: "Rock",
+    pop: "Pop",
+    "hiphop-rap": "Hip-Hop / Rap",
+    rnb: "R&B",
+    country: "Country",
+    latin: "Latin",
+    "dance-electronic": "Dance / Electronic",
+    jazz: "Jazz",
+    blues: "Blues",
+    reggae: "Reggae",
+    classical: "Classical",
+    folk: "Folk",
+    alternative: "Alternative",
+    metal: "Metal",
+    world: "World",
+    // Sports
+    basketball: "Basketball",
+    football: "Football",
+    baseball: "Baseball",
+    soccer: "Soccer",
+    hockey: "Hockey",
+    tennis: "Tennis",
+    boxing: "Boxing",
+    wrestling: "Wrestling",
+    golf: "Golf",
+    motorsports: "Motorsports",
+    // Arts & Theatre
+    theatre: "Theatre",
+    comedy: "Comedy",
+    dance: "Dance",
+    opera: "Opera",
+    "childrens-theatre": "Children's Theatre",
+    "magic-illusion": "Magic & Illusion",
+    // Film
+    "action-adventure": "Action & Adventure",
+    "film-comedy": "Comedy",
+    drama: "Drama",
+    documentary: "Documentary",
+    family: "Family",
+    horror: "Horror",
+    animation: "Animation",
+    "science-fiction": "Science Fiction",
+  };
+  const genreFilterOptions: { id: GenreFilter; label: string }[] =
+    GENRES_BY_SEGMENT[selectedFilters.segment].map((slug) => {
+      const i18nKey =
+        slug === "all"
+          ? "discover:filters.all_genres"
+          : `discover:filters.${slug.replace(/-/g, "_")}`;
+      const translated = t(i18nKey, { defaultValue: GENRE_LABEL_FALLBACK[slug] });
+      return { id: slug, label: translated };
+    });
 
   const isFilterActive = (chip: DateFilter): boolean =>
     selectedFilters.date === chip;
@@ -1245,6 +1428,28 @@ function DiscoverScreen({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.chipRow}
             >
+              {/* ORCH-0809 M2: city chip — first slot in the chip row. Tap opens
+                  CityPickerSheet. Label = effectiveCity name (selectedCity ?? gpsDefaultCity)
+                  or "Set city" placeholder when neither resolves. Inline city styling
+                  rather than FilterChip so the icon + caret render properly. */}
+              <TouchableOpacity
+                onPress={handleOpenCityPicker}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  effectiveCity
+                    ? `Discover events in ${effectiveCity.name}. Tap to change city.`
+                    : "Set your city for Discover"
+                }
+                style={styles.cityChipDiscover}
+              >
+                <Icon name="location-outline" size={14} color="rgba(255,255,255,0.85)" />
+                <Text style={styles.cityChipDiscoverText} numberOfLines={1}>
+                  {effectiveCity ? effectiveCity.name : "Set city"}
+                </Text>
+                <Icon name="chevron-down" size={14} color="rgba(255,255,255,0.7)" />
+              </TouchableOpacity>
+
               <FilterChip
                 label={t("discover:filters.all_dates_short")}
                 active={isFilterActive("any")}
@@ -1362,21 +1567,33 @@ function DiscoverScreen({
             actionVariant="primary"
           />
         ) : showGrid ? (
-          <View style={styles.gridWrap}>
-            {filteredNightOutCards.map((card) => (
-              <EventGridCard
-                key={card.id}
-                card={card}
-                currency={accountPreferences?.currency}
-                isSaved={savedCardIds.has(card.id)}
-                onPress={() => handleNightOutCardPress(card)}
-                onSaveToggle={() => {
-                  handleToggleSave(card);
-                }}
-                reduceTransparency={reduceTransparency}
-                reduceMotion={reduceMotion}
-              />
-            ))}
+          <View>
+            {/* ORCH-0809 M2: fallback banner — visible when the edge function
+                widened the query from city to lat/lng because the city had <5 results. */}
+            {fallbackActive && effectiveCity ? (
+              <View style={styles.fallbackBanner}>
+                <Icon name="information-circle-outline" size={16} color="rgba(255,255,255,0.65)" />
+                <Text style={styles.fallbackBannerText}>
+                  Showing events near you — {effectiveCity.name} has no Ticketmaster events right now.
+                </Text>
+              </View>
+            ) : null}
+            <View style={styles.gridWrap}>
+              {filteredNightOutCards.map((card) => (
+                <EventGridCard
+                  key={card.id}
+                  card={card}
+                  currency={accountPreferences?.currency}
+                  isSaved={savedCardIds.has(card.id)}
+                  onPress={() => handleNightOutCardPress(card)}
+                  onSaveToggle={() => {
+                    handleToggleSave(card);
+                  }}
+                  reduceTransparency={reduceTransparency}
+                  reduceMotion={reduceMotion}
+                />
+              ))}
+            </View>
           </View>
         ) : null}
       </ScrollView>
@@ -1441,6 +1658,15 @@ function DiscoverScreen({
         feature={paywallFeature}
       />
 
+      {/* ORCH-0809 M2: City picker bottom sheet */}
+      <CityPickerSheet
+        visible={isCityPickerVisible}
+        userId={user?.id ?? null}
+        currentCity={effectiveCity}
+        onClose={handleCloseCityPicker}
+        onCityPicked={handleCityPicked}
+      />
+
       {/* Night Out Filter Modal (content unchanged from Phase 1 — trigger moved to More chip) */}
       <Modal
         visible={isFilterModalVisible}
@@ -1494,14 +1720,21 @@ function DiscoverScreen({
                 </View>
               </View>
 
+              {/* ORCH-0809 M2: Price filter section REMOVED — Ticketmaster has no
+                  price query param; the prior client-side post-filter silently hid
+                  results (Constitution #3 violation). Reintroduction is a separate
+                  ORCH when Mingla Business native events land in Discover. */}
+
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
                   <Icon name="tag" size={20} color={glass.chrome.active.glowColor} />
-                  <Text style={styles.filterSectionTitle}>{t("discover:filters.price_range")}</Text>
+                  <Text style={styles.filterSectionTitle}>
+                    {t("discover:filters.segment", { defaultValue: "Category" })}
+                  </Text>
                 </View>
                 <View style={styles.filterOptionsGrid}>
-                  {priceFilterOptions.map((option) => {
-                    const selected = selectedFilters.price === option.id;
+                  {SEGMENT_OPTIONS.map((option) => {
+                    const selected = selectedFilters.segment === option.id;
                     return (
                       <TouchableOpacity
                         key={option.id}
@@ -1509,8 +1742,19 @@ function DiscoverScreen({
                           styles.filterOptionBadge,
                           selected && styles.filterOptionBadgeSelected,
                         ]}
-                        onPress={() => setSelectedFilters({ ...selectedFilters, price: option.id })}
+                        onPress={() => {
+                          // Reset genre to "all" when segment changes — genre map
+                          // is context-aware and the prior selection may not exist
+                          // under the new segment.
+                          setSelectedFilters({
+                            ...selectedFilters,
+                            segment: option.id,
+                            genre: "all",
+                          });
+                        }}
                         activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Choose ${option.fallback} category`}
                       >
                         <Text
                           style={[
@@ -1518,7 +1762,7 @@ function DiscoverScreen({
                             selected && styles.filterOptionTextSelected,
                           ]}
                         >
-                          {option.label}
+                          {t(option.labelKey, { defaultValue: option.fallback })}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -1556,6 +1800,14 @@ function DiscoverScreen({
                     );
                   })}
                 </View>
+                {/* ORCH-0809 M3 hotfix: when only "All" is renderable (genre IDs
+                    pending TM /classifications curl + ORCH-0809-D), surface a
+                    subtle hint so the user isn't confused by the empty filter. */}
+                {genreFilterOptions.length <= 1 ? (
+                  <Text style={styles.filterSectionHint}>
+                    More genre filters coming soon.
+                  </Text>
+                ) : null}
               </View>
             </ScrollView>
 
@@ -1590,6 +1842,43 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: d.screenBg,
+  },
+
+  // ORCH-0809 M2: city chip in the filter row
+  cityChipDiscover: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 999,
+    marginRight: 8,
+    gap: 6,
+    maxWidth: 180,
+  },
+  cityChipDiscoverText: {
+    color: "rgba(255,255,255,0.95)",
+    fontSize: 13,
+    fontWeight: "500",
+    maxWidth: 110,
+  },
+  // ORCH-0809 M2: fallback banner shown when edge function returned meta.usedFallback
+  fallbackBanner: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  fallbackBannerText: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 12,
+    flex: 1,
   },
 
   // Floating blurred header panel (status bar + title + filter bar in one glass surface)
@@ -1912,6 +2201,12 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
+  },
+  filterSectionHint: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 12,
+    marginTop: 8,
+    marginLeft: 2,
   },
   filterOptionsGrid: {
     flexDirection: "row",

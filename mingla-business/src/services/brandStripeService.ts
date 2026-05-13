@@ -11,6 +11,8 @@
  */
 
 import { supabase } from "./supabase";
+// ORCH-0808 — organizer-funnel instrumentation.
+import { logAppsFlyerEvent } from "./appsFlyerService";
 
 declare const __DEV__: boolean | undefined;
 
@@ -160,6 +162,14 @@ export async function startBrandStripeOnboarding(
   if (data === null) {
     throw new Error("startBrandStripeOnboarding: edge fn returned null");
   }
+
+  // ORCH-0808 — organizer-funnel: fires when the hosted-onboarding URL is
+  // produced (i.e. the user committed to starting Stripe Connect). May fire
+  // multiple times for the same brand if the user re-enters onboarding — the
+  // "first activated" milestone gates the activation event server-side, not
+  // here. Fire-and-forget; no-op when AppsFlyer env is missing.
+  logAppsFlyerEvent("mingla_stripe_connect_started", { brand_id: brandId });
+
   return data;
 }
 

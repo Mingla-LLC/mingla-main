@@ -388,6 +388,50 @@ Dashboard shows: **sent → delivered → opened → clicked → converted → r
 For SMS/RCS where opens aren't trackable: we infer engagement from clicks.
 Email tracks both via Resend webhooks.
 
+### 3.8 Surface placement — dual-surfaced (standalone tab + contextual entry points)
+
+**Decision (DEC-149, 2026-05-12):** The Marketing Hub is **dual-surfaced**, not
+either/or. Operator brainstorm 2026-05-12 considered standalone-only vs
+embedded-only; both/and chosen. See `DECISION_LOG.md` DEC-149 for full rationale.
+
+| Surface | Route | Purpose |
+|---|---|---|
+| **Standalone "Marketing" tab** | `mingla-business` bottom-nav → Marketing | Full workspace: Overview, Audiences, Campaigns, Templates, Settings. Home for cross-brand rollups, suppression-list management, template library, multi-event analytics. The discoverability surface — brands see the tab and know marketing capability exists. |
+| **Event-context entry** | Event detail screen → "Blast this event's buyers" CTA | Zero-friction entry for the highest-frequency action. Pre-fills audience = buyers of that event. Lands in the same composer as the standalone path. |
+| **Brand-context entry** | Brand page → "Blast all my buyers" CTA + permanent "Customers" tab | Pre-fills audience = all buyers of that brand. The "Customers" tab lists every person who has ever bought from the brand, filterable by event / date / consent state, with a "Blast these N customers" CTA in-place. |
+| **Event-buyers list** | Event detail → "Buyers (N)" sub-screen | Same `orders`-derived data scoped to the event. Has its own "Blast these N buyers" CTA. |
+
+All three blast routes land in the same composer with the audience pre-filled —
+the composer is one canonical UI, not three duplicates. The brand-level
+"Customers" tab is the **canonical audience-source UI** that anchors the
+brand-rollup audience; the event-level "Buyers" view is the same data scoped down.
+
+Engineering consequence: `marketing_audiences.query_definition jsonb` is a
+declarative shape. Event-scoped buyer query and brand-scoped buyer query are
+two row types with the same shape; "brand-followers" will be a third row type
+when that schema lands (deferred — no follower system today).
+
+### 3.9 Brand "Customers" tab — UI requirement
+
+**Operator requirement (2026-05-12):** every brand must have a permanent
+"Customers" tab listing every user who has ever purchased a ticket from that
+brand, and from there be able to blast them announcing a new event.
+
+Schema source: union of `orders` rows where `event.brand_id = {brand}` and
+`payment_status IN ('paid','partial_refund')` and not in the global
+`marketing_unsubscribes` registry for the email channel. Phase A surfaces:
+
+- Customer name + masked email/phone
+- Total orders, total spend, last purchase date
+- Consent state (transactional-only / soft opt-in / explicit marketing) — channel-tagged
+- Per-row link → that user's full purchase history with this brand
+- Header bulk action: "Blast these N customers" → composer with audience pre-filled
+
+This is the audience-source UI. The Hub's standalone "Audiences" tab also
+exposes saved-query audiences, but the brand-level "Customers" tab is the
+discoverable, in-place entry that maps to operator's mental model
+("I'm looking at my brand, I want to message my customers").
+
 ---
 
 ## 4. Track 2 — Mingla-Managed Ads

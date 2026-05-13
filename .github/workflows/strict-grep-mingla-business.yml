@@ -50,6 +50,8 @@ on:
 #   - ORCH-0785-C (orch-0785-buyer-string-escape.mjs) — buyer/event/order strings must flow through escapeHtml (ORCH-0785)
 #   - ORCH-0785-D (orch-0785-shell-singleton.mjs) — shared email shell singleton (ORCH-0785)
 #   - ORCH-0785-E (orch-0785-pdf-privacy.mjs) — ticket PDF privacy contract (ORCH-0785)
+#   - I-ARI-NO-OKLCH (i-ari-no-oklch.mjs) — Ari mobile surface must use HSL/hex/rgb only; no oklch/color-mix/lab (ORCH-0821)
+#   - I-ARI-USER-JWT-ONLY (i-ari-user-jwt-only.mjs) — Ari edge fn handlers must use caller JWT, not service role (ORCH-0821)
 #   - ORCH-0776 (orch-0776-video-processing-status-bridge.mjs) — event cover video processing status bridge
 #   - ORCH-0776D (orch-0776d-cancelled-at-schema.mjs) — event cover video cancelled_at schema/code parity
 #   - ORCH-0777 (orch-0777-ticket-checkout-production.mjs) — production ticket checkout + organizer order visibility
@@ -61,6 +63,8 @@ on:
 #   - ORCH-0788 (orch-0788-notification-template-key-dispatched.mjs) — buyer notification dispatcher routes by template_key + writers inline-dispatch + sweeper migration (I-PROPOSED-BA NOTIFICATION_TEMPLATE_KEY_DISPATCHED)
 #   - ORCH-0793 (orch-0793-scan-time-window.mjs) — biz_ticket_scan event_dates time-window enforcement + mobile discriminator plumbing (I-PROPOSED-BB SCAN_TIME_WINDOW_ENFORCED)
 #   - ORCH-0796 (orch-0796-no-stub-payout-fee.mjs) — Reconciliation expected-payout derived from real Stripe app-fee + refund cols, no 4% stub (I-PROPOSED-BC EVENT_PAYOUT_DATA_DERIVED)
+#   - ORCH-0808 (orch-0808-appsflyer-devices-app-discriminator.mjs) — appsflyer_devices writes carry app: 'consumer' | 'business' (I-PROPOSED-AF-DISCRIMINATOR)
+#   - ORCH-0816 (orch-0816-last-7-days-binds-rev7d.mjs) — "Last 7 days" KPI tile binds stats.rev7d, never stats.rev (label/data agreement)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -610,3 +614,115 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0802 gate
         run: node .github/scripts/strict-grep/orch-0802-stripe-embedded-components-routing.mjs
+
+  orch-0807-brand-avatar-square:
+    name: "ORCH-0807: Brand avatar square enforcement (I-PROPOSED-BG)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0807 gate
+        run: node .github/scripts/strict-grep/orch-0807-brand-avatar-square.mjs
+
+  orch-0810-brand-stats-no-fabrication:
+    name: "ORCH-0810: Brand KPI tiles sourced from real aggregator (Const #9)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0810 gate
+        run: node .github/scripts/strict-grep/orch-0810-brand-stats-no-fabrication.mjs
+
+  orch-0808-appsflyer-devices-app-discriminator:
+    name: "ORCH-0808: appsflyer_devices writes carry app: (I-PROPOSED-AF-DISCRIMINATOR)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Babel parser
+        run: npm install --no-save @babel/parser @babel/traverse
+      - name: Run ORCH-0808 gate
+        run: node .github/scripts/strict-grep/orch-0808-appsflyer-devices-app-discriminator.mjs
+
+  orch-0809-no-discover-price-filter:
+    name: "ORCH-0809: Discover price filter fully removed (Const #3, #9)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0809 Gate 1
+        run: node .github/scripts/strict-grep/orch-0809-no-discover-price-filter.mjs
+
+  orch-0809-tm-classification-by-id:
+    name: "ORCH-0809: Discover TM classification by ID (I-PROPOSED-BI)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0809 Gate 2
+        run: node .github/scripts/strict-grep/orch-0809-tm-classification-by-id.mjs
+
+  orch-0809-tm-local-time-window:
+    name: "ORCH-0809: Discover TM local-time date window (I-PROPOSED-BJ)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0809 Gate 3
+        run: node .github/scripts/strict-grep/orch-0809-tm-local-time-window.mjs
+
+  orch-0816-last-7-days-binds-rev7d:
+    name: "ORCH-0816: Last 7 days KPI tile binds stats.rev7d (label/data agreement)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0816 gate
+        run: node .github/scripts/strict-grep/orch-0816-last-7-days-binds-rev7d.mjs
+
+  orch-0815-b-composer-and-send:
+    name: "ORCH-0815-B: Marketing composer + send pipeline invariants"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0815-B gate
+        run: node .github/scripts/strict-grep/orch-0815-b-composer-and-send.mjs
+
+  i-ari-no-oklch:
+    name: "I-ARI-NO-OKLCH: Ari surface uses HSL/hex/rgb only (no oklch/color-mix/lab)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-ARI-NO-OKLCH gate
+        run: node .github/scripts/strict-grep/i-ari-no-oklch.mjs
+
+  i-ari-user-jwt-only:
+    name: "I-ARI-USER-JWT-ONLY: Ari edge handlers never reference service role"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-ARI-USER-JWT-ONLY gate
+        run: node .github/scripts/strict-grep/i-ari-user-jwt-only.mjs

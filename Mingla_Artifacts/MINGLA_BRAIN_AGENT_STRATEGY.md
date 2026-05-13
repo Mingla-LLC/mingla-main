@@ -320,3 +320,141 @@ Separate them.
 ---
 
 **End of brainstorm artifact. Locked 2026-05-06.**
+
+---
+
+# APPENDIX A — Naming, Tab Placement, and "Teaching" Semantics
+
+**Date added:** 2026-05-12
+**Trigger:** Operator brainstorm — "what do we call this so it's not too long, where does it live in the menu, and how do we teach it things?"
+**Status:** Brainstorm — convert to SPEC at Phase P1 dispatch time (still gated behind mechanical ads).
+
+---
+
+## A1. Naming — Internal vs User-Facing
+
+The existing doc names the SYSTEM **"Mingla Brain"** (internal, code, docs).
+The TAB on the user's menu needs a short user-facing label — ideally ≤5 characters so it doesn't crowd other tabs on mobile.
+
+### A1.1 Candidates (ranked)
+
+| Name | Chars | Vibe | Why it works | Why it might not |
+|---|---|---|---|---|
+| **Mira** | 4 | Friendly, ungendered, slightly feminine, soft | Sounds like Mingla, easy to say, "Hey Mira", evokes "see / look / mirror" across romance languages | Generic AI-assistant name; competes mentally with Siri/Alexa/Mira-the-person |
+| **Brain** | 5 | Direct, confident, technical | Maps 1:1 to the internal name; no translation cost; honest about what it is | Generic; feels like a tool, not a partner; doesn't suggest warmth |
+| **Spark** | 5 | Energetic, event-y, optimistic | Matches Mingla's experience-app positioning (spark a date, spark an event) | Crowded namespace (Spark email, Adobe Spark, Slack Spark) |
+| **Ace** | 3 | Short, playful, "your ace" | Shortest realistic option; positions agent as a wingman/co-pilot | Vague; doesn't suggest intelligence |
+| **Coach** | 5 | Helpful, supportive, action-oriented | Maps to "teach me what to do" mental model; works for business operators | Connotes long-form mentorship, not quick tasks |
+| **Pilot** | 5 | Copilot frame, in-cabin partner | Borrows GitHub Copilot's mental model; "Pilot launched your event" reads well | Aviation overtone; non-native English speakers may parse "pilot" as TV-pilot |
+| **Crew** | 4 | Team energy, collaborative | Fits the business-app multi-user feel | More plural than singular; reads as a feature, not a person |
+| **M** | 1 | Stark, modern, ultra-short | Bauhaus minimalism; James Bond's M reference | Too cryptic for first-time users |
+
+### A1.2 Recommendation
+
+**Primary: "Mira"** for the user-facing tab label. Reasoning:
+- 4 chars — fits in a mobile tab bar without truncation
+- Echoes "Mingla" phonetically (`Mi-` shared prefix)
+- Ungendered and culturally neutral
+- Friendly enough that "Ask Mira to create the event" reads naturally
+- Allows the internal/dev/admin code to keep using "Mingla Brain" (system name) while end users see "Mira" (product name) — Apple's Siri / Google's Assistant pattern
+
+**Fallback: "Brain"** if Seth prefers honesty over warmth. Maps 1:1 to internal docs; one less translation layer between team and product.
+
+**Naming as a decision, not a feeling:** lock the name once at SPEC time — renaming an AI agent post-launch is more painful than renaming a feature because users build verbal habits ("Hey Mira" becomes muscle memory).
+
+---
+
+## A2. Menu Placement
+
+The business app (`mingla-business`) is where Brain lands first (event/brand creation is the highest-value tool surface). Current tab structure is the assumption.
+
+### A2.1 Three placement options
+
+| Option | Shape | Pros | Cons |
+|---|---|---|---|
+| **A — Dedicated tab** ("Mira") | New 5th tab in the bottom bar | Discoverable, persistent, signals importance | Crowds the tab bar; commits IRL screen real-estate to an unproven feature |
+| **B — Floating action button** | Persistent FAB in bottom-right across all screens | Always reachable; doesn't crowd tabs; context-aware (FAB on Events screen → "create event from chat") | Less discoverable as "the feature"; FAB conflicts with create-event FAB if both exist |
+| **C — Both** | FAB everywhere + tab for full conversation history | Best discoverability + context | Most surface area to maintain; needs unified conversation state |
+
+### A2.2 Recommendation
+
+**Start with Option A (dedicated tab)** for P1. Reasons:
+1. The product story is "Mira is your business co-pilot" — that story needs a home base, not just a button.
+2. Tab gives a clear place for conversation history, saved workflows, settings.
+3. FAB can be added in P4 (polish) once usage patterns prove which screens benefit from context-aware entry.
+4. Mobile tab bars typically support 4-5 tabs — confirm the business app's current tab count before committing.
+
+---
+
+## A3. "Teaching" Semantics — What It Actually Means
+
+This is the most important conceptual unlock. When a non-engineer says "I want to teach the AI to do things," they usually mean one of four very different things in software. Each has a different cost, risk profile, and timeline.
+
+### A3.1 The four "teaching" patterns
+
+| Pattern | What it really is | When to use | Cost to build | Risk |
+|---|---|---|---|---|
+| **1. Tools (capabilities)** | A new JSON-schema function the agent can call. E.g., `create_event(name, date, venue)`. The agent decides WHEN to call it; we hard-code WHAT it does. | Any concrete action — create event, send email, charge card | High one-time, near-zero per-use | Low — execution is deterministic |
+| **2. Prompt instructions** | Plain-English rules in the system prompt. "When creating an event for a brand, always set the timezone to the brand's home timezone unless told otherwise." | Soft rules, tone, style, defaults | Cheap | Medium — prompts drift, can be jailbroken |
+| **3. Saved workflows (recipes)** | A named multi-step procedure with parameter slots. E.g., "Launch a new monthly event series" runs `create_brand` → `create_event_template` → `schedule_recurring` → `create_tickets`. User invokes by name. | Repeatable multi-step jobs | Medium — needs a workflow store + DSL | Medium — workflow definitions drift from underlying tools |
+| **4. Long-term memory** | Facts the agent learns about each user/business across sessions. "Brand X uses Eastern Time. Brand X's tickets always start at $20. Brand X never sells alcohol." | Personalization, defaults, voice | Medium — needs a memory table + retrieval | Medium — stale facts mislead future actions |
+
+**All four are different and you need all four eventually.** Today's product question is which combination to ship in P1.
+
+### A3.2 What "create an event" looks like in each pattern
+
+- **Tool pattern**: A `create_event` tool exists. User types "create an event Saturday at 8 at The Vault, $20 tickets." Agent extracts fields, calls tool, tool inserts a row. Done.
+- **Prompt pattern**: System prompt has "always default to the brand's primary venue if no venue specified." User says "create an event Saturday at 8, $20 tickets." Agent uses the default. Done.
+- **Workflow pattern**: User has saved a workflow called "Friday night standard" that runs: create event Fri 9pm, 50 tickets at $25, with 8pm cutoff. User says "run Friday night standard." Agent executes the recipe. Done.
+- **Memory pattern**: Agent remembers "Brand X always wants doors-open 1 hour before event start." User says "create an event Saturday at 9." Agent creates event with doors at 8pm without being told. Done.
+
+### A3.3 Recommendation — order of build
+
+| Phase | Pattern added | Concrete deliverable |
+|---|---|---|
+| **P1** | **Tools (pattern 1)** + **prompt instructions (pattern 2)** | 6-8 tools wired (create_event, create_brand, create_ticket_tier, query_events, etc.) + persona prompt per surface |
+| **P2** | **Saved workflows (pattern 3)** | `agent_workflows` table; UI to "Save this as a workflow" after agent completes a multi-step task; UI to "Run workflow X" |
+| **P4** | **Long-term memory (pattern 4)** | `agent_memory` table; retrieval-augmented system prompt that injects relevant facts per turn |
+
+**Pattern 4 (memory) is tempting to ship first but it's the riskiest** — stale memories cause silent wrong-default bugs that are hard to debug. Ship tools first because tools fail loudly (tool errors are visible), then add memory once tools are stable.
+
+---
+
+## A4. "Teaching" the User Experience
+
+The product surface that lets a user "teach" Mira is itself a design problem. Three patterns to choose between.
+
+| UX pattern | How it works | Best for |
+|---|---|---|
+| **Demonstrate** | User does a task manually; UI offers "Save this as a workflow for next time" | Workflow capture (pattern 3 above) |
+| **Tell** | User types "From now on, always use Eastern Time for Brand X" into chat; agent confirms; fact saved | Memory capture (pattern 4) |
+| **Settings** | A dedicated "Mira settings" screen where users manually edit defaults, voice, allowed tools | Power users; explicit control |
+
+**Recommendation:** ship "Demonstrate" + "Tell" in P2/P4. Skip Settings until users ask for it — most users never visit a settings screen.
+
+---
+
+## A5. Permission Model (Non-Negotiable)
+
+Critical detail not to forget when implementing:
+
+1. **Every tool call MUST execute under the user's JWT, not service role.** The edge function receives the user's `Authorization` header, forwards it to every downstream Supabase call, and RLS does the rest. This is the only thing that prevents "user A asks Mira to create an event for brand B (which they don't own)" from succeeding.
+2. **Write tools require a confirmation step.** Pattern from existing doc §5: tool returns `pending_action_id`; UI renders a confirmation sheet; user taps confirm; second tool call commits. No silent writes.
+3. **Spend caps enforced in the database via triggers, not prompts.** Prompts are jailbreakable; triggers aren't.
+4. **Per-user / per-business rate limits** at the edge function level. 20 turns/month free tier per the cost model in §8.
+
+---
+
+## A6. What This Doesn't Solve (Open Questions)
+
+These need operator input before SPEC:
+
+1. **Which app gets Mira first — consumer (`app-mobile`) or business (`mingla-business`)?** Existing doc §4 suggests P1 = consumer (search + tickets), P2 = business. The current operator question implies business-first (event/brand creation). This is a real fork — pick one before SPEC.
+2. **Does Mira have a voice (TTS/STT) at launch or text-only?** Voice adds significant cost (~2-3x per existing doc §7.5). Text-only is the safer P1.
+3. **Does Mira know about other Mingla users / events outside the user's brand?** Privacy boundary — confirm Mira can only see what the user could see in the UI.
+4. **Is Mira's chat history shareable / exportable?** Compliance question — operators may want to export conversations for audit or training.
+5. **Does Mira learn across users in the same business?** If Brand X has 3 team members, do they share Mira's memory of the brand? (Recommendation: yes, scoped to `brand_id`, not `user_id`.)
+
+---
+
+**End of Appendix A. Lock decisions at SPEC dispatch time.**

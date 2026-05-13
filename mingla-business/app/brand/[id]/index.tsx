@@ -102,6 +102,15 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/brand/${brandId}/audit-log` as never);
   };
 
+  // ORCH-0815-A2-ui (DEC-149): "Blasts" Operations row → brand-rollup
+  // buyer list with "Blast these N customers →" CTA pre-filling the
+  // marketing composer audience (composer ships in sub-ORCH-B).
+  // Renamed "Customers" → "Blasts" + route `/customers` → `/blasts`
+  // 2026-05-12 for consistency with the bottom-nav "Blast" tab.
+  const handleOpenBlasts = (brandId: string): void => {
+    router.push(`/brand/${brandId}/blasts` as never);
+  };
+
   // Cycle 7 FX1 — retired BrandProfileView TRANSITIONAL Toasts.
   const handleViewPublic = (brandSlug: string): void => {
     router.push(`/b/${brandSlug}` as never);
@@ -131,6 +140,7 @@ export default function BrandProfileRoute(): React.ReactElement {
         onPayments={handleOpenPayments}
         onReports={handleOpenReports}
         onAuditLog={handleOpenAuditLog}
+        onBlasts={handleOpenBlasts}
         onViewPublic={handleViewPublic}
         onCreateEvent={handleCreateEvent}
         onOpenLink={handleOpenLink}

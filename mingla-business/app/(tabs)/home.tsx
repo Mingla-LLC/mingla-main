@@ -14,8 +14,9 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
@@ -42,7 +43,8 @@ import {
 } from "../../src/store/currentBrandStore";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
-import { useBrands } from "../../src/hooks/useBrands";
+import { brandKeys, useBrands } from "../../src/hooks/useBrands";
+import { eventOrdersKeys } from "../../src/hooks/useEventOrders";
 import { useServerDraftsForBrand } from "../../src/hooks/useServerDraftEvents";
 import {
   mergeServerAndLegacyLiveEvents,
@@ -62,6 +64,7 @@ import {
   type BrandEventSummaryItem,
 } from "../../src/utils/brandEventSummary";
 import { useEventSalesSummaries } from "../../src/hooks/useEventOrders";
+
 import { formatCurrencyRound } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
 import { formatRelativeTime } from "../../src/utils/relativeTime";
@@ -118,6 +121,7 @@ export default function HomeTab(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const brandsQuery = useBrands(user?.id ?? null);
   const brands = brandsQuery.data ?? [];
   const currentBrand = useCurrentBrand();
@@ -144,6 +148,21 @@ export default function HomeTab(): React.ReactElement {
     null,
   );
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
+  // ORCH-0816 — pull-to-refresh as a manual freshness signal alongside the
+  // Realtime subscription. Invalidates brand stats AND per-event order keys.
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  const handleRefresh = useCallback(async (): Promise<void> => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: brandKeys.all }),
+        queryClient.invalidateQueries({ queryKey: eventOrdersKeys.all }),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [queryClient]);
 
   const handleOpenSwitcher = useCallback((): void => {
     setSheetVisible(true);
@@ -300,6 +319,9 @@ export default function HomeTab(): React.ReactElement {
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+        }
       >
         {currentBrand === null ? (
           <View style={styles.emptyCol}>
@@ -403,7 +425,9 @@ export default function HomeTab(): React.ReactElement {
                 value={
                   currentBrand.defaultCurrency !== undefined
                     ? formatCurrencyRound(
-                        currentBrand.stats.rev,
+                        // ORCH-0816 — windowed 7-day GMV. Lifetime stays on
+                        // BrandProfileView's "GMV / all time" tile.
+                        currentBrand.stats.rev7d,
                         currentBrand.defaultCurrency,
                       )
                     : "—"

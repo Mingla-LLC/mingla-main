@@ -3,6 +3,19 @@
 .env.local
 .env*.local
 
+# === Operator credential stashes (never commit) ===
+*Appsflyer Dev Key*
+*AppsFlyer Dev Key*
+*Dev Key.md
+*REST API Key*
+*Service Token*
+*Project Token*
+*API Key.md
+*Secret Key*
+*Auth Token*
+*sentry*.md
+*Sentry*.md
+
 # === macOS ===
 .DS_Store
 
@@ -74,4 +87,8 @@ resend-api-key*.md
 *api-key*.md
 *api_key*.md
 pexels_giphy_values.md
+ticketmasterdetails.md
+ticketmaster-details*.md
+*-ticketmaster-keys.md
+*-ticketmaster-secrets.md
 .vercel

@@ -65,7 +65,7 @@ When mature, Cycle B6 (Mingla Brain) automates this hub conversationally.
 | Phase | Scope | Calendar gate | Risk |
 |---|---|---|---|
 | **0** | Consent + verified-contact foundation. `marketing_consent` schema, `orders` verification columns, jurisdictional flow (US/CA/EU), audit log (`raw_disclosure_text`, IP, UA) | None | Medium (legal) |
-| **A** | Email blasts MVP (Resend, ticket-buyer audience, composer, schedule, click tracking, unsubscribe) | None — Resend instant | Low |
+| **A** | Email blasts MVP (Resend, ticket-buyer audience, composer, schedule, click tracking, unsubscribe). **Surface: dual-surfaced per DEC-149 — standalone "Marketing" bottom-nav tab + contextual entry points from event detail ("Blast this event's buyers") and brand page ("Blast all my buyers"), plus permanent brand-level "Customers" tab listing every ticket buyer. ORCH-0815 owns the Phase A UI design pass + SPEC + implementation.** | None — Resend instant | Low |
 | **B** | SMS blasts (Twilio 10DLC, STOP keyword, granular opt-in) | **10DLC registration: 1–3 weeks** — start Day 1 of Phase A | Medium |
 | **C** | RCS (Twilio RBM, rich card composer, suggested actions, SMS fallback) | **RBM brand verification: 4–6 weeks** — start Day 1 of Phase A | Medium-High |
 | **D** | Brand followers (`brand_follows` table, follow button, follower-based audiences) | None | Low |

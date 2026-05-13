@@ -112,9 +112,10 @@ export function registerAppsFlyerDevice(userId: string): void {
             appsflyer_uid: uid,
             platform,
             app_id: appId,
+            app: 'consumer', // ORCH-0808 — discriminator added so business app rows for the same user don't collide.
             updated_at: new Date().toISOString(),
           },
-          { onConflict: 'user_id,appsflyer_uid' },
+          { onConflict: 'user_id,app,appsflyer_uid' },
         )
         .then(({ error }) => {
           if (error) {

@@ -17,9 +17,23 @@
  * Per spec §3.4. Sticky shelf renders absolute-positioned above safe-area.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Image as RNImage,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Image as ExpoImage } from "expo-image";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { brandKeys } from "../../hooks/useBrands";
+import { eventOrdersKeys } from "../../hooks/useEventOrders";
 
 import {
   accent,
@@ -45,19 +59,13 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
-import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
-
-interface ToastState {
-  visible: boolean;
-  message: string;
-}
 
 interface OperationsRow {
   icon: IconName;
   label: string;
   sub: string;
-  /** Tap handler — navigation when the journey is live, fireToast when not. */
+  /** Tap handler — navigation to the linked surface. */
   onPress: () => void;
 }
 
@@ -90,8 +98,8 @@ const normalizeSocialUrl = (raw: string, base: string): string => {
  * which calls router.push to navigate. This view component never imports
  * `useRouter` — keeps the view re-renderable in tests / web parity.
  *
- * Tax & VAT row (Operations row #3) stays TRANSITIONAL Toast until §5.3.6
- * settings cycle — no `onTax` prop yet.
+ * Tax & VAT is configured under Payments & Stripe (ORCH-0804 "Tax &
+ * registrations" CTA in BrandPaymentsView). No standalone Operations row.
  */
 export interface BrandProfileViewProps {
   brand: Brand | null;
@@ -137,6 +145,15 @@ export interface BrandProfileViewProps {
    */
   onAuditLog: (brandId: string) => void;
   /**
+   * Called when user taps the "Blasts" Operations row (renamed from
+   * "Customers" 2026-05-12 for bottom-nav consistency). Receives the
+   * brand id. NEW in ORCH-0815-A2-ui (DEC-149 dual-surface Marketing
+   * Hub — contextual entry point from inside the brand). Lists every
+   * distinct buyer of the brand's events with a "Blast these N
+   * customers →" CTA that pre-fills the marketing composer.
+   */
+  onBlasts: (brandId: string) => void;
+  /**
    * Called when user taps "View public page". Receives the brand SLUG
    * (not id) — the public page route is `/b/{brandSlug}`.
    * NEW in Cycle 7 FX1 — replaces Cycle-2 J-A7 TRANSITIONAL Toast now
@@ -175,21 +192,47 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onPayments,
   onReports,
   onAuditLog,
+  onBlasts,
   onViewPublic,
   onCreateEvent,
   onOpenLink,
   onRequestDelete,
 }) => {
   const insets = useSafeAreaInsets();
-  const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
+  const queryClient = useQueryClient();
 
-  const fireToast = useCallback((message: string): void => {
-    setToast({ visible: true, message });
-  }, []);
+  // ORCH-0816 — pull-to-refresh as a manual freshness signal alongside the
+  // Realtime subscription on `orders` in useBrand. Invalidates the detail
+  // cache for this brand AND every event-orders key (per-event tiles).
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  const handleDismissToast = useCallback((): void => {
-    setToast((prev) => ({ ...prev, visible: false }));
-  }, []);
+  const handleRefresh = useCallback(async (): Promise<void> => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: brand !== null ? brandKeys.detail(brand.id) : brandKeys.all,
+        }),
+        queryClient.invalidateQueries({ queryKey: eventOrdersKeys.all }),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [queryClient, brand]);
+
+  // ORCH-0807 Rev 3 — Brand cover band on the hero card. 3-state fallback
+  // chain mirrors PublicBrandPage.tsx:259-304 verbatim: (1) coverMediaUrl
+  // present + load succeeds → image element (expo-image on Android for
+  // correct GIF animation; RN core <Image> on iOS+web per ORCH-0805-WEB
+  // hotfix); (2) coverMediaUrl present + load fails → hue gradient via
+  // onError flip; (3) coverMediaUrl null → hue gradient.
+  const coverMediaUrl =
+    typeof brand?.coverMediaUrl === "string" ? brand.coverMediaUrl : null;
+  const [coverMediaFailed, setCoverMediaFailed] = useState<boolean>(false);
+  // Reset failure flag whenever the URL changes (brand switch, new upload).
+  useEffect(() => {
+    setCoverMediaFailed(false);
+  }, [coverMediaUrl]);
 
   const handleEdit = useCallback((): void => {
     if (brand !== null) {
@@ -230,12 +273,10 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     [onOpenLink],
   );
 
-  // Hook-derived Operations rows. Per-row onPress closes over either
-  // fireToast (still-TRANSITIONAL rows) or the live navigation callback.
-  // Live wirings: J-A8 onEdit (sticky shelf — separate from this list) ·
-  // J-A9 onTeam (Team row) · J-A10 onPayments (Payments row) ·
+  // Hook-derived Operations rows. Each row's onPress is a live navigation
+  // callback. Live wirings: J-A8 onEdit (sticky shelf — separate from this
+  // list) · J-A9 onTeam (Team row) · J-A10 onPayments (Payments row) ·
   // J-A12 onReports (Finance reports row).
-  // [TRANSITIONAL] Tax & VAT row stays TRANSITIONAL until §5.3.6 settings cycle.
   // Cycle 13a (SPEC §4.14): Audit log row gated on brand_admin+ rank.
   // useCurrentBrandRole runs every render with the current brand id; null
   // brand short-circuits via the hook's `enabled` flag, never an early return
@@ -267,10 +308,17 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         },
       },
       {
-        icon: "receipt",
-        label: "Tax & VAT",
-        sub: "Not configured",
-        onPress: () => fireToast("Tax settings land in a later cycle."),
+        // ORCH-0815-A2-ui — DEC-149 dual-surface Marketing Hub. Renamed
+        // from "Customers" → "Blasts" for consistency with the bottom-nav
+        // "Blast" tab. Icon switched from `users` → `send` (paper-plane)
+        // to match the bottom-nav icon and instantly signal what this
+        // entry does (message buyers about your next event).
+        icon: "send",
+        label: "Blasts",
+        sub: "Message your event buyers about what's next",
+        onPress: () => {
+          if (brand !== null) onBlasts(brand.id);
+        },
       },
       {
         icon: "chart",
@@ -294,8 +342,8 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     return rows;
   }, [
     brand,
-    fireToast,
     onTeam,
+    onBlasts,
     onPayments,
     onReports,
     onAuditLog,
@@ -349,13 +397,60 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: 96 + Math.max(insets.bottom, spacing.md) }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+        }
       >
-        {/* SECTION A — Hero */}
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <View style={styles.heroAvatarRow}>
-            <Avatar name={brand.displayName} size="hero" />
+        {/* SECTION A — Hero card with cover band + half-overlap avatar.
+            ORCH-0807 Rev 3 — mirrors the PublicBrandPage.tsx:259-346 pattern
+            so the internal Brand Profile view shows the same hero treatment
+            buyers see on the public page. Cover band fills the top of the
+            card edge-to-edge (GlassCard padding=0); the round avatar sits
+            on top with -42px margin-top so half-of-it overlaps the cover. */}
+        <GlassCard variant="elevated" padding={0}>
+          <View style={styles.heroCoverBand} pointerEvents="none">
+            {coverMediaUrl !== null && coverMediaUrl.length > 0 && !coverMediaFailed ? (
+              Platform.OS === "android" ? (
+                <ExpoImage
+                  source={{ uri: coverMediaUrl }}
+                  style={styles.heroCoverFill}
+                  contentFit="cover"
+                  onError={() => setCoverMediaFailed(true)}
+                  accessibilityLabel="Brand cover"
+                />
+              ) : (
+                <RNImage
+                  source={{ uri: coverMediaUrl }}
+                  // ORCH-0805-WEB hotfix — explicit width/height "100%"
+                  // because react-native-web's <img> doesn't honor
+                  // position: absolute; inset: 0 the way RN native does.
+                  style={[
+                    styles.heroCoverFill,
+                    { width: "100%", height: "100%" },
+                  ]}
+                  resizeMode="cover"
+                  onError={() => setCoverMediaFailed(true)}
+                  accessibilityLabel="Brand cover"
+                />
+              )
+            ) : (
+              <View
+                style={[
+                  styles.heroCoverFill,
+                  { backgroundColor: `hsl(${brand.coverHue}, 60%, 45%)` },
+                ]}
+              />
+            )}
           </View>
-          <Text style={styles.heroName}>{brand.displayName}</Text>
+          <View style={styles.heroBody}>
+            <View style={styles.heroAvatarRow}>
+              {/* ORCH-0807 — wires profile_photo_url to the read-side Avatar.
+                  The negative marginTop on heroAvatarRow pulls half the
+                  84×84 avatar up over the cover band (mirrors
+                  PublicBrandPage's half-in/half-out overlap). */}
+              <Avatar name={brand.displayName} size="hero" photo={brand.photo} />
+            </View>
+            <Text style={styles.heroName}>{brand.displayName}</Text>
           {typeof brand.tagline === "string" && brand.tagline.length > 0 ? (
             <Text style={styles.heroTagline}>{brand.tagline}</Text>
           ) : null}
@@ -432,6 +527,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
               </View>
             );
           })()}
+          </View>
         </GlassCard>
 
         {/* SECTION B — Stats Strip */}
@@ -587,15 +683,6 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           </View>
         </View>
       </View>
-
-      <View style={styles.toastWrap} pointerEvents="box-none">
-        <Toast
-          visible={toast.visible}
-          kind="info"
-          message={toast.message}
-          onDismiss={handleDismissToast}
-        />
-      </View>
     </View>
   );
 };
@@ -636,8 +723,29 @@ const styles = StyleSheet.create({
   },
 
   // Hero -----------------------------------------------------------------
+  // ORCH-0807 Rev 3 — cover band on top of the hero card, padded content
+  // body below, avatar pulled up -42px so half of its 84×84 frame overlaps
+  // the cover band (matches PublicBrandPage half-in/half-out pattern).
+  heroCoverBand: {
+    height: 140,
+    width: "100%",
+    overflow: "hidden",
+    borderTopLeftRadius: radiusTokens.lg,
+    borderTopRightRadius: radiusTokens.lg,
+  },
+  heroCoverFill: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  heroBody: {
+    padding: spacing.lg,
+  },
   heroAvatarRow: {
     alignItems: "center",
+    marginTop: -42, // half of Avatar hero size (84) → 50% overlap on cover band
     marginBottom: spacing.md,
   },
   heroName: {
@@ -840,14 +948,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // Toast ----------------------------------------------------------------
-  toastWrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 96,
-    paddingHorizontal: spacing.md,
-  },
   // Cycle 17e-A — danger zone for brand deletion
   dangerZone: {
     marginTop: spacing.xl,

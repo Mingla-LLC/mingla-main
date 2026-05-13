@@ -197,7 +197,10 @@ interface AppState {
   };
   // Discover filter state — null = use component defaults on first mount.
   // Type kept loose (any) here to avoid circular import; DiscoverScreen owns the shape.
-  discoverFilters: { date: string; price: string; genre: string } | null;
+  // ORCH-0809 M2: replaced `price` with `segment` (price filter deleted from Discover).
+  // `segment` is a DiscoverSegmentSlug ("music" | "sports" in M1). Loose strings here
+  // to avoid circular import — typed narrowing happens at the DiscoverScreen consumer.
+  discoverFilters: { date: string; segment: string; genre: string } | null;
   // Saved filters
   savedFilters: {
     searchQuery: string;

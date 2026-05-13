@@ -2,10 +2,26 @@
  * Toast — top-of-screen notification banner.
  *
  * 4 kinds (success / info / warn / error). Auto-dismiss timing per kind:
- * success/info 2600ms, warn 6000ms, error persistent (caller must close).
+ * success/info 2600ms, warn 6000ms, error 12000ms (bounded fallback).
  *
  * Slide-down + opacity entrance 220ms `easings.out`; exit 160ms
  * `easings.in`. Reduce-motion fallback: opacity-only.
+ *
+ * # Dismissal affordances (canonical for the entire app — ORCH-0821 rework)
+ *
+ * Every Toast in mingla-business is dismissible four ways:
+ *   1. Tap anywhere on the card (Pressable onPress)
+ *   2. Tap the explicit close (×) button (32×32 with hitSlop=12 → 56×56 hit)
+ *   3. Swipe UP — drag the toast upward past 40pt OR fling it with
+ *      velocityY < -500. Pan follows the finger with light resistance,
+ *      rubber-bands on pull-down. Pan only activates after 8pt of vertical
+ *      movement, so a static tap is never misread as a swipe. Horizontal
+ *      swipes past 24pt cancel the pan gesture entirely.
+ *   4. Auto-dismiss timer (per-kind default; nullable per-instance)
+ *
+ * This is THE canonical toast for the app — any new notification UX uses
+ * this primitive. Do not build custom error banners. (ErrorBanner in the
+ * Ari surface was migrated to this Toast on 2026-05-12.)
  *
  * # Self-positioning portal (revised 2026-05-02)
  *
@@ -34,18 +50,25 @@
  * primary white text at body fontSize.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   Easing,
   cancelAnimation,
+  runOnJS,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withSpring,
   withTiming,
 } from "react-native-reanimated";
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from "react-native-gesture-handler";
 import { BlurView } from "expo-blur";
 
 import {
@@ -85,6 +108,11 @@ const ENTRY_DURATION = 220;
 const EXIT_DURATION = 160;
 const TRANSLATE_FROM = -40;
 const UNMOUNT_DELAY_MS = EXIT_DURATION + 40; // exit anim + safety
+// Swipe-to-dismiss thresholds — match the Sheet primitive's UX feel.
+const SWIPE_DISMISS_DISTANCE = 40;      // pt past the resting position
+const SWIPE_DISMISS_VELOCITY = 500;     // pt/s upward velocity
+const SWIPE_FOLLOW_RESISTANCE = 0.6;    // 1.0 = follow finger 1:1 upward
+const SWIPE_DOWNWARD_RESISTANCE = 0.25; // rubber-band on pull-down
 
 // Glass tokens — composed inline. Warm = Mingla brand prominence; Red =
 // emergency reserved for errors.
@@ -167,6 +195,8 @@ export const Toast: React.FC<ToastProps> = ({
   const insets = useSafeAreaInsets();
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(TRANSLATE_FROM);
+  // Independent shared value for swipe drag offset — added to translateY at render.
+  const swipeOffset = useSharedValue(0);
   const reduceMotion = useReducedMotion();
 
   // Lazy mount/unmount via Modal — keep Toast in the tree long enough for
@@ -238,12 +268,66 @@ export const Toast: React.FC<ToastProps> = ({
     return (): void => {
       cancelAnimation(opacity);
       cancelAnimation(translateY);
+      cancelAnimation(swipeOffset);
     };
-  }, [opacity, translateY]);
+  }, [opacity, swipeOffset, translateY]);
+
+  // Reset swipe offset whenever a new toast becomes visible.
+  useEffect(() => {
+    if (visible) {
+      swipeOffset.value = 0;
+    }
+  }, [swipeOffset, visible]);
+
+  // Pan gesture — swipe up (or hard fling upward) to dismiss. Pull-down
+  // is rubber-banded. Memoized so we don't rebuild the gesture object on
+  // every render — Android's GestureHandler is sensitive to that.
+  //
+  // Dismiss behaviour: fire onDismiss() IMMEDIATELY on threshold met. The
+  // parent flips visible→false; the standard exit useEffect runs the
+  // opacity-out + slide-up; the swipeOffset stays at its release value so
+  // the dismiss feels continuous from where the user let go. Doing this
+  // synchronously (instead of running a 140ms timing animation before the
+  // dismiss callback) is what stops the toast freezing half-way on
+  // Android — the Modal unmounts on the standard schedule and pointer
+  // events release cleanly.
+  const panGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .onUpdate((event) => {
+          "worklet";
+          if (event.translationY < 0) {
+            // Upward — follow with light resistance
+            swipeOffset.value = event.translationY * SWIPE_FOLLOW_RESISTANCE;
+          } else {
+            // Downward — rubber band (heavy resistance)
+            swipeOffset.value = event.translationY * SWIPE_DOWNWARD_RESISTANCE;
+          }
+        })
+        .onEnd((event) => {
+          "worklet";
+          const shouldDismiss =
+            event.translationY < -SWIPE_DISMISS_DISTANCE ||
+            event.velocityY < -SWIPE_DISMISS_VELOCITY;
+          if (shouldDismiss) {
+            runOnJS(onDismiss)();
+          } else {
+            // Snap back to resting position with a soft spring.
+            swipeOffset.value = withSpring(0, {
+              damping: 18,
+              stiffness: 220,
+              mass: 0.8,
+            });
+          }
+        })
+        .activeOffsetY([-8, 8])
+        .failOffsetX([-24, 24]),
+    [onDismiss, swipeOffset],
+  );
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
+    transform: [{ translateY: translateY.value + swipeOffset.value }],
   }));
 
   if (!mounted) return null;
@@ -260,23 +344,34 @@ export const Toast: React.FC<ToastProps> = ({
       statusBarTranslucent
     >
       {/* Portal root — full screen but pointerEvents box-none so taps
-          pass through to underlying UI when Toast doesn't intercept. */}
-      <View style={styles.portalRoot} pointerEvents="box-none">
-        <Animated.View
-          pointerEvents={visible ? "auto" : "none"}
-          style={[
-            styles.wrap,
-            { top: topInset + spacing.sm },
-            animatedStyle,
-            style,
-          ]}
-          testID={testID}
-        >
+          pass through to underlying UI when Toast doesn't intercept.
+          GestureHandlerRootView is REQUIRED here on Android: the app-root
+          GestureHandlerRootView (mounted by expo-router) does NOT extend
+          into Modal's window, so without this inner root the pan gesture
+          on Android either no-ops OR freezes the entire screen because
+          the gesture system thinks a pan is still in flight. */}
+      <GestureHandlerRootView style={styles.portalRoot} pointerEvents="box-none">
+        <GestureDetector gesture={panGesture}>
+          <Animated.View
+            pointerEvents={visible ? "auto" : "none"}
+            style={[
+              styles.wrap,
+              { top: topInset + spacing.sm },
+              animatedStyle,
+              style,
+            ]}
+            testID={testID}
+            accessibilityHint="Swipe up or tap to dismiss"
+          >
           {/* ORCH-0789: tap-anywhere-on-card dismisses. The inner close
               Pressable below also calls onDismiss directly; RN event
               bubbling means the outer onPress runs after the inner one
               fires, but onDismiss is idempotent (parent flips
-              visible→false on first call). */}
+              visible→false on first call).
+              ORCH-0821 rework: also swipe-up-to-dismiss via the GestureDetector
+              wrapper above. The Pressable still handles taps; the pan
+              gesture is configured with activeOffsetY=[-8,8] so a static
+              tap never accidentally registers as a swipe. */}
           <Pressable
             onPress={onDismiss}
             accessibilityRole="button"
@@ -344,8 +439,9 @@ export const Toast: React.FC<ToastProps> = ({
               </Pressable>
             </View>
           </Pressable>
-        </Animated.View>
-      </View>
+          </Animated.View>
+        </GestureDetector>
+      </GestureHandlerRootView>
     </Modal>
   );
 };

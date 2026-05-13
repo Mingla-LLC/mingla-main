@@ -162,6 +162,29 @@ export const accent = {
   border: "rgba(235, 120, 37, 0.55)",
 } as const;
 
+// ORCH-0821 — Ari signature palette (rework 2026-05-12).
+//
+// CALMER + REFRESHING. Decoupled from accent.warm (#eb7825 stays the brand
+// action color — punchy on purpose). Ari is its own visual identity: a soft
+// peach-coral gradient that reads "warm, premium, lit from within" without
+// shouting. Tuned to feel like glass with a warm light behind it, not a
+// brand action button.
+//
+// All HSL/hex per the Cycle 7 FX2 RN color rule (no oklch/lab/color-mix —
+// they render transparent on iOS+Android).
+export const ariPalette = {
+  // Orb gradient stops — soft peach gold → calm warm coral → muted ember.
+  gold: "hsl(35, 88%, 78%)",      // #f7d09a — pale peach highlight
+  flame: "hsl(20, 72%, 64%)",    // #e69869 — calm warm coral (Ari signature)
+  ember: "hsl(10, 55%, 50%)",    // #c66c54 — soft muted ember rim
+  // Secondary touches — calmer than the brand warm for UI accents
+  cursor: "hsl(20, 72%, 64%)",   // same as flame
+  proposalBorder: "hsla(20, 72%, 64%, 0.45)",
+  proposalShadow: "hsla(20, 72%, 64%, 0.28)",
+  // Glow color for the orb's halo
+  glow: "hsla(22, 75%, 68%, 0.4)",
+} as const;
+
 export const canvas = {
   discover: "#0c0e12",
   profile: "#141113",
