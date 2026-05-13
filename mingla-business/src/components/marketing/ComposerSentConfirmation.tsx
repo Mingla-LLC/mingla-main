@@ -1,15 +1,20 @@
 /**
  * ComposerSentConfirmation — full-screen overlay shown after Schedule /
- * Send-now succeeds. Auto-dismisses after 3s or on CTA tap.
+ * Send-now succeeds. Explicit user-acknowledged dismissal (no auto-dismiss)
+ * — the operator taps "View in Campaigns" (primary, navigates to the list)
+ * or "Stay here" (secondary, just closes the overlay).
+ *
+ * Card uses a solid dark background (NOT the translucent profile tint)
+ * so it reads as a confident "you're done" surface, not as a glass
+ * peek-through.
  */
 
-import React, { useEffect } from "react";
+import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Icon } from "../ui/Icon";
 import {
   accent,
-  glass,
   radius,
   spacing,
   text as textTokens,
@@ -19,9 +24,10 @@ import {
 export interface ComposerSentConfirmationProps {
   visible: boolean;
   isSendNow: boolean;
+  /** Closes the overlay only — leaves the operator on the composer route. */
   onDismiss: () => void;
+  /** Closes the overlay AND navigates to the campaigns list. */
   onViewInCampaigns: () => void;
-  autoDismissMs?: number;
 }
 
 export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> = ({
@@ -29,25 +35,20 @@ export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> =
   isSendNow,
   onDismiss,
   onViewInCampaigns,
-  autoDismissMs = 3000,
 }) => {
-  useEffect(() => {
-    if (!visible) return;
-    const t = setTimeout(onDismiss, autoDismissMs);
-    return () => clearTimeout(t);
-  }, [visible, autoDismissMs, onDismiss]);
-
   if (!visible) return null;
   return (
     <View style={styles.host} pointerEvents="box-none">
       <View style={styles.card}>
-        <Icon name="check" size={40} color={accent.warm} />
+        <View style={styles.iconCircle}>
+          <Icon name="check" size={36} color={textTokens.primary} />
+        </View>
         <Text style={styles.title}>
-          {isSendNow ? "Sent." : "Scheduled."}
+          {isSendNow ? "On the way." : "Scheduled."}
         </Text>
         <Text style={styles.body}>
           {isSendNow
-            ? "Your campaign is on its way to inboxes."
+            ? "Your campaign goes out in under a minute. Refresh Campaigns to watch the status flip to Sent."
             : "We'll fire it off at the time you picked."}
         </Text>
         <Pressable
@@ -61,6 +62,17 @@ export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> =
         >
           <Text style={styles.ctaLabel}>View in Campaigns →</Text>
         </Pressable>
+        <Pressable
+          onPress={onDismiss}
+          accessibilityRole="button"
+          accessibilityLabel="Stay on this screen"
+          style={({ pressed }) => [
+            styles.dismissBtn,
+            pressed ? styles.dismissBtnPressed : null,
+          ]}
+        >
+          <Text style={styles.dismissLabel}>Stay here</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -73,7 +85,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.78)",
+    backgroundColor: "rgba(0, 0, 0, 0.88)",
     alignItems: "center",
     justifyContent: "center",
     padding: spacing.lg,
@@ -84,16 +96,27 @@ const styles = StyleSheet.create({
     maxWidth: 360,
     padding: spacing.xl,
     borderRadius: radius.xl,
-    backgroundColor: glass.tint.profileElevated,
+    // Solid dark card — not the translucent profile tint. Operators need
+    // this to feel like a definitive "done" confirmation, not a peek-
+    // through panel that the composer is still half-visible behind.
+    backgroundColor: "#15171c",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileElevated,
+    borderColor: "rgba(255, 255, 255, 0.08)",
     alignItems: "center",
     gap: spacing.sm,
+  },
+  iconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: accent.warm,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.xs,
   },
   title: {
     ...typography.h2,
     color: textTokens.primary,
-    marginTop: spacing.sm,
   },
   body: {
     ...typography.body,
@@ -102,12 +125,11 @@ const styles = StyleSheet.create({
   },
   ctaBtn: {
     marginTop: spacing.md,
-    minHeight: 48,
+    width: "100%",
+    minHeight: 52,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.full,
-    backgroundColor: "rgba(235, 120, 37, 0.42)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: accent.border,
+    backgroundColor: accent.warm,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -116,7 +138,22 @@ const styles = StyleSheet.create({
   },
   ctaLabel: {
     ...typography.body,
-    color: textTokens.primary,
-    fontWeight: "600",
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+  dismissBtn: {
+    marginTop: spacing.xs,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dismissBtnPressed: {
+    opacity: 0.7,
+  },
+  dismissLabel: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    fontWeight: "500",
   },
 });

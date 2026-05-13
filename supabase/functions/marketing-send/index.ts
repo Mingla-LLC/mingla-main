@@ -92,8 +92,6 @@ serve(async (req) => {
     (Deno.env.get("MARKETING_SEND_LIVE_ENABLED") ?? "false").toLowerCase() ===
       "true";
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
-  const RESEND_FROM = Deno.env.get("RESEND_MARKETING_FROM") ??
-    "tickets@usemingla.com";
   if (LIVE && RESEND_API_KEY.length === 0) {
     return jsonResponse({ error: "resend_not_configured" }, 503);
   }
@@ -147,7 +145,6 @@ serve(async (req) => {
       const outcome = await dispatchByKind(supabase, campaign, {
         live: LIVE,
         resendApiKey: RESEND_API_KEY,
-        resendFrom: RESEND_FROM,
       });
       previewSkippedTotal += outcome.preview_skipped;
       await supabase
@@ -243,7 +240,6 @@ async function claimCampaigns(
 interface DispatchOptions {
   live: boolean;
   resendApiKey: string;
-  resendFrom: string;
 }
 
 interface DispatchOutcome {
@@ -294,7 +290,7 @@ async function sendEmail(
 
   const { data: brandRow, error: brandErr } = await supabase
     .from("brands")
-    .select("id, name")
+    .select("id, name, slug")
     .eq("id", campaign.brand_id)
     .maybeSingle();
   if (brandErr) throw new Error(`brand_load:${brandErr.message}`);
@@ -302,6 +298,17 @@ async function sendEmail(
   // mobile-side camelCased property mapped through the Brand type).
   const brandName: string = (brandRow as { name?: string } | null)
     ?.name ?? "Mingla brand";
+  const brandSlug: string | null = (brandRow as { slug?: string | null } | null)
+    ?.slug ?? null;
+
+  // Per-brand sender address: `<brandSlug>@usemingla.com`. Falls back to a
+  // slugified version of the brand name when the brand has no slug, and
+  // ultimately to `team@usemingla.com` if the slug is unrecoverable.
+  // Display name is the actual brand name (Resend accepts the standard
+  // `Name <addr>` From header). usemingla.com is already verified at
+  // Resend — no per-address verification is needed.
+  const brandEmailLocal = slugifyBrandForEmail(brandSlug ?? brandName);
+  const brandFromHeader = `${brandName} <${brandEmailLocal}@usemingla.com>`;
 
   const embedded = await loadEmbeddedEvents(
     supabase,
@@ -331,7 +338,7 @@ async function sendEmail(
       recipient_email: contact.raw_email,
       brand_id: campaign.brand_id,
     });
-    const unsubscribeUrl = `${getPublicAppOrigin()}/unsubscribe/${unsubscribeToken}`;
+    const unsubscribeUrl = `${getUnsubscribeOrigin()}/${unsubscribeToken}`;
 
     const variables = buildVariables(contact, brandName, embedded);
     const rendered = renderMarketingEmail({
@@ -385,9 +392,12 @@ async function sendEmail(
     }
 
     // Live path — POST to Resend with backoff for 429.
+    // From-line is now per-brand (`brandFromHeader`), not the static
+    // RESEND_MARKETING_FROM env var. usemingla.com domain is verified at
+    // Resend so any local-part on it works without per-address verification.
     const sendOutcome = await postToResend({
       apiKey: options.resendApiKey,
-      from: options.resendFrom,
+      from: brandFromHeader,
       to: contact.raw_email,
       subject: rendered.subject,
       html: rendered.html,
@@ -457,37 +467,111 @@ async function loadEmbeddedEvents(
   // ORCH-0792: read from events_with_master_date_view to pick up the
   // master event_dates row (the events table has no direct start_at;
   // cover lives in cover_media_url, not cover_image_url).
-  const { data, error } = await supabase
+  const { data: eventsData, error: eventsErr } = await supabase
     .from("events_with_master_date_view")
-    .select("id, title, location_text, cover_media_url, master_start_at, slug, brand_id")
+    .select("id, title, location_text, cover_media_url, cover_media_type, master_start_at, slug, brand_id")
     .in("id", ids);
-  if (error) throw new Error(`events_load:${error.message}`);
-  const rows = (data ?? []) as Array<{
+  if (eventsErr) throw new Error(`events_load:${eventsErr.message}`);
+  const eventRows = (eventsData ?? []) as Array<{
     id: string;
     title: string | null;
     location_text: string | null;
     cover_media_url: string | null;
+    cover_media_type: string | null;
     master_start_at: string | null;
     slug: string | null;
     brand_id: string;
   }>;
+
+  // Pull brand slugs for the URL. Public event URLs are
+  // `https://business.usemingla.com/e/<brand_slug>/<event_slug>` — both
+  // slugs required (see mingla-business/server/socialPreview.js and
+  // utils/sharePublicUrl). Without the brand slug the public page 404s.
+  const brandIds = Array.from(new Set(eventRows.map((r) => r.brand_id)));
+  const brandSlugByBrandId = new Map<string, string>();
+  if (brandIds.length > 0) {
+    const { data: brandsData, error: brandsErr } = await supabase
+      .from("brands")
+      .select("id, slug")
+      .in("id", brandIds);
+    if (brandsErr) throw new Error(`brands_load:${brandsErr.message}`);
+    for (const row of ((brandsData ?? []) as Array<{ id: string; slug: string | null }>)) {
+      if (row.slug !== null && row.slug.length > 0) {
+        brandSlugByBrandId.set(row.id, row.slug);
+      }
+    }
+  }
+
   const origin = getPublicAppOrigin();
-  return rows.map((r) => ({
-    id: r.id,
-    title: r.title ?? "Mingla event",
-    date_label: r.master_start_at !== null
-      ? new Date(r.master_start_at).toLocaleDateString("en-US", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      })
-      : null,
-    location_label: r.location_text,
-    cover_image_url: r.cover_media_url,
-    url: r.slug !== null
-      ? `${origin}/e/${r.slug}`
-      : `${origin}/e/${r.id}`,
-  }));
+  return eventRows.map((r) => {
+    const brandSlug = brandSlugByBrandId.get(r.brand_id);
+    const url = brandSlug !== undefined && r.slug !== null && r.slug.length > 0
+      ? `${origin}/e/${brandSlug}/${r.slug}`
+      // Defensive fallback when slug data is missing: route to brand
+      // page so the link still lands somewhere honest.
+      : brandSlug !== undefined
+        ? `${origin}/b/${brandSlug}`
+        : origin;
+    // Coerce cover_media_type into the EmbeddedEvent union (`'image' |
+    // 'video' | 'gif' | null`). Anything outside the union becomes null
+    // — renderEventCard treats that as "no usable cover" and skips the
+    // hero block entirely.
+    const coverType: "image" | "video" | "gif" | null =
+      r.cover_media_type === "image" || r.cover_media_type === "video" ||
+        r.cover_media_type === "gif"
+        ? r.cover_media_type
+        : null;
+    return {
+      id: r.id,
+      title: r.title ?? "Mingla event",
+      date_label: r.master_start_at !== null
+        ? new Date(r.master_start_at).toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+        })
+        : null,
+      location_label: r.location_text,
+      cover_image_url: r.cover_media_url,
+      cover_media_type: coverType,
+      url,
+    };
+  });
+}
+
+/**
+ * Slugify a brand name OR existing slug into a safe email local-part.
+ * Lowercase + ASCII-alphanumeric only + max 32 chars. Falls back to
+ * "team" when the input contains no usable characters (foreign-language
+ * brand names, emoji-only names, etc.).
+ *
+ * Caps at 32 chars even though RFC 5321 allows 64 — gives headroom for
+ * future suffix patterns ("acme-team@", "acme-receipts@", etc.) without
+ * blowing past the limit.
+ */
+function slugifyBrandForEmail(input: string | null | undefined): string {
+  const raw = (input ?? "").toLowerCase().trim();
+  // Replace non-alphanumeric runs with nothing (collapses spaces, accents,
+  // and punctuation into a single tight slug).
+  const slug = raw.replace(/[^a-z0-9]+/g, "").slice(0, 32);
+  return slug.length === 0 ? "team" : slug;
+}
+
+/**
+ * Resolves the origin used to build per-recipient unsubscribe URLs. Same
+ * pattern as marketingEmailRender.getTrackingLinkOrigin — defaults to the
+ * Supabase function endpoint so the link works without DNS rewrite.
+ * Operators can override to `https://usemingla.com/unsubscribe` etc. via
+ * the MINGLA_UNSUBSCRIBE_LINK_ORIGIN env var.
+ */
+function getUnsubscribeOrigin(): string {
+  const override = Deno.env.get("MINGLA_UNSUBSCRIBE_LINK_ORIGIN");
+  if (override !== undefined && override.trim().length > 0) {
+    return override.replace(/\/+$/, "");
+  }
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.replace(/\/+$/, "") ??
+    "https://gqnoajqerqhnvulmnyvv.supabase.co";
+  return `${supabaseUrl}/functions/v1/marketing-unsubscribe`;
 }
 
 function getPublicAppOrigin(): string {

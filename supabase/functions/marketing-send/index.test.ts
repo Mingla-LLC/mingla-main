@@ -93,10 +93,13 @@ Deno.test("marketing-send: dual auth (service-role for cron + userClient for sen
   assert(SOURCE.includes('"forbidden"'));
 });
 
-// Unsubscribe URL is signed via shared helper
+// Unsubscribe URL is signed via shared helper + uses getUnsubscribeOrigin
+// so the link works without DNS rewrite (defaults to Supabase function URL,
+// operator-overridable via MINGLA_UNSUBSCRIBE_LINK_ORIGIN).
 Deno.test("marketing-send: unsubscribe link is HS256-signed via shared helper", () => {
   assert(SOURCE.includes("signUnsubscribeToken"));
-  assert(/\/unsubscribe\/\$\{unsubscribeToken\}/.test(SOURCE));
+  assert(SOURCE.includes("getUnsubscribeOrigin"));
+  assert(/\$\{unsubscribeToken\}/.test(SOURCE));
 });
 
 // Per-link tracking: every href becomes a tracking redirect
