@@ -50,6 +50,8 @@ on:
 #   - ORCH-0785-C (orch-0785-buyer-string-escape.mjs) — buyer/event/order strings must flow through escapeHtml (ORCH-0785)
 #   - ORCH-0785-D (orch-0785-shell-singleton.mjs) — shared email shell singleton (ORCH-0785)
 #   - ORCH-0785-E (orch-0785-pdf-privacy.mjs) — ticket PDF privacy contract (ORCH-0785)
+#   - I-ARI-NO-OKLCH (i-ari-no-oklch.mjs) — Ari mobile surface must use HSL/hex/rgb only; no oklch/color-mix/lab (ORCH-0821)
+#   - I-ARI-USER-JWT-ONLY (i-ari-user-jwt-only.mjs) — Ari edge fn handlers must use caller JWT, not service role (ORCH-0821)
 #   - ORCH-0776 (orch-0776-video-processing-status-bridge.mjs) — event cover video processing status bridge
 #   - ORCH-0776D (orch-0776d-cancelled-at-schema.mjs) — event cover video cancelled_at schema/code parity
 #   - ORCH-0777 (orch-0777-ticket-checkout-production.mjs) — production ticket checkout + organizer order visibility
@@ -702,3 +704,25 @@ jobs:
           node-version: "20"
       - name: Run ORCH-0815-B gate
         run: node .github/scripts/strict-grep/orch-0815-b-composer-and-send.mjs
+
+  i-ari-no-oklch:
+    name: "I-ARI-NO-OKLCH: Ari surface uses HSL/hex/rgb only (no oklch/color-mix/lab)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-ARI-NO-OKLCH gate
+        run: node .github/scripts/strict-grep/i-ari-no-oklch.mjs
+
+  i-ari-user-jwt-only:
+    name: "I-ARI-USER-JWT-ONLY: Ari edge handlers never reference service role"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run I-ARI-USER-JWT-ONLY gate
+        run: node .github/scripts/strict-grep/i-ari-user-jwt-only.mjs

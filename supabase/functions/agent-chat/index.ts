@@ -314,16 +314,11 @@ async function handle(req: Request): Promise<Response> {
         return errorResponse(429, "MODEL_RATE_LIMITED", "Ari is hitting Google's rate limit — try again in a moment.");
       }
     }
-    // DEBUG: surface the actual kind/status/detail to the client so we can
-    // diagnose from the toast. Remove this after Ari is verified working;
-    // replace with generic "having trouble" copy.
-    const debugDetail = [
-      err?.kind ? `kind=${err.kind}` : null,
-      typeof err?.status === "number" ? `status=${err.status}` : null,
-      err?.message ? `msg=${String(err.message).slice(0, 200)}` : null,
-      err?.detail ? `detail=${String(err.detail).slice(0, 200)}` : null,
-    ].filter(Boolean).join(" | ");
-    return errorResponse(502, "MODEL_UNAVAILABLE", `Ari/Gemini error: ${debugDetail || "unknown"}`);
+    // Generic fallback for any other Gemini failure mode (HTTP 4xx other
+    // than auth/rate-limit, malformed responses after retries, empty
+    // responses). The real diagnostic detail is in the server logs above;
+    // the user-visible message stays friendly.
+    return errorResponse(502, "MODEL_UNAVAILABLE", "Ari is having trouble right now — try again in a moment.");
   }
 
   // Branch on tool call vs text
