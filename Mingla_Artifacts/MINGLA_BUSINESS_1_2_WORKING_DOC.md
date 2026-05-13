@@ -673,15 +673,15 @@ These are no longer in question. Phase A SPEC and downstream phases must respect
 
 **Current status:** brainstorm-locked, timeline committed. Pre-SPEC.
 
-**Immediate next action (M0 prep):** dispatch `mingla-product` skill with web research tools to produce `Mingla_Artifacts/reports/RESEARCH_ORCH-0825_WETRAVEL_COMPETITIVE_INGEST.md` — full feature map of WeTravel covering every workflow, screen, revenue-engine feature, intake-form patterns, group-chat pattern, room-share algorithm, refund-tier semantics, plus a "what they do badly that Mingla can win on" section. Research output becomes a required input for M3-M7 SPECs (installments through room-share specifically). M0-M2 can begin without it; the research must land before M3 SPEC fires.
+**WeTravel competitive research — COMPLETE (2026-05-13).** Artifact at `Mingla_Artifacts/reports/RESEARCH_ORCH-0825_WETRAVEL_COMPETITIVE_INGEST.md` — 2,400 lines, 23 sections, with confidence labels and cited sources. Headline findings: WeTravel has no cascading-tier refund engine (Tr4 win), no group chat (Tr6 win), no room-share matching algorithm (Tr7 win), and no mobile app for operators (whole-project win). Six Open Questions in §21 surface before Tr3-Tr7 SPECs fire (currency at checkout, ask-a-question lead capture, traveler-to-traveler DMs, own-Stripe option, Tr8 prompt-based AI, Ve experiences refund-tier extension). Tr3-Tr7 milestone briefs now mandate reading this research before SPEC dispatch.
 
-**After WeTravel research returns:**
-1. Claude `mingla-orchestrator` formalizes META-ORCH-0825 + 14 sub-ORCHs (M0 through M13) in `WORLD_MAP.md` + `MASTER_BUG_LIST.md`
-2. Architectural decisions logged in `DECISION_LOG.md` (the 16 locked decisions in §8 above)
-3. M0 SPEC dispatched to Claude `mingla-forensics` (SPEC mode) — Hub tab restructure + universal creator
-4. Operator + co-founder review M0 SPEC, assign Stream A and Stream B owners
-5. M0 implementation begins (1 week target)
-6. M0 ships to TestFlight → M1 SPEC dispatched → cycle continues
+**Immediate next action: M0 INVESTIGATE.** Dispatch Claude `mingla-forensics` (INVESTIGATE mode) for M0 (Hub Tab Foundation + Universal Creator + Unified Data Model). Produces `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0826_M0_HUB_FOUNDATION.md`. The dispatch prompt lives at `Mingla_Artifacts/prompts/FORENSICS_ORCH-0826_M0_HUB_FOUNDATION_INVESTIGATE.md`.
+
+**Forward sequence:**
+1. M0 INVESTIGATE → SPEC → IMPLEMENT (Seth + Taofeek) → TEST → CLOSE (~1 week)
+2. After M0 ships to TestFlight, dispatch Tr1 + Ve1 SPECs in parallel (one for each engineer)
+3. WeTravel research is required reading for Tr3+ SPECs (already mandated in those briefs)
+4. Open Questions §21 surface to operator before Tr3 SPEC fires (orchestrator queues)
 
 **Working tree throughout:** `/Users/sethogieva/Desktop/mingla-main` on branch `Seth`.
 

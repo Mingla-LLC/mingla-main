@@ -178,6 +178,10 @@ VALUES ('trip_documents', 'trip_documents', false);
 
 ---
 
+## 9.5. Required Reading Before SPEC
+
+The WeTravel competitive research at `Mingla_Artifacts/reports/RESEARCH_ORCH-0825_WETRAVEL_COMPETITIVE_INGEST.md` is **required reading** before forensics writes the Tr6 SPEC. Specifically read §7 (Group Chat / Discussion Board) — Tr6 is the **second-biggest differentiation opportunity in Mingla 1.2**. WeTravel has NO group chat — their "messaging" is broadcast-only, email-style; travelers can't reply in-thread, see each other's messages, or DM each other. Operators routinely build Facebook Groups / WhatsApp groups outside the platform to fill the gap. Mingla 1.2 Tr6 ships a real multi-party per-trip group chat (built on the Ari multi-party extension pattern), RLS-scoped to confirmed buyers + brand members, with attachments, OneSignal push, optional broadcast-only mode, and optional Ari summarization. This is a tagline-worthy win. Cite the research in the SPEC's opening comparison paragraph.
+
 ## 10. Pipeline Notes
 
 **Seth-owned:** the RLS pattern here is the highest-risk piece. INVESTIGATE + SPEC must spell out every access path (operator read, operator write, buyer read, buyer write in broadcast vs non-broadcast, cross-trip attempts, post-cancellation). Test the negative cases explicitly during TEST.

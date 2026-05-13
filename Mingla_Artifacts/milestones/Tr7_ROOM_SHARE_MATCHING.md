@@ -123,6 +123,10 @@ ALTER TABLE public.trip_room_assignments ENABLE ROW LEVEL SECURITY;
 
 ---
 
+## 9.5. Required Reading Before SPEC
+
+The WeTravel competitive research at `Mingla_Artifacts/reports/RESEARCH_ORCH-0825_WETRAVEL_COMPETITIVE_INGEST.md` is **required reading** before forensics writes the Tr7 SPEC. Specifically read §9 (Room-Share Matching) — Tr7 is the **third-biggest differentiation opportunity in Mingla 1.2**. WeTravel supports shared-room PACKAGES (organizer creates a "Shared Female Dorm — Bed 1" package; traveler buys a specific bed) but does NOT support an opt-in matching algorithm. Companies that need real matching (Travel Divas, Sisterhood Travels, Flash Pack) build it themselves outside WeTravel via Google Form + email coordination. Mingla 1.2 Tr7 ships first-class manual matching with compatibility indicators, preference fields at checkout, and automated pricing recalc on pair. Auto-matching algorithm can wait for post-launch polish. Cite the research in the SPEC's opening comparison paragraph.
+
 ## 10. Pipeline Notes
 
 **Seth-owned:** decision in SPEC — refund vs installment adjustment when pairing. Refund is simpler but slower (Stripe processing time); installment adjustment is cleaner but requires Tr3 ledger awareness.

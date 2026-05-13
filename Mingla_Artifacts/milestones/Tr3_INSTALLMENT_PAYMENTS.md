@@ -143,6 +143,10 @@ RLS: brand members read all rows for orders on their events; buyer reads own row
 
 ---
 
+## 9.5. Required Reading Before SPEC
+
+The WeTravel competitive research at `Mingla_Artifacts/reports/RESEARCH_ORCH-0825_WETRAVEL_COMPETITIVE_INGEST.md` is **required reading** before forensics writes the Tr3 SPEC. Specifically read §4 (Installment Payment Engine) for WeTravel's 1-24 installment mechanics, auto-adjust on late bookings, deposit-on-booking constraint, and the auto-billing pattern. Mingla 1.2 Tr3 matches WeTravel parity on the core engine and beats them on (a) operator awareness when installments fail ("at-risk" status flag, dunning email pipeline from ORCH-0785), and (b) plan cancellation flexibility. Cite the research artifact in the SPEC's opening "WeTravel comparison" paragraph.
+
 ## 10. Pipeline Notes
 
 **Seth-owned:** investigate Stripe Subscription Schedules vs scheduled PaymentIntents trade-offs in INVESTIGATE; pick one in SPEC. Decision criteria: refund-from-schedule complexity, multi-currency support, error recovery.

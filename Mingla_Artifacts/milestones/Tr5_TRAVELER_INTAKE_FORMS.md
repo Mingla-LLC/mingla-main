@@ -136,6 +136,10 @@ JSON schema shape:
 
 ---
 
+## 9.5. Required Reading Before SPEC
+
+The WeTravel competitive research at `Mingla_Artifacts/reports/RESEARCH_ORCH-0825_WETRAVEL_COMPETITIVE_INGEST.md` is **required reading** before forensics writes the Tr5 SPEC. Specifically read §6 (Traveler Intake Forms). WeTravel's intake feels like an afterthought — per-trip questionnaires with limited field types, no template defaults, no conditional fields, and Capterra reviews specifically flag "limited customization." Mingla 1.2 Tr5 ships seven explicit question types, a drag-drop schema builder with template defaults (passport / dietary / emergency contact / T-shirt / room-share), file uploads via Supabase Storage with RLS-scoped signed URLs, and per-traveler completeness indicators in the operator dashboard. Conditional fields can be deferred to Tr-future-polish. Cite the research in the SPEC's opening comparison paragraph.
+
 ## 10. Pipeline Notes
 
 **Seth-owned:** SPEC must explicitly enumerate the seven question types' shapes + validation rules. The dynamic form renderer needs a strong contract.

@@ -112,6 +112,10 @@ CREATE INDEX idx_events_booking_deadline ON public.events(booking_deadline)
 
 ---
 
+## 9.5. Required Reading Before SPEC
+
+The WeTravel competitive research at `Mingla_Artifacts/reports/RESEARCH_ORCH-0825_WETRAVEL_COMPETITIVE_INGEST.md` is **required reading** before forensics writes the Tr4 SPEC. Specifically read §5 (Refund Tiers) — Tr4 is the **single biggest differentiation opportunity in Mingla 1.2**. WeTravel's cancellation policy is text-only; refunds are manual two-step with no policy enforcement and no installment-aware math; customer reviews describe the process as "a nightmare." Mingla 1.2 Tr4 ships a structured `events.refund_policy` JSONB with cascading tiers, auto-computed refunds reading the `order_installments` ledger, buyer-side refund preview at cancel time, and Stripe execution. The SPEC's opening "WeTravel comparison" paragraph must call this out explicitly — it's the headline win.
+
 ## 10. Pipeline Notes
 
 **Seth-owned:** the refund math is the highest-risk piece. INVESTIGATE should map out every refund scenario (full, partial, tier-0, with-installments) and SPEC the math explicitly with worked examples.
