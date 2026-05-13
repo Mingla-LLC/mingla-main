@@ -215,6 +215,17 @@ export default function EventDetailScreen(): React.ReactElement {
     }
   }, [router, id]);
 
+  // ORCH-0815-A2-ui (DEC-149): event-context entry point for the dual-
+  // surface Marketing Hub. Lists this event's ticket buyers and surfaces
+  // "Blast these N buyers →" CTA pre-filling the marketing composer.
+  // Renamed "Buyers" → "Blasts" + route `/buyers` → `/blasts` 2026-05-12
+  // for consistency with the bottom-nav "Blast" tab.
+  const handleBlasts = useCallback((): void => {
+    if (id !== null) {
+      router.push(`/event/${id}/blasts` as never);
+    }
+  }, [router, id]);
+
   const handleBrandPage = useCallback((): void => {
     if (brand !== null) {
       router.push(`/brand/${brand.id}` as never);
@@ -657,6 +668,15 @@ export default function EventDetailScreen(): React.ReactElement {
             label="Guests"
             sub={`${totalGuestCount} ${totalGuestCount === 1 ? "guest" : "guests"}`}
             onPress={handleGuests}
+          />
+          {/* ORCH-0815-A2-ui (DEC-149) — event-context Marketing entry.
+              Renamed "Buyers" → "Blasts" + icon `users` → `send` for
+              consistency with the bottom-nav Blast tab. */}
+          <ActionTile
+            icon="send"
+            label="Blasts"
+            sub="Message ticket buyers"
+            onPress={handleBlasts}
           />
           <ActionTile
             icon="eye"

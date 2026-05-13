@@ -2,9 +2,12 @@
  * (tabs) layout — renders the active tab via `<Slot />` and our custom
  * glass `BottomNav` capsule below it.
  *
- * Per DEC-073: 3 fixed tabs (Home / Events / Account). Future-4-tab when
- * Marketing ships in Cycle 12 — at that point a 4th entry slots into
- * the TABS array here, no other change.
+ * Per DEC-073: was 3 fixed tabs (Home / Events / Account). Updated to
+ * 4 tabs in ORCH-0815-B (Cycle B5 — Marketing Hub, DEC-149 dual-surface).
+ * The Marketing tab sits between Events and Account: brand creates events,
+ * blasts about them via Marketing, manages account profile. `send` icon
+ * (paper plane) chosen over `megaphone` (not in icon set) per design §3.1
+ * — it reads as "broadcast / campaign" and lives in the icon set already.
  */
 
 import React, { useMemo } from "react";
@@ -19,14 +22,33 @@ import { canvas, spacing } from "../../src/constants/designSystem";
 const TABS: BottomNavTab[] = [
   { id: "home", icon: "home", label: "Home" },
   { id: "events", icon: "calendar", label: "Events" },
+  // ORCH-0815-B (DEC-149): Marketing Hub. Tab id stays `marketing` (so
+  // every `/(tabs)/marketing/*` route resolves correctly), label is the
+  // shorter "Blast" (5 chars) — fits the 4-tab capsule without clipping
+  // AND mirrors the verb used in every primary CTA ("Blast these N
+  // buyers"). `send` icon (paper-plane) is the closest semantic match
+  // for "broadcast / campaign" in the existing icon set. Sub-routes
+  // live under `/(tabs)/marketing/{overview, audiences, campaigns,
+  // templates}` with a sticky MarketingSubNav.
+  { id: "marketing", icon: "send", label: "Blast" },
   { id: "account", icon: "user", label: "Account" },
 ];
 
 const DEFAULT_TAB_ID = "home";
 
 const detectActiveTab = (pathname: string): string => {
+  // ORCH-0815-B fix: nested tab routes (e.g. `/marketing/audiences`,
+  // `/marketing/campaigns`) MUST resolve to their parent tab — previous
+  // `endsWith` check failed because the path ends with the sub-route id,
+  // not the tab id, and fell through to DEFAULT_TAB_ID="home" so the
+  // active dot jumped to Home when the user switched Marketing sub-tabs.
+  // New rule: a tab is active if the pathname is exactly `/${tabId}` OR
+  // starts with `/${tabId}/` (nested route boundary).
   const lower = pathname.toLowerCase();
-  const match = TABS.find((tab) => lower.endsWith(`/${tab.id}`) || lower === `/${tab.id}`);
+  const match = TABS.find((tab) => {
+    const prefix = `/${tab.id}`;
+    return lower === prefix || lower.startsWith(`${prefix}/`);
+  });
   return match?.id ?? DEFAULT_TAB_ID;
 };
 

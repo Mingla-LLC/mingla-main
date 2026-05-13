@@ -22,13 +22,18 @@ import {
   Image as RNImage,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { brandKeys } from "../../hooks/useBrands";
+import { eventOrdersKeys } from "../../hooks/useEventOrders";
 
 import {
   accent,
@@ -140,6 +145,15 @@ export interface BrandProfileViewProps {
    */
   onAuditLog: (brandId: string) => void;
   /**
+   * Called when user taps the "Blasts" Operations row (renamed from
+   * "Customers" 2026-05-12 for bottom-nav consistency). Receives the
+   * brand id. NEW in ORCH-0815-A2-ui (DEC-149 dual-surface Marketing
+   * Hub — contextual entry point from inside the brand). Lists every
+   * distinct buyer of the brand's events with a "Blast these N
+   * customers →" CTA that pre-fills the marketing composer.
+   */
+  onBlasts: (brandId: string) => void;
+  /**
    * Called when user taps "View public page". Receives the brand SLUG
    * (not id) — the public page route is `/b/{brandSlug}`.
    * NEW in Cycle 7 FX1 — replaces Cycle-2 J-A7 TRANSITIONAL Toast now
@@ -178,12 +192,33 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onPayments,
   onReports,
   onAuditLog,
+  onBlasts,
   onViewPublic,
   onCreateEvent,
   onOpenLink,
   onRequestDelete,
 }) => {
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+
+  // ORCH-0816 — pull-to-refresh as a manual freshness signal alongside the
+  // Realtime subscription on `orders` in useBrand. Invalidates the detail
+  // cache for this brand AND every event-orders key (per-event tiles).
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  const handleRefresh = useCallback(async (): Promise<void> => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: brand !== null ? brandKeys.detail(brand.id) : brandKeys.all,
+        }),
+        queryClient.invalidateQueries({ queryKey: eventOrdersKeys.all }),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [queryClient, brand]);
 
   // ORCH-0807 Rev 3 — Brand cover band on the hero card. 3-state fallback
   // chain mirrors PublicBrandPage.tsx:259-304 verbatim: (1) coverMediaUrl
@@ -273,6 +308,19 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         },
       },
       {
+        // ORCH-0815-A2-ui — DEC-149 dual-surface Marketing Hub. Renamed
+        // from "Customers" → "Blasts" for consistency with the bottom-nav
+        // "Blast" tab. Icon switched from `users` → `send` (paper-plane)
+        // to match the bottom-nav icon and instantly signal what this
+        // entry does (message buyers about your next event).
+        icon: "send",
+        label: "Blasts",
+        sub: "Message your event buyers about what's next",
+        onPress: () => {
+          if (brand !== null) onBlasts(brand.id);
+        },
+      },
+      {
         icon: "chart",
         label: "Finance reports",
         sub: "Stripe-ready CSVs",
@@ -295,6 +343,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   }, [
     brand,
     onTeam,
+    onBlasts,
     onPayments,
     onReports,
     onAuditLog,
@@ -348,6 +397,9 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: 96 + Math.max(insets.bottom, spacing.md) }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+        }
       >
         {/* SECTION A — Hero card with cover band + half-overlap avatar.
             ORCH-0807 Rev 3 — mirrors the PublicBrandPage.tsx:259-346 pattern

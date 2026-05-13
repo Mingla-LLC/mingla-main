@@ -543,7 +543,7 @@ CREATE INDEX idx_templates_account_brand ON marketing_templates(account_id, bran
 }
 ```
 
-**Hard invariant (I-PROPOSED-BF, see §11):** every audience kind MUST be a
+**Hard invariant (I-PROPOSED-BP, see §11):** every audience kind MUST be a
 discriminated union with a `kind` field. NEW audience kinds add new `kind`
 values, never new top-level shapes. This is what makes channel- and
 audience-extension safe.
@@ -580,7 +580,7 @@ audience-extension safe.
 }
 ```
 
-**Hard invariant (I-PROPOSED-BG):** every channel kind MUST be a discriminated
+**Hard invariant (I-PROPOSED-BQ):** every channel kind MUST be a discriminated
 union with a `kind` field. Adding SMS/RCS in later phases adds new `kind`
 values + new dispatcher branches; never modifies the Email shape.
 
@@ -745,12 +745,12 @@ These invariants make Phase B (SMS) and Phase C (RCS) plug in without refactor:
 
 | ID | Invariant | Enforcement |
 |---|---|---|
-| **I-PROPOSED-BF** | `marketing_audiences.query_definition` is a discriminated union with required `kind` field. New audience types ADD `kind` values; never modify existing shapes. | Strict-grep gate + jest schema test |
-| **I-PROPOSED-BG** | `marketing_campaigns.channel_payload` is a discriminated union with required `kind` field. New channels ADD `kind` values; never modify existing shapes. | Strict-grep gate + jest schema test |
-| **I-PROPOSED-BH** | `marketing-send` edge fn routes via switch on `channel_payload.kind`. The switch has `default: throw` to detect unknown kinds. | Deno test of dispatcher |
-| **I-PROPOSED-BI** | `ChannelTabs.tsx` renders all three tabs (Email/SMS/RCS) from day one. SMS/RCS are visually disabled but present in DOM. | Strict-grep gate |
-| **I-PROPOSED-BJ** | `BuyerRow.tsx` is the single shared component for Brand Customers tab and Event Buyers tab. No copy-paste. | Strict-grep gate (single-import check) |
-| **I-PROPOSED-BK** | Composer pre-fill query param shape is `audience={kind}:{id}` (e.g., `brand:abc`, `event:xyz`). New audience kinds extend without breaking existing URLs. | Jest test + composer route handler |
+| **I-PROPOSED-BP** | `marketing_audiences.query_definition` is a discriminated union with required `kind` field. New audience types ADD `kind` values; never modify existing shapes. | Strict-grep gate + jest schema test |
+| **I-PROPOSED-BQ** | `marketing_campaigns.channel_payload` is a discriminated union with required `kind` field. New channels ADD `kind` values; never modify existing shapes. | Strict-grep gate + jest schema test |
+| **I-PROPOSED-BR** | `marketing-send` edge fn routes via switch on `channel_payload.kind`. The switch has `default: throw` to detect unknown kinds. | Deno test of dispatcher |
+| **I-PROPOSED-BS** | `ChannelTabs.tsx` renders all three tabs (Email/SMS/RCS) from day one. SMS/RCS are visually disabled but present in DOM. | Strict-grep gate |
+| **I-PROPOSED-BT** | `BuyerRow.tsx` is the single shared component for Brand Customers tab and Event Buyers tab. No copy-paste. | Strict-grep gate (single-import check) |
+| **I-PROPOSED-BU** | Composer pre-fill query param shape is `audience={kind}:{id}` (e.g., `brand:abc`, `event:xyz`). New audience kinds extend without breaking existing URLs. | Jest test + composer route handler |
 
 All invariants flip DRAFT → ACTIVE on CLOSE.
 
@@ -778,7 +778,7 @@ A successful Phase A implementation, verified by tester, must:
 | SC-14 | Click-tracking redirect at /m/{tracking_id} writes `marketing_clicks.clicked_at`, increments `marketing_messages.click_count`, appends UTM params, 302-redirects |
 | SC-15 | Campaign report renders revenue hero, funnel row, click destination chart, conversions sparkline, top-buyers list; numbers reconcile with raw `marketing_messages` + `orders` |
 | SC-16 | Templates screen renders 5 Mingla starter-pack seeds + user-created list; "Use this template" populates composer |
-| SC-17 | All channel-extensibility invariants (I-PROPOSED-BF..BK) hold; strict-grep gate passes 100% |
+| SC-17 | All channel-extensibility invariants (I-PROPOSED-BP..BK) hold; strict-grep gate passes 100% |
 | SC-18 | tsc clean, jest green, Deno green, strict-grep green |
 | SC-19 | iOS Simulator + Android Emulator parity verified by tester (per `feedback_tester_canonical_and_platform_parity.md`); web preview-mode renders for `mingla-business/app/web` if expo-web is enabled |
 | SC-20 | Mingla design tokens used throughout; no oklch/lab colors; all keyboard rules followed; all sub-sheets inside parent sheets; all interactive elements ≥44pt + accessibilityLabel |
@@ -801,7 +801,7 @@ A successful Phase A implementation, verified by tester, must:
 | T-10 | Click tracking: redirect appends UTM and records click | Deno edge test | 302 with correct UTM params; `marketing_clicks.clicked_at` set |
 | T-11 | Unsubscribe: writes brand-scoped suppression | Deno edge test | Row inserted with `scope='brand'`; subsequent send skips contact |
 | T-12 | Brand Customers tab: pagination, filtering | jest component test | 25/page, filter sheet applies correctly |
-| T-13 | Event Buyers tab: same row component as Customers | jest component test | Imports `BuyerRow` from shared path (I-PROPOSED-BJ) |
+| T-13 | Event Buyers tab: same row component as Customers | jest component test | Imports `BuyerRow` from shared path (I-PROPOSED-BT) |
 | T-14 | Composer event-card insertion produces correct token | jest component test | `{{event:abc}}` token rendered in body; preview shows event card |
 | T-15 | Migration apply probes (idempotency) | Deno migration test | Re-running migration is a no-op; probes still pass |
 | T-16 | RLS: non-brand-member cannot SELECT marketing_campaigns | Supabase MCP probe | RLS denies |
@@ -821,7 +821,7 @@ A successful Phase A implementation, verified by tester, must:
 - ❌ Wire `MARKETING_SEND_LIVE_ENABLED=true` by default (must default `false` until ORCH-0777 closes)
 - ❌ Add brand-followers audience type (Phase D)
 - ❌ Send any real email to any real address during development (Resend sandbox only; production secrets gate live)
-- ❌ Skip channel-extensibility invariants I-PROPOSED-BF..BK
+- ❌ Skip channel-extensibility invariants I-PROPOSED-BP..BK
 - ❌ Use SECURITY DEFINER helpers for SELECT (per `feedback_rls_returning_owner_gap.md`)
 - ❌ Use Zustand persist for server records (per I-PROPOSED-J)
 - ❌ Use `.neq()` on nullable columns (per memory `feedback_supabase_neq_null.md`)
@@ -829,7 +829,7 @@ A successful Phase A implementation, verified by tester, must:
 - ❌ Render sub-sheets as Fragment siblings (per `feedback_rn_sub_sheet_must_render_inside_parent.md`)
 - ❌ Bare `crypto.randomUUID()` — use `mingla-business/src/utils/randomId.ts` (per DEC-148)
 - ❌ Call SECURITY DEFINER RPCs with `serviceClient()` when RPC reads `auth.uid()` — use `userClient(req)` (per DEC-148)
-- ❌ Modify the Email `channel_payload.kind='email'` shape — additive-only (I-PROPOSED-BG)
+- ❌ Modify the Email `channel_payload.kind='email'` shape — additive-only (I-PROPOSED-BQ)
 - ❌ Touch ORCH-0817 (RCS) or ORCH-0816 (ads research) work in this PR
 
 ---
