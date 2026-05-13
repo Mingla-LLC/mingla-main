@@ -201,6 +201,13 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
             multiline
             numberOfLines={5}
             textAlignVertical="top"
+            // ORCH-0823 v2: explicit autoCorrect={false} eliminates iOS
+            // autocorrect near-miss substitutions ("Big P" → "Bigot" — Path B).
+            // autoCapitalize="none" eliminates the iOS hardware-capslock +
+            // sentences-mode space-erasure (Path A) discovered during patched
+            // QA — see Mingla_Artifacts/reports/QA_ORCH-0823_EVENT_WIZARD_SPACE_CAPSLOCK_GLITCH_REPORT.md.
+            autoCorrect={false}
+            autoCapitalize="none"
             style={styles.textarea}
             accessibilityLabel="Event description"
           />

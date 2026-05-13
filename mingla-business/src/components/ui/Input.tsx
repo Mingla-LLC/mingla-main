@@ -46,6 +46,14 @@ import {
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 import { Sheet } from "./Sheet";
+// ORCH-0823 — VARIANT_BEHAVIOUR lives in a pure-data sibling so the
+// regression test (__tests__/Input.variantBehaviour.test.tsx) can import it
+// from the node test environment without pulling JSX into the module graph.
+import {
+  VARIANT_BEHAVIOUR,
+  type InputVariant,
+  type VariantBehaviour,
+} from "./Input.variants";
 
 // ---------------------------------------------------------------------------
 // Phone country list (ORCH-BIZ-0a-E2)
@@ -336,44 +344,16 @@ const findCountryByIso = (iso: string | undefined): PhoneCountry => {
 };
 
 // ---------------------------------------------------------------------------
-// Variant behaviour map
+// Variant behaviour map — ORCH-0823
 // ---------------------------------------------------------------------------
-
-export type InputVariant =
-  | "text"
-  | "email"
-  | "phone"
-  | "number"
-  | "password"
-  | "search";
-
-type VariantBehaviour = Pick<
-  TextInputProps,
-  "keyboardType" | "autoCapitalize" | "autoComplete" | "autoCorrect"
->;
-
-const VARIANT_BEHAVIOUR: Record<InputVariant, VariantBehaviour> = {
-  text: {},
-  email: {
-    keyboardType: "email-address",
-    autoCapitalize: "none",
-    autoComplete: "email",
-  },
-  phone: {
-    keyboardType: "phone-pad",
-    autoComplete: "tel",
-  },
-  number: {
-    keyboardType: "numeric",
-  },
-  password: {
-    autoComplete: "password",
-    autoCapitalize: "none",
-  },
-  search: {
-    autoCorrect: false,
-    autoCapitalize: "none",
-  },
+// VARIANT_BEHAVIOUR + InputVariant + VariantBehaviour are defined in
+// ./Input.variants and imported at the top of this file. Re-exported here for
+// backwards compatibility with any existing call-sites that imported the
+// names from "./Input".
+export {
+  VARIANT_BEHAVIOUR,
+  type InputVariant,
+  type VariantBehaviour,
 };
 
 // ---------------------------------------------------------------------------

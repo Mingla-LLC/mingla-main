@@ -92,3 +92,4 @@ ticketmaster-details*.md
 *-ticketmaster-keys.md
 *-ticketmaster-secrets.md
 .vercel
+Mingla_Artifacts/evidence/**/*.mov

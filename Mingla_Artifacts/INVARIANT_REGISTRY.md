@@ -69,6 +69,28 @@ Three invariants introduced by ORCH-0809 SPEC §7 — Discover Ticketmaster filt
 
 ---
 
+## ACTIVE (post ORCH-0823 CLOSE 2026-05-13)
+
+### I-PROPOSED-BP INPUT-VARIANT-EXPLICIT-FLAGS
+
+**Rule (ACTIVE):** Every variant in `mingla-business/src/components/ui/Input.variants.ts` `VARIANT_BEHAVIOUR` MUST declare both `autoCorrect` and `autoCapitalize` explicitly. No variant may evaluate to an empty `{}` or omit either property. Additionally:
+
+1. **`autoCorrect: false` on every variant** — iOS's autocorrect smart-replacement substitutes near-misses (proven: `Big P` → `Bigot` on the `text` variant pre-fix) which silently mutates user input. No Mingla input variant benefits from autocorrect.
+
+2. **`autoCapitalize: "sentences"` is BANNED on every variant** — iOS's sentences-mode pre-capitalize state machine collides with hardware capslock keypresses: pressing caps lock while a pending trailing space exists in the buffer causes iOS to silently delete the trailing space (proven via patched-build QA `T01-CLEAN-3.png` on 2026-05-13). Valid values: `"none"`, `"words"`, `"characters"`. The same ban applies to any raw `<TextInput>` outside the `Input` primitive on the same surfaces (the Description multiline field in the Event Wizard is the canonical example — covered by ORCH-0823's explicit fix at `CreatorStep1Basics.tsx:191-206`).
+
+**Why this exists:** ORCH-0823 surfaced two distinct iOS UIKit defects — Path B (autocorrect smart-replacement) and Path A (autoCapitalize sentences-mode + hardware capslock collision). Path B was identified in the original investigation; Path A was wrongly ruled out because Path B masked it visually. The v1 patch eliminated Path B only; live-fire RETEST revealed Path A as a real, independent defect. The v2 rework changed `autoCapitalize` to `"none"` everywhere ORCH-0823 touched. Both paths are now structurally impossible. Without this invariant the next free-text Input variant added to the codebase could silently re-introduce either defect.
+
+**Enforcement:** Jest regression test at `mingla-business/src/components/ui/__tests__/Input.variantBehaviour.test.tsx` (30 assertions across 6 variants). Fails if any variant: (a) omits `autoCorrect`, (b) omits `autoCapitalize`, (c) sets `autoCorrect` to `true`, (d) sets `autoCapitalize` to `"sentences"`. Test wired into per-ORCH script `npm run test:orch-0823` and the broader test suite. Sanity-check verified: reverting `text` to `{}` produces 4 test failures.
+
+**Source:** ORCH-0823 v2 close (this entry). Investigation `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0823_EVENT_WIZARD_SPACE_CAPSLOCK_GLITCH.md` + Path A errata addendum + v1 QA `reports/QA_ORCH-0823_EVENT_WIZARD_SPACE_CAPSLOCK_GLITCH_REPORT.md` (FAIL evidence T01-CLEAN-3) + v2 RETEST QA `reports/QA_ORCH-0823_EVENT_WIZARD_SPACE_CAPSLOCK_GLITCH_RETEST_REPORT.md` (PASS).
+
+**Scope:** `mingla-business/` only at this time. Consumer app `app-mobile/`'s own `Input` primitive (if any with the same defect class) needs separate investigation and is queued as a follow-up.
+
+**Constitutional ties:** strengthens Constitution #9 (no fabricated data) — pre-fix, iOS could substitute the user's typed `Big P` for `Bigot` (Path B) or silently erase a trailing space on capslock (Path A). Both forms of input-layer fabrication are now eliminated.
+
+---
+
 ## ACTIVE (post ORCH-0807 CLOSE 2026-05-12)
 
 One invariant introduced by ORCH-0807 SPEC §8 — brand profile photo upload offering native square crop. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0807 CLOSE after Claude `mingla-tester` PASS verdict (P0:0 P1:0 P2:0 P3:1 P4:4), with the strict-grep gate green (2/2), 3 negative-controls firing on every guard, migration applied on remote (bucket + 4 RLS policies verified live), tsc clean on all scoped files, jest 20/20, operator manual smoke confirmed end-to-end ("all works great").

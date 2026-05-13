@@ -35,7 +35,8 @@
     "test:orch-0778": "node ../.github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs",
     "test:orch-0783": "node ../.github/scripts/strict-grep/orch-0783-event-cover-image-provider-pivot.mjs && npx jest serverDraftEventMapper.test businessEventsPublish.test publicEventsService.test eventCoverMediaService.test eventCoverMedia.test giphyEventCoverService.test pexelsEventCoverService.test liveEventAdapter.test",
     "test:orch-0784": "node ../.github/scripts/strict-grep/orch-0784-event-list-sales-summary-visibility.mjs && npx jest eventSalesSummary.test",
-    "test:orch-0786": "node ../.github/scripts/strict-grep/orch-0786-creator-avatar-upload-integrity.mjs && npx jest creatorAvatarService.test creatorAvatarRules.test creatorAvatarFileReader.test edit-profile.avatar.test"
+    "test:orch-0786": "node ../.github/scripts/strict-grep/orch-0786-creator-avatar-upload-integrity.mjs && npx jest creatorAvatarService.test creatorAvatarRules.test creatorAvatarFileReader.test edit-profile.avatar.test",
+    "test:orch-0823": "npx jest Input.variantBehaviour.test"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
