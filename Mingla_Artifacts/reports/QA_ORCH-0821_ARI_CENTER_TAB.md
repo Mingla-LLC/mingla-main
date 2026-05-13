@@ -31,7 +31,7 @@ No code logic changed. No routes changed. No tab IDs changed. No icons or labels
 
 ### 2. Active-tab resolver — `detectActiveTab`
 
-[mingla-business/app/(tabs)/_layout.tsx:45-59](mingla-business/app/(tabs)/_layout.tsx#L45-L59)
+`mingla-business/app/(tabs)/_layout.tsx:45-59`
 
 - Uses `Array.find` with `lower === prefix || lower.startsWith(prefix + "/")`. Tab IDs (`home`, `events`, `ari`, `marketing`, `account`) are disjoint and non-overlapping prefixes — no tab ID is a prefix of another — so iteration order cannot produce a wrong match.
 - Nested marketing routes (`/marketing/audiences`, `/marketing/campaigns`, `/marketing/templates`) still resolve to the `marketing` tab via the `startsWith(prefix + "/")` branch (preserved from prior fix).
@@ -39,7 +39,7 @@ No code logic changed. No routes changed. No tab IDs changed. No icons or labels
 
 ### 3. Route resolution — `handleChange`
 
-[mingla-business/app/(tabs)/_layout.tsx:73-76](mingla-business/app/(tabs)/_layout.tsx#L73-L76)
+`mingla-business/app/(tabs)/_layout.tsx:73-76`
 
 - `router.push(\`/(tabs)/${id}\`)`. Routes are keyed by tab `id`, which is unchanged. `ari.tsx`, `marketing/`, `home.tsx`, `events.tsx`, `account.tsx` all still resolve.
 - **PASS**
@@ -52,7 +52,7 @@ No code logic changed. No routes changed. No tab IDs changed. No icons or labels
 
 ### 5. `hideBottomNav` carve-out
 
-[mingla-business/app/(tabs)/_layout.tsx:71](mingla-business/app/(tabs)/_layout.tsx#L71) — `pathname.includes("/campaigns/compose")` — unaffected by reorder (path-string match, not index-based).
+`mingla-business/app/(tabs)/_layout.tsx:71` — `pathname.includes("/campaigns/compose")` — unaffected by reorder (path-string match, not index-based).
 
 - **PASS**
 
