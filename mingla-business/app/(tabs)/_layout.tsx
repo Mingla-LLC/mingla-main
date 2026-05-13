@@ -22,21 +22,17 @@ import { canvas, spacing } from "../../src/constants/designSystem";
 const TABS: BottomNavTab[] = [
   { id: "home", icon: "home", label: "Home" },
   { id: "events", icon: "calendar", label: "Events" },
-  // ORCH-0815-B (DEC-149): Marketing Hub. Tab id stays `marketing` (so
-  // every `/(tabs)/marketing/*` route resolves correctly), label is the
-  // shorter "Blast" (5 chars) — fits the 4-tab capsule without clipping
-  // AND mirrors the verb used in every primary CTA ("Blast these N
-  // buyers"). `send` icon (paper-plane) is the closest semantic match
-  // for "broadcast / campaign" in the existing icon set. Sub-routes
-  // live under `/(tabs)/marketing/{overview, audiences, campaigns,
-  // templates}` with a sticky MarketingSubNav.
-  { id: "marketing", icon: "send", label: "Blast" },
-  // ORCH-0821: Ari — AI chat assistant. Sits before Account so Account
-  // stays rightmost (thumb-edge = settings, muscle memory). "Ari" is 3
-  // chars (shorter than "Blast"), so the BottomNav capsule with 5 items
-  // fits cleanly on iPhone SE width (65pt/tab) without clipping the
-  // spotlight pill on label expansion.
+  // Ari sits in the middle slot — AI assistant as the visual/thumb center
+  // of the capsule, with creation (Events) on its left and broadcast
+  // (Blast) on its right. Account stays rightmost (thumb-edge = settings,
+  // muscle memory).
   { id: "ari", icon: "sparkle", label: "Ari" },
+  // Marketing Hub. Tab id stays `marketing` (so every `/(tabs)/marketing/*`
+  // route resolves correctly), label is the shorter "Blast" — mirrors the
+  // verb used in every primary CTA ("Blast these N buyers"). `send` icon
+  // (paper-plane) is the closest semantic match for broadcast/campaign in
+  // the existing icon set.
+  { id: "marketing", icon: "send", label: "Blast" },
   { id: "account", icon: "user", label: "Account" },
 ];
 

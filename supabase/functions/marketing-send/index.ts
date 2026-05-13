@@ -290,16 +290,31 @@ async function sendEmail(
 
   const { data: brandRow, error: brandErr } = await supabase
     .from("brands")
-    .select("id, name, slug")
+    .select("id, name, slug, cover_media_url, cover_media_type")
     .eq("id", campaign.brand_id)
     .maybeSingle();
   if (brandErr) throw new Error(`brand_load:${brandErr.message}`);
   // The brands table column is `name` (not `display_name` — that's the
   // mobile-side camelCased property mapped through the Brand type).
-  const brandName: string = (brandRow as { name?: string } | null)
-    ?.name ?? "Mingla brand";
-  const brandSlug: string | null = (brandRow as { slug?: string | null } | null)
-    ?.slug ?? null;
+  const brandRowTyped = brandRow as {
+    name?: string;
+    slug?: string | null;
+    cover_media_url?: string | null;
+    cover_media_type?: string | null;
+  } | null;
+  const brandName: string = brandRowTyped?.name ?? "Mingla brand";
+  const brandSlug: string | null = brandRowTyped?.slug ?? null;
+  // Brand cover for the email header — only when it's a still image
+  // (same video-skip rule as event cards; `.mov` URLs render broken in
+  // Apple Mail iOS). When null, the renderer falls back to the Mingla
+  // logo as before.
+  const brandHeaderImageUrl: string | null =
+    brandRowTyped?.cover_media_url !== null &&
+      brandRowTyped?.cover_media_url !== undefined &&
+      brandRowTyped.cover_media_url.length > 0 &&
+      brandRowTyped.cover_media_type !== "video"
+      ? brandRowTyped.cover_media_url
+      : null;
 
   // Per-brand sender address: `<brandSlug>@usemingla.com`. Falls back to a
   // slugified version of the brand name when the brand has no slug, and
@@ -353,6 +368,7 @@ async function sendEmail(
       unsubscribe_url: unsubscribeUrl,
       subject: substituteString(subject, variables),
       brand_name: brandName,
+      brand_header_image_url: brandHeaderImageUrl,
     });
 
     // INSERT marketing_messages row (status='queued' until terminal).
