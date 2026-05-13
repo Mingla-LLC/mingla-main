@@ -31,6 +31,12 @@ const TABS: BottomNavTab[] = [
   // live under `/(tabs)/marketing/{overview, audiences, campaigns,
   // templates}` with a sticky MarketingSubNav.
   { id: "marketing", icon: "send", label: "Blast" },
+  // ORCH-0821: Ari — AI chat assistant. Sits before Account so Account
+  // stays rightmost (thumb-edge = settings, muscle memory). "Ari" is 3
+  // chars (shorter than "Blast"), so the BottomNav capsule with 5 items
+  // fits cleanly on iPhone SE width (65pt/tab) without clipping the
+  // spotlight pill on label expansion.
+  { id: "ari", icon: "sparkle", label: "Ari" },
   { id: "account", icon: "user", label: "Account" },
 ];
 

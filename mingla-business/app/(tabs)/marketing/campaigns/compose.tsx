@@ -25,6 +25,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -37,11 +38,11 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 
+import { Toast } from "../../../../src/components/ui/Toast";
 import { ComposerHeader } from "../../../../src/components/marketing/ComposerHeader";
 import { ComposerStepWho } from "../../../../src/components/marketing/ComposerStepWho";
 import { ComposerStepWhat } from "../../../../src/components/marketing/ComposerStepWhat";
 import { ComposerStepWhen, type SendMode } from "../../../../src/components/marketing/ComposerStepWhen";
-import { ComposerStepCompliance } from "../../../../src/components/marketing/ComposerStepCompliance";
 import { ComposerFooter } from "../../../../src/components/marketing/ComposerFooter";
 import {
   AudiencePickerSheet,
@@ -66,7 +67,6 @@ import {
   useResolveAudience,
 } from "../../../../src/hooks/marketing/useResolveAudience";
 import { useScheduleCampaign } from "../../../../src/hooks/marketing/useScheduleCampaign";
-import { useSendNow } from "../../../../src/hooks/marketing/useSendNow";
 import { useComposerDraft } from "../../../../src/hooks/marketing/useComposerDraft";
 import {
   createDraft,
@@ -268,16 +268,18 @@ export default function ComposeCampaignRoute(): React.ReactElement {
 
   const scheduleMutation = useScheduleCampaign({
     onSuccess: () => {
-      // For schedule mode, success here = full success (no follow-up needed).
-      // For send-now mode, defer the overlay until the marketing-send invoke
-      // succeeds — otherwise the overlay can fire even when the dispatcher
-      // call failed and the campaign sits forever at status='scheduled'.
-      if (sendMode !== "now") {
-        sanctionedExitRef.current = true;
-        setShowReview(false);
-        setIsSendNowConfirmation(false);
-        setShowSentConfirmation(true);
-      }
+      // Both "Schedule" and "Send now" rely on cron to deliver — Send now
+      // simply schedules for `scheduled_for=now()` so the next cron tick
+      // (within 60s) picks it up. The composer no longer invokes
+      // marketing-send directly; that direct-invoke path collided with
+      // `--no-verify-jwt` deploy semantics (the user JWT wasn't reaching
+      // the function reliably, causing the RLS-gated ownership check to
+      // 403 and surfacing a misleading "Send failed" banner even though
+      // cron still delivered ~30s later).
+      sanctionedExitRef.current = true;
+      setShowReview(false);
+      setIsSendNowConfirmation(sendMode === "now");
+      setShowSentConfirmation(true);
     },
     onError: (err) => {
       setErrorBanner(
@@ -288,50 +290,27 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     },
   });
 
-  const sendNowMutation = useSendNow({
-    onSuccess: () => {
-      // marketing-send dispatcher accepted the request — fire the overlay.
-      sanctionedExitRef.current = true;
-      setShowReview(false);
-      setIsSendNowConfirmation(true);
-      setShowSentConfirmation(true);
-    },
-    onError: (err) => {
-      // Don't show the success overlay — surface the real failure. Cron
-      // will retry the still-scheduled row on its next tick.
-      setErrorBanner(
-        err instanceof Error
-          ? `Send failed: ${err.message}. We'll retry on the next cron tick.`
-          : "Send failed. We'll retry on the next cron tick.",
-      );
-    },
-  });
-
   const handleConfirmSchedule = useCallback(() => {
     if (campaignId === null) return;
+    // Drop the keyboard before the confirmation overlay paints so the
+    // overlay isn't sharing the screen with a half-collapsed keyboard.
+    Keyboard.dismiss();
     const isoForServer = sendMode === "now"
       ? new Date().toISOString()
       : new Date(scheduledForIso).toISOString();
-    scheduleMutation.mutate(
-      {
-        campaign_id: campaignId,
-        scheduled_for: isoForServer,
-        name: subject.length > 0 ? subject : "Untitled campaign",
-        channel_payload: {
-          kind: "email",
-          subject,
-          body_html: body,
-          body_text: stripHtml(body),
-          embedded_events: embeddedEvents,
-        },
+    scheduleMutation.mutate({
+      campaign_id: campaignId,
+      scheduled_for: isoForServer,
+      name: subject.length > 0 ? subject : "Untitled campaign",
+      channel_payload: {
+        kind: "email",
+        subject,
+        body_html: body,
+        body_text: stripHtml(body),
+        embedded_events: embeddedEvents,
       },
-      {
-        onSuccess: () => {
-          if (sendMode === "now") sendNowMutation.mutate(campaignId);
-        },
-      },
-    );
-  }, [campaignId, sendMode, scheduledForIso, subject, body, embeddedEvents, scheduleMutation, sendNowMutation]);
+    });
+  }, [campaignId, sendMode, scheduledForIso, subject, body, embeddedEvents, scheduleMutation]);
 
   // Back-block — intercept exits if dirty.
   useEffect(() => {
@@ -504,6 +483,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         }}
         saveDraftDisabled={!isDirty && campaignId !== null}
       />
+      <Toast
+        visible={errorBanner !== null}
+        kind="error"
+        message={errorBanner ?? ""}
+        onDismiss={() => setErrorBanner(null)}
+      />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.kavHost}
@@ -513,10 +498,6 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {errorBanner !== null ? (
-            <ErrorBanner message={errorBanner} onDismiss={() => setErrorBanner(null)} />
-          ) : null}
-
           <ComposerStepWho
             audienceName={audienceName}
             reachableEmail={reach?.reachable_email ?? null}
@@ -560,11 +541,18 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             }}
           />
 
-          <ComposerStepCompliance
-            brandName={brandName}
-            brandContactEmail={null}
-            brandAddress={brandAddress}
-          />
+          {/* Compact compliance notice — replaces the verbose Step 4 card
+              per operator feedback. The brand From line, reply-to,
+              unsubscribe behaviour, and address are all auto-handled. */}
+          <View style={styles.complianceNotice}>
+            <Text style={styles.complianceText}>
+              From <Text style={styles.complianceStrong}>{brandName ?? "your brand"}</Text>
+              {" · "}Unsubscribe link auto-added{" · "}
+              <Text style={styles.complianceMuted}>
+                {brandAddress !== null ? brandAddress : "Set brand address in profile"}
+              </Text>
+            </Text>
+          </View>
         </ScrollView>
 
         <ComposerFooter
@@ -575,7 +563,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           saveDraftLabel="Save draft"
           onReview={() => setShowReview(true)}
           reviewDisabled={validationIssues.length > 0}
-          submitting={scheduleMutation.isPending || sendNowMutation.isPending}
+          submitting={scheduleMutation.isPending}
         />
 
         {/* Sub-sheets MUST render inside this parent KeyboardAvoidingView,
@@ -614,7 +602,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           subject={subject}
           scheduledLabel={scheduledLabel}
           isSendNow={sendMode === "now"}
-          submitting={scheduleMutation.isPending || sendNowMutation.isPending}
+          submitting={scheduleMutation.isPending}
           onBack={() => setShowReview(false)}
           onClose={() => setShowReview(false)}
           onConfirm={handleConfirmSchedule}
@@ -642,26 +630,6 @@ function stripHtml(input: string): string {
   return input.replace(/<[^>]+>/g, "");
 }
 
-interface ErrorBannerProps {
-  message: string;
-  onDismiss: () => void;
-}
-const ErrorBanner: React.FC<ErrorBannerProps> = ({ message, onDismiss }) => (
-  <Pressable
-    onPress={onDismiss}
-    accessibilityRole="button"
-    accessibilityLabel="Dismiss error"
-    style={styles.errorBanner}
-  >
-    <View style={styles.errorBannerInner}>
-      <View style={styles.errorBannerDot} />
-      <Text style={[typography.bodySm, { color: textTokens.primary, flex: 1 }]}>
-        {message}
-      </Text>
-    </View>
-  </Pressable>
-);
-
 const styles = StyleSheet.create({
   host: {
     flex: 1,
@@ -680,24 +648,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  errorBanner: {
-    paddingVertical: spacing.sm,
+  complianceNotice: {
     paddingHorizontal: spacing.md,
-    borderRadius: 12,
-    backgroundColor: "rgba(245, 158, 11, 0.12)",
-    borderLeftWidth: 3,
-    borderLeftColor: "#f59e0b",
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
-  errorBannerInner: {
-    flexDirection: "row",
-    gap: spacing.sm,
+  complianceText: {
+    ...typography.bodySm,
+    color: textTokens.tertiary,
   },
-  errorBannerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#f59e0b",
-    marginTop: 6,
+  complianceStrong: {
+    color: textTokens.primary,
+    fontWeight: "600",
+  },
+  complianceMuted: {
+    color: textTokens.tertiary,
+    fontStyle: "italic",
   },
   draftCaption: {
     paddingHorizontal: spacing.md,
