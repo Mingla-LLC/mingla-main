@@ -41,7 +41,11 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { Toast } from "../../../../src/components/ui/Toast";
 import { ComposerHeader } from "../../../../src/components/marketing/ComposerHeader";
 import { ComposerStepWho } from "../../../../src/components/marketing/ComposerStepWho";
-import { ComposerStepWhat } from "../../../../src/components/marketing/ComposerStepWhat";
+import {
+  ComposerStepWhat,
+  insertVariableAtCursor,
+  type PersonalizationToken,
+} from "../../../../src/components/marketing/ComposerStepWhat";
 import { ComposerStepWhen, type SendMode } from "../../../../src/components/marketing/ComposerStepWhen";
 import { ComposerFooter } from "../../../../src/components/marketing/ComposerFooter";
 import {
@@ -52,6 +56,7 @@ import {
   EventCardInserter,
   type EventCardOption,
 } from "../../../../src/components/marketing/EventCardInserter";
+import { EmbeddedEventChips } from "../../../../src/components/marketing/EmbeddedEventChips";
 import { EmailPreviewPane } from "../../../../src/components/marketing/EmailPreviewPane";
 import { ComposerReviewSheet } from "../../../../src/components/marketing/ComposerReviewSheet";
 import { ComposerSentConfirmation } from "../../../../src/components/marketing/ComposerSentConfirmation";
@@ -75,6 +80,7 @@ import {
   getCampaign,
   updateDraft,
 } from "../../../../src/services/marketing/marketingCampaignService";
+import { supabase } from "../../../../src/services/supabase";
 import type { MarketingChannelKind } from "../../../../src/components/marketing/ChannelTabs";
 import type { PreviewVariables } from "../../../../src/services/marketing/marketingRenderingService";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
@@ -114,6 +120,14 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const [audienceId, setAudienceId] = useState<string | null>(null);
   const [audienceName, setAudienceName] = useState<string | null>(null);
   const [embeddedEvents, setEmbeddedEvents] = useState<string[]>([]);
+  // Display-only metadata for the EmbeddedEventChips row. Mirrors
+  // `embeddedEvents` (the persisted IDs array) with the event title +
+  // date_label so the chip can show human-readable info. Hydrated on
+  // draft restore via a one-shot supabase query, and on first insert
+  // from the EventCardOption returned by the picker.
+  const [embeddedEventDetails, setEmbeddedEventDetails] = useState<
+    Array<{ id: string; title: string; date_label: string | null }>
+  >([]);
   const [sendMode, setSendMode] = useState<SendMode>("now");
   const [scheduledForIso, setScheduledForIso] = useState("");
   const [campaignId, setCampaignId] = useState<string | null>(null);
@@ -201,6 +215,60 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       cancelled = true;
     };
   }, [draftId]);
+
+  // Reconcile embeddedEventDetails with embeddedEvents — fetches titles for
+  // any IDs that don't yet have hydrated details. Triggered when draft restore
+  // populates `embeddedEvents` from the persisted channel_payload, AND
+  // defensively when anything else mutates the ids list.
+  useEffect(() => {
+    if (embeddedEvents.length === 0) {
+      if (embeddedEventDetails.length !== 0) setEmbeddedEventDetails([]);
+      return;
+    }
+    const knownIds = new Set(embeddedEventDetails.map((e) => e.id));
+    const missing = embeddedEvents.filter((id) => !knownIds.has(id));
+    if (missing.length === 0) {
+      // Filter out details whose id has been removed from embeddedEvents.
+      const persistedIds = new Set(embeddedEvents);
+      if (embeddedEventDetails.some((e) => !persistedIds.has(e.id))) {
+        setEmbeddedEventDetails((prev) =>
+          prev.filter((e) => persistedIds.has(e.id)),
+        );
+      }
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("events_with_master_date_view")
+        .select("id, title, master_start_at")
+        .in("id", missing);
+      if (cancelled || error || data === null) return;
+      const fetched = (data as Array<{
+        id: string;
+        title: string | null;
+        master_start_at: string | null;
+      }>).map((r) => ({
+        id: r.id,
+        title: r.title ?? "Untitled event",
+        date_label: r.master_start_at !== null
+          ? new Date(r.master_start_at).toLocaleDateString(undefined, {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+            })
+          : null,
+      }));
+      setEmbeddedEventDetails((prev) => {
+        const existingIds = new Set(prev.map((e) => e.id));
+        const newOnes = fetched.filter((e) => !existingIds.has(e.id));
+        return [...prev, ...newOnes];
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [embeddedEvents, embeddedEventDetails]);
 
   // Auto-save draft (debounced).
   const flushDraft = useCallback(
@@ -386,13 +454,50 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const handleInsertEventCard = useCallback((event: EventCardOption) => {
     const token = `{{event:${event.id}}}`;
     setBody((prev) => {
+      // Guard against double-insert of the same event — the operator probably
+      // didn't mean to embed the same card twice; the chip row reflects single
+      // membership so the body should too.
+      if (prev.includes(token)) return prev;
       const insertAt = Math.min(bodySelectionEnd, prev.length);
       const safeInsertAt = Math.max(0, Math.min(insertAt, prev.length));
       return prev.slice(0, safeInsertAt) + token + prev.slice(safeInsertAt);
     });
     setEmbeddedEvents((prev) => (prev.includes(event.id) ? prev : [...prev, event.id]));
+    setEmbeddedEventDetails((prev) =>
+      prev.some((e) => e.id === event.id)
+        ? prev
+        : [...prev, { id: event.id, title: event.title, date_label: event.date_label }],
+    );
     setIsDirty(true);
   }, [bodySelectionEnd]);
+
+  const handleRemoveEmbeddedEvent = useCallback((eventId: string) => {
+    // Drop the matching `{{event:<uuid>}}` token from the body, then collapse
+    // any orphan blank lines the removal left behind so the body stays clean.
+    setBody((prev) => {
+      // Escape the UUID for a safe RegExp — UUIDs don't contain special chars
+      // but defensive escaping costs nothing.
+      const escaped = eventId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const tokenRe = new RegExp(`\\{\\{event:${escaped}\\}\\}\\n*`, "g");
+      return prev.replace(tokenRe, "").replace(/\n{3,}/g, "\n\n");
+    });
+    setEmbeddedEvents((prev) => prev.filter((id) => id !== eventId));
+    setEmbeddedEventDetails((prev) => prev.filter((e) => e.id !== eventId));
+    setIsDirty(true);
+  }, []);
+
+  const handleInsertVariable = useCallback((token: PersonalizationToken) => {
+    setBody((prev) => {
+      const { body: next } = insertVariableAtCursor(
+        prev,
+        bodySelectionStart,
+        bodySelectionEnd,
+        token,
+      );
+      return next;
+    });
+    setIsDirty(true);
+  }, [bodySelectionStart, bodySelectionEnd]);
 
   const handleSelectAudience = useCallback(async (option: AudienceOption) => {
     setAudienceName(option.name);
@@ -526,6 +631,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             onSelectionChange={onSelectionChange}
             onInsertEventCard={() => setShowEventInserter(true)}
             onOpenPreview={() => setShowPreview(true)}
+            onInsertVariable={handleInsertVariable}
+          />
+
+          <EmbeddedEventChips
+            events={embeddedEventDetails}
+            onRemove={handleRemoveEmbeddedEvent}
           />
 
           <ComposerStepWhen
@@ -593,6 +704,13 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             bodyHtml={body}
             variables={previewVariables}
             brandName={brandName}
+            brandHeaderImageUrl={
+              currentBrand !== null &&
+                currentBrand.coverMediaType !== "video"
+                ? currentBrand.coverMediaUrl ?? null
+                : null
+            }
+            embeddedEvents={embeddedEventDetails}
           />
         </Sheet>
         <ComposerReviewSheet

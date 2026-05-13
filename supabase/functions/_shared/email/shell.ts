@@ -18,6 +18,15 @@ export interface ShellInput {
   supportEmail: string;
   logoUrl: string;
   footerAddress: string;
+  /**
+   * Optional: when set, replaces the centered Mingla logo at the top of
+   * the email with a full-width header banner — used by marketing email
+   * to brand the email with the sending brand's cover image. Image URL
+   * must be a still image (PNG/JPG/WEBP); callers must apply the same
+   * video-skip rule socialPreview.js uses (cover_media_type !== 'video').
+   * When null/undefined, the standard Mingla-logo header renders.
+   */
+  brandHeaderImageUrl?: string | null;
 }
 
 export function renderShell(input: ShellInput): string {
@@ -25,6 +34,29 @@ export function renderShell(input: ShellInput): string {
   const address = escapeHtml(input.footerAddress);
   const preheader = escapeHtml(input.preheader);
   const logo = escapeHtml(input.logoUrl);
+  // When the caller passes a brand header image, render it as a full-width
+  // banner (no inner padding) so the brand's cover fills the email header.
+  // Otherwise render the standard centered Mingla logo with the usual
+  // 28px chrome padding.
+  // escapeHtml(...) is inlined at the call site (not pre-computed into a
+  // `brandHeader` variable) so the ORCH-0785-C buyer-string-escape gate
+  // sees it as already-escaped. The gate's regex flags any identifier
+  // starting with `brand|order|event|...` interpolated in HTML context
+  // unless the call-site form is `escapeHtml(...)` directly.
+  const hasBrandBanner = input.brandHeaderImageUrl !== null &&
+    input.brandHeaderImageUrl !== undefined &&
+    input.brandHeaderImageUrl.length > 0;
+  const headerRow = hasBrandBanner
+    ? `<tr>
+              <td style="padding:0;background:#FFFFFF;">
+                <img src="${escapeHtml(input.brandHeaderImageUrl ?? "")}" alt="" width="600" style="display:block;width:100%;max-width:600px;height:auto;max-height:240px;object-fit:cover;border:0;outline:none;text-decoration:none;" />
+              </td>
+            </tr>`
+    : `<tr>
+              <td align="center" style="padding:28px 28px 24px 28px;border-bottom:1px solid ${BRAND_BORDER};">
+                <img src="${logo}" alt="Mingla" width="180" style="display:inline-block;border:0;outline:none;text-decoration:none;height:auto;max-width:180px;" />
+              </td>
+            </tr>`;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -40,11 +72,7 @@ export function renderShell(input: ShellInput): string {
       <tr>
         <td align="center" style="padding:32px 16px;">
           <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#FFFFFF;border:1px solid ${BRAND_BORDER};border-radius:16px;overflow:hidden;">
-            <tr>
-              <td align="center" style="padding:28px 28px 24px 28px;border-bottom:1px solid ${BRAND_BORDER};">
-                <img src="${logo}" alt="Mingla" width="180" style="display:inline-block;border:0;outline:none;text-decoration:none;height:auto;max-width:180px;" />
-              </td>
-            </tr>
+            ${headerRow}
             <tr>
               <td style="padding:28px;">
                 ${input.bodyHtml}

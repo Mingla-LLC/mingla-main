@@ -78,6 +78,14 @@ export interface RenderMarketingEmailInput {
   subject: string;
   brand_name: string;
   support_email?: string;
+  /**
+   * Optional brand cover image URL — when set, replaces the centered
+   * Mingla logo in the email header with a full-width brand banner.
+   * Caller must apply the same video-skip rule used for event covers
+   * (`cover_media_type !== 'video'`) — `.mov` URLs render as broken
+   * placeholders in Apple Mail iOS.
+   */
+  brand_header_image_url?: string | null;
 }
 
 export interface RenderMarketingEmailResult {
@@ -157,6 +165,7 @@ export function renderMarketingEmail(
       "https://usemingla.com/email-assets/mingla-logo.png",
     footerAddress: Deno.env.get("MINGLA_FOOTER_ADDRESS") ??
       "Mingla, hello@usemingla.com",
+    brandHeaderImageUrl: input.brand_header_image_url ?? null,
   });
 
   // Flat-text fallback (strip tags, collapse whitespace). Good-enough
