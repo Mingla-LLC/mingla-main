@@ -19,6 +19,11 @@ import type {
 } from "../store/draftEventStore";
 import type { BrandStripeStatus } from "../store/currentBrandStore";
 import { weekdayOfIso, formatWeekdayLong } from "./recurrenceRule";
+import {
+  PARTY_TYPE_SLUGS,
+  VIBE_TAG_SLUGS,
+  MUSIC_GENRE_SLUGS,
+} from "../constants/eventTaxonomy";
 
 export interface ValidationError {
   /** Identifier for the field — drives inline rendering + Fix-jump logic. */
@@ -88,8 +93,42 @@ const validateBasics = (d: DraftEvent): ValidationError[] => {
       message: "Add a short description.",
     });
   }
-  if (d.category === null) {
-    errs.push({ fieldKey: "category", step: 0, message: "Pick a category." });
+  // ORCH-0824: party types required (at least one); replaces the
+  // deprecated single-select `category` field.
+  if (d.partyTypes.length === 0) {
+    errs.push({
+      fieldKey: "partyTypes",
+      step: 0,
+      message: "Pick at least one party type.",
+    });
+  } else if (!d.partyTypes.every((s) => (PARTY_TYPE_SLUGS as readonly string[]).includes(s))) {
+    // Defensive: persisted drafts from older builds with stale slugs.
+    errs.push({
+      fieldKey: "partyTypes",
+      step: 0,
+      message: "One of the selected party types is no longer supported. Pick again.",
+    });
+  }
+  // Vibe tags and music genres are optional, but if present must be canonical.
+  if (
+    d.vibeTags.length > 0 &&
+    !d.vibeTags.every((s) => (VIBE_TAG_SLUGS as readonly string[]).includes(s))
+  ) {
+    errs.push({
+      fieldKey: "vibeTags",
+      step: 0,
+      message: "One of the selected vibes is no longer supported. Pick again.",
+    });
+  }
+  if (
+    d.musicGenres.length > 0 &&
+    !d.musicGenres.every((s) => (MUSIC_GENRE_SLUGS as readonly string[]).includes(s))
+  ) {
+    errs.push({
+      fieldKey: "musicGenres",
+      step: 0,
+      message: "One of the selected music genres is no longer supported. Pick again.",
+    });
   }
   return errs;
 };
@@ -325,6 +364,15 @@ const validateWhere = (d: DraftEvent): ValidationError[] => {
         fieldKey: "address",
         step: 2,
         message: "Add the venue address.",
+      });
+    } else if (d.city === null || d.city.trim().length === 0) {
+      // ORCH-0824: address must be picked from Google Places autocomplete
+      // so that `city` is structured and indexable for Discover filtering.
+      // Typing free-text without picking a suggestion leaves city null.
+      errs.push({
+        fieldKey: "address",
+        step: 2,
+        message: "Pick the venue address from the suggestions.",
       });
     }
   }

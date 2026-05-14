@@ -244,6 +244,14 @@ export interface TimelineData {
 export interface ExpandedCardModalProps {
   visible: boolean;
   card: ExpandedCardData | null;
+  /**
+   * ORCH-0824: when set (and `card` is null), the modal renders the
+   * business-event branch instead of the place/TM branch. The two are
+   * mutually exclusive — DiscoverScreen clears one before setting the
+   * other. Optional to preserve backward compatibility with existing
+   * call sites that only pass `card`.
+   */
+  businessEvent?: import("./mergedDiscover").BusinessEventCard | null;
   onClose: () => void;
   onSave: (card: ExpandedCardData) => Promise<void> | void;
   onPurchase?: (card: ExpandedCardData, bookingOption: BookingOption) => void;

@@ -102,6 +102,14 @@ export type EditableLiveEventFields = Pick<
   | "passwordProtected"
   | "privateGuestList"
   | "inPersonPaymentsEnabled"
+  // ORCH-0824 hotfix: new taxonomy + city fields must be editable post-publish
+  // so the diff/save pipeline detects pill toggles and address re-picks.
+  // Listed as SAFE_KEYS below (additive — no buyer-protection guard rails).
+  | "partyTypes"
+  | "vibeTags"
+  | "musicGenres"
+  | "city"
+  | "locationGeo"
 >;
 
 /**
@@ -149,7 +157,26 @@ export interface LiveEvent {
   name: string;
   description: string;
   format: DraftEventFormat;
+  /**
+   * @deprecated ORCH-0824 — replaced by partyTypes/vibeTags/musicGenres
+   * arrays below. Kept on the type for in-memory persisted-LiveEvent
+   * backward compatibility (Zustand storage from pre-ORCH-0824 builds).
+   * Read-only going forward; new publishes write null.
+   * Cleanup target: ORCH-0824-D.
+   */
   category: string | null;
+  /**
+   * ORCH-0824: multi-select party type slugs. Optional on the TYPE for
+   * backward compat with persisted older LiveEvents; the
+   * liveEventToEditableDraft adapter defaults missing values to [].
+   */
+  partyTypes?: string[];
+  vibeTags?: string[];
+  musicGenres?: string[];
+  /** ORCH-0824: normalized city from Google Places autocomplete at publish. */
+  city?: string | null;
+  /** ORCH-0824: structured lat/lng from Google Places autocomplete at publish. */
+  locationGeo?: { lat: number; lng: number } | null;
   whenMode: WhenMode;
   date: string | null;
   doorsOpen: string | null;

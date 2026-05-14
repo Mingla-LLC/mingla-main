@@ -45,6 +45,12 @@ import { formatPriceRange, parseAndFormatDistance } from "./utils/formatters";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { NightOutExperiencesService, NightOutVenue } from "../services/nightOutExperiencesService";
+// ORCH-0824: merged Discover types + business-event card.
+import type {
+  BusinessEventCard as BusinessEventCardData,
+  MergedDiscoverItem,
+} from "../types/mergedDiscover";
+import { BusinessEventCard } from "./discover/BusinessEventCard";
 import { useAppStore } from "../store/appStore";
 import { useTabScrollRegistry } from "../hooks/useTabScrollRegistry";
 import { useUserLocation } from "../hooks/useUserLocation";
@@ -109,6 +115,13 @@ interface NightOutFilters {
   date: DateFilter;
   segment: SegmentFilter;
   genre: GenreFilter;
+  // ORCH-0824: Mingla-native facets. When non-empty, the merged endpoint
+  // applies array-overlap filtering on business events; when partyTypes
+  // OR vibeTags has any selection, Ticketmaster is suppressed entirely
+  // (I-PROPOSED-DISCOVER-TM-SUPPRESSION).
+  partyTypes: string[];
+  vibeTags: string[];
+  musicGenres: string[];
 }
 
 // ORCH-0809 M2: GENRE_TO_KEYWORDS map removed. Genre filtering now uses real Ticketmaster
@@ -765,6 +778,12 @@ function DiscoverScreen({
   // Expanded-card state
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
+  // ORCH-0824: when a BusinessEventCard is tapped, this state is set
+  // alongside opening the same ExpandedCardModal — the modal renders the
+  // business-event branch on this prop (Step 20). Mutually exclusive
+  // with selectedCardForExpansion (TM/place); only one open at a time.
+  const [selectedBusinessEventForExpansion, setSelectedBusinessEventForExpansion] =
+    useState<BusinessEventCardData | null>(null);
   const expandedCardListRef = useRef<ExpandedCardData[]>([]);
   const [expandedCardIndex, setExpandedCardIndex] = useState<number | null>(null);
 
@@ -835,8 +854,18 @@ function DiscoverScreen({
           date: discoverFiltersSnapshot.date as DateFilter,
           segment: (discoverFiltersSnapshot.segment as SegmentFilter) ?? "music",
           genre: discoverFiltersSnapshot.genre as GenreFilter,
+          // ORCH-0824: defensive — older snapshots won't have these fields.
+          partyTypes: [],
+          vibeTags: [],
+          musicGenres: [],
         }
-      : { date: "any", segment: "music", genre: "all" }
+      : { date: "any", segment: "music", genre: "all", partyTypes: [], vibeTags: [], musicGenres: [] }
+  );
+  // ORCH-0824: business events that came back from the merged endpoint,
+  // rendered above the Ticketmaster grid. Empty when no business events
+  // match the active city + filters.
+  const [businessEvents, setBusinessEvents] = useState<BusinessEventCardData[]>(
+    [],
   );
 
   // ORCH-0809 M2: city picker state. selectedCity comes from preferences;
@@ -1054,33 +1083,60 @@ function DiscoverScreen({
         const { localStartEndDateTime } = getDateRange(selectedFilters.date);
         const genreSlugs: DiscoverGenreSlug[] =
           selectedFilters.genre === "all" ? [] : [selectedFilters.genre];
-        const { events, meta } = await NightOutExperiencesService.search({
-          city: effectiveCity
-            ? {
-                name: effectiveCity.name,
-                stateCode: effectiveCity.stateCode,
-                countryCode: effectiveCity.countryCode,
-                fallbackLat: effectiveCity.lat,
-                fallbackLng: effectiveCity.lng,
-                fallbackRadiusKm: 50,
-              }
-            : undefined,
-          location: !effectiveCity && nightOutGpsLat && nightOutGpsLng
-            ? { lat: nightOutGpsLat, lng: nightOutGpsLng }
-            : undefined,
-          radius: !effectiveCity ? 50 : undefined,
-          segmentSlug: selectedFilters.segment,
-          genreSlugs,
-          localStartEndDateTime: localStartEndDateTime ?? undefined,
-          sort: "date,asc",
-        });
-        const usedFallbackNow = meta?.usedFallback === true;
-        setFallbackActive(usedFallbackNow);
-        const cards = events.map(transformNightOutVenue);
-        setNightOutCards(cards);
-        // ORCH-0809 M2.1 (P1-1 audit fix): persist fallbackActive alongside the
-        // cached events so the banner state is correctly restored on cache hit.
-        saveNightOutCache(cards, usedFallbackNow);
+        // ORCH-0824: merged endpoint when we have a city; falls back to
+        // TM-only `search()` when only GPS is available (the merged
+        // endpoint requires a structured city). The merged endpoint
+        // handles TM suppression and business-first ranking server-side.
+        if (effectiveCity) {
+          const merged = await NightOutExperiencesService.searchMerged({
+            city: {
+              name: effectiveCity.name,
+              stateCode: effectiveCity.stateCode,
+              countryCode: effectiveCity.countryCode,
+              fallbackLat: effectiveCity.lat,
+              fallbackLng: effectiveCity.lng,
+              fallbackRadiusKm: 50,
+            },
+            segmentSlug: selectedFilters.segment,
+            genreSlugs,
+            localStartEndDateTime: localStartEndDateTime ?? undefined,
+            sort: "date,asc",
+            partyTypeSlugs: selectedFilters.partyTypes,
+            vibeTagSlugs: selectedFilters.vibeTags,
+            musicGenreSlugs: selectedFilters.musicGenres,
+          });
+          // Partition the merged items: business events first, TM second.
+          const bizItems: BusinessEventCardData[] = [];
+          const tmVenues: NightOutVenue[] = [];
+          for (const it of merged.items as MergedDiscoverItem[]) {
+            if (it.source === "business_event") bizItems.push(it.item);
+            else tmVenues.push(it.item);
+          }
+          setBusinessEvents(bizItems);
+          setFallbackActive(false);
+          const cards = tmVenues.map(transformNightOutVenue);
+          setNightOutCards(cards);
+          saveNightOutCache(cards, false);
+        } else {
+          // GPS-only path keeps the legacy TM-only call. No business events
+          // until the user picks a city via CityPickerSheet.
+          setBusinessEvents([]);
+          const { events, meta } = await NightOutExperiencesService.search({
+            location: nightOutGpsLat && nightOutGpsLng
+              ? { lat: nightOutGpsLat, lng: nightOutGpsLng }
+              : undefined,
+            radius: 50,
+            segmentSlug: selectedFilters.segment,
+            genreSlugs,
+            localStartEndDateTime: localStartEndDateTime ?? undefined,
+            sort: "date,asc",
+          });
+          const usedFallbackNow = meta?.usedFallback === true;
+          setFallbackActive(usedFallbackNow);
+          const cards = events.map(transformNightOutVenue);
+          setNightOutCards(cards);
+          saveNightOutCache(cards, usedFallbackNow);
+        }
       } catch (err) {
         console.error("[Discover] Error fetching events:", err);
         setNightOutError(t("discover:errors.failed_events"));
@@ -1101,6 +1157,14 @@ function DiscoverScreen({
       selectedFilters.date,
       selectedFilters.segment,
       selectedFilters.genre,
+      // ORCH-0824 (QA F-1 fix): the merged endpoint reads these three
+      // facets from the fetch closure. Without them in the deps array,
+      // toggling a Party Type / Vibe / Music Genre pill (once the
+      // deferred filter UI lands per ORCH-0824-A) would NOT trigger a
+      // refetch — stale closure bug.
+      selectedFilters.partyTypes,
+      selectedFilters.vibeTags,
+      selectedFilters.musicGenres,
       t,
     ],
   );
@@ -1125,6 +1189,18 @@ function DiscoverScreen({
     await fetchNightOutEvents(true);
     setIsRefreshing(false);
   };
+
+  // ORCH-0824: business-event card tap → open ExpandedCardModal with the
+  // business-event branch (Step 20). Mutually exclusive with the
+  // ticketmaster/place card path; we clear that path's state when opening.
+  const handleBusinessEventCardPress = useCallback(
+    (data: BusinessEventCardData): void => {
+      setSelectedCardForExpansion(null);
+      setSelectedBusinessEventForExpansion(data);
+      setIsExpandedModalVisible(true);
+    },
+    [],
+  );
 
   const handleNightOutCardPress = (card: NightOutCardData): void => {
     const expandedCardData: ExpandedCardData = {
@@ -1579,6 +1655,18 @@ function DiscoverScreen({
               </View>
             ) : null}
             <View style={styles.gridWrap}>
+              {/* ORCH-0824: business events render above the Ticketmaster
+                  grid. Their tap handler opens the same ExpandedCardModal
+                  (Step 20) with a business_event discriminator (Step 19). */}
+              {businessEvents.map((be) => (
+                <BusinessEventCard
+                  key={be.eventId}
+                  data={be}
+                  width={GRID_CARD_WIDTH}
+                  height={GRID_CARD_HEIGHT}
+                  onPress={handleBusinessEventCardPress}
+                />
+              ))}
               {filteredNightOutCards.map((card) => (
                 <EventGridCard
                   key={card.id}
@@ -1601,6 +1689,10 @@ function DiscoverScreen({
       {/* Expanded Card Modal */}
       <ExpandedCardModal
         visible={isExpandedModalVisible}
+        // ORCH-0824: pass the business-event branch data alongside the
+        // existing place/TM card. ExpandedCardModal (Step 20) branches on
+        // whichever is non-null.
+        businessEvent={selectedBusinessEventForExpansion}
         card={selectedCardForExpansion}
         onClose={handleCloseExpandedModal}
         onSave={async (card) => {

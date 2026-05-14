@@ -90,7 +90,15 @@ export const convertDraftToLiveEvent = (
     name: draft.name,
     description: draft.description,
     format: draft.format,
-    category: draft.category,
+    // ORCH-0824: legacy `category` field is null going forward; replaced by
+    // partyTypes/vibeTags/musicGenres arrays. Kept on LiveEvent type for
+    // backward compat with persisted Zustand state (cleanup: ORCH-0824-D).
+    category: null,
+    partyTypes: draft.partyTypes,
+    vibeTags: draft.vibeTags,
+    musicGenres: draft.musicGenres,
+    city: draft.city,
+    locationGeo: draft.locationGeo,
     whenMode: draft.whenMode,
     date: draft.date,
     doorsOpen: draft.doorsOpen,

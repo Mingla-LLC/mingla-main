@@ -18,6 +18,19 @@ verify_jwt = true
 [functions.ticketmaster-events]
 verify_jwt = false
 
+# ORCH-0824: server-side fan-out for consumer Discover (business events +
+# Ticketmaster). Anon-callable; reads via service-role with explicit
+# public-visibility WHERE clause as defense-in-depth.
+[functions.discover-merged-events]
+verify_jwt = false
+
+# ORCH-0824: Google Places autocomplete + place-details proxy. Keeps the
+# GOOGLE_MAPS_API_KEY server-side (not in the client bundle). Auth-gated
+# because the wizard flow that calls this is already authenticated;
+# anonymous traffic is not a legitimate use case.
+[functions.places-autocomplete]
+verify_jwt = true
+
 # ORCH-0770: Cloudinary is a third-party webhook sender and cannot provide
 # Supabase user JWTs. The gateway is public; the function authenticates
 # requests with Cloudinary's signed notification headers.

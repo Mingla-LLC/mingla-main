@@ -61,6 +61,16 @@ interface BusinessManagementEventRow {
   master_end_at: string | null;
   master_timezone: string | null;
   master_event_date_id: string | null;
+  // ORCH-0824 hotfix: top-level taxonomy + city columns surfaced via the
+  // business_management_events_view after migration 20260604000002.
+  // Optional during transition — legacy persisted rows + pre-view-update
+  // responses won't have them; the eventFromRow reader defaults to empty
+  // arrays / null.
+  city?: string | null;
+  party_types?: string[] | null;
+  vibe_tags?: string[] | null;
+  music_genres?: string[] | null;
+  location_geo?: string | { x: number; y: number } | null;
 }
 
 // ORCH-0792: derive YYYY-MM-DD + HH:MM in the event's IANA timezone from a
@@ -145,6 +155,13 @@ interface PublishRpcResponse {
     created_at: string;
     updated_at: string;
     theme: JsonRecord | null;
+    // ORCH-0824: top-level columns returned via `to_jsonb(v_event)` in
+    // the publish RPC. Optional during transition for old test fixtures.
+    city?: string | null;
+    party_types?: string[] | null;
+    vibe_tags?: string[] | null;
+    music_genres?: string[] | null;
+    location_geo?: string | { x: number; y: number } | null;
   };
   brand: {
     id: string;
@@ -333,7 +350,36 @@ const eventFromRow = (
     name: row.title,
     description: row.description ?? "",
     format: asFormat(businessEvent.format, row.is_online),
+    // ORCH-0824: legacy `category` is read-only from JSONB for backward
+    // compat with pre-ORCH-0824 events; new publishes write null (the
+    // canonical replacement is partyTypes/vibeTags/musicGenres below).
     category: asStringOrNull(businessEvent.category),
+    // ORCH-0824 hotfix: read taxonomy from TOP-LEVEL row columns, NOT
+    // from the JSONB blob (which the publish RPC strips). Defensive
+    // defaults handle pre-view-update responses where the columns aren't
+    // surfaced yet.
+    partyTypes: Array.isArray(row.party_types)
+      ? row.party_types.filter((s): s is string => typeof s === "string")
+      : [],
+    vibeTags: Array.isArray(row.vibe_tags)
+      ? row.vibe_tags.filter((s): s is string => typeof s === "string")
+      : [],
+    musicGenres: Array.isArray(row.music_genres)
+      ? row.music_genres.filter((s): s is string => typeof s === "string")
+      : [],
+    city: asStringOrNull(row.city),
+    locationGeo: ((): { lat: number; lng: number } | null => {
+      const g = row.location_geo;
+      if (g == null) return null;
+      if (typeof g === "string") {
+        const m = g.match(/^\(([-\d.]+),([-\d.]+)\)$/);
+        return m ? { lng: Number(m[1]), lat: Number(m[2]) } : null;
+      }
+      if (typeof g === "object" && typeof g.x === "number" && typeof g.y === "number") {
+        return { lng: g.x, lat: g.y };
+      }
+      return null;
+    })(),
     whenMode: asWhenMode(businessEvent.whenMode, row),
     date: startSplit.date,
     doorsOpen: startSplit.time,
@@ -485,6 +531,14 @@ const eventFromPublishResponse = (
     master_end_at: masterRow?.end_at ?? null,
     master_timezone: masterRow?.timezone ?? null,
     master_event_date_id: masterRow?.id ?? null,
+    // ORCH-0824 hotfix: forward the new top-level columns from the
+    // publish RPC response so the synthetic row matches what the
+    // management view returns on subsequent fetches.
+    city: response.event.city ?? null,
+    party_types: response.event.party_types ?? null,
+    vibe_tags: response.event.vibe_tags ?? null,
+    music_genres: response.event.music_genres ?? null,
+    location_geo: response.event.location_geo ?? null,
   };
   const tickets = (response.tickets ?? []).map(ticketRowToTicketStub);
   return {
@@ -565,4 +619,76 @@ export const endBusinessEventTicketSales = async (
     throw new Error("End ticket sales did not return a durable event.");
   }
   return eventFromPublishResponse(response);
+};
+
+// ─── ORCH-0824 hotfix (Option B) ─────────────────────────────────────────────
+// Post-publish patch path for the 5 new ORCH-0824 fields (city, party_types,
+// vibe_tags, music_genres, location_geo). Bridges the gap between
+// mingla-business's local-only EditPublishedScreen save flow and the DB row.
+// Without this, legacy events stay invisible on consumer Discover because
+// brand edits never reach the events row.
+//
+// Calls RPC `business_patch_event_taxonomy` (migration 20260604000003).
+// The RPC validates ownership, canonical slugs, and required city before
+// applying the patch. Errors thrown here surface to the caller; the
+// EditPublishedScreen handler displays a toast.
+
+export interface PatchEventTaxonomyInput {
+  eventId: string;
+  city: string;
+  partyTypes: string[];
+  vibeTags: string[];
+  musicGenres: string[];
+  locationGeo: { lat: number; lng: number } | null;
+  /**
+   * ORCH-0824 hotfix-5: formatted address (e.g. from Google Places).
+   * When non-null, writes to events.location_text. When null, the RPC
+   * leaves location_text unchanged.
+   */
+  locationText: string | null;
+}
+
+interface PatchEventTaxonomyResponse {
+  event: {
+    id: string;
+    city: string | null;
+    party_types: string[] | null;
+    vibe_tags: string[] | null;
+    music_genres: string[] | null;
+    location_geo: string | { x: number; y: number } | null;
+    updated_at: string;
+  };
+  updated_at: string;
+}
+
+export const patchPublishedEventTaxonomy = async (
+  input: PatchEventTaxonomyInput,
+): Promise<PatchEventTaxonomyResponse> => {
+  const { data, error } = await supabase.rpc(
+    "business_patch_event_taxonomy",
+    {
+      p_event_id: input.eventId,
+      p_city: input.city,
+      p_party_types: input.partyTypes,
+      p_vibe_tags: input.vibeTags,
+      p_music_genres: input.musicGenres,
+      p_location_lat: input.locationGeo?.lat ?? null,
+      p_location_lng: input.locationGeo?.lng ?? null,
+      p_location_text: input.locationText,
+    },
+  );
+
+  if (error !== null) {
+    // Surface the RPC's error code (e.g. 'city_required',
+    // 'party_types_required', 'party_types_not_canonical',
+    // 'insufficient_event_permission', 'event_not_editable_status') for
+    // the UI to map to user-friendly copy.
+    const code = error.message ?? "patch_event_taxonomy_failed";
+    throw new Error(code);
+  }
+  const response = data as PatchEventTaxonomyResponse | null;
+  if (response === null) {
+    throw new Error("patch_event_taxonomy_empty_response");
+  }
+  return response;
 };

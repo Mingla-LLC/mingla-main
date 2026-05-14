@@ -49,6 +49,8 @@ import { ImageLightbox } from "./ImageLightbox";
 import ActionButtons from "./expandedCard/ActionButtons";
 import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
+// ORCH-0824: business-event branch (renders when props.businessEvent is set and props.card is null).
+import { ExpandedBusinessEventSheet } from "./expandedCard/ExpandedBusinessEventSheet";
 import { PicnicShoppingList } from './PicnicShoppingList';
 import { useReplaceStop } from '../hooks/useReplaceStop';
 import { replaceStopInCard, StopAlternative } from '../utils/mutateCuratedCard';
@@ -1216,6 +1218,7 @@ function StopOpenBadge({ openingHours }: { openingHours: Record<string, string> 
 export default function ExpandedCardModal({
   visible,
   card,
+  businessEvent,
   onClose,
   onSave,
   onPurchase,
@@ -1533,6 +1536,24 @@ export default function ExpandedCardModal({
     },
     [onClose]
   );
+
+  // ORCH-0824: business-event branch. Mutually exclusive with `card` by
+  // contract — DiscoverScreen clears one before setting the other. If a
+  // caller accidentally passes both, the business-event branch wins (QA
+  // F-3 fix): the place/TM render path requires many fields that
+  // BusinessEventCard doesn't have, so place-priority would crash; the
+  // business-event sheet is self-contained and safe to render.
+  // Hooks above this point fire on every render regardless to satisfy
+  // rules-of-hooks.
+  if (businessEvent !== null && businessEvent !== undefined) {
+    return (
+      <ExpandedBusinessEventSheet
+        visible={visible}
+        data={businessEvent}
+        onClose={onClose}
+      />
+    );
+  }
 
   if (!card) {
     return null;
