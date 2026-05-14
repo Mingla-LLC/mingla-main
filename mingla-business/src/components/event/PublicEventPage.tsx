@@ -195,7 +195,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const callbacks: PublicEventCallbacks = useMemo(
     () => ({
       onClose: () => {
-        router.replace("/(tabs)/events" as never);
+        router.replace("/(tabs)/hub/events" as never);
       },
       onShare: () => {
         setShareModalVisible(true);

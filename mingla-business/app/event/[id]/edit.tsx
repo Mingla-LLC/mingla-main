@@ -168,7 +168,7 @@ export default function EventEditRoute(): React.ReactElement {
       return undefined;
     }
     if (typeof idParam !== "string" || idParam.length === 0) {
-      router.replace("/(tabs)/events" as never);
+      router.replace("/(tabs)/hub/events" as never);
       return;
     }
     if (isEditPublished) {
@@ -185,7 +185,7 @@ export default function EventEditRoute(): React.ReactElement {
       if (resolvedLiveEvent === null && !businessEventQuery.isLoading) {
         // Published event not found — bounce to events tab.
         const t = setTimeout(() => {
-          router.replace("/(tabs)/events" as never);
+          router.replace("/(tabs)/hub/events" as never);
         }, 0);
         return (): void => clearTimeout(t);
       }
@@ -202,7 +202,7 @@ export default function EventEditRoute(): React.ReactElement {
       const recoveryRoute =
         businessEventQuery.data?.event !== undefined
           ? `/event/${draft.id}/edit?mode=edit-published`
-          : "/(tabs)/events";
+          : "/(tabs)/hub/events";
       deleteDraft(draft.id);
       queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });
       queryClient.setQueryData<DraftEvent[]>(
@@ -291,7 +291,7 @@ export default function EventEditRoute(): React.ReactElement {
         if (mode === "discarded") {
           setToast({ visible: true, message: "Draft discarded." });
         }
-        router.replace("/(tabs)/events" as never);
+        router.replace("/(tabs)/hub/events" as never);
       }
     },
     [router],

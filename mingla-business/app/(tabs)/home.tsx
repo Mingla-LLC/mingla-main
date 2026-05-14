@@ -27,7 +27,9 @@ import { Icon } from "../../src/components/ui/Icon";
 import { KpiTile } from "../../src/components/ui/KpiTile";
 import { Pill } from "../../src/components/ui/Pill";
 import { Toast } from "../../src/components/ui/Toast";
+import { IconChrome } from "../../src/components/ui/IconChrome";
 import { TopBar } from "../../src/components/ui/TopBar";
+import { UniversalCreatorSheet } from "../../src/components/ui/UniversalCreatorSheet";
 import {
   accent,
   glass,
@@ -141,6 +143,8 @@ export default function HomeTab(): React.ReactElement {
     [businessEventsQuery.data, legacyLiveEvents],
   );
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
+  // ORCH-0826 M0: universal creator sheet (Create event/experience/trip)
+  const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
   // Cycle 17e-A REWORK: BrandDeleteSheet state — opens from BrandSwitcherSheet
   // trash icon taps. Mirrors account.tsx pattern per ORCH-0734-RW SPEC §3.3.
   const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
@@ -227,7 +231,7 @@ export default function HomeTab(): React.ReactElement {
   }, [brands.length, currentBrand, router]);
 
   const handleSeeAllEvents = useCallback((): void => {
-    router.push("/(tabs)/events" as never);
+    router.push("/(tabs)/hub/events" as never);
   }, [router]);
 
   const handleOpenDraft = useCallback(
@@ -313,7 +317,19 @@ export default function HomeTab(): React.ReactElement {
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
       <View style={styles.barWrap}>
-        <TopBar leftKind="brand" onBrandTap={handleOpenSwitcher} />
+        <TopBar
+          leftKind="brand"
+          onBrandTap={handleOpenSwitcher}
+          extraRightSlot={
+            <IconChrome
+              icon="plus"
+              size={36}
+              onPress={() => setIsUniversalCreatorOpen(true)}
+              accessibilityLabel="Create event, experience, or trip"
+              testID="home-universal-creator-button"
+            />
+          }
+        />
       </View>
 
       <ScrollView
@@ -457,17 +473,13 @@ export default function HomeTab(): React.ReactElement {
                 <GlassCard variant="base" padding={spacing.lg}>
                   <Text style={styles.emptyTitle}>No upcoming events</Text>
                   <Text style={styles.emptyBody}>
-                    Build an event to see it here.
+                    Tap{" "}
+                    <Text style={styles.emptyEmphasis}>+</Text>
+                    {" "}in the top right to create your first event.
                   </Text>
-                  <Pressable
-                    onPress={handleBuildEvent}
-                    accessibilityRole="button"
-                    accessibilityLabel="Build an event"
-                    style={styles.emptyBuildAction}
-                  >
-                    <Icon name="plus" size={16} color={accent.warm} />
-                    <Text style={styles.emptyBuildActionText}>Build event</Text>
-                  </Pressable>
+                  {/* ORCH-0826 M0 Q5 override: empty-state "+ Build event"
+                      button removed. The top-bar universal "+" is now the
+                      sole creation entry point. */}
                 </GlassCard>
               ) : (
                 eventSummary.activeItems.map((item) => {
@@ -593,6 +605,12 @@ export default function HomeTab(): React.ReactElement {
         onRequestDeleteBrand={handleRequestDeleteBrand}
       />
 
+      {/* ORCH-0826 M0: universal creator sheet (Create event/experience/trip) */}
+      <UniversalCreatorSheet
+        visible={isUniversalCreatorOpen}
+        onClose={() => setIsUniversalCreatorOpen(false)}
+      />
+
       <BrandDeleteSheet
         visible={deleteSheetVisible}
         brand={brandPendingDelete}
@@ -657,6 +675,12 @@ const styles = StyleSheet.create({
   emptyChipName: {
     color: accent.warm,
     fontWeight: "600",
+  },
+  // ORCH-0826 M0: emphasis style for the empty-state copy pointing at
+  // the top-bar "+" universal creator.
+  emptyEmphasis: {
+    fontWeight: "700",
+    color: textTokens.primary,
   },
 
   // Greeting ------------------------------------------------------------

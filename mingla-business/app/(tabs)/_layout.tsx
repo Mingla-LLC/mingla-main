@@ -4,10 +4,11 @@
  *
  * Per DEC-073: was 3 fixed tabs (Home / Events / Account). Updated to
  * 4 tabs in ORCH-0815-B (Cycle B5 — Marketing Hub, DEC-149 dual-surface).
- * The Marketing tab sits between Events and Account: brand creates events,
- * blasts about them via Marketing, manages account profile. `send` icon
- * (paper plane) chosen over `megaphone` (not in icon set) per design §3.1
- * — it reads as "broadcast / campaign" and lives in the icon set already.
+ * Updated to current 5 tabs in ORCH-0826 (Mingla Business 1.2 M0): the
+ * "Events" tab was renamed to "Hub" with three sub-routes (events /
+ * experiences / trips). The Hub tab id is `hub`; the `detectActiveTab`
+ * logic resolves nested routes (`/hub/events`, `/hub/experiences`, etc.)
+ * via the existing `startsWith(prefix + "/")` clause.
  */
 
 import React, { useMemo } from "react";
@@ -21,7 +22,12 @@ import { canvas, spacing } from "../../src/constants/designSystem";
 
 const TABS: BottomNavTab[] = [
   { id: "home", icon: "home", label: "Home" },
-  { id: "events", icon: "calendar", label: "Events" },
+  // ORCH-0826 (Mingla Business 1.2 M0): tab id `events` renamed to `hub`,
+  // label "Events" → "Hub". Hub houses three sub-routes: Events
+  // (relocated, today's content unchanged), Experiences (placeholder for
+  // Ve5+), Trips (placeholder for Tr2+). The `calendar` icon is preserved
+  // since Events is the default sub-route.
+  { id: "hub", icon: "calendar", label: "Hub" },
   // Ari sits in the middle slot — AI assistant as the visual/thumb center
   // of the capsule, with creation (Events) on its left and broadcast
   // (Blast) on its right. Account stays rightmost (thumb-edge = settings,

@@ -7,6 +7,23 @@
 
 ---
 
+### I-1.2-UNIFIED-EVENT-TYPE — every sellable thing in Mingla Business 1.2 is a row in `public.events` distinguished by `event_type` (ACTIVE — ratified by ORCH-0826 M0 CLOSE 2026-05-14)
+
+**Rule.** `public.events.event_type` is the unified-offering discriminator. Values: `'event'` (today's ticketed events — popup organizers; default), `'experience'` (single-intent venue offerings shipping in Ve5+), `'trip'` (multi-day curated packages shipping in Tr2+). Column constraints: `NOT NULL DEFAULT 'event' CHECK (event_type IN ('event','experience','trip'))`. No parallel offering tables — venue experiences and trip packages must INSERT into `events` with the appropriate `event_type`, not into separate tables.
+
+**Why.** ORCH-0826 (Mingla Business 1.2 M0) committed to one table for all sellable offerings so future Tr2+ trip features and Ve5+ experience features can share the existing ticketing, RLS, brand-ownership, publish-RPC, and Stripe Checkout machinery without parallel duplication. Splitting into `trips` and `experiences` tables would force every cross-cutting feature (Marketing audiences, scanner, sales summaries, Ari agent, public event pages) to fan out reads + RLS + RPCs across multiple tables.
+
+**Enforcement.**
+- **Schema layer:** Migration `supabase/migrations/20260605000000_orch_0826_events_event_type_discriminator.sql` enforces the `NOT NULL DEFAULT + CHECK` constraint at the database level. Any INSERT or UPDATE with an out-of-set value fails at the constraint boundary.
+- **Migration self-verification:** the migration's `DO $$ … $$` block raises EXCEPTION if any row ends up NULL or invalid post-backfill.
+- **Index:** `idx_events_event_type` supports future `Hub > Experiences` and `Hub > Trips` filter queries without table scans.
+
+**Test.** Post-migration sanity SQL: `SELECT count(*) FROM public.events WHERE event_type IS NULL OR event_type NOT IN ('event','experience','trip')` must return 0. Ratified live on 2026-05-14 after operator ran `supabase db push --linked` and the DO-block NOTICE confirmed.
+
+**Cross-references.** DEC-152 (decision rationale); `Mingla_Artifacts/PROJECT_SPEC_MINGLA_BUSINESS_1_2.md` §3.3; investigation `reports/INVESTIGATION_ORCH-0826_M0_HUB_FOUNDATION.md`; spec `specs/SPEC_ORCH-0826_M0_HUB_FOUNDATION.md` §2; implementation `reports/IMPLEMENTATION_ORCH-0826_M0_HUB_FOUNDATION.md`.
+
+---
+
 ## ACTIVE (post ORCH-0809 + ORCH-0809-D + ORCH-0809-E CLOSE 2026-05-12)
 
 Three invariants introduced by ORCH-0809 SPEC §7 — Discover Ticketmaster filter expansion v1. Promoted DRAFT→ACTIVE on 2026-05-12 by ORCH-0809 CLOSE after Claude `mingla-forensics` pre-M3 audit + re-audit PASS verdict (`reports/QA_ORCH-0809_PRE_M3_AUDIT_REPORT.md` §13 — P0:0 P1:0 P2:3 P3:2 P4:5), all 3 strict-grep gates green with negative-control proofs, 23/23 Deno tests, 10/10 mobile regression checks, edge function deployed, EAS OTAs published, operator confirmed "works perfect" / "all works" across 4 live-test phases.

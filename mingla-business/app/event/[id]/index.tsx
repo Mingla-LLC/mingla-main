@@ -42,6 +42,7 @@ import { useScanStore } from "../../../src/store/scanStore";
 import { useEventEditLogStore } from "../../../src/store/eventEditLogStore";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { deriveLiveStatus } from "../../../src/utils/eventLifecycle";
+import { computeMasterStartAtUtc } from "../../../src/utils/eventDateMath";
 import { formatCurrency } from "../../../src/utils/currency";
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { eventPublicUrl } from "../../../src/constants/publicUrls";
@@ -95,7 +96,8 @@ const cancelSleep = (ms: number): Promise<void> =>
 type EventStatus = "live" | "upcoming" | "past";
 
 const deriveScreenStatus = (event: LiveEvent): EventStatus => {
-  const lifecycle = deriveLiveStatus(event);
+  // ORCH-0828: pass timezone-aware UTC instant (not date-only string).
+  const lifecycle = deriveLiveStatus(event, computeMasterStartAtUtc(event));
   return lifecycle === "cancelled" ? "past" : lifecycle;
 };
 
@@ -151,7 +153,7 @@ export default function EventDetailScreen(): React.ReactElement {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace("/(tabs)/events" as never);
+      router.replace("/(tabs)/hub/events" as never);
     }
   }, [router]);
 
@@ -289,7 +291,7 @@ export default function EventDetailScreen(): React.ReactElement {
         });
         setCancelDialogVisible(false);
         showToast("Event cancelled.");
-        router.replace("/(tabs)/events" as never);
+        router.replace("/(tabs)/hub/events" as never);
       } catch {
         showToast("Could not cancel event. Try again.");
       } finally {
@@ -309,7 +311,7 @@ export default function EventDetailScreen(): React.ReactElement {
     showToast(
       "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
     );
-    router.replace("/(tabs)/events" as never);
+    router.replace("/(tabs)/hub/events" as never);
   }, [id, isServerBackedEvent, event, cancelServerEvent, updateLifecycle, router, showToast]);
 
   const handleDeleteDraftStub = useCallback((): void => {

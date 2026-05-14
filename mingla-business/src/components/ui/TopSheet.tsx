@@ -5,13 +5,16 @@
  * for content with a pinned footer. Swipe-up to dismiss; tap scrim to
  * dismiss; web Escape and Android hardware back also close.
  *
- * Geometry (per Cycle 1 spec lock-in):
+ * Geometry (per Cycle 1 spec lock-in + ORCH-0826 compact-mode extension):
  *   - Anchored below the topbar: `top = insets.top + TOPBAR_OFFSET`. Topbar
  *     stays visible (drop-down "issues" from the chip vertically).
  *   - Width matches the topbar: `marginHorizontal: spacing.md`. Visual
  *     consistency with the chrome above.
- *   - Fixed height: 70% of screen height. Content scrolls internally; the
- *     pinned footer never disappears regardless of brand list length.
+ *   - Two height modes (per `heightMode` prop):
+ *     - `"fixed-70"` (default) — 70% of screen height; content scrolls
+ *       internally with a pinned footer. Brand switcher behavior.
+ *     - `"compact"` — content-measured height via onLayout. Suitable for
+ *       short fixed-row sheets (UniversalCreatorSheet's 3-option picker).
  *
  * Animations:
  *   - Open: scrim fade in 220ms; panel translateY from `-panelHeight` to
@@ -21,6 +24,8 @@
  *            `-panelHeight` over 240ms (`easings.in`). Panel slides UP back
  *            behind the topbar — same motion as the user's swipe.
  *   - Reduce-motion: opacity-only fade (no translate).
+ *   - Compact mode: panel renders invisibly at height 0 until first onLayout
+ *     measurement; then animates from `-measuredHeight` to `0` on next open.
  *
  * Lazy-mount per E.4 — returns null when not mounted, schedules unmount
  * 280ms after `visible` flips false (matches exit anim + 40ms safety).
@@ -28,13 +33,18 @@
  * Caller MUST wrap the app root in `GestureHandlerRootView` (already done
  * in `app/_layout.tsx` for Sheet primitive — same dependency).
  *
- * Kit extension: DEC-080 — TopSheet added post-Cycle-0a as a one-off
- * primitive carve-out for the brand-switcher dropdown UX (where bottom
- * Sheet + centered Modal both felt wrong). Kit closure rule still applies:
- * no further primitives without orchestrator approval + DEC entry.
+ * Kit extensions:
+ *   - DEC-080 — TopSheet added post-Cycle-0a as a one-off primitive carve-out
+ *     for the brand-switcher dropdown UX (where bottom Sheet + centered Modal
+ *     both felt wrong).
+ *   - DEC-NEW-A (ORCH-0826) — TopSheet usage extended to UniversalCreatorSheet.
+ *     Two acceptable consumers now: BrandSwitcherSheet + UniversalCreatorSheet.
+ *     Future additional consumers still require orchestrator approval + DEC entry.
+ *   - DEC-NEW-B (ORCH-0826) — `heightMode="compact"` mode added. Additive prop;
+ *     existing consumers default to `"fixed-70"` and stay unchanged.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   BackHandler,
   Dimensions,
@@ -43,7 +53,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import type { StyleProp, ViewStyle } from "react-native";
+import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
 import { BlurView } from "expo-blur";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -88,12 +98,27 @@ const shouldUseRealBlur = (): boolean => {
   return supportsBackdropFilter;
 };
 
+export type TopSheetHeightMode = "fixed-70" | "compact";
+
 export interface TopSheetProps {
   visible: boolean;
   onClose: () => void;
   children: React.ReactNode;
   /** Tap on scrim closes. Default `true`. */
   dismissOnScrimTap?: boolean;
+  /**
+   * Panel height mode (ORCH-0826).
+   *   - `"fixed-70"` (default) — panel fills 70% of screen height; content
+   *     scrolls internally with a pinned footer. Backwards-compatible with
+   *     existing BrandSwitcherSheet usage.
+   *   - `"compact"` — panel height fits content via `onLayout` measurement.
+   *     Suitable for short fixed-row sheets (e.g., UniversalCreatorSheet's
+   *     3-option picker). Panel renders invisibly until first measurement;
+   *     animations use the measured height.
+   *
+   * Per DEC-NEW-B (ORCH-0826) — additive prop, fully backwards compatible.
+   */
+  heightMode?: TopSheetHeightMode;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
@@ -114,12 +139,39 @@ export const TopSheet: React.FC<TopSheetProps> = ({
   onClose,
   children,
   dismissOnScrimTap = true,
+  heightMode = "fixed-70",
   testID,
   style,
 }) => {
   const insets = useSafeAreaInsets();
   const screenHeight = Dimensions.get("window").height;
-  const panelHeight = screenHeight * PANEL_HEIGHT_RATIO;
+
+  // ORCH-0826: heightMode="compact" uses content-measured height via
+  // onLayout. Before first measurement, panel renders invisibly (opacity 0)
+  // at height 0; after measurement, animations use the measured height.
+  // heightMode="fixed-70" (default) preserves Brand Switcher's 70% behavior.
+  const [measuredCompactHeight, setMeasuredCompactHeight] = useState<number | null>(null);
+  const fixedHeight = screenHeight * PANEL_HEIGHT_RATIO;
+  const panelHeight =
+    heightMode === "compact"
+      ? (measuredCompactHeight ?? 0)
+      : fixedHeight;
+
+  const handleCompactLayout = useCallback(
+    (event: LayoutChangeEvent): void => {
+      if (heightMode !== "compact") return;
+      const contentHeight = event.nativeEvent.layout.height;
+      if (contentHeight <= 0) return;
+      // Add handle area to total panel height
+      const total = contentHeight + HANDLE_AREA_HEIGHT;
+      setMeasuredCompactHeight((prev) => {
+        if (prev !== null && Math.abs(prev - total) < 1) return prev;
+        return total;
+      });
+    },
+    [heightMode],
+  );
+
   const panelTop = insets.top + TOPBAR_OFFSET;
   const closedY = -panelHeight; // hidden above its anchor (slid up behind topbar)
   const openY = 0;
@@ -228,6 +280,10 @@ export const TopSheet: React.FC<TopSheetProps> = ({
     transform: [{ translateY: translateY.value }],
   }));
 
+  // ORCH-0826: in compact mode, hide the panel until first measurement
+  // completes so the open animation doesn't snap from height-0 to measured.
+  const compactInvisible = heightMode === "compact" && measuredCompactHeight === null;
+
   const scrimStyle = useAnimatedStyle(() => ({
     opacity: scrimOpacity.value,
   }));
@@ -298,7 +354,18 @@ export const TopSheet: React.FC<TopSheetProps> = ({
           <Animated.View
             style={[
               styles.panel,
-              { height: panelHeight },
+              // Compact mode pre-measurement: render with NATURAL height (no
+              // explicit `height` style) + opacity 0 so children can lay out
+              // freely and `onLayout` reports their true height. Earlier
+              // attempt set `height: 0` here which clipped children to 0 and
+              // produced a permanent height=0 measurement (chicken-and-egg).
+              // Post-measurement: explicit measured height + opacity 1 for
+              // normal animation. Fixed-70 mode: explicit height always.
+              heightMode === "compact"
+                ? compactInvisible
+                  ? { opacity: 0 }
+                  : { height: panelHeight, opacity: 1 }
+                : { height: panelHeight },
               shadows.glassCardElevated,
               panelStyle,
               style,
@@ -345,8 +412,19 @@ export const TopSheet: React.FC<TopSheetProps> = ({
               ]}
               pointerEvents="none"
             />
-            {/* Content layer — explicit height, layered above the visual stack */}
-            <View style={[styles.body, { height: bodyHeight }]}>{children}</View>
+            {/* Content layer.
+                - fixed-70 mode: explicit body height (panelHeight - handle).
+                - compact mode: content-driven; onLayout measures children
+                  height into measuredCompactHeight. */}
+            <View
+              style={[
+                styles.body,
+                heightMode === "compact" ? null : { height: bodyHeight },
+              ]}
+              onLayout={heightMode === "compact" ? handleCompactLayout : undefined}
+            >
+              {children}
+            </View>
             <View style={[styles.handleWrap, { height: handleAreaHeight }]}>
               <View style={styles.handle} />
             </View>
