@@ -384,6 +384,28 @@ jobs:
       - name: Run ORCH-0778 gate
         run: node .github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs
 
+  meta-orch-0827-package-isolation:
+    name: "META-ORCH-0827: packages/ pure-presentational isolation"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run META-ORCH-0827 package isolation gate
+        run: node .github/scripts/strict-grep/meta-orch-0827-package-isolation.mjs
+
+  meta-orch-0827-no-web-stripe-in-consumer:
+    name: "META-ORCH-0827: consumer (app-mobile) is native Stripe only"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run META-ORCH-0827 no-web-Stripe-in-consumer gate
+        run: node .github/scripts/strict-grep/meta-orch-0827-no-web-stripe-in-consumer.mjs
+
   orch-0783-event-cover-image-provider-pivot:
     name: "ORCH-0783: event cover image provider pivot"
     runs-on: ubuntu-latest
@@ -726,3 +748,25 @@ jobs:
           node-version: "20"
       - name: Run I-ARI-USER-JWT-ONLY gate
         run: node .github/scripts/strict-grep/i-ari-user-jwt-only.mjs
+
+  orch-0824-event-category-frozen:
+    name: "ORCH-0824: events.category writes blocked (I-PROPOSED-EVENT-CATEGORY-FROZEN)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0824 EVENT-CATEGORY-FROZEN gate
+        run: node .github/scripts/strict-grep/orch-0824-event-category-frozen.mjs
+
+  orch-0824-event-taxonomy-parity:
+    name: "ORCH-0824: eventTaxonomy.ts three-way parity (I-PROPOSED-EVENT-TAXONOMY-PARITY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-0824 TAXONOMY-PARITY gate
+        run: node .github/scripts/strict-grep/orch-0824-event-taxonomy-parity.mjs

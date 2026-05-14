@@ -1,230 +1,188 @@
 /**
- * PublicEventPage — the public-facing event page rendered at
- * /e/{brandSlug}/{eventSlug}.
+ * PublicEventPage — adapter for the shared @mingla/event-rendering package.
  *
- * 7 state variants, branched per spec §3.3.1:
- *   - cancelled: status === "cancelled" — full-page cancellation notice
- *   - past: endedAt < now — greyed; "This event has ended"; buttons disabled
- *   - password-gate: any ticket passwordProtected + not unlocked yet
- *   - pre-sale: every ticket has saleStartAt > now → countdown + disabled buttons
- *   - sold-out: every (non-unlimited) ticket has capacity 0
- *   - published: default
+ * Per META-ORCH-0827 Pass 2 (Option C). The 1,325-line predecessor was
+ * superseded by a fresh pure-presentational component in
+ * packages/event-rendering/. This adapter:
+ *   - Fetches auth + brand list via existing mingla-business hooks
+ *   - Computes viewerRole (organizer/anonymous; ticket-holder pending order data)
+ *   - Maps LiveEvent + Brand types to the package's prop contract
+ *   - Provides navigation callbacks (router.push for checkout, etc.)
+ *   - Mounts ShareModal + Toast at the adapter level (mingla-business primitives)
+ *   - Keeps web-only SEO <Head> (mingla-business-specific URLs)
  *
- * Order of precedence: cancelled > past > password-gate > pre-sale > sold-out > published.
- *
- * Hidden tickets (visibility="hidden") are FILTERED OUT before rendering
- * (Cycle 5 contract — direct-link only). Disabled tickets render greyed.
- *
- * Address visibility honors `event.hideAddressUntilTicket`:
- *   - true (default): venue NAME shown; address replaced with
- *     "Address shared after ticket purchase"
- *   - false: full address visible
- *
- * Buyer-flow stubs per spec Q-5 — TRANSITIONAL toasts pointing at
- * Cycles 8/10 + B3/B4/B5.
- *
- * Platform notes:
- *   SEO `<Head>` is web-only — iOS native skips Apple Spotlight handoff
- *   metadata because no origin URL is registered yet (DEC-071 frontend-
- *   first; awaits B-cycle backend + real domain). Re-enable iOS Head
- *   when origin lands in `app.json` `expo-router` plugin config and
- *   a native rebuild ships. Buyers always arrive via web URL, so iOS
- *   native loses nothing user-visible.
- *
- *   Close IconChrome is founder-aware — visible only when the signed-in
- *   user is a member of `event.brandId` (the brand that published this
- *   event). Buyers arriving via shared URL see only Share. Mingla
- *   customers from other brands see only Share (no "close to dashboard"
- *   affordance for events they don't own). Works identically on iOS,
- *   Android, and Web. Floating chrome is rendered at page-level so all
- *   7 variants (published / past / pre-sale / sold-out / password-gate /
- *   approval-required / cancelled) share the same affordance.
- *
- * Per Cycle 6 spec §3.3.
+ * Visual fidelity is preserved — the shared package was designed to render
+ * the same layout as the predecessor. Variant logic is identical.
  */
 
 import React, { useCallback, useMemo, useState } from "react";
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Platform, View, StyleSheet } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import Head from "expo-router/head";
 
 import {
-  accent,
-  glass,
-  radius as radiusTokens,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../constants/designSystem";
+  PublicEventPage as SharedPublicEventPage,
+  type PublicBrandProps,
+  type PublicEventCallbacks,
+  type PublicEventProps,
+  type PublicTicketProps,
+  type ViewerRole,
+} from "@mingla/event-rendering";
+
 import {
   checkoutPublicPath,
   eventOgImageUrl,
-  eventPublicPath,
   eventPublicUrl,
 } from "../../constants/publicUrls";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";
-import { formatCurrencyRound } from "../../utils/currency";
 import {
   formatDraftDateLine,
   formatDraftDateSubline,
   formatDraftDatesList,
 } from "../../utils/eventDateDisplay";
-import {
-  formatTicketBadges,
-  formatTicketButtonLabel,
-  formatTicketSubline,
-  sortTicketsByDisplayOrder,
-} from "../../utils/ticketDisplay";
 import { isLegacyUnsafeEventCoverVideoUrl } from "../../utils/eventCoverMediaRules";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 
-import { EventCoverMedia } from "../ui/EventCoverMedia";
-import { GlassCard } from "../ui/GlassCard";
-import { Icon } from "../ui/Icon";
-import { IconChrome } from "../ui/IconChrome";
-import { Pill } from "../ui/Pill";
 import { ShareModal } from "../ui/ShareModal";
 import { Toast } from "../ui/Toast";
 
-interface PublicEventPageProps {
+interface PublicEventPageAdapterProps {
   event: LiveEvent;
   brand: Brand | null;
 }
 
-const SHOW_INITIAL_DATES = 10;
+const mapTicket = (t: TicketStub): PublicTicketProps => ({
+  id: t.id,
+  name: t.name,
+  description: t.description ?? null,
+  priceGbp: t.priceGbp ?? null,
+  currency: t.currency ?? null,
+  isFree: t.isFree,
+  isUnlimited: t.isUnlimited,
+  capacity: t.capacity ?? null,
+  visibility:
+    t.visibility === "hidden"
+      ? "hidden"
+      : t.visibility === "disabled"
+        ? "disabled"
+        : "visible",
+  passwordProtected: t.passwordProtected,
+  password: t.password ?? null,
+  saleStartAt: t.saleStartAt ?? null,
+  saleEndAt: t.saleEndAt ?? null,
+  approvalRequired: t.approvalRequired,
+  waitlistEnabled: t.waitlistEnabled,
+  availableAt:
+    t.availableAt === "door"
+      ? "door"
+      : t.availableAt === "both"
+        ? "both"
+        : "online",
+  displayOrder: typeof t.displayOrder === "number" ? t.displayOrder : 0,
+});
 
-type Variant =
-  | "published"
-  | "sold-out"
-  | "pre-sale"
-  | "past"
-  | "password-gate"
-  | "cancelled";
-
-const computeVariant = (
-  event: LiveEvent,
-  passwordUnlocked: boolean,
-): Variant => {
-  // Order of precedence per spec §3.3.1
-  if (event.status === "cancelled") return "cancelled";
-  const isPast =
-    event.status === "ended" ||
-    (event.endedAt !== null &&
-      new Date(event.endedAt).getTime() < Date.now());
-  if (isPast) return "past";
-  // Password gate: tickets with passwordProtected exist AND user hasn't unlocked
-  const visibleTickets = event.tickets.filter(
-    (t) => t.visibility !== "hidden",
+const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
+  const coverVideoUnsafe = isLegacyUnsafeEventCoverVideoUrl(
+    event.coverMediaUrl,
+    event.coverMediaType,
   );
-  const requiresPassword = visibleTickets.some((t) => t.passwordProtected);
-  if (requiresPassword && !passwordUnlocked) return "password-gate";
-  // Pre-sale: every visible ticket has a future saleStartAt
-  const allPreSale =
-    visibleTickets.length > 0 &&
-    visibleTickets.every(
-      (t) =>
-        t.saleStartAt !== null &&
-        new Date(t.saleStartAt).getTime() > Date.now(),
-    );
-  if (allPreSale) return "pre-sale";
-  // Sold-out: every non-unlimited visible ticket has 0 capacity
-  const allSoldOut =
-    visibleTickets.length > 0 &&
-    visibleTickets.every(
-      (t) => !t.isUnlimited && (t.capacity ?? 0) === 0,
-    );
-  if (allSoldOut) return "sold-out";
-  return "published";
+  const safeCoverMediaUrl = coverVideoUnsafe ? null : event.coverMediaUrl;
+  const safeCoverMediaType = coverVideoUnsafe ? null : event.coverMediaType;
+  const coverCredit = eventCoverProviderCreditLabel({
+    provider: coverVideoUnsafe ? null : event.coverMediaProvider,
+    credit: coverVideoUnsafe ? null : event.coverMediaCredit,
+  });
+  return {
+    id: event.id,
+    name: event.name,
+    brandId: event.brandId,
+    brandSlug: event.brandSlug,
+    eventSlug: event.eventSlug,
+    description: event.description,
+    dateLine: formatDraftDateLine(event),
+    dateSubline: formatDraftDateSubline(event),
+    datesList: formatDraftDatesList(event),
+    status:
+      event.status === "cancelled"
+        ? "cancelled"
+        : event.status === "ended"
+          ? "ended"
+          : event.status === "scheduled" || event.status === "live"
+            ? "published"
+            : "published",
+    endedAt: event.endedAt ?? null,
+    format:
+      event.format === "online"
+        ? "online"
+        : event.format === "hybrid"
+          ? "hybrid"
+          : "in-person",
+    venueName: event.venueName ?? null,
+    address: event.address ?? null,
+    hideAddressUntilTicket: Boolean(event.hideAddressUntilTicket),
+    coverHue: event.coverHue,
+    coverMediaUrl: safeCoverMediaUrl,
+    coverMediaType:
+      safeCoverMediaType === "image" ||
+      safeCoverMediaType === "video" ||
+      safeCoverMediaType === "gif"
+        ? safeCoverMediaType
+        : null,
+    coverCredit,
+    tickets: event.tickets.map(mapTicket),
+    currency: event.currency ?? "GBP",
+  };
 };
 
-/** Earliest saleStartAt among tickets (used for pre-sale countdown). */
-const computePreSaleStart = (event: LiveEvent): string | null => {
-  const candidates = event.tickets
-    .filter((t) => t.visibility !== "hidden" && t.saleStartAt !== null)
-    .map((t) => t.saleStartAt as string);
-  if (candidates.length === 0) return null;
-  return candidates.sort()[0];
-};
-
-const formatCountdown = (toIso: string): string => {
-  const ms = new Date(toIso).getTime() - Date.now();
-  if (ms <= 0) return "any moment now";
-  const days = Math.floor(ms / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-  if (days > 0) return `in ${days}d ${hours}h`;
-  if (hours > 0) return `in ${hours}h ${mins}m`;
-  return `in ${mins}m`;
+const mapBrandToPublicBrand = (brand: Brand | null): PublicBrandProps | null => {
+  if (brand === null) return null;
+  return {
+    id: brand.id,
+    slug: brand.slug,
+    displayName: brand.displayName ?? "Brand",
+  };
 };
 
 const canonicalUrl = (event: LiveEvent): string =>
-  eventPublicUrl({ brandSlug: event.brandSlug, eventSlug: event.eventSlug });
+  eventPublicUrl({
+    brandSlug: event.brandSlug,
+    eventSlug: event.eventSlug,
+  });
 
-// ---- Main component -------------------------------------------------
-
-export const PublicEventPage: React.FC<PublicEventPageProps> = ({
+export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   event,
   brand,
 }) => {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
   const userBrands = useBrandList();
-  const [passwordUnlocked, setPasswordUnlocked] = useState<boolean>(false);
+
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
-  const [mediaPlaybackActive, setMediaPlaybackActive] = useState<boolean>(true);
-  const [coverVideoMuted, setCoverVideoMuted] = useState<boolean>(
-    Platform.OS === "web",
-  );
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: "",
   });
 
-  const variant: Variant = useMemo(
-    () => computeVariant(event, passwordUnlocked),
-    [event, passwordUnlocked],
-  );
-
-  // Founder-aware close chrome: shown only when the visitor owns the
-  // brand that published this event. Forward-compat — when B-cycle wires
-  // real auth + `useBrandList` filters to user-owned brands, this check
-  // becomes precise. Today, useBrandList returns all stub brands to any
-  // signed-in user, so this resolves to "isSignedIn" in practice.
-  const ownsThisEvent = useMemo<boolean>(() => {
-    if (user === null) return false;
-    return userBrands.some((b) => b.id === event.brandId);
+  // Founder-aware viewer role. Today useBrandList returns all stub brands
+  // to any signed-in user (Cycle 1 pre-B-cycle), so this resolves to
+  // "isSignedIn AND owns this brand" once B-cycle real auth lands.
+  const viewerRole: ViewerRole = useMemo(() => {
+    if (user === null) return "anonymous";
+    const owns = userBrands.some((b) => b.id === event.brandId);
+    return owns ? "organizer" : "anonymous";
+    // Cycle 1.2: extend with "ticket-holder" once orders are queryable
+    // from the public page.
   }, [user, userBrands, event.brandId]);
-  const isCurrentPublicEventPath = useMemo<boolean>(
-    () =>
-      pathname ===
-      eventPublicPath({
-        brandSlug: event.brandSlug,
-        eventSlug: event.eventSlug,
-      }),
-    [event.brandSlug, event.eventSlug, pathname],
-  );
-  const publicHeroPlaybackActive =
-    mediaPlaybackActive && isCurrentPublicEventPath;
 
-  const handleClose = useCallback((): void => {
-    setMediaPlaybackActive(false);
-    router.replace("/(tabs)/events" as never);
-  }, [router]);
+  const publicEvent = useMemo(
+    () => mapLiveEventToPublicEvent(event),
+    [event],
+  );
+  const publicBrand = useMemo(() => mapBrandToPublicBrand(brand), [brand]);
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -234,27 +192,36 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
-  const handleBuyerAction = useCallback(
-    (action: "buy" | "free" | "approval" | "password" | "waitlist"): void => {
-      // Cycle 8: "buy" + "free" route to checkout (J-C1 → J-C5). Other
-      // cases stay TRANSITIONAL until their respective cycles land.
-      switch (action) {
-        case "buy":
-        case "free":
-          router.push(checkoutPublicPath(event.id) as never);
-          return;
-        case "approval":
-          showToast("Approval flow lands Cycle 10 + B4.");
-          return;
-        case "waitlist":
-          showToast("Waitlist invites land B5.");
-          return;
-        case "password":
-          // Password-gate handles its own flow inline.
-          return;
-      }
-    },
-    [router, event.id, showToast],
+  const callbacks: PublicEventCallbacks = useMemo(
+    () => ({
+      onClose: () => {
+        router.replace("/(tabs)/events" as never);
+      },
+      onShare: () => {
+        setShareModalVisible(true);
+      },
+      onBuyTicket: (_ticketId: string) => {
+        router.push(checkoutPublicPath(event.id) as never);
+      },
+      onClaimFreeTicket: (_ticketId: string) => {
+        router.push(checkoutPublicPath(event.id) as never);
+      },
+      onJoinWaitlist: (_ticketId: string) => {
+        showToast("Waitlist invites land B5.");
+      },
+      onRequestApproval: (_ticketId: string) => {
+        showToast("Approval flow lands Cycle 10 + B4.");
+      },
+      onUnlockPassword: (password: string): boolean => {
+        // [TRANSITIONAL] Frontend stub validation against ticket.password.
+        // B4 wires real backend verification (hashed comparison).
+        const validPasswords = event.tickets
+          .filter((t) => t.passwordProtected && t.password !== null)
+          .map((t) => t.password as string);
+        return validPasswords.includes(password);
+      },
+    }),
+    [router, event.id, event.tickets, showToast],
   );
 
   return (
@@ -303,61 +270,12 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
         </Head>
       ) : null}
 
-      {variant === "cancelled" ? (
-        <CancelledVariant event={event} brand={brand} insetsTop={insets.top} />
-      ) : variant === "past" ? (
-        <PublishedBody
-          event={event}
-          brand={brand}
-          variant="past"
-          onBuyerAction={handleBuyerAction}
-          coverVideoMuted={coverVideoMuted}
-          onCoverVideoMutedChange={setCoverVideoMuted}
-          playbackActive={publicHeroPlaybackActive}
-        />
-      ) : variant === "password-gate" ? (
-        <PasswordGateVariant
-          event={event}
-          insetsTop={insets.top}
-          onUnlock={() => setPasswordUnlocked(true)}
-        />
-      ) : (
-        <PublishedBody
-          event={event}
-          brand={brand}
-          variant={variant}
-          onBuyerAction={handleBuyerAction}
-          coverVideoMuted={coverVideoMuted}
-          onCoverVideoMutedChange={setCoverVideoMuted}
-          playbackActive={publicHeroPlaybackActive}
-        />
-      )}
-
-      {/* Page-level floating chrome — close (founder only, routes to
-          Events tab) + share. Lifted to page-level so all 7 state
-          variants share the same chrome. zIndex 3 + position absolute
-          floats above hero / banners / variant body. */}
-      <View
-        style={[styles.floatingChrome, { top: insets.top + spacing.sm }]}
-        pointerEvents="box-none"
-      >
-        {ownsThisEvent ? (
-          <IconChrome
-            icon="close"
-            size={40}
-            onPress={handleClose}
-            accessibilityLabel="Close"
-          />
-        ) : (
-          <View />
-        )}
-        <IconChrome
-          icon="share"
-          size={40}
-          onPress={() => setShareModalVisible(true)}
-          accessibilityLabel="Share"
-        />
-      </View>
+      <SharedPublicEventPage
+        event={publicEvent}
+        brand={publicBrand}
+        viewerRole={viewerRole}
+        callbacks={callbacks}
+      />
 
       <ShareModal
         visible={shareModalVisible}
@@ -379,947 +297,17 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   );
 };
 
-// ---- PublishedBody: handles published / pre-sale / sold-out / past ---
-
-interface PublishedBodyProps {
-  event: LiveEvent;
-  brand: Brand | null;
-  variant: "published" | "pre-sale" | "sold-out" | "past";
-  onBuyerAction: (
-    action: "buy" | "free" | "approval" | "password" | "waitlist",
-  ) => void;
-  coverVideoMuted: boolean;
-  onCoverVideoMutedChange: (muted: boolean) => void;
-  playbackActive: boolean;
-}
-
-const PublishedBody: React.FC<PublishedBodyProps> = ({
-  event,
-  brand,
-  variant,
-  onBuyerAction,
-  coverVideoMuted,
-  onCoverVideoMutedChange,
-  playbackActive,
-}) => {
-  const insets = useSafeAreaInsets();
-  const [showAllDates, setShowAllDates] = useState<boolean>(false);
-  const [showOverflowDates, setShowOverflowDates] = useState<boolean>(false);
-
-  const dateLine = formatDraftDateLine(event);
-  const subline = formatDraftDateSubline(event);
-  const datesList = formatDraftDatesList(event);
-  const titleLine = event.name.length > 0 ? event.name : "Untitled event";
-  const brandLetter = (brand?.displayName?.charAt(0) ?? "?").toUpperCase();
-  const coverVideoUnsafe = isLegacyUnsafeEventCoverVideoUrl(
-    event.coverMediaUrl,
-    event.coverMediaType,
-  );
-  const safeCoverMediaUrl = coverVideoUnsafe ? null : event.coverMediaUrl;
-  const safeCoverMediaType = coverVideoUnsafe ? null : event.coverMediaType;
-  const coverCredit = eventCoverProviderCreditLabel({
-    provider: coverVideoUnsafe ? null : event.coverMediaProvider,
-    credit: coverVideoUnsafe ? null : event.coverMediaCredit,
-  });
-
-  const visibleTickets = useMemo(
-    () => sortTicketsByDisplayOrder(
-      event.tickets.filter((t) => t.visibility !== "hidden"),
-    ),
-    [event.tickets],
-  );
-
-  const visibleDates: string[] = (() => {
-    if (!showAllDates) return [];
-    if (datesList.length <= SHOW_INITIAL_DATES || showOverflowDates) {
-      return datesList;
-    }
-    return datesList.slice(0, SHOW_INITIAL_DATES);
-  })();
-
-  const isPast = variant === "past";
-  const isSoldOut = variant === "sold-out";
-  const isPreSale = variant === "pre-sale";
-  const preSaleStart =
-    isPreSale ? computePreSaleStart(event) : null;
-
-  return (
-    <>
-      {/* Hero cover */}
-      <View style={styles.heroWrap}>
-        <EventCoverMedia
-          hue={event.coverHue}
-          mediaUrl={safeCoverMediaUrl}
-          mediaType={safeCoverMediaType}
-          radius={0}
-          label=""
-          height={380}
-          playbackActive={playbackActive}
-          muted={coverVideoMuted}
-          onMutedChange={onCoverVideoMutedChange}
-          showAudioControl={safeCoverMediaType === "video"}
-          audioControlLabel="event cover video"
-          audioControlPosition="topLeft"
-          audioControlTopOffset={insets.top + 60}
-        />
-        <View style={styles.heroOverlay} pointerEvents="none" />
-        {coverCredit !== null ? (
-          <View style={styles.coverCreditBadge} pointerEvents="none">
-            <Text style={styles.coverCreditText}>{coverCredit}</Text>
-          </View>
-        ) : null}
-      </View>
-
-      {/* Floating chrome lifted to page-level (PublicEventPage) — close
-          (founder only) + share. See PublicEventPage's chrome block. */}
-
-      {/* State banner — past / pre-sale / sold-out */}
-      {isPast || isPreSale || isSoldOut ? (
-        <View
-          style={[styles.stateBannerWrap, { top: insets.top + 56 }]}
-          pointerEvents="none"
-        >
-          <View
-            style={[
-              styles.stateBanner,
-              isPast && styles.stateBannerMuted,
-              isPreSale && styles.stateBannerInfo,
-              isSoldOut && styles.stateBannerWarn,
-            ]}
-          >
-            <Text style={styles.stateBannerLabel}>
-              {isPast
-                ? "THIS EVENT HAS ENDED"
-                : isPreSale && preSaleStart !== null
-                  ? `ON SALE ${formatCountdown(preSaleStart).toUpperCase()}`
-                  : isPreSale
-                    ? "ON SALE SOON"
-                    : "SOLD OUT"}
-            </Text>
-          </View>
-        </View>
-      ) : null}
-
-      {/* Body */}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + spacing.xl * 2 },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={[styles.bodyContent, isPast && styles.bodyContentMuted]}>
-          {/* Title block */}
-          <View style={styles.titleBlock}>
-            <View style={styles.titleBlockText}>
-              <Text style={styles.dateLine}>{dateLine}</Text>
-              <Text style={styles.titleLine}>{titleLine}</Text>
-
-              {/* Recurring / multi-date pill + accordion expand */}
-              {subline !== null ? (
-                <View style={styles.recurrencePillRow}>
-                  <Pressable
-                    onPress={() => setShowAllDates((s) => !s)}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      showAllDates ? "Collapse date list" : "Show all dates"
-                    }
-                    style={styles.recurrencePill}
-                  >
-                    <Text style={styles.recurrencePillLabel}>
-                      {subline} · {showAllDates ? "Hide" : "Show all"}
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {showAllDates && visibleDates.length > 0 ? (
-                <View style={styles.expandedDatesList}>
-                  {visibleDates.map((label, i) => (
-                    <View key={i} style={styles.expandedDateRow}>
-                      <Text style={styles.expandedDateText}>{label}</Text>
-                    </View>
-                  ))}
-                  {datesList.length > SHOW_INITIAL_DATES &&
-                  !showOverflowDates ? (
-                    <Pressable
-                      onPress={() => setShowOverflowDates(true)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Show all ${datesList.length} dates`}
-                      style={styles.showAllBtn}
-                    >
-                      <Text style={styles.showAllLabel}>
-                        Show all {datesList.length} dates
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              ) : null}
-            </View>
-          </View>
-
-          {/* Brand chip */}
-          <View style={styles.brandRow}>
-            <View style={styles.brandTile}>
-              <Text style={styles.brandLetter}>{brandLetter}</Text>
-            </View>
-            <Text style={styles.brandName}>
-              {brand?.displayName ?? "Brand"}
-            </Text>
-          </View>
-
-          {/* Venue card — honors hideAddressUntilTicket */}
-          {event.format !== "online" && event.venueName !== null ? (
-            <GlassCard
-              variant="base"
-              padding={spacing.md}
-              style={styles.venueCard}
-            >
-              <View style={styles.venueRow}>
-                <Icon name="location" size={18} color={accent.warm} />
-                <View style={styles.venueTextCol}>
-                  <Text style={styles.venueName}>{event.venueName}</Text>
-                  <Text style={styles.venueAddress}>
-                    {event.hideAddressUntilTicket
-                      ? "Address shared after ticket purchase"
-                      : event.format === "hybrid" && event.address !== null
-                        ? `${event.address} · also online`
-                        : event.address ?? "Address shared after ticket purchase"}
-                  </Text>
-                </View>
-              </View>
-            </GlassCard>
-          ) : event.format === "online" ? (
-            <GlassCard
-              variant="base"
-              padding={spacing.md}
-              style={styles.venueCard}
-            >
-              <View style={styles.venueRow}>
-                <Icon name="globe" size={18} color={accent.warm} />
-                <View style={styles.venueTextCol}>
-                  <Text style={styles.venueName}>Online</Text>
-                  <Text style={styles.venueAddress}>
-                    Conferencing link shared with ticketed guests.
-                  </Text>
-                </View>
-              </View>
-            </GlassCard>
-          ) : null}
-
-          {/* About */}
-          <Text style={styles.sectionTitle}>About</Text>
-          <Text style={styles.aboutBody}>
-            {event.description.length > 0
-              ? event.description
-              : "Details coming soon."}
-          </Text>
-
-          {/* Tickets list */}
-          <Text style={styles.sectionTitle}>Tickets</Text>
-          {visibleTickets.length === 0 ? (
-            <GlassCard variant="base" padding={spacing.md}>
-              <Text style={styles.aboutBody}>
-                No tickets available yet.
-              </Text>
-            </GlassCard>
-          ) : (
-            <View style={styles.ticketsCol}>
-              {visibleTickets.map((t, i) => (
-                <PublicTicketRow
-                  key={t.id}
-                  ticket={t}
-                  isLast={i === visibleTickets.length - 1}
-                  variant={variant}
-                  currency={event.currency ?? "GBP"}
-                  onBuyerAction={onBuyerAction}
-                />
-              ))}
-            </View>
-          )}
-        </View>
-      </ScrollView>
-    </>
-  );
-};
-
-// ---- PublicTicketRow ------------------------------------------------
-
-interface PublicTicketRowProps {
-  ticket: TicketStub;
-  isLast: boolean;
-  variant: "published" | "pre-sale" | "sold-out" | "past";
-  currency: string;
-  onBuyerAction: (
-    action: "buy" | "free" | "approval" | "password" | "waitlist",
-  ) => void;
-}
-
-const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
-  ticket,
-  isLast,
-  variant,
-  currency,
-  onBuyerAction,
-}) => {
-  const priceLabel = ticket.isFree
-    ? "Free"
-    : ticket.priceGbp !== null
-      ? formatCurrencyRound(ticket.priceGbp, ticket.currency ?? currency)
-      : "—";
-  const subLine = formatTicketSubline(ticket);
-  const badges = formatTicketBadges(ticket);
-  const buttonLabel = formatTicketButtonLabel(ticket);
-  const isVisDisabled = ticket.visibility === "disabled";
-  const saleEnded =
-    ticket.saleEndAt !== null &&
-    Number.isFinite(new Date(ticket.saleEndAt).getTime()) &&
-    new Date(ticket.saleEndAt).getTime() <= Date.now();
-  const isSoldOutTicket =
-    !ticket.isUnlimited && (ticket.capacity ?? 0) === 0;
-  // Cycle 12 — door-only tiers are info-only on the public page. Buyer
-  // can see them (so they know about door pricing) but can't buy online.
-  // The J-C1 buyer cart filter at app/checkout/[eventId]/index.tsx hides
-  // these tiers from the cart anyway; this guard prevents the buyer from
-  // ever reaching that empty-cart state by tap.
-  const isDoorOnly = ticket.availableAt === "door";
-
-  // Decide what action this ticket's button fires.
-  const handleTap = (): void => {
-    if (variant === "past" || isVisDisabled || saleEnded) return;
-    if (isDoorOnly) return; // Cycle 12 — info-only display; no purchase path
-    if (variant === "pre-sale") return; // disabled during pre-sale
-    if (isSoldOutTicket && ticket.waitlistEnabled) {
-      onBuyerAction("waitlist");
-      return;
-    }
-    if (isSoldOutTicket) return; // sold out + no waitlist → disabled
-    if (ticket.approvalRequired) {
-      onBuyerAction("approval");
-      return;
-    }
-    if (ticket.isFree) {
-      onBuyerAction("free");
-      return;
-    }
-    onBuyerAction("buy");
-  };
-
-  // Compute final button label + disabled state per variant.
-  const effectiveLabel: string = (() => {
-    if (variant === "past") return "Sales ended";
-    if (saleEnded) return "Sales ended";
-    if (variant === "pre-sale") return "On sale soon";
-    if (isVisDisabled) return "Sales paused";
-    if (isDoorOnly) return "Pay at the door"; // Cycle 12 — info-only
-    if (isSoldOutTicket && ticket.waitlistEnabled) return "Join waitlist";
-    if (isSoldOutTicket) return "Sold out";
-    return buttonLabel;
-  })();
-
-  const isButtonDisabled =
-    variant === "past" ||
-    saleEnded ||
-    variant === "pre-sale" ||
-    isVisDisabled ||
-    isDoorOnly || // Cycle 12 — door-only tiers are info-only on buyer surfaces
-    (isSoldOutTicket && !ticket.waitlistEnabled);
-
-  return (
-    <View
-      style={[
-        styles.ticketRow,
-        !isLast && styles.ticketRowDivider,
-        isVisDisabled && styles.ticketRowDisabled,
-      ]}
-    >
-      <View style={styles.ticketTextCol}>
-        <Text style={styles.ticketName}>{ticket.name}</Text>
-        {/* Description (Cycle 6 5b absorption) — only shown when set */}
-        {ticket.description !== null && ticket.description.length > 0 ? (
-          <Text style={styles.ticketDescription}>{ticket.description}</Text>
-        ) : null}
-        {/* Sub-line: modifiers + capacity */}
-        <Text style={styles.ticketSub}>
-          {subLine.length > 0 && subLine !== priceLabel
-            ? subLine
-            : ticket.isUnlimited
-              ? "Unlimited"
-              : ticket.capacity !== null
-                ? `${ticket.capacity} available`
-                : "Available"}
-        </Text>
-        {badges.length > 0 ? (
-          <View style={styles.ticketBadgesRow}>
-            {badges.map((b) => (
-              <Pill
-                key={b.label}
-                variant={
-                  b.variant === "warning"
-                    ? "warn"
-                    : b.variant === "muted"
-                      ? "draft"
-                      : b.variant === "accent"
-                        ? "accent"
-                        : "info"
-                }
-              >
-                {b.label}
-              </Pill>
-            ))}
-          </View>
-        ) : null}
-        <Pressable
-          onPress={handleTap}
-          disabled={isButtonDisabled}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: isButtonDisabled }}
-          accessibilityLabel={effectiveLabel}
-          style={[
-            styles.ticketBuyerBtn,
-            isButtonDisabled && styles.ticketBuyerBtnDisabled,
-          ]}
-        >
-          <Text
-            style={[
-              styles.ticketBuyerBtnLabel,
-              isButtonDisabled && styles.ticketBuyerBtnLabelDisabled,
-            ]}
-          >
-            {effectiveLabel}
-          </Text>
-        </Pressable>
-      </View>
-      <Text style={styles.ticketPrice}>{priceLabel}</Text>
-    </View>
-  );
-};
-
-// ---- CancelledVariant -----------------------------------------------
-
-interface CancelledVariantProps {
-  event: LiveEvent;
-  brand: Brand | null;
-  insetsTop: number;
-}
-
-const CancelledVariant: React.FC<CancelledVariantProps> = ({
-  event,
-  brand,
-  insetsTop,
-}) => {
-  return (
-    <View style={[styles.cancelledHost, { paddingTop: insetsTop + spacing.lg }]}>
-      <View style={styles.cancelledIconWrap}>
-        <Icon name="flag" size={32} color={semantic.error} />
-      </View>
-      <Text style={styles.cancelledTitle}>This event has been cancelled</Text>
-      <Text style={styles.cancelledEventName}>{event.name}</Text>
-      <Text style={styles.cancelledBody}>
-        {brand?.displayName ?? "The organiser"} has cancelled this event.
-        If you purchased tickets, you will receive refund details by email.
-      </Text>
-    </View>
-  );
-};
-
-// ---- PasswordGateVariant --------------------------------------------
-
-interface PasswordGateVariantProps {
-  event: LiveEvent;
-  insetsTop: number;
-  onUnlock: () => void;
-}
-
-const PasswordGateVariant: React.FC<PasswordGateVariantProps> = ({
-  event,
-  insetsTop,
-  onUnlock,
-}) => {
-  const [password, setPassword] = useState<string>("");
-  const [error, setError] = useState<boolean>(false);
-
-  const handleUnlock = useCallback((): void => {
-    // [TRANSITIONAL] Frontend stub validation against ticket.password.
-    // B4 wires real backend verification (hashed comparison).
-    const validPasswords = event.tickets
-      .filter((t) => t.passwordProtected && t.password !== null)
-      .map((t) => t.password as string);
-    if (validPasswords.includes(password)) {
-      onUnlock();
-    } else {
-      setError(true);
-      setPassword("");
-    }
-  }, [event.tickets, password, onUnlock]);
-
-  return (
-    <View
-      style={[styles.gateHost, { paddingTop: insetsTop + spacing.lg }]}
-    >
-      <GlassCard
-        variant="elevated"
-        padding={spacing.lg}
-        radius="xl"
-        style={styles.gateCard}
-      >
-        <Icon name="shield" size={28} color={accent.warm} />
-        <Text style={styles.gateTitle}>This event requires a password</Text>
-        <Text style={styles.gateBody}>
-          Enter the password to view ticket options for {event.name}.
-        </Text>
-        <View
-          style={[styles.gateInputWrap, error && styles.gateInputWrapError]}
-        >
-          <TextInput
-            value={password}
-            onChangeText={(v) => {
-              setPassword(v);
-              if (error) setError(false);
-            }}
-            placeholder="Password"
-            placeholderTextColor={textTokens.quaternary}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={styles.gateInput}
-            accessibilityLabel="Event password"
-            onSubmitEditing={handleUnlock}
-          />
-        </View>
-        {error ? (
-          <Text style={styles.gateError}>
-            Wrong password. Try again or contact the organiser.
-          </Text>
-        ) : null}
-        <Pressable
-          onPress={handleUnlock}
-          disabled={password.length === 0}
-          accessibilityRole="button"
-          accessibilityLabel="Unlock event"
-          accessibilityState={{ disabled: password.length === 0 }}
-          style={[
-            styles.gateUnlockBtn,
-            password.length === 0 && styles.gateUnlockBtnDisabled,
-          ]}
-        >
-          <Text style={styles.gateUnlockLabel}>Unlock</Text>
-        </Pressable>
-      </GlassCard>
-    </View>
-  );
-};
-
-// ---- Styles ---------------------------------------------------------
-
 const styles = StyleSheet.create({
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
   },
-
-  // Hero
-  heroWrap: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 380,
-    zIndex: 0,
-  },
-  heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.32)",
-  },
-  coverCreditBadge: {
-    position: "absolute",
-    right: spacing.md,
-    bottom: spacing.sm,
-    maxWidth: "70%",
-    borderRadius: 999,
-    backgroundColor: "rgba(0, 0, 0, 0.48)",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-  },
-  coverCreditText: {
-    color: textTokens.inverse,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    fontWeight: "600",
-  },
-  floatingChrome: {
-    position: "absolute",
-    left: spacing.md,
-    right: spacing.md,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    zIndex: 3,
-  },
-  stateBannerWrap: {
-    position: "absolute",
-    left: spacing.md,
-    zIndex: 3,
-  },
-  stateBanner: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  stateBannerMuted: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderColor: "rgba(255, 255, 255, 0.14)",
-  },
-  stateBannerInfo: {
-    backgroundColor: semantic.infoTint,
-    borderColor: "rgba(59, 130, 246, 0.45)",
-  },
-  stateBannerWarn: {
-    backgroundColor: semantic.warningTint,
-    borderColor: "rgba(245, 158, 11, 0.45)",
-  },
-  stateBannerLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1.4,
-    color: textTokens.primary,
-  },
-
-  scroll: {
-    flex: 1,
-    zIndex: 2,
-  },
-  scrollContent: {
-    paddingTop: 280,
-  },
-  bodyContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    backgroundColor: "#0c0e12",
-  },
-  bodyContentMuted: {
-    opacity: 0.7,
-  },
-
-  titleBlock: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  titleBlockText: {
-    flex: 1,
-  },
-  dateLine: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    color: accent.warm,
-    marginBottom: 8,
-  },
-  titleLine: {
-    fontSize: 32,
-    fontWeight: "700",
-    letterSpacing: -0.4,
-    color: textTokens.primary,
-    marginBottom: spacing.sm,
-  },
-  recurrencePillRow: {
-    flexDirection: "row",
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  recurrencePill: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-  },
-  recurrencePillLabel: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: "600",
-    color: accent.warm,
-  },
-  expandedDatesList: {
-    marginBottom: spacing.md,
-    gap: spacing.xs,
-  },
-  expandedDateRow: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.md,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
-  expandedDateText: {
-    fontSize: typography.bodySm.fontSize,
-    color: textTokens.primary,
-  },
-  showAllBtn: {
-    paddingVertical: spacing.sm,
-    alignItems: "center",
-  },
-  showAllLabel: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "600",
-    color: accent.warm,
-  },
-
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  brandTile: {
-    width: 28,
-    height: 28,
-    borderRadius: radiusTokens.sm,
-    backgroundColor: accent.warm,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  brandLetter: {
-    fontWeight: "700",
-    fontSize: 13,
-    color: "#fff",
-  },
-  brandName: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: textTokens.primary,
-  },
-
-  venueCard: {
-    marginBottom: spacing.md,
-  },
-  venueRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    alignItems: "flex-start",
-  },
-  venueTextCol: {
-    flex: 1,
-  },
-  venueName: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: textTokens.primary,
-  },
-  venueAddress: {
-    fontSize: 12,
-    color: textTokens.secondary,
-    marginTop: 2,
-  },
-
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    letterSpacing: -0.2,
-    color: textTokens.primary,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  aboutBody: {
-    fontSize: 15,
-    color: textTokens.secondary,
-    lineHeight: 24,
-  },
-
-  ticketsCol: {
-    backgroundColor: glass.tint.profileBase,
-    borderRadius: radiusTokens.lg,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    overflow: "hidden",
-  },
-  ticketRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
-  },
-  ticketRowDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: glass.border.profileBase,
-  },
-  ticketRowDisabled: {
-    opacity: 0.5,
-  },
-  ticketTextCol: {
-    flex: 1,
-  },
-  ticketName: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
-  ticketDescription: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.secondary,
-    marginTop: 4,
-    lineHeight: typography.caption.lineHeight * 1.4,
-  },
-  ticketSub: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-    marginTop: 2,
-  },
-  ticketBadgesRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  ticketBuyerBtn: {
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: radiusTokens.md,
-    backgroundColor: accent.tint,
-    borderWidth: 1,
-    borderColor: accent.border,
-    alignSelf: "flex-start",
-  },
-  ticketBuyerBtnDisabled: {
-    backgroundColor: glass.tint.profileBase,
-    borderColor: glass.border.profileBase,
-  },
-  ticketBuyerBtnLabel: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: "600",
-    color: accent.warm,
-  },
-  ticketBuyerBtnLabelDisabled: {
-    color: textTokens.tertiary,
-  },
-  ticketPrice: {
-    fontSize: typography.bodySm.fontSize,
-    fontWeight: "700",
-    color: textTokens.primary,
-  },
-
-  // Cancelled variant
-  cancelledHost: {
-    flex: 1,
-    paddingHorizontal: spacing.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-  },
-  cancelledIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 999,
-    backgroundColor: semantic.errorTint,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.md,
-  },
-  cancelledTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: textTokens.primary,
-    textAlign: "center",
-  },
-  cancelledEventName: {
-    fontSize: 16,
-    color: textTokens.secondary,
-    textAlign: "center",
-    marginBottom: spacing.sm,
-  },
-  cancelledBody: {
-    fontSize: 14,
-    color: textTokens.tertiary,
-    textAlign: "center",
-    lineHeight: 20,
-    paddingHorizontal: spacing.md,
-  },
-
-  // Password gate variant
-  gateHost: {
-    flex: 1,
-    paddingHorizontal: spacing.lg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gateCard: {
-    width: "100%",
-    maxWidth: 480,
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  gateTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: textTokens.primary,
-    textAlign: "center",
-    marginTop: spacing.sm,
-  },
-  gateBody: {
-    fontSize: 14,
-    color: textTokens.secondary,
-    textAlign: "center",
-    marginBottom: spacing.md,
-  },
-  gateInputWrap: {
-    width: "100%",
-    paddingHorizontal: spacing.md,
-    height: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-  },
-  gateInputWrapError: {
-    borderColor: semantic.error,
-  },
-  gateInput: {
-    flex: 1,
-    fontSize: typography.body.fontSize,
-    color: textTokens.primary,
-  },
-  gateError: {
-    fontSize: typography.caption.fontSize,
-    color: semantic.error,
-    textAlign: "center",
-    marginTop: 4,
-  },
-  gateUnlockBtn: {
-    width: "100%",
-    paddingVertical: spacing.md,
-    borderRadius: radiusTokens.md,
-    backgroundColor: accent.warm,
-    alignItems: "center",
-    marginTop: spacing.md,
-  },
-  gateUnlockBtnDisabled: {
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
-  gateUnlockLabel: {
-    fontSize: typography.body.fontSize,
-    fontWeight: "700",
-    color: "#fff",
-  },
-
-  // Toast wrap
   toastWrap: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    paddingBottom: spacing.lg,
-    paddingHorizontal: spacing.md,
+    paddingBottom: 24,
+    paddingHorizontal: 16,
     zIndex: 5,
   },
 });

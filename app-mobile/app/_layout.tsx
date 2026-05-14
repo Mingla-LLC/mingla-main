@@ -2,6 +2,7 @@ import '../src/i18n'  // Must be first — initializes i18next before any compon
 import { Stack } from "expo-router";
 import * as Sentry from '@sentry/react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { StripeNativeProvider } from "@mingla/payments-native";
 
 // ORCH-0679 Wave 2B-2: SINGLE source of truth for Sentry init.
 // I-SENTRY-SINGLE-INIT — duplicate Sentry.init in app/index.tsx was deleted as
@@ -40,7 +41,14 @@ Sentry.init({
 export default Sentry.wrap(function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerShown: false }} />
+      {/* META-ORCH-0827 Pass 2 — Stripe PaymentSheet provider for native
+          checkout from the consumer expanded sheet. Publishable key comes
+          from EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY (same Mingla Connect
+          platform key mingla-business uses). Requires native rebuild via
+          EAS Build — see implementation report for the exact command. */}
+      <StripeNativeProvider>
+        <Stack screenOptions={{ headerShown: false }} />
+      </StripeNativeProvider>
     </GestureHandlerRootView>
   );
 });

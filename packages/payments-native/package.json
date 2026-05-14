@@ -1,0 +1,24 @@
+{
+  "name": "@mingla/payments-native",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "react-native": "index.ts",
+  "license": "UNLICENSED",
+  "description": "Native (iOS/Android) Stripe PaymentSheet glue shared between mingla-business native and app-mobile. Web is NOT a target — see I-MOR-0827-CONSUMER-NATIVE-STRIPE-ONLY. Per META-ORCH-0827 Pass 2.",
+  "peerDependencies": {
+    "@stripe/stripe-react-native": "*",
+    "expo-constants": "*",
+    "react": "*",
+    "react-native": "*"
+  },
+  "devDependencies": {
+    "@stripe/stripe-react-native": "0.50.3",
+    "@types/react": "~19.0.10",
+    "expo-constants": "~18.0.5",
+    "react": "19.0.0",
+    "react-native": "0.79.6",
+    "typescript": "~5.8.3"
+  }
+}

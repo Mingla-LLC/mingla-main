@@ -8,7 +8,11 @@
     "paths": {
       "@/*": [
         "./*"
-      ]
+      ],
+      "@mingla/event-rendering": ["../packages/event-rendering"],
+      "@mingla/event-rendering/*": ["../packages/event-rendering/*"],
+      "@mingla/payments-native": ["../packages/payments-native"],
+      "@mingla/payments-native/*": ["../packages/payments-native/*"]
     }
   },
   "include": [

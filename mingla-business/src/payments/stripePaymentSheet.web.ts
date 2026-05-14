@@ -1,13 +1,14 @@
+// META-ORCH-0827 Pass 2 — web stub. mingla-business web buyers use Stripe
+// Checkout Sessions via ticket-checkout-create with `surface: "web"`
+// (ORCH-0790). The PaymentSheet web stub is never exercised on the happy
+// path — but if a caller invokes it anyway, return a typed error so
+// downstream code can branch safely on `code === "Failed"`.
+
 import type {
   PaymentSheetResult,
   StripePaymentSheetController,
-} from "./stripePaymentSheet";
+} from "@mingla/payments-native";
 
-// ORCH-0790: web buyers use Stripe Checkout Sessions (hosted page) via
-// `ticket-checkout-create` with `surface: "web"`. The PaymentSheet web
-// stub is therefore never exercised on the happy path — but if a caller
-// invokes it anyway, return a typed error so downstream code can branch
-// safely on `code === "Failed"`.
 const unsupported = async (): Promise<PaymentSheetResult> => ({
   error: {
     code: "Failed",
