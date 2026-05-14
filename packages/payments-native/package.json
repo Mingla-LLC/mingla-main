@@ -12,13 +12,5 @@
     "expo-constants": "*",
     "react": "*",
     "react-native": "*"
-  },
-  "devDependencies": {
-    "@stripe/stripe-react-native": "0.50.3",
-    "@types/react": "~19.0.10",
-    "expo-constants": "~18.0.5",
-    "react": "19.0.0",
-    "react-native": "0.79.6",
-    "typescript": "~5.8.3"
   }
 }

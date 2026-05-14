@@ -113,16 +113,31 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
   const profile = useAppStore((s) => s.profile);
 
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
+  // Track whether the sheet has actually opened. BottomSheet emits
+  // onChange(-1) on initial mount even when starting closed, which would
+  // immediately fire onClose() and cause the parent to never open the
+  // sheet again. Wait for the first index >= 0 (real open) before allowing
+  // a -1 to count as a user-driven dismiss.
+  const hasOpenedRef = useRef<boolean>(false);
 
   const ticketsQuery = usePublicEventTickets(visible ? data.eventId : null);
   const runNativeCheckout = useNativeCheckoutFlow();
 
   useEffect(() => {
     if (visible) {
-      sheetRef.current?.expand();
-    } else {
+      // Defer the expand to after mount/layout so the ref is attached and
+      // the BottomSheet has measured. Without the defer, the expand() call
+      // on first mount can no-op silently because the sheet's internal
+      // layout state isn't ready yet.
+      const id = requestAnimationFrame(() => {
+        sheetRef.current?.expand();
+      });
+      return () => cancelAnimationFrame(id);
+    }
+    if (hasOpenedRef.current) {
       sheetRef.current?.close();
     }
+    return undefined;
   }, [visible]);
 
   const renderBackdrop = useCallback(
@@ -139,7 +154,15 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
 
   const handleSheetChange = useCallback(
     (index: number) => {
-      if (index === -1) onClose();
+      if (index >= 0) {
+        hasOpenedRef.current = true;
+        return;
+      }
+      // index === -1 (closed). Only treat as user-dismiss AFTER the sheet
+      // has actually been opened at least once.
+      if (hasOpenedRef.current) {
+        onClose();
+      }
     },
     [onClose],
   );

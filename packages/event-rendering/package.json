@@ -9,11 +9,5 @@
   "peerDependencies": {
     "react": "*",
     "react-native": "*"
-  },
-  "devDependencies": {
-    "@types/react": "~19.0.10",
-    "react": "19.0.0",
-    "react-native": "0.79.6",
-    "typescript": "~5.8.3"
   }
 }
