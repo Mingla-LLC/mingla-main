@@ -123,14 +123,27 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
   const ticketsQuery = usePublicEventTickets(visible ? data.eventId : null);
   const runNativeCheckout = useNativeCheckoutFlow();
 
+  // Diagnostic: log lifecycle so we can see why the sheet isn't opening
+  // on operator devices when local sim says it should. Remove after
+  // confirming the fix works end-to-end.
+  useEffect(() => {
+    console.log(
+      "[ExpandedBusinessEventSheet] mount/update visible=",
+      visible,
+      "eventId=",
+      data.eventId,
+    );
+  }, [visible, data.eventId]);
+
+  // Belt-and-suspenders: declarative `index` (visible? 0 : -1) is the
+  // primary open mechanism — sheet starts at the correct index whenever
+  // mount/visibility changes, no ref dance required. The imperative
+  // `expand()` in this useEffect is a backup for cases where the
+  // declarative index gets stuck.
   useEffect(() => {
     if (visible) {
-      // Defer the expand to after mount/layout so the ref is attached and
-      // the BottomSheet has measured. Without the defer, the expand() call
-      // on first mount can no-op silently because the sheet's internal
-      // layout state isn't ready yet.
       const id = requestAnimationFrame(() => {
-        sheetRef.current?.expand();
+        sheetRef.current?.snapToIndex(0);
       });
       return () => cancelAnimationFrame(id);
     }
@@ -266,7 +279,7 @@ export const ExpandedBusinessEventSheet: React.FC<ExpandedBusinessEventSheetProp
       snapPoints={SHEET_SNAP_POINTS}
       enablePanDownToClose
       onChange={handleSheetChange}
-      index={-1}
+      index={visible ? 0 : -1}
       backdropComponent={renderBackdrop}
       backgroundStyle={styles.sheetBackground}
       handleIndicatorStyle={styles.sheetHandle}
