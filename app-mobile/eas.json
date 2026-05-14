@@ -31,9 +31,12 @@
   "submit": {
     "production": {
       "android": {
-        "serviceAccountKeyPath": "./play-service-account.json",
+        "serviceAccountKeyPath": "/Users/sethogieva/.mingla-secrets/playstore-mingla.json",
         "track": "internal",
         "releaseStatus": "draft"
+      },
+      "ios": {
+        "ascAppId": "6760440898"
       }
     }
   }

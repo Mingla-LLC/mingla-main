@@ -92,7 +92,8 @@
         {
           "mode": "production"
         }
-      ]
+      ],
+      "./plugins/withAdiRegistration"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -22,9 +22,27 @@
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "false"
       }
+    },
+    "production-apk": {
+      "autoIncrement": false,
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "SENTRY_DISABLE_AUTO_UPLOAD": "false"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "/Users/sethogieva/.mingla-secrets/playstore-mingla.json",
+        "track": "internal",
+        "releaseStatus": "draft"
+      },
+      "ios": {
+        "ascAppId": "6768737367"
+      }
+    }
   }
 }
