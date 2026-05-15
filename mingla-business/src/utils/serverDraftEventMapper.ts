@@ -103,6 +103,17 @@ export interface ServerDraftEventUpdate {
   visibility: "draft";
   status: "draft";
   timezone: string;
+  // ORCH-0841: top-level taxonomy + city + geo columns. Post-ORCH-0824 the
+  // read mapper reads from these top-level columns and explicitly does NOT
+  // fall back to theme.business_draft — so autosave MUST write them here
+  // every round-trip or the next reload zeroes the user's selections.
+  // party_types/vibe_tags/music_genres are NOT NULL ARRAY at the DB layer;
+  // always write [] for empty, never null.
+  party_types: string[];
+  vibe_tags: string[];
+  music_genres: string[];
+  city: string | null;
+  location_geo: string | null;
 }
 
 export interface BusinessDraftPayload {
@@ -406,6 +417,18 @@ export const draftToServerUpdate = (
   visibility: "draft",
   status: "draft",
   timezone: draft.timezone,
+  // ORCH-0841: write taxonomy + city + geo to top-level columns so the
+  // post-ORCH-0824 read mapper sees them on the autosave response. Without
+  // these, every 700ms autosave round-trip overwrites the local draft with
+  // empty arrays / null and the user's pill selections silently deselect.
+  party_types: Array.isArray(draft.partyTypes) ? draft.partyTypes : [],
+  vibe_tags: Array.isArray(draft.vibeTags) ? draft.vibeTags : [],
+  music_genres: Array.isArray(draft.musicGenres) ? draft.musicGenres : [],
+  city: draft.city,
+  location_geo:
+    draft.locationGeo === null
+      ? null
+      : `(${draft.locationGeo.lng},${draft.locationGeo.lat})`,
 });
 
 export const publishedVisibilityForDraft = (
