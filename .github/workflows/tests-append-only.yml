@@ -1,0 +1,34 @@
+name: Tests Append-Only
+
+# Codified by ORCH-0840 [Regression-test enforcement + append-only CI].
+# Test files are append-only. Existing test files cannot be modified
+# (with deletions) or deleted/renamed without an explicit override token
+# in the latest commit body — see `.github/scripts/test-append-only-check.js`
+# for the exact rules and grammar.
+#
+# Override tokens (in latest commit body):
+#   [TEST-MOD-APPROVED ORCH-NNNN]    — modifications with deleted lines
+#   [TEST-RENAME-APPROVED ORCH-NNNN] — renames
+# Deletions cannot be overridden.
+
+on:
+  pull_request:
+    branches: [main, Seth]
+  push:
+    branches: [Seth]
+
+jobs:
+  append-only-check:
+    name: "Test files: append-only"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run append-only check
+        run: node .github/scripts/test-append-only-check.js

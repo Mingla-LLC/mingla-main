@@ -7,6 +7,46 @@
 
 ---
 
+### I-REGRESSION-TEST-MANDATORY — every code-touching ORCH ships two regression tests, both immutable (ACTIVE — ratified by ORCH-0840 CLOSE 2026-05-14)
+
+**Rule.** Every CLOSE of an ORCH that touches product code (any diff under `app-mobile/src/`, `mingla-business/src/`, `mingla-admin/src/`, `supabase/functions/`, `packages/`, `.github/scripts/strict-grep/`) MUST cite BOTH of:
+
+(a) an implementor-written happy-path regression test at a real repo path with a passing run AND a `fails-on-revert verified at <commit hash>` line proving the test FAILS when the fix is reverted and PASSES when restored;
+
+(b) a tester-written adversarial regression test at a real repo path with a passing run. The adversarial test must attack a DIFFERENT angle than the implementor's happy-path test — edge case, boundary condition, error path, malformed input, race condition, or invariant violation. A copy of the implementor's test with a renamed `it()` block does NOT satisfy this rule and triggers a P1 finding from the tester.
+
+Both tests must be visible in `git diff origin/main...HEAD --name-only` for the closing PR; tests staged on a side branch and absorbed via merge do NOT count.
+
+**Escape valve:** pure docs / artifact / orchestration / process closes with ZERO product-code touch may state `BACKFILL-EXEMPT — reason: <one sentence>` in the CLOSE banner. Use sparingly.
+
+**Why.** Pre-ORCH-0840 audit (5 most-recent merged PRs) found ZERO code test files added in any of the last 5 closures. Regression tests were happening case-by-case (e.g., ORCH-0823 [hardware-keypress repro gap]) but were not required. The "every closed code has regressions that make it impossible to break when we move forward" operator directive (2026-05-14) demands systematic coverage.
+
+**Enforcement.**
+1. **Skill-layer mandate** in `.claude/skills/mingla-orchestrator/SKILL.md` Step 0.5 (CLOSE protocol) — REJECT CLOSE without both test citations.
+2. **Skill-layer mandate** in `.claude/skills/mingla-tester/SKILL.md` verdict gate — MAXIMUM CONDITIONAL PASS without all three sub-requirements.
+3. **Skill-layer mandate** in `.claude/skills/mingla-implementor/SKILL.md` Post-Flight — 6-step regression-test procedure including `fails-on-revert` verification.
+4. **CI gate (NEW):** `.github/workflows/tests-append-only.yml` runs `.github/scripts/test-append-only-check.js` on every PR. Blocks test-file deletions unconditionally. Blocks test-file modifications-with-deleted-lines unless commit body cites `[TEST-MOD-APPROVED ORCH-NNNN]`. Blocks renames unless commit body cites `[TEST-RENAME-APPROVED ORCH-NNNN]`. New test files always allowed. Additions-only modifications always allowed.
+5. **CODEOWNERS (NEW):** `.github/CODEOWNERS` auto-requests Seth's review on every PR touching `**/*.test.*`, `**/*.spec.*`, or `**/__tests__/**`, AND on the append-only gate infrastructure itself.
+6. **Informational warning gate (NEW):** `.github/scripts/strict-grep/regression-test-backfill-warning.mjs` registered as `I-REGRESSION-TEST-BACKFILL-WARN` in the strict-grep workflow — prints a warning listing modified source files without sibling tests; always exits 0 (never blocks). Drives Forward + Opportunistic Backfill.
+
+**Note on skill-layer enforcement.** The 3 skill files at `.claude/skills/` are gitignored ("AI tool configs (private)" per `.gitignore` line 41). The mandates therefore govern only the operator's local Claude/Codex sessions. The CI gate + CODEOWNERS at points 4–6 above carry the codebase-side enforcement that is auditable by anyone reading the repo. This invariant registry entry IS the public mirror of the private skill mandates so future readers can see the rule even without access to the skill files.
+
+**Source:** Operator directive 2026-05-14 ("every single closed code to have regressions that make it impossible to break"), ORCH-0840 [Regression-test enforcement + append-only CI] dispatch + implementation + QA reports, DEC-153.
+
+**EXIT condition:** none — this is a permanent process rule.
+
+### I-TESTS-APPEND-ONLY — test files are append-only at the CI layer (ACTIVE — ratified by ORCH-0840 CLOSE 2026-05-14)
+
+**Rule.** Once a test file lands in the repo, it is immutable. New test files may be added freely. Existing test files may be MODIFIED only if the modification adds lines without deleting any — OR if the latest commit body cites `[TEST-MOD-APPROVED ORCH-NNNN]` with a 4-digit ORCH-ID (optional `-[A-Z]` suffix). Existing test files may be RENAMED only if the latest commit body cites `[TEST-RENAME-APPROVED ORCH-NNNN]`. Existing test files may NEVER be DELETED — there is no override token for deletion.
+
+**Why.** Pragmatic Append-Only stance per operator directive 2026-05-14: a regression test once written is the codebase's proof that a class of bug can't recur. Allowing silent modification or deletion lets the proof evaporate. The override-token grammar exists for the legitimate case where a prior assertion turned out to be wrong — in which case it costs nothing to open a follow-up ORCH explaining why, satisfying audit trail requirements.
+
+**Enforcement.** `.github/workflows/tests-append-only.yml` (required check on PR to `main` and `Seth`). Implementation: `.github/scripts/test-append-only-check.js`. Override grammar (case-sensitive, must appear verbatim in the HEAD commit body): `[TEST-MOD-APPROVED ORCH-NNNN]` (modifications with deletions), `[TEST-RENAME-APPROVED ORCH-NNNN]` (renames). Adv 3 design behavior: tokens in EARLIER commits do not count — they must be in the HEAD commit body so they cannot be smuggled in via merge or rebase from an unreviewed source.
+
+**Source:** Operator directive 2026-05-14, ORCH-0840 dispatch + 11-scenario adversarial QA verification, DEC-153.
+
+**EXIT condition:** none — permanent.
+
 ### I-1.2-UNIFIED-EVENT-TYPE — every sellable thing in Mingla Business 1.2 is a row in `public.events` distinguished by `event_type` (ACTIVE — ratified by ORCH-0826 M0 CLOSE 2026-05-14)
 
 **Rule.** `public.events.event_type` is the unified-offering discriminator. Values: `'event'` (today's ticketed events — popup organizers; default), `'experience'` (single-intent venue offerings shipping in Ve5+), `'trip'` (multi-day curated packages shipping in Tr2+). Column constraints: `NOT NULL DEFAULT 'event' CHECK (event_type IN ('event','experience','trip'))`. No parallel offering tables — venue experiences and trip packages must INSERT into `events` with the appropriate `event_type`, not into separate tables.
