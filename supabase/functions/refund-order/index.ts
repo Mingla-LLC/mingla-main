@@ -1,15 +1,22 @@
 /**
  * refund-order — ORCH-0787 organiser-initiated refund for online ticket orders.
  *
- * Flow per SPEC §3.1:
+ * Flow per SPEC §3.1 (charge-shape per ORCH-0843 amended Path B):
  *   1. Validate request shape + JWT.
  *   2. Call biz_refund_order RPC (pending refund row + line items + caller permission gate).
- *   3. Call Stripe Refunds API on the PLATFORM key with reverse_transfer=true and
- *      (when application_fee>0) refund_application_fee=true. No Stripe-Account header.
- *   4. Call biz_refund_order_commit to flip refund.status, advance orders.payment_status,
+ *   3. Look up the connected account id for this order's brand
+ *      (orders → events → brands.stripe_connect_id) so we can issue the
+ *      refund against the connected account (direct-charge shape).
+ *   4. Call Stripe Refunds API with the Stripe-Account header (third-arg
+ *      request option `stripeAccount`) — direct-charge shape per
+ *      ORCH-0843. reverse_transfer is no longer needed (it was destination-
+ *      charge syntax). refund_application_fee:true still tells Stripe to
+ *      also refund the platform's application_fee_amount cut taken at
+ *      charge time (Mingla's 1.5%).
+ *   5. Call biz_refund_order_commit to flip refund.status, advance orders.payment_status,
  *      void affected tickets, update the denormalised refunded_amount_cents cache.
- *   5. Enqueue ticket_order_notifications row for the buyer (consumed by ORCH-0785 dispatcher).
- *   6. Write audit row + return success.
+ *   6. Enqueue ticket_order_notifications row for the buyer (consumed by ORCH-0785 dispatcher).
+ *   7. Write audit row + return success.
  *
  * I-PROPOSED-Q (Stripe API version via shared client only): uses stripeTicketRefund() from
  * _shared/stripe.ts. NEVER inline apiVersion literal.
@@ -18,6 +25,10 @@
  * service-role client, so the helper-based RLS policy on public.refunds never blocks the
  * SELECT-for-RETURNING path. The direct-predicate SELECT policy added in migration 20260520000000
  * is the defense-in-depth backstop for any future caller that uses .insert().select() chains.
+ *
+ * ORCH-0843 — DO NOT re-introduce reverse_transfer; the charge object now lives on the
+ * connected account so reverse_transfer is meaningless. CI gate
+ * orch-0843-stripe-direct-charges-only.mjs enforces.
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
@@ -198,7 +209,63 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  // Step 2: call Stripe Refunds API on the platform key.
+  // ORCH-0843 — Look up the connected account id for this order's brand.
+  // Chain: orders.event_id → events.brand_id → brands.stripe_connect_id
+  // (the denormalised cache mirrored by the stripe_connect_accounts ->
+  // brands sync trigger per migration 20260508000000). Service-role client
+  // bypasses RLS for this read.
+  // Backward compat note: historical orders created under the destination-
+  // charge era (pre-ORCH-0843) have PI ids that live on the PLATFORM
+  // account, not on the connected account. Calling refunds.create on those
+  // with stripeAccount: <connected> would fail with a Stripe 404. SPEC
+  // §3.2.3 accepts this as deliberate one-way cutover: at flip time 0 real
+  // charges existed; any destination-charge order in flight at deploy is
+  // test data only. Stripe's error surfaces through the existing catch
+  // block below → 502 with detail; acceptable degrade.
+  const { data: brandRow, error: brandErr } = await supabase
+    .from("orders")
+    .select("event_id, events(brand_id, brands(stripe_connect_id))")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (brandErr || !brandRow) {
+    console.error("[refund-order] connected-account lookup failed", brandErr);
+    return jsonResponse(
+      {
+        error: "missing_connected_account",
+        detail: "could not resolve brand for this order",
+      },
+      422,
+    );
+  }
+  // Supabase JS infers the joined shape as either an object (single-row
+  // nested) or an array, depending on FK cardinality. Both `events` and
+  // `brands` are single-row joins here; defensively normalise both shapes.
+  type JoinedBrand = { stripe_connect_id?: string | null };
+  type JoinedEvents = { brand_id?: string | null; brands?: JoinedBrand | JoinedBrand[] | null };
+  const eventsJoined = (brandRow as Record<string, unknown>).events as
+    | JoinedEvents
+    | JoinedEvents[]
+    | null;
+  const eventsRow = Array.isArray(eventsJoined) ? eventsJoined[0] ?? null : eventsJoined;
+  const brandsJoined = eventsRow?.brands ?? null;
+  const brandsRow = Array.isArray(brandsJoined) ? brandsJoined[0] ?? null : brandsJoined;
+  const connectedAccountId =
+    typeof brandsRow?.stripe_connect_id === "string" && brandsRow.stripe_connect_id.length > 0
+      ? brandsRow.stripe_connect_id
+      : null;
+  if (!connectedAccountId) {
+    console.error("[refund-order] brand has no stripe_connect_id", { orderId });
+    return jsonResponse(
+      {
+        error: "missing_connected_account",
+        detail: "brand has no Stripe connected account; cannot refund (ORCH-0843 direct-charge)",
+      },
+      422,
+    );
+  }
+
+  // Step 2: call Stripe Refunds API against the connected account
+  // (direct-charge refund per ORCH-0843).
   let stripeRefund: StripeRefundResult;
   try {
     const stripe = stripeTicketRefund();
@@ -208,7 +275,13 @@ serve(async (req: Request): Promise<Response> => {
         payment_intent: paymentIntentId,
         amount: amountCents,
         reason: "requested_by_customer",
-        reverse_transfer: true,
+        // ORCH-0843 — reverse_transfer removed; it was destination-charge
+        // syntax (instructed Stripe to claw the routed amount back from the
+        // connected account). Under direct charges the funds already sit on
+        // the connected account, so the refund debits the connected balance
+        // directly. refund_application_fee:true still tells Stripe to also
+        // refund the platform's application_fee_amount cut (Mingla's 1.5%)
+        // when there was one.
         refund_application_fee: applicationFeeAmountCents > 0,
         metadata: {
           mingla_refund_id: refundId,
@@ -216,7 +289,12 @@ serve(async (req: Request): Promise<Response> => {
           mingla_idempotency_key: idempotencyKey,
         },
       },
-      { idempotencyKey: `ticket_refund:${refundId}` },
+      {
+        idempotencyKey: `ticket_refund:${refundId}`,
+        // ORCH-0843 — direct-charge refund: Stripe-Account header routes the
+        // refund against the connected account that owns the PI.
+        stripeAccount: connectedAccountId,
+      },
     );
     stripeRefund = {
       id: String(created.id),

@@ -3,10 +3,24 @@
  * ORCH-0804 strict-grep gate — I-PROPOSED-BF STRIPE_TAX_ENABLED_ON_CHECKOUT.
  *
  * Enforces that every Stripe Checkout Session created by
- * `ticket-checkout-create/index.ts` passes the Stripe Tax params for the
- * Connect destination-charge model (verified against
- * https://docs.stripe.com/tax/tax-for-platforms on 2026-05-12):
- *   - automatic_tax: { enabled: true, liability: { type: "account", account: <connected_account_id> } }
+ * `ticket-checkout-create/index.ts` passes the Stripe Tax params required
+ * for buyer tax collection.
+ *
+ * ORCH-0843 REWORK (2026-05-15): under DIRECT charges (Stripe-Account
+ * header on the request-options), Stripe Tax for Platforms uses the
+ * Stripe-Account header alone to designate the connected account as
+ * merchant of record. The legacy
+ *   automatic_tax: { enabled: true, liability: { type: "account", account: <id> } }
+ * shape (destination-charge model, verified against
+ * https://docs.stripe.com/tax/tax-for-platforms on 2026-05-12) is
+ * REJECTED by Stripe under direct charges with 400
+ * StripeInvalidRequestError. See
+ * https://docs.stripe.com/tax/connect/direct-charges — the correct
+ * direct-charge shape is `automatic_tax: { enabled: true }` with NO
+ * liability block. This gate therefore now requires ONLY:
+ *   - automatic_tax: enabled: true
+ * (the `liability.account: stripeAccountId` requirement was relaxed by
+ * ORCH-0843 REWORK because it blocks the live-sales unblocker fix).
  *
  * NOTE: ORCH-0811 removed the previously required `customer_update: { address: "auto" }`.
  * That parameter is only valid alongside an existing `customer` id; Mingla
@@ -27,8 +41,10 @@
  *      supabase/migrations/.
  *   2. Migration declares `ADD COLUMN IF NOT EXISTS tax_amount_cents`.
  *   3. `ticket-checkout-create/index.ts` contains `automatic_tax:` AND
- *      `liability:` AND `account: stripeAccountId`. Must NOT contain
- *      `customer_update:` (ORCH-0811: incompatible with customer_email).
+ *      `enabled: true`. Must NOT contain `customer_update:` (ORCH-0811:
+ *      incompatible with customer_email). Post-ORCH-0843 REWORK: no
+ *      longer requires `liability:` / `account: stripeAccountId` because
+ *      direct charges reject that shape — see header docblock.
  *   4. `_shared/stripeWebhookRouter.ts` references `total_details` AND
  *      `amount_tax` AND `tax_amount_cents` (proves the webhook persists tax
  *      data on the orders row).
@@ -113,21 +129,23 @@ try {
   failures.push(`Check 1 FAIL: cannot read supabase/migrations/: ${err.message}`);
 }
 
-// Check 3 — checkout creation passes the required Stripe Tax params.
+// Check 3 — checkout creation enables Stripe Tax.
+// ORCH-0843 REWORK: under direct charges Stripe rejects
+// automatic_tax.liability.{type,account} with 400 InvalidRequestError. The
+// connected account is designated merchant of record via the
+// Stripe-Account header on the request-options (enforced separately by
+// orch-0843-stripe-direct-charges-only.mjs T-G2). This gate therefore
+// only asserts automatic_tax is ENABLED — not the legacy liability block
+// (which would block the live-sales unblocker fix).
 const checkoutSrc = readOrEmpty(CHECKOUT_PATH);
 if (!/automatic_tax\s*:/.test(checkoutSrc)) {
   failures.push(
     "Check 3 FAIL: ticket-checkout-create/index.ts is missing `automatic_tax:` block — Stripe Tax is silently disabled in production",
   );
 }
-if (!/liability\s*:\s*\{/.test(checkoutSrc)) {
+if (!/enabled\s*:\s*true/.test(checkoutSrc)) {
   failures.push(
-    "Check 3 FAIL: ticket-checkout-create/index.ts is missing `liability:` inside automatic_tax — brand merchant-of-record designation missing",
-  );
-}
-if (!/account\s*:\s*stripeAccountId/.test(checkoutSrc)) {
-  failures.push(
-    "Check 3 FAIL: ticket-checkout-create/index.ts is missing `account: stripeAccountId` — tax liability not pinned to the connected account",
+    "Check 3 FAIL: ticket-checkout-create/index.ts is missing `enabled: true` — automatic_tax block must be ON",
   );
 }
 // ORCH-0811: customer_update is INCOMPATIBLE with customer_email (Stripe
