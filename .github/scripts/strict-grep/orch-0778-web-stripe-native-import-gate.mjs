@@ -7,10 +7,13 @@ const root = process.cwd().endsWith("mingla-business")
   : process.cwd();
 
 const checkedRoots = ["mingla-business/app", "mingla-business/src"];
-const allowedNativeImportFiles = new Set([
-  "mingla-business/src/payments/StripeNativeProvider.native.tsx",
-  "mingla-business/src/payments/stripePaymentSheet.native.ts",
-]);
+// ORCH-0839-B (2026-05-14): allow-list shrunk to empty. mingla-business
+// pivoted from native PaymentSheet to hosted Stripe Checkout via
+// expo-web-browser. No file in mingla-business/{app,src}/ may import
+// @stripe/stripe-react-native — the I-PROPOSED-MINGLA-BUSINESS-HOSTED-
+// CHECKOUT-ONLY invariant is enforced a-fortiori here and explicitly by
+// the new orch-0839-b-mingla-business-no-native-stripe.mjs gate (T-G1).
+const allowedNativeImportFiles = new Set();
 const failures = [];
 const stripeReactNativeImportPattern =
   /(?:import\s+["']@stripe\/stripe-react-native["']|from\s+["']@stripe\/stripe-react-native["']|require\(\s*["']@stripe\/stripe-react-native["']\s*\)|import\(\s*["']@stripe\/stripe-react-native["']\s*\))/;

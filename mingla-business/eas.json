@@ -7,24 +7,49 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "production",
+      "env": {
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      }
+    },
+    "development-sim": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "production",
+      "ios": {
+        "simulator": true
+      },
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "preview": {
       "distribution": "internal",
+      "channel": "production",
+      "env": {
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      }
+    },
+    "preview-sim": {
+      "distribution": "internal",
+      "channel": "production",
+      "ios": {
+        "simulator": true
+      },
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "production": {
       "autoIncrement": true,
+      "channel": "production",
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "false"
       }
     },
     "production-apk": {
       "autoIncrement": false,
+      "channel": "production",
       "android": {
         "buildType": "apk"
       },

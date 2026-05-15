@@ -2,8 +2,7 @@
 /**
  * ORCH-0789 strict-grep gate — error toast must be user-dismissible.
  *
- * Enforces I-PROPOSED-ERROR-TOAST-DISMISSIBLE and
- * I-PROPOSED-STRIPE-ERROR-CODE-DISCRIMINATED:
+ * Enforces I-PROPOSED-ERROR-TOAST-DISMISSIBLE.
  *
  *   1. Toast.tsx AUTO_DISMISS.error must be a number (not null and not the
  *      missing-key pattern that the old TS allowed).
@@ -11,10 +10,16 @@
  *      tap-anywhere-on-card dismiss affordance.
  *   3. Toast.tsx must render a close-icon Pressable with
  *      accessibilityLabel="Dismiss notification".
- *   4. stripePaymentSheet.ts must declare the PaymentSheetErrorCode union
- *      ("Canceled" | "Failed" | "Timeout") so callers can branch on code.
- *   5. payment.tsx must branch on payResult.error.code (not just check
- *      payResult.error truthy) — the bug ORCH-0789 fixed.
+ *   4. [RETIRED 2026-05-14 by ORCH-0839-B] stripePaymentSheet.ts
+ *      PaymentSheetErrorCode union assertion. mingla-business pivoted from
+ *      native PaymentSheet to hosted Stripe Checkout via expo-web-browser.
+ *      The wrapper file no longer exists in mingla-business. The
+ *      I-PROPOSED-STRIPE-ERROR-CODE-DISCRIMINATED invariant remains ACTIVE
+ *      for app-mobile via packages/payments-native/types.ts.
+ *   5. [RETIRED 2026-05-14 by ORCH-0839-B] payment.tsx error.code switch.
+ *      The new handlePay routes through openAuthSessionAsync; Stripe owns
+ *      decline UX inside the hosted page. The error-code discriminator is
+ *      no longer applicable to mingla-business.
  *   6. payment.tsx must NOT contain the legacy "Please complete checkout
  *      in the Mingla Business mobile app" copy (CF-790-2 — buyer-app
  *      naming confusion).
@@ -91,35 +96,18 @@ assertRegexPresent(
     "(close-icon affordance per ORCH-0789).",
 );
 
-// ---- §4 — Stripe wrapper preserves error code discriminator ----
-const WRAPPER = "mingla-business/src/payments/stripePaymentSheet.ts";
-assertIncludes(
-  WRAPPER,
-  "PaymentSheetErrorCode",
-  "stripePaymentSheet.ts must export PaymentSheetErrorCode union " +
-    "(I-PROPOSED-STRIPE-ERROR-CODE-DISCRIMINATED).",
-);
-assertRegexPresent(
-  WRAPPER,
-  /"Canceled"\s*\|\s*"Failed"\s*\|\s*"Timeout"/,
-  "PaymentSheetErrorCode must declare the three Stripe codes (Canceled | Failed | Timeout).",
-);
-
-// ---- §5 — payment.tsx branches on error.code ----
-const PAYMENT = "mingla-business/app/checkout/[eventId]/payment.tsx";
-assertRegexPresent(
-  PAYMENT,
-  /switch\s*\(\s*payResult\.error\.code\s*\)/,
-  "payment.tsx handlePay must switch on payResult.error.code so Canceled " +
-    "(user-cancel) is distinct from Failed (real decline). ORCH-0789 RC-789-2.",
-);
-assertRegexPresent(
-  PAYMENT,
-  /case\s+"Canceled"/,
-  "payment.tsx must handle the 'Canceled' code explicitly (silent return).",
-);
+// ---- §4 + §5 RETIRED 2026-05-14 by ORCH-0839-B ----
+// mingla-business pivoted from native PaymentSheet to hosted Stripe Checkout
+// via expo-web-browser. The PaymentSheetErrorCode discriminator no longer
+// applies to mingla-business; the wrapper file stripePaymentSheet.ts was
+// deleted. The I-PROPOSED-STRIPE-ERROR-CODE-DISCRIMINATED invariant remains
+// ACTIVE for app-mobile via packages/payments-native/types.ts.
+// New invariant for the retired surface: I-PROPOSED-MINGLA-BUSINESS-HOSTED-
+// CHECKOUT-ONLY, gated by
+// .github/scripts/strict-grep/orch-0839-b-mingla-business-no-native-stripe.mjs.
 
 // ---- §6 — legacy buyer-app copy removed ----
+const PAYMENT = "mingla-business/app/checkout/[eventId]/payment.tsx";
 assertRegexAbsent(
   PAYMENT,
   /Mingla Business mobile app/,

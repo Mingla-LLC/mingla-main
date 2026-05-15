@@ -6,13 +6,19 @@ export interface TicketCheckoutCreateInput {
   buyer: BuyerDetails;
   lines: CartLine[];
   /**
-   * ORCH-0790: discriminator for the checkout surface. "native" (default for
-   * backwards compatibility with older mobile builds) creates a PaymentIntent
-   * + client_secret for Stripe RN PaymentSheet. "web" creates a hosted Stripe
-   * Checkout Session and returns a `hostedCheckoutUrl` for the web buyer to
-   * redirect to.
+   * ORCH-0790 / ORCH-0839-B: discriminator for the checkout surface.
+   *  - "native" — DEPRECATED in mingla-business as of ORCH-0839-B (2026-05-14).
+   *    Older app builds may still send this; the edge function preserves the
+   *    PaymentIntent path for backward compat but mingla-business no longer
+   *    requests it.
+   *  - "web" — web buyer; redirects via window.location.assign to a Stripe-
+   *    hosted Checkout Session and returns to https://.../confirm?cs=...
+   *  - "mobile-web" — NEW. mingla-business mobile (iOS + Android) buyer; opens
+   *    the Stripe-hosted Checkout Session via
+   *    expo-web-browser.openAuthSessionAsync and intercepts the
+   *    mingla-business:// return-URL custom scheme.
    */
-  surface?: "native" | "web";
+  surface?: "native" | "web" | "mobile-web";
 }
 
 export interface TicketCheckoutRequiresPayment {
